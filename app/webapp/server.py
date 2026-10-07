@@ -27,6 +27,7 @@ full per-family surface.  Top-level families:
     sessions     GET  /api/claude-code/sessions           → running sessions
                  POST /api/claude-code/sessions/{sid}/stop
                  POST /api/claude-code/sessions/{sid}/image
+                 POST /api/claude-code/sessions/{sid}/large-file → streamed, not read (#1430)
                  WS   /api/claude-code/sessions/{sid}/ws
                  POST /api/transcribe                     → one-shot audio → text
                  POST /api/transcribe/sessions            → start streaming dictation

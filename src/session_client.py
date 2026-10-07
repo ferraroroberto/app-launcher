@@ -10,8 +10,9 @@ is handled separately in ``app/webapp/server.py``.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, List, Optional
 
+import httpx
 import requests
 
 from src import _loopback_http
@@ -44,6 +45,11 @@ _STOP_TIMEOUT = 10.0
 # whole view of the protocol. ``tests/test_session_host_input_endpoint.py``
 # pins the two definitions equal so they cannot drift apart silently.
 INPUT_DEFERRED = "deferred"
+
+# A large-file upload (#1430) streams for as long as the phone takes to send
+# it, so it has no overall deadline: each connect, write and read waits at
+# most this long, and the read covers the host's final flush to disk.
+_LARGE_UPLOAD_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
 
 
 def base_url(port: int) -> str:
@@ -190,3 +196,51 @@ def upload_image(
         files={"file": (filename, content, content_type)},
         params={"inline": "1"} if inline else None,
     )
+
+
+def supports_large_upload(port: int) -> Optional[bool]:
+    """Whether the running session-host has the large-file route (#1430):
+    None when it is unreachable, so the caller can tell "down" from
+    "older than the feature" (it is excluded from the webapp's restart and
+    may run an old build for days)."""
+    body = identity(port)
+    if body is None:
+        return None
+    return "large_upload" in (body.get("features") or [])
+
+
+async def upload_large_file(
+    port: int,
+    session_id: str,
+    name: str,
+    chunks: AsyncIterator[bytes],
+    max_bytes: int,
+) -> Dict[str, Any]:
+    """Stream a large file into a session (#1430), never holding it whole.
+
+    Async and on its own short-lived client rather than the pooled
+    requests session: the body is an async stream straight off the
+    phone's request, and the pool's retry-once on a dropped connection would
+    resend a half-consumed stream as if it were the whole file. Loopback
+    only, so trust_env=False keeps any proxy variable out of the path.
+    An exception raised by chunks propagates unchanged.
+    """
+    url = base_url(port) + f"/sessions/{session_id}/large-file"
+    try:
+        async with httpx.AsyncClient(timeout=_LARGE_UPLOAD_TIMEOUT, trust_env=False) as client:
+            resp = await client.post(
+                url,
+                params={"name": name, "max_bytes": max_bytes},
+                content=chunks,
+                headers={"content-type": "application/octet-stream"},
+            )
+    except httpx.TransportError as exc:
+        raise SessionHostError(f"session-host unreachable at {url} ({exc})", status=503) from exc
+    if resp.status_code >= 400:
+        raise SessionHostError(
+            _loopback_http.detail(resp, "session-host"), status=resp.status_code
+        )
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise SessionHostError(f"session-host returned non-JSON ({exc})") from exc

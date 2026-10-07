@@ -1498,6 +1498,11 @@
           <input id="terminalHistoryLines" type="number" class="input-native" aria-describedby="terminalHistoryLinesHelp" step="100">
         </label>
         <p id="terminalHistoryLinesHelp" class="field-help">How much a full-screen agent such as Codex keeps to redraw when you reconnect.</p>
+        <label class="stacked">
+          <span>Large file limit (MB)</span>
+          <input id="largeUploadMaxMb" type="number" class="input-native" aria-describedby="largeUploadMaxMbHelp" step="1" inputmode="numeric">
+        </label>
+        <p id="largeUploadMaxMbHelp" class="field-help">The biggest file Attach large file takes. It is stored on this PC for the agent to use by path, never read into its context.</p>
         <div class="switch-row settings-switch-row">
           <span>Start app-launcher at log on</span>
           <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>

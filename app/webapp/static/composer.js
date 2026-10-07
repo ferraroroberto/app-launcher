@@ -5,18 +5,18 @@
  * call, not a second copy of the HTML:
  *
  *   ┌ OCR staging tray (hidden until a screenshot is staged) ┐
- *   │ tall predictive <textarea>            │ 🎤 mic  │ ⌨ keys │
- *   │                                       │ 🖼 image │ ➤ send │
+ *   │ tall predictive <textarea>            │ 🎤 mic    │ ⌨ keys │
+ *   │                                       │ 📎 attach │ ➤ send │
  *
  * The 2×2 grid keeps today's shape on every surface (owner's decision, #979
- * decision log): mic · keys on row 1, image · send on row 2. OCR is not a
- * button of its own any more — it is the second option inside the image
- * button's menu ("Attach image or file" / "Extract text from screenshots",
- * the same row-menu component as the session ⚙️ gear); the small dot on the
- * button marks it as having options. With photo-ocr unconfigured the menu
- * would have one row, so the button opens the picker directly and the dot
- * hides. Keys took the slot OCR freed; the D-pad anchors above the composer
- * where the thumb reaches it (terminal-keys.js).
+ * decision log): mic · keys on row 1, attach · send on row 2. The 📎 button
+ * (#1430; it was a photo glyph) opens a menu — the same row-menu component
+ * as the session ⚙️ gear — of everything that puts something into the
+ * message: Photo, Extract text (OCR), Attach file (to context) and Attach
+ * large file (not read). The OCR row hides with photo-ocr unconfigured; the
+ * rest always show, so the button always opens the menu. Keys took the slot
+ * OCR freed; the D-pad anchors above the composer where the thumb reaches it
+ * (terminal-keys.js).
  *
  * Surface-specific behaviour comes in through `opts`, so the module never
  * touches a WebSocket, a session id or the PTY:
@@ -29,11 +29,12 @@
  *                        rejects — to KEEP the draft (a failed send must not
  *                        eat the text); anything else clears the buffer.
  *                        Send is disabled while a promise is pending.
- *     upload(file, signal): store one attachment and resolve its path (or
- *                        null on failure, after the caller's own error
- *                        toast). The composer appends the path to the text.
- *                        `signal` aborts when the operator cancels (#1413);
- *                        pass it to the request.
+ *     upload(file, signal, kind): store one attachment and resolve the text
+ *                        to append — its path, or for `kind === 'large'`
+ *                        (#1430) a line naming the path and telling the agent
+ *                        not to read the file. A throw carries the failure's
+ *                        reason. `signal` aborts when the operator cancels
+ *                        (#1413); pass it to the request.
  *     keys:              { send(bytes), onOpen() } to drive a PTY from the
  *                        ⌨ D-pad, or null when the session has none — the
  *                        button then renders disabled with the reason.
@@ -56,7 +57,7 @@
  *   }) → handle
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
- * image button, the composer's own paste and drop (#1206) and the terminal
+ * attach menu, the composer's own paste and drop (#1206) and the terminal
  * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
@@ -89,6 +90,12 @@
  * the textarea for review. photo-ocr may hold that call for ~15 min on a slow
  * hub, so a tap on the busy Extract button cancels it (#1420, as #1413 does
  * for uploads); the staged shots stay for a retry.
+ *
+ * Large file (#1430): a file for the agent to move, archive or process by
+ * path, never to read. It goes through the same queue, uncapped by the
+ * ordinary 12 MB (its own limit is a Setting the upload enforces), streams
+ * to the machine, and appends a line with its path and size that tells the
+ * agent to leave its contents out of the context.
  *
  * Attach (#41 / #366 / #448 / #450 / #1354): uploads run sequentially (never
  * Promise.all — the append reads then writes the textarea), every path is
@@ -124,8 +131,7 @@ const _TITLE_MIC = 'Dictate (voice to text)';
 const _TITLE_MIC_OFF = 'Dictation unavailable — voice-transcriber not configured';
 const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
-const _TITLE_IMAGE = 'Attach image or file';
-const _TITLE_IMAGE_MENU = 'Attach image or file · Extract text from screenshots';
+const _TITLE_ATTACH = 'Attach';
 // The button's own title. The plain one is the honest default: on a phone,
 // and on the surfaces that don't opt into `sendOnModEnter`, ➤ is the only way
 // to deliver. The shortcut variant names the binding that actually exists
@@ -135,8 +141,10 @@ const _TITLE_SEND = 'Send';
 const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
 const _TITLE_CANCEL_UPLOAD = 'Cancel upload';
 const _TITLE_CANCEL_EXTRACT = 'Cancel extraction';
-const _LABEL_ATTACH = 'Attach image or file';
-const _LABEL_OCR = 'Extract text from screenshots';
+const _LABEL_PHOTO = 'Photo';
+const _LABEL_OCR = 'Extract text (OCR)';
+const _LABEL_ATTACH = 'Attach file (to context)';
+const _LABEL_LARGE = 'Attach large file (not read)';
 
 // Auto-grow a composer textarea up to _COMPOSE_MAX_ROWS; the return key adds
 // newlines on every surface, and ➤ Send delivers the text — plus Ctrl/Cmd+Enter
@@ -163,14 +171,18 @@ function render(host, placeholder) {
       '<div class="compose-tools">' +
         '<button type="button" class="icon-button compose-record composer-mic" aria-pressed="false">' + icon('mic') + '</button>' +
         '<button type="button" class="icon-button compose-record composer-keys">' + icon('keyboard') + '</button>' +
-        '<button type="button" class="icon-button compose-record composer-image">' + icon('image') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-image has-options">' + icon('paperclip') + '</button>' +
         '<button type="button" class="icon-button compose-send composer-send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
     // No accept filter on the attach input (#366): iOS then offers Photo
     // Library / Take Photo / Choose Files, so arbitrary files can be
     // attached. `multiple` (#448): one gallery tap picks several photos.
+    // Photo is the same upload narrowed to images (#1430), and the large-file
+    // input feeds the not-read path.
     '<input type="file" class="composer-attach-input" multiple hidden>' +
+    '<input type="file" class="composer-photo-input" accept="image/*" multiple hidden>' +
+    '<input type="file" class="composer-large-input" multiple hidden>' +
     '<input type="file" class="composer-ocr-input" accept="image/*" multiple hidden>';
   const ta = host.querySelector('.composer-input');
   ta.placeholder = placeholder;
@@ -185,6 +197,8 @@ function render(host, placeholder) {
     image: host.querySelector('.composer-image'),
     send: host.querySelector('.composer-send'),
     attachInput: host.querySelector('.composer-attach-input'),
+    photoInput: host.querySelector('.composer-photo-input'),
+    largeInput: host.querySelector('.composer-large-input'),
     ocrInput: host.querySelector('.composer-ocr-input'),
   };
 }
@@ -217,9 +231,6 @@ export function mountComposer(host, opts) {
   // The terminal-keys glyph isn't a conventional icon (#1238 J-05).
   bindLongPressHint(el.keys);
   let keysOpts = opts.keys || null;
-  let ocrOn = false;
-  // The image button's resting title; while an upload runs it says Cancel.
-  let imageTitle = _TITLE_IMAGE;
   // Fixed for the life of the mount: the surface opts into the shortcut at
   // mount time, so the title can't drift from the binding (#1072).
   const titleSend = opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND;
@@ -406,7 +417,10 @@ export function mountComposer(host, opts) {
   el.extract.addEventListener('click', runOcrExtraction);
 
   // ---- attach ------------------------------------------------------------
-  function appendPath(path) {
+  // `kind` is 'large' for a not-read large file (#1430): its line names a path
+  // the agent must not open as an attachment, so it does not set hasImage
+  // (which holds Send's CR back for an image conversion, #450).
+  function appendPath(path, kind) {
     const ta = el.textarea;
     // Always append at the very end as its own paragraph (#366) — never
     // splice at the caret, which glued the path onto whatever the cursor
@@ -418,7 +432,7 @@ export function mountComposer(host, opts) {
     ta.selectionStart = ta.selectionEnd = ta.value.length;
     grow();
     ta.focus();
-    hasImage = true;
+    if (kind !== 'large') hasImage = true;
   }
 
   function labelImage(text) {
@@ -436,8 +450,8 @@ export function mountComposer(host, opts) {
       el.uploadStatus.textContent = '';
       el.image.classList.remove('is-uploading');
       el.image.removeAttribute('aria-busy');
-      el.image.innerHTML = icon('image');
-      labelImage(imageTitle);
+      el.image.innerHTML = icon('paperclip');
+      labelImage(_TITLE_ATTACH);
       return;
     }
     el.uploadStatus.hidden = false;
@@ -450,7 +464,7 @@ export function mountComposer(host, opts) {
   }
 
   const attachQueue = createAttachQueue({
-    upload: function (file, signal) { return opts.upload(file, signal); },
+    upload: function (file, signal, kind) { return opts.upload(file, signal, kind); },
     onAppend: appendPath,
     onProgress: showUploadProgress,
     onSettle: function (r) {
@@ -464,7 +478,7 @@ export function mountComposer(host, opts) {
     },
   });
 
-  function attachFiles(files) {
+  function attachFiles(files, kind) {
     const list = files ? Array.prototype.slice.call(files) : [];
     if (!list.length) return Promise.resolve();
     // #450: refocus NOW, synchronously in the caller's gesture tick — the
@@ -472,15 +486,20 @@ export function mountComposer(host, opts) {
     // outside the gesture: the caret shows but the keyboard stays down, so
     // the whole composer drops to the screen bottom, out of thumb reach.
     try { el.textarea.focus(); } catch (_) {}
-    return attachQueue.enqueue(list);
+    return attachQueue.enqueue(list, kind);
   }
 
-  el.attachInput.addEventListener('change', function () {
-    const picked = el.attachInput.files;
-    const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
-    el.attachInput.value = '';
-    attachFiles(list);
-  });
+  function wirePicker(input, kind) {
+    input.addEventListener('change', function () {
+      const picked = input.files;
+      const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
+      input.value = '';
+      attachFiles(list, kind);
+    });
+  }
+  wirePicker(el.attachInput);
+  wirePicker(el.photoInput);
+  wirePicker(el.largeInput, 'large');
 
   // Paste and drop reach attachFiles from every mount (#1206). They were only
   // wired to the terminal's xterm host (terminal-image.js), so Chat, which
@@ -503,19 +522,13 @@ export function mountComposer(host, opts) {
     attachFiles(dt.files);
   });
 
-  // The image button's two options. Registered BEFORE the menu binds its own
-  // anchor handler, so with OCR unavailable this listener wins the click,
-  // opens the picker directly and stops the (one-row) menu from opening.
-  // While an upload runs the same tap cancels it instead (#1413), menu or not.
+  // While an upload runs a tap on 📎 cancels it (#1413) instead of opening
+  // the menu. Registered BEFORE the menu binds its own anchor handler, so
+  // this listener wins the click and stops the menu from opening.
   el.image.addEventListener('click', function (ev) {
-    if (attachQueue.busy()) {
-      ev.stopImmediatePropagation();
-      attachQueue.cancel();
-      return;
-    }
-    if (ocrOn) return;
+    if (!attachQueue.busy()) return;
     ev.stopImmediatePropagation();
-    el.attachInput.click();
+    attachQueue.cancel();
   });
   // Floated against the composer while open (#996): the Board drawer mounts
   // this composer inside the column carousel, and an absolutely-positioned
@@ -525,18 +538,29 @@ export function mountComposer(host, opts) {
   });
   const menu = imageMenu.attach('image', el.image, [
     {
-      glyph: 'image', label: _LABEL_ATTACH, text: _LABEL_ATTACH,
-      className: 'composer-menu-attach',
-      onTap: function () { el.attachInput.click(); },
+      glyph: 'image', label: _LABEL_PHOTO, text: _LABEL_PHOTO,
+      className: 'composer-menu-photo',
+      onTap: function () { el.photoInput.click(); },
     },
     {
       glyph: 'scan-text', label: _LABEL_OCR, text: _LABEL_OCR,
       className: 'composer-menu-ocr',
       onTap: function () { el.ocrInput.click(); },
     },
+    {
+      glyph: 'file-text', label: _LABEL_ATTACH, text: _LABEL_ATTACH,
+      className: 'composer-menu-attach',
+      onTap: function () { el.attachInput.click(); },
+    },
+    {
+      glyph: 'package', label: _LABEL_LARGE, text: _LABEL_LARGE,
+      className: 'composer-menu-large',
+      onTap: function () { el.largeInput.click(); },
+    },
   ]);
   host.appendChild(menu);
   const ocrItem = menu.querySelector('.composer-menu-ocr');
+  labelImage(_TITLE_ATTACH);
 
   // ---- send --------------------------------------------------------------
   function finishSend() {
@@ -631,15 +655,7 @@ export function mountComposer(host, opts) {
     if (a && 'dictate' in a) {
       setButtonState(el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF);
     }
-    if (a && 'ocr' in a) {
-      ocrOn = !!a.ocr;
-      ocrItem.hidden = !ocrOn;
-      el.image.classList.toggle('has-options', ocrOn);
-      imageTitle = ocrOn ? _TITLE_IMAGE_MENU : _TITLE_IMAGE;
-      if (!attachQueue.busy()) labelImage(imageTitle);
-      el.image.setAttribute('aria-haspopup', ocrOn ? 'menu' : 'false');
-      if (!ocrOn) imageMenu.close();
-    }
+    if (a && 'ocr' in a) ocrItem.hidden = !a.ocr;
   }
 
   function setSendable(enabled, reason) {

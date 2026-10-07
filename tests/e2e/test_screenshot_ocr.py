@@ -1,7 +1,7 @@
 """Regression pin for issue #171 — composer screenshot-OCR staging.
 
-The feature: *Extract text from screenshots* (since #980 an option inside the
-composer's image button, not a button of its own) **stages** screenshots
+The feature: *Extract text (OCR)* (since #980 an option inside the
+composer's 📎 attach button, not a button of its own) **stages** screenshots
 into a tray above the composer (accumulating across taps), and a single
 **Extract text (N)** button later sends them all to photo-ocr in one call so
 it can collate + deduplicate. This test pins the *staging* client logic —

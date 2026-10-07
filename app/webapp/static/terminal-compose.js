@@ -18,6 +18,7 @@ import { els, state } from './state.js';
 import { apiRaw } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { mountComposer } from './composer.js';
+import { largeFileLine, oversizeReason } from './attach-batch.js';
 import { stopReading } from './terminal-readaloud.js';
 
 // Attachment settle (issue #1211, replacing #450's fixed 350 ms defer): a
@@ -146,8 +147,11 @@ export function sendSubmit(t, text, opts) {
 // one toast per file.
 // `signal` (#1413) is the composer's per-upload AbortSignal: a second tap on
 // the busy image button aborts the request instead of waiting it out.
-export async function uploadSessionFile(sid, file, signal) {
+// `kind === 'large'` (#1430) takes the large-file path instead and resolves
+// the line the composer appends, not a bare path.
+export async function uploadSessionFile(sid, file, signal, kind) {
   if (!sid || !file) throw new Error('no session to attach to');
+  if (kind === 'large') return uploadLargeFile(sid, file, signal);
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   const res = await apiRaw(
@@ -164,9 +168,36 @@ export async function uploadSessionFile(sid, file, signal) {
   return path;
 }
 
-function uploadTerminalImage(file, signal) {
+// A large file (#1430) goes up as the raw request body, not a form: the
+// webapp relays it to the session-host as it arrives and the host writes it
+// to disk as it goes, so neither holds the whole file. The limit is the
+// large_upload_max_mb Setting, checked here first so an oversize file costs no
+// upload (the server enforces it again). Resolves the composer's line: path,
+// size, and an instruction not to read it into context.
+async function uploadLargeFile(sid, file, signal) {
+  const maxMb = state.config && state.config.large_upload_max_mb;
+  const tooBig = maxMb ? oversizeReason(file, maxMb * 1024 * 1024) : '';
+  if (tooBig) throw new Error(tooBig);
+  const res = await apiRaw(
+    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/large-file?name=' +
+      encodeURIComponent(file.name || 'file'),
+    {
+      method: 'POST', terminalToken: readTerminalToken(), body: file, signal: signal,
+      contentType: 'application/octet-stream',
+    }
+  );
+  if (!res.ok) {
+    const b = await res.json().catch(function () { return null; });
+    throw new Error((b && b.detail) || ('HTTP ' + res.status));
+  }
+  const body = await res.json().catch(function () { return null; });
+  if (!body || !body.path) throw new Error('the host returned no path');
+  return largeFileLine(body.path, body.bytes || file.size);
+}
+
+function uploadTerminalImage(file, signal, kind) {
   const t = state.terminal;
-  return t ? uploadSessionFile(t.sid, file, signal) : Promise.resolve(null);
+  return t ? uploadSessionFile(t.sid, file, signal, kind) : Promise.resolve(null);
 }
 
 // sendSubmit's options for one composed send. #499: bulk text (a long

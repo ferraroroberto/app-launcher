@@ -400,6 +400,7 @@ export const els = {
   projectsIgnore: document.getElementById('projectsIgnore'),
   appsScanRoot: document.getElementById('appsScanRoot'),
   terminalHistoryLines: document.getElementById('terminalHistoryLines'),
+  largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
   saveSettings: document.getElementById('saveSettings'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),

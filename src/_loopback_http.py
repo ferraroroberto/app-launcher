@@ -88,9 +88,10 @@ class LoopbackError(RuntimeError):
         self.status = status
 
 
-def _detail(resp: requests.Response, service: str) -> str:
+def detail(resp: Any, service: str) -> str:
     """The cleanest message we can surface for a ``>= 400`` response: the
-    upstream body's ``detail`` field when present, else a bare status line."""
+    upstream body's ``detail`` field when present, else a bare status line.
+    Duck-typed: a ``requests`` or an ``httpx`` response (#1430)."""
     try:
         body = resp.json()
         if isinstance(body, dict) and body.get("detail"):
@@ -137,7 +138,7 @@ def request(
     except requests.RequestException as exc:
         raise error(f"{service} unreachable at {url} ({exc})", status=503) from exc
     if resp.status_code >= 400:
-        raise error(_detail(resp, service), status=resp.status_code)
+        raise error(detail(resp, service), status=resp.status_code)
     try:
         return resp.json()
     except ValueError as exc:

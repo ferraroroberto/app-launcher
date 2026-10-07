@@ -14,6 +14,12 @@
 // settles there and then, so the button is ready again on the same tap. A file
 // that was in flight never appends its path, even if its answer was already on
 // the way: the run it belonged to is over.
+//
+// A pick carries a kind (#1430): none for an ordinary attachment, 'large' for
+// a file put on the machine and never read into the context. Both kinds share
+// the one queue, so the append order stays the pick order; only an ordinary
+// attachment is held to MAX_UPLOAD_BYTES, since a large file's limit is a
+// Setting its upload enforces.
 
 // The session-host rejects anything larger (`_MAX_IMAGE_BYTES` in
 // app/session_host/server.py; tests/test_attach_batch.py pins the two equal).
@@ -28,11 +34,19 @@ export function formatMB(bytes) {
   return mb + ' MB';
 }
 
-// Why a file may not be uploaded, or '' when it may.
-export function oversizeReason(file) {
-  return file && file.size > MAX_UPLOAD_BYTES
-    ? formatMB(file.size) + ', limit ' + formatMB(MAX_UPLOAD_BYTES)
-    : '';
+// Why a file may not be uploaded, or '' when it may. `limit` defaults to the
+// ordinary attachment's MAX_UPLOAD_BYTES.
+export function oversizeReason(file, limit) {
+  const max = limit || MAX_UPLOAD_BYTES;
+  return file && file.size > max ? formatMB(file.size) + ', limit ' + formatMB(max) : '';
+}
+
+// The line a large file (#1430) appends to the message: what it is, that the
+// agent must not read it, and on a line of its own the path to use instead.
+export function largeFileLine(path, bytes) {
+  return 'Large file (' + formatMB(bytes) + ') stored on this machine. Do not read it ' +
+    'into context; work with it by path only (move, archive or process it with tools):\n' +
+    path;
 }
 
 // The one toast a run ends with: `{text, tone}`. All good keeps the wording
@@ -67,15 +81,14 @@ export function cancelledSummary(ok, total) {
 }
 
 // opts:
-//   upload(file, signal)  → path, or null; a throw carries the reason. The
-//                 signal aborts when the run is cancelled.
-
-//   onAppend(path)  each successful path, in order
+//   upload(file, signal, kind)  → the text to append, or null; a throw carries
+//                 the reason. The signal aborts when the run is cancelled.
+//   onAppend(text, kind)  each successful upload's text, in order
 //   onProgress({index, total, name})  before each file; null when idle again
 //   onSettle({ok, total, failures, cancelled?})  once the queue has drained,
 //                 or at once on cancel() with `cancelled: true`
 //   log(entry)  one per upload attempt: {name, bytes, ms, ok, reason?}
-// Returns {enqueue(files) → promise for the drain, busy(), cancel()}.
+// Returns {enqueue(files, kind?) → promise for the drain, busy(), cancel()}.
 export function createAttachQueue(opts) {
   const log = opts.log || function () {};
   let pending = [];
@@ -90,18 +103,19 @@ export function createAttachQueue(opts) {
   let run = 0;
   let controller = null;
 
-  async function attempt(file, myRun) {
+  async function attempt(item, myRun) {
+    const file = item.file;
     const name = file.name || 'file';
     const started = Date.now();
-    let reason = oversizeReason(file);
+    let reason = item.kind === 'large' ? '' : oversizeReason(file);
     if (!reason) {
       const ctrl = new AbortController();
       controller = ctrl;
       try {
-        const path = await opts.upload(file, ctrl.signal);
+        const path = await opts.upload(file, ctrl.signal, item.kind);
         if (myRun !== run) return;
         if (path) {
-          opts.onAppend(path);
+          opts.onAppend(path, item.kind);
           ok++;
           log({ name: name, bytes: file.size, ms: Date.now() - started, ok: true });
           return;
@@ -129,11 +143,11 @@ export function createAttachQueue(opts) {
   async function drain() {
     const myRun = run;
     while (pending.length) {
-      const file = pending.shift();
+      const item = pending.shift();
       done++;
-      current = file.name || 'file';
+      current = item.file.name || 'file';
       opts.onProgress({ index: done, total: total, name: current });
-      await attempt(file, myRun);
+      await attempt(item, myRun);
       if (myRun !== run) return;
     }
     const result = { ok: ok, total: total, failures: failures };
@@ -143,11 +157,11 @@ export function createAttachQueue(opts) {
   }
 
   return {
-    enqueue: function (files) {
+    enqueue: function (files, kind) {
       const list = Array.prototype.slice.call(files || []);
       if (!list.length) return running || Promise.resolve();
       total += list.length;
-      pending = pending.concat(list);
+      pending = pending.concat(list.map(function (file) { return { file: file, kind: kind }; }));
       // A pick joining a running batch grows M at once, not at the next file.
       if (running) opts.onProgress({ index: done, total: total, name: current });
       else running = drain();

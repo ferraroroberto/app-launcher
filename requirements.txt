@@ -52,11 +52,13 @@ pystray>=0.19
 # Windows toast notifications for tray lifecycle events
 winotify>=1.1; sys_platform == "win32"
 
+# Async HTTP client: the webapp relays a large-file upload to the
+# session-host as a stream (#1430). Also starlette.testclient's backend.
+httpx>=0.27
+
 # Pytest API tests (tests/) — in-process FastAPI TestClient.
-# httpx is starlette.testclient's HTTP backend.
 pytest>=8.0
 pytest-asyncio>=0.23
-httpx>=0.27
 # Per-test wall-clock cap so a hung test (e.g. a wedged PTY/WS e2e op on a slow
 # CI runner) aborts with a traceback dump instead of stalling the suite (#184).
 pytest-timeout>=2.3

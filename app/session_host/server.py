@@ -17,6 +17,8 @@ Routes:
     POST   /sessions/{sid}/stop       → interrupt | quit | kill
     POST   /sessions/{sid}/rename     → set/clear a manual title override
     POST   /sessions/{sid}/image      → save an uploaded image, type its path
+    POST   /sessions/{sid}/large-file → stream a large file to disk, return
+                                        its path (never typed, #1430)
     WS     /sessions/{sid}/ws?role=   → scrollback snapshot + live duplex stream
 
 Only ``kind=pty`` sessions have a WebSocket. ``role`` (``pc`` | ``phone``,
@@ -39,11 +41,12 @@ import json
 import logging
 import os
 import re
+import stat
 import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
@@ -105,6 +108,29 @@ _MAX_IMAGE_BYTES = 12 * 1024 * 1024
 # 3,600 files turned out to be its 1x1 test PNGs, with nothing pruning them.
 UPLOAD_ROOT_ENV = "LAUNCHER_UPLOAD_ROOT"
 
+# Large-file uploads (#1430): a file put *on the machine* for the agent to
+# move, archive or process by path, never read into its context. The body
+# streams to disk in chunks and is never held whole in memory. Each session
+# gets its own leaf, `.launcher-tmp/large/<sid>/`, so a session's end deletes
+# exactly its own uploads and nobody else's. The size limit is the caller's
+# (`max_bytes`, from the webapp's `large_upload_max_mb` setting): the webapp
+# owns that setting, and passing it per call means a Settings change applies
+# without restarting this process.
+_LARGE_DIR_NAME = "large"
+# Buffered up to this much before each off-loop disk write, so a multi-GB
+# upload costs a few thousand thread hops rather than one per network chunk.
+_LARGE_FLUSH_BYTES = 1024 * 1024
+# Advertised on /healthz so the webapp can tell a session-host that predates
+# the route ("restart needed") from one that is down ("unreachable").
+_FEATURES = ("large_upload",)
+# TTL fallbacks for whatever session-end cleanup misses: a host restart or
+# crash loses the end of a session, and ordinary attachments had no pruning
+# at all before #1430. A large upload is meant for the session that took it,
+# so a day is plenty. An ordinary attachment is a path in a prompt that a
+# resumed conversation may still point at, so it is kept for a week.
+_LARGE_TTL_SECONDS = 24 * 3600
+_UPLOAD_TTL_SECONDS = 7 * 24 * 3600
+
 # Captured once at import — the whole point is that this does NOT track live
 # git state (#615): it's what this specific process loaded when it started,
 # which is what a caller needs to know when this process is excluded from
@@ -132,7 +158,8 @@ async def _reap_loop() -> None:
             await asyncio.sleep(30)
             reaped = manager.reap_dead()
             if reaped:
-                logger.info(f"🧹 Reaped {reaped} dead PTY session(s)")
+                logger.info(f"🧹 Reaped {len(reaped)} dead PTY session(s)")
+                await asyncio.to_thread(_cleanup_ended_sessions, reaped)
     except asyncio.CancelledError:  # pragma: no cover
         pass
 
@@ -148,6 +175,7 @@ def create_app() -> FastAPI:
             "sessions": len(manager.list()),
             "git_sha": _IDENTITY["git_sha"],
             "started_at": _IDENTITY["captured_at"],
+            "features": list(_FEATURES),
         }
 
     @app.post("/sessions")
@@ -322,6 +350,23 @@ def create_app() -> FastAPI:
             session.write(f"\x1b[200~{path}\x1b[201~")
         return {"ok": True, "path": path, "inline": inline}
 
+    @app.post("/sessions/{sid}/large-file")
+    async def session_large_file(
+        sid: str, request: Request, max_bytes: int, name: str = ""
+    ) -> Dict[str, Any]:
+        """Stream a raw request body to disk (#1430). The body is the file
+        itself, not a multipart form, so it can be written as it arrives;
+        ``name`` carries the original filename. The path is only returned,
+        never typed into the PTY: the caller drops it into the composer with
+        a note telling the agent not to read the file."""
+        session = manager.get(sid)
+        if session is None:
+            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+        path, size = await _save_large_upload(
+            session.project_dir, sid, name, request, max_bytes
+        )
+        return {"ok": True, "path": path, "bytes": size}
+
     @app.websocket("/sessions/{sid}/ws")
     async def session_ws(websocket: WebSocket, sid: str) -> None:
         session = manager.get(sid)
@@ -491,14 +536,30 @@ def _upload_dir(project_dir: str) -> Path:
     return Path(override or project_dir) / _IMAGE_DIR_NAME
 
 
+def _upload_name(filename: str) -> str:
+    """A stored upload's file name: ``<stamp>-<id>-<stem><suffix>``. The stem
+    is reduced to safe characters and an odd-looking extension is dropped
+    rather than trusted, so nothing the client sends shapes the path beyond
+    those characters."""
+    suffix = Path(filename or "").suffix.lower()
+    if not _SAFE_SUFFIX_RE.match(suffix):
+        suffix = ""
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    safe = re.sub(r"[^a-zA-Z0-9._-]", "_", Path(filename or "img").stem)[:40]
+    return f"{stamp}-{uuid.uuid4().hex[:6]}-{safe}{suffix}"
+
+
+def _large_dir(project_dir: str, sid: str) -> Path:
+    """Where session ``sid``'s large uploads land (#1430):
+    ``<upload dir>/large/<sid>``."""
+    return _upload_dir(project_dir) / _LARGE_DIR_NAME / re.sub(r"[^A-Za-z0-9_-]", "_", sid)
+
+
 async def _save_image(project_dir: str, file: UploadFile) -> str:
     """Persist an uploaded file under ``<project>/.launcher-tmp`` (see
     :func:`_upload_dir`) and return its absolute path. Any type is stored
     (issue #366); oversize and empty uploads are rejected, and an odd-looking
     extension is stripped rather than written."""
-    suffix = Path(file.filename or "").suffix.lower()
-    if not _SAFE_SUFFIX_RE.match(suffix):
-        suffix = ""
     data = await file.read()
     if len(data) > _MAX_IMAGE_BYTES:
         raise HTTPException(status_code=400, detail="file exceeds 12 MB")
@@ -507,13 +568,163 @@ async def _save_image(project_dir: str, file: UploadFile) -> str:
     target_dir = _upload_dir(project_dir)
     try:
         target_dir.mkdir(parents=True, exist_ok=True)
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        safe = re.sub(r"[^a-zA-Z0-9._-]", "_", Path(file.filename or "img").stem)[:40]
-        out = target_dir / f"{stamp}-{uuid.uuid4().hex[:6]}-{safe}{suffix}"
+        out = target_dir / _upload_name(file.filename or "")
         out.write_bytes(data)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not save image: {exc}")
+    await asyncio.to_thread(_prune_uploads, project_dir)
     return str(out)
+
+
+async def _save_large_upload(
+    project_dir: str, sid: str, filename: str, request: Request, max_bytes: int
+) -> Tuple[str, int]:
+    """Stream ``request``'s body to ``<upload dir>/large/<sid>/`` and return
+    ``(path, size)`` (#1430).
+
+    Written as it arrives, buffered to :data:`_LARGE_FLUSH_BYTES` and flushed
+    off the event loop, which keeps serving every live PTY meanwhile. A body
+    over ``max_bytes`` is refused as soon as it is known to be over: from
+    ``Content-Length`` before a byte is written, or mid-stream when there is
+    none. Any failure, including the client going away mid-upload, deletes
+    the partial file.
+    """
+    if max_bytes <= 0:
+        raise HTTPException(status_code=400, detail="max_bytes must be positive")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > max_bytes:
+        raise HTTPException(status_code=413, detail="file exceeds the large-file limit")
+    target_dir = _large_dir(project_dir, sid)
+    out = target_dir / _upload_name(filename)
+    try:
+        await asyncio.to_thread(target_dir.mkdir, parents=True, exist_ok=True)
+        handle = await asyncio.to_thread(open, out, "xb")
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=f"could not save file: {exc}")
+    size = 0
+    buf = bytearray()
+    try:
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > max_bytes:
+                raise HTTPException(status_code=413, detail="file exceeds the large-file limit")
+            buf += chunk
+            if len(buf) >= _LARGE_FLUSH_BYTES:
+                data, buf = buf, bytearray()
+                await asyncio.to_thread(handle.write, data)
+        if buf:
+            await asyncio.to_thread(handle.write, buf)
+        await asyncio.to_thread(handle.close)
+        if not size:
+            raise HTTPException(status_code=400, detail="empty upload")
+    except BaseException as exc:
+        # BaseException: a client that disconnects mid-upload cancels this
+        # task, and its partial file must go too.
+        handle.close()
+        _unlink_quietly(out)
+        if isinstance(exc, OSError):
+            raise HTTPException(status_code=400, detail=f"could not save file: {exc}")
+        logger.info(f"ℹ️ large upload for {sid[:8]} abandoned after {size} B: {exc!r}")
+        raise
+    logger.info(f"ℹ️ large upload for {sid[:8]}: {size} B → {out}")
+    await asyncio.to_thread(_prune_uploads, project_dir)
+    return str(out), size
+
+
+def _unlink_quietly(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning(f"⚠️ could not remove {path}: {exc}")
+
+
+def _prune_files(directory: Path, ttl_seconds: float, now: float) -> int:
+    """Delete the regular files directly in ``directory`` whose mtime is more
+    than ``ttl_seconds`` old; return how many went.
+
+    Never recurses and never follows a link or junction: only files this
+    process wrote live at this level. What it can't establish it keeps — an
+    entry it can't stat, or one dated in the future, is not "expired".
+    """
+    try:
+        entries = list(os.scandir(directory))
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        logger.warning(f"⚠️ upload prune: cannot list {directory}: {exc}")
+        return 0
+    removed = 0
+    for entry in entries:
+        try:
+            info = entry.stat(follow_symlinks=False)
+            if not stat.S_ISREG(info.st_mode) or now - info.st_mtime <= ttl_seconds:
+                continue
+            os.unlink(entry.path)
+            removed += 1
+        except OSError as exc:
+            logger.warning(f"⚠️ upload prune: kept {entry.path}: {exc}")
+    return removed
+
+
+def _prune_uploads(project_dir: str, now: Optional[float] = None) -> int:
+    """TTL-prune one project's upload dir (#1430): ordinary attachments past
+    :data:`_UPLOAD_TTL_SECONDS`, large uploads past :data:`_LARGE_TTL_SECONDS`,
+    then any per-session large dir left empty. Returns the files removed."""
+    now = time.time() if now is None else now
+    root = _upload_dir(project_dir)
+    removed = _prune_files(root, _UPLOAD_TTL_SECONDS, now)
+    large_root = root / _LARGE_DIR_NAME
+    try:
+        session_dirs = [
+            Path(e.path) for e in os.scandir(large_root)
+            if e.is_dir(follow_symlinks=False)
+        ]
+    except FileNotFoundError:
+        session_dirs = []
+    except OSError as exc:
+        logger.warning(f"⚠️ upload prune: cannot list {large_root}: {exc}")
+        session_dirs = []
+    for session_dir in session_dirs:
+        removed += _prune_files(session_dir, _LARGE_TTL_SECONDS, now)
+        _rmdir_if_empty(session_dir)
+    if removed:
+        logger.info(f"🧹 upload prune: removed {removed} expired file(s) under {root}")
+    return removed
+
+
+def _rmdir_if_empty(path: Path) -> None:
+    try:
+        path.rmdir()
+    except OSError:
+        pass  # not empty (the agent left something there), or already gone
+
+
+def _drop_session_uploads(project_dir: str, sid: str) -> int:
+    """Session end (#1430): delete the large uploads ``sid`` took, i.e. the
+    regular files directly in its leaf. A file the agent moved elsewhere is
+    simply no longer there; anything the agent created inside the leaf (a
+    subfolder it extracted into) is left alone, and so is the leaf then."""
+    session_dir = _large_dir(project_dir, sid)
+    removed = _prune_files(session_dir, -1, float("inf"))
+    _rmdir_if_empty(session_dir)
+    if removed:
+        logger.info(f"🧹 session {sid[:8]} ended: removed {removed} large upload(s)")
+    return removed
+
+
+def _cleanup_ended_sessions(sessions: Iterable[Any]) -> None:
+    """Upload cleanup for sessions the reaper just dropped: each one's large
+    uploads, then a TTL prune of every project they worked in."""
+    projects = set()
+    for session in sessions:
+        project_dir = getattr(session, "project_dir", "")
+        sid = getattr(session, "session_id", "")
+        if not project_dir or not sid:
+            continue
+        _drop_session_uploads(project_dir, sid)
+        projects.add(project_dir)
+    for project_dir in projects:
+        _prune_uploads(project_dir)
 
 
 def run_session_host(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:

@@ -161,6 +161,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Coding-tab image paste into a live PTY.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/large-file"),
+        "passkey",
+        "Compose-bar large-file attach (#1430): writes a file of up to "
+        "large_upload_max_mb into a session's project, the same reach as /image.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/input"),
         "passkey",
         "Board drill-down (#301): reply proxy writes into a live PTY.",

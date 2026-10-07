@@ -4,7 +4,8 @@
 
 import assert from 'node:assert/strict';
 import {
-  MAX_UPLOAD_BYTES, cancelledSummary, createAttachQueue, formatMB, oversizeReason, summarize,
+  MAX_UPLOAD_BYTES, cancelledSummary, createAttachQueue, formatMB, largeFileLine, oversizeReason,
+  summarize,
 } from '../../app/webapp/static/attach-batch.js';
 
 const MB = 1024 * 1024;
@@ -18,6 +19,15 @@ assert.equal(oversizeReason(file('a.jpg', 12 * MB)), '', 'exactly the limit is a
 assert.equal(oversizeReason(file('a.jpg', 12 * MB + 1)), '12 MB, limit 12 MB');
 assert.equal(oversizeReason(file('a.jpg', 14.3 * MB)), '14.3 MB, limit 12 MB');
 assert.equal(oversizeReason(null), '');
+assert.equal(oversizeReason(file('a.zip', 40 * MB), 30 * MB), '40 MB, limit 30 MB', 'a given limit');
+
+// #1430: the large-file line names size and path, and says not to read it.
+{
+  const line = largeFileLine('/p/large/x.zip', 34.7 * MB);
+  assert.match(line, /^Large file \(34\.7 MB\)/);
+  assert.match(line, /Do not read it into context/);
+  assert.equal(line.split('\n').pop(), '/p/large/x.zip', 'the path sits alone on the last line');
+}
 
 assert.deepEqual(summarize(1, 1, []), {
   text: 'Uploaded 1 file — path added to the message.', tone: 'good',
@@ -39,12 +49,12 @@ assert.equal(
 function harness() {
   const h = { appended: [], progress: [], settled: [], logs: [], calls: [], gates: [], signals: [] };
   h.queue = createAttachQueue({
-    upload: (f, signal) => new Promise((resolve, reject) => {
-      h.calls.push(f.name);
+    upload: (f, signal, kind) => new Promise((resolve, reject) => {
+      h.calls.push(kind ? f.name + ':' + kind : f.name);
       h.signals.push(signal);
       h.gates.push({ resolve, reject });
     }),
-    onAppend: (p) => h.appended.push(p),
+    onAppend: (p, kind) => h.appended.push(kind ? p + ':' + kind : p),
     onProgress: (p) => h.progress.push(p),
     onSettle: (r) => h.settled.push(r),
     log: (e) => h.logs.push(e),
@@ -175,6 +185,24 @@ const tick = () => new Promise((r) => setImmediate(r));
   assert.deepEqual(h.settled[1], { ok: 1, total: 1, failures: [] });
   q.cancel();
   assert.equal(h.settled.length, 2, 'cancel when idle does nothing');
+}
+
+{
+  // #1430: a large file skips the 12 MB check and carries its kind through to
+  // the upload and the append; an ordinary one in the same run keeps its cap,
+  // and the run keeps pick order across kinds.
+  const h = harness();
+  const drained = h.queue.enqueue([file('big.zip', 100 * MB)], 'large');
+  h.queue.enqueue([file('huge.jpg', 13 * MB), file('c.png')]);
+  await tick();
+  assert.deepEqual(h.calls, ['big.zip:large'], 'not refused at 100 MB');
+  h.gates[0].resolve('line for big');
+  await tick();
+  assert.deepEqual(h.calls, ['big.zip:large', 'c.png'], 'the oversize ordinary file never uploads');
+  h.gates[1].resolve('/p/c');
+  await drained;
+  assert.deepEqual(h.appended, ['line for big:large', '/p/c']);
+  assert.deepEqual(h.settled[0].failures, [{ name: 'huge.jpg', reason: '13 MB, limit 12 MB' }]);
 }
 
 assert.deepEqual(cancelledSummary(0, 3), { text: 'Upload cancelled', tone: '' });
