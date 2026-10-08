@@ -106,6 +106,11 @@ MAX_TERMINAL_HISTORY_LINES = 50_000
 # 2 GB covers an archive of scanned documents with room to spare; the ceiling
 # keeps a typo from turning into an unbounded write to the project drive.
 DEFAULT_LARGE_UPLOAD_MAX_MB = 2048
+
+# Which providers the usage meter shows (#1451): the Code tab's Usage card and
+# the Board's compact line. "both" is today's behaviour; "none" hides the card.
+VALID_USAGE_SHOWS = ("claude", "codex", "both", "none")
+DEFAULT_USAGE_SHOWS = "both"
 MIN_LARGE_UPLOAD_MAX_MB = 1
 MAX_LARGE_UPLOAD_MAX_MB = 10240
 
@@ -459,6 +464,8 @@ class WebappConfig:
     # Large-file attach limit in MB (issue #1430), Settings-tab configurable.
     # See DEFAULT_LARGE_UPLOAD_MAX_MB.
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
+    # Which providers the usage meter draws (#1451); see VALID_USAGE_SHOWS.
+    usage_shows: str = DEFAULT_USAGE_SHOWS
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
     # https origin the phone connects to. Empty disables the passkey gate.
@@ -884,6 +891,7 @@ _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
     ("pi_effort", VALID_PI_EFFORTS, False),
     ("pi_trust_mode", VALID_PI_TRUST_MODES, False),
     ("chief_model", VALID_CHIEF_MODELS, False),
+    ("usage_shows", VALID_USAGE_SHOWS, False),
 )
 
 

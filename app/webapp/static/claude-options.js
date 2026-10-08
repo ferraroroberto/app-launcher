@@ -17,6 +17,7 @@ import { wireModelCombo } from './dom-utils.js';
 import { setBoardDispatchModelOptions } from './board-dispatch.js';
 import { setLifeOsModelOptions } from './life-os.js';
 import { setSwitch } from './_vendored/switch/switch.js';
+import { setUsageShows } from './usage-meter.js';
 
 // Shared model-picker controllers, created once the DOM exists.
 let codingModelCombo = null;
@@ -113,11 +114,31 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
   }
   renderChiefAutoCompact(body);
+  renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);
   }
   renderClaudeOptions();
   return true;
+}
+
+// "Usage shows" (#1451): which providers the usage meter draws. Saves at once;
+// the meter repaints from the server's value, so another device's change
+// shows here too.
+const _USAGE_SHOWS_LABELS = { claude: 'Claude', codex: 'Codex', both: 'Both', none: 'None' };
+
+function renderUsageShows(body) {
+  const current = body.usage_shows || 'both';
+  if (els.usageShows) {
+    renderRangeTabs(
+      els.usageShows,
+      body.usage_shows_available || ['claude', 'codex', 'both', 'none'],
+      current,
+      function (v) { return _USAGE_SHOWS_LABELS[v] || v; },
+      function (v) { patchConfig({ usage_shows: v }); }
+    );
+  }
+  setUsageShows(current);
 }
 
 // The Chief card (#1298): 0 is off, shown as the switch off and the percent

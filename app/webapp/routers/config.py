@@ -39,6 +39,7 @@ from src.webapp_config import (
     VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
     VALID_PI_TRUST_MODES,
+    VALID_USAGE_SHOWS,
     WebappConfig,
     update_webapp_config,
 )
@@ -81,6 +82,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "large_upload_max_mb": cfg.large_upload_max_mb,
         "large_upload_max_mb_min": MIN_LARGE_UPLOAD_MAX_MB,
         "large_upload_max_mb_max": MAX_LARGE_UPLOAD_MAX_MB,
+        # Which providers the usage meter shows (#1451).
+        "usage_shows": cfg.usage_shows,
+        "usage_shows_available": list(VALID_USAGE_SHOWS),
         # The chief's auto-compact threshold (#1298): percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -160,6 +164,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "fleet_config_dir",
         "terminal_history_lines",
         "large_upload_max_mb",
+        "usage_shows",
         "chief_auto_compact_threshold",
         "claude_model",
         "claude_effort",

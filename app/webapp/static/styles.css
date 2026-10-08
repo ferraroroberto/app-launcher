@@ -5098,6 +5098,8 @@ span.chief-answer-ref { color: var(--muted); }
 /* Usage: the full meter in a card. The whole card is one tap to the Usage
    sheet; the meter inside is its keyboard target. */
 .usage-card { cursor: pointer; }
+/* "Usage shows: None" (#1451) hides the whole card. */
+.usage-card[hidden] { display: none; }
 .usage-card .usage-meter-slot { margin: 12px 0 0; }
 .usage-card-meta { font-size: var(--font-body-sm); }
 .usage-card-meta[data-tone="accent"] { color: var(--accent-text); }
