@@ -3943,6 +3943,11 @@ body.terminal-open {
    body whose quota rows are empty ends at the bar, not in a blank strip. */
 .board-dispatch-card .board-status,
 .board-dispatch-card .usage-meter-slot { margin: 10px 0 0; }
+/* The slot holds the meter's 44px line before the first /api/rate-limits poll
+   fills it (#1447). Empty until then, its arrival pushed every column and an
+   open drawer down 44px mid-gesture. "Usage shows: None" sets `hidden` on the
+   slot (usage-meter.js), so it reserves nothing when no meter will come. */
+.board-dispatch-card .usage-meter-slot:empty { min-height: var(--row-sm); }
 /* Phone stacking order (#869 round 2, on-device feedback): the controls lead
    and "All projects" drops to the bottom of the bar, so the filter sits
    directly above the column sections it filters. Source order

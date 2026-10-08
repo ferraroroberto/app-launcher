@@ -349,6 +349,8 @@ def test_usage_shows_draws_only_the_chosen_providers(
         authed_page.locator("#tabBoard").click()
         expect(authed_page.locator("#paneBoard")).to_be_visible()
         expect(authed_page.locator("#boardUsage .usage-meter")).to_have_count(0)
+        # No meter will come, so the slot reserves nothing (#1447).
+        expect(authed_page.locator("#boardUsage")).to_be_hidden()
         assert errors == [], errors
         return
 
@@ -430,3 +432,50 @@ def test_usage_shows_setting_saves_and_repaints_the_card(
     authed_page.locator("#tabClaude").click()
     expect(card).to_be_visible()
     expect(authed_page.locator("#codingUsage .um-codex")).to_have_count(0)
+
+
+# Holds the /api/rate-limits answer until the test releases it, so the Board
+# is measured both before and after the meter lands. Installed after
+# _QUOTA_SHIM, whose fetch it wraps.
+_HOLD_RATE_LIMITS = """
+(() => {
+  const inner = window.fetch.bind(window);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  window.__releaseRateLimits = () => release();
+  window.fetch = function (input, init) {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (url.pathname === '/api/rate-limits') return gate.then(() => inner(input, init));
+    return inner(input, init);
+  };
+})();
+"""
+
+
+@pytest.mark.iphone
+def test_board_does_not_jump_when_the_usage_meter_lands(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1447: the Board's meter slot reserves its 44px line before the first
+    /api/rate-limits poll lands. Left empty until then, the answer's arrival
+    pushed every column, and an open drawer with it, down 44px mid-gesture, so
+    a test reading a drawer's four buttons one after another straddled the
+    jump and saw the fourth a row lower."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    authed_page.add_init_script(_HOLD_RATE_LIMITS)
+    _mock_board(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabBoard").click()
+    columns = authed_page.locator("#boardColumns")
+    expect(columns).to_be_visible()
+    top = "el => el.isConnected ? Math.round(el.getBoundingClientRect().top) : null"
+
+    before = stable_eval(columns, top)
+    expect(authed_page.locator("#boardUsage .usage-meter-compact")).to_have_count(0)
+
+    authed_page.evaluate("window.__releaseRateLimits()")
+    expect(authed_page.locator("#boardUsage .usage-meter-compact")).to_be_visible()
+    after = stable_eval(columns, top)
+    assert after == before, (
+        f"the Board jumped {after - before}px when the usage meter landed"
+    )
