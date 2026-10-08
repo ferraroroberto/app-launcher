@@ -99,8 +99,11 @@ export async function api(path, opts) {
   return res;
 }
 
-export async function jsonApi(path, opts) {
-  const res = await api(path, opts);
+// The parsed JSON body of `res` (null when there is none), or a thrown
+// `Error(detail || 'HTTP n')` carrying `.status` / `.body` on a non-2xx. The
+// one place a response becomes a verdict: jsonApi() and apiRawJson() both end
+// here (#1422).
+async function jsonVerdict(res) {
   let body = null;
   try { body = await res.json(); } catch (_) { body = null; }
   if (!res.ok) {
@@ -111,6 +114,10 @@ export async function jsonApi(path, opts) {
     throw err;
   }
   return body;
+}
+
+export async function jsonApi(path, opts) {
+  return jsonVerdict(await api(path, opts));
 }
 
 // A raw-Response counterpart to jsonApi() for callers that need the Response
@@ -131,6 +138,15 @@ export async function apiRaw(path, opts) {
     opts.headers || {}
   );
   return api(path, Object.assign({}, opts, { headers: headers }));
+}
+
+// apiRaw() + jsonApi()'s verdict (#1422): resolves the parsed JSON body (null
+// when there is none) and throws `Error(detail || 'HTTP n')` with `.status` /
+// `.body` on a non-2xx, so an upload / transcribe caller states neither the
+// `res.ok` check nor the error-body parse. A caller that must read the status
+// itself without throwing (a retried chunk upload) keeps apiRaw().
+export async function apiRawJson(path, opts) {
+  return jsonVerdict(await apiRaw(path, opts));
 }
 
 // --------------------------------------------------------------- login

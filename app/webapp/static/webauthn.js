@@ -6,7 +6,7 @@
  */
 
 import { els, state, TT_KEY, TT_EXP_KEY } from './state.js';
-import { apiFailToast, jsonApi, toast } from './api.js';
+import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // ----------------------------------------------------------- b64url helpers
@@ -207,6 +207,22 @@ export async function ensureTerminalToken() {
   const existing = readTerminalToken();
   if (existing) return existing;
   return await unlockTerminal();
+}
+
+// One terminal-grade JSON request (#1422): awaits the passkey token, sends it
+// with the bearer, and resolves jsonApi()'s parsed body or its thrown verdict.
+// `body`, when given, is JSON-encoded here; omit `method` for a GET.
+export async function terminalJsonApi(path, { method, body } = {}) {
+  const terminalToken = await ensureTerminalToken();
+  const opts = {
+    headers: authHeaders({
+      terminalToken,
+      contentType: body === undefined ? undefined : 'application/json',
+    }),
+  };
+  if (method) opts.method = method;
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  return jsonApi(path, opts);
 }
 
 export function wireWebauthn() {

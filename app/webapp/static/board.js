@@ -38,7 +38,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
 import {
   detachedSendRefused,
@@ -55,7 +55,7 @@ import { uploadSessionFile } from './terminal-compose.js';
 import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
 import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 import {
   CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, fmtDuration,
@@ -438,10 +438,8 @@ function buildDrawer(card) {
 
 async function loadExchange(card, el) {
   try {
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi(
-      '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange',
-      { headers: authHeaders({ terminalToken: tt }) }
+    const body = await terminalJsonApi(
+      '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange'
     );
     el.replaceChildren();
     if (!body.available) {
@@ -550,7 +548,6 @@ function repoGitStatus(repo) {
 async function startIssue(card, mode, btn) {
   btn.disabled = true;
   try {
-    const tt = await ensureTerminalToken();
     // Carry the issue title so the server can auto-name the spawned session
     // after it (#467) — display data, never reaches the command line.
     const payload = {
@@ -565,11 +562,7 @@ async function startIssue(card, mode, btn) {
     // output is authored at the width the overlay will fit() to (issue
     // #374); the route already accepts rows/cols.
     applyLaunchSizePayload(payload);
-    const body = await jsonApi('/api/board/issues/start', {
-      method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify(payload),
-    });
+    const body = await terminalJsonApi('/api/board/issues/start', { method: 'POST', body: payload });
     toast(
       (mode === 'yolo' ? '/issue-yolo ' : '/issue-start ') + '#' +
         card.number + ' in ' + (body.repo || card.repo),

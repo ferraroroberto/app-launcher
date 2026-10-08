@@ -14,10 +14,10 @@
  */
 
 import { els } from './state.js';
-import { authHeaders, escapeHtml, jsonApi } from './api.js';
+import { escapeHtml, jsonApi } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderHunks } from './diff-view.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
 
 // Long names for the one-letter status badges (VS Code's vocabulary).
 const STATUS_NAME = {
@@ -62,11 +62,7 @@ function note(text) {
 // The session routes are terminal-grade (passkey); the project ones ride
 // the bearer token like the rest of the Coding tab.
 async function sessionApi(path) {
-  const tt = await ensureTerminalToken();
-  return jsonApi(
-    '/api/claude-code/sessions/' + encodeURIComponent(view.sid) + path,
-    { headers: authHeaders({ terminalToken: tt }) }
-  );
+  return terminalJsonApi('/api/claude-code/sessions/' + encodeURIComponent(view.sid) + path);
 }
 
 // `diff --git` and `index` headers repeat what the row already says; every

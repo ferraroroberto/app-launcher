@@ -23,8 +23,8 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
 import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 // The session overlay's two modes (#982). Circular with this module by
@@ -488,14 +488,9 @@ export function canCompact(s) {
 // passkey gate gets a 401, which api() turns into the login overlay. Loopback
 // and an unconfigured gate resolve '' and the header is simply left off.
 export async function sendSessionMessage(sid, text) {
-  const tt = await ensureTerminalToken();
-  return jsonApi(
+  return terminalJsonApi(
     '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
-    {
-      method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify({ data: text, submit: true }),
-    }
+    { method: 'POST', body: { data: text, submit: true } }
   );
 }
 

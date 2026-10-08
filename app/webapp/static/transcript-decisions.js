@@ -17,11 +17,12 @@
  */
 
 import { els } from './state.js';
-import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
+import { apiFailToast, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './markdown.js';
 import { detachedSendRefused } from './sessions.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { askOption } from './ask-option.js';
 import { syncResumePicker } from './chat-resume.js';
 import {
   SENT_REFRESH_MS,
@@ -139,34 +140,12 @@ export function renderQuestion(e, toolErrors, answering) {
     list.setAttribute('role', 'group');
     list.setAttribute('aria-label', q.header || q.question || 'Options');
     q.options.forEach(function (opt, oi) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'tr-ask-opt';
+      const b = askOption({
+        n: oi + 1, label: opt.label, description: opt.description, mark: true,
+        onTap: function () { onOptionTap(li, qi, oi + 1); },
+      });
       b.dataset.n = String(oi + 1);
       b.disabled = true;
-      const num = document.createElement('span');
-      num.className = 'tr-ask-num';
-      num.textContent = String(oi + 1);
-      const body = document.createElement('span');
-      body.className = 'tr-ask-opt-body';
-      const label = document.createElement('span');
-      label.className = 'tr-ask-label';
-      label.textContent = opt.label;
-      body.appendChild(label);
-      if (opt.description) {
-        const desc = document.createElement('span');
-        desc.className = 'tr-ask-desc';
-        desc.textContent = opt.description;
-        body.appendChild(desc);
-      }
-      const mark = document.createElement('span');
-      mark.className = 'tr-ask-mark';
-      mark.setAttribute('aria-hidden', 'true');
-      mark.innerHTML = icon('circle-check');
-      b.appendChild(num);
-      b.appendChild(body);
-      b.appendChild(mark);
-      b.addEventListener('click', function () { onOptionTap(li, qi, oi + 1); });
       list.appendChild(b);
     });
     sec.appendChild(list);
@@ -438,14 +417,9 @@ async function submitAnswer(li, answers) {
   target.askSent[e.call_id] = true;
   syncDecisionCards();
   try {
-    const tt = await ensureTerminalToken();
-    await jsonApi(
+    await terminalJsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/answer',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify({ tool_use_id: e.call_id, answers: answers }),
-      }
+      { method: 'POST', body: { tool_use_id: e.call_id, answers: answers } }
     );
   } catch (exc) {
     if (exc && exc.status === 502 && /partly sent/.test(exc.message || '')) {
@@ -725,23 +699,12 @@ function renderPicker(p) {
       list.appendChild(renderPickerFeedback(p, o));
       return;
     }
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'tr-ask-opt';
+    const b = askOption({
+      n: o.n, label: o.label,
+      onTap: function () { sendPlanAnswer(o, null); },
+    });
     b.dataset.n = String(o.n);
     b.disabled = !(p.answerable && o.kind === 'approve');
-    const num = document.createElement('span');
-    num.className = 'tr-ask-num';
-    num.textContent = String(o.n);
-    const body = document.createElement('span');
-    body.className = 'tr-ask-opt-body';
-    const label = document.createElement('span');
-    label.className = 'tr-ask-label';
-    label.textContent = o.label;
-    body.appendChild(label);
-    b.appendChild(num);
-    b.appendChild(body);
-    b.addEventListener('click', function () { sendPlanAnswer(o, null); });
     list.appendChild(b);
   });
   card.appendChild(list);
@@ -817,14 +780,9 @@ async function sendPlanAnswer(o, feedback) {
   target.pickerSent = Date.now();
   lockPicker('Sending…');
   try {
-    const tt = await ensureTerminalToken();
-    await jsonApi(
+    await terminalJsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/plan-answer',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify({ option: o.n, label: o.label, feedback: feedback }),
-      }
+      { method: 'POST', body: { option: o.n, label: o.label, feedback: feedback } }
     );
   } catch (exc) {
     if (view !== target) return;

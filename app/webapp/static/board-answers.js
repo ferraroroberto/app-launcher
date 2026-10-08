@@ -27,7 +27,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
-import { icon } from './_vendored/icons/icons.js';
+import { askOption } from './ask-option.js';
 import { startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { growTextarea, mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
@@ -226,17 +226,14 @@ function renderItem(item, index, answered) {
     list.setAttribute('role', 'group');
     list.setAttribute('aria-label', question || 'Options');
     options.forEach(function (opt, oi) {
-      const b = el('button', 'tr-ask-opt');
-      b.type = 'button';
+      const b = askOption({
+        n: oi + 1,
+        label: opt.label + (opt.recommended ? ' (Recommended)' : ''),
+        description: opt.description,
+        mark: true,
+      });
       b.dataset.i = String(oi);
       if (opt.recommended) b.classList.add('is-recommended');
-      const body = el('span', 'tr-ask-opt-body');
-      body.appendChild(el('span', 'tr-ask-label', opt.label + (opt.recommended ? ' (Recommended)' : '')));
-      if (opt.description) body.appendChild(el('span', 'tr-ask-desc', opt.description));
-      const mark = el('span', 'tr-ask-mark');
-      mark.setAttribute('aria-hidden', 'true');
-      mark.innerHTML = icon('circle-check');
-      b.append(el('span', 'tr-ask-num', String(oi + 1)), body, mark);
       b.addEventListener('click', function () {
         const at = draft.picks.indexOf(oi);
         if (item.multi) {

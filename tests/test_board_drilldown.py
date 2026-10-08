@@ -342,6 +342,27 @@ def test_codex_native_exchange_correlates_by_unique_start_and_cwd(
     assert result["assistant"]["text"] == "All green."
 
 
+def test_codex_exchange_skips_harness_plumbing_as_the_prompt(tmp_path: Path):
+    """#1422: the drawer shares ``codex_entries`` with the Chat reader, so an
+    injected ``<environment_context>`` / ``<turn_aborted>`` user message is
+    never shown as the last prompt."""
+    def message(role: str, kind: str, text: str, ts: str) -> dict:
+        return {"timestamp": ts, "type": "response_item",
+                "payload": {"type": "message", "role": role,
+                            "content": [{"type": kind, "text": text}]}}
+
+    rollout = tmp_path / "rollout.jsonl"
+    rollout.write_text("\n".join(json.dumps(item) for item in [
+        message("user", "input_text", "real prompt", "t1"),
+        message("user", "input_text", "<environment_context>cwd</environment_context>", "t2"),
+        message("assistant", "output_text", "done", "t3"),
+        message("user", "input_text", "<turn_aborted>x</turn_aborted>", "t4"),
+    ]) + "\n", encoding="utf-8")
+    result = board_exchange.codex_last_exchange(rollout)
+    assert result["user"] == {"text": "real prompt", "timestamp": "t1"}
+    assert result["assistant"] == {"text": "done", "timestamp": "t3"}
+
+
 def test_codex_ambiguous_native_match_degrades_to_exact_launcher_capture(
     tmp_path: Path, monkeypatch,
 ):
