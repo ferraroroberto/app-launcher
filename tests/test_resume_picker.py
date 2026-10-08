@@ -320,7 +320,7 @@ def resume_client(picker_client, monkeypatch, tmp_path):
     order, which is not the card's. With no picker up, ``/resume <id>``
     paints ``after``. ``_live()`` is a 60-column PTY and the reader renders
     at the PTY's size, so these tests paint the 52-column picker."""
-    from app.webapp.routers import session_transcript as router
+    from app.webapp.routers import session_screen as router
 
     client, session, show, typed = picker_client
     root = tmp_path / "claude-projects"

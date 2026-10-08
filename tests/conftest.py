@@ -452,8 +452,8 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(misc_router, "session_client", session_mock)
     monkeypatch.setattr(life_os_channels_router, "session_client", session_mock)
     # The Chat question card's /answer route types into a session (#1149).
-    from app.webapp.routers import session_transcript as session_transcript_router
-    monkeypatch.setattr(session_transcript_router, "session_client", session_mock)
+    from app.webapp.routers import session_screen as session_screen_router
+    monkeypatch.setattr(session_screen_router, "session_client", session_mock)
 
     # Mock the voice-transcriber loopback client (issue #165) — the
     # /api/transcribe proxy goes through it; tests assert call args and set

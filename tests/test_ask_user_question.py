@@ -205,7 +205,7 @@ def answer_client(webapp_client, monkeypatch, tmp_path):
     transcript is ``path``, no key gap, and the PTY socket replaced by a
     recorder — nothing here opens a real socket."""
     from app.webapp import middleware
-    from app.webapp.routers import session_transcript as router
+    from app.webapp.routers import session_screen as router
 
     monkeypatch.setattr(middleware, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))

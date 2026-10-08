@@ -91,6 +91,7 @@ from app.webapp.routers import (
     jobs,
     life_os,
     misc,
+    session_screen,
     session_transcript,
     sessions,
     system_map,
@@ -443,6 +444,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router)
     app.include_router(claude_code.router)
     app.include_router(session_transcript.router)
+    app.include_router(session_screen.router)
     app.include_router(life_os.router)
     app.include_router(board.router)
     app.include_router(system_map.router)

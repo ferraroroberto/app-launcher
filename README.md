@@ -531,6 +531,7 @@ app-launcher/
 │   ├── transcript_locate.py    # filesystem correlation of a live session to its harness transcript file
 │   ├── board_transcript.py     # transcript overlay + conversation-source hierarchy
 │   ├── session_transcript.py   # paginated, typed transcript pages for one live Coding session
+│   ├── session_screen.py       # a live session's terminal screen: answer a question, plan picker, resume, context % (#1424)
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── session_changes.py      # a session's Changed files, folded from its transcript (never `git diff`)
 │   ├── resume_picker.py        # Claude Code's `/resume` picker, answered from a Chat card
