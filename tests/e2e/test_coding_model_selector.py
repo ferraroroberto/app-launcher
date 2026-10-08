@@ -42,7 +42,7 @@ def _config(model: str, choice: str) -> dict:
         "projects_ignore": [],
         "apps_scan_root": "",
         "life_os_dir": "",
-        "claude_config_dir": "",
+        "fleet_config_dir": "",
         "coding_model_choice": choice,
         "model_catalog": {
             "claude": [

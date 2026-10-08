@@ -2563,7 +2563,7 @@ def test_api_board_exposes_claim_state_per_backlog_card(
     fake = _FakeGh()
     monkeypatch.setattr(github_client.subprocess, "run", fake)
     github_client.refresh("ferraroroberto")
-    app.state.webapp_config.claude_config_dir = str(_claim_contract(tmp_path))
+    app.state.webapp_config.fleet_config_dir = str(_claim_contract(tmp_path))
 
     active_file = Path(app.state.webapp_config.sessions_state_file).with_name(
         "active-issues.json"

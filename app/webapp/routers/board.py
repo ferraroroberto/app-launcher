@@ -108,7 +108,7 @@ def _read_quota_lines(cfg: WebappConfig) -> List[Dict[str, Any]]:
     """Both heavy agents, always, independent of the current selection (#860)."""
     legacy_path = Path(cfg.rate_limits_file)
     return quota_usage.read_quota_lines(
-        Path(cfg.claude_config_dir),
+        Path(cfg.fleet_config_dir),
         legacy_path.parent,
         legacy_reader=lambda: board.read_rate_limits(legacy_path),
     )
@@ -137,7 +137,7 @@ def _maybe_refresh_codex(cfg: WebappConfig, rate_limits: Dict[str, Any]) -> None
         _quota_refresh_task = asyncio.create_task(
             asyncio.to_thread(
                 quota_usage.refresh_codex,
-                Path(cfg.claude_config_dir),
+                Path(cfg.fleet_config_dir),
                 Path(cfg.rate_limits_file).parent,
             )
         )
@@ -218,7 +218,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
         live_session_ids=(
             board._live_launcher_session_ids(live) if live_error is None else None
         ),
-        fleet_config_dir=Path(cfg.claude_config_dir),
+        fleet_config_dir=Path(cfg.fleet_config_dir),
     )
     # Per-card transcript reads — unbounded in session count and re-run every
     # 5s while the Board is open, so it goes off the loop like the five

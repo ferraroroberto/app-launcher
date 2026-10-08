@@ -31,7 +31,7 @@ def _scaffolding_dir() -> Path:
 
     Derived from this repo's own location rather than hardcoded, so a clone
     on a different drive or directory layout still works — the sibling
-    convention ``_default_life_os_dir`` / ``_default_claude_config_dir``
+    convention ``_default_life_os_dir`` / ``_default_fleet_config_dir``
     already use. ``PROJECT_SCAFFOLDING_DIR`` overrides it for a checkout
     that isn't a sibling.
     """

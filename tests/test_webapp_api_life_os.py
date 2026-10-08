@@ -146,7 +146,7 @@ def life_os_client(webapp_client, tmp_path, monkeypatch):
     from src import life_os_history
     fleet = tmp_path / "synthetic-fleet"
     fleet.mkdir()
-    app.state.webapp_config.claude_config_dir = str(fleet)
+    app.state.webapp_config.fleet_config_dir = str(fleet)
     def synthetic_parser(fleet_dir, texts):
         if not fleet_dir.is_dir():
             raise OSError("synthetic missing contract")
@@ -987,7 +987,7 @@ class TestContentBrowser:
         assert resp.status_code == 200, resp.text
 
     def test_rename_survives_no_fleet_config(self, life_os_client):
-        # life_os_client's claude_config_dir has no hooks/ script, so this
+        # life_os_client's fleet_config_dir has no hooks/ script, so this
         # exercises the "no checkout at all" path explicitly.
         client, _, overrides = life_os_client
         life_os = overrides["life_os_dir"]
@@ -1421,7 +1421,7 @@ class TestConversationSearch:
     def test_unavailable_when_cli_not_installed(self, life_os_client, tmp_path):
         """A machine without fleet-config keeps a working tab, minus search."""
         client, app, _ = life_os_client
-        app.state.webapp_config.claude_config_dir = str(tmp_path / "nowhere")
+        app.state.webapp_config.fleet_config_dir = str(tmp_path / "nowhere")
         resp = client.get("/api/life-os/conversations/search?q=ferry")
         assert resp.status_code == 200, resp.text
         body = resp.json()
@@ -1501,7 +1501,7 @@ class TestSearchCliResolution:
 
     def _cfg(self, root: Path):
         class _Cfg:
-            claude_config_dir = str(root)
+            fleet_config_dir = str(root)
         return _Cfg()
 
     def test_resolves_when_both_present(self, tmp_path):
@@ -1942,7 +1942,7 @@ class TestSourceHistory:
         assert self._launch(client, row, model="codex:unavailable").status_code == 400
         monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: False)
         assert "CLI is unavailable" in self._launch(client, row).json()["detail"]
-        app.state.webapp_config.claude_config_dir = str(path.parent / "absent-fleet")
+        app.state.webapp_config.fleet_config_dir = str(path.parent / "absent-fleet")
         unavailable = client.get("/api/life-os/skills/journal-daily/conversations").json()["conversations"][0]
         assert unavailable["path"] and not unavailable["resumable"]
         assert "reader is unavailable" in unavailable["resume_reason"]

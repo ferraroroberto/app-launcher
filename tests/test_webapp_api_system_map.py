@@ -2,7 +2,7 @@
 
 Covers:
   - GET /api/system-map/status — availability flips on the PNG's presence
-    under ``claude_config_dir``; stays reachable off-tailnet (token-only).
+    under ``fleet_config_dir``; stays reachable off-tailnet (token-only).
   - GET /api/system-map/image — 200 + image/png when present, 404 when the
     PNG is absent (gate bypassed by treating TestClient as loopback).
   - the gate — the image endpoint is refused over the Cloudflare tunnel and
@@ -32,14 +32,14 @@ def _make_map(tmp_path: Path) -> Path:
 class TestSystemMapStatus:
     def test_available_when_png_present(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(_make_map(tmp_path))
+        app.state.webapp_config.fleet_config_dir = str(_make_map(tmp_path))
         body = client.get("/api/system-map/status").json()
         assert body["available"] is True
 
     def test_unavailable_when_png_missing(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
         # Dir exists but no architecture/system-map.png in it.
-        app.state.webapp_config.claude_config_dir = str(tmp_path / "nope")
+        app.state.webapp_config.fleet_config_dir = str(tmp_path / "nope")
         body = client.get("/api/system-map/status").json()
         assert body["available"] is False
 
@@ -48,7 +48,7 @@ class TestSystemMapStatus:
         decide the section's visibility even over the public tunnel — unlike
         the image endpoint, the default off-tailnet TestClient is NOT refused."""
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(_make_map(tmp_path))
+        app.state.webapp_config.fleet_config_dir = str(_make_map(tmp_path))
         resp = client.get("/api/system-map/status")
         assert resp.status_code == 200
 
@@ -69,7 +69,7 @@ class TestSystemMapImage:
 
     def test_returns_png_bytes(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(_make_map(tmp_path))
+        app.state.webapp_config.fleet_config_dir = str(_make_map(tmp_path))
         resp = client.get("/api/system-map/image")
         assert resp.status_code == 200
         assert resp.headers["content-type"] == "image/png"
@@ -77,7 +77,7 @@ class TestSystemMapImage:
 
     def test_404_when_png_missing(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(tmp_path / "nope")
+        app.state.webapp_config.fleet_config_dir = str(tmp_path / "nope")
         resp = client.get("/api/system-map/image")
         assert resp.status_code == 404
 
@@ -85,7 +85,7 @@ class TestSystemMapImage:
 class TestSystemMapGate:
     def test_image_refused_over_cloudflare(self, webapp_client, tmp_path):
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(_make_map(tmp_path))
+        app.state.webapp_config.fleet_config_dir = str(_make_map(tmp_path))
         resp = client.get(
             "/api/system-map/image", headers={"Cf-Ray": "abc-123"}
         )
@@ -97,6 +97,6 @@ class TestSystemMapGate:
         # Tailscale range → the "tailnet" gate refuses it (even though the PNG
         # exists), so the map never leaves the tailnet.
         client, app, _ = webapp_client
-        app.state.webapp_config.claude_config_dir = str(_make_map(tmp_path))
+        app.state.webapp_config.fleet_config_dir = str(_make_map(tmp_path))
         resp = client.get("/api/system-map/image")
         assert resp.status_code == 403

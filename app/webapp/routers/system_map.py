@@ -1,11 +1,11 @@
 """Fleet system map — serve the fleet-config architecture PNG (issue #173).
 
-The fleet system map (``<claude_config_dir>/architecture/system-map.png``,
+The fleet system map (``<fleet_config_dir>/architecture/system-map.png``,
 rendered by fleet-config's ``/system-map`` job) is surfaced as a foldable
 section on the Coding tab — "see my whole system" one tap from the phone,
 any time, instead of waiting for the weekly Slack image post.
 
-    GET /api/system-map/status   → {available, claude_config_dir} (token-gated)
+    GET /api/system-map/status   → {available, fleet_config_dir} (token-gated)
     GET /api/system-map/image    → the PNG bytes (token + Tailscale-only)
 
 The image endpoint is gated like the live terminal **minus** the passkey:
@@ -37,7 +37,7 @@ _MAP_REL = "architecture/system-map.png"
 
 def _map_path(cfg: WebappConfig) -> Path:
     """Absolute path to the system-map PNG for the configured checkout."""
-    return Path(cfg.claude_config_dir) / _MAP_REL
+    return Path(cfg.fleet_config_dir) / _MAP_REL
 
 
 @router.get("/api/system-map/status")
@@ -45,7 +45,7 @@ async def system_map_status(request: Request) -> Dict[str, Any]:
     """Whether the fleet system map is available (public, token-gated).
 
     ``available`` is ``True`` only when the rendered PNG exists under
-    ``claude_config_dir``; the SPA hides the section otherwise, the same way
+    ``fleet_config_dir``; the SPA hides the section otherwise, the same way
     the Life OS tab hides when life-os isn't checked out. Stays token-only
     (not Tailscale-gated) so the section's visibility can be decided even over
     the Cloudflare tunnel — the image fetch itself is the Tailscale-gated part.
@@ -54,7 +54,7 @@ async def system_map_status(request: Request) -> Dict[str, Any]:
     available = _map_path(cfg).is_file()
     return {
         "available": available,
-        "claude_config_dir": cfg.claude_config_dir,
+        "fleet_config_dir": cfg.fleet_config_dir,
     }
 
 

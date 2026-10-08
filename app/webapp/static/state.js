@@ -201,7 +201,7 @@ export const els = {
   lifeOsRecapBadge: document.getElementById('lifeOsRecapBadge'),
   lifeOsRecapLaunch: document.getElementById('lifeOsRecapLaunch'),
   lifeOsDir: document.getElementById('lifeOsDir'),
-  claudeConfigDir: document.getElementById('claudeConfigDir'),
+  fleetConfigDir: document.getElementById('fleetConfigDir'),
   lifeOsBrowser: document.getElementById('lifeOsBrowser'),
   lifeOsBrowserBack: document.getElementById('lifeOsBrowserBack'),
   lifeOsBrowserTitle: document.getElementById('lifeOsBrowserTitle'),
