@@ -20,7 +20,7 @@
  *      top value when the body's first child already carries top padding).
  */
 
-.card--collapsible { padding: 0; }
+.card.card--collapsible { padding: 0; }
 
 .collapse-summary {
   display: grid;

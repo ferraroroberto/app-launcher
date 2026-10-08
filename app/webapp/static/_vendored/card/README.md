@@ -48,8 +48,8 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--space-md` | `16px` | padding |
 | `--space-sm` | `8px` | header gap |
 | `--font-body` | `1rem` | title |
-| `--font-label` | `0.92rem` | right-pinned meta |
-| `--font-caption` | `0.78rem` | meta line |
+| `--font-label` | `0.875rem` | right-pinned meta |
+| `--font-caption` | `0.75rem` | meta line |
 | `--icon-title` | `18px` | leading glyph (`icons.size.title`) |
 
 ## Don't diverge

@@ -51,7 +51,7 @@ The fleet's canonical **empty state**: a centered column — feature-size muted 
 | `--space-md` | `16px` | horizontal padding |
 | `--space-xl` | `32px` | vertical padding |
 | `--font-body` | `1rem` | message |
-| `--font-label` | `0.92rem` | action label |
+| `--font-label` | `0.875rem` | action label |
 | `--icon-feature` | `24px` | glyph (`icons.size.feature`) |
 
 ## Don't diverge
