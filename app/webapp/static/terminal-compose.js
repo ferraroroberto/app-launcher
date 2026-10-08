@@ -140,8 +140,7 @@ export function sendSubmit(t, text, opts) {
 // review-before-send. A terminal can't hold an image: the agent is handed
 // the *file path* and reads the image from there. Always inline, so it
 // serves a detached session too (#983) — the host saves under the session's
-// project_dir and never writes to it. Errors toast here and resolve null so
-// the composer's batch loop counts only the files that landed (#448).
+// project_dir and never writes to it.
 // #1354: a failure throws its reason and does not toast — the composer names
 // every failed file in the one summary toast that ends the batch, instead of
 // one toast per file.

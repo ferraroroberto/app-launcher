@@ -98,9 +98,9 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     ``message.timestamp`` (epoch milliseconds), so a turn renders as itself
     rather than as 1970.
 
-    Known omission, shared with the Codex and Grok flavours: a failed tool
-    result (``isError: true``) reads the same as a successful one, because
-    the ``Entry`` contract has no error field and the client renders none.
+    A failed tool result (``isError: true``) is recorded on the paired call
+    as ``error`` (#1020); Pi writes the field on every ``toolResult``, so
+    ``FLAVORS`` declares it ``reported``.
 
     ``uncapped`` — see :func:`src.transcript_flavors.claude.claude_entries`.
     """

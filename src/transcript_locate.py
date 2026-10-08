@@ -28,7 +28,6 @@ from src.board_transcript import _read_tail_bytes, strip_status_glyph
 
 logger = logging.getLogger(__name__)
 
-_CODEX_TAIL_BYTES = 4 * 1024 * 1024
 # How far back to look for the naming records a scanned Claude conversation
 # declares about itself (#1034), read with the same bounded-tail discipline as
 # every other reader here. Claude Code re-emits `ai-title`/`custom-title`
