@@ -89,7 +89,7 @@ function wireSettings() {
       projects_ignore: ignore,
       apps_scan_root: els.appsScanRoot.value.trim(),
       life_os_dir: els.lifeOsDir.value.trim(),
-      claude_config_dir: els.claudeConfigDir.value.trim(),
+      fleet_config_dir: els.fleetConfigDir.value.trim(),
     };
     if (els.terminalHistoryLines && els.terminalHistoryLines.value !== '') {
       const lines = parseInt(els.terminalHistoryLines.value, 10);

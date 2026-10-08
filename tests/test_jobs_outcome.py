@@ -151,7 +151,7 @@ def _scheduled_runner() -> Path | None:
     """fleet-config's scheduled-run adapter, if this machine has the checkout.
 
     Resolved the same way :mod:`src.webapp_config` resolves its default
-    ``claude_config_dir`` — the sibling ``fleet-config`` next to this repo — so
+    ``fleet_config_dir`` — the sibling ``fleet-config`` next to this repo — so
     the guard follows the fleet's own layout convention rather than inventing a
     second one. A worktree sits beside the primary checkout, so this resolves
     from either.

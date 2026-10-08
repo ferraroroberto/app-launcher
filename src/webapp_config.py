@@ -257,7 +257,7 @@ def _default_life_os_dir() -> str:
     return str(PROJECT_ROOT.parent / "life-os")
 
 
-def _default_claude_config_dir() -> str:
+def _default_fleet_config_dir() -> str:
     """Default to the sibling ``fleet-config`` checkout next to this repo."""
     return str(PROJECT_ROOT.parent / "fleet-config")
 
@@ -340,10 +340,10 @@ class WebappConfig:
     life_os_dir: str = field(default_factory=_default_life_os_dir)
     # Root of the fleet-config checkout whose `architecture/` directory holds
     # the rendered fleet system map (issue #173). The Coding tab's 🗺️ System
-    # map section serves `<claude_config_dir>/architecture/system-map.png`;
+    # map section serves `<fleet_config_dir>/architecture/system-map.png`;
     # when the PNG is absent the section hides, the same way the Life OS tab
     # handles a missing life-os checkout.
-    claude_config_dir: str = field(default_factory=_default_claude_config_dir)
+    fleet_config_dir: str = field(default_factory=_default_fleet_config_dir)
     # --- Board tab (issue #300 / #164) -----------------------------------
     # The sessions-state file written by fleet-config's session_state hook
     # (fleet-config#91). The board reads it defensively — absent/corrupt/stale
@@ -731,6 +731,34 @@ def _resolve_config_path(path: Optional[Path]) -> Path:
     return DEFAULT_CONFIG_PATH
 
 
+# Keys renamed since a live ``config/webapp_config.json`` may have been written
+# (the file is gitignored, so a pull never rewrites it): old name -> new name.
+# ``claude_config_dir`` held the fleet-config checkout root all along, not
+# Claude's own config dir (#1424).
+_LEGACY_KEYS = {"claude_config_dir": "fleet_config_dir"}
+
+
+def _migrate_legacy_keys(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
+    """``raw`` with each renamed key carried over to its new name.
+
+    In memory only: the next save writes the new name and drops the old one, so
+    the live file migrates itself the first time a setting changes. A new key
+    already present wins over the old one.
+    """
+    migrated = dict(raw)
+    for old, new in _LEGACY_KEYS.items():
+        if old not in migrated:
+            continue
+        legacy = migrated.pop(old)
+        if new not in migrated:
+            migrated[new] = legacy
+            logger.info(
+                f"ℹ️  {source.name}: key '{old}' is now '{new}'; read it under "
+                f"the new name (the file is rewritten on the next save)"
+            )
+    return migrated
+
+
 def load_webapp_config(
     path: Optional[Path] = None, *, apply_env_override: bool = True
 ) -> WebappConfig:
@@ -768,6 +796,8 @@ def load_webapp_config(
         )
         cfg = WebappConfig()
         return _apply_session_host_override(cfg) if apply_env_override else cfg
+
+    raw = _migrate_legacy_keys(raw, target)
 
     # One generic pass over the dataclass's own field list (issue #722).
     # The ~55 settings used to be enumerated three times — once as fields,

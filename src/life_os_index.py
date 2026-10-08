@@ -45,7 +45,7 @@ _CONVERSATIONS_INDEX = "index.json"
 _CONVERSATIONS_INDEX_MD = "index.md"
 # fleet-config's
 # cross-skill search CLI, resolved per call so a Settings change to
-# claude_config_dir takes effect without a restart (#971).
+# fleet_config_dir takes effect without a restart (#971).
 _SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
 _RESYNC_TIMEOUT_S = 30
 
@@ -181,7 +181,7 @@ def _prune_index_md(resolved: Path) -> bool:
 def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
     """``[python, script]`` for fleet-config's search CLI, or ``None`` (#971).
 
-    Resolved per request from ``claude_config_dir`` (the fleet-config
+    Resolved per request from ``fleet_config_dir`` (the fleet-config
     checkout the Board already shells into) so pointing Settings at a
     different checkout takes effect without a restart. ``None`` when either
     half is missing — a machine without fleet-config still gets a working
@@ -192,7 +192,7 @@ def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
     imports :func:`resolve_within` from here, so the import edge ran in the
     right direction and this module stays the leaf its docstring describes.
     """
-    root = Path(cfg.claude_config_dir)
+    root = Path(cfg.fleet_config_dir)
     script = root.joinpath(*_SEARCH_SCRIPT_REL)
     if not script.is_file():
         return None

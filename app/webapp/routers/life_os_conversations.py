@@ -163,7 +163,7 @@ def _conversation_rows(
                 path = None
         paths.append(path)
         skills.append(owner.id if owner else "")
-    sources = read_captures(Path(cfg.claude_config_dir), paths)
+    sources = read_captures(Path(cfg.fleet_config_dir), paths)
     result = []
     for row, path, owner, source in zip(rows, paths, skills, sources):
         agent = source.get("agent", "")
@@ -230,7 +230,7 @@ async def _launch_conversation(
         selection = matches[0]
     rel = str(selection.get("path") or "")
     path = _conversation_path(root, skill, rel)
-    source = (await asyncio.to_thread(read_captures, Path(cfg.claude_config_dir), [path]))[0]
+    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
     if "body" not in source:
         raise HTTPException(409, source["reason"])
     if any(selection.get(key) != source.get(key, "") for key in ("revision", "agent", "sid")):
@@ -401,7 +401,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     if not path.is_file():
         raise HTTPException(404, "file not found")
 
-    source = (await asyncio.to_thread(read_captures, Path(cfg.claude_config_dir), [path]))[0]
+    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
     if "body" not in source:
         raise HTTPException(409, "Nothing was deleted: can't tell which Claude transcript this "
                                  f"capture belongs to. {source['reason']}")

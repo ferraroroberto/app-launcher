@@ -236,7 +236,7 @@ def picker_client(webapp_client, monkeypatch, tmp_path):
     is ``capture``, a plans folder, and the PTY socket replaced by a
     recorder — nothing here opens a real socket."""
     from app.webapp import middleware
-    from app.webapp.routers import session_transcript as router
+    from app.webapp.routers import session_screen as router
     from src import audit
 
     monkeypatch.setattr(middleware, "LOOPBACK_HOSTS",
@@ -357,7 +357,7 @@ def test_a_tap_for_a_label_the_screen_no_longer_shows_types_nothing(picker_clien
 
 
 def test_a_bad_tap_is_a_400_and_a_failed_write_says_how_far_it_got(picker_client, monkeypatch):
-    from app.webapp.routers import session_transcript as router
+    from app.webapp.routers import session_screen as router
 
     client, _, show, typed = picker_client
     show()
@@ -478,7 +478,7 @@ def test_the_context_route_logs_a_change_not_a_tick(picker_client, tmp_path, cap
     client, _, _, _ = picker_client
     capture = tmp_path / "s1.transcript"
     _write_capture(capture, _footer_screen(FOOTER))
-    with caplog.at_level("INFO", logger="app.webapp.routers.session_transcript"):
+    with caplog.at_level("INFO", logger="app.webapp.routers.session_screen"):
         for _ in range(3):
             _get_context(client)
         _write_capture(capture, _footer_screen(FOOTER_AFTER_COMPACT))

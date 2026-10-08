@@ -155,7 +155,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
               transcript=data / "transcripts" / f"{STATE_KEY}.jsonl",
               webapp_config=app / "config" / "webapp_config.json", shim_dir=root / "shim", logs=root / "logs")
     now = _dt.datetime.now(_dt.timezone.utc)
-    for d in (p.home / ".claude", p.shim_dir, p.logs, root / "audit", root / "uploads", root / "startup"):
+    for d in (p.home / ".claude", p.home / "fleet-config", p.shim_dir, p.logs, root / "audit", root / "uploads", root / "startup"):
         d.mkdir(parents=True, exist_ok=True)
 
     _write(p.project / "README.md", "# Demo project\n\nA placeholder project for the design review.\n")
@@ -198,7 +198,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
         "host": "127.0.0.1", "port": webapp_port, "session_host_port": session_host_port,
         "auth_token": secrets.token_urlsafe(24),
         "projects_dir": str(data / "projects"), "apps_scan_root": str(data / "projects"), "projects_ignore": [],
-        "life_os_dir": str(p.life_os), "claude_config_dir": str(p.home / ".claude"),
+        "life_os_dir": str(p.life_os), "fleet_config_dir": str(p.home / "fleet-config"),
         "sessions_state_file": str(p.state_file), "rate_limits_file": str(data / "state" / "rate-limits.json"),
         "chief_plan_file": str(data / "state" / "chief-plan.json"),
         "context_filter_mode_file": str(data / "state" / "context-filter-mode.json"),

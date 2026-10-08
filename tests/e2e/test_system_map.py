@@ -37,7 +37,7 @@ def _route_map(page: Page, *, available: bool = True) -> None:
         lambda route: route.fulfill(
             status=200,
             content_type="application/json",
-            body='{"available": %s, "claude_config_dir": "X"}'
+            body='{"available": %s, "fleet_config_dir": "X"}'
             % ("true" if available else "false"),
         ),
     )

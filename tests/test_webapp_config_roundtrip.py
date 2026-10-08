@@ -200,3 +200,29 @@ def test_non_object_config_falls_back_to_defaults(tmp_path, payload):
     target.write_text(payload, encoding="utf-8")
 
     assert load_webapp_config(target, apply_env_override=False) == WebappConfig()
+
+
+def test_legacy_claude_config_dir_key_loads_as_fleet_config_dir(tmp_path, caplog):
+    """#1424: ``claude_config_dir`` was renamed ``fleet_config_dir``. The live
+    ``config/webapp_config.json`` is gitignored, so a file written before the
+    rename still carries the old key and must keep working — and the next save
+    must rewrite it under the new name only."""
+    target = _write(tmp_path, {"claude_config_dir": "D:/fleet"})
+
+    with caplog.at_level("INFO"):
+        cfg = load_webapp_config(target)
+
+    assert cfg.fleet_config_dir == "D:/fleet"
+    assert "claude_config_dir" in caplog.text and "fleet_config_dir" in caplog.text
+    save_webapp_config(cfg, target)
+    written = json.loads(target.read_text(encoding="utf-8"))
+    assert written["fleet_config_dir"] == "D:/fleet"
+    assert "claude_config_dir" not in written
+
+
+def test_new_fleet_config_dir_key_wins_over_the_legacy_one(tmp_path):
+    target = _write(
+        tmp_path, {"claude_config_dir": "D:/old", "fleet_config_dir": "D:/new"}
+    )
+
+    assert load_webapp_config(target).fleet_config_dir == "D:/new"
