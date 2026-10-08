@@ -267,3 +267,31 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     assert never == {
         "note": "Quota unknown", "codex": "unavailable", "bars": 0, "compactNote": "unknown",
     }, never
+
+
+def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1434: the full meter sits in the Code tab's first card. Its summary
+    names the pace in its tone (the shim's week is ahead of pace), its
+    footer carries the context filter's savings (the green badge is gone),
+    and a tap anywhere on the card opens the Usage sheet."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    card = authed_page.locator("#codingUsageCard")
+    expect(card.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
+    meta = card.locator("#codingUsageMeta")
+    expect(meta).to_have_text("ahead of pace")
+    expect(meta).to_have_attribute("data-tone", "attention")
+    expect(card.locator("#codingUsageFooter")).to_have_text(
+        "Context filter saved 12.3k tokens today")
+    expect(authed_page.locator("#paneClaude .usage-badge")).to_have_count(0)
+
+    # The card's title is part of the tap, not only the meter.
+    card.locator("#codingUsageTitle").click()
+    sheet = authed_page.locator("#usageSheet")
+    expect(sheet).to_be_visible()
+    sheet.locator("#usageSheetDone").click()
+    expect(sheet).to_be_hidden()

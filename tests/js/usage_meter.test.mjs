@@ -3,7 +3,7 @@
 // the Board's compact one render through. Invoked by tests/test_usage_meter.py.
 
 import assert from 'node:assert/strict';
-import { DANGER_PCT, meterReading, windowTone } from '../../app/webapp/static/usage-meter.js';
+import { DANGER_PCT, meterReading, paceSummary, windowTone } from '../../app/webapp/static/usage-meter.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = Date.parse('2026-09-10T12:00:00Z');
@@ -100,5 +100,13 @@ assert.equal(meterReading(line(5, 5), now, last).five.pct, 5);
 r = meterReading(line(10, 70, { weekly: { used_percentage: 70, resets_at: (now - DAY) / 1000 } }), now);
 assert.equal(r.week.pace, null);
 assert.equal(r.weekTone, 'accent');
+
+// The Usage card's summary (#1434): the pace in words and tone, nothing
+// when nothing is measured.
+assert.deepEqual(paceSummary(meterReading(line(20, 30), now)), { text: 'under pace', tone: 'accent' });
+assert.deepEqual(paceSummary(meterReading(line(20, 70), now)), { text: 'ahead of pace', tone: 'attention' });
+assert.deepEqual(paceSummary(meterReading(line(95, 30), now)), { text: 'nearly used', tone: 'danger' });
+assert.deepEqual(paceSummary(meterReading(line(null, null, { state: 'unknown' }), now)), { text: '', tone: 'none' });
+assert.deepEqual(paceSummary(null), { text: '', tone: 'none' });
 
 console.log('OK');

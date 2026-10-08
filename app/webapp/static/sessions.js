@@ -31,19 +31,20 @@ import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
-import { chip, sessionRowBody } from './glance.js';
+import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
+import { attentionChip, chip, sessionRowBody } from './glance.js';
 import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js in #691; the shared helper landed in #828), exported
-// for this cross-tab use (#547); board.js already imports
+// for this cross-tab use (#547), as is the chief settings dialog (#1434,
+// until step 3 moves it to Settings); board.js already imports
 // stopSession/sessionTitle/openSessionRename from this module, so this
 // mirrors the existing sessions.js<->terminal.js circular-import pattern
 // rather than introducing a new risk.
-import { runChiefAction } from './board-dispatch.js';
+import { openChiefSettings, runChiefAction } from './board-dispatch.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in
@@ -119,19 +120,6 @@ export function sessionTitle(s) {
   return live || (s && s.name) || (s && s.project) || 'session';
 }
 
-// Fleet chief status (#547) — Coding-tab parity with the Board's chat-mode
-// row. Derived straight from state.sessions (already the Coding tab's own
-// poll of every launcher-owned session, chief included), so no extra fetch.
-function renderCodingChiefStatus() {
-  if (!els.codingChiefStatus) return;
-  const chief = state.sessions.find(isChiefSession);
-  const alive = !!(chief && chief.alive !== false);
-  els.codingChiefStatus.hidden = false;
-  els.codingChiefStart.hidden = alive;
-  if (els.codingChiefResume) els.codingChiefResume.hidden = alive;
-  els.codingChiefStatusText.textContent = alive ? 'chief: running' : 'chief: not running';
-}
-
 // ------------------------------------------------- row action menu (#953)
 //
 // One kebab per row opens a floating menu of the row's actions. The rail has
@@ -141,6 +129,87 @@ function renderCodingChiefStatus() {
 // helper since #977.
 const sessionMenu = createRowMenu('session-menu');
 
+// The chief's kebab items beyond a session's own (#1434): Restart, the same
+// graceful stop-then-resume as the Board's Restart, and Chief settings, the
+// Board's dialog. Restart only while it runs; settings either way.
+function chiefMenuItems(kebab, alive) {
+  return [
+    {
+      className: 'chief-restart-btn', glyph: 'rotate-ccw',
+      label: 'Restart the chief', text: 'Restart',
+      hidden: !alive,
+      onTap: function () {
+        runChiefAction({
+          button: kebab, label: 'Restart', fresh: true, resume: true,
+          onDone: fetchSessions, confirmMessage: CHIEF_RESTART_CONFIRM,
+        });
+      },
+    },
+    {
+      className: 'chief-settings-btn', glyph: 'sliders-horizontal',
+      label: 'Chief settings', text: 'Chief settings',
+      onTap: openChiefSettings,
+    },
+  ];
+}
+
+// The chief's row while no chief runs (#1434, replacing #547's separate
+// "chief: not running" line): the crown avatar, and Start and Resume as tint
+// verbs on the row itself. Start uses the same ensure endpoint as the
+// Board's chat mode; Resume (#633) reattaches the most recent chief
+// conversation, falling back server-side to a fresh spawn when nothing is
+// resumable. restart=true (#1351): if a chief came up meanwhile, it is still
+// stopped and resumed, as on the Board.
+function stoppedChiefRow() {
+  const li = document.createElement('li');
+  li.className = 'app-item chief-stopped-row session-item-chief';
+
+  const main = document.createElement('div');
+  main.className = 'app-main';
+  const body = document.createElement('div');
+  body.className = 'chief-stopped-body';
+  sessionRowBody({
+    agentId: 'claude', agentLabel: 'Claude Code', badge: 'crown',
+    title: 'Chief', meta: 'stopped', titleClass: 'name',
+  }).forEach(function (node) { body.appendChild(node); });
+  main.appendChild(body);
+  li.appendChild(main);
+
+  const actions = document.createElement('div');
+  actions.className = 'row-actions session-actions';
+  [
+    { id: 'codingChiefStart', text: 'Start', resume: false, restart: false,
+      title: 'Start the fleet chief' },
+    { id: 'codingChiefResume', text: 'Resume', resume: true, restart: true,
+      title: 'Reattach the most recent chief conversation' },
+  ].forEach(function (verb) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = verb.id;
+    btn.className = 'button-tint chief-verb';
+    btn.textContent = verb.text;
+    btn.title = verb.title;
+    btn.setAttribute('aria-label', verb.text + ' chief');
+    btn.addEventListener('click', function () {
+      runChiefAction({
+        button: btn, label: verb.text, fresh: false, resume: verb.resume,
+        restart: verb.restart, onDone: fetchSessions,
+      });
+    });
+    actions.appendChild(btn);
+  });
+  const kebab = document.createElement('button');
+  kebab.type = 'button';
+  kebab.className = 'icon-button session-kebab';
+  kebab.innerHTML = icon('ellipsis-vertical');
+  kebab.title = 'Chief actions';
+  kebab.setAttribute('aria-label', 'Chief actions');
+  actions.appendChild(kebab);
+  actions.appendChild(sessionMenu.attach('chief:stopped', kebab, chiefMenuItems(kebab, false)));
+  li.appendChild(actions);
+  return li;
+}
+
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
@@ -148,15 +217,22 @@ export function renderSessions() {
   const shown = state.sessions.filter(function (s) { return !isHiddenChannel(s); });
   els.sessionsEmpty.hidden = shown.length !== 0;
   renderHomeHead();
-  renderCodingChiefStatus();
   renderChannelSummaries();
 
-  shown.forEach(function (s) {
+  // The chief's row first (#1434), running or not: the standing
+  // orchestrator is the one session that is always meant to be there.
+  const chief = shown.find(isChiefSession);
+  const ordered = chief
+    ? [chief].concat(shown.filter(function (s) { return s !== chief; }))
+    : shown;
+  if (!chief) host.appendChild(stoppedChiefRow());
+
+  ordered.forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item session-item';
-    // Same accent tint + crown as the Board tab's chief card (#547) — the
-    // standing orchestrator reads distinct here too, not just on the Board.
-    if (isChiefSession(s)) li.classList.add('session-item-chief');
+    // The crown avatar marks the chief (#1433); the class is the hook.
+    const isChief = isChiefSession(s);
+    if (isChief) li.classList.add('session-item-chief');
     // Stable hook so a test (or any consumer) can target a specific
     // session's row by id rather than position — e.g. the kill regression
     // must act on the session it launched, never ".first" (issue #260).
@@ -191,6 +267,11 @@ export function renderSessions() {
     // agent's mark flows through untouched, falling back to Claude Code.
     const known = state.agents.find(function (a) { return a.id === s.agent; });
     const chips = [];
+    // What the Board says it needs from you (#1434): "needs you" or
+    // "stalled", from the Board's own routing on this poll. No chip when
+    // the placement is unknown.
+    const attention = attentionChip(s);
+    if (attention) chips.push(attention);
     if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
     if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
     const ago = fmtAgo(s.started_at);
@@ -200,7 +281,7 @@ export function renderSessions() {
     const body = sessionRowBody({
       agentId: known ? known.id : 'claude',
       agentLabel: known ? known.label : 'Claude Code',
-      badge: isChiefSession(s) ? 'crown' : (s.alive === false ? 'down' : 'alive'),
+      badge: isChief ? 'crown' : (s.alive === false ? 'down' : 'alive'),
       title: sessionTitle(s),
       meta: [projectFolder(s), ago ? 'up ' + ago : ''].filter(Boolean).join(' · '),
       chips: chips,
@@ -247,7 +328,7 @@ export function renderSessions() {
     kebab.innerHTML = icon('ellipsis-vertical');
     kebab.title = 'Session actions';
     kebab.setAttribute('aria-label', 'Session actions');
-    const menu = sessionMenu.attach(s.session_id, kebab, [
+    const items = [
       {
         className: 'session-terminal-btn', glyph: 'terminal',
         label: 'Open terminal', text: 'Terminal',
@@ -270,12 +351,15 @@ export function renderSessions() {
         glyph: 'pencil', label: 'Rename session', text: 'Rename',
         onTap: function () { openSessionRename(s); },
       },
-      {
-        className: 'action-stop-close', glyph: 'x', danger: true,
-        label: 'Stop and kill session', text: 'Stop',
-        onTap: function () { stopSession(s); },
-      },
-    ]);
+    ];
+    // The chief's own controls sit before Stop, which stays last (#1434).
+    if (isChief) Array.prototype.push.apply(items, chiefMenuItems(kebab, s.alive !== false));
+    items.push({
+      className: 'action-stop-close', glyph: 'x', danger: true,
+      label: 'Stop and kill session', text: 'Stop',
+      onTap: function () { stopSession(s); },
+    });
+    const menu = sessionMenu.attach(s.session_id, kebab, items);
     actions.appendChild(kebab);
     actions.appendChild(menu);
 
@@ -576,30 +660,6 @@ export function wireSessions() {
   if (sessionsEmptyAction) {
     sessionsEmptyAction.addEventListener('click', function () {
       revealInCard(document.querySelector('details.projects-card'));
-    });
-  }
-  // Manual Start-chief (#547) — same ensure endpoint as the Board's chat
-  // mode, so a chief killed while the Coding tab was open (or via a
-  // deliberate tray/session-host restart) can be brought back without
-  // switching tabs.
-  if (els.codingChiefStart) {
-    els.codingChiefStart.addEventListener('click', function () {
-      runChiefAction({
-        button: els.codingChiefStart, label: 'Start', fresh: false, resume: false,
-        onDone: fetchSessions,
-      });
-    });
-  }
-  // Manual Resume-chief (#633) — same ensure endpoint with resume=true, so
-  // a chief killed by a host reboot / session-host restart can be reattached
-  // (rather than started fresh) from the Coding tab too, not only Board chat
-  // mode. Falls back server-side to a fresh spawn when nothing is resumable.
-  if (els.codingChiefResume) {
-    els.codingChiefResume.addEventListener('click', function () {
-      runChiefAction({
-        button: els.codingChiefResume, label: 'Resume', fresh: false, resume: true,
-        restart: true, onDone: fetchSessions,
-      });
     });
   }
   wireSessionRenameDialog();

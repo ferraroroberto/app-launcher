@@ -2770,3 +2770,28 @@ def test_api_refresh_endpoint_fills_cache(webapp_client, monkeypatch):
     assert [c["number"] for c in body["columns"]["backlog"]] == [164]
     assert body["columns"]["your_turn"] == []
     assert [c["kind"] for c in body["columns"]["other"]] == ["pr"]
+
+
+def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
+    """#1434: the Coding tab's per-session placement is build_board's own
+    routing: the needs-you family lands in Your turn, the chief never does,
+    and a state-only card (no session id) is left out."""
+    from src import active_issue_claims
+
+    cards = [
+        {"session_id": "s-stall", "status": "stalled", "label": ""},
+        {"session_id": "s-wait", "status": "awaiting-decision", "label": ""},
+        {"session_id": "s-work", "status": "working", "label": ""},
+        {"session_id": "s-chief", "status": "awaiting-input", "label": "chief"},
+        {"session_id": None, "status": "stalled", "label": ""},
+    ]
+    monkeypatch.setattr(board, "merge_sessions", lambda *a, **k: cards)
+    monkeypatch.setattr(active_issue_claims, "classify_claims", lambda *a, **k: {})
+    placed = board.session_board_columns([], {}, {}, fleet_config_dir=tmp_path)
+    assert placed == {
+        "s-stall": {"column": "your_turn", "status": "stalled"},
+        "s-wait": {"column": "your_turn", "status": "awaiting-decision"},
+        "s-work": {"column": "claude_turn", "status": "working"},
+        "s-chief": {"column": "claude_turn", "status": "awaiting-input"},
+    }
+

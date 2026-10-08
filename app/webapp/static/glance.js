@@ -104,3 +104,24 @@ export function sessionRowBody(opts) {
 
   return [lead, text];
 }
+
+// What a session's Board placement says it needs from the user (#1434), so
+// the Code tab's rows and header speak the Board's status vocabulary. The
+// server routes each session with the Board's own logic and sends the
+// result on the sessions poll (`board_column`, `board_status`):
+//   'stalled'    in Your turn because it stalled (danger)
+//   'needs-you'  in Your turn otherwise: awaiting a decision or input
+//   ''           anything else: working, idle, or not known
+// An unknown placement (null) is never turned into "needs you".
+export function sessionAttention(s) {
+  if (!s || s.board_column !== 'your_turn') return '';
+  return s.board_status === 'stalled' ? 'stalled' : 'needs-you';
+}
+
+// The chip for that state, or null when there is no exception to show.
+export function attentionChip(s) {
+  const att = sessionAttention(s);
+  if (att === 'stalled') return chip('stalled', 'danger', 'session-attention');
+  if (att === 'needs-you') return chip('needs you', 'attention', 'session-attention');
+  return null;
+}

@@ -1,5 +1,6 @@
 /* Coding tab: project tiles, per-agent launch buttons, favorites, the
- * agent-visibility toggles, and the git-status annotation + summary popover.
+ * agent-visibility toggles, the launch toolbar, and the git-status
+ * annotation (row meta, the card's uncommitted count and "checked" footer).
  *
  * Split out of apps.js in issue #723, following the same shape jobs.js →
  * jobs-row/jobs-dialog/jobs-agenda and board.js → board-dispatch already
@@ -10,9 +11,10 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
-import { bindOutsideClickToClose, brandIcon } from './dom-utils.js';
+import { brandIcon, fmtDuration } from './dom-utils.js';
+import { chip } from './glance.js';
+import { mountLaunchToolbar } from './launch-toolbar.js';
 import { renderBoard } from './board.js';
-import { renderHomeHead } from './home-head.js';
 import { createRowMenu } from './row-menu.js';
 import { actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
@@ -51,6 +53,27 @@ function favoriteAgentId() {
   const cfg = state.config || {};
   return String(cfg.coding_favorite_agent || 'claude');
 }
+
+// The Projects card's launch toolbar (#1434): model, Detached, Resume. The
+// shared component Life › Skills mounts too (step 7 of #1432). Mounted at
+// load so claude-options.js wires its model combo by id and launchApp
+// (apps.js) reads the switches through it. The ids are the hooks the
+// launch and e2e code have always used.
+export const codingLaunch = mountLaunchToolbar(document.getElementById('codingLaunchToolbar'), {
+  ids: {
+    combo: 'codingModelCombo', trigger: 'codingModelBtn', menu: 'codingModelMenu',
+    detached: 'claudeDetached', resume: 'claudeResume',
+  },
+  model: {
+    value: 'claude:opus', label: 'Claude · Opus',
+    title: 'Model for the next matching Coding-agent launch',
+    menuLabel: 'Coding launch model',
+  },
+  detachedTitle: 'Launch detached: a console window on the PC, listed and killable here but no phone terminal',
+  resumeTitle: 'Resume: reopen the agent\u2019s own session picker, in a phone terminal, or in the detached console when Detached is also on',
+  // The git refresh rides the model row, pinned right (#1434).
+  trailing: document.getElementById('gitRefreshBtn'),
+});
 
 // The ⋯ menu shared by every Coding row; drops below the rail (see
 // `.project-menu` in styles.css) and survives the ~4 s apps re-render.
@@ -229,6 +252,7 @@ export function renderCodingList(host, items) {
   const rest = items.filter(function (a) { return !a.is_favorite; });
   const ordered = state.codingFavFilter ? favs : favs.concat(rest);
   syncFavFilterBtn();
+  renderGitSummary(items);
 
   if (state.codingFavFilter && favs.length === 0) {
     const note = document.createElement('li');
@@ -259,6 +283,7 @@ export function renderCodingList(host, items) {
       className: 'coding-item',
       title: a.name,
       meta: git.meta,
+      chips: git.chips,
       label: favorite ? 'Launch ' + favorite.label + ' in ' + a.name : a.name,
       disabled: !favorite || !favorite.available,
       hint: favorite ? favorite.label + ' is not installed' : 'No launch agent',
@@ -268,7 +293,9 @@ export function renderCodingList(host, items) {
       kebabLabel: 'Project actions',
     });
     if (favorite) row.main.dataset.agent = favorite.id;
-    if (git.flag) row.title.classList.add(git.flag);
+    // The row's git state as a hook (no colour since #1434: the meta line
+    // and the chip say it).
+    if (git.flag) row.li.dataset.git = git.flag;
     // Stored `vscode` hide values from #666 key on this; inert since #1070.
     row.kebab.dataset.agent = VSCODE_BUTTON_ID;
 
@@ -406,46 +433,66 @@ function syncFavFilterBtn() {
   const on = state.codingFavFilter;
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  // Icon only (#1194): #1176 gave the Detached and Resume toggles beside it
-  // a word, and briefly this one too; the star stays bare. The name
-  // lives on aria-label/title ("Show only favorites"), where a screen
+  // Icon only (#1194), the filter field's trailing star since #1434. The
+  // name lives on aria-label/title ("Show only favorites"), where a screen
   // reader reads it anyway.
   btn.innerHTML = icon('star');
 }
 
-// Colour a Coding tile's folder name from the cached git-status map
-// (issue #115): red when the working tree is dirty (needs cleaning),
-// yellow when parked on a non-default branch (not a fresh start). Red
-// wins the colour when both apply, but the branch tag still shows so the
-// "why" behind a yellow stays visible. No-op only until the boot fetch
-// lands (#496) — state.gitStatus fills automatically now, no tap needed.
-//
-// A coloured name is also the shortcut into Show changes (#977): the colour
-// asks "what's different here?", one tap answers it. A clean, on-default
-// name stays inert — nothing to show.
-// What git-status says about a project row (#115/#496), as the title's
-// colour class and the row's context line (#1128): yellow = parked on a
-// non-default branch, red = uncommitted changes. Nothing for a folder that
-// isn't a repo or hasn't been scanned yet.
+// What git-status says about a project row (#115/#496, quieter since
+// #1434): the row's context line names the branch when it is parked off
+// its default one, in the plain meta colour, and uncommitted work is an
+// attention chip (amber, never red: it needs you soon, it is not broken —
+// decision 8 of #1432). Nothing for a folder that isn't a repo or hasn't
+// been scanned yet. `flag` is a hook, not a colour.
 function gitFlags(gs) {
-  if (!gs || !gs.is_git) return { flag: '', meta: '' };
+  if (!gs || !gs.is_git) return { flag: '', meta: '', chips: [] };
   const offMain = !!gs.branch && !gs.on_default_branch;
-  const parts = [];
-  if (offMain) parts.push('On ' + gs.branch);
-  if (gs.dirty) parts.push('Uncommitted changes');
   return {
-    flag: gs.dirty ? 'git-dirty' : (offMain ? 'git-off-main' : ''),
-    meta: parts.join(' · '),
+    flag: gs.dirty ? 'dirty' : (offMain ? 'off-main' : ''),
+    meta: offMain ? 'on ' + gs.branch : '',
+    chips: gs.dirty ? [chip('uncommitted', 'attention', 'git-uncommitted')] : [],
   };
+}
+
+// The Projects card's git lines (#1434): the uncommitted count in its
+// summary, with an attention dot, and when git was last checked as its
+// footer. Both stay hidden until the first git-status fetch lands.
+function renderGitSummary(items) {
+  const meta = els.projectsSummaryMeta;
+  const footer = els.gitCheckedFooter;
+  const known = !!state.gitStatus;
+  if (meta) {
+    const dirty = known ? items.filter(function (a) {
+      const gs = state.gitStatus[a.id];
+      return gs && gs.is_git && gs.dirty;
+    }).length : 0;
+    meta.hidden = !dirty;
+    if (dirty) {
+      meta.innerHTML = '<span class="tone-dot" data-tone="attention" aria-hidden="true"></span>';
+      meta.appendChild(document.createTextNode(dirty + ' uncommitted'));
+    }
+  }
+  if (footer) {
+    footer.hidden = !(known && state.gitStatusAt);
+    if (!footer.hidden) footer.textContent = 'Git checked ' + checkedAgo(state.gitStatusAt);
+  }
+}
+
+// "just now" under a minute, then "N min ago" / "Nh ago".
+function checkedAgo(ms) {
+  const age = fmtDuration(ms / 1000, { fromEpoch: true });
+  if (!age || age === 'now') return 'just now';
+  return age.replace(/m$/, ' min') + ' ago';
 }
 
 // Always-on git-status refresh (#496, deliberately reversing #115's
 // on-demand contract). Runs git per project on the server, fanned out
 // across threads; caches the result in state and re-renders every surface
-// that reads it (Coding tiles + legend, home-head aggregate, Board
+// that reads it (Coding rows, the Projects summary and footer, Board
 // backlog). Called at boot and on the GIT_STATUS_POLL_MS interval in
-// main.js (quiet — poll failures log, never toast), and by the header
-// status button below (loud).
+// main.js (quiet — poll failures log, never toast), and by the Projects
+// toolbar's refresh button below (loud).
 export async function refreshGitStatus(options) {
   const quiet = !!(options && options.quiet);
   try {
@@ -453,9 +500,8 @@ export async function refreshGitStatus(options) {
     const map = {};
     (body.projects || []).forEach(function (p) { map[p.id] = p; });
     state.gitStatus = map;
-    if (els.gitStatusLegend) els.gitStatusLegend.hidden = false;
+    state.gitStatusAt = Date.now();
     renderApps();
-    renderHomeHead();
     // The Board backlog reads the same cache (#496 item 4); repaint it if
     // it's the visible tab — its own 5 s poll does no git work. renderBoard()
     // keeps an open drawer's DOM (#958), so this refresh can't tear it down
@@ -467,86 +513,22 @@ export async function refreshGitStatus(options) {
   }
 }
 
-// The header ⎇ status button: re-fetch fresh data, then open the off-main
-// drill-down popover (#139). The data is usually already warm from the
-// poll — the re-fetch just guarantees the popover never shows stale state.
-export async function fetchGitStatus() {
-  const btn = els.gitStatusBtn;
-  if (btn) { btn.disabled = true; btn.classList.add('loading'); }
+// The Projects toolbar's refresh (#1434, was the "Git status" button):
+// re-run git now. The rows are the off-main list, so there is no popover;
+// the footer's "Git checked just now" is the confirmation.
+async function checkGitNow() {
+  const btn = els.gitRefreshBtn;
+  if (btn) btn.disabled = true;
   try {
     await refreshGitStatus();
-    openGitSummary();
   } catch (exc) {
     apiFailToast('Git status check failed', exc);
   } finally {
-    if (btn) { btn.disabled = false; btn.classList.remove('loading'); }
+    if (btn) btn.disabled = false;
   }
 }
 
-// Compact "what am I working on" popover (issue #139). Reads the same
-// cached git-status the tiles use and lists one line per project parked
-// off its default branch, colour-matched to the list (red = dirty,
-// yellow = off-main). Anchored below the status button; closes on a
-// second tap or any tap outside, mirroring the terminal keys popover.
-let _disposeGitSummaryOutsideClick = null;
-
-function closeGitSummary() {
-  if (els.gitStatusSummary) els.gitStatusSummary.hidden = true;
-  if (_disposeGitSummaryOutsideClick) {
-    _disposeGitSummaryOutsideClick();
-    _disposeGitSummaryOutsideClick = null;
-  }
-}
-
-function buildGitSummary() {
-  const box = els.gitStatusSummary;
-  if (!box) return;
-  box.innerHTML = '';
-  // Off-default-branch coding projects, in the list's own order.
-  const offMain = state.apps.filter(function (a) {
-    if (a.kind !== 'claude-code') return false;
-    const gs = state.gitStatus && state.gitStatus[a.id];
-    return gs && gs.is_git && gs.branch && !gs.on_default_branch;
-  });
-  if (!offMain.length) {
-    const note = document.createElement('div');
-    note.className = 'git-summary-empty';
-    note.innerHTML = 'All projects on their default branch ' + icon('circle-check');
-    box.appendChild(note);
-    return;
-  }
-  offMain.forEach(function (a) {
-    const gs = state.gitStatus[a.id];
-    const row = document.createElement('div');
-    row.className = 'git-summary-row';
-    row.setAttribute('role', 'listitem');
-    const name = document.createElement('span');
-    // Same precedence as gitFlags: red wins when also dirty.
-    name.className = 'git-summary-name ' + (gs.dirty ? 'git-dirty' : 'git-off-main');
-    name.textContent = a.name;
-    name.title = a.name;
-    const tag = document.createElement('span');
-    tag.className = 'git-branch-tag';
-    tag.textContent = gs.branch;
-    row.appendChild(name);
-    row.appendChild(tag);
-    box.appendChild(row);
-  });
-}
-
-function openGitSummary() {
-  const box = els.gitStatusSummary;
-  if (!box) return;
-  buildGitSummary();
-  box.hidden = false;
-  if (!_disposeGitSummaryOutsideClick) {
-    _disposeGitSummaryOutsideClick = bindOutsideClickToClose(
-      box, els.gitStatusBtn, closeGitSummary
-    );
-  }
-}
-
-// The two Coding-tab header controls, wired from apps.js::wireApps so this
+// The Projects card's controls, wired from apps.js::wireApps so this
 // module owns every listener that reads its own state.
 export function wireCoding() {
   // No projects found: its fix is the Projects folder (#1238 J-09).
@@ -556,21 +538,12 @@ export function wireCoding() {
       openSettingsAt('projectsDir');
     });
   }
-  if (els.gitStatusBtn) {
-    els.gitStatusBtn.addEventListener('click', function () {
-      // Toggle: a second tap closes the summary; otherwise re-fetch fresh
-      // git status and open it (fetchGitStatus opens on success).
-      if (els.gitStatusSummary && !els.gitStatusSummary.hidden) {
-        closeGitSummary();
-        return;
-      }
-      fetchGitStatus().catch(function () {});
-    });
-  }
+  if (els.gitRefreshBtn) els.gitRefreshBtn.addEventListener('click', checkGitNow);
   if (els.favFilterBtn) {
-    els.favFilterBtn.addEventListener('click', function () {
-      // In the Projects card's toolbar since #1132, not its <summary>, so a
-      // tap can no longer fold the card and needs no stopPropagation.
+    els.favFilterBtn.addEventListener('click', function (event) {
+      // The trailing star inside the filter field (#1434). The field is a
+      // <label>, so keep the tap from also focusing the input.
+      event.preventDefault();
       state.codingFavFilter = !state.codingFavFilter;
       localStorage.setItem(
         'launcher.codingFavFilter', state.codingFavFilter ? '1' : '0'

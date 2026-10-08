@@ -14,6 +14,7 @@ import { icon } from './_vendored/icons/icons.js';
 //   id         -> li[data-id]
 //   className  -> extra li classes (the list's hook: coding-item, …)
 //   title      -> the one-line title; `meta` -> the optional context line
+//   chips      -> optional exception chips, after the meta text
 //   label      -> the main button's accessible name (what a tap does)
 //   onMain     -> the primary action; `disabled` + `hint` grey it out
 //   favorite   -> { on, onToggle } adds the leading star
@@ -47,11 +48,23 @@ export function actionRow(opts) {
   title.textContent = opts.title;
   title.title = opts.title;
   main.appendChild(title);
+  // The context line: the plain meta text, then any exception chips
+  // (glance.js chip(), #1434) after it, so a chip never ellipsizes away.
   let meta = null;
-  if (opts.meta) {
+  const chips = opts.chips || [];
+  if (opts.meta || chips.length) {
     meta = document.createElement('span');
     meta.className = 'action-row-meta';
-    meta.textContent = opts.meta;
+    if (chips.length) {
+      meta.classList.add('has-chips');
+      const text = document.createElement('span');
+      text.className = 'action-row-meta-text';
+      text.textContent = opts.meta || '';
+      meta.appendChild(text);
+      chips.forEach(function (c) { meta.appendChild(c); });
+    } else {
+      meta.textContent = opts.meta;
+    }
     main.appendChild(meta);
   }
   if (opts.disabled) {

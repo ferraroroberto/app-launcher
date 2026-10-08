@@ -190,42 +190,101 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
 
 
+def test_chief_row_is_pinned_first(authed_page: Page, base_url: str) -> None:
+    """#1434: the chief's row leads the Sessions list whatever order the
+    session-host lists it in."""
+    _mock_sessions(authed_page, [_WORKER_SESSION, _CHIEF_SESSION])
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    rows = authed_page.locator("#sessionsList > li")
+    expect(rows).to_have_count(2)
+    expect(rows.first).to_have_attribute("data-session-id", "s-chief")
+
+
 def test_coding_tab_offers_manual_start_when_chief_down(
     authed_page: Page, base_url: str
 ) -> None:
+    """#1434 (was #547's separate status line): with no chief running, the
+    chief's own row leads the list, crowned, with Start and Resume on it."""
     _mock_sessions(authed_page, [_WORKER_SESSION])
     captured: dict = {}
     _mock_ensure(authed_page, captured, spawned=True)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
-    status = authed_page.locator("#codingChiefStatus")
-    expect(status).to_be_visible()
-    expect(authed_page.locator("#codingChiefStatusText")).to_have_text(
-        "chief: not running"
-    )
+    first = authed_page.locator("#sessionsList > li").first
+    expect(first).to_have_class(re.compile(r"session-item-chief"))
+    expect(first.locator(".board-chief-crown")).to_have_count(1)
+    expect(first.locator(".srow-meta-text")).to_have_text("stopped")
     start_btn = authed_page.locator("#codingChiefStart")
+    resume_btn = authed_page.locator("#codingChiefResume")
     expect(start_btn).to_be_visible()
-    # Start's expanded target and the session row below it never share a
-    # pixel (TOUCH-02, #1238): the rows sat flush and the -5px expansion
-    # reached the row's launch button.
+    expect(resume_btn).to_be_visible()
+    # Start's target and the worker's row below never share a pixel
+    # (TOUCH-02, #1238).
     expect(authed_page.locator("#sessionsList .session-open")).to_have_count(1)
-    assert_no_overlap([start_btn, authed_page.locator("#sessionsList .session-open")])
+    assert_no_overlap([
+        start_btn, resume_btn,
+        authed_page.locator('#sessionsList li[data-session-id="s-work"] .session-open'),
+    ])
 
     start_btn.click()
     wait_until(authed_page, lambda: captured.get("method") == "POST",
                "the Start button's ensure POST")
-    assert captured.get("method") == "POST"
+    assert not captured["body"].get("resume"), captured["body"]
+
+    captured.clear()
+    resume_btn.click()
+    wait_until(authed_page, lambda: captured.get("method") == "POST",
+               "the Resume button's ensure POST")
+    assert captured["body"].get("resume") is True, captured["body"]
+    assert captured["body"].get("restart") is True, captured["body"]
 
 
 def test_coding_tab_hides_start_when_chief_alive(
     authed_page: Page, base_url: str
 ) -> None:
+    """A running chief's row carries no Start / Resume; Restart and Chief
+    settings sit in its kebab, before Stop, which stays last (#1434)."""
     _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
-    expect(authed_page.locator("#codingChiefStatus")).to_be_visible()
-    expect(authed_page.locator("#codingChiefStatusText")).to_have_text(
-        "chief: running"
+    chief_row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
+    expect(chief_row).to_be_visible()
+    expect(authed_page.locator("#codingChiefStart")).to_have_count(0)
+    expect(authed_page.locator("#codingChiefResume")).to_have_count(0)
+
+    chief_row.locator(".session-kebab").click()
+    items = chief_row.locator(".session-menu button")
+    expect(chief_row.locator(".chief-restart-btn")).to_be_visible()
+    expect(chief_row.locator(".chief-settings-btn")).to_be_visible()
+    expect(items.last).to_have_class(re.compile(r"action-stop-close"))
+
+    # The worker's menu has neither.
+    worker_row = authed_page.locator('#sessionsList li[data-session-id="s-work"]')
+    authed_page.keyboard.press("Escape")
+    worker_row.locator(".session-kebab").click()
+    expect(worker_row.locator(".action-stop-close")).to_be_visible()
+    expect(worker_row.locator(".chief-restart-btn")).to_have_count(0)
+    expect(worker_row.locator(".chief-settings-btn")).to_have_count(0)
+
+
+def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> None:
+    """Chief settings in the chief row's kebab opens the Board's existing
+    dialog (#1434, until step 3 moves it to Settings)."""
+    _mock_sessions(authed_page, [_WORKER_SESSION])
+    authed_page.route(
+        re.compile(r".*/api/board/chief/settings$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"settings": {"model": "fable", "worker_cap": 2}}),
+        ),
     )
-    expect(authed_page.locator("#codingChiefStart")).to_be_hidden()
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    first = authed_page.locator("#sessionsList > li").first
+    first.locator(".session-kebab").click()
+    expect(first.locator(".chief-restart-btn")).to_have_count(0)  # stopped: nothing to restart
+    first.locator(".chief-settings-btn").click()
+    expect(authed_page.locator("#chiefSettingsDialog")).to_be_visible()
+    expect(authed_page.locator("#chiefWorkerCap")).to_have_value("2")

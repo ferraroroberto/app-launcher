@@ -163,10 +163,14 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
     # reload (#1131), so choose Code rather than assume it is the default.
     authed_page.locator("#tabClaude").click()
 
-    # The Code tab's chips say what they are, whole words, on one line (#1191).
-    for sel, text in (("#gitStatusBtn", "Git status"),
-                      ("#codingFilterSavedBadge",
-                       "Context filter saved 123.5k tokens in 7 days")):
+    # The Code tab's lines say what they are, whole words, on one line
+    # (#1191): the context filter's savings, the Usage card's footer since
+    # #1434 (the green badge is gone), and the Sessions group footer.
+    expect(authed_page.locator("#codingFilterSavedBadge")).to_have_count(0)
+    for sel, text in (("#codingUsageFooter",
+                       "Context filter saved 123.5k tokens in 7 days"),
+                      ("#paneClaude .launcher-note",
+                       "Only sessions launched from here appear.")):
         expect(authed_page.locator(sel)).to_have_text(text)
         m = stable_read(lambda: authed_page.evaluate(_LINES, sel))
         assert m is not None and m["lines"] == 1, f"{sel} wraps at 390px: {m}"

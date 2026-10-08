@@ -132,8 +132,11 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     expect(authed_page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')).to_be_enabled(timeout=5_000)
 
     # -- was test_red_title_flags_the_row_and_changes_open_from_its_menu --
-    title = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
-    expect(title).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=5_000)
+    # The row is flagged by its uncommitted chip (#1434: amber, not a red name).
+    row = authed_page.locator('.coding-item[data-id="alpha"]')
+    expect(row).to_have_attribute("data-git", "dirty", timeout=5_000)
+    expect(row.locator(".git-uncommitted")).to_be_visible()
+    title = row.locator(".action-row-title")
     expect(title).not_to_have_attribute("role", "button")
     _open_via_menu(authed_page)
     expect(authed_page.locator("#changesOverlay")).to_be_visible()
@@ -141,8 +144,9 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     authed_page.keyboard.press("Escape")
     expect(authed_page.locator("#changesOverlay")).to_be_hidden()
 
-    clean = authed_page.locator('.coding-item[data-id="clean"] .action-row-title')
-    expect(clean).not_to_have_class(re.compile(r"\bgit-(dirty|off-main)\b"))
+    clean = authed_page.locator('.coding-item[data-id="clean"]')
+    expect(clean).not_to_have_attribute("data-git", re.compile(r"."))
+    expect(clean.locator(".git-uncommitted")).to_have_count(0)
 
     # -- the overlay's file list and lazy tinted diff (this test's own) --
     _open_via_menu(authed_page)
@@ -201,10 +205,11 @@ def test_clean_tree_shows_the_empty_state(authed_page: Page, base_url: str) -> N
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
-    # Off-main but clean: yellow name; Show changes still answers "what's
-    # different here" (the branch).
-    name = authed_page.locator('.coding-item[data-id="alpha"] .action-row-title')
-    expect(name).to_have_class(re.compile(r"\bgit-off-main\b"), timeout=5_000)
+    # Off-main but clean: the branch on the row's meta line (#1434); Show
+    # changes still answers "what's different here" (the branch).
+    row = authed_page.locator('.coding-item[data-id="alpha"]')
+    expect(row).to_have_attribute("data-git", "off-main", timeout=5_000)
+    expect(row.locator(".action-row-meta")).to_have_text("on feat/977-wip")
     _open_via_menu(authed_page)
     expect(authed_page.locator("#changesOverlay")).to_be_visible()
     expect(authed_page.locator("#changesState")).to_contain_text("Working tree clean")

@@ -38,6 +38,7 @@ import {
   channelSessionName, contextAlert, fmtDuration, isChannelSession, usageTier,
 } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
+import { chip } from './glance.js';
 import { openSessionOverlay } from './session-overlay.js';
 import { canCompact, sendOutcome, sendSessionMessage } from './sessions.js';
 
@@ -79,11 +80,15 @@ const contextBySid = new Map();
 let timer = null;
 let reading = false;
 
-// A running session whose context is at or over the alert threshold.
-function anyContextAlert() {
-  return channelSessions().some(function (s) {
-    return s.alive !== false && contextAlert(contextBySid.get(s.session_id));
+// The highest context figure among running sessions at or over the alert
+// threshold, or null when none is.
+function contextAlertPct() {
+  let worst = null;
+  channelSessions().forEach(function (s) {
+    const pct = contextBySid.get(s.session_id);
+    if (s.alive !== false && contextAlert(pct) && (worst == null || pct > worst)) worst = pct;
   });
+  return worst;
 }
 
 function paintSummary(btn, count, alerting) {
@@ -96,11 +101,28 @@ function paintSummary(btn, count, alerting) {
   if (flag) flag.hidden = !alerting;
 }
 
+// The Code tab's flat row (#1434): a send-glyph avatar, "Telegram", then
+// "N running" and an attention "context N%" chip only while a session is at
+// the alert threshold. The chip is rebuilt only when its text changes, so a
+// poll tick never replaces it for nothing.
+function paintCodingRow(btn, count, alertPct) {
+  if (!btn) return;
+  btn.hidden = !(channelSessionsHidden() && count > 0);
+  if (btn.hidden) return;
+  btn.querySelector('.channel-summary-text').textContent = count + ' running';
+  const meta = btn.querySelector('.srow-meta');
+  const want = alertPct == null ? '' : 'context ' + alertPct + '%';
+  const current = meta.querySelector('.channel-context-chip');
+  if (current && current.textContent === want) return;
+  if (current) current.remove();
+  if (want) meta.appendChild(chip(want, 'attention', 'channel-context-chip'));
+}
+
 function paintSummaries() {
   const count = runningCount();
-  const alerting = anyContextAlert();
-  paintSummary(els.sessionsChannelSummary, count, alerting);
-  paintSummary(els.boardChannelSummary, count, alerting);
+  const alertPct = contextAlertPct();
+  paintCodingRow(els.sessionsChannelSummary, count, alertPct);
+  paintSummary(els.boardChannelSummary, count, alertPct != null);
   if (dialogOpen()) renderRows();
 }
 

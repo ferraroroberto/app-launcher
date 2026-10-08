@@ -150,9 +150,12 @@ def test_coding_list_swaps_channel_rows_for_a_summary_line(
     expect(rows).to_have_count(1)
     expect(rows.first).to_have_attribute("data-session-id", "s-work")
     expect(authed_page.locator("#sessionsList .session-channel-tag")).to_have_count(0)
+    # A flat row since #1434: the send-glyph avatar, "Telegram", "2 running".
     summary = authed_page.locator("#sessionsChannelSummary")
     expect(summary).to_be_visible()
-    expect(summary).to_have_text(re.compile(r"2 Telegram sessions running"))
+    expect(summary).to_have_class(re.compile(r"\bchannel-row\b"))
+    expect(summary.locator(".srow-title")).to_have_text("Telegram")
+    expect(summary.locator(".channel-summary-text")).to_have_text("2 running")
     box = summary.bounding_box()
     assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
 
@@ -169,9 +172,9 @@ def test_board_swaps_channel_cards_for_a_summary_line(
     summary = authed_page.locator("#boardChannelSummary")
     expect(summary).to_be_visible()
     expect(summary).to_have_text(re.compile(r"2 Telegram sessions running"))
-    # Both lists name one count: the Coding tab's line says the same.
-    expect(authed_page.locator("#sessionsChannelSummary")).to_have_text(
-        re.compile(r"2 Telegram sessions running"))
+    # Both lists name one count: the Coding tab's row says the same.
+    expect(authed_page.locator("#sessionsChannelSummary .channel-summary-text")).to_have_text(
+        "2 running")
 
 
 def test_summary_opens_a_read_only_list_and_polls_context_fast_only_while_open(
@@ -315,8 +318,13 @@ def test_the_one_kill_path_refuses_a_hidden_channel_session(
 # ------------------------------------------------------------------ #1402
 
 
-def _alert(page: Page, which: str = "#sessionsChannelSummary"):
+def _alert(page: Page, which: str = "#boardChannelSummary"):
     return page.locator(f"{which} .channel-summary-alert")
+
+
+def _context_chip(page: Page):
+    """The Code tab's row says it with an attention chip since #1434."""
+    return page.locator("#sessionsChannelSummary .channel-context-chip")
 
 
 def test_summary_does_not_alert_one_point_under_fifty_percent(
@@ -329,8 +337,8 @@ def test_summary_does_not_alert_one_point_under_fifty_percent(
     wait_until(authed_page, lambda: len(knobs["context_hits"]) >= 2,
                "the summary line's context reads")
     flush_requests(authed_page)
+    expect(_context_chip(authed_page)).to_have_count(0)
     expect(_alert(authed_page)).to_be_hidden()
-    expect(_alert(authed_page, "#boardChannelSummary")).to_be_hidden()
 
 
 def test_summary_shows_the_alert_icon_at_fifty_percent_with_a_label(
@@ -339,14 +347,17 @@ def test_summary_shows_the_alert_icon_at_fifty_percent_with_a_label(
     knobs = _mock(authed_page)
     knobs["pct"] = {"s-tg-health": 42, "s-tg-family": 50}
     _open_coding(authed_page, base_url)
+    # Code: an attention chip naming the highest figure (#1434).
+    chip = _context_chip(authed_page)
+    expect(chip).to_have_text("context 50%")
+    expect(chip).to_have_attribute("data-tone", "attention")
+    # The Board's line keeps its labelled alert icon.
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
     alert = _alert(authed_page)
     expect(alert).to_be_visible()
     expect(alert).to_have_attribute("role", "img")
     expect(alert).to_have_attribute("aria-label", "context high")
-    # The Board's line is the same line: it shows the alert too.
-    authed_page.locator("#tabBoard").click()
-    expect(authed_page.locator("#paneBoard")).to_be_visible()
-    expect(_alert(authed_page, "#boardChannelSummary")).to_be_visible()
     box = authed_page.locator("#boardChannelSummary").bounding_box()
     assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
 
@@ -359,14 +370,14 @@ def test_alert_follows_the_context_as_it_changes(
     knobs["pct"] = {"s-tg-health": 55}
     _open_coding(authed_page, base_url)
     _fake_clock.wait_for_interval(authed_page, 5000)
-    expect(_alert(authed_page)).to_be_visible()
+    expect(_context_chip(authed_page)).to_have_text("context 55%")
 
     # The session compacts: its next slow read is under the threshold and the
     # icon goes away without a reload.
     knobs["pct"] = {"s-tg-health": 8}
     _fake_clock.advance(authed_page, 60_000)
     flush_requests(authed_page)
-    expect(_alert(authed_page)).to_be_hidden()
+    expect(_context_chip(authed_page)).to_have_count(0)
 
 
 def test_popup_compact_sends_slash_compact_through_the_verified_route(

@@ -61,6 +61,13 @@ def _assert_home_head_is_first_card_with_stats_and_toggle(page: Page) -> None:
     assert "home-head" in first_class, (
         f"home-head must be the pane's first card, got {first_class!r}"
     )
+    # The Usage card is the first card under it (#1434, the glance card).
+    second_id = page.evaluate(
+        "document.getElementById('paneClaude').children[1].id"
+    )
+    assert second_id == "codingUsageCard", (
+        f"the Usage card must lead the Code tab's cards, got {second_id!r}"
+    )
 
     # The stats line renders at least the sessions count once boot lands.
     expect(page.locator("#homeHeadStatus")).to_contain_text(

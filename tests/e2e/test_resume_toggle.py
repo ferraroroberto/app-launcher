@@ -1,6 +1,7 @@
 """Resume toggle regression (issues #151, #157).
 
-The ↺ Resume toggle on the Coding options card must, when checked, make
+The Resume switch in the Projects card's launch toolbar (#1434; it began on
+the Coding options card) must, when checked, make
 the next agent-icon tap POST ``resume: true``. Resume is orthogonal to
 Detached (issue #157): Resume alone streams a pty (no ``mode``); Detached
 + Resume sends ``mode: remote`` so the native picker renders in the
@@ -15,6 +16,7 @@ route-mocked so the test needs no installed agent and spawns no process.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -89,8 +91,8 @@ def _open_coding(page: Page, base_url: str) -> None:
 def test_resume_toggle_present(authed_page: Page, base_url: str) -> None:
     _install_mocks(authed_page)
     _open_coding(authed_page, base_url)
-    # The toggle lives in the (collapsed) options <summary>, so its
-    # role="switch" button is present and starts unchecked (issue #355).
+    # The launch toolbar's role="switch" button is present and starts
+    # unchecked (issue #355).
     expect(authed_page.locator("#claudeResume")).to_be_attached()
     expect(authed_page.locator("#claudeResume")).not_to_be_checked()
 
@@ -140,32 +142,25 @@ def test_resume_with_detached_launches_remote_console(
     assert payload.get("agent") == "claude"
 
 
+_RESOLVE = (
+    "name => { const p = document.createElement('span');"
+    "p.style.color = `var(${name})`; document.body.appendChild(p);"
+    "const c = getComputedStyle(p).color; p.remove(); return c; }"
+)
+
+
 @pytest.mark.iphone
-def test_checked_toggle_carries_no_accent_border_or_tint(
+def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1070 — the on-state is an opacity + glyph-colour step, not a box.
-
-    Detached/Resume used to flip `border-color` to `var(--accent)` and paint
-    an accent-tinted background when checked, which made them the only
-    accent-boxed controls in the Projects header — next to a borderless
-    model combo and a `.button-ghost` favourites filter, so the box goes
-    and the on-state is a glyph-colour step (the accent since #1396, which
-    pins the colour; green was the earlier reading of design.md).
-
-    Pinned as "the border does not change and the fill stays transparent"
-    rather than against a literal colour, so the assertion holds in both
-    themes and survives a token revalue. Auto-retrying `to_have_css`
-    throughout (#680) — the expected border value is read once from the
-    *off* state, which is the control's own resting truth.
+    """#1434 — the Code launch toolbar's Detached and Resume are the vendored
+    switch (track + thumb, no box), each beside its word, and the word is
+    part of the tap: tapping "Detached" flips it. On, the track is the
+    accent fill, never success (design.md, fleet-config#1200). The colours
+    are resolved from the page's own tokens in light and dark, so the
+    assertion survives a token revalue. Auto-retrying `to_have_css` (#680).
     """
     _install_mocks(authed_page)
-    # `.detached-toggle` animates border-color and background over 0.15s.
-    # An assertion made right after the click can sample a mid-transition
-    # value that still equals the resting one and pass for the wrong
-    # reason — measured: against pre-fix CSS the border assertion below
-    # passed on its first poll while the fill was still interpolating.
-    # Killing transitions makes both reads the settled truth.
     authed_page.add_init_script(
         "document.addEventListener('DOMContentLoaded', () => {"
         "  const st = document.createElement('style');"
@@ -176,21 +171,26 @@ def test_checked_toggle_carries_no_accent_border_or_tint(
     )
     _open_coding(authed_page, base_url)
 
-    toggle = authed_page.locator("#claudeDetached")
-    expect(toggle).not_to_be_checked()
-    resting_border = toggle.evaluate(
-        "el => getComputedStyle(el).borderTopColor"
-    )
-    # The Projects header is static markup, not a polled re-render, so this
-    # one read cannot straddle a rebuild; every assertion below still uses
-    # the auto-retrying form.
-    assert resting_border, "could not read the toggle's resting border colour"
+    toolbar = authed_page.locator("#codingLaunchToolbar .launch-toolbar")
+    for sel, word in (("#claudeDetached", "Detached"), ("#claudeResume", "Resume")):
+        sw = toolbar.locator(sel)
+        expect(sw).to_have_class(re.compile(r"\btoggle\b"))
+        expect(sw).to_have_attribute("role", "switch")
+        expect(sw.locator("xpath=..")).to_contain_text(word)
 
-    toggle.click()
-    expect(toggle).to_be_checked()
-    # The box is unchanged by the flip …
-    expect(toggle).to_have_css("border-top-color", resting_border)
-    expect(toggle).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    detached = toolbar.locator("#claudeDetached")
+    expect(detached).not_to_be_checked()
+    toolbar.locator(".launch-switch-label", has_text="Detached").click()
+    expect(detached).to_be_checked()
+
+    for theme in ("light", "dark"):
+        authed_page.evaluate(
+            "t => document.documentElement.setAttribute('data-theme', t)", theme
+        )
+        fill = authed_page.evaluate(_RESOLVE, "--accent-fill")
+        success = authed_page.evaluate(_RESOLVE, "--success")
+        assert fill != success, f"{theme}: the probe cannot tell the accent from success"
+        expect(detached).to_have_css("background-color", fill)
 
 
 @pytest.mark.iphone
@@ -199,8 +199,9 @@ def test_on_glyph_switches_use_the_accent_not_success(
 ) -> None:
     """#1396 — the fleet design standard: a `role="switch"`'s on-state is the
     app's accent, and `success` is never a switch's on-colour. The Detached
-    and Resume glyph switches (Coding and Life OS rows) kept the green glyph
-    #1070 gave them; the track-and-thumb switches had already moved.
+    and Resume glyph switches kept the green glyph #1070 gave them; the
+    track-and-thumb switches had already moved. Life OS's pair only since
+    #1434 moved Code's onto the vendored switch (step 7 moves this one).
 
     The expected colours are resolved from the tokens in the page's own
     theme (a probe element), in light and in dark, so the assertion survives
@@ -217,12 +218,8 @@ def test_on_glyph_switches_use_the_accent_not_success(
         "});"
     )
     _open_coding(authed_page, base_url)
-    resolve = (
-        "name => { const p = document.createElement('span');"
-        "p.style.color = `var(${name})`; document.body.appendChild(p);"
-        "const c = getComputedStyle(p).color; p.remove(); return c; }"
-    )
-    ids = ("#claudeDetached", "#claudeResume", "#lifeOsDetached", "#lifeOsResume")
+    resolve = _RESOLVE
+    ids = ("#lifeOsDetached", "#lifeOsResume")
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
