@@ -22,6 +22,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import close_settings_sheets
+
 pytestmark = pytest.mark.smoke
 
 
@@ -115,7 +117,10 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     page.locator("#tabClaude").click()
     page.locator("#claudeEmptyAction").click()
     expect(page.locator("#paneSettings")).to_be_visible()
+    expect(page.locator("#foldersSheet")).to_be_visible()
     expect(page.locator("#projectsDir")).to_be_focused()
+    # The open sheet is modal and leaves the nav inert: close it first (#1435).
+    close_settings_sheets(page)
 
     # Every Board column renders one too. Formerly
     # test_every_board_column_renders_one_when_empty, folded in by #1215:

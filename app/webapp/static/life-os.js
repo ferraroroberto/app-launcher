@@ -22,6 +22,7 @@ import { renderMarkdown } from './markdown.js';
 import { actionRow } from './action-rows.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './telegram-setup.js';
+import { renderSettingsValues } from './settings-sheets.js';
 import { createRowMenu } from './row-menu.js';
 import { terminalJsonApi } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
@@ -78,6 +79,7 @@ export async function fetchChannels() {
     };
     renderChannels();
     renderChannelSetup();
+    renderSettingsValues();
   } catch (exc) {
     logPollFailure('life-os channels fetch failed', exc);
   }
@@ -1211,11 +1213,11 @@ export function wireLifeOs() {
       openSettingsAt('lifeOsDir');
     });
   }
-  // No Telegram profile yet: the Settings card says what to do (#1369).
+  // No Telegram profile yet: the Settings sheet says what to do (#1369).
   const channelsEmptyAction = document.getElementById('lifeOsChannelsEmptyAction');
   if (channelsEmptyAction) {
     channelsEmptyAction.addEventListener('click', function () {
-      openSettingsAt('channelsPanel');
+      openSettingsAt('channelsSheet');
     });
   }
   const channelRecheck = document.getElementById('channelRecheck');

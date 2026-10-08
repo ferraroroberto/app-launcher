@@ -76,7 +76,7 @@ def test_map_loads_on_expand_and_zooms(
         """() => {
             const projects = document.querySelector('details.projects-card');
             const map = document.querySelector('#systemMapCard');
-            const settings = document.querySelector('#settingsPanel');
+            const settings = document.querySelector('#paneSettings');
             const after = (a, b) =>
                 !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
             return after(projects, map) && after(map, settings);

@@ -57,14 +57,33 @@ def _inside(el: dict, container: dict) -> bool:
     return any(p is container for p in el["parents"])
 
 
+def _settings_sheets(tree: _Tree) -> list[dict]:
+    """Every Settings sheet: the modal ``<dialog class="settings-sheet">`` each
+    former Settings card became (#1435)."""
+    return [e for e in tree.elements if e["tag"] == "dialog"
+            and "settings-sheet" in e["attrs"].get("class", "").split()]
+
+
+# The API tokens sheet's two inputs predate this check: the Label field is
+# named by its visible label and an example placeholder, and the show-once
+# value is a read-only readout. Neither was in the Settings card this test
+# covered before #1435 split the cards into sheets, so they stay exempt
+# rather than being counted as a regression.
+_NO_HELP_LINE = {"tokenLabelInput", "tokenMintValue"}
+
+
 def test_every_settings_field_has_one_help_line() -> None:
     tree = _tree()
-    panel = _by_id(tree, "settingsPanel")
-    fields = [e for e in tree.elements if _inside(e, panel)
+    sheets = _settings_sheets(tree)
+    assert sheets, "no Settings sheets found"
+    fields = [e for e in tree.elements if any(_inside(e, sheet) for sheet in sheets)
               and e["tag"] in ("input", "textarea")]
     assert fields, "no Settings fields found"
     for field in fields:
-        help_id = field["attrs"].get("aria-describedby")
+        if field["attrs"].get("id") in _NO_HELP_LINE:
+            continue
+        # The first id is the help line; an inline error line may follow it.
+        help_id = (field["attrs"].get("aria-describedby") or "").split(" ")[0]
         assert help_id, f"#{field['attrs'].get('id')} has no help line"
         help_el = _by_id(tree, help_id)
         assert "field-help" in help_el["attrs"].get("class", "")
@@ -91,7 +110,8 @@ _JARGON = re.compile(r"[A-Z]{2,}_[A-Z_]+|\w=\w|HH:MM|\bdir\b|\bmutex\b|\bglobs?\
 
 def test_dialog_and_settings_labels_hold_no_internal_names() -> None:
     tree = _tree()
-    scopes = [e for e in tree.elements if e["tag"] == "dialog"] + [_by_id(tree, "settingsPanel")]
+    # Every dialog (the Settings sheets are dialogs since #1435) plus the pane.
+    scopes = [e for e in tree.elements if e["tag"] == "dialog"] + [_by_id(tree, "paneSettings")]
     labels = [e for e in tree.elements
               if e["tag"] == "span" and e["parents"] and e["parents"][-1]["tag"] in ("label", "div")
               and any(_inside(e, s) for s in scopes)

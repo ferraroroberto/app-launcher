@@ -14,6 +14,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_agent_sheet
+
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
@@ -53,16 +55,10 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
 
     authed_page.route(re.compile(r".*/api/config$"), _fail_first_config)
     _navigate_collecting_errors(authed_page, base_url)
-    # The Coding options card is a <details> collapsed by default — expand
-    # it so the segmented controls become visible. renderClaudeOptions()
-    # runs after /api/config resolves regardless, but the buttons are only
-    # *visible* once the panel is open. Click the title (not the summary's
-    # geometric centre, which can land on a stopPropagation toggle now that
-    # the row carries both ☁️ Detached and ↺ Resume — issue #151).
-    # Scope to the Coding options card: the Running-sessions + Projects
-    # panels now share the .collapse-title class (issue #212), so a
-    # bare class selector matches three titles.
-    authed_page.locator("#codingOptions .collapse-title").click()
+    # The agent options live in Settings > Launch defaults > Claude Code
+    # (#1435); the controls are only visible once that sheet is open.
+    # renderClaudeOptions() runs after /api/config resolves regardless.
+    open_agent_sheet(authed_page, "claude")
     authed_page.wait_for_function(
         "() => document.querySelectorAll('#claudeModelMenu > [role=option]').length > 0",
         timeout=5_000,

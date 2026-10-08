@@ -9,10 +9,10 @@
  * - the repo/project combo (#337), which doubles as the kanban's card filter
  *   (`boardRepoFilter` / `matchesRepoFilter`, read by `renderBoard`);
  * - the chat bar (#245/#547) — text goes into the standing fleet chief's PTY,
- *   plus the chief's Start/Resume/Restart status row and the chief settings
- *   dialog. It is the bar's only send path since #1382 removed the free-text
- *   Add/Build/Yolo dispatch; the model combo beside it now only feeds the
- *   issue cards' one-tap Start.
+ *   plus the chief's Start/Resume/Restart status row, whose gear opens
+ *   Settings › Chief (#1435). It is the bar's only send path since #1382
+ *   removed the free-text Add/Build/Yolo dispatch; the model combo beside
+ *   it now only feeds the issue cards' one-tap Start.
  *
  * The bar is static markup `renderBoard()` never touches, so the 5 s poll
  * can't wipe a goal being typed. Dictation mics (shared voice.js) mount on
@@ -34,6 +34,7 @@ import { terminalJsonApi } from './webauthn.js';
 import { sendSessionMessage } from './sessions.js';
 import { CHIEF_RESTART_CONFIRM, isChiefSession, wireModelCombo } from './dom-utils.js';
 import { fetchBoard, renderBoard } from './board.js';
+import { openSettingsAt } from './tabs.js';
 
 // ---------------------------------------------------- fleet chief (#245)
 // The standing conversational orchestrator: one label="chief" PTY session
@@ -48,7 +49,6 @@ import { fetchBoard, renderBoard } from './board.js';
 export const isChiefCard = isChiefSession;
 
 let dispatchModelCombo = null;
-let chiefModelCombo = null;
 
 export function setBoardDispatchModelOptions(items) {
   if (dispatchModelCombo) dispatchModelCombo.setOptions(items);
@@ -323,52 +323,8 @@ async function sendChat() {
   }
 }
 
-// ---- chief settings dialog (#245): GET on open, PUT on Save. The dialog
-// is the vendored modal shell (_vendored/modal, #1133). #616 retired
-// the daily-respawn setting (fleet-config#442/#449 shipped compact-and-
-// continue, making an unattended respawn actively harmful to a live batch)
-// — model and worker cap are all that's left to edit here. Exported for the
-// Code tab's chief kebab (#1434) until step 3 of #1432 moves it to Settings.
-
-export async function openChiefSettings() {
-  try {
-    const body = await terminalJsonApi('/api/board/chief/settings');
-    const s = body.settings || {};
-    if (chiefModelCombo) chiefModelCombo.setValue(s.model || 'fable');
-    els.chiefWorkerCap.value = String(s.worker_cap || 3);
-    els.chiefSettingsDialog.showModal();
-  } catch (exc) {
-    apiFailToast('Chief settings unavailable', exc);
-  }
-}
-
-async function saveChiefSettings() {
-  try {
-    await terminalJsonApi('/api/board/chief/settings', {
-      method: 'PUT',
-      body: {
-        model: (chiefModelCombo && chiefModelCombo.getValue()) || 'fable',
-        worker_cap: parseInt(els.chiefWorkerCap.value, 10),
-      },
-    });
-    els.chiefSettingsDialog.close();
-    toast('Chief settings saved', 'good', { icon: 'circle-check' });
-  } catch (exc) {
-    apiFailToast('Chief settings save failed', exc);
-  }
-}
-
 function wireChief() {
   if (!els.boardChiefStatus) return;
-  chiefModelCombo = wireModelCombo(els.chiefModelSelect);
-  if (chiefModelCombo) {
-    chiefModelCombo.setOptions([
-      { value: 'sonnet', label: 'Sonnet' },
-      { value: 'opus', label: 'Opus' },
-      { value: 'fable', label: 'Fable' },
-    ]);
-    chiefModelCombo.setValue('fable');
-  }
   const afterEnsure = async function () {
     await fetchBoard().catch(function () {});
     renderChiefStatus();
@@ -405,13 +361,10 @@ function wireChief() {
       useTimer: true, onDone: afterEnsure, confirmMessage: CHIEF_RESTART_CONFIRM,
     });
   });
-  els.boardChiefSettings.addEventListener('click', openChiefSettings);
-  els.chiefSettingsForm.addEventListener('submit', function (e) {
-    e.preventDefault();
-    saveChiefSettings();
-  });
-  els.chiefSettingsCancel.addEventListener('click', function () {
-    els.chiefSettingsDialog.close();
+  // The chief's settings live in Settings › Chief (#1435): model, worker
+  // cap and auto-compact on one sheet.
+  els.boardChiefSettings.addEventListener('click', function () {
+    openSettingsAt('chiefSheet');
   });
 }
 

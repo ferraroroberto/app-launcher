@@ -498,6 +498,7 @@ pytest_targets = [
     "tests/e2e/test_touch_targets.py",
     "tests/e2e/test_session_row_glance.py",
     "tests/e2e/test_usage_meter.py",
+    "tests/e2e/test_settings_sheets.py",
 ]
 
 # The Life OS tab: skills list, conversations and the doc browser (life-os.js)
@@ -532,6 +533,7 @@ pytest_targets = [
     "tests/e2e/test_icon_sizes.py",
     "tests/e2e/test_vendored_empty_and_select.py",
     "tests/e2e/test_touch_targets.py",
+    "tests/e2e/test_settings_sheets.py",
 ]
 
 # [design] wide_views -- tabs whose content is two-dimensional (the Board's lanes) may

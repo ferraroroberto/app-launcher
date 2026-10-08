@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import src.boot_autostart as boot_autostart_mod
+from src.webapp_config import update_webapp_config
 
 
 @pytest.fixture(autouse=True)
@@ -384,6 +385,25 @@ class TestPatchConfig:
         resp = client.post("/api/config", json={"usage_shows": junk})
         assert resp.status_code == 400
         assert app.state.webapp_config.usage_shows == "both"
+
+    def test_config_reports_chief_model_and_worker_cap_read_only(self, webapp_client):
+        """Settings › Chief's row (#1435) reads the chief's model and worker
+        cap from GET /api/config, so showing them needs no passkey. Writes
+        stay on PUT /api/board/chief/settings: POST /api/config ignores them."""
+        client, app, _ = webapp_client
+        body = client.get("/api/config").json()
+        assert body["chief_model"] == app.state.webapp_config.chief_model
+        assert body["chief_worker_cap"] == app.state.webapp_config.chief_worker_cap
+        assert (body["chief_worker_cap_min"], body["chief_worker_cap_max"]) == (1, 10)
+
+        # What a PUT /api/board/chief/settings stores (that route is
+        # passkey-gated, covered in test_chief_ensure.py).
+        app.state.webapp_config = update_webapp_config(chief_model="opus", chief_worker_cap=5)
+        body = client.get("/api/config").json()
+        assert (body["chief_model"], body["chief_worker_cap"]) == ("opus", 5)
+
+        client.post("/api/config", json={"chief_model": "sonnet", "chief_worker_cap": 2})
+        assert (app.state.webapp_config.chief_model, app.state.webapp_config.chief_worker_cap) == ("opus", 5)
 
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is

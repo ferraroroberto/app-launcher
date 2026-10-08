@@ -21,7 +21,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e._geometry import assert_min_target
-from tests.e2e.conftest import flush_requests, stable_read, wait_until
+from tests.e2e.conftest import flush_requests, open_settings_sheet, stable_read, wait_until
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_overlay_standalone_scrollable import (
     _PATCH_MATCH_MEDIA,
@@ -1933,7 +1933,7 @@ def test_channel_card_explains_itself_without_profiles(
     authed_page: Page, base_url: str
 ) -> None:
     """No profile file: the card stays and says where to set it up (#1369),
-    and its button lands on the Settings card, opened."""
+    and its button lands on the Telegram sheet, opened (#1435)."""
     _mock_skills(authed_page)
     _mock_channels(
         authed_page,
@@ -1951,7 +1951,7 @@ def test_channel_card_explains_itself_without_profiles(
     expect(authed_page.locator("#lifeOsChannelList li")).to_have_count(0)
     authed_page.locator("#lifeOsChannelsEmptyAction").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
-    expect(authed_page.locator("#channelsPanel")).to_have_attribute("open", "")
+    expect(authed_page.locator("#channelsSheet")).to_be_visible()
     checks = authed_page.locator("#channelChecks .channel-check")
     expect(checks).to_have_count(4)
     # File missing is "Missing"; an unreadable plugin record is "Unknown", not
@@ -1965,7 +1965,7 @@ def test_channel_card_explains_itself_without_profiles(
 def test_settings_channels_card_reports_each_profile(
     authed_page: Page, base_url: str
 ) -> None:
-    """With profiles, the Settings card lists each one as Ready or Needs setup
+    """With profiles, the Settings sheet lists each one as Ready or Needs setup
     and names what is missing; Re-check re-reads the server (#1369)."""
     _mock_skills(authed_page)
     body = {
@@ -1988,9 +1988,10 @@ def test_settings_channels_card_reports_each_profile(
     )
     authed_page.locator("#paneLifeOS > .home-head .settings-open-btn").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
-    # Closed by default, like its sibling Settings cards.
-    expect(authed_page.locator("#channelsPanel")).not_to_have_attribute("open", "")
-    authed_page.locator("#channelsPanel > summary").click()
+    # Closed by default, like its sibling Settings sheets: not open until its
+    # row is tapped.
+    expect(authed_page.locator("#channelsSheet")).not_to_have_attribute("open", "")
+    open_settings_sheet(authed_page, "channelsSheet")
     rows = authed_page.locator("#channelProfileChecks .channel-check")
     expect(rows).to_have_count(2)
     expect(rows.nth(0).locator(".channel-check-chip")).to_have_text("Ready")
@@ -1999,7 +2000,7 @@ def test_settings_channels_card_reports_each_profile(
     expect(rows.nth(1)).to_contain_text("no .env")
     expect(authed_page.locator("#channelProfileProblems")).to_contain_text("house")
     # Names and booleans only: no drive path, no token line anywhere in the card.
-    expect(authed_page.locator("#channelsPanel")).not_to_contain_text(
+    expect(authed_page.locator("#channelsSheet")).not_to_contain_text(
         re.compile(r"[A-Za-z]:[\\/]|TELEGRAM_BOT_TOKEN=\d")
     )
     body["profiles"][1].update({"skill_found": True, "env_present": True})

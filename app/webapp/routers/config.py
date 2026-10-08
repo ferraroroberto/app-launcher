@@ -29,9 +29,11 @@ from src.model_catalog import (
 )
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MAX_CHIEF_WORKER_CAP,
     MAX_LARGE_UPLOAD_MAX_MB,
     MAX_TERMINAL_HISTORY_LINES,
     MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
+    MIN_CHIEF_WORKER_CAP,
     MIN_LARGE_UPLOAD_MAX_MB,
     MIN_TERMINAL_HISTORY_LINES,
     VALID_CODEX_PERMISSION_MODES,
@@ -89,6 +91,13 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
+        # The chief's model and worker cap (#1435), read-only here so the
+        # Settings > Chief row can show them without a passkey prompt. Writes
+        # stay on the passkey-gated PUT /api/board/chief/settings.
+        "chief_model": cfg.chief_model,
+        "chief_worker_cap": cfg.chief_worker_cap,
+        "chief_worker_cap_min": MIN_CHIEF_WORKER_CAP,
+        "chief_worker_cap_max": MAX_CHIEF_WORKER_CAP,
         "claude": claude_flags_payload(cfg),
         "codex": {
             "model": cfg.codex_model,

@@ -3,8 +3,9 @@
 The Projects card's <summary> gained a board-style model dropdown
 (``#codingModelCombo`` — a <button> trigger + a <span role="listbox"> of
 option buttons, NOT a native <select>, which WebKit's HTML parser cannot
-survive inside a <summary>) that stays in sync with the options-card
-model picker (``#claudeModel``). The provider-qualified combo also offers
+survive inside a <summary>) that stays in sync with the Claude model
+picker in Settings › Launch defaults › Claude Code (``#claudeModel``; the
+Code tab's Options card before #1435). The provider-qualified combo also offers
 the explicit Codex Luna/Terra/Sol/Astra choices.
 
 Hermetic: /api/config is route-mocked with a tiny stateful handler that
@@ -21,6 +22,8 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import close_settings_sheets, open_agent_sheet
 
 
 pytestmark = pytest.mark.smoke
@@ -208,18 +211,21 @@ def test_coding_model_combo_syncs_with_settings_control(
     expect(trigger).to_have_text("Claude · Fable")
     assert state["model"] == "fable"
 
-    # Settings → header: expand the options card and click Opus; the dropdown
-    # trigger follows and Opus is persisted.
-    authed_page.locator("#codingOptions").evaluate("el => { el.open = true; }")
+    # Settings → header: open the Claude sheet and click Opus; the dropdown
+    # trigger follows (it sits on the Code tab behind the modal sheet, so only
+    # its attribute and text are read) and Opus is persisted.
+    open_agent_sheet(authed_page, "claude")
     authed_page.locator("#claudeModel .model-combo-trigger").click()
     authed_page.locator("#claudeModelMenu [data-value='opus']").click()
     expect(combo).to_have_attribute("data-value", "claude:opus", timeout=5_000)
     expect(trigger).to_have_text("Claude · Opus")
     assert state["model"] == "opus"
+    close_settings_sheets(authed_page)
 
     # Every settings picker is populated through the same controller. Pointer
     # choices persist through the real POST→GET round-trip and dependent Codex
     # effort options repaint from that readback.
+    open_agent_sheet(authed_page, "codex")
     authed_page.locator("#codexModel .model-combo-trigger").click()
     expect(authed_page.locator("#codexModelMenu [data-value='gpt-6-astra']")).to_be_disabled()
     authed_page.locator("#codexModelMenu [data-value='gpt-5.6-sol']").click()
@@ -227,6 +233,7 @@ def test_coding_model_combo_syncs_with_settings_control(
         "data-value", "gpt-5.6-sol"
     )
     expect(authed_page.locator("#codexEffort")).to_have_value("high", timeout=5_000)
+    close_settings_sheets(authed_page)
 
     # A long menu is held to the viewport (dom-utils.js positionMenu caps its
     # height at the room beside the trigger). Whether 15 options (480px) need
@@ -235,6 +242,7 @@ def test_coding_model_combo_syncs_with_settings_control(
     # iPhone viewport all 480px fit, the menu was rightly left whole, and the
     # check read 480 > 480 (#1188). Pin the geometry instead: a viewport
     # shorter than the menu, the trigger at its roomiest spot (the top).
+    open_agent_sheet(authed_page, "pi")
     pi_trigger = authed_page.locator("#piModel .model-combo-trigger")
     viewport = authed_page.viewport_size
     authed_page.set_viewport_size({"width": viewport["width"], "height": 400})
@@ -242,20 +250,38 @@ def test_coding_model_combo_syncs_with_settings_control(
     pi_trigger.click()
     pi_menu = authed_page.locator("#piModelMenu")
     expect(pi_menu.locator("[role='option']")).to_have_count(15)
-    client, scroll, bottom, room = pi_menu.evaluate(
+    # The picker now lives in a modal Settings sheet (#1435), and the shared
+    # controller deliberately leaves a menu inside a native <dialog> in that
+    # dialog's top layer instead of portaling it to <body> (dom-utils.js
+    # open()). So the menu is not height-capped itself; the sheet is the
+    # scroll container. The original intent still holds in that shape: the
+    # sheet fits the short viewport, and the long menu stays reachable by
+    # scrolling it, with every option landing inside the viewport.
+    sheet = authed_page.locator("#agentSheet")
+    client, scroll, sheet_bottom, room = sheet.evaluate(
         "el => [el.clientHeight, el.scrollHeight, el.getBoundingClientRect().bottom,"
         " document.documentElement.clientHeight]"
     )
-    assert scroll > client, f"long model menu is not viewport constrained: {client}/{scroll}"
-    assert bottom <= room, f"model menu runs off the viewport: bottom {bottom} > {room}"
+    assert sheet_bottom <= room, f"settings sheet runs off the viewport: {sheet_bottom} > {room}"
+    assert scroll > client, f"sheet does not scroll to the long menu: {client}/{scroll}"
+    last_option = pi_menu.locator("[role='option']").last
+    last_option.scroll_into_view_if_needed()
+    top, bottom = last_option.evaluate(
+        "el => [el.getBoundingClientRect().top, el.getBoundingClientRect().bottom]"
+    )
+    assert 0 <= top and bottom <= room, (
+        f"last model option is unreachable in the viewport: {top}..{bottom} of {room}"
+    )
     expect(authed_page.locator("#piModelMenu [data-value='openai/astra']")).to_be_disabled()
     authed_page.locator("#piModelMenu [data-value='openai/sol']").click()
     expect(authed_page.locator("#piModel")).to_have_attribute("data-value", "openai/sol")
     expect(authed_page.locator("#piFlagsPreview")).to_have_text("pi --model openai/sol")
     authed_page.set_viewport_size(viewport)
+    close_settings_sheets(authed_page)
 
     # Keyboard traversal skips disabled Astra, selects exactly once, and
     # Escape restores focus and the collapsed ARIA state.
+    open_agent_sheet(authed_page, "codex")
     codex_trigger = authed_page.locator("#codexModel .model-combo-trigger")
     patch_count = len(state["patches"])
     codex_trigger.focus()
@@ -289,6 +315,7 @@ def test_coding_model_combo_syncs_with_settings_control(
     authed_page.locator("#codexFlagsPreview").dispatch_event("pointerdown")
     expect(codex_trigger).to_have_attribute("aria-expanded", "false")
     assert codex_trigger.evaluate("el => document.activeElement === el")
+    close_settings_sheets(authed_page)
 
     # A reload reads every stored value back without a programmatic onChange.
     persisted_patch_count = len(state["patches"])
@@ -339,21 +366,29 @@ def test_server_catalog_populates_shared_model_selectors(
         board.locator("[data-value='codex:gpt-6-astra']")
     ).to_be_enabled()
 
-    authed_page.locator("#codingOptions").evaluate("el => { el.open = true; }")
+    # The three agents' pickers share one sheet (#1435) but only the chosen
+    # agent's group is un-hidden, so each sheet is opened in turn and its own
+    # trigger measured while visible — a hidden element would compare as
+    # all-zero geometry. Collect one signature per agent per theme, then
+    # require them all to match.
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "value => document.documentElement.dataset.theme = value", theme
         )
-        signatures = authed_page.locator(
-            "#claudeModel .model-combo-trigger, #codexModel .model-combo-trigger, "
-            "#piModel .model-combo-trigger"
-        ).evaluate_all(
-            """nodes => nodes.map(node => {
-              const style = getComputedStyle(node);
-              return [style.backgroundColor, style.color, style.borderColor,
-                      style.borderRadius, style.height, style.fontSize].join('|');
-            })"""
-        )
+        signatures = []
+        for agent, picker in (("claude", "#claudeModel"), ("codex", "#codexModel"),
+                              ("pi", "#piModel")):
+            open_agent_sheet(authed_page, agent)
+            trigger_el = authed_page.locator(f"{picker} .model-combo-trigger")
+            expect(trigger_el).to_be_visible()
+            signatures.append(trigger_el.evaluate(
+                """node => {
+                  const style = getComputedStyle(node);
+                  return [style.backgroundColor, style.color, style.borderColor,
+                          style.borderRadius, style.height, style.fontSize].join('|');
+                }"""
+            ))
+            close_settings_sheets(authed_page)
         assert len(set(signatures)) == 1, f"{theme} settings picker style drift: {signatures}"
 
 

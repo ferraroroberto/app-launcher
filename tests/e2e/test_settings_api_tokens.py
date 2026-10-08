@@ -2,8 +2,9 @@
 
 Browser-side contract for the mint/list/revoke panel:
 
-  * The panel lives in the Settings pane; opening the tab lazily fetches
-    the token list and the job choices for the scope <select>.
+  * The panel lives in the API tokens sheet (#1435: Settings > Connections);
+    opening Settings lazily fetches the token list and the job choices for
+    the scope <select>.
   * Mint POSTs ``{label, jobs: [<selected job>]}`` and surfaces the
     response's raw token in the show-once box.
   * Revoke DELETEs by id and the list re-renders without the row.
@@ -24,6 +25,8 @@ from typing import Any, Dict
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
@@ -110,11 +113,8 @@ def _wire(page: Page, state: Dict[str, Any]) -> None:
 
 def _open_settings(page: Page, base_url: str) -> None:
     page.goto(base_url, wait_until="domcontentloaded")
-    page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    expect(page.locator("#paneSettings")).to_be_visible()
-    # The API-tokens card is a disclosure, closed by default (issue #719).
-    page.locator("#tokensPanel > summary").click()
-    expect(page.locator("#tokensPanel")).to_have_js_property("open", True)
+    # The API-tokens panel is a sheet, closed until its row is tapped.
+    open_settings_sheet(page, "tokensSheet")
 
 
 def test_mint_list_and_revoke_a_token(authed_page: Page, base_url: str) -> None:
@@ -125,7 +125,7 @@ def test_mint_list_and_revoke_a_token(authed_page: Page, base_url: str) -> None:
     _open_settings(authed_page, base_url)
 
     # -- was test_mint_shows_token_once_and_lists_it (initial state) --
-    expect(authed_page.locator("#tokensPanel")).to_be_visible()
+    expect(authed_page.locator("#tokensSheet")).to_be_visible()
     expect(authed_page.locator("#tokensEmpty")).to_be_visible()
     # The scope select filled from /api/jobs on first open.
     expect(authed_page.locator("#tokenJobSelect option")).to_have_count(1)

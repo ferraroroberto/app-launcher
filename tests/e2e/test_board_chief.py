@@ -163,11 +163,6 @@ def _mock_ensure(
     page.route(re.compile(r".*/api/board/chief/ensure$"), _capture)
 
 
-_CHIEF_SETTINGS = {
-    "settings": {"model": "fable", "worker_cap": 3},
-}
-
-
 def _open_board(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.wait_for_selector("#tabBoard", state="attached", timeout=5_000)
@@ -450,49 +445,94 @@ def test_chat_mode_offers_restart_when_chief_alive(
     expect(authed_page.locator("#toast")).to_contain_text(toast)
 
 
-def test_chief_settings_dialog_roundtrip(
+def test_chief_settings_sheet_roundtrip(
     authed_page: Page, base_url: str
 ) -> None:
-    """Gear → GET-populated fields; edit worker cap → Save PUTs the settings
-    body; × path (Cancel) just closes. #616 retired the daily-respawn
-    fields — model and worker cap are all that's left to round-trip."""
+    """Gear -> Settings > Chief sheet filled from GET /api/config; picking a
+    model PUTs ``{"model"}``; committing the worker cap (blur) PUTs
+    ``{"worker_cap"}``; an out-of-range cap sends nothing and says why.
+
+    The Board's chief settings dialog became Settings > Chief in #1435: no
+    Save button, each field saves on its own (#616 retired the daily-respawn
+    fields — model and worker cap are all that is left to round-trip). The
+    sheet reads the chief fields off GET /api/config now, so that read is
+    patched here (every other /api/config call passes through to the
+    disposable server) to keep the starting values deterministic."""
     _mock_board(authed_page, _board_payload(with_chief=True))
 
-    put: dict = {}
+    stored = {"model": "fable", "worker_cap": 3}
+    puts: list[dict] = []
+
+    def _config(route):
+        if route.request.method != "GET":
+            route.continue_()
+            return
+        resp = route.fetch()
+        body = resp.json()
+        body.update(
+            chief_model=stored["model"], chief_worker_cap=stored["worker_cap"],
+            chief_worker_cap_min=1, chief_worker_cap_max=10,
+        )
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body),
+        )
 
     def _settings(route):
         if route.request.method == "PUT":
-            put["body"] = route.request.post_data_json
+            patch = route.request.post_data_json
+            puts.append(patch)
+            stored.update(patch)
             route.fulfill(
                 status=200, content_type="application/json",
-                body=_json.dumps({"settings": put["body"]}),
+                body=_json.dumps({"settings": dict(stored)}),
             )
         else:
             route.fulfill(
                 status=200, content_type="application/json",
-                body=_json.dumps(_CHIEF_SETTINGS),
+                body=_json.dumps({"settings": dict(stored)}),
             )
 
+    authed_page.route(re.compile(r".*/api/config$"), _config)
     authed_page.route(re.compile(r".*/api/board/chief/settings$"), _settings)
 
     _open_board(authed_page, base_url)
     authed_page.locator("#boardChiefSettings").click()
 
-    dialog = authed_page.locator("#chiefSettingsDialog")
-    expect(dialog).to_be_visible()
+    expect(authed_page.locator("#paneSettings")).to_be_visible()
+    expect(authed_page.locator("#chiefSheet")).to_be_visible()
+    expect(authed_page.locator("#chiefSettingsDialog")).to_have_count(0)
     expect(authed_page.locator("#chiefModelSelect")).to_have_attribute(
         "data-value", "fable"
     )
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("3")
 
+    # Model: one PUT carrying only the model.
     authed_page.locator("#chiefModelSelect .model-combo-trigger").click()
     authed_page.locator("#chiefModelMenu [data-value='opus']").click()
-    authed_page.locator("#chiefWorkerCap").fill("5")
-    authed_page.locator('#chiefSettingsForm button[type="submit"]').click()
-    wait_until(authed_page, lambda: "body" in put, "the chief settings PUT")
+    wait_until(authed_page, lambda: puts == [{"model": "opus"}],
+               "the chief model PUT")
+    expect(authed_page.locator("#toast")).to_contain_text("Chief model: Opus.")
+    expect(authed_page.locator("#chiefModelSelect")).to_have_attribute(
+        "data-value", "opus"
+    )
 
-    assert put.get("body") == {"model": "opus", "worker_cap": 5}
-    expect(dialog).not_to_be_visible()
+    # Worker cap: saves when the field is committed, carrying only the cap.
+    cap = authed_page.locator("#chiefWorkerCap")
+    cap.fill("5")
+    cap.blur()
+    wait_until(authed_page, lambda: puts == [{"model": "opus"}, {"worker_cap": 5}],
+               "the worker cap PUT")
+    expect(authed_page.locator("#toast")).to_contain_text("Worker cap saved.")
+
+    # Out of range: nothing is sent, the toast and the field say why.
+    cap.fill("11")
+    cap.blur()
+    expect(authed_page.locator("#toast")).to_contain_text(
+        "Worker cap must be a whole number between 1 and 10."
+    )
+    expect(cap).to_have_attribute("aria-invalid", "true")
+    flush_requests(authed_page)
+    assert puts == [{"model": "opus"}, {"worker_cap": 5}], puts
 
 
 def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(

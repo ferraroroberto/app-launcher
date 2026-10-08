@@ -18,6 +18,11 @@ control (29px buttons) was left out of the first version on purpose, to keep
 that gap visible. It is now the vendored `range-tab` (#1133), whose `::before`
 expands every pill to 44px vertically without overlapping its neighbours, so
 the sweep covers it like everything else.
+
+Since #1435 every Settings card is a modal sheet, and a closed dialog renders
+nothing, so a sweep that only reads the pane would measure none of them (a
+silent coverage loss). The Settings case opens each sheet in turn - and each
+agent's sheet - and sweeps the controls it shows.
 """
 from __future__ import annotations
 
@@ -27,6 +32,11 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
+from tests.e2e.conftest import (
+    close_settings_sheets,
+    open_agent_sheet,
+    open_settings_sheet,
+)
 from tests.e2e.test_row_name_typography import _json_route, _mock
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -76,14 +86,25 @@ _SWEEP = """
 }
 """
 
-_TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane:not([hidden]) .settings-open-btn")
+_SETTINGS = ".pane:not([hidden]) .settings-open-btn"
+_TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", _SETTINGS)
+
+# Every Settings sheet, and the agents whose own sheet opens from Launch
+# defaults (#1435). A sheet's data-rendered control, where it has one, is
+# waited for before its sweep.
+_SHEETS = (
+    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
+    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
+    "terminalSheet",
+)
+_AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
+_SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}
 
 # A control a tab renders only once its data arrives, which the sweep waits
 # for rather than racing the boot fetch.
 _DATA_CONTROL = {
     "#tabJobs": "#jobsAgendaBody .empty-state-action",
     "#tabLifeOS": "#lifeOsRecapLaunch",
-    ".pane:not([hidden]) .settings-open-btn": "#webauthnDevices .icon-button",
 }
 
 
@@ -116,6 +137,22 @@ def _assert_cluster_does_not_overlap(page: Page, cluster: str) -> None:
     buttons = page.locator(f"{cluster} button:visible")
     assert buttons.count() >= 2, f"{cluster} renders fewer than two controls here"
     assert_no_overlap(buttons)
+
+
+def _assert_floor(page: Page, where: str) -> None:
+    """Sweep every rendered control and assert each meets the 44px floor."""
+    rects = page.evaluate(_SWEEP, _CONTROLS)
+    assert rects, f"{where}: no controls measured — wrong selector?"
+    # 43.99, not 44: a 36px control grown by 2x4 lands on 43.999… in WebKit's
+    # fractional layout, which is the floor met, not missed.
+    under = [
+        f"{r['what']} {r['w']:.1f}x{r['h']:.1f}"
+        for r in rects if r["w"] < 43.99 or r["h"] < 43.99
+    ]
+    assert not under, (
+        f"{where}: {len(under)} control(s) under the 44px effective floor "
+        "(#1124):\n  " + "\n  ".join(sorted(set(under)))
+    )
 
 
 @pytest.mark.parametrize("tab", _TABS)
@@ -156,18 +193,23 @@ def test_every_control_meets_the_44px_floor(
         expect(page.locator(_DATA_CONTROL[tab])).to_be_visible()
     page.wait_for_timeout(400)
 
-    rects = page.evaluate(_SWEEP, _CONTROLS)
-    assert rects, f"{tab}: no controls measured — wrong selector?"
-    # 43.99, not 44: a 36px control grown by 2x4 lands on 43.999… in WebKit's
-    # fractional layout, which is the floor met, not missed.
-    under = [
-        f"{r['what']} {r['w']:.1f}x{r['h']:.1f}"
-        for r in rects if r["w"] < 43.99 or r["h"] < 43.99
-    ]
-    assert not under, (
-        f"{tab}: {len(under)} control(s) under the 44px effective floor "
-        "(#1124):\n  " + "\n  ".join(sorted(set(under)))
-    )
+    _assert_floor(page, tab)
+
+    if tab == _SETTINGS:
+        # The sheets are closed dialogs above, so open each and sweep it.
+        for sheet_id in _SHEETS:
+            open_settings_sheet(page, sheet_id)
+            if sheet_id in _SHEET_DATA_CONTROL:
+                expect(page.locator(_SHEET_DATA_CONTROL[sheet_id])).to_be_visible()
+            page.wait_for_timeout(200)
+            _assert_floor(page, f"Settings > {sheet_id}")
+            close_settings_sheets(page)
+        for agent_id in _AGENTS:
+            open_agent_sheet(page, agent_id)
+            page.wait_for_timeout(200)
+            _assert_floor(page, f"Settings > Launch defaults > {agent_id}")
+            close_settings_sheets(page)
+
     # The card toolbars' toggles carry visible labels (#1176) and wrap: no
     # two expanded targets there may share pixels, on a line or across one.
     toolbar = page.locator(".pane:not([hidden]) .card-toolbar button:visible")

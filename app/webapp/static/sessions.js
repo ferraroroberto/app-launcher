@@ -44,7 +44,8 @@ import { hasTranscriptReader } from './session-transcript.js';
 // stopSession/sessionTitle/openSessionRename from this module, so this
 // mirrors the existing sessions.js<->terminal.js circular-import pattern
 // rather than introducing a new risk.
-import { openChiefSettings, runChiefAction } from './board-dispatch.js';
+import { runChiefAction } from './board-dispatch.js';
+import { openSettingsAt } from './tabs.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in
@@ -130,8 +131,9 @@ export function sessionTitle(s) {
 const sessionMenu = createRowMenu('session-menu');
 
 // The chief's kebab items beyond a session's own (#1434): Restart, the same
-// graceful stop-then-resume as the Board's Restart, and Chief settings, the
-// Board's dialog. Restart only while it runs; settings either way.
+// graceful stop-then-resume as the Board's Restart, and Chief settings,
+// which opens Settings › Chief (#1435). Restart only while it runs; settings
+// either way.
 function chiefMenuItems(kebab, alive) {
   return [
     {
@@ -148,7 +150,7 @@ function chiefMenuItems(kebab, alive) {
     {
       className: 'chief-settings-btn', glyph: 'sliders-horizontal',
       label: 'Chief settings', text: 'Chief settings',
-      onTap: openChiefSettings,
+      onTap: function () { openSettingsAt('chiefSheet'); },
     },
   ];
 }

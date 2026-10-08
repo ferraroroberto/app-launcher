@@ -15,8 +15,8 @@
  * label changed (issue #45). Jobs added by issue #47; Board by #300;
  * Settings by #383. */
 
-import { revealInCard } from './dom-utils.js';
 import { state } from './state.js';
+import { revealSettingsField } from './settings-sheets.js';
 import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
 let nav = null;
@@ -55,11 +55,13 @@ export function openSettings() {
   window.scrollTo(0, 0);
 }
 
-// Settings, opened at one field (#1238 J-09): an empty state whose fix is a
-// Settings folder ("No projects found", "No life-os skills") lands on it.
+// Settings, opened at one field or sheet (#1238 J-09, #1435): an empty
+// state whose fix is a Settings folder ("No projects found", "No life-os
+// skills") lands on it, inside the sheet that holds it; the Board's chief
+// gear opens the Chief sheet by its id.
 export function openSettingsAt(fieldId) {
   openSettings();
-  revealInCard(document.getElementById(fieldId));
+  revealSettingsField(document.getElementById(fieldId));
 }
 
 export function wireTabs() {

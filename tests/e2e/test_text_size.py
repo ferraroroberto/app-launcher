@@ -15,11 +15,19 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stable_read
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _TABS = ["#tabClaude", "#tabBoard", "#tabLifeOS", "#tabApps", "#tabJobs"]
+
+# Settings sheets (#1435) are dialogs outside the pane, so the clip scan
+# reads each while it is open; a light pass over all of them at Large/320px.
+_SHEETS = [
+    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
+    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
+    "terminalSheet",
+]
 
 # Records, on the first data-textsize stamp, how many stylesheets the parser
 # had already reached. The boot script sits above every <link>, so a no-flash
@@ -54,10 +62,11 @@ _RECORD_FIRST_STAMP = """
 # ellipsis by design, and a box with no height is a collapsed disclosure.
 # xterm keeps its own font size (#1134) and is skipped. Returns how many
 # clipping boxes were inspected and the offenders, named by tag, id, classes.
+# The scope defaults to the open pane; a Settings sheet passes its own selector.
 _CLIPPED_ROWS = """
-() => {
+(scope) => {
   const pane = document.querySelector(
-    'main.app > section.pane:not([hidden])') || document.body;
+    scope || 'main.app > section.pane:not([hidden])') || document.body;
   const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : '')
     + Array.from(el.classList).map((c) => '.' + c).join('');
   const clips = (el) => {
@@ -131,8 +140,8 @@ def _assert_large_at_320px_never_scrolls_or_clips(page: Page) -> None:
             " return el.scrollWidth > 0 ? el.scrollWidth - el.clientWidth : null; }"
         )
 
-    def clipped(where: str) -> int:
-        found = stable_read(lambda: page.evaluate(_CLIPPED_ROWS))
+    def clipped(where: str, scope: object = None) -> int:
+        found = stable_read(lambda: page.evaluate(_CLIPPED_ROWS, scope))
         assert not found["clipped"], (
             f"{where} at Large/320px cuts off rows: {found['clipped']}")
         return found["inspected"]
@@ -149,6 +158,36 @@ def _assert_large_at_320px_never_scrolls_or_clips(page: Page) -> None:
     spill = stable_read(overflow)
     assert spill <= 0, f"Settings at Large/320px scrolls sideways by {spill}px"
     inspected += clipped("Settings")
+
+    # Each sheet is a closed dialog until its row is tapped: open it, check
+    # the page and the sheet's own card for sideways spill and clipped rows.
+    # The card's sideways spill, and what reaches past its right edge.
+    def card_spill() -> object:
+        return page.evaluate(
+            """() => {
+              const c = document.querySelector('dialog.settings-sheet[open] .detail-card');
+              if (!c) return null;
+              const edge = c.getBoundingClientRect().right;
+              const past = Array.from(c.querySelectorAll('*'))
+                .filter((el) => el.getBoundingClientRect().right > edge + 0.5)
+                .map((el) => el.tagName.toLowerCase() + '.' + el.className);
+              return { spill: c.scrollWidth - c.clientWidth, past: past };
+            }"""
+        )
+
+    for sheet_id in _SHEETS:
+        open_settings_sheet(page, sheet_id)
+        sel = f"#{sheet_id}"
+        spill = stable_read(overflow)
+        assert spill <= 0, f"{sheet_id} at Large/320px scrolls the page sideways by {spill}px"
+        card = stable_read(card_spill)
+        # scrollWidth is an integer rounded up from fractional boxes, so a
+        # 1px spill with nothing past the edge is rounding, not overflow.
+        assert card is not None and card["spill"] <= 1 and not card["past"], (
+            f"{sheet_id} at Large/320px scrolls its card sideways by "
+            f"{card['spill']}px: {card['past']}")
+        inspected += clipped(sheet_id, sel)
+        close_settings_sheets(page)
     # The scan found real clipping boxes to check, so a pass means something.
     assert inspected > 0, "no clipping boxes found on any tab: the scan checked nothing"
 

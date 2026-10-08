@@ -37,6 +37,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
+from tests.e2e.conftest import close_settings_sheets, open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
@@ -120,8 +121,11 @@ def _open_projects(page: Page) -> None:
 
 
 def _open_surfaces(page: Page) -> None:
+    # The visibility switches and the Favorite agent picker moved from the
+    # Code tab's Options card into Settings › Launch defaults (#1435), so
+    # only Projects is opened here; a test that drives the picker opens that
+    # sheet itself and closes it before touching a row or the ⋯ anchor.
     _open_projects(page)
-    page.locator("#codingOptions").evaluate("el => { el.open = true; }")
 
 
 def _reset_visibility(page: Page, base_url: str) -> None:
@@ -309,7 +313,8 @@ def test_menu_is_not_hideable_and_a_stored_vscode_value_is_inert(
 def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1070 — the options card's Favorite agent picker owns the row button.
+    """#1070 — the Favorite agent picker (Settings › Launch defaults since
+    #1435) owns the row button.
 
     The favourite is chosen explicitly, never derived from usage: a button
     that relocates on its own is worse than one in the wrong place. Changing
@@ -329,6 +334,7 @@ def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_surfaces(authed_page)
 
+    open_settings_sheet(authed_page, "launchDefaultsSheet")
     picker = authed_page.locator("#codingFavoriteAgent")
     expect(picker).to_have_value("claude", timeout=5_000)
     # Generated from the registry, not hand-written per agent.
@@ -339,6 +345,10 @@ def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
 
     # Swap the favourite → the row launches Codex instead, no reload.
     picker.select_option("codex")
+    # An open modal sheet makes the rows and the ⋯ anchor inert: close it and
+    # return from Settings to the Coding tab before touching the row.
+    close_settings_sheets(authed_page)
+    authed_page.locator("#tabClaude").click()
     expect(
         authed_page.locator(
             '.coding-item[data-id="alpha"] .action-row-main[data-agent="codex"]'

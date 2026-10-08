@@ -114,6 +114,9 @@ export const state = {
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
   lifeOsChannels: { profiles: [], problems: [], setup: null },
+  // How many API tokens exist (#1435, Settings › API tokens' value); null
+  // until Settings first loads the list.
+  apiTokenCount: null,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   systemMapAvailable: false, // /api/system-map/status → show/hide the section
   systemMapObjectUrl: null,  // object URL of the loaded map blob (revoked on reload)
@@ -175,11 +178,8 @@ export const els = {
   boardChiefResume: document.getElementById('boardChiefResume'),
   boardChiefRestart: document.getElementById('boardChiefRestart'),
   boardChiefSettings: document.getElementById('boardChiefSettings'),
-  chiefSettingsDialog: document.getElementById('chiefSettingsDialog'),
-  chiefSettingsForm: document.getElementById('chiefSettingsForm'),
   chiefModelSelect: document.getElementById('chiefModelSelect'),
   chiefWorkerCap: document.getElementById('chiefWorkerCap'),
-  chiefSettingsCancel: document.getElementById('chiefSettingsCancel'),
   chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
   chiefAnswersClose: document.getElementById('chiefAnswersClose'),
   chiefAnswersList: document.getElementById('chiefAnswersList'),
@@ -399,7 +399,6 @@ export const els = {
   largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
   usageShows: document.getElementById('usageShows'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
-  saveSettings: document.getElementById('saveSettings'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),
   sessionsChannelSummary: document.getElementById('sessionsChannelSummary'),
@@ -410,7 +409,6 @@ export const els = {
   channelListClose: document.getElementById('channelListClose'),
   channelListDone: document.getElementById('channelListDone'),
   chiefAutoCompactThreshold: document.getElementById('chiefAutoCompactThreshold'),
-  saveChiefSettings: document.getElementById('saveChiefSettings'),
   listenersList: document.getElementById('listenersList'),
   listenersEmpty: document.getElementById('listenersEmpty'),
   runningAppsList: document.getElementById('runningAppsList'),
