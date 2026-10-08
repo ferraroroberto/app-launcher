@@ -22,6 +22,7 @@ import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
 import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
 import { wireTokens } from './tokens.js';
+import { wireSettingsSheets } from './settings-sheets.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { wireChatPane } from './session-transcript.js';
 import { wireQuoteCopy } from './quote-copy.js';
@@ -79,73 +80,8 @@ function wireSettings() {
   if (els.bootAutostartToggle) {
     els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);
   }
-  els.saveSettings.addEventListener('click', async function () {
-    const ignore = els.projectsIgnore.value
-      .split('\n')
-      .map(function (s) { return s.trim(); })
-      .filter(Boolean);
-    const patch = {
-      projects_dir: els.projectsDir.value.trim(),
-      projects_ignore: ignore,
-      apps_scan_root: els.appsScanRoot.value.trim(),
-      life_os_dir: els.lifeOsDir.value.trim(),
-      fleet_config_dir: els.fleetConfigDir.value.trim(),
-    };
-    if (els.terminalHistoryLines && els.terminalHistoryLines.value !== '') {
-      const lines = parseInt(els.terminalHistoryLines.value, 10);
-      if (Number.isFinite(lines)) patch.terminal_history_lines = lines;
-    }
-    if (els.largeUploadMaxMb && els.largeUploadMaxMb.value !== '') {
-      const mb = parseInt(els.largeUploadMaxMb.value, 10);
-      if (Number.isFinite(mb)) patch.large_upload_max_mb = mb;
-    }
-    const saved = await patchConfig(patch);
-    if (!saved) return; // patchConfig already fired the failure toast
-    await fetchApps();
-    await fetchSkills();
-    await fetchSystemMapStatus();
-    toast('Settings saved.', 'good');
-  });
-  wireChiefSettings();
-}
-
-// The Chief card (#1298). The percent is checked here first so a typo gets a
-// plain message rather than a server 400; the server enforces the same range.
-function chiefThresholdFromField() {
-  const field = els.chiefAutoCompactThreshold;
-  const min = Number(field.min) || 10;
-  const max = Number(field.max) || 90;
-  const value = Number(field.value);
-  if (!Number.isInteger(value) || value < min || value > max) {
-    toast('Auto-compact threshold must be a whole percent between ' + min + ' and ' + max + '.', 'error');
-    return null;
-  }
-  return value;
-}
-
-function wireChiefSettings() {
-  if (!els.chiefAutoCompactToggle) return;
-  // The switch saves at once, like every other Settings switch: off stores
-  // 0, on stores the percent in the field.
-  els.chiefAutoCompactToggle.addEventListener('click', async function () {
-    const on = els.chiefAutoCompactToggle.getAttribute('aria-checked') !== 'true';
-    const value = on ? chiefThresholdFromField() : 0;
-    if (value === null) return;
-    if (await patchConfig({ chief_auto_compact_threshold: value })) {
-      toast(on ? 'Chief auto-compact on at ' + value + '%.' : 'Chief auto-compact off.', 'good');
-    }
-  });
-  els.saveChiefSettings.addEventListener('click', async function () {
-    if (els.chiefAutoCompactToggle.getAttribute('aria-checked') !== 'true') {
-      toast('Auto-compact is off: turn it on to set a threshold.', '');
-      return;
-    }
-    const value = chiefThresholdFromField();
-    if (value === null) return;
-    if (await patchConfig({ chief_auto_compact_threshold: value })) {
-      toast('Chief settings saved.', 'good');
-    }
-  });
+  // Every other Settings field saves as it changes (#1435): settings-sheets.js.
+  wireSettingsSheets();
 }
 
 // Telegram channel sessions (#1384): the switch saves at once like every other

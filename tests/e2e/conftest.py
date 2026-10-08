@@ -921,6 +921,44 @@ def open_session_row(page: Page, row, mode: str | None = None) -> None:
         expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", mode)
 
 
+def open_settings(page: Page) -> None:
+    """Open Settings from the current tab's page-header gear (#1131)."""
+    page.locator(".pane:not([hidden]) .settings-open-btn").first.click()
+    expect(page.locator("#paneSettings")).to_be_visible()
+
+
+def open_settings_sheet(page: Page, sheet_id: str) -> None:
+    """Open Settings and tap the row that opens ``sheet_id`` (#1435).
+
+    ``sheet_id`` is a top-level sheet (``foldersSheet``, ``chiefSheet``,
+    ``launchDefaultsSheet`` …). For one agent's sheet use
+    ``open_agent_sheet``. Settings is opened first unless it already shows.
+    """
+    if not page.locator("#paneSettings").is_visible():
+        open_settings(page)
+    page.locator(f'#paneSettings [data-sheet="{sheet_id}"]').click()
+    expect(page.locator(f"#{sheet_id}")).to_be_visible()
+
+
+def open_agent_sheet(page: Page, agent_id: str) -> None:
+    """Open Settings › Launch defaults › ``agent_id`` (#1435)."""
+    open_settings_sheet(page, "launchDefaultsSheet")
+    page.locator(f'#launchDefaultsSheet [data-agent-sheet="{agent_id}"]').click()
+    expect(page.locator(f'#agentSheet [data-agent-group="{agent_id}"]')).to_be_visible()
+
+
+def close_settings_sheets(page: Page) -> None:
+    """Close whichever Settings sheet is open with its Done (#1435).
+
+    An open modal sheet makes the rest of the page inert, the nav included,
+    so a test that taps a tab or a row after a sheet must close it first.
+    """
+    sheet = page.locator("dialog.settings-sheet[open]")
+    if sheet.count():
+        sheet.locator(".detail-actions [data-sheet-close]").click()
+    expect(page.locator("dialog.settings-sheet[open]")).to_have_count(0)
+
+
 def session_menu_item(page: Page, name: str):
     """Open the overlay bar's ⋮ menu and return the item with ``aria-label``
     ``name`` (``Rename session`` / ``Copy session link`` /

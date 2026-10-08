@@ -8,6 +8,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_settings_sheet
+
 pytestmark = pytest.mark.smoke
 
 
@@ -80,9 +82,8 @@ def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None
     )
 
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    # The Settings card is a disclosure, closed by default (issue #719).
-    authed_page.locator("#settingsPanel > summary").click()
+    # "Scan for new apps" lives in the Folders sheet (#1435).
+    open_settings_sheet(authed_page, "foldersSheet")
     authed_page.locator("#rescanBtn").click()
 
     toggle = authed_page.locator("#scanResults .scan-row .toggle")
@@ -109,8 +110,8 @@ def test_on_switch_track_is_the_accent_fill_in_both_themes(
         ),
     )
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    authed_page.locator("#settingsPanel > summary").click()
+    # "Scan for new apps" lives in the Folders sheet (#1435).
+    open_settings_sheet(authed_page, "foldersSheet")
     authed_page.locator("#rescanBtn").click()
     toggle = authed_page.locator("#scanResults .scan-row .toggle")
     expect(toggle).to_have_attribute("aria-checked", "true")

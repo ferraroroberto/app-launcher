@@ -513,18 +513,131 @@ html, body {
    The vendored home-head owns the pair's layout (auto margin on the first,
    none on the second, 44px hit areas). */
 
-/* Settings → Text size (#1134): a label beside the vendored range-tab row. */
-.text-size-card {
+/* ---------- Settings: inset groups (#1435) ---------- */
+/* iOS-Settings-style groups under overline headers: each row is a lead
+   icon, a label, the current value in muted text and a chevron, and opens
+   a sheet. A row that holds its control inline (Text size, Start at log
+   on) drops the value and chevron. */
+.settings-overline {
+  margin: 4px 14px 6px;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card.settings-group { padding: 0; overflow: hidden; }
+.settings-row {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--font-body);
+  text-align: left;
 }
-.text-size-label {
+.settings-row + .settings-row { border-top: 1px solid var(--line-muted); }
+button.settings-row { cursor: pointer; }
+button.settings-row:active { background: var(--card-2); }
+.settings-row-icon {
   flex: none;
-  font-size: var(--font-label);
-  font-weight: 600;
+  width: var(--icon-title);
+  height: var(--icon-title);
+  color: var(--muted);
 }
+.settings-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-row-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.settings-row-chevron {
+  flex: none;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  color: var(--muted);
+}
+/* Text size (#1134): the label beside the vendored range-tab row. */
+.settings-row--inline .text-size-label { flex: none; }
 .text-size-card .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
+/* The note under This PC: it wraps, unlike a one-line group footer. */
+.settings-footnote { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
+/* Launch defaults' per-agent rows: the same rows, boxed inside the sheet. */
+.settings-group--nested {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.settings-group--nested .agent-icon { width: var(--icon-title); height: var(--icon-title); }
+
+/* A Settings sheet: the vendored modal shell at full height, a back button
+   before the title, and the Done footer pinned to the bottom however short
+   the body. */
+.settings-sheet {
+  width: min(480px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
+}
+.settings-sheet .detail-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.settings-sheet-body { flex: 1 0 auto; }
+.settings-sheet-head { justify-content: flex-start; gap: 4px; }
+/* A long title at Large text on a narrow phone wraps rather than clipping
+   ("Launch defaults" at 320px). */
+.settings-sheet-head h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* A sheet is narrower than a card on the pane, so its range-tab rows share
+   the width rather than each pill keeping its text width: four "Usage
+   shows" pills at Large text on a 320px phone ran 25px past the sheet. */
+.settings-sheet .range-tab { min-width: 0; padding-inline: 6px; }
+.settings-sheet-back {
+  --icon-btn-box: 34px;
+  margin-left: -8px;
+}
+.settings-sheet-back .icon { width: var(--icon-title); height: var(--icon-title); }
+/* showModal() focuses the title (autofocus, tabindex -1) rather than the
+   back button, which would otherwise open every sheet wearing a focus ring.
+   A heading is no control, so it draws none. */
+.settings-sheet-head h2:focus { outline: none; }
+/* The agent groups bring their own padding and dividers for a card; inside
+   a sheet's padding they sit flush, and the first one under the header
+   draws no divider of its own. */
+.settings-sheet .opt-group { padding: 6px 0 14px; }
+.settings-sheet-body > .opt-group:first-child,
+#agentSheet .opt-group { border-top: 0; }
+/* A field's inline error (#1435), under its help line. */
+.field-error {
+  margin: -6px 0 10px;
+  font-size: var(--font-body-sm);
+  color: var(--danger-text);
+}
+.field-error[hidden] { display: none; }
+.input-native[aria-invalid="true"] { border-color: var(--danger); }
 
 /* ---------- collapsible cards (vendored disclosure) ---------- */
 /* Structure and closed-box geometry come from _vendored/disclosure — the
@@ -553,10 +666,6 @@ html, body {
    disclosure's 14px inset (disclosure.bodyPadding). */
 .card.action-list > .collapse-body { padding-inline: 0; }
 .card.action-list > .collapse-body > :not(.action-rows) { margin-inline: 14px; }
-/* The Coding-options card keeps its .opt-group children as direct body
-   content (they bring their own padding + dividers); the [open] summary
-   hairline is the only divider under the header. */
-summary + .opt-group { border-top: 0; }
 /* Favorites filter: the star fills gold when the filter is active. */
 .fav-filter-btn.active .icon { fill: currentColor; }
 
@@ -1411,17 +1520,14 @@ summary + .opt-group { border-top: 0; }
 }
 
 /* ---------- settings ---------- */
-/* Settings is its own tab (issue #383) hosting three stacked disclosure
-   cards (issue #719 made them collapsible, closed by default, via the
-   vendored .card--collapsible + .collapse-summary contract) — .settings-card
-   only carries the app-specific body styling below, not the header box. */
+/* The fields inside Settings' sheets (#1435; disclosure cards before it). */
 /* API-tokens panel (issue #72) */
 .token-row { justify-content: space-between; }
 .token-meta { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 #tokenMintValue { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
 #tokenMintUrl { overflow-wrap: anywhere; }
 .settings-switch-row { margin: 4px 0 10px; }
-.settings-card .stacked {
+.settings-sheet .stacked {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1429,8 +1535,13 @@ summary + .opt-group { border-top: 0; }
 }
 /* One help line under a Settings field, saying why it matters (#1176). It
    hugs the field above rather than taking the label's full 10px margin. */
-.settings-card .field-help {
+.settings-sheet .field-help {
   margin: -6px 0 10px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.settings-footnote {
   font-size: var(--font-body-sm);
   color: var(--muted);
   line-height: 1.45;
@@ -1457,7 +1568,7 @@ summary + .opt-group { border-top: 0; }
    draws the quieter card hairline. */
 .select-native { border-color: var(--control-border); }
 .stacked .select-native,
-.settings-card .select-native,
+.settings-sheet .select-native,
 .opt-row .select-native,
 .job-param-row .select-native { height: var(--row-sm); }
 /* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
@@ -2901,7 +3012,6 @@ textarea.input-native { height: auto; }
 .chg-branch .icon { width: var(--icon-inline); height: var(--icon-inline); }
 
 /* ---------- webauthn / passkey settings ---------- */
-.webauthn-section h3 { margin: 0 0 6px; font-size: var(--font-label); }
 .webauthn-devices {
   list-style: none;
   margin: 8px 0;

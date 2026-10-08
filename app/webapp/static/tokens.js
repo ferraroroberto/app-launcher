@@ -11,6 +11,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { revealInCard } from './dom-utils.js';
+import { renderSettingsValues } from './settings-sheets.js';
 
 let loaded = false;
 
@@ -25,6 +26,8 @@ function scopeText(scope) {
 }
 
 function renderTokens(tokens) {
+  state.apiTokenCount = tokens.length;
+  renderSettingsValues();
   els.tokensList.innerHTML = '';
   els.tokensEmpty.hidden = tokens.length > 0;
   tokens.forEach(function (t) {
@@ -151,9 +154,10 @@ export function wireTokens() {
       revealInCard(els.tokenLabelInput);
     });
   }
-  // Load the token list when Settings opens (#1131: from any header's gear).
-  document.querySelectorAll('.settings-open-btn').forEach(function (btn) {
-    btn.addEventListener('click', ensureLoaded);
+  // Load the token list when Settings opens (#1131: from any header's gear,
+  // or an empty state landing on a field), so its row shows the count.
+  document.addEventListener('launcher:tab', function (e) {
+    if (e.detail && e.detail.tab === 'settings') ensureLoaded();
   });
   els.tokenMintBtn.addEventListener('click', mintToken);
   els.tokenCopyBtn.addEventListener('click', copyMinted);

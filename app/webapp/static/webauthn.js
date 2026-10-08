@@ -8,6 +8,7 @@
 import { els, state, TT_KEY, TT_EXP_KEY } from './state.js';
 import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
+import { renderSettingsValues } from './settings-sheets.js';
 
 // ----------------------------------------------------------- b64url helpers
 function b64urlToBuf(s) {
@@ -101,6 +102,7 @@ export async function fetchWebauthnStatus() {
   try {
     state.webauthn = await jsonApi('/api/webauthn/status');
     renderWebauthn();
+    renderSettingsValues();
   } catch (_) { /* best-effort */ }
 }
 

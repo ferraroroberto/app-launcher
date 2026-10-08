@@ -8,6 +8,10 @@ reads only fixed ``px`` sizes. This walks every tab with every card open and
 measures each rendered Lucide glyph. Brand marks (``.agent-icon``) are
 excluded; they are not ``.icon`` and follow their own sizing.
 
+Since #1435 every Settings card is a modal sheet, and a closed dialog renders
+nothing, so the Settings pass also opens each sheet (and each agent's sheet)
+and measures the glyphs it shows.
+
 The CSS-only dropdown carets are pinned too: they are Lucide chevron-down now
 (a masked pseudo-element) rather than a text triangle.
 """
@@ -16,11 +20,20 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e.conftest import close_settings_sheets, open_agent_sheet, open_settings_sheet
 from tests.e2e.test_row_name_typography import _mock
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _STEPS = (16, 18, 20, 24)
+
+_SETTINGS = ".pane:not([hidden]) .settings-open-btn"
+_SHEETS = (
+    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
+    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
+    "terminalSheet",
+)
+_AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 
 _OFF_SCALE = """
 (steps) => {
@@ -61,11 +74,22 @@ def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) 
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     strays: list[str] = []
-    for tab in ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", ".pane:not([hidden]) .settings-open-btn"):
+    for tab in ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", _SETTINGS):
         page.locator(tab).click()
         page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
         page.wait_for_timeout(400)
         strays += [f"{tab}: {s}" for s in page.evaluate(_OFF_SCALE, list(_STEPS))]
+        if tab != _SETTINGS:
+            continue
+        # The sheets are closed dialogs above: open each and measure it.
+        for sheet_id in _SHEETS:
+            open_settings_sheet(page, sheet_id)
+            strays += [f"{sheet_id}: {s}" for s in page.evaluate(_OFF_SCALE, list(_STEPS))]
+            close_settings_sheets(page)
+        for agent_id in _AGENTS:
+            open_agent_sheet(page, agent_id)
+            strays += [f"agentSheet/{agent_id}: {s}" for s in page.evaluate(_OFF_SCALE, list(_STEPS))]
+            close_settings_sheets(page)
     assert not strays, (
         "icons rendered off the 16/18/20/24px steps (#1127):\n  " + "\n  ".join(strays)
     )

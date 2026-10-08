@@ -1,5 +1,5 @@
-/* Coding options card: a collapsible panel (collapsed by default) with a
- * Claude Code subsection (model + effort + verbose/debug + flags preview),
+/* Launch defaults (Settings › Launch defaults, #1435; the Code tab's
+ * Options card until then): one sheet per agent — a Claude Code subsection (model + effort + verbose/debug + flags preview),
  * an Antigravity subsection (skip-permissions + sandbox toggles), a
  * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
  * Pi subsection (model picker + effort select + project-trust range-tab — Opus and
@@ -18,6 +18,7 @@ import { setBoardDispatchModelOptions } from './board-dispatch.js';
 import { setLifeOsModelOptions } from './life-os.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 import { setUsageShows } from './usage-meter.js';
+import { renderSettingsValues } from './settings-sheets.js';
 
 // Shared model-picker controllers, created once the DOM exists.
 let codingModelCombo = null;
@@ -91,11 +92,11 @@ export async function fetchConfig(shouldApply) {
   // the await, immediately before mutating shared state and repainting.
   if (shouldApply && !shouldApply()) return false;
   state.config = body;
-  els.projectsDir.value = body.projects_dir || '';
-  els.projectsIgnore.value = (body.projects_ignore || []).join('\n');
-  els.appsScanRoot.value = body.apps_scan_root || '';
-  if (els.lifeOsDir) els.lifeOsDir.value = body.life_os_dir || '';
-  if (els.fleetConfigDir) els.fleetConfigDir.value = body.fleet_config_dir || '';
+  setFieldValue(els.projectsDir, body.projects_dir || '');
+  setFieldValue(els.projectsIgnore, (body.projects_ignore || []).join('\n'));
+  setFieldValue(els.appsScanRoot, body.apps_scan_root || '');
+  setFieldValue(els.lifeOsDir, body.life_os_dir || '');
+  setFieldValue(els.fleetConfigDir, body.fleet_config_dir || '');
   if (els.terminalHistoryLines) {
     if (body.terminal_history_lines_min != null) {
       els.terminalHistoryLines.min = body.terminal_history_lines_min;
@@ -103,12 +104,12 @@ export async function fetchConfig(shouldApply) {
     if (body.terminal_history_lines_max != null) {
       els.terminalHistoryLines.max = body.terminal_history_lines_max;
     }
-    els.terminalHistoryLines.value = body.terminal_history_lines || '';
+    setFieldValue(els.terminalHistoryLines, body.terminal_history_lines || '');
   }
   if (els.largeUploadMaxMb) {
     if (body.large_upload_max_mb_min != null) els.largeUploadMaxMb.min = body.large_upload_max_mb_min;
     if (body.large_upload_max_mb_max != null) els.largeUploadMaxMb.max = body.large_upload_max_mb_max;
-    els.largeUploadMaxMb.value = body.large_upload_max_mb || '';
+    setFieldValue(els.largeUploadMaxMb, body.large_upload_max_mb || '');
   }
   if (els.bootAutostartToggle) {
     setSwitch(els.bootAutostartToggle, !!body.boot_autostart_enabled);
@@ -119,13 +120,21 @@ export async function fetchConfig(shouldApply) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);
   }
   renderClaudeOptions();
+  renderSettingsValues();
   return true;
+}
+
+// Settings fields save as they change (#1435), and every save re-reads the
+// config. Leave the field being typed in alone: the user has moved on to it,
+// and the stored value would overwrite what they typed so far.
+function setFieldValue(el, value) {
+  if (el && el !== document.activeElement) el.value = value;
 }
 
 // "Usage shows" (#1451): which providers the usage meter draws. Saves at once;
 // the meter repaints from the server's value, so another device's change
 // shows here too.
-const _USAGE_SHOWS_LABELS = { claude: 'Claude', codex: 'Codex', both: 'Both', none: 'None' };
+export const USAGE_SHOWS_LABELS = { claude: 'Claude', codex: 'Codex', both: 'Both', none: 'None' };
 
 function renderUsageShows(body) {
   const current = body.usage_shows || 'both';
@@ -134,14 +143,14 @@ function renderUsageShows(body) {
       els.usageShows,
       body.usage_shows_available || ['claude', 'codex', 'both', 'none'],
       current,
-      function (v) { return _USAGE_SHOWS_LABELS[v] || v; },
+      function (v) { return USAGE_SHOWS_LABELS[v] || v; },
       function (v) { patchConfig({ usage_shows: v }); }
     );
   }
   setUsageShows(current);
 }
 
-// The Chief card (#1298): 0 is off, shown as the switch off and the percent
+// Settings › Chief's auto-compact (#1298): 0 is off, shown as the switch off and the percent
 // field disabled at the default, since 0 keeps no earlier percent.
 const _DEFAULT_CHIEF_AUTO_COMPACT = 30;
 
@@ -152,7 +161,7 @@ function renderChiefAutoCompact(body) {
   if (body.chief_auto_compact_threshold_min != null) field.min = body.chief_auto_compact_threshold_min;
   if (body.chief_auto_compact_threshold_max != null) field.max = body.chief_auto_compact_threshold_max;
   setSwitch(els.chiefAutoCompactToggle, value > 0);
-  field.value = String(value > 0 ? value : _DEFAULT_CHIEF_AUTO_COMPACT);
+  setFieldValue(field, String(value > 0 ? value : _DEFAULT_CHIEF_AUTO_COMPACT));
   field.disabled = value === 0;
 }
 

@@ -1,14 +1,16 @@
-"""Regression pin for #1125 — the Settings card's button tiers and dividers.
+"""Regression pin for #1125 — the Settings button tiers and dividers.
 
 Save was the smallest control on the card it commands: 67x33px, set in
 `button-ghost accent-btn`, a hybrid of two of design.md's four tiers ("a
-tinted fill is a tint, never a ghost"). It is the view's one main action, so
-it takes `button-primary` — 48px, solid accent, full width. `#tokenMintBtn`,
+tinted fill is a tint, never a ghost"). It was the view's one main action, so
+it took `button-primary` — 48px, solid accent, full width. `#tokenMintBtn`,
 the other user of the hybrid, takes `button-tint`, and the rule is deleted,
 so no third tier can grow back.
 
-The same card ended two of its sections with a bare `<hr>`, the browser's own
-divider rather than the app's hairline.
+#1435 removed Save (fields save as they change) and turned every Settings
+card into a sheet; each sheet's one main action is now its footer Done, so
+the primary-tier pin follows it there. The pane and the sheets ended sections
+with a bare `<hr>`, the browser's own divider rather than the app's hairline.
 
 Contrast is measured from the rendered pixels rather than assumed. Light
 clears AA. **Dark does not, and cannot here**: the fleet spec sets dark
@@ -22,7 +24,15 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import close_settings_sheets, open_settings, open_settings_sheet
+
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+
+_SHEETS = [
+    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
+    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
+    "terminalSheet",
+]
 
 # WCAG relative luminance / contrast, computed on the composited colours.
 _CONTRAST = """
@@ -30,6 +40,7 @@ _CONTRAST = """
   const el = document.querySelector(sel);
   if (!el) return null;
   const cs = getComputedStyle(el);
+  const pcs = getComputedStyle(el.parentElement);
   const parse = (v) => v.match(/[\\d.]+/g).slice(0, 3).map(Number);
   const lum = (rgb) => {
     const [r, g, b] = rgb.map((c) => {
@@ -46,7 +57,11 @@ _CONTRAST = """
     ratio: Math.round(ratio * 100) / 100,
     height: Math.round(r.height),
     width: Math.round(r.width),
-    rowWidth: Math.round(el.parentElement.getBoundingClientRect().width),
+    // The row's content box: the sheet footer pads its button in from the
+    // edge, and "spans the row" means filling what the padding leaves.
+    rowWidth: Math.round(
+      el.parentElement.clientWidth - parseFloat(pcs.paddingLeft) - parseFloat(pcs.paddingRight)
+    ),
     background: cs.backgroundColor,
     weight: cs.fontWeight,
   };
@@ -58,40 +73,52 @@ def _open_settings(page: Page, base_url: str, theme: str) -> None:
     page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-    page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    page.locator("#settingsPanel").evaluate("el => { el.open = true; }")
-    expect(page.locator("#saveSettings")).to_be_visible()
+    open_settings(page)
 
 
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_save_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) -> None:
-    """Save's tier and contrast per theme, plus (merged in #1215, all
-    read-only) the class-level and divider checks that used to open the same
-    pane in a test of their own. Those two are theme- and viewport-agnostic —
+def test_done_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) -> None:
+    """Each sheet's Done tier and contrast per theme, plus (merged in #1215,
+    all read-only) the class-level and divider checks that used to open the
+    same pane in a test of their own. Those are theme- and viewport-agnostic —
     class names, a node count, and a ``border-top-style`` from a top-level
     ``.settings-section`` rule no media query touches — so running them in
     both themes at 390px keeps every assertion as strong."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _open_settings(authed_page, base_url, theme)
 
-    m = authed_page.evaluate(_CONTRAST, "#saveSettings")
-    assert m is not None, "Save button not rendered"
-    assert m["height"] >= 48, f"Save is {m['height']}px tall; the primary tier is 48px"
-    assert m["width"] >= m["rowWidth"] - 1, (
-        f"Save is {m['width']}px in a {m['rowWidth']}px row — the view's main "
-        "action spans the row"
-    )
-    # A solid accent fill, not a ghost's transparent one or a soft tint.
-    assert m["background"] not in ("rgba(0, 0, 0, 0)", "transparent"), m
-    assert int(m["weight"]) >= 700, m
-    # Light clears AA; dark is the shared token's 3.75 (see the module note).
-    floor = 4.5 if theme == "light" else 3.7
-    assert m["ratio"] >= floor, (
-        f"Save label contrast is {m['ratio']}:1 in {theme}, under {floor}:1"
-    )
+    for sheet_id in _SHEETS:
+        open_settings_sheet(authed_page, sheet_id)
+        selector = f"#{sheet_id} .detail-actions .button-primary"
+        m = authed_page.evaluate(_CONTRAST, selector)
+        assert m is not None, f"{sheet_id}: Done button not rendered"
+        assert m["height"] >= 48, (
+            f"{sheet_id}: Done is {m['height']}px tall; the primary tier is 48px"
+        )
+        assert m["width"] >= m["rowWidth"] - 1, (
+            f"{sheet_id}: Done is {m['width']}px in a {m['rowWidth']}px row — "
+            "the sheet's main action spans the row"
+        )
+        # A solid accent fill, not a ghost's transparent one or a soft tint.
+        assert m["background"] not in ("rgba(0, 0, 0, 0)", "transparent"), (sheet_id, m)
+        assert int(m["weight"]) >= 700, (sheet_id, m)
+        # Light clears AA; dark is the shared token's 3.75 (see the module note).
+        floor = 4.5 if theme == "light" else 3.7
+        assert m["ratio"] >= floor, (
+            f"{sheet_id}: Done label contrast is {m['ratio']}:1 in {theme}, "
+            f"under {floor}:1"
+        )
+        expect(authed_page.locator(selector)).to_have_class("button-primary detail-save-btn")
+        if sheet_id == "passkeysSheet":
+            # The passkeys sheet's status line is the one section that still
+            # divides on a hairline (.webauthn-section is the sheet's first
+            # block, so it has no top divider of its own any more).
+            expect(authed_page.locator("#statusReadout")).to_have_css(
+                "border-top-style", "solid"
+            )
+        close_settings_sheets(authed_page)
 
     # -- was test_the_ghost_accent_hybrid_is_gone --
-    expect(authed_page.locator("#saveSettings")).to_have_class("button-primary")
     expect(authed_page.locator("#tokenMintBtn")).to_have_class("button-tint")
     assert authed_page.evaluate(
         "() => document.querySelectorAll('.button-ghost.accent-btn').length"
@@ -99,7 +126,5 @@ def test_save_is_the_primary_tier(authed_page: Page, base_url: str, theme: str) 
 
     # -- was test_settings_sections_divide_on_a_hairline --
     assert authed_page.evaluate(
-        "() => document.querySelectorAll('#paneSettings hr').length"
-    ) == 0, "a bare <hr> is back in the Settings pane"
-    for selector in ("#paneSettings .webauthn-section", "#statusReadout"):
-        expect(authed_page.locator(selector)).to_have_css("border-top-style", "solid")
+        "() => document.querySelectorAll('#paneSettings hr, dialog.settings-sheet hr').length"
+    ) == 0, "a bare <hr> is back in Settings"

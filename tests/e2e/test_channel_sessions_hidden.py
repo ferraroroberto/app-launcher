@@ -29,7 +29,13 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import flush_requests, stable_eval, wait_until
+from tests.e2e.conftest import (
+    close_settings_sheets,
+    flush_requests,
+    open_settings_sheet,
+    stable_eval,
+    wait_until,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -267,16 +273,17 @@ def test_switching_the_setting_off_restores_rows_cards_and_stop(
     _open_coding(authed_page, base_url)
     expect(authed_page.locator("#sessionsList li.session-item")).to_have_count(1)
 
-    authed_page.locator(".settings-open-btn").first.click()
+    open_settings_sheet(authed_page, "channelsSheet")
     toggle = authed_page.locator("#hideChannelSessionsToggle")
-    toggle.evaluate("el => { el.closest('details').open = true; }")
     expect(toggle).to_have_attribute("aria-checked", "true")
     toggle.click()
     wait_until(authed_page, lambda: {"hide_channel_sessions": False} in knobs["posts"],
                "the setting's POST")
     expect(toggle).to_have_attribute("aria-checked", "false")
 
-    # Back on the Coding tab: today's behaviour — every row, tags, no summary.
+    # An open sheet makes the nav inert: close it, then back on the Coding
+    # tab: today's behaviour — every row, tags, no summary.
+    close_settings_sheets(authed_page)
     authed_page.locator("#tabClaude").click()
     expect(authed_page.locator("#sessionsList li.session-item")).to_have_count(3)
     expect(authed_page.locator("#sessionsList .session-channel-tag")).to_have_count(2)

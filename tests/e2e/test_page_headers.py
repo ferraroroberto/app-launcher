@@ -22,7 +22,8 @@ apps; behavior unchanged, covered by test_settings_tab).
 
 Item 2: the launch-time Detached/Resume toggles moved onto the launcher
 surface (the Projects card's summary), and the per-agent options card
-dropped to the very bottom of the tab.
+dropped to the very bottom of the tab (then, in #1435, left the tab for
+Settings › Launch defaults).
 
 Runs in both projections — layout is CSS-driven and the iPhone projection
 confirms the phone surface.
@@ -85,17 +86,19 @@ def _assert_home_head_is_first_card_with_stats_and_toggle(page: Page) -> None:
     )
 
 
-def _assert_options_card_is_last_and_toggles_live_on_projects_card(
+def _assert_options_card_is_gone_and_toggles_live_on_projects_card(
     page: Page,
 ) -> None:
-    """#496 item 2. Formerly
+    """#496 item 2, retargeted by #1435. Formerly
     ``test_home_head.py::test_options_card_is_last_and_toggles_live_on_projects_card``."""
-    # The options card is the LAST card on the Coding tab (#496 item 2).
+    # The Options card is gone from the Coding tab: its controls moved into
+    # Settings › Launch defaults (#1435), and the tab ends on the system map.
+    expect(page.locator("#codingOptions")).to_have_count(0)
     last_id = page.evaluate(
         "document.getElementById('paneClaude').lastElementChild.id"
     )
-    assert last_id == "codingOptions", (
-        f"options card must be the pane's last card, got {last_id!r}"
+    assert last_id == "systemMapCard", (
+        f"the Code tab must end on the system map card, got {last_id!r}"
     )
 
     # Detached + Resume live on the Projects card — the surface sessions are
@@ -138,7 +141,7 @@ def test_every_pane_opens_with_its_header_and_a_settings_gear(
 
     # The Coding tab is the default: pin its #496 anatomy before any tab moves.
     _assert_home_head_is_first_card_with_stats_and_toggle(page)
-    _assert_options_card_is_last_and_toggles_live_on_projects_card(page)
+    _assert_options_card_is_gone_and_toggles_live_on_projects_card(page)
 
     for tab, (pane, title) in _TABS.items():
         page.locator(tab).click()

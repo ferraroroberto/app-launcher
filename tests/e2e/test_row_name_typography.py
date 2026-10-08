@@ -185,4 +185,3 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
                            ("#boardColOther", "Other"),
                            ("#boardColDone", "Done today")):
         expect(authed_page.locator(f"{section} .collapse-title")).to_have_text(label)
-    expect(authed_page.locator("#codingOptions .collapse-title")).to_have_text("Options")

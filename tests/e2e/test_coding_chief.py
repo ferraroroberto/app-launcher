@@ -270,21 +270,33 @@ def test_coding_tab_hides_start_when_chief_alive(
 
 
 def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> None:
-    """Chief settings in the chief row's kebab opens the Board's existing
-    dialog (#1434, until step 3 moves it to Settings)."""
+    """Chief settings in the chief row's kebab opens Settings with the Chief
+    sheet open and filled from GET /api/config (#1435; it opened the Board's
+    own dialog before). That read is patched for a deterministic worker cap;
+    every other /api/config call passes through to the disposable server."""
     _mock_sessions(authed_page, [_WORKER_SESSION])
-    authed_page.route(
-        re.compile(r".*/api/board/chief/settings$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"settings": {"model": "fable", "worker_cap": 2}}),
-        ),
-    )
+
+    def _config(route):
+        if route.request.method != "GET":
+            route.continue_()
+            return
+        body = route.fetch().json()
+        body.update(
+            chief_model="fable", chief_worker_cap=2,
+            chief_worker_cap_min=1, chief_worker_cap_max=10,
+        )
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body),
+        )
+
+    authed_page.route(re.compile(r".*/api/config$"), _config)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     first = authed_page.locator("#sessionsList > li").first
     first.locator(".session-kebab").click()
     expect(first.locator(".chief-restart-btn")).to_have_count(0)  # stopped: nothing to restart
     first.locator(".chief-settings-btn").click()
-    expect(authed_page.locator("#chiefSettingsDialog")).to_be_visible()
+    expect(authed_page.locator("#paneSettings")).to_be_visible()
+    expect(authed_page.locator("#chiefSheet")).to_be_visible()
+    expect(authed_page.locator("#chiefSettingsDialog")).to_have_count(0)
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("2")

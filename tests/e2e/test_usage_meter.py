@@ -20,7 +20,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_eval
+from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stable_eval
 
 pytestmark = pytest.mark.smoke
 
@@ -399,7 +399,8 @@ def test_usage_shows_draws_only_the_chosen_providers(
 def test_usage_shows_setting_saves_and_repaints_the_card(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1451: the Settings control is the four-way pill row in General. It
+    """#1451: the Settings control is the four-way pill row in its own sheet
+    (#1435: Settings > Usage meter). It
     defaults to Both, a tap saves at once as one POST, and the Usage card
     repaints without a reload (None hides it, Both brings it back)."""
     authed_page.add_init_script(_QUOTA_SHIM)
@@ -409,8 +410,7 @@ def test_usage_shows_setting_saves_and_repaints_the_card(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
 
-    authed_page.locator("#settingsOpen").click()
-    authed_page.locator("#settingsPanel > summary").click()
+    open_settings_sheet(authed_page, "usageShowsSheet")
     tabs = authed_page.locator("#usageShows .range-tab")
     expect(tabs).to_have_text(["Claude", "Codex", "Both", "None"])
     expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Both")
@@ -425,6 +425,8 @@ def test_usage_shows_setting_saves_and_repaints_the_card(
     tabs.nth(0).click()
     expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Claude")
     expect(card).not_to_have_attribute("hidden", "")
+    # An open sheet makes the nav inert: close it before leaving Settings.
+    close_settings_sheets(authed_page)
     authed_page.locator("#tabClaude").click()
     expect(card).to_be_visible()
     expect(authed_page.locator("#codingUsage .um-codex")).to_have_count(0)

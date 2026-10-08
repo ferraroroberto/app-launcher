@@ -1,7 +1,8 @@
 """Regression pin for issue #666 (Coding per-agent visibility toggles),
 retargeted onto the ⋯ menu by #1070.
 
-The feature: the ⚙️ Coding options card carries a "Visible agents" list —
+The feature: Settings › Launch defaults (#1435; the Code tab's Options card
+before it) carries a "Visible agents" list —
 one vendored switch per registry agent plus the GitHub issues button —
 generated from /api/agents, never hand-written per agent. Toggling one off
 drops that entry immediately and persists as `coding_hidden_agents` in the
@@ -28,6 +29,8 @@ import json
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import close_settings_sheets, open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
@@ -72,9 +75,22 @@ def _install_routes(page: Page) -> None:
 
 
 def _open_surfaces(page: Page) -> None:
-    # Projects and the options card are both collapsed by default.
+    # The Projects card is collapsed by default. The visibility switches
+    # live in Settings › Launch defaults now (#1435): _open_visibility opens
+    # that sheet for the clicks and _back_to_coding closes it again, since an
+    # open modal sheet makes the rows and the ⋯ anchor inert.
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
-    page.locator("#codingOptions").evaluate("el => { el.open = true; }")
+
+
+def _open_visibility(page: Page) -> None:
+    open_settings_sheet(page, "launchDefaultsSheet")
+
+
+def _back_to_coding(page: Page) -> None:
+    """Close the sheet and return from the Settings pane to the Coding tab."""
+    close_settings_sheets(page)
+    page.locator("#tabClaude").click()
+    expect(page.locator(".coding-item")).to_be_visible()
 
 
 def _menu(page: Page):
@@ -137,10 +153,12 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(_github_btn(authed_page)).to_have_count(1)
 
     # Toggling off drops the row from the ⋯ menu with no reload.
+    _open_visibility(authed_page)
     codex_toggle.click()
     expect(_codex_btn(authed_page)).to_have_count(0)
     github_toggle.click()
     expect(_github_btn(authed_page)).to_have_count(0)
+    _back_to_coding(authed_page)
     # The favourite's launch button stays on the row — it is the row's one
     # launch affordance, so it is not the visibility list's to hide (#1070).
     expect(
@@ -163,10 +181,12 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(_github_btn(authed_page)).to_have_count(0)
 
     # Toggling back on restores both menu rows.
+    _open_visibility(authed_page)
     authed_page.locator('[data-visibility-toggle="codex"]').click()
     authed_page.locator('[data-visibility-toggle="github"]').click()
     expect(_codex_btn(authed_page)).to_have_count(1)
     expect(_github_btn(authed_page)).to_have_count(1)
+    close_settings_sheets(authed_page)
 
 
 def test_agent_visibility_switch_identity_survives_successful_save(
@@ -199,6 +219,7 @@ def test_agent_visibility_switch_identity_survives_successful_save(
         }"""
     )
 
+    _open_visibility(authed_page)
     codex_toggle.click()
     expect(codex_toggle).to_have_attribute("aria-checked", "false", timeout=5_000)
     # The save is real (unmocked) and round-trips through GET /api/config;
