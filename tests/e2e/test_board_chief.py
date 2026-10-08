@@ -1,17 +1,16 @@
 """Fleet chief e2e (issue #245).
 
-Browser-side coverage of the Board's chief chat bar and chief card: the
-bar's send is ensure-then-reply (the message rides the same input proxy as
-drawer replies; the free-text Add/Build/Yolo dispatch and its mode dropdown
-are gone, #1382),
-a mocked chief reply renders through the drawer's exchange surface, the
-chief card is visually distinct and confirm-protected against the one-tap
-stop every other card keeps, the manual Start affordance shows when no
-chief is alive (Restart when one is, #617), and the settings dialog
-round-trips GET → edit → PUT. The Chief's-plan card's answer sheet
-(#1295) renders the chief's questions and sends every answer as one message
-down that same input path. A hung upload in the sheet or a hung dictation in
-the chat bar is cancelled by a second tap on its busy button (#1413).
+Browser-side coverage of the chief on the Board: its session card in
+Claude's turn is visually distinct and confirm-protected against the one-tap
+stop every other card keeps, a mocked chief reply renders through the
+drawer's exchange surface, and a reply typed in that drawer rides the input
+proxy like any session's. The Board has no chief card or chat bar since
+#1436 (the free-text Add/Build/Yolo dispatch went in #1382): Start, Resume,
+Restart and Chief settings live on the Code tab's chief row
+(test_coding_chief.py). The settings sheet round-trips GET → edit → PUT. The
+Chief's-plan card's answer sheet (#1295) renders the chief's questions and
+sends every answer as one message down the ensure-then-input path; a hung
+upload in the sheet is cancelled by a second tap on its busy button (#1413).
 Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
@@ -32,7 +31,8 @@ from playwright.sync_api import Page, expect
 
 from src import chief_plan
 from tests.e2e.conftest import (
-    HeldUploads, flush_requests, stable_eval, stable_read, wait_until,
+    HeldUploads, flush_requests, open_settings_sheet, stable_eval, stable_read,
+    wait_until,
 )
 
 pytestmark = pytest.mark.smoke
@@ -196,7 +196,10 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     assert chief_li.locator(
         '.board-chief-crown use[href="#i-crown"]'
     ).count() == 1
-    worker_li = authed_page.locator("li.board-item:not(.board-item-chief)").first
+    # Scoped to Claude's turn: the chief's plan, whose rows are board items
+    # too, sits above it since #1436.
+    worker_li = authed_page.locator(
+        '.board-list[data-col="claude_turn"] li.board-item:not(.board-item-chief)').first
     expect(worker_li).to_be_visible()
     read = ("el => { const c = el.querySelector('button.board-card');"
             " const m = el.querySelector('.board-card-meta');"
@@ -242,17 +245,15 @@ def test_chief_recognized_by_name_when_label_missing(
     """Legacy-host fallback: a session-host that predates the label field
     reports no ``label`` on the chief's card — the client must still
     recognize it by launch name (mirror of the server's _find_chief),
-    keeping the crown and the chat status row truthful."""
+    keeping the crown truthful."""
     payload = _board_payload(with_chief=True)
     del payload["columns"]["claude_turn"][0]["label"]
     _mock_board(authed_page, payload)
 
     _open_board(authed_page, base_url)
-    expect(authed_page.locator("li.board-item-chief")).to_be_visible()
-    expect(authed_page.locator("#boardChiefStatus")).not_to_contain_text(
-        "not running"
-    )
-    expect(authed_page.locator("#boardChiefStart")).to_be_hidden()
+    chief = authed_page.locator("li.board-item-chief")
+    expect(chief).to_be_visible()
+    expect(chief.locator(".board-chief-crown")).to_have_count(1)
 
 
 def test_chief_stop_requires_confirm_other_cards_do_not(
@@ -311,140 +312,6 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
 
 
-@pytest.mark.parametrize("resumed, toast", [
-    pytest.param(True, "Chief resumed", id="resumable"),
-    pytest.param(False, "Chief spawned", id="nothing-resumable"),
-])
-def test_chat_mode_send_ensures_with_resume_and_toasts_outcome(
-    authed_page: Page, base_url: str, resumed: bool, toast: str
-) -> None:
-    """#651: the lazy first-send ensure used to spawn a blank chief with no
-    resume flag, silently discarding a resumable conversation exactly like
-    Restart did before #649/#650 — and the lazy send is in fact the most
-    likely path a user takes after a session-host restart, since typing
-    into chat mode reads as conversational and the Start/Resume status row
-    is easy to miss. The send must POST ensure with resume:true, and toast
-    'Chief resumed' when the response comes back resumed. When nothing is
-    resumable the send still degrades to a fresh spawn, but the toast must
-    say so — the 'Chief spawned' wording used to fire unconditionally
-    regardless of whether a resume actually happened."""
-    _mock_board(authed_page, _board_payload(with_chief=False))
-    ensured: dict = {}
-    _mock_ensure(authed_page, ensured, spawned=True, resumed=resumed)
-
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-chief/input$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
-        ),
-    )
-
-    _open_board(authed_page, base_url)
-
-    authed_page.locator("#boardDispatchGoal").fill("hey")
-    authed_page.locator("#boardDispatchSend").click()
-    wait_until(authed_page, lambda: ensured.get("method") == "POST",
-               "the chat send's ensure POST")
-
-    assert ensured.get("method") == "POST", "send never POSTed ensure"
-    assert ensured.get("body", {}).get("resume") is True
-    assert ensured["body"].get("fresh") is not True, (
-        "chat send must never force-kill a live chief"
-    )
-    # #1351: a send never asks to stop a live chief.
-    assert ensured["body"].get("restart") is not True
-    expect(authed_page.locator("#toast")).to_contain_text(toast)
-
-
-def test_chat_mode_offers_manual_start_when_chief_down(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock_board(authed_page, _board_payload(with_chief=False))
-    ensured: dict = {}
-    _mock_ensure(authed_page, ensured, spawned=True)
-
-    _open_board(authed_page, base_url)
-
-    row = authed_page.locator("#boardChiefStatus")
-    expect(row).to_be_visible()
-    expect(row).to_contain_text("not running")
-    start = authed_page.locator("#boardChiefStart")
-    expect(start).to_be_visible()
-    start.click()
-    wait_until(authed_page, lambda: ensured.get("method") == "POST",
-               "Start's ensure POST")
-    assert ensured.get("method") == "POST", "Start never POSTed ensure"
-
-
-def test_resume_button_sends_explicit_restart_intent(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1351: ``resume`` alone now keeps a live chief server-side, so the
-    Resume button carries ``restart`` to keep #633's stop-then-resume when a
-    chief came up after the button was drawn."""
-    _mock_board(authed_page, _board_payload(with_chief=False))
-    ensured: dict = {}
-    _mock_ensure(authed_page, ensured, spawned=True, resumed=True)
-
-    _open_board(authed_page, base_url)
-
-    resume = authed_page.locator("#boardChiefResume")
-    expect(resume).to_be_visible()
-    resume.click()
-    expect(authed_page.locator("#toast")).to_contain_text("Chief resumed")
-    assert ensured.get("body", {}).get("resume") is True
-    assert ensured["body"].get("restart") is True
-    assert ensured["body"].get("fresh") is not True
-
-
-@pytest.mark.parametrize("resumed, fallback_reason, toast", [
-    pytest.param(True, "", "Chief resumed", id="resumable"),
-    pytest.param(
-        False, "no resumable chief conversation found in the last 24h",
-        "No resumable conversation", id="nothing-resumable",
-    ),
-])
-def test_chat_mode_offers_restart_when_chief_alive(
-    authed_page: Page, base_url: str, resumed: bool, fallback_reason: str,
-    toast: str,
-) -> None:
-    """#617: Start and Restart are mutually exclusive on actual state — a
-    live chief shows Restart (never Start, which would offer to spawn a
-    duplicate). #649: clicking it confirms, then POSTs ensure with
-    fresh:true AND resume:true — the graceful stop-then-resume-the-same-
-    conversation (never the session-host restart, and never a silent
-    discard of the conversation in favor of a blank fresh one). When the
-    ensure response comes back with resumed:false (no resumable conversation
-    within the 24h window), Restart still degrades to a fresh spawn rather
-    than failing — but the toast must say so explicitly, reusing the Resume
-    button's existing fallback wording, so the user is never left assuming a
-    resume happened when it didn't."""
-    _mock_board(authed_page, _board_payload(with_chief=True))
-    _mock_exchange(authed_page)
-    ensured: dict = {}
-    _mock_ensure(
-        authed_page, ensured, spawned=True, resumed=resumed,
-        resume_fallback_reason=fallback_reason,
-    )
-
-    _open_board(authed_page, base_url)
-
-    expect(authed_page.locator("#boardChiefStart")).to_be_hidden()
-    restart = authed_page.locator("#boardChiefRestart")
-    expect(restart).to_be_visible()
-
-    authed_page.once("dialog", lambda d: d.accept())
-    restart.click()
-    wait_until(authed_page, lambda: ensured.get("method") == "POST",
-               "Restart's ensure POST")
-
-    assert ensured.get("method") == "POST", "Restart never POSTed ensure"
-    assert ensured.get("body", {}).get("fresh") is True
-    assert ensured.get("body", {}).get("resume") is True
-    expect(authed_page.locator("#toast")).to_contain_text(toast)
-
-
 def test_chief_settings_sheet_roundtrip(
     authed_page: Page, base_url: str
 ) -> None:
@@ -495,8 +362,10 @@ def test_chief_settings_sheet_roundtrip(
     authed_page.route(re.compile(r".*/api/config$"), _config)
     authed_page.route(re.compile(r".*/api/board/chief/settings$"), _settings)
 
-    _open_board(authed_page, base_url)
-    authed_page.locator("#boardChiefSettings").click()
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # The Board has no chief card (#1436): Settings › Chief is reached from
+    # Settings itself, or the Code tab's chief row (test_coding_chief.py).
+    open_settings_sheet(authed_page, "chiefSheet")
 
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     expect(authed_page.locator("#chiefSheet")).to_be_visible()
@@ -545,10 +414,11 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     while the open drawer's own node (reply box text, focus) survives the
     re-render, which is the #301 typing guarantee the pause used to buy.
 
-    Merged in #1215 — was test_chat_mode_routes_message_to_chief_not_dispatch:
-    A send = ensure → input proxy ({data, submit:true}); the box clears
-    (conversation semantics).
-    Its checks run right after the send, before the payload swap below."""
+    The Board has no chief composer since #1436: the chief is reached through
+    its own session row in Claude's turn, whose drawer carries the shared
+    composer. A send there goes through the input proxy ({data, submit:true})
+    like any session's. Its checks run right after the send, before the
+    payload swap below."""
     board = {"body": _json.dumps(_board_payload(with_chief=True))}
     authed_page.route(
         re.compile(r".*/api/board(?:\?.*)?$"),
@@ -558,8 +428,6 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     )
     _mock_board_side_routes(authed_page)
     _mock_exchange(authed_page)
-    ensured: dict = {}
-    _mock_ensure(authed_page, ensured)
 
     captured_input: dict = {}
 
@@ -578,35 +446,33 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
 
     _open_board(authed_page, base_url)
 
-    # -- was test_chat_mode_routes_message_to_chief_not_dispatch --
-    # The bar only ever talks to the chief (#1382): no mode control, the
-    # status row is always there, and the Start-model combo stays live — it
-    # feeds the issue cards' one-tap Start now, not a dispatch.
+    # No chief card, composer or mode control on the Board (#1382, #1436);
+    # the "Start with" combo stays live — it feeds the Backlog rows' one-tap
+    # Start, not a dispatch.
     expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
+    expect(authed_page.locator("#boardChiefCard, #boardDispatchGoal")).to_have_count(0)
     expect(authed_page.locator("#boardDispatchModel .model-combo-trigger")).to_be_enabled()
-    expect(authed_page.locator("#boardChiefStatus")).to_be_visible()
 
-    # (The message text is that test's, so its input-body assertion stands
-    # verbatim; this test never asserted on its own send text.)
-    authed_page.locator("#boardDispatchGoal").fill("what's open in app-launcher?")
-    authed_page.locator("#boardDispatchSend").click()
+    # Open the chief's drawer from its row in Claude's turn and send.
+    authed_page.locator("li.board-item-chief > button.board-card").click()
+    drawer = authed_page.locator("li.board-item-chief .board-drawer")
+    expect(drawer).to_be_visible()
+    expect(drawer.locator(".board-exchange")).to_contain_text("6 open issues")
+    reply = drawer.locator(".board-drawer-composer .composer-input")
+    reply.fill("what's open in app-launcher?")
+    drawer.locator(".board-drawer-composer .composer-send").click()
     wait_until(authed_page, lambda: captured_input.get("body") is not None,
-               "the chat message's input POST")
+               "the chief message's input POST")
     flush_requests(authed_page)
-
-    assert ensured.get("method") == "POST", "send never ensured the chief"
     assert captured_input.get("body") == {
         "data": "what's open in app-launcher?", "submit": True,
     }
-    expect(authed_page.locator("#boardDispatchGoal")).to_have_value("")
-
-    # The chief's drawer opened so the reply has somewhere to land.
-    expect(authed_page.locator(".board-drawer")).to_be_visible()
 
     # -- #958: the poll keeps landing while the chief drawer stays open --
-    drawer = authed_page.locator("li.board-item-chief .board-drawer")
+    # A send closes the drawer (sendFromDrawer, #461); reopen it to type on.
+    expect(drawer).to_be_hidden()
+    authed_page.locator("li.board-item-chief > button.board-card").click()
     expect(drawer).to_be_visible()
-    reply = drawer.locator(".board-drawer-composer .composer-input")
     reply.fill("half-typed follow-up")
     # Tag the live node: a drawer rebuilt by the poll loses the tag even
     # when it re-opens looking identical.
@@ -1206,68 +1072,6 @@ _RECORDER_MOCK = """
 
 
 @pytest.mark.iphone
-def test_chat_bar_busy_mic_tap_cancels_the_transcription(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1413: the chief chat bar's mic is its own dictation mount, and the
-    single-shot path (no streamed session) hangs the same way. A tap while it
-    transcribes cancels; a tap while recording still stops; the next take on
-    the same page lands its transcript in the goal box."""
-    authed_page.add_init_script(_RECORDER_MOCK)
-
-    def _status_voice_on(route):
-        resp = route.fetch()
-        body = resp.json()
-        body["voice_dictation"] = True
-        route.fulfill(response=resp, json=body)
-
-    authed_page.route(re.compile(r".*/api/status$"), _status_voice_on)
-    authed_page.route(
-        re.compile(r".*/api/transcribe/sessions$"),
-        lambda route: route.fulfill(status=503, body="nope"),
-    )
-    takes: list = []
-
-    def _transcribe(route):
-        takes.append(route)
-        if len(takes) > 1:
-            route.fulfill(
-                status=200, content_type="application/json",
-                body=_json.dumps({"transcript": "e2e dictated goal", "language": "en"}),
-            )
-
-    authed_page.route(re.compile(r".*/api/transcribe$"), _transcribe)
-    _mock_board(authed_page, _board_payload(with_chief=True))
-    _mock_exchange(authed_page)
-    _open_board(authed_page, base_url)
-
-    mic = authed_page.locator("#boardDispatchRecord")
-    goal = authed_page.locator("#boardDispatchGoal")
-    expect(mic).to_be_visible(timeout=15_000)
-    goal.fill("typed first")
-    mic.click()
-    expect(mic).to_have_class(re.compile(r"\brecording\b"))
-    mic.click()  # stop
-    wait_until(authed_page, lambda: len(takes) == 1, "the stop never reached /api/transcribe")
-    expect(mic).to_have_attribute("aria-busy", "true")
-    expect(mic).to_have_attribute("aria-label", "Cancel dictation")
-
-    mic.click()  # cancel
-
-    expect(authed_page.locator("#toast")).to_have_text("Dictation cancelled")
-    expect(mic).not_to_have_attribute("aria-busy", "true")
-    expect(mic).not_to_have_attribute("aria-label", "Cancel dictation")
-    expect(mic.locator('use[href="#i-mic"]')).to_have_count(1)
-    expect(goal).to_have_value("typed first")
-
-    mic.click()
-    expect(mic).to_have_class(re.compile(r"\brecording\b"))
-    mic.click()
-    expect(goal).to_have_value(re.compile(r"e2e dictated goal"))
-    assert len(takes) == 2
-
-
-@pytest.mark.iphone
 def test_answer_sheet_other_fields_dictate_into_the_draft(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
@@ -1296,8 +1100,10 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
     posts = _capture_chief_input(authed_page)
     _open_board(authed_page, base_url)
     # The sheet reads dictation availability when it opens: wait for the
-    # status that turns it on (the chat bar's mic shows with it).
-    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible(timeout=15_000)
+    # status that turns it on to have landed.
+    authed_page.wait_for_function(
+        "async () => (await import('/static/voice.js')).voiceDictationAvailable()",
+        timeout=15_000)
 
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
     dialog = authed_page.locator("#chiefAnswersDialog")

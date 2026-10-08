@@ -104,6 +104,9 @@ export const state = {
   // GitHub data inside it comes from the server-side gh cache and is only
   // refreshed on demand (the ↻ button / first activation), never per poll.
   board: null,
+  // When `board` last landed (Date.now()): the Board tab's nav badge counts
+  // from it while it is this fresh, else from the sessions poll (#1436).
+  boardFetchedAt: 0,
   // GET /api/board/chief-plan's last answer (#1279), fetched with `board`.
   chiefPlan: null,
   // Session id whose drawer is open (#301). The board poll keeps running;
@@ -164,20 +167,11 @@ export const els = {
   boardColYours: document.getElementById('boardColYours'),
   boardColOther: document.getElementById('boardColOther'),
   boardColDone: document.getElementById('boardColDone'),
-  boardDispatchGoal: document.getElementById('boardDispatchGoal'),
+  boardChiefPlan: document.getElementById('boardChiefPlan'),
   boardDispatchRepo: document.getElementById('boardDispatchRepo'),
   boardDispatchRepoBtn: document.getElementById('boardDispatchRepoBtn'),
   boardDispatchRepoList: document.getElementById('boardDispatchRepoList'),
   boardDispatchModel: document.getElementById('boardDispatchModel'),
-  boardDispatchRecord: document.getElementById('boardDispatchRecord'),
-  boardDispatchClear: document.getElementById('boardDispatchClear'),
-  boardDispatchSend: document.getElementById('boardDispatchSend'),
-  boardChiefStatus: document.getElementById('boardChiefStatus'),
-  boardChiefStatusText: document.getElementById('boardChiefStatusText'),
-  boardChiefStart: document.getElementById('boardChiefStart'),
-  boardChiefResume: document.getElementById('boardChiefResume'),
-  boardChiefRestart: document.getElementById('boardChiefRestart'),
-  boardChiefSettings: document.getElementById('boardChiefSettings'),
   chiefModelSelect: document.getElementById('chiefModelSelect'),
   chiefWorkerCap: document.getElementById('chiefWorkerCap'),
   chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
@@ -402,7 +396,6 @@ export const els = {
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),
   sessionsChannelSummary: document.getElementById('sessionsChannelSummary'),
-  boardChannelSummary: document.getElementById('boardChannelSummary'),
   channelListDialog: document.getElementById('channelListDialog'),
   channelListRows: document.getElementById('channelListRows'),
   channelListEmpty: document.getElementById('channelListEmpty'),

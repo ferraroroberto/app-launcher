@@ -6,8 +6,8 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
 
 | File | Role |
 | --- | --- |
-| `nav-tabs.js` | Behaviour. ESM module — `initNavTabs(opts)`. Discovers tabs/panes from the DOM, persists the active tab, keeps ARIA + roving `tabindex` in sync. |
-| `nav-tabs.css` | Visual contract. The desktop segmented control, the wide-layout left rail, the `@media (pointer: coarse)` floating pill and the modal-hide rule. References design tokens only. |
+| `nav-tabs.js` | Behaviour. ESM module — `initNavTabs(opts)`. Discovers tabs/panes from the DOM, persists the active tab, keeps ARIA + roving `tabindex` in sync, and returns `{ setTab, getTab, setBadge }`. |
+| `nav-tabs.css` | Visual contract. The desktop segmented control, the wide-layout left rail, the `@media (pointer: coarse)` floating pill, the optional count badge and the modal-hide rule. References design tokens only. |
 | `nav-tabs.html` | Markup skeleton to copy and adapt (3 example tabs). |
 
 ## How to vendor
@@ -62,6 +62,24 @@ Each `.tab` carries `data-tab` (its name) and `aria-controls` (the id of the pan
 
 Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class="tab-label">` — and the icon is visible on **both** surfaces: beside the label in the desktop segmented control, above it in the mobile pill. Give the SVG a `24 24` viewBox and `<path>`s with no `fill`/`stroke` attributes of their own; `nav-tabs.css` paints them (`fill: none; stroke: currentColor`) so they inherit the active/inactive tab colour. Desktop sizes the icon at `1.05em` of the label's font-size; the pill uses `--bottom-tabs-icon`. Every icon size is scoped as `.tabs .tab-icon`, so an app's own single-class icon utility (a `.icon { width: 1em }` you also put on the glyph) can't resize it, whatever order the stylesheets load in (#303). Below 520px on a fine pointer (a squeezed desktop window) the tab stacks the icon over its label, the pill's shape at the `--font-caption` size, since an icon beside a 7–8 letter label no longer fits five tabs there. The nav never goes icon-only (`design.md` navigation contract, fleet-config#966); the label ellipsizes only as a last resort (#278).
 
+## Count badge (optional)
+
+A small count on a tab says "something over there needs you" from every tab, so no page header has to repeat it (app-launcher's Board tab carries the number of sessions waiting on the user). It is opt-in: `initNavTabs` returns `setBadge(tab, count, noun?)` next to `setTab` / `getTab`, and a nav that never calls it renders exactly as before, with none of the badge elements in the DOM.
+
+```js
+const nav = initNavTabs({ storageKey: 'my-app.tab' });
+nav.setBadge('board', 2, 'waiting');   // badge "2"; the tab's name reads "Board, 2 waiting"
+nav.setBadge('board', 12, 'waiting');  // badge "9+"; the name still says "12 waiting"
+nav.setBadge('board', 0);              // removes it (null, undefined and non-numbers do too)
+```
+
+- `tab` is the tab's `data-tab`. An unknown tab is ignored, so a poll loop can call it on every refresh. Calling it again with a new count only updates the text.
+- `count` 1 to 9 shows the digit, 10 or more shows `9+`. The accessible name keeps the real number.
+- `noun` is optional: what the count counts. It is spoken, not painted: `", 2 waiting"` is appended to the label, so a screen reader announces the tab once, with its count (the painted digit is `aria-hidden`). Without a noun the name reads `Board, 2`.
+- The badge sits on the icon's top-right corner in the phone pill, the inline desktop tabs and the wide left rail. The first badge on a tab wraps its icon in a `<span class="tab-icon-wrap">`, the box the badge is positioned against; removing the last one unwraps it again. The active tab's tint cannot hide it: the fill is opaque.
+- Style (`design.md`): `rounded.pill`, 12px semibold tabular numerals, 16px minimum height, `attention` fill with `card` text. The size is in px so it does not reflow with the Large text size. It is never animated. Contrast is 4.87:1 in light and 6.85:1 in dark, asserted in `tests/e2e/test_vendored_nav.py`; if your `--attention` / `--card` values differ, re-measure.
+- Needs the `--attention` token (below). It is read only while a badge is shown.
+
 ## Wide layout: left rail
 
 At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-config#968) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281, lifted from app-launcher#1166).
@@ -76,6 +94,7 @@ At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-c
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active-tab fill, desktop and mobile (fleet-config#963) |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | active-tab border (mobile) |
 | `--accent-text` | `#0550ae` (dark `#58a6ff`) | active-tab text/icon (text on the `accent-soft` tint, fleet-config#963) |
+| `--attention` | `#9a6700` (dark `#d29922`) | count-badge fill; `--card` is its text — only read when `setBadge` shows a badge |
 | `--muted` | `#656d76` | inactive-tab text |
 | `--line` | `#d1d9e0` | bar border, active-tab border (mobile) |
 | `--space-xs` | `4px` | bar padding / gap (desktop) |

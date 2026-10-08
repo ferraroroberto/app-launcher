@@ -1,14 +1,16 @@
-/* Board tab (issues #300 / #301 / #302 / #164 / #399 / #608): the fleet
- * kanban.
+/* Board tab (issues #300 / #301 / #302 / #164 / #399 / #608, reshaped by
+ * #1436): the fleet kanban.
  *
- * Five computed columns from GET /api/board, each single-purpose — Backlog
- * (open issues), Claude's turn (sessions working/unknown/idle/idle-finished/
- * tool-pending), Your turn (stalled/awaiting-decision/awaiting-input
- * sessions only — #608's split of the old undifferentiated needs-you,
- * sharpened by #813's tool-pending carve-out), Other (open PRs +
- * failed/unconfirmed/stuck jobs), Done (closed issues today). Each column is a
- * collapsible section card like every other tab's (#1198) — stacked on the
- * phone, side by side on the desktop grid — with its count in the summary.
+ * Five computed columns from GET /api/board, each single-purpose, drawn as
+ * lanes in this order (#1436): Backlog (open issues), the chief's plan over
+ * Claude's turn (sessions working/unknown/idle/idle-finished/tool-pending),
+ * Your turn (stalled/awaiting-decision/awaiting-input sessions only — #608's
+ * split of the old undifferentiated needs-you, sharpened by #813's
+ * tool-pending carve-out), PRs and jobs (open PRs + failed/unconfirmed/stuck
+ * jobs), Done today (closed issues today). Each lane
+ * is a collapsible section card like every other tab's (#1198) — stacked on
+ * the phone, side by side on the desktop grid — with its count in the
+ * summary, or a folded lane's exception ("1 failing").
  *
  * Cost discipline: fetchBoard() self-gates on the Board tab being visible
  * (pattern: fetchJobs / fetchRunningApps); the server's gh cache is only
@@ -16,25 +18,26 @@
  * than GH_STALE_MS, or on a poll that finds it never fetched (a webapp
  * restart empties it, #910) — never on a poll of an already-fetched cache.
  *
- * Act-from-the-card loop (#301): tapping a live session card opens an
+ * Act-from-the-card loop (#301): tapping a live session row opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
  * is transcript text), the shared composer (#984) and Rename · Stop · Chat ·
  * Terminal;
- * backlog cards of repos present in the projects folder carry ▶ Start /
- * ⚡ YOLO one-tap `/issue-*` launches; `?board=<sid>` deep-links onto a
+ * backlog rows of repos present in the projects folder carry one ▶ Start
+ * verb, with YOLO in the row's kebab (#1436); `?board=<sid>` deep-links onto a
  * card with its drawer open. The poll keeps running while a drawer is open
  * (#958 — the chief chat holds one open for hours), and renderBoard() keeps
  * the open drawer's own node across the re-render, so it can never wipe a
- * reply being typed. Issue/PR/done cards open GitHub, job cards (Other
- * column) jump to the Jobs tab.
+ * reply being typed. Issue/PR/done rows open GitHub, job rows (PRs and
+ * jobs) jump to the Jobs tab.
  *
  * Split off a single-file module (issue #691, `/codebase-audit`), the way
- * `jobs.js` and `terminal.js` already were: the dispatch bar above the
- * columns — the repo/project combo that doubles as the card filter (#337),
- * the chat bar and the whole fleet-chief lifecycle plus its settings
- * dialog (#245/#547) — lives in `board-dispatch.js`. This
- * module keeps card rendering, the drill-down drawer, one-tap issue-start
- * and the column sections, and calls into that one for the bar.
+ * `jobs.js` and `terminal.js` already were: the lane toolbar's project
+ * filter (#337), the Backlog's "Start with" model combo and the fleet chief's
+ * lifecycle live in `board-dispatch.js`. This module keeps card rendering,
+ * the drill-down drawer, one-tap issue-start and the lanes, and calls into
+ * that one for the rest. The Board has no chief card (#1436 decision log):
+ * the chief lives in its row under Code › Sessions, and here only as its
+ * session row in Claude's turn.
  */
 
 import { els, state } from './state.js';
@@ -56,12 +59,14 @@ import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
-import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
+import { isHiddenChannel } from './channel-sessions.js';
 import {
   CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, fmtDuration,
-  isChannelSession, revealInCard,
+  isChannelSession,
 } from './dom-utils.js';
 import { chip, sessionRowBody } from './glance.js';
+import { renderBoardBadge, renderHeadStatus } from './home-head.js';
+import { createRowMenu } from './row-menu.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -76,18 +81,21 @@ import {
 
 // `gh` marks where a column's cards come from (#910): 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
-// zero; 'part' (Other) mixes open PRs with job cards, whose count stays real.
-// `live` columns are built from the session-host list, so an unreachable
-// session-host makes them unknown too (#915).
+// zero; 'part' (PRs and jobs) mixes open PRs with job cards, whose count
+// stays real. `live` columns are built from the session-host list, so an
+// unreachable session-host makes them unknown too (#915). Lane order (#1436):
+// Backlog, (the chief's plan,) Claude's turn, Your turn, PRs and jobs, Done
+// today. Each empty-state glyph is the lane's own icon.
 const COLUMNS = [
   // Each empty lane says why, and its empty state carries the one control
   // that fills it (#1176, as a button since #1238 J-09): Refresh for the
-  // GitHub lanes, Start work (the dispatch bar) for the session lanes.
+  // GitHub lanes, Start work (the Code tab, where sessions start) for the
+  // session lanes.
   { key: 'backlog', section: 'boardColBacklog', empty: 'No open issues on GitHub.', glyph: 'git-branch', gh: 'all' },
   { key: 'claude_turn', section: 'boardColClaude', empty: 'No sessions on Claude’s side.', glyph: 'hourglass', live: true },
-  { key: 'your_turn', section: 'boardColYours', empty: 'Nothing needs you right now.', glyph: 'circle-check', live: true },
+  { key: 'your_turn', section: 'boardColYours', empty: 'Nothing needs you right now.', glyph: 'bell', live: true },
   { key: 'other', section: 'boardColOther', empty: 'No open PRs or stuck jobs.', glyph: 'git-pull-request', gh: 'part' },
-  { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'square-check', gh: 'all' },
+  { key: 'done', section: 'boardColDone', empty: 'Nothing closed today yet.', glyph: 'circle-check', gh: 'all' },
 ];
 
 const GH_STALE_MS = 2 * 60 * 1000;
@@ -150,7 +158,11 @@ function cardTitleEl(cls, text) {
   return title;
 }
 
-function cardShell(iconName, metaText, titleText, cls) {
+// A PR, job or done row on the shared anatomy (#1436): the title, one muted
+// meta line, and a chip only for an exception (glance.js tone map), after the
+// meta text so it never ellipsizes away. No leading glyph and no left-edge
+// status border: the lane says what kind of row it is, the chip what is wrong.
+function cardShell(metaText, titleText, cls, chips) {
   const li = document.createElement('li');
   li.className = 'app-item board-item' + (cls ? ' ' + cls : '');
   const btn = document.createElement('button');
@@ -158,14 +170,12 @@ function cardShell(iconName, metaText, titleText, cls) {
   btn.className = 'launch-btn board-card';
   const meta = document.createElement('span');
   meta.className = 'board-card-meta';
-  if (iconName) {
-    const ic = document.createElement('span');
-    ic.className = 'board-card-meta-icon';
-    ic.innerHTML = icon(iconName);
-    meta.appendChild(ic);
-  }
+  const text = document.createElement('span');
+  text.className = 'board-card-meta-text';
   // Data (repo/project/session names) rides a text node — never innerHTML.
-  meta.appendChild(document.createTextNode(metaText));
+  text.textContent = metaText;
+  meta.appendChild(text);
+  (chips || []).forEach(function (c) { meta.appendChild(c); });
   btn.appendChild(cardTitleEl('board-card-title', titleText));
   btn.appendChild(meta);
   li.appendChild(btn);
@@ -530,21 +540,6 @@ function repoInProjects(repo) {
   });
 }
 
-// Git state for a backlog card's repo (#496 item 4), read from the SAME
-// client-side cache the Coding tiles use (state.gitStatus, keyed by the
-// scanner's project id — resolved here via the repo-name → project match
-// repoInProjects uses). Null until the boot git fetch lands, or when the
-// repo isn't in the projects folder — the card just renders unannotated.
-function repoGitStatus(repo) {
-  if (!repo || !state.gitStatus) return null;
-  const app = (state.apps || []).find(function (a) {
-    return a.kind === 'claude-code' &&
-      String(a.name).toLowerCase() === String(repo).toLowerCase();
-  });
-  const gs = app && state.gitStatus[app.id];
-  return (gs && gs.is_git) ? gs : null;
-}
-
 async function startIssue(card, mode, btn) {
   btn.disabled = true;
   try {
@@ -579,13 +574,27 @@ async function startIssue(card, mode, btn) {
   }
 }
 
-// Backlog issue tiles (#337 follow-up, restyled #339): a flat separator
-// row — no card background/border, just a bottom-border divider between
-// rows (GitHub-issue-list style) — with the title first (two lines at most,
-// #1198) and repo/# under it, and icon-only ▶/⚡ actions vertically centered
-// against the whole row. Doesn't use cardShell() (that's the bordered-box layout the other
-// card kinds keep); the <li> itself is the flex row so the text stack and the
-// action icons sit side by side without nesting a <button> inside a <button>.
+// The Backlog rows' kebab menus (#1436), one shared row-menu: the 5 s poll
+// rebuilds every row, and attach() reopens the open one on its rebuilt row.
+const issueMenu = createRowMenu('session-menu');
+
+async function copyLink(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied', 'good', { icon: 'copy' });
+  } catch (exc) {
+    apiFailToast('Could not copy the link', exc);
+  }
+}
+
+// A Backlog row (#1436, on the shared anatomy): the title (two lines at most,
+// #1198), one meta line "repo #N" with an accent "in progress" chip while a
+// lane holds the issue, then one trailing tint verb, ▶ Start, and a kebab
+// holding YOLO (start and ship), Open on GitHub and Copy link (decision 3 of
+// #1432: YOLO takes two taps now). Git state is no longer drawn here; it lives
+// on Code › Projects. A tap on the row opens the issue on GitHub. The <li> is
+// the flex row, so the text button and the rail sit side by side without
+// nesting a <button> in a <button>.
 function renderIssueCard(card) {
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-issue';
@@ -604,23 +613,13 @@ function renderIssueCard(card) {
   textCol.className = 'board-card-text';
   const meta = document.createElement('span');
   meta.className = 'board-card-meta-inline';
-  meta.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  if (claimUnverified) meta.textContent += ' · in progress (unverified)';
-  else if (isInProgress) meta.textContent += ' · in progress';
-  else if (claimStale) meta.textContent += ' · stale claim';
-  // Repo-state colour (#496 item 4): red = dirty working tree, yellow =
-  // parked off the default branch — "don't start this issue right now".
-  // Same precedence as the Coding tiles: red wins when both apply.
-  const gs = repoGitStatus(card.repo);
-  if (gs) {
-    if (gs.dirty) meta.classList.add('git-dirty');
-    else if (gs.branch && !gs.on_default_branch) meta.classList.add('git-off-main');
-    if (gs.branch && !gs.on_default_branch) {
-      meta.title = 'repo on ' + gs.branch + (gs.dirty ? ' · uncommitted changes' : '');
-    } else if (gs.dirty) {
-      meta.title = 'repo has uncommitted changes';
-    }
-  }
+  const metaText = document.createElement('span');
+  metaText.className = 'board-card-meta-text';
+  metaText.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
+  meta.appendChild(metaText);
+  if (claimUnverified) meta.appendChild(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
+  else if (isInProgress) meta.appendChild(chip('in progress', 'accent', 'board-claim-chip'));
+  else if (claimStale) meta.appendChild(chip('stale claim', 'neutral', 'board-claim-chip'));
   textCol.appendChild(cardTitleEl('board-card-title-compact', card.title || ''));
   textCol.appendChild(meta);
   btn.appendChild(textCol);
@@ -632,34 +631,60 @@ function renderIssueCard(card) {
   }
 
   // One-tap start (#301) — only for repos the Coding tab could launch in.
-  if (card.number && repoInProjects(card.repo)) {
-    const row = document.createElement('div');
-    row.className = 'board-issue-actions board-issue-actions-compact';
-    [['start', 'play', 'Start'], ['yolo', 'zap', 'YOLO']].forEach(function (pair) {
-      const actionBtn = document.createElement('button');
-      actionBtn.type = 'button';
-      actionBtn.className = 'board-issue-btn icon-only';
-      actionBtn.innerHTML = icon(pair[1]);
-      actionBtn.disabled = isInProgress;
-      actionBtn.title = isInProgress
-        ? 'Issue #' + card.number + ' is already in progress' +
-          (claimUnverified ? ' (owner unverified)' : '')
-        : '/issue-' + pair[0] + ' ' + card.number + ' in ' + card.repo;
-      actionBtn.setAttribute('aria-label', pair[2] + ' issue #' + card.number);
-      actionBtn.addEventListener('click', function () {
-        startIssue(card, pair[0], actionBtn);
-      });
-      row.appendChild(actionBtn);
-    });
-    li.appendChild(row);
+  const startable = !!(card.number && repoInProjects(card.repo));
+  if (!startable && !card.url) return li;
+  const rail = document.createElement('div');
+  rail.className = 'row-actions session-actions board-issue-actions';
+  const inProgressTitle = 'Issue #' + card.number + ' is already in progress' +
+    (claimUnverified ? ' (owner unverified)' : '');
+  // While a lane holds the issue the verb steps aside: the chip says why.
+  if (startable && !isInProgress) {
+    const start = document.createElement('button');
+    start.type = 'button';
+    start.className = 'button-tint board-issue-btn board-issue-start';
+    start.innerHTML = icon('play');
+    start.title = '/issue-start ' + card.number + ' in ' + card.repo;
+    start.setAttribute('aria-label', 'Start issue #' + card.number);
+    start.addEventListener('click', function () { startIssue(card, 'start', start); });
+    rail.appendChild(start);
   }
+  const kebab = document.createElement('button');
+  kebab.type = 'button';
+  kebab.className = 'icon-button session-kebab board-issue-kebab';
+  kebab.innerHTML = icon('ellipsis-vertical');
+  kebab.title = 'Issue #' + card.number + ' actions';
+  kebab.setAttribute('aria-label', kebab.title);
+  rail.appendChild(kebab);
+  rail.appendChild(issueMenu.attach(card.repo + '#' + card.number, kebab, [
+    {
+      className: 'board-issue-yolo', glyph: 'zap',
+      label: 'YOLO issue #' + card.number + ' (start and ship)', text: 'YOLO (start and ship)',
+      hidden: !startable,
+      disabled: isInProgress,
+      title: inProgressTitle,
+      onTap: function () { startIssue(card, 'yolo', kebab); },
+    },
+    {
+      className: 'board-issue-open', glyph: 'globe',
+      label: 'Open issue #' + card.number + ' on GitHub', text: 'Open on GitHub',
+      hidden: !card.url,
+      onTap: function () { window.open(card.url, '_blank', 'noopener'); },
+    },
+    {
+      className: 'board-issue-copy', glyph: 'copy',
+      label: 'Copy the link to issue #' + card.number, text: 'Copy link',
+      hidden: !card.url,
+      onTap: function () { copyLink(card.url); },
+    },
+  ]));
+  li.appendChild(rail);
   return li;
 }
 
 function renderPrCard(card) {
   const draft = card.is_draft ? ' · draft' : '';
-  const shell = cardShell('git-pull-request', ' ' + [card.repo, 'PR #' + card.number].join(' ') + draft,
-    card.title || '', '');
+  const shell = cardShell([card.repo, 'PR #' + card.number].join(' ') + draft,
+    card.title || '', 'board-item-pr');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
       window.open(card.url, '_blank', 'noopener');
@@ -668,24 +693,30 @@ function renderPrCard(card) {
   return shell.li;
 }
 
-const JOB_CARD_ICONS = {
-  // `unconfirmed` (#916): the run may well have delivered, but the
-  // scheduled-run adapter could not establish that. It still wants a look, so
-  // it keeps its card — with the attention glyph and accent, never the red ✗
-  // that says the run is known to have failed.
-  // `unreadable` (#915): the same shape one step earlier — the run history
-  // itself could not be read, so whether the job needs attention is unknown.
-  // It must not fall through to the red ✗ either.
-  stuck: 'triangle-alert',
-  unconfirmed: 'circle-help',
-  unreadable: 'triangle-alert',
+// A job row's chip by run state, on the tone map: a failed run is danger;
+// stuck, `unconfirmed` (#916: the run may well have delivered, but the
+// scheduled-run adapter could not establish that) and `unreadable` (#915: the
+// run history itself could not be read) want a look, so attention — never the
+// danger that says a run is known to have failed.
+const JOB_CHIPS = {
+  failed: ['failed', 'danger'],
+  stuck: ['stuck', 'attention'],
+  unconfirmed: ['not confirmed', 'attention'],
+  unreadable: ['unreadable', 'attention'],
 };
 
+// A job in PRs and jobs that counts as failing (#1436): the header's
+// "N failing" and the folded lane's meta.
+function jobFailing(card) {
+  return card.kind === 'job' && (card.state === 'failed' || card.state === 'stuck');
+}
+
 function renderJobCard(card) {
-  const iconName = JOB_CARD_ICONS[card.state] || 'x';
-  const label = card.state === 'unconfirmed' ? 'not confirmed' : card.state;
-  const top = ' job · ' + label + (card.age_seconds != null ? ' · ' + fmtDuration(card.age_seconds) : '');
-  const shell = cardShell(iconName, top, card.job_name || card.job_id || 'job', 'is-' + card.state);
+  const c = JOB_CHIPS[card.state] || [String(card.state || 'failed'), 'danger'];
+  const meta = ['job', card.age_seconds != null ? fmtDuration(card.age_seconds) : '']
+    .filter(Boolean).join(' · ');
+  const shell = cardShell(meta, card.job_name || card.job_id || 'job',
+    'board-item-job is-' + card.state, [chip(c[0], c[1], 'board-job-chip')]);
   if (card.error) shell.btn.title = card.error;
   shell.btn.addEventListener('click', function () { setTab('jobs'); });
   return shell.li;
@@ -696,9 +727,8 @@ function renderDoneCard(card) {
   // already reflected here by the issue itself, so there's no PR/pairing
   // branch to render.
   const shell = cardShell(
-    'square-check',
-    ' ' + [card.repo, '#' + card.number].join(' ') + ' · ' + card.state,
-    card.title || '', '');
+    [card.repo, '#' + card.number].join(' ') + ' · ' + card.state,
+    card.title || '', 'board-item-done');
   if (card.url) {
     shell.btn.addEventListener('click', function () {
       window.open(card.url, '_blank', 'noopener');
@@ -787,14 +817,14 @@ function emptyText(col, body, ghLoaded, liveRead) {
   return failed ? 'GitHub fetch failed.' : 'Not loaded from GitHub yet.';
 }
 
-// The lane's one next action (#1238 J-09), reusing the Board's own flows:
-// a session lane starts work from the dispatch bar (or re-reads the
-// session-host it couldn't reach); a GitHub lane refreshes.
+// The lane's one next action (#1238 J-09), reusing the launcher's own flows:
+// a session lane starts work on the Code tab, where sessions launch (or
+// re-reads the session-host it couldn't reach); a GitHub lane refreshes.
 function emptyAction(col, liveRead) {
   if (col.live && !liveRead) {
     return { actionLabel: 'Retry', onAction: function () { fetchBoard().catch(function () {}); } };
   }
-  if (col.live) return { actionLabel: 'Start work', onAction: focusDispatch };
+  if (col.live) return { actionLabel: 'Start work', onAction: function () { setTab('claude'); } };
   return {
     actionLabel: 'Refresh',
     onAction: function () {
@@ -803,34 +833,74 @@ function emptyAction(col, liveRead) {
   };
 }
 
-function focusDispatch() {
-  revealInCard(els.boardDispatchGoal);
-}
-
+// One attention banner above the lanes (#1436), shown only while a source
+// is down or stale: every problem in one line behind one glyph.
 function renderStatusLine(body) {
   const parts = [];
   if (body.github && body.github.error) {
-    parts.push(icon('triangle-alert') + ' GitHub: ' + escapeHtml(body.github.error));
+    parts.push('GitHub: ' + body.github.error);
   } else if (body.github && !body.github.fetched_at) {
     parts.push('GitHub not fetched yet — tap Refresh');
   }
   if (!liveSessionsRead(body)) {
-    parts.push(icon('triangle-alert') + ' session-host unreachable — live sessions unknown');
+    parts.push('session-host unreachable — live sessions unknown');
   }
   if (body.sessions_state && !body.sessions_state.available) {
     parts.push('session state unavailable (hooks not writing yet)');
   } else if (body.sessions_state && body.sessions_state.stale) {
-    parts.push(icon('triangle-alert') + ' session state stale');
+    parts.push('session state stale');
   }
-  els.boardStatus.innerHTML = parts.join(' · ');
+  els.boardStatus.innerHTML = parts.length
+    ? icon('triangle-alert') + '<span>' + escapeHtml(parts.join(' · ')) + '</span>'
+    : '';
   els.boardStatus.hidden = parts.length === 0;
 }
 
-// The compact usage meter (#1433) sits in #boardUsage, a separate element
-// from boardStatus on purpose: that one is transient-problem text, the meter
-// is live content that persists (dimmed, not hidden) when its reading goes
-// stale. It is fed by the Coding tab's /api/rate-limits poll, which runs on
-// every tab — see usage-meter.js — so the Board payload carries no quota.
+// A lane's exception (#1436): in its tone, in place of the count, while the
+// lane is folded (the CSS swaps them); '' when there is none.
+function setLaneException(section, text, tone) {
+  const el = section && section.querySelector('.board-lane-exception');
+  if (!el) return;
+  el.textContent = text;
+  el.dataset.tone = tone;
+  el.hidden = !text;
+}
+
+// The Backlog's footer (#1436): how fresh the GitHub cache is, only once it
+// has been fetched (before that the empty state says so).
+function renderBacklogFoot(body, ghLoaded) {
+  const foot = els.boardColumns.querySelector('.board-lane-foot[data-col="backlog"]');
+  if (!foot) return;
+  const ago = ghLoaded ? agoText(body.github.fetched_at) : '';
+  foot.hidden = !ago;
+  foot.innerHTML = ago ? icon('globe') + '<span>GitHub · updated ' + ago + '</span>' : '';
+}
+
+function plural(n, one, many) {
+  return n + ' ' + (n === 1 ? one : many);
+}
+
+// The page header (#1436, the header rule): only the exceptions — "N needs
+// you" (Your turn) and "N failing" (failed or stuck jobs) — fleet-wide,
+// whatever the project filter narrows the lanes to. With nothing wrong, the
+// plain totals; a count that could not be read is said, never shown as zero
+// (#910, #915).
+function renderBoardHead(body, ghLoaded, liveRead) {
+  const columns = body.columns || {};
+  const sessions = function (key) {
+    return (columns[key] || []).filter(function (c) { return !isHiddenChannel(c); }).length;
+  };
+  const yours = sessions('your_turn');
+  const failing = (columns.other || []).filter(jobFailing).length;
+  const exceptions = [];
+  if (yours) exceptions.push({ text: yours + ' needs you', tone: 'attention' });
+  if (failing) exceptions.push({ text: failing + ' failing', tone: 'danger' });
+  const live = yours + sessions('claude_turn');
+  const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
+  if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
+  renderHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
+}
+
 
 // ------------------------------------------------------- chief's plan (#1279)
 //
@@ -844,23 +914,31 @@ function renderStatusLine(body) {
 // Roberto carries an "Answer N questions" button into the one-shot answer
 // sheet (#1295, board-answers.js).
 
-// Status -> chip tone. Anything unlisted (an unknown status included) is the
-// neutral chip.
+// Status -> chip tone, on the tone map (#1436): work in progress is accent,
+// waiting on you is attention, merged and anything unlisted (an unknown status
+// included) is neutral.
 const PLAN_TONES = {
-  building: 'active', gate: 'active',
+  building: 'accent', gate: 'accent',
   waiting: 'attention', 'waiting-roberto': 'attention',
-  merged: 'done',
+  merged: 'neutral',
 };
 
-function planAge(updatedAt) {
-  const t = Date.parse(updatedAt || '');
-  if (isNaN(t)) return 'Update time unknown';
+// "just now" / "12 min ago" / "3 h ago" / "2 d ago", or '' for a time that
+// can't be read: the plan's age and the Backlog footer's.
+function agoText(iso) {
+  const t = Date.parse(iso || '');
+  if (isNaN(t)) return '';
   const min = Math.floor((Date.now() - t) / 60000);
-  if (min < 1) return 'Updated just now';
-  if (min < 60) return 'Updated ' + min + ' min ago';
+  if (min < 1) return 'just now';
+  if (min < 60) return min + ' min ago';
   const h = Math.floor(min / 60);
-  if (h < 48) return 'Updated ' + h + ' h ago';
-  return 'Updated ' + Math.floor(h / 24) + ' d ago';
+  if (h < 48) return h + ' h ago';
+  return Math.floor(h / 24) + ' d ago';
+}
+
+function planAge(updatedAt) {
+  const ago = agoText(updatedAt);
+  return ago ? 'Updated ' + ago : 'Update time unknown';
 }
 
 // Running / not running / unknown are three answers: an unreadable
@@ -976,15 +1054,18 @@ function planRow(title, meta, status, cls, model) {
     tag.textContent = model.charAt(0).toUpperCase() + model.slice(1);
     body.appendChild(tag);
   }
-  if (status) {
-    const chip = document.createElement('span');
-    chip.className = 'kind-pill board-plan-chip';
-    chip.dataset.tone = PLAN_TONES[status] || 'neutral';
-    chip.textContent = status;
-    body.appendChild(chip);
-  }
+  if (status) body.appendChild(chip(status, PLAN_TONES[status] || 'neutral', 'board-plan-chip'));
   li.appendChild(body);
   return li;
+}
+
+// The questions still waiting on you that the repo filter shows, unanswered:
+// the folded plan card's "N questions for you" (#1436).
+function pendingQuestions(plan, answered, filter) {
+  if (plan.state !== 'ok') return 0;
+  return (plan.waiting_on_roberto || []).filter(function (w, i) {
+    return planRowShown(w, filter) && answered.indexOf(itemKey(w, i)) === -1;
+  }).length;
 }
 
 function renderChiefPlan(body, liveRead) {
@@ -998,6 +1079,10 @@ function renderChiefPlan(body, liveRead) {
   syncChiefAnswers(chiefRunState(body, liveRead));
   const answered = plan.state === 'ok' ? answeredKeys(plan) : [];
   const filter = boardRepoFilter();
+  const pending = pendingQuestions(plan, answered, filter);
+  setLaneException(els.boardChiefPlan,
+    pending ? pending + (pending === 1 ? ' question' : ' questions') + ' for you' : '',
+    'attention');
   // Rebuilt only when what it shows changes, not on every 5 s poll.
   const sig = JSON.stringify([plan, run, age, answered, filter]);
   if (host.dataset.sig === sig) return;
@@ -1131,6 +1216,11 @@ export function renderBoard() {
       const count = section.querySelector('.board-count');
       if (count) count.textContent = shown;
       section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
+      // PRs and jobs, folded, says what is wrong instead of its count.
+      if (col.key === 'other') {
+        const failing = cards.filter(jobFailing).length;
+        setLaneException(section, failing ? failing + ' failing' : '', 'danger');
+      }
     }
     const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
     const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
@@ -1162,11 +1252,15 @@ export function renderBoard() {
     activeEl.focus({ preventScroll: true });
   }
 
-  renderChannelSummaries();
+  // The open Backlog kebab's row is gone (issue closed, filtered out).
+  issueMenu.endRender();
+  renderBacklogFoot(body, ghLoaded);
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
-  // Keep the dispatch bar's repo list + mic visibility in step with state
-  // that may land after the first render (/api/apps, /api/status).
+  renderBoardHead(body, ghLoaded, liveRead);
+  renderBoardBadge();
+  // Keep the lane toolbar's project list in step with a project list that
+  // may land after the first render (/api/apps).
   syncDispatchBar();
 }
 
@@ -1185,6 +1279,7 @@ export async function fetchBoard() {
     jsonApi('/api/board/chief-plan').catch(function () { return { state: 'unavailable' }; }),
   ]);
   state.board = board;
+  state.boardFetchedAt = Date.now();
   state.chiefPlan = plan;
   renderBoard();
   // A never-fetched cache (the webapp restarted since the last refresh) heals
@@ -1280,29 +1375,7 @@ async function refreshGithub() {
 
 // --------------------------------------------------------- column sections
 
-// ↻ has one node (board.js mutates it by id) and two homes: beside the
-// project filter on the phone, where the filter is the last row of the
-// Dispatch card, directly over the columns it filters; and last in the
-// dispatch control row on the >=700px desktop bar (#869), where the filter
-// sits at the row's far left. CSS can't move a node between containers, so
-// it is re-parented on the breakpoint.
 const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
-
-function dockRefresh() {
-  const btn = els.boardRefresh;
-  if (!btn || !window.matchMedia) return;
-  const mq = window.matchMedia(DESKTOP_BOARD);
-  function place() {
-    const home = document.querySelector(
-      mq.matches ? '.board-dispatch-row' : '.board-filter-row'
-    );
-    if (home && btn.parentNode !== home) home.appendChild(btn);
-  }
-  place();
-  // Safari <14 has no addEventListener on MediaQueryList.
-  if (mq.addEventListener) mq.addEventListener('change', place);
-  else if (mq.addListener) mq.addListener(place);
-}
 
 // The desktop grid is a kanban at a glance, so all five sections start open
 // there; the phone keeps the markup's default (the two live columns open).
@@ -1329,7 +1402,6 @@ export function wireBoard() {
   });
   wireDispatch();
   wireChiefAnswers();
-  dockRefresh();
   openDesktopColumns();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {

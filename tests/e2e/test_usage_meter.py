@@ -1,9 +1,9 @@
 """The usage meter (issue #1433, step 1/7 of #1432), in the browser.
 
-One component in two sizes replaces the coloured quota sentences on both
-tabs: the full meter on the Coding tab, the compact 44px line on the Board,
-both fed from the one ``/api/rate-limits`` poll (the Board payload carries no
-quota), and either opens the one Usage sheet. The colour rules themselves
+One component replaces the coloured quota sentences: the meter in the Code
+tab's Usage card, fed from the ``/api/rate-limits`` poll, opening the Usage
+sheet. The Board's compact line left with #1436 (usage stays on Code), so the
+Board draws no meter at all. The colour rules themselves
 (pace, 90%+, stale, unknown) are pinned without a browser in
 ``tests/js/usage_meter.test.mjs``; this file proves the rendered surfaces.
 
@@ -62,7 +62,7 @@ _QUOTA_SHIM = """
 })();
 """
 
-# A Board payload with no quota at all: the compact meter must still fill.
+# A Board payload with no quota at all (the Board draws no meter, #1436).
 _BOARD = {
     "generated_at": "2026-09-10T12:00:00Z",
     "columns": {"backlog": [], "claude_turn": [], "your_turn": [], "other": [], "done": []},
@@ -92,11 +92,12 @@ def _no_page_overflow(page: Page) -> None:
 
 
 @pytest.mark.iphone
-def test_usage_meter_full_on_code_compact_on_board_one_sheet(
+def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
     authed_page: Page, base_url: str
 ) -> None:
-    """Both sizes render the same reading from /api/rate-limits, colour
-    follows pace, and either opens the Usage sheet (✕ and Done close it)."""
+    """The meter renders the reading from /api/rate-limits, colour follows
+    pace, and it opens the Usage sheet (✕ and Done close it). The Board has
+    no usage line since #1436."""
     authed_page.add_init_script(_QUOTA_SHIM)
     _mock_board(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -145,37 +146,15 @@ def test_usage_meter_full_on_code_compact_on_board_one_sheet(
     sheet.locator("#usageSheetClose").click()
     expect(sheet).to_be_hidden()
 
-    # -- compact, on the Board, from the same poll --
-    authed_page.locator("#tabBoard").click()
-    compact = authed_page.locator("#boardUsage .usage-meter-compact")
-    expect(compact).to_be_visible(timeout=10_000)
-    expect(compact).to_have_attribute("data-tone", "attention")
-    minis = compact.locator(".um-mini")
-    expect(minis).to_have_count(2)
-    expect(minis.nth(0)).to_have_text(re.compile(r"5h\s*39%"))
-    expect(minis.nth(1)).to_have_text(re.compile(r"wk\s*64%"))
-    expect(minis.nth(1).locator(".um-tick")).to_have_count(1)
-    expect(compact.locator(".um-codex-value")).to_have_text("36%")
-    expect(compact.locator(".um-divider")).to_have_count(1)
-    expect(compact.locator('.um-chevron use[href="#i-chevron-right"]')).to_have_count(1)
-    # One 44px line, every part inside the button.
-    box = stable_eval(compact, """el => {
-      if (!el.isConnected) return null;
-      const r = el.getBoundingClientRect();
-      const inside = Array.from(el.children).every(c => {
-        const b = c.getBoundingClientRect();
-        return b.left >= r.left - 0.5 && b.right <= r.right + 0.5;
-      });
-      return {height: r.height, inside};
-    }""")
-    assert box["height"] == 44, f"compact meter is {box['height']}px tall"
-    assert box["inside"], "a part of the compact meter spills out of it"
-    _no_page_overflow(authed_page)
-
-    compact.click()
+    full.click()
     expect(sheet).to_be_visible()
     sheet.locator("#usageSheetDone").click()
     expect(sheet).to_be_hidden()
+
+    # -- not on the Board (#1436): usage stays on Code --
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
+    expect(authed_page.locator("#paneBoard .usage-meter, #boardUsage")).to_have_count(0)
 
 
 @pytest.mark.iphone
@@ -183,8 +162,8 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     authed_page: Page, base_url: str
 ) -> None:
     """A stale reading dims and carries a chip; nothing measured keeps the
-    state word as text (full) and "n/a" (compact); 90%+ is danger; a reading
-    that goes unknown keeps the last numbers, dimmed, chipped "unknown"."""
+    state word as text; 90%+ is danger; a reading that goes unknown keeps the
+    last numbers, dimmed, chipped "unknown"."""
     # The app's own poll never answers, so only the renders below paint.
     authed_page.add_init_script("""
       (() => {
@@ -205,15 +184,12 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
       const win = (pct) => ({used_percentage: pct, resets_at: nowS + 3600, duration_minutes: 300});
       const snap = () => {
         const full = document.querySelector('#codingUsage .usage-meter');
-        const compact = document.querySelector('#boardUsage .usage-meter');
         return {
           tone: full.dataset.tone, stale: full.dataset.stale || '',
           chips: Array.from(full.querySelectorAll('.um-head .chip')).map(c => [c.textContent, c.dataset.tone]),
           note: (full.querySelector('.um-note') || {}).textContent || '',
           pcts: Array.from(full.querySelectorAll('.um-pct')).map(e => e.textContent),
           codex: full.querySelector('.um-codex-value').textContent,
-          compactCodex: compact.querySelector('.um-codex-value').textContent,
-          compactNote: (compact.querySelector('.um-note') || {}).textContent || '',
           dim: getComputedStyle(full.querySelector('.um-windows') || full).opacity,
         };
       };
@@ -239,7 +215,6 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     assert float(stale["dim"]) < 1
     assert stale["pcts"] == ["91%", "20%"]
     assert stale["codex"] == "unsupported"
-    assert stale["compactCodex"] == "n/a"
 
     # Unknown now, with the stale reading behind it: kept, dimmed, chipped.
     fallback = read["fallback"]
@@ -261,12 +236,9 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
         note: full.querySelector('.um-note').textContent,
         codex: full.querySelector('.um-codex-value').textContent,
         bars: full.querySelectorAll('.um-bar').length,
-        compactNote: document.querySelector('#boardUsage .um-note').textContent,
       };
     }""")
-    assert never == {
-        "note": "Quota unknown", "codex": "unavailable", "bars": 0, "compactNote": "unknown",
-    }, never
+    assert never == {"note": "Quota unknown", "codex": "unavailable", "bars": 0}, never
 
 
 def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
@@ -326,9 +298,9 @@ def test_usage_shows_draws_only_the_chosen_providers(
     authed_page: Page, base_url: str, mode: str
 ) -> None:
     """#1451: the "Usage shows" setting. Claude / Codex draw only that
-    provider (no row, mark, or word of the other, in the card, the Board line
-    or the accessible name); both is today's meter; none hides the Code tab's
-    Usage card and empties the Board line, with the rest of the tab intact."""
+    provider (no row, mark, or word of the other, in the card or the
+    accessible name); both is today's meter; none hides the Code tab's Usage
+    card, with the rest of the tab intact."""
     errors: list = []
     authed_page.on("pageerror", lambda exc: errors.append(str(exc)))
     authed_page.add_init_script(_QUOTA_SHIM)
@@ -346,11 +318,6 @@ def test_usage_shows_draws_only_the_chosen_providers(
         expect(authed_page.locator("#codingUsageMeta")).to_have_text("")
         # Nothing else on the tab breaks: the rest of the pane still renders.
         expect(authed_page.locator("#paneClaude")).to_be_visible()
-        authed_page.locator("#tabBoard").click()
-        expect(authed_page.locator("#paneBoard")).to_be_visible()
-        expect(authed_page.locator("#boardUsage .usage-meter")).to_have_count(0)
-        # No meter will come, so the slot reserves nothing (#1447).
-        expect(authed_page.locator("#boardUsage")).to_be_hidden()
         assert errors == [], errors
         return
 
@@ -384,17 +351,6 @@ def test_usage_shows_draws_only_the_chosen_providers(
     expect(body.locator('[data-row^="claude-"]')).to_have_count(2 if mode in ("claude", "both") else 0)
     expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if mode in ("codex", "both") else 0)
     authed_page.locator("#usageSheetClose").click()
-
-    authed_page.locator("#tabBoard").click()
-    compact = authed_page.locator("#boardUsage .usage-meter-compact")
-    expect(compact).to_be_visible(timeout=10_000)
-    expect(compact.locator(".um-mark")).to_have_count(len(names))
-    expect(compact.locator(".um-divider")).to_have_count(1 if mode == "both" else 0)
-    expect(compact.locator(".um-codex-value")).to_have_count(1 if mode == "both" else 0)
-    expect(compact.locator(".um-mini")).to_have_count(2)
-    clabel = compact.get_attribute("aria-label")
-    assert ("Claude" in clabel) == (mode in ("claude", "both")), clabel
-    assert ("Codex" in clabel) == (mode in ("codex", "both")), clabel
     assert errors == [], errors
 
 
@@ -456,11 +412,12 @@ _HOLD_RATE_LIMITS = """
 def test_board_does_not_jump_when_the_usage_meter_lands(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1447: the Board's meter slot reserves its 44px line before the first
-    /api/rate-limits poll lands. Left empty until then, the answer's arrival
-    pushed every column, and an open drawer with it, down 44px mid-gesture, so
-    a test reading a drawer's four buttons one after another straddled the
-    jump and saw the fourth a row lower."""
+    """#1447: the first /api/rate-limits answer must not move the Board. It
+    once filled an empty meter slot above the lanes and pushed every column,
+    and an open drawer with it, down 44px mid-gesture, so a test reading a
+    drawer's four buttons one after another straddled the jump and saw the
+    fourth a row lower. Since #1436 the Board draws no meter at all; this
+    pins that the reading landing still leaves the lanes where they were."""
     authed_page.add_init_script(_QUOTA_SHIM)
     authed_page.add_init_script(_HOLD_RATE_LIMITS)
     _mock_board(authed_page)
@@ -471,10 +428,12 @@ def test_board_does_not_jump_when_the_usage_meter_lands(
     top = "el => el.isConnected ? Math.round(el.getBoundingClientRect().top) : null"
 
     before = stable_eval(columns, top)
-    expect(authed_page.locator("#boardUsage .usage-meter-compact")).to_have_count(0)
+    expect(authed_page.locator("#codingUsage .usage-meter")).to_have_count(0)
 
     authed_page.evaluate("window.__releaseRateLimits()")
-    expect(authed_page.locator("#boardUsage .usage-meter-compact")).to_be_visible()
+    # The reading has landed and rendered (on the Code tab's card).
+    expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_attached()
+    expect(authed_page.locator("#paneBoard .usage-meter")).to_have_count(0)
     after = stable_eval(columns, top)
     assert after == before, (
         f"the Board jumped {after - before}px when the usage meter landed"

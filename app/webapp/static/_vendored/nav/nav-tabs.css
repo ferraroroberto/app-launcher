@@ -71,6 +71,51 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* Optional count badge (project-scaffolding#338): nav-tabs.js setBadge() adds
+   it, so a nav that never calls setBadge carries none of these elements. It sits
+   on the icon's top-right corner in all three placements (inline tabs, pill,
+   rail) because the first badge wraps the icon in .tab-icon-wrap, the box it is
+   positioned against. design.md: rounded.pill, the caption weight, attention
+   fill with card text (4.5:1 in light and dark, measured in test_vendored_nav).
+   Geometry is px, not rem/em: the badge must not reflow with the Large text
+   size. Never animated, so there is nothing for prefers-reduced-motion to
+   cancel. Opaque, so the active tab's accent-soft tint can't hide it.
+   Requires --attention, read with no fallback, only when a badge is shown. */
+.tabs .tab-icon-wrap {
+  position: relative;
+  display: block;
+  flex: none;
+}
+.tabs .tab-badge {
+  position: absolute;
+  top: -7px;
+  left: calc(100% - 6px);
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--attention);
+  color: var(--card);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+/* Spoken as part of the tab's name, never painted. Deliberately inline with a
+   zero font size, not the usual absolutely positioned 1px box: an absolute box
+   is block-level, and the accessible-name computation then puts a space before
+   it ("Board , 2 waiting"). Zero-size text has no width, so it also cannot push
+   the label into its ellipsis. */
+.tabs .tab-badge-sr {
+  font-size: 0;
+  line-height: 0;
+  white-space: nowrap;
+  user-select: none;
+}
 @media (max-width: 430px) {
   .tab {
     min-width: 0;
@@ -383,6 +428,12 @@
        keeps the glyphs out of the stale texture so they repaint on show.
        iOS-only; desktop WebKit composites differently and never reproduces it.
        Validated on a real iPhone PWA (home-automation#381). */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+  /* Same own-layer rule as the label above, for the same iOS reason: keep the
+     badge digit out of the pill's stale backdrop texture. */
+  .tabs .tab-badge {
     transform: translateZ(0);
     backface-visibility: hidden;
   }

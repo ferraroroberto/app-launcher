@@ -1091,95 +1091,34 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
-      <!-- Heading first (#1198): like every other tab, the first thing under
-           the page header is a section card. Its controls stay in the body,
-           never in the <summary> (#1132). -->
-      <details id="boardDispatchCard" class="card card--collapsible board-dispatch-card" open>
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
-            <h3 class="collapse-title">Dispatch</h3>
-          </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div class="collapse-body">
-      <div id="boardDispatch" class="board-dispatch">
-        <!-- The phone docks ↻ beside the filter it sits over; the desktop
-             row takes it into the control row instead (dockRefresh). -->
-        <div class="board-filter-row">
-          <div class="board-repo-combo">
-            <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
-                    aria-haspopup="listbox" aria-expanded="false"
-                    aria-controls="boardDispatchRepoList" aria-label="Project filter / dispatch target">All projects</button>
-            <input type="hidden" id="boardDispatchRepo">
-            <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
-          </div>
-          <button id="boardRefresh" type="button" class="icon-button board-refresh"
-                  title="Refresh GitHub issues / PRs / done-today (runs gh)"
-                  aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
+      <!-- The lane toolbar (#1436): the project filter that narrows every
+           lane (#337, #1332) and the GitHub refresh, next to the lanes they
+           act on. The Board has no chief card: the chief lives in its row
+           under Code › Sessions (#1436 decision log). -->
+      <div class="board-toolbar board-filter-row">
+        <div class="board-repo-combo">
+          <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  aria-controls="boardDispatchRepoList" aria-label="Project filter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span class="board-repo-label">All projects</span></button>
+          <input type="hidden" id="boardDispatchRepo">
+          <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>
-        <div class="board-dispatch-row">
-          <!-- The model pick (#500/#845/#1382) no longer steers a free-text
-               dispatch — that path is gone and the bar always talks to the
-               fleet chief, whose model is a chief setting. It feeds the
-               issue cards' one-tap Start / YOLO, which is why it stays. -->
-          <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
-            <button type="button" class="model-combo-trigger" aria-label="Start model"
-                    aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
-                    title="Model for the one-tap Start / YOLO on issue cards (the chief's own model is in its settings)">Claude · Sonnet</button>
-            <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
-                  aria-label="Start model" hidden>
-              <button type="button" role="option" data-value="claude:sonnet"
-                      aria-selected="true">Claude · Sonnet</button>
-            </span>
-          </span>
-          <textarea
-            id="boardDispatchGoal"
-            class="compose-input board-dispatch-goal"
-            rows="1"
-            wrap="off"
-            placeholder="Ask the chief — questions answer, directions dispatch."
-            enterkeyhint="enter"></textarea>
-          <button id="boardDispatchRecord" type="button" class="icon-button compose-record"
-                  title="Dictate (voice to text)" aria-label="Dictate" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg></button>
-          <button id="boardDispatchClear" type="button" class="icon-button compose-record"
-                  title="Clear the message" aria-label="Clear the message"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
-          <button id="boardDispatchSend" type="button" class="icon-button compose-send"
-                  title="Send to the chief" aria-label="Send to the chief"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg></button>
-        </div>
-        <!-- Chief status row (#245). Static markup like the rest of the bar;
-             renderChiefStatus() only flips hidden/text. -->
-        <div id="boardChiefStatus" class="board-chief-status">
-          <span class="board-chief-crown"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg></span>
-          <span id="boardChiefStatusText" class="board-chief-status-text"></span>
-          <button id="boardChiefStart" type="button" class="board-chief-start" hidden>Start</button>
-          <button id="boardChiefResume" type="button" class="board-chief-start" hidden title="Reattach the most recent chief conversation" aria-label="Resume chief">Resume</button>
-          <button id="boardChiefRestart" type="button" class="board-chief-start" hidden>Restart</button>
-          <button id="boardChiefSettings" type="button" class="icon-button compose-record"
-                  title="Chief settings" aria-label="Chief settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg></button>
-        </div>
+        <button id="boardRefresh" type="button" class="icon-button board-refresh"
+                title="Refresh GitHub issues / PRs / done-today (runs gh)"
+                aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
       </div>
-      <div id="boardStatus" class="board-status" hidden></div>
-      <!-- The compact usage meter (#1433), the same component and reading as
-           the Coding tab's — this is where the heavier sessions get launched,
-           so both agents' headroom is readable without switching the
-           dispatch model (#860). A tap opens the Usage sheet. -->
-      <div id="boardUsage" class="usage-meter-slot"></div>
-        </div>
-      </details>
-      <!-- Each column is a section card like every other tab's (#1198):
-           stacked on the phone, side by side in the desktop grid. Static
-           markup, so the 5 s poll re-renders the lists inside without ever
-           touching a section's open state. The two live columns open by
-           default; the GitHub-fed ones wait folded on the phone (board.js
-           opens all five on the desktop grid). The count is text, not a
-           control, so it may sit in the summary. -->
-      <button type="button" id="boardChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
-          <span class="channel-summary-text"></span>
-          <span class="channel-summary-alert" role="img" aria-label="context high" title="A Telegram session is at 50% context or more" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg></span>
-          <span class="channel-summary-chevron" aria-hidden="true">›</span>
-        </button>
+      <!-- One attention banner, only while a source is down or stale
+           (renderStatusLine). -->
+      <div id="boardStatus" class="board-status" role="status" hidden></div>
+      <!-- Each lane is a section card like every other tab's (#1198):
+           stacked on the phone, side by side in the desktop grid, in the
+           order Backlog, Chief's plan, Claude's turn, Your turn, PRs and
+           jobs, Done today (#1436). Static markup, so the 5 s poll re-renders the lists
+           inside without ever touching a section's open state. The live lanes
+           open by default; the GitHub-fed ones wait folded on the phone
+           (board.js opens them all on the desktop grid). The count, and a
+           folded lane's exception, are text, not controls, so they may sit
+           in the summary. -->
       <div id="boardColumns" class="board-columns">
         <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
           <summary class="collapse-summary">
@@ -1191,14 +1130,45 @@
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </summary>
           <div class="collapse-body">
+            <!-- "Start with" (#1436, moved from Dispatch): the model the
+                 rows' ▶ Start and the kebab's YOLO launch with (#505). A
+                 plain client-side control; the chief's own model is a chief
+                 setting. -->
+            <div class="board-lane-toolbar">
+              <span class="board-lane-toolbar-label" id="boardStartWithLabel">Start with</span>
+              <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
+                <button type="button" class="model-combo-trigger" aria-label="Start with model"
+                        aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
+                        title="Model for the Backlog rows' Start and YOLO (the chief's own model is in its settings)">Claude · Sonnet</button>
+                <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
+                      aria-label="Start with model" hidden>
+                  <button type="button" role="option" data-value="claude:sonnet"
+                          aria-selected="true">Claude · Sonnet</button>
+                </span>
+              </span>
+            </div>
             <ul class="card-list board-list" data-col="backlog"></ul>
             <div class="board-empty" data-col="backlog" hidden></div>
+            <p class="board-lane-foot" data-col="backlog" hidden></p>
           </div>
         </details>
-        <!-- Claude's turn and the chief's plan share one grid cell (#1279), so
-             the plan sits directly under the section on the desktop grid as
-             it does in the phone's stack. -->
+        <!-- The chief's plan and Claude's turn share one grid cell (#1279), the
+             plan first (#1436), so Claude's turn sits directly under it on the
+             desktop grid as it does in the phone's stack. -->
         <div class="board-col-stack">
+          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
+            <summary class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
+                <h3 class="collapse-title">Chief's plan</h3>
+                <span class="collapse-count board-lane-exception" hidden></span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="board-plan-body"></div>
+            </div>
+          </details>
           <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
             <summary class="collapse-summary">
               <span class="collapse-main">
@@ -1211,18 +1181,6 @@
             <div class="collapse-body">
               <ul class="card-list board-list" data-col="claude_turn"></ul>
               <div class="board-empty" data-col="claude_turn" hidden></div>
-            </div>
-          </details>
-          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
-            <summary class="collapse-summary">
-              <span class="collapse-main">
-                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
-                <h3 class="collapse-title">Chief's plan</h3>
-              </span>
-              <span class="collapse-chevron" aria-hidden="true">›</span>
-            </summary>
-            <div class="collapse-body">
-              <div class="board-plan-body"></div>
             </div>
           </details>
         </div>
@@ -1243,9 +1201,10 @@
         <details id="boardColOther" class="card card--collapsible board-col" data-col="other">
           <summary class="collapse-summary">
             <span class="collapse-main">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
-              <h3 class="collapse-title">Other</h3>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-pull-request"></use></svg>
+              <h3 class="collapse-title">PRs and jobs</h3>
               <span class="collapse-count board-count" data-col="other">0</span>
+              <span class="collapse-count board-lane-exception" hidden></span>
             </span>
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </summary>

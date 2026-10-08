@@ -180,6 +180,6 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
     for section, label in (("#boardColBacklog", "Backlog"),
                            ("#boardColClaude", "Claude's turn"),
                            ("#boardColYours", "Your turn"),
-                           ("#boardColOther", "Other"),
+                           ("#boardColOther", "PRs and jobs"),
                            ("#boardColDone", "Done today")):
         expect(authed_page.locator(f"{section} .collapse-title")).to_have_text(label)

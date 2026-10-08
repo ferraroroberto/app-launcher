@@ -320,11 +320,12 @@ async function boot() {
   });
   git.then(function () {
     setInterval(function () {
-      // Always-on git flags (#496): refresh only while a tab that shows them
-      // is visible (Coding tiles / Board backlog) and the page is foreground —
-      // a backgrounded PWA must not keep spawning git subprocesses.
+      // Always-on git flags (#496): refresh only while the tab that shows
+      // them (Code; the Board's Backlog dropped them in #1436) is visible and
+      // the page is foreground — a backgrounded PWA must not keep spawning
+      // git subprocesses.
       if (document.hidden) return;
-      if (state.tab !== 'claude' && state.tab !== 'board') return;
+      if (state.tab !== 'claude') return;
       refreshGitStatus({ quiet: true }).catch(noop);
     }, GIT_STATUS_POLL_MS);
   });

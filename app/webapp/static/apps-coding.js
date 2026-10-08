@@ -14,7 +14,6 @@ import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
 import { brandIcon, fmtDuration } from './dom-utils.js';
 import { chip } from './glance.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
-import { renderBoard } from './board.js';
 import { createRowMenu } from './row-menu.js';
 import { actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
@@ -489,10 +488,10 @@ function checkedAgo(ms) {
 // Always-on git-status refresh (#496, deliberately reversing #115's
 // on-demand contract). Runs git per project on the server, fanned out
 // across threads; caches the result in state and re-renders every surface
-// that reads it (Coding rows, the Projects summary and footer, Board
-// backlog). Called at boot and on the GIT_STATUS_POLL_MS interval in
-// main.js (quiet — poll failures log, never toast), and by the Projects
-// toolbar's refresh button below (loud).
+// that reads it (Coding rows, the Projects summary and footer; the Board's
+// Backlog stopped drawing git state in #1436). Called at boot and on the
+// GIT_STATUS_POLL_MS interval in main.js (quiet — poll failures log, never
+// toast), and by the Projects toolbar's refresh button below (loud).
 export async function refreshGitStatus(options) {
   const quiet = !!(options && options.quiet);
   try {
@@ -502,11 +501,6 @@ export async function refreshGitStatus(options) {
     state.gitStatus = map;
     state.gitStatusAt = Date.now();
     renderApps();
-    // The Board backlog reads the same cache (#496 item 4); repaint it if
-    // it's the visible tab — its own 5 s poll does no git work. renderBoard()
-    // keeps an open drawer's DOM (#958), so this refresh can't tear it down
-    // out from under an in-progress interaction (#512).
-    if (state.tab === 'board') renderBoard();
   } catch (exc) {
     if (!quiet) throw exc;
     logPollFailure('git status refresh failed', exc);

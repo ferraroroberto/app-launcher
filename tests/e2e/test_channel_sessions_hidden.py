@@ -2,17 +2,17 @@
 
 A channel session (label ``telegram:<profile>``) serves a household member
 through their own chat; the Board and the Coding tab's session list hide it by
-default (the ``hide_channel_sessions`` setting, on), replacing it with one line
--- "N Telegram sessions running" -- that opens a read-only list: status, last
-activity and context use, with no Stop or delete. Switched off, both lists
-behave as they always did.
+default (the ``hide_channel_sessions`` setting, on). The Coding tab replaces it
+with one Telegram row -- "N running" -- that opens a read-only list: status,
+last activity and context use, with no Stop or delete; the Board has no such
+row since #1436. Switched off, both lists behave as they always did.
 
 Hermetic: the session list, the Board, the context route and the setting are
 route-mocked, so no real session is involved. The context polls are driven with
 the fake page clock (#1376): "slow while the list is closed, fast only while it
 is open" is a claim about time, so the tests jump time instead of sleeping on it.
 
-#1402 adds the alert icon on the summary line at >= 50 % context and a Compact
+#1402 adds the context alert on the summary row at >= 50 % context and a Compact
 button per popup row. ``/input`` is route-mocked: a real Telegram session is
 never sent ``/compact`` from a test.
 """
@@ -166,19 +166,21 @@ def test_coding_list_swaps_channel_rows_for_a_summary_line(
     assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
 
 
-def test_board_swaps_channel_cards_for_a_summary_line(
+def test_board_drops_channel_cards_and_has_no_telegram_row(
     authed_page: Page, base_url: str
 ) -> None:
+    """#1436 (decision 4 of #1432): the Board leaves Telegram sessions out of
+    its lanes and carries no Telegram row of its own; the Coding tab's row
+    still says how many run."""
     _mock(authed_page)
     _open_board(authed_page, base_url)
 
     cards = authed_page.locator("#boardColumns li.board-item")
     expect(cards).to_have_count(1)
     expect(authed_page.locator("#boardColumns .session-channel-tag")).to_have_count(0)
-    summary = authed_page.locator("#boardChannelSummary")
-    expect(summary).to_be_visible()
-    expect(summary).to_have_text(re.compile(r"2 Telegram sessions running"))
-    # Both lists name one count: the Coding tab's row says the same.
+    expect(authed_page.locator("#boardChannelSummary")).to_have_count(0)
+    expect(authed_page.locator("#paneBoard .channel-row, #paneBoard .channel-summary")).to_have_count(0)
+    expect(authed_page.locator("#paneBoard")).not_to_contain_text("Telegram")
     expect(authed_page.locator("#sessionsChannelSummary .channel-summary-text")).to_have_text(
         "2 running")
 
@@ -293,7 +295,6 @@ def test_switching_the_setting_off_restores_rows_cards_and_stop(
 
     authed_page.locator("#tabBoard").click()
     expect(authed_page.locator("#boardColumns li.board-item")).to_have_count(3)
-    expect(authed_page.locator("#boardChannelSummary")).to_be_hidden()
 
 
 def test_the_one_kill_path_refuses_a_hidden_channel_session(
@@ -325,10 +326,6 @@ def test_the_one_kill_path_refuses_a_hidden_channel_session(
 # ------------------------------------------------------------------ #1402
 
 
-def _alert(page: Page, which: str = "#boardChannelSummary"):
-    return page.locator(f"{which} .channel-summary-alert")
-
-
 def _context_chip(page: Page):
     """The Code tab's row says it with an attention chip since #1434."""
     return page.locator("#sessionsChannelSummary .channel-context-chip")
@@ -345,10 +342,9 @@ def test_summary_does_not_alert_one_point_under_fifty_percent(
                "the summary line's context reads")
     flush_requests(authed_page)
     expect(_context_chip(authed_page)).to_have_count(0)
-    expect(_alert(authed_page)).to_be_hidden()
 
 
-def test_summary_shows_the_alert_icon_at_fifty_percent_with_a_label(
+def test_summary_shows_the_context_chip_at_fifty_percent(
     authed_page: Page, base_url: str
 ) -> None:
     knobs = _mock(authed_page)
@@ -358,15 +354,6 @@ def test_summary_shows_the_alert_icon_at_fifty_percent_with_a_label(
     chip = _context_chip(authed_page)
     expect(chip).to_have_text("context 50%")
     expect(chip).to_have_attribute("data-tone", "attention")
-    # The Board's line keeps its labelled alert icon.
-    authed_page.locator("#tabBoard").click()
-    expect(authed_page.locator("#paneBoard")).to_be_visible()
-    alert = _alert(authed_page)
-    expect(alert).to_be_visible()
-    expect(alert).to_have_attribute("role", "img")
-    expect(alert).to_have_attribute("aria-label", "context high")
-    box = authed_page.locator("#boardChannelSummary").bounding_box()
-    assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
 
 
 def test_alert_follows_the_context_as_it_changes(

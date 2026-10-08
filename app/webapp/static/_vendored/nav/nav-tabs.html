@@ -19,6 +19,11 @@
      and above it in the mobile pill. Replace the <path> data with your own
      glyphs; the icons below are placeholders.
 
+     COUNT BADGE (optional): do not write one into the markup. Call
+     `const nav = initNavTabs(...)` then `nav.setBadge('home', 2, 'waiting')`;
+     the script adds the badge on the icon's corner and the tab's accessible
+     name becomes "Home, 2 waiting". 0 / null removes it. See README.md.
+
      SETTINGS IS NEVER A TAB (design.md "Navigation"). Do not add a Settings
      tab, a gear-only tab, or a "More" tab that holds only Settings: Settings is
      the gear beside the theme toggle in the page header (the vendored

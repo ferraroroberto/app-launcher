@@ -32,6 +32,13 @@ export function setTab(tab) {
   if (nav) nav.setTab(tab);
 }
 
+// A count badge on a tab (#1436, the vendored nav's setBadge,
+// project-scaffolding#338): 0 removes it, and `noun` is spoken in the tab's
+// accessible name ("Board, 2 waiting").
+export function setTabBadge(tab, count, noun) {
+  if (nav) nav.setBadge(tab, count, noun);
+}
+
 // Show the Settings pane over the current tab (#1131). The vendored nav
 // only manages its own tabs' panes, so this hides them here and leaves no
 // tab selected; the nav's next setTab (any tab tap) shows that tab's pane
