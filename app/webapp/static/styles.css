@@ -1644,9 +1644,6 @@ button.settings-row:active { background: var(--card-2); }
   color: var(--muted);
 }
 .group-footer[hidden] { display: none; }
-/* Under the card it belongs to: the gutter above it is the card gap, so
-   pull it up to sit with that card rather than float between two. */
-.launcher-note.group-footer { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
 .git-checked-footer { margin-top: 12px; }
 
 /* ---------- dialogs ---------- */
