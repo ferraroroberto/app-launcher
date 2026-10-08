@@ -134,10 +134,6 @@ async def test_board_cards_carry_the_same_provider_link_as_the_coding_tab(
     monkeypatch.setattr(board_router.board, "read_sessions_state", lambda p: empty)
     monkeypatch.setattr(board_router.board, "read_active_issues", lambda p: empty)
     monkeypatch.setattr(board_router.board, "jobs_attention", lambda: [])
-    monkeypatch.setattr(board_router, "_read_quota_lines", lambda cfg: [])
-    monkeypatch.setattr(
-        board_router, "_refresh_codex_for_lines", lambda cfg, lines: None
-    )
     monkeypatch.setattr(
         board_router.board_chief, "_reconcile_chief_labels", lambda live, rows: live
     )

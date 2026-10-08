@@ -421,11 +421,6 @@ export const CHIEF_RESTART_CONFIRM =
   'the same conversation (falling back to a fresh one only if nothing is ' +
   'resumable).';
 
-// Provider-native quota rows (issues #326/#847/#860), shared between Board
-// and Coding. The backend hands over one already-collapsed row per heavy
-// agent — no native bucket ids reach the UI — and this renderer only turns
-// each into a single nowrap line.
-
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".
 export function usageTier(pct) {
@@ -447,18 +442,18 @@ export function contextAlert(pct) {
   return typeof pct === 'number' && pct >= CONTEXT_ALERT_PCT;
 }
 
-// Compact reset stamps for the two-line rows (#860). A full "Sep 11, 14:20"
-// on both windows is what pushes a line past a 390px viewport, so the
-// 5-hour window — which always resets today or tomorrow — shows the clock
-// only, and the weekly one shows the day only.
-function fmtResetClock(value) {
+// Compact reset stamps for the usage meter's rows (#860, #1433). A full
+// "Sep 11, 14:20" on both windows is what pushes a row past a 390px
+// viewport, so the 5-hour window — which always resets today or tomorrow —
+// shows the clock only, and the weekly one shows the day only.
+export function fmtResetClock(value) {
   if (value == null) return '';
   const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
   if (isNaN(date.getTime())) return '';
   return new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(date);
 }
 
-function fmtResetDay(value) {
+export function fmtResetDay(value) {
   if (value == null) return '';
   const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
   if (isNaN(date.getTime())) return '';
@@ -470,60 +465,6 @@ export function nameLabel(value) {
     return c.toUpperCase();
   });
 }
-
-// ------------------------------------------------- compact quota lines
-//
-// Two fixed rows — Claude Code above Codex — always both, whatever the
-// model picker is pointed at (issue #860). Each is one nowrap line:
-//
-//   Claude Code · 5h 39% ↻ 14:20 · 1w 19% ↻ Sep 11 ⧗53%
-//
-// The whole line carries the tier colour (no status dot), driven by the
-// *worse* of its two windows so a line reddens as soon as either does.
-// Both surfaces (Coding + Board) render through here; the backend has
-// already collapsed the native buckets to one pair of windows, so this
-// function never sees a bucket id.
-
-const QUOTA_LINE_STATE_COPY = {
-  unknown: 'unknown',
-  unsupported: 'unsupported',
-  error: 'unavailable',
-};
-
-// Last measured pair per harness, for the life of the page.
-//
-// Claude's shard is only rewritten when a session paints its statusline and
-// carries a 10-minute expiry, so an idle stretch routinely takes the source
-// to `unknown` with a perfectly good last reading behind it. Blanking the
-// row there is worse than useless — the numbers vanish exactly when you sit
-// down to decide what to launch. So an unmeasured row falls back to what it
-// last showed, dimmed and with the state word appended: never silently, and
-// never folded into the confident state (global CLAUDE.md — a check that
-// failed to establish a fact reports that as its own state).
-const lastMeasuredQuota = new Map();
-
-function quotaLineTier(windows) {
-  const pcts = windows
-    .map(function (w) { return w && w.used_percentage; })
-    .filter(function (v) { return typeof v === 'number' && !isNaN(v); });
-  if (!pcts.length) return 'muted';
-  return usageTier(Math.max.apply(null, pcts));
-}
-
-// The reset marker is the sprite's Lucide refresh-cw rather than a `↻`
-// character (#1127). Spelling it as words instead would cost ~6 characters
-// per window on a line that is already ellipsed at phone width, so the
-// marker stays a glyph — a real one. Built as markup here the way
-// brandIcon() above does, so this module still imports nothing. Each window
-// yields both forms: `html` renders, `text` is the title and the plain
-// reading.
-const QUOTA_RESET_ICON =
-  '<svg class="icon" aria-hidden="true" focusable="false">' +
-  '<use href="#i-refresh-cw"></use></svg>';
-
-const QUOTA_PACE_ICON =
-  '<svg class="icon" aria-hidden="true" focusable="false">' +
-  '<use href="#i-hourglass"></use></svg>';
 
 // Linear pace (#1330): how much of the window has elapsed, as a whole
 // percent, so weekly usage reads against it directly. Tuesday's `53%` means
@@ -544,86 +485,6 @@ export function quotaPace(windowData, nowMs) {
     ? minutes : DEFAULT_QUOTA_WINDOW_MINUTES) * 60000;
   const elapsed = (nowMs - (resetMs - lengthMs)) / lengthMs;
   return Math.round(Math.min(1, Math.max(0, elapsed)) * 100);
-}
-
-function quotaWindowText(windowData, label, fmtReset, pace) {
-  if (!windowData || typeof windowData.used_percentage !== 'number') return null;
-  const head = label + ' ' + Math.round(windowData.used_percentage) + '%';
-  const reset = fmtReset(windowData.resets_at);
-  if (!reset) return { text: head, html: escapeHtml(head) };
-  const result = {
-    text: head + ' resets ' + reset,
-    html: escapeHtml(head) + ' ' + QUOTA_RESET_ICON + ' ' + escapeHtml(reset),
-  };
-  if (pace != null) {
-    result.text += ', ' + pace + '% of the week elapsed';
-    result.html += ' <span class="quota-pace">' + QUOTA_PACE_ICON + pace + '%</span>';
-  }
-  return result;
-}
-
-// ``withResets: false`` for a fallback reading — a percentage that is no
-// longer confirmed has a reset time that may already be in the past, so
-// printing it would be worse than omitting it, and the width it frees is
-// what keeps the "unknown" marker itself from being the part that gets
-// ellipsed off a 390px line. The weekly pace rides the same flag: it is
-// computed from that reset, so a fallback row shows none either.
-function quotaWindowTexts(pair, withResets) {
-  const noReset = function () { return ''; };
-  const pace = withResets ? quotaPace(pair[1], Date.now()) : null;
-  return [
-    quotaWindowText(pair[0], '5h', withResets ? fmtResetClock : noReset),
-    quotaWindowText(pair[1], '1w', withResets ? fmtResetDay : noReset, pace),
-  ].filter(Boolean);
-}
-
-export function renderQuotaLines(container, lines) {
-  if (!container) return;
-  const rows = Array.isArray(lines) ? lines : [];
-  const slots = Array.from(container.querySelectorAll('.quota-line'));
-  slots.forEach(function (slot, index) {
-    const line = rows[index];
-    if (!line) {
-      slot.hidden = true;
-      slot.textContent = '';
-      slot.title = '';
-      return;
-    }
-    const harness = line.harness || '';
-    let pair = [line.five_hour, line.weekly];
-    let texts = quotaWindowTexts(pair, true);
-    let stale = line.state === 'stale' || line.stale === true;
-    let note = '';
-
-    if (texts.length) {
-      lastMeasuredQuota.set(harness, pair);
-      if (stale) note = 'stale';
-    } else {
-      // Nothing measured this poll — show the last good reading, marked.
-      // Dimming means "these numbers are no longer confirmed", so it only
-      // applies when there are numbers; a row with nothing to fall back to
-      // is already `muted`, and stacking the two just makes it hard to read.
-      pair = lastMeasuredQuota.get(harness) || [null, null];
-      texts = quotaWindowTexts(pair, false);
-      note = QUOTA_LINE_STATE_COPY[line.state] || 'unknown';
-      stale = texts.length > 0;
-    }
-
-    slot.dataset.harness = harness;
-    slot.dataset.state = line.state || '';
-    slot.className = 'quota-line ' + (texts.length ? quotaLineTier(pair) : 'muted') +
-      (stale ? ' stale' : '');
-    // "Claude Code · quota unknown" when there is nothing to show at all;
-    // the bare word when it only qualifies numbers already on the line.
-    const suffix = note ? [texts.length ? note : 'quota ' + note] : [];
-    const label = line.label || nameLabel(harness);
-    const plain = [label].concat(texts.map(function (t) { return t.text; }), suffix);
-    const markup = [escapeHtml(label)]
-      .concat(texts.map(function (t) { return t.html; }), suffix.map(function (t) { return escapeHtml(t); }));
-    slot.innerHTML = markup.join(' · ');
-    slot.title = plain.join(' · ');
-    slot.hidden = false;
-  });
 }
 
 // Bring `el` into view for an empty state's action (#1238 J-09): open every

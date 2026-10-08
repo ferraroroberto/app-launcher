@@ -15,6 +15,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
+import { setUsageFilterStats } from './usage-meter.js';
 
 const MODES = ['off', 'shadow', 'rewrite'];
 // Plain words for the hook's modes (#1238 J-07): `shadow` measures what it
@@ -144,6 +145,8 @@ export async function fetchContextFilter() {
     renderHarnesses(body.harnesses);
     renderStats(body.stats);
     renderBadge(body.stats);
+    // The Usage sheet's savings rows (#1433) read the same stats.
+    setUsageFilterStats(body.stats);
   } catch (exc) {
     console.warn('context-filter fetch failed', exc);
   }

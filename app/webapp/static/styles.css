@@ -1937,30 +1937,122 @@ textarea.input-native { height: auto; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Title on its own full-width line above the badges (issue #113), but
-   clamped to a single line with an ellipsis (issue #120): a long title
-   no longer wraps to a second line and eats vertical space — the
-   `up <ago> · <folder>` meta line below already disambiguates. */
-.session-item .session-open .name {
-  display: block;
-  max-width: 100%;
-  font-size: var(--font-label);
-  font-weight: 600;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* kind tag — full-control PTY vs detached console window */
-.session-kind {
+/* ---------- Glance UI kit (#1433, step 1/7 of #1432) ----------
+   The shared parts every tab moves onto (glance.js, usage-meter.js). */
+
+/* Chip: one class, four tones, for exceptions only (a normal state gets no
+   chip). Neutral is the spec's chip (neutral-soft fill, text in fg); the
+   status tones put their *-text on their own 16% tint, the badge pairing
+   that holds AA in both themes. 12px caption, pill, sentence case. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding: 2px var(--space-sm);
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
   font-size: var(--font-caption);
   font-weight: 600;
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
+  line-height: 1.1;
   white-space: nowrap;
 }
-.session-kind.pty { background: rgb(from var(--success) r g b / 0.16); color: var(--success-text); }
-.session-kind.remote { background: rgb(from var(--fg) r g b / 0.08); color: var(--muted); }
+.chip[data-tone="accent"] { background: var(--accent-soft); color: var(--accent-text); }
+.chip[data-tone="attention"] { background: rgb(from var(--attention) r g b / 0.16); color: var(--attention-text); }
+.chip[data-tone="danger"] { background: rgb(from var(--danger) r g b / 0.16); color: var(--danger-text); }
+
+/* Avatar: a 36px squircle (rounded.md) on the neutral chip fill, holding a
+   glyph, with a corner badge. Green = the process is up, red = it should be
+   up but is down, no badge = not running; the chief wears a crown instead.
+   The badge's ring is the card surface, so it reads cut out of the tile. */
+.avatar {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+.avatar .avatar-glyph { width: 20px; height: 20px; }
+.avatar-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  box-sizing: border-box;
+}
+.avatar-badge[data-badge="alive"] { background: var(--success); }
+.avatar-badge[data-badge="down"] { background: var(--danger); }
+.avatar-badge[data-badge="crown"] {
+  top: -5px;
+  right: -5px;
+  bottom: auto;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--card);
+  border: 0;
+  color: var(--accent);
+}
+.avatar-badge[data-badge="crown"] .icon { width: var(--icon-inline); height: var(--icon-inline); }
+
+/* Session row (Code rows, Board session cards): the avatar, then a text
+   column of one title line (body, 600) and one meta line (body-sm, muted)
+   on the action-row's typography. Two lines tall = rows.lg. The meta text
+   ellipsizes; the chips after it never do. */
+.srow-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.srow-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fg);
+}
+.srow-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.srow-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.srow-meta-text:empty { display: none; }
+/* Both tap targets lay the row out the same way. */
+.session-item .session-open,
+.board-card.board-card-session {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  min-height: var(--row-lg);
+  padding: 8px 4px 8px 14px;
+}
+.board-card.board-card-session { padding-right: var(--board-card-inset); }
 /* ---------- row action menus: session kebab (#953) + project ⋯ (#977) ---------- */
 /* One anchor in the rail opens a floating vertical list — one icon + label
    row per action — on the same raised-chrome recipe as the git-status
@@ -3826,7 +3918,7 @@ body.terminal-open {
    status and quota rows under it carry the space above themselves, so a
    body whose quota rows are empty ends at the bar, not in a blank strip. */
 .board-dispatch-card .board-status,
-.board-dispatch-card .quota-lines { margin: 10px 0 0; }
+.board-dispatch-card .usage-meter-slot { margin: 10px 0 0; }
 /* Phone stacking order (#869 round 2, on-device feedback): the controls lead
    and "All projects" drops to the bottom of the bar, so the filter sits
    directly above the column sections it filters. Source order
@@ -4109,37 +4201,135 @@ body.terminal-open {
 .board-refresh { --icon-btn-box: var(--control-h); }
 .board-status { color: var(--muted); font-size: var(--font-body-sm); margin: 0 0 8px; }
 
-/* Quota rows (issues #326/#847/#860) — one line per heavy agent, Claude
-   Code above Codex, stacked so both are readable at a glance.
-
-   Each row is deliberately a single hard-nowrap line: the whole point is
-   two glanceable numbers per agent, and a wrapped row on the phone reads
-   as four ragged lines of noise. Overflow ellipses rather than wrapping,
-   with the full text on `title` for the rare narrow viewport. There is no
-   status dot — the line itself carries the tier colour. */
-.quota-lines {
+/* Usage meter (#1433): one component in two sizes, each a button that
+   opens the Usage sheet. Colour follows pace: a bar is accent on or under
+   pace, attention ahead of it, danger at 90%+; a stale reading dims and
+   carries a chip; with nothing measured the state word stays as text. */
+.usage-meter-slot { margin: 0 0 8px; min-width: 0; }
+.usage-meter {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.usage-meter:active { background: var(--card-2); }
+.usage-meter .um-mark { width: var(--icon-inline); height: var(--icon-inline); flex: none; }
+.usage-meter .um-name { font-weight: 600; white-space: nowrap; }
+.usage-meter .um-label,
+.usage-meter .um-reset { color: var(--muted); white-space: nowrap; }
+.usage-meter .um-pct { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-meter [data-tone="attention"] > .um-pct,
+.usage-meter .um-codex-value[data-tone="attention"] { color: var(--attention-text); }
+.usage-meter [data-tone="danger"] > .um-pct,
+.usage-meter .um-codex-value[data-tone="danger"] { color: var(--danger-text); }
+.usage-meter .um-note,
+.usage-meter .um-codex-value[data-tone="none"] { color: var(--muted); }
+/* The bar: a neutral track, a tone fill, and the week's 2px pace tick. */
+.usage-meter .um-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+}
+.usage-meter .um-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+.usage-meter .um-fill[data-tone="attention"] { background: var(--attention); }
+.usage-meter .um-fill[data-tone="danger"] { background: var(--danger); }
+.usage-meter .um-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--fg);
+}
+/* No longer confirmed: the numbers stay, dimmed. */
+.usage-meter[data-stale="true"] .um-windows,
+.usage-meter[data-stale="true"] .um-mini,
+.usage-meter .um-codex-value[data-stale="true"] { opacity: 0.55; }
+
+/* Full (Code): the head row, the 5h and Week rows, the Codex row. */
+.usage-meter-full {
   flex-direction: column;
-  min-width: 0;
-  gap: 2px;
-  margin: 0 0 8px;
-}
-.quota-line {
-  min-width: 0;
-  max-width: 100%;
+  gap: 6px;
+  padding: 8px 4px;
   font-size: var(--font-body-sm);
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.quota-line.good { color: var(--success); }
-.quota-line.warn { color: var(--attention); }
-.quota-line.danger { color: var(--danger); }
-.quota-line.stale { opacity: 0.6; }
-/* The weekly linear pace (#1330): a reference number, not a reading, so it
-   stays muted whatever the line's tier colour. */
-.quota-line .quota-pace { color: var(--muted); }
+.usage-meter-full .um-head,
+.usage-meter-full .um-codex {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.usage-meter-full .um-windows { display: flex; flex-direction: column; gap: 6px; }
+.usage-meter-full .um-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px 64px;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.usage-meter-full .um-row .um-pct { text-align: right; }
+.usage-meter-full .um-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-caption);
+}
+.usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
+.usage-meter-full .um-codex .um-codex-value { margin-left: auto; white-space: nowrap; }
+
+/* Compact (Board): one 44px line. */
+.usage-meter-compact {
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: var(--row-sm);
+  padding: 0 4px;
+  font-size: var(--font-body-sm);
+  white-space: nowrap;
+}
+.usage-meter-compact .um-mini {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.usage-meter-compact .um-bar { flex: none; width: 28px; }
+.usage-meter-compact .um-divider {
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+}
+.usage-meter-compact .um-chevron {
+  display: inline-flex;
+  margin-left: auto;
+  color: var(--muted);
+}
+.usage-meter-compact .um-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+
+/* The Usage sheet's label/value rows: the short label keeps its line, a long
+   value wraps beside it. */
+.usage-sheet-body .row > span { flex: none; white-space: nowrap; }
+.usage-sheet-body .usage-sheet-value {
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
 
 /* Context-filter "saved" badge (issue #713) — the last consumer of the
    dotted badge row the quota rows above used to share. */
@@ -4334,19 +4524,9 @@ span.chief-answer-ref { color: var(--muted); }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-/* Status accents on the card's left edge — state colors signal state. #608
-   split needs-you into four values (#813 added a fifth, tool-pending):
-   awaiting-decision/awaiting-input stay the same attention accent as the old
-   needs-you; stalled is a genuine anomaly and gets the danger accent;
-   idle-finished is dimmed like idle — nothing pending, just Claude holding a
-   workspace; tool-pending reads like working — it's genuinely ambiguous, but
-   the accent (not dimmed) errs toward "still active", the less misleading
-   read for a card sitting on an unresolved tool call. */
-.board-item.is-awaiting-decision .board-card,
-.board-item.is-awaiting-input .board-card { border-left: 3px solid var(--attention); }
-.board-item.is-stalled .board-card { border-left: 3px solid var(--danger); }
-.board-item.is-working .board-card,
-.board-item.is-tool-pending .board-card { border-left: 3px solid var(--accent); }
+/* Job cards' status accents on the card's left edge. Session cards carry
+   theirs as meta text and a "stalled" chip since #1433: no edge, and an
+   idle card is not dimmed. */
 .board-item.is-failed .board-card,
 .board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
 /* A job whose run history can't be read (#915): unknown, not failed. */
@@ -4354,20 +4534,11 @@ span.chief-answer-ref { color: var(--muted); }
 /* A job run the scheduled-run adapter could not verify (#916): it still wants
    a human's eye, but it is not a failure and must not be drawn as one. */
 .board-item.is-unconfirmed .board-card { border-left: 3px solid var(--attention); }
-.board-item.is-idle .board-card,
-.board-item.is-idle-finished .board-card { opacity: 0.7; }
 /* Fleet chief card (#245): the standing orchestrator reads distinct from
-   worker sessions — the canonical accent tint (the #528 in-progress recipe)
-   plus an accent left edge and the crown glyph colored to match. The tint
-   works in both themes (accent-soft is a color-mix over the per-theme
-   accent). Status accents above still win the left edge when more urgent
-   (needs-you/failed) because they share specificity and come first — the
-   chief rule below overrides via the extra class. */
-.board-item.board-item-chief .board-card {
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
-  opacity: 1;
-}
+   worker sessions — the canonical accent tint (the #528 in-progress recipe),
+   with the crown as its avatar badge (#1433). The tint works in both themes
+   (accent-soft is a color-mix over the per-theme accent). */
+.board-item.board-item-chief .board-card { background: var(--accent-soft); }
 /* Secondary text on an accent-soft tint: --muted reads 4.17:1 there (the
    card meta "repo · working · 2m"), under AA. Inside every tinted row the
    muted role resolves to --accent-text, the spec's text-on-accent-soft
@@ -4377,32 +4548,13 @@ span.chief-answer-ref { color: var(--muted); }
 .board-item.board-item-chief .board-card,
 .app-item.session-item.session-item-chief,
 .board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
-.board-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
 .board-empty { margin: 0; }
 
-/* Fleet chief row in the Coding tab's session list (#547) — same accent-soft
-   tint + accent left edge as the Board card above, adapted to this tab's
-   flat GitHub-list row shape (.app-item has no card box of its own). */
-.app-item.session-item.session-item-chief {
-  background: var(--accent-soft);
-  border-left: 3px solid var(--accent);
-}
-.session-item-chief .board-chief-crown { color: var(--accent); display: inline-flex; }
+/* Fleet chief row in the Coding tab's session list (#547) — the same
+   accent-soft tint as the Board card above, the crown its avatar badge
+   (#1433). */
+.app-item.session-item.session-item-chief { background: var(--accent-soft); }
 
-/* Telegram channel session (#1366): a "Telegram · Health" pill on the Board
-   card and the Coding row, so a chat-bound session reads distinct from a
-   worker and from the chief (which owns the full-row accent tint). */
-.session-channel-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--space-sm);
-  border-radius: var(--radius-pill);
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  font-size: var(--font-caption);
-  white-space: nowrap;
-}
-.session-item .name .session-channel-tag { margin-right: var(--space-sm); vertical-align: middle; }
 .lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
 /* Telegram sessions hidden from the lists (#1384): one summary line where

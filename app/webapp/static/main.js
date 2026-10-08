@@ -13,6 +13,7 @@ import { fetchConfig, patchConfig, wireClaudeOptions } from './claude-options.js
 import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
 import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './context-filter.js';
+import { wireUsageMeter } from './usage-meter.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps-coding.js';
 import { fetchListeners } from './apps-listeners.js';
@@ -361,7 +362,7 @@ async function boot() {
     setInterval(function () {
       fetchRateLimits().catch(noop);
       // Context filter (issue #713) rides the same cadence as the usage
-      // badges above — no dedicated timer for one more lightweight GET.
+      // meter above — no dedicated timer for one more lightweight GET.
       fetchContextFilter().catch(noop);
     }, SESSIONS_POLL_MS);
   });
@@ -418,6 +419,7 @@ wireClaudeOptions();
 wireChannelHide();
 wireChannelSessions();
 wireSessions();
+wireUsageMeter();
 wireApps();
 wireJobs();
 wireLifeOs();

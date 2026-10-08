@@ -147,14 +147,17 @@ def test_pty_session_renders_with_both_stop_buttons(
 
     Every session row (if any) is checked for the same shape: no action rail,
     no gear, no stop button, a visible › chevron and a tappable row button
-    (#1025). The launched session must be among the full-control rows.
+    (#1025). The launched session must be among the full-control rows, which
+    carry no kind chip since #1433 (only a detached row says what it is).
     """
     _navigate_collecting_errors(authed_page, base_url)
     # The session was launched before navigation, so boot()'s initial
     # fetchSessions should already include it; the SPA also re-polls on a
     # 5 s timer. Wait out one poll cycle as a fallback (no manual refresh
     # button to force an immediate fetch any more).
-    pty_rows = authed_page.locator("#sessionsList li.session-item:has(.session-kind.pty)")
+    pty_rows = authed_page.locator(
+        '#sessionsList li.session-item:has(.session-open[data-kind="pty"])'
+    )
     expect(pty_rows.first).to_be_visible(timeout=8_000)
 
     rows = authed_page.locator("#sessionsList li.session-item")
@@ -164,7 +167,7 @@ def test_pty_session_renders_with_both_stop_buttons(
     saw_pty = False
     for i in range(count):
         row = rows.nth(i)
-        kind = row.locator(".session-kind").inner_text().strip().lower()
+        kind = row.locator(".session-open").get_attribute("data-kind") or ""
         # #1025: the row's one control is the kebab, which opens its action
         # menu. No gear glyph, no chevron, and no Stop button loose on the
         # row itself — Stop lives inside the menu. The stop path itself is
@@ -190,19 +193,26 @@ def test_pty_session_renders_with_both_stop_buttons(
         # the row's hover hint and the menu's Copy path.
         full = row.locator("button.session-open").get_attribute("title") or ""
         folder = re.split(r"[\\/]", full.rstrip("\\/"))[-1]
-        meta = row.locator("button.session-open .meta").inner_text()
-        assert folder and meta.endswith(folder) and not re.search(r"[\\/]", meta), (
-            f"row {i} ({kind}): context line {meta!r} should end with the "
+        # #1433: "folder · uptime", the folder first so it is the part a
+        # narrow row keeps.
+        meta = row.locator("button.session-open .srow-meta-text").inner_text()
+        assert folder and meta.startswith(folder) and not re.search(r"[\\/]", meta), (
+            f"row {i} ({kind}): context line {meta!r} should start with the "
             f"folder of {full!r} and carry no path"
         )
-        if "detached" in kind:
-            pass
-        elif "full control" in kind:
+        # The normal case says nothing (#1433): no "full control" pill, and
+        # only a detached row carries the neutral "detached" chip.
+        expect(row).not_to_contain_text("full control")
+        detached_chips = row.locator(".chip.session-detached").count()
+        if kind == "remote":
+            assert detached_chips == 1, f"row {i}: a detached row must say so"
+        elif kind == "pty":
+            assert detached_chips == 0, f"row {i}: a full-control row carries no kind chip"
             saw_pty = True
         else:
-            pytest.fail(f"row {i}: unrecognised session kind text {kind!r}")
+            pytest.fail(f"row {i}: unrecognised session kind {kind!r}")
 
-    assert saw_pty, "launched PTY session did not surface as a 'full control' row"
+    assert saw_pty, "launched PTY session did not surface as a full-control row"
 
     launched = authed_page.locator(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'

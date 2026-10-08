@@ -414,6 +414,9 @@
   <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none">
     <path d="m15 18-6-6 6-6" />
   </symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none">
+    <path d="m9 18 6-6-6-6" />
+  </symbol>
   <symbol id="i-refresh-cw" viewBox="0 0 24 24" fill="none">
     <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
     <path d="M21 3v5h-5" />
@@ -673,14 +676,11 @@
                  role="list" aria-label="Projects not on their default branch"></div>
           </div>
         </div>
-        <!-- Quota rows (#860) — one line per heavy agent, Claude Code above
-             Codex, always both regardless of the selected model. The two
-             slots are fixed and positional; renderQuotaLines() only fills
-             them, so the layout never jumps when a source degrades. -->
-        <div id="codingUsage" class="quota-lines" role="status" aria-live="polite">
-          <span class="quota-line" hidden></span>
-          <span class="quota-line" hidden></span>
-        </div>
+        <!-- The full usage meter (#1433): Claude Code's 5h and Week bars
+             above a Codex row, always both regardless of the selected
+             model (#860). usage-meter.js fills it; a tap opens the Usage
+             sheet. -->
+        <div id="codingUsage" class="usage-meter-slot"></div>
         <!-- Context filter "saved" badge (issue #713) — glanceable tokens-
              saved readout beside the usage badges above; hidden entirely
              when the filter's stats are unavailable (fleet-config#392/#544
@@ -1318,13 +1318,11 @@
         </div>
       </div>
       <div id="boardStatus" class="board-status" hidden></div>
-      <!-- Same two quota rows as the Coding tab (#860) — this is where the
-           heavier sessions get launched, so both agents' headroom has to be
-           readable without switching the dispatch model. -->
-      <div id="boardUsage" class="quota-lines" role="status" aria-live="polite">
-        <span class="quota-line" hidden></span>
-        <span class="quota-line" hidden></span>
-      </div>
+      <!-- The compact usage meter (#1433), the same component and reading as
+           the Coding tab's — this is where the heavier sessions get launched,
+           so both agents' headroom is readable without switching the
+           dispatch model (#860). A tap opens the Usage sheet. -->
+      <div id="boardUsage" class="usage-meter-slot"></div>
         </div>
       </details>
       <!-- Each column is a section card like every other tab's (#1198):
@@ -2092,6 +2090,25 @@
         <div class="detail-actions">
           <p id="chiefAnswersNote" class="muted small chief-answers-note" role="status" hidden></p>
           <button type="button" id="chiefAnswersDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The Usage sheet (#1433), behind both usage meters: exact resets,
+         the week elapsed, Codex's state and the context filter's savings.
+         usage-meter.js fills the rows each time it opens (and on each poll
+         while it is open). -->
+    <dialog id="usageSheet" class="detail-dialog" aria-labelledby="usageSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="usageSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg> Usage</h2>
+          <button type="button" id="usageSheetClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="usageSheetBody" class="usage-sheet-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="usageSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>

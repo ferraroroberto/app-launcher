@@ -31,7 +31,9 @@ import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, renderQuotaLines, revealInCard } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
+import { chip, sessionRowBody } from './glance.js';
+import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
@@ -181,56 +183,33 @@ export function renderSessions() {
     open.className = 'launch-btn session-open';
     open.type = 'button';
 
-    // Title on its own full-width line at the top of the card, so a long
-    // project title wraps across the whole card instead of being squeezed
-    // into the narrow space beside the badges (issue #113).
-    const name = document.createElement('span');
-    name.className = 'name';
-    if (isChiefSession(s)) {
-      const crown = document.createElement('span');
-      crown.className = 'board-chief-crown';
-      crown.innerHTML = icon('crown');
-      name.appendChild(crown);
-    }
-    if (isChannelSession(s)) {
-      const tag = document.createElement('span');
-      tag.className = 'session-channel-tag';
-      tag.textContent = channelSessionName(s);
-      name.appendChild(tag);
-    }
-    name.appendChild(document.createTextNode(sessionTitle(s)));
-    open.appendChild(name);
-
-    const head = document.createElement('div');
-    head.className = 'session-head';
-    const dot = document.createElement('span');
-    dot.className = 'health-dot ' + (s.alive === false ? 'down' : 'up');
-    head.appendChild(dot);
-    // Which coding agent this session is running (issue #45). Resolved
-    // against the agent registry (state.agents) so a new agent's icon +
-    // label flow through without touching this file; falls back to
-    // Claude Code for an unrecognised id.
+    // The shared session row (#1433): the agent's mark in an avatar whose
+    // badge says it is alive (the chief's says crown), a one-line title, and
+    // one meta line, "folder · uptime". Chips only for exceptions: a detached
+    // row says so; a full-control row is the normal case and says nothing.
+    // The agent resolves against the registry (state.agents) so a new
+    // agent's mark flows through untouched, falling back to Claude Code.
     const known = state.agents.find(function (a) { return a.id === s.agent; });
-    const agentId = known ? known.id : 'claude';
-    const agentIcon = brandIconEl(
-      agentId, 'session-agent-icon', known ? known.label : 'Claude Code'
-    );
-    head.appendChild(agentIcon);
-    const kindTag = document.createElement('span');
-    kindTag.className = 'session-kind ' + (remote ? 'remote' : 'pty');
-    kindTag.innerHTML = remote ? icon('cloud') + ' detached' : icon('zap') + ' full control';
-    head.appendChild(kindTag);
-    open.appendChild(head);
-
-    const meta = document.createElement('span');
-    meta.className = 'meta';
+    const chips = [];
+    if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
+    if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
     const ago = fmtAgo(s.started_at);
     // The folder name, not the full Windows path that wrapped to four lines
     // on a phone (#1238 J-10). The full path is the row's hover hint and the
     // row menu's Copy path.
-    meta.textContent = (ago ? 'up ' + ago + ' · ' : '') + projectFolder(s);
+    const body = sessionRowBody({
+      agentId: known ? known.id : 'claude',
+      agentLabel: known ? known.label : 'Claude Code',
+      badge: isChiefSession(s) ? 'crown' : (s.alive === false ? 'down' : 'alive'),
+      title: sessionTitle(s),
+      meta: [projectFolder(s), ago ? 'up ' + ago : ''].filter(Boolean).join(' · '),
+      chips: chips,
+      // `.name`: the hook every row test reads the title through.
+      titleClass: 'name',
+    });
+    body.forEach(function (node) { open.appendChild(node); });
+    open.dataset.kind = remote ? 'remote' : 'pty';
     if (s.project_dir) open.title = s.project_dir;
-    open.appendChild(meta);
     open.addEventListener('click', function () { openSession(s); });
     main.appendChild(open);
     li.appendChild(main);
@@ -413,11 +392,11 @@ export async function fetchSessions() {
   }
 }
 
-// Two fixed quota rows (issues #326/#847/#860) on a standalone endpoint, so
-// the Coding tab never depends on the Board tab having been opened. The rows
-// no longer follow the model picker — both heavy agents are always listed,
-// in the same order — so there is no selection to race and no sequence guard
-// to keep.
+// The usage meter's one endpoint (#1433): both tabs' meters render from
+// this poll, which runs whatever tab is up, so the Coding tab never depends
+// on the Board having been opened and the two can never disagree. Both
+// heavy agents are always listed, in the same order, whatever the model
+// picker says (#860), so there is no selection to race.
 const QUOTA_ERROR_LINES = [
   { harness: 'claude', label: 'Claude Code', state: 'error' },
   { harness: 'codex', label: 'Codex', state: 'error' },
@@ -426,10 +405,10 @@ const QUOTA_ERROR_LINES = [
 export async function fetchRateLimits() {
   try {
     const body = await jsonApi('/api/rate-limits');
-    renderQuotaLines(els.codingUsage, body.quota_lines);
+    renderUsage(body.quota_lines);
   } catch (exc) {
     logPollFailure('rate-limits fetch failed', exc);
-    renderQuotaLines(els.codingUsage, QUOTA_ERROR_LINES);
+    renderUsage(QUOTA_ERROR_LINES);
   }
 }
 

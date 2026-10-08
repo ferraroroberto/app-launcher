@@ -255,12 +255,16 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours.nth(0)).to_contain_text("photo-ocr")
     expect(yours.nth(0)).to_contain_text("needs you")
     expect(yours.nth(0)).to_contain_text("chunk merge fix")
-    # Title first (#1198): the card's title leads, the project/status meta
-    # line follows it, and the clamped title keeps its full text reachable.
-    title = yours.nth(0).locator(".board-card > :first-child")
+    # The shared session row (#1433): the avatar leads, then the title over
+    # the project/status meta line; the one-line title keeps its full text
+    # reachable.
+    expect(yours.nth(0).locator(".board-card > :first-child")).to_have_class(
+        re.compile(r"\bavatar\b")
+    )
+    title = yours.nth(0).locator(".board-card .srow-text > :first-child")
     expect(title).to_have_class(re.compile(r"\bboard-card-title\b"))
     expect(title).to_have_attribute("title", "chunk merge fix")
-    expect(yours.nth(0).locator(".board-card > :nth-child(2)")).to_have_class(
+    expect(yours.nth(0).locator(".board-card .srow-text > :nth-child(2)")).to_have_class(
         re.compile(r"\bboard-card-meta\b")
     )
 
@@ -370,16 +374,18 @@ def test_board_renders_columns_counts_and_cards(
     # Backlog card is repo · #N · title; done card is a closed issue.
     backlog = authed_page.locator('.board-list[data-col="backlog"] li.board-item')
     expect(backlog.first).to_contain_text("app-launcher #301")
-    # A Backlog row's text sits at the same inset inside its column as a
+    # A Backlog row's content starts at the same inset inside its column as a
     # Claude's-turn card's (#1303: the flat row had 4px, the cards 14px).
-    # A card's status accent is a 3px left border, a marker rather than
-    # inset, so it is taken off the card's side.
+    # A session card leads with its avatar since #1433, so its leading edge
+    # is the avatar's, not the title's. A job card's status accent is a 3px
+    # left border, a marker rather than inset, so it is taken off the side.
     inset = """(li) => {
       const list = li.closest('.board-list').getBoundingClientRect();
       const btn = li.querySelector('.board-card');
-      const title = btn.querySelector('.board-card-title, .board-card-title-compact');
+      const lead = btn.querySelector('.avatar') ||
+        btn.querySelector('.board-card-title, .board-card-title-compact');
       const accent = parseFloat(getComputedStyle(btn).borderLeftWidth) || 0;
-      return title.getBoundingClientRect().left - list.left - accent;
+      return lead.getBoundingClientRect().left - list.left - accent;
     }"""
     claude_card = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item').first
     backlog_inset = stable_eval(backlog.first, inset)

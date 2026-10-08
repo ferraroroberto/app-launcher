@@ -58,9 +58,10 @@ import { icon } from './_vendored/icons/icons.js';
 import { ensureTerminalToken } from './webauthn.js';
 import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 import {
-  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtDuration,
-  isChannelSession, renderQuotaLines, revealInCard,
+  CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, fmtDuration,
+  isChannelSession, revealInCard,
 } from './dom-utils.js';
+import { chip, sessionRowBody } from './glance.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -116,14 +117,14 @@ function sessionLabel(card) {
 // between "still executing" and "permission-gated", so it renders as an
 // ambient working-ish state rather than an alert.
 const STATUS_META = {
-  working: { icon: 'zap', text: 'working', cls: 'is-working' },
-  'tool-pending': { icon: 'activity', text: 'running', cls: 'is-tool-pending' },
-  stalled: { icon: 'hourglass', text: 'stalled', cls: 'is-stalled' },
-  'awaiting-decision': { icon: 'sparkle', text: 'awaiting decision', cls: 'is-awaiting-decision' },
-  'awaiting-input': { icon: 'sparkle', text: 'needs you', cls: 'is-awaiting-input' },
-  'idle-finished': { icon: 'circle-check', text: 'finished', cls: 'is-idle-finished' },
-  idle: { icon: 'moon', text: 'idle', cls: 'is-idle' },
-  unknown: { icon: null, text: '', cls: 'is-unknown' },
+  working: { text: 'working', cls: 'is-working' },
+  'tool-pending': { text: 'running', cls: 'is-tool-pending' },
+  stalled: { text: 'stalled', cls: 'is-stalled' },
+  'awaiting-decision': { text: 'awaiting decision', cls: 'is-awaiting-decision' },
+  'awaiting-input': { text: 'needs you', cls: 'is-awaiting-input' },
+  'idle-finished': { text: 'finished', cls: 'is-idle-finished' },
+  idle: { text: 'idle', cls: 'is-idle' },
+  unknown: { text: '', cls: 'is-unknown' },
 };
 
 // The chief's Stop-hook status sits in the needs-you family for nearly all
@@ -135,7 +136,7 @@ const STATUS_META = {
 // excluded — a chief dispatch that's been outstanding this long is a real
 // anomaly worth surfacing, not hiding behind a benign label.
 const CHIEF_STANDING_BY_STATUSES = new Set(['idle-finished', 'awaiting-input', 'awaiting-decision']);
-const CHIEF_STANDING_BY_META = { icon: 'moon', text: 'standing by', cls: 'is-idle' };
+const CHIEF_STANDING_BY_META = { text: 'standing by', cls: 'is-idle' };
 
 // ----------------------------------------------------------------- cards
 
@@ -174,47 +175,53 @@ function cardShell(iconName, metaText, titleText, cls) {
 // `openItem` is the open drawer's current <li> when renderBoard() can keep it
 // (#958); the card's fresh header is swapped into it instead of a new drawer.
 function renderSessionCard(card, openItem) {
+  const chief = isChiefCard(card);
   const meta =
-    isChiefCard(card) && CHIEF_STANDING_BY_STATUSES.has(card.status)
+    chief && CHIEF_STANDING_BY_STATUSES.has(card.status)
       ? CHIEF_STANDING_BY_META
       : STATUS_META[card.status] || STATUS_META.unknown;
-  const bits = [card.project || '', meta.text, fmtDuration(card.age_seconds)].filter(Boolean);
-  const shell = cardShell(meta.icon, ' ' + bits.join(' · '), sessionLabel(card), meta.cls);
-  // The chief's card is visually distinct (#245): accent tint + crown, so
-  // the standing orchestrator never blends in with worker sessions.
-  if (isChiefCard(card)) {
-    shell.li.classList.add('board-item-chief');
-    const crown = document.createElement('span');
-    crown.className = 'board-card-meta-icon board-chief-crown';
-    crown.innerHTML = icon('crown');
-    const chiefMeta = shell.btn.querySelector('.board-card-meta');
-    chiefMeta.insertBefore(crown, chiefMeta.firstChild);
-  }
-  // A Telegram channel session (#1366) carries a "Telegram · Health" pill.
-  if (isChannelSession(card)) {
-    shell.li.classList.add('board-item-channel');
-    const tag = document.createElement('span');
-    tag.className = 'session-channel-tag';
-    tag.textContent = channelSessionName(card);
-    shell.btn.querySelector('.board-card-meta').insertBefore(
-      tag, shell.btn.querySelector('.board-card-meta').firstChild
-    );
-  }
-  // The Board now includes every launcher-owned agent, not only Claude Code
-  // (#455). Show the same registry-backed brand identity as the Coding tab so
-  // an unknown/degraded status never hides which terminal the card belongs to.
+  // The shared session row (#1433), the same anatomy as the Coding tab's:
+  // avatar with the agent's mark and alive badge (crown for the chief), a
+  // one-line title, one meta line "repo · status · age". Status is plain
+  // meta; only an exception becomes a chip: stalled (danger), detached
+  // (neutral), a Telegram channel's name (#1366). No left-edge status
+  // border, no dimming of an idle card. The Board includes every
+  // launcher-owned agent (#455), resolved against the same registry.
+  const stalled = card.status === 'stalled';
+  const chips = [];
+  if (isChannelSession(card)) chips.push(chip(channelSessionName(card), 'neutral', 'session-channel-tag'));
+  if (stalled) chips.push(chip('stalled', 'danger', 'board-stalled-chip'));
+  if (card.kind === 'remote') chips.push(chip('detached', 'neutral', 'session-detached'));
+  const bits = [card.project || '', stalled ? '' : meta.text, fmtDuration(card.age_seconds)]
+    .filter(Boolean);
   const known = state.agents.find(function (a) { return a.id === card.agent; });
   const agentId = String(card.agent || 'claude');
-  const agentIcon = brandIconEl(
-    agentId, 'session-agent-icon board-agent-icon', known ? known.label : agentId
-  );
-  const metaLine = shell.btn.querySelector('.board-card-meta');
-  metaLine.insertBefore(agentIcon, metaLine.firstChild);
+
+  const li = document.createElement('li');
+  li.className = 'app-item board-item board-item-session' + (meta.cls ? ' ' + meta.cls : '');
+  // The chief keeps its accent tint (#245); the crown is its avatar badge.
+  if (chief) li.classList.add('board-item-chief');
+  if (isChannelSession(card)) li.classList.add('board-item-channel');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'launch-btn board-card board-card-session';
+  sessionRowBody({
+    agentId: agentId,
+    agentLabel: known ? known.label : agentId,
+    badge: chief ? 'crown' : (card.alive === false ? 'down' : 'alive'),
+    title: sessionLabel(card),
+    meta: bits.join(' · '),
+    chips: chips,
+    iconClass: 'board-agent-icon',
+    titleClass: 'board-card-title',
+    metaClass: 'board-card-meta',
+  }).forEach(function (node) { btn.appendChild(node); });
+  li.appendChild(btn);
   if (card.session_id) {
-    shell.li.dataset.sessionId = card.session_id;
+    li.dataset.sessionId = card.session_id;
     // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
     // the way into the full terminal now.
-    shell.btn.addEventListener('click', function () {
+    btn.addEventListener('click', function () {
       state.boardExpanded =
         state.boardExpanded === card.session_id ? null : card.session_id;
       renderBoard();
@@ -224,25 +231,25 @@ function renderSessionCard(card, openItem) {
     // pattern): every render rebuilds it, so its state is set here, and a
     // kept drawer's fresh header below carries it too.
     const expanded = state.boardExpanded === card.session_id;
-    shell.btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    if (expanded) shell.btn.setAttribute('aria-controls', drawerId(card));
+    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (expanded) btn.setAttribute('aria-controls', drawerId(card));
     if (expanded) {
       if (openItem) {
         // The header button is always the <li>'s first child, the drawer
         // after it — only the header is replaced.
-        openItem.className = shell.li.className + ' expanded';
-        openItem.replaceChild(shell.btn, openItem.firstElementChild);
+        openItem.className = li.className + ' expanded';
+        openItem.replaceChild(btn, openItem.firstElementChild);
         return openItem;
       }
-      shell.li.classList.add('expanded');
-      shell.li.dataset.drawerShape = drawerShape(card);
-      shell.li.appendChild(buildDrawer(card));
+      li.classList.add('expanded');
+      li.dataset.drawerShape = drawerShape(card);
+      li.appendChild(buildDrawer(card));
     }
   } else {
-    shell.btn.classList.add('inert');
-    shell.btn.disabled = true;
+    btn.classList.add('inert');
+    btn.disabled = true;
   }
-  return shell.li;
+  return li;
 }
 
 // ------------------------------------------------------ drill-down drawer
@@ -826,13 +833,11 @@ function renderStatusLine(body) {
   els.boardStatus.hidden = parts.length === 0;
 }
 
-// Quota rows (issues #326/#860) — a separate element from boardStatus on
-// purpose: that one is transient-problem text that vanishes once the problem
-// clears, while these are live content that should persist (dimmed, not
-// hidden) even when the cache is stale. Both agents always show, since this
-// is the tab the heavier sessions get launched from and the number you need
-// is the one for the agent you have *not* selected. Rendering is shared with
-// the Coding tab — see dom-utils.js::renderQuotaLines.
+// The compact usage meter (#1433) sits in #boardUsage, a separate element
+// from boardStatus on purpose: that one is transient-problem text, the meter
+// is live content that persists (dimmed, not hidden) when its reading goes
+// stale. It is fed by the Coding tab's /api/rate-limits poll, which runs on
+// every tab — see usage-meter.js — so the Board payload carries no quota.
 
 // ------------------------------------------------------- chief's plan (#1279)
 //
@@ -1167,7 +1172,6 @@ export function renderBoard() {
   renderChannelSummaries();
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
-  renderQuotaLines(els.boardUsage, body.quota_lines);
   // Keep the dispatch bar's repo list + mic visibility in step with state
   // that may land after the first render (/api/apps, /api/status).
   syncDispatchBar();

@@ -73,7 +73,7 @@ def test_inpage_loopback_open_is_not_treated_as_mirror(
     # Open the live terminal the in-app way: tap the running session's row
     # (sessions.js wires .session-open → openTerminal), not a deep-link.
     pty_row = authed_page.locator(
-        "#sessionsList li.session-item:has(.session-kind.pty)"
+        '#sessionsList li.session-item:has(.session-open[data-kind="pty"])'
     ).first
     expect(pty_row).to_be_visible(timeout=8_000)
     pty_row.locator(".session-open").click()
