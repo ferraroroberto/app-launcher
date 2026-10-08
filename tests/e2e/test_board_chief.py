@@ -31,7 +31,9 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src import chief_plan
-from tests.e2e.conftest import HeldUploads, flush_requests, stable_read, wait_until
+from tests.e2e.conftest import (
+    HeldUploads, flush_requests, stable_eval, stable_read, wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -194,17 +196,21 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     expect(row.locator("a")).to_have_count(0)
     expect(plan_body.locator(".board-plan-age")).to_have_text("Update time unknown")
     expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
-    # Crown glyph marks the card (accent tint is the .board-item-chief class).
+    # The crown glyph marks the card; it carries no tint of its own (#1449):
+    # its background and meta colour equal a worker session card's.
     assert chief_li.locator(
         '.board-chief-crown use[href="#i-crown"]'
     ).count() == 1
-    # The tint's meta line takes --accent-text, the spec's text on
-    # accent-soft: --muted read 4.17:1 there (#1175, COLOR-02).
-    accent_text = authed_page.evaluate(
-        "() => { const s = document.createElement('span');"
-        " s.style.color = 'var(--accent-text)'; document.body.appendChild(s);"
-        " const c = getComputedStyle(s).color; s.remove(); return c; }")
-    expect(chief_li.locator(".board-card-meta").first).to_have_css("color", accent_text)
+    worker_li = authed_page.locator("li.board-item:not(.board-item-chief)").first
+    expect(worker_li).to_be_visible()
+    read = ("el => { const c = el.querySelector('button.board-card');"
+            " const m = el.querySelector('.board-card-meta');"
+            " return [getComputedStyle(c).backgroundColor,"
+            " getComputedStyle(m).color]; }")
+    chief_bg, chief_meta = stable_eval(chief_li, read)
+    worker_bg, worker_meta = stable_eval(worker_li, read)
+    assert chief_bg == worker_bg
+    assert chief_meta == worker_meta
 
     chief_li.locator("button.board-card").click()
     drawer = authed_page.locator(".board-drawer")
