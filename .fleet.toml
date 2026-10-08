@@ -54,7 +54,7 @@ browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b47
 geometry = { src = "tests/e2e/_geometry.py", sha = "05f3e6b2a8dc5a39f46be955055ccc3fe20b23a0", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "scripts/classify_e2e.py" }
-icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "28c3e2c09a6bdc224a2188dfd2abcea2d99744f7", dest = "app/webapp/static/_vendored/icon-button" }
+icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "app/webapp/static/_vendored/icon-button" }
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
