@@ -171,3 +171,39 @@ def test_no_save_button_is_left(authed_page: Page, base_url: str) -> None:
     texts = [t.strip() for t in scope.all_text_contents()]
     assert not [t for t in texts if t == "Save"], texts
     expect(authed_page.locator("#saveSettings, #saveChiefSettings, #chiefSettingsDialog, #codingOptions")).to_have_count(0)
+
+
+def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: str) -> None:
+    """Passkeys moved out of General into their own sheet (#1435): the row
+    counts the devices, and remove and enrol still reach their endpoints."""
+    page = authed_page
+    status = {
+        "configured": True, "enrollment_open": True, "enrollment_seconds_left": 60,
+        "devices": [{"id": "dev-1", "label": "Test phone", "added_at": "2026-01-01", "last_used": None}],
+    }
+    page.route("**/api/webauthn/status", lambda route: route.fulfill(json=status))
+    deletes: list = []
+    page.route(
+        "**/api/webauthn/devices/*",
+        lambda route: (deletes.append(route.request.method), route.fulfill(json={"ok": True})),
+    )
+    begins: list = []
+    page.route(
+        "**/api/webauthn/enroll/begin",
+        lambda route: (begins.append(route.request.post_data_json),
+                       route.fulfill(status=400, json={"detail": "stop here"})),
+    )
+    page.on("dialog", lambda d: d.accept("Second phone") if d.type == "prompt" else d.accept())
+    page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(page)
+    expect(_value(page, "passkeys")).to_have_text("1 device")
+
+    open_settings_sheet(page, "passkeysSheet")
+    expect(page.locator("#webauthnDevices li")).to_have_count(1)
+    page.locator("#webauthnDevices li .icon-button").click()
+    expect(page.locator("#toast")).to_contain_text("Removed Test phone")
+    assert deletes == ["DELETE"]
+
+    page.locator("#enrollDeviceBtn").click()
+    expect(page.locator("#toast")).to_contain_text("Enrollment failed")
+    assert begins == [{"label": "Second phone"}]
