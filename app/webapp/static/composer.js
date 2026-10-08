@@ -113,7 +113,7 @@
  * cancelled". A paste or drop mid-run still queues behind it.
  */
 
-import { apiFailToast, apiRaw, toast } from './api.js';
+import { apiFailToast, apiRawJson, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { createRowMenu } from './row-menu.js';
@@ -342,15 +342,10 @@ export function mountComposer(host, opts) {
       el.extract, icon('camera') + ' Extract text', icon('hourglass') + ' Reading '
     );
     try {
-      const res = await apiRaw('/api/ocr', {
+      const body = await apiRawJson('/api/ocr', {
         method: 'POST', terminalToken: readTerminalToken(), body: fd,
         signal: ctrl.signal,
       });
-      if (!res.ok) {
-        const b = await res.json().catch(function () { return null; });
-        throw new Error((b && b.detail) || ('HTTP ' + res.status));
-      }
-      const body = await res.json().catch(function () { return null; });
       const text = body && body.text;
       const plural = list.length > 1;
       if (!text) {

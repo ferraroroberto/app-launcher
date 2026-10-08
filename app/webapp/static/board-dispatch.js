@@ -26,11 +26,12 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
+import { apiFailToast, toast } from './api.js';
 import { applyLaunchSizePayload } from './terminal.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { icon } from './_vendored/icons/icons.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
+import { sendSessionMessage } from './sessions.js';
 import { CHIEF_RESTART_CONFIRM, isChiefSession, wireModelCombo } from './dom-utils.js';
 import { fetchBoard, renderBoard } from './board.js';
 
@@ -97,18 +98,13 @@ export function chiefSessionId() {
 // `restart` (#1351) is the explicit intent to stop a live chief; `resume`
 // alone keeps one, so a stale page's send can never replace it server-side.
 export async function ensureChief(fresh, resume, restart) {
-  const tt = await ensureTerminalToken();
   const payload = {};
   if (fresh) payload.fresh = true;
   if (resume) payload.resume = true;
   if (restart) payload.restart = true;
   // Same size contract as every launch (issue #374).
   applyLaunchSizePayload(payload);
-  return jsonApi('/api/board/chief/ensure', {
-    method: 'POST',
-    headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-    body: JSON.stringify(payload),
-  });
+  return terminalJsonApi('/api/board/chief/ensure', { method: 'POST', body: payload });
 }
 
 // One shape for every chief lifecycle button — Board's Start/Resume/Restart
@@ -281,15 +277,7 @@ export async function sendToChief(text) {
   // Never `restart` (#1351): with a chief alive the text lands in it — a
   // restart here would drop the in-flight turn of the chief being answered.
   const ensured = await ensureChief(false, true);
-  const tt = await ensureTerminalToken();
-  await jsonApi(
-    '/api/claude-code/sessions/' + encodeURIComponent(ensured.session_id) + '/input',
-    {
-      method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify({ data: text, submit: true }),
-    }
-  );
+  await sendSessionMessage(ensured.session_id, text);
   return ensured;
 }
 
@@ -343,10 +331,7 @@ async function sendChat() {
 
 async function openChiefSettings() {
   try {
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi('/api/board/chief/settings', {
-      headers: authHeaders({ terminalToken: tt }),
-    });
+    const body = await terminalJsonApi('/api/board/chief/settings');
     const s = body.settings || {};
     if (chiefModelCombo) chiefModelCombo.setValue(s.model || 'fable');
     els.chiefWorkerCap.value = String(s.worker_cap || 3);
@@ -358,14 +343,12 @@ async function openChiefSettings() {
 
 async function saveChiefSettings() {
   try {
-    const tt = await ensureTerminalToken();
-    await jsonApi('/api/board/chief/settings', {
+    await terminalJsonApi('/api/board/chief/settings', {
       method: 'PUT',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify({
+      body: {
         model: (chiefModelCombo && chiefModelCombo.getValue()) || 'fable',
         worker_cap: parseInt(els.chiefWorkerCap.value, 10),
-      }),
+      },
     });
     els.chiefSettingsDialog.close();
     toast('Chief settings saved', 'good', { icon: 'circle-check' });

@@ -14,7 +14,7 @@
 
 import { els, state } from './state.js';
 import { renderHomeHead } from './home-head.js';
-import { apiFailToast, authHeaders, jsonApi, toast, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
@@ -23,7 +23,7 @@ import { actionRow } from './action-rows.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './telegram-setup.js';
 import { createRowMenu } from './row-menu.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
 
 // The skill rows' kebab menu (#1128), on the shared row-menu.js.
@@ -148,14 +148,9 @@ async function launchChannel(p, resume) {
   const payload = { mode: 'pty', model: model, resume: resume };
   applyLaunchSizePayload(payload);
   try {
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi(
+    const body = await terminalJsonApi(
       '/api/life-os/channels/' + encodeURIComponent(p.id) + '/launch',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify(payload),
-      }
+      { method: 'POST', body: payload }
     );
     toast(
       (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram' + modelTag(model),
@@ -301,12 +296,7 @@ async function launchRecap() {
   try {
     // Passkey-gated like /api/board/issues/start (#1036): a spawn is
     // terminal-grade, so the terminal token must ride along (cf. #997).
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi('/api/life-os/recap/launch', {
-      method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify(payload),
-    });
+    const body = await terminalJsonApi('/api/life-os/recap/launch', { method: 'POST', body: payload });
     toast(
       'Launched weekly recap' + modelTag(model) +
         (mode === 'remote' ? ' (detached)' : ''),
@@ -337,14 +327,9 @@ async function launchSkill(s) {
   if (mode !== 'remote') applyLaunchSizePayload(payload);
   try {
     // Passkey-gated, same as launchRecap (#1036).
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi(
+    const body = await terminalJsonApi(
       '/api/life-os/skills/' + encodeURIComponent(s.id) + '/launch',
-      {
-        method: 'POST',
-        headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-        body: JSON.stringify(payload),
-      }
+      { method: 'POST', body: payload }
     );
     toast(
       (resume ? 'Resumed ' : 'Launched ') + s.name +

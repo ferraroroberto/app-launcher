@@ -21,7 +21,6 @@ module resolves *what to show*, not *which file*.
 from __future__ import annotations
 
 import ast
-import json
 import logging
 import re
 from pathlib import Path
@@ -31,6 +30,7 @@ import pyte
 
 from src import plan_picker, transcript_locate
 from src.board_transcript import _read_tail_bytes, _tail_lines, last_exchange
+from src.transcript_flavors.codex import codex_entries
 
 logger = logging.getLogger(__name__)
 
@@ -210,65 +210,47 @@ def _with_title_check(
 
 
 def codex_last_exchange(path: Optional[Path]) -> Dict[str, Any]:
-    """Read the newest Codex user/assistant messages from bounded JSONL."""
+    """Read the newest Codex user/assistant messages from bounded JSONL.
+
+    Reads the rollout through :func:`transcript_flavors.codex.codex_entries`
+    (#1422) so the drawer and the Chat reader agree on what counts as a typed
+    prompt — harness plumbing such as ``<environment_context>`` is a ``system``
+    entry there, never the "last prompt" shown here.
+    """
     if path is None:
         return unavailable("native_unavailable")
     raw = _read_tail(path, _CODEX_TAIL_BYTES)
     if not raw:
         return unavailable("native_unavailable")
-    records: List[Tuple[str, str, Any]] = []
-    for line in raw.splitlines():
-        try:
-            obj = json.loads(line)
-        except (TypeError, ValueError):
-            continue
-        if obj.get("type") != "response_item":
-            continue
-        payload = obj.get("payload")
-        if not isinstance(payload, dict) or payload.get("type") != "message":
-            continue
-        role = str(payload.get("role") or "")
-        if role not in ("user", "assistant"):
-            continue
-        wanted = "input_text" if role == "user" else "output_text"
-        content = payload.get("content")
-        if not isinstance(content, list):
-            continue
-        text = "\n\n".join(
-            str(item.get("text") or "").strip()
-            for item in content
-            if isinstance(item, dict) and item.get("type") == wanted
-            and str(item.get("text") or "").strip()
-        )
-        if text:
-            records.append((role, text, obj.get("timestamp")))
+    entries = codex_entries(list(enumerate(raw.splitlines())), uncapped=True)
+    messages = [e for e in entries if e["kind"] in ("user", "assistant")]
     assistant_index = next(
-        (index for index in range(len(records) - 1, -1, -1)
-         if records[index][0] == "assistant"),
+        (index for index in range(len(messages) - 1, -1, -1)
+         if messages[index]["kind"] == "assistant"),
         None,
     )
     if assistant_index is None:
         return unavailable("no_exchange")
     user_record = next(
-        (records[index] for index in range(assistant_index - 1, -1, -1)
-         if records[index][0] == "user"),
+        (messages[index] for index in range(assistant_index - 1, -1, -1)
+         if messages[index]["kind"] == "user"),
         None,
     )
-    assistant = records[assistant_index]
+    assistant = messages[assistant_index]
     return {
         "available": True,
         "source": "codex",
         "reason": None,
         "user": (
             {
-                "text": user_record[1][-_USER_TEXT_CAP:],
-                "timestamp": user_record[2],
+                "text": user_record["text"][-_USER_TEXT_CAP:],
+                "timestamp": user_record["timestamp"],
             }
             if user_record else None
         ),
         "assistant": {
-            "text": assistant[1][-_ASSISTANT_TEXT_CAP:],
-            "timestamp": assistant[2],
+            "text": assistant["text"][-_ASSISTANT_TEXT_CAP:],
+            "timestamp": assistant["timestamp"],
         },
     }
 

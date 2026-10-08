@@ -86,7 +86,7 @@ import { uploadSessionFile } from './terminal-compose.js';
 import { openImageLightbox } from './system-map.js';
 import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderHunks } from './diff-view.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
@@ -489,11 +489,9 @@ async function copyTurn(e) {
   }
   let body;
   try {
-    const tt = await ensureTerminalToken();
-    body = await jsonApi(
+    body = await terminalJsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-        '/transcript/entry?offset=' + encodeURIComponent(e.offset),
-      { headers: authHeaders({ terminalToken: tt }) }
+        '/transcript/entry?offset=' + encodeURIComponent(e.offset)
     );
   } catch (exc) {
     fail();
@@ -531,11 +529,9 @@ export async function lastAssistantEntryFullText() {
   if (!e.truncated || e.offset == null) return e.text || '';
   const sid = view.session.session_id;
   try {
-    const tt = await ensureTerminalToken();
-    const body = await jsonApi(
+    const body = await terminalJsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-        '/transcript/entry?offset=' + encodeURIComponent(e.offset),
-      { headers: authHeaders({ terminalToken: tt }) }
+        '/transcript/entry?offset=' + encodeURIComponent(e.offset)
     );
     if (body && body.available) return body.text || '';
   } catch (exc) { /* fall through to the capped text already loaded */ }
@@ -782,12 +778,10 @@ function fullDiffControl(wrap, diff) {
     btn.textContent = 'Loading…';
     let body = null;
     try {
-      const tt = await ensureTerminalToken();
-      body = await jsonApi(
+      body = await terminalJsonApi(
         '/api/claude-code/sessions/' + encodeURIComponent(sid) +
           '/transcript/diff?offset=' + encodeURIComponent(diff.offset) +
-          '&n=' + encodeURIComponent(diff.n || 0),
-        { headers: authHeaders({ terminalToken: tt }) }
+          '&n=' + encodeURIComponent(diff.n || 0)
       );
     } catch (exc) {
       body = null;

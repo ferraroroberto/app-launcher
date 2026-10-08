@@ -23,10 +23,11 @@
  */
 
 import { els } from './state.js';
-import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
+import { apiFailToast, jsonApi, toast } from './api.js';
 import { fmtAgo } from './sessions.js';
-import { ensureTerminalToken } from './webauthn.js';
+import { terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { askOption } from './ask-option.js';
 
 let hooks = null;
 // The open card: { sid, via: 'picker' | 'composer', sessions, busy,
@@ -172,16 +173,12 @@ function render() {
   list.setAttribute('role', 'group');
   list.setAttribute('aria-label', 'Sessions, newest first');
   const buttons = card.sessions.map(function (s) {
-    const b = el('button', 'tr-ask-opt tr-resume-opt');
-    b.type = 'button';
+    const b = askOption({
+      label: s.title, description: ago(s.updated_at), extraClass: 'tr-resume-opt',
+      onTap: function () { pick(s); },
+    });
     b.dataset.id = s.id;
     b.disabled = card.busy;
-    const body = el('span', 'tr-ask-opt-body');
-    body.appendChild(el('span', 'tr-ask-label', s.title));
-    const when = ago(s.updated_at);
-    if (when) body.appendChild(el('span', 'tr-ask-desc', when));
-    b.appendChild(body);
-    b.addEventListener('click', function () { pick(s); });
     list.appendChild(b);
     return { b: b, s: s };
   });
@@ -214,11 +211,9 @@ async function pick(s) {
   render();
   let res;
   try {
-    const tt = await ensureTerminalToken();
-    res = await jsonApi(sessionPath(mine.sid, 'resume'), {
+    res = await terminalJsonApi(sessionPath(mine.sid, 'resume'), {
       method: 'POST',
-      headers: authHeaders({ terminalToken: tt, contentType: 'application/json' }),
-      body: JSON.stringify({ session_id: s.id, via: mine.via }),
+      body: { session_id: s.id, via: mine.via },
     });
   } catch (exc) {
     if (card !== mine) return;

@@ -19,7 +19,7 @@
  * route, so its server-side session is simply dropped.
  */
 
-import { AuthRequiredError, apiFailToast, apiRaw, readToken, toast } from './api.js';
+import { AuthRequiredError, apiFailToast, apiRaw, apiRawJson, readToken, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
@@ -518,15 +518,10 @@ export function createDictation(opts) {
       // queued; wait until it and every chunk before it reached the server.
       await drainChunks();
       if (gone()) return;
-      const res = await apiRaw(
+      const body = await apiRawJson(
         '/api/transcribe/sessions/' + encodeURIComponent(sid) + '/finish',
         { method: 'POST', terminalToken: readTerminalToken(), signal: signal }
       );
-      if (!res.ok) {
-        const b = await res.json().catch(function () { return null; });
-        throw new Error((b && b.detail) || ('HTTP ' + res.status));
-      }
-      const body = await res.json().catch(function () { return null; });
       if (gone()) {
         // no-op
       } else if (body && body.silent) {
@@ -571,14 +566,9 @@ export function createDictation(opts) {
     // resolves to.
     const gone = function () { return _aborted || _finishOp !== op; };
     try {
-      const res = await apiRaw('/api/transcribe', {
+      const body = await apiRawJson('/api/transcribe', {
         method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal,
       });
-      if (!res.ok) {
-        const b = await res.json().catch(function () { return null; });
-        throw new Error((b && b.detail) || ('HTTP ' + res.status));
-      }
-      const body = await res.json().catch(function () { return null; });
       if (gone()) return;
       const text = body && body.transcript;
       if (body && body.silent) {

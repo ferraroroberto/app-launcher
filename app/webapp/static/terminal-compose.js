@@ -15,7 +15,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiRaw } from './api.js';
+import { apiRawJson } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { mountComposer } from './composer.js';
 import { largeFileLine, oversizeReason } from './attach-batch.js';
@@ -154,15 +154,10 @@ export async function uploadSessionFile(sid, file, signal, kind) {
   if (kind === 'large') return uploadLargeFile(sid, file, signal);
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
-  const res = await apiRaw(
+  const body = await apiRawJson(
     '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
     { method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal }
   );
-  if (!res.ok) {
-    const b = await res.json().catch(function () { return null; });
-    throw new Error((b && b.detail) || ('HTTP ' + res.status));
-  }
-  const body = await res.json().catch(function () { return null; });
   const path = body && body.path;
   if (!path) throw new Error('the host returned no path');
   return path;
@@ -178,7 +173,7 @@ async function uploadLargeFile(sid, file, signal) {
   const maxMb = state.config && state.config.large_upload_max_mb;
   const tooBig = maxMb ? oversizeReason(file, maxMb * 1024 * 1024) : '';
   if (tooBig) throw new Error(tooBig);
-  const res = await apiRaw(
+  const body = await apiRawJson(
     '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/large-file?name=' +
       encodeURIComponent(file.name || 'file'),
     {
@@ -186,11 +181,6 @@ async function uploadLargeFile(sid, file, signal) {
       contentType: 'application/octet-stream',
     }
   );
-  if (!res.ok) {
-    const b = await res.json().catch(function () { return null; });
-    throw new Error((b && b.detail) || ('HTTP ' + res.status));
-  }
-  const body = await res.json().catch(function () { return null; });
   if (!body || !body.path) throw new Error('the host returned no path');
   return largeFileLine(body.path, body.bytes || file.size);
 }
