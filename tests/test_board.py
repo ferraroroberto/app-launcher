@@ -2388,8 +2388,8 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     assert body["live_sessions"] == {"available": True, "error": None}
     assert body["sessions_state"]["available"] is False
     assert body["active_issues"]["available"] is False
-    assert [l["harness"] for l in body["quota_lines"]] == ["claude", "codex"]
-    assert all(l["state"] != "available" for l in body["quota_lines"])
+    # The quota rows live on /api/rate-limits alone (#1433).
+    assert "quota_lines" not in body
     assert body["columns"]["backlog"] == []
     assert body["generated_at"]
 
@@ -2596,7 +2596,9 @@ def test_api_board_exposes_claim_state_per_backlog_card(
     assert (_card()["claim_state"], _card()["in_progress"]) == ("unknown", True)
 
 
-def test_api_board_quota_lines_present(webapp_client):
+def test_quota_reading_is_served_by_one_endpoint(webapp_client):
+    """#1433: both tabs' usage meters read /api/rate-limits; the Board payload
+    carries no quota, so the two tabs can never show different readings."""
     client, app, _overrides = webapp_client
     rate_limits_file = Path(app.state.webapp_config.rate_limits_file)
     rate_limits_file.write_text(json.dumps({
@@ -2605,7 +2607,8 @@ def test_api_board_quota_lines_present(webapp_client):
         "captured_at": _iso(datetime.now(timezone.utc) - timedelta(minutes=1)),
     }), encoding="utf-8")
 
-    claude = client.get("/api/board").json()["quota_lines"][0]
+    assert "quota_lines" not in client.get("/api/board").json()
+    claude = client.get("/api/rate-limits").json()["quota_lines"][0]
     assert claude["label"] == "Claude Code"
     assert claude["state"] == "available"
     assert claude["five_hour"]["used_percentage"] == 42
@@ -2651,7 +2654,7 @@ def test_api_rate_limits_never_follows_the_selected_model(webapp_client):
 def test_coding_and_board_codex_polls_coalesce_one_native_refresh(
     webapp_client, monkeypatch
 ):
-    """Both quota endpoints share one in-flight native-process gate."""
+    """Overlapping quota polls share one in-flight native-process gate."""
     _client, app, _overrides = webapp_client
     monkeypatch.setattr(board_router, "_quota_refresh_gate", quota_usage.RefreshGate())
     monkeypatch.setattr(board_router, "_quota_refresh_task", None)

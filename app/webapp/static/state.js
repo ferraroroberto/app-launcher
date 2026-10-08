@@ -152,7 +152,6 @@ export const els = {
 
   boardColumns: document.getElementById('boardColumns'),
   boardStatus: document.getElementById('boardStatus'),
-  boardUsage: document.getElementById('boardUsage'),
   boardRefresh: document.getElementById('boardRefresh'),
   boardColBacklog: document.getElementById('boardColBacklog'),
   boardColClaude: document.getElementById('boardColClaude'),
@@ -364,7 +363,6 @@ export const els = {
   gitStatusLegend: document.getElementById('gitStatusLegend'),
   sessionsList: document.getElementById('sessionsList'),
   sessionsEmpty: document.getElementById('sessionsEmpty'),
-  codingUsage: document.getElementById('codingUsage'),
   codingFilterBadge: document.getElementById('codingFilterBadge'),
   codingFilterSavedBadge: document.getElementById('codingFilterSavedBadge'),
   codingChiefStatus: document.getElementById('codingChiefStatus'),

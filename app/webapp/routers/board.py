@@ -198,12 +198,13 @@ async def get_board(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
 
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
-    live_read, state, active_issues, job_cards, quota_lines = await asyncio.gather(
+    # No quota here (#1433): both tabs' usage meters read ``/api/rate-limits``,
+    # one endpoint, so the two can never show different readings.
+    live_read, state, active_issues, job_cards = await asyncio.gather(
         asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
         asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
         asyncio.to_thread(board.read_active_issues, active_issues_file),
         asyncio.to_thread(board.jobs_attention),
-        asyncio.to_thread(_read_quota_lines, cfg),
     )
     github = github_client.snapshot()
     live, live_error = live_read
@@ -235,7 +236,6 @@ async def get_board(request: Request) -> Dict[str, Any]:
     await asyncio.to_thread(attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
-    _refresh_codex_for_lines(cfg, quota_lines)
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -260,7 +260,6 @@ async def get_board(request: Request) -> Dict[str, Any]:
             "updated_at": active_issues["updated_at"],
             "count": len(active_issues["rows"]),
         },
-        "quota_lines": quota_lines,
         # Age of the jobs runtime snapshot the job cards came from (#1324),
         # so a stale one can never pass for current.
         "jobs_snapshot": jobs_snapshot.latest_description(),
@@ -284,14 +283,13 @@ async def get_chief_plan(request: Request) -> Dict[str, Any]:
 
 @router.get("/api/rate-limits")
 async def get_rate_limits(request: Request) -> Dict[str, Any]:
-    """The same quota rows as the Board tab, standalone from it.
+    """The quota rows behind both tabs' usage meters (#1433).
 
-    The Coding tab's Running-sessions header shows the same rows as the
-    Board tab, but must not depend on the Board ever having been opened —
-    ``GET /api/board``'s own quota read only happens as a side effect of
-    that endpoint being polled, which fetchBoard() self-gates to "Board tab
-    visible". This is the same cheap file read, exposed on its own route so
-    any tab can poll it independently.
+    The one quota endpoint: the Coding tab's full meter and the Board's
+    compact one both render from the client's single poll of this route,
+    which runs whatever tab is up, so neither depends on the other having
+    been opened and the two can never disagree. ``GET /api/board`` carries
+    no quota of its own.
 
     Both heavy agents are always returned, in a fixed order (#860); the row
     set no longer depends on the caller's selected model.
