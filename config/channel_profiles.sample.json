@@ -11,6 +11,12 @@
       "label": "School",
       "skill": "school",
       "state_dir": "C:/Users/you/.claude/channels/telegram-school"
+    },
+    {
+      "id": "finance",
+      "label": "Finance",
+      "skill": "finance",
+      "state_dir": "C:/Users/you/.claude/channels/telegram-finance"
     }
   ]
 }
