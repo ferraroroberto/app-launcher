@@ -2316,8 +2316,8 @@ textarea.input-native { height: auto; }
   background: var(--card);
   border: 1px solid var(--line);
 }
-/* The user's turn: the accent tint the app already uses for the chief row
-   and the active nav tab — nothing new. */
+/* The user's turn: the accent tint the app already uses for the active
+   nav tab — nothing new. */
 .tr-user {
   background: var(--accent-soft);
   border-color: var(--accent-border-soft);
@@ -4440,18 +4440,15 @@ span.chief-answer-ref { color: var(--muted); }
 /* A job run the scheduled-run adapter could not verify (#916): it still wants
    a human's eye, but it is not a failure and must not be drawn as one. */
 .board-item.is-unconfirmed .board-card { border-left: 3px solid var(--attention); }
-/* Fleet chief card (#245): the standing orchestrator reads distinct from
-   worker sessions — the canonical accent tint (the #528 in-progress recipe),
-   with the crown as its avatar badge (#1433). The tint works in both themes
-   (accent-soft is a color-mix over the per-theme accent). */
-.board-item.board-item-chief .board-card { background: var(--accent-soft); }
+/* Fleet chief card (#245): the crown avatar badge (#1433) and the "chief"
+   label identify it; it carries no background tint (#1449) and reads like
+   every other session card. */
 /* Secondary text on an accent-soft tint: --muted reads 4.17:1 there (the
    card meta "repo · working · 2m"), under AA. Inside every tinted row the
    muted role resolves to --accent-text, the spec's text-on-accent-soft
    colour, so each muted descendant holds AA without a per-element rule and
    the git dirty/off-main colours, which use their own tokens, are untouched
    (#1175). The Code tab's in-view row joins them in its wide-layout block. */
-.board-item.board-item-chief .board-card,
 .board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
 .board-empty { margin: 0; }
 

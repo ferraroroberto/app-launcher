@@ -199,7 +199,7 @@ function renderSessionCard(card, openItem) {
 
   const li = document.createElement('li');
   li.className = 'app-item board-item board-item-session' + (meta.cls ? ' ' + meta.cls : '');
-  // The chief keeps its accent tint (#245); the crown is its avatar badge.
+  // The chief is marked by its crown avatar badge, not a tint (#1449).
   if (chief) li.classList.add('board-item-chief');
   if (isChannelSession(card)) li.classList.add('board-item-channel');
   const btn = document.createElement('button');
