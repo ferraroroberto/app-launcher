@@ -397,6 +397,7 @@ export const els = {
   appsScanRoot: document.getElementById('appsScanRoot'),
   terminalHistoryLines: document.getElementById('terminalHistoryLines'),
   largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
+  usageShows: document.getElementById('usageShows'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
   saveSettings: document.getElementById('saveSettings'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),

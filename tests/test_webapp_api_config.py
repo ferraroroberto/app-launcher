@@ -359,6 +359,32 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.hide_channel_sessions is True
 
+    def test_usage_shows_defaults_to_both_and_round_trips(self, webapp_client):
+        """usage_shows (#1451): which providers the usage meter draws. Default
+        "both" (today's behaviour); each choice must reach disk so it applies
+        on every device and survives a restart."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        body = client.get("/api/config").json()
+        assert body["usage_shows"] == "both"
+        assert body["usage_shows_available"] == ["claude", "codex", "both", "none"]
+
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        for choice in ("claude", "codex", "none", "both"):
+            resp = client.post("/api/config", json={"usage_shows": choice})
+            assert resp.status_code == 200, choice
+            assert app.state.webapp_config.usage_shows == choice
+            assert client.get("/api/config").json()["usage_shows"] == choice
+            assert load_webapp_config(cfg_path).usage_shows == choice
+
+    @pytest.mark.parametrize("junk", ["", "Claude", "all", 1, None, True])
+    def test_usage_shows_rejects_unknown_values(self, webapp_client, junk):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"usage_shows": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.usage_shows == "both"
+
     def test_terminal_history_lines_round_trips(self, webapp_client):
         """terminal_history_lines (issue #435 follow-up, Settings tab) is
         in the allow-list — it patches through, surfaces on the next GET,

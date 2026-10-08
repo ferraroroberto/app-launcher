@@ -3,7 +3,9 @@
 // the Board's compact one render through. Invoked by tests/test_usage_meter.py.
 
 import assert from 'node:assert/strict';
-import { DANGER_PCT, meterReading, paceSummary, windowTone } from '../../app/webapp/static/usage-meter.js';
+import {
+  DANGER_PCT, USAGE_SHOWS_DEFAULT, meterReading, paceSummary, usageProviders, windowTone,
+} from '../../app/webapp/static/usage-meter.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = Date.parse('2026-09-10T12:00:00Z');
@@ -108,5 +110,14 @@ assert.deepEqual(paceSummary(meterReading(line(20, 70), now)), { text: 'ahead of
 assert.deepEqual(paceSummary(meterReading(line(95, 30), now)), { text: 'nearly used', tone: 'danger' });
 assert.deepEqual(paceSummary(meterReading(line(null, null, { state: 'unknown' }), now)), { text: '', tone: 'none' });
 assert.deepEqual(paceSummary(null), { text: '', tone: 'none' });
+
+// "Usage shows" (#1451): which providers are drawn. An unknown value is the default.
+assert.equal(USAGE_SHOWS_DEFAULT, 'both');
+assert.deepEqual(usageProviders('claude'), { claude: true, codex: false });
+assert.deepEqual(usageProviders('codex'), { claude: false, codex: true });
+assert.deepEqual(usageProviders('both'), { claude: true, codex: true });
+assert.deepEqual(usageProviders('none'), { claude: false, codex: false });
+assert.deepEqual(usageProviders('Claude'), { claude: true, codex: true });
+assert.deepEqual(usageProviders(undefined), { claude: true, codex: true });
 
 console.log('OK');

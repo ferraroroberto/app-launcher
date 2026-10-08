@@ -657,7 +657,7 @@
 
       <!-- Usage (#1434, the Code tab's glance card): "can I launch?". The
            full usage meter (#1433), Claude Code's 5h and Week bars above a
-           Codex row, always both (#860), under a summary that names the pace
+           Codex row (both unless "Usage shows" says otherwise, #1451), under a summary that names the pace
            in its tone, with the context filter's savings as the footer.
            usage-meter.js fills the meter and the meta; a tap anywhere on the
            card opens the Usage sheet. -->
@@ -1475,6 +1475,11 @@
           <input id="largeUploadMaxMb" type="number" class="input-native" aria-describedby="largeUploadMaxMbHelp" step="1" inputmode="numeric">
         </label>
         <p id="largeUploadMaxMbHelp" class="field-help">The biggest file Attach large file takes. It is stored on this PC for the agent to use by path, never read into its context.</p>
+        <div class="stacked">
+          <span id="usageShowsLabel">Usage shows</span>
+          <div id="usageShows" class="range-tabs" role="radiogroup" aria-labelledby="usageShowsLabel" aria-describedby="usageShowsHelp"></div>
+        </div>
+        <p id="usageShowsHelp" class="field-help">Which providers the Usage card and the Board's usage line draw. None hides the card. It saves at once and applies on every device.</p>
         <div class="switch-row settings-switch-row">
           <span>Start app-launcher at log on</span>
           <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp" title="Start app-launcher automatically at log on (Startup folder — no admin needed)"><span class="knob"></span><span class="toggle-label">OFF</span></button>

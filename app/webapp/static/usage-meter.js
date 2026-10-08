@@ -40,6 +40,17 @@ const STATE_COPY = {
   error: 'unavailable',
 };
 
+// The "Usage shows" setting (#1451): which providers the meter draws.
+// "none" draws no meter at all (the Code tab's Usage card hides). A value
+// the server does not know reads as the default.
+export const USAGE_SHOWS_DEFAULT = 'both';
+const USAGE_SHOWS_VALUES = ['claude', 'codex', 'both', 'none'];
+
+export function usageProviders(mode) {
+  const m = USAGE_SHOWS_VALUES.indexOf(mode) === -1 ? USAGE_SHOWS_DEFAULT : mode;
+  return { claude: m === 'claude' || m === 'both', codex: m === 'codex' || m === 'both' };
+}
+
 const TONE_RANK = { none: 0, accent: 1, attention: 2, danger: 3 };
 
 function usedPct(windowData) {
@@ -128,6 +139,9 @@ export function meterReading(line, nowMs, fallback) {
 const lastMeasured = new Map();
 let lastLines = [];
 let filterStats = null;
+let usageShows = USAGE_SHOWS_DEFAULT;
+// Whether a poll has landed: the setting alone never paints an empty meter.
+let polled = false;
 
 function readings(lines) {
   const now = Date.now();
@@ -225,35 +239,45 @@ function codexValue(r, compact) {
   return value;
 }
 
-function meterButton(size, claude, codex) {
+// The provider that leads a meter: Claude Code when shown (the reading that
+// gates a launch), else Codex.
+function leading(show, claude, codex) {
+  return show.claude ? { harness: 'claude', reading: claude } : { harness: 'codex', reading: codex };
+}
+
+function meterButton(size, lead, shown) {
   const btn = el('button', 'usage-meter usage-meter-' + size);
   btn.type = 'button';
-  btn.dataset.tone = claude ? claude.tone : 'none';
-  if (claude && claude.stale) btn.dataset.stale = 'true';
-  const summary = [readingText(claude), readingText(codex)].filter(Boolean).join('; ');
+  btn.dataset.tone = lead ? lead.tone : 'none';
+  if (lead && lead.stale) btn.dataset.stale = 'true';
+  const summary = shown.map(readingText).filter(Boolean).join('; ');
   btn.title = summary;
   btn.setAttribute('aria-label', 'Usage: ' + summary + '. Open usage details');
   return btn;
 }
 
-function renderFull(claude, codex) {
-  const btn = meterButton('full', claude, codex);
+function renderFull(claude, codex, show) {
+  const lead = leading(show, claude, codex);
+  const r = lead.reading;
+  const btn = meterButton('full', r, [show.claude && claude, show.codex && codex].filter(Boolean));
 
   const head = el('span', 'um-head');
-  head.appendChild(mark('claude'));
-  head.appendChild(el('span', 'um-name', claude ? claude.label : 'Claude Code'));
-  if (claude && claude.chip) head.appendChild(chip(claude.chip, 'neutral', 'um-chip'));
+  head.appendChild(mark(lead.harness));
+  head.appendChild(el('span', 'um-name', r ? r.label : (lead.harness === 'codex' ? 'Codex' : 'Claude Code')));
+  if (r && r.chip) head.appendChild(chip(r.chip, 'neutral', 'um-chip'));
   btn.appendChild(head);
 
-  if (!claude || claude.note) {
-    btn.appendChild(el('span', 'um-note', 'Quota ' + (claude ? claude.note : 'unknown')));
+  if (!r || r.note) {
+    btn.appendChild(el('span', 'um-note', 'Quota ' + (r ? r.note : 'unknown')));
   } else {
     const windows = el('span', 'um-windows');
-    if (claude.five) windows.appendChild(windowRow(claude.five, claude.fiveTone, '5h', fmtResetClock));
-    if (claude.week) windows.appendChild(windowRow(claude.week, claude.weekTone, 'Week', fmtResetDay));
+    if (r.five) windows.appendChild(windowRow(r.five, r.fiveTone, '5h', fmtResetClock));
+    if (r.week) windows.appendChild(windowRow(r.week, r.weekTone, 'Week', fmtResetDay));
     btn.appendChild(windows);
   }
 
+  // Codex rides under Claude Code only when both are shown; alone it leads.
+  if (!(show.claude && show.codex)) return btn;
   const codexRow = el('span', 'um-codex');
   codexRow.appendChild(mark('codex'));
   codexRow.appendChild(el('span', 'um-name', codex ? codex.label : 'Codex'));
@@ -272,19 +296,23 @@ function miniWindow(win, tone, label) {
   return mini;
 }
 
-function renderCompact(claude, codex) {
-  const btn = meterButton('compact', claude, codex);
-  btn.appendChild(mark('claude'));
-  if (!claude || claude.note) {
-    btn.appendChild(el('span', 'um-note', claude ? claude.note : 'unknown'));
+function renderCompact(claude, codex, show) {
+  const lead = leading(show, claude, codex);
+  const r = lead.reading;
+  const btn = meterButton('compact', r, [show.claude && claude, show.codex && codex].filter(Boolean));
+  btn.appendChild(mark(lead.harness));
+  if (!r || r.note) {
+    btn.appendChild(el('span', 'um-note', r ? r.note : 'unknown'));
   } else {
-    if (claude.five) btn.appendChild(miniWindow(claude.five, claude.fiveTone, '5h'));
-    if (claude.week) btn.appendChild(miniWindow(claude.week, claude.weekTone, 'wk'));
-    if (claude.chip) btn.appendChild(chip(claude.chip, 'neutral', 'um-chip'));
+    if (r.five) btn.appendChild(miniWindow(r.five, r.fiveTone, '5h'));
+    if (r.week) btn.appendChild(miniWindow(r.week, r.weekTone, 'wk'));
+    if (r.chip) btn.appendChild(chip(r.chip, 'neutral', 'um-chip'));
   }
-  btn.appendChild(el('span', 'um-divider'));
-  btn.appendChild(mark('codex'));
-  btn.appendChild(codexValue(codex, true));
+  if (show.claude && show.codex) {
+    btn.appendChild(el('span', 'um-divider'));
+    btn.appendChild(mark('codex'));
+    btn.appendChild(codexValue(codex, true));
+  }
   const chevron = el('span', 'um-chevron');
   chevron.innerHTML = icon('chevron-right');
   btn.appendChild(chevron);
@@ -295,6 +323,10 @@ function renderCompact(claude, codex) {
 // replaces a focused button or restarts a press for nothing.
 function place(container, node) {
   if (!container) return;
+  if (!node) {
+    if (container.firstElementChild) container.replaceChildren();
+    return;
+  }
   const current = container.firstElementChild;
   if (current && current.outerHTML === node.outerHTML) return;
   container.replaceChildren(node);
@@ -315,24 +347,41 @@ export function paceSummary(reading) {
   return { text: text, tone: text ? reading.tone : 'none' };
 }
 
-function renderCardMeta(claude) {
+function renderCardMeta(reading) {
   const meta = document.getElementById('codingUsageMeta');
   if (!meta) return;
-  const summary = paceSummary(claude);
+  const summary = paceSummary(reading);
   meta.textContent = summary.text;
   meta.dataset.tone = summary.tone;
 }
 
-// Both meters from one poll of /api/rate-limits (sessions.js).
+// Both meters from one poll of /api/rate-limits (sessions.js), drawn for the
+// providers "Usage shows" (#1451) names. With none, the Code tab's Usage card
+// is hidden and the Board's line is empty.
 export function renderUsage(lines) {
   lastLines = Array.isArray(lines) ? lines : [];
+  polled = true;
   const list = readings(lastLines);
   const claude = byHarness(list, 'claude');
   const codex = byHarness(list, 'codex');
-  place(document.getElementById('codingUsage'), renderFull(claude, codex));
-  renderCardMeta(claude);
-  place(document.getElementById('boardUsage'), renderCompact(claude, codex));
+  const show = usageProviders(usageShows);
+  const any = show.claude || show.codex;
+  const card = document.getElementById('codingUsageCard');
+  if (card) card.hidden = !any;
+  place(document.getElementById('codingUsage'), any ? renderFull(claude, codex, show) : null);
+  renderCardMeta(any ? leading(show, claude, codex).reading : null);
+  place(document.getElementById('boardUsage'), any ? renderCompact(claude, codex, show) : null);
   if (sheetOpen()) renderSheet(list);
+}
+
+// The setting, pushed in by the Settings loader so this module keeps no
+// import of the page state. Repaints at once from the last poll, so a change
+// on this device or a pick-up from another shows without waiting for the next.
+export function setUsageShows(value) {
+  const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
+  if (next === usageShows) return;
+  usageShows = next;
+  if (polled) renderUsage(lastLines);
 }
 
 // The context filter's stats (context-filter.js, GET /api/context-filter),
@@ -409,11 +458,15 @@ function renderSheet(list) {
   if (!body) return;
   const claude = byHarness(list, 'claude');
   const codex = byHarness(list, 'codex');
+  const show = usageProviders(usageShows);
   body.replaceChildren();
-  harnessRows(body, claude, 'claude', 'Claude');
-  const pace = claude && claude.week ? claude.week.pace : null;
-  body.appendChild(sheetRow('Week elapsed', pace == null ? 'unknown' : pace + '%', 'elapsed'));
-  harnessRows(body, codex, 'codex', 'Codex');
+  if (show.claude) harnessRows(body, claude, 'claude', 'Claude');
+  if (show.claude || show.codex) {
+    const lead = leading(show, claude, codex).reading;
+    const pace = lead && lead.week ? lead.week.pace : null;
+    body.appendChild(sheetRow('Week elapsed', pace == null ? 'unknown' : pace + '%', 'elapsed'));
+  }
+  if (show.codex) harnessRows(body, codex, 'codex', 'Codex');
   if (filterStats && filterStats.available) {
     body.appendChild(sheetRow('Filter today', savingsValue(filterStats.today), 'filter-today'));
     body.appendChild(sheetRow('Filter 7 days', savingsValue(filterStats.last_7_days), 'filter-week'));

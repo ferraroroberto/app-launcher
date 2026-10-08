@@ -295,3 +295,136 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
     expect(sheet).to_be_visible()
     sheet.locator("#usageSheetDone").click()
     expect(sheet).to_be_hidden()
+
+
+def _serve_usage_shows(page: Page, current: dict) -> list:
+    """Serve /api/config with ``current["usage_shows"]`` and answer its POSTs
+    from memory, so the page is driven by the setting without writing the
+    box's real config. Returns the POST bodies seen."""
+    posted: list = []
+
+    def _config(route):
+        if route.request.method == "POST":
+            body = route.request.post_data_json
+            posted.append(body)
+            if "usage_shows" in body:
+                current["usage_shows"] = body["usage_shows"]
+            route.fulfill(status=200, content_type="application/json",
+                          body=_json.dumps({"ok": True, "claude_flags": ""}))
+            return
+        resp = route.fetch()
+        data = resp.json()
+        data["usage_shows"] = current["usage_shows"]
+        route.fulfill(response=resp, json=data)
+
+    page.route(re.compile(r".*/api/config$"), _config)
+    return posted
+
+
+@pytest.mark.parametrize("mode", ["claude", "codex", "both", "none"])
+def test_usage_shows_draws_only_the_chosen_providers(
+    authed_page: Page, base_url: str, mode: str
+) -> None:
+    """#1451: the "Usage shows" setting. Claude / Codex draw only that
+    provider (no row, mark, or word of the other, in the card, the Board line
+    or the accessible name); both is today's meter; none hides the Code tab's
+    Usage card and empties the Board line, with the rest of the tab intact."""
+    errors: list = []
+    authed_page.on("pageerror", lambda exc: errors.append(str(exc)))
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    _serve_usage_shows(authed_page, {"usage_shows": mode})
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    card = authed_page.locator("#codingUsageCard")
+    full = authed_page.locator("#codingUsage .usage-meter-full")
+    if mode == "none":
+        # The poll lands, then the card stays hidden: wait on the poll.
+        authed_page.wait_for_function("window.__rateLimitPolls >= 1")
+        expect(card).to_be_hidden()
+        expect(authed_page.locator("#codingUsage .usage-meter")).to_have_count(0)
+        expect(authed_page.locator("#codingUsageMeta")).to_have_text("")
+        # Nothing else on the tab breaks: the rest of the pane still renders.
+        expect(authed_page.locator("#paneClaude")).to_be_visible()
+        authed_page.locator("#tabBoard").click()
+        expect(authed_page.locator("#paneBoard")).to_be_visible()
+        expect(authed_page.locator("#boardUsage .usage-meter")).to_have_count(0)
+        assert errors == [], errors
+        return
+
+    expect(full).to_be_visible(timeout=10_000)
+    expect(card).to_be_visible()
+    names = {"claude": ["Claude Code"], "codex": ["Codex"],
+             "both": ["Claude Code", "Codex"]}[mode]
+    expect(full.locator(".um-name")).to_have_text(names)
+    expect(full.locator(".um-mark")).to_have_count(len(names))
+    label = full.get_attribute("aria-label")
+    assert ("Claude" in label) == (mode in ("claude", "both")), label
+    assert ("Codex" in label) == (mode in ("codex", "both")), label
+    if mode == "claude":
+        expect(full.locator(".um-codex")).to_have_count(0)
+        expect(full.locator('use[href="#b-codex"]')).to_have_count(0)
+        expect(full.locator(".um-row").nth(1).locator(".um-pct")).to_have_text("64%")
+    elif mode == "codex":
+        # Codex leads: its own two windows, no Claude row or mark.
+        expect(full.locator(".um-codex")).to_have_count(0)
+        expect(full.locator('use[href="#b-claude"]')).to_have_count(0)
+        rows = full.locator(".um-row")
+        expect(rows).to_have_count(2)
+        expect(rows.nth(0).locator(".um-pct")).to_have_text("0%")
+        expect(rows.nth(1).locator(".um-pct")).to_have_text("36%")
+    else:
+        expect(full.locator(".um-codex .um-codex-value")).to_have_text("5h 0% · wk 36%")
+
+    # The sheet follows: the other provider's rows are not in it.
+    full.click()
+    body = authed_page.locator("#usageSheetBody")
+    expect(body.locator('[data-row^="claude-"]')).to_have_count(2 if mode in ("claude", "both") else 0)
+    expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if mode in ("codex", "both") else 0)
+    authed_page.locator("#usageSheetClose").click()
+
+    authed_page.locator("#tabBoard").click()
+    compact = authed_page.locator("#boardUsage .usage-meter-compact")
+    expect(compact).to_be_visible(timeout=10_000)
+    expect(compact.locator(".um-mark")).to_have_count(len(names))
+    expect(compact.locator(".um-divider")).to_have_count(1 if mode == "both" else 0)
+    expect(compact.locator(".um-codex-value")).to_have_count(1 if mode == "both" else 0)
+    expect(compact.locator(".um-mini")).to_have_count(2)
+    clabel = compact.get_attribute("aria-label")
+    assert ("Claude" in clabel) == (mode in ("claude", "both")), clabel
+    assert ("Codex" in clabel) == (mode in ("codex", "both")), clabel
+    assert errors == [], errors
+
+
+def test_usage_shows_setting_saves_and_repaints_the_card(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1451: the Settings control is the four-way pill row in General. It
+    defaults to Both, a tap saves at once as one POST, and the Usage card
+    repaints without a reload (None hides it, Both brings it back)."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    current = {"usage_shows": "both"}
+    posted = _serve_usage_shows(authed_page, current)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
+
+    authed_page.locator("#settingsOpen").click()
+    authed_page.locator("#settingsPanel > summary").click()
+    tabs = authed_page.locator("#usageShows .range-tab")
+    expect(tabs).to_have_text(["Claude", "Codex", "Both", "None"])
+    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Both")
+
+    tabs.nth(3).click()
+    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("None")
+    assert [p for p in posted if "usage_shows" in p] == [{"usage_shows": "none"}], posted
+    # The Code pane is not showing, so read the card's own hidden state.
+    card = authed_page.locator("#codingUsageCard")
+    expect(card).to_have_attribute("hidden", "")
+
+    tabs.nth(0).click()
+    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Claude")
+    expect(card).not_to_have_attribute("hidden", "")
+    authed_page.locator("#tabClaude").click()
+    expect(card).to_be_visible()
+    expect(authed_page.locator("#codingUsage .um-codex")).to_have_count(0)
