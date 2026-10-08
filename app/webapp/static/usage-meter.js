@@ -371,7 +371,17 @@ export function renderUsage(lines) {
   place(document.getElementById('codingUsage'), any ? renderFull(claude, codex, show) : null);
   renderCardMeta(any ? leading(show, claude, codex).reading : null);
   place(document.getElementById('boardUsage'), any ? renderCompact(claude, codex, show) : null);
+  syncBoardSlot();
   if (sheetOpen()) renderSheet(list);
+}
+
+// The Board's slot reserves its line while empty (CSS, #1447); with no
+// provider to show nothing will fill it, so it collapses instead.
+function syncBoardSlot() {
+  const slot = document.getElementById('boardUsage');
+  if (!slot) return;
+  const show = usageProviders(usageShows);
+  slot.hidden = !(show.claude || show.codex);
 }
 
 // The setting, pushed in by the Settings loader so this module keeps no
@@ -381,6 +391,7 @@ export function setUsageShows(value) {
   const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
   if (next === usageShows) return;
   usageShows = next;
+  syncBoardSlot();
   if (polled) renderUsage(lastLines);
 }
 
