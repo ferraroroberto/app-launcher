@@ -2,7 +2,7 @@
  * sheet. It replaces the coloured quota sentences (#326/#847/#860) on both
  * tabs.
  *
- *   full     Code tab: a "Claude Code" row, then 5h and Week rows (label,
+ *   full     Code tab's Usage card: a "Claude Code" row, then 5h and Week rows (label,
  *            6px bar, %, reset time) with a 2px pace tick on the week bar at
  *            the week-elapsed %, then a Codex row.
  *   compact  Board: one 44px line. Claude mark, 5h mini bar + %, wk mini bar
@@ -300,6 +300,29 @@ function place(container, node) {
   container.replaceChildren(node);
 }
 
+// The Usage card's summary (#1434): the pace in its tone, from Claude Code's
+// reading (the one that gates a launch). Nothing measured says nothing: the
+// meter below already carries the state word.
+const PACE_WORDS = {
+  accent: 'under pace',
+  attention: 'ahead of pace',
+  danger: 'nearly used',
+};
+
+export function paceSummary(reading) {
+  if (!reading || reading.note) return { text: '', tone: 'none' };
+  const text = PACE_WORDS[reading.tone] || '';
+  return { text: text, tone: text ? reading.tone : 'none' };
+}
+
+function renderCardMeta(claude) {
+  const meta = document.getElementById('codingUsageMeta');
+  if (!meta) return;
+  const summary = paceSummary(claude);
+  meta.textContent = summary.text;
+  meta.dataset.tone = summary.tone;
+}
+
 // Both meters from one poll of /api/rate-limits (sessions.js).
 export function renderUsage(lines) {
   lastLines = Array.isArray(lines) ? lines : [];
@@ -307,6 +330,7 @@ export function renderUsage(lines) {
   const claude = byHarness(list, 'claude');
   const codex = byHarness(list, 'codex');
   place(document.getElementById('codingUsage'), renderFull(claude, codex));
+  renderCardMeta(claude);
   place(document.getElementById('boardUsage'), renderCompact(claude, codex));
   if (sheetOpen()) renderSheet(list);
 }
@@ -410,16 +434,19 @@ function closeUsageSheet() {
   if (dialog && dialog.open) dialog.close();
 }
 
-// Either meter opens the sheet. The listener sits on the stable container:
-// the button inside is rebuilt whenever its reading changes.
+// Either meter opens the sheet; on Code, so does the rest of the Usage card
+// (#1434: its header and footer are part of the one tap). The listeners sit
+// on stable containers: the button inside is rebuilt whenever its reading
+// changes.
 export function wireUsageMeter() {
-  ['codingUsage', 'boardUsage'].forEach(function (id) {
-    const container = document.getElementById(id);
-    if (!container) return;
-    container.addEventListener('click', function (event) {
+  const card = document.getElementById('codingUsageCard');
+  if (card) card.addEventListener('click', openUsageSheet);
+  const board = document.getElementById('boardUsage');
+  if (board) {
+    board.addEventListener('click', function (event) {
       if (event.target.closest('.usage-meter')) openUsageSheet();
     });
-  });
+  }
   const close = document.getElementById('usageSheetClose');
   const done = document.getElementById('usageSheetDone');
   if (close) close.addEventListener('click', closeUsageSheet);

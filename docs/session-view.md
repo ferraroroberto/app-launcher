@@ -6,7 +6,7 @@ Contents: [Opening a session](#opening-a-session) · [The shared bar and menu](#
 
 ## Opening a session
 
-Running sessions are listed above the project tiles on the shared two-line session row (#1433): an avatar holding the agent's icon with its alive badge (a crown for the chief), the title, and `folder · uptime`, with a neutral `detached` chip on a detached session only. Each row has one **⋮ kebab** pinned to its right edge and centred against the full row height. It opens a floating menu of icon + label rows:
+The Code tab's Sessions card lists running sessions, the chief's row first (#1434), on the shared two-line session row (#1433): an avatar holding the agent's icon with its alive badge (a crown for the chief), the title, and `folder · uptime`. Chips only for exceptions: the Board's `needs you` or `stalled` (#1434), and a neutral `detached` on a detached session. Each row has one **⋮ kebab** pinned to its right edge and centred against the full row height. It opens a floating menu of icon + label rows:
 
 - **⌨ Terminal** — full-control rows only.
 - **💬 Chat** — every row whose agent has a transcript reader.

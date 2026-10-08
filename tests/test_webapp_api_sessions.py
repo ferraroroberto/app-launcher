@@ -132,6 +132,48 @@ class TestSharedSessionName:
         assert resp.json() == {"sessions": []}
 
 
+class TestBoardPlacement:
+    """#1434: each session carries the Board's column and status, so the
+    Coding tab's rows show "needs you" / "stalled" from its own poll. A
+    placement that cannot be worked out is ``None`` (unknown), never a
+    default column."""
+
+    _LIVE = [
+        {"session_id": "a", "kind": "pty", "name": "p", "project_dir": "C:\a"},
+        {"session_id": "b", "kind": "pty", "name": "q", "project_dir": "C:\b"},
+    ]
+
+    def test_placed_sessions_carry_column_and_status(self, webapp_client, monkeypatch):
+        from src import board
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = list(self._LIVE)
+        monkeypatch.setattr(
+            board, "session_board_columns",
+            lambda *a, **k: {"a": {"column": "your_turn", "status": "stalled"}},
+        )
+        sessions = client.get("/api/claude-code/sessions").json()["sessions"]
+        by_id = {s["session_id"]: s for s in sessions}
+        assert by_id["a"]["board_column"] == "your_turn"
+        assert by_id["a"]["board_status"] == "stalled"
+        assert by_id["b"]["board_column"] is None
+        assert by_id["b"]["board_status"] is None
+
+    def test_failed_placement_is_unknown_not_a_500(self, webapp_client, monkeypatch):
+        from src import board
+
+        def _boom(*a, **k):
+            raise RuntimeError("transcript unreadable")
+
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = list(self._LIVE)
+        monkeypatch.setattr(board, "session_board_columns", _boom)
+        resp = client.get("/api/claude-code/sessions")
+        assert resp.status_code == 200
+        for sess in resp.json()["sessions"]:
+            assert sess["board_column"] is None
+            assert sess["board_status"] is None
+
+
 class TestStopSession:
     def test_kill_mode_forwarded_to_session_client(self, webapp_client):
         client, _, overrides = webapp_client

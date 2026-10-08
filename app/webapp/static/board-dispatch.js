@@ -327,9 +327,10 @@ async function sendChat() {
 // is the vendored modal shell (_vendored/modal, #1133). #616 retired
 // the daily-respawn setting (fleet-config#442/#449 shipped compact-and-
 // continue, making an unattended respawn actively harmful to a live batch)
-// — model and worker cap are all that's left to edit here.
+// — model and worker cap are all that's left to edit here. Exported for the
+// Code tab's chief kebab (#1434) until step 3 of #1432 moves it to Settings.
 
-async function openChiefSettings() {
+export async function openChiefSettings() {
   try {
     const body = await terminalJsonApi('/api/board/chief/settings');
     const s = body.settings || {};

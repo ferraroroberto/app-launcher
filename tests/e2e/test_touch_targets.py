@@ -107,7 +107,7 @@ def _assert_cluster_does_not_overlap(page: Page, cluster: str) -> None:
     parametrize case per cluster; each case now runs inside the floor sweep
     of the tab that renders it (#1215). Its `.sessions-header-actions` and
     `.compose-tools` cases were dropped there: both always skipped, the
-    first holding a single button (#gitStatusBtn) and the second having no
+    first holding a single button (the old Git status button) and the second having no
     visible composer on the Code tab, so neither ever asserted anything."""
     # `:visible` matters: a cluster holds controls that are hidden until
     # something opens them (a row menu, a mode-specific tool), and a hidden

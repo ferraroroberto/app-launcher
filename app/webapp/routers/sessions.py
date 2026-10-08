@@ -20,7 +20,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import (
     APIRouter,
@@ -64,6 +64,37 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(voice_ocr_tts.router)
 
+# Whether the last sessions poll failed to place its sessions in Board
+# columns, so a persistent failure logs once per healthy→failing transition
+# instead of on every 5 s poll.
+_board_columns_failing = False
+
+
+def _session_board_columns(
+    cfg: WebappConfig,
+    sessions: List[Dict[str, Any]],
+    state_rows: Dict[str, Dict[str, Any]],
+) -> Optional[Dict[str, Dict[str, str]]]:
+    """Each session's Board column + status, or ``None`` when unknowable (#1434)."""
+    global _board_columns_failing
+    active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
+    try:
+        active = board.read_active_issues(active_issues_file)
+        columns = board.session_board_columns(
+            sessions, state_rows, active["rows"],
+            fleet_config_dir=Path(cfg.fleet_config_dir),
+        )
+    except Exception as exc:
+        if not _board_columns_failing:
+            logger.warning(f"⚠️ Coding sessions: Board status unavailable: {exc}")
+        _board_columns_failing = True
+        return None
+    if _board_columns_failing:
+        logger.info("ℹ️ Coding sessions: Board status available again")
+    _board_columns_failing = False
+    return columns
+
+
 @router.get("/api/claude-code/sessions")
 async def claude_sessions(request: Request) -> Dict[str, Any]:
     """List launcher-owned PTY sessions (public, token-gated).
@@ -73,6 +104,12 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     agent-aware claim walk the Board tab's ``merge_sessions()`` uses
     (``board.attach_shared_names``), so a live session resolves to the same
     state row — and therefore shows the same title — on both tabs.
+
+    Each also carries ``board_column`` (``claude_turn`` / ``your_turn``) and
+    ``board_status`` (the Board card's status, e.g. ``stalled``), so the
+    Coding tab's rows show the Board's "needs you" / "stalled" chips from
+    this poll alone (#1434). Both are ``None`` when the Board placement could
+    not be worked out: unknown, never "normal".
     """
     cfg: WebappConfig = request.app.state.webapp_config
     try:
@@ -87,9 +124,16 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
         state = await asyncio.to_thread(
             board.read_sessions_state, Path(cfg.sessions_state_file)
         )
+        columns = await asyncio.to_thread(
+            _session_board_columns, cfg, sessions, state["rows"]
+        )
         sessions = board.attach_shared_names(sessions, state["rows"])
         # The model's display name (#1383), for the chat header's pill.
         sessions = attach_models(sessions)
+        for sess in sessions:
+            placed = (columns or {}).get(str(sess.get("session_id")))
+            sess["board_column"] = placed["column"] if placed else None
+            sess["board_status"] = placed["status"] if placed else None
     return {"sessions": sessions}
 
 

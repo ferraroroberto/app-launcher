@@ -43,8 +43,8 @@ text-size = { src = "app/webapp/static/_vendored/text-size", sha = "ad963f3010f7
 base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
 action-row = { src = "app/webapp/static/_vendored/action-row", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/action-row" }
 # icons is deliberately NOT declared (#1004): our icons-sprite.html is the
-# scaffold's symbols (i-star-fill merged in from 6204cbc, #1156) plus 7
-# app-launcher-only additions (i-bell, i-chevron-right, i-copy, i-eye-off,
+# scaffold's symbols (i-star-fill merged in from 6204cbc, #1156) plus 8
+# app-launcher-only additions (i-bell, i-chevron-right, i-copy, i-eye-off, i-gauge,
 # i-info, i-messages-square, i-power; i-ellipsis-vertical has since joined the
 # scaffold). A [vendored] entry asserts byte-for-byte provenance, so declaring
 # it would let /propagate-vendored overwrite the sprite and delete them. Every

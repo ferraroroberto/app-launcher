@@ -81,6 +81,9 @@ def test_settings_pane_says_settings_once() -> None:
     assert len(titled) == 1, f"'Settings' heads the pane {len(titled)} times"
 
 
+_STATIC = _INDEX.parent
+
+
 # An internal name in a label: UPPER_SNAKE, key=value, a code element's text,
 # a format token like HH:MM, or a developer abbreviation for a folder.
 _JARGON = re.compile(r"[A-Z]{2,}_[A-Z_]+|\w=\w|HH:MM|\bdir\b|\bmutex\b|\bglobs?\b", re.I)
@@ -101,9 +104,14 @@ def test_dialog_and_settings_labels_hold_no_internal_names() -> None:
 
 def test_toolbar_toggles_carry_a_visible_word() -> None:
     tree = _tree()
-    for el_id in ("claudeDetached", "claudeResume",
-                  "lifeOsDetached", "lifeOsResume"):
+    for el_id in ("lifeOsDetached", "lifeOsResume"):
         assert _by_id(tree, el_id)["text"].strip(), f"#{el_id} is icon-only"
+    # The Code tab's pair is the launch toolbar component (#1434), built in
+    # JS: each switch sits in a <label> whose visible word names it.
+    toolbar = _STATIC.joinpath("launch-toolbar.js").read_text(encoding="utf-8")
+    for word in ("Detached", "Resume"):
+        assert re.search(r"text: '" + word + "'", toolbar), f"launch toolbar lost the {word} word"
+    assert "el('label', 'launch-switch')" in toolbar, "the word must be the switch's label"
     # The favourites star is the exception (#1194, the decision on
     # #1176): icon only, with its name kept on aria-label/title.
     fav = _by_id(tree, "favFilterBtn")
@@ -112,15 +120,14 @@ def test_toolbar_toggles_carry_a_visible_word() -> None:
     assert fav["attrs"].get("title") == "Show only favorites"
 
 
-_STATIC = _INDEX.parent
-
-
 def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
-    """#1191: the Code tab's chips spell out what they are. #1201: the empty
+    """#1191: the Code tab's chips spell out what they are (the git refresh,
+    an icon button since #1434, names what it does). #1201: the empty
     Schedule's own button opens the existing Add job dialog, under the label
     that dialog already carries — one add flow, not a second one."""
     tree = _tree()
-    assert _by_id(tree, "gitStatusBtn")["text"].strip() == "Git status"
+    refresh = _by_id(tree, "gitRefreshBtn")
+    assert refresh["attrs"].get("aria-label") == "Check git status of all projects"
 
     badge = _STATIC.joinpath("context-filter.js").read_text(encoding="utf-8")
     assert not re.search(r"\btok\b|\(7d\)", badge), "badge abbreviates"

@@ -50,7 +50,10 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from src import active_issue_claims
 
 from src.board_state import (  # noqa: F401 — re-exported for board.<name> callers
     RATE_LIMITS_STALE_AFTER,
@@ -245,3 +248,42 @@ def build_board(
         "other": list(github.get("prs") or []) + job_cards,
         "done": list(github.get("done") or []),
     }
+
+
+def session_board_columns(
+    live: List[Dict[str, Any]],
+    state_rows: Dict[str, Dict[str, Any]],
+    active_issue_rows: Dict[str, Any],
+    *,
+    fleet_config_dir: Path,
+    now: Optional[datetime] = None,
+) -> Dict[str, Dict[str, str]]:
+    """Each live session's Board column and status, keyed by session id (#1434).
+
+    The Coding tab's rows carry the Board's status vocabulary ("needs you",
+    "stalled") without polling ``/api/board``: its own sessions poll asks this
+    instead, which runs the same claim walk, status split and column routing
+    as ``GET /api/board`` (:func:`merge_sessions` then :func:`build_board`), so
+    a session can never be "Your turn" on one tab and quiet on the other.
+
+    A session absent from the result has no known column; callers show no
+    chip for it rather than guess. Blocking (transcript tails and a pid probe
+    per owned claim row) — callers wrap in ``asyncio.to_thread``.
+    """
+    claim_states = active_issue_claims.classify_claims(
+        active_issue_rows,
+        live_session_ids=_live_launcher_session_ids(live),
+        fleet_config_dir=fleet_config_dir,
+    )
+    cards = merge_sessions(
+        live, state_rows, now=now,
+        active_issue_repos=active_issue_repos(active_issue_rows, claim_states),
+    )
+    columns = build_board(cards, {}, [])
+    out: Dict[str, Dict[str, str]] = {}
+    for column in ("claude_turn", "your_turn"):
+        for card in columns[column]:
+            sid = card.get("session_id")
+            if sid:
+                out[str(sid)] = {"column": column, "status": str(card["status"])}
+    return out

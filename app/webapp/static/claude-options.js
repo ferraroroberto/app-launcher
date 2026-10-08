@@ -13,7 +13,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi } from './api.js';
-import { toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+import { wireModelCombo } from './dom-utils.js';
 import { setBoardDispatchModelOptions } from './board-dispatch.js';
 import { setLifeOsModelOptions } from './life-os.js';
 import { setSwitch } from './_vendored/switch/switch.js';
@@ -397,11 +397,6 @@ export function wireClaudeOptions() {
   wireBoolSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
   // Pi's effort select and trust range-tab wire their own handlers in
   // renderPiSubsection(), so there are no static listeners for those controls.
-  // The ☁️ Detached and ↺ Resume toggles are plain client-side switches
-  // (no server config — read at session-launch time in apps.js). They sit
-  // in the Projects card's toolbar (#496 put them on the launch surface;
-  // #1132 moved them out of its <summary>, where a near-miss folded it).
-  [els.claudeDetached, els.claudeResume].forEach(function (btn) {
-    btn.addEventListener('click', function () { toggleAriaChecked(btn); });
-  });
+  // The Detached and Resume switches wire themselves: they are part of the
+  // launch toolbar component (launch-toolbar.js, #1434).
 }

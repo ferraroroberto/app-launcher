@@ -1,13 +1,12 @@
 """Regression pin for issue #212 (collapsible Code-tab panels).
 
-The feature: the Code tab's **🟢 Running sessions** and **📁 Projects**
-panels are each a collapsible ``<details>`` mirroring the **⚙️ Coding
-options** card, with the ``›``→``⌄`` chevron on the summary title.
-Defaults (#383 review round): sessions open, Projects **collapsed** —
-the running-sessions card is the tab's working set. The ⎇ status / 🔄
-refresh buttons live in the sessions summary, so a tap there must drive
-the button only, never toggle the panel (the same stopPropagation guard
-Coding options uses for its Detached/Resume toggles).
+The feature: the Code tab's **Sessions** and **Projects** panels are each
+a collapsible ``<details>`` mirroring the **Coding options** card, with
+the ``›``→``⌄`` chevron on the summary title. Defaults (#383 review
+round): sessions open, Projects **collapsed** — the sessions card is the
+tab's working set. A card's controls sit in its body's toolbar (#1132), so
+a tap on one (the Projects git refresh since #1434) drives the button
+only, never toggles the panel.
 
 Runs in both projections — the wiring is browser-agnostic but the iPhone
 projection confirms the phone surface too.
@@ -28,9 +27,7 @@ def _is_open(page: Page, selector: str) -> bool:
 def test_code_tab_panels_default_states_and_header_tap(
     authed_page: Page, base_url: str
 ) -> None:
-    """Both Code-tab panel checks on one page load (#1215). The ⎇ header tap
-    runs last: it opens the git-summary popover, which could otherwise sit
-    over the Projects title the first half taps."""
+    """Both Code-tab panel checks on one page load (#1215)."""
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     # -- was test_sessions_open_and_projects_collapsed_by_default --
@@ -55,9 +52,12 @@ def test_code_tab_panels_default_states_and_header_tap(
     # -- was test_header_action_tap_does_not_toggle_sessions_panel --
     assert _is_open(authed_page, "#paneClaude details.sessions-card")
 
-    # The ⎇ status button sits inside the sessions <summary>; clicking it
-    # must drive the button but leave the panel open (stopPropagation).
-    authed_page.locator("#gitStatusBtn").click()
-    assert _is_open(authed_page, "#paneClaude details.sessions-card"), (
-        "header action tap must not collapse the sessions panel"
+    # A card's controls sit in its body's toolbar, never its <summary>
+    # (#1132): the Projects card's git refresh (#1434) drives the button and
+    # leaves the panel open.
+    title.click()
+    assert _is_open(authed_page, "details.projects-card")
+    authed_page.locator("#gitRefreshBtn").click()
+    assert _is_open(authed_page, "details.projects-card"), (
+        "a toolbar tap must not collapse the Projects panel"
     )

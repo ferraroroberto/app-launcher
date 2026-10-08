@@ -1,11 +1,14 @@
-"""Regression pin for issues #115 + #496 (Coding tab git-status flags).
+"""Regression pin for issues #115 + #496 + #1434 (Coding tab git-status flags).
 
-The feature (#115) coloured each tile from /api/claude-code/git-status —
-red for a dirty tree, yellow for a non-default branch (red wins when both,
-but the branch tag still shows) — plus a legend. #496 reversed the
-on-demand contract: the fetch now happens automatically at boot (and on a
-slow poll while the Coding/Board tab is visible), so the annotations and
-legend must appear WITHOUT any tap on the status button.
+The feature (#115) annotated each project row from
+/api/claude-code/git-status. #496 reversed the on-demand contract: the fetch
+now happens automatically at boot (and on a slow poll while the Coding/Board
+tab is visible), so the annotations must appear WITHOUT any tap. #1434 made
+them quieter and moved git's counts into the Projects card: the branch is
+plain meta text ("on <branch>"), uncommitted work an attention chip (never
+red, decision 8 of #1432), the card's summary carries the uncommitted
+count, its footer says when git was checked, and the page header carries no
+git counts at all.
 
 Approach: the real per-project git state isn't deterministic across
 environments, so we intercept the endpoint BEFORE first navigation with a
@@ -19,6 +22,7 @@ surface too.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -51,8 +55,8 @@ def _canned_git_status(authed_page: Page, base_url: str) -> dict:
     ]
     if not ids:
         pytest.skip("no coding projects in this environment — nothing to flag")
-    # Every project dirty AND off-default, so the red-wins precedence and the
-    # branch tag are both exercised whichever tile sorts first.
+    # Every project dirty AND off-default, so the branch and the chip are
+    # both exercised whichever tile sorts first.
     return {
         "projects": [
             {
@@ -90,7 +94,7 @@ def test_git_status_auto_annotates_tiles_without_tap(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     # Projects is collapsed by default (#383 review round) — expand it so
-    # the tiles and legend are visible.
+    # the rows and footer are visible.
     authed_page.locator("details.projects-card").evaluate(
         "el => { el.open = true; }"
     )
@@ -99,27 +103,32 @@ def test_git_status_auto_annotates_tiles_without_tap(
     tile_id = authed_page.locator(".coding-item").first.get_attribute("data-id")
     assert tile_id, "first coding tile is missing its data-id"
 
-    # No tap anywhere: the legend and annotations arrive from the boot fetch
-    # alone (expect auto-retries through the fetch + re-render).
-    expect(authed_page.locator("#gitStatusLegend")).to_be_visible(
-        timeout=10_000
+    # No tap anywhere: the annotations arrive from the boot fetch alone
+    # (expect auto-retries through the fetch + re-render).
+    expect(authed_page.locator("#gitCheckedFooter")).to_have_text(
+        "Git checked just now", timeout=10_000
     )
 
-    name = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .action-row-title')
-    classes = name.evaluate("el => el.className")
-    assert "git-dirty" in classes, (
-        f"dirty tile should be red without any tap — class was {classes!r}"
-    )
-    assert "git-off-main" not in classes, (
-        "red must take precedence over yellow when a tile is both dirty and "
-        f"off-default — class was {classes!r}"
-    )
+    row = authed_page.locator(f'.coding-item[data-id="{tile_id}"]')
+    expect(row).to_have_attribute("data-git", "dirty")
+    # No red: the title carries no git colour class any more (#1434).
+    expect(row.locator(".action-row-title")).not_to_have_class(re.compile(r"git-"))
 
-    # The branch rides the row's context line (#1128), spelled out beside
-    # the colour so hue is never the only channel.
-    meta = authed_page.locator(f'.coding-item[data-id="{tile_id}"] .action-row-meta')
-    expect(meta).to_contain_text(_BRANCH)
-    expect(meta).to_contain_text("Uncommitted changes")
+    # The branch rides the row's context line in the plain meta colour, and
+    # uncommitted work is an attention chip after it.
+    meta = row.locator(".action-row-meta")
+    expect(meta.locator(".action-row-meta-text")).to_have_text("on " + _BRANCH)
+    uncommitted = meta.locator(".git-uncommitted")
+    expect(uncommitted).to_have_text("uncommitted")
+    expect(uncommitted).to_have_attribute("data-tone", "attention")
 
-    # The summary head card aggregates the same cache (#496 item 1/3).
-    expect(authed_page.locator("#homeHeadStatus")).to_contain_text("dirty")
+    # The Projects summary counts them, behind an attention dot.
+    summary = authed_page.locator("#projectsSummaryMeta")
+    expect(summary).to_have_text(f"{len(canned['projects'])} uncommitted")
+    expect(summary.locator('.tone-dot[data-tone="attention"]')).to_have_count(1)
+
+    # The page header carries no git counts any more (#1434).
+    head = authed_page.locator("#homeHeadStatus")
+    expect(head).not_to_contain_text("dirty")
+    expect(head).not_to_contain_text("off-main")
+    expect(head).not_to_contain_text("uncommitted")

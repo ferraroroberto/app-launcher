@@ -72,6 +72,9 @@ export const state = {
   // Board tab is visible. Cached: the 4-5 s tab polls re-render from this
   // map but never re-run the git check themselves.
   gitStatus: null,
+  // When that map last landed (Date.now()), for the Projects card's "Git
+  // checked N min ago" footer (#1434). null until the first fetch.
+  gitStatusAt: null,
   // Coding-tab favorites filter (issue #250). false = show all projects
   // (favorites pinned to the top); true = show only starred projects. A
   // client-side view toggle, persisted across reloads like editMode so the
@@ -328,8 +331,6 @@ export const els = {
   claudePermission: document.getElementById('claudePermission'),
   claudeVerbose: document.getElementById('claudeVerbose'),
   claudeDebug: document.getElementById('claudeDebug'),
-  claudeDetached: document.getElementById('claudeDetached'),
-  claudeResume: document.getElementById('claudeResume'),
   claudeFlagsPreview: document.getElementById('claudeFlagsPreview'),
   codexEffort: document.getElementById('codexEffort'),
   codexModel: document.getElementById('codexModel'),
@@ -358,17 +359,14 @@ export const els = {
   systemMapLightbox: document.getElementById('systemMapLightbox'),
   systemMapLightboxImage: document.getElementById('systemMapLightboxImage'),
   systemMapLightboxClose: document.getElementById('systemMapLightboxClose'),
-  gitStatusBtn: document.getElementById('gitStatusBtn'),
-  gitStatusSummary: document.getElementById('gitStatusSummary'),
-  gitStatusLegend: document.getElementById('gitStatusLegend'),
+  gitRefreshBtn: document.getElementById('gitRefreshBtn'),
+  gitCheckedFooter: document.getElementById('gitCheckedFooter'),
+  projectsSummaryMeta: document.getElementById('projectsSummaryMeta'),
   sessionsList: document.getElementById('sessionsList'),
   sessionsEmpty: document.getElementById('sessionsEmpty'),
-  codingFilterBadge: document.getElementById('codingFilterBadge'),
-  codingFilterSavedBadge: document.getElementById('codingFilterSavedBadge'),
-  codingChiefStatus: document.getElementById('codingChiefStatus'),
-  codingChiefStatusText: document.getElementById('codingChiefStatusText'),
-  codingChiefStart: document.getElementById('codingChiefStart'),
-  codingChiefResume: document.getElementById('codingChiefResume'),
+  codingUsageCard: document.getElementById('codingUsageCard'),
+  codingUsageMeta: document.getElementById('codingUsageMeta'),
+  codingUsageFooter: document.getElementById('codingUsageFooter'),
   appsList: document.getElementById('appsList'),
   appsFilterInput: document.getElementById('appsFilterInput'),
   appsFilterEmpty: document.getElementById('appsFilterEmpty'),

@@ -17,8 +17,8 @@ import { fmtAgo } from './sessions.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { switchEl } from './_vendored/switch/switch.js';
 import {
-  renderAgentVisibility, renderCodingList, renderFavoriteAgent, wireCoding,
-  wireFavoriteAgent,
+  codingLaunch, renderAgentVisibility, renderCodingList, renderFavoriteAgent,
+  wireCoding, wireFavoriteAgent,
 } from './apps-coding.js';
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
 import { actionRow } from './action-rows.js';
@@ -170,10 +170,11 @@ async function copyUrl(url) {
   }
 }
 
-// Coding-tab launch mode is the ☁️ Detached toggle in the options
-// card: checked → 'remote' (detached console window, listed + killable
-// here but no phone terminal); unchecked → full-control PTY streamed to
-// the phone. The ↺ Resume toggle (issue #151) reopens the agent's own
+// Coding-tab launch mode is the Detached switch in the Projects card's
+// launch toolbar (launch-toolbar.js, #1434): on → 'remote' (detached
+// console window, listed + killable here but no phone terminal); off →
+// full-control PTY streamed to the phone. The Resume switch (issue #151)
+// reopens the agent's own
 // session picker; it is orthogonal to Detached (issue #157) — Detached +
 // Resume opens the picker in the detached console, Resume alone streams it
 // to the phone over a PTY. `agentId` (claude | codex | antigravity |
@@ -184,12 +185,11 @@ async function copyUrl(url) {
 // no console window on screen. Bat kinds only — a coding session has no
 // console window of its own to hide.
 export async function launchApp(a, agentId, stealth) {
-  const resume = !!(a.kind === 'claude-code' && els.claudeResume &&
-    els.claudeResume.getAttribute('aria-checked') === 'true');
+  const coding = a.kind === 'claude-code' && codingLaunch;
+  const resume = !!(coding && codingLaunch.isResume());
   // Detached → 'remote', independent of Resume. The two combine: a
   // Detached+Resume launch renders the agent's picker in the console.
-  const mode = (a.kind === 'claude-code' && els.claudeDetached &&
-    els.claudeDetached.getAttribute('aria-checked') === 'true') ? 'remote' : null;
+  const mode = (coding && codingLaunch.isDetached()) ? 'remote' : null;
   try {
     const opts = { method: 'POST' };
     const payload = {};

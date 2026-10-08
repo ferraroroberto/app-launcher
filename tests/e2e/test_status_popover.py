@@ -1,16 +1,14 @@
-"""Regression pin for issue #139 (Coding tab off-main status popover).
+"""Regression pin for #1434 (was #139's off-main status popover).
 
-The feature: tapping the Coding tab's ``⎇ status`` button — besides the
-existing tile annotation (#115) — opens a compact popover listing one line
-per project parked off its default branch, colour-matched to the list
-(red name = dirty, yellow = off-main) with the branch tag. A second tap,
-or a tap outside, closes it. All-on-default shows a single short note.
+#139 put an off-main popover behind the Code tab's "Git status" button.
+#1434 removed both: the rows themselves are the off-main list ("on
+<branch>" in their meta), and the refresh is an icon button in the Projects
+card's toolbar whose only feedback is the footer's "Git checked just now".
+This pins that the refresh re-runs the git check, that no popover opens,
+and that the old button is gone.
 
-Approach mirrors test_git_status_flags.py: real per-project git state
-isn't deterministic, so we intercept /api/claude-code/git-status with a
-canned payload keyed to the first real coding tile, then assert the
-popover DOM. Runs in both projections — the wiring is browser-agnostic
-but the iPhone projection confirms the phone surface too.
+Hermetic: /api/claude-code/git-status is fulfilled with a canned empty body
+before navigation, so the test counts requests instead of running git.
 """
 
 from __future__ import annotations
@@ -20,74 +18,34 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import wait_until
+
 pytestmark = pytest.mark.smoke
 
-_BRANCH = "fix/regress-139"
 
+def test_git_refresh_button_rechecks_without_a_popover(
+    authed_page: Page, base_url: str
+) -> None:
+    calls: list[str] = []
 
-def test_status_button_opens_off_main_popover(authed_page: Page, base_url: str) -> None:
+    def _fulfill(route):
+        calls.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"projects": []}))
+
+    authed_page.route("**/api/claude-code/git-status", _fulfill)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    wait_until(authed_page, lambda: len(calls) >= 1, "the boot git-status fetch")
 
-    # Projects is collapsed by default (#383 review round) — expand it so
-    # the tiles are visible. (#gitStatusBtn + summary live in the always-
-    # visible sessions summary and are unaffected.)
-    authed_page.locator("details.projects-card").evaluate(
-        "el => { el.open = true; }"
-    )
+    authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
+    refresh = authed_page.locator(".projects-toolbar #gitRefreshBtn")
+    expect(refresh).to_be_visible()
+    expect(refresh).to_have_attribute("aria-label", "Check git status of all projects")
+    expect(authed_page.locator("#gitStatusBtn")).to_have_count(0)
+    expect(authed_page.locator("#gitStatusSummary")).to_have_count(0)
 
-    authed_page.wait_for_selector(
-        ".coding-item, #claudeEmpty:not([hidden])", timeout=10_000
-    )
-    tiles = authed_page.locator(".coding-item")
-    if tiles.count() == 0:
-        pytest.skip("no coding projects in this environment — nothing to summarise")
-
-    tile_id = tiles.first.get_attribute("data-id")
-    assert tile_id, "first coding tile is missing its data-id"
-
-    # Canned status: this tile is BOTH dirty and off its default branch, so
-    # the summary line's name must be red (dirty wins) with the branch tag.
-    payload = {
-        "projects": [
-            {
-                "id": tile_id,
-                "is_git": True,
-                "branch": _BRANCH,
-                "default_branch": "main",
-                "on_default_branch": False,
-                "dirty": True,
-            }
-        ]
-    }
-    authed_page.route(
-        "**/api/claude-code/git-status",
-        lambda route: route.fulfill(
-            status=200,
-            content_type="application/json",
-            body=json.dumps(payload),
-        ),
-    )
-
-    summary = authed_page.locator("#gitStatusSummary")
-    expect(summary).to_be_hidden()
-
-    # First tap fetches + opens the popover with exactly one off-main row.
-    authed_page.locator("#gitStatusBtn").click()
-    expect(summary).to_be_visible()
-
-    rows = summary.locator(".git-summary-row")
-    expect(rows).to_have_count(1)
-    name = rows.first.locator(".git-summary-name")
-    classes = name.evaluate("el => el.className")
-    assert "git-dirty" in classes, (
-        f"dirty project should be red in the summary — class was {classes!r}"
-    )
-    assert "git-off-main" not in classes, (
-        "red must take precedence over yellow when a project is both dirty "
-        f"and off-default — class was {classes!r}"
-    )
-    expect(rows.first.locator(".git-branch-tag")).to_have_text(_BRANCH)
-
-    # Second tap toggles it closed.
-    authed_page.locator("#gitStatusBtn").click()
-    expect(summary).to_be_hidden()
+    before = len(calls)
+    refresh.click()
+    wait_until(authed_page, lambda: len(calls) > before, "the refresh's git-status fetch")
+    expect(authed_page.locator("#gitCheckedFooter")).to_have_text("Git checked just now")
+    expect(refresh).to_be_enabled()

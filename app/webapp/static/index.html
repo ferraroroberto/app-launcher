@@ -105,6 +105,10 @@
   <symbol id="i-play" viewBox="0 0 24 24" fill="none">
     <path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" />
   </symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24" fill="none">
+    <path d="m12 14 4-4" />
+    <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+  </symbol>
   <symbol id="i-git-branch" viewBox="0 0 24 24" fill="none">
     <path d="M15 6a9 9 0 0 0-9 9V3" />
     <circle cx="18" cy="6" r="3" />
@@ -651,61 +655,49 @@
         </button>
       </div>
 
-      <!-- Options moved below the launch surfaces (#496 item 2): the
-           per-agent option groups are configuration, not launch controls,
-           so the card sits last on the tab (see the bottom of this pane).
-           The launch-time Detached/Resume toggles moved into the Projects
-           card's summary — the surface sessions are actually started from. -->
+      <!-- Usage (#1434, the Code tab's glance card): "can I launch?". The
+           full usage meter (#1433), Claude Code's 5h and Week bars above a
+           Codex row, always both (#860), under a summary that names the pace
+           in its tone, with the context filter's savings as the footer.
+           usage-meter.js fills the meter and the meta; a tap anywhere on the
+           card opens the Usage sheet. -->
+      <section id="codingUsageCard" class="card usage-card" aria-labelledby="codingUsageTitle">
+        <div class="card-head usage-card-head">
+          <h3 id="codingUsageTitle" class="card-title">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
+            Usage
+          </h3>
+          <span id="codingUsageMeta" class="card-head-meta usage-card-meta"></span>
+        </div>
+        <div id="codingUsage" class="usage-meter-slot"></div>
+        <!-- context-filter.js fills it from the filter's existing stats;
+             hidden when there is nothing saved to report (#713). -->
+        <p id="codingUsageFooter" class="usage-card-footer" hidden></p>
+      </section>
+
+      <!-- Sessions (#1434): "what is running?". The chief's row first, then
+           the shared session rows (#1433), then the Telegram row. Card
+           controls never sit in the <summary> (#1132). -->
       <details class="card card--collapsible sessions-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
-            <h3 class="collapse-title">Running sessions</h3>
+            <h3 class="collapse-title">Sessions</h3>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <!-- Card controls live in the body, never in the <summary> (#1132):
-             a near-miss beside one toggled the whole card. -->
-        <div class="card-toolbar">
-          <div class="sessions-header-actions">
-            <button id="gitStatusBtn" type="button" class="button-ghost git-status-btn"
-                    title="Check each project's git branch + uncommitted changes"
-                    aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg> Git status</button>
-            <div id="gitStatusSummary" class="git-summary" hidden
-                 role="list" aria-label="Projects not on their default branch"></div>
-          </div>
-        </div>
-        <!-- The full usage meter (#1433): Claude Code's 5h and Week bars
-             above a Codex row, always both regardless of the selected
-             model (#860). usage-meter.js fills it; a tap opens the Usage
-             sheet. -->
-        <div id="codingUsage" class="usage-meter-slot"></div>
-        <!-- Context filter "saved" badge (issue #713) — glanceable tokens-
-             saved readout beside the usage badges above; hidden entirely
-             when the filter's stats are unavailable (fleet-config#392/#544
-             telemetry never written, or 0 saved). renderContextFilterBadge()
-             only flips hidden/text, same contract as renderUsageBadgeRow. -->
-        <div id="codingFilterBadge" class="usage-badges" hidden>
-          <span id="codingFilterSavedBadge" class="usage-badge" hidden></span>
-        </div>
-        <!-- Fleet chief status (#547) — Coding-tab parity with the Board's
-             chat-mode status row: same crown + text + Start affordance so
-             the chief can be spotted/started here too, not only in Board
-             chat mode. renderCodingChiefStatus() only flips hidden/text. -->
-        <div id="codingChiefStatus" class="board-chief-status" hidden>
-          <span class="board-chief-crown"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg></span>
-          <span id="codingChiefStatusText" class="board-chief-status-text"></span>
-          <button id="codingChiefStart" type="button" class="board-chief-start">Start</button>
-          <button id="codingChiefResume" type="button" class="board-chief-start" title="Reattach the most recent chief conversation" aria-label="Resume chief">Resume</button>
-        </div>
-        <ul id="sessionsList" class="card-list" aria-label="Running Claude Code sessions"></ul>
+        <ul id="sessionsList" class="card-list" aria-label="Running sessions"></ul>
         <!-- Telegram channel sessions hidden from the list above (#1384): one
-             line that opens the read-only list. channel-sessions.js. -->
-        <button type="button" id="sessionsChannelSummary" class="channel-summary" aria-haspopup="dialog" hidden>
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
-          <span class="channel-summary-text"></span>
-          <span class="channel-summary-alert" role="img" aria-label="context high" title="A Telegram session is at 50% context or more" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg></span>
+             flat row that opens the read-only list. channel-sessions.js. -->
+        <button type="button" id="sessionsChannelSummary" class="channel-row" aria-haspopup="dialog" hidden>
+          <span class="avatar session-avatar channel-row-avatar" data-badge="none">
+            <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+          </span>
+          <span class="srow-text">
+            <span class="srow-title">Telegram</span>
+            <span class="srow-meta"><span class="srow-meta-text channel-summary-text"></span></span>
+          </span>
           <span class="channel-summary-chevron" aria-hidden="true">›</span>
         </button>
         <div id="sessionsEmpty" class="empty-state">
@@ -713,55 +705,40 @@
           <p class="empty-state-message">No sessions launched from here yet.</p>
           <button type="button" id="sessionsEmptyAction" class="empty-state-action">Show projects</button>
         </div>
-        <p class="launcher-note">Only sessions launched from here appear — Claude windows started directly on the PC can't be attached.</p>
         </div>
       </details>
+      <p class="group-footer launcher-note">Only sessions launched from here appear.</p>
 
-      <!-- Collapsed by default (#383 review round): the running-sessions
-           card above is the tab's working set; expand to reach the tiles.
-           Detached + Resume live here (#496 item 2): they are launch-time
-           controls, so they sit beside the tiles they modify. -->
+      <!-- Projects: launch from here. Git lives here since #1434: the
+           uncommitted count in the summary, branch and "uncommitted" on each
+           row, the refresh in the toolbar and when it last ran in the
+           footer. Collapsed by default (#383). -->
       <details class="card card--collapsible action-list projects-card">
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
             <h3 class="collapse-title">Projects</h3>
+            <span id="projectsSummaryMeta" class="collapse-count projects-summary-meta" hidden></span>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <!-- Card controls live in the body, never in the <summary> (#1132):
-             a near-miss beside one toggled the whole card. -->
-        <div class="card-toolbar">
-          <div class="coding-toggles">
-            <!-- Provider-qualified launch model (#540/#845), populated
-                 from the server catalog after config loads. -->
-            <span class="model-combo" id="codingModelCombo" data-value="claude:opus">
-              <button type="button" id="codingModelBtn" class="model-combo-trigger"
-                      aria-haspopup="listbox" aria-expanded="false" aria-controls="codingModelMenu"
-                      title="Model for the next matching Coding-agent launch">Claude · Opus</button>
-              <span id="codingModelMenu" class="model-combo-menu" role="listbox" aria-label="Coding launch model" hidden>
-                <button type="button" role="option" data-value="claude:opus" aria-selected="true">Claude · Opus</button>
-              </span>
-            </span>
-            <button type="button" id="claudeDetached" class="detached-toggle" role="switch" aria-checked="false"
-                   aria-label="Launch detached"
-                   title="Launch detached: a console window on the PC, listed and killable here but no phone terminal">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg> Detached
-            </button>
-            <button type="button" id="claudeResume" class="detached-toggle" role="switch" aria-checked="false"
-                   aria-label="Resume session"
-                   title="Resume: reopen the agent's own session picker — in a phone terminal, or in the detached console when Detached is also on">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume
-            </button>
-          </div>
-          <button id="favFilterBtn" type="button" class="icon-button fav-filter-btn"
-                  aria-pressed="false" aria-label="Show only favorites"
-                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
+        <div class="card-toolbar projects-toolbar">
+          <!-- The shared launch toolbar (launch-toolbar.js, #1434): the model
+               combo, then Detached and Resume as vendored switches. It
+               takes the git refresh below as its model row's trailing
+               control. -->
+          <div id="codingLaunchToolbar" class="launch-toolbar-slot"></div>
+          <button id="gitRefreshBtn" type="button" class="icon-button git-refresh-btn"
+                  title="Check each project's git branch and uncommitted changes"
+                  aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
         </div>
         <label class="action-row-filter list-filter">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="claudeFilterInput" type="search" autocomplete="off" placeholder="Filter projects" aria-label="Filter projects">
+          <button id="favFilterBtn" type="button" class="icon-button fav-filter-btn"
+                  aria-pressed="false" aria-label="Show only favorites"
+                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
         </label>
         <ul id="claudeList" class="card-list action-rows" aria-label="Claude Code projects"></ul>
         <div id="claudeFilterEmpty" class="empty-state" hidden>
@@ -774,10 +751,7 @@
           <p class="empty-state-message">No projects found — point <strong>Projects folder</strong> in Settings at a folder that has project subdirectories.</p>
           <button type="button" id="claudeEmptyAction" class="empty-state-action">Open Settings</button>
         </div>
-        <p id="gitStatusLegend" class="muted small git-legend" hidden>
-          <span class="git-swatch off-main"></span> not on main ·
-          <span class="git-swatch dirty"></span> uncommitted changes
-        </p>
+        <p id="gitCheckedFooter" class="group-footer git-checked-footer" hidden></p>
         </div>
       </details>
 

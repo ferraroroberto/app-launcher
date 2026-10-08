@@ -271,11 +271,9 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
    however tight the cluster's gap is, two neighbours can never share a
    tappable pixel. */
 .model-combo-trigger,
-.git-status-btn,
 .board-chief-start,
 .board-repo-input { position: relative; }
 .model-combo-trigger::before,
-.git-status-btn::before,
 .board-chief-start::before,
 .board-repo-input::before {
   content: "";
@@ -941,94 +939,6 @@ summary + .opt-group { border-top: 0; }
 /* ---------- Coding tab tiles (issue #45) ---------- */
 /* Bare folder name on the left, one icon button per coding agent on
    the right — sat side by side, not stacked. */
-/* ---------- Coding tab git-status flags (issue #115) ---------- */
-/* On-demand only: tap the header button to annotate tiles. Yellow name
-   = parked on a non-default branch; red name = uncommitted changes. */
-.sessions-header-actions {
-  position: relative;   /* anchors the off-main summary popover (issue #139) */
-  display: flex;
-  align-items: center;
-  /* 8px, not 6: these compact controls reach the 44px floor through an
-     invisible ±4 expansion (#1124), which needs the extra clearance or two
-     neighbours would share tappable pixels. */
-  gap: 8px;
-}
-.git-status-btn { font-size: var(--font-caption); padding: 6px 10px; }
-.git-status-btn.loading { opacity: 0.5; pointer-events: none; }
-/* Compact off-main summary popover (issue #139): anchored below the
-   status button, right-aligned with the card edge. */
-.git-summary {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 30;
-  min-width: 200px;
-  max-width: min(92vw, 460px);
-  max-height: 60vh;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 9px 11px;
-  background: var(--card-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
-}
-.git-summary-row {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: var(--font-body-sm);
-  line-height: 1.3;
-}
-.git-summary-row .git-branch-tag { margin-left: 0; font-size: var(--font-caption); }
-.git-summary-name {
-  font-weight: 600;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.git-summary-row .git-branch-tag { min-width: 0; }
-.git-summary-name.git-off-main { color: var(--attention); }
-.git-summary-name.git-dirty { color: var(--danger); }
-.git-summary-empty { font-size: var(--font-body-sm); color: var(--muted); }
-/* A project row's title carries its git state (#115, on the action-row
-   since #1128); the context line spells it out, so colour is never the
-   only channel. */
-.action-row-title.git-off-main { color: var(--attention); }
-.action-row-title.git-dirty { color: var(--danger); }
-.git-branch-tag {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 1px 7px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
-  font-weight: 500;
-  color: var(--attention-text);
-  background: rgb(from var(--attention) r g b / 0.12);
-  vertical-align: middle;
-  overflow-wrap: anywhere;
-}
-.git-legend {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
-  margin: 8px 2px 0;
-}
-.git-swatch {
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  margin-right: 2px;
-  vertical-align: middle;
-}
-.git-swatch.off-main { background: var(--attention); }
-.git-swatch.dirty { background: var(--danger); }
-
 .agent-icon {
   width: 24px;                    /* icons.size feature step (issue #355) */
   height: 24px;
@@ -1043,12 +953,13 @@ summary + .opt-group { border-top: 0; }
      themes by construction — the chip has nothing left to do. */
   flex-shrink: 0;
 }
-/* "Favorites" header filter toggle — icon-only at every width (#1070, kept by
-   #1194), at the same height as the Detached/Resume toggles beside it: the
-   vendored icon-button at the 36px control box. The active filter takes the
-   star's gold glyph (fill rule: `.fav-filter-btn.active .icon`, near
-   `.opt-group`); the accessible name stays on aria-label/title. */
-.fav-filter-btn { --icon-btn-box: var(--control-h); }
+/* Favourites filter — icon-only at every width (#1070, kept by #1194), the
+   trailing star inside the Projects filter field since #1434: the vendored
+   icon-button at the 36px control box, pulled to the field's right edge.
+   The active filter takes the star's gold glyph (fill rule:
+   `.fav-filter-btn.active .icon`, near `.opt-group`); the accessible name
+   stays on aria-label/title. */
+.fav-filter-btn { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
 .fav-filter-btn.active { color: var(--star); }
 /* Shown in place of the list when the filter is on but nothing is starred. */
 .coding-fav-empty {
@@ -1609,12 +1520,23 @@ summary + .opt-group { border-top: 0; }
   padding: 1px 6px;
   margin-right: 6px;
 }
-.launcher-note {
-  margin: 10px 2px 0;
+/* A group footer (#1434, the iOS inset-group footer): one muted body-sm
+   line under a card or at the foot of its body, never wrapping — a footnote
+   that needs two lines is too long to sit on every visit. */
+.group-footer {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--font-body-sm);
   font-weight: 400;
   color: var(--muted);
 }
+.group-footer[hidden] { display: none; }
+/* Under the card it belongs to: the gutter above it is the card gap, so
+   pull it up to sit with that card rather than float between two. */
+.launcher-note.group-footer { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
+.git-checked-footer { margin-top: 12px; }
 
 /* ---------- dialogs ---------- */
 /* Every editor <dialog> is the vendored modal shell (#1133): .detail-dialog
@@ -4045,11 +3967,6 @@ body.terminal-open {
 }
 .board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
 .board-chief-status-text { flex: 1; min-width: 0; }
-/* On the Coding tab the chief row sits right on top of the running
-   sessions: Start / Resume's -5px hit expansion (#1124) reached into the
-   first session row (TOUCH-02 in the rendered design review). 8px, not
-   less, as for the Board's filter row (#1174). */
-#codingChiefStatus { margin-bottom: var(--space-sm); }
 /* The settings gear sits outside .board-dispatch-row, so it misses that
    row's .compose-record shrink rule and rendered at the base 44px size —
    visibly bigger than every other icon button in the bar (#547). Match the
@@ -4535,14 +4452,9 @@ span.chief-answer-ref { color: var(--muted); }
    the git dirty/off-main colours, which use their own tokens, are untouched
    (#1175). The Code tab's in-view row joins them in its wide-layout block. */
 .board-item.board-item-chief .board-card,
-.app-item.session-item.session-item-chief,
 .board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
 .board-empty { margin: 0; }
 
-/* Fleet chief row in the Coding tab's session list (#547) — the same
-   accent-soft tint as the Board card above, the crown its avatar badge
-   (#1433). */
-.app-item.session-item.session-item-chief { background: var(--accent-soft); }
 
 .lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
@@ -5174,4 +5086,139 @@ span.chief-answer-ref { color: var(--muted); }
     background: var(--accent-soft);
     --muted: var(--accent-text);
   }
+}
+
+/* ---------- Code tab (#1434, step 2/7 of #1432) ----------
+   The Usage card, the quieter Sessions list and the launch toolbar. */
+
+/* The header rule: each exception in its tone's text colour. */
+.head-exception[data-tone="attention"] { color: var(--attention-text); }
+.head-exception[data-tone="danger"] { color: var(--danger-text); }
+
+/* Usage: the full meter in a card. The whole card is one tap to the Usage
+   sheet; the meter inside is its keyboard target. */
+.usage-card { cursor: pointer; }
+.usage-card .usage-meter-slot { margin: 12px 0 0; }
+.usage-card-meta { font-size: var(--font-body-sm); }
+.usage-card-meta[data-tone="accent"] { color: var(--accent-text); }
+.usage-card-meta[data-tone="attention"] { color: var(--attention-text); }
+.usage-card-meta[data-tone="danger"] { color: var(--danger-text); }
+.usage-card-footer {
+  margin: 10px 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.usage-card-footer[hidden] { display: none; }
+
+/* The chief's row while no chief runs: the row body is not a tap target
+   (there is nothing to open), and Start / Resume sit as tint verbs beside
+   the kebab at real 44px geometry. */
+.chief-stopped-row .chief-stopped-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-lg);
+  padding: 8px 4px 8px 14px;
+}
+.app-item .row-actions.session-actions:has(.chief-verb) {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.chief-stopped-row .chief-verb {
+  flex: none;
+  width: auto;
+  min-height: 44px;
+  padding: 0 10px;
+}
+
+/* The Telegram row: a flat session-shaped row on the list's hairline, not
+   a filled button inside the card (round 1's "nested surfaces"). */
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-lg);
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-top: 1px solid var(--line);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-row[hidden] { display: none; }
+.channel-row:active { background: var(--card-2); }
+.channel-row .avatar-glyph { color: var(--accent); }
+.sessions-card #sessionsList:empty + .channel-row { border-top: 0; }
+
+/* Projects: the uncommitted count in the summary, behind an attention dot. */
+.projects-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+}
+.projects-summary-meta[hidden] { display: none; }
+.tone-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.tone-dot[data-tone="attention"] { background: var(--attention); }
+.tone-dot[data-tone="danger"] { background: var(--danger); }
+
+/* A row's context line with chips: the text ellipsizes, the chips never do. */
+.action-row-meta.has-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.action-row-meta.has-chips .action-row-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-row-meta-text:empty { display: none; }
+
+/* The Projects toolbar is the launch toolbar alone; the git refresh rides
+   its model row as the trailing control. */
+.projects-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
+.projects-toolbar .git-refresh-btn { --icon-btn-box: var(--control-h); }
+
+/* The launch toolbar (launch-toolbar.js): the model row (the combo, a
+   trailing control pinned right), then the switch pair, each switch with
+   its word. The word is the switch's <label>, so word + track is one 44px
+   tap target. */
+.launch-toolbar {
+  display: flex;
+  flex-direction: column;
+  /* 8px: the combo's -5 and a switch's -9 tap expansions (#1124) must not
+     meet across the two rows. */
+  gap: 8px;
+}
+.launch-toolbar-head,
+.launch-toolbar-switches {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.launch-toolbar-trailing { margin-left: auto; }
+.launch-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--hit-min);
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
 }

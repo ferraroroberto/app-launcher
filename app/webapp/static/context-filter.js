@@ -113,10 +113,14 @@ function renderStats(stats) {
   }
 }
 
-function renderBadge(stats) {
-  if (!els.codingFilterBadge || !els.codingFilterSavedBadge) return;
+// The Usage card's footer line on the Code tab (#713, a footer since #1434):
+// what the filter saved, from the stats this fetch already read. Hidden when
+// the stats are unavailable or nothing was saved.
+function renderUsageFooter(stats) {
+  const footer = els.codingUsageFooter;
+  if (!footer) return;
   if (!stats || !stats.available) {
-    els.codingFilterBadge.hidden = true;
+    footer.hidden = true;
     return;
   }
   const todaySaved = (stats.today && stats.today.tokens_saved) || 0;
@@ -124,16 +128,14 @@ function renderBadge(stats) {
   const useToday = todaySaved > 0;
   const saved = useToday ? todaySaved : weekSaved;
   if (!saved) {
-    els.codingFilterBadge.hidden = true;
+    footer.hidden = true;
     return;
   }
-  els.codingFilterBadge.hidden = false;
-  els.codingFilterSavedBadge.hidden = false;
-  els.codingFilterSavedBadge.className = 'usage-badge good';
   // User words (#1191): the filter as its Settings card names it, whole
   // "tokens", and the window spelled out.
-  els.codingFilterSavedBadge.textContent = 'Context filter saved ' +
+  footer.textContent = 'Context filter saved ' +
     fmtTokens(saved) + ' tokens ' + (useToday ? 'today' : 'in 7 days');
+  footer.hidden = false;
 }
 
 export async function fetchContextFilter() {
@@ -144,7 +146,7 @@ export async function fetchContextFilter() {
     renderModeControl(mode);
     renderHarnesses(body.harnesses);
     renderStats(body.stats);
-    renderBadge(body.stats);
+    renderUsageFooter(body.stats);
     // The Usage sheet's savings rows (#1433) read the same stats.
     setUsageFilterStats(body.stats);
   } catch (exc) {

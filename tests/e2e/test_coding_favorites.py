@@ -134,39 +134,44 @@ def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) 
     assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
 
     # -- was test_favorites_filter_is_icon_only_beside_labelled_toggles --
-    # #1194 (the decision on #1176): the favourites star is icon only.
-    #
-    # #1176 gave Detached, Resume and the star a visible word each; the star
-    # goes back to the bare glyph while its neighbours keep theirs. The markup
-    # and every syncFavFilterBtn() re-render must agree, the accessible name
-    # keeps saying what the filter does, and its height still matches the
-    # Detached toggle beside it.
-    btn = authed_page.locator("#favFilterBtn")
+    # #1194 (the decision on #1176): the favourites star is icon only, and
+    # since #1434 it is the trailing star inside the Projects filter field.
+    # The markup and every syncFavFilterBtn() re-render must agree, and the
+    # accessible name keeps saying what the filter does.
+    field = authed_page.locator("details.projects-card label.action-row-filter")
+    btn = field.locator("#favFilterBtn")
     expect(btn).to_be_visible()
     # The glyph alone: no stray word, after the Coding render has run.
     expect(btn).to_have_text("")
     expect(btn.locator("svg.icon")).to_have_count(1)
-    # Its neighbour keeps the word #1176 gave it.
-    expect(authed_page.locator("#claudeDetached")).not_to_have_text("")
+    # The launch toolbar's switches keep their words (#1176).
+    expect(authed_page.locator("#codingLaunchToolbar .launch-switch-label")).to_have_text(
+        ["Detached", "Resume"]
+    )
     # The accessible name still carries the word the caption used to show.
     expect(btn).to_have_attribute("aria-label", "Show only favorites")
     expect(btn).to_have_attribute("title", "Show only favorites")
 
-    # Same height as the toggles beside it — the "reads as one set" half of the
-    # ask. Compared with a 1px tolerance for sub-pixel heights; the Projects
-    # header is static markup, so neither read straddles a re-render.
+    # Trailing, inside the field: the star's box sits within the field's and
+    # after the input. The Projects toolbar is static markup, so no read
+    # straddles a re-render.
     fav_box = btn.bounding_box()
-    tog_box = authed_page.locator("#claudeDetached").bounding_box()
-    assert fav_box and tog_box, "header controls did not lay out"
-    assert abs(fav_box["height"] - tog_box["height"]) <= 1, (
-        f"favourites filter {fav_box['height']}px vs Detached "
-        f"{tog_box['height']}px — the header controls no longer match"
+    field_box = field.bounding_box()
+    input_box = field.locator("input").bounding_box()
+    assert fav_box and field_box and input_box, "filter field did not lay out"
+    assert fav_box["x"] >= input_box["x"] + input_box["width"] - 1, (
+        f"the star must trail the input: star {fav_box}, input {input_box}"
     )
+    assert field_box["y"] - 1 <= fav_box["y"] and (
+        fav_box["y"] + fav_box["height"] <= field_box["y"] + field_box["height"] + 1
+    ), f"the star must sit inside the field: star {fav_box}, field {field_box}"
 
-    # Still a working toggle, and still gold when on.
+    # Still a working toggle, and still gold when on. The field is a
+    # <label>, so the tap must not also put the cursor in the input.
     btn.click()
     expect(btn).to_have_attribute("aria-pressed", "true")
     expect(btn).to_have_class(re.compile(r"\bactive\b"))
+    expect(field.locator("input")).not_to_be_focused()
 
     # Filter back OFF so the star-toggle step below sees the full list.
     btn.click()
