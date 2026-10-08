@@ -264,17 +264,6 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
    adjacent clusters need real geometry, never overlapping expansions. */
 .hit-target { position: relative; }
 .hit-target::before { content: ""; position: absolute; inset: -5px; }
-/* #1124 — the two shapes the audit's under-44px controls come in.
-   `.hit-target-y` is for a control already wide enough (a combo, a labelled
-   toolbar button): it grows only vertically, so neighbours in a horizontal
-   cluster can never overlap however tight the gap. `.hit-target-4` is for a
-   compact square in a cluster: +4 a side reaches 44x44 from 36x36 and needs
-   an 8px gap, which the cluster rules below carry. Both are applied by
-   selector rather than in the markup — every user is an existing control. */
-.hit-target-y { position: relative; }
-.hit-target-y::before { content: ""; position: absolute; inset: -4px 0; }
-.hit-target-4 { position: relative; }
-.hit-target-4::before { content: ""; position: absolute; inset: -4px; }
 
 /* The audit's compact controls (#1124), by shape.
 
