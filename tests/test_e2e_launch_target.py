@@ -107,6 +107,19 @@ def test_pinning_adds_no_credential_key(tmp_path: Path) -> None:
     assert added <= {"projects_dir", "projects_ignore"}
 
 
+def test_ui_prefs_pin_overrides_a_live_setting(tmp_path: Path) -> None:
+    """#1458: an owner's Settings pick must not reach the e2e server's config."""
+    real = tmp_path / "webapp_config.json"
+    real.write_text(
+        json.dumps({"usage_shows": "claude", "claude_model": "opus"}), encoding="utf-8"
+    )
+    cfg = e2e_conftest.pin_ui_prefs(disposable_webapp_config(real, "e2e-probe-token"))
+
+    assert cfg["usage_shows"] == "both"
+    assert cfg["claude_model"] == "opus", "only the pinned keys are overwritten"
+    assert json.loads(real.read_text(encoding="utf-8"))["usage_shows"] == "claude"
+
+
 # ------------------------------------------------- which checkout launches
 
 

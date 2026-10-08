@@ -495,6 +495,7 @@ def _autoboot_server(
     )
     disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token)
     pin_launch_target(disposable_cfg, launch_target_dir() or _REPO_ROOT)
+    pin_ui_prefs(disposable_cfg)
     if count_leaked_credentials(_WEBAPP_CONFIG, disposable_cfg):
         pytest.fail(
             "autoboot: the disposable webapp config still holds a credential "
@@ -1173,6 +1174,25 @@ def pin_launch_target(cfg: dict, target: Path) -> dict:
         for pattern in (cfg.get("projects_ignore") or [])
         if not dir_ignored(target.name, [pattern])
     ]
+    return cfg
+
+
+# UI preferences the e2e suite's assertions depend on. The disposable config
+# is derived from the checkout's real one (and a new worktree copies the live
+# one), so a value the owner picked in Settings would otherwise leak into every
+# test that reads the default (#1458: ``usage_shows: "claude"`` hides the Codex
+# row). A new setting a test asserts against belongs here.
+E2E_PINNED_UI_PREFS = {"usage_shows": "both"}
+
+
+def pin_ui_prefs(cfg: dict) -> dict:
+    """Overwrite ``cfg``'s UI preferences with :data:`E2E_PINNED_UI_PREFS`.
+
+    Mutates and returns the disposable config only; the checkout's real
+    ``config/webapp_config.json`` is never written. Pinned by
+    ``tests/test_e2e_launch_target.py``.
+    """
+    cfg.update(E2E_PINNED_UI_PREFS)
     return cfg
 
 
