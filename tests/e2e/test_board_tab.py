@@ -206,20 +206,38 @@ def test_board_renders_columns_counts_and_cards(
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
     # (structure + default open state) --
-    # #1198: the Board is built like every other tab. The first thing under
-    # the page header is a section card holding the dispatch bar, each column
-    # is a collapsible section card with its count in the summary, and the
-    # phone's column strip is gone. A section the user folds stays folded
-    # across the 5 s poll: renderBoard() re-renders the lists, never a
-    # section's open state (that half is the last step below).
+    # #1198 / #1436: the Board is built like every other tab. There is no
+    # Dispatch card and no chief card (the chief lives in its row under Code
+    # › Sessions), no chief composer and no usage line: the first thing under
+    # the page header is the lane toolbar — the project filter and ↻ — then
+    # the lanes, each a collapsible section card with its count in the
+    # summary; the phone's column strip is gone. A section the user folds
+    # stays folded across the 5 s poll: renderBoard() re-renders the lists,
+    # never a section's open state (that half is the last step below).
     first = authed_page.locator("#paneBoard > .page-head + *")
-    expect(first).to_have_id("boardDispatchCard")
-    expect(first).to_have_class(re.compile(r"\bcard--collapsible\b"))
-    expect(first.locator("> summary .collapse-title")).to_have_text("Dispatch")
-    expect(first.locator("#boardDispatch")).to_have_count(1)
+    expect(first).to_have_class(re.compile(r"\bboard-toolbar\b"))
+    expect(first.locator("#boardDispatchRepoBtn")).to_have_count(1)
+    expect(first.locator("#boardRefresh")).to_have_count(1)
+    expect(authed_page.locator(
+        "#boardDispatchCard, #boardChiefCard, #boardDispatchGoal, #boardChiefStatus, "
+        "#boardUsage, #paneBoard .usage-meter")).to_have_count(0)
+    expect(authed_page.locator("#paneBoard .collapse-title", has_text="Dispatch")).to_have_count(0)
+
+    # The header (#1436): exceptions only, in their tones; no slogan.
+    head = authed_page.locator("#boardHeadStatus")
+    expect(head).to_have_text("1 needs you · 1 failing")
+    expect(head.locator(".head-exception")).to_have_count(2)
+    expect(head.locator(".head-exception").nth(0)).to_have_attribute("data-tone", "attention")
+    expect(head.locator(".head-exception").nth(1)).to_have_attribute("data-tone", "danger")
 
     sections = authed_page.locator("#boardColumns details.board-col")
     expect(sections).to_have_count(5)
+    # Lane order (#1436 decision log): Backlog, the chief's plan, Claude's
+    # turn, Your turn, PRs and jobs (renamed from "Other"), Done today.
+    expect(
+        authed_page.locator("#boardColumns details > summary .collapse-title")
+    ).to_have_text(["Backlog", "Chief's plan", "Claude's turn", "Your turn",
+                    "PRs and jobs", "Done today"])
     expect(
         authed_page.locator("#boardColumns details.board-col > summary .board-count")
     ).to_have_count(5)
@@ -299,9 +317,9 @@ def test_board_renders_columns_counts_and_cards(
             f"container={box_container['width']}"
         )
 
-    # -- the chief's plan (#1279): a card, not a column, directly under
-    # Claude's turn in both projections --
-    expect(authed_page.locator("#boardColClaude + #boardChiefPlan")).to_have_count(1)
+    # -- the chief's plan (#1279): a card, not a column, directly above
+    # Claude's turn in both projections (#1436) --
+    expect(authed_page.locator("#boardChiefPlan + #boardColClaude")).to_have_count(1)
     plan_card = authed_page.locator("#boardChiefPlan")
     expect(plan_card).to_have_class(re.compile(r"\bcard\b"))
     expect(plan_card).not_to_have_class(re.compile(r"\bboard-col\b"))
@@ -309,8 +327,8 @@ def test_board_renders_columns_counts_and_cards(
     box_plan = stable_read(plan_card.bounding_box)
     assert box_claude and box_plan, "Claude's turn / chief's plan not laid out"
     assert abs(box_plan["x"] - box_claude["x"]) < 2, (box_plan, box_claude)
-    assert 0 <= box_plan["y"] - (box_claude["y"] + box_claude["height"]) <= 32, (
-        f"plan should sit right under Claude's turn: {box_plan} vs {box_claude}")
+    assert 0 <= box_claude["y"] - (box_plan["y"] + box_plan["height"]) <= 32, (
+        f"Claude's turn should sit right under the plan: {box_claude} vs {box_plan}")
 
     plan_body = plan_card.locator(".board-plan-body")
     expect(plan_body).to_have_attribute("data-state", "ok")
@@ -329,7 +347,8 @@ def test_board_renders_columns_counts_and_cards(
     expect(lane).to_have_count(1)
     expect(lane).to_contain_text("app-launcher")
     expect(lane).to_contain_text("#1273")
-    expect(lane.locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
+    # The tone map (#1436): a lane at the gate is work in progress, accent.
+    expect(lane.locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")
     queue = plan_body.locator(".board-plan-group").nth(2).locator("li.board-plan-row")
     expect(queue).to_have_count(2)
     # Title first (#1297): the repo and number follow as secondary text, a
@@ -342,7 +361,7 @@ def test_board_renders_columns_counts_and_cards(
     expect(first_ref).to_have_attribute("href", "https://github.com/octo/app-launcher/issues/1273")
     expect(queue.nth(0).locator(".board-card-meta-inline")).to_have_text("app-launcher#1273")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
-    expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "active")
+    expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")
     expect(queue.nth(1).locator(".board-card-meta-inline")).to_have_text(
         "automation#135 · before Thu 1 Oct 16:00")
     # An unknown status is shown as it is, on the neutral chip.
@@ -364,12 +383,17 @@ def test_board_renders_columns_counts_and_cards(
     # -- the GitHub-fed columns' cards (this test's own) --
     _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
 
-    # Other holds the open PR + failed job, in that order.
+    # PRs and jobs holds the open PR + failed job, in that order, on the
+    # shared anatomy (#1436): the failed job's state is a danger chip, the
+    # PR's normal state no chip at all.
     other = authed_page.locator('.board-list[data-col="other"] li.board-item')
     expect(other.first).to_be_visible(timeout=5_000)
     assert other.count() == 2
     expect(other.nth(0)).to_contain_text("PR #158")
-    expect(other.nth(1)).to_contain_text("failed")
+    expect(other.nth(0).locator(".chip")).to_have_count(0)
+    job_chip = other.nth(1).locator(".board-job-chip")
+    expect(job_chip).to_have_text("failed")
+    expect(job_chip).to_have_attribute("data-tone", "danger")
 
     # Backlog card is repo · #N · title; done card is a closed issue.
     backlog = authed_page.locator('.board-list[data-col="backlog"] li.board-item')
@@ -377,21 +401,22 @@ def test_board_renders_columns_counts_and_cards(
     # A Backlog row's content starts at the same inset inside its column as a
     # Claude's-turn card's (#1303: the flat row had 4px, the cards 14px).
     # A session card leads with its avatar since #1433, so its leading edge
-    # is the avatar's, not the title's. A job card's status accent is a 3px
-    # left border, a marker rather than inset, so it is taken off the side.
+    # is the avatar's, not the title's.
     inset = """(li) => {
       const list = li.closest('.board-list').getBoundingClientRect();
       const btn = li.querySelector('.board-card');
       const lead = btn.querySelector('.avatar') ||
         btn.querySelector('.board-card-title, .board-card-title-compact');
-      const accent = parseFloat(getComputedStyle(btn).borderLeftWidth) || 0;
-      return lead.getBoundingClientRect().left - list.left - accent;
+      return lead.getBoundingClientRect().left - list.left;
     }"""
     claude_card = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item').first
     backlog_inset = stable_eval(backlog.first, inset)
     card_inset = stable_eval(claude_card, inset)
     assert abs(backlog_inset - card_inset) <= 1, (
         f"Backlog row text inset {backlog_inset}px vs Claude's-turn card {card_inset}px")
+    # The Backlog's footer says how fresh the GitHub cache is (#1436).
+    expect(authed_page.locator('.board-lane-foot[data-col="backlog"]')).to_have_text(
+        re.compile(r"^GitHub · updated (just now|\d+ min ago)$"))
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
     expect(done.first).to_contain_text("#87")
     expect(done.first).to_contain_text("closed")
@@ -607,12 +632,18 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     expect(authed_page.locator("#boardStatus")).to_contain_text(
         "session-host unreachable"
     )
+    # The header shows the one exception it knows (the failed job); never
+    # "0 sessions" (#1436).
+    head = authed_page.locator("#boardHeadStatus")
+    expect(head).to_have_text("1 failing")
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("3")
     unreadable = authed_page.locator(
         '.board-list[data-col="other"] li.board-item.is-unreadable'
     )
-    expect(unreadable).to_contain_text("job · unreadable")
+    expect(unreadable.locator(".board-card-meta-text")).to_have_text(re.compile(r"^job\b"))
+    expect(unreadable.locator(".board-job-chip")).to_have_text("unreadable")
+    expect(unreadable.locator(".board-job-chip")).to_have_attribute("data-tone", "attention")
     expect(unreadable).to_contain_text("daily digest")
 
     read_empty = _board_payload()
@@ -637,20 +668,39 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     expect(
         authed_page.locator('.board-empty[data-col="claude_turn"] .empty-state-message')
     ).to_have_text("No sessions on Claude’s side.")
-    # Start work lands in the dispatch bar, ready to type (#1238 J-09).
+    # Start work (#1238 J-09) goes where sessions start: the Code tab
+    # (#1436: the Board has no composer any more).
     yours_empty.locator(".empty-state-action").click()
-    expect(authed_page.locator("#boardDispatchGoal")).to_be_focused()
+    expect(authed_page.locator("#paneClaude")).to_be_visible()
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
     expect(authed_page.locator("#boardStatus")).not_to_contain_text(
         "session-host unreachable"
     )
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
+    # Nothing wrong: the header falls back to the plain totals (#1436).
+    expect(head).to_have_text("1 failing")
+    calm = copy.deepcopy(read_empty)
+    calm["columns"]["other"] = [c for c in calm["columns"]["other"] if c["kind"] != "job"]
+    calm["columns"]["claude_turn"] = copy.deepcopy(_FAKE_BOARD["columns"]["claude_turn"])
     # No plan file: the card stays blank, no note, no line.
+    current["body"] = calm
     current["plan"] = {"state": "empty"}
     expect(authed_page.locator("#boardRefresh")).to_be_enabled()
     authed_page.locator("#boardRefresh").click()
     expect(plan_body).to_have_attribute("data-state", "empty")
     expect(plan_body.locator("> *")).to_have_count(0)
+    expect(head).to_have_text("1 session · 1 issue")
+    expect(head.locator(".head-exception")).to_have_count(0)
+    # And with the session list unreadable, the count is said to be
+    # unknown, never "0 sessions".
+    blind_calm = copy.deepcopy(calm)
+    blind_calm["live_sessions"] = {"available": False, "error": "session-host unreachable"}
+    blind_calm["columns"]["claude_turn"] = []
+    current["body"] = blind_calm
+    authed_page.locator("#boardRefresh").click()
+    expect(head).to_have_text("sessions unknown · 1 issue")
 
 
 _FAKE_EXCHANGE = {
@@ -849,8 +899,8 @@ def test_backlog_start_button_posts_issue_start(
 ) -> None:
     """#301: a backlog card of a repo present in the projects folder carries
     ▶ Start, which posts the server-validated {repo, number, mode}."""
-    # The ▶/⚡ buttons only render for repos the Coding tab could launch in —
-    # mock /api/apps so 'app-launcher' (the fake issue's repo) qualifies.
+    # ▶ only renders for repos the Coding tab could launch in — mock
+    # /api/apps so 'app-launcher' (the fake issue's repo) qualifies.
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -879,8 +929,9 @@ def test_backlog_start_button_posts_issue_start(
 
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
-    # The dispatch bar's model selector governs one-tap starts too (#505) —
-    # pick a non-default value so the POST provably carries the selection.
+    # The Backlog's "Start with" model (#505, moved into the lane by #1436)
+    # governs one-tap starts — pick a non-default value so the POST provably
+    # carries the selection.
     # The menu's real options arrive with boot's /api/config: until then it
     # holds only the static Sonnet entry, and the options render that follows
     # closes an open menu (#1346). So wait for that option to exist before
@@ -889,8 +940,12 @@ def test_backlog_start_button_posts_issue_start(
     expect(fable).to_be_attached()
     authed_page.locator("#boardDispatchModel .model-combo-trigger").click()
     fable.click()
+    expect(
+        authed_page.locator("#boardColBacklog .board-lane-toolbar #boardDispatchModel")
+    ).to_have_count(1)
+    expect(authed_page.locator(".board-lane-toolbar-label")).to_have_text("Start with")
     start_btn = authed_page.locator(
-        '.board-list[data-col="backlog"] .board-issue-btn'
+        '.board-list[data-col="backlog"] .board-issue-start'
     ).first
     # The buttons render only once boot's /api/apps fetch has populated
     # state.apps; on a slow runner the first board render can precede it
@@ -909,14 +964,26 @@ def test_backlog_start_button_posts_issue_start(
 
 
 @pytest.mark.iphone
-def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
+def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     authed_page: Page, base_url: str
 ) -> None:
-    """#339: the backlog issue tile is a flat separator row (no card
-    background/border), repo/# and title on their own lines, with
-    icon-only ▶/⚡ actions (no "Start"/"YOLO" text) vertically centered."""
+    """#339 / #1436: the backlog issue tile is a flat separator row (no card
+    background/border), the title over "repo #N", with one trailing tint verb,
+    ▶ Start, vertically centred, and a kebab holding YOLO (start and ship),
+    Open on GitHub and Copy link (decision 3 of #1432). YOLO from the menu
+    posts mode=yolo."""
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page)
+    start_url = re.compile(r".*/api/board/issues/start$")
+    authed_page.route(
+        start_url,
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"launched": "/issue-yolo 301", "repo": "app-launcher",
+                              "session": {"session_id": "sY", "kind": "remote",
+                                          "name": "app-launcher"}}),
+        ),
+    )
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
 
@@ -941,20 +1008,39 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
     expect(tile.locator(".board-card-flat")).to_have_css("border-radius", zero_radius)
 
     # Same /api/apps-population race as test_backlog_start_button_posts_issue_start
-    # above: the ▶/⚡ actions only render once state.apps has landed, which can
-    # trail the first render on a loaded CI runner — give it a full poll cycle.
-    actions = tile.locator(".board-issue-btn")
-    expect(actions.first).to_be_visible(timeout=15_000)
-    expect(actions).to_have_count(2)
-    expect(actions.nth(0)).to_have_attribute("aria-label", re.compile(r"^Start issue"))
-    expect(actions.nth(1)).to_have_attribute("aria-label", re.compile(r"^YOLO issue"))
+    # above: ▶ only renders once state.apps has landed, which can trail the
+    # first render on a loaded CI runner — give it a full poll cycle.
+    start = tile.locator(".board-issue-start")
+    expect(start).to_be_visible(timeout=15_000)
+    expect(start).to_have_attribute("aria-label", "Start issue #301")
+    expect(start).to_have_class(re.compile(r"\bbutton-tint\b"))
+    expect(tile.locator(".board-issue-btn")).to_have_count(1)
+    # No git tint on the meta any more (#1436): git lives on Code › Projects.
+    expect(tile.locator(".board-card-meta-inline")).not_to_have_class(
+        re.compile(r"\bgit-(dirty|off-main)\b"))
+
+    kebab = tile.locator(".board-issue-kebab")
+    expect(kebab).to_have_attribute("aria-label", "Issue #301 actions")
+    kebab.click()
+    menu = tile.locator(".row-menu")
+    expect(menu).to_be_visible()
+    expect(menu.locator(".row-menu-btn .row-menu-label")).to_have_text(
+        ["YOLO (start and ship)", "Open on GitHub", "Copy link"])
+    yolo = menu.locator(".board-issue-yolo")
+    expect(yolo).to_be_enabled()
+    with authed_page.expect_request(start_url) as start_request:
+        yolo.click()
+    body = start_request.value.post_data_json or {}
+    assert body.get("mode") == "yolo", body
+    assert body.get("number") == 301, body
+    expect(menu).to_be_hidden()
 
     # Capture both rectangles in one browser task: separate locator reads can
     # straddle a Board re-render (#868), and on the live node only (#1346).
     boxes = stable_eval(
         tile,
         "el => {"
-        " const action = el.querySelector('.board-issue-btn');"
+        " const action = el.querySelector('.board-issue-start');"
         " if (!action) return null;"
         " const tileBox = el.getBoundingClientRect();"
         " const actionBox = action.getBoundingClientRect();"
@@ -973,11 +1059,14 @@ def test_backlog_issue_tile_is_flat_separator_row_with_icon_only_actions(
 
 
 @pytest.mark.iphone
-def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
+def test_backlog_issue_in_progress_shows_a_chip_and_blocks_both_starts(
     authed_page: Page, base_url: str
 ) -> None:
-    """#528: the shared active-issue marker makes an in-flight backlog row
-    visibly distinct and prevents both duplicate launch paths."""
+    """#528 / #1436: the shared active-issue marker makes an in-flight backlog
+    row visibly distinct — an accent "in progress" chip, not a row tint
+    (chips are for exceptions; a tint is a nested surface) — and prevents
+    both duplicate launch paths: ▶ steps aside and the kebab's YOLO is
+    disabled."""
     payload = _board_payload()
     payload["columns"]["backlog"][0]["in_progress"] = True
     payload["columns"]["backlog"].append({
@@ -1012,20 +1101,22 @@ def test_backlog_issue_in_progress_is_tinted_and_actions_disabled(
     assert "route" in held, "boot never fetched /api/agents"
     held["route"].continue_()
     expect(active).to_have_class(re.compile(r"\bis-in-progress\b"))
-    expect(active.locator(".board-card-meta-inline")).to_contain_text("in progress")
+    claim = active.locator(".board-claim-chip")
+    expect(claim).to_have_text("in progress")
+    expect(claim).to_have_attribute("data-tone", "accent")
+    expect(normal.locator(".board-claim-chip")).to_have_count(0)
 
-    active_actions = active.locator(".board-issue-btn")
-    normal_actions = normal.locator(".board-issue-btn")
-    expect(active_actions).to_have_count(2)
-    expect(normal_actions).to_have_count(2)
-    assert all(active_actions.nth(i).is_disabled() for i in range(2))
-    assert all(normal_actions.nth(i).is_enabled() for i in range(2))
+    expect(normal.locator(".board-issue-start")).to_be_enabled()
+    expect(active.locator(".board-issue-start")).to_have_count(0)
+    active.locator(".board-issue-kebab").click()
+    expect(active.locator(".row-menu .board-issue-yolo")).to_be_disabled()
+    authed_page.keyboard.press("Escape")
+    normal.locator(".board-issue-kebab").click()
+    expect(normal.locator(".row-menu .board-issue-yolo")).to_be_enabled()
+    authed_page.keyboard.press("Escape")
 
-    active_bg = active.evaluate("el => getComputedStyle(el).backgroundColor")
-    normal_bg = normal.evaluate("el => getComputedStyle(el).backgroundColor")
-    assert active_bg != normal_bg, (
-        f"active backlog row must have a distinct tint: {active_bg!r} == {normal_bg!r}"
-    )
+    # No row tint: the chip carries the state (re-resolving, #680).
+    expect(active).to_have_css("background-color", "rgba(0, 0, 0, 0)")
 
 
 def test_backlog_issue_claim_states_stale_and_unverified(
@@ -1054,15 +1145,14 @@ def test_backlog_issue_claim_states_stale_and_unverified(
         '.board-list[data-col="backlog"] li.board-item', has_text="#302"
     )
     expect(stale).to_be_visible(timeout=15_000)
-    expect(stale.locator(".board-card-meta-inline")).to_contain_text("stale claim")
+    expect(stale.locator(".board-claim-chip")).to_have_text("stale claim")
+    expect(stale.locator(".board-claim-chip")).to_have_attribute("data-tone", "neutral")
     expect(stale).not_to_have_class(re.compile(r"\bis-in-progress\b"))
-    expect(stale.locator(".board-issue-btn").first).to_be_enabled()
+    expect(stale.locator(".board-issue-start")).to_be_enabled(timeout=15_000)
 
-    expect(unverified.locator(".board-card-meta-inline")).to_contain_text(
-        "in progress (unverified)"
-    )
+    expect(unverified.locator(".board-claim-chip")).to_have_text("in progress (unverified)")
     expect(unverified).to_have_class(re.compile(r"\bis-in-progress\b"))
-    expect(unverified.locator(".board-issue-btn").first).to_be_disabled()
+    expect(unverified.locator(".board-issue-start")).to_have_count(0)
 
 
 @pytest.mark.iphone
@@ -1121,7 +1211,7 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
         tile,
         "el => {"
         " const title = el.querySelector('.board-card-title-compact');"
-        " const action = el.querySelector('.board-issue-btn');"
+        " const action = el.querySelector('.board-issue-start');"
         " if (!title || !action) return null;"
         " const titleBox = title.getBoundingClientRect();"
         " const tileBox = el.getBoundingClientRect();"
@@ -1204,10 +1294,12 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     card visible), and picking a specific project filters every kanban
     column down to that project's cards (job cards, which carry no
     repo/project, drop out of any specific-project filter). #399: Your turn
-    and Other are now separate single-purpose columns.
+    and Other (PRs and jobs since #1436) are separate single-purpose columns.
+    #1436: the filter lives in the lane toolbar; the header stays fleet-wide.
 
-    Then, last, the bar's remaining controls (#1382 — the free-text
-    dispatch POST this used to end on is gone)."""
+    Then, last, what is left of the old dispatch bar (#1382 — the free-text
+    dispatch POST this used to end on is gone; #1436 — so is the chief
+    composer)."""
     authed_page.route(
         re.compile(r".*/api/apps$"),
         lambda route: route.fulfill(
@@ -1268,6 +1360,8 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     other = authed_page.locator('.board-list[data-col="other"] li.board-item')
     expect(other).to_have_count(1)
     expect(other.first).to_contain_text("PR #158")
+    # The header is the fleet's, not the filtered view's.
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")
 
     # Picking "All projects" again restores every column.
     repo_btn.click()
@@ -1277,31 +1371,26 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
     # -- was test_dispatch_bar_posts_repo_mode_goal_and_keeps_text --
-    # #1382: the free-text Add / Build / Yolo dispatch is gone. The bar has
-    # no mode control, its box is the chief's message box, and the model
-    # combo that stays is the Start model — its pick riding a one-tap start
-    # is pinned by the issue-start test above.
-    expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
+    # #1382: the free-text Add / Build / Yolo dispatch is gone, and #1436
+    # took the chief's message box off the Board. There is no mode control,
+    # and the model combo that stays is the Backlog's "Start with" — its pick
+    # riding a one-tap start is pinned by the issue-start test above.
+    expect(authed_page.locator("#boardDispatchMode, #boardDispatchGoal")).to_have_count(0)
     expect(authed_page.locator("#boardDispatchModel")).to_have_attribute(
         "data-value", "claude:sonnet"
     )
     expect(authed_page.locator("#boardDispatchModel .model-combo-trigger")).to_have_attribute(
-        "aria-label", "Start model"
+        "aria-label", "Start with model"
     )
-    goal = authed_page.locator("#boardDispatchGoal")
-    expect(goal).to_have_attribute("placeholder", re.compile(r"Ask the chief"))
-    goal.fill("a message for the chief")
-    expect(goal).to_have_value("a message for the chief")
-    authed_page.locator("#boardDispatchClear").click()
-    expect(goal).to_have_value("")
 
 
-def test_dispatch_and_reply_mics_render_when_voice_available(
+def test_drawer_mic_renders_when_voice_available(
     authed_page: Page, base_url: str
 ) -> None:
-    """#302: with the server reporting voice dictation available (and
-    MediaRecorder present), the 🎤 shows on the dispatch bar and, enabled,
-    in the drawer's shared composer (#984)."""
+    """#302 / #984: with the server reporting voice dictation available (and
+    MediaRecorder present), the 🎤 shows, enabled, in the drawer's shared
+    composer — the Board's one place to type since #1436 took the chief
+    composer off it."""
     # voiceAvailable() also needs window.MediaRecorder, absent in headless
     # WebKit — a bare stub is enough (presence check only, no recording).
     authed_page.add_init_script(
@@ -1319,10 +1408,11 @@ def test_dispatch_and_reply_mics_render_when_voice_available(
     _mock_exchange(authed_page)
 
     _open_board(authed_page, base_url)
-    # The board render re-syncs mic visibility once /api/status has landed.
-    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible(
-        timeout=15_000
-    )
+    # The drawer reads dictation availability when it opens: wait for the
+    # status that turns it on to have landed.
+    authed_page.wait_for_function(
+        "async () => (await import('/static/voice.js')).voiceDictationAvailable()",
+        timeout=15_000)
 
     authed_page.locator(
         '.board-list[data-col="your_turn"] li.board-item'
@@ -1536,27 +1626,31 @@ def test_board_drawer_chat_opens_chat_mode_for_the_same_session(
     assert all("/sessions/s-wait/" in u for u in transcript_calls)
 
 
-def test_backlog_cards_color_coded_from_shared_git_cache(
+@pytest.mark.iphone
+def test_backlog_meta_carries_no_git_tint(
     authed_page: Page, base_url: str
 ) -> None:
-    """#496 item 4: a backlog card whose repo is dirty shows the red meta
-    annotation, fed from the boot-time /api/claude-code/git-status cache —
-    the route is mocked BEFORE navigation, and no board-poll git work is
-    involved (the board payload itself carries no git fields)."""
+    """#1436 (replacing #496 item 4's red/yellow annotation): a backlog row
+    whose repo is dirty and off its default branch still draws its meta in
+    the plain muted colour — git lives on Code › Projects. The git-status
+    answer lands first, then a full Board poll renders over it, so a tint
+    fed from that cache would have had its chance to appear."""
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page)
-    authed_page.route(
-        "**/api/claude-code/git-status",
-        lambda route: route.fulfill(
+    served: dict = {}
+
+    def _git_status(route):
+        served["git"] = True
+        route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({"projects": [{
                 "id": "cc-app-launcher", "is_git": True,
                 "branch": "feat/496-wip", "default_branch": "main",
                 "on_default_branch": False, "dirty": True,
             }]}),
-        ),
-    )
+        )
 
+    authed_page.route("**/api/claude-code/git-status", _git_status)
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
 
@@ -1564,32 +1658,33 @@ def test_backlog_cards_color_coded_from_shared_git_cache(
         '.board-list[data-col="backlog"] .board-card-meta-inline'
     ).first
     expect(meta).to_be_visible(timeout=15_000)
-    # Red (dirty) wins over yellow when the repo is both dirty and off-main.
-    expect(meta).to_have_class(re.compile(r"\bgit-dirty\b"), timeout=15_000)
+    wait_until(authed_page, lambda: served.get("git"), "boot fetching git-status")
+    with authed_page.expect_response(
+        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
+    ):
+        pass
+    muted = authed_page.evaluate(
+        "() => { const el = document.createElement('span');"
+        " el.style.color = 'var(--muted)'; document.body.appendChild(el);"
+        " const c = getComputedStyle(el).color; el.remove(); return c; }"
+    )
+    expect(meta).not_to_have_class(re.compile(r"\bgit-(dirty|off-main)\b"))
+    expect(meta).to_have_css("color", muted)
 
 
-def test_board_drawer_survives_git_status_poll_mid_interaction(
+def test_board_drawer_survives_a_board_poll_mid_interaction(
     authed_page: Page, base_url: str
 ) -> None:
-    """#512: refreshGitStatus() (apps-coding.js) re-renders the Board, and
-    that must not rebuild an open drawer out from under an in-progress
-    interaction — renderBoard() keeps the open drawer's node (#958), the
-    same path the Board's own poll takes. Reproduced with the #510
-    diagnostic technique:
-    tag the rename button's live DOM node, hold the boot-time
-    /api/claude-code/git-status fetch open until after the drawer is open
-    and tagged, then release it and confirm the tagged node (and the
-    drawer) survive untouched — held-open, not a fixed sleep, per the
-    convention in test_voice_dictation.py (a sleep can't reliably outlast
-    Playwright's own route-dispatch latency)."""
+    """#512 / #958: a re-render must not rebuild an open worker drawer out
+    from under an in-progress interaction — renderBoard() keeps the open
+    drawer's node. The git-status refresh stopped re-rendering the Board in
+    #1436 (the Backlog draws no git state), so the re-render here is the
+    Board's own poll. Reproduced with the #510 diagnostic technique: tag the
+    rename button's live DOM node once the drawer is open, wait for a whole
+    poll to land and render, then confirm the tagged node (and the drawer)
+    survive untouched — on the poll's own response, not a fixed sleep."""
     _mock_board(authed_page)
     _mock_exchange(authed_page)
-
-    held_git_status: dict = {}
-    authed_page.route(
-        re.compile(r".*/api/claude-code/git-status$"),
-        lambda route: held_git_status.__setitem__("route", route),
-    )
 
     _open_board(authed_page, base_url)
     authed_page.locator(
@@ -1610,16 +1705,17 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
     # either way).
     rename.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
 
-    for _ in range(100):
-        if "route" in held_git_status:
-            break
-        authed_page.wait_for_timeout(50)
-    assert "route" in held_git_status, "boot-time git-status fetch never fired"
-    held_git_status["route"].fulfill(
-        status=200, content_type="application/json",
-        body=_json.dumps({"projects": []}),
-    )
-    authed_page.wait_for_timeout(400)
+    # One poll: the Board and the chief's plan are fetched together, and the
+    # render follows both answers; two frames later it has run.
+    with authed_page.expect_response(
+        lambda resp: resp.url.endswith("/api/board/chief-plan"), timeout=15_000
+    ):
+        with authed_page.expect_response(
+            lambda resp: resp.url.endswith("/api/board"), timeout=15_000
+        ):
+            pass
+    authed_page.evaluate(
+        "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
 
     expect(drawer).to_be_visible()
     expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
@@ -1632,126 +1728,63 @@ def test_board_drawer_survives_git_status_poll_mid_interaction(
 
 
 @pytest.mark.iphone
-def test_dispatch_bar_is_compact_and_mode_is_a_combo(
+def test_lane_toolbar_and_start_with_geometry(
     authed_page: Page, base_url: str
 ) -> None:
-    """#869 — the three dispatch-bar edges, in one shape check.
+    """#1436 — the lane toolbar and "Start with", in one shape check.
 
-    (1) The goal input lives *inside* the control row rather than as its own
-    full-width block above it, so the phone bar is 3 rows, not 4, and ➤ docks
-    right after ✕ instead of being flung across the row by a `margin-left:
-    auto`. (2) The Start model is the shared `.model-combo` — no native
-    `<select>` in the row, and no mode control beside it since #1382.
-    (3) ↻ is projection-dependent: docked into the dispatch row on the desktop
-    grid, beside the project filter on the phone (#1198).
-    (4) The project filter leads the desktop line at the far left, and drops
-    below the controls on the phone so it sits just above the columns.
-
-    (0) Merged in #1215 — was test_dispatch_model_picker_matches_shared_button_shape:
-    #496/#851: Board uses the shared picker at both projections. Checked
-    first, against the bar as it boots (🎤 still hidden).
+    (1) The toolbar is the Board's first row under the page header, the first
+    lane, Backlog, right under it: the project filter fills the line and ↻
+    trails it, both at the 44px floor. (2) "Start with" is the shared
+    `.model-combo` (#496/#851), in the Backlog lane.
     """
     _mock_board(authed_page)
     _open_board(authed_page, base_url)
 
-    # (0) the model picker is the shared button shape. Raw Board geometry and
-    # computed style, so read through stable_read (#680).
-    picker = authed_page.locator("#boardDispatchModel .model-combo-trigger")
-    clear = authed_page.locator("#boardDispatchClear")
-    expect(picker).to_be_visible()
-    box_select = stable_read(picker.bounding_box)
-    box_clear = stable_read(clear.bounding_box)
-    assert box_select and box_clear, "dispatch row not laid out"
-    assert abs(box_select["height"] - box_clear["height"]) <= 1, (
-        f"model select height {box_select['height']} != sibling button "
-        f"height {box_clear['height']}"
+    # One browser task for every related box (#1346): the lanes re-render on
+    # the poll.
+    boxes = stable_eval(
+        authed_page.locator("#paneBoard"),
+        """pane => {
+          const box = sel => {
+            const el = pane.querySelector(sel);
+            if (!el) return null;
+            const r = el.getBoundingClientRect();
+            return {x: r.x, y: r.y, w: r.width, h: r.height};
+          };
+          return {
+            head: box('.page-head'), toolbar: box('.board-toolbar'),
+            filter: box('#boardDispatchRepoBtn'), refresh: box('#boardRefresh'),
+            first: box('#boardColumns > details'),
+            firstId: pane.querySelector('#boardColumns > details').id,
+          };
+        }""",
     )
-    radius = stable_read(
-        lambda: picker.evaluate("el => getComputedStyle(el).borderRadius")
-    )
-    assert radius == "12px", f"model picker radius {radius!r} != 12px"
-    assert picker.evaluate("el => el.tagName") == "BUTTON"
-
-    # The disposable e2e webapp reports no dictation, so 🎤 stays hidden and
-    # the row is one control narrower than on a real phone — where that extra
-    # 36px is exactly what used to wrap ➤ onto a second line. Un-hide it so
-    # every geometry assertion below runs against the real-device control
-    # count, not the lucky one.
-    authed_page.locator("#boardDispatchRecord").evaluate("el => { el.hidden = false; }")
-    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible()
-
-    # (1) goal folded into the control row.
-    expect(
-        authed_page.locator(".board-dispatch-row #boardDispatchGoal")
-    ).to_have_count(1)
-
-    # (2) the model is a combo, not a <select>; the Add/Build/Yolo mode
-    # control is gone (#1382).
-    expect(authed_page.locator(".board-dispatch-row select")).to_have_count(0)
-    expect(authed_page.locator("#boardDispatchMode")).to_have_count(0)
-    expect(
-        authed_page.locator("#boardDispatchModel.model-combo .model-combo-trigger")
-    ).to_be_visible()
-
-    # (1b) ➤ sits immediately after ✕ — the old `margin-left: auto` pushed it
-    # to the row's far edge with a wide gap between the two.
-    clear_box = stable_read(
-        lambda: authed_page.locator("#boardDispatchClear").bounding_box()
-    )
-    send_box = stable_read(
-        lambda: authed_page.locator("#boardDispatchSend").bounding_box()
-    )
-    assert clear_box and send_box, "dispatch buttons not laid out"
-    gap = send_box["x"] - (clear_box["x"] + clear_box["width"])
-    assert 0 <= gap < 24, f"➤ should dock right after ✕, gap was {gap}px"
-    # ...and on the SAME line as ✕, at every width. The row wraps only if some
-    # item claims a base width it doesn't need; the goal grows from 0 instead.
-    assert abs(send_box["y"] - clear_box["y"]) < 8, (
-        f"➤ wrapped off ✕'s line: send y={send_box['y']}, clear y={clear_box['y']}"
-    )
-
-    # (3) + (4) ↻ home and the filter's place both depend on the projection.
-    expect(authed_page.locator("#boardRefresh")).to_be_visible()
-    filter_box = stable_read(
-        lambda: authed_page.locator("#boardDispatchRepoBtn").bounding_box()
-    )
-    model_box = stable_read(
-        lambda: authed_page.locator("#boardDispatchModel").bounding_box()
-    )
-    refresh_box = stable_read(
-        lambda: authed_page.locator("#boardRefresh").bounding_box()
-    )
-    assert filter_box and model_box and refresh_box, "dispatch bar not laid out"
-
+    assert boxes and all(v for v in boxes.values()), f"Board not laid out: {boxes}"
+    assert boxes["toolbar"]["y"] >= boxes["head"]["y"] + boxes["head"]["h"], boxes
+    assert boxes["first"]["y"] >= boxes["toolbar"]["y"] + boxes["toolbar"]["h"], boxes
+    assert boxes["firstId"] == "boardColBacklog", boxes["firstId"]
+    assert boxes["filter"]["h"] >= 44 - 0.5, f"filter is {boxes['filter']['h']}px tall"
+    assert boxes["refresh"]["w"] >= 44 - 0.5 and boxes["refresh"]["h"] >= 44 - 0.5, boxes["refresh"]
+    assert boxes["refresh"]["x"] > boxes["filter"]["x"] + boxes["filter"]["w"], boxes
+    assert abs((boxes["refresh"]["y"] + boxes["refresh"]["h"] / 2)
+               - (boxes["filter"]["y"] + boxes["filter"]["h"] / 2)) <= 2, boxes
     viewport = authed_page.viewport_size or {"width": 0}
     if viewport["width"] < 700:
-        # ↻ docks beside the project filter, the Dispatch card's last row,
-        # now the column strip is gone (#1198).
-        expect(authed_page.locator(".board-filter-row > #boardRefresh")).to_have_count(1)
+        assert boxes["filter"]["w"] >= boxes["toolbar"]["w"] - 44 - 8 - 1, (
+            f"phone filter should fill the line beside ↻: {boxes['filter']} vs {boxes['toolbar']}")
         # The count pill keeps AA on its --card-2 fill: --fg, not --muted
         # (4.08:1 in dark, #1175).
         fg = authed_page.evaluate("getComputedStyle(document.body).color")
         expect(authed_page.locator("#boardColBacklog .board-count")).to_have_css("color", fg)
-        # Filter drops BELOW the control row, so it sits just above the columns.
-        assert filter_box["y"] > model_box["y"], (
-            "phone filter should stack under the controls: "
-            f"filter y={filter_box['y']}, model y={model_box['y']}"
-        )
-    else:
-        expect(
-            authed_page.locator(".board-dispatch-row #boardRefresh")
-        ).to_have_count(1)
-        # One line: filter at the far left, ↻ last, everything on the same row.
-        assert filter_box["x"] < model_box["x"], (
-            "desktop filter should lead the line: "
-            f"filter x={filter_box['x']}, model x={model_box['x']}"
-        )
-        assert refresh_box["x"] > model_box["x"], "↻ should trail the controls"
-        for name, box in (("model", model_box), ("refresh", refresh_box)):
-            assert abs(box["y"] - filter_box["y"]) < 8, (
-                f"desktop {name} should share the filter's line: "
-                f"{name} y={box['y']}, filter y={filter_box['y']}"
-            )
+
+    # (2) "Start with" is the shared picker shape, in the Backlog lane.
+    _unfold(authed_page, "boardColBacklog")
+    picker = authed_page.locator("#boardColBacklog .board-lane-toolbar .model-combo-trigger")
+    expect(picker).to_be_visible()
+    expect(picker).to_have_css("border-radius", "12px")
+    assert picker.evaluate("el => el.tagName") == "BUTTON"
+    expect(authed_page.locator("#paneBoard select")).to_have_count(0)
 
 
 # The shortest drawer a live session can produce: the reader found one side of
@@ -1853,3 +1886,45 @@ def test_drawer_image_menu_is_not_clipped_above_a_top_of_column_card(
     assert 0 <= measured["rightInset"] <= 20, (
         f"the image menu is no longer right-aligned in the composer: {measured}"
     )
+
+
+def test_folded_lanes_show_their_exception_in_tone(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1436: a folded lane says what is wrong instead of its count — PRs and
+    jobs "1 failing" in the danger tone, the chief's plan "1 question for
+    you" in the attention tone — and unfolded, the lane shows its count
+    again. A lane with nothing wrong keeps its count either way."""
+    _mock_board(authed_page, plan=_plan(tmp_path))
+    _open_board(authed_page, base_url)
+
+    def fold(section_id: str) -> None:
+        section = authed_page.locator(f"#{section_id}")
+        if section.get_attribute("open") is not None:
+            authed_page.locator(f"#{section_id} > summary").click()
+        expect(section).not_to_have_attribute("open", "")
+
+    other = authed_page.locator("#boardColOther")
+    fold("boardColOther")
+    exception = other.locator("> summary .board-lane-exception")
+    expect(exception).to_be_visible()
+    expect(exception).to_have_text("1 failing")
+    expect(exception).to_have_attribute("data-tone", "danger")
+    expect(other.locator("> summary .board-count")).to_be_hidden()
+
+    _unfold(authed_page, "boardColOther")
+    expect(exception).to_be_hidden()
+    expect(other.locator("> summary .board-count")).to_have_text("2")
+    expect(other.locator("> summary .board-count")).to_be_visible()
+
+    plan = authed_page.locator("#boardChiefPlan")
+    fold("boardChiefPlan")
+    question = plan.locator("> summary .board-lane-exception")
+    expect(question).to_be_visible()
+    expect(question).to_have_text("1 question for you")
+    expect(question).to_have_attribute("data-tone", "attention")
+
+    # Nothing wrong in Done today: folded, it still shows its count.
+    fold("boardColDone")
+    expect(authed_page.locator("#boardColDone > summary .board-lane-exception")).to_have_count(0)
+    expect(authed_page.locator("#boardColDone > summary .board-count")).to_be_visible()

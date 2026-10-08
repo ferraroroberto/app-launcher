@@ -1,25 +1,28 @@
-/* Board bar — fleet chief chat + repo filter (issues #245 / #337 / #500 / #547).
+/* Board — the lane controls and the fleet chief's plumbing (issues #245 /
+ * #337 / #500 / #547, reshaped by #1436).
  *
  * Split off `board.js` (issue #691, a `/codebase-audit` maintainability
  * finding) the same way `jobs.js` became jobs-row/jobs-dialog/jobs-agenda and
  * `terminal.js` became eight feature-split modules. `board.js` keeps card
- * rendering, the drill-down drawer, one-tap issue-start and the column
- * carousel; everything the *bar above the columns* owns lives here:
+ * rendering, the drill-down drawer, one-tap issue-start and the lanes; this
+ * module holds:
  *
- * - the repo/project combo (#337), which doubles as the kanban's card filter
+ * - the lane toolbar's project combo (#337), the kanban's card filter
  *   (`boardRepoFilter` / `matchesRepoFilter`, read by `renderBoard`);
- * - the chat bar (#245/#547) — text goes into the standing fleet chief's PTY,
- *   plus the chief's Start/Resume/Restart status row, whose gear opens
- *   Settings › Chief (#1435). It is the bar's only send path since #1382
- *   removed the free-text Add/Build/Yolo dispatch; the model combo beside
- *   it now only feeds the issue cards' one-tap Start.
+ * - the Backlog lane's "Start with" model combo, which only feeds the issue
+ *   rows' Start and YOLO;
+ * - the fleet chief's lifecycle and send path (`ensureChief`,
+ *   `runChiefAction`, `sendToChief`), used by the Code tab's chief row and
+ *   the Board's answer sheet. The Board itself has no chief card or composer
+ *   any more (#1436 decision log): the chief lives in its row under Code ›
+ *   Sessions, and on the Board only as its session row in Claude's turn,
+ *   whose drawer carries the shared composer like every session's.
  *
- * The bar is static markup `renderBoard()` never touches, so the 5 s poll
- * can't wipe a goal being typed. Dictation mics (shared voice.js) mount on
- * the goal box here; the drawer's shared composer carries its own (#984).
+ * Both combos are static markup `renderBoard()` never touches, so the 5 s
+ * poll can't close one mid-pick.
  *
- * `board.js` and this module import each other (this one calls `renderBoard`
- * and `fetchBoard`; `board.js` calls `wireDispatch`/`syncDispatchBar` and the
+ * `board.js` and this module import each other (this one calls
+ * `renderBoard`; `board.js` calls `wireDispatch`/`syncDispatchBar` and the
  * two filter helpers). That mirrors the existing, working sessions.js <->
  * terminal.js cycle — every cross-module call happens inside a function body,
  * never at module-evaluation time.
@@ -28,24 +31,22 @@
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import { applyLaunchSizePayload } from './terminal.js';
-import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
-import { icon } from './_vendored/icons/icons.js';
+import { startWorkTimer } from './voice.js';
 import { terminalJsonApi } from './webauthn.js';
 import { sendSessionMessage } from './sessions.js';
-import { CHIEF_RESTART_CONFIRM, isChiefSession, wireModelCombo } from './dom-utils.js';
-import { fetchBoard, renderBoard } from './board.js';
-import { openSettingsAt } from './tabs.js';
+import { isChiefSession, wireModelCombo } from './dom-utils.js';
+import { renderBoard } from './board.js';
 
 // ---------------------------------------------------- fleet chief (#245)
-// The standing conversational orchestrator: one label="chief" PTY session
-// the chat bar talks to. Server-side plumbing in routers/board.py;
-// the brain is fleet-config's /chief skill.
+// The standing conversational orchestrator: one label="chief" PTY session.
+// Server-side plumbing in routers/board.py; the brain is fleet-config's
+// /chief skill.
 
 // isChiefCard is the board-card-shaped alias of the shared dom-utils.js
 // predicate (#547) — board cards carry the same label/kind/name fields the
 // Coding tab's session rows do, so no board-specific logic is needed here.
-// Exported so board.js's card rendering reads the same predicate as the
-// chief status row rather than re-aliasing it (#691).
+// Exported so board.js's card rendering reads the same predicate rather than
+// re-aliasing it (#691).
 export const isChiefCard = isChiefSession;
 
 let dispatchModelCombo = null;
@@ -77,21 +78,21 @@ export function chiefSessionId() {
   return chief && chief.alive ? chief.session_id : '';
 }
 
-// Exported (#547) so the Coding tab's manual Start-chief affordance
-// (sessions.js) can call the same ensure endpoint the Board's chat bar
-// uses.
+// Exported (#547) for the Coding tab's chief row (sessions.js): its Start,
+// Resume and Restart call this ensure endpoint, as the answer sheet's send
+// does through sendToChief below.
 // ``resume`` (#633) reattaches the most recent chief conversation instead of
 // starting fresh — mutually exclusive with ``fresh`` in practice (the two
 // buttons are never both pressed), but the server decides precedence.
 //
 // No auto-ensure race with the Resume button's !alive-gated visibility
-// (#633 review): every call site — this Board row's Start/Restart/Resume
-// (below), the Coding tab's Start (sessions.js), and sendChat's
-// spawn-then-type on first chat send — fires only from an explicit user
-// action (a click or a Send tap), never a background poll or timer. So
+// (#633 review): every call site — the Coding tab's chief row
+// Start/Resume/Restart (sessions.js) and the answer sheet's spawn-then-type
+// send — fires only from an explicit user action (a click or a Done tap),
+// never a background poll or timer. So
 // nothing silently spawns a fresh chief out from under a still-visible
-// Resume button; the only way to "miss" Resume is to deliberately type a
-// chat message instead, which is an ordinary Start-equivalent choice, not a
+// Resume button; the only way to "miss" Resume is to deliberately send the
+// answer sheet instead, which is an ordinary Start-equivalent choice, not a
 // race — the resumable conversation's state row survives untouched either
 // way (pruned only after 24h, per _find_resumable_chief_session_id).
 //
@@ -107,8 +108,8 @@ export async function ensureChief(fresh, resume, restart) {
   return terminalJsonApi('/api/board/chief/ensure', { method: 'POST', body: payload });
 }
 
-// One shape for every chief lifecycle button — Board's Start/Resume/Restart
-// and the Coding tab's Start/Resume (#828, duplication audit) — disable →
+// One shape for every chief lifecycle button — the Coding tab's chief row
+// Start/Resume/Restart (#828, duplication audit) — disable →
 // ensureChief → toast → onDone → re-enable, always in a `finally`. `label`
 // drives both the work-timer text (when `useTimer`) and the error toast
 // ("Chief <label.toLowerCase()> failed"); `resume` drives the success
@@ -168,6 +169,13 @@ function repoDisplayLabel(name) {
   return name || ALL_PROJECTS_LABEL;
 }
 
+// The trigger holds a folder glyph before its label, so only the label's
+// text changes.
+function setRepoLabel(name) {
+  const label = els.boardDispatchRepoBtn.querySelector('.board-repo-label');
+  label.textContent = repoDisplayLabel(name);
+}
+
 function renderRepoList() {
   const list = els.boardDispatchRepoList;
   const hidden = els.boardDispatchRepo;
@@ -208,7 +216,7 @@ function closeRepoList() {
 
 function selectRepo(name) {
   els.boardDispatchRepo.value = name;
-  els.boardDispatchRepoBtn.textContent = repoDisplayLabel(name);
+  setRepoLabel(name);
   closeRepoList();
   // The same selection scopes the visible kanban cards (#337) — apply it
   // immediately rather than waiting for the next 5 s poll.
@@ -231,7 +239,7 @@ function syncDispatchRepos() {
   const current = hidden.value;
   const next = (!current || repos.indexOf(current) >= 0) ? current : '';
   hidden.value = next;
-  btn.textContent = repoDisplayLabel(next);
+  setRepoLabel(next);
   if (repoListOpen()) renderRepoList();
 }
 
@@ -253,21 +261,9 @@ export function matchesRepoFilter(card, filter) {
   return !!repo && String(repo).toLowerCase() === String(filter).toLowerCase();
 }
 
-function renderChiefStatus() {
-  if (!els.boardChiefStatus) return;
-  const chief = findChiefCard();
-  const alive = !!(chief && chief.alive);
-  els.boardChiefStart.hidden = alive;
-  els.boardChiefResume.hidden = alive;
-  els.boardChiefRestart.hidden = !alive;
-  els.boardChiefStatusText.textContent = alive
-    ? 'chief: ' + (chief.status || 'idle')
-    : 'chief: not running';
-}
-
 // The one path a message takes into the chief's PTY: ensure, then type it
-// through the kind-agnostic /input route. The chat bar and the answer sheet
-// (#1295, board-answers.js) both send through here. Returns ensure's body.
+// through the kind-agnostic /input route. The answer sheet (#1295,
+// board-answers.js) sends through here. Returns ensure's body.
 export async function sendToChief(text) {
   // resume=true (#651): the lazy first-send ensure used to always spawn a
   // blank chief, silently discarding a resumable conversation exactly like
@@ -281,99 +277,10 @@ export async function sendToChief(text) {
   return ensured;
 }
 
-async function sendChat() {
-  const text = els.boardDispatchGoal.value.trim();
-  if (!text) {
-    toast('Type or dictate a message first', 'error');
-    return;
-  }
-  const btn = els.boardDispatchSend;
-  btn.disabled = true;
-  // A first message may spawn the chief (spawn-then-type server-side), so
-  // this legitimately takes seconds — tick while it does.
-  const stopTimer = startWorkTimer(btn, icon('send-horizontal'));
-  try {
-    const ensured = await sendToChief(text);
-    const sid = ensured.session_id;
-    // Conversation semantics: a sent message clears — the reply is the
-    // next thing you want.
-    els.boardDispatchGoal.value = '';
-    if (ensured.spawned) {
-      toast(
-        ensured.resumed
-          ? 'Chief resumed — first reply may take a moment'
-          : 'Chief spawned — first reply may take a moment',
-        'good', { icon: 'crown' },
-      );
-    }
-    // Open the chief's drawer so the reply lands somewhere visible. The
-    // card is already in /api/board (live sessions fold in before hook
-    // state exists); fetch once with no drawer open, then expand — closing
-    // first rebuilds an already-open chief drawer, so its exchange reloads
-    // now instead of on the next exchange poll.
-    state.boardExpanded = null;
-    await fetchBoard().catch(function () {});
-    state.boardExpanded = sid;
-    renderBoard();
-  } catch (exc) {
-    apiFailToast('Chief message failed', exc);
-  } finally {
-    stopTimer();
-    btn.disabled = false;
-  }
-}
-
-function wireChief() {
-  if (!els.boardChiefStatus) return;
-  const afterEnsure = async function () {
-    await fetchBoard().catch(function () {});
-    renderChiefStatus();
-  };
-  els.boardChiefStart.addEventListener('click', function () {
-    runChiefAction({
-      button: els.boardChiefStart, label: 'Start', fresh: false, resume: false,
-      useTimer: true, onDone: afterEnsure,
-    });
-  });
-  els.boardChiefResume.addEventListener('click', function () {
-    // resume=true (#633): reattach the most recent chief conversation
-    // (direct claude --resume <id>, label declared at spawn) instead of
-    // starting fresh — falls back to a fresh spawn server-side when no
-    // resumable conversation is found, never a hard failure. restart=true
-    // (#1351): the button is only shown with no chief alive, but if one came
-    // up meanwhile it is still stopped and resumed, as before — `resume`
-    // alone now keeps a live chief.
-    runChiefAction({
-      button: els.boardChiefResume, label: 'Resume', fresh: false, resume: true,
-      restart: true, useTimer: true, onDone: afterEnsure,
-    });
-  });
-  els.boardChiefRestart.addEventListener('click', function () {
-    // fresh=true (#617): ensure_chief's own graceful stop-then-respawn —
-    // never the session-host (:8446) restart, which would kill every PTY.
-    // resume=true (#649): reattach the same conversation by default —
-    // "Restart" read as "bring my chief back" while it silently discarded
-    // the conversation, and Resume is never reachable while a chief is
-    // alive to fall back on. Same resumed/resume_fallback_reason contract
-    // as the Resume button, so the toast always says which happened.
-    runChiefAction({
-      button: els.boardChiefRestart, label: 'Restart', fresh: true, resume: true,
-      useTimer: true, onDone: afterEnsure, confirmMessage: CHIEF_RESTART_CONFIRM,
-    });
-  });
-  // The chief's settings live in Settings › Chief (#1435): model, worker
-  // cap and auto-compact on one sheet.
-  els.boardChiefSettings.addEventListener('click', function () {
-    openSettingsAt('chiefSheet');
-  });
-}
-
+// Keep the project filter's list in step with a project list that may land
+// after the first render (/api/apps).
 export function syncDispatchBar() {
   syncDispatchRepos();
-  if (els.boardDispatchRecord) {
-    els.boardDispatchRecord.hidden = !voiceDictationAvailable();
-  }
-  renderChiefStatus();
 }
 
 function wireRepoCombo() {
@@ -401,23 +308,13 @@ function wireRepoCombo() {
 }
 
 export function wireDispatch() {
-  if (!els.boardDispatchSend) return;
+  if (!els.boardDispatchModel) return;
   wireRepoCombo();
+  // The Backlog lane's "Start with" (#500 / #869, moved there by #1436): a
+  // plain client-side control (issue #355 pattern) — no server config, read
+  // when an issue row's Start or YOLO is tapped.
   dispatchModelCombo = wireModelCombo(els.boardDispatchModel, function () {
     els.boardDispatchModel.dispatchEvent(new Event('change'));
   });
-  // The model combo (#500 / #869) is a plain client-side control (issue #355
-  // pattern) — no server config, read when an issue card's Start is tapped.
-  els.boardDispatchSend.addEventListener('click', sendChat);
-  els.boardDispatchClear.addEventListener('click', function () {
-    els.boardDispatchGoal.value = '';
-    els.boardDispatchGoal.focus();
-  });
-  const dictation = createDictation({
-    button: els.boardDispatchRecord,
-    getTextarea: function () { return els.boardDispatchGoal; },
-  });
-  els.boardDispatchRecord.addEventListener('click', dictation.toggle);
-  wireChief();
   syncDispatchBar();
 }

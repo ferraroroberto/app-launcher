@@ -1,18 +1,15 @@
-/* Usage meter (#1433, step 1/7 of #1432): one component, two sizes, one
- * sheet. It replaces the coloured quota sentences (#326/#847/#860) on both
- * tabs.
+/* Usage meter (#1433, step 1/7 of #1432): one component and one sheet. It
+ * replaced the coloured quota sentences (#326/#847/#860).
  *
- *   full     Code tab's Usage card: a "Claude Code" row, then 5h and Week rows (label,
- *            6px bar, %, reset time) with a 2px pace tick on the week bar at
- *            the week-elapsed %, then a Codex row.
- *   compact  Board: one 44px line. Claude mark, 5h mini bar + %, wk mini bar
- *            with its tick + %, a hairline, Codex, a chevron.
+ *   The Code tab's Usage card: a "Claude Code" row, then 5h and Week rows
+ *   (label, 6px bar, %, reset time) with a 2px pace tick on the week bar at
+ *   the week-elapsed %, then a Codex row. (The Board's compact one-line size
+ *   left the Board in #1436: usage stays on Code.)
  *
- * Tapping either opens the one Usage sheet: exact resets, week elapsed,
- * Codex state and the context filter's savings.
+ * Tapping it opens the Usage sheet: exact resets, week elapsed, Codex state
+ * and the context filter's savings.
  *
- * Both are fed from one endpoint, GET /api/rate-limits (sessions.js polls
- * it on every tab), so the two tabs can never disagree.
+ * It is fed from GET /api/rate-limits (sessions.js polls it on every tab).
  *
  * Colour follows pace, not raw percent (#1432 round 2): a bar is accent
  * while its window is on or under pace, attention when the week is ahead of
@@ -218,23 +215,18 @@ function readingText(r) {
 }
 
 // Codex's one-line value: both windows when measured, else its state word.
-function codexValue(r, compact) {
+function codexValue(r) {
   const value = el('span', 'um-codex-value');
   if (!r || r.note) {
-    value.textContent = compact ? 'n/a' : (r ? r.note : 'unknown');
+    value.textContent = r ? r.note : 'unknown';
     value.dataset.tone = 'none';
     return value;
   }
   value.dataset.tone = r.tone;
-  if (compact) {
-    const worst = Math.max(r.five ? r.five.pct : 0, r.week ? r.week.pct : 0);
-    value.textContent = pctText(worst);
-  } else {
-    const parts = [];
-    if (r.five) parts.push('5h ' + pctText(r.five.pct));
-    if (r.week) parts.push('wk ' + pctText(r.week.pct));
-    value.textContent = parts.join(' · ');
-  }
+  const parts = [];
+  if (r.five) parts.push('5h ' + pctText(r.five.pct));
+  if (r.week) parts.push('wk ' + pctText(r.week.pct));
+  value.textContent = parts.join(' · ');
   if (r.stale) value.dataset.stale = 'true';
   return value;
 }
@@ -281,41 +273,9 @@ function renderFull(claude, codex, show) {
   const codexRow = el('span', 'um-codex');
   codexRow.appendChild(mark('codex'));
   codexRow.appendChild(el('span', 'um-name', codex ? codex.label : 'Codex'));
-  codexRow.appendChild(codexValue(codex, false));
+  codexRow.appendChild(codexValue(codex));
   if (codex && codex.chip) codexRow.appendChild(chip(codex.chip, 'neutral', 'um-chip'));
   btn.appendChild(codexRow);
-  return btn;
-}
-
-function miniWindow(win, tone, label) {
-  const mini = el('span', 'um-mini');
-  mini.dataset.tone = tone;
-  mini.appendChild(el('span', 'um-label', label));
-  mini.appendChild(bar(win, tone));
-  mini.appendChild(el('span', 'um-pct', pctText(win.pct)));
-  return mini;
-}
-
-function renderCompact(claude, codex, show) {
-  const lead = leading(show, claude, codex);
-  const r = lead.reading;
-  const btn = meterButton('compact', r, [show.claude && claude, show.codex && codex].filter(Boolean));
-  btn.appendChild(mark(lead.harness));
-  if (!r || r.note) {
-    btn.appendChild(el('span', 'um-note', r ? r.note : 'unknown'));
-  } else {
-    if (r.five) btn.appendChild(miniWindow(r.five, r.fiveTone, '5h'));
-    if (r.week) btn.appendChild(miniWindow(r.week, r.weekTone, 'wk'));
-    if (r.chip) btn.appendChild(chip(r.chip, 'neutral', 'um-chip'));
-  }
-  if (show.claude && show.codex) {
-    btn.appendChild(el('span', 'um-divider'));
-    btn.appendChild(mark('codex'));
-    btn.appendChild(codexValue(codex, true));
-  }
-  const chevron = el('span', 'um-chevron');
-  chevron.innerHTML = icon('chevron-right');
-  btn.appendChild(chevron);
   return btn;
 }
 
@@ -355,9 +315,9 @@ function renderCardMeta(reading) {
   meta.dataset.tone = summary.tone;
 }
 
-// Both meters from one poll of /api/rate-limits (sessions.js), drawn for the
+// The meter from the poll of /api/rate-limits (sessions.js), drawn for the
 // providers "Usage shows" (#1451) names. With none, the Code tab's Usage card
-// is hidden and the Board's line is empty.
+// is hidden.
 export function renderUsage(lines) {
   lastLines = Array.isArray(lines) ? lines : [];
   polled = true;
@@ -370,18 +330,7 @@ export function renderUsage(lines) {
   if (card) card.hidden = !any;
   place(document.getElementById('codingUsage'), any ? renderFull(claude, codex, show) : null);
   renderCardMeta(any ? leading(show, claude, codex).reading : null);
-  place(document.getElementById('boardUsage'), any ? renderCompact(claude, codex, show) : null);
-  syncBoardSlot();
   if (sheetOpen()) renderSheet(list);
-}
-
-// The Board's slot reserves its line while empty (CSS, #1447); with no
-// provider to show nothing will fill it, so it collapses instead.
-function syncBoardSlot() {
-  const slot = document.getElementById('boardUsage');
-  if (!slot) return;
-  const show = usageProviders(usageShows);
-  slot.hidden = !(show.claude || show.codex);
 }
 
 // The setting, pushed in by the Settings loader so this module keeps no
@@ -391,7 +340,6 @@ export function setUsageShows(value) {
   const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
   if (next === usageShows) return;
   usageShows = next;
-  syncBoardSlot();
   if (polled) renderUsage(lastLines);
 }
 
@@ -498,19 +446,12 @@ function closeUsageSheet() {
   if (dialog && dialog.open) dialog.close();
 }
 
-// Either meter opens the sheet; on Code, so does the rest of the Usage card
-// (#1434: its header and footer are part of the one tap). The listeners sit
-// on stable containers: the button inside is rebuilt whenever its reading
-// changes.
+// The meter opens the sheet, and so does the rest of the Usage card (#1434:
+// its header and footer are part of the one tap). The listener sits on the
+// stable card: the button inside is rebuilt whenever its reading changes.
 export function wireUsageMeter() {
   const card = document.getElementById('codingUsageCard');
   if (card) card.addEventListener('click', openUsageSheet);
-  const board = document.getElementById('boardUsage');
-  if (board) {
-    board.addEventListener('click', function (event) {
-      if (event.target.closest('.usage-meter')) openUsageSheet();
-    });
-  }
   const close = document.getElementById('usageSheetClose');
   const done = document.getElementById('usageSheetDone');
   if (close) close.addEventListener('click', closeUsageSheet);

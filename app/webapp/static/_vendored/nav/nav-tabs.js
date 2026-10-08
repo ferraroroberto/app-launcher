@@ -54,7 +54,15 @@
  *   standalone-PWA shell all real scrolling lives in a fixed-inset `.app`
  *   element (home-automation #303), so both must be reset; pass null to skip
  *   the element reset for apps without that shell.
- * @returns {{ setTab: (tab: string) => void, getTab: () => string }}
+ * @returns {{
+ *   setTab: (tab: string) => void,
+ *   getTab: () => string,
+ *   setBadge: (tab: string, count: number|null|undefined, noun?: string) => void,
+ * }} setBadge shows a count badge on the tab named by data-tab: 1–9 render the
+ *   digit, 10 and up render "9+", and 0 / null / undefined / a non-number remove
+ *   it. The optional `noun` is what the count counts ("waiting"), spoken as part
+ *   of the tab's accessible name: setBadge('board', 2, 'waiting') → "Board, 2
+ *   waiting". An unknown tab is ignored, so a poll loop can call it freely.
  */
 export function initNavTabs(opts = {}) {
   const {
@@ -121,6 +129,57 @@ export function initNavTabs(opts = {}) {
     return fallback;
   }
 
+  // Optional count badge (project-scaffolding#338). Nothing here touches the DOM
+  // until an app calls setBadge, so an app that never does renders as before.
+  // The badge sits on the icon's top-right corner: the first badge wraps the
+  // icon in .tab-icon-wrap (the positioning box) and the last one unwraps it.
+  function setBadge(tab, count, noun) {
+    const entry = tabs.get(tab);
+    if (!entry) return;
+    const button = entry.button;
+    const n = Math.floor(Number(count));
+    const icon = button.querySelector('.tab-icon');
+    let badge = button.querySelector('.tab-badge');
+    let hidden = button.querySelector('.tab-badge-sr');
+
+    if (!(n > 0)) {
+      if (badge) badge.remove();
+      if (hidden) hidden.remove();
+      const wrap = icon && icon.parentElement;
+      if (wrap && wrap.classList.contains('tab-icon-wrap')) wrap.replaceWith(icon);
+      return;
+    }
+
+    if (!badge) {
+      badge = document.createElement('span');
+      badge.className = 'tab-badge';
+      // The visible digit is decoration; the count is spoken once, by the
+      // visually hidden text below, as part of the tab's accessible name.
+      badge.setAttribute('aria-hidden', 'true');
+      if (icon) {
+        let wrap = icon.parentElement;
+        if (!wrap.classList.contains('tab-icon-wrap')) {
+          wrap = document.createElement('span');
+          wrap.className = 'tab-icon-wrap';
+          icon.replaceWith(wrap);
+          wrap.appendChild(icon);
+        }
+        wrap.appendChild(badge);
+      } else {
+        button.appendChild(badge);
+      }
+    }
+    badge.textContent = n > 9 ? '9+' : String(n);
+
+    if (!hidden) {
+      hidden = document.createElement('span');
+      hidden.className = 'tab-badge-sr';
+      // Inside the label, so the name reads "Board, 2 waiting" with no stray gap.
+      (button.querySelector('.tab-label') || button).appendChild(hidden);
+    }
+    hidden.textContent = ', ' + n + (noun ? ' ' + noun : '');
+  }
+
   buttons.forEach(function (button) {
     button.addEventListener('click', function () { setTab(button.dataset.tab); });
   });
@@ -128,7 +187,7 @@ export function initNavTabs(opts = {}) {
   setTab(initialTab());
   pinNavToVisualViewport(nav, navEvent);
 
-  return { setTab: setTab, getTab: function () { return current; } };
+  return { setTab: setTab, getTab: function () { return current; }, setBadge: setBadge };
 }
 
 /**

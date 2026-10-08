@@ -300,3 +300,101 @@ def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> N
     expect(authed_page.locator("#chiefSheet")).to_be_visible()
     expect(authed_page.locator("#chiefSettingsDialog")).to_have_count(0)
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("2")
+
+
+# -- #1436: the Board has no chief card, so Code › Sessions is the chief's
+# one home. Sending it a message and restarting it are pinned here.
+
+def _chief_transcript() -> dict:
+    return {
+        "available": True, "source": "native", "reason": None, "session_id": "s-chief",
+        "next_cursor": None,
+        "entries": [
+            {"kind": "user", "timestamp": "2026-07-19T07:00:00Z",
+             "text": "what's open?", "truncated": False, "sidechain": False},
+            {"kind": "assistant", "timestamp": "2026-07-19T07:00:05Z",
+             "text": "Six open issues.", "truncated": False, "sidechain": False},
+        ],
+    }
+
+
+@pytest.mark.iphone
+def test_chief_row_opens_chat_whose_composer_reaches_the_chief(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1436: with the Board's chief composer gone, a message to the chief
+    goes from its Code row: a tap opens the session view, whose Chat mode
+    carries the shared composer (dictation included), and Send rides the
+    chief's own /input route."""
+    _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-chief/transcript(\?.*)?$"),
+        lambda route: route.fulfill(status=200, content_type="application/json",
+                                    body=_json.dumps(_chief_transcript())),
+    )
+    captured: dict = {}
+
+    def _input(route):
+        captured["body"] = route.request.post_data_json
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "ok": True, "bytes": 8, "submit": True, "delivered": True, "reason": "confirmed",
+            "ingested": True, "submitted": True, "submit_confirmed": True,
+            "submit_state": "confirmed", "waited_ms": 40, "deferred": False,
+        }))
+
+    authed_page.route(re.compile(r".*/api/claude-code/sessions/s-chief/input$"), _input)
+    stub_session_mirror(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
+    expect(row).to_be_visible()
+    open_session_row(authed_page, row, mode="chat")
+    expect(authed_page.locator("#transcriptList")).to_contain_text("Six open issues.")
+    expect(authed_page.locator("#chatComposeBar .composer-mic")).to_have_count(1)
+    field = authed_page.locator("#chatComposeBar .composer-input")
+    field.fill("ok start 229")
+    authed_page.locator("#chatComposeBar .composer-send").click()
+    wait_until(authed_page, lambda: captured.get("body") is not None, "the chief's input POST")
+    assert captured["body"] == {"data": "ok start 229", "submit": True}
+    expect(field).to_have_value("")
+
+
+@pytest.mark.parametrize("resumed, fallback_reason, toast", [
+    pytest.param(True, "", "Chief resumed", id="resumable"),
+    pytest.param(
+        False, "no resumable chief conversation found in the last 24h",
+        "No resumable conversation", id="nothing-resumable",
+    ),
+])
+def test_chief_row_restart_confirms_then_resumes_the_conversation(
+    authed_page: Page, base_url: str, resumed: bool, fallback_reason: str, toast: str,
+) -> None:
+    """#617 / #649, moved from the Board's chief card (#1436): Restart in the
+    running chief's kebab confirms, then POSTs ensure with fresh:true AND
+    resume:true — a graceful stop-then-resume of the same conversation, never
+    the session-host restart. With nothing resumable it degrades to a fresh
+    spawn and the toast says so."""
+    _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
+    captured: dict = {}
+
+    def _ensure(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "session_id": "s-chief", "spawned": True, "resumed": resumed,
+            "resume_fallback_reason": fallback_reason,
+        }))
+
+    authed_page.route(re.compile(r".*/api/board/chief/ensure$"), _ensure)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
+    row.locator(".session-kebab").click()
+    restart = row.locator(".chief-restart-btn")
+    expect(restart).to_be_visible()
+    authed_page.once("dialog", lambda d: d.accept())
+    restart.click()
+    wait_until(authed_page, lambda: captured.get("method") == "POST", "Restart's ensure POST")
+    assert captured["body"].get("fresh") is True, captured["body"]
+    assert captured["body"].get("resume") is True, captured["body"]
+    expect(authed_page.locator("#toast")).to_contain_text(toast)

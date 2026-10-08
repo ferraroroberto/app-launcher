@@ -7,13 +7,15 @@
  * The header rule (#1434, for every tab as #1432 moves it over): the line
  * holds only the exceptions, each in its tone colour ("1 needs you · 1
  * stalled"), and falls back to the plain count when nothing is wrong. At
- * 390px that leaves about 22 characters, so at most two parts. Code is the
- * first tab on it; renderHeadStatus is the one writer the others will use.
+ * 390px that leaves about 22 characters, so at most two parts. Code and the
+ * Board (#1436) are on it; renderHeadStatus is the one writer the others
+ * will use.
  */
 
-import { els, state } from './state.js';
+import { BOARD_POLL_MS, els, state } from './state.js';
 import { isHiddenChannel } from './channel-sessions.js';
 import { sessionAttention } from './glance.js';
+import { setTabBadge } from './tabs.js';
 
 // The most exceptions one header line shows (about 22 characters at 390px).
 export const HEAD_MAX_PARTS = 2;
@@ -67,6 +69,30 @@ export function renderHomeHead() {
   if (stalled) exceptions.push({ text: stalled + ' stalled', tone: 'danger' });
   renderHeadStatus(els.homeHeadStatus, exceptions, plural(shown.length, 'session', 'sessions'));
   renderOtherHeads();
+  renderBoardBadge();
+}
+
+// How long a Board payload stays the badge's source: two polls, so a late
+// response never hands the count back and forth between the two sources.
+const BOARD_BADGE_FRESH_MS = 2 * BOARD_POLL_MS;
+
+// The Board tab's badge (#1436, decision 2 of #1432): how many sessions are
+// in Your turn, visible from every tab. While the Board is up its own payload
+// is the count, so the badge matches the lane, external sessions included.
+// Everywhere else the sessions poll, which runs on every tab, carries each
+// session's Board column (#1434) from the server's same routing, so the
+// count stays live without polling /api/board off the Board.
+export function renderBoardBadge() {
+  let n;
+  if (state.board && Date.now() - state.boardFetchedAt < BOARD_BADGE_FRESH_MS) {
+    n = ((state.board.columns || {}).your_turn || [])
+      .filter(function (c) { return !isHiddenChannel(c); }).length;
+  } else {
+    n = state.sessions.filter(function (s) {
+      return !isHiddenChannel(s) && s.board_column === 'your_turn';
+    }).length;
+  }
+  setTabBadge('board', n, 'waiting');
 }
 
 function renderOtherHeads() {
@@ -76,6 +102,6 @@ function renderOtherHeads() {
     (running ? ' · ' + running + ' running' : ''));
   setStatus(els.jobsHeadStatus, plural(state.jobs.length, 'job', 'jobs'));
   setStatus(els.lifeHeadStatus, plural(state.lifeOsSkills.length, 'skill', 'skills'));
-  setStatus(els.boardHeadStatus, 'Issues, PRs and runs across the fleet');
+  // The Board's line is live (#1436): board.js writes it on every render.
   setStatus(els.settingsHeadStatus, 'This launcher, on this PC');
 }

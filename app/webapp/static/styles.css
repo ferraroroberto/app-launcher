@@ -270,12 +270,8 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
    Wide enough already, short by 8px — the expansion is vertical only, so
    however tight the cluster's gap is, two neighbours can never share a
    tappable pixel. */
-.model-combo-trigger,
-.board-chief-start,
-.board-repo-input { position: relative; }
-.model-combo-trigger::before,
-.board-chief-start::before,
-.board-repo-input::before {
+.model-combo-trigger { position: relative; }
+.model-combo-trigger::before {
   content: "";
   position: absolute;
   /* -5, not -4: these sit at 35-36px rendered, and -4 leaves 43.6. */
@@ -3922,92 +3918,24 @@ body.terminal-open {
 }
 .lifeos-viewer-trunc { padding: 0 14px; }
 
-/* ---------- Board tab (issue #300 / #164) ---------- */
-/* Dispatch bar (#302, chat-only since #1382): type or dictate a message to
-   the fleet chief. Static markup above the column strip — renderBoard()
-   never touches it, so the poll can't wipe a message being typed. */
-.board-dispatch {
-  display: flex;
-  flex-direction: column;
-  /* Stacked on the phone, the repo filter's -5px expansion and the control
-     row's -4/-5px meet across this gap: 8px left the two hit areas sharing
-     pixels, --gap (12) keeps them apart (#1174). */
-  gap: var(--gap);
-  margin: 0;
-}
-/* Inside the Dispatch card (#1198) the bar is the body's first row: the
-   status and quota rows under it carry the space above themselves, so a
-   body whose quota rows are empty ends at the bar, not in a blank strip. */
-.board-dispatch-card .board-status,
-.board-dispatch-card .usage-meter-slot { margin: 10px 0 0; }
-/* The slot holds the meter's 44px line before the first /api/rate-limits poll
-   fills it (#1447). Empty until then, its arrival pushed every column and an
-   open drawer down 44px mid-gesture. "Usage shows: None" sets `hidden` on the
-   slot (usage-meter.js), so it reserves nothing when no meter will come. */
-.board-dispatch-card .usage-meter-slot:empty { min-height: var(--row-sm); }
-/* Phone stacking order (#869 round 2, on-device feedback): the controls lead
-   and "All projects" drops to the bottom of the bar, so the filter sits
-   directly above the column sections it filters. Source order
-   stays controls-last because the desktop row below wants the filter first,
-   at the far left — CSS order, not two markup copies. */
-.board-dispatch-row { order: 1; }
-.board-chief-status { order: 2; }
-.board-filter-row { order: 3; }
-/* The filter and, on the phone, ↻ beside it (dockRefresh). 8px, not less:
-   ↻'s -4px hit expansion must not meet the combo's (#1174). */
-.board-filter-row {
+/* ---------- Board tab (issue #300 / #164, reshaped by #1436) ---------- */
+/* The lane toolbar (#1436): the Board's first row under the page header —
+   the project filter, full width, and ↻ beside it, above the lanes they act
+   on. 8px apart: two 44px targets, no overlap. */
+.board-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin: 0 0 var(--gap);
+  --icon-btn-box: var(--hit-min);
 }
-.board-filter-row .board-repo-combo { flex: 1; min-width: 0; }
-/* #869: the goal is no longer its own full-width block above the controls —
-   it flex-fills the control row between the model combo and the mic, which
-   drops the phone bar from 4 stacked rows to 3. Row height, not textarea
-   height: the .compose-input recipe's 92px min-height (and the old 56px
-   override) both give way to the row's shared 36px control height.
-
-   NOTE (#869 constraint): --font-caption is 0.75rem/12px, below the 16px
-   threshold at which iOS Safari auto-zooms the page on focus — the reason
-   .compose-input pins --font-body (see the comment there). The compact row
-   was the explicit ask and this is the one declaration that trades against
-   that fix: if focusing the goal zooms the page on a real iPhone, revert
-   this font-size to var(--font-body). */
-.board-dispatch-goal {
-  /* Basis 0, not a real width: a non-zero basis counts toward the row's base
-     width and so toward flex-wrap's break decision, which wrapped ➤ onto a
-     second line on a phone whose 🎤 is visible (dictation available — the
-     control the disposable e2e webapp hides). Growing from 0 into whatever
-     the fixed-width controls leave means the row can never wrap while they
-     fit, at any phone width. */
-  flex: 1 1 0;
-  min-width: 0;
-  height: var(--control-h);
-  min-height: var(--control-h);
-  padding: 0 10px;
-  font-size: var(--font-caption);
-  line-height: calc(var(--control-h) - 2px);
-  white-space: nowrap;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.board-dispatch-row {
-  display: flex;
-  align-items: center;
-  /* 8px, not 6: the row's compact controls reach the 44px floor through an
-     invisible ±4 expansion (#1124), which needs the clearance — at 6px two
-     neighbours would share 2px of tappable width. A wrapped row's lines meet
-     across the row gap instead, where a trigger's -5 and a compose button's
-     -4 need 9: --gap, as the bar's own stack uses (#1182, #1174). */
-  gap: 8px;
-  row-gap: var(--gap);
-  flex-wrap: wrap;
-}
+.board-toolbar .board-repo-combo { flex: 1; min-width: 0; }
 /* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable
    field — a <button> trigger, not a native <select> (which paints its own
-   OS chrome) or a text input (which would invite typing). Doubles as the
-   live filter over the board's kanban cards; "All projects" (the default)
-   shows everything. */
+   OS chrome) or a text input (which would invite typing). The live filter
+   over the board's lanes; "All projects" (the default) shows everything.
+   The filter height of the action-row contract (44px), so the target is
+   real geometry. */
 .board-repo-combo { position: relative; }
 .board-repo-combo::after {
   content: '';
@@ -4017,26 +3945,36 @@ body.terminal-open {
   -webkit-mask: var(--chevron-down-mask) center / contain no-repeat;
   mask: var(--chevron-down-mask) center / contain no-repeat;
   position: absolute;
-  right: 10px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
   pointer-events: none;
 }
 .board-repo-input {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
-  min-height: 40px;
+  min-height: var(--hit-min);
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
-  padding: 0 28px 0 10px;
-  font-size: var(--font-caption);
+  padding: 0 34px 0 12px;
+  font: inherit;
+  font-size: var(--font-body-sm);
   text-align: left;
   appearance: none;
   -webkit-appearance: none;
   cursor: pointer;
+}
+.board-repo-input .icon { flex: none; color: var(--muted); }
+.board-repo-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .board-repo-list {
   position: absolute;
@@ -4057,7 +3995,7 @@ body.terminal-open {
 .board-repo-list li {
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
   cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
@@ -4065,47 +4003,77 @@ body.terminal-open {
 }
 .board-repo-list li[data-repo]:hover,
 .board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
-/* Start-model dropdown (#500 / #547 / #869): the shared .model-combo — a
-   trigger button plus a portaled listbox, so there is no native <select>
-   chrome in this row to flatten. .model-combo carries the whole look. */
 
-/* Fleet chief (#245): the status row under the dispatch bar —
-   crown + one-line liveness + Start (only when down) + the settings gear.
-   Same caption voice as .board-status; the row is static markup like the
-   rest of the bar, renderChiefStatus() only flips hidden/text. */
-.board-chief-status {
+/* One attention banner above the lanes (#1436), only while a source is down
+   or stale: the status text on its own 16% tint, behind one glyph. */
+.board-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--gap);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
+  font-size: var(--font-body-sm);
+}
+.board-status[hidden] { display: none; }
+.board-status .icon {
+  flex: none;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  margin-top: 2px;
+}
+
+/* The Backlog lane's toolbar (#1436): "Start with" and the model combo the
+   rows' Start and YOLO launch with. */
+.board-lane-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding: 4px var(--board-card-inset, 14px) 8px;
+}
+.board-lane-toolbar-label {
+  flex: none;
   color: var(--muted);
   font-size: var(--font-body-sm);
 }
-.board-chief-status .board-chief-crown { display: inline-flex; color: var(--accent); }
-.board-chief-status-text { flex: 1; min-width: 0; }
-/* The settings gear sits outside .board-dispatch-row, so it misses that
-   row's .compose-record shrink rule and rendered at the base 44px size —
-   visibly bigger than every other icon button in the bar (#547). Match the
-   same 36px --control-h square footprint here directly. */
-.board-chief-status { --icon-btn-box: var(--control-h); }
-.board-chief-start {
-  min-height: var(--control-h);
-  padding: 0 14px;
-  background: var(--accent-soft);
-  color: var(--accent-text);
-  border: 1px solid var(--accent-border-soft);
-  border-radius: var(--radius-md);
-  font-size: var(--font-caption);
-  font-weight: 700;
-  cursor: pointer;
+.board-lane-toolbar .model-combo { flex: 1; min-width: 0; }
+.board-lane-toolbar .model-combo-trigger { width: 100%; min-width: 0; }
+/* The Backlog's footer: "GitHub · updated N min ago". */
+.board-lane-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px var(--board-card-inset, 14px) 4px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-body-sm);
 }
+.board-lane-foot[hidden] { display: none; }
+.board-lane-foot .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); }
+
+/* A folded lane's exception (#1436): "1 failing", "1 question for you", in
+   its tone, in place of the count. Open, the lane shows its rows and count. */
+.board-lane-exception {
+  display: none;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+}
+.board-lane-exception[data-tone="attention"] { color: var(--attention-text); }
+.board-lane-exception[data-tone="danger"] { color: var(--danger-text); }
+details:not([open]) > .collapse-summary .board-lane-exception:not([hidden]) { display: inline; }
+details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden])) .board-count { display: none; }
+
 /* Launch-model dropdown (#540) for the Coding + Life OS card summaries. A
    native <select> cannot live inside a <summary> — WebKit's HTML parser
    derails on it (closes the <details> early, cascading into a broken tree
    that even zeroes custom-property inheritance on ancestors). So this is
    built from phrasing-only content — a <button> trigger + a
    <span role="listbox"> of <button role="option"> — which is valid in a
-   summary, styled to match the flattened .board-dispatch-row select (36px
-   control height, 12px radius, --card-2 fill, chevron-down affordance). */
+   summary, styled as the fleet's inline control (36px control height, 12px
+   radius, --card-2 fill, chevron-down affordance). */
 .model-combo { position: relative; display: inline-flex; }
 .model-combo-trigger {
   height: var(--control-h);
@@ -4189,14 +4157,6 @@ body.terminal-open {
   color: var(--muted);
   cursor: not-allowed;
 }
-/* The compose-bar buttons (🎤 / ✕ / ➤) shrink to the shared 36px control
-   height so the dispatch row lines up. (The drawer reply mic is NOT in
-   this shrink set any more — #496 round 2: inside the drawer every button
-   keeps the canonical 44px footprint.) */
-.board-dispatch-row { --icon-btn-box: var(--control-h); }
-/* No margin-left: auto any more (#869) — the goal input now absorbs the row's
-   free space, so ➤ docks immediately after ✕ instead of being flung to the
-   row's far edge with a gap in between. */
 
 /* Column count in each section's summary (#1198; was the phone strip's
    pill before the strip retired). Its own text colour, not --muted: that
@@ -4214,16 +4174,9 @@ body.terminal-open {
 /* "Your turn" holding work is the one number that matters. State signal,
    not decoration — the warn color marks pending human action. */
 .board-col.attention .board-count { background: var(--attention); color: var(--attention-fg); }
-/* Had no icon-button box at all before #547 (only flex: 0 0 auto — a bare
-   default browser button, visibly smaller/different than the dispatch bar's
-   ↻/send buttons above it). Same 36px --control-h square recipe as
-   .board-dispatch-row .compose-record and .model-combo-trigger, so every
-   icon-sized button in the Board tab now shares one footprint. */
-.board-refresh { --icon-btn-box: var(--control-h); }
-.board-status { color: var(--muted); font-size: var(--font-body-sm); margin: 0 0 8px; }
 
-/* Usage meter (#1433): one component in two sizes, each a button that
-   opens the Usage sheet. Colour follows pace: a bar is accent on or under
+/* Usage meter (#1433): one component, a button that opens the Usage
+   sheet (the Board's compact size left with #1436). Colour follows pace: a bar is accent on or under
    pace, attention ahead of it, danger at 90%+; a stale reading dims and
    carries a chip; with nothing measured the state word stays as text. */
 .usage-meter-slot { margin: 0 0 8px; min-width: 0; }
@@ -4280,7 +4233,6 @@ body.terminal-open {
 }
 /* No longer confirmed: the numbers stay, dimmed. */
 .usage-meter[data-stale="true"] .um-windows,
-.usage-meter[data-stale="true"] .um-mini,
 .usage-meter .um-codex-value[data-stale="true"] { opacity: 0.55; }
 
 /* Full (Code): the head row, the 5h and Week rows, the Codex row. */
@@ -4313,35 +4265,6 @@ body.terminal-open {
 }
 .usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
 .usage-meter-full .um-codex .um-codex-value { margin-left: auto; white-space: nowrap; }
-
-/* Compact (Board): one 44px line. */
-.usage-meter-compact {
-  align-items: center;
-  gap: var(--space-sm);
-  min-height: var(--row-sm);
-  padding: 0 4px;
-  font-size: var(--font-body-sm);
-  white-space: nowrap;
-}
-.usage-meter-compact .um-mini {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-}
-.usage-meter-compact .um-bar { flex: none; width: 28px; }
-.usage-meter-compact .um-divider {
-  flex: none;
-  width: 1px;
-  height: 20px;
-  background: var(--line);
-}
-.usage-meter-compact .um-chevron {
-  display: inline-flex;
-  margin-left: auto;
-  color: var(--muted);
-}
-.usage-meter-compact .um-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
 
 /* The Usage sheet's label/value rows: the short label keeps its line, a long
    value wraps beside it. */
@@ -4545,62 +4468,28 @@ span.chief-answer-ref { color: var(--muted); }
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
-/* Job cards' status accents on the card's left edge. Session cards carry
-   theirs as meta text and a "stalled" chip since #1433: no edge, and an
-   idle card is not dimmed. */
-.board-item.is-failed .board-card,
-.board-item.is-stuck .board-card { border-left: 3px solid var(--danger); }
-/* A job whose run history can't be read (#915): unknown, not failed. */
-.board-item.is-unreadable .board-card { border-left: 3px solid var(--attention); }
-/* A job run the scheduled-run adapter could not verify (#916): it still wants
-   a human's eye, but it is not a failure and must not be drawn as one. */
-.board-item.is-unconfirmed .board-card { border-left: 3px solid var(--attention); }
+/* PR, job and done rows (#1436): the shared anatomy, no left-edge status
+   border. A job's state is its chip (failed: danger; stuck, not confirmed,
+   unreadable: attention), after the meta text, which ellipsizes first. */
+.board-card-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Fleet chief card (#245): the crown avatar badge (#1433) and the "chief"
    label identify it; it carries no background tint (#1449) and reads like
    every other session card. */
-/* Secondary text on an accent-soft tint: --muted reads 4.17:1 there (the
-   card meta "repo · working · 2m"), under AA. Inside every tinted row the
-   muted role resolves to --accent-text, the spec's text-on-accent-soft
-   colour, so each muted descendant holds AA without a per-element rule and
-   the git dirty/off-main colours, which use their own tokens, are untouched
-   (#1175). The Code tab's in-view row joins them in its wide-layout block. */
-.board-item.board-item-issue.is-in-progress { --muted: var(--accent-text); }
 .board-empty { margin: 0; }
 
 
 .lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
-/* Telegram sessions hidden from the lists (#1384): one summary line where
-   they were, opening a read-only list. A full-width 44px row, so the tap
-   target is real geometry; the card tokens, not an accent fill, because it
-   is a quiet status line and not a call to action. */
-.channel-summary {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
-  width: 100%;
-  min-height: 44px;
-  margin: 0 0 var(--gap);
-  padding: 0 14px;
-  background: var(--card-2);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  font: inherit;
-  font-size: var(--font-body-sm);
-  text-align: left;
-  cursor: pointer;
-}
-.channel-summary[hidden] { display: none; }
-.channel-summary .icon { color: var(--accent); flex: none; }
+/* Telegram sessions hidden from the lists (#1384): the Coding tab's
+   Telegram row (.channel-row) stands in for them and opens a read-only list;
+   the Board has none (#1436). */
 .channel-summary-text { flex: 1; min-width: 0; }
 .channel-summary-chevron { color: var(--muted); flex: none; }
-/* Any Telegram session at >= 50% context (#1402): the attention colour, the
-   same one the list's warn tier uses. A glyph plus the aria-label, never colour
-   alone. */
-.channel-summary-alert { display: inline-flex; flex: none; color: var(--attention); }
-.channel-summary-alert[hidden] { display: none; }
-.channel-summary .channel-summary-alert .icon { color: inherit; }
 
 /* The read-only list those lines open: name + status over two meta cells per
    session. The row is the card; its look (a button, read-only) fills it, and
@@ -4706,10 +4595,11 @@ span.chief-answer-ref { color: var(--muted); }
   overflow-wrap: anywhere;
 }
 
-/* Backlog issue tiles (#337, restyled #339): a flat separator row — no card
-   background/border/radius, just a bottom-border divider between rows
-   (GitHub-issue-list style) — with repo/# and the title on their own lines
-   and the ▶/⚡ actions vertically centered against the full row height.
+/* Backlog issue tiles (#337, restyled #339, on the shared anatomy since
+   #1436): a flat separator row — no card background/border/radius, just a
+   bottom-border divider between rows (GitHub-issue-list style) — with the
+   title over "repo #N", and the ▶ verb and kebab vertically centered
+   against the full row height.
    .app-item is already a row flexbox by default; .board-item overrides that
    to a column for the stacked layout the other card kinds use, so this
    pairs both classes to opt back into a row. Since issue #365 the flat
@@ -4725,12 +4615,6 @@ span.chief-answer-ref { color: var(--muted); }
   flex-direction: row;
   align-items: center;
   gap: 4px;
-}
-/* Active workflow marker (#528): keep the flat issue-row geometry while the
-   canonical accent tint distinguishes in-flight work in both themes. Git
-   dirty/off-main colours remain on the meta text independently. */
-.board-item.board-item-issue.is-in-progress {
-  background: var(--accent-soft);
 }
 .board-card-flat {
   display: flex;
@@ -4762,7 +4646,13 @@ span.chief-answer-ref { color: var(--muted); }
   white-space: normal;
   font-weight: 600;
 }
+/* The meta line: plain text, then a chip ("in progress") that never
+   ellipsizes away. */
 .board-card-meta-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
   color: var(--muted);
   font-size: var(--font-body-sm);
   font-weight: 400;
@@ -4770,37 +4660,22 @@ span.chief-answer-ref { color: var(--muted); }
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.board-issue-actions.board-issue-actions-compact {
-  flex: 0 0 auto;
-  display: flex;
+/* The Backlog row's rail (#1436): one tint verb, ▶ Start, then the kebab,
+   each a real 44px target 8px apart, centred against the row. The kebab's
+   menu floats left of the rail like the Code tab's (.session-menu). */
+.app-item .row-actions.board-issue-actions {
+  flex-direction: row;
   align-items: center;
-  gap: 6px;
-  padding: 0 4px 0 0;
+  gap: 8px;
+  padding-right: 4px;
 }
-.board-issue-btn.icon-only {
-  /* Real 44px geometry (#496 audit): the ▶/⚡ pair is an adjacent cluster,
-     so the rectangles are grown for real, not via overlapping insets. The
-     height was never pinned with the width, so it rendered 44x35 (#1124). */
+.board-issue-actions .board-issue-start {
+  flex: none;
+  width: auto;
   min-width: 44px;
-  min-height: var(--row-sm);
-  padding: 8px 10px;
-  font-size: var(--font-label);
-  text-align: center;
+  min-height: 44px;
+  padding: 0 10px;
 }
-.board-issue-btn:disabled {
-  background: var(--card-off);
-  color: var(--muted);
-  border-color: var(--line);
-  cursor: default;
-}
-
-/* Backlog repo-state annotation (#496 item 4): the meta line inherits the
-   Coding tab's git colour vocabulary — red = dirty tree, yellow = parked
-   off the default branch (red wins when both; same precedence as
-   annotateGitStatus). Fed from the shared state.gitStatus cache — the
-   board's own 5 s poll does no git work. */
-.board-card-meta-inline.git-dirty { color: var(--danger); }
-.board-card-meta-inline.git-off-main { color: var(--attention); }
 
 /* Drill-down drawer (#301): last exchange + reply, inline under the card. */
 .board-drawer {
@@ -4846,16 +4721,8 @@ span.chief-answer-ref { color: var(--muted); }
   border-top: 0;
   background: transparent;
 }
-/* One-tap issue start (#301) — a compact row under the card button. */
-.board-issue-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  padding: 0 10px 10px;
-}
-/* Every board action button gets the dark theme explicitly — without this
+/* Every drawer action button gets the dark theme explicitly — without this
    they render as the UA's native white buttons (phone feedback, #301). */
-.board-issue-btn,
 .board-drawer-action {
   background: var(--card-2);
   color: var(--fg);
@@ -4865,7 +4732,6 @@ span.chief-answer-ref { color: var(--muted); }
   font-size: var(--font-caption);
   cursor: pointer;
 }
-.board-issue-btn:active,
 .board-drawer-action:active { background: var(--card); }
 /* Drawer actions (#984, mockup screen 8): four equal buttons — Rename ·
    Stop · Chat · Terminal — each a glyph stacked over its label at the 44px
@@ -4962,27 +4828,9 @@ span.chief-answer-ref { color: var(--muted); }
      one row. The rows carry that inset already, level with the summary's
      title, so the grid's bodies drop the sides. */
   .board-col > .collapse-body { padding: 4px 0 8px; }
-  /* The whole bar is one line on a desktop-width pane (#869 round 2): the
-     project filter at the far left, then the model combo, the message box,
-     the compose buttons and ↻. The three .board-dispatch children lay out
-     as a row here instead of a stack, so the phone's `order` overrides go
-     back to source order — filter first — and the chief-status row claims a
-     full-width wrap line of its own beneath. */
-  .board-dispatch {
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-  }
-  .board-filter-row { order: 0; flex: 0 0 auto; }
-  .board-repo-input {
-    width: auto;
-    min-width: 150px;
-    min-height: var(--control-h);
-    height: var(--control-h);
-  }
-  .board-dispatch-row { order: 0; flex: 1 1 320px; }
-  .board-chief-status { order: 0; flex: 1 0 100%; }
+  /* A full-bleed pane makes a full-width filter absurdly long: it keeps a
+     comfortable width at the left, ↻ beside it. */
+  .board-toolbar .board-repo-combo { flex: 0 1 360px; }
 }
 .lifeos-file-btn {
   flex: 1;

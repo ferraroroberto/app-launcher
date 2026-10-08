@@ -3,11 +3,12 @@
  * A Telegram channel session (label `telegram:<profile>`, #1366) is long-lived
  * and serves a household member through their own chat; nobody types into it
  * here, and its Stop is one mis-tap from cutting that chat off. With the
- * `hide_channel_sessions` setting on (the default) the Board's columns and the
- * Coding tab's session list leave those sessions out and show a single summary
- * line in their place — "2 Telegram sessions running" — that opens a read-only
+ * `hide_channel_sessions` setting on (the default) the Board's lanes and the
+ * Coding tab's session list leave those sessions out, and the Coding tab shows
+ * a single Telegram row in their place — "2 running" — that opens a read-only
  * list: status, last activity and context use per session, with no Stop and no
- * delete. Off, everything renders exactly as before.
+ * delete. The Board has no such row (#1436, decision 4 of #1432): Code and
+ * Life cover it. Off, everything renders exactly as before.
  *
  * This is display filtering only. `state.sessions` and `state.board` still hold
  * every session, so an open overlay, a deep link and the title poll resolve
@@ -22,8 +23,9 @@
  *     of the alert icon; there is no fast poll behind a closed popup.
  *   - list open: every CONTEXT_POLL_MS (10 s), so a figure on screen is live.
  *   - setting off, no running session, or the page hidden: no reads.
- * At >= CONTEXT_ALERT_PCT (dom-utils.js) any session raises the alert icon on
- * both summary lines, and its popup row's Compact button is highlighted.
+ * At >= CONTEXT_ALERT_PCT (dom-utils.js) any session raises the "context N%"
+ * chip on the Coding tab's row, and its popup row's Compact button is
+ * highlighted.
  *
  * The popup stays read-only apart from Compact: a borderless icon-only button
  * at the right end of each running row (#1402) that sends /compact through the
@@ -91,16 +93,6 @@ function contextAlertPct() {
   return worst;
 }
 
-function paintSummary(btn, count, alerting) {
-  if (!btn) return;
-  btn.hidden = !(channelSessionsHidden() && count > 0);
-  if (btn.hidden) return;
-  btn.querySelector('.channel-summary-text').textContent =
-    count + ' Telegram ' + (count === 1 ? 'session' : 'sessions') + ' running';
-  const flag = btn.querySelector('.channel-summary-alert');
-  if (flag) flag.hidden = !alerting;
-}
-
 // The Code tab's flat row (#1434): a send-glyph avatar, "Telegram", then
 // "N running" and an attention "context N%" chip only while a session is at
 // the alert threshold. The chip is rebuilt only when its text changes, so a
@@ -122,11 +114,10 @@ function paintSummaries() {
   const count = runningCount();
   const alertPct = contextAlertPct();
   paintCodingRow(els.sessionsChannelSummary, count, alertPct);
-  paintSummary(els.boardChannelSummary, count, alertPct != null);
   if (dialogOpen()) renderRows();
 }
 
-// Repaint both summary lines (Board, Coding tab) and, when the list is open,
+// Repaint the Coding tab's Telegram row and, when the list is open,
 // its rows. Called from every render that filters a list, so a session that
 // starts or stops moves the count on the next poll — and a session the alert
 // has not read yet gets its first context read here.
@@ -331,9 +322,9 @@ export function closeChannelList() {
 }
 
 export function wireChannelSessions() {
-  [els.sessionsChannelSummary, els.boardChannelSummary].forEach(function (btn) {
-    if (btn) btn.addEventListener('click', openChannelList);
-  });
+  if (els.sessionsChannelSummary) {
+    els.sessionsChannelSummary.addEventListener('click', openChannelList);
+  }
   if (!els.channelListDialog) return;
   els.channelListClose.addEventListener('click', closeChannelList);
   els.channelListDone.addEventListener('click', closeChannelList);

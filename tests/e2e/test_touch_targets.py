@@ -220,18 +220,15 @@ def test_every_control_meets_the_44px_floor(
         _assert_helper_is_wired_to_a_real_locator(page)
         _assert_cluster_does_not_overlap(page, "#appsList .action-row")
     elif tab == "#tabBoard":
-        # The whole dispatch bar, not just its control row (#1174): the repo
-        # filter stacks against that row on the phone, and its expansion
-        # reached into the row's across the gap between them.
-        _assert_cluster_does_not_overlap(page, "#boardDispatch")
-        # Last, because it reloads the page at another size and text step.
-        # Wrapped, the control row's lines meet across its row gap, which
-        # the -5/-4 expansions outgrew at 8px (#1182). At 390px the row
-        # wraps only when a late label lands wide; Large text on a 320px
-        # phone wraps it every time.
+        # The lane toolbar's filter and ↻ (#1436): no two expanded targets
+        # may share pixels (#1174).
+        _assert_cluster_does_not_overlap(page, ".board-toolbar")
+        # Last, because it reloads the page at another size and text step:
+        # Large text on a 320px phone is where a row runs out of room first
+        # (#1182).
         page.evaluate("localStorage.setItem('app-launcher.textsize', 'large')")
         page.set_viewport_size({"width": 320, "height": 844})
         page.reload(wait_until="domcontentloaded")
         page.locator("#tabBoard").click()
         page.wait_for_timeout(400)
-        assert_no_overlap(page.locator("#boardDispatch button:visible"))
+        assert_no_overlap(page.locator(".board-toolbar button:visible"))

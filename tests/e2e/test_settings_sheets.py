@@ -146,7 +146,9 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
         ("#claudeEmptyAction", "foldersSheet", "projectsDir"),
         ("#lifeOsEmptyAction", "foldersSheet", "lifeOsDir"),
         ("#lifeOsChannelsEmptyAction", "channelsSheet", None),
-        ("#boardChiefSettings", "chiefSheet", None),
+        # The Code tab's chief row kebab item (#1434; the Board's gear went
+        # with its chief card in #1436).
+        ("#sessionsList .chief-settings-btn", "chiefSheet", None),
     ],
 )
 def test_open_settings_at_callers_land_in_their_sheet(
