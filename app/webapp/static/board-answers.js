@@ -5,8 +5,9 @@
  * transcript's AskUserQuestion card (#1149, the same `.tr-ask-*` rows) with
  * one block per waiting item, in file order: the repo and ref, the question,
  * the detail, the options (single- or multi-select, the recommended one
- * labelled "(Recommended)"), an Other field on every item, and an "Anything
- * else" box under them all. The chief's recommendation shows as its own
+ * labelled "(Recommended)"), an Other field on every item (with a mic when
+ * dictation is available, #1450), and an "Anything else"
+ * box under them all. The chief's recommendation shows as its own
  * quiet line only when it marks no option — the label already says it.
  * Anything else is the shared composer (composer.js, as a field): dictation
  * and image paste as in Chat, an attachment stored on the chief's session
@@ -28,7 +29,8 @@
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
 import { askOption } from './ask-option.js';
-import { startWorkTimer, voiceDictationAvailable } from './voice.js';
+import { icon } from './_vendored/icons/icons.js';
+import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { growTextarea, mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
@@ -47,6 +49,9 @@ const ANSWER_SEP = ' \u2192 ';
 let sheet = null;
 // Anything else: the shared composer, mounted once.
 let also = null;
+// One dictation per Other field in the open sheet (#1450), disposed when the
+// sheet closes or is rebuilt so no mic outlives the fields it types into.
+let otherDictations = [];
 // Whether the chief is running, as the Board last read it.
 let chiefRun = '';
 let sending = false;
@@ -210,7 +215,8 @@ function renderItem(item, index, answered) {
   input.placeholder = options.length ? 'Other' : 'Your answer';
   input.setAttribute('aria-label', (options.length ? 'Other answer to: ' : 'Answer to: ') + (question || 'the question'));
   input.value = draft.other;
-  input.addEventListener('input', function () {
+  // Typed or dictated (#1450): the field's text is the draft.
+  function otherChanged() {
     draft.other = input.value;
     // Single-select: typing is the answer, so it drops a pick.
     if (!item.multi && input.value.trim() && draft.picks.length) {
@@ -218,7 +224,8 @@ function renderItem(item, index, answered) {
       paintItem(block, draft);
     }
     syncDone();
-  });
+  }
+  input.addEventListener('input', otherChanged);
 
   if (options.length) {
     if (item.multi) block.appendChild(el('p', 'tr-ask-hint', 'Pick any number'));
@@ -257,6 +264,24 @@ function renderItem(item, index, answered) {
 
   const other = el('div', 'tr-ask-other');
   other.appendChild(input);
+  // The same dictation Anything else and the chat bar use, bound to this
+  // field; the transcript lands in the field for review before Done.
+  if (voiceDictationAvailable()) {
+    const mic = el('button', 'icon-button compose-record tr-ask-mic');
+    mic.type = 'button';
+    mic.title = 'Dictate (voice to text)';
+    mic.setAttribute('aria-label', 'Dictate');
+    mic.setAttribute('aria-pressed', 'false');
+    mic.innerHTML = icon('mic');
+    const dictation = createDictation({
+      button: mic,
+      getTextarea: function () { return input; },
+      onRender: otherChanged,
+    });
+    mic.addEventListener('click', dictation.toggle);
+    otherDictations.push(dictation);
+    other.appendChild(mic);
+  }
   block.appendChild(other);
 
   if (answered) {
@@ -265,6 +290,11 @@ function renderItem(item, index, answered) {
   }
   paintItem(block, draft);
   return block;
+}
+
+function disposeOtherDictations() {
+  otherDictations.forEach(function (d) { d.dispose(); });
+  otherDictations = [];
 }
 
 // Done is live only with the chief running and something to say; the note
@@ -320,6 +350,7 @@ export function openChiefAnswers(plan, run, shown) {
     ocr: !!(state.status && state.status.screenshot_ocr),
   });
   const answered = answeredKeys(plan);
+  disposeOtherDictations();
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, indices.map(function (i) {
     return renderItem(items[i], i, answered.indexOf(itemKey(items[i], i)) !== -1);
   }));
@@ -331,7 +362,7 @@ async function submitAnswers() {
   if (!sheet || sending) return;
   // A stopped dictation is still settling into the box (#489): wait for it,
   // as the composer's own Send does.
-  if (also.isBusy()) {
+  if (also.isBusy() || otherDictations.some(function (d) { return d.isBusy(); })) {
     toast('Still transcribing — wait for the transcript, then tap Done', 'error', { icon: 'mic' });
     return;
   }
@@ -390,6 +421,7 @@ export function wireChiefAnswers() {
   els.chiefAnswersDialog.addEventListener('close', function () {
     if (sheet) sheet.also = alsoText();
     also.reset();
+    disposeOtherDictations();
   });
   els.chiefAnswersDone.addEventListener('click', submitAnswers);
 }

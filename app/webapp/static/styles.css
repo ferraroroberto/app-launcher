@@ -2653,6 +2653,9 @@ textarea.input-native { height: auto; }
   font: inherit;
   font-size: var(--font-body);
 }
+/* An Other field's dictation mic (#1450): the vendored icon-button at the 44px
+   floor beside the field, which keeps the rest of the row. */
+.tr-ask-mic { --icon-btn-box: var(--hit-min); flex: none; }
 /* Row-sized: .button-tint stretches to width:100% for its full-width uses,
    which squeezed the text field beside it to a sliver. */
 .tr-ask-send { flex: none; width: auto; min-height: 44px; padding: 0 16px; }

@@ -772,6 +772,18 @@ def test_answer_button_shows_only_with_questions(
     assert box and box["height"] >= 44, f"answer button under the 44px tap floor: {box}"
 
 
+def _route_voice(page: Page, on: bool) -> None:
+    """Serve /api/status with dictation switched ``on`` or off, whatever this
+    box's voice-transcriber config says."""
+    def _status(route):
+        resp = route.fetch()
+        body = resp.json()
+        body["voice_dictation"] = on
+        route.fulfill(response=resp, json=body)
+
+    page.route(re.compile(r".*/api/status$"), _status)
+
+
 @pytest.mark.iphone
 def test_answer_sheet_renders_questions_and_done_sends_one_message(
     authed_page: Page, base_url: str, tmp_path
@@ -793,7 +805,9 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     _mock_ensure(authed_page, ensured)
     posts = _capture_chief_input(authed_page)
     uploads = _mock_chief_upload(authed_page)
-    _open_board(authed_page, base_url)
+    _route_voice(authed_page, False)
+    with authed_page.expect_response(re.compile(r".*/api/status$")):
+        _open_board(authed_page, base_url)
 
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
@@ -832,6 +846,8 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
         "href", "https://github.com/octo/app-launcher/issues/1131")
 
     expect(dialog.locator(".tr-ask-input")).to_have_count(3)  # Other on every item
+    # Dictation is off here (voice-transcriber unconfigured): no Other mic (#1450).
+    expect(dialog.locator(".tr-ask-mic")).to_have_count(0)
     expect(third.locator(".tr-ask-input")).to_have_attribute("placeholder", "Your answer")
     # Anything else is the shared composer Chat and Terminal mount: its mic
     # and image controls, but not its Send (Done is the one send) or keys.
@@ -1209,3 +1225,93 @@ def test_chat_bar_busy_mic_tap_cancels_the_transcription(
     mic.click()
     expect(goal).to_have_value(re.compile(r"e2e dictated goal"))
     assert len(takes) == 2
+
+
+@pytest.mark.iphone
+def test_answer_sheet_other_fields_dictate_into_the_draft(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1450: with dictation available every Other field has its own mic (the
+    chat bar's recorder, stubbed), at the 44px floor and inside the sheet at
+    phone width. A take lands in that item's field for review, drops a
+    single-select pick as typing does, can be edited, and rides Done as
+    "Other: ..." exactly like typed text. Tapping an option still clears Other."""
+    authed_page.add_init_script(_RECORDER_MOCK)
+
+    _route_voice(authed_page, True)
+    authed_page.route(
+        re.compile(r".*/api/transcribe/sessions$"),
+        lambda route: route.fulfill(status=503, body="nope"),
+    )
+    authed_page.route(
+        re.compile(r".*/api/transcribe$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"transcript": "dictated reply", "language": "en"}),
+        ),
+    )
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _mock_ensure(authed_page, {})
+    posts = _capture_chief_input(authed_page)
+    _open_board(authed_page, base_url)
+    # The sheet reads dictation availability when it opens: wait for the
+    # status that turns it on (the chat bar's mic shows with it).
+    expect(authed_page.locator("#boardDispatchRecord")).to_be_visible(timeout=15_000)
+
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog).to_be_visible()
+    blocks = dialog.locator(".chief-answer")
+    expect(blocks).to_have_count(3)
+    mics = dialog.locator(".tr-ask-mic")
+    expect(mics).to_have_count(3)  # one beside every Other field
+
+    for i in range(3):
+        box = stable_read(mics.nth(i).bounding_box)
+        assert box and box["width"] >= 44 and box["height"] >= 44, f"mic {i} under 44px: {box}"
+    overflow = stable_eval(
+        dialog, "el => el.scrollWidth - el.clientWidth")
+    assert overflow <= 0, f"the sheet scrolls sideways by {overflow}px"
+    for i in range(3):
+        field = blocks.nth(i).locator(".tr-ask-input")
+        fbox = stable_read(field.bounding_box)
+        mbox = stable_read(mics.nth(i).bounding_box)
+        assert fbox and mbox and fbox["x"] + fbox["width"] <= mbox["x"] + 1, (
+            f"item {i}: the field and its mic overlap: {fbox} {mbox}")
+
+    # Single-select: a pick, then a take into Other, which replaces the pick.
+    first = blocks.nth(0)
+    first.locator(".tr-ask-opt").nth(0).click()
+    mics.nth(0).click()
+    expect(mics.nth(0)).to_have_class(re.compile(r"\brecording\b"))
+    mics.nth(0).click()  # stop
+    expect(first.locator(".tr-ask-input")).to_have_value(re.compile("dictated reply"))
+    expect(first.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(0)
+    # Tapping an option clears Other, as it does for typed text.
+    first.locator(".tr-ask-opt").nth(1).click()
+    expect(first.locator(".tr-ask-input")).to_have_value("")
+
+    # Multi-select: a pick and a take coexist; the transcript is editable.
+    second = blocks.nth(1)
+    second.locator(".tr-ask-opt").nth(0).click()
+    mics.nth(1).click()
+    mics.nth(1).click()
+    other = second.locator(".tr-ask-input")
+    expect(other).to_have_value(re.compile("dictated reply"))
+    expect(second.locator('.tr-ask-opt[aria-pressed="true"]')).to_have_count(1)
+    other.fill("dictated reply, edited")
+
+    done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_enabled()
+    done.click()
+    expect(authed_page.locator("#toast")).to_contain_text("Sent to chief")
+    assert posts == [{
+        "data": (
+            "Answers from the Board (2 of 3):\n"
+            "1. [fleet-config#959] Approve the four plans? → Only the first {id: q-plans}\n"
+            "2. [life-os] Which days work? → Mon; Other: dictated reply, edited {id: q-days}\n"
+            "Skipped: 3"
+        ),
+        "submit": True,
+    }], posts
