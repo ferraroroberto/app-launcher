@@ -11,7 +11,6 @@ ignored config and are never committed.
 from __future__ import annotations
 
 import json
-import urllib.error
 import urllib.request
 
 from src.notify.base import NotifierError
@@ -45,9 +44,15 @@ class TelegramNotifier:
         try:
             with urllib.request.urlopen(request, timeout=_TIMEOUT_SECONDS) as response:
                 body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.URLError as exc:
+        except OSError as exc:
+            # URLError / HTTPError, and the bare TimeoutError / ConnectionError
+            # urllib lets escape once the request is sent and the response is
+            # being read.
             raise NotifierError(f"Telegram request failed: {exc}") from exc
-        except json.JSONDecodeError as exc:
-            raise NotifierError("Telegram returned a non-JSON response") from exc
+        except ValueError as exc:
+            # JSONDecodeError and UnicodeDecodeError are both ValueErrors.
+            raise NotifierError("Telegram returned a non-JSON or undecodable response") from exc
+        if not isinstance(body, dict):
+            raise NotifierError("Telegram returned a non-object JSON response")
         if not body.get("ok"):
             raise NotifierError(f"Telegram rejected the message: {body.get('description')}")
