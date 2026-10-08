@@ -712,8 +712,12 @@ def _long_run_page() -> dict:
 
     run = [call("2026-09-14T10:02:%02d" % i, {"verb": "ran", "command": "npm run build -- --stage %d" % i})
            for i in range(1, 4)]
-    run.append(call("2026-09-14T10:02:05", {"verb": "edited", "path": "src/stage-orchestrator-pipeline.js",
-                                            "added": 350, "removed": 0}, name="Edit"))
+    # The name is long enough to overflow the card at the spec's label size
+    # (0.875rem, #1426), not only at the 0.92rem the fixture was first
+    # measured against; the asserted substring is unchanged.
+    run.append(call("2026-09-14T10:02:05",
+                    {"verb": "edited", "path": "src/generated-multi-stage-stage-orchestrator-pipeline.js",
+                     "added": 350, "removed": 0}, name="Edit"))
     run += [call("2026-09-14T10:02:%02d" % i, {"verb": "read", "path": "docs/part-%d.md" % i}, name="Read")
             for i in (6, 7)]
     run.append({"kind": "thinking", "timestamp": "2026-09-14T10:02:08Z", "text": "planning",

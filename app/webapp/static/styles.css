@@ -107,7 +107,7 @@
   --font-heading-lg: 1.5rem;
   --font-body: 1rem;
   --font-body-sm: 0.875rem;  /* every secondary line: paths, status, row meta, helper copy */
-  --font-label: 0.92rem;
+  --font-label: 0.875rem;
   --font-caption: 0.75rem;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;

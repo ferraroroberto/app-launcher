@@ -51,7 +51,7 @@ On top of [`card/`](../card/)'s tokens:
 | `--line-muted` | `#d8dee4` | open-state divider (`border-muted`) |
 | `--muted` | `#656d76` | chevron, trailing count |
 | `--font-body` | `1rem` | title |
-| `--font-caption` | `0.78rem` | trailing count |
+| `--font-caption` | `0.75rem` | trailing count |
 | `--font-heading-lg` | `1.5rem` | chevron glyph size |
 | `--icon-title` | `18px` | leading glyph (`icons.size.title`) |
 

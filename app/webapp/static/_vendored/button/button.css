@@ -39,8 +39,9 @@
  * button-tint is secondary emphasis (accent-soft fill, accent text, soft
  * accent border) — a tint is NOT a ghost. button-ghost is a quiet tertiary
  * action: TRANSPARENT fill on a hairline border, muted text — never a
- * tinted fill. button-surface is a toolbar/utility/icon button at the
- * control height. Every tier shares the one button-disabled recipe (flat
+ * tinted fill. button-surface is a labelled toolbar/utility button at the
+ * control height; a glyph-only control is not a tier here but its own
+ * component, icon-button/ (unpainted at rest, fleet-config#1259). Every tier shares the one button-disabled recipe (flat
  * card-off / line / muted trio — AA in both themes). A destructive action
  * restates the tint recipe on `.danger` (deficit-tinted border and shade, danger-text text);
  * status colors never fill a non-status button.

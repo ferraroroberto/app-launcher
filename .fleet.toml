@@ -30,13 +30,13 @@ extra_junctions = ["webapp/certificates"]
 
 [vendored]
 switch = { src = "app/webapp/static/_vendored/switch", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/switch" }
-button = { src = "app/webapp/static/_vendored/button", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/button" }
-card = { src = "app/webapp/static/_vendored/card", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/card" }
-disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "da39e1b175a5816e22fb664951084601e247ec1f", dest = "app/webapp/static/_vendored/disclosure" }
+button = { src = "app/webapp/static/_vendored/button", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/button" }
+card = { src = "app/webapp/static/_vendored/card", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/card" }
+disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/disclosure" }
 home-head = { src = "app/webapp/static/_vendored/home-head", sha = "28c3e2c09a6bdc224a2188dfd2abcea2d99744f7", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "f70569640ebaf251ab0ed5f5daadd6055953a8c9", dest = "app/webapp/static/_vendored/nav" }
 select-native = { src = "app/webapp/static/_vendored/select-native", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/select-native" }
-empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "app/webapp/static/_vendored/empty-state" }
+empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/empty-state" }
 range-tab = { src = "app/webapp/static/_vendored/range-tab", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/range-tab" }
 modal = { src = "app/webapp/static/_vendored/modal", sha = "28c3e2c09a6bdc224a2188dfd2abcea2d99744f7", dest = "app/webapp/static/_vendored/modal" }
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "ad963f3010f7fb012959527fdf893a7041004ced", dest = "app/webapp/static/_vendored/text-size" }

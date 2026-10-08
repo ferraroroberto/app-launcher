@@ -5,7 +5,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 - `.button-primary` — solid `accent-fill`. The one main action per view.
 - `.button-tint` — accent-soft fill, `accent-text` text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
 - `.button-ghost` — transparent fill, hairline border, muted text. Quiet tertiary actions. **Ghost means transparent** — a tinted fill is a tint, never a "ghost".
-- `.button-surface` — card-off fill at control height. Toolbar/utility/icon buttons.
+- `.button-surface` — card-off fill at control height. Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
 - `.button-tint.danger` — the tint recipe restated on `--deficit`, text in `--danger-text`, for a destructive action.
 - Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
 - One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat card-off/line/muted trio, never opacity on a solid fill.
