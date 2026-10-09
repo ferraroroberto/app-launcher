@@ -4704,6 +4704,12 @@ span.chief-answer-ref { color: var(--muted); }
        top; the two panes never overlap, so nothing else changes order. */
     z-index: 310;
   }
+  /* The Changed files / Show changes panel (#1349, #977) is body-level and a
+     full-window layer, not a docked pane: at the shared 300 it sat under the
+     310 column above and the Coding tab's cards painted over its file list
+     (#1471). One step over that column, still under the lightbox / summary
+     modal (350) and the toast (400). */
+  #changesOverlay { z-index: 320; }
   body:has(nav.tabs[data-active-tab="claude"]) #terminalOverlay,
   body:has(nav.tabs[data-active-tab="claude"]):not(.terminal-open) .session-detail-empty {
     position: fixed;
