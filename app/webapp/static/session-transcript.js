@@ -3,7 +3,7 @@
  * The whole conversation of one live Coding session, chat-style: typed
  * user prompts and assistant replies expanded, everything else — tool calls
  * with their results, thinking, harness plumbing, sub-agent traffic —
- * folded per run into one disclosure that expands item by item. Backed by
+ * folded per run into one quiet step line that opens item by item. Backed by
  * the paginated `/api/claude-code/sessions/{sid}/transcript` endpoint
  * (Tailscale + passkey gated, like the Board drawer's /exchange): the
  * newest page loads first, older pages prepend on "Load older" or when the
@@ -33,7 +33,7 @@
  *
  * Since #982 this is one pane of #terminalOverlay, not its own overlay:
  * session-overlay.js opens/closes it and flips the overlay's data-mode;
- * the bar's ⋮ menu (terminal-bar.js) carries the pane's Show-tool-calls and
+ * the bar's ⋮ menu (terminal-bar.js) carries the pane's Hide-steps and
  * Reload actions. Switching panes never reloads: the pages and fold state
  * loaded here survive a trip through Terminal mode.
  *
@@ -64,7 +64,7 @@
  *
  *   - `entries` — settled. Appended to the list and never touched again, so
  *     scroll position, open disclosures and read-aloud are undisturbed. A
- *     run of folded entries merges into the trailing run card rather than
+ *     run of folded entries merges into the trailing step line rather than
  *     starting a new one, or an autonomous stretch would fragment into a
  *     card per tick.
  *   - `pending` — the newest message, which may still be growing (a harness
@@ -194,13 +194,32 @@ export function toolOutcomeNote(e, toolErrors) {
 }
 
 const KIND_ICON = {
-  tool_call: 'terminal',
+  tool_call: 'zap',
   tool_result: 'terminal',
   thinking: 'sparkle',
   system: 'plug',
   user: 'messages-square',
   assistant: 'messages-square',
 };
+
+// A step item's verb glyph (#1476): what the call did — run, read, edit,
+// search — rather than one terminal glyph for every tool.
+const VERB_ICON = {
+  ran: 'terminal',
+  read: 'book-open',
+  edited: 'pencil',
+  wrote: 'pencil',
+  deleted: 'trash-2',
+};
+
+function itemGlyph(e) {
+  if (e.kind === 'tool_call') {
+    const verb = e.action && e.action.verb;
+    if (VERB_ICON[verb]) return VERB_ICON[verb];
+    if (/grep|glob|search|find/i.test(e.name || '')) return 'search';
+  }
+  return KIND_ICON[e.kind] || 'plug';
+}
 
 // null when the pane is closed, else the session it shows plus the cursor
 // for the next older page. `seq` guards a slow response from a previous
@@ -211,12 +230,13 @@ const KIND_ICON = {
 // binding itself — see the same object this module does; only openChatPane
 // / closeChatPane ever assign `view =` a new value.
 export let view = null;
-// Whether the folded tool-call / system groups are hidden from the list.
-// Hidden by default: the view opens as a plain user ↔ agent exchange; the
-// ⋮ menu's "Show tool calls" reveals the groups, still folded, between the
-// turns. Turns themselves render open and collapse one at a time on their
-// own summary (the bar-wide collapse-all left with the bar, #982).
-let groupsHidden = true;
+// Whether the step lines (each run of tool calls, thinking and system
+// entries) are hidden from the list. Shown by default since #1476: one quiet
+// line per run, still folded, so a turn that edited four files says so; the
+// ⋮ menu's "Hide steps" leaves a plain user ↔ agent exchange. Turns
+// themselves render open and collapse one at a time on their own summary
+// (the bar-wide collapse-all left with the bar, #982).
+let groupsHidden = false;
 
 // The session id the pane currently shows, or null — session-overlay.js
 // uses it so a switch back to Chat never reloads the same session.
@@ -314,9 +334,37 @@ function baseName(path) {
   return parts[parts.length - 1] || String(path || '');
 }
 
-// An edit's line counts, "+4 −0" (a true minus sign, as the Claude Code app).
-function lineDelta(a) {
-  return '+' + (a.added || 0) + ' \u2212' + (a.removed || 0);
+// A file as "folder / name" pieces (#1476): the folder relative to the open
+// session's project when the path sits under it (or was recorded relative),
+// else just its parent folder. Never the whole absolute path, which wrapped
+// to three lines at 390px; callers keep that on `title`.
+function fileParts(path) {
+  const full = String(path || '').replace(/\\/g, '/');
+  const base = baseName(full);
+  const parent = full.slice(0, full.length - base.length).replace(/\/+$/, '');
+  if (!/^([a-zA-Z]:)?\//.test(full)) return { dir: parent, base: base };
+  const root = String((view && view.session.project_dir) || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  if (root && parent.toLowerCase().startsWith(root.toLowerCase())) {
+    const rel = parent.slice(root.length);
+    if (!rel || rel.charAt(0) === '/') return { dir: rel.replace(/^\/+/, ''), base: base };
+  }
+  return { dir: baseName(parent), base: base };
+}
+
+// An edit's line counts, "+4 −0" (a true minus sign, as the Claude Code app),
+// coloured like the Changed files panel's. Its own element, so a step line's
+// ellipsis can never cut it (#1476).
+function deltaEl(added, removed, className) {
+  const el = document.createElement('span');
+  el.className = className;
+  const add = document.createElement('span');
+  add.className = 'chg-add';
+  add.textContent = '+' + (added || 0);
+  const del = document.createElement('span');
+  del.className = 'chg-del';
+  del.textContent = '−' + (removed || 0);
+  el.append(add, ' ', del);
+  return el;
 }
 
 function term(el) {
@@ -550,7 +598,7 @@ export async function lastAssistantEntryFullText() {
 //
 // A turn reads as one piece: the user's prompt is a right-aligned bubble, and
 // everything the agent does until the next prompt (each reply fragment, the
-// run cards between them, a question or plan card) sits in ONE block under
+// step lines between them, a question or plan card) sits in ONE block under
 // one header: the agent's mark and name, the time, copy for the whole turn,
 // and collapse. It used to be one card per text fragment, each with its own
 // "Agent · time" and copy (#1472's diagnosis 1). The prompt is plain text
@@ -732,15 +780,18 @@ function renderAgentTurn(first, agent) {
 
 // The header, recomputed from the parts the turn now holds — after every
 // merge, a pending tail coming and going, or an older page joining it.
-// A turn with no reply and no decision card is "silent": with tool calls
-// hidden it would be a header over nothing, so it hides with them.
+// A turn with no reply and no decision card is "silent": with the steps
+// hidden it would be a header over nothing, so it hides with them. Its step
+// lines are recomputed here too, since a run's duration ends at whatever
+// part follows it (#1476).
 function syncTurnHead(li) {
+  li._trParts.querySelectorAll(':scope > .tr-run').forEach(syncRunSummary);
   const replies = turnReplies(li);
   const time = fmtTime(li._trFirst && li._trFirst.timestamp);
   li._trWhen.textContent = time ? '· ' + time : '';
   let hint = replies.length ? textHint(replies[0]) : '';
   if (!hint) {
-    const title = li._trParts.querySelector('.collapse-title');
+    const title = li._trParts.querySelector('.tr-step-label');
     hint = title ? title.textContent : '';
   }
   li._trHint.textContent = hint;
@@ -770,7 +821,7 @@ function syncGroups() {
   els.transcriptList.classList.toggle('tr-hide-groups', groupsHidden);
 }
 
-// ⋮ menu (terminal-bar.js) — the chat-only "Show / Hide tool calls" item.
+// ⋮ menu (terminal-bar.js) — the chat-only "Hide / Show steps" item.
 export function groupsAreHidden() {
   return groupsHidden;
 }
@@ -912,9 +963,21 @@ function stepDiff(e) {
   if (!a || !a.diff || e.error === true || (a.verb !== 'edited' && a.verb !== 'wrote')) return null;
   const wrap = document.createElement('div');
   wrap.className = 'tr-diff-wrap';
+  // Headed "folder / name" (#1476); the whole path stays on hover.
   const path = document.createElement('div');
   path.className = 'tr-diff-path';
-  path.textContent = a.path || '';
+  path.title = a.path || '';
+  const f = fileParts(a.path);
+  if (f.dir) {
+    const dir = document.createElement('span');
+    dir.className = 'tr-diff-dir';
+    dir.textContent = f.dir;
+    path.append(dir, ' / ');
+  }
+  const base = document.createElement('span');
+  base.className = 'tr-diff-base';
+  base.textContent = f.base;
+  path.appendChild(base);
   wrap.appendChild(path);
   wrap.appendChild(renderHunks(a.diff));
   if (a.diff.truncated) wrap.appendChild(fullDiffControl(wrap, a.diff));
@@ -963,8 +1026,8 @@ function fullDiffControl(wrap, diff) {
   return btn;
 }
 
-// One folded item inside a run group — its own <details>, so a single
-// tool call can be opened without expanding its siblings.
+// One folded item hanging off a step line's rail — its own <details>, so a
+// single tool call can be opened without expanding its siblings.
 function renderItem(e, toolErrors) {
   const d = document.createElement('details');
   d.className = 'tr-item tr-item-' + e.kind;
@@ -974,22 +1037,26 @@ function renderItem(e, toolErrors) {
   // whole turn (#1020).
   if (e.error === true) d.classList.add('tr-item-failed');
   const s = document.createElement('summary');
-  s.innerHTML = icon(KIND_ICON[e.kind] || 'plug');
+  s.innerHTML = icon(itemGlyph(e));
   const name = document.createElement('span');
   name.className = 'tr-item-name';
   const hint = document.createElement('span');
   hint.className = 'tr-item-hint';
+  let delta = null;
   if (e.kind === 'tool_call') {
     // Plain words where the server knows the tool (#1266): the command's
-    // first line, the edited file's name with its +N −M, or the file read.
+    // first line, or the file's name with its folder as the hint (#1476)
+    // and, for an edit, its +N −M.
     const a = e.action;
     if (a && a.verb === 'ran') {
       name.textContent = firstLine(a.command, 80);
-    } else if (a && (a.verb === 'edited' || a.verb === 'wrote')) {
-      name.textContent = baseName(a.path);
-      hint.textContent = lineDelta(a);
-    } else if (a && a.verb === 'read') {
-      name.textContent = baseName(a.path);
+      name.classList.add('tr-item-cmd');
+    } else if (a && (a.verb === 'edited' || a.verb === 'wrote' || a.verb === 'read')) {
+      const f = fileParts(a.path);
+      name.textContent = f.base;
+      hint.textContent = f.dir;
+      s.title = a.path;
+      if (a.verb !== 'read' && e.error !== true) delta = deltaEl(a.added, a.removed, 'tr-item-delta');
     } else {
       name.textContent = e.name || 'tool';
       hint.textContent = e.summary || '';
@@ -1007,29 +1074,32 @@ function renderItem(e, toolErrors) {
     name.textContent = e.label || 'system';
     hint.textContent = firstLine(e.text, 80);
   }
-  s.appendChild(name);
+  // Name, then the hint taking what room is left; the failed chip and the
+  // counts trail it, non-shrinking, so the ellipsis only ever cuts the hint.
+  s.append(name, hint);
   if (e.error === true) {
     const chip = document.createElement('span');
     chip.className = 'tr-fail-chip';
     chip.textContent = 'failed';
     s.appendChild(chip);
   }
-  s.appendChild(hint);
+  if (delta) s.appendChild(delta);
   d.appendChild(s);
   const body = document.createElement('div');
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
     // A command opens as a terminal: `$ command`, then its output (#1266).
-    // An edit opens as its diff (#1349), the tool's own "updated" line
-    // kept underneath in the quiet result style.
+    // An edit opens as its diff (#1349) and nothing else: the tool's own
+    // "file has been updated" line was a second box saying less (#1476).
     const ran = e.action && e.action.verb === 'ran';
     const diff = stepDiff(e);
     if (ran) body.appendChild(term(pre('$ ' + e.action.command, false)));
     else if (diff) body.appendChild(diff);
     else if (e.summary) body.appendChild(pre(e.summary, false));
-    if (e.result != null) {
+    if (diff) {
+      // The diff is the result.
+    } else if (e.result != null) {
       const out = pre(e.result, e.result_truncated);
-      if (diff) out.classList.add('tr-diff-result');
       body.appendChild(ran ? term(out) : out);
       const shots = thumbs(e.result_images);
       if (shots) body.appendChild(shots);
@@ -1060,10 +1130,12 @@ function renderItem(e, toolErrors) {
 }
 
 
-// A run's title in plain words (#1266): "Ran 2 commands, edited main.js
-// +4 −0, read 3 files". Built from each call's server-side `action`; a call
-// without one is counted as before, and a run with none reads as it did.
-function runLabel(run) {
+// A run in plain words (#1266, #1476): [verb, object] pairs that read
+// "Edited main.js, ran 2 commands, read 3 files", plus the edits' total +N −M.
+// The total is not label text: the step line gives it its own element,
+// which the label's ellipsis can't reach. Built from each call's server-side
+// `action`; a call without one is counted as before.
+function runSummary(run) {
   let ran = 0;
   let other = 0;
   let thinking = 0;
@@ -1074,7 +1146,9 @@ function runLabel(run) {
     const a = e.kind === 'tool_call' ? e.action : null;
     if (a && a.verb === 'ran') {
       ran += 1;
-    } else if (a && (a.verb === 'edited' || a.verb === 'wrote')) {
+    } else if (a && (a.verb === 'edited' || a.verb === 'wrote') && e.error !== true) {
+      // A failed edit changed nothing: it counts as a call, never toward the
+      // +N −M, the rule the Changed files panel's totals follow.
       const sum = edited[a.path] || (edited[a.path] = { added: 0, removed: 0 });
       sum.added += a.added || 0;
       sum.removed += a.removed || 0;
@@ -1088,67 +1162,91 @@ function runLabel(run) {
       system += 1;
     }
   });
+  // Edits lead: they are what the trailing +N −M counts, and at phone width
+  // the label's start is the part that survives the ellipsis.
   const parts = [];
-  if (ran) parts.push(ran === 1 ? 'ran a command' : 'ran ' + ran + ' commands');
   const edits = Object.keys(edited);
+  let total = null;
   if (edits.length) {
-    const total = edits.reduce(function (s, path) {
+    total = edits.reduce(function (s, path) {
       return { added: s.added + edited[path].added, removed: s.removed + edited[path].removed };
     }, { added: 0, removed: 0 });
-    parts.push('edited ' + (edits.length === 1 ? baseName(edits[0]) : edits.length + ' files') +
-      ' ' + lineDelta(total));
+    parts.push(['edited', edits.length === 1 ? baseName(edits[0]) : edits.length + ' files']);
   }
+  if (ran) parts.push(['ran', ran === 1 ? 'a command' : ran + ' commands']);
   const reads = Object.keys(read);
-  if (reads.length) parts.push('read ' + (reads.length === 1 ? baseName(reads[0]) : reads.length + ' files'));
+  if (reads.length) parts.push(['read', reads.length === 1 ? baseName(reads[0]) : reads.length + ' files']);
   if (other) {
     const word = parts.length ? ' other tool call' : ' tool call';
-    parts.push(other + word + (other === 1 ? '' : 's'));
+    parts.push(['', other + word + (other === 1 ? '' : 's')]);
   }
-  if (thinking) parts.push(thinking + ' thinking');
-  if (system) parts.push(system + ' system');
-  const label = parts.join(', ');
-  return label.charAt(0).toUpperCase() + label.slice(1);
+  if (thinking) parts.push(['', thinking + ' thinking']);
+  if (system) parts.push(['', system + ' system']);
+  return { parts: parts, total: total };
+}
+
+// The label: verbs muted, what they acted on in the text colour.
+function fillStepLabel(el, parts) {
+  el.textContent = '';
+  parts.forEach(function (p, i) {
+    if (i) el.append(', ');
+    const verb = i === 0 ? p[0].charAt(0).toUpperCase() + p[0].slice(1) : p[0];
+    if (verb) el.append(verb + ' ');
+    const what = document.createElement('b');
+    what.textContent = p[1];
+    el.appendChild(what);
+  });
 }
 
 function failedCount(run) {
   return run.reduce(function (n, e) { return n + (e.error === true ? 1 : 0); }, 0);
 }
 
-// A run of consecutive folded entries → one vendored disclosure card
-// (closed), so an autonomous stretch collapses to a single line.
+// "14s", "1m 52s", "1h 5m"; empty under a second.
+function fmtSpan(ms) {
+  const s = Math.round(ms / 1000);
+  if (!(s >= 1)) return '';
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + 'm ' + (s % 60) + 's';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+
+// How long a run took: from its first entry to the reply that follows it in
+// the turn, or, with none yet, to its own last entry. Empty when either end
+// has no usable timestamp.
+function runSpan(li) {
+  const run = li._trRun;
+  const next = li.nextElementSibling;
+  const end = next && next._trEntry ? next._trEntry : run[run.length - 1];
+  return fmtSpan(Date.parse(end.timestamp) - Date.parse(run[0].timestamp));
+}
+
+// A run of consecutive folded entries → one quiet step line (#1476): a
+// chevron, the label, then the parts no ellipsis may cut. Open, its items
+// hang off a rail beneath it.
 function renderRun(run, toolErrors) {
   const li = document.createElement('li');
   li.className = 'tr-run';
-  // The entries this card holds, kept on the node so a later tick can merge
+  // The entries this line holds, kept on the node so a later tick can merge
   // more into it and recompute the summary (#1050).
   li._trRun = run.slice();
   const d = document.createElement('details');
-  d.className = 'card card--collapsible tr-group';
+  d.className = 'tr-step';
   tagKey(d, run[0]);
-  d.innerHTML =
-    '<summary class="collapse-summary">' +
-      '<span class="collapse-main">' + icon('terminal') +
-        '<h3 class="collapse-title"></h3>' +
-        '<span class="collapse-count"></span>' +
-      '</span>' +
-      '<span class="collapse-chevron" aria-hidden="true">›</span>' +
-    '</summary>' +
-    '<div class="collapse-body tr-group-body"></div>';
-  d.querySelector('.collapse-title').textContent = runLabel(run);
-  // A failed call has to be visible while the group is still closed, and the
-  // title ellipses at phone width — so the count is its own non-shrinking
-  // element between title and item count rather than more title text.
-  const failed = failedCount(run);
-  if (failed) {
-    const chip = document.createElement('span');
-    chip.className = 'tr-fail-count';
-    chip.textContent = failed + ' failed';
-    d.querySelector('.collapse-main').insertBefore(chip, d.querySelector('.collapse-count'));
-  }
-  d.querySelector('.collapse-count').textContent = run.length + (run.length === 1 ? ' item' : ' items');
-  const body = d.querySelector('.tr-group-body');
+  const s = document.createElement('summary');
+  s.className = 'tr-step-line';
+  s.innerHTML = icon('chevron-right', 'tr-step-chevron');
+  const label = document.createElement('span');
+  label.className = 'tr-step-label';
+  s.appendChild(label);
+  d.appendChild(s);
+  const body = document.createElement('div');
+  body.className = 'tr-step-items';
   run.forEach(function (e) { body.appendChild(renderItem(e, toolErrors)); });
+  d.appendChild(body);
   li.appendChild(d);
+  syncRunSummary(li);
   return li;
 }
 
@@ -1185,45 +1283,53 @@ function restoreOpen(root, open) {
   });
 }
 
-// The summary line of a run card, recomputed from the entries it now holds —
-// called on every merge, so a group that grew keeps an honest count.
+// A step line, recomputed from the entries it now holds and from what
+// follows it — called on every merge and every turn-head sync, so a run
+// that grew keeps an honest count and its duration ends at the reply that
+// arrived after it. The trailing parts (total +N −M, "N failed", duration)
+// are rebuilt in that order; a failure has to read while the line is
+// closed, and none of them may be cut by the label's ellipsis.
 function syncRunSummary(li) {
   const run = li._trRun || [];
-  const d = li.querySelector('.tr-group');
-  d.querySelector('.collapse-title').textContent = runLabel(run);
-  d.querySelector('.collapse-count').textContent =
-    run.length + (run.length === 1 ? ' item' : ' items');
+  const line = li.querySelector('.tr-step-line');
+  const sum = runSummary(run);
+  fillStepLabel(line.querySelector('.tr-step-label'), sum.parts);
+  line.querySelectorAll(':scope > .tr-step-delta, :scope > .tr-fail-count, :scope > .tr-step-dur')
+    .forEach(function (n) { n.remove(); });
+  if (sum.total) line.appendChild(deltaEl(sum.total.added, sum.total.removed, 'tr-step-delta'));
   const failed = failedCount(run);
-  let chip = d.querySelector('.tr-fail-count');
-  if (failed && !chip) {
-    chip = document.createElement('span');
+  if (failed) {
+    const chip = document.createElement('span');
     chip.className = 'tr-fail-count';
-    d.querySelector('.collapse-main').insertBefore(chip, d.querySelector('.collapse-count'));
+    chip.textContent = failed + ' failed';
+    line.appendChild(chip);
   }
-  if (chip) {
-    if (failed) chip.textContent = failed + ' failed';
-    else chip.remove();
+  const span = runSpan(li);
+  if (span) {
+    const dur = document.createElement('span');
+    dur.className = 'tr-step-dur';
+    dur.textContent = span;
+    line.appendChild(dur);
   }
 }
 
 // The one place entries become list nodes (#1475): appends `entries` to
 // `container` (the list itself, or a fragment), continuing whatever it ends
 // with. A prompt starts a bubble; anything else joins the trailing agent
-// turn, or opens one; a folded entry joins the turn's trailing run card, or
+// turn, or opens one; a folded entry joins the turn's trailing step line, or
 // opens one. So a page renders, a live tick appends (#1050) and the Life OS
 // viewer mounts through the same rules, and an autonomous stretch arriving a
 // tick at a time still folds into one turn and one run rather than a card
 // per tick.
 //
 // `opts.pending` renders the provisional tail: its nodes are returned so the
-// next tick can drop them, and it never merges into a settled run card (that
+// next tick can drop them, and it never merges into a settled step line (that
 // would have to be unpicked). A turn it continues keeps its header; the parts
 // it adds are what gets dropped.
 function appendEntries(container, entries, opts) {
   const created = [];
   const ownTurns = new Set();
   const ownRuns = new Set();
-  const touchedRuns = new Set();
   const touchedTurns = new Set();
   function addPart(turn, node) {
     turn._trParts.appendChild(node);
@@ -1253,9 +1359,8 @@ function appendEntries(container, entries, opts) {
     } else {
       const last = turn._trParts.lastElementChild;
       if (last && last.classList.contains('tr-run') && (!opts.pending || ownRuns.has(last))) {
-        last.querySelector('.tr-group-body').appendChild(renderItem(e, opts.toolErrors));
+        last.querySelector('.tr-step-items').appendChild(renderItem(e, opts.toolErrors));
         last._trRun.push(e);
-        touchedRuns.add(last);
       } else {
         const run = renderRun([e], opts.toolErrors);
         ownRuns.add(run);
@@ -1263,7 +1368,7 @@ function appendEntries(container, entries, opts) {
       }
     }
   });
-  touchedRuns.forEach(syncRunSummary);
+  // A turn's head sync recomputes its step lines too.
   touchedTurns.forEach(syncTurnHead);
   return created;
 }
@@ -1841,7 +1946,7 @@ export function openChatPane(s) {
     // and when an answer was sent from it.
     picker: null, pickerSig: null, pickerSent: null, pickerBusy: false,
   };
-  groupsHidden = true;
+  groupsHidden = false;
   syncGroups();
   bindComposer(s);
   els.chatNote.hidden = s.kind !== 'remote';

@@ -6,7 +6,7 @@
  * · context ring (#1223, context-ring.js) · Terminal⇄Chat toggle (#982,
  * session-overlay.js) · 🔊 · ⋮.
  *
- *   ⋮ menu — Rename · Copy link · [Show/Hide tool calls · Reload, Chat mode
+ *   ⋮ menu — Rename · Copy link · [Hide/Show steps · Reload, Chat mode
  *   only] · [Compact, Claude sessions only, #1218] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
  *   same resolution the Rename / link dialog uses (#1096 — see
@@ -155,15 +155,16 @@ export function wireTerminalMenu() {
     },
     // Chat-only (#982): the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
-    // Terminal mode (function-valued `hidden`, row-menu.js).
+    // Terminal mode (function-valued `hidden`, row-menu.js). The step lines
+    // show by default since #1476, so the item reads "Hide steps" first.
     {
       glyph: function () { return groupsAreHidden() ? 'eye' : 'eye-off'; },
       label: function () {
         return groupsAreHidden()
-          ? 'Show tool calls and system entries'
-          : 'Hide tool calls and system entries';
+          ? 'Show steps: tool calls and system entries'
+          : 'Hide steps: tool calls and system entries';
       },
-      text: function () { return groupsAreHidden() ? 'Show tool calls' : 'Hide tool calls'; },
+      text: function () { return groupsAreHidden() ? 'Show steps' : 'Hide steps'; },
       hidden: notInChat,
       onTap: toggleGroups,
     },

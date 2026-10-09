@@ -623,11 +623,10 @@ def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
         *[_turn("user", f"filler prompt {i}", 1000 + i * 10) for i in range(20)],
     )
     _open_chat(page)
-    # Reveal the folded groups and open one, then scroll up off the tail.
-    page.locator("#terminalMenu").click()
-    page.get_by_role("menuitem", name=re.compile("tool calls")).click()
-    group = page.locator("#transcriptList .tr-group").first
-    group.click()
+    # Open a step line (shown by default since #1476), then scroll up off
+    # the tail.
+    group = page.locator("#transcriptList .tr-step").first
+    group.locator("summary.tr-step-line").click()
     expect(group).to_have_attribute("open", "")
     # Park the reader partway up the history — deliberately *not* at 0,
     # where a full rebuild would also land, so this position distinguishes

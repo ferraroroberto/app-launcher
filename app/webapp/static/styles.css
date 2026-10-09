@@ -969,8 +969,7 @@ button.settings-row:active { background: var(--card-2); }
    check). A little vertical padding widens the clip box and the equal
    negative margin gives the space back, so the summary's layout is
    unchanged. */
-.jobs-card .collapse-title,
-.tr-group .collapse-title {
+.jobs-card .collapse-title {
   padding-block: 0.2em;
   margin-block: -0.2em;
 }
@@ -2434,41 +2433,67 @@ textarea.input-native { height: auto; }
 .md-quote-body p:last-child { margin-bottom: 0; }
 .md-quote-copy { --icon-btn-box: 32px; }
 .tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
-/* A run of folded entries is one vendored disclosure card; the items inside
-   are flat list rows on a hairline, each its own <details>. */
-/* The bar's eye toggle: groups stay in the DOM (a tap brings them back
+/* A run of folded entries is one quiet step line (#1476, Step 3/6 of #1472):
+   no card, a flat 44px row on the canvas -- chevron, a plain-words label in
+   body-sm muted (verbs muted, what they acted on in fg), then the parts an
+   ellipsis must never cut: the edits' +N -M, "N failed", the duration. */
+/* The ⋮ "Hide steps" toggle: lines stay in the DOM (a tap brings them back
    exactly where they were) but leave the flow entirely, gap included. */
 .transcript-list.tr-hide-groups .tr-run { display: none; }
-/* A group card sits on the same geometry as a closed turn card — the 44px
-   row, 10px 14px summary padding, label-size title — and drops the app's
-   global `.card` bottom margin, which otherwise stacked on the list gap and
-   made the spacing around groups wider than around turns. */
-.tr-group.card { margin: 0; }
-.tr-group.card--collapsible > .collapse-summary {
-  height: auto;
+.tr-step-line {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-height: var(--row-sm);
-  padding: 10px 14px;
+  padding: 0 10px 0 6px;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+  cursor: pointer;
 }
-.tr-group .collapse-title {
-  font-size: var(--font-label);
+.tr-step-line::-webkit-details-marker { display: none; }
+@media (hover: hover) {
+  .tr-step-line:hover { background: var(--neutral-soft); }
+}
+.tr-step-chevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+.tr-step[open] > .tr-step-line .tr-step-chevron { transform: rotate(90deg); }
+/* The only part that gives way: a label wider than the phone ellipses, and
+   its full width is never the row's minimum (#1292's sideways scroll). */
+.tr-step-label {
+  flex: 1 1 auto;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A plain-word run title (#1266) is often wider than a phone, and a nowrap
-   title's full width was the summary's minimum: the pane scrolled sideways
-   (#1292). The title column may shrink to nothing, the cluster fills it
-   instead of fitting its content, and only the title gives way: the failed
-   chip and the item count stay whole, inside the card. */
-.tr-group.card--collapsible > .collapse-summary { grid-template-columns: minmax(0, 1fr) auto; }
-.tr-group .collapse-main { justify-self: stretch; overflow: hidden; }
-.tr-group .collapse-title { flex: 0 1 auto; min-width: 0; }
-.tr-group .collapse-main .icon,
-.tr-group .collapse-count,
-.tr-group .tr-fail-count { flex-shrink: 0; }
-/* Items are the shared list-row contract: flat full-bleed rows on a
-   hairline, 12px 0 row padding — the same 12px the cards sit apart. */
-.tr-group-body { padding: 0 14px 2px; }
+.tr-step-label b { color: var(--fg); font-weight: 600; }
+.tr-step-delta,
+.tr-item-delta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tr-step-dur {
+  flex: none;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Open, the items hang off a 2px rail under the chevron (its centre sits at
+   the line's 6px inset + 8px), each a flat list row on a hairline. */
+.tr-step-items {
+  margin: 0 0 4px 13px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line-muted);
+}
 .tr-item + .tr-item { border-top: 1px solid var(--line-muted); }
 .tr-item > summary {
   list-style: none;
@@ -2476,16 +2501,31 @@ textarea.input-native { height: auto; }
   align-items: center;
   gap: 8px;
   min-height: var(--row-sm);
-  padding: 12px 0;
+  padding: 10px 0;
   cursor: pointer;
   font-size: var(--font-body-sm);
   color: var(--muted);
 }
 .tr-item > summary::-webkit-details-marker { display: none; }
 .tr-item > summary .icon { width: 16px; height: 16px; flex: none; }
-.tr-item-name { flex: none; font-weight: 600; color: var(--fg); }
+/* Name, then the hint (a file's folder, a call's summary) in whatever room
+   is left: the hint's zero basis means the name keeps its width until the
+   row runs out, and only then does the name ellipse too. */
+.tr-item-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-item-cmd {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 400;
+}
 .tr-item-hint {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -2508,10 +2548,6 @@ textarea.input-native { height: auto; }
   font-weight: 700;
   line-height: 1.5;
 }
-/* Same chip on the closed group header, so a failure is legible without
-   unfolding — the vendored .collapse-main lays its children out on the
-   title's baseline. */
-.tr-fail-count { align-self: center; }
 /* The third state: the harness never recorded this call's outcome. Muted
    body text, deliberately not a status color — "nobody can tell" is not a
    failure, and dressing it as one would be the same lie in reverse. */
@@ -2861,13 +2897,14 @@ textarea.input-native { height: auto; }
   -webkit-user-select: none;
   user-select: none;
 }
+/* "folder / name" (#1476): the folder muted, the name in fg. */
 .tr-diff-path {
   margin: 0 0 6px;
   font-size: var(--font-body-sm);
   color: var(--muted);
   overflow-wrap: anywhere;
 }
-.tr-diff-result { color: var(--muted); }
+.tr-diff-base { color: var(--fg); font-weight: 600; }
 .tr-diff-more { margin: 0 0 8px; }
 .tr-diff-note { margin: 0 0 8px; }
 .chg-branch {
