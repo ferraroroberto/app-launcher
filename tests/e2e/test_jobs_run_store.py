@@ -1,4 +1,10 @@
-"""Jobs run-store UI regression coverage for issue #71."""
+"""Jobs run-store UI regression coverage for issue #71.
+
+Since #1438 the run store (retention counts, artifacts, the run list and the
+pin toggle) lives in the job sheet (``dialog#jobSheet`` / ``#jobSheetBody``)
+opened from a job row, and a run-output search hit opens that sheet ON the
+hit's run instead of expanding an inline accordion.
+"""
 
 from __future__ import annotations
 
@@ -130,27 +136,35 @@ def test_search_jump_artifact_link_and_pin_toggle(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    # Retention counts moved into the detail block the row opens (#1130).
-    row.locator(".launch-btn").click()
-    details = authed_page.locator("[data-role='job-details']")
+    # Retention counts live in the detail block of the job sheet (#1130, #1438).
+    row.locator("button.action-row-main").click()
+    sheet = authed_page.locator("#jobSheet")
+    expect(sheet).to_be_visible()
+    details = sheet.locator("[data-role='job-details']")
     expect(details).to_contain_text("21 kept")
     expect(details).to_contain_text("1 pinned")
 
-    expect(authed_page.locator(".jobs-artifacts")).to_be_visible()
-    artifact = authed_page.locator(".jobs-artifacts a")
+    expect(sheet.locator(".jobs-artifacts")).to_be_visible()
+    artifact = sheet.locator(".jobs-artifacts a")
     expect(artifact).to_have_text(re.compile(r"report\.csv"))
     assert "/artifacts/report.csv" in (artifact.get_attribute("href") or "")
 
+    # Close the sheet (it is modal on a phone) and search from the list.
+    authed_page.locator("#jobSheetClose").click()
+    expect(sheet).not_to_be_visible()
     authed_page.locator("#jobsSearchInput").fill("unique-needle")
-    hit = authed_page.locator(".job-search-hit")
+    hit = authed_page.locator("#jobsList .job-search-hit")
     expect(hit).to_be_visible()
     expect(hit).to_contain_text("unique-needle")
-    hit.locator(".launch-btn").click()
-    expect(authed_page.locator(".jobs-output-tail")).to_contain_text("report complete")
+    hit.locator("button.action-row-main").click()
+    # The hit opens the sheet on that run: its output shows and it is selected.
+    expect(sheet).to_be_visible()
+    expect(sheet.locator(".jobs-output-tail")).to_contain_text("report complete")
+    expect(sheet.locator(".jobs-run-btn.selected")).to_have_count(1)
 
-    pin = authed_page.locator(".jobs-pin-btn")
+    pin = sheet.locator(".jobs-pin-btn")
     expect(pin).to_have_attribute("aria-pressed", "true")
     # #1333: the pin is a quiet glyph, never a tile: no fill and no border
     # in either state, the accent glyph when pinned, the muted one when not.

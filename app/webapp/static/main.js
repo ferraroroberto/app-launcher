@@ -17,7 +17,7 @@ import { wireUsageMeter } from './usage-meter.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps-coding.js';
 import { fetchListeners } from './apps-listeners.js';
-import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
+import { fetchJobs, wireJobs } from './jobs.js';
 import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
 import { wireImageLightbox } from './lightbox.js';
@@ -33,21 +33,10 @@ import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
-// One edit-mode state, one switch: the Registered-jobs summary toggle on
-// the Jobs tab (issue #719 removed the duplicate Settings-head toggle).
-// It gates the Jobs tab's editing only: the Apps rows' Rename and Remove
-// stopped depending on it in #1437.
-function syncEditModeButtons() {
-  if (els.jobsEditBtn) setSwitch(els.jobsEditBtn, state.editMode);
-}
-
-function toggleEditMode() {
-  state.editMode = !state.editMode;
-  syncEditModeButtons();
-  localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
-  // The toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
-  renderJobs();
-}
+// No Edit mode (#1438, decision 5 of #1432): Add, Edit and Remove are
+// always one tap away, so the switch and its persisted key are gone. A
+// device that still holds the key drops it here, once per boot.
+try { localStorage.removeItem('launcher.editMode'); } catch (_) { /* storage blocked */ }
 
 // Boot-autostart (issue #456 part 1/2) is its own dedicated endpoint, not a
 // patchConfig() field — enabling/disabling it writes/removes a Startup-folder
@@ -73,8 +62,6 @@ async function toggleBootAutostart() {
 }
 
 function wireSettings() {
-  syncEditModeButtons();
-  if (els.jobsEditBtn) els.jobsEditBtn.addEventListener('click', toggleEditMode);
   if (els.bootAutostartToggle) {
     els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);
   }

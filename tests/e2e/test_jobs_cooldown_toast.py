@@ -7,6 +7,10 @@ matched and the friendly "Skipped" toast fell through to a generic
 "Run failed". Hermetic: route-mock the run endpoint's 429 body so the exact
 shape the server produces (jobs.py:538-546) exercises the real jsonApi/toast
 code path, and pin the non-cooldown failure path stays unchanged.
+
+Since #1438 there is no per-row Run button: the run is fired from the row's
+kebab menu (``.job-run-item``), which calls the same ``runJobNow`` as the job
+sheet's ``#jobSheetRun``. The server-side shapes pinned here are unchanged.
 """
 
 from __future__ import annotations
@@ -71,9 +75,10 @@ def test_cooldown_429_shows_skipped_toast(authed_page: Page, base_url: str) -> N
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    row.locator("[data-role='run-btn']").click()
+    row.locator("button.job-menu-anchor").click()
+    row.locator(".job-run-item").click()
 
     expect(authed_page.locator(".toast")).to_contain_text("cooled down")
     expect(authed_page.locator(".toast")).not_to_contain_text("Run failed")
@@ -95,8 +100,9 @@ def test_non_cooldown_failure_still_shows_run_failed(
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    row.locator("[data-role='run-btn']").click()
+    row.locator("button.job-menu-anchor").click()
+    row.locator(".job-run-item").click()
 
     expect(authed_page.locator(".toast")).to_contain_text("Run failed")

@@ -21,7 +21,8 @@ import { icon } from './_vendored/icons/icons.js';
 //   avatar     -> an avatar element (glance.js avatar(), #1437) leading the
 //                 text column inside the main button, so the tap target
 //                 stays the whole row
-//   kebabClass / kebabLabel -> the trailing kebab's hook class and name
+//   kebabClass / kebabLabel -> the trailing kebab's hook class and name;
+//                 no kebabLabel, no kebab
 // Returns { li, main, title, meta, kebab } for the caller to finish.
 export function actionRow(opts) {
   const li = document.createElement('li');
@@ -89,13 +90,18 @@ export function actionRow(opts) {
   }
   li.appendChild(main);
 
-  const kebab = document.createElement('button');
-  kebab.type = 'button';
-  kebab.className = 'action-row-kebab' + (opts.kebabClass ? ' ' + opts.kebabClass : '');
-  kebab.innerHTML = icon('ellipsis-vertical');
-  kebab.title = opts.kebabLabel;
-  kebab.setAttribute('aria-label', opts.kebabLabel);
-  li.appendChild(kebab);
+  // A row with nothing behind a menu (the Jobs tab's Next up fires) passes
+  // no kebabLabel and gets no kebab.
+  let kebab = null;
+  if (opts.kebabLabel) {
+    kebab = document.createElement('button');
+    kebab.type = 'button';
+    kebab.className = 'action-row-kebab' + (opts.kebabClass ? ' ' + opts.kebabClass : '');
+    kebab.innerHTML = icon('ellipsis-vertical');
+    kebab.title = opts.kebabLabel;
+    kebab.setAttribute('aria-label', opts.kebabLabel);
+    li.appendChild(kebab);
+  }
 
   return { li: li, main: main, title: title, meta: meta, kebab: kebab };
 }

@@ -101,9 +101,10 @@ _AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 _SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}
 
 # A control a tab renders only once its data arrives, which the sweep waits
-# for rather than racing the boot fetch.
+# for rather than racing the boot fetch. (The Jobs agenda's Add job action
+# is no longer on the tab: since #1438 it sits in the agenda sheet, swept
+# separately below.)
 _DATA_CONTROL = {
-    "#tabJobs": "#jobsAgendaBody .empty-state-action",
     "#tabLifeOS": "#lifeOsRecapLaunch",
 }
 
@@ -160,7 +161,6 @@ def test_every_control_meets_the_44px_floor(
     authed_page: Page, base_url: str, tab: str
 ) -> None:
     page = authed_page
-    page.add_init_script("localStorage.setItem('launcher.editMode', '1')")
     _mock(page)
     # Controls that render only with data: the Life OS recap tile's launch
     # and a Settings passkey row's remove. Both sat at 30px tall, unseen by
@@ -176,9 +176,10 @@ def test_every_control_meets_the_44px_floor(
              "last_used": None},
         ],
     })
-    # The Jobs agenda's empty state carries an Add job action (#1201) that
-    # sat at 38.6px (#1216). It renders only when the next 7 days hold no
-    # runs, which the unmocked agenda decided from the checkout's own
+    # The Jobs agenda sheet's empty state carries an Add job action (#1201)
+    # that sat at 38.6px (#1216); since #1438 it lives in the agenda sheet
+    # opened from the Next up card, not on the tab. It renders only when the
+    # next 7 days hold no runs, which the unmocked agenda decided from the checkout's own
     # jobs.json and the clock: a worktree (whose job paths are blanked, so it
     # has no jobs) raced the 400ms settle below and a primary never showed
     # it. Pinned empty, it is measured on every run.
@@ -194,6 +195,18 @@ def test_every_control_meets_the_44px_floor(
     page.wait_for_timeout(400)
 
     _assert_floor(page, tab)
+
+    if tab == "#tabJobs":
+        # The agenda sheet is a closed dialog until opened (#1438), so open
+        # it and sweep what it shows, its empty-state Add job primary
+        # included (#1216).
+        page.locator("#jobsAgendaOpen").click()
+        expect(page.locator("#jobsAgendaSheet")).to_be_visible()
+        expect(page.locator("#jobsAgendaBody .empty-state-action")).to_be_visible()
+        page.wait_for_timeout(200)
+        _assert_floor(page, "Jobs > agenda sheet")
+        page.locator("#jobsAgendaSheetClose").click()
+        expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
 
     if tab == _SETTINGS:
         # The sheets are closed dialogs above, so open each and sweep it.

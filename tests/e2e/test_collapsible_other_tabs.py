@@ -8,9 +8,9 @@ title, so the whole app shares one foldable-section idiom.
 Covered panels:
 - Apps: Running and Apps (open by default since #1437) and Trays
   (collapsed by default, #383 review round).
-- Jobs: 📋 Registered jobs — the ➕ Add job button sits in the summary row
-  and a tap there must drive the button only (stopPropagation), never the
-  collapse.
+- Jobs: the Jobs card (``details.jobs-card``, #1438) — the ➕ Add job button
+  sits in the card's toolbar (always visible since Edit mode was removed) and
+  a tap there must drive the button only, never the collapse.
 - Life: 📚 Skills.
 
 Runs in both projections — the wiring is browser-agnostic but the iPhone
@@ -84,7 +84,7 @@ def test_apps_life_and_jobs_panels_are_collapsible(
     )
 
     # -- was test_jobs_panel_is_collapsible_and_add_button_does_not_toggle
-    # (last: it flips Edit mode and opens the modal #jobDialog) --
+    # (last: it opens the modal #jobDialog) --
     authed_page.locator("#tabJobs").click()
 
     jobs = authed_page.locator("#paneJobs details.jobs-card")
@@ -93,10 +93,8 @@ def test_apps_life_and_jobs_panels_are_collapsible(
         "jobs panel should open by default"
     )
 
-    # The ➕ Add job button lives in the jobs <summary>. Use the real Edit-mode
-    # control to reveal it: forcing ``hidden = false`` races a pending
-    # renderJobs(), which correctly hides it while Edit mode is still off.
-    authed_page.locator("#jobsEditBtn").click()
+    # The ➕ Add job button lives in the jobs toolbar and is always visible
+    # since #1438 (Edit mode, which used to gate it, is gone).
     add_job = authed_page.locator("#jobsAddBtn")
     add_job.wait_for(state="visible", timeout=10_000)
     add_job.click()
@@ -104,5 +102,5 @@ def test_apps_life_and_jobs_panels_are_collapsible(
         "header action tap must not collapse the jobs panel"
     )
     assert bool(authed_page.locator("#jobDialog").evaluate("el => el.open")), (
-        "Add job should open its dialog through the real Edit-mode path"
+        "Add job should open its dialog"
     )

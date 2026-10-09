@@ -16,6 +16,13 @@ job itself declares a designed deferral (life-os's email sweep exits 3 when it
 has no desktop to start Outlook on). It rides on the same render, because it
 also has to be tellable apart from all three of the others.
 
+#1438 rebuilt the row: the coloured status dot is gone. The same classification
+now reads as an exception chip on the row's meta line ("failed" danger, "not
+confirmed" attention, none for a clean or deferred job) and as the history
+sparkline's dot class, and the header counts only genuine failures. These pins
+moved onto those; the exit code's one-liner rides on the chip's tooltip, and
+the last-run sentence is in the job sheet.
+
 Hermetic: route-mock ``/api/jobs`` and one job's run history with four fixed
 rows — exit 0, exit 122, exit 123, a declared exit 3 — so nothing here depends
 on real run history or on a job ever having failed. Runs in both projections.
@@ -114,15 +121,31 @@ def _wire(page: Page) -> None:
 
 def _open_jobs(page: Page, base_url: str) -> None:
     _wire(page)
+    page.route(
+        re.compile(r".*/api/jobs/[^/]+/runs$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps({"runs": []})),
+    )
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
     page.wait_for_selector(
-        "#jobsList li.app-item[data-id]", state="attached", timeout=5_000
+        "#jobsList li.job-row[data-id]", state="attached", timeout=5_000
     )
 
 
-def _dot(page: Page, job_id: str):
-    return page.locator(f"#jobsList li[data-id='{job_id}'] [data-role='status-dot']")
+def _row(page: Page, job_id: str):
+    return page.locator(f"#jobsList li.job-row[data-id='{job_id}']")
+
+
+def _first_dot(page: Page, job_id: str):
+    return _row(page, job_id).locator("[data-role='sparkline'] .job-spark-dot").first
+
+
+# What a history dot looks like, as rendered: the deferred ring differs from
+# the muted `unknown` dot only by its transparent fill and ring, so the
+# signature is fill + ring + colour rather than a colour alone.
+_DOT_LOOK = """el => { const s = getComputedStyle(el);
+  return [s.backgroundColor, s.boxShadow, s.color].join('|'); }"""
 
 
 @pytest.mark.iphone
@@ -131,79 +154,78 @@ def test_terminal_outcomes_render_distinctly(
 ) -> None:
     """All four terminal outcomes on one render of the Jobs list (#916, #1316).
 
-    One page load for every check (#1215): the dot-class pins, the pairwise
-    colour fact, and last the detail block the unconfirmed row opens.
+    One page load for every check (#1215): the chip and dot-class pins, the
+    pairwise look fact, the header count, and last the job sheet the
+    unconfirmed row opens.
     """
     _open_jobs(authed_page, base_url)
 
     # -- was test_unconfirmed_row_is_not_rendered_as_failed --
-    # The defect itself: exit 122 got the same red dot as a real failure.
-    expect(_dot(authed_page, "truncated")).to_have_class(
-        re.compile(r"\bunconfirmed\b")
-    )
-    # And specifically *not* the failure class it used to get.
-    expect(_dot(authed_page, "truncated")).not_to_have_class(re.compile(r"\bdown\b"))
+    # The defect itself: exit 122 got the same red as a real failure. Its row
+    # says "not confirmed" (attention), and carries no failure chip.
+    unconfirmed = _row(authed_page, "truncated").locator(".job-unconfirmed-chip")
+    expect(unconfirmed).to_have_text("not confirmed")
+    expect(unconfirmed).to_have_attribute("data-tone", "attention")
+    expect(_row(authed_page, "truncated").locator(".job-failed-chip")).to_have_count(0)
 
     # -- was test_genuine_failure_still_renders_as_failed --
     # The over-correction guard. Exit 123 is the run reporting it delivered
     # no work; replacing false alarms with false comfort would be worse than the
-    # bug.
-    expect(_dot(authed_page, "broken")).to_have_class(re.compile(r"\bdown\b"))
-    expect(_dot(authed_page, "clean")).to_have_class(re.compile(r"\bup\b"))
+    # bug. A clean run raises no chip at all.
+    failed = _row(authed_page, "broken").locator(".job-failed-chip")
+    expect(failed).to_have_text("failed")
+    expect(failed).to_have_attribute("data-tone", "danger")
+    expect(_row(authed_page, "broken").locator(".job-unconfirmed-chip")).to_have_count(0)
+    expect(_row(authed_page, "clean").locator(".chip")).to_have_count(0)
+    # The header counts the genuine failure only: not the unconfirmed run, not
+    # the deferral, not the clean one (#1438).
+    expect(
+        authed_page.locator("#jobsHeadStatus .head-exception[data-tone='danger']")
+    ).to_have_text("1 failing")
 
     # -- was test_sparkline_dot_follows_the_outcome_not_the_status --
     # The 7-run sparkline reads the same classification, so a healthy job's
     # history does not show a wall of red beside a corrected row.
-    spark = authed_page.locator(
-        "#jobsList li[data-id='truncated'] [data-role='sparkline'] .job-spark-dot"
-    ).first
-    expect(spark).to_have_class(re.compile(r"\bunconfirmed\b"))
-    expect(
-        authed_page.locator(
-            "#jobsList li[data-id='broken'] [data-role='sparkline'] .job-spark-dot"
-        ).first
-    ).to_have_class(re.compile(r"\bdown\b"))
+    expect(_first_dot(authed_page, "truncated")).to_have_class(re.compile(r"\bunconfirmed\b"))
+    expect(_first_dot(authed_page, "broken")).to_have_class(re.compile(r"\bdown\b"))
+    expect(_first_dot(authed_page, "clean")).to_have_class(re.compile(r"\bup\b"))
 
-    # #1316: a declared deferral is its own state on the dot and the
-    # sparkline, neither the success class nor the failure one.
-    expect(_dot(authed_page, "deferred")).to_have_class(re.compile(r"\bdeferred\b"))
-    expect(_dot(authed_page, "deferred")).not_to_have_class(re.compile(r"\b(down|up)\b"))
-    expect(
-        authed_page.locator(
-            "#jobsList li[data-id='deferred'] [data-role='sparkline'] .job-spark-dot"
-        ).first
-    ).to_have_class(re.compile(r"\bdeferred\b"))
+    # #1316: a declared deferral is its own state on the sparkline, neither the
+    # success class nor the failure one, and raises no chip (it needs nobody).
+    expect(_first_dot(authed_page, "deferred")).to_have_class(re.compile(r"\bdeferred\b"))
+    expect(_first_dot(authed_page, "deferred")).not_to_have_class(re.compile(r"\b(down|up)\b"))
+    expect(_row(authed_page, "deferred").locator(".chip")).to_have_count(0)
 
     # -- was test_three_outcomes_are_three_distinct_colours --
     # "Visually distinct from both success and failure" — asserted as the
     # pairwise fact rather than against hardcoded token values, so a future
-    # palette change cannot make this pass while the states look alike.
-    colours = {}
+    # palette change cannot make this pass while the states look alike. (The
+    # row's status dot is gone; the history dot and the two chips carry it.)
+    looks = {}
     for job_id in ("clean", "truncated", "broken", "deferred"):
-        expect(_dot(authed_page, job_id)).to_be_visible()
-        colours[job_id] = stable_read(
-            lambda jid=job_id: _dot(authed_page, jid).evaluate(
-                "el => getComputedStyle(el).backgroundColor"
-            )
-        )
-    assert all(colours.values()), f"unreadable colours: {colours}"
-    assert len(set(colours.values())) == 4, (
-        "success, unconfirmed, failed and deferred must each have their own "
-        f"colour; got {colours}"
+        expect(_first_dot(authed_page, job_id)).to_be_visible()
+        looks[job_id] = stable_read(
+            lambda jid=job_id: _first_dot(authed_page, jid).evaluate(_DOT_LOOK))
+    assert all(looks.values()), f"unreadable looks: {looks}"
+    assert len(set(looks.values())) == 4, (
+        "success, unconfirmed, failed and deferred must each look different; "
+        f"got {looks}"
     )
+    chip_colours = [
+        stable_read(lambda c=c: c.evaluate("el => getComputedStyle(el).color"))
+        for c in (unconfirmed, failed)
+    ]
+    assert chip_colours[0] != chip_colours[1], (
+        f"'not confirmed' and 'failed' chips share a colour: {chip_colours}")
 
     # -- was test_unconfirmed_row_says_not_confirmed_and_explains_itself --
-    # (last: it opens the row's detail block.)
+    # (last: it opens the job sheet.)
     # The word on the row matters as much as the colour: "failed" is the
-    # claim that was wrong. The exit code's own one-liner rides on the dot's
+    # claim that was wrong. The exit code's own one-liner rides on the chip's
     # tooltip so the row is actionable without opening the log.
-    # The last-run sentence moved into the detail block the row opens (#1130).
-    authed_page.locator(
-        "#jobsList li[data-id='truncated'] button[aria-label^='View run history']"
-    ).click()
-    meta = authed_page.locator("[data-role='job-details']")
+    expect(unconfirmed).to_have_attribute("title", re.compile("never verified"))
+    # The last-run sentence is in the job sheet's detail block (#1130, #1438).
+    _row(authed_page, "truncated").locator(".action-row-main").click()
+    meta = authed_page.locator("#jobSheetBody [data-role='job-details']")
     expect(meta).to_contain_text("not confirmed")
     expect(meta).not_to_contain_text("failed")
-    expect(_dot(authed_page, "truncated")).to_have_attribute(
-        "title", re.compile("never verified")
-    )

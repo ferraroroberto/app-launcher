@@ -191,8 +191,8 @@ function renderList(host, items, running) {
         onTap: function () { copyUrl(a.tunnel_url); },
       },
       {
-        // Always offered since #1437 (decision 5 of #1432): no longer behind
-        // the Jobs tab's Edit mode.
+        // Always offered (decision 5 of #1432, #1437): there is no Edit mode
+        // anywhere since #1438.
         className: 'app-rename-btn', glyph: 'pencil',
         label: 'Rename ' + a.name, text: 'Rename',
         onTap: function () { openRename(a); },

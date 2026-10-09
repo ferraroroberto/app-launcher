@@ -514,7 +514,8 @@ html, body {
    icon, a label, the current value in muted text and a chevron, and opens
    a sheet. A row that holds its control inline (Text size, Start at log
    on) drops the value and chevron. */
-.settings-overline {
+.settings-overline,
+.jobs-agenda-day {
   margin: 4px 14px 6px;
   font-size: var(--font-caption);
   font-weight: 600;
@@ -884,133 +885,43 @@ button.settings-row:active { background: var(--card-2); }
   background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger-text);
 }
-/* `flex: none`: the dot sits in a flex head row, so without it a narrow row
-   squeezes the circle into an oval (#1130, seen at 320px). */
-.app-item .health-dot {
-  display: inline-block;
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-  margin-right: 6px;
-  vertical-align: middle;
-}
-.app-item .health-dot.up { background: var(--success); }
-.app-item .health-dot.down { background: var(--danger); }
-.app-item .health-dot.stuck { background: var(--attention); }
-/* A run whose delivery was never established (#916) — attention, not danger.
-   It may well have succeeded; what is certain is only that nobody checked. */
-.app-item .health-dot.unconfirmed { background: var(--attention); }
-/* A deferral the job declared by exit code (#1316) is neither success nor
-   failure: a muted hollow ring, so it cannot be read as the solid muted dot
-   of a job that has never run. */
-.app-item .health-dot.deferred {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--muted);
-}
-
-/* Jobs tab action rail (issue #232): job tiles use the shared .app-item
-   layout — info block on the left, a compact vertical action rail on the
-   right (▶ / ⏸ always, 🧪 / ✏️ / 🗑️ revealed only in edit mode). This
-   reclaims the full-width bottom button row that #69 spent on just ▶ / ⏸,
-   so more jobs fit on screen, and keeps the three tabs consistent. The
-   rail is sized by its icons; the tile height stays bound by the info
-   text. No Jobs-only flex override here — falling back to .app-item is
-   the layout. (Reverts #69's flex-column / horizontal-strip override; the
-   #66 two-line info layout below is unaffected.) */
-
-/* ---------- Jobs tab: two-line row layout (issue #66) ---------- */
-/* The row is two stacked lines: dot + name on top, then a compact
-   chip bar (kind, schedule, duration, sparkline) underneath. We let
-   the chip bar flex-wrap when the phone is too narrow for one line,
-   but pin every chip to nowrap so the contents never word-break into
-   a single-letter vertical stack — that was the v1 bug. */
-.job-item .job-row-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.job-item .job-row-head .name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-/* Alert-on-failure marker (issue #597) — mirrors the board-chief-crown
-   convention: a colored glyph beside the title, not inside the status dot. */
-.job-item .job-alert-icon { color: var(--accent); display: inline-flex; flex: none; }
-/* One line under the name (#1130): next run, cadence, the seven-dot
-   history, and the not-firing alert when there is one. The row used to
-   carry two further lines (type/situational chips, then percentiles) and a
-   last-run sentence; those moved into .job-details, in the panel the row
-   opens. */
-.job-item .job-row-pills {
-  display: flex;
-  /* nowrap, so the elastic cadence chip truncates instead of the row
-     spilling onto a third line — which is what wrap does first, since the
-     countdown and the history are both fixed-size. */
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 4px 6px;
-  margin-top: 3px;
-  font-size: var(--font-label);
-  min-width: 0;
-}
-/* The three parts have to share one line at 390px next to the action pair,
-   so the chips keep their own caption size and a tight box. The cadence is
-   the elastic one: it truncates (full text in its title) rather than wrap,
-   so a job with three fire times a day still renders two lines. */
-.job-item .job-row-pills .kind-pill {
-  white-space: nowrap;
-  margin-right: 0;
-  padding: 1px 6px;
-  font-size: var(--font-caption);
-}
-.job-item .job-row-pills .job-countdown-chip,
-.job-item .job-row-pills .job-sparkline { flex: none; }
-.job-item .job-row-pills .job-cadence-chip {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-/* Below the iPhone-SE width there is no room for a useful cadence: it
-   truncates to a letter or two and crowds the history dots. Drop it rather
-   than render a stub — it is one tap away in the detail block, and the two
-   facts that matter most (next fire, recent outcomes) keep their space. */
-@media (max-width: 360px) {
-  .job-item .job-row-pills .job-cadence-chip { display: none; }
-}
-.job-item .job-row-pills .job-sparkline { gap: 2px; }
-.job-item .job-row-pills .job-spark-dot { width: 6px; height: 6px; }
+/* ---------- Jobs tab rows (#1438, step 6/7 of #1432) ---------- */
+/* A job row is the shared action-row with a job avatar: the name, one meta
+   line ("in 5m · Every 15 min") with chips for exceptions only, and the
+   seven-dot history as the trailing value inside the row's tap target,
+   before the one kebab. */
+/* The width budget at 390px: a name of about 24 characters must not be cut
+   (#1438's acceptance). The history is 6px dots on 2px gaps, 8px after the
+   text column, and the kebab's own box is the space on its right. */
+.job-row .action-row-main { padding-right: 0; }
+.job-row .job-sparkline { flex: none; margin-left: -4px; }
 .job-sparkline {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  letter-spacing: 0;
-  font-size: var(--font-caption);
   line-height: 1;
-  vertical-align: middle;
   white-space: nowrap;
 }
 /* A drawn dot, not a `●` glyph (#1127): the character sat on the text
    baseline at a font-dependent size beside the Lucide icons. */
 .job-spark-dot {
   display: inline-block;
-  width: 7px;
-  height: 7px;
+  flex: none;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background: currentColor;
   color: var(--muted);
 }
+/* The legend: green success, red failed, amber not confirmed, a hollow ring
+   deferred. A run in progress takes the accent (work in progress), never
+   amber: the avatar's alive badge already says the job runs (#1438). */
 .job-spark-dot.up { color: var(--success); }
 .job-spark-dot.down { color: var(--danger); }
-.job-spark-dot.live { color: var(--attention); }
+.job-spark-dot.live { color: var(--accent); }
 .job-spark-dot.unconfirmed { color: var(--attention); }
-/* Deferred (#1316): the same muted hollow ring as the status dot. */
+/* Deferred (#1316): a muted hollow ring, so it is not read as a run that
+   never happened. */
 .job-spark-dot.deferred {
   color: var(--muted);
   background: transparent;
@@ -1019,17 +930,17 @@ button.settings-row:active { background: var(--card-2); }
 /* `unknown` is a run with no real outcome at all (skipped, dry run); an
    unconfirmed one above did run and is worth a look, so it is not grey. */
 .job-spark-dot.unknown { color: var(--muted); }
+/* The avatar's glyph in the accent, like the drill rows': it is a job, not
+   a brand mark. */
+.job-avatar .avatar-glyph { color: var(--accent); }
 
-.job-duration-chip {
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
+/* Kill stuck run, in the sheet above the runs: the danger tint at the 44px
+   floor, sized to its label. */
 .jobs-kill-btn {
-  margin: 0 0 8px;
-  align-self: flex-start;
-  font-size: var(--font-caption);
-  padding: 4px 10px;
+  width: auto;
+  min-height: var(--hit-min);
+  margin: 4px 0 12px;
+  padding: 0 14px;
 }
 
 /* ---------- Coding tab tiles (issue #45) ---------- */
@@ -1074,71 +985,31 @@ button.settings-row:active { background: var(--card-2); }
 .sessions-card .card-list { margin-top: 4px; }
 
 /* ---------- jobs tab ---------- */
-/* The list lives inside a collapsible `.sessions-card.card--collapsible` (issue
-   #226). The ➕ Add job button sits in the summary row alongside the title,
-   mirroring the Running-sessions card's ⎇ status button. */
-.jobs-header-actions {
+/* The Jobs card's toolbar (#1438): the search field in the vendored filter
+   look, then the sort and Add icon buttons at the 44px floor. */
+.jobs-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  margin-bottom: 8px;
 }
-.jobs-edit-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: var(--font-caption);
-  font-weight: 600;
-  white-space: nowrap;
-}
-.jobs-add-btn { --icon-btn-box: var(--control-h); }
-/* Sort toggle (issue #229) — same compact footprint as the Add button,
-   always visible (Add is edit-mode-only). */
-/* Measured 26x18 (#1124) — the smallest control in the app. */
-.jobs-sort-btn {
-  font-size: var(--font-caption);
-  padding: 6px 10px;
-  min-height: var(--row-sm);
-  min-width: var(--row-sm);
-  white-space: nowrap;
-}
-.jobs-search-bar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 10px;
-  color: var(--muted);
-}
-.jobs-search-bar input {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-sm);
-  background: var(--card-off);
-  color: var(--fg);
-  font: inherit;
-}
-/* The sole search-bar button (#jobsSearchClear): the vendored icon-button at
-   36px, its ::before reaching the 44px floor (design.md Touch targets). */
-.jobs-search-bar .icon-button { --icon-btn-box: 36px; }
+.jobs-toolbar .jobs-search { flex: 1; min-width: 0; }
+.jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
+/* The field's clear button, pulled to its right edge like the Projects
+   filter's star. */
+.jobs-search-clear { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
 .jobs-search-empty {
   list-style: none;
   padding: 16px 4px;
   text-align: center;
 }
-.job-search-hit .launch-btn { width: 100%; }
+/* A run-output hit: the matching line may take two lines. */
 .jobs-search-snippet {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  overflow: hidden;
   white-space: normal;
 }
-/* Edit mode uses the canonical compact track here; its accessible name and
-   title carry the label so the three-control summary still fits a phone. */
 /* Never let the action cluster shove the title into a two-line wrap —
    truncate the title instead (the vendored disclosure grid stays 1fr auto). */
 .jobs-card .collapse-main { min-width: 0; }
@@ -1158,81 +1029,63 @@ button.settings-row:active { background: var(--card-2); }
   padding-block: 0.2em;
   margin-block: -0.2em;
 }
-/* Agenda panel (issue #230) — foldable 🗓️ Schedule list above Registered
-   jobs. Day headers separate time-ordered rows; tapping a row reveals that
-   job in the list below. */
-.jobs-agenda-body { padding: 4px 0 8px; }
-.jobs-agenda-day {
-  font-size: var(--font-caption);
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  padding: 8px 16px 4px;
-  border-top: 1px solid var(--line);
-  margin-top: 4px;
-}
-.jobs-agenda-day:first-child { border-top: 0; margin-top: 0; }
-.jobs-agenda-row {
+
+/* Next up (#1438): the tab's glance card. Its header is one 52px button
+   (the card head's glyph and title, a chevron right) opening the agenda
+   sheet; the fires run full-bleed under a hairline. */
+.jobs-next-card { padding: 0; }
+.jobs-next-title { display: block; }
+.jobs-next-head {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.4em;
   width: 100%;
-  /* A row is a tap target (it reveals its job): the 44px floor (#1174). */
-  min-height: var(--row-sm);
-  padding: 8px 16px;
-  background: none;
+  min-height: var(--row-md);
+  padding: 0 4px 0 14px;
   border: 0;
+  border-radius: var(--radius);
+  background: transparent;
   color: inherit;
-  text-align: left;
   font: inherit;
+  text-align: left;
   cursor: pointer;
 }
-.jobs-agenda-row:hover { background: rgb(from var(--fg) r g b / 0.04); }
-.jobs-agenda-time {
+.jobs-next-head:active { background: var(--accent-soft); }
+.jobs-next-head .icon { width: var(--icon-title); height: var(--icon-title); }
+.jobs-next-head-text { flex: 1; min-width: 0; }
+.jobs-next-card .action-rows:not(:empty) { border-top: 1px solid var(--line-muted); }
+.jobs-next-card .empty-state {
+  border-top: 1px solid var(--line-muted);
+  padding: var(--space-md);
+}
+.jobs-next-card .empty-state[hidden] { display: none; }
+/* A fire's time: the leading value, tabular so the column lines up. */
+.jobs-fire-time {
+  flex: none;
+  min-width: 3.25em;
+  font-size: var(--font-body);
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  /* The accent TEXT role, not the link accent: dark --accent read 4.21:1 on
-     the row's hover wash, which a tap leaves stuck on a phone (#1175). */
-  color: var(--accent-text);
-  min-width: 42px;
-}
-.jobs-agenda-name {
-  flex: 1 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.jobs-agenda-frequent {
-  padding: 8px 16px 2px;
-  border-top: 1px solid var(--line);
-  margin-top: 4px;
+  color: var(--fg);
 }
 
-/* Countdown chip on the pills row. Reuses .kind-pill (muted, no border);
-   an accent text colour sets "when it next fires" apart from the cadence
-   chip. Scoped under .launch-btn to beat `.launch-btn .kind-pill`'s
-   `color: var(--muted)` (equal specificity, later in the cascade). */
-.launch-btn .job-countdown-chip {
-  color: var(--accent-text);
-  font-weight: 600;
-}
+/* The agenda sheet (#230, a sheet since #1438): day groups under the
+   Settings overline headers' type (the one legal caps role), the frequent
+   jobs in the footer. */
+.jobs-agenda-sheet { width: min(480px, calc(100vw - 24px)); }
+.jobs-agenda-day { margin: 12px 4px 4px; }
+.jobs-agenda-day:first-child { margin-top: 0; }
+.jobs-agenda-frequent { margin: 12px 4px 0; }
 
-/* Missed-fire coverage badge (issue #697) — "this schedule is not firing".
-   Same .kind-pill geometry as its row neighbours, danger-coloured because it
-   means the job silently produced nothing. Scoped under .launch-btn for the
-   same specificity reason as the countdown chip above. */
-.launch-btn .job-coverage-pill {
-  color: var(--danger-text);
-}
-
-/* The row's detail block (#1130): the facts the two-line row hands off,
-   as label/value rows above the runs list. Caption-size keys in --muted, so
-   the values read first. No rule under it (#1348): the run tiles carry their
-   own edges, so its bottom padding alone sets them apart. */
+/* The sheet's detail block (#1130, in the sheet since #1438): label/value
+   rows above the runs list, muted keys so the values read first. No rule
+   under it (#1348): the run tiles carry their own edges, so its bottom
+   padding alone sets them apart. */
 .job-details {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 10px 16px 12px;
+  padding: 0 0 12px;
 }
 .job-detail-row {
   display: flex;
@@ -1254,62 +1107,39 @@ button.settings-row:active { background: var(--card-2); }
   gap: 4px 6px;
   margin-top: 4px;
 }
-.job-detail-flags .kind-pill {
-  font-size: var(--font-caption);
-  color: var(--fg);
-  background: var(--neutral-soft);
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  white-space: nowrap;
+.job-detail-flags .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
-/* The history sits in its OWN <li> right under the job row — previously
-   it was nested inside the row's <li> and the row's display:flex squeezed
-   the row's contents into a vertical strip while the panel took the rest.
-   As a sibling <li> it gets the full UL width without fighting the row's
-   flex context. */
-.jobs-history-li {
-  list-style: none;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-top: 0;
-  border-radius: 0 0 var(--radius) var(--radius);
-  margin-top: -1px;
-  padding: 0;
-  display: block;
-  overflow: hidden;
+/* The job sheet (#1438): the vendored modal at full height; its sticky
+   footer keeps Run now at the foot however long the log. */
+.job-sheet {
+  width: min(480px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
 }
-.jobs-history-bar {
+.job-sheet .detail-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--card-2);
-  border-bottom: 1px solid var(--line);
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
 }
-.jobs-history-bar .jobs-history-title {
-  font-size: var(--font-body-sm);
-  color: var(--muted);
-  /* Long job names shouldn't push ✕ Close off the right edge. */
+.job-sheet-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.jobs-history-bar .jobs-history-close {
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--fg);
-  border-radius: var(--radius-sm);
-  padding: 6px 12px;
+.job-sheet-body { flex: 1 0 auto; }
+.job-sheet-section {
+  margin: 4px 0 8px;
   font-size: var(--font-label);
-  min-height: var(--control-h);
-  flex-shrink: 0;
+  font-weight: 600;
+  line-height: 1.1;
 }
-.jobs-history-body { padding: 8px 12px 12px; }
 
 .jobs-runs-list {
   list-style: none;
@@ -2071,28 +1901,6 @@ textarea.input-native { height: auto; }
   position: relative;
   justify-content: center;
 }
-/* Jobs (#1130): one visible action at the tint tier plus the ⋯ menu, side
-   by side. Row-sized like the Life OS conversation actions -- this app's
-   .button-tint stretches to width:100% for its
-   full-width instances, which a row-level action must not do. */
-.app-item .row-actions.job-row-actions {
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  padding-right: 10px;
-}
-/* A 44px square: the glyph is the label, and the row's text column needs
-   every pixel the rail does not take. */
-.job-item .job-run-btn {
-  flex: none;
-  width: auto;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 10px;
-  font-size: var(--font-label);
-}
-/* The kebab's stand-in on a row with no menu (#1207): its box, unseen. */
-.job-item .job-menu-slot { visibility: hidden; }
 /* The kebab keeps the 52px slot the gear held, and `justify-content: center`
    on the rail above centres it against the row's full height — the
    alignment #1025 asked for. */
@@ -3655,7 +3463,7 @@ body.terminal-open {
    🚀 review launch on the right. The badge is a coloured dot + label whose
    colour tracks how stale the recap ledger is — green/accent fresh, amber
    (--attention) past 7 days, red (--danger) past 14, muted when never run. Mirrors
-   the .health-dot colour vocabulary used elsewhere. */
+   the status colour vocabulary used elsewhere. */
 .lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
 .lifeos-recap-badge {
   display: inline-flex; align-items: center; gap: 6px;
@@ -5038,6 +4846,60 @@ span.chief-answer-ref { color: var(--muted); }
   }
   /* The row whose session is in the view keeps the accent-soft tint. */
   #sessionsList li.session-item[aria-current="true"] {
+    background: var(--accent-soft);
+    --muted: var(--accent-text);
+  }
+}
+
+/* ---------- wide layout: Jobs tab list-and-detail (#1438) ---------- */
+/* The same master-detail as the Code tab: the job sheet docks as the detail
+   pane (opened non-modal by jobs.js at this query), list : detail = 1 :
+   1.5 right of the rail. With no job open, the pane says so. */
+.job-detail-empty { display: none; }
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(nav.tabs[data-active-tab="jobs"]) .app {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: var(--layout-rail);
+    width: calc((100% - var(--layout-rail)) / 2.5);
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+  }
+  body:has(nav.tabs[data-active-tab="jobs"]) #jobSheet[open]:not(:modal),
+  body:has(nav.tabs[data-active-tab="jobs"]):not(:has(#jobSheet[open])) .job-detail-empty {
+    position: fixed;
+    inset: 0 0 0 calc(var(--layout-rail) + (100% - var(--layout-rail)) / 2.5);
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+  #jobSheet[open]:not(:modal) .detail-card { border-radius: 0; }
+  body:has(nav.tabs[data-active-tab="jobs"]):not(:has(#jobSheet[open])) .job-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--muted);
+  }
+  .job-detail-empty .icon {
+    width: var(--icon-feature);
+    height: var(--icon-feature);
+  }
+  /* The row whose job is in the pane keeps the accent-soft tint. */
+  #jobsList li.job-row[aria-current="true"] {
     background: var(--accent-soft);
     --muted: var(--accent-text);
   }

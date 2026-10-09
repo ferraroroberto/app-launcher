@@ -221,8 +221,14 @@ def test_pty_session_renders_with_both_stop_buttons(
 def test_jobs_row_renders_sparkline_and_duration_chip(
     authed_page: Page, base_url: str
 ) -> None:
-    """Issue #66 — the Jobs row must render the sparkline + duration chip
-    when stats are present, and the ⚠️ stuck marker when ``job.stuck``.
+    """Issue #66 — the Jobs row must render the sparkline when stats are
+    present, the percentiles in the detail block, and the stuck marker when
+    ``job.stuck``.
+
+    Since #1438 the row is ``li.job-row`` (sparkline + a "stuck" exception
+    chip on its meta line; the status dot and duration chip are gone) and the
+    percentiles/last-run sentence are in the job sheet (``dialog#jobSheet``)
+    opened by tapping the row.
 
     We route-mock ``/api/jobs`` to return one synthetic stuck job so the
     live polling renders it through the production code path — the
@@ -266,7 +272,7 @@ def test_jobs_row_renders_sparkline_and_duration_chip(
     _navigate_collecting_errors(authed_page, base_url)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
     # Sparkline: 5 dots, the failed one carries .down, running carries .live.
     spark = row.locator("[data-role='sparkline']")
@@ -275,28 +281,29 @@ def test_jobs_row_renders_sparkline_and_duration_chip(
     assert dot_count == 5, f"expected 5 sparkline dots, got {dot_count}"
     assert spark.locator(".job-spark-dot.down").count() == 1
     assert spark.locator(".job-spark-dot.live").count() == 1
-    # Percentiles and the last-run sentence moved off the row into the
-    # detail block it opens (#1130): the row is two lines.
-    expect(row.locator("[data-role='duration-chip']")).to_have_count(0)
-    row.locator("button[aria-label^='View run history']").click()
-    details = authed_page.locator("[data-role='job-details']")
+    # The stuck exception chip sits on the row's meta line (#1438; it was a
+    # stuck-tinted status dot).
+    expect(row.locator(".job-stuck-chip")).to_have_text("stuck")
+    # Percentiles and the last-run sentence are in the job sheet's detail
+    # block (#1130, #1438), opened by tapping the row.
+    row.locator("button.action-row-main").click()
+    details = authed_page.locator("#jobSheetBody [data-role='job-details']")
     expect(details).to_be_visible()
     expect(details).to_contain_text("p50")
     expect(details).to_contain_text("p95")
     # Stuck marker shows up in the last-run line.
     expect(details).to_contain_text("stuck")
-    # Health dot inherits the stuck class.
-    expect(row.locator("[data-role='status-dot']")).to_have_class(
-        re.compile(r"\bstuck\b")
-    )
 
 
 def test_parameterised_job_run_dialog_posts_values(
     authed_page: Page, base_url: str
 ) -> None:
-    """Issue #67 — tapping ▶ on a job with declared params must open the
+    """Issue #67 — running a job with declared params must open the
     run-parameters dialog (not fire immediately); submitting it must POST
     ``{params: {...}}`` to ``/api/jobs/<id>/run``.
+
+    Since #1438 the run is started from the row's kebab ``Run now`` item
+    (``.job-run-item``; there is no per-row ▶ button).
 
     Hermetic: we route-mock ``/api/jobs`` to return one synthetic
     parameterised job, intercept the run endpoint, and assert the
@@ -352,11 +359,12 @@ def test_parameterised_job_run_dialog_posts_values(
     _navigate_collecting_errors(authed_page, base_url)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='scrape']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='scrape']")
     expect(row).to_be_visible()
-    # Tap ▶ — for a parameterised job this must open the run dialog,
-    # NOT fire the API directly.
-    row.locator("[data-role='run-btn']").click()
+    # Run now from the kebab — for a parameterised job this must open the
+    # run dialog, NOT fire the API directly.
+    row.locator("button.job-menu-anchor").click()
+    row.locator(".job-run-item").click()
 
     dialog = authed_page.locator("#jobRunDialog")
     expect(dialog).to_be_visible()

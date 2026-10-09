@@ -236,7 +236,7 @@ export function wireFavoriteAgent() {
 // just moved one tap deeper, which is where a monthly action belongs.
 // An agent's button is disabled with a hover hint when its CLI isn't
 // installed. Coding rows are disk-scanned, so they carry no rename/remove
-// controls — Settings → Edit mode does not apply here.
+// controls.
 // One agent's launch button for a project row. Extracted when the row
 // dropped to a single agent button (#1070) so the row and the ⋯ menu's
 // launch rows derive their label, their disabled state and their hint from

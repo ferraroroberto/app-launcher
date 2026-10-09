@@ -1,18 +1,20 @@
 /* Jobs tab: list registered jobs, fire run-now, view history (issue #47).
  *
- * Expanded-panel model — runs list + one selected run's output:
- *   - Tap a job row → panel opens, defaults to the newest run selected.
- *   - The runs list (max 5) is always shown; tap a run to switch the log.
- *   - Polling only refreshes the cheap runs list. A selected live run uses
- *     one WebSocket snapshot plus deltas; finalized output is fetched once.
+ * Tapping a job opens its sheet (#1438, decision 7 of #1432; an inline
+ * accordion before): details, flags, Kill stuck run, the runs list and one
+ * selected run's output, with Run now as the sheet's one primary action.
+ *   - The sheet opens on the newest run; tap a run to switch the log.
+ *   - Polling refreshes the cheap runs list. A selected live run uses one
+ *     WebSocket snapshot plus deltas; finalized output is fetched once.
  *   - Scroll position is preserved on update; auto-follow-bottom kicks
  *     in only when the user was already at the bottom (classic tail -f).
+ *   - On the wide desktop layout the sheet docks beside the list as the
+ *     detail pane (design.md master-detail) instead of covering it.
  *
  * This is the residual module after the audit #315/#408 splits: list
- * orchestration + poller + the expanded run-history panel. Compact row
- * rendering and patching live in jobs-row.js; the edit/add and run-now
- * dialogs live in jobs-dialog.js; the foldable Schedule agenda panel lives
- * in jobs-agenda.js.
+ * orchestration, the poller and the job sheet. Row rendering lives in
+ * jobs-row.js; the edit/add and run-now dialogs in jobs-dialog.js; the Next
+ * up card and the agenda sheet in jobs-agenda.js.
  */
 
 import { els, state } from './state.js';
@@ -27,15 +29,17 @@ import {
   toast,
 } from './api.js';
 import { fmtAgo } from './sessions.js';
+import { confirmDialog } from './confirm-dialog.js';
+import { isWideLayout } from './layout.js';
 import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
-import { wireJobsAgenda } from './jobs-agenda.js';
+import { fetchAgenda, wireJobsAgenda } from './jobs-agenda.js';
 import {
   endJobRowRender,
   formatBytes,
   formatDuration,
-  patchRowNodes,
   renderJobDetails,
   renderJobRow,
+  runBlockedReason,
   runOutcome,
   statusIcon,
   toEpoch,
@@ -47,15 +51,15 @@ let liveSocket = null;
 let liveSocketKey = null;
 const runExtras = new Map();
 
+function findJob(jobId) {
+  return state.jobs.find(function (j) { return j.id === jobId; }) || null;
+}
+
 // --------------------------------------------------------------- render
 
-// The empty-state block's visibility, shared by the full render and the
-// poll's in-place patch. The patch used to leave it alone, and its early
-// return on "same number of rows" is taken for 0 === 0 — so a launcher with
-// no jobs registered rendered an empty card and never the reason why
-// (#1133, pre-existing: `hidden` starts set in the markup).
-// Until the first /api/jobs answer, the list is loading rather than empty:
-// the loading line says so, and the empty state waits for a real zero (#1176).
+// The empty-state block's visibility. Until the first /api/jobs answer, the
+// list is loading rather than empty: the loading line says so, and the
+// empty state waits for a real zero (#1133, #1176).
 function syncJobsEmpty() {
   if (els.jobsLoading) els.jobsLoading.hidden = state.jobsLoaded;
   els.jobsEmpty.hidden = !state.jobsLoaded || !!state.jobsSearchQuery ||
@@ -64,27 +68,32 @@ function syncJobsEmpty() {
 }
 
 // The job row's callbacks, shared by the full list and a search's name hits.
-function rowHandlers() {
-  return {
-    editMode: state.editMode,
-    onToggle: toggleExpanded,
-    onRun: runJobNow,
-    onPause: togglePause,
-    onEdit: openJobDialog,
-    onRemove: removeJob,
-  };
+// Each is called through, never bound at load: jobs-dialog.js imports this
+// module too, and a cycle must not hand a row an unset binding.
+const rowHandlers = {
+  onOpen: function (job) { openJobSheet(job.id); },
+  onRun: function (job, options) { runJobNow(job, options); },
+  onPause: function (job) { togglePause(job); },
+  onEdit: function (job) { openJobDialog(job); },
+  onRemove: function (job) { removeJob(job); },
+};
+
+function appendRow(host, job) {
+  const li = renderJobRow(job, rowHandlers);
+  // The row whose job is in the docked detail pane keeps the accent-soft
+  // tint (design.md master-detail).
+  if (state.sheetJob === job.id) li.setAttribute('aria-current', 'true');
+  host.appendChild(li);
 }
 
 export function renderJobs() {
   const host = els.jobsList;
-  host.innerHTML = '';
+  host.replaceChildren();
   renderHomeHead();
-  const searching = !!state.jobsSearchQuery;
   syncJobsEmpty();
-  if (els.jobsAddBtn) els.jobsAddBtn.hidden = !state.editMode;
   syncSortBtn();
 
-  if (searching) {
+  if (state.jobsSearchQuery) {
     // Jobs whose name matches come first, as ordinary rows (#1132: the
     // search used to match run output only, never the job you were looking
     // for by name), then the run-output hits.
@@ -93,41 +102,34 @@ export function renderJobs() {
       return String(job.name || '').toLowerCase().indexOf(query) !== -1 ||
         String(job.id || '').toLowerCase().indexOf(query) !== -1;
     });
-    named.forEach(function (job) {
-      host.appendChild(renderJobRow(job, rowHandlers()).li);
-    });
+    named.forEach(function (job) { appendRow(host, job); });
     renderSearchMatches(host, named.length);
-    endJobRowRender();
-    return;
+  } else {
+    sortedJobs().forEach(function (job) { appendRow(host, job); });
   }
-
-  sortedJobs().forEach(function (job) {
-    host.appendChild(renderJobRow(job, rowHandlers()).li);
-    if (state.expandedJob === job.id) {
-      host.appendChild(renderHistoryLi(job));
-    }
-  });
   // An open ⋯ menu whose row is gone drops its state (row-menu contract).
   endJobRowRender();
 }
 
+// A run-output hit: the run's outcome glyph, "job · run", and the matching
+// line, opening the job's sheet on that run.
 function renderSearchMatches(host, namedCount) {
   const matches = state.jobsSearchMatches || [];
   // Nothing by name and nothing in the output: the canonical empty state.
   if (els.jobsFilterEmpty) els.jobsFilterEmpty.hidden = !!(matches.length || namedCount);
   matches.forEach(function (match) {
     const li = document.createElement('li');
-    li.className = 'app-item job-search-hit';
+    li.className = 'action-row job-search-hit';
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'launch-btn session-open';
+    button.className = 'action-row-main';
     const title = document.createElement('span');
-    title.className = 'session-head';
+    title.className = 'action-row-title';
     title.innerHTML = icon(statusIcon(runOutcome(match))) + ' ';
     title.append(match.job_id + ' · ' + match.run_id);
     button.appendChild(title);
     const snippet = document.createElement('span');
-    snippet.className = 'meta jobs-search-snippet';
+    snippet.className = 'action-row-meta jobs-search-snippet';
     snippet.textContent = match.snippet || '(match in empty output)';
     button.appendChild(snippet);
     button.addEventListener('click', function () { openSearchMatch(match); });
@@ -140,7 +142,6 @@ async function runJobsSearch() {
   const query = (els.jobsSearchInput && els.jobsSearchInput.value || '').trim();
   state.jobsSearchQuery = query;
   if (els.jobsSearchClear) els.jobsSearchClear.hidden = !query;
-  stopLiveStream();
   if (!query) {
     state.jobsSearchMatches = [];
     renderJobs();
@@ -161,8 +162,7 @@ async function runJobsSearch() {
 }
 
 function openSearchMatch(match) {
-  const job = state.jobs.find(function (entry) { return entry.id === match.job_id; });
-  if (!job) {
+  if (!findJob(match.job_id)) {
     toast('That job is no longer registered.', 'error');
     return;
   }
@@ -170,10 +170,7 @@ function openSearchMatch(match) {
   if (els.jobsSearchClear) els.jobsSearchClear.hidden = true;
   state.jobsSearchQuery = '';
   state.jobsSearchMatches = [];
-  state.expandedJob = match.job_id;
-  state.selectedRun = { jobId: match.job_id, runId: match.run_id };
-  renderJobs();
-  refreshExpandedContent(match.job_id, { fetchOutput: true }).catch(function () {});
+  openJobSheet(match.job_id, match.run_id);
 }
 
 // ------------------------------------------------------------ sort + order
@@ -204,72 +201,80 @@ function byName(a, b) {
   return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
 }
 
+// An icon button (#1438): the glyph is the current order, and the name says
+// what a tap does.
 function syncSortBtn() {
   const btn = els.jobsSortBtn;
   if (!btn) return;
-  if (state.jobsSort === 'name') {
-    btn.innerHTML = icon('arrow-down-up') + ' A–Z';
-    btn.title = 'Sorted A–Z — tap to sort by next run';
-  } else {
-    btn.innerHTML = icon('timer') + ' Next run';
-    btn.title = 'Sorted by next run — tap to sort A–Z';
-  }
+  const byNameNow = state.jobsSort === 'name';
+  btn.innerHTML = icon(byNameNow ? 'arrow-down-up' : 'timer');
+  btn.title = byNameNow
+    ? 'Sorted A–Z — tap to sort by next run'
+    : 'Sorted by next run — tap to sort A–Z';
+  btn.setAttribute('aria-label', btn.title);
+  btn.dataset.sort = state.jobsSort;
 }
 
 function toggleSort() {
   state.jobsSort = state.jobsSort === 'next' ? 'name' : 'next';
-  localStorage.setItem('launcher.jobsSort', state.jobsSort);
+  try { localStorage.setItem('launcher.jobsSort', state.jobsSort); } catch (_) { /* storage blocked */ }
   renderJobs();
 }
 
-// Tapping an agenda row (jobs-agenda.js) jumps to that job in the
-// Registered-jobs list and expands it — the agenda is a lens, not a
-// second control surface.
-export function revealJob(jobId) {
-  const job = state.jobs.find(function (j) { return j.id === jobId; });
-  if (!job) return;
-  if (state.expandedJob !== jobId) {
-    state.expandedJob = jobId;
-    state.selectedRun = null;
-    renderJobs();
-    refreshExpandedContent(jobId, { fetchOutput: true }).catch(function () {});
-  }
-  const row = els.jobsList.querySelector(
-    "li.app-item[data-id='" + cssEscape(jobId) + "']"
-  );
-  if (row && row.scrollIntoView) {
-    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }
+// ------------------------------------------------------------- job sheet
+
+function sheetOpen() {
+  return !!(els.jobSheet && els.jobSheet.open);
 }
 
-// --------------------------------------------------- expanded history <li>
+/* Open a job's sheet, on its newest run or on `runId` (a search hit). On a
+ * phone it is a modal; on the wide layout it docks as the detail pane, so
+ * another row's tap swaps the job in place. */
+export function openJobSheet(jobId, runId) {
+  const job = findJob(jobId);
+  if (!job || !els.jobSheet) return;
+  stopLiveStream();
+  state.sheetJob = jobId;
+  state.selectedRun = runId ? { jobId: jobId, runId: runId } : null;
+  buildSheet(job);
+  if (!sheetOpen()) {
+    if (isWideLayout()) els.jobSheet.show();
+    else els.jobSheet.showModal();
+  }
+  renderJobs();
+  refreshSheetContent(jobId, { fetchOutput: true }).catch(function () {});
+}
 
-function renderHistoryLi(job) {
-  const li = document.createElement('li');
-  li.className = 'jobs-history-li';
-  li.dataset.historyFor = job.id;
+function closeJobSheet() {
+  if (sheetOpen()) els.jobSheet.close();
+}
 
-  const bar = document.createElement('div');
-  bar.className = 'jobs-history-bar';
-  const title = document.createElement('span');
-  title.className = 'jobs-history-title';
-  title.textContent = 'Recent runs · ' + job.name;
-  bar.appendChild(title);
-  const close = document.createElement('button');
-  close.type = 'button';
-  close.className = 'jobs-history-close';
-  close.innerHTML = icon('x') + ' Close';
-  close.addEventListener('click', function (ev) { ev.stopPropagation(); collapseExpanded(); });
-  bar.appendChild(close);
-  li.appendChild(bar);
+// The sheet closed, by ✕, Escape or a tab change: forget the job and its
+// stream, and drop the row's selected tint.
+function onSheetClosed() {
+  stopLiveStream();
+  state.sheetJob = null;
+  state.selectedRun = null;
+  renderJobs();
+}
 
-  const body = document.createElement('div');
-  body.className = 'jobs-history-body';
-  body.dataset.role = 'history-body';
+// The sheet's body, in the accordion's order: details and flags, Kill stuck
+// run (renderKillButton adds it), the runs, the output, artifacts and the
+// webhook payload.
+function buildSheet(job) {
+  els.jobSheetTitle.textContent = job.name;
+  els.jobSheetTitle.title = job.name;
+  const body = els.jobSheetBody;
+  body.replaceChildren();
+  body.dataset.jobId = job.id;
 
-  // Everything the two-line row no longer shows (#1130) lives here, above
-  // the runs it belongs to.
   body.appendChild(renderJobDetails(job));
+
+  const runsHead = document.createElement('h3');
+  runsHead.className = 'job-sheet-section';
+  runsHead.dataset.role = 'runs-head';
+  runsHead.textContent = 'Recent runs';
+  body.appendChild(runsHead);
 
   const runsList = document.createElement('ul');
   runsList.className = 'jobs-runs-list';
@@ -312,14 +317,37 @@ function renderHistoryLi(job) {
   webhookDetails.appendChild(webhookPre);
   body.appendChild(webhookDetails);
 
-  li.appendChild(body);
-  return li;
+  syncSheetRun(job);
 }
 
+// The poll's refresh of the facts above the runs: the job object is new on
+// every poll, so the detail block and Run now follow it.
+function refreshSheetDetails(job) {
+  const body = els.jobSheetBody;
+  const old = body.querySelector('[data-role="job-details"]');
+  if (old) old.replaceWith(renderJobDetails(job));
+  els.jobSheetTitle.textContent = job.name;
+  syncSheetRun(job);
+}
+
+// Run now, the sheet's one primary action: disabled while the job runs or
+// when the job cannot be run from here, the reason in its name.
+function syncSheetRun(job) {
+  const btn = els.jobSheetRun;
+  const blocked = runBlockedReason(job);
+  btn.disabled = !!blocked;
+  btn.innerHTML = job.running
+    ? icon('hourglass') + ' Running…'
+    : icon('play') + ' Run now';
+  btn.title = blocked || 'Run ' + job.name + ' now';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+// The sheet's body while it shows `jobId`, else null: every writer below
+// goes through this, so a late response for another job writes nothing.
 function panelEl(jobId) {
-  return els.jobsList.querySelector(
-    'li.jobs-history-li[data-history-for="' + cssEscape(jobId) + '"]'
-  );
+  if (!sheetOpen() || state.sheetJob !== jobId) return null;
+  return els.jobSheetBody;
 }
 
 /* Provenance chip (issue #72): compact "who fired this" label from the
@@ -361,11 +389,6 @@ function endedChip(r) {
   return '';
 }
 
-function cssEscape(s) {
-  if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(s);
-  return String(s).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
-}
-
 function redrawRunsList(jobId, runs) {
   const panel = panelEl(jobId);
   if (!panel) return;
@@ -381,7 +404,7 @@ function redrawRunsList(jobId, runs) {
   }
   // Look up the job's current params declaration to spot keys that have
   // since been removed (used by the Re-run pre-fill flow, issue #67).
-  const job = state.jobs.find(function (j) { return j.id === jobId; });
+  const job = findJob(jobId);
   const declaredNames = new Set(((job && job.params) || []).map(function (p) { return p.name; }));
 
   // Render the whole server response (already capped at MAX_RUNS_PER_JOB) —
@@ -500,7 +523,7 @@ function writeOutput(jobId, runId, text, status, extras) {
     if (rss) bits.push(rss);
     label.textContent = bits.join(' · ');
   }
-  renderKillButton(jobId, runId, status, extras);
+  renderKillButton(jobId, runId, status);
   const isSameRun = tail.dataset.runId === runId;
   const wasAtBottom = !isSameRun ||
     (tail.scrollTop + tail.clientHeight >= tail.scrollHeight - 4);
@@ -593,25 +616,6 @@ async function copyOutputTail(tail) {
 
 // ---------------------------------------------------------- interactions
 
-function collapseExpanded() {
-  stopLiveStream();
-  state.expandedJob = null;
-  state.selectedRun = null;
-  renderJobs();
-  fetchJobs().catch(function () {});
-}
-
-async function toggleExpanded(job) {
-  if (state.expandedJob === job.id) {
-    collapseExpanded();
-    return;
-  }
-  state.expandedJob = job.id;
-  state.selectedRun = null;
-  renderJobs();
-  await refreshExpandedContent(job.id, { fetchOutput: true });
-}
-
 function selectRun(jobId, runId) {
   stopLiveStream();
   state.selectedRun = { jobId: jobId, runId: runId };
@@ -621,7 +625,7 @@ function selectRun(jobId, runId) {
   refreshOutputForRun(jobId, runId).catch(function () {});
 }
 
-async function refreshExpandedContent(jobId, opts) {
+async function refreshSheetContent(jobId, opts) {
   opts = opts || {};
   // Always-cheap fetch: the runs list (no output bytes).
   let runs = [];
@@ -632,13 +636,14 @@ async function refreshExpandedContent(jobId, opts) {
   } catch (exc) {
     if (exc instanceof AuthRequiredError) return;
   }
+  if (state.sheetJob !== jobId) return;
 
   // Default selection on first paint: newest run.
   if (!state.selectedRun || state.selectedRun.jobId !== jobId) {
     if (runs.length) state.selectedRun = { jobId: jobId, runId: runs[0].run_id };
   }
   // If selection no longer exists (pruned), fall back to newest — but only on
-  // an explicit/initial refresh, never on the 2 s poll. Snapping the poll back
+  // an explicit/initial refresh, never on the poll. Snapping the poll back
   // to the newest run yanked the user off an older run's log they were reading
   // (#316); on the poll we leave a vanished selection alone.
   if (!opts.poll && state.selectedRun && state.selectedRun.jobId === jobId &&
@@ -713,7 +718,7 @@ function openLiveStream(jobId, runId) {
     } else if (frame.type === 'status') {
       stopLiveStream();
       refreshOutputForRun(jobId, runId).catch(function () {});
-      refreshExpandedContent(jobId, {}).catch(function () {});
+      refreshSheetContent(jobId, {}).catch(function () {});
     }
   });
   socket.addEventListener('close', function () {
@@ -746,26 +751,26 @@ async function toggleRunPin(jobId, run) {
       }
     );
     run.pinned = next;
-    const job = state.jobs.find(function (entry) { return entry.id === jobId; });
-    if (job) job.pinned_count = Math.max(0, (job.pinned_count || 0) + (next ? 1 : -1));
+    const job = findJob(jobId);
+    if (job) {
+      job.pinned_count = Math.max(0, (job.pinned_count || 0) + (next ? 1 : -1));
+      refreshSheetDetails(job);
+    }
     redrawRunsList(jobId, state.jobRuns[jobId] || []);
-    patchRowsInPlace();
     toast(next ? 'Run pinned.' : 'Run unpinned.', 'good', next ? { icon: 'pin' } : undefined);
   } catch (exc) {
     apiFailToast('Pin update failed', exc);
   }
 }
 
-function renderKillButton(jobId, runId, status, extras) {
+// Kill stuck run, above the runs: only for the selected live run of a job
+// the server flags stuck (an older run cannot be running).
+function renderKillButton(jobId, runId, status) {
   const panel = panelEl(jobId);
   if (!panel) return;
-  const body = panel.querySelector('[data-role="history-body"]');
-  if (!body) return;
-  let killBtn = body.querySelector('[data-role="kill-btn"]');
-  const job = state.jobs.find(function (j) { return j.id === jobId; });
+  let killBtn = panel.querySelector('[data-role="kill-btn"]');
+  const job = findJob(jobId);
   const isLive = status === 'running' || status === 'pending';
-  // Only show kill on the *latest* run of a stuck job — older runs
-  // can't be running (status would already be final by definition).
   const showKill = !!(job && job.stuck && isLive);
   if (!showKill) {
     if (killBtn) killBtn.remove();
@@ -774,7 +779,7 @@ function renderKillButton(jobId, runId, status, extras) {
   if (!killBtn) {
     killBtn = document.createElement('button');
     killBtn.type = 'button';
-    killBtn.className = 'icon-btn danger jobs-kill-btn';
+    killBtn.className = 'button-tint danger jobs-kill-btn';
     killBtn.dataset.role = 'kill-btn';
     killBtn.innerHTML = icon('octagon-x') + ' Kill stuck run';
     // Exactly one listener for the button's lifetime, reading the run id the
@@ -783,20 +788,25 @@ function renderKillButton(jobId, runId, status, extras) {
     killBtn.addEventListener('click', function () {
       killRun(jobId, killBtn.dataset.runId);
     });
-    body.insertBefore(killBtn, body.querySelector('[data-role="output-label"]'));
+    panel.insertBefore(killBtn, panel.querySelector('[data-role="runs-head"]'));
   }
   killBtn.dataset.runId = runId;
 }
 
 async function killRun(jobId, runId) {
-  if (!confirm('Kill the running process tree for this run?')) return;
+  const ok = await confirmDialog({
+    title: 'Kill this run?',
+    message: 'This ends the running process tree for ' + runId + '.',
+    action: 'Kill run',
+  });
+  if (!ok) return;
   try {
     await jsonApi(
       '/api/jobs/' + encodeURIComponent(jobId) + '/runs/' + encodeURIComponent(runId) + '/kill',
       { method: 'POST' }
     );
     toast('Kill signal sent.', 'good', { icon: 'octagon-x' });
-    await refreshExpandedContent(jobId, { fetchOutput: true });
+    await refreshSheetContent(jobId, { fetchOutput: true });
     await fetchJobs();
   } catch (exc) {
     apiFailToast('Kill failed', exc);
@@ -813,6 +823,8 @@ async function togglePause(job) {
     toast(job.paused ? 'Resumed ' + job.name : 'Paused ' + job.name, 'good',
       { icon: job.paused ? 'play' : 'pause' });
     await fetchJobs();
+    // A paused job's fires leave Next up, a resumed one's come back.
+    fetchAgenda().catch(function () {});
   } catch (exc) {
     apiFailToast(action.charAt(0).toUpperCase() + action.slice(1) + ' failed', exc);
   }
@@ -833,14 +845,19 @@ export async function runJobNow(job, options) {
   if (opts.params) body.params = opts.params;
   if (opts.dryRun) body.dry_run = opts.dryRun;
   const hasBody = Object.keys(body).length > 0;
-  // Confirm-on-fire (issue #69). A flagged job needs explicit
-  // confirmation before a real fire; a dry-run "check" is exempt
-  // (no side effects). The ?confirmed=1 keeps the server gate honest.
+  // Confirm-on-fire (issue #69), through the vendored confirm sheet since
+  // #1438. A flagged job needs explicit confirmation before a real fire; a
+  // dry-run "check" is exempt (no side effects). The ?confirmed=1 keeps the
+  // server gate honest.
   const isCheck = opts.dryRun === 'check';
   const needConfirm = !!(job && job.confirm) && !isCheck;
-  if (needConfirm &&
-      !confirm('Run ' + job.name + '? This job requires confirmation before running.')) {
-    return;
+  if (needConfirm) {
+    const ok = await confirmDialog({
+      title: 'Run ' + job.name + '?',
+      message: 'This job requires confirmation before running.',
+      action: 'Run',
+    });
+    if (!ok) return;
   }
   try {
     const res = await jsonApi(
@@ -851,6 +868,7 @@ export async function runJobNow(job, options) {
         headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
         body: hasBody ? JSON.stringify(body) : undefined,
       });
+    let started = false;
     if (res && res.dry_run) {
       if (res.status === 'dry_run_failed') {
         toast('Dry-run check failed for ' + job.name + ' — see history.', 'error', { icon: 'flask-conical' });
@@ -859,6 +877,7 @@ export async function runJobNow(job, options) {
       } else {
         toast('Dry-run started for ' + job.name + '.', 'good', { icon: 'flask-conical' });
         job.running = true;
+        started = true;
       }
     } else if (res && res.status === 'queued') {
       const blocker = res.mutex_blocked_by ? ' (behind ' + res.mutex_blocked_by + ')' : '';
@@ -866,8 +885,19 @@ export async function runJobNow(job, options) {
     } else {
       toast('Started ' + job.name + '.', 'good', { icon: 'rocket' });
       job.running = true;
+      started = true;
     }
     renderJobs();
+    // The sheet showing this job follows the run it just started, so its
+    // output streams there (#1438).
+    if (state.sheetJob === job.id && sheetOpen()) {
+      syncSheetRun(job);
+      if (res && res.run_id && (started || res.status === 'queued')) {
+        stopLiveStream();
+        state.selectedRun = { jobId: job.id, runId: res.run_id };
+      }
+      refreshSheetContent(job.id, { fetchOutput: true }).catch(function () {});
+    }
     // Brief delayed nudge so the new run shows up promptly without
     // waiting for the next poll tick.
     setTimeout(function () { fetchJobs().catch(function () {}); }, 1500);
@@ -890,66 +920,48 @@ export async function runJobNow(job, options) {
   }
 }
 
-// Poll the residual list in place through jobs-row.js's shared DOM contract.
-function patchRowsInPlace() {
-  syncJobsEmpty();
-  const host = els.jobsList;
-  const existing = Array.from(host.querySelectorAll('li.app-item[data-id]'));
-  // Compare against the *sorted* order — the DOM is rendered sorted, so a
-  // length OR order change (a job's next_run_epoch crossing another's
-  // between polls) means the in-place patch can't keep rows aligned; fall
-  // back to a full re-render in that case.
-  const ordered = sortedJobs();
-  if (existing.length !== ordered.length) { renderJobs(); return; }
-  for (let i = 0; i < existing.length; i++) {
-    const li = existing[i];
-    const job = ordered[i];
-    if (!job || li.dataset.id !== job.id) { renderJobs(); return; }
-    const nodes = li._rowNodes;
-    if (!nodes) { renderJobs(); return; }
-    patchRowNodes(nodes, job);
-  }
-}
-
 // ------------------------------------------------------------ fetch + wire
 
 export async function fetchJobs() {
   if (state.tab !== 'jobs') return;
   if (state.jobsSearchQuery) {
     await runJobsSearch();
-    return;
-  }
-  // While a row is expanded, polling refreshes that one panel's content
-  // in place — touching the row list would tear down the user's view.
-  if (state.expandedJob) {
-    // Poll path: refresh content in place without stealing the user's run
-    // selection (see the `opts.poll` guard in refreshExpandedContent, #316).
-    await refreshExpandedContent(state.expandedJob, { poll: true });
-    return;
-  }
-  try {
-    const body = await jsonApi('/api/jobs');
-    state.jobs = body.jobs || [];
-    state.jobsLoaded = true;
-    patchRowsInPlace();
-  } catch (exc) {
-    logPollFailure('jobs fetch failed', exc);
-    if (!state.jobsLoaded && els.jobsLoading) {
-      els.jobsLoading.querySelector('.empty-state-message').textContent =
-        'Could not load jobs — retrying while this tab is open.';
+  } else {
+    try {
+      const body = await jsonApi('/api/jobs');
+      state.jobs = body.jobs || [];
+      state.jobsLoaded = true;
+      renderJobs();
+    } catch (exc) {
+      logPollFailure('jobs fetch failed', exc);
+      if (!state.jobsLoaded && els.jobsLoading) {
+        els.jobsLoading.querySelector('.empty-state-message').textContent =
+          'Could not load jobs — retrying while this tab is open.';
+      }
     }
+  }
+  // The open sheet refreshes in place the way the accordion did: its facts
+  // from the fresh job, then its runs, without stealing the user's run
+  // selection (the `opts.poll` guard in refreshSheetContent, #316).
+  if (state.sheetJob && sheetOpen()) {
+    const job = findJob(state.sheetJob);
+    // Removed (from its kebab, beside the docked pane): nothing left to show.
+    if (!job) {
+      if (state.jobsLoaded && !state.jobsSearchQuery) closeJobSheet();
+      return;
+    }
+    refreshSheetDetails(job);
+    await refreshSheetContent(state.sheetJob, { poll: true });
   }
 }
 
 export function wireJobs() {
   if (!els.tabJobs) return;
-  // Empty-state actions (#1238 J-09): the Schedule panel's Add job flow,
-  // and the search field's own clear.
+  // Empty-state actions (#1238 J-09): the Add job flow, and the search
+  // field's own clear.
   const jobsEmptyAction = document.getElementById('jobsEmptyAction');
   if (jobsEmptyAction) {
-    jobsEmptyAction.addEventListener('click', function () {
-      openJobDialog(null);
-    });
+    jobsEmptyAction.addEventListener('click', function () { openJobDialog(null); });
   }
   const jobsFilterEmptyAction = document.getElementById('jobsFilterEmptyAction');
   if (jobsFilterEmptyAction) {
@@ -973,10 +985,24 @@ export function wireJobs() {
     });
   }
   if (els.jobsSearchClear) {
-    els.jobsSearchClear.addEventListener('click', function () {
+    els.jobsSearchClear.addEventListener('click', function (ev) {
+      // Inside the field's <label>: keep the click from focusing through it.
+      ev.preventDefault();
       if (els.jobsSearchInput) els.jobsSearchInput.value = '';
       runJobsSearch();
       if (els.jobsSearchInput) els.jobsSearchInput.focus();
+    });
+  }
+  if (els.jobSheet) {
+    els.jobSheetClose.addEventListener('click', closeJobSheet);
+    els.jobSheet.addEventListener('close', onSheetClosed);
+    els.jobSheetRun.addEventListener('click', function () {
+      const job = findJob(state.sheetJob);
+      if (job) runJobNow(job);
+    });
+    // The docked pane belongs to the Jobs list: leaving the tab closes it.
+    document.addEventListener('launcher:tab', function (ev) {
+      if (ev.detail && ev.detail.tab !== 'jobs') closeJobSheet();
     });
   }
   wireJobsAgenda();
