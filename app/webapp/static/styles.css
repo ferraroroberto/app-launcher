@@ -105,6 +105,8 @@
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-heading-xl: 2rem;
   --font-heading-lg: 1.5rem;
+  --font-heading-md: 1.25rem; /* design.md heading-md: a section title inside a view, e.g. a reply's `##` */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --font-body: 1rem;
   --font-body-sm: 0.875rem;  /* every secondary line: paths, status, row meta, helper copy */
   --font-label: 0.875rem;
@@ -2219,31 +2221,93 @@ textarea.input-native { height: auto; }
 .tr-turn > .tr-trunc { padding: 0 14px 12px; }
 .tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
 .tr-md { white-space: normal; }
-.tr-md p { margin: 0 0 8px; }
-.tr-md p:last-child, .tr-md ul:last-child, .tr-md ol:last-child, .tr-md pre:last-child { margin-bottom: 0; }
-.tr-md ul, .tr-md ol { margin: 0 0 8px; padding-left: 20px; }
-.tr-md h1, .tr-md h2, .tr-md h3, .tr-md h4, .tr-md h5, .tr-md h6 {
-  margin: 8px 0 4px;
-  font-size: var(--font-label);
+/* Reply typography (#1474, Step 1/6 of #1472). Headings used to render at the
+   14px label size -- smaller than the 16px body, so a bold line out-ranked an
+   `##`. Now `#`/`##` take heading-md and `###` and below are body-size bold;
+   paragraphs and lists breathe at 12px with a 6px gap between items. A
+   heading's top margin collapses to 0 at the top of a reply. */
+.tr-md p { margin: 0 0 12px; }
+.tr-md p:last-child, .tr-md ul:last-child, .tr-md ol:last-child,
+.tr-md .md-block:last-child { margin-bottom: 0; }
+.tr-md ul, .tr-md ol { margin: 0 0 12px; padding-left: 22px; }
+.tr-md li { margin: 0 0 6px; padding-left: 2px; }
+.tr-md li:last-child { margin-bottom: 0; }
+.tr-md li::marker { color: var(--muted); }
+.tr-md h1, .tr-md h2 {
+  margin: 18px 0 8px;
+  font-size: var(--font-heading-md);
+  font-weight: 700;
+  line-height: 1.25;
 }
-/* A fenced block in a chat turn (#1100) had exactly one rule --
-   `overflow-x: auto` -- and was UA default for everything else: no surface,
-   no padding, the UA's 1em margin against `.tr-md p`'s 8px, and
-   `white-space: pre` (`.tr-text`'s `overflow-wrap: anywhere` does not reach a
-   `pre`). So a long line became a bare unwrapped strip that panned sideways
-   and stayed panned, silently clipping its leading characters. It now shares
-   `.tr-pre`'s rule below -- see the note there for why wrap, not scroll.
-   Inline code is the other half of the same gap: `.tr-md` had no `code` rule
-   at all, so a backtick span was undifferentiated body text. */
+.tr-md h3, .tr-md h4, .tr-md h5, .tr-md h6 {
+  margin: 14px 0 6px;
+  font-size: var(--font-body);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.tr-md > :first-child { margin-top: 0; }
+/* Inline code (#1100, restyled #1474) is the `code-inline` chip: mono at
+   0.875em of the text around it (a caption-sized chip read as a timestamp),
+   on `neutral-soft` -- never `--card-off`, which is true black inside a dark
+   card (the "black hole", design.md `chip`). 6px radius is the chip scale,
+   below `--radius-sm`. */
 .tr-md code {
-  padding: 1px 5px;
-  background: var(--card-off);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
+  padding: 1px 6px;
+  background: var(--neutral-soft);
+  border-radius: 6px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  white-space: break-spaces;
 }
-/* ...and the fence's own `<code>` child must not paint the chip a second
-   time, which would draw a pill around the whole listing. */
-.tr-md pre code { padding: 0; background: none; font-size: inherit; }
+/* A fenced block (#1100, restyled #1474): `markdown.js` wraps every fence in
+   `.md-block` -- a `--card` frame on a hairline, a small header carrying the
+   language and a copy button, then the listing. Unscoped, like the tables
+   and quotes below, because the Life OS document viewer renders the same
+   markup. The listing itself carries no surface of its own, so the frame is
+   the only box; the fence's `<code>` child resets the chip above so it
+   cannot paint a pill around the whole listing. */
+.md-block {
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+.md-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 4px 2px 12px;
+  border-bottom: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.md-block-lang { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-block-copy { --icon-btn-box: 32px; flex: none; }
+.md-block pre.md-code {
+  margin: 0;
+  padding: 10px 12px;
+  background: none;
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.md-block pre code {
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: inherit;
+  white-space: inherit;
+}
+/* In Chat the listing wraps rather than scrolls -- see the note on `.tr-pre`
+   below for why. The Life OS viewer keeps its own scroll route. */
+.tr-md .md-block pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }
 /* GFM tables (#1141) -- `markdown.js` emits the wrapper for every consumer
    (Chat pane, Life OS conversation + document viewers), so these rules are
    deliberately unscoped. A wide table scrolls sideways inside its own
@@ -2537,10 +2601,9 @@ textarea.input-native { height: auto; }
 .tr-resume-search { margin-top: 8px; }
 .tr-resume-list { max-height: 50vh; overflow-y: auto; }
 .tr-resume-opt[hidden] { display: none; }
-/* The transcript's one preformatted surface, shared by a tool result
-   (`.tr-pre`) and a fenced code block inside a chat turn (`.tr-md pre`,
-   #1100) rather than declared twice -- they had become the same ten
-   declarations, and two copies drift.
+/* The transcript's preformatted surface for a tool result (`.tr-pre`). A
+   chat fence shared this rule until #1474 gave it the `.md-block` frame
+   (above); it keeps the wrap-not-scroll choice below.
    Wrap, not scroll, and deliberately: at `--font-caption` on a 390px phone
    about 40 monospace characters fit, so almost every real code line would be
    pannable, and a pan here persists -- `applyLive` appends settled turns
@@ -2550,14 +2613,8 @@ textarea.input-native { height: auto; }
    can break mid-line; that is the right trade in Chat, whose job is reading,
    because Terminal mode is one tap away and keeps full fidelity. It is also
    what `.tr-pre` already chose for raw tool output, which is far more
-   column-shaped than a fence.
-   NOT merged with `.lifeos-file-content pre.md-code`, which renders the same
-   `markdown.js` fence: that one sits on `--bg` and needs `--card` to read as
-   a surface, where on a turn card the contrast has to invert to `--card-off`.
-   Of its five declarations only the radius would survive, so a shared rule
-   would owe both sides an override and say less than it hid. */
-.tr-pre,
-.tr-md pre {
+   column-shaped than a fence. */
+.tr-pre {
   margin: 0 0 8px;
   padding: 8px 10px;
   background: var(--card-off);
@@ -2688,8 +2745,12 @@ textarea.input-native { height: auto; }
 .chg-diff {
   margin: 0;
   padding: 6px 0;
-  background: var(--card-off);
-  border-radius: var(--radius-sm);
+  /* The card surface on a hairline (#1474), never `--card-off`: that is true
+     black inside a dark card. Same frame as a fenced block (`.md-block`). */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
   color: var(--code-fg);
   font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
   font-size: var(--font-caption);
@@ -2700,7 +2761,12 @@ textarea.input-native { height: auto; }
 .chg-diff > span { display: block; padding: 0 8px; }
 .chg-diff .d-add { background: var(--diff-add-bg); color: var(--diff-add-fg); }
 .chg-diff .d-del { background: var(--diff-del-bg); color: var(--diff-del-fg); }
-.chg-diff .d-hunk { color: var(--diff-hunk-fg); padding-top: 4px; padding-bottom: 4px; }
+.chg-diff .d-hunk {
+  background: var(--neutral-soft);
+  color: var(--diff-hunk-fg);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
 .chg-diff .d-meta { color: var(--muted); }
 /* Per-step diffs (#1349): the same diff inside a Chat step, plus a
    line-number gutter when the harness recorded real numbers. A numbered line
@@ -4574,18 +4640,9 @@ span.chief-answer-ref { color: var(--muted); }
   padding: 1px 5px;
   font-size: var(--font-caption);
 }
-.lifeos-file-content pre.md-code {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 10px 12px;
-  overflow-x: auto;
-}
-.lifeos-file-content pre.md-code code {
-  background: none;
-  border: none;
-  padding: 0;
-}
+/* A fence here is the same `.md-block` frame as in Chat (#1474); the document
+   viewer keeps its scroll route, where Chat wraps. */
+.lifeos-file-content pre.md-code { overflow-x: auto; }
 
 /* ---------- context filter (issue #713) ---------- */
 /* The Settings-tab card's mode control is the vendored range-tab row

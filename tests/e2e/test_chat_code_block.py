@@ -25,10 +25,13 @@ Two legs, both run red against pre-fix CSS first:
   fence's own ``<code>`` child is pinned *not* to paint it a second time —
   otherwise a chip would be drawn around the whole listing.
 
-The fix does not add a third copy of these declarations: ``.tr-md pre`` joins
-``.tr-pre``'s existing rule, which had become the identical ten declarations,
-with ``.tr-pre``'s own ``max-height``/``overflow-y`` split out. So this module
-also guards ``.tr-pre`` — a tool result's surface — against drift.
+#1474 (Step 1/6 of the Chat redesign, #1472) restyled the fence and the text
+around it, and this module pins that too: the fence is now an ``.md-block``
+frame (card surface on a hairline, 12px radius, a header with the language and
+a copy button) around a transparent, still-wrapping listing; headings outrank
+the body (``##`` at 20px, ``###`` body-size bold); lists carry 12px / 6px
+spacing; inline code is the mono ``neutral-soft`` chip at 14px / 6px radius.
+The copy click is pinned in ``test_session_transcript.py``.
 
 The Life OS file viewer renders the same ``pre.md-code`` and is not asserted
 here, deliberately: the shared rule is scoped to ``.tr-md`` / ``.tr-pre``, and
@@ -71,11 +74,15 @@ _SID = "sid-code-block-1100"
 # exists for, and the shape of the reported heading line.
 _LONG_LINE = "### session_host.stale_relevant==false&sha=" + "0123456789abcdef" * 4
 _REPLY = (
+    "## What I ran\n\n"
     "Here is the check I ran:\n\n"
-    "```\n"
+    "```sh\n"
     + _LONG_LINE + "\n"
     "short line\n"
     "```\n\n"
+    "### Result\n\n"
+    "- first point\n"
+    "- second point\n\n"
     "…and it came back clean, per `GET /api/version`."
 )
 
@@ -133,28 +140,49 @@ def test_chat_fenced_block_is_a_bounded_surface_that_wraps(
     # The fence rendered as a block, not as raw ``` text in a paragraph.
     expect(pre.locator("code")).to_contain_text("session_host.stale_relevant")
 
-    # Surface: the same treatment `.tr-pre` already had, tokens only.
+    # Surface (#1474): the frame is the `.md-block` wrapper -- a card on a
+    # hairline, 12px radius, with the language in its header -- and the
+    # listing inside it wraps and carries no fill of its own. Asserted as
+    # "not transparent" rather than one rgb() so the pin holds in both themes.
+    block = authed_page.locator("#transcriptList .tr-md .md-block")
+    expect(block).to_have_count(1)
+    expect(block.locator(".md-block-lang")).to_have_text("sh")
+    expect(block.locator(".md-block-copy")).to_be_visible()
+    expect(block).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    expect(block).to_have_css("border-top-width", "1px")
+    expect(block).to_have_css("border-radius", "12px")
+    expect(block).to_have_css("margin-bottom", "12px")
     expect(pre).to_have_css("white-space", "pre-wrap")
     expect(pre).to_have_css("overflow-wrap", "anywhere")
+    expect(pre).to_have_css("background-color", "rgba(0, 0, 0, 0)")
     for side in ("top", "bottom"):
-        expect(pre).to_have_css(f"padding-{side}", "8px")
-    for side in ("left", "right"):
         expect(pre).to_have_css(f"padding-{side}", "10px")
-    expect(pre).to_have_css("border-radius", "8px")
-    # --card-off, not transparent: the block has to read as its own surface.
-    # Asserted as "not transparent" rather than one rgb() so the pin holds in
-    # both themes (the token differs; having a surface at all does not).
-    expect(pre).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
-    # `.tr-md p`'s rhythm, never the UA's 1em.
-    expect(pre).to_have_css("margin-top", "0px")
-    expect(pre).to_have_css("margin-bottom", "8px")
+    for side in ("left", "right"):
+        expect(pre).to_have_css(f"padding-{side}", "12px")
+    expect(pre).to_have_css("margin-bottom", "0px")
 
-    # Inline code is the same surface as a chip -- the other half of the same
-    # UA-default gap, and named in the issue's approach.
+    # Reply typography (#1474): a heading outranks the 16px body -- it used to
+    # render at the 14px label size, under it.
+    body = authed_page.locator("#transcriptList .tr-md > p").first
+    expect(body).to_have_css("font-size", "16px")
+    h2 = authed_page.locator("#transcriptList .tr-md h2")
+    expect(h2).to_have_css("font-size", "20px")
+    expect(h2).to_have_css("font-weight", "700")
+    h3 = authed_page.locator("#transcriptList .tr-md h3")
+    expect(h3).to_have_css("font-size", "16px")
+    expect(h3).to_have_css("font-weight", "700")
+    # Lists breathe: 12px under the list, 6px between items.
+    expect(authed_page.locator("#transcriptList .tr-md ul")).to_have_css("margin-bottom", "12px")
+    expect(authed_page.locator("#transcriptList .tr-md li").first).to_have_css("margin-bottom", "6px")
+
+    # Inline code is the `code-inline` chip: mono at 0.875em of the body (14px),
+    # on neutral-soft with a 6px radius.
     inline = authed_page.locator("#transcriptList .tr-md p code")
     expect(inline).to_have_text("GET /api/version")
     expect(inline).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
-    expect(inline).to_have_css("border-radius", "8px")
+    expect(inline).to_have_css("border-radius", "6px")
+    expect(inline).to_have_css("font-size", "14px")
+    expect(inline).to_have_css("font-family", re.compile(r"monospace"))
     # ...and the fence's own `<code>` child must not paint it a second time
     # inside the block, which would draw a chip around the whole listing.
     fence_code = pre.locator("code")

@@ -675,6 +675,48 @@ def test_blockquote_renders_as_a_quote_and_copies_clean_text(
     expect(turn).to_have_js_property("open", True)
 
 
+@pytest.mark.iphone
+def test_fenced_block_header_names_the_language_and_copies_the_listing(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1474: a fence is a card-surface block with a header carrying the
+    language and a copy button that puts the listing, exactly as fenced, on
+    the clipboard. Reuses the blockquote copy path (``quote-copy.js``)."""
+    calls: list = []
+    _mock_sessions_list(authed_page)
+    reply = "\n".join([
+        "Run this:", "", "```bash", "git status", "echo \"<done>\"", "```", "",
+        "Then check.",
+    ])
+    page_body = {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None,
+        "entries": [
+            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
+             "text": reply, "truncated": False, "sidechain": False},
+        ],
+    }
+    _mock_transcript(authed_page, {None: page_body}, calls)
+    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page, _row(authed_page))
+
+    turn = authed_page.locator("#transcriptList .tr-assistant").first
+    block = turn.locator(".md-block")
+    expect(block).to_be_visible()
+    expect(block.locator(".md-block-lang")).to_have_text("bash")
+    expect(block.locator("pre code")).to_have_text('git status\necho "<done>"')
+
+    block.locator(".md-block-copy").click()
+    authed_page.wait_for_function(
+        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
+    )
+    assert authed_page.evaluate("() => window.__copied[0]") == 'git status\necho "<done>"'
+    expect(authed_page.locator(".toast")).to_contain_text("Code copied")
+    expect(turn).to_have_js_property("open", True)
+
+
 # ------------------------------------------------------- #1020 tool errors
 
 def _outcome_page(*, tool_errors: str, failed: bool) -> dict:
