@@ -100,9 +100,9 @@ function renderScanResults() {
 }
 
 export function wireScanDialog() {
-  els.rescanBtn.addEventListener('click', runScan);
-  // The Apps tab's empty registries scan straight from their empty state
-  // (#1238 J-09) instead of pointing at Settings.
+  // The Apps card's last row (#1437, moved here from Settings › Folders),
+  // and the empty registries straight from their empty state (#1238 J-09).
+  els.appsScanRow.addEventListener('click', runScan);
   ['appsEmptyAction', 'registeredTraysEmptyAction'].forEach(function (id) {
     const btn = document.getElementById(id);
     if (btn) btn.addEventListener('click', runScan);

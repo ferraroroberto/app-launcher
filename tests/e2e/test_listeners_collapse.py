@@ -1,4 +1,4 @@
-"""Regression pin for issue #480 (Port listeners: collapsible child rows).
+"""Regression pin for issue #480 (Other ports: collapsible child rows).
 
 The feature: a Port-listeners parent row that groups dependent helper
 services under it (#224's parent_port nesting) now renders collapsed by
@@ -83,11 +83,10 @@ def listeners_page(authed_page: Page, base_url: str) -> Page:
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabApps").click()
-    # The Port-listeners panel is collapsed by default (#383) — open it so
-    # the rows are visible/clickable.
-    authed_page.locator("#paneApps details.listeners-card").evaluate(
-        "el => { el.open = true; }"
-    )
+    # The listeners live in the Other ports sheet since #1437, opened from
+    # the Running card's last row.
+    authed_page.locator("#otherPortsRow").click()
+    expect(authed_page.locator("#otherPortsSheet")).to_be_visible()
     authed_page.wait_for_selector("#listenersList .listener-row", timeout=10_000)
     return authed_page
 
@@ -163,7 +162,10 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
         )
 
     page.route("**/api/ports/*/kill", _capture_kill)
-    page.on("dialog", lambda d: d.accept())
+    # The vendored confirm sheet asks, never native confirm() (#1437).
+    native: list = []
+    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
+    confirm = page.locator("#confirmDialog")
 
     # Stop process sits in the ⋮ menu (#1129): the kebab is the row's sibling
     # control, so using it on the collapsed parent fires the API and must NOT
@@ -171,12 +173,26 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     parent = _parent_row(page)
     parent.locator(".action-row-kebab").click()
     parent.locator(".listener-kill").click()
+    expect(confirm).to_be_visible()
+    # Its ✕ is a "no": nothing is killed.
+    confirm.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
+    assert killed_ports == [], f"a dismissed confirm still killed {killed_ports!r}"
+    parent = _parent_row(page)
+    parent.locator(".action-row-kebab").click()
+    parent.locator(".listener-kill").click()
+    confirm.locator("#confirmDialogOk").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     assert killed_ports == ["8000"], f"parent kill hit {killed_ports!r}"
+    # The sheet the confirm opened over is still up.
+    expect(page.locator("#otherPortsSheet")).to_be_visible()
 
     # Expand, then kill one child individually.
     _parent_row(page).locator(".action-row-main").click()
     child = page.locator("#listenersList .listener-row.child").first
     child.locator(".action-row-kebab").click()
     child.locator(".listener-kill").click()
+    confirm.locator("#confirmDialogOk").click()
+    expect(confirm).to_be_hidden()
     assert killed_ports == ["8000", "8081"], f"child kill hit {killed_ports!r}"
+    assert native == [], f"a native dialog fired: {native!r}"

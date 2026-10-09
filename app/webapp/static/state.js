@@ -6,6 +6,7 @@
  *   state.apps         — array from /api/apps (each entry carries its own .health)
  *   state.agents       — array from /api/agents ({id,label,available} per agent)
  *   state.runningApps  — array from /api/apps/running (launcher-spawned apps)
+ *   state.listeners    — array from /api/ports/probe; null until the first read
  *   state.sessions     — array from /api/claude-code/sessions
  *   state.pendingScan  — array from /api/apps/scan, surfaced in scan dialog
  *   state.webauthn     — { configured, enrollment_open, devices[] }
@@ -65,6 +66,10 @@ export const state = {
   // for a moment beats one that offers a launch the server would 503.
   vscodeAvailable: false,
   runningApps: [],
+  // Every port listener on this PC (#1437): the Other ports sheet and its
+  // row's count. null until the first probe lands, so the row can say
+  // "Checking…" instead of a count it does not have.
+  listeners: null,
   // Git flags for the Coding tiles + Board backlog (issue #115, always-on
   // since #496). null only until the boot fetch lands; then a map of
   // project id → { is_git, branch, default_branch, on_default_branch,
@@ -367,8 +372,9 @@ export const els = {
   appsEmpty: document.getElementById('appsEmpty'),
   registeredTraysList: document.getElementById('registeredTraysList'),
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
+  traysSummaryMeta: document.getElementById('traysSummaryMeta'),
+  appsScanRow: document.getElementById('appsScanRow'),
 
-  rescanBtn: document.getElementById('rescanBtn'),
   tokensList: document.getElementById('tokensList'),
   tokensEmpty: document.getElementById('tokensEmpty'),
   tokenLabelInput: document.getElementById('tokenLabelInput'),
@@ -406,6 +412,12 @@ export const els = {
   listenersEmpty: document.getElementById('listenersEmpty'),
   runningAppsList: document.getElementById('runningAppsList'),
   runningAppsEmpty: document.getElementById('runningAppsEmpty'),
+  runningAppsNote: document.getElementById('runningAppsNote'),
+  otherPortsRow: document.getElementById('otherPortsRow'),
+  otherPortsMeta: document.getElementById('otherPortsMeta'),
+  otherPortsSheet: document.getElementById('otherPortsSheet'),
+  otherPortsSheetClose: document.getElementById('otherPortsSheetClose'),
+  listenersCheckAgain: document.getElementById('listenersCheckAgain'),
   statusReadout: document.getElementById('statusReadout'),
   buildReadout: document.getElementById('buildReadout'),
 

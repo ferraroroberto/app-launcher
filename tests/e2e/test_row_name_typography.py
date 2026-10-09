@@ -173,7 +173,9 @@ def test_helper_notes_are_upright_and_labels_sentence_cased(
         m = stable_read(lambda: authed_page.evaluate(_LINES, sel))
         assert m is not None and m["lines"] == 1, f"{sel} wraps at 390px: {m}"
 
-    note = authed_page.locator(".launcher-note").first
+    # The card footnotes are .group-footer lines since #1437 (the last
+    # .launcher-note went with the Apps tab rework).
+    note = authed_page.locator(".group-footer").first
     expect(note).to_have_css("font-style", "normal")
     expect(note).to_have_css("font-weight", "400")
 

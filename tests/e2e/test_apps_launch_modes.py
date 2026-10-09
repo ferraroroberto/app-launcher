@@ -17,6 +17,7 @@ smoke suite.
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -208,8 +209,20 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")
 
 
-def test_path_returns_in_edit_mode(authed_page: Page, base_url: str) -> None:
-    _navigate(authed_page, base_url, edit=True)
+@pytest.mark.parametrize("edit", [False, True], ids=["edit-off", "edit-on"])
+def test_path_and_rename_remove_live_in_the_menu(
+    authed_page: Page, base_url: str, edit: bool
+) -> None:
+    """#1437 (decision 5 of #1432): Rename and Remove are in every app's
+    kebab whatever the Jobs tab's Edit mode says, and the bat path is the
+    menu's header line instead of swapping into the context line."""
+    _navigate(authed_page, base_url, edit=edit)
     row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".action-row-meta")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
+    expect(row.locator(".action-row-meta")).to_have_text("Streamlit")
+    row.locator(".action-row-kebab").click()
+    menu = row.locator(".row-menu")
+    expect(menu.locator(".row-menu-head")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
+    expect(menu.locator(".app-rename-btn")).to_be_visible()
+    # Remove is the danger item, last.
+    expect(menu.locator(":scope > *").last).to_have_class(re.compile(r"\bapp-remove-btn\b"))

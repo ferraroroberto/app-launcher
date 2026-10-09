@@ -34,9 +34,9 @@ import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
 // One edit-mode state, one switch: the Registered-jobs summary toggle on
-// the Jobs tab (issue #719 removed the duplicate Settings-head toggle —
-// the Jobs tab is where editing actually happens, so it carries the entry
-// point for both Jobs-tab and Apps-tab row editing).
+// the Jobs tab (issue #719 removed the duplicate Settings-head toggle).
+// It gates the Jobs tab's editing only: the Apps rows' Rename and Remove
+// stopped depending on it in #1437.
 function syncEditModeButtons() {
   if (els.jobsEditBtn) setSwitch(els.jobsEditBtn, state.editMode);
 }
@@ -45,9 +45,7 @@ function toggleEditMode() {
   state.editMode = !state.editMode;
   syncEditModeButtons();
   localStorage.setItem('launcher.editMode', state.editMode ? '1' : '0');
-  // Re-render apps lists to show/hide rename + remove buttons.
-  fetchApps().catch(function () {});
-  // Same toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
+  // The toggle drives the Jobs tab's ➕ Add + per-row edit/remove.
   renderJobs();
 }
 

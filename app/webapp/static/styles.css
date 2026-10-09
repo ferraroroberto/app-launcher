@@ -5120,15 +5120,100 @@ span.chief-answer-ref { color: var(--muted); }
 .channel-row .avatar-glyph { color: var(--accent); }
 .sessions-card #sessionsList:empty + .channel-row { border-top: 0; }
 
+/* ---------- Apps tab (#1437, step 5/7 of #1432) ---------- */
+/* An action-row that leads with an avatar (action-rows.js `avatar`): the
+   main button lays out as a row, the avatar then the title and meta
+   stacked, at the session row's 12px gap. */
+.action-row-main.has-avatar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.action-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A drill-in row at the foot of a list (Other ports, Scan for new apps):
+   the action-row's geometry and hairline, the avatar in the leading slot,
+   a chevron in the kebab's 44px column, because it opens a sheet. */
+.drill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 4px 4px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drill-row:has(.srow-meta) { min-height: var(--row-lg); }
+.drill-row[hidden] { display: none; }
+.drill-row:active { background: var(--accent-soft); }
+.drill-row .avatar-glyph { color: var(--accent); }
+.drill-row-chevron {
+  flex: none;
+  width: var(--row-sm);
+  text-align: center;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+/* Full-bleed like the rows above it: the card body's 14px inset is for
+   its other children (toolbar, filter, empty states). */
+.card.action-list > .collapse-body > .drill-row { margin-inline: 0; }
+/* With no row above it there is no hairline to draw. */
+.running-apps-card #runningAppsList:empty + .empty-state + .drill-row,
+.running-apps-card #runningAppsList:empty + .empty-state[hidden] + .drill-row { border-top: 0; }
+/* Footnotes under a card's rows (iOS inset-group footers, .group-footer). */
+.running-apps-note,
+.trays-footer { margin-top: 4px; }
+.running-apps-note[hidden] { display: none; }
+.listeners-footer { margin: 12px 0; }
+
+/* A row menu's header line (row-menu.js `header`): a muted fact above the
+   items, a pid or a bat path. It takes the menu's width from the items
+   (width 0, min-width 100%) and wraps a long path rather than widening the
+   menu off the screen. */
+.row-menu-head {
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  padding: 8px 12px 6px;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 2px;
+}
+
+/* The confirm sheet (confirm-dialog.js): one muted line under the title. */
+.confirm-dialog-message {
+  margin: 0 0 16px;
+  font-size: var(--font-body);
+  color: var(--muted);
+}
+
 /* Projects: the uncommitted count in the summary, behind an attention dot. */
-.projects-summary-meta {
+.projects-summary-meta,
+.trays-summary-meta {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: var(--font-body-sm);
   font-weight: 400;
 }
-.projects-summary-meta[hidden] { display: none; }
+.projects-summary-meta[hidden],
+.trays-summary-meta[hidden] { display: none; }
 .tone-dot {
   flex: none;
   width: 8px;

@@ -1,42 +1,51 @@
-/* Apps tab port-listeners panel: what is bound on this machine right now,
+/* Apps tab "Other ports" (#1437): what is bound on this machine right now,
  * with helper services collapsed under their parent app's row (#224/#480)
- * and a per-port Stop process in each row's ⋮ menu (#1129).
+ * and a per-port Stop process in each row's ⋮ menu (#1129). The list lives
+ * in a sheet opened from the Running card's last row, which carries the
+ * count of listeners the launcher did not start (the Port listeners card
+ * merged into Running).
  *
- * Split out of apps.js in issue #723. Self-contained — it owns its own
- * fetch, its own expand state, and imports nothing from apps.js.
+ * Split out of apps.js in issue #723. It owns its own fetch and expand
+ * state, and imports nothing from apps.js (apps.js imports copyUrl and the
+ * row's repaint from here).
  */
 
-import { els } from './state.js';
+import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { actionRow } from './action-rows.js';
 import { createRowMenu } from './row-menu.js';
+import { confirmDialog } from './confirm-dialog.js';
 
 const listenerMenu = createRowMenu('project-menu');
 
-// ----------------------------------------------------------- listeners panel (Apps tab)
 // Parent rows with dependent children keep them collapsed behind a tap
 // (#480). Module-level so the expand state survives the poll's re-renders.
 const expandedListenerPorts = new Set();
-let lastListenerItems = [];
+
+// The one Copy URL every Apps-tab menu uses (Running, Apps, Other ports).
+export async function copyUrl(url) {
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('Link copied', 'good');
+  } catch (exc) {
+    apiFailToast('Could not copy the link', exc);
+  }
+}
 
 export async function fetchListeners() {
   try {
     const body = await jsonApi('/api/ports/probe');
-    renderListeners(body.listeners || []);
+    state.listeners = body.listeners || [];
+    renderListeners();
   } catch (exc) {
     // Best-effort poll — don't spam toasts.
     logPollFailure('listeners fetch failed', exc);
   }
 }
 
-function renderListeners(items) {
-  lastListenerItems = items;
-  const host = els.listenersList;
-  host.innerHTML = '';
-  els.listenersEmpty.hidden = items.length !== 0;
-
-  // Group helper services (parent_port set, parent present) under their
-  // parent app's row so one app reads as one top-level entry — see #224.
+// Group helper services (parent_port set, parent present) under their
+// parent app's row so one app reads as one top-level entry — see #224.
+function groupListeners(items) {
   const byPort = {};
   items.forEach(function (l) { byPort[l.port] = l; });
   const childrenOf = {};
@@ -48,9 +57,38 @@ function renderListeners(items) {
       topLevel.push(l);
     }
   });
+  return { topLevel: topLevel, childrenOf: childrenOf };
+}
 
-  topLevel.forEach(function (l) {
-    const kids = childrenOf[l.port] || [];
+// The Running card's last row: how many top-level listeners (an app with
+// its helpers counts once) are on a port no app launched from here holds.
+// The running list comes from the same tab's poll, so both are current
+// together; before the first probe the row says it is still checking.
+export function renderOtherPortsRow() {
+  if (!els.otherPortsMeta) return;
+  if (state.listeners == null) {
+    els.otherPortsMeta.textContent = 'Checking…';
+    return;
+  }
+  const ours = new Set();
+  state.runningApps.forEach(function (r) { if (r.port) ours.add(r.port); });
+  const n = groupListeners(state.listeners).topLevel
+    .filter(function (l) { return !ours.has(l.port); }).length;
+  els.otherPortsMeta.textContent = n
+    ? n + (n === 1 ? ' listener' : ' listeners') + ' not started here'
+    : 'None besides these';
+}
+
+function renderListeners() {
+  renderOtherPortsRow();
+  const items = state.listeners || [];
+  const host = els.listenersList;
+  host.innerHTML = '';
+  els.listenersEmpty.hidden = items.length !== 0;
+
+  const groups = groupListeners(items);
+  groups.topLevel.forEach(function (l) {
+    const kids = groups.childrenOf[l.port] || [];
     host.appendChild(buildListenerRow(l, false, kids.length > 0));
     if (expandedListenerPorts.has(l.port)) {
       kids.forEach(function (c) {
@@ -61,17 +99,13 @@ function renderListeners(items) {
   listenerMenu.endRender();
 }
 
-async function copyUrl(url) {
-  try {
-    await navigator.clipboard.writeText(url);
-    toast('Link copied', 'good');
-  } catch (exc) {
-    apiFailToast('Could not copy the link', exc);
-  }
-}
-
 async function killListener(l, label) {
-  if (!confirm('Stop ' + label + '?\n\npid ' + l.pid + ' on :' + l.port)) return;
+  const ok = await confirmDialog({
+    title: 'Stop ' + label + '?',
+    message: 'This ends pid ' + l.pid + ' on :' + l.port + '.',
+    action: 'Stop process',
+  });
+  if (!ok) return;
   try {
     const r = await jsonApi('/api/ports/' + l.port + '/kill', { method: 'POST' });
     toast('Killed ' + (r.killed || []).length + ' pid(s) on :' + l.port + '.', 'good');
@@ -103,7 +137,7 @@ function buildListenerRow(l, isChild, hasChildren) {
       ? function () {
         if (expandedListenerPorts.has(l.port)) expandedListenerPorts.delete(l.port);
         else expandedListenerPorts.add(l.port);
-        renderListeners(lastListenerItems);
+        renderListeners();
       }
       : function () { window.open(l.url, '_blank', 'noopener,noreferrer'); },
     kebabClass: 'listener-menu-anchor',
@@ -152,4 +186,19 @@ function buildListenerRow(l, isChild, hasChildren) {
     },
   ]));
   return row.li;
+}
+
+// The Running card's Other ports row opens the sheet, which re-probes on
+// open so the list is never a poll old; Check again is its one action.
+export function wireListeners() {
+  els.otherPortsRow.addEventListener('click', function () {
+    els.otherPortsSheet.showModal();
+    fetchListeners().catch(function () {});
+  });
+  els.otherPortsSheetClose.addEventListener('click', function () {
+    els.otherPortsSheet.close();
+  });
+  els.listenersCheckAgain.addEventListener('click', function () {
+    fetchListeners().catch(function () {});
+  });
 }

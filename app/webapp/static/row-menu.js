@@ -109,7 +109,11 @@ export function createRowMenu(menuClass, opts) {
   const renderers = new WeakMap();
 
   function onKey(ev) {
-    if (ev.key === 'Escape') close();
+    if (ev.key !== 'Escape') return;
+    // One Escape closes one layer: a menu open inside a <dialog> (the Other
+    // ports sheet, #1437) closes without also closing the dialog.
+    ev.preventDefault();
+    close();
   }
 
   // Re-apply the CSS-derived offset in viewport coordinates. A fixed menu no
@@ -221,11 +225,18 @@ export function createRowMenu(menuClass, opts) {
     // Wire `anchor` to toggle a menu of `items` for the row `key`; returns
     // the menu element for the caller to place in the rail. Reopens at once
     // when this row's menu was open before the list re-rendered.
-    attach: function (key, anchor, items) {
+    // `opts.header` (#1437), a value or a function like an item's, is one
+    // muted, non-interactive line above the items: a fact worth a glance
+    // but not the row's width (a pid, a bat path).
+    attach: function (key, anchor, items, opts) {
       const menu = document.createElement('div');
       menu.className = 'row-menu ' + menuClass;
       menu.setAttribute('role', 'menu');
       menu.hidden = true;
+      const header = opts && opts.header;
+      const head = document.createElement('div');
+      head.className = 'row-menu-head';
+      head.setAttribute('role', 'presentation');
       // Every row is built once; a hidden one is *detached* from the menu
       // (not [hidden]) so a count of the menu's buttons — the e2e suite's
       // and any caller's — only ever sees what is offered. Re-appending the
@@ -240,6 +251,14 @@ export function createRowMenu(menuClass, opts) {
       divider.className = 'row-menu-divider';
       divider.setAttribute('role', 'separator');
       const render = function () {
+        const headText = resolve(header) || '';
+        if (headText) {
+          head.textContent = headText;
+          head.title = headText;
+          menu.insertBefore(head, menu.firstChild);
+        } else if (head.parentNode) {
+          head.parentNode.removeChild(head);
+        }
         const shown = [];
         rows.forEach(function (row) {
           if (resolve(row.item.hidden)) {

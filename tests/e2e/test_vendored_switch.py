@@ -8,9 +8,31 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_settings_sheet
-
 pytestmark = pytest.mark.smoke
+
+_ONE_APP = {
+    "scan_root": "C:\\stub",
+    "apps": [{
+        "id": "stub-app", "name": "Stub App", "kind": "webapp",
+        "bat_path": "C:\\stub\\stub-app\\webapp.bat",
+        "added_at": "2026-01-01T00:00:00", "autostart": False,
+    }],
+}
+
+
+def _open_scan_from_apps_tab(page: Page, base_url: str) -> None:
+    """Scan for new apps is the Apps card's last row since #1437 (it was in
+    Settings › Folders). One registered app, so the row shows rather than
+    the empty state's own Scan."""
+    page.route(
+        re.compile(r".*/api/apps$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(_ONE_APP)
+        ),
+    )
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.locator("#tabApps").click()
+    page.locator("#appsScanRow").click()
 
 
 def _assert_switch(page: Page, selector: str) -> None:
@@ -81,10 +103,7 @@ def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None
         ),
     )
 
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    # "Scan for new apps" lives in the Folders sheet (#1435).
-    open_settings_sheet(authed_page, "foldersSheet")
-    authed_page.locator("#rescanBtn").click()
+    _open_scan_from_apps_tab(authed_page, base_url)
 
     toggle = authed_page.locator("#scanResults .scan-row .toggle")
     _assert_switch(authed_page, "#scanResults .scan-row .toggle")
@@ -109,11 +128,8 @@ def test_on_switch_track_is_the_accent_fill_in_both_themes(
             status=200, content_type="application/json", body=json.dumps(payload)
         ),
     )
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    # "Scan for new apps" lives in the Folders sheet (#1435).
-    open_settings_sheet(authed_page, "foldersSheet")
-    authed_page.locator("#rescanBtn").click()
-    toggle = authed_page.locator("#scanResults .scan-row .toggle")
+    _open_scan_from_apps_tab(authed_page, base_url)
+    toggle =authed_page.locator("#scanResults .scan-row .toggle")
     expect(toggle).to_have_attribute("aria-checked", "true")
 
     for theme in ("light", "dark"):
