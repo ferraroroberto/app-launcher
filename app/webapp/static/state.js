@@ -126,8 +126,6 @@ export const state = {
   // until Settings first loads the list.
   apiTokenCount: null,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
-  systemMapAvailable: false, // /api/system-map/status → show/hide the section
-  systemMapObjectUrl: null,  // object URL of the loaded map blob (revoked on reload)
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
@@ -352,12 +350,9 @@ export const els = {
   claudeFilterEmpty: document.getElementById('claudeFilterEmpty'),
   claudeEmpty: document.getElementById('claudeEmpty'),
   favFilterBtn: document.getElementById('favFilterBtn'),
-  systemMapCard: document.getElementById('systemMapCard'),
-  systemMapImage: document.getElementById('systemMapImage'),
-  systemMapStatus: document.getElementById('systemMapStatus'),
-  systemMapLightbox: document.getElementById('systemMapLightbox'),
-  systemMapLightboxImage: document.getElementById('systemMapLightboxImage'),
-  systemMapLightboxClose: document.getElementById('systemMapLightboxClose'),
+  imageLightbox: document.getElementById('imageLightbox'),
+  imageLightboxImage: document.getElementById('imageLightboxImage'),
+  imageLightboxClose: document.getElementById('imageLightboxClose'),
   gitRefreshBtn: document.getElementById('gitRefreshBtn'),
   gitCheckedFooter: document.getElementById('gitCheckedFooter'),
   projectsSummaryMeta: document.getElementById('projectsSummaryMeta'),

@@ -94,7 +94,6 @@ from app.webapp.routers import (
     session_screen,
     session_transcript,
     sessions,
-    system_map,
     tokens,
     webauthn,
 )
@@ -447,7 +446,6 @@ def create_app() -> FastAPI:
     app.include_router(session_screen.router)
     app.include_router(life_os.router)
     app.include_router(board.router)
-    app.include_router(system_map.router)
     app.include_router(webauthn.router)
 
     return app

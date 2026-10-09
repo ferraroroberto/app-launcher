@@ -67,7 +67,6 @@ def _mock(page: Page) -> None:
     # context line and is the last in its serial chain: unmocked, a loaded
     # worker delivered that line after the 5 s expect default (#1247). Only
     # /api/config stays real. Mocked before goto, per the #510 convention.
-    _json_route(page, re.compile(r".*/api/system-map/status$"), {"available": False})
     _json_route(page, re.compile(r".*/api/claude-code/sessions$"), {"sessions": []})
     _json_route(page, re.compile(r".*/api/rate-limits$"), {"quota_lines": []})
     _json_route(page, re.compile(r".*/api/ports/probe$"), {"listeners": []})

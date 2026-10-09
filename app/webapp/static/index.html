@@ -753,20 +753,6 @@
         <p id="gitCheckedFooter" class="group-footer git-checked-footer" hidden></p>
         </div>
       </details>
-
-      <details id="systemMapCard" class="card card--collapsible system-map-card" hidden>
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-map"></use></svg>
-            <h3 class="collapse-title">System map</h3>
-          </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div class="collapse-body system-map-body">
-          <img id="systemMapImage" class="system-map-img" alt="Fleet system map" hidden>
-          <p id="systemMapStatus" class="muted small system-map-status" hidden></p>
-        </div>
-      </details>
     </section>
 
     <section id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
@@ -1765,10 +1751,10 @@
           </label>
           <p id="lifeOsDirHelp" class="field-help">Your life-os copy, which the Life OS tab reads.</p>
           <label class="stacked">
-            <span>System map folder</span>
+            <span>fleet-config folder</span>
             <input id="fleetConfigDir" type="text" class="input-native" aria-describedby="fleetConfigDirHelp">
           </label>
-          <p id="fleetConfigDirHelp" class="field-help">The folder the Code tab's system map is read from (your fleet-config copy).</p>
+          <p id="fleetConfigDirHelp" class="field-help">Your fleet-config copy. The Board, session state, Life OS conversations and the fleet chief read from it.</p>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
@@ -2466,11 +2452,11 @@
     </div>
   </div>
 
-  <!-- System map lightbox (issue #173): tap the inline map to open it
-       full-screen for pan/zoom; tap anywhere (or ✕) to dismiss. -->
-  <div id="systemMapLightbox" class="system-map-lightbox" hidden>
-    <button id="systemMapLightboxClose" type="button" class="system-map-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
-    <img id="systemMapLightboxImage" class="system-map-lightbox-img" alt="Fleet system map (full screen)">
+  <!-- Image lightbox (#173, reused for #1265): a transcript thumbnail
+       opens full-screen for pan/zoom; tap anywhere (or ✕) to dismiss. -->
+  <div id="imageLightbox" class="image-lightbox" hidden>
+    <button id="imageLightboxClose" type="button" class="image-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+    <img id="imageLightboxImage" class="image-lightbox-img" alt="">
   </div>
 
   <script src="/static/vendor/xterm.js"></script>

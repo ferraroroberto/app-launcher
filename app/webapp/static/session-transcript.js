@@ -83,7 +83,7 @@ import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions
 import { keyboardOverlayHeight } from './terminal.js';
 import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
-import { openImageLightbox } from './system-map.js';
+import { openImageLightbox } from './lightbox.js';
 import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';

@@ -28,7 +28,6 @@ import { fetchConfig, patchConfig, USAGE_SHOWS_LABELS } from './claude-options.j
 import { terminalJsonApi } from './webauthn.js';
 import { fetchApps } from './apps.js';
 import { fetchSkills } from './life-os.js';
-import { fetchSystemMapStatus } from './system-map.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -286,7 +285,7 @@ const TEXT_FIELDS = [
   ['projectsDir', 'projects_dir', 'Projects folder', function () { return fetchApps(); }],
   ['appsScanRoot', 'apps_scan_root', 'Apps folder', null],
   ['lifeOsDir', 'life_os_dir', 'Life OS folder', function () { return fetchSkills(); }],
-  ['fleetConfigDir', 'fleet_config_dir', 'System map folder', function () { return fetchSystemMapStatus(); }],
+  ['fleetConfigDir', 'fleet_config_dir', 'fleet-config folder', null],
 ];
 const NUMBER_FIELDS = [
   ['terminalHistoryLines', 'terminal_history_lines', 'Terminal history'],

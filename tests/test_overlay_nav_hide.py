@@ -24,7 +24,7 @@ STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "stati
 
 # The hand-rolled overlay classes: the session overlay's chrome, which every
 # full-screen Coding / Life OS view reuses, plus the three one-off overlays.
-_OVERLAY_CLASSES = {"terminal-overlay", "login-overlay", "summary-modal", "system-map-lightbox"}
+_OVERLAY_CLASSES = {"terminal-overlay", "login-overlay", "summary-modal", "image-lightbox"}
 
 # The session overlay is keyed on the body class terminal.js sets, not on its
 # [hidden] state: it stays mounted while hidden for reconnects.

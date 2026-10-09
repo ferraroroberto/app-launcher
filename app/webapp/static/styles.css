@@ -357,7 +357,7 @@ html, body {
   body:has(#lifeOsConvoViewer:not([hidden])) .tabs,
   body:has(#changesOverlay:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
-  body:has(#systemMapLightbox:not([hidden])) .tabs,
+  body:has(#imageLightbox:not([hidden])) .tabs,
   body:has(#summaryModal:not([hidden])) .tabs {
     visibility: hidden;
     pointer-events: none;
@@ -381,7 +381,7 @@ html, body {
     body:has(#lifeOsConvoViewer:not([hidden])) .app,
     body:has(#changesOverlay:not([hidden])) .app,
     body:has(#loginOverlay:not([hidden])) .app,
-    body:has(#systemMapLightbox:not([hidden])) .app,
+    body:has(#imageLightbox:not([hidden])) .app,
     body:has(#summaryModal:not([hidden])) .app,
     body:has(dialog[open]) .app {
       overflow: hidden;
@@ -665,18 +665,9 @@ button.settings-row:active { background: var(--card-2); }
 /* Favorites filter: the star fills gold when the filter is active. */
 .fav-filter-btn.active .icon { fill: currentColor; }
 
-/* System map (issue #173): the inline PNG fills the card width and is
-   tappable to open the full-screen lightbox for pan/zoom. */
-.system-map-img {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  cursor: zoom-in;
-}
-.system-map-status { margin: 6px 0 0; }
-.system-map-lightbox {
+/* Image lightbox (#173, reused for transcript thumbnails by #1265): the
+   full-screen overlay for pan/zoom. */
+.image-lightbox {
   position: fixed;
   inset: 0;
   z-index: 350;
@@ -689,13 +680,13 @@ button.settings-row:active { background: var(--card-2); }
   -webkit-overflow-scrolling: touch;
   cursor: zoom-out;
 }
-.system-map-lightbox-img {
+.image-lightbox-img {
   max-width: 100%;
   height: auto;
   /* Wider than the viewport when zoomed: let the overlay scroll to pan. */
   border-radius: var(--radius-sm);
 }
-.system-map-lightbox-close {
+.image-lightbox-close {
   position: fixed;
   top: calc(env(safe-area-inset-top, 0px) + 10px);
   right: 14px;
@@ -712,7 +703,7 @@ button.settings-row:active { background: var(--card-2); }
 /* Invisible hit-area expansion to the 44px effective floor (design.md Touch
    targets); a co-applied .hit-target class can't be used here — it sets
    position: relative, which would break this control's position: fixed. */
-.system-map-lightbox-close::before { content: ""; position: absolute; inset: -2px; }
+.image-lightbox-close::before { content: ""; position: absolute; inset: -2px; }
 /* Tighter inter-tile gap on the Projects list — part of the vertical
    compaction (issue #212); horizontal rhythm is left alone. */
 .opt-group {
@@ -4999,7 +4990,7 @@ span.chief-answer-ref { color: var(--muted); }
     overscroll-behavior: contain;
     box-sizing: border-box;
     /* Fixed makes .app a stacking context, so the full-screen overlays
-       nested inside it (system-map lightbox, summary modal) stack within
+       nested inside it (image lightbox, summary modal) stack within
        it; the changes viewer is body-level since #1349. Lifting it over the docked view (300) keeps them on
        top; the two panes never overlap, so nothing else changes order. */
     z-index: 310;
