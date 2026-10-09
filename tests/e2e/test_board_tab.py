@@ -1787,6 +1787,40 @@ def test_lane_toolbar_and_start_with_geometry(
     expect(authed_page.locator("#paneBoard select")).to_have_count(0)
 
 
+def test_desktop_project_filter_is_as_wide_as_the_backlog_column(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    """#1464 — on the desktop Board the project filter's left and right edges
+    line up with the Backlog column's, at every wide layout (700 and 1100px
+    switch the pane's padding, so both sides of each are measured). The ↻
+    button stays beside it. Chromium only: the iPhone projection is a coarse
+    pointer, which the desktop block never applies to."""
+    if browser_name != "chromium":
+        pytest.skip("desktop grid needs a fine pointer; the WebKit projection is the iPhone")
+    _mock_board(authed_page)
+    for width in (1280, 1600, 1920, 1100, 1099, 700):
+        authed_page.set_viewport_size({"width": width, "height": 900})
+        _open_board(authed_page, base_url)
+        boxes = stable_eval(
+            authed_page.locator("#paneBoard"),
+            """pane => {
+              const box = sel => {
+                const r = pane.querySelector(sel).getBoundingClientRect();
+                return {x: r.x, w: r.width};
+              };
+              return {filter: box('#boardDispatchRepoBtn'),
+                      refresh: box('#boardRefresh'),
+                      backlog: box('#boardColBacklog')};
+            }""",
+        )
+        f, b, r = boxes["filter"], boxes["backlog"], boxes["refresh"]
+        assert abs(f["x"] - b["x"]) <= 1, f"{width}px: filter left {f} vs Backlog {b}"
+        assert abs((f["x"] + f["w"]) - (b["x"] + b["w"])) <= 1, (
+            f"{width}px: filter right edge {f} vs Backlog {b}"
+        )
+        assert r["x"] >= f["x"] + f["w"], f"{width}px: ↻ not beside the filter: {boxes}"
+
+
 # The shortest drawer a live session can produce: the reader found one side of
 # the exchange only (a session prompted but not yet answered, or one whose user
 # turn it could not recover). The `.board-exchange` block is then a single line
