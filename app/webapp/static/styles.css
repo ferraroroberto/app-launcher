@@ -4807,6 +4807,9 @@ span.chief-answer-ref { color: var(--muted); }
     margin-right: -50vw;
     padding: 0 24px;
     box-sizing: border-box;
+    /* The lane grid's gap, named once: the project filter below is sized to
+       one lane from it, so the two cannot drift apart (#1464). */
+    --board-col-gap: 20px;
   }
   /* `start`, not the grid's default stretch: a folded section keeps its
      52px summary height instead of growing an empty card to the row. */
@@ -4814,7 +4817,7 @@ span.chief-answer-ref { color: var(--muted); }
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: start;
-    gap: 20px;
+    gap: var(--board-col-gap);
   }
   .board-col { margin: 0; }
   .board-col-stack {
@@ -4828,9 +4831,10 @@ span.chief-answer-ref { color: var(--muted); }
      one row. The rows carry that inset already, level with the summary's
      title, so the grid's bodies drop the sides. */
   .board-col > .collapse-body { padding: 4px 0 8px; }
-  /* A full-bleed pane makes a full-width filter absurdly long: it keeps a
-     comfortable width at the left, ↻ beside it. */
-  .board-toolbar .board-repo-combo { flex: 0 1 360px; }
+  /* A full-bleed pane makes a full-width filter absurdly long: it is exactly
+     one lane wide (the toolbar and the grid share the pane's content box),
+     so its edges line up with the Backlog column's, ↻ beside it (#1464). */
+  .board-toolbar .board-repo-combo { flex: 0 0 calc((100% - 4 * var(--board-col-gap)) / 5); }
 }
 .lifeos-file-btn {
   flex: 1;
