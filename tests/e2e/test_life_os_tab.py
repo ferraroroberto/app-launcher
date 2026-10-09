@@ -92,13 +92,13 @@ def _default_recap(authed_page: Page) -> None:
     _mock_recap(authed_page, available=False)
 
 
-def test_life_os_recap_tile_shows_staleness_badge(
+def test_life_os_recap_row_shows_staleness(
     authed_page: Page, base_url: str
 ) -> None:
-    """Regression for #167: the Weekly-recap tile renders above the skills
-    list with a staleness badge whose state class + label track the
-    recap-status payload (here overdue, with a draft pending). Hermetic —
-    /skills + /recap-status are route-mocked."""
+    """#167, as one glance row since #1439: the Weekly-recap row says how
+    long since the last run, and only the exceptions are chips (overdue in
+    attention, a pending draft in the accent); the coloured-dot badge is
+    gone. Hermetic — /skills + /recap-status are route-mocked."""
     _mock_skills(authed_page)
     _mock_recap(
         authed_page, staleness="overdue", age_days=20.0, proposal_pending=True
@@ -108,11 +108,16 @@ def test_life_os_recap_tile_shows_staleness_badge(
 
     recap = authed_page.locator("#lifeOsRecap")
     expect(recap).to_be_visible(timeout=5_000)
-    badge = authed_page.locator("#lifeOsRecapBadge")
-    expect(badge).to_have_class(re.compile(r"\boverdue\b"))
-    expect(badge).to_contain_text("20d ago")
-    expect(badge).to_contain_text("overdue")
-    expect(badge).to_contain_text("draft ready")
+    row = recap.locator("li.lifeos-recap-item")
+    expect(row.locator(".action-row-title")).to_have_text("Weekly recap")
+    expect(row.locator(".action-row-meta-text")).to_have_text("last run 20 days ago")
+    chips = row.locator(".chip")
+    expect(chips).to_have_count(2)
+    expect(chips.nth(0)).to_have_text("overdue")
+    expect(chips.nth(0)).to_have_attribute("data-tone", "attention")
+    expect(chips.nth(1)).to_have_text("draft ready")
+    expect(chips.nth(1)).to_have_attribute("data-tone", "accent")
+    expect(authed_page.locator(".lifeos-recap-badge")).to_have_count(0)
 
 
 def test_life_os_recap_launch_posts(
@@ -504,7 +509,8 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     authed_page.route(
         re.compile(r".*/api/life-os/file\?.*$"), _file
     )
-    authed_page.on("dialog", lambda d: d.accept())
+    native: list = []
+    authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
@@ -532,9 +538,14 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_visible()
 
-    # Confirm delete → DELETE fires, doc closes back to the list, log gone.
+    # Confirm delete (the vendored confirm sheet, #1439, never a native
+    # confirm()) → DELETE fires, doc closes back to the list, log gone.
     authed_page.locator("#lifeOsDocDelete").click()
+    expect(authed_page.locator("#confirmDialog")).to_be_visible()
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("trial.md")
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: deleted["hit"], "the doc DELETE")
+    assert native == [], native
     assert deleted["hit"], "DELETE /api/life-os/file was never called"
     expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
@@ -724,7 +735,7 @@ def test_life_os_conversation_sort_toggle(
     rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
     expect(rows).to_have_count(2)
     sort = authed_page.locator("#lifeOsConvosSort")
-    expect(sort).to_contain_text("Recent")
+    expect(sort).to_have_attribute("data-sort", "interaction")
 
     # Default: most recently interacted with first — the resumed trial run,
     # even though it was created two months before the ferry booking.
@@ -758,11 +769,11 @@ def test_life_os_conversation_sort_toggle(
         lambda: authed_page.locator("#lifeOsConvosTitle").bounding_box()
     )
     assert title["width"] >= 70, f"skill name collapsed to {title['width']}px"
-    assert box["height"] <= 40, f"sort toggle wrapped to {box['height']}px"
+    assert box["height"] <= 44, f"sort toggle wrapped to {box['height']}px"
 
     before = fetches["n"]
     sort.click()
-    expect(sort).to_contain_text("Created")
+    expect(sort).to_have_attribute("data-sort", "created")
     expect(rows.first.locator(".lifeos-convo-topic")).to_have_text(
         "booking the ferry"
     )
@@ -773,7 +784,7 @@ def test_life_os_conversation_sort_toggle(
 
     # The choice sticks across a reload of the whole tab.
     _open_conversations(authed_page, base_url)
-    expect(authed_page.locator("#lifeOsConvosSort")).to_contain_text("Created")
+    expect(authed_page.locator("#lifeOsConvosSort")).to_have_attribute("data-sort", "created")
     expect(
         authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
         .first.locator(".lifeos-convo-topic")
@@ -803,13 +814,15 @@ def test_life_os_conversations_empty_state_when_no_index(
 def test_life_os_convos_bar_buttons_match_model_selector(
     authed_page: Page, base_url: str
 ) -> None:
-    """#864: the "‹ Skills" back button and "All skills" toggle used to sit
-    taller (44px, font-label) than the model selector (36px, font-caption)
-    in the same header row — all three must now share one height/font.
+    """#864: the "All skills" toggle used to sit taller (44px, font-label)
+    than the model selector (36px, font-caption) in the same header row —
+    both must share one height/font.
 
     And each is still a 44px target: the rendered design review measured the
-    bar's text buttons at 73x36 and 83x36 (TOUCH-01), so they now carry the
-    combo's vertical-only expansion, and the sort button is held to it too."""
+    bar's text buttons at 73x36 and 83x36 (TOUCH-01), so they carry the
+    combo's vertical-only expansion. The back button and the sort are icon
+    buttons since #1439 (one back style on every Life overlay, the Jobs
+    sort's shape), real 44px boxes."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _open_conversations(authed_page, base_url)
@@ -818,7 +831,7 @@ def test_life_os_convos_bar_buttons_match_model_selector(
     scope = authed_page.locator("#lifeOsConvosScope")
     combo = authed_page.locator("#lifeOsConvosModelCombo .model-combo-trigger")
     expect(scope).to_be_visible()  # opened scoped from a tile, so the toggle shows
-    for locator in (back, scope, combo):
+    for locator in (scope, combo):
         expect(locator).to_have_css("height", "36px")
         expect(locator).to_have_css("font-size", "12px")
     sort = authed_page.locator("#lifeOsConvosSort")
@@ -1048,28 +1061,33 @@ def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
     rows.first.locator(".lifeos-convo-head").click()
     delete_btn = rows.first.locator(".lifeos-convo-delete")
 
-    # Cancel: the confirm names the conversation and what goes; nothing is sent.
-    dialogs: list = []
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    # Cancel: the confirm sheet (#1439, never a native confirm()) names the
+    # conversation and what goes; its ✕ sends nothing.
+    native: list = []
+    authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
+    confirm = authed_page.locator("#confirmDialog")
     delete_btn.click()
-    wait_until(authed_page, lambda: len(dialogs) == 1, "the confirm dialog")
-    assert "booking the ferry" in dialogs[0]
-    assert "transcript" in dialogs[0] and "cannot be undone" in dialogs[0]
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogTitle")).to_contain_text("booking the ferry")
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("transcript")
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("cannot be undone")
+    authed_page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
     flush_requests(authed_page)
     assert deletes == []
     expect(rows).to_have_count(2)
 
     # A refusal (the conversation is open in a running session): row stays.
-    authed_page.once("dialog", lambda d: d.accept())
     delete_btn.click()
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(deletes) == 1, "the refused DELETE")
     expect(authed_page.locator("#toast")).to_contain_text("running session")
     expect(rows).to_have_count(2)
 
     # Confirm: one DELETE for that capture, then the refreshed list.
     refuse["on"] = False
-    authed_page.once("dialog", lambda d: d.accept())
     delete_btn.click()
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(deletes) == 2, "the confirmed DELETE")
     assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
         "2026-08-01-0900-ferry-booking.md" in deletes[1]
@@ -1077,6 +1095,7 @@ def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
     expect(rows.first.locator(".lifeos-convo-topic")).to_have_text("an early trial run")
     expect(authed_page.locator("#toast")).to_contain_text("Deleted booking the ferry")
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    assert native == [], native
 
 
 def test_life_os_viewer_delete_is_the_full_delete(
@@ -1106,11 +1125,10 @@ def test_life_os_viewer_delete_is_the_full_delete(
     _open_conversations(authed_page, base_url)
     _open_viewer(authed_page, 0)
     menu = _open_viewer_menu(authed_page)
-    dialogs: list = []
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
     menu.locator(".lifeos-viewer-delete").click()
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("transcript")
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(deletes) == 1, "the viewer's DELETE")
-    assert "transcript" in dialogs[0]
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(1)
 
@@ -1307,7 +1325,7 @@ def test_life_os_search_results_keep_server_relevance_order(
     sort = authed_page.locator("#lifeOsConvosSort")
     # Browsing starts on the remembered date sort; a query switches the
     # control to relevance rather than leaving a dead toggle behind.
-    expect(sort).to_contain_text("Recent")
+    expect(sort).to_have_attribute("data-sort", "interaction")
 
     authed_page.locator("#lifeOsConvoQuery").fill("ferry")
     rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
@@ -1316,17 +1334,17 @@ def test_life_os_search_results_keep_server_relevance_order(
     expect(topics).to_have_text(
         ["the ferry deep dive", "a ferry mention", "ferry in passing"]
     )
-    expect(sort).to_contain_text("Relevance")
+    expect(sort).to_have_attribute("data-sort", "relevance")
 
     # A date ordering of the hits is still reachable — the toggle is not a
     # one-way trip into relevance.
     sort.click()
-    expect(sort).to_contain_text("Recent")
+    expect(sort).to_have_attribute("data-sort", "interaction")
     expect(topics).to_have_text(
         ["ferry in passing", "a ferry mention", "the ferry deep dive"]
     )
     sort.click()
-    expect(sort).to_contain_text("Created")
+    expect(sort).to_have_attribute("data-sort", "created")
     expect(topics).to_have_text(
         ["a ferry mention", "ferry in passing", "the ferry deep dive"]
     )
@@ -1334,7 +1352,7 @@ def test_life_os_search_results_keep_server_relevance_order(
     # …and relevance survives the round trip, because the re-sort runs off
     # the server's array rather than the rendered one.
     sort.click()
-    expect(sort).to_contain_text("Relevance")
+    expect(sort).to_have_attribute("data-sort", "relevance")
     expect(topics).to_have_text(
         ["the ferry deep dive", "a ferry mention", "ferry in passing"]
     )
@@ -1342,7 +1360,7 @@ def test_life_os_search_results_keep_server_relevance_order(
     # Clearing the box drops the transient ordering: browsing keeps its own
     # date default (#886/#890), and no "Relevance" label is left stranded.
     authed_page.locator("#lifeOsConvoQuery").fill("")
-    expect(sort).to_contain_text("Recent", timeout=5_000)
+    expect(sort).to_have_attribute("data-sort", "interaction", timeout=5_000)
 
 
 def test_life_os_search_unavailable_is_not_an_error(
@@ -1645,17 +1663,20 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
         expect(page.locator(".lifeos-viewer-handoff")).to_be_visible()
         assert page.locator("#lifeOsConvoViewer").evaluate("el => el.scrollWidth <= el.clientWidth")
-    messages = []
-    def cancel(dialog):
-        messages.append(dialog.message)
-        dialog.dismiss()
-    page.once("dialog", cancel)
+    # The handoff asks first, in the confirm sheet (#1439, never a native
+    # confirm()), with a primary action: it starts something, deletes nothing.
+    native: list = []
+    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     page.locator(".lifeos-viewer-handoff").click()
+    expect(page.locator("#confirmDialogTitle")).to_contain_text("new conversation")
+    expect(page.locator("#confirmDialogMessage")).to_contain_text(re.compile(r"24[,.]000"))
+    expect(page.locator("#confirmDialogOk")).to_have_class(re.compile(r"\bbutton-primary\b"))
+    page.locator("#confirmDialogClose").click()
+    flush_requests(page)
     assert not launches
-    assert "NEW conversation" in messages[0] and re.search(r"24[,.]000", messages[0])
     _open_viewer_menu(page)
-    page.once("dialog", lambda dialog: dialog.accept())
     page.locator(".lifeos-viewer-handoff").click()
+    page.locator("#confirmDialogOk").click()
     expect(page.locator("#lifeOsConvoViewer")).to_be_hidden()
     expect(page.locator("#lifeOsConvos")).to_be_hidden()
     assert len(launches) == 1
@@ -1664,6 +1685,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     assert payload["model"] == target and payload["mode"] == "remote"
     assert payload["capture"] == {key: row[key] for key in ("path", "revision", "agent", "sid")}
     assert "resume_sid" not in payload
+    assert native == [], native
 
 
 def test_life_os_skill_can_be_starred_and_sorts_to_the_top(
@@ -1889,84 +1911,49 @@ def _wait_for_launches(page: Page, launches: list, count: int) -> None:
                f"{count} channel launch POST(s), saw {launches}")
 
 
-def test_channel_profiles_render_and_launch(
+def test_channel_profiles_mark_their_skills_and_launch_from_the_kebab(
     authed_page: Page, base_url: str
 ) -> None:
-    """The Telegram card lists each profile; a tap starts it (channel launch
-    route, PTY, no resume), its ⋯ → Resume resumes it, and a profile already
-    running only opens its session — no launch POST, no menu (#1366)."""
+    """#1366, moved by #1439: there is no Telegram card. A skill a profile is
+    bound to wears the send glyph, and its kebab leads with the bot: Start
+    on Telegram for a stopped one (channel launch route, PTY, no resume),
+    Open Telegram session for a running one (no launch POST)."""
     _mock_skills(authed_page)
     launches: list = []
     _mock_channels(authed_page, _FAKE_CHANNELS, launches)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
-    card = authed_page.locator("#lifeOsChannels")
-    expect(card).to_be_visible(timeout=5_000)
-    rows = authed_page.locator("#lifeOsChannelList li.lifeos-channel-item")
-    expect(rows).to_have_count(2)
-    health = authed_page.locator("#lifeOsChannelList li[data-id='health']")
-    school = authed_page.locator("#lifeOsChannelList li[data-id='school']")
-    expect(health).to_contain_text("Telegram · Health")
-    expect(school).to_contain_text("running")
-    # A running profile only opens: its dead menu is gone.
-    expect(school.locator(".action-row-kebab")).to_have_count(0)
+    expect(authed_page.locator("#lifeOsChannels")).to_have_count(0)
+    health = authed_page.locator("#lifeOsList li[data-id='journal-daily']")
+    school = authed_page.locator("#lifeOsList li[data-id='sparring-work']")
+    expect(health.locator(".action-row-title-icon")).to_have_attribute("data-alive", "false")
+    expect(school.locator(".action-row-title-icon")).to_have_attribute("data-alive", "true")
 
-    health.locator(".action-row-main").click()
+    health.locator(".action-row-kebab").click()
+    start = health.locator(".lifeos-channel-btn")
+    expect(start).to_contain_text("Start on Telegram")
+    start.click()
     _wait_for_launches(authed_page, launches, 1)
     assert launches[0]["url"].endswith("/api/life-os/channels/health/launch")
     assert launches[0]["body"]["mode"] == "pty", launches[0]
     assert launches[0]["body"]["resume"] is False, launches[0]
 
-    health.locator(".action-row-kebab").click()
-    health.locator(".lifeos-channel-resume-btn").click()
-    _wait_for_launches(authed_page, launches, 2)
-    assert launches[1]["body"]["resume"] is True, launches[1]
-
-    # Tapping the running row must not POST a second launch.
-    school.locator(".action-row-main").click()
+    # A running bot only opens: no second launch.
+    school.locator(".action-row-kebab").click()
+    open_btn = school.locator(".lifeos-channel-btn")
+    expect(open_btn).to_contain_text("Open Telegram session")
+    open_btn.click()
     flush_requests(authed_page)
-    assert len(launches) == 2, launches
-
-
-def test_channel_card_explains_itself_without_profiles(
-    authed_page: Page, base_url: str
-) -> None:
-    """No profile file: the card stays and says where to set it up (#1369),
-    and its button lands on the Telegram sheet, opened (#1435)."""
-    _mock_skills(authed_page)
-    _mock_channels(
-        authed_page,
-        {"profiles": [], "problems": [],
-         "setup": {**_FAKE_SETUP, "file_present": False, "plugin": None}},
-        [],
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-    expect(authed_page.locator("#lifeOsChannels")).to_be_visible()
-    expect(authed_page.locator("#lifeOsChannelsEmpty")).to_be_visible()
-    expect(authed_page.locator("#lifeOsChannelList li")).to_have_count(0)
-    authed_page.locator("#lifeOsChannelsEmptyAction").click()
-    expect(authed_page.locator("#paneSettings")).to_be_visible()
-    expect(authed_page.locator("#channelsSheet")).to_be_visible()
-    checks = authed_page.locator("#channelChecks .channel-check")
-    expect(checks).to_have_count(4)
-    # File missing is "Missing"; an unreadable plugin record is "Unknown", not
-    # folded into either verdict.
-    expect(checks.nth(0).locator(".channel-check-chip")).to_have_text("Missing")
-    expect(checks.nth(2).locator(".channel-check-chip")).to_have_text("Unknown")
-    expect(authed_page.locator("#channelProfilesEmpty")).to_be_visible()
-    expect(authed_page.locator("#channelSkills .channel-skill-chip")).to_have_count(2)
+    assert len(launches) == 1, launches
 
 
 def test_settings_channels_card_reports_each_profile(
     authed_page: Page, base_url: str
 ) -> None:
     """With profiles, the Settings sheet lists each one as Ready or Needs setup
-    and names what is missing; Re-check re-reads the server (#1369)."""
+    and names what is missing; Re-check re-reads the server (#1369). Since
+    #1439 it is the only place a broken profile or a problem is reported."""
     _mock_skills(authed_page)
     body = {
         "profiles": [
@@ -1983,9 +1970,12 @@ def test_settings_channels_card_reports_each_profile(
     _mock_channels(authed_page, body, [])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsChannelList li").first).to_be_visible(
-        timeout=5_000
-    )
+    expect(
+        authed_page.locator("#lifeOsList li[data-id='journal-daily'] .action-row-title-icon")
+    ).to_be_visible(timeout=5_000)
+    # The broken profile and the problem are Settings' alone (#1439).
+    expect(authed_page.locator("#paneLifeOS")).not_to_contain_text("School")
+    expect(authed_page.locator("#paneLifeOS")).not_to_contain_text("house")
     authed_page.locator("#paneLifeOS > .home-head .settings-open-btn").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     # Closed by default, like its sibling Settings sheets: not open until its

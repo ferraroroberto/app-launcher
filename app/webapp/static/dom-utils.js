@@ -62,16 +62,6 @@ export function brandIconEl(name, extraClass, label) {
   return el;
 }
 
-// Flip an aria-checked toggle switch (button or input) and return the new
-// boolean state. Every toggle-switch site across the SPA (options cards,
-// jobs dialog, life-os, board dispatch, apps) reads/writes this same
-// attribute pair — call this instead of re-deriving `next` by hand.
-export function toggleAriaChecked(el) {
-  const next = el.getAttribute('aria-checked') !== 'true';
-  el.setAttribute('aria-checked', String(next));
-  return next;
-}
-
 // Bind a document-level pointerdown listener that closes a popover on any
 // tap outside `box` (and outside `toggle`, when given — so re-tapping the
 // button that opened the popover doesn't immediately re-close it; the

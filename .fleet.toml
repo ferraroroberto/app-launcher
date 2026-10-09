@@ -516,10 +516,12 @@ paths    = [
     "app/webapp/routers/life_os_spawn.py",
     "app/webapp/routers/life_os_channels.py",
     "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_life_tab_glance.py",
     "tests/e2e/test_markdown_link_rendering.py",
 ]
 pytest_targets = [
     "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/test_life_tab_glance.py",
     "tests/e2e/test_resume_toggle.py",
     "tests/e2e/test_page_headers.py",
     "tests/e2e/test_text_size.py",
@@ -561,7 +563,8 @@ theme_storage_key = "app-launcher.theme"
 # nothing (every tab click timed out on the first run with it).
 # Never clicked: every danger item (Kill, Stop, Delete, Remove), every row
 # tap (launches an agent or opens an app), anything that sends, dispatches,
-# runs, starts or resumes, and card taps that open a URL.
+# runs, starts or resumes (a Life skill's Telegram items start or open a
+# real bot), and card taps that open a URL.
 no_go = [
     ".row-menu-danger",
     ".action-row-main",
@@ -579,6 +582,7 @@ no_go = [
     "#claudeResume",
     "#lifeOsRecapLaunch",
     "#lifeOsResume",
+    ".lifeos-channel-btn",
 ]
 
 [[design.review.extra_steps]]
@@ -644,6 +648,7 @@ no_go = [
     "#claudeResume",
     "#lifeOsRecapLaunch",
     "#lifeOsResume",
+    ".lifeos-channel-btn",
 ]
 
 [[design.review.extra_steps]]

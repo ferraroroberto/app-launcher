@@ -8,8 +8,8 @@
  * holds only the exceptions, each in its tone colour ("1 needs you · 1
  * stalled"), and falls back to the plain count when nothing is wrong. At
  * 390px that leaves about 22 characters, so at most two parts. Code, the
- * Board (#1436), Apps (#1437) and Jobs (#1438) are on it; renderHeadStatus
- * is the one writer the others will use.
+ * Board (#1436), Apps (#1437), Jobs (#1438) and Life (#1439) are on it,
+ * all through renderHeadStatus.
  */
 
 import { BOARD_POLL_MS, els, state } from './state.js';
@@ -130,10 +130,23 @@ function renderJobsHead() {
   renderHeadStatus(els.jobsHeadStatus, exceptions, plural(state.jobs.length, 'job', 'jobs'));
 }
 
+// Life (#1439): "recap overdue" / "recap due" while the weekly recap wants a
+// review, else "N skills". Only a recap Life OS can actually read counts.
+function renderLifeHead() {
+  const r = state.lifeOsRecap;
+  const status = r && r.available ? r.staleness : '';
+  renderHeadStatus(
+    els.lifeHeadStatus,
+    status === 'due' || status === 'overdue'
+      ? [{ text: 'recap ' + status, tone: 'attention' }] : [],
+    plural(state.lifeOsSkills.length, 'skill', 'skills')
+  );
+}
+
 function renderOtherHeads() {
   renderAppsHead();
   renderJobsHead();
-  setStatus(els.lifeHeadStatus, plural(state.lifeOsSkills.length, 'skill', 'skills'));
+  renderLifeHead();
   // The Board's line is live (#1436): board.js writes it on every render.
   setStatus(els.settingsHeadStatus, 'This launcher, on this PC');
 }

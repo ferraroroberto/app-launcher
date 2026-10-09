@@ -1,6 +1,6 @@
 /* The launch toolbar (#1434, step 2/7 of #1432): the controls that shape the
  * next agent launch, as one component every launch surface mounts. Code ›
- * Projects mounts it today; Life › Skills mounts the same one in step 7.
+ * Projects and Life › Skills (#1439) both mount it.
  *
  *   [ Claude · Opus ▾ ]              [trailing]
  *   Detached (switch)   Resume (switch)

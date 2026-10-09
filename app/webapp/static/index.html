@@ -970,46 +970,10 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
-      <!-- No separate options card (#496 round 2, mirroring the Coding tab):
-           the model combo + Detached/Resume launch controls live in the
-           Skills card's summary below — the surface skills are launched from. The recap
-           tile leads the tab. -->
-      <section id="lifeOsRecap" class="card card--row lifeos-recap-card" hidden>
-        <div class="card-head">
-          <span class="lifeos-recap-main">
-            <h3 class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-notebook-text"></use></svg> Weekly recap</h3>
-            <span id="lifeOsRecapBadge" class="lifeos-recap-badge"></span>
-          </span>
-          <button id="lifeOsRecapLaunch" type="button"
-                  class="icon-button agent-btn lifeos-recap-launch"
-                  title="Review the weekly recap (/weekly-recap)"
-                  aria-label="Launch weekly recap review"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg></button>
-        </div>
-      </section>
-
-      <!-- Telegram channel profiles (#1366): one row per bot, each opening
-           its life-os skill with that bot attached. Always shown (#1369): with
-           no profile it explains the feature and points at the Settings card,
-           so a missing config/channel_profiles.json is never a blank tab. -->
-      <details id="lifeOsChannels" class="card card--collapsible action-list lifeos-channels-card" open>
-        <summary class="collapse-summary">
-          <span class="collapse-main">
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
-            <h3 class="collapse-title">Telegram</h3>
-          </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div class="collapse-body">
-          <ul id="lifeOsChannelList" class="card-list action-rows" aria-label="Telegram channel profiles"></ul>
-          <p id="lifeOsChannelProblems" class="field-help" role="status" hidden></p>
-          <div id="lifeOsChannelsEmpty" class="empty-state" hidden>
-            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
-            <p class="empty-state-message">No Telegram bots yet. Each bot opens one life-os skill in its own chat — set them up in Settings.</p>
-            <button type="button" id="lifeOsChannelsEmptyAction" class="empty-state-action">Set up Telegram</button>
-          </div>
-        </div>
-      </details>
-
+      <!-- Skills leads the tab (#1439): the tab exists to start and resume
+           skill conversations. Telegram has no card here; a skill a bot is
+           linked to wears a send glyph and starts or opens that bot from its
+           kebab, and setup lives in Settings › Telegram. -->
       <details class="card card--collapsible action-list lifeos-list-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">
@@ -1019,40 +983,32 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <!-- Card controls live in the body, never in the <summary> (#1132):
-             a near-miss beside one toggled the whole card. -->
-        <div class="card-toolbar">
-          <div class="lifeos-toggles">
-            <!-- Launch model (#540/#845): the same provider-qualified
-                 Claude/Codex combo as Coding and Board. -->
-            <span class="model-combo" id="lifeOsModelCombo" data-value="claude:sonnet">
-              <button type="button" id="lifeOsModelBtn" class="model-combo-trigger"
-                      aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsModelMenu"
-                      title="Model for the launched life-os skill">Sonnet</button>
-              <span id="lifeOsModelMenu" class="model-combo-menu" role="listbox" aria-label="Skill launch model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
-            </span>
-            <!-- Cross-skill conversation search (#727): opens the same
-                 Conversations view a tile's 🕘 opens, but unscoped — every
-                 skill at once, which is the only way to find a conversation
-                 when you can't remember which skill it happened in. -->
-            <button type="button" id="lifeOsConvoSearch" class="icon-button lifeos-convo-open"
-                   aria-label="Search all conversations"
-                   title="Search conversations across every skill">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
-            </button>
-            <button type="button" id="lifeOsDetached" class="detached-toggle" role="switch" aria-checked="false"
-                   aria-label="Launch detached"
-                   title="Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg> Detached
-            </button>
-            <button type="button" id="lifeOsResume" class="detached-toggle" role="switch" aria-checked="false"
-                   aria-label="Resume session"
-                   title="Resume: reopen the selected agent's session picker (drops the skill prompt) — in a phone terminal, or in the detached console when Detached is also on">
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg> Resume
-            </button>
-          </div>
+        <!-- Card controls live in the body, never in the <summary> (#1132).
+             The shared launch toolbar (launch-toolbar.js, #1434), the same
+             one Code › Projects mounts: the model combo, then Detached and
+             Resume as vendored switches. It takes the cross-skill
+             conversation search below as its model row's trailing control. -->
+        <div class="card-toolbar lifeos-toolbar">
+          <div id="lifeOsLaunchToolbar" class="launch-toolbar-slot"></div>
+          <!-- Cross-skill conversation search (#727): the Conversations view
+               a row's menu opens, but unscoped, for when you can't remember
+               which skill a conversation happened in. -->
+          <button type="button" id="lifeOsConvoSearch" class="icon-button lifeos-convo-open"
+                  aria-label="Search all conversations"
+                  title="Search conversations across every skill">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
+          </button>
         </div>
+        <label class="action-row-filter list-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="lifeOsFilterInput" type="search" autocomplete="off" placeholder="Filter skills" aria-label="Filter skills">
+        </label>
         <ul id="lifeOsList" class="card-list action-rows" aria-label="Life OS skills"></ul>
+        <div id="lifeOsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No skills match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
+        </div>
         <div id="lifeOsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
           <p class="empty-state-message">No life-os skills found — point <strong>Life OS folder</strong> in Settings at a life-os checkout.</p>
@@ -1060,6 +1016,14 @@
         </div>
         </div>
       </details>
+
+      <!-- The weekly recap (#167) as one glance row (#1439): how long since
+           the last run, an exception chip when it is due or a draft is
+           ready, and ▶ to review it with the Skills toolbar's model and
+           Detached switch. Hidden while Life OS is unavailable. -->
+      <section id="lifeOsRecap" class="card action-list lifeos-recap-card" aria-label="Weekly recap" hidden>
+        <ul id="lifeOsRecapList" class="card-list action-rows" aria-label="Weekly recap"></ul>
+      </section>
     </section>
 
     <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
@@ -1587,7 +1551,8 @@
     </dialog>
 
     <!-- Telegram channels (#1369): read-only status + setup guide for the
-         Life OS tab's Telegram profiles (#1366). telegram-setup.js renders
+         Telegram profiles (#1366), and since #1439 the one place a broken
+         profile or a profile problem is reported. telegram-setup.js renders
          it from GET /api/life-os/channels; it only reports booleans and
          names — never a path, a token or a file's content. -->
     <dialog id="channelsSheet" class="detail-dialog settings-sheet" aria-labelledby="channelsSheetTitle">
@@ -1605,7 +1570,7 @@
             <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="hideChannelSessionsHelp" class="field-help">A Telegram session serves someone through their own chat, and stopping it cuts that chat off. On, those sessions leave the Board and the session list; one line there says how many are running and opens a read-only list — no Stop, no delete. Off, they show and behave like any other session.</p>
-          <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; the Life OS tab then starts it. Nothing here edits files — it shows what is ready and what is missing.</p>
+          <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; on the Life tab its skill then wears a send glyph, green while the bot runs, and the skill's menu starts or opens it. Nothing here edits files — it shows what is ready and what is missing.</p>
           <h4 class="context-filter-subhead">Checks</h4>
           <ul id="channelChecks" class="card-list channel-check-list" aria-label="Telegram setup checks"></ul>
           <h4 class="context-filter-subhead">Profiles</h4>
@@ -1622,7 +1587,7 @@
             <li>Give each bot its own folder — <code>~/.claude/channels/telegram-&lt;id&gt;</code> — and put its token there yourself: create a file named exactly <code>.env</code> in it with one line, <code>TELEGRAM_BOT_TOKEN=&lt;token&gt;</code>. Edit it in an editor, not in a chat — the launcher never reads it. In Notepad pick <em>Save as type: All files</em>, or it saves <code>.env.txt</code> and the plugin never sees it.</li>
             <li>Copy <code>config/channel_profiles.sample.json</code> to <code>config/channel_profiles.json</code> (machine-local, gitignored) and list each profile: <code>id</code> (a lowercase slug), <code>label</code>, <code>skill</code> (lowercase, exactly one of the chips above) and <code>state_dir</code> (the folder from step 3 as an absolute path that exists, with forward slashes; two profiles may not share one). It holds names and paths only, never a token. <strong>Re-check</strong> below says what each row still needs.</li>
             <li>Make sure nothing else claims the token. <strong>An ambient <code>TELEGRAM_BOT_TOKEN</code> beats every profile's <code>.env</code></strong>: if one is set in Claude's <code>env</code> block (<code>~/.claude/settings.json</code>) or in the system environment, every profile listens on that one bot and yours never answers. Remove it there and keep it where its own tool reads it (fleet hooks read fleet-config's gitignored <code>.env</code>). Then give the plugin's default folder, <code>~/.claude/channels/telegram/.env</code>, a token of a bot no profile uses: an ordinary life-os session starts the plugin too, and a failed start is remembered for about 15 minutes, during which profile sessions skip the plugin.</li>
-            <li>Tap <strong>Re-check</strong> (every row should read Ready), open the Life OS tab and start the profile. Then <strong>DM the bot itself</strong>, not a group: it replies with a 6-character code, good for 1 hour. In that profile's terminal run <code>/telegram:access pair &lt;code&gt;</code>; the bot answers “Paired!”. Pairing is per person, not per chat: each extra person (say, your wife) DMs the bot themselves and you pair their code in the same terminal. Everyone paired shares that one session and its context. The policy stays <code>pairing</code>, so a stranger only ever gets a code you can ignore; a group is ignored until you add it with <code>/telegram:access group add &lt;group id&gt;</code>.</li>
+            <li>Tap <strong>Re-check</strong> (every row should read Ready), then on the Life tab open the menu of the profile's skill and tap <strong>Start on Telegram</strong>. Then <strong>DM the bot itself</strong>, not a group: it replies with a 6-character code, good for 1 hour. In that profile's terminal run <code>/telegram:access pair &lt;code&gt;</code>; the bot answers “Paired!”. Pairing is per person, not per chat: each extra person (say, your wife) DMs the bot themselves and you pair their code in the same terminal. Everyone paired shares that one session and its context. The policy stays <code>pairing</code>, so a stranger only ever gets a code you can ignore; a group is ignored until you add it with <code>/telegram:access group add &lt;group id&gt;</code>.</li>
           </ol>
           <h4 class="context-filter-subhead">If the bot doesn't answer</h4>
           <ul class="channel-steps">
@@ -1817,7 +1782,7 @@
 
     <div id="lifeOsBrowser" class="terminal-overlay" hidden>
       <div class="terminal-bar">
-        <button id="lifeOsBrowserBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
+        <button id="lifeOsBrowserBack" type="button" class="icon-button term-btn" title="Back to skills" aria-label="Back to skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
         <span id="lifeOsBrowserTitle" class="terminal-title">skill</span>
         <div class="terminal-bar-actions">
           <button id="lifeOsDocDelete" type="button" class="icon-button term-btn" title="Delete this conversation log" aria-label="Delete this conversation log" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg></button>
@@ -1837,18 +1802,17 @@
          chrome as the Browse viewer above. -->
     <div id="lifeOsConvos" class="terminal-overlay" hidden>
       <div class="terminal-bar">
-        <button id="lifeOsConvosBack" type="button" class="term-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg> Skills</button>
+        <button id="lifeOsConvosBack" type="button" class="icon-button term-btn" title="Back to skills" aria-label="Back to skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
         <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
         <div class="terminal-bar-actions">
           <!-- Sort toggle (#886): one button flipping last-interaction (the
-               default) against creation date, same two-state shape as the
-               Jobs tab's sort button. Label + icon are written by
-               life-os.js::syncConvoSortBtn. It leads this group rather than
-               trailing it because the four controls overflow a 430px bar
-               into .terminal-bar-actions' horizontal scroll (#514), and this
+               default) against creation date, the Jobs tab's sort button
+               (#1439): an icon button whose glyph is the current order and
+               whose name says what a tap does, both written by
+               life-os.js::syncConvoSortBtn. It leads this group because it
                is the one you touch on every visit — the model combo only
                matters once you are actually resuming a row. -->
-          <button id="lifeOsConvosSort" type="button" class="term-btn lifeos-convo-sort"
+          <button id="lifeOsConvosSort" type="button" class="icon-button term-btn lifeos-convo-sort"
                   aria-label="Change conversation sort order"></button>
           <span class="model-combo" id="lifeOsConvosModelCombo" data-value="claude:sonnet">
             <button type="button" class="model-combo-trigger" aria-label="Conversation resume model"
@@ -2234,6 +2198,28 @@
         <input id="renameInput" type="text" class="input-native" required>
         <div class="detail-actions">
           <button type="submit" class="button-primary detail-save-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Rename a Life OS conversation log (#1439, in place of a native
+         prompt()): the rename dialog above, its own instance. life-os.js
+         fills it and reads the name back; ✕, Escape and a backdrop tap
+         cancel. -->
+    <dialog id="lifeOsRenameDialog" class="detail-dialog" aria-labelledby="lifeOsRenameTitle">
+      <form id="lifeOsRenameForm" class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsRenameTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename log</h2>
+          <button type="button" id="lifeOsRenameClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <input id="lifeOsRenameInput" type="text" class="input-native" required
+               autocomplete="off" autocapitalize="none" spellcheck="false"
+               aria-label="New name" aria-describedby="lifeOsRenameHelp">
+        <p id="lifeOsRenameHelp" class="field-help">The date stays. Spaces become dashes, lower-cased.</p>
+        <div class="detail-actions">
+          <button type="submit" id="lifeOsRenameSave" class="button-primary detail-save-btn">Rename</button>
         </div>
       </form>
     </dialog>

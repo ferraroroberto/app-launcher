@@ -9,8 +9,7 @@ vendored modal shell: a header back + ✕ and one full-width Done. Contract:
   * every sheet opens and closes (back, ✕, Done, Escape), and Launch
     defaults opens one agent's sheet on top of itself;
   * every ``openSettingsAt`` caller lands inside the sheet that holds its
-    field (the Code and Life empty states, Telegram setup, the Board's chief
-    gear);
+    field (the Code and Life empty states, the Code tab's chief row);
   * no Save button is left: fields save as they change.
 """
 
@@ -145,7 +144,6 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
     [
         ("#claudeEmptyAction", "foldersSheet", "projectsDir"),
         ("#lifeOsEmptyAction", "foldersSheet", "lifeOsDir"),
-        ("#lifeOsChannelsEmptyAction", "channelsSheet", None),
         # The Code tab's chief row kebab item (#1434; the Board's gear went
         # with its chief card in #1436).
         ("#sessionsList .chief-settings-btn", "chiefSheet", None),

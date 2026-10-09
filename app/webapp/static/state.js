@@ -121,6 +121,7 @@ export const state = {
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
   lifeOsChannels: { profiles: [], problems: [], setup: null },
+  lifeOsRecap: null,   // /api/life-os/recap-status, once the tab has read it
   // How many API tokens exist (#1435, Settings › API tokens' value); null
   // until Settings first loads the list.
   apiTokenCount: null,
@@ -179,22 +180,21 @@ export const els = {
   chiefAnswersNote: document.getElementById('chiefAnswersNote'),
   chiefAnswersDone: document.getElementById('chiefAnswersDone'),
 
-  lifeOsDetached: document.getElementById('lifeOsDetached'),
-  lifeOsResume: document.getElementById('lifeOsResume'),
   lifeOsList: document.getElementById('lifeOsList'),
   lifeOsEmpty: document.getElementById('lifeOsEmpty'),
+  lifeOsFilterInput: document.getElementById('lifeOsFilterInput'),
+  lifeOsFilterEmpty: document.getElementById('lifeOsFilterEmpty'),
   lifeOsRecap: document.getElementById('lifeOsRecap'),
-  lifeOsChannels: document.getElementById('lifeOsChannels'),
-  lifeOsChannelList: document.getElementById('lifeOsChannelList'),
-  lifeOsChannelProblems: document.getElementById('lifeOsChannelProblems'),
-  lifeOsChannelsEmpty: document.getElementById('lifeOsChannelsEmpty'),
+  lifeOsRecapList: document.getElementById('lifeOsRecapList'),
+  lifeOsRenameDialog: document.getElementById('lifeOsRenameDialog'),
+  lifeOsRenameForm: document.getElementById('lifeOsRenameForm'),
+  lifeOsRenameInput: document.getElementById('lifeOsRenameInput'),
+  lifeOsRenameClose: document.getElementById('lifeOsRenameClose'),
   channelChecks: document.getElementById('channelChecks'),
   channelProfileChecks: document.getElementById('channelProfileChecks'),
   channelProfilesEmpty: document.getElementById('channelProfilesEmpty'),
   channelProfileProblems: document.getElementById('channelProfileProblems'),
   channelSkills: document.getElementById('channelSkills'),
-  lifeOsRecapBadge: document.getElementById('lifeOsRecapBadge'),
-  lifeOsRecapLaunch: document.getElementById('lifeOsRecapLaunch'),
   lifeOsDir: document.getElementById('lifeOsDir'),
   fleetConfigDir: document.getElementById('fleetConfigDir'),
   lifeOsBrowser: document.getElementById('lifeOsBrowser'),

@@ -194,20 +194,15 @@ def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
 
 
 @pytest.mark.iphone
-def test_on_glyph_switches_use_the_accent_not_success(
+def test_life_launch_toolbar_is_the_same_component(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1396 — the fleet design standard: a `role="switch"`'s on-state is the
-    app's accent, and `success` is never a switch's on-colour. The Detached
-    and Resume glyph switches kept the green glyph #1070 gave them; the
-    track-and-thumb switches had already moved. Life OS's pair only since
-    #1434 moved Code's onto the vendored switch (step 7 moves this one).
-
-    The expected colours are resolved from the tokens in the page's own
-    theme (a probe element), in light and in dark, so the assertion survives
-    a token revalue. Auto-retrying `to_have_css` throughout (#680). Life OS's
-    pair sits in a hidden pane, which computed style still reads.
-    """
+    """#1439 (step 7 of #1432): Life › Skills mounts the launch toolbar Code
+    › Projects does (#1434), so its Detached and Resume are the vendored
+    switch beside their words too, with no glyph pill left on the tab, and
+    on is the accent fill, never success (#1396, fleet-config#1200). Resolved
+    from the page's own tokens in light and dark; auto-retrying
+    `to_have_css` (#680)."""
     _install_mocks(authed_page)
     authed_page.add_init_script(
         "document.addEventListener('DOMContentLoaded', () => {"
@@ -217,22 +212,26 @@ def test_on_glyph_switches_use_the_accent_not_success(
         "  document.head.appendChild(st);"
         "});"
     )
-    _open_coding(authed_page, base_url)
-    resolve = _RESOLVE
-    ids = ("#lifeOsDetached", "#lifeOsResume")
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    toolbar = authed_page.locator("#lifeOsLaunchToolbar .launch-toolbar")
+    expect(toolbar).to_be_visible()
+    expect(authed_page.locator("#paneLifeOS .detached-toggle")).to_have_count(0)
+    for sel, word in (("#lifeOsDetached", "Detached"), ("#lifeOsResume", "Resume")):
+        sw = toolbar.locator(sel)
+        expect(sw).to_have_class(re.compile(r"\btoggle\b"))
+        expect(sw).to_have_attribute("role", "switch")
+        expect(sw.locator("xpath=..")).to_contain_text(word)
+
+    detached = toolbar.locator("#lifeOsDetached")
+    expect(detached).not_to_be_checked()
+    toolbar.locator(".launch-switch-label", has_text="Detached").click()
+    expect(detached).to_be_checked()
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
         )
-        accent = authed_page.evaluate(resolve, "--accent")
-        success = authed_page.evaluate(resolve, "--success")
-        assert accent != success, f"{theme}: the probe cannot tell the accent from success"
-        for sel in ids:
-            toggle = authed_page.locator(sel)
-            toggle.evaluate("el => el.setAttribute('aria-checked', 'false')")
-            off_colour = toggle.evaluate("el => getComputedStyle(el).color")
-            assert off_colour not in (accent, success), (
-                f"{theme} {sel} off already shows an on-colour: {off_colour}"
-            )
-            toggle.evaluate("el => el.setAttribute('aria-checked', 'true')")
-            expect(toggle).to_have_css("color", accent)
+        fill = authed_page.evaluate(_RESOLVE, "--accent-fill")
+        success = authed_page.evaluate(_RESOLVE, "--success")
+        assert fill != success, f"{theme}: the probe cannot tell the accent from success"
+        expect(detached).to_have_css("background-color", fill)
