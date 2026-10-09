@@ -1,9 +1,11 @@
 /* Telegram channels — the Settings card (#1369).
  *
- * Read-only status for the Life OS tab's Telegram profiles (#1366): what is
- * ready, what is missing, which skills a profile can bind. It renders from the
- * same GET /api/life-os/channels payload the Life OS card uses (state.lifeOsChannels,
- * filled by life-os.js::fetchChannels), so it owns no fetch of its own. The
+ * Read-only status for the Telegram profiles (#1366): what is ready, what is
+ * missing (a broken profile and the problems line live only here since the
+ * Life tab's card went, #1439), which skills a profile can bind. It renders
+ * from the same GET /api/life-os/channels payload that marks the Life tab's
+ * linked skills (state.lifeOsChannels, filled by life-os.js::fetchChannels),
+ * so it owns no fetch of its own. The
  * payload carries booleans and names only — never a path, a token or a file's
  * content — and this module adds nothing to that.
  *

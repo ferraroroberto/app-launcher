@@ -124,14 +124,16 @@ def test_dialog_and_settings_labels_hold_no_internal_names() -> None:
 
 def test_toolbar_toggles_carry_a_visible_word() -> None:
     tree = _tree()
-    for el_id in ("lifeOsDetached", "lifeOsResume"):
-        assert _by_id(tree, el_id)["text"].strip(), f"#{el_id} is icon-only"
-    # The Code tab's pair is the launch toolbar component (#1434), built in
-    # JS: each switch sits in a <label> whose visible word names it.
+    # Both launch surfaces' pairs are the launch toolbar component (Code
+    # #1434, Life #1439), built in JS: each switch sits in a <label> whose
+    # visible word names it.
     toolbar = _STATIC.joinpath("launch-toolbar.js").read_text(encoding="utf-8")
     for word in ("Detached", "Resume"):
         assert re.search(r"text: '" + word + "'", toolbar), f"launch toolbar lost the {word} word"
     assert "el('label', 'launch-switch')" in toolbar, "the word must be the switch's label"
+    for module in ("apps-coding.js", "life-os.js"):
+        source = _STATIC.joinpath(module).read_text(encoding="utf-8")
+        assert "mountLaunchToolbar(" in source, f"{module} no longer mounts the launch toolbar"
     # The favourites star is the exception (#1194, the decision on
     # #1176): icon only, with its name kept on aria-label/title.
     fav = _by_id(tree, "favFilterBtn")

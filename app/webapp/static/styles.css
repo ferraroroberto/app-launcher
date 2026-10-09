@@ -277,16 +277,6 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
   /* -5, not -4: these sit at 35-36px rendered, and -4 leaves 43.6. */
   inset: -5px 0;
 }
-/* Compact squares: +4 a side takes 36x36 to 44x44, which needs an 8px gap
-   between neighbours — the clusters below carry it, and the e2e pin checks
-   no two expanded rectangles overlap. (The icon buttons get the same
-   expansion from the vendored icon-button's own ::before.) */
-.detached-toggle { position: relative; }
-.detached-toggle::before {
-  content: "";
-  position: absolute;
-  inset: -4px;
-}
 
 
 html, body {
@@ -411,53 +401,6 @@ html, body {
 /* Surface/border/radius/padding come from the vendored card.css; the app
    adds only the inter-card gutter. */
 .card { margin: 0 0 var(--gap); }
-/* Detached toggle — modelled on voice-transcriber's `.incognito-btn`: a
-   real button, role="switch" + aria-checked (issue #355). Opacity + glyph
-   colour flip on `[aria-checked="true"]` so it reads as on/off instead of
-   a tick that everyone misses on a phone.
-   #1070 dropped the accent border + accent-tinted fill the on-state used
-   to carry: an accent-boxed control next to three borderless-or-ghost
-   siblings read as the only emphasised thing in the Projects header. The
-   border now stays `--line` in both states, matching the `.button-ghost`
-   favourites filter beside it; on/off is the opacity step plus an accent
-   glyph. The glyph is the accent, never green (#1396): design.md makes a
-   `role="switch"`'s on-state the app's accent and `success` is never a
-   switch's on-colour (fleet-config#1200 reversed the earlier green-on
-   decision), the same as the track-and-thumb switches. */
-.detached-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: var(--font-caption);
-  white-space: nowrap;
-  padding: 6px 10px;
-  min-height: var(--control-h);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  /* Explicit, not inherited: the base rule never set a background, and the
-     accent tint on the checked state was the only thing overriding the UA
-     default button grey (#f0f0f0 in Chromium). Removing that tint exposed
-     it — a ghost control has a transparent fill (design.md button-ghost),
-     so say so here rather than relying on a state rule to hide it. */
-  background: transparent;
-  cursor: pointer;
-  user-select: none;
-  opacity: 0.55;
-  transition: opacity 0.15s, color 0.15s, background 0.15s;
-}
-.detached-toggle:active { background: var(--card-2); }
-.detached-toggle[aria-checked="true"] {
-  opacity: 1;
-  color: var(--accent);
-}
-/* #540: Detached/Resume are icon-only now (the Coding + Life OS launch rows
-   gained a model combo and needed the room). Render the glyph at the app's
-   standard --icon-title size in a square-ish tap target — matching the other
-   icon buttons — while keeping the pill's opacity-based on/off shading
-   that marks them as toggles rather than one-shot actions. */
-.detached-toggle .icon { font-size: var(--icon-title); }
-.detached-toggle { padding: 6px; min-width: var(--control-h); }
 /* The view's main action is the full-width primary, on its own line, with
    the secondary ghost beneath it (#1125) — it used to be the smallest
    control on the card. */
@@ -2955,7 +2898,7 @@ body.terminal-open {
    skills") with a .model-combo-trigger in the same row — neither is an
    icon-only touch target here, so match the shorter combo footprint
    instead of the icon-target minimum reasserted just above. */
-#lifeOsConvos .terminal-bar .term-btn {
+#lifeOsConvos .terminal-bar .term-btn:not(.icon-button) {
   position: relative;
   height: var(--control-h);
   min-height: var(--control-h);
@@ -2967,7 +2910,7 @@ body.terminal-open {
    expansion the model combo beside them carries (#1124), so two neighbours in
    this row can never share a pixel. Flagged 73x36 / 83x36 by the rendered
    design review (TOUCH-01). */
-#lifeOsConvos .terminal-bar .term-btn::before {
+#lifeOsConvos .terminal-bar .term-btn:not(.icon-button)::before {
   content: "";
   position: absolute;
   inset: -5px 0;
@@ -3445,44 +3388,9 @@ body.terminal-open {
    height, so they sit pixel-identical beside collapsed disclosure cards. */
 .card--row { padding: 0 14px; }
 .card--row .card-head { min-height: 52px; }
-/* Right-aligned toggle group: keeps a summary row's switches packed together
-   as a single flex child so the row stays title-left / toggles-right. Without
-   this the Coding row's three children space-between and Detached floats in the
-   center (issue #155). Shared by the Coding + Life OS option rows. */
-.coding-toggles,
-.lifeos-toggles {
-  display: flex;
-  /* Labelled toggles (#1176) wrap rather than push the page sideways under
-     Large text, and their -4 expansions need 8px between neighbours and 9+
-     between lines — 6 left them sharing tappable pixels. */
-  flex-wrap: wrap;
-  gap: var(--gap) 8px;
-}
-
-/* Weekly-recap tile (issue #167): title + a staleness badge on the left, the
-   🚀 review launch on the right. The badge is a coloured dot + label whose
-   colour tracks how stale the recap ledger is — green/accent fresh, amber
-   (--attention) past 7 days, red (--danger) past 14, muted when never run. Mirrors
-   the status colour vocabulary used elsewhere. */
-.lifeos-recap-main { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-.lifeos-recap-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--font-caption); color: var(--muted); white-space: nowrap;
-}
-.lifeos-recap-badge::before {
-  content: ''; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--muted); flex: 0 0 auto;
-}
-.lifeos-recap-badge.fresh { color: var(--muted); }
-.lifeos-recap-badge.fresh::before { background: var(--accent); }
-.lifeos-recap-badge.due { color: var(--attention); }
-.lifeos-recap-badge.due::before { background: var(--attention); }
-.lifeos-recap-badge.overdue { color: var(--danger); }
-.lifeos-recap-badge.overdue::before { background: var(--danger); }
-.lifeos-recap-badge.never::before { background: var(--muted); }
-/* The recap tile's launch stands alone in its row: the vendored icon-button
-   at 30px, its ::before reaching the 44px floor inside the card's padding. */
-.lifeos-recap-card .icon-button { --icon-btn-box: 30px; }
+/* The weekly-recap glance row (#1439): the action-row with the notebook
+   avatar, glyph in the accent like the job avatars, and its ▶ verb. */
+.lifeos-recap-avatar .avatar-glyph { color: var(--accent); }
 
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
@@ -3520,15 +3428,9 @@ body.terminal-open {
 }
 
 /* ---------- Life OS conversations (issue #727) ---------- */
-/* The 🔎 shares the Skills summary with ☁️/↺ and so borrows their box, but
-   deliberately NOT their 0.55 opacity: that shading is what marks those two
-   as toggles with an off state (#540). This is a one-shot action — it opens
-   a view — so it reads at full strength.
-   No co-applied .hit-target: this is an *adjacent cluster* (combo · 🔎 · ☁️ ·
-   ↺) at a 6px gap, so a ±5px invisible expansion would overlap its
-   neighbours and land taps on the wrong control — worse than a small target,
-   per the spec's own carve-out. It matches its neighbours' geometry instead;
-   widening the whole cluster to 44px is a separate change to that row. */
+/* The conversations button rides the launch toolbar's model row (#1439),
+   the place Code's git refresh takes, at the same control-height box. */
+.lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
 .lifeos-convo-open { --icon-btn-box: var(--control-h); }
 
 /* Sits one layer *below* the Browse viewer and the terminal (both z-index
@@ -4282,7 +4184,6 @@ span.chief-answer-ref { color: var(--muted); }
 .board-empty { margin: 0; }
 
 
-.lifeos-channel-running .action-row-meta { color: var(--accent-text); }
 
 /* Telegram sessions hidden from the lists (#1384): the Coding tab's
    Telegram row (.channel-row) stands in for them and opens a read-only list;
@@ -4988,6 +4889,35 @@ span.chief-answer-ref { color: var(--muted); }
   min-width: 0;
   display: flex;
   flex-direction: column;
+}
+
+/* A title marker (action-rows.js `titleIcon`, #1439: a skill's linked
+   Telegram bot): a muted 16px glyph right after the name, on the title's
+   line, so the row keeps its one-line height. The name ellipsizes, the
+   glyph never shrinks. Its dot is the avatar's alive badge, scaled to the
+   glyph. */
+.action-row-title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.action-row-title-line .action-row-title { min-width: 0; }
+.action-row-title-icon {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  color: var(--muted);
+}
+.action-row-title-icon .icon {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+}
+.action-row-title-icon .avatar-badge {
+  right: -4px;
+  bottom: -3px;
+  width: 10px;
+  height: 10px;
 }
 
 /* A drill-in row at the foot of a list (Other ports, Scan for new apps):

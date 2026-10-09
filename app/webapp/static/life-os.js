@@ -1,11 +1,13 @@
-/* Life OS tab (issue #102): skill tiles + one-tap launch + a read-only
+/* Life OS tab (issue #102): skill rows + one-tap launch + a read-only
  * private-content browser.
  *
- * ~80% a clone of the Coding tab. A tile launches a Claude session in the
- * life-os repo that auto-invokes the bare /<skill> slash-command; the
- * ☁️ Detached + model combo live in the Life OS Skills summary (same UX as
- * the Coding-options Detached toggle). The 📖 Browse button opens an
- * overlay that reads each skill's files — public SKILL.md/description.md
+ * ~80% a clone of the Coding tab. A row launches a Claude session in the
+ * life-os repo that auto-invokes the bare /<skill> slash-command; the model,
+ * Detached and Resume controls are the shared launch toolbar Code › Projects
+ * mounts (#1439, launch-toolbar.js), at the top of the Skills card. A skill
+ * a Telegram profile is bound to wears a send glyph and starts or opens that
+ * bot from its kebab; there is no Telegram card (#1439). The Read item opens
+ * an overlay that reads each skill's files — public SKILL.md/description.md
  * plus the private context/memory/examples/conversations + shared
  * identity. Those content endpoints are Tailscale + passkey gated
  * server-side, so a fetch may 403; we surface the reason rather than a
@@ -17,9 +19,13 @@ import { renderHomeHead } from './home-head.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
-import { nameLabel, toggleAriaChecked, wireModelCombo } from './dom-utils.js';
+import { nameLabel, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { actionRow } from './action-rows.js';
+import { avatar, chip } from './glance.js';
+import { confirmDialog } from './confirm-dialog.js';
+import { mountLaunchToolbar } from './launch-toolbar.js';
+import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './telegram-setup.js';
 import { renderSettingsValues } from './settings-sheets.js';
@@ -29,11 +35,43 @@ import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-vi
 
 // The skill rows' kebab menu (#1128), on the shared row-menu.js.
 const skillMenu = createRowMenu('project-menu');
-const channelMenu = createRowMenu('project-menu');
 
-// The Skills-summary launch-model dropdown controller ({setValue, getValue}),
-// created in the tab's wiring once the DOM exists (#540). Read at launch time;
-// no server round-trip — it's per-launch, like the Board dispatch combo.
+// The Skills card's launch toolbar (#1439): the shared component Code ›
+// Projects mounts (#1434), so both launch surfaces look and behave alike.
+// Mounted at load so wireLifeOs finds its model combo by id; every launch
+// reads the switches through it. The ids are the hooks the launch and e2e
+// code have always used.
+const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolbar'), {
+  ids: {
+    combo: 'lifeOsModelCombo', trigger: 'lifeOsModelBtn', menu: 'lifeOsModelMenu',
+    detached: 'lifeOsDetached', resume: 'lifeOsResume',
+  },
+  model: {
+    value: 'claude:sonnet', label: 'Claude · Sonnet',
+    title: 'Model for the launched life-os skill',
+    menuLabel: 'Skill launch model',
+  },
+  detachedTitle: 'Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal',
+  resumeTitle: 'Resume: reopen the selected agent’s session picker (drops the skill prompt), in a phone terminal, or in the detached console when Detached is also on',
+  // The cross-skill conversation search rides the model row, pinned right.
+  trailing: document.getElementById('lifeOsConvoSearch'),
+});
+
+function launchDetached() { return !!(lifeLaunch && lifeLaunch.isDetached()); }
+function launchResume() { return !!(lifeLaunch && lifeLaunch.isResume()); }
+
+// The Skills list's name filter (#1439, the Apps filter's twin), re-applied
+// after every render.
+const skillsFilter = listFilter({
+  input: els.lifeOsFilterInput,
+  list: els.lifeOsList,
+  empty: els.lifeOsFilterEmpty,
+  storageKey: 'app-launcher.filter.skills',
+});
+
+// The launch-model dropdown controller ({setValue, getValue}), wired in the
+// tab's wiring (#540). Read at launch time; no server round-trip — it's
+// per-launch, like the Board dispatch combo.
 let lifeOsModelCombo = null;
 let lifeOsConvosModelCombo = null;
 export function setLifeOsModelOptions(items) {
@@ -58,17 +96,21 @@ export async function fetchSkills() {
   } catch (exc) {
     logPollFailure('life-os skills fetch failed', exc);
   }
-  // The Telegram card rides every skills refresh (tab open, Settings save,
-  // boot) so it never needs a refresh point of its own (#1366).
+  // The Telegram profiles ride every skills refresh (tab open, Settings
+  // save, boot) so they never need a refresh point of their own (#1366).
   await fetchChannels();
 }
 
 // -------------------------------------------- Telegram channels (#1366)
-// One row per machine-local profile (config/channel_profiles.json): a life-os
-// skill launched with its own Telegram bot attached. The server answers with
-// each profile's running session, so a second tap opens that session instead
-// of launching a duplicate (the server refuses one with a 409 anyway — one bot
-// token, one getUpdates consumer).
+// One machine-local profile (config/channel_profiles.json) per bot: a life-os
+// skill launched with its own Telegram bot attached. The Life tab has no card
+// for them (#1439): a skill a profile is bound to wears a send glyph, green
+// while that bot's session runs, and its kebab opens or starts the bot. What
+// is ready, broken or missing is Settings › Telegram's (telegram-setup.js),
+// rendered from this same payload. The server answers with each profile's
+// running session, so a running bot opens instead of launching a duplicate
+// (the server refuses one with a 409 anyway — one bot token, one getUpdates
+// consumer).
 export async function fetchChannels() {
   try {
     const body = await jsonApi('/api/life-os/channels');
@@ -77,7 +119,7 @@ export async function fetchChannels() {
       problems: body.problems || [],
       setup: body.setup || null,
     };
-    renderChannels();
+    renderSkills();
     renderChannelSetup();
     renderSettingsValues();
   } catch (exc) {
@@ -85,67 +127,48 @@ export async function fetchChannels() {
   }
 }
 
-function renderChannels() {
-  const card = els.lifeOsChannels;
-  if (!card) return;
-  const profiles = state.lifeOsChannels.profiles;
-  const problems = state.lifeOsChannels.problems;
-  // With nothing configured the card explains itself instead of vanishing
-  // (#1369): a hidden card made "where do I set this up?" unanswerable.
-  const unconfigured = profiles.length === 0 && problems.length === 0;
-  if (els.lifeOsChannelsEmpty) els.lifeOsChannelsEmpty.hidden = !unconfigured;
-  const list = els.lifeOsChannelList;
-  list.innerHTML = '';
-  profiles.forEach(function (p) {
-    const usable = p.skill_found;
-    const running = p.running === true;
-    const bits = [p.skill];
-    if (running) bits.push('running');
-    if (!usable) bits.push('skill not found');
-    const row = actionRow({
-      id: p.id,
-      className: 'lifeos-channel-item' + (running ? ' lifeos-channel-running' : ''),
-      title: 'Telegram · ' + p.label,
-      meta: bits.join(' · '),
-      label: (running ? 'Open ' : 'Start ') + p.label + ' Telegram session',
-      onMain: function () {
-        if (running) openChannelSession(p); else launchChannel(p, false);
-      },
-      disabled: !usable,
-      hint: p.label + ': its skill "' + p.skill + '" was not found in life-os',
-      kebabClass: 'lifeos-channel-menu-anchor',
-      kebabLabel: p.label + ' actions',
-    });
-    if (running || !usable) {
-      // Nothing to choose from: a running profile only opens, a broken one
-      // only reports. A menu with no live item would be a dead control.
-      row.kebab.remove();
-    } else {
-      row.li.appendChild(channelMenu.attach(p.id, row.kebab, [{
-        className: 'lifeos-channel-resume-btn', glyph: 'rotate-ccw',
-        label: 'Resume a ' + p.label + ' conversation', text: 'Resume',
-        onTap: function () { launchChannel(p, true); },
-      }]));
-    }
-    list.appendChild(row.li);
+// The usable profiles bound to one skill. A broken profile (its skill not
+// found) never matches a listed skill, and is reported in Settings only.
+function skillProfiles(s) {
+  return (state.lifeOsChannels.profiles || []).filter(function (p) {
+    return p.skill_found && p.skill === s.id;
   });
-  channelMenu.endRender();
-  const note = els.lifeOsChannelProblems;
-  note.hidden = problems.length === 0;
-  note.textContent = problems.join(' · ');
+}
+
+// The kebab's Telegram items, first in the menu: open a running bot, start a
+// stopped one. With two bots on one skill each item names its profile.
+function channelMenuItems(profiles) {
+  const named = profiles.length > 1;
+  return profiles.map(function (p) {
+    const running = p.running === true;
+    const suffix = named ? ' · ' + p.label : '';
+    return {
+      className: 'lifeos-channel-btn ' + (running ? 'lifeos-channel-open-btn' : 'lifeos-channel-start-btn'),
+      dataset: { profile: p.id },
+      glyph: 'send-horizontal',
+      label: (running ? 'Open the ' : 'Start the ') + p.label + ' Telegram session',
+      text: (running ? 'Open Telegram session' : 'Start on Telegram') + suffix,
+      onTap: function () {
+        if (running) openChannelSession(p); else launchChannel(p);
+      },
+    };
+  });
 }
 
 function openChannelSession(p) {
   handleLaunchResponse({ session_id: p.session_id, kind: 'pty', name: p.label });
 }
 
-async function launchChannel(p, resume) {
-  // A Telegram session is a terminal on the phone: there is no detached form
-  // (the server refuses it), so say so instead of silently ignoring the switch.
-  if (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true') {
+// Start a stopped bot. The toolbar applies as to any skill launch: its model,
+// and Resume reopens the session picker. A Telegram session is a terminal on
+// the phone, so there is no detached form (the server refuses it): say so
+// instead of silently ignoring the switch.
+async function launchChannel(p) {
+  if (launchDetached()) {
     toast('Telegram sessions run in a terminal — turn Detached off.', 'error');
     return;
   }
+  const resume = launchResume();
   const model = lifeOsModel();
   const payload = { mode: 'pty', model: model, resume: resume };
   applyLaunchSizePayload(payload);
@@ -185,18 +208,26 @@ export function renderSkills() {
   favs.concat(rest).forEach(function (s) {
     // Tapping the row launches the skill (#1128, the action-row contract):
     // a fresh Claude session that auto-invokes /<skill>. The star leads;
-    // Read and Conversations moved into the one trailing kebab.
+    // the bot, Read and Conversations live in the one trailing kebab. The
+    // row is Code's project row exactly (#1439): a linked bot adds only the
+    // glyph after the name.
+    const profiles = skillProfiles(s);
+    const alive = profiles.some(function (p) { return p.running === true; });
     const row = actionRow({
       id: s.id,
       className: 'lifeos-item',
       title: s.name,
+      titleIcon: profiles.length ? {
+        glyph: 'send-horizontal', alive: alive,
+        label: alive ? 'Its Telegram bot is running' : 'Has a Telegram bot',
+      } : null,
       label: 'Launch ' + s.name,
       onMain: function () { launchSkill(s); },
       favorite: { on: s.is_favorite, onToggle: function () { toggleSkillFavorite(s); } },
       kebabClass: 'lifeos-menu-anchor',
       kebabLabel: 'Skill actions',
     });
-    row.li.appendChild(skillMenu.attach(s.id, row.kebab, [
+    row.li.appendChild(skillMenu.attach(s.id, row.kebab, channelMenuItems(profiles).concat([
       {
         // The read-only content browser for this skill.
         className: 'lifeos-browse-btn', glyph: 'book-open',
@@ -210,11 +241,12 @@ export function renderSkills() {
         label: 'Conversations with ' + s.name, text: 'Conversations',
         onTap: function () { openConvos(s); },
       },
-    ]));
+    ])));
     host.appendChild(row.li);
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
   skillMenu.endRender();
+  skillsFilter.apply();
 }
 
 // Star / unstar a Life OS skill (#1070). Persists server-side, then
@@ -235,10 +267,12 @@ async function toggleSkillFavorite(s) {
 }
 
 // ------------------------------------------------- weekly recap (issue #167)
-// A pinned tile above the skills list: a staleness badge driven by the recap
-// ledger's mtime, and a 🚀 that launches /weekly-recap (the interactive
-// review). The drafting half runs headless on a schedule, so this is
-// review-only. Fetched on every Life OS tab open (cheap stat + glob server-side).
+// One glance row under the skills (#1439): how long since the recap ledger
+// last moved, a chip only for an exception (due or overdue, a draft ready),
+// and ▶, the row's one visible verb, which launches /weekly-recap (the
+// interactive review) with the Skills toolbar's model and Detached switch.
+// The drafting half runs headless on a schedule, so this is review-only.
+// Fetched on every Life OS tab open (cheap stat + glob server-side).
 export async function fetchRecapStatus() {
   try {
     state.lifeOsRecap = await jsonApi('/api/life-os/recap-status');
@@ -248,29 +282,55 @@ export async function fetchRecapStatus() {
   }
 }
 
+// "last run 3 days ago", "last run today" or "never run".
+function recapMeta(r) {
+  if ((r.staleness || 'never') === 'never') return 'never run';
+  const d = Math.round(r.age_days || 0);
+  if (d <= 0) return 'last run today';
+  return 'last run ' + d + (d === 1 ? ' day ago' : ' days ago');
+}
+
 function renderRecap() {
   const host = els.lifeOsRecap;
-  if (!host) return;
+  const list = els.lifeOsRecapList;
+  if (!host || !list) return;
   const r = state.lifeOsRecap;
-  // Hide the tile when life-os isn't checked out — same as the skills list.
-  if (!r || !r.available) { host.hidden = true; return; }
-  host.hidden = false;
-
-  const badge = els.lifeOsRecapBadge;
-  const status = r.staleness || 'never';
-  badge.className = 'lifeos-recap-badge ' + status;
-  let label;
-  if (status === 'never') {
-    label = 'never run';
-  } else {
-    const d = Math.round(r.age_days || 0);
-    const ago = d <= 0 ? 'today' : (d + 'd ago');
-    const tag = status === 'due' ? ' · due'
-      : status === 'overdue' ? ' · overdue' : '';
-    label = ago + tag;
+  // The header carries the recap's exception (home-head.js), so it follows
+  // every recap read.
+  renderHomeHead();
+  // Hide the row when life-os isn't checked out — same as the skills list.
+  if (!r || !r.available) {
+    host.hidden = true;
+    list.replaceChildren();
+    return;
   }
-  if (r.proposal_pending) label += ' · draft ready';
-  badge.textContent = label;
+  host.hidden = false;
+  const status = r.staleness || 'never';
+  const chips = [];
+  if (status === 'due' || status === 'overdue') {
+    chips.push(chip(status, 'attention', 'lifeos-recap-chip'));
+  }
+  if (r.proposal_pending) chips.push(chip('draft ready', 'accent', 'lifeos-recap-chip'));
+  const row = actionRow({
+    id: 'weekly-recap',
+    className: 'lifeos-recap-item',
+    title: 'Weekly recap',
+    meta: recapMeta(r),
+    chips: chips,
+    label: 'Review the weekly recap',
+    onMain: launchRecap,
+    avatar: avatar('notebook-text', 'none', 'lifeos-recap-avatar'),
+  });
+  const verb = document.createElement('button');
+  verb.type = 'button';
+  verb.id = 'lifeOsRecapLaunch';
+  verb.className = 'action-row-verb lifeos-recap-launch';
+  verb.innerHTML = icon('play');
+  verb.title = 'Review the weekly recap (/weekly-recap)';
+  verb.setAttribute('aria-label', 'Launch weekly recap review');
+  verb.addEventListener('click', launchRecap);
+  row.li.appendChild(verb);
+  list.replaceChildren(row.li);
 }
 
 // Toast suffix for the launch model: silent on the Sonnet default (the
@@ -284,10 +344,9 @@ function modelTag(model) {
 }
 
 async function launchRecap() {
-  // Reuse the Skills summary controls: ☁️ Detached → remote, the model combo
-  // → the launch model (#540, replacing the old opus on/off toggle).
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
-    ? 'remote' : 'pty';
+  // Reuse the Skills toolbar: Detached → remote, the model combo → the
+  // launch model (#540, replacing the old opus on/off toggle).
+  const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = { mode: mode, model: model };
   // A desktop browser launch gets a dedicated PC Edge --app window (issue
@@ -319,9 +378,8 @@ async function launchSkill(s) {
   // matching the Coding tab): Detached → 'remote' independent of Resume, so
   // a Detached+Resume launch renders the picker in the detached console
   // while Resume alone streams it to the phone over a PTY.
-  const resume = !!(els.lifeOsResume && els.lifeOsResume.getAttribute('aria-checked') === 'true');
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
-    ? 'remote' : 'pty';
+  const resume = launchResume();
+  const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = { mode: mode, model: model, resume: resume };
   // Same size contract as launchRecap (issue #374, #126, #241). Remote
@@ -440,10 +498,12 @@ function renderFileList(files) {
 // Resolves true when the log is gone — the transcript viewer (#1119) closes
 // itself on that, since what it was showing no longer exists.
 async function deleteFile(f) {
-  if (!confirm(
-    'Delete this conversation log?\n\n' + f.name +
-    '\n\nThe file is removed from disk — this cannot be undone.'
-  )) return false;
+  const ok = await confirmDialog({
+    title: 'Delete this conversation log?',
+    message: f.name + ' is removed from disk. This cannot be undone.',
+    action: 'Delete',
+  });
+  if (!ok) return false;
   try {
     await jsonApi(
       '/api/life-os/file?path=' + encodeURIComponent(f.path),
@@ -481,13 +541,57 @@ function slugify(s) {
     .replace(/^-+|-+$/g, '');
 }
 
+// The name part of a log's file name: what follows the date-and-time prefix
+// the server keeps on a rename (life_os_files.py _DATE_PREFIX_RE).
+function logSlug(name) {
+  return String(name || '').replace(/\.md$/i, '')
+    .replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, '');
+}
+
+// The rename sheet (#1439, in place of a native prompt()): resolves the name
+// typed, or null when ✕, Escape or a backdrop tap cancels it.
+let renameSettle = null;
+
+function finishRename(value) {
+  const d = els.lifeOsRenameDialog;
+  const resolve = renameSettle;
+  renameSettle = null;
+  if (d && d.open) d.close();
+  if (resolve) resolve(value);
+}
+
+function askLogName(current) {
+  const d = els.lifeOsRenameDialog;
+  if (!d || !d.showModal) return Promise.resolve(null);
+  if (renameSettle) finishRename(null);
+  els.lifeOsRenameInput.value = current;
+  return new Promise(function (resolve) {
+    renameSettle = resolve;
+    d.showModal();
+  });
+}
+
+function wireRenameDialog() {
+  const d = els.lifeOsRenameDialog;
+  if (!d) return;
+  els.lifeOsRenameClose.addEventListener('click', function () { finishRename(null); });
+  els.lifeOsRenameForm.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    finishRename(els.lifeOsRenameInput.value);
+  });
+  // Escape closes the dialog natively, so any close that was not a submit
+  // is a cancel; an open dialog ignores a close event queued by the last one.
+  d.addEventListener('close', function () {
+    if (!d.open) finishRename(null);
+  });
+  // A tap on the backdrop lands on the <dialog> itself, outside the card.
+  d.addEventListener('click', function (ev) {
+    if (ev.target === d) finishRename(null);
+  });
+}
+
 async function renameFile(f) {
-  const proposed = window.prompt(
-    'Rename this conversation log.\n\n' +
-    'The date keeps unchanged — type the new name (spaces become dashes, ' +
-    'lower-cased):',
-    ''
-  );
+  const proposed = await askLogName(logSlug(f.name));
   if (proposed === null) return false;      // cancelled
   const slug = slugify(proposed);
   if (!slug) { toast('Name cannot be empty', 'error'); return false; }
@@ -811,19 +915,23 @@ function syncConvoSortBtn() {
   // While searching the cycle has a third state, so the "tap to…" half of
   // each hint names that cycle's own next stop, never the browse one.
   const searching = !!(convoView && convoView.searching);
+  // An icon button, the Jobs tab's sort (#1439): the glyph is the current
+  // order, and the name says it and what a tap does.
   if (mode === 'relevance') {
     // `search`, not `star` — a star already means "favorite" on the Coding
     // tab, and this state is "ordered by how well the hit matches".
-    btn.innerHTML = icon('search') + ' Relevance';
+    btn.innerHTML = icon('search');
     btn.title = 'Best match first — tap to sort by last interaction';
   } else if (mode === 'created') {
-    btn.innerHTML = icon('calendar-days') + ' Created';
+    btn.innerHTML = icon('calendar-days');
     btn.title = 'Sorted by creation date — tap to sort by ' +
       (searching ? 'best match' : 'last interaction');
   } else {
-    btn.innerHTML = icon('timer') + ' Recent';
+    btn.innerHTML = icon('timer');
     btn.title = 'Sorted by last interaction — tap to sort by creation date';
   }
+  btn.setAttribute('aria-label', btn.title);
+  btn.dataset.sort = mode;
 }
 
 function toggleConvoSort() {
@@ -1124,11 +1232,13 @@ function convoActions(r) {
 // cancel or a refusal (a conversation open in a running session says so).
 async function deleteConversation(r) {
   const title = r.topic || r.slug || r.file || 'this conversation';
-  if (!confirm(
-    'Delete “' + title + '”?\n\n' +
-    'This removes the saved log, the Claude Code transcript it came from, ' +
-    'and its index entries. It cannot be undone.'
-  )) return false;
+  const ok = await confirmDialog({
+    title: 'Delete “' + title + '”?',
+    message: 'This removes the saved log, the Claude Code transcript it came ' +
+      'from, and its index entries. It cannot be undone.',
+    action: 'Delete',
+  });
+  if (!ok) return false;
   try {
     await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(r.skill) +
@@ -1168,8 +1278,7 @@ function openCapture(r) {
 }
 
 async function resumeConversation(r, action) {
-  const mode = (els.lifeOsDetached && els.lifeOsDetached.getAttribute('aria-checked') === 'true')
-    ? 'remote' : 'pty';
+  const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = {
     mode: mode, model: model, action: action,
@@ -1179,9 +1288,15 @@ async function resumeConversation(r, action) {
     const scope = r.handoff_truncated ?
       'Only the first ' + (r.handoff_limit || 24000).toLocaleString() + ' characters will be included.' :
       'Only this selected capture will be included.';
-    if (!confirm('Start a NEW conversation in ' + model.split(':')[0] + '?\n\n' +
-        scope + ' Source provenance is preserved. This does not resume or convert the original session. ' +
-        'Memory and knowledge edits still require your approval.')) return;
+    const ok = await confirmDialog({
+      title: 'Start a new conversation in ' + nameLabel(model.split(':')[0]) + '?',
+      message: scope + ' Source provenance is preserved. This does not resume ' +
+        'or convert the original session. Memory and knowledge edits still ' +
+        'require your approval.',
+      action: 'Start new conversation',
+      tone: 'primary',
+    });
+    if (!ok) return;
     payload.confirm_new = true;
   }
   if (mode !== 'remote') applyLaunchSizePayload(payload);
@@ -1213,13 +1328,6 @@ export function wireLifeOs() {
       openSettingsAt('lifeOsDir');
     });
   }
-  // No Telegram profile yet: the Settings sheet says what to do (#1369).
-  const channelsEmptyAction = document.getElementById('lifeOsChannelsEmptyAction');
-  if (channelsEmptyAction) {
-    channelsEmptyAction.addEventListener('click', function () {
-      openSettingsAt('channelsSheet');
-    });
-  }
   const channelRecheck = document.getElementById('channelRecheck');
   if (channelRecheck) {
     channelRecheck.addEventListener('click', function () {
@@ -1242,14 +1350,13 @@ export function wireLifeOs() {
     });
   }
   if (els.lifeOsDocRename) {
-    // Rename the open conversation log → prompt, POST, back to the list.
+    // Rename the open conversation log → the rename sheet, POST, back to
+    // the list.
     els.lifeOsDocRename.addEventListener('click', function () {
       if (openDocFile) renameFile(openDocFile);
     });
   }
-  if (els.lifeOsRecapLaunch) {
-    els.lifeOsRecapLaunch.addEventListener('click', launchRecap);
-  }
+  wireRenameDialog();
   // Conversations view (#727): ✕ back to the tiles, the debounced query box,
   // and the scope toggle that widens a skill-scoped view to every skill.
   if (els.lifeOsConvosBack) {
@@ -1275,23 +1382,17 @@ export function wireLifeOs() {
     syncConvoSortBtn();
     els.lifeOsConvosSort.addEventListener('click', toggleConvoSort);
   }
-  // The Skills toolbar's 🔎 opens the same view unscoped.
+  // The Skills toolbar's conversations button opens the same view unscoped.
   if (els.lifeOsConvoSearch) {
     els.lifeOsConvoSearch.addEventListener('click', function () {
       openConvos(null);
       if (els.lifeOsConvoQuery) els.lifeOsConvoQuery.focus();
     });
   }
-  // Detached/Resume are plain client-side switches (issue #355) — no server
-  // config, just read at launch time above. They sit in the Skills card's
-  // toolbar (#496 round 2 put them on the launch surface; #1132 moved them
-  // out of its <summary>, mirroring the Coding tab's Projects card).
-  [els.lifeOsDetached, els.lifeOsResume].forEach(function (btn) {
-    if (!btn) return;
-    btn.addEventListener('click', function () { toggleAriaChecked(btn); });
-  });
-  // The provider-qualified model dropdown (#540/#845) shares that toolbar;
-  // wireModelCombo owns its open/close.
+  // Detached/Resume are the launch toolbar's own switches (issue #355: no
+  // server config, read at launch time above). The provider-qualified model
+  // dropdown (#540/#845) is its first row; wireModelCombo owns its
+  // open/close.
   lifeOsModelCombo = wireModelCombo(
     document.getElementById('lifeOsModelCombo'), function (choice) {
       if (lifeOsConvosModelCombo) {
