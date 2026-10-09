@@ -343,11 +343,9 @@ class WebappConfig:
     # shows disabled, the same way the Coding tab handles a missing
     # `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
-    # Root of the fleet-config checkout whose `architecture/` directory holds
-    # the rendered fleet system map (issue #173). The Coding tab's 🗺️ System
-    # map section serves `<fleet_config_dir>/architecture/system-map.png`;
-    # when the PNG is absent the section hides, the same way the Life OS tab
-    # handles a missing life-os checkout.
+    # Root of the fleet-config checkout. The Board, sessions, Life OS
+    # conversations and the fleet-chief ensure path read their hooks, state
+    # and scripts from it.
     fleet_config_dir: str = field(default_factory=_default_fleet_config_dir)
     # --- Board tab (issue #300 / #164) -----------------------------------
     # The sessions-state file written by fleet-config's session_state hook

@@ -337,13 +337,6 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "No passkey — /api/ports/probe stays token-only so the Apps tab can "
         "still render the listeners panel off-tailnet, like /api/tts/health.",
     ),
-    (
-        lambda p: p == "/api/system-map/image",
-        "tailnet",
-        "Fleet system map (#173): rendered PNG can carry fleet topology. No passkey "
-        "— /api/system-map/status stays token-only so the SPA can decide the "
-        "section's visibility off-tailnet, like /api/tts/health.",
-    ),
 )
 
 

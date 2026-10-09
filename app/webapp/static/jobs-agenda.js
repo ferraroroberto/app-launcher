@@ -121,7 +121,7 @@ export async function fetchAgenda() {
 }
 
 // Lazy + fresh: the agenda is collapsed by default and re-fetched on each
-// open (mirrors the system-map panel). Nothing polls it.
+// open. Nothing polls it.
 export function wireJobsAgenda() {
   if (!els.jobsAgendaCard) return;
   els.jobsAgendaCard.addEventListener('toggle', function () {

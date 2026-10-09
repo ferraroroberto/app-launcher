@@ -439,7 +439,7 @@ class TestPatchConfig:
         assert too_high.status_code == 400
 
     def test_fleet_config_dir_round_trips(self, webapp_client):
-        """fleet_config_dir (system map, issue #173) is in the allow-list —
+        """fleet_config_dir is in the allow-list —
         it patches through and surfaces on the next GET."""
         client, app, _ = webapp_client
         resp = client.post(

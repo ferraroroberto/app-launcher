@@ -20,7 +20,7 @@ import { fetchListeners } from './apps-listeners.js';
 import { fetchJobs, renderJobs, wireJobs } from './jobs.js';
 import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
-import { fetchSystemMapStatus, wireSystemMap } from './system-map.js';
+import { wireImageLightbox } from './lightbox.js';
 import { wireTokens } from './tokens.js';
 import { wireSettingsSheets } from './settings-sheets.js';
 import { openTerminal, wireTerminal } from './terminal.js';
@@ -273,7 +273,7 @@ async function boot() {
   const usage = Promise.all([safe(fetchRateLimits), safe(fetchContextFilter)]);
   const listeners = safe(fetchListeners);
   const running = safe(fetchRunningApps);
-  const others = [safe(fetchSystemMapStatus), safe(fetchVersion)];
+  const others = [safe(fetchVersion)];
   // The Board card link fetches the Board itself, so it needs none of these.
   if (boardSid) openBoardCard(boardSid).catch(function () {});
 
@@ -359,7 +359,7 @@ wireApps();
 wireJobs();
 wireLifeOs();
 wireBoard();
-wireSystemMap();
+wireImageLightbox();
 wireTerminal();
 wireChatPane();
 wireQuoteCopy();

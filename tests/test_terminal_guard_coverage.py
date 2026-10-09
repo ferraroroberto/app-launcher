@@ -46,7 +46,6 @@ TERMINAL_PREFIXES = (
     "/api/tts",                   # read-aloud of the agent's last reply
     "/api/webauthn",              # the ceremony that issues terminal tokens
     "/api/ports",                 # listener kill reaches :8446 and every PTY
-    "/api/system-map",            # rendered fleet topology
 )
 
 # Routes under a prefix above that are deliberately left on the ordinary
@@ -128,10 +127,6 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
     "/api/ports/probe": (
         "Read-only listener list — the Apps tab renders its listeners panel "
         "off-tailnet. Stated as deliberate in the /api/ports/{port}/kill row."
-    ),
-    "/api/system-map/status": (
-        "Visibility probe only — the SPA decides whether to show the section "
-        "off-tailnet. Stated as deliberate in the /api/system-map/image row."
     ),
 }
 

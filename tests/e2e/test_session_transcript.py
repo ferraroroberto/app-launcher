@@ -393,10 +393,10 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(thumb.locator("img")).to_have_attribute("src", re.compile(r"^blob:"))
     assert len(image_calls) == 1 and image_calls[0].endswith("offset=100&n=0"), image_calls
     thumb.click()
-    lightbox = authed_page.locator("#systemMapLightbox")
+    lightbox = authed_page.locator("#imageLightbox")
     expect(lightbox).to_be_visible()
     expect(lightbox.locator("img")).to_have_attribute("src", re.compile(r"^blob:"))
-    authed_page.locator("#systemMapLightboxClose").click()
+    authed_page.locator("#imageLightboxClose").click()
     expect(lightbox).to_be_hidden()
     expect(turns_agent).to_have_count(1)
     expect(turns_agent.first).to_contain_text("Fixed it.")
