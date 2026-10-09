@@ -88,13 +88,13 @@ import { stopReading } from './terminal-readaloud.js';
 import { voiceDictationAvailable } from './voice.js';
 import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
+import { brandIcon } from './dom-utils.js';
 import { renderHunks } from './diff-view.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
 import { closeResumeCard, openResumeCard, wireResumeCard } from './chat-resume.js';
 import {
   CHAT_ANSWERING,
   clearPicker,
-  isDecisionCard,
   isPlan,
   isQuestion,
   pickerAllowed,
@@ -457,24 +457,31 @@ function copyLabel(kind) {
   return kind === 'user' ? 'Prompt' : 'Reply';
 }
 
-// Tap the copy glyph on a user/assistant card: writes the clipboard
+// A turn's fragments, copied as they read: one blank line between them.
+function joinTexts(texts) {
+  return texts.join('\n\n');
+}
+
+// Tap the copy glyph on a prompt or an agent turn: writes the clipboard
 // synchronously inside the tap gesture — iOS requires this, an `await`
 // ahead of the first write loses the gesture and the copy silently fails on
-// the one device this feature is for — with whatever text the card already
-// has. A capped entry then fetches the uncapped one (#985's ``/transcript/
+// the one device this feature is for — with whatever text the turn already
+// has. `entries` is the prompt, or every reply fragment of the turn (#1475).
+// A capped fragment then fetches the uncapped one (#985's ``/transcript/
 // entry`` route) and *visibly* upgrades the clipboard with a second toast:
 // never a silent rewrite, since a paste in the gap between the two would
 // hand back truncated text with no reason to suspect it, and the clipboard
 // changing again afterwards would be worse.
-async function copyTurn(e) {
-  const label = copyLabel(e.kind);
+async function copyTurn(entries, kind) {
+  const label = copyLabel(kind);
   try {
-    await navigator.clipboard.writeText(e.text || '');
+    await navigator.clipboard.writeText(joinTexts(entries.map(function (e) { return e.text || ''; })));
   } catch (exc) {
     toast('Clipboard unavailable — copy manually', 'error');
     return;
   }
-  if (!e.truncated) {
+  const capped = entries.filter(function (e) { return e.truncated; });
+  if (!capped.length) {
     toast(label + ' copied', 'good', { icon: 'copy' });
     return;
   }
@@ -483,26 +490,27 @@ async function copyTurn(e) {
   const fail = function () {
     toast(label + ' copy is truncated — the full text didn’t load', 'bad', { icon: 'copy' });
   };
-  if (!sid || e.offset == null) {
+  if (!sid || capped.some(function (e) { return e.offset == null; })) {
     fail();
     return;
   }
-  let body;
+  let texts;
   try {
-    body = await terminalJsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-        '/transcript/entry?offset=' + encodeURIComponent(e.offset)
-    );
+    texts = await Promise.all(entries.map(async function (e) {
+      if (!e.truncated) return e.text || '';
+      const body = await terminalJsonApi(
+        '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+          '/transcript/entry?offset=' + encodeURIComponent(e.offset)
+      );
+      if (!body || !body.available) throw new Error('entry unavailable');
+      return body.text;
+    }));
   } catch (exc) {
     fail();
     return;
   }
-  if (!body || !body.available) {
-    fail();
-    return;
-  }
   try {
-    await navigator.clipboard.writeText(body.text);
+    await navigator.clipboard.writeText(joinTexts(texts));
   } catch (exc) {
     fail();
     return;
@@ -538,66 +546,224 @@ export async function lastAssistantEntryFullText() {
   return e.text || '';
 }
 
-// A turn: a collapsible card, open by default (or per the bar's toggle),
-// whose summary is the meta line plus — only while closed — the first
-// line of the text. The user's own prompt is plain text (pre-wrap); the
-// agent's reply goes through the same escape-first markdown renderer the
-// Life OS doc browser uses — never raw HTML from a transcript. The copy
-// glyph sits before the chevron and stops the tap from reaching the
-// <summary> (which would otherwise toggle the card on any click inside it,
-// same guard as every other interactive control living in one — dom-utils.js,
-// jobs.js, …).
-function renderTurn(e) {
-  const li = document.createElement('li');
-  li.className = 'tr-turn-item';
-  const d = document.createElement('details');
-  d.className = 'tr-turn tr-' + e.kind;
-  d.open = true;
-  tagKey(d, e);
-  const s = document.createElement('summary');
-  s.className = 'tr-turn-summary';
-  s.appendChild(meta(e.kind === 'user' ? 'You' : 'Agent', e.timestamp));
-  const hint = document.createElement('span');
-  hint.className = 'tr-turn-hint';
-  hint.textContent = firstLine(e.text, 80) || (e.images && e.images.length ? 'Image' : '');
-  s.appendChild(hint);
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.className = 'icon-button tr-turn-copy';
-  copyBtn.setAttribute('aria-label', 'Copy ' + copyLabel(e.kind).toLowerCase());
-  copyBtn.innerHTML = icon('copy');
-  copyBtn.addEventListener('click', function (ev) {
+// --- turns (#1475) -----------------------------------------------------------
+//
+// A turn reads as one piece: the user's prompt is a right-aligned bubble, and
+// everything the agent does until the next prompt (each reply fragment, the
+// run cards between them, a question or plan card) sits in ONE block under
+// one header: the agent's mark and name, the time, copy for the whole turn,
+// and collapse. It used to be one card per text fragment, each with its own
+// "Agent · time" and copy (#1472's diagnosis 1). The prompt is plain text
+// (pre-wrap); a reply goes through the same escape-first markdown renderer
+// the Life OS doc browser uses — never raw HTML from a transcript.
+
+const TRUNC_COPY = '(truncated — open the terminal for the rest)';
+
+function truncMark() {
+  const mark = document.createElement('div');
+  mark.className = 'tr-trunc';
+  mark.textContent = TRUNC_COPY;
+  return mark;
+}
+
+// The agent's short name and brand mark. Every agent with a transcript
+// reader has a mark in the brand sprite (index.html); the ids are its
+// lower-case names. A mount that doesn't know the agent says "Agent".
+function agentName(agent) {
+  if (TRANSCRIPT_AGENTS.indexOf(agent) === -1) return 'Agent';
+  return agent.charAt(0).toUpperCase() + agent.slice(1);
+}
+
+function agentMark(agent) {
+  return TRANSCRIPT_AGENTS.indexOf(agent) === -1
+    ? icon('messages-square')
+    : brandIcon(agent, 'tr-turn-brand');
+}
+
+// The copy glyph. It stops the tap from reaching a <summary> it sits in,
+// which would otherwise toggle the turn (same guard as every other control
+// living in one — dom-utils.js, jobs.js, …). `entriesOf` is asked at tap
+// time, so a turn that grew since it rendered copies what it holds now.
+function copyButton(kind, entriesOf) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-button tr-turn-copy';
+  btn.setAttribute('aria-label', 'Copy ' + copyLabel(kind).toLowerCase());
+  btn.innerHTML = icon('copy');
+  btn.addEventListener('click', function (ev) {
     ev.preventDefault();
     ev.stopPropagation();
-    copyTurn(e);
+    copyTurn(entriesOf(), kind);
   });
-  s.appendChild(copyBtn);
+  return btn;
+}
+
+function chevron() {
   const chev = document.createElement('span');
   chev.className = 'tr-turn-chevron';
   chev.setAttribute('aria-hidden', 'true');
   chev.textContent = '›';
-  s.appendChild(chev);
+  return chev;
+}
+
+// A collapsed turn's one line: the text's first line, or "Image" for an image alone.
+function textHint(e) {
+  return firstLine(e.text, 80) || (e.images && e.images.length ? 'Image' : '');
+}
+
+// The prompt bubble. Open, it is the bubble with the time, copy and a fold
+// chevron under it; folded, the <summary> takes its place as a one-line
+// bubble that a tap opens again. The summary is hidden while open rather than
+// carrying the controls, so the bubble has no header row (#1472 mockup).
+function renderPrompt(e) {
+  const li = document.createElement('li');
+  li.className = 'tr-turn-item tr-prompt-item';
+  const d = document.createElement('details');
+  d.className = 'tr-turn tr-user';
+  d.open = true;
+  tagKey(d, e);
+  const s = document.createElement('summary');
+  s.className = 'tr-bubble tr-prompt-folded';
+  const hint = document.createElement('span');
+  hint.className = 'tr-turn-hint';
+  hint.textContent = textHint(e);
+  s.appendChild(hint);
+  s.appendChild(chevron());
   d.appendChild(s);
-  const body = document.createElement('div');
-  if (e.kind === 'assistant') {
-    body.className = 'tr-text tr-md';
-    body.innerHTML = renderMarkdown(e.text || '');
-  } else {
-    body.className = 'tr-text';
-    body.textContent = e.text || '';
-  }
-  linkify(body);
-  d.appendChild(body);
+  const bubble = document.createElement('div');
+  bubble.className = 'tr-bubble';
+  const text = document.createElement('div');
+  text.className = 'tr-text';
+  text.textContent = e.text || '';
+  linkify(text);
+  bubble.appendChild(text);
   const shots = thumbs(e.images);
-  if (shots) d.appendChild(shots);
-  if (e.truncated) {
-    const mark = document.createElement('div');
-    mark.className = 'tr-trunc';
-    mark.textContent = '(truncated — open the terminal for the rest)';
-    d.appendChild(mark);
-  }
+  if (shots) bubble.appendChild(shots);
+  if (e.truncated) bubble.appendChild(truncMark());
+  d.appendChild(bubble);
+  const foot = document.createElement('div');
+  foot.className = 'tr-prompt-foot';
+  const when = document.createElement('span');
+  when.className = 'tr-meta';
+  when.textContent = fmtTime(e.timestamp);
+  when.hidden = !when.textContent;
+  foot.appendChild(when);
+  foot.appendChild(copyButton('user', function () { return [e]; }));
+  const fold = document.createElement('button');
+  fold.type = 'button';
+  fold.className = 'icon-button tr-prompt-fold';
+  fold.setAttribute('aria-label', 'Collapse prompt');
+  fold.appendChild(chevron());
+  fold.addEventListener('click', function () { d.open = false; });
+  foot.appendChild(fold);
+  d.appendChild(foot);
   li.appendChild(d);
   return li;
+}
+
+// One reply fragment inside an agent turn. Not a disclosure of its own: the
+// turn collapses as a whole.
+function renderReply(e) {
+  const li = document.createElement('li');
+  li.className = 'tr-reply';
+  li._trEntry = e;
+  const body = document.createElement('div');
+  body.className = 'tr-text tr-md';
+  body.innerHTML = renderMarkdown(e.text || '');
+  linkify(body);
+  li.appendChild(body);
+  const shots = thumbs(e.images);
+  if (shots) li.appendChild(shots);
+  if (e.truncated) li.appendChild(truncMark());
+  return li;
+}
+
+function isAgentTurn(node) {
+  return !!node && node.nodeType === 1 && node.classList.contains('tr-agent-item');
+}
+
+function turnReplies(li) {
+  return Array.prototype.filter.call(li._trParts.children, function (n) {
+    return n.classList.contains('tr-reply');
+  }).map(function (n) { return n._trEntry; });
+}
+
+// The agent's turn: one <details> whose summary is the header and whose body
+// is the ordered list of its parts. `first` is the entry it starts at — the
+// header's time and the disclosure's key.
+function renderAgentTurn(first, agent) {
+  const li = document.createElement('li');
+  li.className = 'tr-turn-item tr-agent-item';
+  li._trFirst = first;
+  const d = document.createElement('details');
+  d.className = 'tr-turn tr-assistant';
+  d.open = true;
+  tagKey(d, first);
+  const s = document.createElement('summary');
+  s.className = 'tr-turn-summary';
+  const mark = document.createElement('span');
+  mark.className = 'tr-turn-mark';
+  mark.innerHTML = agentMark(agent);
+  s.appendChild(mark);
+  const who = document.createElement('span');
+  who.className = 'tr-turn-who';
+  who.textContent = agentName(agent);
+  s.appendChild(who);
+  const when = document.createElement('span');
+  when.className = 'tr-meta';
+  s.appendChild(when);
+  const hint = document.createElement('span');
+  hint.className = 'tr-turn-hint';
+  s.appendChild(hint);
+  const copyBtn = copyButton('assistant', function () { return turnReplies(li); });
+  s.appendChild(copyBtn);
+  s.appendChild(chevron());
+  d.appendChild(s);
+  const parts = document.createElement('ol');
+  parts.className = 'tr-turn-parts';
+  d.appendChild(parts);
+  li.appendChild(d);
+  li._trParts = parts;
+  li._trWhen = when;
+  li._trHint = hint;
+  li._trCopy = copyBtn;
+  return li;
+}
+
+// The header, recomputed from the parts the turn now holds — after every
+// merge, a pending tail coming and going, or an older page joining it.
+// A turn with no reply and no decision card is "silent": with tool calls
+// hidden it would be a header over nothing, so it hides with them.
+function syncTurnHead(li) {
+  const replies = turnReplies(li);
+  const time = fmtTime(li._trFirst && li._trFirst.timestamp);
+  li._trWhen.textContent = time ? '· ' + time : '';
+  let hint = replies.length ? textHint(replies[0]) : '';
+  if (!hint) {
+    const title = li._trParts.querySelector('.collapse-title');
+    hint = title ? title.textContent : '';
+  }
+  li._trHint.textContent = hint;
+  li._trCopy.hidden = !replies.length;
+  const cards = li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item');
+  li.classList.toggle('tr-turn-silent', !replies.length && !cards);
+}
+
+// Older entries that end in an agent turn, landing above a list that starts
+// with one, are the same turn cut by a page boundary: the older parts join
+// the turn already on screen, at its top (its node, and so its open state,
+// stay put), and the run straddling the cut stays two cards as before.
+function joinOlderTurn(frag) {
+  const older = frag.lastElementChild;
+  const newer = els.transcriptList.firstElementChild;
+  if (!isAgentTurn(older) || !isAgentTurn(newer)) return;
+  const moving = document.createDocumentFragment();
+  while (older._trParts.firstChild) moving.appendChild(older._trParts.firstChild);
+  newer._trParts.insertBefore(moving, newer._trParts.firstChild);
+  newer._trFirst = older._trFirst;
+  tagKey(newer.querySelector('.tr-turn'), older._trFirst);
+  older.remove();
+  syncTurnHead(newer);
 }
 
 function syncGroups() {
@@ -1040,41 +1206,108 @@ function syncRunSummary(li) {
   }
 }
 
-// Append settled entries to the end of the list. Consecutive folded entries
-// merge into the trailing run card when there is one: without this an
-// autonomous stretch would fragment into one "1 tool call" card per tick
-// instead of the single foldable group the pane is built around.
-function appendSettled(entries, toolErrors) {
+// The one place entries become list nodes (#1475): appends `entries` to
+// `container` (the list itself, or a fragment), continuing whatever it ends
+// with. A prompt starts a bubble; anything else joins the trailing agent
+// turn, or opens one; a folded entry joins the turn's trailing run card, or
+// opens one. So a page renders, a live tick appends (#1050) and the Life OS
+// viewer mounts through the same rules, and an autonomous stretch arriving a
+// tick at a time still folds into one turn and one run rather than a card
+// per tick.
+//
+// `opts.pending` renders the provisional tail: its nodes are returned so the
+// next tick can drop them, and it never merges into a settled run card (that
+// would have to be unpicked). A turn it continues keeps its header; the parts
+// it adds are what gets dropped.
+function appendEntries(container, entries, opts) {
+  const created = [];
+  const ownTurns = new Set();
+  const ownRuns = new Set();
+  const touchedRuns = new Set();
+  const touchedTurns = new Set();
+  function addPart(turn, node) {
+    turn._trParts.appendChild(node);
+    if (!ownTurns.has(turn)) created.push(node);
+  }
   entries.forEach(function (e) {
-    const last = els.transcriptList.lastElementChild;
-    if (!isTurn(e) && !isDecisionCard(e) && last && last.classList.contains('tr-run')) {
-      const item = renderItem(e, toolErrors);
-      tagKey(item, e);
-      last.querySelector('.tr-group-body').appendChild(item);
-      last._trRun.push(e);
-      syncRunSummary(last);
+    if (isTurn(e) && e.kind === 'user') {
+      const li = renderPrompt(e);
+      container.appendChild(li);
+      created.push(li);
       return;
     }
-    els.transcriptList.appendChild(renderEntries([e], toolErrors, CHAT_ANSWERING));
+    let turn = container.lastElementChild;
+    if (!isAgentTurn(turn)) {
+      turn = renderAgentTurn(e, opts.agent);
+      container.appendChild(turn);
+      created.push(turn);
+      ownTurns.add(turn);
+    }
+    touchedTurns.add(turn);
+    if (isTurn(e)) {
+      addPart(turn, renderReply(e));
+    } else if (isQuestion(e)) {
+      addPart(turn, renderQuestion(e, opts.toolErrors, opts.answering));
+    } else if (isPlan(e)) {
+      addPart(turn, renderPlan(e, opts.toolErrors, opts.answering));
+    } else {
+      const last = turn._trParts.lastElementChild;
+      if (last && last.classList.contains('tr-run') && (!opts.pending || ownRuns.has(last))) {
+        last.querySelector('.tr-group-body').appendChild(renderItem(e, opts.toolErrors));
+        last._trRun.push(e);
+        touchedRuns.add(last);
+      } else {
+        const run = renderRun([e], opts.toolErrors);
+        ownRuns.add(run);
+        addPart(turn, run);
+      }
+    }
   });
+  touchedRuns.forEach(syncRunSummary);
+  touchedTurns.forEach(syncTurnHead);
+  return created;
+}
+
+// The Chat pane's agent: its turns carry that agent's mark and name. An
+// absent field (a ?session= deep link's bare {session_id, name}) is Claude,
+// as the endpoint assumes.
+function chatOpts(toolErrors, pending) {
+  return {
+    toolErrors: toolErrors,
+    answering: CHAT_ANSWERING,
+    agent: String((view && view.session.agent) || 'claude').toLowerCase(),
+    pending: !!pending,
+  };
+}
+
+// Append settled entries to the end of the list.
+function appendSettled(entries, toolErrors) {
+  appendEntries(els.transcriptList, entries, chatOpts(toolErrors, false));
 }
 
 // Replace the provisional tail. `open` carries the disclosure state of
-// whatever was there before, including cards that have since settled.
+// whatever was there before, including cards that have since settled; it
+// holds only keys harvested from the old tail, so restoring it list-wide
+// touches nothing else.
 function renderPending(entries, toolErrors, open) {
-  const frag = renderEntries(entries, toolErrors, CHAT_ANSWERING);
-  const nodes = Array.prototype.slice.call(frag.children);
+  const nodes = appendEntries(els.transcriptList, entries, chatOpts(toolErrors, true));
   nodes.forEach(function (li) { li.dataset.trPending = '1'; });
-  restoreOpen(frag, open);
-  els.transcriptList.appendChild(frag);
+  restoreOpen(els.transcriptList, open);
   return nodes;
 }
 
-// Drop the provisional tail, handing back what was open inside it.
+// Drop the provisional tail, handing back what was open inside it. A part
+// it added to a settled turn leaves that turn's header to be recomputed.
 function clearPending() {
   const nodes = (view && view.pendingNodes) || [];
   const open = harvestOpen(nodes);
-  nodes.forEach(function (li) { li.remove(); });
+  const hosts = new Set();
+  nodes.forEach(function (li) {
+    const host = isAgentTurn(li) ? null : li.parentElement && li.parentElement.closest('.tr-agent-item');
+    if (host) hosts.add(host);
+    li.remove();
+  });
+  hosts.forEach(syncTurnHead);
   if (view) view.pendingNodes = [];
   return open;
 }
@@ -1108,34 +1341,20 @@ function applyLive(settled, pending, toolErrors) {
 
 // Exported for the Life OS conversation viewer (#1119), which mounts this
 // same renderer over a parsed capture rather than growing a second one
-// (#979). Turn cards and run groups carry no reference to the live `view`,
+// (#979). Turns and run groups carry no reference to the live `view`,
 // except a truncated turn's copy upgrade, and a capture's turns are never
 // truncated.
 //
 // `answering` (#1149) is the Chat pane's own marker that a question card may
 // go live; the viewer passes nothing, so its cards stay read-only history.
-export function renderEntries(entries, toolErrors, answering) {
+// `agent` names whose turns these are (an agent id); without one they read
+// "Agent".
+export function renderEntries(entries, toolErrors, answering, agent) {
   const frag = document.createDocumentFragment();
-  let run = [];
-  function flush() {
-    if (run.length) frag.appendChild(renderRun(run, toolErrors));
-    run = [];
-  }
-  entries.forEach(function (e) {
-    if (isTurn(e)) {
-      flush();
-      frag.appendChild(renderTurn(e));
-    } else if (isQuestion(e)) {
-      flush();
-      frag.appendChild(renderQuestion(e, toolErrors, answering));
-    } else if (isPlan(e)) {
-      flush();
-      frag.appendChild(renderPlan(e, toolErrors, answering));
-    } else {
-      run.push(e);
-    }
+  appendEntries(frag, entries, {
+    toolErrors: toolErrors, answering: answering,
+    agent: agent ? String(agent).toLowerCase() : null, pending: false,
   });
-  flush();
   return frag;
 }
 
@@ -1377,7 +1596,7 @@ async function loadNewest() {
   // session — read from the newest page and reused when older pages are
   // prepended.
   view.toolErrors = body.tool_errors || 'reported';
-  els.transcriptList.appendChild(renderEntries(entries, view.toolErrors, CHAT_ANSWERING));
+  appendSettled(entries, view.toolErrors);
   view.pendingNodes = pending.length
     ? renderPending(pending, view.toolErrors, null)
     : [];
@@ -1450,10 +1669,10 @@ async function loadOlder() {
   }
   if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
   if (older.length) {
-    els.transcriptList.insertBefore(
-      renderEntries(older, toolErrors || view.toolErrors || 'reported', CHAT_ANSWERING),
-      els.transcriptList.firstChild,
-    );
+    const frag = document.createDocumentFragment();
+    appendEntries(frag, older, chatOpts(toolErrors || view.toolErrors || 'reported', false));
+    joinOlderTurn(frag);
+    els.transcriptList.insertBefore(frag, els.transcriptList.firstChild);
     // Older entries join `view.entries` too, so a question on an older page
     // can find its result and never reads as the pending one.
     view.settled = older.concat(view.settled || []);

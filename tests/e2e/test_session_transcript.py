@@ -419,11 +419,12 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     authed_page.wait_for_timeout(300)
     assert len(authed_page.context.pages) == pages_before, "the link also opened a tab"
 
-    # Turns are collapsible cards, open by default; a single turn collapses
-    # on its own summary while the tool group stays closed.
+    # Turns are collapsible, open by default; a single turn collapses on its
+    # own while the tool group stays closed. The prompt bubble folds from the
+    # chevron under it and opens again from its folded line (#1475).
     expect(turns_user.first).to_have_js_property("open", True)
     expect(turns_agent.first).to_have_js_property("open", True)
-    turns_user.first.locator("summary").click()
+    turns_user.first.locator(".tr-prompt-fold").click()
     expect(turns_user.first).to_have_js_property("open", False)
     expect(authed_page.locator("#transcriptList .tr-group")).to_have_js_property("open", False)
     turns_user.first.locator("summary").click()
@@ -839,8 +840,9 @@ def test_failed_tool_call_is_marked_in_both_themes(
         chip = bad.locator(".tr-fail-chip")
         expect(chip).not_to_have_css("color", "rgba(0, 0, 0, 0)")
         seen[theme] = chip.evaluate("el => getComputedStyle(el).color")
-        # The user turn's "You · time" line on its accent tint (#1238,
-        # COLOR-02): it measured 4.17:1 light / 4.21:1 dark in muted text.
+        # The prompt's time line (#1238, COLOR-02): it measured 4.17:1 light /
+        # 4.21:1 dark in muted text on the old card's accent tint; since
+        # #1475 it sits on the canvas under the bubble.
         ratio = stable_read(lambda: contrast_ratio(user_meta))
         assert ratio >= 4.5, f"{theme}: user-turn meta at {ratio:.2f}:1, under 4.5:1"
     assert seen["light"] and seen["dark"], seen
@@ -871,11 +873,12 @@ def test_failed_tool_call_is_marked_in_both_themes(
     assert fit["box"][0] <= fit["box"][1] and fit["list"][0] <= fit["list"][1], fit
     assert fit["ellipsed"] and fit["countInside"], fit
 
-    # -- #1292: the turn's thumbnail row sits on the text's inset (#1265) --
+    # -- #1292: the prompt's thumbnail row sits on the text's inset (#1265),
+    # inside the bubble since #1475 --
     thumb = authed_page.locator("#transcriptList .tr-user .tr-thumb").first
     expect(thumb).to_be_visible()
     inset = stable_read(lambda: authed_page.evaluate("""() => {
-        const turn = document.querySelector('#transcriptList .tr-turn.tr-user');
+        const turn = document.querySelector('#transcriptList .tr-turn.tr-user div.tr-bubble');
         const text = turn.querySelector('.tr-text');
         const thumb = turn.querySelector('.tr-thumb').getBoundingClientRect();
         const t = text.getBoundingClientRect();

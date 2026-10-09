@@ -117,7 +117,10 @@ async function load() {
     return e.kind !== 'user' && e.kind !== 'assistant' && !isDecisionCard(e);
   });
   hideState();
-  els.lifeOsViewerList.appendChild(renderEntries(entries, 'reported'));
+  // The capture's agent heads its turns (#1475), as the session's does in Chat.
+  els.lifeOsViewerList.appendChild(
+    renderEntries(entries, 'reported', null, body.agent || row.agent)
+  );
   if (body.truncated) {
     const li = document.createElement('li');
     li.className = 'tr-trunc lifeos-viewer-trunc';
