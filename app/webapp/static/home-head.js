@@ -7,9 +7,9 @@
  * The header rule (#1434, for every tab as #1432 moves it over): the line
  * holds only the exceptions, each in its tone colour ("1 needs you · 1
  * stalled"), and falls back to the plain count when nothing is wrong. At
- * 390px that leaves about 22 characters, so at most two parts. Code and the
- * Board (#1436) are on it; renderHeadStatus is the one writer the others
- * will use.
+ * 390px that leaves about 22 characters, so at most two parts. Code, the
+ * Board (#1436) and Apps (#1437) are on it; renderHeadStatus is the one
+ * writer the others will use.
  */
 
 import { BOARD_POLL_MS, els, state } from './state.js';
@@ -95,11 +95,26 @@ export function renderBoardBadge() {
   setTabBadge('board', n, 'waiting');
 }
 
-function renderOtherHeads() {
-  const registered = state.apps.filter(function (a) { return a.kind !== 'claude-code'; });
+// Apps (#1437): "N down" while a tunnel's probe says down, else "N apps ·
+// M running", where N is the Apps card's rows (trays and Code's projects
+// are not apps here).
+function renderAppsHead() {
+  const apps = state.apps.filter(function (a) {
+    return a.kind !== 'claude-code' && a.kind !== 'tray';
+  });
+  const down = apps.filter(function (a) {
+    return a.kind === 'tunnel' && a.health === 'down';
+  }).length;
   const running = state.runningApps.length;
-  setStatus(els.appsHeadStatus, plural(registered.length, 'app', 'apps') +
-    (running ? ' · ' + running + ' running' : ''));
+  renderHeadStatus(
+    els.appsHeadStatus,
+    down ? [{ text: down + ' down', tone: 'danger' }] : [],
+    plural(apps.length, 'app', 'apps') + (running ? ' · ' + running + ' running' : '')
+  );
+}
+
+function renderOtherHeads() {
+  renderAppsHead();
   setStatus(els.jobsHeadStatus, plural(state.jobs.length, 'job', 'jobs'));
   setStatus(els.lifeHeadStatus, plural(state.lifeOsSkills.length, 'skill', 'skills'));
   // The Board's line is live (#1436): board.js writes it on every render.

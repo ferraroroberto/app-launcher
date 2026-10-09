@@ -18,6 +18,9 @@ import { icon } from './_vendored/icons/icons.js';
 //   label      -> the main button's accessible name (what a tap does)
 //   onMain     -> the primary action; `disabled` + `hint` grey it out
 //   favorite   -> { on, onToggle } adds the leading star
+//   avatar     -> an avatar element (glance.js avatar(), #1437) leading the
+//                 text column inside the main button, so the tap target
+//                 stays the whole row
 //   kebabClass / kebabLabel -> the trailing kebab's hook class and name
 // Returns { li, main, title, meta, kebab } for the caller to finish.
 export function actionRow(opts) {
@@ -43,11 +46,21 @@ export function actionRow(opts) {
   const main = document.createElement('button');
   main.type = 'button';
   main.className = 'action-row-main';
+  // With an avatar the main button lays out as a row: the avatar, then the
+  // title and meta stacked in their own column.
+  let column = main;
+  if (opts.avatar) {
+    main.classList.add('has-avatar');
+    main.appendChild(opts.avatar);
+    column = document.createElement('span');
+    column.className = 'action-row-text';
+    main.appendChild(column);
+  }
   const title = document.createElement('span');
   title.className = 'action-row-title';
   title.textContent = opts.title;
   title.title = opts.title;
-  main.appendChild(title);
+  column.appendChild(title);
   // The context line: the plain meta text, then any exception chips
   // (glance.js chip(), #1434) after it, so a chip never ellipsizes away.
   let meta = null;
@@ -65,7 +78,7 @@ export function actionRow(opts) {
     } else {
       meta.textContent = opts.meta;
     }
-    main.appendChild(meta);
+    column.appendChild(meta);
   }
   if (opts.disabled) {
     main.disabled = true;

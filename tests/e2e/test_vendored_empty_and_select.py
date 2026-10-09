@@ -82,18 +82,23 @@ def test_zero_item_lists_render_the_canonical_empty_state(
         route.fulfill(status=200, content_type="application/json", body='{"jobs": []}')
     expect(page.locator("#jobsLoading")).to_be_hidden()
 
-    for tab, empty_id in (
-        ("#tabClaude", "#sessionsEmpty"),
-        ("#tabClaude", "#claudeEmpty"),
-        ("#tabApps", "#runningAppsEmpty"),
-        ("#tabApps", "#listenersEmpty"),
-        ("#tabApps", "#appsEmpty"),
-        ("#tabApps", "#registeredTraysEmpty"),
-        ("#tabJobs", "#jobsEmpty"),
-        ("#tabLifeOS", "#lifeOsEmpty"),
+    # Every empty state offers its one next action (#1238 J-09): in the
+    # block, or (#1437) in the row or sheet action right beside it — Running's
+    # is the Other ports row under it, Other ports' is the sheet's Check again.
+    for tab, empty_id, beside in (
+        ("#tabClaude", "#sessionsEmpty", None),
+        ("#tabClaude", "#claudeEmpty", None),
+        ("#tabApps", "#runningAppsEmpty", "#otherPortsRow"),
+        ("#tabApps", "#appsEmpty", None),
+        ("#tabApps", "#registeredTraysEmpty", None),
+        ("#tabApps", "#listenersEmpty", "#listenersCheckAgain"),
+        ("#tabJobs", "#jobsEmpty", None),
+        ("#tabLifeOS", "#lifeOsEmpty", None),
     ):
         page.locator(tab).click()
         page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+        if empty_id == "#listenersEmpty":
+            page.locator("#otherPortsRow").click()
         block = page.locator(empty_id)
         expect(block).to_be_visible()
         expect(block).to_have_class(re.compile(r"\bempty-state\b"))
@@ -103,9 +108,15 @@ def test_zero_item_lists_render_the_canonical_empty_state(
         assert block.locator(".empty-state-icon").bounding_box()["width"] == 24, (
             f"{empty_id}'s glyph is not at the feature size"
         )
-        # Every empty state offers its one next action (#1238 J-09).
-        expect(block.locator(".empty-state-action")).to_have_count(1)
-        expect(block.locator(".empty-state-action")).to_have_text(re.compile(r"\w"))
+        if beside:
+            expect(block.locator(".empty-state-action")).to_have_count(0)
+            expect(page.locator(beside)).to_be_visible()
+        else:
+            expect(block.locator(".empty-state-action")).to_have_count(1)
+            expect(block.locator(".empty-state-action")).to_have_text(re.compile(r"\w"))
+        if empty_id == "#listenersEmpty":
+            page.locator("#otherPortsSheetClose").click()
+            expect(page.locator("#otherPortsSheet")).to_be_hidden()
 
     # The actions reuse the app's own flows: Add job opens the job dialog,
     # and a missing folder opens Settings at that field.

@@ -1,11 +1,11 @@
-/* Apps tab: the registry list, launching, and the running-apps panel — plus
- * the shared orchestration both tab surfaces drive (renderApps, launchApp,
+/* Apps tab: the Running card, the registry list, launching — plus the
+ * shared orchestration both tab surfaces drive (renderApps, launchApp,
  * fetchApps).
  *
  * renderApps also feeds the Coding tab's project list (the `claude-code`
  * rows); those tiles, their git-status annotation and the agent-visibility
  * toggles live in apps-coding.js, the rename/scan dialogs in
- * apps-dialogs.js, and the port-listeners panel in apps-listeners.js — all
+ * apps-dialogs.js, and the Other ports sheet in apps-listeners.js — all
  * split out in issue #723, following the shape jobs.js and board.js already
  * set.
  */
@@ -23,9 +23,11 @@ import {
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
 import { actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
-import { nameLabel, revealInCard } from './dom-utils.js';
-import { fetchListeners } from './apps-listeners.js';
+import { nameLabel } from './dom-utils.js';
+import { copyUrl, renderOtherPortsRow, wireListeners } from './apps-listeners.js';
 import { createRowMenu } from './row-menu.js';
+import { avatar, chip } from './glance.js';
+import { confirmDialog } from './confirm-dialog.js';
 
 // The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
 const appMenu = createRowMenu('project-menu');
@@ -37,22 +39,52 @@ const appsFilter = listFilter({
   storageKey: 'app-launcher.filter.apps',
 });
 
+// The kind avatar (#1437): one Lucide glyph per bat kind, the shared
+// avatar's alive badge on top.
+const KIND_GLYPH = { streamlit: 'gauge', webapp: 'globe', tunnel: 'cloud', tray: 'package' };
+
+function kindAvatar(kind, badge) {
+  return avatar(KIND_GLYPH[kind] || 'layout-grid', badge, 'app-avatar');
+}
+
+// The registry ids with a launcher-spawned instance up (the running-apps
+// poll, gated to this tab like the rows it badges).
+function runningIds() {
+  return new Set(state.runningApps.map(function (r) { return r.app_id; }));
+}
+
 // ----------------------------------------------------------- apps list
 export function renderApps() {
   const codingApps = state.apps.filter(function (a) { return a.kind === 'claude-code'; });
+  renderCodingList(els.claudeList, codingApps);
+  els.claudeEmpty.hidden = codingApps.length !== 0;
+  renderBatLists();
+}
+
+// The Apps and Trays cards. Re-run when the registry lands and when the set
+// of running apps changes, so a launch gains its badge on the next poll.
+function renderBatLists() {
   const trayApps = state.apps.filter(function (a) { return a.kind === 'tray'; });
   const otherApps = state.apps.filter(function (a) {
     return a.kind !== 'claude-code' && a.kind !== 'tray';
   });
+  const running = runningIds();
 
-  renderCodingList(els.claudeList, codingApps);
-  renderList(els.registeredTraysList, trayApps);
-  renderList(els.appsList, otherApps);
+  renderList(els.registeredTraysList, trayApps, running);
+  renderList(els.appsList, otherApps, running);
+  // One endRender for both lists: they share the menu, and a call between
+  // them would close a menu open on the second.
+  appMenu.endRender();
   appsFilter.apply();
 
-  els.claudeEmpty.hidden = codingApps.length !== 0;
   els.registeredTraysEmpty.hidden = trayApps.length !== 0;
   els.appsEmpty.hidden = otherApps.length !== 0;
+  // The empty state offers the scan itself; the row would say it twice.
+  els.appsScanRow.hidden = otherApps.length === 0;
+  const autostart = trayApps.filter(function (a) { return a.autostart; }).length;
+  els.traysSummaryMeta.hidden = trayApps.length === 0;
+  els.traysSummaryMeta.textContent = trayApps.length + ' · ' + autostart + ' autostart';
+  renderHomeHead();
 }
 
 // Flip a Registered Trays entry's autostart flag (issue #456 part 2/2) via
@@ -72,38 +104,54 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
-// The row's context line (#1128): kind in sentence case (#1156), a
-// tunnel's probed health, and in Jobs → Edit mode the bat path the ✏️/🗑️
-// menu rows act on — only worth its width when you're about to use them.
-function appMeta(a) {
-  if (state.editMode) return a.bat_path || a.project_dir || '';
-  const parts = [nameLabel(a.kind)];
-  if (a.health === 'up') parts.push('Up');
-  else if (a.health === 'down') parts.push('Down');
+// A registered app's alive badge (#1437): red for a tunnel whose probe says
+// down (it should be up), green while it is up or a launch from here is
+// running, none otherwise.
+function appBadge(a, running) {
+  if (a.kind === 'tunnel' && a.health === 'down') return 'down';
+  if (running.has(a.id) || (a.kind === 'tunnel' && a.health === 'up')) return 'alive';
+  return '';
+}
+
+// A tray row's context line (#1437): "running" while a launch from here is
+// up, and "starts at log on" when its autostart switch is on. Trays the
+// tray process starts at log on are not in the running list, so a tray not
+// seen running says nothing about it rather than "not running".
+function trayMeta(a, running) {
+  const parts = [];
+  if (running.has(a.id)) parts.push('running');
+  if (a.autostart) parts.push('starts at log on');
   return parts.join(' · ');
 }
 
 // Apps and Trays rows on the vendored action-row (#1128). Tapping the row
 // launches the bat hidden, with no console window (#790's 🚫👁): the
 // phone-first case, the PC unattended (#1269). Launch visible (watch a
-// Streamlit boot, read a traceback) and every other action ride the kebab. A tray row
-// keeps its autostart switch as the row's one leading toggle — it is state
-// read at a glance, unlabelled because the panel is called Trays; screen
-// readers still get "Autostart <name> at boot".
-function renderList(host, items) {
+// Streamlit boot, read a traceback) and every other action ride the kebab,
+// whose header line is the bat path (#1437). An app row leads with its
+// kind avatar; the context line is the kind, plus a danger "down" chip for
+// a tunnel that is down (Up is normal, so it gets none). A tray row keeps
+// its autostart switch as the row's one leading toggle — it is state read
+// at a glance, unlabelled because the panel is called Trays; screen readers
+// still get "Autostart <name> at boot".
+function renderList(host, items, running) {
   host.innerHTML = '';
   items.forEach(function (a) {
+    const tray = a.kind === 'tray';
+    const down = a.kind === 'tunnel' && a.health === 'down';
     const row = actionRow({
       id: a.id,
       className: 'app-row',
       title: a.name,
-      meta: appMeta(a),
+      meta: tray ? trayMeta(a, running) : nameLabel(a.kind),
+      chips: down ? [chip('down', 'danger', 'app-down-chip')] : [],
+      avatar: tray ? null : kindAvatar(a.kind, appBadge(a, running)),
       label: 'Launch ' + a.name + ' hidden, with no window',
       onMain: function () { launchApp(a, undefined, true); },
       kebabClass: 'app-menu-anchor',
       kebabLabel: a.name + ' actions',
     });
-    if (a.kind === 'tray') {
+    if (tray) {
       row.li.insertBefore(switchEl(!!a.autostart, {
         label: 'Autostart ' + a.name + ' at boot',
         onToggle: function (next, btn) {
@@ -143,31 +191,20 @@ function renderList(host, items) {
         onTap: function () { copyUrl(a.tunnel_url); },
       },
       {
-        // Rename + remove stay gated behind Jobs tab → Edit mode.
+        // Always offered since #1437 (decision 5 of #1432): no longer behind
+        // the Jobs tab's Edit mode.
         className: 'app-rename-btn', glyph: 'pencil',
         label: 'Rename ' + a.name, text: 'Rename',
-        hidden: !state.editMode,
         onTap: function () { openRename(a); },
       },
       {
         className: 'app-remove-btn', glyph: 'trash-2', danger: true,
         label: 'Remove ' + a.name, text: 'Remove',
-        hidden: !state.editMode,
         onTap: function () { removeApp(a); },
       },
-    ]));
+    ], { header: a.bat_path || a.project_dir || '' }));
     host.appendChild(row.li);
   });
-  appMenu.endRender();
-}
-
-async function copyUrl(url) {
-  try {
-    await navigator.clipboard.writeText(url);
-    toast('Link copied', 'good');
-  } catch (exc) {
-    apiFailToast('Could not copy the link', exc);
-  }
 }
 
 // Coding-tab launch mode is the Detached switch in the Projects card's
@@ -264,7 +301,12 @@ export async function launchApp(a, agentId, stealth) {
 }
 
 async function removeApp(a) {
-  if (!confirm('Remove ' + a.name + ' from the registry?')) return;
+  const ok = await confirmDialog({
+    title: 'Remove ' + a.name + '?',
+    message: 'It leaves the registry. Its files stay where they are.',
+    action: 'Remove',
+  });
+  if (!ok) return;
   try {
     await jsonApi('/api/apps/' + encodeURIComponent(a.id), { method: 'DELETE' });
     toast('Removed ' + a.name, 'good');
@@ -307,24 +349,37 @@ export async function fetchAgents() {
   renderFavoriteAgent();
 }
 
-// -------------------------------------------------- running apps panel
+// -------------------------------------------------- the Running card
 // Apps spawned from the launcher (bats), as action-rows (#1129): tapping the
 // row opens the app over Tailscale; Copy URL and the destructive Stop (last,
-// confirmed) are in its ⋮ menu rather than a visible button.
+// confirmed) are in its ⋮ menu rather than a visible button. Since #1437 a
+// row leads with its kind avatar wearing the alive badge, its context line
+// is "up 2h · :8501", and the pid is the menu's header line.
 const runningMenu = createRowMenu('project-menu');
+// The running app ids the Apps list was last badged from: it re-renders
+// only when that set changes, not on every poll.
+let badgedRunning = '';
 
 export function renderRunningApps() {
   const host = els.runningAppsList;
   host.innerHTML = '';
-  els.runningAppsEmpty.hidden = state.runningApps.length !== 0;
-  renderHomeHead();
+  const none = state.runningApps.length === 0;
+  els.runningAppsEmpty.hidden = !none;
+  els.runningAppsNote.hidden = !none;
+  renderOtherPortsRow();
+  const ids = Array.from(runningIds()).sort().join('\n');
+  if (ids !== badgedRunning) {
+    badgedRunning = ids;
+    renderBatLists();
+  } else {
+    renderHomeHead();
+  }
 
   state.runningApps.forEach(function (r) {
     const ago = fmtAgo(r.started_at);
-    const parts = [nameLabel(r.kind)];
+    const parts = [];
     if (ago) parts.push('up ' + ago);
     parts.push(r.port ? ':' + r.port : 'binding…');
-    parts.push('pid ' + r.pid);
     const noUrl = r.port
       ? 'Set tailnet_host in config/config.json to enable Open'
       : 'Waiting for the app to bind a port…';
@@ -332,6 +387,7 @@ export function renderRunningApps() {
       className: 'running-app',
       title: r.name,
       meta: parts.join(' · '),
+      avatar: kindAvatar(r.kind, 'alive'),
       label: r.url ? 'Open ' + r.url : 'Open ' + r.name,
       disabled: !r.url,
       hint: noUrl,
@@ -354,14 +410,19 @@ export function renderRunningApps() {
         label: 'Stop ' + r.name, text: 'Stop',
         onTap: function () { stopAppInstance(r); },
       },
-    ]));
+    ], { header: 'pid ' + r.pid }));
     host.appendChild(row.li);
   });
   runningMenu.endRender();
 }
 
 async function stopAppInstance(r) {
-  if (!confirm('Stop ' + r.name + ' (pid ' + r.pid + ')?')) return;
+  const ok = await confirmDialog({
+    title: 'Stop ' + r.name + '?',
+    message: 'This ends pid ' + r.pid + ' and everything it started.',
+    action: 'Stop',
+  });
+  if (!ok) return;
   try {
     await jsonApi(
       '/api/apps/' + encodeURIComponent(r.app_id) +
@@ -399,22 +460,9 @@ export function wireApps() {
   els.tabApps.addEventListener('click', function () {
     fetchRunningApps().catch(function () {});
   });
-  // Empty-state actions (#1238 J-09): nothing running points at the port
-  // listeners (where a restart's orphans show), and an empty listener list
-  // re-probes.
-  const runningAppsEmptyAction = document.getElementById('runningAppsEmptyAction');
-  if (runningAppsEmptyAction) {
-    runningAppsEmptyAction.addEventListener('click', function () {
-      revealInCard(els.listenersList.closest('details'));
-      fetchListeners().catch(function () {});
-    });
-  }
-  const listenersEmptyAction = document.getElementById('listenersEmptyAction');
-  if (listenersEmptyAction) {
-    listenersEmptyAction.addEventListener('click', function () {
-      fetchListeners().catch(function () {});
-    });
-  }
+  // Nothing running points at Other ports, the row right under the empty
+  // state, which is where a restart's orphans show.
+  wireListeners();
   wireCoding();
   wireFavoriteAgent();
   wireRenameDialog();
