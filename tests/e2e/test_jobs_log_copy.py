@@ -1,12 +1,13 @@
 """Regression pin for issue #97 (Jobs tab: tap a run's log to copy it).
 
-Tapping the expanded run-output pane (``[data-role="output-tail"]``) must
+Tapping the run-output pane (``[data-role="output-tail"]``) must
 copy the full log text to the clipboard and confirm with a toast. The
-handler lives in ``jobs.js`` (``copyOutputTail`` wired in
-``renderHistoryLi``).
+handler lives in ``jobs.js`` (``copyOutputTail``); since #1438 the pane is in
+the job sheet (``dialog#jobSheet`` / ``#jobSheetBody``), opened by tapping a
+job row, instead of the old inline accordion under the row.
 
 Hermetic: route-mock ``/api/jobs`` + the run-list and run-detail endpoints
-so the expand → select → output flow runs through the production code path,
+so the open sheet → select → output flow runs through the production code path,
 and mock ``navigator.clipboard.writeText`` via init script (headless WebKit
 clipboard perms are not reliable, same reason as the #29 paste test). The
 check runs in both projections.
@@ -110,12 +111,12 @@ def test_tapping_job_log_copies_to_clipboard(
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    # Expand the job row → the output pane mounts and fills with the run's log.
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    # Open the job sheet → the output pane mounts and fills with the run's log.
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    row.locator("button.session-open").click()
+    row.locator("button.action-row-main").click()
 
-    tail = authed_page.locator("[data-role='output-tail']")
+    tail = authed_page.locator("#jobSheetBody [data-role='output-tail']")
     expect(tail).to_contain_text("boom-{97}")
 
     # Tap the log → writeText fires with the full text, toast confirms.

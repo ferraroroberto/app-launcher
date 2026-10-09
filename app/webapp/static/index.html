@@ -887,53 +887,52 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
-      <details id="jobsAgendaCard" class="card card--collapsible sessions-card jobs-agenda-card">
-        <summary class="collapse-summary">
-          <span class="collapse-main">
+      <!-- Next up (#1438, the Jobs tab's glance card): the next three fires
+           without a tap, each opening its job's sheet. The header opens the
+           whole 7-day agenda in a sheet. jobs-agenda.js fetches it once per
+           visit to the tab. -->
+      <section id="jobsNextUpCard" class="card jobs-next-card" data-state="loading" aria-labelledby="jobsNextUpTitle">
+        <h3 id="jobsNextUpTitle" class="card-title jobs-next-title">
+          <button type="button" id="jobsAgendaOpen" class="jobs-next-head" aria-haspopup="dialog"
+                  aria-label="Next up, open the 7-day schedule">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
-            <h3 class="collapse-title">Schedule</h3>
-          </span>
-          <span class="collapse-chevron" aria-hidden="true">›</span>
-        </summary>
-        <div id="jobsAgendaBody" class="jobs-agenda-body">
-          <p class="muted small">Loading…</p>
+            <span class="jobs-next-head-text">Next up</span>
+            <span class="drill-row-chevron" aria-hidden="true">›</span>
+          </button>
+        </h3>
+        <ul id="jobsNextUpList" class="card-list action-rows" aria-label="Next fires"></ul>
+        <div id="jobsNextUpState" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+          <p class="empty-state-message">Reading the schedule…</p>
         </div>
-      </details>
-      <details class="card card--collapsible sessions-card jobs-card" open>
+      </section>
+
+      <details class="card card--collapsible action-list jobs-card" open>
         <summary class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
-            <h3 class="collapse-title">Registered jobs</h3>
+            <h3 class="collapse-title">Jobs</h3>
           </span>
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
-        <!-- Card controls live in the body, never in the <summary> (#1132):
-             a near-miss beside one toggled the whole card. -->
-        <div class="card-toolbar">
-          <div class="jobs-header-actions">
-            <button id="jobsAddBtn" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
-            <span class="jobs-edit-control">
-              <span class="jobs-edit-label">Edit mode</span>
-              <button type="button" id="jobsEditBtn" class="toggle" role="switch" aria-checked="false"
-                     aria-label="Edit mode"
-                     title="Edit mode — reveal Add job plus edit + remove on job rows">
-                <span class="knob"></span><span class="toggle-label">OFF</span>
-              </button>
-            </span>
-            <button id="jobsSortBtn" type="button" class="button-ghost jobs-sort-btn" aria-label="Change job sort order"></button>
-          </div>
+        <!-- Card controls live in the body, never in the <summary> (#1132).
+             The search runs on the server over names and run output; Add is
+             always here, with no Edit mode (#1438, decision 5 of #1432). -->
+        <div class="jobs-toolbar" role="search">
+          <label class="action-row-filter list-filter jobs-search">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <input id="jobsSearchInput" type="search" autocomplete="off"
+                   placeholder="Search jobs and run output" aria-label="Search jobs and run output">
+            <button id="jobsSearchClear" type="button" class="icon-button jobs-search-clear"
+                    aria-label="Clear run search" title="Clear run search" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+            </button>
+          </label>
+          <button id="jobsSortBtn" type="button" class="icon-button jobs-sort-btn" aria-label="Change job sort order"></button>
+          <button id="jobsAddBtn" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
         </div>
-        <div class="jobs-search-bar" role="search">
-          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
-          <input id="jobsSearchInput" type="search" autocomplete="off"
-                 placeholder="Search jobs and run output" aria-label="Search jobs and run output">
-          <button id="jobsSearchClear" type="button" class="icon-button"
-                  aria-label="Clear run search" title="Clear run search" hidden>
-            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
-          </button>
-        </div>
-        <ul id="jobsList" class="card-list" aria-label="Jobs"></ul>
+        <ul id="jobsList" class="card-list action-rows" aria-label="Jobs"></ul>
         <div id="jobsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No jobs or run output match the search.</p>
@@ -2143,6 +2142,45 @@
       </div>
     </dialog>
 
+    <!-- The job sheet (#1438, decision 7 of #1432): tapping a job opens
+         what the inline accordion held, in the same order: details, flags,
+         Kill stuck run, recent runs with pin and re-run, the output (live
+         while running), artifacts and the webhook payload. Run now is its
+         one primary action. On the wide desktop layout it docks as the
+         detail pane beside the list instead (jobs.js, styles.css). -->
+    <dialog id="jobSheet" class="detail-dialog job-sheet" aria-labelledby="jobSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobSheetTitle" class="job-sheet-title" tabindex="-1" autofocus></h2>
+          <button type="button" id="jobSheetClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="jobSheetBody" class="job-sheet-body" data-role="history-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="jobSheetRun" class="button-primary detail-save-btn"></button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The 7-day agenda (#230, a sheet since #1438): day groups of upcoming
+         fires, then the frequent jobs that would flood it. Opened from the
+         Next up card's header; a fire opens its job's sheet. -->
+    <dialog id="jobsAgendaSheet" class="detail-dialog jobs-agenda-sheet" aria-labelledby="jobsAgendaSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobsAgendaSheetTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg> Schedule</h2>
+          <button type="button" id="jobsAgendaSheetClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="jobsAgendaBody" class="jobs-agenda-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="jobsAgendaSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- Other ports (#1437): every port listener on this PC, helper services
          folded under their parent app (#224/#480), each row's kebab holding
          Open, Copy URL and Stop process. Opened from the Running card's last
@@ -2314,6 +2352,15 @@
     <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
     <p class="session-detail-empty-title">No session open</p>
     <p class="session-detail-empty-hint">A session's Chat opens here, beside the list. A full-control session's terminal opens in its own window.</p>
+  </div>
+
+  <!-- Wide layout only (#1438): the Jobs tab's detail pane while no job is
+       docked in it. CSS shows it at the wide query on the Jobs tab;
+       everywhere else it is display: none. -->
+  <div id="jobDetailEmpty" class="job-detail-empty">
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
+    <p class="session-detail-empty-title">No job open</p>
+    <p class="session-detail-empty-hint">A job's details, runs and output open here, beside the list.</p>
   </div>
 
   <!-- The session overlay (#982, Step 3 of #979): one shell, two render

@@ -1,10 +1,14 @@
-"""Regression pin for issue #230 (Jobs tab: foldable schedule agenda view).
+"""Regression pin for issue #230 (Jobs tab: the schedule agenda), rebuilt by #1438.
 
-The 🗓️ Schedule panel sits above Registered jobs, collapsed by default. On
-open it fetches ``/api/jobs/agenda`` and renders upcoming fires as a
-day-grouped list (``Today`` / ``Tomorrow`` / weekday), time-ordered, with a
-"frequent" footer for dense minutes/hourly jobs. Tapping a row reveals that
-job expanded in the list below.
+The agenda used to be a collapsed ``<details>`` Schedule card above the job
+list. #1438 split it in two, both fed by one ``GET /api/jobs/agenda`` payload:
+a **Next up** card (the next three fires, visible without a tap) and the full
+7-day agenda in a **sheet** the card's header opens. Both show time-ordered
+fires; the sheet groups them by day (``Today`` / ``Tomorrow`` / weekday) with a
+"frequent" footer for dense minutes/hourly jobs. Tapping a fire used to expand
+that job in the list below (the accordion is gone); it now closes the sheet and
+opens the job's sheet. The agenda is fetched once per visit to the tab, never
+by the 4s jobs poll and never by opening the sheet.
 
 Hermetic: route-mock the agenda + jobs + run-list endpoints with fixed
 occurrences anchored to a fixed local midnight, and pin the *browser's* clock
@@ -22,7 +26,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import flush_requests, stable_read
 
 pytestmark = pytest.mark.smoke
 
@@ -76,16 +80,20 @@ def _job(job_id, name):
     }
 
 
-def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> None:
+def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> list:
+    """Mock the endpoints; returns the list that records each agenda fetch."""
     # Freeze the page's `new Date()` at the same anchor the fixture epochs are
     # built from (#918). `set_fixed_time` pins Date only — timers keep running,
     # so boot and the panel's fetch are unaffected.
     page.clock.set_fixed_time(now)
-    page.route(
-        re.compile(r".*/api/jobs/agenda(\?.*)?$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=_json.dumps(agenda)),
-    )
+    agenda_calls: list = []
+
+    def _agenda_route(route):
+        agenda_calls.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps(agenda))
+
+    page.route(re.compile(r".*/api/jobs/agenda(\?.*)?$"), _agenda_route)
     page.route(
         re.compile(r".*/api/jobs/[^/]+/runs$"),
         lambda route: route.fulfill(
@@ -97,57 +105,84 @@ def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> None:
             status=200, content_type="application/json",
             body=_json.dumps({"jobs": [_job("alpha", "Alpha"), _job("zeta", "Zeta")]})),
     )
+    return agenda_calls
 
 
 def _open_agenda(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
-    card = page.locator("#jobsAgendaCard")
-    card.wait_for(state="attached", timeout=5_000)
-    assert not card.evaluate("el => el.open"), "agenda panel must be collapsed by default"
-    page.locator("#jobsAgendaCard summary").click()
-    page.wait_for_selector(".jobs-agenda-row", state="attached", timeout=5_000)
+    expect(page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "ready")
+    page.locator("#jobsAgendaOpen").click()
+    expect(page.locator("#jobsAgendaSheet")).to_be_visible()
+    page.wait_for_selector("#jobsAgendaBody .jobs-fire-row", state="attached", timeout=5_000)
+
+
+def _day_headers(page: Page):
+    return page.eval_on_selector_all(
+        "#jobsAgendaBody .jobs-agenda-day", "els => els.map(e => e.textContent)")
 
 
 @pytest.mark.iphone
 def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None:
-    _wire(authed_page)
-    _open_agenda(authed_page, base_url)
+    agenda_calls = _wire(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabJobs").click()
 
-    headers = authed_page.eval_on_selector_all(
-        ".jobs-agenda-day", "els => els.map(e => e.textContent)")
+    # Next up (#1438): the first three fires, no tap needed — time, name, and
+    # "<day> · <Cadence>" (the cadence's first letter lifted).
+    nxt = authed_page.locator("#jobsNextUpList li.jobs-fire-row")
+    expect(nxt).to_have_count(3)
+    assert nxt.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta", "alpha"]
+    expect(nxt.locator(".jobs-fire-time")).to_have_text(["13:00", "01:00", "07:00"])
+    expect(nxt.locator(".action-row-meta")).to_have_text(
+        ["today · Daily 13:00", "tomorrow · Daily 01:00", "tomorrow · Daily 13:00"])
+
+    authed_page.locator("#jobsAgendaOpen").click()
+    expect(authed_page.locator("#jobsAgendaSheet")).to_be_visible()
+    headers = _day_headers(authed_page)
     assert headers[0] == "Today"
     assert "Tomorrow" in headers
 
     ids = authed_page.eval_on_selector_all(
-        ".jobs-agenda-row", "els => els.map(e => e.dataset.jobId)")
+        "#jobsAgendaBody .jobs-fire-row", "els => els.map(e => e.dataset.jobId)")
     assert ids == ["alpha", "zeta", "alpha"], "rows must be time-ordered across days"
-    # Each row is a tap target (it reveals its job): the 44px floor, not the
+    # Each fire is a tap target (it opens its job): the 44px floor, not the
     # 38px its padding alone gave (#1174).
     heights = authed_page.eval_on_selector_all(
-        ".jobs-agenda-row", "els => els.map(e => e.getBoundingClientRect().height)")
+        "#jobsAgendaBody .jobs-fire-row .action-row-main",
+        "els => els.map(e => e.getBoundingClientRect().height)")
     assert all(h >= 43.99 for h in heights), f"agenda rows under 44px: {heights}"
-    # The accent time reads at 4.5:1 in both themes, on the row's hover wash
-    # too: a tap leaves :hover stuck on a phone (#1175, COLOR-02: the dark
-    # theme's link accent measured 4.21:1 there).
-    row = authed_page.locator(".jobs-agenda-row").first
+    # The time reads at 4.5:1 in both themes, on the row's hover wash too: a
+    # tap leaves :hover stuck on a phone (#1175, COLOR-02: the dark theme's
+    # link accent measured 4.21:1 there). The time is the fire row's leading
+    # value since #1438 (was the accent `.jobs-agenda-time`); the meta text
+    # beside it is held to the same floor.
+    row = authed_page.locator("#jobsAgendaBody .jobs-fire-row").first
     row.hover()
     for theme in ("light", "dark"):
         authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
-        ratio = stable_read(lambda: contrast_ratio(row.locator(".jobs-agenda-time")))
-        assert ratio >= 4.5, f"{theme}: agenda time at {ratio:.2f}:1, under 4.5:1"
+        for part in (".jobs-fire-time", ".action-row-meta"):
+            ratio = stable_read(lambda p=part: contrast_ratio(row.locator(p)))
+            assert ratio >= 4.5, f"{theme}: agenda {part} at {ratio:.2f}:1, under 4.5:1"
     authed_page.evaluate("delete document.documentElement.dataset.theme")
 
     # Dense cadences are summarised, not expanded into the list.
     expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")
 
-    # -- was test_agenda_row_reveals_job (merged in #1215; last: it expands
-    # a job in the list below) --
-    authed_page.locator(".jobs-agenda-row[data-job-id='zeta']").first.click()
-    # The reveal expands that job's history <li> in the Registered-jobs list.
-    expect(
-        authed_page.locator("#jobsList li.jobs-history-li[data-history-for='zeta']")
-    ).to_be_visible()
+    # One fetch per visit: neither opening the sheet nor the 4s jobs poll asks
+    # again (#1438).
+    flush_requests(authed_page)
+    assert len(agenda_calls) == 1, agenda_calls
+
+    # -- was test_agenda_row_reveals_job (merged in #1215; last: it leaves the
+    # sheet). The fire used to expand that job in the list below; since #1438
+    # it closes the agenda sheet and opens the job's own sheet. --
+    authed_page.locator(
+        "#jobsAgendaBody .jobs-fire-row[data-job-id='zeta'] .action-row-main").click()
+    expect(authed_page.locator("#jobsAgendaSheet")).to_be_hidden()
+    expect(authed_page.locator("#jobSheet")).to_be_visible()
+    expect(authed_page.locator("#jobSheetTitle")).to_have_text("Zeta")
+    expect(authed_page.locator("#jobSheetBody")).to_have_attribute("data-job-id", "zeta")
 
 
 def test_agenda_day_labels_hold_across_local_midnight(
@@ -175,13 +210,14 @@ def test_agenda_day_labels_hold_across_local_midnight(
     _wire(authed_page, agenda=agenda, now=late)
     _open_agenda(authed_page, base_url)
 
-    headers = authed_page.eval_on_selector_all(
-        ".jobs-agenda-day", "els => els.map(e => e.textContent)")
-    assert headers == ["Today", "Tomorrow"]
+    assert _day_headers(authed_page) == ["Today", "Tomorrow"]
 
     ids = authed_page.eval_on_selector_all(
-        ".jobs-agenda-row", "els => els.map(e => e.dataset.jobId)")
+        "#jobsAgendaBody .jobs-fire-row", "els => els.map(e => e.dataset.jobId)")
     assert ids == ["alpha", "zeta"]
+    # Next up draws its day from the same clock (the meta line's first word).
+    expect(authed_page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
+        ["today · Daily 23:45", "tomorrow · Daily 00:15"])
 
 
 def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:
@@ -189,14 +225,20 @@ def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:
                                "occurrences": [], "frequent": []})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
-    authed_page.locator("#jobsAgendaCard summary").click()
+    # Next up says why it is empty (design.md "Async data & feedback").
+    expect(authed_page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "empty")
+    expect(authed_page.locator("#jobsNextUpState")).to_contain_text(
+        "Nothing scheduled in the next 7 days")
+    authed_page.locator("#jobsAgendaOpen").click()
     expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
         "No scheduled runs in the next 7 days")
     # Its own next step (#1201): an Add job button that opens the same
-    # dialog as the Registered jobs card's ➕, with Edit mode off.
-    expect(authed_page.locator("#jobsAddBtn")).to_be_hidden()
+    # dialog as the Jobs card's +. (Edit mode is gone: that + is always shown,
+    # #1438.)
+    expect(authed_page.locator("#jobsAddBtn")).to_be_visible()
     add = authed_page.locator("#jobsAgendaBody .empty-state-action")
     expect(add).to_have_text("Add job")
     add.click()
+    expect(authed_page.locator("#jobsAgendaSheet")).to_be_hidden()
     expect(authed_page.locator("#jobDialog")).to_be_visible()
     expect(authed_page.locator("#jobDialogTitle")).to_have_text("Add job")

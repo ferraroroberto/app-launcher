@@ -1,31 +1,35 @@
 """Regression pin for app-launcher#1007 (Jobs row: handlers went stale).
 
 Every per-row action handler in ``jobs-row.js`` closed over the ``job``
-object captured when the row was built. The 4s poll then replaces every job
+object captured when the row was built. The 4s poll then replaced every job
 object (``jobs.js``: ``state.jobs = body.jobs || []``) and, when sort order
-is unchanged, **reuses the existing ``<li>``**: ``patchRowsInPlace`` →
-``patchRowNodes`` patches only the status dot, the meta line, the run
-button's rendered state and the chips. The buttons and their listeners are
-never rebuilt.
+was unchanged, **reused the existing ``<li>``**: the buttons and their
+listeners were never rebuilt.
 
 So a job whose ``confirm`` / ``paused`` / ``schedule`` / ``params`` changed
 server-side without changing sort order — from another device, a chain
 action, an auto-pause — rendered fresh while its handlers still acted on the
 stale copy. The two consequences this pins:
 
-* a job newly flagged **"Require confirmation"** ran with **no dialog**,
+* a job newly flagged **"Require confirmation"** ran with **no confirmation**,
   because ``runJobNow`` reads ``job.confirm`` off the stale object (and the
   request then omits ``?confirmed=1``, so the server gate is not exercised
   either);
 * **Edit** reopened with the stale schedule/params, so Save could silently
   clobber the concurrent change.
 
+Since #1438 the bug is fixed by construction: the poll re-renders every row
+from the fresh ``/api/jobs`` payload (no in-place patching) and the actions
+are the kebab menu's ``.job-run-item`` / ``.job-edit-item`` (there is no
+per-row Run button and no Edit mode). The confirmation is the vendored
+``#confirmDialog`` sheet (``#confirmDialogOk``), not a native ``confirm()``.
+The pin is kept behaviourally: the kebab is opened **before** the change
+arrives, the menu reopens across the poll's re-render, and the item then
+acts on the polled job.
+
 Deliberately driven through a **real poll cycle** rather than a hand-built
-job object: the bug only exists because of what the poll does to a reused
-row, so a test that calls the handler directly would pass against the broken
-code. The row's identity is tagged before the flip and re-checked after, to
-prove the in-place patch path ran and not a full re-render (which would
-rebuild the listeners and hide the bug).
+job object: a test that calls the handler directly would pass against the
+broken code.
 """
 
 from __future__ import annotations
@@ -35,6 +39,8 @@ import re
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -112,53 +118,48 @@ def _wait_for_polls(page: Page, state: dict, target: int) -> None:
     )
 
 
+def _open_kebab(row) -> None:
+    """Open the row's ⋯ menu; the menu reopens across the poll's re-render."""
+    row.locator("button.job-menu-anchor").click()
+    expect(row.locator(".job-run-item")).to_be_visible()
+
+
 def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
     authed_page: Page, base_url: str
 ) -> None:
     runs: list = []
-    dialogs: list = []
     state = {"confirm": False, "args": "", "polls": 0}
     _wire(authed_page, runs, state)
-
-    def _accept(dialog) -> None:
-        dialogs.append(dialog.message)
-        dialog.accept()
-
-    authed_page.on("dialog", _accept)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    run_btn = row.locator("[data-role='run-btn']")
-    expect(run_btn).to_have_count(1)
-
-    # Tag this exact <li> so we can prove the poll reused it.
-    row.evaluate("el => { el.dataset.pinTag = 'original'; }")
+    # Open the menu while the job is not yet confirm-flagged.
+    _open_kebab(row)
 
     # Flip the flag server-side, the way another device would, and let a real
-    # poll deliver it. Sort order is unchanged, so the row is patched in place.
+    # poll deliver it. Two further polls: one to deliver the flip, one to be
+    # sure it settled.
     state["confirm"] = True
-    # Two further polls: one to deliver the flip, one to be sure it settled
-    # (the second is sent a full 4s interval after the first, whose mocked
-    # response has long since been patched into the row by then).
     _wait_for_polls(authed_page, state, state["polls"] + 2)
 
-    # The row survived the poll — the in-place patch path ran, which is the
-    # only path where the bug exists.
-    expect(row).to_have_attribute("data-pin-tag", "original")
+    # The menu is still (or again) open after the re-render.
+    run_item = row.locator(".job-run-item")
+    expect(run_item).to_be_visible()
+    run_item.click()
 
-    run_btn.click()
-
-    assert dialogs, (
-        "tapping Run raised no confirm() dialog: the handler acted on the "
-        "job captured when the row was built, not the polled one that "
-        "carries confirm=true (#1007)"
+    confirm = authed_page.locator("#confirmDialog")
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text(
+        "requires confirmation"
     )
-    assert "requires confirmation" in dialogs[0], dialogs[0]
-    assert runs, "no run request was sent"
+    assert not runs, "the run was sent before the confirmation was accepted"
+    authed_page.locator("#confirmDialogOk").click()
+
+    wait_until(authed_page, lambda: bool(runs), "the run request")
     assert "confirmed=1" in runs[0], (
         f"run request {runs[0]!r} omitted ?confirmed=1 — the stale job "
         "decided the client-side gate, so the server gate was not exercised"
@@ -174,27 +175,22 @@ def test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render(
     runs: list = []
     state = {"confirm": False, "args": "--old", "polls": 0}
     _wire(authed_page, runs, state)
-    # The edit/dry-run/remove buttons only render in Edit mode.
-    authed_page.add_init_script("localStorage.setItem('launcher.editMode', '1')")
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    # Edit lives in the row's ⋯ menu since #1130; the menu's items read the
-    # same `ref` holder the rail's buttons did, which is what this pins.
-    row.locator("[data-role='job-menu']").click()
-    edit_btn = row.locator("button[aria-label='Edit']")
-    expect(edit_btn).to_have_count(1)
-    row.evaluate("el => { el.dataset.pinTag = 'original'; }")
+    # Edit lives in the row's ⋯ menu; open it before the change arrives.
+    _open_kebab(row)
 
     # Another device edits the job's args; a real poll delivers it.
     state["args"] = "--new"
     _wait_for_polls(authed_page, state, state["polls"] + 2)
-    expect(row).to_have_attribute("data-pin-tag", "original")
 
+    edit_btn = row.locator(".job-edit-item")
+    expect(edit_btn).to_be_visible()
     edit_btn.click()
     args_input = authed_page.locator("#jobArgsInput")
     expect(args_input).to_be_visible()

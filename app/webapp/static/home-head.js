@@ -8,8 +8,8 @@
  * holds only the exceptions, each in its tone colour ("1 needs you · 1
  * stalled"), and falls back to the plain count when nothing is wrong. At
  * 390px that leaves about 22 characters, so at most two parts. Code, the
- * Board (#1436) and Apps (#1437) are on it; renderHeadStatus is the one
- * writer the others will use.
+ * Board (#1436), Apps (#1437) and Jobs (#1438) are on it; renderHeadStatus
+ * is the one writer the others will use.
  */
 
 import { BOARD_POLL_MS, els, state } from './state.js';
@@ -113,9 +113,26 @@ function renderAppsHead() {
   );
 }
 
+// Jobs (#1438): "N failing" (a failed last run, or stuck, as the Board
+// counts them) and "N not firing" (a schedule with no runs), else "N jobs".
+function renderJobsHead() {
+  let failing = 0;
+  let notFiring = 0;
+  state.jobs.forEach(function (j) {
+    const last = j.last_run || {};
+    const outcome = last.outcome || last.status;
+    if (j.stuck || (!j.running && outcome === 'failed')) failing += 1;
+    if (j.coverage && j.coverage.state === 'problem') notFiring += 1;
+  });
+  const exceptions = [];
+  if (failing) exceptions.push({ text: failing + ' failing', tone: 'danger' });
+  if (notFiring) exceptions.push({ text: notFiring + ' not firing', tone: 'attention' });
+  renderHeadStatus(els.jobsHeadStatus, exceptions, plural(state.jobs.length, 'job', 'jobs'));
+}
+
 function renderOtherHeads() {
   renderAppsHead();
-  setStatus(els.jobsHeadStatus, plural(state.jobs.length, 'job', 'jobs'));
+  renderJobsHead();
   setStatus(els.lifeHeadStatus, plural(state.lifeOsSkills.length, 'skill', 'skills'));
   // The Board's line is live (#1436): board.js writes it on every render.
   setStatus(els.settingsHeadStatus, 'This launcher, on this PC');

@@ -9,6 +9,8 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { fetchJobs, runJobNow } from './jobs.js';
+import { fetchAgenda } from './jobs-agenda.js';
+import { confirmDialog } from './confirm-dialog.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 
@@ -406,12 +408,19 @@ async function submitRunDialog(ev) {
   });
 }
 
+// Remove, the kebab's last item, behind the vendored confirm sheet (#1438).
 export async function removeJob(job) {
-  if (!confirm('Remove ' + job.name + ' from the jobs registry?')) return;
+  const ok = await confirmDialog({
+    title: 'Remove ' + job.name + '?',
+    message: 'This takes it out of the jobs registry.',
+    action: 'Remove',
+  });
+  if (!ok) return;
   try {
     await jsonApi('/api/jobs/' + encodeURIComponent(job.id), { method: 'DELETE' });
     toast('Removed ' + job.name, 'good');
     await fetchJobs();
+    fetchAgenda().catch(function () {});
   } catch (exc) {
     apiFailToast('Remove failed', exc);
   }
@@ -732,6 +741,8 @@ async function postJobPayload(payload) {
       'good',
     );
     await fetchJobs();
+    // A new or rescheduled job moves Next up.
+    fetchAgenda().catch(function () {});
   } catch (exc) {
     // Pre-flight errors come back as a 400 with a structured problems
     // list — render them inline (red) and keep the dialog open.

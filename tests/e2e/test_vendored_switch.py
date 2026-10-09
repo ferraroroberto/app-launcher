@@ -160,10 +160,11 @@ def test_job_dialog_switches_use_vendored_component(
 
     authed_page.goto(base_url, wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
-    authed_page.locator("#jobsEditBtn").click()
-    # Edit moved into the row's ⋯ menu (#1130).
-    authed_page.locator("#jobsList li[data-id='alpha'] [data-role='job-menu']").click()
-    authed_page.locator("#jobsList li[data-id='alpha'] button[aria-label='Edit']").click()
+    # Edit lives in the row's ⋯ menu (#1130); since #1438 there is no Edit
+    # mode to switch on first, and the menu items carry their own classes.
+    row = authed_page.locator("#jobsList li.job-row[data-id='alpha']")
+    row.locator("button.job-menu-anchor").click()
+    row.locator(".job-edit-item").click()
 
     expect(authed_page.locator("#jobDialog")).to_be_visible()
     _assert_switch(authed_page, "#jobConfirmInput")
@@ -177,7 +178,10 @@ def test_job_dialog_switches_use_vendored_component(
     )
 
     authed_page.locator("#jobCancel").click()
-    authed_page.locator("#jobsList li[data-id='alpha'] [data-role='run-btn']").click()
+    # Run now is the kebab's `.job-run-item` (no per-row Run button, #1438);
+    # alpha declares a param, so it opens the run dialog.
+    row.locator("button.job-menu-anchor").click()
+    row.locator(".job-run-item").click()
 
     expect(authed_page.locator("#jobRunDialog")).to_be_visible()
     _assert_switch(
@@ -197,7 +201,6 @@ def test_static_boolean_controls_have_no_checkbox_markup(
         "#antigravitySkipPerms",
         "#antigravitySandbox",
         "#copilotSkipPerms",
-        "#jobsEditBtn",
         "#bootAutostartToggle",
         "#jobAlertOnFailureInput",
         "#jobConfirmInput",
@@ -207,7 +210,7 @@ def test_static_boolean_controls_have_no_checkbox_markup(
         _assert_switch(authed_page, selector)
     expect(authed_page.locator(".check-box")).to_have_count(0)
 
+    # The Jobs tab's Edit-mode switch (#jobsEditBtn) is gone (#1438): there
+    # is no Edit mode, so nothing there to be a switch.
     authed_page.locator("#tabJobs").click()
-    edit_control = authed_page.locator(".jobs-edit-control")
-    expect(edit_control).to_contain_text("Edit mode")
-    expect(edit_control.locator("#jobsEditBtn")).to_have_count(1)
+    expect(authed_page.locator("#jobsEditBtn")).to_have_count(0)

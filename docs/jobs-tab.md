@@ -167,7 +167,7 @@ A job can carry `"elevated": true` (omitted / `false` is the default) for a scri
 schtasks /Create /F /TN "\AppLauncher\hwinfo-restart" /TR '"E:\automation\app-launcher\.venv\Scripts\pythonw.exe" "E:\automation\app-launcher\launcher.py" run-job hwinfo-restart' /SC HOURLY /MO 8 /RL HIGHEST
 ```
 
-(Single-quote the `/TR` value in PowerShell — double-quoted strings there don't pass embedded `"` through literally.) The Jobs tab marks an elevated job with a `🔒 external schedule` pill next to its schedule chip so it's visually obvious which jobs the app isn't managing. The row remains tappable for run history, and edit mode still offers the side-effect-free dry-run check. Run-now and pause/resume are omitted and their API endpoints return `409`: the non-elevated launcher cannot honor those actions safely against an externally managed `/RL HIGHEST` task. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
+(Single-quote the `/TR` value in PowerShell — double-quoted strings there don't pass embedded `"` through literally.) The Jobs tab marks an elevated job with a `🔒 external schedule` flag in its job sheet so it's obvious which jobs the app isn't managing. The row still opens the sheet with its run history, and the kebab still offers the side-effect-free dry-run check. Run now is disabled (in the kebab and the sheet, with the reason as its label), pause/resume is withheld, and their API endpoints return `409`: the non-elevated launcher cannot honor those actions safely against an externally managed `/RL HIGHEST` task. `elevated` round-trips through `POST`/`PUT` like `visible` and is omitted from the stored row when false. There's no dedicated UI checkbox yet (same as `visible`) — set it directly in `config/jobs.json` or via the API.
 
 ### Logged-out (session-less) jobs (issue #757)
 
@@ -195,7 +195,7 @@ The registration command is generated for you: `GET /api/jobs` returns it as `re
 
 **Whether the entry actually carries that principal is checked, not assumed.** The missed-fire coverage scan (issue #697) reads `Logon Mode` out of the bulk `schtasks /Query /FO LIST /V` it already pays for, and reports a `principal_interactive` problem for a session-less job whose entry is still `Interactive only` — the failure mode where everything looks healthy (entry present, enabled, next-run populated) and nothing runs while logged out. An unreadable `Logon Mode` yields `unknown`, never a confident pass.
 
-The Jobs tab marks the row with a `🌙 logged-out` pill. Pause/resume are withheld and return `409` (the entry is externally managed, so parking the schedule here would leave Task Scheduler firing on the old one), but **Run-now stays available** — that spawns the executor in this session directly and never touches the scheduled entry. Like `visible` and `elevated`, there's no dedicated UI checkbox: set it in `config/jobs.json` or via the API.
+The Jobs tab marks the job's sheet with a `🌙 logged-out` flag. Pause/resume are withheld and return `409` (the entry is externally managed, so parking the schedule here would leave Task Scheduler firing on the old one), but **Run-now stays available** — that spawns the executor in this session directly and never touches the scheduled entry. Like `visible` and `elevated`, there's no dedicated UI checkbox: set it in `config/jobs.json` or via the API.
 
 **Answered (issue #780): `StartWhenAvailable` does *not* rescue a no-session skip.** `#746` set that flag fleet-wide on 2026-08-13, *after* the incident, so the incident was no evidence either way, and this host had one continuous session from 2026-08-13 03:31:59 — no natural experiment in its event log. A one-off probe script arranged one on **2026-08-23**: it registered a throwaway task at the root task path (never under `\AppLauncher\`) with the default interactive principal and `StartWhenAvailable`, the user signed out across its trigger (locking is not enough), and it read the run log against the Winlogon logon record, then unregistered the task. It needed no elevation — interactive is the principal a non-elevated caller can already register, which is the defect itself. With the question settled, the script was removed (#882); it is recoverable from git history as `scripts/probe-startwhenavailable-catchup.ps1` at `60e2167`.
 
@@ -270,7 +270,7 @@ Any schedule can be paused. Pause is a **state marker, not a new schedule shape*
 
 - **Endpoints:** `POST /api/jobs/<id>/pause` and `POST /api/jobs/<id>/resume`. Pause on a manual-only job returns `400 cannot pause a job whose schedule is 'none'` (no parked payload would survive a load → save cycle anyway). Pause is idempotent: pausing an already-paused job is a no-op so accidentally pressing ⏸ twice doesn't lose the parked payload.
 - **`schedule_chip`** for a paused job reads "paused — was <original chip>" so the user can see at a glance both that the schedule isn't ticking and what it will restore to.
-- **UI:** a `⏸` button on every row whose live or parked schedule isn't `none`; pressing toggles pause/resume. The button's icon and label switch with the state.
+- **UI:** **Pause** / **Resume** in the kebab of every row whose live or parked schedule isn't `none`. A paused row's meta reads "Was daily 07:00" beside a neutral **paused** chip, and its fires leave Next up.
 
 ### DAG chaining (issue #68)
 
@@ -318,7 +318,7 @@ A job can declare a `mutex_group` — labelled **Exclusive group** in the job di
 
 ### Parameters (issue #67)
 
-A job can declare typed inputs collected at run-time. With no `params`, a tap on ▶ fires immediately (today's behaviour). With one or more `params`, ▶ opens a small dialog so the user supplies values; the executor composes them into argv (and env) safely.
+A job can declare typed inputs collected at run-time. With no `params`, **Run now** (the row kebab's first item, or the job sheet's primary action) fires immediately. With one or more `params`, Run now opens a small dialog so the user supplies values; the executor composes them into argv (and env) safely.
 
 ```json
 {
@@ -618,7 +618,7 @@ Each `Problem` is `{level, field, message}` — `field` (currently always `scrip
 
 Once a job is saved, dry-run lets you verify it without committing to a full-effect fire. `POST /api/jobs/<id>/run` accepts an optional `dry_run` field with two modes:
 
-- **`"check"`** (mode 2 — the 🧪 row button, edit-mode only): resolves the full invocation (`script_path` exists, venv walk-up, param composition) **without spawning the child**. Writes a synthetic record with `status: dry_run_success` (or `dry_run_failed` carrying the resolution error in `note`) and no `exit_code`. This is the "would this even start?" check; it deliberately bypasses the executor funnel because nothing is ever spawned.
+- **`"check"`** (mode 2 — the kebab's **Dry-run check**): resolves the full invocation (`script_path` exists, venv walk-up, param composition) **without spawning the child**. Writes a synthetic record with `status: dry_run_success` (or `dry_run_failed` carrying the resolution error in `note`) and no `exit_code`. This is the "would this even start?" check; it deliberately bypasses the executor funnel because nothing is ever spawned.
 - **`"execute"`** (mode 1 — the **Dry run** toggle in the run-now dialog): spawns the child through the real executor but with `JOB_DRY_RUN=1` in its environment. Scripts that opt in (`if os.environ.get("JOB_DRY_RUN"): …`) suppress their side effects. The run record is stamped `dry_run: true` so history shows the distinction.
 
 Both modes **bypass cooldown and the mutex queue** — a dry run is an explicit verification action, so pressing 🧪 should never be answered with "cooled down" or "queued". Dry-run records (`dry_run_success` / `dry_run_failed`, and any record stamped `dry_run`) are **excluded from the cooldown anchor** so a verification never resets a job's cooldown window. The history list marks dry runs with a `🧪 dry` chip.
@@ -628,7 +628,7 @@ Both modes **bypass cooldown and the mutex queue** — a dry run is an explicit 
 A job can carry an optional `confirm: true` flag (the **⚠️ Require confirmation before running** checkbox in the editor). When set, a manual fire must be explicit:
 
 - `POST /api/jobs/<id>/run` returns `403 {"detail": "confirmation required"}` unless the request carries `?confirmed=1`. This keeps the gate honest against a direct curl or a stray Stream Deck press — a Stream Deck button targeting a `confirm` job has to bake `?confirmed=1` in deliberately.
-- The UI's run-now path (`▶` and the run-now dialog's Run button) shows a confirm prompt and then sends `?confirmed=1`.
+- The UI's run-now path (Run now in the kebab or the job sheet, and the run-now dialog's Run button) asks through the vendored confirm sheet and then sends `?confirmed=1`.
 - A dry-run **`"check"`** is **exempt** (it has no side effects); a dry-run **`"execute"`** is **not** (it spawns the child), so it is gated like any other real fire.
 
 The flag round-trips through `POST` / `PUT` and is omitted from the stored row when false (like the other optional fields).
@@ -654,14 +654,16 @@ The flag round-trips through `POST` / `PUT` and is omitted from the stored row w
 
 ## Operational signal (issue #66)
 
-The row carries five lightweight signals on top of the schedule chip and last-run line, recomputed on every `/api/jobs` poll:
+Since #1438 the row is the shared action-row: a job avatar wearing the green alive badge while it runs, the name, one meta line ("in 5m · Every 15 min", "running now · Daily 03:00", "Was daily 07:00" when paused), **chips for exceptions only**, the seven-dot sparkline as the trailing value, and one kebab (Run now, Pause/Resume, Dry-run check, Edit, Remove). Tapping the row opens the **job sheet** (on the wide desktop layout, the detail pane beside the list), which holds the details, the runs and the output. The signals, recomputed on every `/api/jobs` poll:
 
-- **Duration chip** — `p50 4.2s · p95 11s` over completed runs of this job. Hidden when there are no completed runs yet.
-- **Sparkline** — `●●●○●●●` over the last 7 runs, oldest-left. Green = success, red = failed, amber = running/pending, grey = unknown.
-- **Success rate / 30 d** — appears in the meta line when there has been at least one completed run in the last 30 days (`72% / 30d`).
-- **⚠️ stuck marker** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The marker is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act.
-- **⚠ not firing pill** — the schedule isn't producing runs at all: a missing/disabled Task Scheduler entry, or an elapsed slot with no run record. See [Missed-fire coverage](#missed-fire-coverage-issue-697); the pill renders only for a confirmed `problem`, never for `unknown`.
-- **CPU / peak RSS** — surfaced on the selected run's output label inside the expanded panel (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
+- **Sparkline** — seven dots over the last 7 runs, oldest-left. Green = success, red = failed, amber = not confirmed, a hollow ring = deferred, grey = unknown. A run in progress is the accent, never amber: the avatar's alive badge says the job runs.
+- **Chips** — **failed** (danger) for a failed last run, **stuck** and **not confirmed** and **not firing** (attention), **paused** (neutral). A healthy job has none. The page header shows "N failing" (a failed last run, or stuck) and "N not firing" in their tones, else "N jobs".
+- **Duration** — `p50 4.2s · p95 11s` over completed runs of this job, in the sheet's details. Hidden when there are no completed runs yet.
+- **Success rate / 30 d** — in the sheet's details when there has been at least one completed run in the last 30 days (`72% over 30 days`).
+- **Stuck** — the latest run is in `running` status and has been running for more than `max(p95 × 3, 300 s)`. The chip is *surface only* — auto-kill is intentionally out of scope; a human still chooses to act, with the sheet's **Kill stuck run**.
+- **Not firing** — the schedule isn't producing runs at all: a missing/disabled Task Scheduler entry, or an elapsed slot with no run record. See [Missed-fire coverage](#missed-fire-coverage-issue-697); the chip renders only for a confirmed `problem`, never for `unknown`.
+- **Alerts** — a job flagged `alert_on_failure` shows an **Alerts** line in its sheet (the row's bell went with #1438).
+- **CPU / peak RSS** — surfaced on the selected run's output label inside the job sheet (`Output · <rid> · success · 47 s CPU · peak 1.3 GB`).
 - **Tap-to-copy log (issue #97)** — tapping the selected run's output pane copies the whole log to the clipboard (toast `📋 Copied log`), so an error trace is one tap away from pasting into a report / chat. A manual text selection inside the pane is left alone (auto-copy is suppressed while a selection exists), and the empty placeholder is a no-op.
 
 ## List order + countdown (issue #229)
@@ -669,16 +671,16 @@ The row carries five lightweight signals on top of the schedule chip and last-ru
 As the registry grows, the question that matters at a glance is *"what fires next?"* — which name order can't answer (it interleaves cadences). So:
 
 - **Computed next-fire timestamp.** `src.jobs.next_fire(schedule, *, now)` derives the next wall-clock fire purely from the bounded schedule shape — `daily_times` picks the earliest upcoming slot, `weekly` rolls to the next matching weekday, `once` returns its instant only if still future, and `none` (which includes a *paused* job, whose active schedule is parked as `none`) returns `None`. It is exposed as `next_run_epoch` (int seconds) + `next_run_iso` on `/api/jobs`. This is deliberately **separate from** the schtasks `next_run` string, which is a locale-formatted, lexically-sorted best-effort value — fine to display, useless to sort by.
-- **Default Next-run order.** The client (`app/webapp/static/jobs.js` `sortedJobs`) sorts ascending by `next_run_epoch`; jobs with no next fire (manual-only / paused) sink to the bottom, tie-broken by name. A header toggle (`#jobsSortBtn`) flips to classic A–Z; the choice persists in `localStorage` (`launcher.jobsSort`, default `next`).
-- **Countdown chip.** Each scheduled row shows a relative `⏱ in 3h` chip next to its cadence chip, recomputed in place on every poll. No chip for jobs with no next fire. Replaces the old `next: <schtasks string>` text in the meta line so "next" has exactly one home.
+- **Default Next-run order.** The client (`app/webapp/static/jobs.js` `sortedJobs`) sorts ascending by `next_run_epoch`; jobs with no next fire (manual-only / paused) sink to the bottom, tie-broken by name. The sort icon button beside the search field (`#jobsSortBtn`) flips to classic A–Z; the choice persists in `localStorage` (`launcher.jobsSort`, default `next`).
+- **Countdown.** Each scheduled row's meta line starts with a relative `in 3h` (`due` once the slot has passed), before its cadence, recomputed on every poll. A job with no next fire shows its cadence alone, or "Manual only".
 
 ## Schedule agenda (issue #230)
 
-A foldable **🗓️ Schedule** panel sits above Registered jobs (collapsed by default, same `<details>` chrome as #226). It answers *"what's planned over the next few days?"* without a desktop-style 2D calendar grid — the deliberate mobile-native substitute is a **day-grouped agenda list**.
+The **Next up** card is the tab's first card (#1438): the next three fires as rows, without a tap. Its header opens the whole week in a **Schedule** sheet. Together they answer *"what's planned over the next few days?"* without a desktop-style 2D calendar grid — the deliberate mobile-native substitute is a **day-grouped agenda list**.
 
 - **Occurrence expansion.** `src.jobs.upcoming_fires(schedule, *, start, end, cap=200)` enumerates every fire in a window by walking `next_fire` forward (each call returns a fire strictly after the cursor), so it reuses the #229 logic rather than re-deriving cadence math. Dense `minutes` / `hourly` cadences (`FREQUENT_SCHEDULE_TYPES`) are **not** enumerated — they'd flood the window — and return `[]` here.
 - **Endpoint.** `GET /api/jobs/agenda?days=7` (clamp 1..14) expands each non-paused job into `{occurrences, frequent, days, generated_epoch}`: `occurrences` is a flat, time-sorted list of `{job_id, name, fire_epoch, fire_iso, cadence}`; `frequent` summarises the minutes/hourly jobs as one `{job_id, name, cadence}` row each. No schtasks, no per-job decoration.
-- **Panel.** `app/webapp/static/jobs.js` fetches lazily when the panel opens (re-fetched on each open; nothing polls it) and groups `occurrences` by calendar day under `Today` / `Tomorrow` / `Wed 18 Jun` headers, each row `HH:MM · name · cadence`. Frequent jobs render as a muted footer; an empty window shows "No scheduled runs in the next 7 days." as the canonical empty state, with an **Add job** button that opens the same Add job dialog as the Registered jobs card's ➕, Edit mode or not (#1201, after #1191). Tapping a row calls `revealJob` — it expands that job in the Registered-jobs list below and scrolls it into view (the agenda is a read-only lens, not a second control surface).
+- **Card and sheet.** `app/webapp/static/jobs-agenda.js` fetches the agenda once per visit to the Jobs tab and again when the app returns to the foreground on it (the 4s jobs poll never does). Next up shows the first three `occurrences`, each row the time as its leading value, the name, and "tomorrow · Daily 03:00". The sheet groups every occurrence by calendar day under `Today` / `Tomorrow` / `Wed 18 Jun` overline headers, each row `HH:MM · name · cadence`. Frequent jobs render as a muted footer; an empty window shows "No scheduled runs in the next 7 days." as the canonical empty state, with an **Add job** button that opens the same Add job dialog as the Jobs card's + (#1201, after #1191). Tapping a fire opens that job's sheet (the agenda is a read-only lens, not a second control surface).
 
 ### `run_stats` shape
 
@@ -728,7 +730,7 @@ Derived on read, never persisted: the records already on disk re-render correctl
 
 A run **this launcher** killed, reaped or watchdogged (`killed` / `reaped` / `watchdog` on the record) is always `failed`, whatever code the torn-down tree reported on its way out: we know what happened to it, and it is not "unconfirmed".
 
-**Where it shows.** The job row's status dot and its sparkline dots use the `--attention` accent rather than `--danger`, and the row reads `last: not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.
+**Where it shows.** The job row's sparkline dot uses the `--attention` accent rather than `--danger`, the row carries a **not confirmed** chip in attention rather than **failed** in danger, and the sheet's last run reads `not confirmed`; the run-history list uses a `?` glyph (`circle-help`) against `✓` and `✗`; the Board's Other column renders an `unconfirmed` card instead of a `failed` one; `success_rate_30d` excludes unconfirmed runs from the ratio entirely rather than counting them either way, reporting them as `unconfirmed_30d`; and `consecutive_failed_runs` breaks on one, so an unverified run cannot extend a failure streak. The `outcome_reason` rides as the dot's tooltip, so `124` reads "stalled" on the card instead of costing a log dive.
 
 ### Job-declared exit codes — `deferred` (issue #1316)
 
@@ -742,7 +744,7 @@ The only declarable outcome is `deferred`. Exit `0` cannot be declared, and a ma
 
 A `deferred` run is neither success nor failure:
 
-- **Card:** a muted hollow ring on the status dot and the sparkline, so it cannot be mistaken for the solid muted dot of a job that never ran. The run history shows a muted clock glyph, and the row reads `deferred`.
+- **Card:** a muted hollow ring on the sparkline, so it cannot be mistaken for the solid muted dot of a run with no outcome. It raises no chip. The run history shows a muted clock glyph, and the sheet's last run reads `deferred`.
 - **Alerts:** none on either channel. Other codes from the same job (`1`, `2`) still alert as `failed`.
 - **Stats:** left out of `success_rate_30d`, of the durations behind p50/p95 (a seconds-long deferral would drag down the stuck and watchdog thresholds), and of `completed_count`. It breaks a failure streak rather than extending it.
 - **Board:** no attention card, because a designed deferral needs nobody.

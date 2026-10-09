@@ -3,13 +3,19 @@
 ``renderKillButton`` created the button once with an ``addEventListener``
 click handler closing over the *first* run id, then "re-bound" it on every
 later render by assigning ``onclick`` — which never removed the original
-listener. After one re-render a single tap raised two ``confirm()`` prompts
+listener. After one re-render a single tap raised two confirmations
 and sent two ``POST .../kill`` calls, one of them against the stale run id
 captured when the button was created.
 
+Since #1438 the button lives in the job sheet (``dialog#jobSheet``, body
+``#jobSheetBody``) and the confirmation is the vendored ``#confirmDialog``
+sheet (``#confirmDialogOk``), not a native ``confirm()``; the pin is the same:
+one tap sends exactly one kill for the currently displayed run, and the
+confirm sheet is opened once.
+
 Hermetic: route-mock ``/api/jobs`` (one stuck job), its run list (two live
 runs) and each run's detail, plus the kill endpoint itself, which only
-records what it was asked to kill. Expanding the job paints the newest run
+records what it was asked to kill. Opening the sheet paints the newest run
 (``run-b``) and creates the button; selecting the older run (``run-a``)
 re-renders it. One tap must then send exactly one kill, for ``run-a``.
 """
@@ -94,39 +100,52 @@ def test_kill_button_fires_once_for_the_current_run(
     authed_page: Page, base_url: str
 ) -> None:
     killed: list = []
-    dialogs: list = []
     _wire_job_routes(authed_page, killed)
-
-    def _accept(dialog) -> None:
-        dialogs.append(dialog.message)
-        dialog.accept()
-
-    authed_page.on("dialog", _accept)
+    # Count how many times the confirm sheet opens for one tap: a stale
+    # listener would open it twice (the old native-confirm "two prompts").
+    authed_page.add_init_script(
+        """
+        window.__confirmOpens = 0;
+        document.addEventListener('DOMContentLoaded', () => {
+          const d = document.getElementById('confirmDialog');
+          if (!d) return;
+          new MutationObserver(() => {
+            if (d.open && !d.dataset.counted) { d.dataset.counted = '1'; window.__confirmOpens++; }
+            if (!d.open) delete d.dataset.counted;
+          }).observe(d, { attributes: true, attributeFilter: ['open'] });
+        });
+        """
+    )
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
     authed_page.locator("#tabJobs").click()
 
-    row = authed_page.locator("#jobsList li.app-item[data-id='demo']")
+    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
-    row.locator("button.session-open").click()
+    row.locator("button.action-row-main").click()
 
     # First render: the newest run is painted and the button is created.
-    label = authed_page.locator("[data-role='output-label']")
+    sheet = authed_page.locator("#jobSheet")
+    expect(sheet).to_be_visible()
+    label = sheet.locator("[data-role='output-label']")
     expect(label).to_contain_text(_RUN_B)
-    kill_btn = authed_page.locator("[data-role='kill-btn']")
+    kill_btn = sheet.locator("[data-role='kill-btn']")
     expect(kill_btn).to_have_count(1)
 
     # Second render of the same button: select the older live run.
-    authed_page.locator(".jobs-run-btn").nth(1).click()
+    sheet.locator(".jobs-run-btn").nth(1).click()
     expect(label).to_contain_text(_RUN_A)
     expect(kill_btn).to_have_count(1)
 
     kill_btn.click()
+    expect(authed_page.locator("#confirmDialog")).to_be_visible()
+    authed_page.locator("#confirmDialogOk").click()
     expect(authed_page.locator(".toast")).to_contain_text("Kill signal sent")
 
-    assert len(dialogs) == 1, (
-        f"one tap raised {len(dialogs)} confirm() prompts — a stale click "
+    opens = authed_page.evaluate("() => window.__confirmOpens")
+    assert opens == 1, (
+        f"one tap opened the confirm sheet {opens} times — a stale click "
         "listener survived the re-render"
     )
     assert killed == [_RUN_A], (

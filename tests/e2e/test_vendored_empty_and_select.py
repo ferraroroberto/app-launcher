@@ -10,9 +10,12 @@ Both are now the scaffold's components, byte-for-byte (`tests/
 test_vendored_manifest.py` pins the manifest entry; `design_lint`'s vendored
 check pins the bytes). This pins what they render.
 
-The Jobs empty state also never appeared at all: `patchRowsInPlace()` returns
-early when the row count is unchanged, and 0 === 0 takes that branch on every
-poll, so the flag stayed at its markup default of `hidden`. Pinned here too.
+The Jobs empty state also never appeared at all: `patchRowsInPlace()` returned
+early when the row count was unchanged, and 0 === 0 took that branch on every
+poll, so the flag stayed at its markup default of `hidden`. Pinned here too
+(since #1438 the poll re-renders the list wholesale, which closes that path;
+the pin stays as the behavioural check). The job editor is reached through the
+always-visible `#jobsAddBtn` (Edit mode is gone since #1438).
 """
 from __future__ import annotations
 
@@ -76,7 +79,8 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     expect(page.locator("#jobsLoading")).to_be_visible()
     expect(page.locator("#jobsLoading")).to_contain_text("Loading jobs")
     expect(page.locator("#jobsEmpty")).to_be_hidden()
-    expect(page.locator("#jobsSortBtn")).to_have_text(re.compile(r"\S"))
+    # The sort button is glyph-only since #1438, so its label is the aria-label.
+    expect(page.locator("#jobsSortBtn")).to_have_attribute("aria-label", re.compile(r"\S"))
     released.append(True)
     for route in held:
         route.fulfill(status=200, content_type="application/json", body='{"jobs": []}')
@@ -194,7 +198,6 @@ def test_selects_wear_the_vendored_control_recipe(
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    page.locator("#jobsEditBtn").click()
     page.locator("#jobsAddBtn").click()
     select = page.locator("#jobKindInput")
     expect(select).to_be_visible()
@@ -229,7 +232,6 @@ def test_editor_dialogs_wear_the_vendored_modal_shell(
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    page.locator("#jobsEditBtn").click()
     page.locator("#jobsAddBtn").click()
 
     dialog = page.locator("#jobDialog")

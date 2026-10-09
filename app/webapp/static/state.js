@@ -12,7 +12,6 @@
  *   state.webauthn     — { configured, enrollment_open, devices[] }
  *   state.terminal     — null when overlay closed, else { sid, ws, term, fit, onWindowResize }
  *   state.status       — /api/status payload (incl. terminal reachability)
- *   state.editMode     — boolean, persisted to localStorage (launcher.editMode)
  *   state.contextFilter — /api/context-filter payload ({mode, harnesses, stats}, issue #713)
  *
  * Auth: a bearer token is stored in localStorage. The page extracts it
@@ -82,14 +81,14 @@ export const state = {
   gitStatusAt: null,
   // Coding-tab favorites filter (issue #250). false = show all projects
   // (favorites pinned to the top); true = show only starred projects. A
-  // client-side view toggle, persisted across reloads like editMode so the
+  // client-side view toggle, persisted across reloads so the
   // 4 s apps poll re-renders without dropping it.
   codingFavFilter: localStorage.getItem('launcher.codingFavFilter') === '1',
   jobs: [],
   jobsLoaded: false,   // first /api/jobs answer arrived (#1176)
   // Jobs-list ordering (issue #229). 'next' = ascending by computed next
   // fire (imminent dailies above weeklies; manual/paused sink to the
-  // bottom); 'name' = A–Z. Persisted across reloads like editMode.
+  // bottom); 'name' = A–Z. Persisted across reloads.
   jobsSort: localStorage.getItem('launcher.jobsSort') === 'name' ? 'name' : 'next',
   // Life OS conversations ordering (issue #886). 'interaction' = the
   // default: newest last-touched first, since reopening this view is
@@ -101,8 +100,8 @@ export const state = {
   jobsSearchQuery: '',
   jobsSearchMatches: [],
   jobRuns: {},      // job_id → array of recent runs (lazy)
-  expandedJob: null, // job_id currently expanded inline (history visible)
-  selectedRun: null, // { jobId, runId } — which run's log is in the panel
+  sheetJob: null,    // job_id whose sheet is open (#1438; the inline accordion before)
+  selectedRun: null, // { jobId, runId } — which run's log is in the sheet
   sessions: [],
   // Board tab (issue #300 / #164): the /api/board payload, null until the
   // tab's first fetch. The 5 s poll self-gates on the tab being visible;
@@ -142,10 +141,6 @@ export const state = {
   // the connection's loopback reason alone must never flip isMirror — that
   // mis-classification made Stop & Close window.close() the user's Chrome.
   isMirrorWindow: false,
-  // Edit mode (Settings toggle) reveals rename + remove on Apps tab
-  // rows only — Coding tab rows are disk-scanned and never editable.
-  // Persisted across reloads.
-  editMode: localStorage.getItem('launcher.editMode') === '1',
 };
 
 // ES modules are deferred — they execute after DOMContentLoaded, so
@@ -261,9 +256,18 @@ export const els = {
   jobsSortBtn: document.getElementById('jobsSortBtn'),
   jobsSearchInput: document.getElementById('jobsSearchInput'),
   jobsSearchClear: document.getElementById('jobsSearchClear'),
-  jobsEditBtn: document.getElementById('jobsEditBtn'),
-  jobsAgendaCard: document.getElementById('jobsAgendaCard'),
+  jobsNextUpList: document.getElementById('jobsNextUpList'),
+  jobsNextUpState: document.getElementById('jobsNextUpState'),
+  jobsAgendaOpen: document.getElementById('jobsAgendaOpen'),
+  jobsAgendaSheet: document.getElementById('jobsAgendaSheet'),
+  jobsAgendaSheetClose: document.getElementById('jobsAgendaSheetClose'),
+  jobsAgendaSheetDone: document.getElementById('jobsAgendaSheetDone'),
   jobsAgendaBody: document.getElementById('jobsAgendaBody'),
+  jobSheet: document.getElementById('jobSheet'),
+  jobSheetTitle: document.getElementById('jobSheetTitle'),
+  jobSheetBody: document.getElementById('jobSheetBody'),
+  jobSheetClose: document.getElementById('jobSheetClose'),
+  jobSheetRun: document.getElementById('jobSheetRun'),
   jobDialog: document.getElementById('jobDialog'),
   jobForm: document.getElementById('jobForm'),
   jobDialogTitle: document.getElementById('jobDialogTitle'),
