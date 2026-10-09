@@ -368,7 +368,15 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     expect(page.locator("#transcriptList")).to_contain_text(
         "found it — a missing await", timeout=OVERLAY_OPEN_MS
     )
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(3)
+    # #1475: the new fragment joins the open turn under its one header, the
+    # way a run card takes new tool calls — not a turn of its own.
+    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
+    open_turn = page.locator("#transcriptList .tr-assistant")
+    expect(open_turn).to_have_count(1)
+    expect(open_turn.locator(".tr-reply")).to_have_text(
+        ["opening conftest now", "found it — a missing await"]
+    )
+    expect(open_turn.locator(".tr-turn-summary")).to_have_count(1)
 
     # -- #1292: forcing a read, for when polling seems stuck --
     # ⋮ Load new with nothing new says so, briefly, and rebuilds nothing.
@@ -392,6 +400,9 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     assert tr.tail_calls() > before
     # Appended, never rebuilt: the first turn is the same node.
     assert page.evaluate("document.querySelector('#transcriptList .tr-turn')._kept") == 1
+    # The fragment that arrived as the provisional tail has settled into the
+    # same turn, once: dropping the tail took its part with it.
+    expect(open_turn.locator(".tr-reply")).to_have_count(2)
 
     # A pull up past the bottom is the same read.
     _tick(page, tr)

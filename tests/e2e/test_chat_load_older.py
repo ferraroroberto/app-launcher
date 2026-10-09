@@ -178,7 +178,12 @@ def test_only_tool_calls_to_the_file_start_says_so(
     )
     expect(page.locator("#transcriptList .tr-start")).to_be_visible()
     expect(page.locator("#transcriptOlder")).to_be_hidden()
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
+    # The tool calls loaded are the tail of an agent turn whose text is out of
+    # reach (#1475): a silent turn, hidden with the tool calls, so the
+    # visible exchange is still the newest prompt and reply.
+    expect(page.locator("#transcriptList .tr-turn")).to_have_count(3)
+    expect(page.locator("#transcriptList .tr-turn-silent")).to_have_count(1)
+    expect(page.locator("#transcriptList .tr-turn:visible")).to_have_count(2)
 
 
 def test_hitting_the_chain_bound_says_what_it_loaded(
@@ -202,7 +207,9 @@ def test_hitting_the_chain_bound_says_what_it_loaded(
     shown = int(older.inner_text().split()[0])
     fetched = sum(1 for u in calls if "before=" in u)
     assert 1 <= fetched <= 8 and shown == fetched, (shown, calls)
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
+    # Turn-less pages add one silent agent turn (#1475), hidden with the
+    # tool calls: nothing visible changed.
+    expect(page.locator("#transcriptList .tr-turn:visible")).to_have_count(2)
 
     # Keep tapping: the chain resumes from where it stopped and reaches the turn.
     for _ in range(3):
@@ -212,3 +219,6 @@ def test_hitting_the_chain_bound_says_what_it_loaded(
         expect(older).to_be_enabled()
     expect(page.locator("#transcriptList .tr-turn").first).to_contain_text("far prompt")
     expect(older).to_be_hidden()
+    # Every tap's tool calls belong to the one turn under "far prompt": each
+    # older page joined the turn already on screen instead of opening another.
+    expect(page.locator("#transcriptList .tr-agent-item")).to_have_count(2)

@@ -68,9 +68,12 @@ For the terminal itself — the socket, the key bar, the composer and the securi
 
 Chat shows the session's whole conversation as a chat-style list that reads on the phone:
 
-- Your typed prompts and the agent's replies are expanded. Each prompt/reply card collapses on tap, and URLs in any text are clickable.
+- **Your prompt is a right-aligned bubble** (at most 85% of the column, 560px on a wide window), with its time, a copy button and a fold chevron under it. Folded, it shows only its first line, and a tap opens it again.
+- **The agent's turn is one block** (#1475): everything it does until your next prompt (each stretch of reply text, the tool-call groups between them, a question or plan card) sits under a single header with the agent's icon and name, the time, **copy** and a collapse chevron. Copy takes the whole turn's text, one blank line between fragments. Collapse folds the turn to its header and first line. The text sits on the page, not in a card. Before, each stretch of text was its own card with its own header.
+- URLs in any text are clickable.
 - Everything else — tool calls with their results, thinking, harness plumbing, sub-agent traffic — is folded per run into one line (`3 tool calls · 1 thinking`) you can open, then open item by item.
-- Those groups are **hidden by default**. The ⋮ menu's **Show tool calls** reveals them, still folded, so the view opens as a plain you ↔ agent exchange.
+- Those groups are **hidden by default**. The ⋮ menu's **Show tool calls** reveals them, still folded, so the view opens as a plain you ↔ agent exchange. A turn that is only tool calls, with no text, hides with them.
+- New text, tool calls and cards arriving while you read join the turn they belong to, under its existing header. An older page that ends partway through a turn joins the turn already on screen.
 
 ### Edit steps open as their diff
 

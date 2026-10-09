@@ -2155,41 +2155,101 @@ textarea.input-native { height: auto; }
   flex-direction: column;
   gap: 12px;
 }
-.tr-turn-item, .tr-run { min-width: 0; }
-/* A turn is a collapsible card: the summary carries the meta line (and,
-   closed, a one-line hint), the body the text. Same 14px side inset as the
-   disclosure component so cards line up. */
-.tr-turn {
-  border-radius: var(--radius);
-  background: var(--card);
-  border: 1px solid var(--line);
-}
-/* The user's turn: the accent tint the app already uses for the active
-   nav tab — nothing new. */
-.tr-user {
-  background: var(--accent-soft);
-  border-color: var(--accent-border-soft);
-}
+.tr-turn-item, .tr-run, .tr-reply { min-width: 0; }
+/* Turns (#1475, Step 2/6 of #1472). The prompt is a right-aligned bubble;
+   the agent's whole turn is one block on the canvas, no card: a header (mark,
+   name, time, copy, chevron), then its parts in order -- reply text, run
+   cards, question and plan cards -- at the list's own 12px rhythm. */
 .tr-turn-summary {
   list-style: none;
   display: flex;
   align-items: center;
   gap: 8px;
   min-height: var(--row-sm);
-  padding: 10px 14px;
   cursor: pointer;
 }
 .tr-turn-summary::-webkit-details-marker { display: none; }
+.tr-turn-parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* The agent's mark: its brand glyph on a neutral squircle tile, the way the
+   session row's avatar carries it. */
+.tr-turn-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+/* 20px: a brand mark's thin strokes (Claude's starburst) blur to a dot at
+   the 14px of a glyph icon. */
+.tr-turn-mark .agent-icon { width: 20px; height: 20px; }
+.tr-turn-mark .icon { width: 16px; height: 16px; }
+.tr-turn-who {
+  flex: none;
+  font-size: var(--font-body-sm);
+  font-weight: 700;
+}
+/* A turn with no text and no card would be a header over nothing while tool
+   calls are hidden, so it hides with them. */
+.tr-hide-groups .tr-turn-silent { display: none; }
+/* A new exchange sits a little further from the turn before it than parts
+   of one turn sit from each other. */
+.tr-agent-item + .tr-prompt-item { margin-top: 8px; }
+/* The prompt bubble: the accent tint the app already uses for the active nav
+   tab, text in fg on it (COLOR-02), right-aligned and at most 85% of the
+   column, 560px on a wide one. The corner nearest the column edge is
+   tightened, chat-style. */
+.tr-user {
+  width: fit-content;
+  max-width: min(85%, 560px);
+  margin-left: auto;
+}
+.tr-bubble {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius) var(--radius) 4px var(--radius);
+}
+.tr-bubble > .tr-text { padding: 10px 14px; }
+.tr-bubble > .tr-trunc { padding: 0 14px 10px; }
+/* Folded, the prompt is its first line in the same bubble; open, that
+   summary steps aside and the fold chevron under the bubble folds it again. */
+.tr-prompt-folded {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 0 14px;
+  cursor: pointer;
+}
+.tr-prompt-folded::-webkit-details-marker { display: none; }
+.tr-prompt-folded .tr-turn-hint { color: var(--fg); }
+.tr-user[open] > .tr-prompt-folded { display: none; }
+/* The foot's buttons are full 44px boxes: the last one sits flush on the
+   column's right edge, where a smaller box's invisible hit-target expansion
+   would hang past it and scroll the pane sideways. */
+.tr-prompt-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.tr-prompt-foot .icon-button { --icon-btn-box: var(--hit-min); }
+.tr-prompt-fold .tr-turn-chevron { margin: 0; transform: rotate(90deg); }
 .tr-meta {
   flex: none;
   font-size: var(--font-caption);
   font-weight: 600;
   color: var(--muted);
 }
-/* On the user turn's accent tint the muted line fell to 4.17:1 light and
-   4.21:1 dark at caption size (the rendered design review's COLOR-02):
-   design.md's rule for text on a tinted fill is fg, never fg-muted. */
-.tr-user .tr-meta { color: var(--fg); }
 .tr-turn-hint {
   flex: 1;
   min-width: 0;
@@ -2203,22 +2263,29 @@ textarea.input-native { height: auto; }
 /* The chat card's copy glyph: the vendored icon-button at 32px, its ::before
    reaching the 44px floor. */
 .tr-turn-copy { --icon-btn-box: 32px; }
+/* A clipped 1em square, so the open turn's quarter-turn spins inside its own
+   box: the narrow glyph box swept 7px past the edge, and the font's content
+   area (taller than the 1em line) another 4px once turned -- a card's padding
+   absorbed both, the canvas-flush turn header (#1475) does not. */
 .tr-turn-chevron {
+  flex: none;
+  width: 1em;
+  overflow: hidden;
   margin-left: auto;
   color: var(--muted);
   font-size: var(--font-heading-lg);
   line-height: 1;
+  text-align: center;
   transition: transform 0.15s ease;
 }
 .tr-turn[open] .tr-turn-chevron { transform: rotate(90deg); }
 .tr-text {
-  padding: 0 14px 14px;
   font-size: var(--font-body);
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.tr-turn > .tr-trunc { padding: 0 14px 12px; }
+.tr-reply > .tr-trunc { margin-top: 8px; }
 .tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
 .tr-md { white-space: normal; }
 /* Reply typography (#1474, Step 1/6 of #1472). Headings used to render at the
@@ -2640,9 +2707,11 @@ textarea.input-native { height: auto; }
    size in the image overlay. The frame holds its size while the bytes load,
    so the list doesn't jump. */
 .tr-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
-/* In a turn card the row sits beside the text, not inside it, so it takes the
-   text's own inset, left and bottom (#1292), as .tr-trunc does. */
-.tr-turn > .tr-thumbs { margin: 0; padding: 0 14px 14px; }
+/* In the prompt bubble the row sits beside the text, not inside it, so it
+   takes the text's own inset, left and bottom (#1292), as .tr-trunc does; in
+   a reply it simply follows the text. */
+.tr-bubble > .tr-thumbs { margin: 0; padding: 0 14px 10px; }
+.tr-reply > .tr-thumbs { margin: 8px 0 0; }
 .tr-thumb {
   width: 96px;
   height: 96px;
