@@ -124,10 +124,31 @@ function renderQuote(inner) {
     + ' data-copy="' + lines.join('&#10;') + '">' + icon('copy') + '</button></blockquote>';
 }
 
+// A fenced block (#1474): a card-surface frame whose small header carries the
+// fence's language and a copy button. `lang` is the first word of the info
+// string, kept only when it is a plain token -- it lands in element text, and
+// everything on the line was escaped already. `codeLines` is the
+// already-escaped listing; the same text rides `data-copy` (newlines as
+// `&#10;`) so the click handler in `quote-copy.js` hands back the source
+// exactly as fenced.
+const FENCE_LANG = /^[A-Za-z0-9_+#.-]{1,20}$/;
+
+function renderFence(info, codeLines) {
+  const word = info.trim().split(/\s+/)[0] || '';
+  const lang = FENCE_LANG.test(word) ? word : '';
+  return '<div class="md-block"><div class="md-block-head">'
+    + '<span class="md-block-lang">' + lang + '</span>'
+    + '<button type="button" class="icon-button md-block-copy" aria-label="Copy code"'
+    + ' data-copy="' + codeLines.join('&#10;') + '">' + icon('copy') + '</button></div>'
+    + '<pre class="md-code"><code>' + codeLines.join('\n') + '</code></pre></div>';
+}
+
 export function renderMarkdown(text) {
   const lines = escapeHtml(text).split('\n');
   const out = [];
   let inCode = false;
+  let fenceInfo = '';
+  let codeLines = [];
   // The open list's tag, 'ul' or 'ol'; null outside a list.
   let listTag = null;
   let para = [];
@@ -146,11 +167,11 @@ export function renderMarkdown(text) {
     const line = lines[i];
     if (line.trim().startsWith('```')) {
       flushPara(); flushList();
-      if (inCode) { out.push('</code></pre>'); inCode = false; }
-      else { out.push('<pre class="md-code"><code>'); inCode = true; }
+      if (inCode) { out.push(renderFence(fenceInfo, codeLines)); inCode = false; }
+      else { fenceInfo = line.trim().slice(3); codeLines = []; inCode = true; }
       continue;
     }
-    if (inCode) { out.push(line); continue; }
+    if (inCode) { codeLines.push(line); continue; }
 
     // A table needs a piped header row followed by a delimiter row with the
     // same cell count; anything short of that stays a paragraph. Body rows
@@ -210,7 +231,7 @@ export function renderMarkdown(text) {
     if (!line.trim()) { flushPara(); flushList(); continue; }
     para.push(line.trim());
   }
-  if (inCode) out.push('</code></pre>');
+  if (inCode) out.push(renderFence(fenceInfo, codeLines));
   flushPara(); flushList();
   return out.join('\n');
 }

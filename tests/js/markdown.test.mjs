@@ -150,8 +150,27 @@ const md = (lines) => renderMarkdown(lines.join('\n'));
   assert.ok(mixed.includes('</blockquote>\n<p>After</p>\n<ul>\n<li>item</li>\n</ul>'), mixed);
 
   // A `>` inside a code fence stays code.
-  assert.equal(md(['```', '> not a quote', '```']),
-    '<pre class="md-code"><code>\n&gt; not a quote\n</code></pre>');
+  assert.ok(md(['```', '> not a quote', '```']).includes(
+    '<pre class="md-code"><code>&gt; not a quote</code></pre>'));
+}
+
+// Fenced blocks (#1474): a header carrying the language and a copy button
+// whose `data-copy` is the listing as fenced; no stray blank first/last line.
+{
+  const decodeAttr = (s) => s.replace(/&#10;/g, '\n').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+  const html = md(['```python', 'a = 1', '', 'b = "<x>"', '```']);
+  assert.ok(html.startsWith('<div class="md-block"><div class="md-block-head">'
+    + '<span class="md-block-lang">python</span>'), html);
+  assert.ok(html.includes('class="icon-button md-block-copy" aria-label="Copy code"'), html);
+  assert.ok(html.endsWith(
+    '<pre class="md-code"><code>a = 1\n\nb = &quot;&lt;x&gt;&quot;</code></pre></div>'), html);
+  assert.equal(decodeAttr(html.match(/ data-copy="([^"]*)"/)[1]), 'a = 1\n\nb = "<x>"');
+  // No language, or a non-token info string, leaves the label empty.
+  assert.ok(md(['```', 'x', '```']).includes('<span class="md-block-lang"></span>'));
+  assert.ok(md(['```<b>"x"', 'x', '```']).includes('<span class="md-block-lang"></span>'));
+  // An unterminated fence still renders as a block.
+  assert.ok(md(['```js', 'x']).includes('<pre class="md-code"><code>x</code></pre></div>'));
 }
 
 console.log('markdown tables + lists + quotes: OK');
