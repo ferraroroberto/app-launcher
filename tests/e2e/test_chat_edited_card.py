@@ -153,13 +153,14 @@ class _Stub:
         return sum(1 for u in self.calls if "after=" in u)
 
 
-def _boot(page: Page, base_url: str, newest: list = _NEWEST, *, height: int = 1600, **kw) -> _Stub:
+def _boot(page: Page, base_url: str, newest: list = _NEWEST, *, height: int = 1600,
+          stub_cls: type = _Stub, **kw) -> _Stub:
     """Chat open on the stub. The window is phone-wide but tall enough that
     the list never scrolls: a scroll to its top would pull the older page in
     by itself and race the assertions on the cut turn."""
     _mock_git_status(page)
     _mock_sessions_list(page, [_session_row(_SID, kind="remote", agent="claude", title="Edits demo")])
-    stub = _Stub(page, newest, **kw)
+    stub = stub_cls(page, newest, **kw)
     _fake_clock.install(page)
     page.set_viewport_size({"width": 390, "height": height})
     page.goto(base_url, wait_until="domcontentloaded")

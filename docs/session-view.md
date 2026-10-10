@@ -88,6 +88,14 @@ A turn that edited files ends with an **Edited N files** card (#1477): a header 
 - **A turn cut by a page boundary** (its start is on an older page) counts what is loaded and says *Earlier steps not loaded · Load older*; Load older pulls the previous page in and the card recounts.
 - The card stays when ⋮ **Hide steps** hides the step lines, so the work still has a trace. It collapses with its turn. The Life OS conversation viewer, which draws a capture with this same renderer, has no card: a capture has no session for the panel to open.
 
+### File chips
+
+A reply that names a file this session edited, in a code span or as a bare path in its text, shows a **file chip** there (#1478): the code chip in the accent colour, with a file glyph and the file's name (plus a line reference such as `:12` when the reply gave one). A tap opens that file's diff in [Changed files](#changed-files): on **This turn** when the chip's own turn edited the file, as its Edited card row does, otherwise on the whole session, focused on the file either way.
+
+- **Only edited files link**, and only when the name is unambiguous: the reply's text must be the file's whole path, or its name with any of the folders above it (`styles.css`, `static/styles.css`), that no other edited file also ends with. A name two edited files share, and every other path, stays a plain code chip. In plain text a run links only if it looks like a path, with a folder or an extension.
+- **"Edited" means the steps Chat has loaded.** A file edited on an older page links once that page is loaded; a file edited after the reply named it links when the edit arrives.
+- Copy and read-aloud take the reply's own text, so chips change neither. The Life OS conversation viewer has no chips, for the same reason it has no Edited card.
+
 ### Edit steps open as their diff
 
 An Edit, Write or MultiEdit step (and the other agents' edit and write tools the reader recognises) opens as a unified diff: added lines green, removed lines red, each keeping its `+`/`−` prefix (#1349). The diff is headed *folder / name* (the folder relative to the session's project, or just the parent folder for a file outside it; the whole path shows on hover), and the tool's own "file has been updated" line no longer sits under it (#1476).

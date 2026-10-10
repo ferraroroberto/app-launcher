@@ -2326,6 +2326,43 @@ textarea.input-native { height: auto; }
   font-size: 0.875em;
   white-space: break-spaces;
 }
+/* A file chip (#1478) is the code chip, linked: a span or bare path in a
+   reply that names a file this session edited, opening its diff in Changed
+   files. The reference-pill colours (`accent-text` on `accent-soft`, an
+   `accent-border-soft` hairline) on the code chip's geometry, the hairline
+   taking the place of a pixel of padding so both chips sit the same height
+   in a line, plus the file glyph and the file's name only. Inline in prose,
+   so it is exempt from the 44px floor the way a text link is (WCAG 2.5.8);
+   the name ellipsizes rather than push the reply sideways at 390px. */
+.tr-md .tr-file-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  max-width: 100%;
+  margin: 0;
+  padding: 0 5px;
+  border: 1px solid var(--accent-border-soft);
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  line-height: normal;
+  vertical-align: baseline;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tr-md .tr-file-chip .icon { align-self: center; }
+.tr-file-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-md .tr-file-chip:active { text-decoration: underline; }
+@media (hover: hover) {
+  .tr-md .tr-file-chip:hover { text-decoration: underline; }
+}
 /* A fenced block (#1100, restyled #1474): `markdown.js` wraps every fence in
    `.md-block` -- a `--card` frame on a hairline, a small header carrying the
    language and a copy button, then the listing. Unscoped, like the tables
