@@ -1612,3 +1612,83 @@ class TestExchangeEndpoint:
             "The exact launcher capture has the latest reply. "
             "It remains linked by session id."
         )
+
+
+# ------------------------------------------ rendered-rows cache (#1494)
+
+
+def _count_renders(monkeypatch) -> list:
+    """Every ``pyte`` replay ``launcher_last_exchange`` performs, recorded."""
+    calls: list = []
+    real = board_exchange._terminal_rows
+
+    def counting(raw, **kwargs):
+        calls.append(raw)
+        return real(raw, **kwargs)
+
+    monkeypatch.setattr(board_exchange, "_terminal_rows", counting)
+    return calls
+
+
+def test_unchanged_capture_is_not_rendered_twice(tmp_path: Path, monkeypatch):
+    capture = tmp_path / "idle.transcript"
+    capture.write_text("● First reply.\r\n", encoding="utf-8")
+    renders = _count_renders(monkeypatch)
+    first = board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    second = board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    assert len(renders) == 1
+    assert second == first
+    assert second["assistant"]["text"] == "First reply."
+
+
+def test_changed_capture_is_never_served_from_the_cache(
+    tmp_path: Path, monkeypatch,
+):
+    capture = tmp_path / "busy.transcript"
+    capture.write_text("● First reply.\r\n", encoding="utf-8")
+    renders = _count_renders(monkeypatch)
+    assert board_exchange.launcher_last_exchange(
+        capture, rows=20, cols=80
+    )["assistant"]["text"] == "First reply."
+    with open(capture, "a", encoding="utf-8") as fh:
+        fh.write("● Second reply.\r\n")
+    assert board_exchange.launcher_last_exchange(
+        capture, rows=20, cols=80
+    )["assistant"]["text"] == "Second reply."
+    assert len(renders) == 2
+
+
+def test_same_size_rewrite_is_never_served_from_the_cache(
+    tmp_path: Path, monkeypatch,
+):
+    """A tail replaced by text of the same length differs only in mtime."""
+    capture = tmp_path / "rewrite.transcript"
+    capture.write_text("● Reply AAAA.\r\n", encoding="utf-8")
+    renders = _count_renders(monkeypatch)
+    board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    stat = capture.stat()
+    capture.write_text("● Reply BBBB.\r\n", encoding="utf-8")
+    import os
+    os.utime(capture, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
+    result = board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    assert result["assistant"]["text"] == "Reply BBBB."
+    assert len(renders) == 2
+
+
+def test_a_resized_screen_is_rendered_again(tmp_path: Path, monkeypatch):
+    capture = tmp_path / "resize.transcript"
+    capture.write_text("● A reply.\r\n", encoding="utf-8")
+    renders = _count_renders(monkeypatch)
+    board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    board_exchange.launcher_last_exchange(capture, rows=20, cols=100)
+    assert len(renders) == 2
+
+
+def test_rows_cache_is_bounded(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(board_exchange, "_ROWS_CACHE_MAX", 3)
+    monkeypatch.setattr(board_exchange, "_ROWS_CACHE", {})
+    for i in range(6):
+        capture = tmp_path / f"s{i}.transcript"
+        capture.write_text("● A reply.\r\n", encoding="utf-8")
+        board_exchange.launcher_last_exchange(capture, rows=20, cols=80)
+    assert len(board_exchange._ROWS_CACHE) == 3
