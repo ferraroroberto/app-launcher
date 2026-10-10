@@ -6,7 +6,11 @@ editor. Pinned here, against a stubbed page (every path and line synthetic):
 
 * an Edit whose harness recorded real line numbers shows a gutter and a
   ``@@`` header, added lines tinted with ``--diff-add-*`` and removed ones
-  with ``--diff-del-*``, in both themes; the tool's result stays underneath;
+  with ``--diff-del-*``, in both themes; since #1476 it is headed
+  "folder / name" and the tool's "updated" line no longer sits under it;
+* (#1476) the run is one step line, shown by default: plain-words label,
+  then the +N −M, "N failed" and duration as their own elements; each item
+  carries its verb's glyph;
 * a page's capped diff offers **Show full diff** (a 44px target), which
   fetches ``/transcript/diff`` by the step's ref and swaps the whole diff in;
 * a Write worked out from its input shows as all added with **no** gutter —
@@ -110,17 +114,27 @@ def _mock(page: Page, diff_calls: list) -> None:
 
 
 def _open_items(page: Page):
+    """Chat open, the run's step line opened. Step lines show by default
+    (#1476), so no ⋮ menu trip comes first."""
     _row(page, _SID).locator(".session-open").click()
     expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
     expect(page.locator("#transcriptList .tr-turn")).not_to_have_count(0)
-    page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
-    expect(menu).to_be_visible()
-    menu.get_by_role("menuitem", name="Show tool calls and system entries").click()
-    group = page.locator("#transcriptList .tr-group")
-    expect(group).to_be_visible()
-    group.locator("summary.collapse-summary").click()
-    items = group.locator(".tr-item")
+    step = page.locator("#transcriptList .tr-step")
+    expect(step).to_be_visible()
+    # One quiet line: verbs and what they acted on, then the parts no
+    # ellipsis may cut. The failed edit changed nothing, so it is a call
+    # here, never part of the +N −M; the duration runs to the reply after.
+    line = step.locator("summary.tr-step-line")
+    expect(line.locator(".tr-step-label")).to_have_text("Edited 2 files, 2 other tool calls")
+    expect(line.locator(".tr-step-label b")).to_have_text(["2 files", "2 other tool calls"])
+    expect(line.locator(".tr-step-delta")).to_have_text("+10 −1")
+    expect(line.locator(".tr-fail-count")).to_have_text("1 failed")
+    expect(line.locator(".tr-step-dur")).to_have_text("3s")
+    expect(line.locator(":scope > span")).to_have_class(
+        ["tr-step-label", "tr-step-delta", "tr-fail-count", "tr-step-dur"])
+    line.click()
+    expect(step).to_have_js_property("open", True)
+    items = step.locator(".tr-item")
     expect(items).to_have_count(4)
     return items
 
@@ -148,20 +162,32 @@ def test_edit_step_opens_as_a_numbered_diff_with_full_fetch(
     items = _open_items(authed_page)
     edit, write, failed, grep = (items.nth(i) for i in range(4))
 
-    # The folded row still reads name + counts, exactly as before.
+    # The folded row: a verb glyph, the file's name, its folder as the hint
+    # and the counts trailing (#1476). Each item carries its verb's glyph.
     expect(edit.locator(".tr-item-name")).to_have_text("module.py")
-    expect(edit.locator(".tr-item-hint")).to_have_text("+8 −1")
+    expect(edit.locator(".tr-item-hint")).to_have_text("src/pkg")
+    expect(edit.locator(".tr-item-delta")).to_have_text("+8 −1")
+    expect(edit.locator("summary > svg use")).to_have_attribute("href", "#i-pencil")
+    expect(grep.locator("summary > svg use")).to_have_attribute("href", "#i-search")
+    # The failed edit keeps its chip and claims no counts.
+    expect(failed.locator(".tr-fail-chip")).to_have_text("failed")
+    expect(failed.locator(".tr-item-delta")).to_have_count(0)
 
     edit.locator("summary").click()
     diff = edit.locator(".tr-diff")
     expect(diff).to_be_visible()
-    expect(edit.locator(".tr-diff-path")).to_have_text("src/pkg/module.py")
+    # Headed "folder / name", the whole path on hover.
+    head = edit.locator(".tr-diff-path")
+    expect(head).to_have_text("src/pkg / module.py")
+    expect(head.locator(".tr-diff-base")).to_have_text("module.py")
+    expect(head).to_have_attribute("title", "src/pkg/module.py")
     expect(diff.locator(".d-hunk")).to_have_text("@@ -40,2 +40,4 @@")
     expect(diff.locator(".d-del .d-ln")).to_have_text("41")
     expect(diff.locator(".d-add .d-ln").first).to_have_text("41")
     expect(diff.locator(".d-del .d-txt")).to_have_text("-old line")
-    # The result stays, underneath and quiet.
-    expect(edit.locator(".tr-diff-result")).to_contain_text("updated successfully")
+    # The diff is the whole body: the tool's "updated" line is gone.
+    expect(edit.locator(".tr-item-body .tr-pre")).to_have_count(0)
+    expect(edit.locator(".tr-item-body")).not_to_contain_text("updated successfully")
 
     # Tinted from the --diff-* tokens, in both themes, and the two differ.
     seen = {}

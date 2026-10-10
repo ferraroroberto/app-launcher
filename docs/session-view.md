@@ -26,7 +26,7 @@ The Board tab's drill-down drawer offers the same four actions as one row of equ
 The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle, 🔊 read-aloud, and the **⋮** menu:
 
 - **Rename · Copy link · Stop and kill** — always.
-- **Show tool calls**, **Load new** and **Reload** — while Chat is showing.
+- **Hide steps** (or **Show steps** once hidden), **Load new** and **Reload** — while Chat is showing.
 - **Compact** — for a Claude session. One tap sends `/compact` through the same verified input route as Chat's Send, in either mode, and the toast says whether it landed.
 - **Changed files** — for any agent with a transcript reader, in either mode. See [Changed files](#changed-files).
 
@@ -69,15 +69,16 @@ For the terminal itself — the socket, the key bar, the composer and the securi
 Chat shows the session's whole conversation as a chat-style list that reads on the phone:
 
 - **Your prompt is a right-aligned bubble** (at most 85% of the column, 560px on a wide window), with its time, a copy button and a fold chevron under it. Folded, it shows only its first line, and a tap opens it again.
-- **The agent's turn is one block** (#1475): everything it does until your next prompt (each stretch of reply text, the tool-call groups between them, a question or plan card) sits under a single header with the agent's icon and name, the time, **copy** and a collapse chevron. Copy takes the whole turn's text, one blank line between fragments. Collapse folds the turn to its header and first line. The text sits on the page, not in a card. Before, each stretch of text was its own card with its own header.
+- **The agent's turn is one block** (#1475): everything it does until your next prompt (each stretch of reply text, the step lines between them, a question or plan card) sits under a single header with the agent's icon and name, the time, **copy** and a collapse chevron. Copy takes the whole turn's text, one blank line between fragments. Collapse folds the turn to its header and first line. The text sits on the page, not in a card. Before, each stretch of text was its own card with its own header.
 - URLs in any text are clickable.
-- Everything else — tool calls with their results, thinking, harness plumbing, sub-agent traffic — is folded per run into one line (`3 tool calls · 1 thinking`) you can open, then open item by item.
-- Those groups are **hidden by default**. The ⋮ menu's **Show tool calls** reveals them, still folded, so the view opens as a plain you ↔ agent exchange. A turn that is only tool calls, with no text, hides with them.
+- Everything else — tool calls with their results, thinking, harness plumbing, sub-agent traffic — is folded per run into one quiet **step line** (#1476): a chevron and the run in plain words, *Edited 3 files, ran 2 commands, read main.js* (edits first: they are what the counts after it add up), then the edits' total `+N −M`, a `N failed` chip and how long the run took. Those last three are never cut off: on a narrow phone only the words ellipse. A failed edit changed nothing, so it counts as a call, never toward the `+N −M`. The duration runs from the run's first step to the reply that follows it (to its last step while nothing follows yet).
+- Opened, the run's items hang off a thin rail under the chevron, each a row with a glyph for what it did (run, read, edit, search, thinking): a command's first line, or a file's name with its folder beside it and an edit's `+N −M`. Each item opens on its own.
+- Step lines are **shown by default**, so a turn that edited four files says so. The ⋮ menu's **Hide steps** leaves a plain you ↔ agent exchange (and **Show steps** brings them back where they were). A turn that is only tool calls, with no text, hides with them.
 - New text, tool calls and cards arriving while you read join the turn they belong to, under its existing header. An older page that ends partway through a turn joins the turn already on screen.
 
 ### Edit steps open as their diff
 
-An Edit, Write or MultiEdit step (and the other agents' edit and write tools the reader recognises) opens as a unified diff: added lines green, removed lines red, each keeping its `+`/`−` prefix, with the tool's own "updated" line underneath in the quiet result style (#1349).
+An Edit, Write or MultiEdit step (and the other agents' edit and write tools the reader recognises) opens as a unified diff: added lines green, removed lines red, each keeping its `+`/`−` prefix (#1349). The diff is headed *folder / name* (the folder relative to the session's project, or just the parent folder for a file outside it; the whole path shows on hover), and the tool's own "file has been updated" line no longer sits under it (#1476).
 
 - **Line numbers only where they are real.** A Claude step uses the diff Claude Code records after the edit ran (`toolUseResult.structuredPatch`), so it shows a line-number gutter and `@@` headers; a Write that created a file counts from line 1. Everything else is worked out from the tool's own old and new text, which carries no file position, so it shows no gutter and separates its hunks with `⋯`, rather than inventing numbers.
 - **Counts follow the recorded diff.** For a Claude step the row's `+N −M` comes from that recorded diff, so a Write over an existing file counts the lines it replaced.
@@ -86,7 +87,7 @@ An Edit, Write or MultiEdit step (and the other agents' edit and write tools the
 
 ### Failed tool calls
 
-A tool call that failed is marked: a red glyph and a `failed` chip on its row, and a `1 failed` chip on the group's closed header so you see it without unfolding. Nothing is guessed from the text of a result — a `grep` that successfully finds the word "error" is not a failure.
+A tool call that failed is marked: a red glyph and a `failed` chip on its row, and a `1 failed` chip on the closed step line so you see it without unfolding. Nothing is guessed from the text of a result — a `grep` that successfully finds the word "error" is not a failure.
 
 How far the mark can be trusted depends on the agent, and the card says so rather than letting silence read as success — see [Agent readers and their limits](#agent-readers-and-their-limits).
 
@@ -114,7 +115,7 @@ On the phone, the same read as Load new is a **pull up** past the bottom of the 
 
 The launcher reads the agent's own history — Claude Code's session JSONL, a Codex rollout, Grok Build's `updates.jsonl` stream, a Pi session JSONL, an Antigravity CLI conversation log, or a GitHub Copilot CLI `events.jsonl` — in **bounded pages**. The newest turns load first, and **Load older** (or scrolling to the top) pulls in the previous page, so a multi-MB session is never read whole.
 
-One tap always surfaces an older prompt or reply. A stretch of heavy tool output (screenshot results are ~1 MB each) could fill a page with nothing but hidden tool calls, so the reader:
+One tap always surfaces an older prompt or reply. A stretch of heavy tool output (screenshot results are ~1 MB each) could fill a page with nothing but tool calls, so the reader:
 
 - charges a huge line only 64 KB against the page's 2 MiB budget, capped at 16 MiB of real reads per request (worst case measured at ~75 ms);
 - keeps fetching on the phone, up to 8 pages or 2.5 s, until a turn arrives;
@@ -123,7 +124,7 @@ One tap always surfaces an older prompt or reply. A stretch of heavy tool output
 
 ## Answering a question the agent asks
 
-When Claude Code calls `AskUserQuestion`, Chat shows the question with its numbered options (bold label, muted description) as its own card, visible even with tool calls hidden, instead of a folded `AskUserQuestion` row.
+When Claude Code calls `AskUserQuestion`, Chat shows the question with its numbered options (bold label, muted description) as its own card, visible even with the steps hidden, instead of a folded `AskUserQuestion` row.
 
 - While it is the question the session is waiting on, **tap an option** to answer it. One tap sends a single-choice question; a multi-choice or several-question call takes your picks and a **Submit answers**. A single-choice question also takes a typed answer (Claude Code's *Type something*).
 - The launcher re-checks against the transcript that the question is still waiting before it types anything, then types the picker's own keystrokes: raw keys over the terminal socket for a full-control session, one console-input call per key for a detached one.

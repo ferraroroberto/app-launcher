@@ -120,21 +120,22 @@ def test_a_turn_is_one_block_under_one_header(authed_page: Page, base_url: str) 
     expect(first.locator(".tr-turn-who")).to_have_text("Claude")
     expect(first.locator(".tr-turn-mark svg")).to_have_count(1)
     expect(first.locator(".tr-turn-summary .tr-meta")).to_have_text(re.compile(r"\d"))
-    # The runs between the fragments are parts of the same block, hidden by
-    # default like every run.
+    # The runs between the fragments are parts of the same block, shown as
+    # step lines by default (#1476).
     expect(first.locator(".tr-run")).to_have_count(2)
-    expect(first.locator(".tr-run").first).to_be_hidden()
+    expect(first.locator(".tr-run").first).to_be_visible()
 
-    # A turn of tool calls only has nothing to show while they are hidden.
+    # A turn of tool calls only shows its steps; with the steps hidden it has
+    # nothing to show, so it hides with them.
     silent = listing.locator(".tr-agent-item").nth(1)
     expect(silent).to_have_class(re.compile(r"\btr-turn-silent\b"))
-    expect(silent).to_be_hidden()
-    _menu_item(page, "Show tool calls and system entries").click()
     expect(silent).to_be_visible()
     expect(silent.locator(".tr-turn-copy")).to_be_hidden()
-    expect(first.locator(".tr-run").first).to_be_visible()
-    _menu_item(page, "Hide tool calls and system entries").click()
+    _menu_item(page, "Hide steps: tool calls and system entries").click()
     expect(silent).to_be_hidden()
+    expect(first.locator(".tr-run").first).to_be_hidden()
+    _menu_item(page, "Show steps: tool calls and system entries").click()
+    expect(silent).to_be_visible()
 
     # Copy takes the whole turn, its fragments in order, one blank line apart,
     # without toggling it.

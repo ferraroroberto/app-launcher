@@ -6,7 +6,8 @@ under a click. Since #982 the transcript is the **Chat mode** of the one
 session overlay (``#terminalOverlay[data-mode="chat"]``), opened from the
 gear's "Open chat" item; the pane's own ids (``#transcriptList`` …) are
 unchanged, and the bar's 👁 / 🔄 became the ⋮ menu's chat-only "Show tool
-calls" / "Reload transcript" (the ⇕ collapse-all was dropped — a turn still
+calls" (now "Hide steps", the step lines showing by default since #1476) /
+"Reload transcript" (the ⇕ collapse-all was dropped — a turn still
 collapses on its own summary):
 
   * the row's single gear opens a floating menu (Terminal · Chat · Rename ·
@@ -426,38 +427,40 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(turns_agent.first).to_have_js_property("open", True)
     turns_user.first.locator(".tr-prompt-fold").click()
     expect(turns_user.first).to_have_js_property("open", False)
-    expect(authed_page.locator("#transcriptList .tr-group")).to_have_js_property("open", False)
+    expect(authed_page.locator("#transcriptList .tr-step")).to_have_js_property("open", False)
     turns_user.first.locator("summary").click()
     expect(turns_user.first).to_have_js_property("open", True)
 
-    # The four non-conversation entries fold into one closed group — hidden
-    # by default; the ⋮ menu's chat-only "Show tool calls" shows it, and the
-    # item's label flips once they show.
-    group = authed_page.locator("#transcriptList .tr-group")
+    # The five non-conversation entries fold into one closed step line —
+    # shown by default since #1476; the ⋮ menu's chat-only "Hide steps"
+    # hides it, and the item's label flips once they hide.
+    group = authed_page.locator("#transcriptList .tr-step")
     expect(group).to_have_count(1)
-    expect(group).to_be_hidden()
+    expect(group).to_be_visible()
     menu = authed_page.locator("#terminalOverlay .terminal-menu")
-    eye = _menu_item(authed_page, "Show tool calls and system entries")
+    eye = _menu_item(authed_page, "Hide steps: tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Show tool calls", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()
-    expect(group).to_be_visible()
-    expect(_menu_item(authed_page, "Hide tool calls and system entries")).to_be_visible()
-    authed_page.locator("#terminalMenu").click()  # close it again
+    expect(group).to_be_hidden()
+    _menu_item(authed_page, "Show steps: tool calls and system entries").click()
     expect(menu).to_be_hidden()
-    # The run reads in plain words (#1266): what ran, what was edited with
-    # its +N −M, what was read; entries without an action are still counted.
-    expect(group.locator(".collapse-title")).to_have_text(
-        "Ran a command, edited test_git_status_flags.py +4 \u22120, read conftest.py, "
+    expect(group).to_be_visible()
+    # The run reads in plain words (#1266): what ran, what was edited, what
+    # was read; entries without an action are still counted. The edits'
+    # +N −M is its own element after the label (#1476).
+    expect(group.locator(".tr-step-label")).to_have_text(
+        "Edited test_git_status_flags.py, ran a command, read conftest.py, "
         "1 thinking, 1 system")
+    expect(group.locator(".tr-step-delta")).to_have_text("+4 \u22120")
     items = group.locator(".tr-item")
     expect(items).to_have_count(5)
     # Closed-ness is asserted on the <details> `open` property, not on child
     # visibility: WebKit reports a closed details' children as visible.
     expect(group).to_have_js_property("open", False)
-    group.locator("summary.collapse-summary").click()
+    group.locator("summary.tr-step-line").click()
     expect(group).to_have_js_property("open", True)
     expect(items.first).to_be_visible()
     # Each item is still closed until tapped; the second one is the Bash call,
@@ -475,7 +478,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     # The edit is its file's name and line counts; the read, its file's name.
     edit = items.nth(2)
     expect(edit.locator(".tr-item-name")).to_have_text("test_git_status_flags.py")
-    expect(edit.locator(".tr-item-hint")).to_have_text("+4 \u22120")
+    expect(edit.locator(".tr-item-delta")).to_have_text("+4 \u22120")
     # The Read result was capped server-side and says so.
     read = items.nth(3)
     expect(read.locator(".tr-item-name")).to_have_text("conftest.py")
@@ -779,12 +782,12 @@ def _long_run_page() -> dict:
 
 
 def _open_tool_group(page: Page):
-    """Chat open, tool calls revealed, the group still closed."""
+    """Chat open, the run's step line showing (the default since #1476) and
+    still closed."""
     row = _row(page)
     _open_chat(page, row)
     expect(page.locator("#transcriptList .tr-turn")).not_to_have_count(0)
-    _menu_item(page, "Show tool calls and system entries").click()
-    group = page.locator("#transcriptList .tr-group")
+    group = page.locator("#transcriptList .tr-step")
     expect(group).to_be_visible()
     return group
 
@@ -813,7 +816,7 @@ def test_failed_tool_call_is_marked_in_both_themes(
     expect(group).to_have_js_property("open", False)
     expect(group.locator(".tr-fail-count")).to_have_text("1 failed")
 
-    group.locator("summary.collapse-summary").click()
+    group.locator("summary.tr-step-line").click()
     expect(group).to_have_js_property("open", True)
     items = group.locator(".tr-item")
     expect(items).to_have_count(2)
@@ -851,27 +854,34 @@ def test_failed_tool_call_is_marked_in_both_themes(
     # Folded calls stay folded: marking one never opens it.
     expect(bad).to_have_js_property("open", False)
 
-    # -- #1292: a run title wider than the phone stays inside its card --
+    # -- #1292: a run title wider than the phone stays inside its line --
     # The whole pane scrolled sideways once #1266's plain-word titles grew:
-    # the nowrap title kept its full width as a flex item's minimum.
+    # the nowrap title kept its full width as a flex item's minimum. Since
+    # #1476 the label is the only part that gives way: the +N −M and the
+    # duration trail it whole, inside the line, at phone width.
+    authed_page.set_viewport_size({"width": 390, "height": 844})
     pages[None] = _long_run_page()
     _menu_item(authed_page, "Reload transcript").click()
-    long_group = authed_page.locator("#transcriptList .tr-group")
-    expect(long_group.locator(".collapse-title")).to_contain_text("stage-orchestrator-pipeline.js")
-    fit = stable_read(lambda: authed_page.evaluate("""() => {
+    long_group = authed_page.locator("#transcriptList .tr-step")
+    expect(long_group.locator(".tr-step-label")).to_contain_text("stage-orchestrator-pipeline.js")
+    expect(long_group.locator(".tr-step-delta")).to_be_visible()
+    expect(long_group.locator(".tr-step-dur")).to_be_visible()
+    fit = stable_eval(long_group.locator(".tr-step-line"), """line => {
         const box = document.getElementById('transcriptBody');
         const list = document.getElementById('transcriptList');
-        const card = document.querySelector('#transcriptList .tr-group');
-        const title = card.querySelector('.collapse-title');
-        const count = card.querySelector('.collapse-count').getBoundingClientRect();
-        const r = card.getBoundingClientRect();
+        const title = line.querySelector('.tr-step-label');
+        const r = line.getBoundingClientRect();
         if (!r.width) return null;
+        const inside = ['.tr-step-delta', '.tr-step-dur'].map(function (sel) {
+            const b = line.querySelector(sel).getBoundingClientRect();
+            return b.width > 0 && b.left >= r.left && b.right <= r.right
+                && line.querySelector(sel).scrollWidth <= line.querySelector(sel).clientWidth;
+        });
         return {box: [box.scrollWidth, box.clientWidth], list: [list.scrollWidth, list.clientWidth],
-                ellipsed: title.scrollWidth > title.clientWidth,
-                countInside: count.left >= r.left && count.right <= r.right};
-    }"""))
+                ellipsed: title.scrollWidth > title.clientWidth, inside: inside};
+    }""")
     assert fit["box"][0] <= fit["box"][1] and fit["list"][0] <= fit["list"][1], fit
-    assert fit["ellipsed"] and fit["countInside"], fit
+    assert fit["ellipsed"] and all(fit["inside"]), fit
 
     # -- #1292: the prompt's thumbnail row sits on the text's inset (#1265),
     # inside the bubble since #1475 --
@@ -918,9 +928,9 @@ def test_unreported_outcome_says_so_instead_of_reading_as_success(
     expect(group.locator(".tr-fail-count")).to_have_count(0)
     expect(group.locator(".tr-item-failed")).to_have_count(0)
     # …and the closed header is unchanged from a `reported` flavour.
-    expect(group.locator(".collapse-title")).to_have_text("1 tool call")
+    expect(group.locator(".tr-step-label")).to_have_text("1 tool call")
 
-    group.locator("summary.collapse-summary").click()
+    group.locator("summary.tr-step-line").click()
     item = group.locator(".tr-item").first
     item.locator("summary").click()
     expect(item).to_have_js_property("open", True)
@@ -952,7 +962,7 @@ def test_reported_harness_adds_no_note_to_a_clean_call(
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     group = _open_tool_group(authed_page)
-    group.locator("summary.collapse-summary").click()
+    group.locator("summary.tr-step-line").click()
     item = group.locator(".tr-item").first
     item.locator("summary").click()
     expect(item).to_have_js_property("open", True)
