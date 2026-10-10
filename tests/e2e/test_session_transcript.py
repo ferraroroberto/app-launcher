@@ -358,6 +358,12 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, {None: _NEWEST, 4096: _OLDER}, calls)
     _mock_transcript_images(authed_page, image_calls)
+    # Tall enough that the list never scrolls: since the turn grew its Edited
+    # card (#1477) the list overflowed the default window, so folding the
+    # prompt scrolled it to the top, which pulls the older page in by itself
+    # and raced the manual Load older this test pins.
+    size = authed_page.viewport_size or {"width": 1280, "height": 900}
+    authed_page.set_viewport_size({"width": size["width"], "height": max(size["height"], 1600)})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)

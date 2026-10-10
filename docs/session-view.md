@@ -44,6 +44,8 @@ The ⋮ menu's **Changed files** lists every file this session's edits created, 
 - **Bounded:** one read of the transcript per open, and at most its newest part, which the panel says when it applies. Claude's fold parses only its recorded-diff lines (about 0.1 s for a 111 MB file, newest 256 MB). Every other agent's fold runs the same entry reader Chat uses, in 16 MiB windows over at most the newest 64 MiB (the largest Codex rollout on the dev box, 33.8 MB, takes 0.22 s). It does not update itself; ↻ re-reads.
 - **Other agents (#1356).** Codex, Pi, Grok, Antigravity and Copilot edits are folded from the steps Chat already draws, skipping any step the harness marked failed, so the totals equal the sum of the Chat steps. Codex edits through `apply_patch`, direct or inside an `exec` script; a patch that Codex rejected (its own `apply_patch verification failed` message) counts nowhere. Codex, Antigravity and Copilot record only some tool failures (see Chat's outcome note), so a failed edit they did not mark still counts. Relative paths (a Codex patch names files from its working folder) are resolved against the session's project folder. Copilot's `apply_patch` tool is not recognised yet (only `edit` and `create`, whose keys were probed).
 - A session with no edits, no transcript, or one that has ended each gets its own sentence.
+- **Rows read name first** (#1477): the file's name in mono, its folder under it as the hint (*project root* for a file at the top), then the counts. The Coding tab's Show changes uses the same row.
+- **Opened from a turn's Edited card** (see [Edited N files](#edited-n-files)), the panel starts on **This turn**: only the files that turn edited, with that turn's own counts, and each file opens into that turn's own steps on it. It is drawn from the steps Chat already loaded, so it costs no request. **Whole session** switches to the list above. A card row opens the panel with that file already open and scrolled to the top, in either scope; the card's header opens it on the turn with nothing open. From the ⋮ menu there is no switch: the panel is the whole session, as before.
 
 ## Stop and kill
 
@@ -75,6 +77,16 @@ Chat shows the session's whole conversation as a chat-style list that reads on t
 - Opened, the run's items hang off a thin rail under the chevron, each a row with a glyph for what it did (run, read, edit, search, thinking): a command's first line, or a file's name with its folder beside it and an edit's `+N −M`. Each item opens on its own.
 - Step lines are **shown by default**, so a turn that edited four files says so. The ⋮ menu's **Hide steps** leaves a plain you ↔ agent exchange (and **Show steps** brings them back where they were). A turn that is only tool calls, with no text, hides with them.
 - New text, tool calls and cards arriving while you read join the turn they belong to, under its existing header. An older page that ends partway through a turn joins the turn already on screen.
+
+### Edited N files
+
+A turn that edited files ends with an **Edited N files** card (#1477): a header with the turn's total `+N −M`, then one row per file: an **A** / **M** / **D** badge, the file's name with its folder as the hint, and its own `+N −M`. The first 3 rows show, then **Show N more**, on every width.
+
+- **When it appears:** once the turn is over, that is, your next prompt follows it, or it is the newest turn and the bottom strip's activity line does not say the agent is working. While the agent works the strip carries the progress; the card arrives when it stops. When the activity can't be read at all, the card shows.
+- **What it counts:** the turn's successful edit, write and delete steps, folded in the browser from the steps already loaded, so the numbers are the step lines' own. A failed step counts nowhere. **A** means the turn's first touch created the file, **D** that a step deleted it.
+- **A tap on a row** opens [Changed files](#changed-files) on **This turn**, focused on that file; the header opens it on the turn as a whole.
+- **A turn cut by a page boundary** (its start is on an older page) counts what is loaded and says *Earlier steps not loaded · Load older*; Load older pulls the previous page in and the card recounts.
+- The card stays when ⋮ **Hide steps** hides the step lines, so the work still has a trace. It collapses with its turn. The Life OS conversation viewer, which draws a capture with this same renderer, has no card: a capture has no session for the panel to open.
 
 ### Edit steps open as their diff
 

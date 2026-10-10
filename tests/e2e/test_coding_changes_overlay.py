@@ -164,7 +164,8 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     first = rows.first
     expect(first.locator(".chg-badge")).to_have_text("M")
     expect(first.locator(".chg-base")).to_have_text("apps-coding.js")
-    expect(first.locator(".chg-dir")).to_have_text("app/webapp/static/")
+    # Name first, the folder under it as the hint (#1477).
+    expect(first.locator(".chg-dir")).to_have_text("app/webapp/static")
     expect(first.locator(".chg-add")).to_have_text("+12")
     # The staged pip only on the staged row.
     expect(rows.nth(1).locator(".chg-staged")).to_have_count(1)

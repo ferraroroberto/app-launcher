@@ -163,6 +163,8 @@ def test_claude_write_of_a_new_file_is_all_added_from_line_one(tmp_path):
     (call,) = _calls(path)
     assert call["action"]["diff"]["numbered"] is True
     assert call["action"]["diff"]["hunks"] == [{"old_start": 0, "new_start": 1, "lines": ["+x", "+y"]}]
+    # The Edited card's A badge (#1477) reads this, as the Changed files fold does.
+    assert call["action"]["created"] is True
 
 
 def test_claude_write_over_a_file_counts_its_removed_lines(tmp_path):
@@ -177,6 +179,7 @@ def test_claude_write_over_a_file_counts_its_removed_lines(tmp_path):
     ])
     (call,) = _calls(path)
     assert (call["action"]["added"], call["action"]["removed"]) == (1, 2)
+    assert "created" not in call["action"]
 
 
 def test_a_failed_edit_keeps_todays_row_with_no_diff(tmp_path):

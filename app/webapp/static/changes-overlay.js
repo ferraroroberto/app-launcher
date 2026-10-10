@@ -11,6 +11,12 @@
  * by a tiny renderer below; a session's is each of its own edits in order,
  * drawn by diff-view.js. No library. A viewer only — nothing here stages,
  * commits or discards.
+ *
+ * Since #1477 a row reads name first, its folder as the hint (the row the
+ * Chat pane's Edited N files card shares, edited-card.js), and a session's
+ * panel can open from that card: focused on one file, with a "This turn ·
+ * Whole session" pair that starts on the turn. The turn's scope is drawn from
+ * the steps the Chat page already holds, so it costs no request.
  */
 
 import { els } from './state.js';
@@ -18,12 +24,7 @@ import { escapeHtml, jsonApi } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderHunks } from './diff-view.js';
 import { terminalJsonApi } from './webauthn.js';
-
-// Long names for the one-letter status badges (VS Code's vocabulary).
-const STATUS_NAME = {
-  M: 'modified', A: 'added', D: 'deleted', R: 'renamed',
-  T: 'type changed', U: 'untracked', C: 'conflict',
-};
+import { fileBadge, fileCounts, fileKey, fileName } from './edited-card.js';
 
 // Why a session's Changed files could not be read, in the panel's words.
 const SESSION_REASON = {
@@ -35,7 +36,9 @@ const SESSION_REASON = {
 
 // null while closed, else what is shown: a project ({kind: 'project', id,
 // name}) or a session ({kind: 'session', sid, name}). `seq` guards a slow
-// response from an earlier open landing in a newer view.
+// response from an earlier open landing in a newer view. A session opened
+// from an Edited card also carries `turn` (its files and how to draw a step),
+// `scope` ('turn' | 'session') and `focus` (the recorded path to open).
 let view = null;
 
 function showState(html) {
@@ -158,25 +161,42 @@ async function loadSessionDiff(file, body) {
   if (res.truncated) body.insertAdjacentHTML('beforeend', note('Diff truncated at 200 KB'));
 }
 
+// This turn's share of a file (#1477): each of the turn's own steps on it, in
+// order, drawn from the entries the Chat page holds, so nothing is fetched.
+function renderTurnDiff(file, body) {
+  body.innerHTML = '';
+  const n = file.edits.length;
+  file.edits.forEach(function (e, i) {
+    const a = e.action;
+    const label = document.createElement('div');
+    label.className = 'chg-step muted small';
+    const when = stepTime(e.timestamp);
+    label.textContent = (a.verb === 'deleted' ? 'Deleted' : a.created ? 'Created' : 'Edit ' + (i + 1) + ' of ' + n) +
+      (when ? ' · ' + when : '');
+    body.appendChild(label);
+    if (a.verb === 'deleted') return;
+    const diff = view.turn.renderStep(e);
+    if (diff) body.appendChild(diff);
+    else body.insertAdjacentHTML('beforeend', note('No textual changes'));
+  });
+}
+
+// "dir/name" → {dir, base}.
+function splitPath(path) {
+  const slash = path.lastIndexOf('/');
+  return slash >= 0
+    ? { dir: path.slice(0, slash), base: path.slice(slash + 1) }
+    : { dir: '', base: path };
+}
+
 function fileRow(file) {
   const det = document.createElement('details');
   det.className = 'chg-file';
   det.dataset.path = file.path;
   const sum = document.createElement('summary');
-  const badge = document.createElement('span');
-  badge.className = 'chg-badge chg-badge-' + file.status;
-  badge.textContent = file.status;
-  badge.title = STATUS_NAME[file.status] || file.status;
-  sum.appendChild(badge);
-  const path = document.createElement('span');
-  path.className = 'chg-path';
-  const slash = file.path.lastIndexOf('/');
-  const dir = slash >= 0 ? file.path.slice(0, slash + 1) : '';
-  const base = slash >= 0 ? file.path.slice(slash + 1) : file.path;
-  path.innerHTML = (dir ? '<span class="chg-dir">' + escapeHtml(dir) + '</span>' : '') +
-    '<span class="chg-base">' + escapeHtml(base) + '</span>' +
-    (file.old_path ? '<span class="chg-dir"> renamed from ' + escapeHtml(file.old_path) + '</span>' : '');
-  sum.appendChild(path);
+  sum.appendChild(fileBadge(file.status));
+  const parts = file.base != null ? file : splitPath(file.path);
+  sum.appendChild(fileName(parts.base, parts.dir, file.old_path ? 'renamed from ' + file.old_path : '', file.path));
   if (file.staged) {
     const pip = document.createElement('span');
     pip.className = 'chg-staged';
@@ -184,10 +204,7 @@ function fileRow(file) {
     pip.setAttribute('aria-label', 'staged');
     sum.appendChild(pip);
   }
-  const n = document.createElement('span');
-  n.className = 'chg-counts';
-  n.innerHTML = file.binary ? '<span class="muted">bin</span>' : counts(file.additions, file.deletions);
-  sum.appendChild(n);
+  sum.appendChild(fileCounts(file.additions, file.deletions, file.binary));
   det.appendChild(sum);
   const body = document.createElement('div');
   body.className = 'chg-body';
@@ -196,6 +213,10 @@ function fileRow(file) {
   det.addEventListener('toggle', function () {
     if (det.open && !loaded && view) {
       loaded = true;
+      if (file.edits) {
+        renderTurnDiff(file, body);
+        return;
+      }
       body.innerHTML = note('Loading…');
       (view.kind === 'session' ? loadSessionDiff : loadProjectDiff)(file, body);
     }
@@ -240,6 +261,85 @@ function renderProject(body) {
   if (untracked.length) list.appendChild(group('Untracked', untracked));
 }
 
+// "This turn · Whole session" (#1477), only on a panel opened from a turn's
+// Edited card. Switching keeps the focused file and re-renders the list.
+function scopeSwitch() {
+  const wrap = document.createElement('div');
+  wrap.className = 'chg-scope';
+  wrap.setAttribute('role', 'group');
+  wrap.setAttribute('aria-label', 'Which changes');
+  [['turn', 'This turn'], ['session', 'Whole session']].forEach(function (opt) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chg-scope-btn';
+    btn.dataset.scope = opt[0];
+    btn.setAttribute('aria-pressed', view.scope === opt[0] ? 'true' : 'false');
+    const pill = document.createElement('span');
+    pill.textContent = opt[1];
+    btn.appendChild(pill);
+    btn.addEventListener('click', function () {
+      if (!view || view.scope === opt[0]) return;
+      view.scope = opt[0];
+      load();
+    });
+    wrap.appendChild(btn);
+  });
+  return wrap;
+}
+
+// Does a session row stand for the file a card row named? Claude records an
+// absolute path, which is the row's key; another agent's may be relative to
+// its folder, which the row's shown path or the end of its key then matches.
+function sameFile(row, path) {
+  const k = fileKey(path);
+  const key = fileKey(row.key || row.path);
+  return key === k || fileKey(row.path) === k || key.endsWith('/' + k);
+}
+
+// Open the focused file's row and bring it to the top of the panel. Opening
+// it loads its diff the way a tap does.
+function showFocus(files, rows) {
+  if (!view.focus) return;
+  const i = files.findIndex(function (f) { return sameFile(f, view.focus); });
+  if (i < 0) return;
+  const det = rows[i];
+  det.classList.add('chg-focus');
+  det.open = true;
+  const box = els.changesList.parentElement;
+  if (box) box.scrollTop += det.getBoundingClientRect().top - box.getBoundingClientRect().top - 12;
+}
+
+function fileList(files) {
+  const wrap = document.createElement('section');
+  wrap.className = 'chg-group';
+  const rows = files.map(fileRow);
+  rows.forEach(function (r) { wrap.appendChild(r); });
+  return { wrap: wrap, rows: rows };
+}
+
+// The turn's files, from the card that opened the panel: sorted like the
+// session's list, with the turn's own counts.
+function renderTurn() {
+  const list = els.changesList;
+  list.innerHTML = '';
+  hideState();
+  const files = view.turn.files.map(function (f) {
+    const shown = f.dir ? f.dir + '/' + f.base : f.base;
+    return Object.assign({}, f, { shown: shown });
+  }).sort(function (x, y) { return x.shown.toLowerCase().localeCompare(y.shown.toLowerCase()); });
+  const c = files.reduce(function (s, f) {
+    return { additions: s.additions + f.additions, deletions: s.deletions + f.deletions };
+  }, { additions: 0, deletions: 0 });
+  list.appendChild(summaryLine(files, c, 'this turn'));
+  list.appendChild(scopeSwitch());
+  if (view.turn.partial) {
+    list.insertAdjacentHTML('beforeend', note('Earlier steps of this turn aren’t loaded in Chat'));
+  }
+  const built = fileList(files);
+  list.appendChild(built.wrap);
+  showFocus(files, built.rows);
+}
+
 // One flat list: a session's files are all "what this session changed", so
 // there is nothing to group, and the summary names the source it read.
 function renderSession(body) {
@@ -248,10 +348,12 @@ function renderSession(body) {
   const files = body.files || [];
   if (!files.length) {
     showState(icon('file-diff') + '<div>No files changed in this session</div>');
+    if (view.turn) list.appendChild(scopeSwitch());
     return;
   }
   hideState();
   list.appendChild(summaryLine(files, body.counts || {}, 'from this session’s transcript'));
+  if (view.turn) list.appendChild(scopeSwitch());
   if (body.partial) {
     list.insertAdjacentHTML('beforeend', note('A very long transcript: only its newest part was read'));
   }
@@ -259,10 +361,9 @@ function renderSession(body) {
     list.insertAdjacentHTML('beforeend',
       note('The project folder is gone, so deleted files can’t be told apart'));
   }
-  const wrap = document.createElement('section');
-  wrap.className = 'chg-group';
-  files.forEach(function (f) { wrap.appendChild(fileRow(f)); });
-  list.appendChild(wrap);
+  const built = fileList(files);
+  list.appendChild(built.wrap);
+  showFocus(files, built.rows);
 }
 
 async function loadProject(seq) {
@@ -302,7 +403,8 @@ function load() {
   if (!view) return;
   const seq = ++view.seq;
   els.changesList.innerHTML = '';
-  if (view.kind === 'session') loadSession(seq);
+  if (view.kind === 'session' && view.scope === 'turn') renderTurn();
+  else if (view.kind === 'session') loadSession(seq);
   else loadProject(seq);
 }
 
@@ -321,10 +423,16 @@ export function openChanges(a) {
 }
 
 // `s` is a session as the list knows it ({session_id, name, …}); `title`
-// is what the session bar shows for it.
-export function openSessionChanges(s, title) {
+// is what the session bar shows for it. `opts` (an Edited card's tap, #1477):
+// `turn` — {files, partial, renderStep(entry)} — starts the panel on that
+// turn with the scope pair; `focus` is the recorded path to open.
+export function openSessionChanges(s, title, opts) {
+  const o = opts || {};
   open(
-    { kind: 'session', sid: s.session_id, name: 'Changed files · ' + (title || s.name || 'session'), seq: 0 },
+    {
+      kind: 'session', sid: s.session_id, name: 'Changed files · ' + (title || s.name || 'session'), seq: 0,
+      turn: o.turn || null, scope: o.turn ? 'turn' : 'session', focus: o.focus || null,
+    },
     'Re-read the transcript'
   );
 }

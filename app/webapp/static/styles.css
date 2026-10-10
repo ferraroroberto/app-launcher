@@ -2795,12 +2795,15 @@ textarea.input-native { height: auto; }
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: var(--row-sm);
+  min-height: var(--row-md);
   padding: 8px 0;
   cursor: pointer;
   font-size: var(--font-label);
 }
 .chg-file > summary::-webkit-details-marker { display: none; }
+/* The file row the panel and the Edited card share (#1477): badge, the name
+   over its folder, counts. A status badge is its status text on its own 16%
+   tint (design.md), never a coloured letter on a grey tile. */
 .chg-badge {
   flex: none;
   width: 22px;
@@ -2811,22 +2814,73 @@ textarea.input-native { height: auto; }
   border-radius: var(--radius-sm);
   font-size: var(--font-caption);
   font-weight: 700;
-  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
-  background: var(--card-2);
-  color: var(--muted);
+  font-family: var(--font-mono);
+  background: var(--neutral-soft);
+  color: var(--fg);
 }
-.chg-badge-M { color: var(--attention); }
-.chg-badge-A, .chg-badge-U { color: var(--success); }
-.chg-badge-D, .chg-badge-C { color: var(--danger); }
-.chg-badge-R, .chg-badge-T { color: var(--accent); }
+.chg-badge-M { background: rgb(from var(--attention) r g b / 0.16); color: var(--attention-text); }
+.chg-badge-A, .chg-badge-U { background: rgb(from var(--success) r g b / 0.16); color: var(--success-text); }
+.chg-badge-D, .chg-badge-C { background: rgb(from var(--danger) r g b / 0.16); color: var(--danger-text); }
+.chg-badge-R, .chg-badge-T { background: var(--accent-soft); color: var(--accent-text); }
+/* Name first in mono, the folder under it as the hint. One line each,
+   ellipsised, in the card; the panel wraps them, so a deep folder still
+   reads whole there. */
 .chg-path {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
-  line-height: 1.25;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.3;
 }
-.chg-dir { color: var(--muted); font-weight: 400; }
-.chg-base { color: var(--fg); font-weight: 600; }
+.chg-base,
+.chg-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chg-base {
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+}
+.chg-dir { color: var(--muted); font-size: var(--font-body-sm); font-weight: 400; }
+.chg-file .chg-base,
+.chg-file .chg-dir { white-space: normal; overflow-wrap: anywhere; }
+/* The file a card row opened (#1477): a faint accent wash, bled into the
+   panel's 12px gutter so the row's content stays aligned with its siblings. */
+.chg-file.chg-focus {
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--accent) r g b / 0.06);
+}
+.chg-file.chg-focus + .chg-file { border-top-color: transparent; }
+/* "This turn · Whole session" (#1477): chip-geometry pills, the pressed one in
+   the accent tint, each inside a 44px tap target. */
+.chg-scope { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; }
+.chg-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.chg-scope-btn > span {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.chg-scope-btn[aria-pressed="true"] > span { background: var(--accent-soft); color: var(--accent-text); }
 .chg-staged {
   flex: none;
   width: 8px;
@@ -2907,6 +2961,85 @@ textarea.input-native { height: auto; }
 .tr-diff-base { color: var(--fg); font-weight: 600; }
 .tr-diff-more { margin: 0 0 8px; }
 .tr-diff-note { margin: 0 0 8px; }
+
+/* ---------- Edited N files card (#1477) ---------- */
+/* Closes a turn that edited files: the card contract on the canvas, a header
+   (glyph, "Edited N files", total +N -M), then list-rows at rows.md -- the
+   panel's own file row -- and a full-width "Show N more". Every row is a
+   button: a tap opens Changed files on that file. */
+.tr-edited {
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+.tr-edited-head,
+.tr-edited-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 14px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tr-edited-head { gap: 8px; }
+.tr-edited-head > .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); color: var(--muted); }
+.tr-edited-title { flex: 1; min-width: 0; font-weight: 700; }
+.tr-edited-row,
+.tr-edited-more,
+.tr-edited-partial { border-top: 1px solid var(--line-muted); }
+.tr-edited-chev { flex: none; display: inline-flex; color: var(--muted); }
+.tr-edited-chev .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.tr-edited-head:active,
+.tr-edited-row:active,
+.tr-edited-more:active { background: var(--neutral-soft); }
+@media (hover: hover) {
+  .tr-edited-head:hover,
+  .tr-edited-row:hover,
+  .tr-edited-more:hover { background: var(--neutral-soft); }
+}
+.tr-edited-more {
+  display: block;
+  width: 100%;
+  min-height: var(--hit-min);
+  padding: 0 14px;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* A turn whose first steps sit on a page not loaded yet (decision 7). */
+.tr-edited-partial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  padding: 0 14px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.tr-edited-older {
+  min-height: var(--hit-min);
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
 .chg-branch {
   display: inline-flex;
   align-items: center;

@@ -77,6 +77,10 @@ def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
         return
     action["added"], action["removed"] = diff_counts(edit[1])
     action["diff"] = cap_diff(edit[1], DIFF_FULL_BYTES)
+    # A Write that made the file, so a turn's Edited card badges it A (#1477),
+    # as the Changed files fold does; Codex's builder sets the same flag.
+    if edit[2]:
+        action["created"] = True
 
 
 def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
