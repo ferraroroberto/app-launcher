@@ -974,8 +974,8 @@ function planGroup(heading, rows, cls) {
   return wrap;
 }
 
-// `shown` is the plan positions the repo filter keeps (#1332): the button
-// counts and opens only those.
+// `shown` is the plan positions the repo filter keeps (#1332) that no
+// device has answered yet (#1487): the button counts and opens only those.
 function answerButton(plan, run, shown) {
   const n = shown.length;
   const btn = document.createElement('button');
@@ -1114,7 +1114,11 @@ function renderChiefPlan(body, liveRead) {
         return planRow(w.text || w.question || w.ref, meta, '',
           'board-plan-waiting' + (sent ? ' is-answered' : ''));
       }), 'board-plan-group-waiting');
-      group.appendChild(answerButton(plan, run, shown));
+      // Answered from any device (#1487): not counted, not asked again.
+      const open = shown.filter(function (i) {
+        return answered.indexOf(itemKey(waiting[i], i)) === -1;
+      });
+      if (open.length) group.appendChild(answerButton(plan, run, open));
       nodes.push(group);
     }
     // A pending decision is never invisible: say what the filter hides.

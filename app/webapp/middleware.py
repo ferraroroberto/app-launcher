@@ -257,7 +257,8 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         lambda p: p.startswith("/api/board/chief/"),
         "passkey",
         "Fleet chief (#245): ensure spawns + types into a PTY, settings steer "
-        "it — both terminal-grade. Loopback (the daily job, the /chief skill) "
+        "it — both terminal-grade; /answered (#1487) records what the answer "
+        "sheet typed into it. Loopback (the daily job, the /chief skill) "
         "bypasses like everything else.",
     ),
     (
