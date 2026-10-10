@@ -279,9 +279,14 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     if request.node.get_closest_marker("smoke"):
         return
     from app.webapp.routers import board_chief as chief_router
+    from src import chief_answers as chief_answers_mod
     from src import chief_pointer as chief_pointer_mod
     monkeypatch.setattr(
         chief_pointer_mod, "CHIEF_POINTER_FILE", tmp_path / "chief-pointer.json"
+    )
+    # Same for the answer sheet's answered marks (#1487).
+    monkeypatch.setattr(
+        chief_answers_mod, "CHIEF_ANSWERED_FILE", tmp_path / "chief-answered.json"
     )
     # The write-side memo is module-level and would otherwise leak one test's
     # chief into the next (a second test would then observe "no write").

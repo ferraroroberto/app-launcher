@@ -17,9 +17,13 @@
  * the chief's PTY.
  *
  * The app never writes the plan file: the chief removes the items it has
- * taken. Until the plan's `updated_at` moves, this viewer's browser marks the
- * items it sent as "answered, waiting for the chief" (localStorage when it
- * works, memory otherwise, so the page never depends on it).
+ * taken. Until the plan's `updated_at` moves, the items sent are marked
+ * "answered, waiting for the chief" on every device (#1487): Done records
+ * them with the webapp (POST /api/board/chief/answered), and the plan the
+ * Board polls carries them back as `answered`. This page also remembers what
+ * it sent, in memory, so its own marks show at once and survive a record
+ * that failed. The card's "Answer N questions" and the sheet skip answered
+ * items.
  *
  * The sheet is built when it opens and never by the 5 s poll, so a poll
  * can't wipe an answer being typed; the poll only re-gates Done
@@ -28,6 +32,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, toast } from './api.js';
+import { terminalJsonApi } from './webauthn.js';
 import { askOption } from './ask-option.js';
 import { icon } from './_vendored/icons/icons.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
@@ -36,7 +41,6 @@ import { uploadSessionFile } from './terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
 import { renderBoard } from './board.js';
 
-const ANSWERED_KEY = 'launcher.chiefAnswered';
 const DONE_LABEL = 'Done';
 // Question and answer are joined by an arrow in the message the chief
 // parses. It is message text, never a rendered glyph, so it is spelled as an
@@ -58,18 +62,11 @@ let sending = false;
 
 // ------------------------------------------------------ answered marks
 
-let marks = null;
+// What this page sent, on which version of the plan.
+let sent = { updated_at: null, ids: [] };
 
-function loadMarks() {
-  if (marks) return marks;
-  marks = { updated_at: null, ids: [] };
-  try {
-    const raw = JSON.parse(localStorage.getItem(ANSWERED_KEY) || 'null');
-    if (raw && typeof raw.updated_at === 'string' && Array.isArray(raw.ids)) {
-      marks = { updated_at: raw.updated_at, ids: raw.ids.map(String) };
-    }
-  } catch (_) { /* no storage: marks live in memory only */ }
-  return marks;
+function union(a, b) {
+  return a.concat(b.filter(function (k) { return a.indexOf(k) === -1; }));
 }
 
 // The item's key: the chief's own id, else its position in the list.
@@ -77,22 +74,36 @@ export function itemKey(item, index) {
   return item.id || String(index);
 }
 
-// The keys this viewer answered on this version of the plan.
+// The keys answered on this version of the plan: from any device, as the
+// webapp recorded them, plus what this page sent.
 export function answeredKeys(plan) {
-  const m = loadMarks();
-  if (!plan || m.updated_at !== (plan.updated_at || '')) return [];
-  return m.ids;
+  if (!plan) return [];
+  const recorded = Array.isArray(plan.answered) ? plan.answered.map(String) : [];
+  return sent.updated_at === (plan.updated_at || '') ? union(recorded, sent.ids) : recorded;
 }
 
-function markAnswered(plan, keys) {
-  const kept = answeredKeys(plan);
-  marks = {
-    updated_at: plan.updated_at || '',
-    ids: kept.concat(keys.filter(function (k) { return kept.indexOf(k) === -1; })),
-  };
+function markSent(plan, keys) {
+  const version = plan.updated_at || '';
+  sent = { updated_at: version, ids: union(sent.updated_at === version ? sent.ids : [], keys) };
+}
+
+// Share the marks with every device. The webapp records them only while
+// this is still the plan on disk; whatever it answers is the current marks,
+// so the card shows them without waiting for the next poll.
+async function recordAnswered(plan, keys) {
   try {
-    localStorage.setItem(ANSWERED_KEY, JSON.stringify(marks));
-  } catch (_) { /* memory still holds them for this page */ }
+    const res = await terminalJsonApi('/api/board/chief/answered', {
+      method: 'POST',
+      body: { updated_at: plan.updated_at || '', ids: keys },
+    });
+    const now = state.chiefPlan;
+    if (now && now.state === 'ok' && (now.updated_at || '') === res.updated_at) {
+      now.answered = res.answered;
+      renderBoard();
+    }
+  } catch (exc) {
+    apiFailToast('Sent, but other devices still show these questions open', exc);
+  }
 }
 
 // ------------------------------------------------------------ compose
@@ -177,7 +188,7 @@ function paintItem(block, draft) {
   });
 }
 
-function renderItem(item, index, answered) {
+function renderItem(item, index) {
   const draft = sheet.drafts[index];
   const block = el('section', 'tr-ask chief-answer');
   block.dataset.key = itemKey(item, index);
@@ -283,11 +294,6 @@ function renderItem(item, index, answered) {
     other.appendChild(mic);
   }
   block.appendChild(other);
-
-  if (answered) {
-    block.classList.add('is-answered');
-    block.appendChild(el('p', 'tr-ask-status chief-answer-sent', 'Answered, waiting for the chief'));
-  }
   paintItem(block, draft);
   return block;
 }
@@ -323,9 +329,10 @@ export function syncChiefAnswers(run) {
   syncDone();
 }
 
-// `shown` is the plan positions to ask (the Board's repo filter, #1332);
-// omitted, every item. Drafts stay indexed by plan position, so narrowing
-// or widening the filter between opens keeps whatever was typed.
+// `shown` is the plan positions to ask: the Board's repo filter (#1332)
+// minus what is already answered (#1487); omitted, every item. Drafts stay
+// indexed by plan position, so narrowing or widening it between opens keeps
+// whatever was typed.
 export function openChiefAnswers(plan, run, shown) {
   const dialog = els.chiefAnswersDialog;
   if (!dialog || !plan) return;
@@ -349,10 +356,9 @@ export function openChiefAnswers(plan, run, shown) {
     dictate: voiceDictationAvailable(),
     ocr: !!(state.status && state.status.screenshot_ocr),
   });
-  const answered = answeredKeys(plan);
   disposeOtherDictations();
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, indices.map(function (i) {
-    return renderItem(items[i], i, answered.indexOf(itemKey(items[i], i)) !== -1);
+    return renderItem(items[i], i);
   }));
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
@@ -373,9 +379,10 @@ async function submitAnswers() {
   const stopTimer = startWorkTimer(done, DONE_LABEL);
   try {
     await sendToChief(text);
-    markAnswered(sheet.plan, sheet.shown
+    const keys = sheet.shown
       .filter(function (i) { return !!answerText(sheet.items[i], sheet.drafts[i]); })
-      .map(function (i) { return itemKey(sheet.items[i], i); }));
+      .map(function (i) { return itemKey(sheet.items[i], i); });
+    markSent(sheet.plan, keys);
     // Sent: the drafts it carried are done with, so the next open starts
     // clean. One typed for an item the filter hid was not sent, and stays.
     // The close handler saves the box into `sheet.also`, so empty the box.
@@ -385,6 +392,7 @@ async function submitAnswers() {
     els.chiefAnswersDialog.close();
     toast('Sent to chief', 'good', { icon: 'crown' });
     renderBoard();
+    if (keys.length) recordAnswered(sheet.plan, keys);
   } catch (exc) {
     // The sheet stays open with every answer in it, to send again.
     apiFailToast('Answers not sent', exc);

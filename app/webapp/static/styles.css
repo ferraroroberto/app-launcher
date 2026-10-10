@@ -4442,7 +4442,6 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   overflow-wrap: anywhere;
 }
 span.chief-answer-ref { color: var(--muted); }
-.chief-answer-sent { color: var(--success-text); }
 .chief-answers-also {
   display: flex;
   flex-direction: column;

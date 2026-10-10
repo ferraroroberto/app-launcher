@@ -1,6 +1,9 @@
 """Board tab — the fleet kanban's data plane (issues #300, #301, #302 / #164 / #399).
 
     GET  /api/board                       → the five computed columns (token-gated)
+    GET  /api/board/chief-plan            → the chief's plan + answered marks (token-gated)
+    POST /api/board/chief/answered        → record answered questions (#1487;
+                                            Tailscale + passkey)
     POST /api/board/github/refresh        → run the gh searches now (token-gated)
     GET  /api/board/sessions/{sid}/exchange → last user↔assistant exchange
                                             (Tailscale + passkey — transcript text)
@@ -52,6 +55,7 @@ from src import (
     agents,
     audit,
     board,
+    chief_answers,
     chief_plan,
     dispatch_brief,
     github_client,
@@ -274,11 +278,52 @@ async def get_chief_plan(request: Request) -> Dict[str, Any]:
     ``updated_at``, ``lanes``, ``queue``, ``waiting_on_roberto``), ``empty``
     or ``unreadable``. Whether the chief is running is the client's to say,
     from the session cards ``/api/board`` already carries.
+
+    An ``ok`` plan also carries ``answered`` (#1487): the keys of the
+    questions any device already answered on this version of the plan, so
+    every device marks them alike.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    return await asyncio.to_thread(
-        chief_plan.read_chief_plan, Path(cfg.chief_plan_file), cfg.github_owner,
-    )
+    return await asyncio.to_thread(_read_plan_with_answers, cfg)
+
+
+def _read_plan_with_answers(cfg: WebappConfig) -> Dict[str, Any]:
+    plan = chief_plan.read_chief_plan(Path(cfg.chief_plan_file), cfg.github_owner)
+    if plan["state"] == "ok":
+        plan["answered"] = chief_answers.read_answered(plan["updated_at"])
+    return plan
+
+
+@router.post("/api/board/chief/answered")
+async def post_chief_answered(request: Request) -> Dict[str, Any]:
+    """Record the questions the answer sheet just sent (#1487; Tailscale +
+    passkey, as every ``/api/board/chief/`` route).
+
+    Body: ``{"updated_at": <the plan version answered>, "ids": [<key>]}``.
+    Recorded only while that is still the plan on disk; a plan the chief has
+    since rewritten has no use for the marks, so ``recorded`` is ``false``
+    and nothing is written. Either way the reply carries the current plan's
+    ``updated_at`` and ``answered`` keys. Never touches the plan file.
+    """
+    body = await maybe_json(request)
+    updated_at = body.get("updated_at")
+    ids = chief_answers.clean_ids(body.get("ids"))
+    if not isinstance(updated_at, str) or ids is None:
+        raise HTTPException(
+            status_code=400, detail="updated_at must be a string and ids a list of strings"
+        )
+    cfg: WebappConfig = request.app.state.webapp_config
+    plan = await asyncio.to_thread(_read_plan_with_answers, cfg)
+    if plan["state"] != "ok":
+        return {"recorded": False, "updated_at": "", "answered": []}
+    if plan["updated_at"] != updated_at:
+        return {"recorded": False, "updated_at": plan["updated_at"], "answered": plan["answered"]}
+    try:
+        answered = await asyncio.to_thread(chief_answers.record_answered, updated_at, ids)
+    except OSError as exc:
+        logger.warning("⚠️ chief answered marks not written: %s", exc)
+        raise HTTPException(status_code=500, detail="answered marks not written")
+    return {"recorded": True, "updated_at": updated_at, "answered": answered}
 
 
 @router.get("/api/rate-limits")

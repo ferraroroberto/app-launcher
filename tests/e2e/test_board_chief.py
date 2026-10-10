@@ -10,7 +10,8 @@ Restart and Chief settings live on the Code tab's chief row
 (test_coding_chief.py). The settings sheet round-trips GET → edit → PUT. The
 Chief's-plan card's answer sheet (#1295) renders the chief's questions and
 sends every answer as one message down the ensure-then-input path; a hung
-upload in the sheet is cancelled by a second tap on its busy button (#1413).
+upload in the sheet is cancelled by a second tap on its busy button (#1413);
+what one device answered shows as answered on another (#1487).
 Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
@@ -29,10 +30,10 @@ from datetime import datetime, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
-from src import chief_plan
+from src import chief_answers, chief_plan
 from tests.e2e.conftest import (
-    HeldUploads, flush_requests, open_settings_sheet, stable_eval, stable_read,
-    wait_until,
+    HeldUploads, _seed_token_init_script, flush_requests, open_settings_sheet,
+    stable_eval, stable_read, wait_until,
 )
 
 pytestmark = pytest.mark.smoke
@@ -114,6 +115,16 @@ def _mock_board_side_routes(page: Page) -> None:
         lambda route: route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(_PLAN),
         ),
+    )
+    # The answer sheet's answered marks (#1487): recorded as sent, never
+    # reaching the webapp's own store.
+    page.route(
+        re.compile(r".*/api/board/chief/answered$"),
+        lambda route: route.fulfill(json={
+            "recorded": True,
+            "updated_at": route.request.post_data_json["updated_at"],
+            "answered": route.request.post_data_json["ids"],
+        }),
     )
     page.route(
         re.compile(r".*/api/board/github/refresh$"),
@@ -529,10 +540,10 @@ _QUESTIONS = [
 ]
 
 
-def _plan_with(tmp_path, waiting: list) -> dict:
+def _plan_with(tmp_path, waiting: list, updated_at: str = "2026-09-27T09:00:00Z") -> dict:
     f = tmp_path / "chief-plan.json"
     f.write_text(_json.dumps({
-        "version": 1, "updated_at": "2026-09-27T09:00:00Z", "lanes": [],
+        "version": 1, "updated_at": updated_at, "lanes": [],
         "queue": [{"repo": "app-launcher", "ref": "#1295", "title": "answer sheet", "status": "building"}],
         "waiting_on_roberto": waiting,
     }), encoding="utf-8")
@@ -920,14 +931,130 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
         "submit": True,
     }], posts
 
-    # All projects again: the whole plan, and the answered mark on its row.
+    # All projects again: the whole plan, and the answered mark on its row;
+    # the button no longer counts the answered question (#1487).
     pick("")
     expect(waiting).to_have_count(4)
-    expect(button).to_have_text("Answer 4 questions")
+    expect(button).to_have_text("Answer 3 questions")
     expect(hidden_note).to_have_count(0)
     expect(headings).to_have_text(["Waiting on you", "Lanes", "Queue"])
     expect(waiting.nth(2)).to_contain_text("answered, waiting for the chief")
     expect(waiting.nth(0)).not_to_contain_text("answered")
+
+
+class _SharedPlanServer:
+    """The webapp's two plan routes for two pages at once (#1487): the plan
+    as the real reader makes of a file, the answered marks in the real
+    ``src/chief_answers`` store under ``tmp_path``. Both pages read and write
+    this one state, as two devices on one launcher do; recording follows the
+    route's rule (only while that is still the plan), which
+    tests/test_chief_answers.py pins on the route itself."""
+
+    def __init__(self, tmp_path, waiting: list) -> None:
+        self.tmp_path = tmp_path
+        self.waiting = waiting
+        self.plan = _plan_with(tmp_path, waiting)
+        self.store = tmp_path / "chief-answered.json"
+        self.records: list = []
+
+    def rewrite(self, updated_at: str) -> None:
+        """The chief rewrites its plan: same questions, a new version."""
+        self.plan = _plan_with(self.tmp_path, self.waiting, updated_at)
+
+    def _answered(self) -> list:
+        return chief_answers.read_answered(self.plan["updated_at"], self.store)
+
+    def _serve_plan(self, route) -> None:
+        route.fulfill(json={**self.plan, "answered": self._answered()})
+
+    def _record(self, route) -> None:
+        body = route.request.post_data_json
+        self.records.append(body)
+        recorded = body["updated_at"] == self.plan["updated_at"]
+        if recorded:
+            chief_answers.record_answered(body["updated_at"], body["ids"], self.store)
+        route.fulfill(json={
+            "recorded": recorded, "updated_at": self.plan["updated_at"],
+            "answered": self._answered(),
+        })
+
+    def route(self, page: Page) -> None:
+        page.route(re.compile(r".*/api/board/chief-plan$"), self._serve_plan)
+        page.route(re.compile(r".*/api/board/chief/answered$"), self._record)
+
+
+def test_answered_marks_show_on_every_device_until_the_plan_moves(
+    authed_page: Page, browser, browser_context_args, auth_token: str,
+    base_url: str, tmp_path,
+) -> None:
+    """#1487: what one device answers reads "answered, waiting for the
+    chief" on another — polling or reloaded — and neither counts nor asks it
+    again. The marks clear on both when the chief rewrites the plan. Page B
+    is its own browser context (its own storage), so nothing local can carry
+    the marks across; the chief's input is the test's capture, never a real
+    PTY."""
+    server = _SharedPlanServer(tmp_path, _QUESTIONS)
+    context_b = browser.new_context(**browser_context_args)
+    if auth_token:
+        context_b.add_init_script(_seed_token_init_script(auth_token))
+    page_b = context_b.new_page()
+    try:
+        pages = (authed_page, page_b)
+        for page in pages:
+            _mock_board(page, _board_payload(with_chief=True))
+            server.route(page)
+        _mock_ensure(authed_page, {})
+        posts = _capture_chief_input(authed_page)
+        posts_b = _capture_chief_input(page_b)
+        for page in pages:
+            _open_board(page, base_url)
+            expect(page.locator("#boardChiefPlan .board-plan-answer")).to_have_text("Answer 3 questions")
+
+        # Device A answers the first and third questions.
+        authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+        blocks = authed_page.locator("#chiefAnswersDialog .chief-answer")
+        expect(blocks).to_have_count(3)
+        blocks.nth(0).locator(".tr-ask-opt").nth(0).click()
+        blocks.nth(2).locator(".tr-ask-input").fill("yes")
+        authed_page.locator("#chiefAnswersDone").click()
+        expect(authed_page.locator("#chiefAnswersDialog")).to_be_hidden()
+        wait_until(authed_page, lambda: len(server.records) == 1, "the answered marks recorded")
+        assert len(posts) == 1 and server.records == [{
+            "updated_at": "2026-09-27T09:00:00Z", "ids": ["q-plans", "2"],
+        }], server.records
+
+        def expect_answered(page: Page, marked: list, button: str) -> None:
+            rows = page.locator("#boardChiefPlan li.board-plan-waiting")
+            expect(rows).to_have_count(3)
+            for i, on in enumerate(marked):
+                if on:
+                    expect(rows.nth(i)).to_contain_text("answered, waiting for the chief")
+                    expect(rows.nth(i)).to_have_class(re.compile(r"\bis-answered\b"))
+                else:
+                    expect(rows.nth(i)).not_to_contain_text("answered")
+            expect(page.locator("#boardChiefPlan .board-plan-answer")).to_have_text(button)
+
+        expect_answered(authed_page, [True, False, True], "Answer 1 question")
+        # Device B on its next poll (↻ runs the poll's fetch), then reloaded.
+        page_b.locator("#boardRefresh").click()
+        expect_answered(page_b, [True, False, True], "Answer 1 question")
+        _open_board(page_b, base_url)
+        expect_answered(page_b, [True, False, True], "Answer 1 question")
+        # B's sheet asks only what is still open, numbered by its plan place.
+        page_b.locator("#boardChiefPlan .board-plan-answer").click()
+        sheet_b = page_b.locator("#chiefAnswersDialog .chief-answer")
+        expect(sheet_b).to_have_count(1)
+        expect(sheet_b.locator(".chief-answer-num")).to_have_text("2")
+        page_b.locator("#chiefAnswersClose").click()
+        assert posts_b == [], "device B sent nothing"
+
+        # The chief rewrites the plan: both devices show every question open.
+        server.rewrite("2026-09-27T09:10:00Z")
+        for page in pages:
+            page.locator("#boardRefresh").click()
+            expect_answered(page, [False, False, False], "Answer 3 questions")
+    finally:
+        context_b.close()
 
 
 @pytest.mark.iphone

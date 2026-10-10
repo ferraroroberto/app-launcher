@@ -523,6 +523,7 @@ app-launcher/
 │   ├── tts_client.py           # local-llm-hub TTS client (🔊 Read aloud)
 │   ├── voice_client.py         # voice-transcriber sibling-service client
 │   ├── chief_pointer.py        # fleet-chief PTY session lookup for the chief's ensure path
+│   ├── chief_answers.py        # the chief's questions already answered, shared by every device
 │   ├── board.py                # Board backend: kanban column computation
 │   ├── board_state.py          # session-state join (session-host + fleet-config overlay)
 │   ├── board_sessions.py       # live-session enumeration for the Board

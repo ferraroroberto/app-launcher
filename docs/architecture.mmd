@@ -189,6 +189,7 @@ life-os.js, life-os-viewer.js, voice.js"]
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief_pointer.py →\nwebapp/chief-pointer.json"]
+  R_BOARD -->|"reads + writes\n(answered marks on the chief's plan, #1487)"| CHIEFANSWERED["src/chief_answers.py →\nwebapp/chief-answered.json"]
   R_BOARD -->|"writes + TTL-prunes\n(issue-start --brief path, #1114)"| BRIEFS["src/dispatch_brief.py →\nwebapp/briefs/*.md"]
   R_CONFIG --> WEBAPPCFG
   R_CONFIG --> LAUNCHFLAGS
