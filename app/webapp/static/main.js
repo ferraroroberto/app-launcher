@@ -29,6 +29,7 @@ import { wireQuoteCopy } from './quote-copy.js';
 import { wireChanges } from './changes-overlay.js';
 import { markMirrorWindowEarly } from './terminal-mirror.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
+import { isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
@@ -276,7 +277,10 @@ async function boot() {
       // Pause the session poll while the session overlay is open (either
       // mode, #982) — it would re-render the list under the overlay for no
       // reason. The open terminal keeps its own title poll (terminal.js).
-      if (!state.sessionView) fetchSessions().catch(noop);
+      // Not on the wide layout (#1488): the view docks beside the list
+      // (#1135), so the list is on screen and must keep updating — a session
+      // that ends there would otherwise keep its card until a reload.
+      if (!state.sessionView || isWideLayout()) fetchSessions().catch(noop);
     }, SESSIONS_POLL_MS);
   });
   usage.then(function () {
