@@ -6,6 +6,10 @@
  * file's name in mono with its folder as the hint, its own +N −M), the first
  * SHOW_FIRST of them and then "Show N more". A row opens the Changed files
  * panel focused on that file; the header opens it on the turn as a whole.
+ * Beside each row, "Ask to undo" (#1479) fills the composer with a request to
+ * undo that file's edits from this turn and sends nothing. There is no Undo
+ * button: the list is folded from the transcript, not git, and later work may
+ * have touched the file since (decision 1 of #1472).
  *
  * Folded on the client from the steps the page already holds — each edit
  * call's server-side `action` — never a new request, so the card's counts are
@@ -122,10 +126,27 @@ function chevron() {
   return span;
 }
 
+// "Ask to undo" draws an app-local glyph (Lucide undo-2): it lives in the
+// inline sprite alone, so it is named through `glyph:`, which the inline
+// sprite check reads.
+const ASK_UNDO = { glyph: 'undo-2' };
+
+function askUndoButton(f, onAskUndo) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'tr-edited-undo';
+  btn.setAttribute('aria-label', 'Ask to undo ' + f.base);
+  btn.title = 'Ask to undo: fills the message, sends nothing';
+  btn.innerHTML = icon(ASK_UNDO.glyph);
+  btn.addEventListener('click', function () { onAskUndo(f); });
+  return btn;
+}
+
 // `files` are foldEdits() rows, each with `base` and `dir` set by the caller
 // (relative to the session's project). `opts`: `expanded` (Show N more was
 // tapped), `partial` (the turn's start is not loaded), and the taps —
-// `onOpen(file)` (null for the header), `onMore()`, `onLoadOlder()`.
+// `onOpen(file)` (null for the header), `onAskUndo(file)`, `onMore()`,
+// `onLoadOlder()`.
 export function renderEditedCard(files, opts) {
   const card = document.createElement('section');
   card.className = 'tr-edited';
@@ -148,6 +169,8 @@ export function renderEditedCard(files, opts) {
 
   const shown = opts.expanded ? files : files.slice(0, SHOW_FIRST);
   shown.forEach(function (f) {
+    const line = document.createElement('div');
+    line.className = 'tr-edited-line';
     const row = document.createElement('button');
     row.type = 'button';
     row.className = 'tr-edited-row';
@@ -159,7 +182,8 @@ export function renderEditedCard(files, opts) {
       chevron()
     );
     row.addEventListener('click', function () { opts.onOpen(f); });
-    card.appendChild(row);
+    line.append(row, askUndoButton(f, opts.onAskUndo));
+    card.appendChild(line);
   });
 
   const rest = files.length - shown.length;
