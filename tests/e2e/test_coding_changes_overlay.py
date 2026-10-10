@@ -186,6 +186,9 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     # Tinted, and block-level so a wrapped line keeps its tint (#680: assert
     # through the auto-retrying matcher, never a raw computed-style read).
     expect(pre.locator(".d-add")).to_have_css("display", "block")
+    # The listing draws at the design system's 13px code-listing size (#1486),
+    # the same `--font-code` the Chat fence uses, not the 12px caption.
+    expect(pre).to_have_css("font-size", "13px")
     expect(pre.locator(".d-add")).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
     expect(pre.locator(".d-del")).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
 
