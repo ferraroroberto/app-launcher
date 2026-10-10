@@ -152,6 +152,7 @@ def test_chat_fenced_block_is_a_bounded_surface_that_wraps(
     expect(block).to_have_css("border-top-width", "1px")
     expect(block).to_have_css("border-radius", "12px")
     expect(block).to_have_css("margin-bottom", "12px")
+    expect(pre).to_have_css("font-size", "13px")  # `--font-code`, shared with the diff (#1486)
     expect(pre).to_have_css("white-space", "pre-wrap")
     expect(pre).to_have_css("overflow-wrap", "anywhere")
     expect(pre).to_have_css("background-color", "rgba(0, 0, 0, 0)")
