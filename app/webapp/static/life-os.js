@@ -560,11 +560,35 @@ function finishRename(value) {
   if (resolve) resolve(value);
 }
 
-function askLogName(current) {
+// The one sheet serves both renames; each fills in its own wording. The log
+// rename (a file name, always required) is the original; the conversation
+// title (#1495) may be left empty, which clears it.
+const RENAME_LOG_SHEET = {
+  heading: 'Rename log', action: 'Rename', placeholder: '', required: true,
+  help: 'The date stays. Spaces become dashes, lower-cased.',
+  maxLength: null, typing: 'none',
+};
+const RENAME_TITLE_SHEET = {
+  heading: 'Rename conversation', action: 'Save', required: false,
+  help: 'Leave it empty to go back to the topic.',
+  maxLength: 120, typing: 'sentences',
+};
+
+function askName(current, sheet) {
   const d = els.lifeOsRenameDialog;
   if (!d || !d.showModal) return Promise.resolve(null);
   if (renameSettle) finishRename(null);
-  els.lifeOsRenameInput.value = current;
+  const input = els.lifeOsRenameInput;
+  els.lifeOsRenameHeading.textContent = sheet.heading;
+  els.lifeOsRenameHelp.textContent = sheet.help;
+  els.lifeOsRenameSave.textContent = sheet.action;
+  input.required = sheet.required;
+  input.placeholder = sheet.placeholder;
+  if (sheet.maxLength) input.maxLength = sheet.maxLength;
+  else input.removeAttribute('maxlength');
+  input.setAttribute('autocapitalize', sheet.typing);
+  input.spellcheck = sheet.typing !== 'none';
+  input.value = current;
   return new Promise(function (resolve) {
     renameSettle = resolve;
     d.showModal();
@@ -591,7 +615,7 @@ function wireRenameDialog() {
 }
 
 async function renameFile(f) {
-  const proposed = await askLogName(logSlug(f.name));
+  const proposed = await askName(logSlug(f.name), RENAME_LOG_SHEET);
   if (proposed === null) return false;      // cancelled
   const slug = slugify(proposed);
   if (!slug) { toast('Name cannot be empty', 'error'); return false; }
@@ -609,6 +633,37 @@ async function renameFile(f) {
     apiFailToast('Rename failed', exc);
     return false;
   }
+}
+
+// Rename one conversation as the owner sees it (#1495): a title kept beside the
+// capture, shown in place of the digest topic. Empty clears it. Resolves true
+// when the server took the change (the viewer's ⋮ Rename closes itself on
+// that), false for a cancel, no change, or a refusal.
+async function renameConversationTitle(r) {
+  const current = r.title || '';
+  const typed = await askName(
+    current, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: r.topic || '' })
+  );
+  if (typed === null) return false;         // cancelled
+  const title = typed.trim().replace(/\s+/g, ' ');
+  if (title === current) return false;
+  try {
+    await jsonApi(
+      '/api/life-os/skills/' + encodeURIComponent(r.skill) +
+        '/conversations?path=' + encodeURIComponent(r.path),
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: title }),
+      }
+    );
+  } catch (exc) {
+    apiFailToast('Rename failed', exc);
+    return false;
+  }
+  toast(title ? 'Renamed to ' + title : 'Name cleared', 'good', { icon: 'pencil' });
+  await refreshAfterLogChange();
+  return true;
 }
 
 async function loadFile(f) {
@@ -983,6 +1038,12 @@ function renderConvoRows(rows, opts) {
   });
 }
 
+// What a conversation is called: the owner's title (#1495) when set, else the
+// digest topic, which keeps updating underneath it.
+function convoName(r) {
+  return r.title || r.topic || r.slug || r.file || 'untitled';
+}
+
 function convoRow(r, scoped) {
   const li = document.createElement('li');
   li.className = 'lifeos-convo-row';
@@ -997,7 +1058,14 @@ function convoRow(r, scoped) {
   head.appendChild(when);
   const topic = document.createElement('span');
   topic.className = 'lifeos-convo-topic';
-  topic.textContent = r.topic || r.slug || r.file || 'untitled';
+  topic.textContent = convoName(r);
+  if (r.title && r.topic) {
+    // Nothing is lost by renaming: the topic stays on a muted line under it.
+    const sub = document.createElement('span');
+    sub.className = 'lifeos-convo-topic-sub';
+    sub.textContent = r.topic;
+    topic.appendChild(sub);
+  }
   head.appendChild(topic);
   // Which skill a hit came from only matters when the list spans several.
   if (!scoped && r.skill) {
@@ -1141,7 +1209,7 @@ const CONVO_VIEWER_ACTIONS = {
   handoff: function (r) { resumeConversation(r, 'handoff'); },
   canLink: function (r) { return !!(r.skill && r.file); },
   copyLink: copyConvoLink,
-  rename: function (r) { return renameFile({ path: r.path, name: r.file }); },
+  rename: renameConversationTitle,
   del: deleteConversation,
   openRaw: openCapture,
 };
@@ -1171,10 +1239,10 @@ export async function openConvoByLink(skillId, file) {
   openConvoViewer(row, CONVO_VIEWER_ACTIONS);
 }
 
-// The row is Resume (#1137) and Delete (#1410), nothing else: Read and Copy
-// link came off it. Reading is a tap on the expanded row's summary block
-// (see convoRow), and Copy link / Rename / Open raw stay in the viewer's ⋮
-// menu. The same state drives the row and that menu, so they can't disagree.
+// The row is Resume (#1137), Rename (#1495) and Delete (#1410), nothing else:
+// Read and Copy link came off it. Reading is a tap on the expanded row's
+// summary block (see convoRow), and Copy link / Open raw stay in the viewer's
+// ⋮ menu (with Rename, which is the same action as the row's). The same state drives the row and that menu, so they can't disagree.
 // One primary per row: Resume (or the handoff, which only shows while Resume
 // is greyed out) is tinted; Delete is the tint recipe restated on danger.
 function convoActions(r) {
@@ -1215,6 +1283,13 @@ function convoActions(r) {
   }
   // A row with no readable capture path has nothing the server could delete.
   if (!r.path || !r.skill) return wrap;
+  const renameBtn = document.createElement('button');
+  renameBtn.type = 'button';
+  renameBtn.className = 'button-ghost lifeos-convo-rename';
+  renameBtn.innerHTML = icon('pencil') + ' Rename';
+  renameBtn.setAttribute('aria-label', 'Rename this conversation');
+  renameBtn.addEventListener('click', function () { renameConversationTitle(r); });
+  wrap.appendChild(renameBtn);
   const deleteBtn = document.createElement('button');
   deleteBtn.type = 'button';
   deleteBtn.className = 'button-tint danger lifeos-convo-delete';
@@ -1231,7 +1306,7 @@ function convoActions(r) {
 // gone — the viewer's ⋮ Delete closes itself on that — and false for a
 // cancel or a refusal (a conversation open in a running session says so).
 async function deleteConversation(r) {
-  const title = r.topic || r.slug || r.file || 'this conversation';
+  const title = convoName(r);
   const ok = await confirmDialog({
     title: 'Delete “' + title + '”?',
     message: 'This removes the saved log, the Claude Code transcript it came ' +
@@ -1307,7 +1382,7 @@ async function resumeConversation(r, action) {
     );
     toast(
       (action === 'handoff' ? 'Started new conversation from ' : 'Resumed ') +
-        (r.topic || r.skill) + modelTag(model) +
+        (r.title || r.topic || r.skill) + modelTag(model) +
         (body.handoff_truncated ? ' (selected context truncated)' : '') +
         (mode === 'remote' ? ' (detached)' : ''),
       'good', { icon: action === 'handoff' ? 'messages-square' : 'rotate-ccw' }

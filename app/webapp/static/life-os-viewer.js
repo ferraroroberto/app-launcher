@@ -140,7 +140,7 @@ export function openConvoViewer(row, actions) {
   groupsHidden = true;
   syncGroups();
   viewerMenu.close();
-  els.lifeOsViewerTitle.textContent = row.topic || row.slug || row.file || 'conversation';
+  els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'conversation';
   syncNote();
   els.lifeOsConvoViewer.hidden = false;
   load();
@@ -209,7 +209,7 @@ export function wireConvoViewer() {
     },
     {
       glyph: 'pencil', className: 'lifeos-viewer-rename',
-      label: 'Rename this conversation log', text: 'Rename',
+      label: 'Rename this conversation', text: 'Rename',
       // The dialog and the round trip both take a while: hold the open
       // conversation's own callbacks rather than reading `viewer` after the
       // await, which a Back tap meanwhile would have nulled.

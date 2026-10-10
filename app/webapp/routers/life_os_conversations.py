@@ -7,6 +7,9 @@
     DELETE /api/life-os/skills/{id}/conversations?path=<capture>
                                                → capture + Claude transcript + indexes
                                                  (Tailscale + passkey, #1410)
+    PATCH  /api/life-os/skills/{id}/conversations?path=<capture>
+                                               → set or clear the owner's title
+                                                 (Tailscale + passkey, #1495)
     GET  /api/life-os/conversations/search     → ranked cross-skill search
                                                  (Tailscale + passkey)
 
@@ -35,6 +38,7 @@ import json
 import logging
 import re
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -53,7 +57,7 @@ from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
-from src.life_os_index import reconcile_delete, search_cli
+from src.life_os_index import reconcile_delete, search_cli, title_cli
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
@@ -77,6 +81,15 @@ _SEARCH_TIMEOUT_S = 15
 _MAX_QUERY_CHARS = 200
 _SEARCH_LIMIT_DEFAULT = 20
 _SEARCH_LIMIT_MAX = 100
+
+# Owner titles (#1495). fleet-config's writer refuses over 120 characters
+# itself (exit 2); the router checks first so the phone gets a plain 400
+# without a subprocess. One title write at a time: the writer's contract is
+# that two concurrent writes to one folder can lose one, and a threading lock
+# (taken in the worker thread, not on the loop) also covers Delete's clear.
+_MAX_TITLE_CHARS = 120
+_TITLE_TIMEOUT_S = 30
+_title_write_lock = threading.Lock()
 
 # A resumable session id, validated strictly because it reaches claude's
 # command line. Same by-construction stance as the skill slug: the value is
@@ -174,7 +187,7 @@ def _conversation_rows(
             "skill": owner, "file": str(row.get("file") or ""),
             "path": _capture_rel(root, path) if path and source["readable"] else "",
             **{key: str(row.get(key) or "") for key in
-               ("date", "slug", "topic", "decisions", "open_loops")},
+               ("date", "slug", "title", "topic", "decisions", "open_loops")},
             "last_interaction": _last_interaction(path, str(row.get("date") or "")),
             "turns": row.get("turns") or 0,
             "agent": agent, "sid": source.get("sid", ""),
@@ -428,9 +441,12 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         logger.warning("⚠️ Life OS delete: capture removal failed after the transcript went: %s", exc)
         raise HTTPException(500, "The Claude transcript was removed but the capture could not be: "
                                  "try Delete again.")
+    # The title lives in a sidecar keyed by file name, so it would outlive the
+    # capture; drop it before the index reconcile so that ends on the rebuild.
+    title = await asyncio.to_thread(_clear_title_after_delete, cfg, skill.id, path.name)
     indexes = await reconcile_delete(path, cfg)
     removed = {
-        "capture": True, "transcript": transcript["status"],
+        "capture": True, "title": title, "transcript": transcript["status"],
         "transcript_files": transcript["files"], "transcript_folders": transcript["folders"],
         **indexes,
     }
@@ -442,6 +458,123 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         index_md=removed["index_md"], client=client_ip(request),
     )
     return {"deleted": rel, "removed": removed}
+
+
+def _run_title_cli(
+    cfg: WebappConfig, skill_id: str, file: str, title: Optional[str],
+) -> subprocess.CompletedProcess:
+    """Run fleet-config's title writer for one capture; ``title`` empty/``None`` clears.
+
+    ``--title=<text>`` (one argv element), never ``--title <text>``: argparse
+    reads a title starting with ``-`` as a missing value. Serialised with
+    :data:`_title_write_lock`. Raises ``FileNotFoundError`` when the writer is
+    not installed, ``OSError`` / ``subprocess.SubprocessError`` when it did
+    not run; the caller owns what a non-zero exit means.
+    """
+    cli = title_cli(cfg)
+    if cli is None:
+        raise FileNotFoundError("conversation_title.py")
+    argv = [*cli, "--cwd", str(cfg.life_os_dir), "--skill", skill_id, "--file", file,
+            f"--title={title}" if title else "--clear"]
+    with _title_write_lock:
+        return subprocess.run(
+            argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=_TITLE_TIMEOUT_S, creationflags=NO_WINDOW,
+        )
+
+
+def _clear_title_after_delete(cfg: WebappConfig, skill_id: str, file: str) -> str:
+    """Drop a deleted capture's title: ``cleared`` | ``unavailable``.
+
+    Best-effort like the other index reconciles - the capture is already gone,
+    so a writer that is missing or fails is logged, not an error to the phone.
+    A stale entry in the sidecar is inert (the writer only applies titles to
+    captures that exist).
+    """
+    try:
+        proc = _run_title_cli(cfg, skill_id, file, None)
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("⚠️ Life OS delete: could not clear the title: %s", exc)
+        return "unavailable"
+    if proc.returncode != 0:
+        logger.warning("⚠️ Life OS delete: title clear exited %s: %s",
+                       proc.returncode, (proc.stderr or "").strip()[:300])
+        return "unavailable"
+    return "cleared"
+
+
+# One message per exit code of conversation_title.py, so the phone can tell
+# "not installed", "refused", "gone" and "could not write" apart (#1495).
+_TITLE_EXIT_ERRORS = {
+    1: (503, "Renaming is unavailable: the Life OS folder isn't set up for conversation capture."),
+    2: (400, f"The name was refused (at most {_MAX_TITLE_CHARS} characters)."),
+    3: (404, "That conversation is no longer in the index; refresh the list."),
+    4: (500, "The name could not be saved (the titles file could not be read or written)."),
+}
+
+
+@router.patch("/api/life-os/skills/{skill_id}/conversations")
+async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
+    """Set or clear the owner's title for one conversation (Tailscale + passkey, #1495).
+
+    ``?path=`` is the capture's vault-relative path, as for Delete; the body is
+    ``{"title": "<text>"}``, and an empty or ``null`` title clears it, so the
+    list falls back to the digest topic. Storage, ``index.json`` and the
+    search index are fleet-config's :file:`hooks/conversation_title.py`; this
+    only validates, serialises and maps its exit codes to HTTP errors.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    root = Path(cfg.life_os_dir)
+    skill = _resolve_skill(cfg, skill_id)
+    rel = request.query_params.get("path", "")
+    path = _conversation_path(root, skill, rel)
+    if path is None:
+        raise HTTPException(400, "path is not a conversation capture of this skill")
+    if not path.is_file():
+        raise HTTPException(404, "file not found")
+    body = await maybe_json(request)
+    if "title" not in body:
+        # A missing or unreadable body must not read as "clear the title".
+        raise HTTPException(400, 'send {"title": "..."}; an empty title clears it')
+    raw = body["title"]
+    if raw is not None and not isinstance(raw, str):
+        raise HTTPException(400, "title must be text")
+    title = " ".join((raw or "").split())
+    if len(title) > _MAX_TITLE_CHARS:
+        raise HTTPException(400, f"The name is longer than {_MAX_TITLE_CHARS} characters.")
+
+    try:
+        proc = await asyncio.to_thread(_run_title_cli, cfg, skill.id, path.name, title)
+    except FileNotFoundError:
+        raise HTTPException(503, "Renaming is unavailable: conversation_title.py isn't installed "
+                                 "in the fleet-config checkout.")
+    except subprocess.TimeoutExpired:
+        logger.warning("⚠️ Life OS rename: title writer timed out")
+        raise HTTPException(503, "Renaming timed out; try again.")
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("⚠️ Life OS rename: title writer did not run: %s", exc)
+        raise HTTPException(503, "Renaming is unavailable: the title writer did not run.")
+    if proc.returncode != 0:
+        logger.warning("⚠️ Life OS rename: title writer exited %s: %s",
+                       proc.returncode, (proc.stderr or "").strip()[:300])
+        status, message = _TITLE_EXIT_ERRORS.get(
+            proc.returncode, (500, f"Renaming failed (the title writer exited {proc.returncode})."))
+        raise HTTPException(status, message)
+    try:
+        stored = str(json.loads(proc.stdout)["title"])
+    except (ValueError, KeyError, TypeError):
+        logger.warning("⚠️ Life OS rename: unreadable title writer output")
+        raise HTTPException(500, "Renaming may have worked, but the reply was unreadable; "
+                                 "refresh the list.")
+    logger.info("ℹ️ Life OS conversation title %s: skill=%s file=%s",
+                "set" if stored else "cleared", skill.id, path.name)
+    # The title is the owner's own words about their own life: audited as a
+    # fact (set/cleared), never as text, like the search query.
+    await audit_off_loop(
+        audit.audit_event, "lifeos_conversation_rename", skill=skill.id, path=rel,
+        cleared=not stored, client=client_ip(request),
+    )
+    return {"skill": skill.id, "path": rel, "file": path.name, "title": stored}
 
 
 def _search_unavailable(reason: str) -> Dict[str, Any]:

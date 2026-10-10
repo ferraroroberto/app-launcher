@@ -2206,14 +2206,15 @@
       </form>
     </dialog>
 
-    <!-- Rename a Life OS conversation log (#1439, in place of a native
+    <!-- Rename a Life OS conversation (#1439, in place of a native
          prompt()): the rename dialog above, its own instance. life-os.js
-         fills it and reads the name back; ✕, Escape and a backdrop tap
-         cancel. -->
+         fills it (heading, help, optional field: a log's file name, or a
+         conversation's title, #1495) and reads the name back; ✕, Escape and
+         a backdrop tap cancel. -->
     <dialog id="lifeOsRenameDialog" class="detail-dialog" aria-labelledby="lifeOsRenameTitle">
       <form id="lifeOsRenameForm" class="detail-card">
         <div class="detail-header">
-          <h2 id="lifeOsRenameTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename log</h2>
+          <h2 id="lifeOsRenameTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> <span id="lifeOsRenameHeading">Rename log</span></h2>
           <button type="button" id="lifeOsRenameClose" class="detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>

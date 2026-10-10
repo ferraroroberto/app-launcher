@@ -980,17 +980,19 @@ def test_life_os_row_leads_with_resume(
         re.compile(r"\blifeos-convo-resume\b"))
     expect(actions.locator(".lifeos-convo-nosession")).to_have_count(0)
     expect(actions.locator(".lifeos-convo-handoff")).to_have_count(0)
-    # #1410: exactly Resume and Delete. Read and Copy link came off the row;
-    # Copy link / Rename / Open raw stay in the viewer's ⋮ menu and reading is
-    # a tap on the summary block.
-    expect(actions.locator("button")).to_have_count(2)
+    # #1410/#1495: exactly Resume, Rename and Delete. Read and Copy link came
+    # off the row; Copy link / Open raw stay in the viewer's ⋮ menu and reading
+    # is a tap on the summary block.
+    expect(actions.locator("button")).to_have_count(3)
+    expect(actions.locator("button").nth(1)).to_have_class(
+        re.compile(r"\blifeos-convo-rename\b"))
     expect(actions.locator(".lifeos-convo-read, .lifeos-convo-copy-link")).to_have_count(0)
     # One row, one size (#1170): Resume stays the tinted primary, Delete is
     # the tint recipe on danger, and both are the same 44px tall.
     expect(resume).to_have_class(re.compile(r"\bbutton-tint\b"))
     expect(actions.locator(".lifeos-convo-delete")).to_have_class(
         re.compile(r"\bbutton-tint\b.*\bdanger\b|\bdanger\b.*\bbutton-tint\b"))
-    for i in range(2):
+    for i in range(3):
         expect(actions.locator("button").nth(i)).to_have_css("height", "44px")
     expect(rows.first.locator(".lifeos-convo-summary")).to_contain_text("Tap to read")
 
@@ -1006,7 +1008,7 @@ def test_life_os_row_leads_with_resume(
     for cls in (".lifeos-convo-resume", ".lifeos-convo-handoff"):
         expect(actions.locator(cls)).to_have_css("height", "44px")
 
-    # An unresumable row says why and offers only Delete.
+    # An unresumable row says why and offers only Rename and Delete.
     rows.nth(1).locator(".lifeos-convo-head").click()
     other = rows.nth(1).locator(".lifeos-convo-actions")
     expect(other.locator(".lifeos-convo-nosession")).to_contain_text("readable only")
@@ -1131,6 +1133,157 @@ def test_life_os_viewer_delete_is_the_full_delete(
     wait_until(authed_page, lambda: len(deletes) == 1, "the viewer's DELETE")
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(1)
+
+
+def _mock_renamable_conversations(page: Page):
+    """A stateful stand-in for the list + PATCH: what the server would keep.
+
+    Returns ``(patches, titles)``: every PATCH ``(url, body)`` received, and
+    the titles now stored. The list GET answers from ``titles`` the way
+    index.json does, so a reload shows exactly what the last PATCH left behind.
+    """
+    patches: list = []
+    titles: dict = {}
+
+    def _list(route):
+        rows = [{**row, "title": titles.get(row["file"], "")}
+                for row in _FAKE_CONVERSATIONS["conversations"]]
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps({**_FAKE_CONVERSATIONS, "conversations": rows}))
+
+    def _patch(route):
+        if route.request.method != "PATCH":
+            route.fallback()
+            return
+        body = route.request.post_data_json
+        patches.append((route.request.url, body))
+        file = _FAKE_CONVERSATIONS["conversations"][0]["file"]
+        if body["title"]:
+            titles[file] = body["title"]
+        else:
+            titles.pop(file, None)
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps({"file": file, "title": body["title"]}))
+
+    page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations$"), _list)
+    page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"), _patch)
+    return patches, titles
+
+
+def test_life_os_row_rename_survives_a_reload_and_clears_back_to_the_topic(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1495: Rename on the row opens the sheet (never a native prompt()), Save
+    sends one PATCH with the typed name, the list shows it with the digest
+    topic kept as the muted line, a reload still shows it, and saving the field
+    empty clears it back to the topic."""
+    _mock_skills(authed_page)
+    patches, titles = _mock_renamable_conversations(authed_page)
+    native: list = []
+    authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
+    _open_conversations(authed_page, base_url)
+    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    first = rows.first
+    expect(first.locator(".lifeos-convo-topic")).to_have_text("booking the ferry")
+    expect(first.locator(".lifeos-convo-topic-sub")).to_have_count(0)
+
+    dialog = authed_page.locator("#lifeOsRenameDialog")
+    first.locator(".lifeos-convo-head").click()
+    first.locator(".lifeos-convo-rename").click()
+    expect(dialog).to_be_visible()
+    expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
+    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("")
+    expect(authed_page.locator("#lifeOsRenameInput")).to_have_attribute(
+        "placeholder", "booking the ferry")
+    # The header ✕ cancels without a request.
+    authed_page.locator("#lifeOsRenameClose").click()
+    expect(dialog).to_be_hidden()
+    flush_requests(authed_page)
+    assert patches == []
+
+    first.locator(".lifeos-convo-rename").click()
+    authed_page.locator("#lifeOsRenameInput").fill("  Ferry  to the island ")
+    authed_page.locator("#lifeOsRenameSave").click()
+    wait_until(authed_page, lambda: len(patches) == 1, "the rename PATCH")
+    assert patches[0][1] == {"title": "Ferry to the island"}
+    assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
+        "2026-08-01-0900-ferry-booking.md" in patches[0][0]
+    expect(authed_page.locator("#toast")).to_contain_text("Renamed to Ferry to the island")
+    expect(first.locator(".lifeos-convo-topic")).to_contain_text("Ferry to the island")
+    expect(first.locator(".lifeos-convo-topic-sub")).to_have_text("booking the ferry")
+
+    # Leave and reopen the overlay: the list is fetched afresh, so the stored
+    # name is what it loads. (Not a second page.goto: a full document load is
+    # the step that times out on a loaded gate box, and this test is about the
+    # list, not the boot. The server leg is pinned in the API tests.)
+    authed_page.locator("#lifeOsConvosBack").click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_hidden()
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
+    expect(authed_page.locator("#lifeOsConvos")).to_be_visible()
+    first = rows.first
+    expect(first.locator(".lifeos-convo-topic")).to_contain_text("Ferry to the island")
+    expect(first.locator(".lifeos-convo-topic-sub")).to_have_text("booking the ferry")
+
+    # The sheet opens on the current title; saving it empty clears it.
+    first.locator(".lifeos-convo-head").click()
+    first.locator(".lifeos-convo-rename").click()
+    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("Ferry to the island")
+    authed_page.locator("#lifeOsRenameInput").fill("")
+    authed_page.locator("#lifeOsRenameSave").click()
+    wait_until(authed_page, lambda: len(patches) == 2, "the clearing PATCH")
+    assert patches[1][1] == {"title": ""}
+    assert titles == {}
+    expect(first.locator(".lifeos-convo-topic")).to_have_text("booking the ferry")
+    expect(first.locator(".lifeos-convo-topic-sub")).to_have_count(0)
+    assert native == [], native
+
+
+def test_life_os_viewer_rename_is_the_title_rename(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1495: the viewer's ⋮ Rename is the same title rename as the row's (the
+    log's file name is renamed from the Browse list), and the viewer's heading
+    follows the title the next time it opens."""
+    _mock_skills(authed_page)
+    _mock_transcript(authed_page)
+    patches, _ = _mock_renamable_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+    _open_viewer(authed_page, 0)
+    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
+    _open_viewer_menu(authed_page).locator(".lifeos-viewer-rename").click()
+    expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
+    authed_page.locator("#lifeOsRenameInput").fill("Island trip")
+    authed_page.locator("#lifeOsRenameSave").click()
+    wait_until(authed_page, lambda: len(patches) == 1, "the viewer's PATCH")
+    assert patches[0][1] == {"title": "Island trip"}
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-topic").first).to_contain_text(
+        "Island trip")
+    _open_viewer(authed_page, 0)
+    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("Island trip")
+
+
+def test_life_os_rename_refusal_keeps_the_row_and_says_why(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1495: a refused rename (the title writer says no) toasts the server's
+    reason and leaves the name unchanged."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"),
+        lambda route: route.fulfill(
+            status=404, content_type="application/json",
+            body=_json.dumps({"detail": "That conversation is no longer in the index; refresh the list."}))
+        if route.request.method == "PATCH" else route.fallback())
+    _open_conversations(authed_page, base_url)
+    first = authed_page.locator("#lifeOsConvoList .lifeos-convo-row").first
+    first.locator(".lifeos-convo-head").click()
+    first.locator(".lifeos-convo-rename").click()
+    authed_page.locator("#lifeOsRenameInput").fill("Nope")
+    authed_page.locator("#lifeOsRenameSave").click()
+    expect(authed_page.locator("#toast")).to_contain_text("no longer in the index")
+    expect(first.locator(".lifeos-convo-topic")).to_have_text("booking the ferry")
 
 
 @pytest.mark.iphone
