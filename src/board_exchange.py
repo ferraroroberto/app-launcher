@@ -23,6 +23,7 @@ from __future__ import annotations
 import ast
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -56,6 +57,17 @@ _SATURATED_NAMED = frozenset({
     "brightblack", "brightred", "brightgreen", "brightblue",
     "brightmagenta", "brightcyan",
 })
+# Rendered capture rows, keyed by capture path (#1494). The ``pyte`` replay of
+# the 512 KB tail is ~0.5-1 s of pure-Python CPU (measured on the dev box's
+# largest captures) and the fleet chief reads every lane's exchange on every
+# wake, while an idle session writes nothing, so an unchanged capture is
+# answered from here and a tail renders once per change. The fingerprint is
+# ``(size, mtime_ns, rows, cols)`` taken *before* the read: the capture only
+# grows, so a write landing after the stat leaves the cached rows keyed to an
+# older fingerprint and the next call re-renders - never the reverse.
+_ROWS_CACHE_MAX = 64
+_ROWS_CACHE: Dict[str, Tuple[Tuple[int, int, int, int], List[Tuple[str, str]]]] = {}
+_ROWS_CACHE_LOCK = threading.Lock()
 _LEAD_BULLET_RE = re.compile(r"^[●⏺•◉○]\s+")
 _TOOL_CALL_RE = re.compile(r"^[●⏺•◉○]\s+[A-Z][A-Za-z0-9_-]*\(")
 _RULE_RUN_RE = re.compile(r"[─━═┄┅┈┉╌╍]{6,}")
@@ -270,11 +282,21 @@ def launcher_last_exchange(
     first newline; only the scrollback-aware, colour-reading render below is
     local, because the shared ``screen_lines`` keeps neither history nor cells.
     """
-    raw = plan_picker.read_capture_tail(capture_path, _CAPTURE_TAIL_BYTES)
-    if not raw:
-        return unavailable("no_exchange")
-
-    parsed_rows = _terminal_rows(raw, rows=max(2, rows), cols=max(20, cols))
+    rows, cols = max(2, rows), max(20, cols)
+    try:
+        st = Path(capture_path).stat()
+        fingerprint: Optional[Tuple[int, int, int, int]] = (
+            st.st_size, st.st_mtime_ns, rows, cols
+        )
+    except OSError:
+        fingerprint = None
+    parsed_rows = _cached_rows(capture_path, fingerprint)
+    if parsed_rows is None:
+        raw = plan_picker.read_capture_tail(capture_path, _CAPTURE_TAIL_BYTES)
+        if not raw:
+            return unavailable("no_exchange")
+        parsed_rows = _terminal_rows(raw, rows=rows, cols=cols)
+        _store_rows(capture_path, fingerprint, parsed_rows)
     blocks = _reply_blocks(parsed_rows)
     prompt = _last_submitted_input(launcher_input_path) or prompt_fallback
     if not blocks:
@@ -304,6 +326,30 @@ def _nonempty_file(path: Path) -> bool:
         return Path(path).stat().st_size > 0
     except OSError:
         return False
+
+
+def _cached_rows(
+    path: Path, fingerprint: Optional[Tuple[int, int, int, int]]
+) -> Optional[List[Tuple[str, str]]]:
+    if fingerprint is None:
+        return None
+    with _ROWS_CACHE_LOCK:
+        hit = _ROWS_CACHE.get(str(path))
+    return hit[1] if hit is not None and hit[0] == fingerprint else None
+
+
+def _store_rows(
+    path: Path,
+    fingerprint: Optional[Tuple[int, int, int, int]],
+    parsed_rows: List[Tuple[str, str]],
+) -> None:
+    if fingerprint is None:
+        return
+    with _ROWS_CACHE_LOCK:
+        _ROWS_CACHE.pop(str(path), None)
+        _ROWS_CACHE[str(path)] = (fingerprint, parsed_rows)
+        while len(_ROWS_CACHE) > _ROWS_CACHE_MAX:
+            _ROWS_CACHE.pop(next(iter(_ROWS_CACHE)))
 
 
 def _terminal_rows(raw: str, *, rows: int, cols: int) -> List[Tuple[str, str]]:
