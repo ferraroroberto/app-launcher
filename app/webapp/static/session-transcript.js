@@ -90,7 +90,7 @@ import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { brandIcon } from './dom-utils.js';
 import { renderHunks } from './diff-view.js';
-import { foldEdits, renderEditedCard } from './edited-card.js';
+import { fileKey, foldEdits, renderEditedCard } from './edited-card.js';
 import { openSessionChanges } from './changes-overlay.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
 import { closeResumeCard, openResumeCard, wireResumeCard } from './chat-resume.js';
@@ -841,6 +841,18 @@ function turnStartMissing(li) {
   return !li.previousElementSibling && !!view && view.cursor != null;
 }
 
+// The files the turn edited, each named as the card names it (`base`, `dir`
+// relative to the session's project).
+function turnFiles(li) {
+  const files = foldEdits(turnSteps(li));
+  files.forEach(function (f) {
+    const parts = fileParts(f.path);
+    f.base = parts.base;
+    f.dir = parts.dir;
+  });
+  return files;
+}
+
 // A card tap: the Changed files panel on this turn (#1477), focused on
 // `focus` (a card row's file) or on none (the header). The turn's files go
 // with it, named as the card names them, and how to draw one of its steps.
@@ -858,7 +870,7 @@ function openTurnChanges(files, partial, focus) {
 // (the #680 lesson). True when it did change.
 function syncEditedCard(li) {
   if (!li._trEditable) return false;
-  const files = turnOver(li) ? foldEdits(turnSteps(li)) : [];
+  const files = turnOver(li) ? turnFiles(li) : [];
   const partial = files.length > 0 && turnStartMissing(li);
   const expanded = !!li._trEditedAll;
   const sig = files.length
@@ -869,11 +881,6 @@ function syncEditedCard(li) {
   if (li._trEdited) li._trEdited.remove();
   li._trEdited = null;
   if (files.length) {
-    files.forEach(function (f) {
-      const parts = fileParts(f.path);
-      f.base = parts.base;
-      f.dir = parts.dir;
-    });
     li._trEdited = renderEditedCard(files, {
       expanded: expanded,
       partial: partial,
@@ -900,6 +907,138 @@ function syncEditedCards() {
     if (syncEditedCard(li)) changed = true;
   });
   return changed;
+}
+
+// --- file chips (#1478) --------------------------------------------------------
+//
+// A reply that names a file this session edited, in a code span or as a bare
+// path in its prose, gets a file chip there: the code chip in the accent, a
+// file glyph and the file's name, and a tap opens that file's diff in Changed
+// files (decision 6 of #1472). Only an edited file links, and only when the
+// name is unambiguous: the span must be the file's whole path or a trailing
+// run of its folders and name (`styles.css`, `static/styles.css`, the full
+// path) that no other edited file ends with. Everything else stays the plain
+// code chip. A post-render DOM pass, like linkify(), so the markdown renderer
+// stays string-only; the Life OS viewer has no session to open a panel
+// against and never runs it.
+//
+// The edited set is folded from every step the page holds, so a file a later
+// tick edits, or an older page shows was edited, links when it arrives. A
+// reply's chips are undone and redone only when that set changes, never on a
+// tick that brought no new file (the #680 lesson).
+
+// A line reference after the name: ":12", ":12:3", ":12-20".
+const LINE_REF_RE = /:\d+(?:[:-]\d+)?$/;
+// A bare path's characters. Loose on purpose: only a run that resolves to an
+// edited file becomes a chip.
+const PATH_RUN_RE = /[\w.@~+\-/\\:]+/g;
+const PATH_TRAIL_RE = /[.,;:!?]+$/;
+
+// The edited file `text` names, with any line reference it carries, or null.
+// `bare` (prose, not a code span) also asks it to look like a path, with a
+// folder or an extension, so an extensionless file never links a plain word.
+function resolveFile(text, files, bare) {
+  let t = String(text || '').trim();
+  if (!t || /\s/.test(t)) return null;
+  const ref = t.match(LINE_REF_RE);
+  if (ref) t = t.slice(0, -ref[0].length);
+  if (bare && !/[\\/]/.test(t) && !/[^.]\.[a-z0-9]+$/i.test(t)) return null;
+  const k = fileKey(t).replace(/^(\.\/)+/, '');
+  if (!k) return null;
+  const hits = files.filter(function (f) { return f.key === k || f.key.endsWith('/' + k); });
+  return hits.length === 1 ? { file: hits[0], ref: ref ? ref[0] : '' } : null;
+}
+
+// A tap on a chip: if the chip's own turn edited the file, the panel on that
+// turn, focused on it, as the turn's card row opens it (#1477); otherwise the
+// whole session's list, focused on it.
+function openFileChip(chip, file) {
+  if (!view) return;
+  const li = chip.closest('.tr-agent-item');
+  const files = li ? turnFiles(li) : [];
+  const own = files.find(function (f) { return f.key === file.key; });
+  if (own) {
+    openTurnChanges(files, turnStartMissing(li), own);
+    return;
+  }
+  const s = view.session;
+  openSessionChanges(s, sessionTitle(s), { focus: file.path });
+}
+
+// `orig` is the node the chip stands in for, put back when the chips are redone.
+function fileChip(hit, orig) {
+  const base = baseName(hit.file.path);
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'tr-file-chip';
+  chip.title = hit.file.path;
+  chip.setAttribute('aria-label', 'Open the diff of ' + base);
+  chip.dataset.path = hit.file.path;
+  chip.innerHTML = icon('file-text');
+  const name = document.createElement('span');
+  name.className = 'tr-file-chip-name';
+  name.textContent = base + hit.ref;
+  chip.appendChild(name);
+  chip._trOrig = orig;
+  chip.addEventListener('click', function () { openFileChip(chip, hit.file); });
+  return chip;
+}
+
+// Text a bare path may sit in: prose, never a link, a code span or listing,
+// a fenced block's header or a control.
+function chipText(node) {
+  const p = node.parentElement;
+  return !!p && !p.closest('a, code, pre, button, .md-block');
+}
+
+function chipFiles(body, files) {
+  body.querySelectorAll('code').forEach(function (code) {
+    if (code.closest('pre, a, button')) return;
+    const hit = resolveFile(code.textContent, files, false);
+    if (hit) code.replaceWith(fileChip(hit, code));
+  });
+  const walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    acceptNode: function (node) { return chipText(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT; },
+  });
+  const nodes = [];
+  let n;
+  while ((n = walker.nextNode())) nodes.push(n);
+  nodes.forEach(function (textNode) {
+    const text = textNode.nodeValue;
+    const frag = document.createDocumentFragment();
+    let last = 0;
+    let m;
+    PATH_RUN_RE.lastIndex = 0;
+    while ((m = PATH_RUN_RE.exec(text))) {
+      const run = m[0].replace(PATH_TRAIL_RE, '');
+      const hit = run && resolveFile(run, files, true);
+      if (!hit) continue;
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      frag.appendChild(fileChip(hit, document.createTextNode(run)));
+      last = m.index + run.length;
+    }
+    if (!last) return;
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
+}
+
+function unchipFiles(body) {
+  body.querySelectorAll('.tr-file-chip').forEach(function (chip) { chip.replaceWith(chip._trOrig); });
+  body.normalize();
+}
+
+// Every reply in the Chat list, against the files the loaded steps edited.
+function syncFileChips() {
+  if (!view) return;
+  const files = foldEdits(view.entries || []);
+  const sig = files.map(function (f) { return f.key; }).sort().join('\n');
+  els.transcriptList.querySelectorAll('.tr-reply > .tr-md').forEach(function (body) {
+    if (body._trChipSig === sig) return;
+    if (body._trChipSig != null) unchipFiles(body);
+    body._trChipSig = sig;
+    if (files.length) chipFiles(body, files);
+  });
 }
 
 // Older entries that end in an agent turn, landing above a list that starts
@@ -1720,6 +1859,7 @@ async function forwardRead(target, manual) {
   } else if (body.size != null) {
     target.size = body.size;
   }
+  syncFileChips();
   if (syncEditedCards() && stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
   // A tick that got an answer clears any reason line an earlier failed one
   // left on screen, so a condition that cleared by itself looks like it.
@@ -1819,6 +1959,7 @@ async function loadNewest() {
   syncDecisionCards();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
+  syncFileChips();
   syncEditedCards();
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
   scheduleLive(LIVE_POLL_MS);
@@ -1905,6 +2046,7 @@ async function loadOlder() {
   }
   els.transcriptOlder.textContent = foundTurn || !older.length ? OLDER_LABEL : olderLabel(older);
   els.transcriptOlder.hidden = view.cursor == null;
+  syncFileChips();
   syncEditedCards();
   // Keep what was on screen where it was: grow scrollTop by exactly the
   // height the older page added above it.
