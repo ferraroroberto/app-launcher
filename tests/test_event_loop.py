@@ -15,11 +15,17 @@ import re
 import socket
 import sys
 import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from app.webapp.event_loop import LOOP_FACTORY, selector_loop_factory
+from app.webapp.event_loop import (
+    GIL_SWITCH_INTERVAL_S,
+    LOOP_FACTORY,
+    selector_loop_factory,
+    tune_gil_switch_interval,
+)
 from app.webapp.manager import WebappManager, WebappManagerConfig
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +55,81 @@ def test_selector_loop_factory_is_zero_arg_and_returns_an_instance():
         assert isinstance(loop, asyncio.AbstractEventLoop)
     finally:
         loop.close()
+
+
+@pytest.fixture
+def default_switch_interval():
+    """Run with CPython's stock 5 ms switch interval, restoring it after."""
+    saved = sys.getswitchinterval()
+    sys.setswitchinterval(0.005)
+    try:
+        yield
+    finally:
+        sys.setswitchinterval(saved)
+
+
+def test_loop_factory_lowers_the_gil_switch_interval(default_switch_interval):
+    """#1492: the factory is the one hook every webapp launch path shares, so
+    it carries the GIL tuning that keeps a pyte render from stalling the loop."""
+    loop = selector_loop_factory()
+    try:
+        assert sys.getswitchinterval() == pytest.approx(GIL_SWITCH_INTERVAL_S)
+    finally:
+        loop.close()
+
+
+def test_tune_never_raises_an_interval_already_lower(default_switch_interval):
+    sys.setswitchinterval(0.0001)
+    assert tune_gil_switch_interval() == pytest.approx(0.0001)
+
+
+# Pure-Python CPU-bound threads stand in for the Board/exchange ``pyte``
+# renders (~0.85 s of GIL-holding CPU per call). At the default 5 ms switch
+# interval one request's thread hops waited out the whole render: measured
+# 6.3-6.9 s for a ~15 ms ``GET /api/board`` beside three of them on a test
+# instance, 15-48 s on the live one (#1492).
+_HOG_SECONDS = 2.0
+_HOPS = 8
+_HOP_BUDGET_S = 0.75
+
+
+def _busy_for(seconds: float) -> None:
+    end = time.perf_counter() + seconds
+    acc = 0
+    while time.perf_counter() < end:
+        for i in range(200):
+            acc += i * i
+
+
+def _request_like() -> None:
+    for _ in range(40):
+        Path(__file__).stat()
+
+
+async def _hops_beside_hogs() -> float:
+    hogs = [asyncio.create_task(asyncio.to_thread(_busy_for, _HOG_SECONDS)) for _ in range(3)]
+    await asyncio.sleep(0.1)  # let all three threads take the GIL
+    started = time.perf_counter()
+    for _ in range(_HOPS):
+        await asyncio.to_thread(_request_like)
+    elapsed = time.perf_counter() - started
+    await asyncio.gather(*hogs)
+    return elapsed
+
+
+def test_request_hops_stay_fast_beside_cpu_bound_threads(default_switch_interval):
+    """Pins the bound: the loop factory is what keeps a request's thread hops
+    under ``_HOP_BUDGET_S`` while three CPU-bound threads hold the GIL. Fails
+    against the pre-fix factory (the hops take ~the full ``_HOG_SECONDS``)."""
+    runner = asyncio.Runner(loop_factory=selector_loop_factory)
+    try:
+        elapsed = runner.run(_hops_beside_hogs())
+    finally:
+        runner.close()
+    assert elapsed < _HOP_BUDGET_S, (
+        f"{_HOPS} thread hops took {elapsed:.2f}s beside CPU-bound threads "
+        f"(budget {_HOP_BUDGET_S}s) — the GIL switch interval is not tuned"
+    )
 
 
 def test_manager_build_command_passes_loop_factory():
