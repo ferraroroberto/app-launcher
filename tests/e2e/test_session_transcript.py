@@ -350,6 +350,7 @@ def test_detached_reader_less_row_still_reaches_rename_and_stop(
     expect(menu.locator('button[aria-label="Compact conversation"]')).to_have_count(0)
 
 
+@pytest.mark.iphone
 def test_transcript_shows_turns_folds_tools_and_loads_older(
     authed_page: Page, base_url: str
 ) -> None:

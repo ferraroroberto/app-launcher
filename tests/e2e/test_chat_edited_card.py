@@ -286,6 +286,7 @@ def test_a_row_opens_changed_files_on_this_turn_then_the_whole_session(
     expect(page.locator("#terminalOverlay")).to_be_visible()
 
 
+@pytest.mark.iphone
 def test_the_newest_turn_gets_its_card_when_the_agent_stops(authed_page: Page, base_url: str) -> None:
     page = authed_page
     # Enough earlier exchanges that the list scrolls; no older page, so
