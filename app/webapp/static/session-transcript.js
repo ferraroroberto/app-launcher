@@ -79,7 +79,7 @@
 import { els, state } from './state.js';
 import { api, apiFailToast, authHeaders, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './markdown.js';
-import { detachedSendRefused, sendOutcome, sendSessionMessage } from './sessions.js';
+import { detachedSendRefused, sendOutcome, sendSessionMessage, sessionTitle } from './sessions.js';
 import { keyboardOverlayHeight } from './terminal.js';
 import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
@@ -90,6 +90,8 @@ import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { brandIcon } from './dom-utils.js';
 import { renderHunks } from './diff-view.js';
+import { foldEdits, renderEditedCard } from './edited-card.js';
+import { openSessionChanges } from './changes-overlay.js';
 import { mountScrollerPill, scrollerIsAway } from './latest-pill.js';
 import { closeResumeCard, openResumeCard, wireResumeCard } from './chat-resume.js';
 import {
@@ -738,11 +740,13 @@ function turnReplies(li) {
 
 // The agent's turn: one <details> whose summary is the header and whose body
 // is the ordered list of its parts. `first` is the entry it starts at — the
-// header's time and the disclosure's key.
-function renderAgentTurn(first, agent) {
+// header's time and the disclosure's key. `edited` (the Chat pane only)
+// lets the turn grow an Edited N files card once it is over (#1477).
+function renderAgentTurn(first, agent, edited) {
   const li = document.createElement('li');
   li.className = 'tr-turn-item tr-agent-item';
   li._trFirst = first;
+  li._trEditable = !!edited;
   const d = document.createElement('details');
   d.className = 'tr-turn tr-assistant';
   d.open = true;
@@ -796,8 +800,106 @@ function syncTurnHead(li) {
   }
   li._trHint.textContent = hint;
   li._trCopy.hidden = !replies.length;
-  const cards = li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item');
-  li.classList.toggle('tr-turn-silent', !replies.length && !cards);
+  markSilent(li);
+}
+
+// With the steps hidden, a turn with no reply, no decision card and no Edited
+// card would be a header over nothing, so it hides with them. The Edited card
+// keeps it: the work still has a trace (#1477).
+function markSilent(li) {
+  const quiet = !turnReplies(li).length && !li._trEdited &&
+    !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item');
+  li.classList.toggle('tr-turn-silent', quiet);
+}
+
+// --- the Edited N files card (#1477) -------------------------------------------
+//
+// It appears once the turn is over (decision 4 of #1472): a prompt follows it,
+// or it is the newest turn and the activity line does not say the agent is
+// working. An activity the server could not establish (null) counts as over:
+// the card only summarises loaded steps, so showing it early misleads less
+// than hiding it from a turn that has ended. It sits after the turn's parts,
+// inside the turn's disclosure, so it collapses with the turn.
+
+// Every step entry the turn holds, in order.
+function turnSteps(li) {
+  const out = [];
+  li._trParts.querySelectorAll(':scope > .tr-run').forEach(function (run) {
+    Array.prototype.push.apply(out, run._trRun || []);
+  });
+  return out;
+}
+
+function turnOver(li) {
+  if (li.nextElementSibling) return true;
+  return !(view && view.activity && view.activity.working);
+}
+
+// The turn opens the list and older pages exist, so its first steps may sit
+// on one of them.
+function turnStartMissing(li) {
+  return !li.previousElementSibling && !!view && view.cursor != null;
+}
+
+// A card tap: the Changed files panel on this turn (#1477), focused on
+// `focus` (a card row's file) or on none (the header). The turn's files go
+// with it, named as the card names them, and how to draw one of its steps.
+function openTurnChanges(files, partial, focus) {
+  if (!view) return;
+  const s = view.session;
+  openSessionChanges(s, sessionTitle(s), {
+    turn: { files: files, partial: partial, renderStep: function (e) { return stepDiff(e, true); } },
+    focus: focus ? focus.path : null,
+  });
+}
+
+// Rebuilt only when what it shows changed: a live tick lands every few
+// seconds, and rebuilding an unchanged card would break a tap in flight
+// (the #680 lesson). True when it did change.
+function syncEditedCard(li) {
+  if (!li._trEditable) return false;
+  const files = turnOver(li) ? foldEdits(turnSteps(li)) : [];
+  const partial = files.length > 0 && turnStartMissing(li);
+  const expanded = !!li._trEditedAll;
+  const sig = files.length
+    ? JSON.stringify([files.map(function (f) { return [f.key, f.status, f.additions, f.deletions]; }), partial, expanded])
+    : '';
+  if (sig === (li._trEditedSig || '')) return false;
+  li._trEditedSig = sig;
+  if (li._trEdited) li._trEdited.remove();
+  li._trEdited = null;
+  if (files.length) {
+    files.forEach(function (f) {
+      const parts = fileParts(f.path);
+      f.base = parts.base;
+      f.dir = parts.dir;
+    });
+    li._trEdited = renderEditedCard(files, {
+      expanded: expanded,
+      partial: partial,
+      onOpen: function (file) { openTurnChanges(files, partial, file); },
+      onMore: function () {
+        li._trEditedAll = true;
+        syncEditedCard(li);
+      },
+      onLoadOlder: function () { loadOlder(); },
+    });
+    li.querySelector('.tr-turn').appendChild(li._trEdited);
+  }
+  markSilent(li);
+  return true;
+}
+
+// Every turn's card, after anything that can change one: new steps, a prompt
+// arriving after a turn, the activity line, an older page joining the first.
+// True when any card changed.
+function syncEditedCards() {
+  if (!view) return false;
+  let changed = false;
+  els.transcriptList.querySelectorAll(':scope > .tr-agent-item').forEach(function (li) {
+    if (syncEditedCard(li)) changed = true;
+  });
+  return changed;
 }
 
 // Older entries that end in an agent turn, landing above a list that starts
@@ -958,27 +1060,31 @@ function renderStripLine() {
 // step's own ref ({offset, n}). A failed call carries no diff and keeps
 // today's body, as does any call whose tool the server doesn't recognise.
 
-function stepDiff(e) {
+// `bare` leaves the "folder / name" header off: the Changed files panel's
+// This turn scope (#1477) draws a step under the file's own row.
+function stepDiff(e, bare) {
   const a = e.action;
   if (!a || !a.diff || e.error === true || (a.verb !== 'edited' && a.verb !== 'wrote')) return null;
   const wrap = document.createElement('div');
   wrap.className = 'tr-diff-wrap';
-  // Headed "folder / name" (#1476); the whole path stays on hover.
-  const path = document.createElement('div');
-  path.className = 'tr-diff-path';
-  path.title = a.path || '';
-  const f = fileParts(a.path);
-  if (f.dir) {
-    const dir = document.createElement('span');
-    dir.className = 'tr-diff-dir';
-    dir.textContent = f.dir;
-    path.append(dir, ' / ');
+  if (!bare) {
+    // Headed "folder / name" (#1476); the whole path stays on hover.
+    const path = document.createElement('div');
+    path.className = 'tr-diff-path';
+    path.title = a.path || '';
+    const f = fileParts(a.path);
+    if (f.dir) {
+      const dir = document.createElement('span');
+      dir.className = 'tr-diff-dir';
+      dir.textContent = f.dir;
+      path.append(dir, ' / ');
+    }
+    const base = document.createElement('span');
+    base.className = 'tr-diff-base';
+    base.textContent = f.base;
+    path.appendChild(base);
+    wrap.appendChild(path);
   }
-  const base = document.createElement('span');
-  base.className = 'tr-diff-base';
-  base.textContent = f.base;
-  path.appendChild(base);
-  wrap.appendChild(path);
   wrap.appendChild(renderHunks(a.diff));
   if (a.diff.truncated) wrap.appendChild(fullDiffControl(wrap, a.diff));
   return wrap;
@@ -1344,7 +1450,7 @@ function appendEntries(container, entries, opts) {
     }
     let turn = container.lastElementChild;
     if (!isAgentTurn(turn)) {
-      turn = renderAgentTurn(e, opts.agent);
+      turn = renderAgentTurn(e, opts.agent, opts.edited);
       container.appendChild(turn);
       created.push(turn);
       ownTurns.add(turn);
@@ -1382,6 +1488,7 @@ function chatOpts(toolErrors, pending) {
     answering: CHAT_ANSWERING,
     agent: String((view && view.session.agent) || 'claude').toLowerCase(),
     pending: !!pending,
+    edited: true,
   };
 }
 
@@ -1593,6 +1700,9 @@ async function forwardRead(target, manual) {
     liveUnavailable(body.reason);
     return 'unavailable';
   }
+  // Read before anything lands: a card that appears at the end of the turn
+  // keeps a reader who was following the conversation at the bottom (#1477).
+  const stick = atBottom();
   if (body.reset) {
     // The file was rotated, or this view fell further behind than one
     // request may read. Either way the newest turns are what it wants.
@@ -1610,6 +1720,7 @@ async function forwardRead(target, manual) {
   } else if (body.size != null) {
     target.size = body.size;
   }
+  if (syncEditedCards() && stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
   // A tick that got an answer clears any reason line an earlier failed one
   // left on screen, so a condition that cleared by itself looks like it.
   // Checked after this tick's turns land: a view that opened unavailable
@@ -1708,6 +1819,7 @@ async function loadNewest() {
   syncDecisionCards();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
+  syncEditedCards();
   els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
   scheduleLive(LIVE_POLL_MS);
 }
@@ -1793,6 +1905,7 @@ async function loadOlder() {
   }
   els.transcriptOlder.textContent = foundTurn || !older.length ? OLDER_LABEL : olderLabel(older);
   els.transcriptOlder.hidden = view.cursor == null;
+  syncEditedCards();
   // Keep what was on screen where it was: grow scrollTop by exactly the
   // height the older page added above it.
   box.scrollTop = topBefore + (box.scrollHeight - heightBefore);
