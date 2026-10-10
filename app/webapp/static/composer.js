@@ -58,7 +58,8 @@
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
  * attach menu, the composer's own paste and drop (#1206) and the terminal
- * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
+ * host's paste and drop all use), `appendText(text)` (a prefill appended as
+ * its own paragraph, never sent), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
  * stopped dictation is still finalizing — a field host's own send waits it
@@ -416,18 +417,33 @@ export function mountComposer(host, opts) {
   // the agent must not open as an attachment, so it does not set hasImage
   // (which holds Send's CR back for an image conversion, #450).
   function appendPath(path, kind) {
+    appendParagraph(path);
+    if (kind !== 'large') hasImage = true;
+  }
+
+  // Always append at the very end as its own paragraph (#366) — never
+  // splice at the caret, which glued the path onto whatever the cursor
+  // happened to sit on. A blank line separates it from existing text, so
+  // sequential attachments stack cleanly: <text>\n\n<path1>\n\n<path2>.
+  function appendParagraph(text) {
     const ta = el.textarea;
-    // Always append at the very end as its own paragraph (#366) — never
-    // splice at the caret, which glued the path onto whatever the cursor
-    // happened to sit on. A blank line separates it from existing text, so
-    // sequential attachments stack cleanly: <text>\n\n<path1>\n\n<path2>.
     const cur = ta.value;
     const sep = cur ? (/\n\n$/.test(cur) ? '' : (/\n$/.test(cur) ? '\n' : '\n\n')) : '';
-    ta.value = cur + sep + path;
+    ta.value = cur + sep + text;
     ta.selectionStart = ta.selectionEnd = ta.value.length;
     grow();
     ta.focus();
-    if (kind !== 'large') hasImage = true;
+  }
+
+  // A host's prefill (#1479's Ask to undo): appended as its own paragraph
+  // and never sent. A second tap with the same text already in the draft
+  // only focuses, so a double tap does not stack the request twice.
+  function appendText(text) {
+    if (el.textarea.value.indexOf(text) !== -1) {
+      el.textarea.focus();
+      return;
+    }
+    appendParagraph(text);
   }
 
   function labelImage(text) {
@@ -699,6 +715,7 @@ export function mountComposer(host, opts) {
     root: host,
     textarea: el.textarea,
     attachFiles: attachFiles,
+    appendText: appendText,
     reset: reset,
     closePopovers: closePopovers,
     setAvailability: setAvailability,

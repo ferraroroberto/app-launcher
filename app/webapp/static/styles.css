@@ -3003,7 +3003,8 @@ textarea.input-native { height: auto; }
 /* Closes a turn that edited files: the card contract on the canvas, a header
    (glyph, "Edited N files", total +N -M), then list-rows at rows.md -- the
    panel's own file row -- and a full-width "Show N more". Every row is a
-   button: a tap opens Changed files on that file. */
+   button: a tap opens Changed files on that file. Beside it, past a hairline,
+   a 44px "Ask to undo" (#1479) fills the composer and sends nothing. */
 .tr-edited {
   margin: 12px 0 0;
   border: 1px solid var(--line);
@@ -3029,17 +3030,36 @@ textarea.input-native { height: auto; }
 .tr-edited-head { gap: 8px; }
 .tr-edited-head > .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); color: var(--muted); }
 .tr-edited-title { flex: 1; min-width: 0; font-weight: 700; }
-.tr-edited-row,
+.tr-edited-line,
 .tr-edited-more,
 .tr-edited-partial { border-top: 1px solid var(--line-muted); }
+.tr-edited-line { display: flex; align-items: stretch; }
+.tr-edited-line > .tr-edited-row { flex: 1; min-width: 0; width: auto; padding-right: 10px; }
+.tr-edited-undo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--hit-min);
+  min-height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--line-muted);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tr-edited-undo .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .tr-edited-chev { flex: none; display: inline-flex; color: var(--muted); }
 .tr-edited-chev .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .tr-edited-head:active,
 .tr-edited-row:active,
+.tr-edited-undo:active,
 .tr-edited-more:active { background: var(--neutral-soft); }
 @media (hover: hover) {
   .tr-edited-head:hover,
   .tr-edited-row:hover,
+  .tr-edited-undo:hover,
   .tr-edited-more:hover { background: var(--neutral-soft); }
 }
 .tr-edited-more {

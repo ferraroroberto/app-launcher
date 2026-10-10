@@ -865,6 +865,34 @@ function openTurnChanges(files, partial, focus) {
   });
 }
 
+// "Ask to undo" (#1479): the composer gets a request to undo `file`'s edits
+// from this turn, and nothing is sent until the owner taps Send. The newest
+// turn is "your last turn"; an older one is named by its prompt's first line
+// (or its time), and the agent is told to keep what later turns changed.
+function askUndo(li, file) {
+  if (!chatComposer) return;
+  const what = 'Undo your edits to `' + projectPath(file.path) + '` from ';
+  if (!li.nextElementSibling) {
+    chatComposer.appendText(what + 'your last turn.');
+    return;
+  }
+  const prompt = li.previousElementSibling;
+  const asked = prompt && prompt.classList.contains('tr-prompt-item')
+    ? prompt.querySelector('.tr-prompt-folded .tr-turn-hint').textContent : '';
+  const time = fmtTime(li._trFirst && li._trFirst.timestamp);
+  const turn = asked ? 'the turn where I asked “' + asked + '”'
+    : (time ? 'your turn at ' + time : 'an earlier turn');
+  chatComposer.appendText(what + turn + '. Keep any later changes to it.');
+}
+
+// A path as the agent should read it: relative to the session's project when
+// it sits inside, else whole (the card's folder hint shortens those).
+function projectPath(path) {
+  const full = String(path || '').replace(/\\/g, '/');
+  const root = String((view && view.session.project_dir) || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  return root && full.toLowerCase().startsWith(root.toLowerCase() + '/') ? full.slice(root.length + 1) : full;
+}
+
 // Rebuilt only when what it shows changed: a live tick lands every few
 // seconds, and rebuilding an unchanged card would break a tap in flight
 // (the #680 lesson). True when it did change.
@@ -885,6 +913,7 @@ function syncEditedCard(li) {
       expanded: expanded,
       partial: partial,
       onOpen: function (file) { openTurnChanges(files, partial, file); },
+      onAskUndo: function (file) { askUndo(li, file); },
       onMore: function () {
         li._trEditedAll = true;
         syncEditedCard(li);
