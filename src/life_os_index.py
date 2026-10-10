@@ -47,6 +47,8 @@ _CONVERSATIONS_INDEX_MD = "index.md"
 # cross-skill search CLI, resolved per call so a Settings change to
 # fleet_config_dir takes effect without a restart (#971).
 _SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
+# fleet-config's conversation-title writer (fleet-config#1348, used by #1495).
+_TITLE_SCRIPT_REL = ("hooks", "conversation_title.py")
 _RESYNC_TIMEOUT_S = 30
 
 
@@ -192,8 +194,17 @@ def search_cli(cfg: WebappConfig) -> Optional[List[str]]:
     imports :func:`resolve_within` from here, so the import edge ran in the
     right direction and this module stays the leaf its docstring describes.
     """
+    return _fleet_cli(cfg, _SEARCH_SCRIPT_REL)
+
+
+def title_cli(cfg: WebappConfig) -> Optional[List[str]]:
+    """``[python, script]`` for fleet-config's conversation-title writer, or ``None`` (#1495)."""
+    return _fleet_cli(cfg, _TITLE_SCRIPT_REL)
+
+
+def _fleet_cli(cfg: WebappConfig, script_rel: tuple[str, ...]) -> Optional[List[str]]:
     root = Path(cfg.fleet_config_dir)
-    script = root.joinpath(*_SEARCH_SCRIPT_REL)
+    script = root.joinpath(*script_rel)
     if not script.is_file():
         return None
     for rel in ((".venv", "Scripts", "python.exe"), (".venv", "bin", "python")):

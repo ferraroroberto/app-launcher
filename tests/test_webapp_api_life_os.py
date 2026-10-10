@@ -2292,3 +2292,245 @@ class TestDeleteConversation:
         resp = self._delete()
         assert resp.status_code in (401, 403), resp.text
         assert jsonl.exists()
+
+
+# ------------------------------------------- rename a conversation (#1495)
+# A stand-in for fleet-config's hooks/conversation_title.py (fleet-config#1348):
+# the same arguments, JSON line and exit codes, run against the fixture's own
+# conversations folder only. STUB_EXIT forces an exit code, STUB_SLEEP holds the
+# write open, STUB_LOG records each invocation's start/end.
+_TITLE_STUB = r'''
+import argparse, json, os, sys, time
+from pathlib import Path
+
+ap = argparse.ArgumentParser()
+ap.add_argument("--cwd", required=True)
+ap.add_argument("--skill", required=True)
+ap.add_argument("--file", required=True)
+g = ap.add_mutually_exclusive_group(required=True)
+g.add_argument("--title")
+g.add_argument("--clear", action="store_true")
+args = ap.parse_args()
+
+log = os.environ.get("STUB_LOG")
+if log:
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write("start %s\n" % time.monotonic())
+time.sleep(float(os.environ.get("STUB_SLEEP", "0")))
+code = int(os.environ.get("STUB_EXIT", "0"))
+if code:
+    print("stub refusal", file=sys.stderr)
+    sys.exit(code)
+folder = Path(args.cwd) / ".claude" / "skills" / args.skill / "conversations"
+title = "" if args.clear else " ".join(args.title.split())
+if len(title) > 120:
+    sys.exit(2)
+if title and not (folder / args.file).is_file():
+    sys.exit(3)
+sidecar = folder / "titles.json"
+titles = json.loads(sidecar.read_text("utf-8")) if sidecar.exists() else {}
+if title:
+    titles[args.file] = title
+else:
+    titles.pop(args.file, None)
+sidecar.write_text(json.dumps(titles), encoding="utf-8")
+index = folder / "index.json"
+rows = json.loads(index.read_text("utf-8"))
+for row in rows:
+    row["title"] = titles.get(row["file"], "")
+index.write_text(json.dumps(rows), encoding="utf-8")
+if log:
+    with open(log, "a", encoding="utf-8") as fh:
+        fh.write("end %s\n" % time.monotonic())
+print(json.dumps({"skill": args.skill, "file": args.file, "title": title}))
+'''
+
+
+class TestRenameConversation:
+    """PATCH /api/life-os/skills/{id}/conversations: set or clear a title."""
+
+    ENDPOINT = "/api/life-os/skills/journal-daily/conversations"
+    CAPTURE = "2026-08-01-0900-ferry-booking.md"
+    REL = f".claude/skills/journal-daily/conversations/{CAPTURE}"
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, life_os_client, tmp_path, monkeypatch):
+        import sys
+
+        from app.webapp import middleware
+        from app.webapp.routers import life_os_conversations as router
+        from src import session_client
+
+        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        script = tmp_path / "conversation_title_stub.py"
+        script.write_text(_TITLE_STUB, encoding="utf-8")
+        self.calls: list = []
+        real_run = subprocess.run
+
+        def recording_run(argv, **kwargs):
+            self.calls.append(list(argv))
+            return real_run(argv, **kwargs)
+        monkeypatch.setattr(router.subprocess, "run", recording_run)
+        monkeypatch.setattr(router, "title_cli", lambda cfg: [sys.executable, str(script)])
+        monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
+        self.log = tmp_path / "stub.log"
+        monkeypatch.setenv("STUB_LOG", str(self.log))
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+        self.router = router
+        self.monkeypatch = monkeypatch
+        self.client, _, overrides = life_os_client
+        self.audit = overrides["audit"]
+        self.conversations = overrides["life_os_dir"] / ".claude/skills/journal-daily/conversations"
+
+    def _rename(self, title, rel=REL, **kwargs):
+        return self.client.patch(self.ENDPOINT, params={"path": rel}, json={"title": title}, **kwargs)
+
+    def _row(self):
+        rows = self.client.get(self.ENDPOINT).json()["conversations"]
+        return next(r for r in rows if r["file"] == self.CAPTURE)
+
+    def test_rename_then_list_shows_the_title_and_keeps_the_topic(self):
+        resp = self._rename("  Ferry   to the\nisland ")
+        assert resp.status_code == 200, resp.text
+        assert resp.json() == {"skill": "journal-daily", "path": self.REL,
+                               "file": self.CAPTURE, "title": "Ferry to the island"}
+        row = self._row()
+        assert row["title"] == "Ferry to the island"
+        assert row["topic"] == "booking the ferry"
+        others = [r for r in self.client.get(self.ENDPOINT).json()["conversations"]
+                  if r["file"] != self.CAPTURE]
+        assert others and all(r["title"] == "" for r in others)
+        event = self.audit.audit_event.call_args
+        assert event.args == ("lifeos_conversation_rename",)
+        assert event.kwargs["cleared"] is False
+        assert "Ferry" not in str(event), "the title text is private and must not be audited"
+
+    @pytest.mark.parametrize("cleared", ["", "   ", None])
+    def test_clearing_restores_the_topic(self, cleared):
+        assert self._rename("Ferry").status_code == 200
+        resp = self._rename(cleared)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["title"] == ""
+        assert self._row()["title"] == ""
+        assert "--clear" in self.calls[-1]
+        assert not any(a.startswith("--title") for a in self.calls[-1])
+        assert self.audit.audit_event.call_args.kwargs["cleared"] is True
+
+    def test_a_title_that_looks_like_an_option_reaches_the_writer_whole(self):
+        resp = self._rename("--clear is not a flag")
+        assert resp.status_code == 200, resp.text
+        assert self._row()["title"] == "--clear is not a flag"
+        assert "--title=--clear is not a flag" in self.calls[-1]
+
+    @pytest.mark.parametrize("body", [None, {}, {"name": "x"}, {"title": 5}, {"title": ["x"]}])
+    def test_a_missing_or_malformed_body_is_refused_not_read_as_clear(self, body):
+        assert self._rename("Kept").status_code == 200
+        calls = len(self.calls)
+        resp = self.client.patch(self.ENDPOINT, params={"path": self.REL}, json=body)
+        assert resp.status_code == 400, resp.text
+        assert len(self.calls) == calls, "refused before the writer ran"
+        assert self._row()["title"] == "Kept"
+
+    def test_over_long_title_is_refused_before_the_writer_runs(self):
+        assert self._rename("x" * 121).status_code == 400
+        assert self.calls == []
+        assert self._rename("x" * 120).status_code == 200
+
+    @pytest.mark.parametrize("code,status", [(1, 503), (2, 400), (3, 404), (4, 500), (9, 500)])
+    def test_each_writer_exit_code_has_its_own_error(self, code, status):
+        self.monkeypatch.setenv("STUB_EXIT", str(code))
+        resp = self._rename("Ferry")
+        assert resp.status_code == status, resp.text
+        assert self._row()["title"] == ""
+        assert self.audit.audit_event.call_count == 0
+
+    def test_exit_code_messages_are_distinct(self):
+        seen = set()
+        for code in (1, 2, 3, 4, 9):
+            self.monkeypatch.setenv("STUB_EXIT", str(code))
+            seen.add(self._rename("Ferry").json()["detail"])
+        assert len(seen) == 5
+
+    def test_writer_not_installed_is_503(self):
+        self.monkeypatch.setattr(self.router, "title_cli", lambda cfg: None)
+        resp = self._rename("Ferry")
+        assert resp.status_code == 503, resp.text
+        assert "isn't installed" in resp.json()["detail"]
+
+    def test_writer_that_cannot_run_is_503(self):
+        self.monkeypatch.setattr(self.router, "title_cli", lambda cfg: ["no-such-binary-1495"])
+        assert self._rename("Ferry").status_code == 503
+
+    @pytest.mark.parametrize("rel", [
+        "../../../../outside.md",
+        ".claude/skills/journal-daily/SKILL.md",
+        ".claude/skills/journal-daily/conversations/index.json",
+        ".claude/skills/journal-daily/conversations/index.md",
+        ".claude/skills/journal-daily/conversations/../SKILL.md",
+        "C:/Windows/win.ini",
+        "",
+    ])
+    def test_path_jail_matches_delete(self, rel):
+        resp = self._rename("Ferry", rel=rel)
+        assert resp.status_code in (400, 404), resp.text
+        assert self.calls == []
+
+    def test_unknown_capture_and_unknown_skill(self):
+        missing = ".claude/skills/journal-daily/conversations/2026-01-01-0000-gone.md"
+        assert self._rename("Ferry", rel=missing).status_code == 404
+        resp = self.client.patch("/api/life-os/skills/no-such-skill/conversations",
+                                 params={"path": self.REL}, json={"title": "x"})
+        assert resp.status_code == 404
+        assert self.calls == []
+
+    def test_same_auth_as_delete(self):
+        from app.webapp import middleware
+        assert middleware._terminal_guard_level(self.ENDPOINT) == "passkey"
+        self.monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset())
+        resp = self._rename("Ferry")
+        assert resp.status_code in (401, 403), resp.text
+        assert self.calls == []
+        assert self._rename("Ferry", headers={"Cf-Ray": "synthetic"}).status_code == 403
+
+    def test_concurrent_renames_are_serialised(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        self.monkeypatch.setenv("STUB_SLEEP", "0.4")
+        names = ["2026-08-01-0900-ferry-booking.md", "2026-07-02-1030-notion-schema.md"]
+
+        def rename(name):
+            rel = f".claude/skills/journal-daily/conversations/{name}"
+            return self._rename("T " + name, rel=rel).status_code
+        with ThreadPoolExecutor(2) as pool:
+            statuses = list(pool.map(rename, names))
+        assert statuses == [200, 200]
+        events = [line.split()[0] for line in self.log.read_text("utf-8").splitlines()]
+        assert events == ["start", "end", "start", "end"], events
+
+    def test_delete_clears_the_title(self):
+        assert self._rename("Ferry").status_code == 200
+        titles = self.conversations / "titles.json"
+        assert json.loads(titles.read_text("utf-8")) == {self.CAPTURE: "Ferry"}
+        resp = self.client.delete(self.ENDPOINT, params={"path": self.REL})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["removed"]["title"] == "cleared"
+        assert json.loads(titles.read_text("utf-8")) == {}
+        assert "--clear" in self.calls[-1] and self.CAPTURE in self.calls[-1]
+
+    def test_delete_still_succeeds_when_the_title_clear_fails(self):
+        self.monkeypatch.setenv("STUB_EXIT", "4")
+        resp = self.client.delete(self.ENDPOINT, params={"path": self.REL})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["removed"]["title"] == "unavailable"
+        assert not (self.conversations / self.CAPTURE).exists()
+
+    def test_search_rows_carry_the_title(self):
+        from app.webapp.routers.life_os_conversations import _conversation_rows
+
+        cfg = self.client.app.state.webapp_config
+        rows = _conversation_rows(cfg, [{
+            "skill": "journal-daily", "file": self.CAPTURE, "title": "Ferry",
+            "topic": "booking the ferry", "date": "2026-08-01",
+        }])
+        assert rows[0]["title"] == "Ferry" and rows[0]["topic"] == "booking the ferry"

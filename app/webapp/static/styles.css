@@ -3872,6 +3872,14 @@ body.terminal-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The digest topic under an owner title (#1495): muted, one line. */
+.lifeos-convo-topic-sub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
 .lifeos-convo-tag {
   flex: none;
   font-size: var(--font-caption);
