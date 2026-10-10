@@ -326,6 +326,8 @@ The three paths the phone opens on have their own, much tighter budgets in the s
 
 The root cause of the recurring wedge (#388) was asyncio's default Windows proactor event loop closing its listening socket on any aborted client connection (WinError 64 — a dropped Wi-Fi handoff, a browser tab closed mid-handshake). Every `app.webapp.server:app` uvicorn invocation now runs on the selector event loop instead (`app/webapp/event_loop.py`), whose accept path doesn't have this failure mode — the webapp process spawns no in-process asyncio subprocesses, so the selector loop's lack of subprocess support doesn't apply here. The watchdog + breadcrumbs above remain the detection net in case this regresses.
 
+The same factory lowers CPython's GIL switch interval from 5 ms to 0.5 ms (#1492). The webapp renders terminals with pure-Python `pyte` in worker threads (a Board exchange read is ~0.85 s of GIL-holding CPU), and at the default interval every thread hand-off of an unrelated request waited out one 5 ms slice per busy thread: a ~15 ms `GET /api/board` took 6–7 s beside three renders on a test instance and 15–48 s on the live one, the intermittent 13–19 s tail that made `chief_ops` time out. At 0.5 ms the same request stays at ~40 ms. A `slow request` line for several unrelated routes finishing at the same instant is this signature.
+
 ---
 
 ## Phone install (PWA)
