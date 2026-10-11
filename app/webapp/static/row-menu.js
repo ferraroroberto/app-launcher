@@ -28,6 +28,14 @@
  * inside its mount and mount-scoped selectors keep working. The CSS stays
  * the one source of the geometry: the offset from that element is measured
  * once per open, from where the CSS put the menu.
+ *
+ * Every open menu, absolute or fixed, is then kept inside the band it may
+ * use (#1507): the viewport, minus the floating nav pill while it shows, and
+ * minus any ancestor that would clip an absolute menu. When the CSS side
+ * doesn't fit, the menu flips to the mirror side of its positioned box
+ * (below its anchor ↔ above it), the standard popover rule; only when
+ * neither side fits is it clamped, its height capped with an internal
+ * scroll. It is re-fitted on every scroll and resize while open.
  */
 
 import { escapeHtml } from './api.js';
@@ -36,6 +44,52 @@ import { icon } from './_vendored/icons/icons.js';
 
 // Keep a viewport-placed menu this far inside the screen edges.
 const _EDGE = 8;
+
+// The vertical band [lo, hi] (viewport px) an open menu may occupy. The
+// floating bottom-tab pill (`nav.tabs`, fixed on the phone) caps it from
+// below while it is visible; every overlay that covers the pill hides it
+// with `visibility`, so a menu inside one keeps the whole viewport. A
+// `clipped` (absolute) menu is also bounded by each ancestor whose overflow
+// would cut it off.
+function usableBand(menu, clipped) {
+  let lo = _EDGE;
+  let hi = document.documentElement.clientHeight - _EDGE;
+  const nav = document.querySelector('nav.tabs');
+  if (nav) {
+    const cs = getComputedStyle(nav);
+    const r = nav.getBoundingClientRect();
+    if (cs.position === 'fixed' && cs.visibility === 'visible' && r.height > 0 && r.top > 0) {
+      hi = Math.min(hi, r.top - _EDGE);
+    }
+  }
+  if (clipped) {
+    for (let el = menu.parentElement; el && el !== document.body; el = el.parentElement) {
+      if (getComputedStyle(el).overflowY === 'visible') continue;
+      const r = el.getBoundingClientRect();
+      lo = Math.max(lo, r.top);
+      hi = Math.min(hi, r.bottom);
+    }
+  }
+  return { lo: lo, hi: hi };
+}
+
+// Where a menu of `height` whose CSS put its top at `top` should go: there
+// when it fits the band, else mirrored across `ref` (the box its CSS offset
+// is measured from), else clamped with its height capped to the band.
+function fitVertical(top, height, ref, band) {
+  const fits = function (t) { return t >= band.lo && t + height <= band.hi; };
+  if (fits(top)) return { top: top, maxHeight: null };
+  const flipped = ref.top + ref.bottom - top - height;
+  if (fits(flipped)) return { top: flipped, maxHeight: null };
+  const room = Math.max(0, band.hi - band.lo);
+  if (height > room) return { top: band.lo, maxHeight: room };
+  return { top: Math.min(Math.max(band.lo, top), band.hi - height), maxHeight: null };
+}
+
+function capHeight(menu, maxHeight) {
+  menu.style.maxHeight = maxHeight == null ? '' : Math.floor(maxHeight) + 'px';
+  menu.style.overflowY = maxHeight == null ? '' : 'auto';
+}
 
 // An item property may be a plain value or a function of no arguments,
 // re-evaluated every time the menu opens (#982: the terminal bar's menu
@@ -104,7 +158,7 @@ export function createRowMenu(menuClass, opts) {
   // offset from that element's top-left the CSS asked for.
   let floatBox = null;
   let floatOffset = null;
-  let floatFrame = null;
+  let placeFrame = null;
   // menu element → its render function (re-evaluates hidden/text/label).
   const renderers = new WeakMap();
 
@@ -116,33 +170,56 @@ export function createRowMenu(menuClass, opts) {
     close();
   }
 
-  // Re-apply the CSS-derived offset in viewport coordinates. A fixed menu no
-  // longer travels with its anchor, so this runs again whenever anything
-  // moves the box underneath it.
+  // Fit the open menu into its band (see the header). A fixed menu no longer
+  // travels with its anchor, so this re-applies its CSS-derived offset in
+  // viewport coordinates; an absolute one travels with its row but can
+  // scroll into the nav, so it is re-measured from its CSS placement. Runs
+  // again whenever anything moves the box underneath the menu.
   function place() {
-    floatFrame = null;
-    if (!floatBox || !openMenu || openMenu.hidden) return;
-    const box = floatBox.getBoundingClientRect();
-    const menuRect = openMenu.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth;
-    const vh = document.documentElement.clientHeight;
-    // Clamp rather than flip: the offset already encodes the side the CSS
-    // chose, and a two-row menu only ever needs nudging back on screen.
-    const top = Math.min(
-      Math.max(_EDGE, box.top + floatOffset.dy),
-      Math.max(_EDGE, vh - _EDGE - menuRect.height)
-    );
-    const left = Math.min(
-      Math.max(_EDGE, box.left + floatOffset.dx),
-      Math.max(_EDGE, vw - _EDGE - menuRect.width)
-    );
-    openMenu.style.top = Math.round(top) + 'px';
-    openMenu.style.left = Math.round(left) + 'px';
+    placeFrame = null;
+    const menu = openMenu;
+    if (!menu || menu.hidden) return;
+    // Re-measuring drops the cap for a moment; keep a capped menu's own
+    // scroll position across it.
+    const scrolled = menu.scrollTop;
+    capHeight(menu, null);
+    if (floatBox) {
+      const box = floatBox.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      const fit = fitVertical(box.top + floatOffset.dy, menuRect.height, box,
+        usableBand(menu, false));
+      const left = Math.min(
+        Math.max(_EDGE, box.left + floatOffset.dx),
+        Math.max(_EDGE, vw - _EDGE - menuRect.width)
+      );
+      menu.style.top = Math.round(fit.top) + 'px';
+      menu.style.left = Math.round(left) + 'px';
+      capHeight(menu, fit.maxHeight);
+      menu.scrollTop = scrolled;
+      return;
+    }
+    const parent = menu.offsetParent;
+    if (!parent) return;
+    menu.style.top = '';
+    menu.style.bottom = '';
+    const ref = parent.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    const fit = fitVertical(menuRect.top, menuRect.height, ref, usableBand(menu, true));
+    if (fit.maxHeight == null && Math.abs(fit.top - menuRect.top) < 1) return;
+    // Inline top in the positioned box's padding-box coordinates; `bottom`
+    // neutralised as in floatMenu() so the box keeps its own height.
+    menu.style.top = Math.round(fit.top - ref.top - parent.clientTop) + 'px';
+    menu.style.bottom = 'auto';
+    capHeight(menu, fit.maxHeight);
+    menu.scrollTop = scrolled;
   }
 
-  function schedulePlace() {
-    if (floatFrame != null) return;
-    floatFrame = requestAnimationFrame(place);
+  function schedulePlace(ev) {
+    // A capped menu scrolling its own items moves nothing underneath it.
+    if (ev && ev.type === 'scroll' && openMenu && openMenu.contains(ev.target)) return;
+    if (placeFrame != null) return;
+    placeFrame = requestAnimationFrame(place);
   }
 
   function bindPlacement(bind) {
@@ -174,21 +251,19 @@ export function createRowMenu(menuClass, opts) {
     // size. Inline wins over the caller's rule wherever that rule sits.
     menu.style.bottom = 'auto';
     menu.style.right = 'auto';
-    place();
-    bindPlacement(true);
   }
 
-  function unfloatMenu(menu) {
-    if (!floatBox) return;
+  function unplaceMenu(menu) {
     floatBox = null;
     floatOffset = null;
-    if (floatFrame != null) { cancelAnimationFrame(floatFrame); floatFrame = null; }
+    if (placeFrame != null) { cancelAnimationFrame(placeFrame); placeFrame = null; }
     bindPlacement(false);
     menu.classList.remove('row-menu--fixed');
     menu.style.top = '';
     menu.style.left = '';
     menu.style.bottom = '';
     menu.style.right = '';
+    capHeight(menu, null);
   }
 
   function close() {
@@ -197,7 +272,7 @@ export function createRowMenu(menuClass, opts) {
     document.removeEventListener('keydown', onKey);
     if (openMenu) {
       openMenu.hidden = true;
-      unfloatMenu(openMenu);
+      unplaceMenu(openMenu);
     }
     if (openAnchor) openAnchor.setAttribute('aria-expanded', 'false');
     openMenu = null;
@@ -212,9 +287,12 @@ export function createRowMenu(menuClass, opts) {
     const render = renderers.get(menu);
     if (render) render();
     menu.hidden = false;
-    // Synchronous, before the browser paints the unhidden menu, so the
-    // absolute placement it is measured from is never seen.
+    // Synchronous, before the browser paints the unhidden menu, so neither
+    // the CSS placement it is measured from nor a side it flips away from
+    // is ever seen.
     floatMenu(menu);
+    place();
+    bindPlacement(true);
     anchor.setAttribute('aria-expanded', 'true');
     if (disposeOutside) disposeOutside();
     disposeOutside = bindOutsideClickToClose(menu, anchor, close);
