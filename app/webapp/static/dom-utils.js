@@ -388,7 +388,9 @@ export function fmtDuration(value, opts) {
 export function isChiefSession(s) {
   return !!s && (s.label === 'chief' || (s.kind === 'pty' && s.name === 'chief'));
 }
-export const CHIEF_KILL_CONFIRM = 'Kill the chief session?';
+// The themed confirm's wording (#1501: confirmDialog, never a native
+// confirm()). Same words as the native dialogs they replaced.
+export const CHIEF_KILL_CONFIRM = { title: 'Kill the chief session?', action: 'Kill' };
 
 // A Telegram channel session (#1366): the session-host label is
 // `telegram:<profile id>`, set only by the Life OS channel launch. Its
@@ -404,12 +406,18 @@ export function channelSessionName(s) {
   return 'Telegram · ' + id.replace(/-/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
 }
 export function channelKillConfirm(s) {
-  return 'Stop the ' + channelSessionName(s) + ' session? Its bot goes offline until you start it again.';
+  return {
+    title: 'Stop the ' + channelSessionName(s) + ' session?',
+    message: 'Its bot goes offline until you start it again.',
+    action: 'Stop',
+  };
 }
-export const CHIEF_RESTART_CONFIRM =
-  'Restart the chief? It will stop the current one gracefully and resume ' +
-  'the same conversation (falling back to a fresh one only if nothing is ' +
-  'resumable).';
+export const CHIEF_RESTART_CONFIRM = {
+  title: 'Restart the chief?',
+  message: 'It will stop the current one gracefully and resume the same ' +
+    'conversation (falling back to a fresh one only if nothing is resumable).',
+  action: 'Restart',
+};
 
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".

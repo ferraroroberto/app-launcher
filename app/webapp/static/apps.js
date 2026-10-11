@@ -28,6 +28,7 @@ import { copyUrl, renderOtherPortsRow, wireListeners } from './apps-listeners.js
 import { createRowMenu } from './row-menu.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
+import { failedFetchState, setAsyncState } from './async-state.js';
 
 // The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
 const appMenu = createRowMenu('project-menu');
@@ -316,8 +317,25 @@ async function removeApp(a) {
   }
 }
 
+// When the registry last read well (#1501): a failure before it is the
+// Apps card's error with Retry, one after it a stale line over the last list.
+let appsReadAt = 0;
+
+function retryApps() {
+  fetchApps().catch(function () {});
+}
+
 export async function fetchApps() {
-  const body = await jsonApi('/api/apps');
+  if (!appsReadAt) setAsyncState(els.appsState, 'loading', { message: 'Reading apps…' });
+  let body;
+  try {
+    body = await jsonApi('/api/apps');
+  } catch (exc) {
+    failedFetchState(els.appsState, !!appsReadAt, appsReadAt, 'the apps', retryApps);
+    throw exc;
+  }
+  appsReadAt = Date.now();
+  setAsyncState(els.appsState, 'ready');
   state.apps = body.apps || [];
   renderApps();
 }

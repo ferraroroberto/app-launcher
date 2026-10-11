@@ -65,6 +65,9 @@ import {
   isChannelSession,
 } from './dom-utils.js';
 import { chip, sessionRowBody } from './glance.js';
+import { actionRow } from './action-rows.js';
+import { confirmDialog } from './confirm-dialog.js';
+import { failedFetchState, setAsyncState } from './async-state.js';
 import { renderBoardBadge, renderHeadStatus } from './home-head.js';
 import { createRowMenu } from './row-menu.js';
 import {
@@ -158,28 +161,26 @@ function cardTitleEl(cls, text) {
   return title;
 }
 
-// A PR, job or done row on the shared anatomy (#1436): the title, one muted
-// meta line, and a chip only for an exception (glance.js tone map), after the
-// meta text so it never ellipsizes away. No leading glyph and no left-edge
-// status border: the lane says what kind of row it is, the chip what is wrong.
-function cardShell(metaText, titleText, cls, chips) {
-  const li = document.createElement('li');
-  li.className = 'app-item board-item' + (cls ? ' ' + cls : '');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'launch-btn board-card';
-  const meta = document.createElement('span');
-  meta.className = 'board-card-meta';
-  const text = document.createElement('span');
-  text.className = 'board-card-meta-text';
-  // Data (repo/project/session names) rides a text node — never innerHTML.
-  text.textContent = metaText;
-  meta.appendChild(text);
-  (chips || []).forEach(function (c) { meta.appendChild(c); });
-  btn.appendChild(cardTitleEl('board-card-title', titleText));
-  btn.appendChild(meta);
-  li.appendChild(btn);
-  return { li: li, btn: btn };
+// A PR, job or done row on the shared action-row (#1501, was its own
+// cardShell): a one-line title, one muted meta line, and a chip only for an
+// exception (glance.js tone map), after the meta text so it never
+// ellipsizes away. No leading glyph and no left-edge status border: the lane
+// says what kind of row it is, the chip what is wrong. With nothing to open
+// (`onMain` null) the row is inert rather than a dead button.
+function laneRow(cls, titleText, metaText, chips, label, onMain) {
+  return actionRow({
+    className: 'board-item ' + cls,
+    title: titleText,
+    meta: metaText,
+    chips: chips,
+    label: label,
+    onMain: onMain,
+    inert: !onMain,
+  });
+}
+
+function openUrl(url) {
+  return url ? function () { window.open(url, '_blank', 'noopener'); } : null;
 }
 
 // `openItem` is the open drawer's current <li> when renderBoard() can keep it
@@ -413,8 +414,8 @@ function buildDrawer(card) {
   actions.appendChild(drawerAction(
     'board-stop-btn', 'x', 'Stop', 'Stop and kill this session', null,
     async function (btn) {
-      if (isChiefCard(card) && !confirm(CHIEF_KILL_CONFIRM)) return;
-      if (isChannelSession(card) && !confirm(channelKillConfirm(card))) return;
+      if (isChiefCard(card) && !(await confirmDialog(CHIEF_KILL_CONFIRM))) return;
+      if (isChannelSession(card) && !(await confirmDialog(channelKillConfirm(card)))) return;
       btn.disabled = true;
       // Close the drawer first — the session it belongs to is going away.
       state.boardExpanded = null;
@@ -589,7 +590,7 @@ async function copyLink(url) {
 
 // A Backlog row (#1436, on the shared anatomy): the title (two lines at most,
 // #1198), one meta line "repo #N" with an accent "in progress" chip while a
-// lane holds the issue, then one trailing tint verb, ▶ Start, and a kebab
+// lane holds the issue, then one trailing plain verb (#1501), ▶ Start, and a kebab
 // holding YOLO (start and ship), Open on GitHub and Copy link (decision 3 of
 // #1432: YOLO takes two taps now). Git state is no longer drawn here; it lives
 // on Code › Projects. A tap on the row opens the issue on GitHub. The <li> is
@@ -641,7 +642,7 @@ function renderIssueCard(card) {
   if (startable && !isInProgress) {
     const start = document.createElement('button');
     start.type = 'button';
-    start.className = 'button-tint board-issue-btn board-issue-start';
+    start.className = 'row-verb-plain board-issue-btn board-issue-start';
     start.innerHTML = icon('play');
     start.title = '/issue-start ' + card.number + ' in ' + card.repo;
     start.setAttribute('aria-label', 'Start issue #' + card.number);
@@ -683,14 +684,9 @@ function renderIssueCard(card) {
 
 function renderPrCard(card) {
   const draft = card.is_draft ? ' · draft' : '';
-  const shell = cardShell([card.repo, 'PR #' + card.number].join(' ') + draft,
-    card.title || '', 'board-item-pr');
-  if (card.url) {
-    shell.btn.addEventListener('click', function () {
-      window.open(card.url, '_blank', 'noopener');
-    });
-  }
-  return shell.li;
+  return laneRow('board-item-pr', card.title || '',
+    [card.repo, 'PR #' + card.number].join(' ') + draft, [],
+    'Open PR #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 
 // A job row's chip by run state, on the tone map: a failed run is danger;
@@ -715,26 +711,21 @@ function renderJobCard(card) {
   const c = JOB_CHIPS[card.state] || [String(card.state || 'failed'), 'danger'];
   const meta = ['job', card.age_seconds != null ? fmtDuration(card.age_seconds) : '']
     .filter(Boolean).join(' · ');
-  const shell = cardShell(meta, card.job_name || card.job_id || 'job',
-    'board-item-job is-' + card.state, [chip(c[0], c[1], 'board-job-chip')]);
-  if (card.error) shell.btn.title = card.error;
-  shell.btn.addEventListener('click', function () { setTab('jobs'); });
-  return shell.li;
+  const name = card.job_name || card.job_id || 'job';
+  const row = laneRow('board-item-job is-' + card.state, name, meta,
+    [chip(c[0], c[1], 'board-job-chip')], 'Open ' + name + ' in Jobs',
+    function () { setTab('jobs'); });
+  if (card.error) row.main.title = card.error;
+  return row.li;
 }
 
 function renderDoneCard(card) {
   // Done holds closed issues only (#399) — a merged PR that closed one is
   // already reflected here by the issue itself, so there's no PR/pairing
   // branch to render.
-  const shell = cardShell(
-    [card.repo, '#' + card.number].join(' ') + ' · ' + card.state,
-    card.title || '', 'board-item-done');
-  if (card.url) {
-    shell.btn.addEventListener('click', function () {
-      window.open(card.url, '_blank', 'noopener');
-    });
-  }
-  return shell.li;
+  return laneRow('board-item-done', card.title || '',
+    [card.repo, '#' + card.number].join(' ') + ' · ' + card.state, [],
+    'Open issue #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 
 function renderCard(colKey, card, openItem) {
@@ -1276,12 +1267,25 @@ export async function fetchBoard() {
   // pausing on it froze the whole Board silently. renderBoard() keeps the
   // open drawer's node instead, so a poll can't wipe a reply being typed.
   if (state.tab !== 'board') return;
+  if (!state.board) setAsyncState(els.boardFetchState, 'loading', { message: 'Reading the Board…' });
   // The chief's plan rides the same poll (#1279). Its failure is the card's
   // own quiet note, never the Board's error.
-  const [board, plan] = await Promise.all([
-    jsonApi('/api/board'),
-    jsonApi('/api/board/chief-plan').catch(function () { return { state: 'unavailable' }; }),
-  ]);
+  let board, plan;
+  try {
+    [board, plan] = await Promise.all([
+      jsonApi('/api/board'),
+      jsonApi('/api/board/chief-plan').catch(function () { return { state: 'unavailable' }; }),
+    ]);
+  } catch (exc) {
+    // A failed first read replaces the lanes, which would only show zeros;
+    // a later one keeps them under a stale line (#1501).
+    failedFetchState(els.boardFetchState, !!state.board, state.boardFetchedAt,
+      'the Board', function () { fetchBoard().catch(function () {}); });
+    if (els.boardColumns) els.boardColumns.hidden = !state.board;
+    throw exc;
+  }
+  setAsyncState(els.boardFetchState, 'ready');
+  if (els.boardColumns) els.boardColumns.hidden = false;
   state.board = board;
   state.boardFetchedAt = Date.now();
   state.chiefPlan = plan;

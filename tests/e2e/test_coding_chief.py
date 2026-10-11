@@ -163,31 +163,35 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
 
     # 1. Chief + dismiss -> stop never fires. The overlay stays open, so
     # step 2 reuses it rather than reopening.
+    # The ask is the themed confirm (#1501), never a native one.
+    authed_page.on("dialog", lambda d: dialogs.append(d.message))
+    confirm = authed_page.locator("#confirmDialog")
     open_session_row(authed_page, chief_row)
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
     _menu_stop()
-    wait_until(authed_page, lambda: len(dialogs) >= 1, "the chief stop confirm")
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Kill the chief session?")
+    authed_page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
     flush_requests(authed_page)
-    assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
     assert stops == [], "dismissing the confirm must not stop the chief"
     expect(overlay).to_be_visible()
 
-    # 2. Chief + accept -> stop fires, and the overlay showing it closes.
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    # 2. Chief + the action -> stop fires, and the overlay showing it closes.
     _menu_stop()
+    expect(confirm).to_be_visible()
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(stops) >= 1, "the confirmed chief stop POST")
-    assert len(dialogs) == 2
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
     expect(overlay).to_be_hidden()
 
-    # 3. Worker row -> one-tap stop, no dialog. (An unexpected confirm would
-    # be auto-dismissed by Playwright and show up as a missing stop call.)
+    # 3. Worker row -> one-tap stop, no dialog.
     open_session_row(authed_page, worker_row)
     _menu_stop()
     wait_until(authed_page, lambda: len(stops) >= 2, "the worker stop POST")
     flush_requests(authed_page)
-    assert len(dialogs) == 2, "worker row must not raise a confirm dialog"
+    expect(confirm).to_be_hidden()
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
+    assert dialogs == [], f"a native dialog was raised: {dialogs}"
 
 
 def test_chief_row_is_pinned_first(authed_page: Page, base_url: str) -> None:
@@ -392,8 +396,12 @@ def test_chief_row_restart_confirms_then_resumes_the_conversation(
     row.locator(".session-kebab").click()
     restart = row.locator(".chief-restart-btn")
     expect(restart).to_be_visible()
-    authed_page.once("dialog", lambda d: d.accept())
     restart.click()
+    # Restart asks in the themed confirm (#1501), same words as before.
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Restart the chief?")
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text(
+        "stop the current one gracefully")
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: captured.get("method") == "POST", "Restart's ensure POST")
     assert captured["body"].get("fresh") is True, captured["body"]
     assert captured["body"].get("resume") is True, captured["body"]

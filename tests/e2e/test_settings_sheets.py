@@ -193,7 +193,8 @@ def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: st
         lambda route: (begins.append(route.request.post_data_json),
                        route.fulfill(status=400, json={"detail": "stop here"})),
     )
-    page.on("dialog", lambda d: d.accept("Second phone") if d.type == "prompt" else d.accept())
+    native: list = []
+    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     page.goto(base_url, wait_until="domcontentloaded")
     open_settings(page)
     expect(_value(page, "passkeys")).to_have_text("1 device")
@@ -201,9 +202,20 @@ def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: st
     open_settings_sheet(page, "passkeysSheet")
     expect(page.locator("#webauthnDevices li")).to_have_count(1)
     page.locator("#webauthnDevices li .icon-button").click()
+    # Remove and the device name ask in the themed dialog (#1501), not the
+    # browser's confirm() / prompt().
+    expect(page.locator("#confirmDialogTitle")).to_have_text('Remove passkey "Test phone"?')
+    page.locator("#confirmDialogOk").click()
     expect(page.locator("#toast")).to_contain_text("Removed Test phone")
     assert deletes == ["DELETE"]
 
     page.locator("#enrollDeviceBtn").click()
+    expect(page.locator("#confirmDialogTitle")).to_have_text("Name this device")
+    field = page.locator("#confirmDialogInput")
+    expect(field).to_be_visible()
+    expect(field).to_have_value("iPhone")
+    field.fill("Second phone")
+    page.locator("#confirmDialogOk").click()
     expect(page.locator("#toast")).to_contain_text("Enrollment failed")
     assert begins == [{"label": "Second phone"}]
+    assert native == [], f"a native dialog was raised: {native}"

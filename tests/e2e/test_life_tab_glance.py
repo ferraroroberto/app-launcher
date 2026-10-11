@@ -288,6 +288,10 @@ def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
         expect(found.nth(i)).to_have_attribute("data-tone", chip_tone)
     verb = row.locator("#lifeOsRecapLaunch")
     expect(verb).to_have_class(re.compile(r"\baction-row-verb\b"))
+    # The plain verb (#1501), still named; its look is pinned on the
+    # Backlog's ▶ in test_board_tab.py.
+    expect(verb).to_have_class(re.compile(r"\brow-verb-plain\b"))
+    expect(verb).to_have_attribute("aria-label", "Launch weekly recap review")
     expect(row.locator(".action-row-kebab")).to_have_count(0)
 
 

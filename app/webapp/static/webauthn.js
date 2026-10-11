@@ -7,6 +7,7 @@
 
 import { els, state, TT_KEY, TT_EXP_KEY } from './state.js';
 import { apiFailToast, authHeaders, jsonApi, toast } from './api.js';
+import { confirmDialog, promptDialog } from './confirm-dialog.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderSettingsValues } from './settings-sheets.js';
 
@@ -143,7 +144,7 @@ function renderWebauthn() {
 }
 
 async function removeDevice(d) {
-  if (!confirm('Remove passkey "' + d.label + '"?')) return;
+  if (!(await confirmDialog({ title: 'Remove passkey "' + d.label + '"?', action: 'Remove' }))) return;
   try {
     await jsonApi('/api/webauthn/devices/' + encodeURIComponent(d.id), {
       method: 'DELETE',
@@ -160,7 +161,10 @@ async function enrollDevice() {
     toast('This browser has no passkey support.', 'error');
     return;
   }
-  const label = prompt('Name this device', 'iPhone');
+  const label = await promptDialog({
+    title: 'Name this device', value: 'iPhone', label: 'Device name',
+    action: 'Continue', tone: 'primary',
+  });
   if (!label) return;
   try {
     const opts = await jsonApi('/api/webauthn/enroll/begin', {

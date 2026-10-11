@@ -32,6 +32,7 @@ import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
 import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
+import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody } from './glance.js';
 import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './row-menu.js';
@@ -434,7 +435,7 @@ export async function stopSession(s) {
   // this same function). The Board drawer's own call passes a stripped
   // {session_id, name} object with no kind/label, so isChiefSession() is a
   // safe no-op there and it never double-confirms.
-  if (isChiefSession(s) && !confirm(CHIEF_KILL_CONFIRM)) return;
+  if (isChiefSession(s) && !(await confirmDialog(CHIEF_KILL_CONFIRM))) return;
   // While Telegram sessions are hidden (#1384) nothing may stop one: the Board
   // drawer passes a stripped {session_id, name} with no label, so resolve the
   // full record first. The refusal names how to get the control back.
@@ -443,7 +444,7 @@ export async function stopSession(s) {
     toast('Telegram sessions are protected — turn off "Hide Telegram sessions" in Settings to stop one.', 'error');
     return;
   }
-  if (isChannelSession(s) && !confirm(channelKillConfirm(s))) return;
+  if (isChannelSession(s) && !(await confirmDialog(channelKillConfirm(s)))) return;
   try {
     await jsonApi(
       '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +

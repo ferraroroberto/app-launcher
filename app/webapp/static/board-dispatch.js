@@ -35,6 +35,7 @@ import { startWorkTimer } from './voice.js';
 import { terminalJsonApi } from './webauthn.js';
 import { sendSessionMessage } from './sessions.js';
 import { isChiefSession, wireModelCombo } from './dom-utils.js';
+import { confirmDialog } from './confirm-dialog.js';
 import { renderBoard } from './board.js';
 
 // ---------------------------------------------------- fleet chief (#245)
@@ -116,14 +117,15 @@ export async function ensureChief(fresh, resume, restart) {
 // wording ("Chief resumed" / "No resumable conversation — started fresh" vs
 // "Chief started" / "Chief already running") and whether the crown icon is
 // unconditional (resume/restart) or gated on an actual spawn (start).
-// `confirmMessage`, when given, gates the whole action on `confirm()` before
-// anything else runs (Restart's are-you-sure). `restart` is passed through to
+// `confirmMessage`, when given, gates the whole action on the themed
+// confirm (#1501; its { title, message, action }) before anything else runs
+// (Restart's are-you-sure). `restart` is passed through to
 // ensureChief (the Resume buttons' stop-a-live-chief intent, #1351).
 export async function runChiefAction({
   button, label, fresh, resume, restart = false, onDone, useTimer = false,
   confirmMessage,
 }) {
-  if (confirmMessage && !confirm(confirmMessage)) return;
+  if (confirmMessage && !(await confirmDialog(confirmMessage))) return;
   button.disabled = true;
   const stopTimer = useTimer ? startWorkTimer(button, label) : null;
   try {

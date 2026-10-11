@@ -136,20 +136,33 @@ def test_jobs_default_to_next_run_order_with_countdown(
     # it flips the persisted sort pref) --
     assert _row_ids(authed_page) == ["zeta", "alpha", "mango"]
 
-    # Toggle → A–Z. The icon button sits in the card's toolbar (not the
-    # summary); the click must flip the sort without collapsing the <details>.
-    sort_btn = authed_page.locator("#jobsSortBtn")
-    expect(sort_btn).to_have_attribute("data-sort", "next")
-    expect(sort_btn).to_have_attribute("aria-label", re.compile("Sorted by next run"))
-    sort_btn.click()
-    assert _is_open(authed_page), "sort toggle must not collapse the jobs panel"
-    expect(sort_btn).to_have_attribute("data-sort", "name")
-    expect(sort_btn).to_have_attribute("aria-label", re.compile("Sorted A–Z"))
+    # Next → A–Z on the labelled segmented control (#1501, was a glyph-only
+    # toggle). It sits in the card's toolbar (not the summary); the tap must
+    # flip the sort without collapsing the <details>.
+    sort = authed_page.locator("#jobsSort")
+    expect(sort.locator(".range-tab")).to_have_text(["Next", "A–Z"])
+    next_seg = sort.locator(".range-tab[data-sort='next']")
+    name_seg = sort.locator(".range-tab[data-sort='name']")
+    expect(next_seg).to_have_attribute("aria-checked", "true")
+    expect(name_seg).to_have_attribute("aria-checked", "false")
+    expect(authed_page.locator("#jobsSortBtn")).to_have_count(0)
+    name_seg.click()
+    assert _is_open(authed_page), "the sort must not collapse the jobs panel"
+    expect(name_seg).to_have_attribute("aria-checked", "true")
+    expect(name_seg).to_have_class(re.compile(r"\bactive\b"))
+    expect(next_seg).to_have_attribute("aria-checked", "false")
+    assert authed_page.evaluate("() => localStorage.getItem('launcher.jobsSort')") == "name"
     expect(authed_page.locator("#jobsList li.job-row[data-id]").first).to_have_attribute(
         "data-id", "alpha"
     )
     assert _row_ids(authed_page) == ["alpha", "mango", "zeta"], (
         "A–Z order should be name-sorted regardless of next fire"
+    )
+    # And back: both orders work from the control.
+    next_seg.click()
+    expect(next_seg).to_have_attribute("aria-checked", "true")
+    expect(authed_page.locator("#jobsList li.job-row[data-id]").first).to_have_attribute(
+        "data-id", "zeta"
     )
 
 
