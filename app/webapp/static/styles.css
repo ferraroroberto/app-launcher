@@ -231,6 +231,15 @@
   outline-offset: 2px;
 }
 
+/* showModal() focuses a dialog's title (autofocus, tabindex -1) rather than a
+   control, so the keyboard stays down and the sheet is announced (#1537).
+   iOS matches :focus-visible on that script focus, so every dialog title drew
+   a ring as if it were selected. A heading is no control, so it draws none;
+   the controls inside keep the ring above. Lives here, not in the vendored
+   modal CSS; scaffold follow-up: project-scaffolding#359. */
+dialog h2[tabindex="-1"]:focus,
+dialog h2[tabindex="-1"]:focus-visible { outline: none; }
+
 /* Lucide sprite glyphs (_vendored/icons required CSS contract — verbatim
    from its README). Icons inherit currentColor; size via width/height or
    the surrounding font-size (1em default). */
@@ -566,10 +575,6 @@ button.settings-row:active { background: var(--card-2); }
   margin-left: -8px;
 }
 .settings-sheet-back .icon { width: var(--icon-title); height: var(--icon-title); }
-/* showModal() focuses the title (autofocus, tabindex -1) rather than the
-   back button, which would otherwise open every sheet wearing a focus ring.
-   A heading is no control, so it draws none. */
-.settings-sheet-head h2:focus { outline: none; }
 /* The agent groups bring their own padding and dividers for a card; inside
    a sheet's padding they sit flush, and the first one under the header
    draws no divider of its own. */
