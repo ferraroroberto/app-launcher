@@ -310,6 +310,46 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
     expect(sheet).to_be_hidden()
 
 
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_usage_rows_share_the_cards_left_and_right_edges(
+    authed_page: Page, base_url: str, theme: str
+) -> None:
+    """#1541: the 5h / Week labels start on the card's content edge, level
+    with the heading icon and the context-filter footer, and the reset column
+    ends where the heading's right-hand text ends. The meter used to inset
+    its rows 4px on both sides. Read in one stable_eval (#1346)."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+    card = authed_page.locator("#codingUsageCard")
+    expect(card.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
+    expect(card.locator("#codingUsageFooter")).to_be_visible()
+    m = stable_eval(card, """card => {
+      if (!card.isConnected) return null;
+      const text = (el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect();
+      };
+      const rows = Array.from(card.querySelectorAll('.um-row'));
+      return {
+        icon: card.querySelector('#codingUsageTitle .icon').getBoundingClientRect().left,
+        footer: text(card.querySelector('#codingUsageFooter')).left,
+        labels: rows.map(r => text(r.querySelector('.um-label')).left),
+        meta: text(card.querySelector('#codingUsageMeta')).right,
+        resets: rows.map(r => r.querySelector('.um-reset').getBoundingClientRect().right),
+      };
+    }""")
+    for left in m["labels"]:
+        assert abs(left - m["footer"]) <= 1, f"row label vs footer text ({theme}): {m}"
+        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon ({theme}): {m}"
+    for right in m["resets"]:
+        assert abs(right - m["meta"]) <= 1, f"reset column vs heading text ({theme}): {m}"
+
+
 def _serve_usage_shows(page: Page, current: dict) -> list:
     """Serve /api/config with ``current["usage_shows"]`` and answer its POSTs
     from memory, so the page is driven by the setting without writing the

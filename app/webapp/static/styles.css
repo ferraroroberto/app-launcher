@@ -940,14 +940,17 @@ button.settings-row:active { background: var(--card-2); }
 
 /* ---------- jobs tab ---------- */
 /* The Jobs card's toolbar (#1438): the search field in the vendored filter
-   look, then the sort and Add icon buttons at the 44px floor. */
+   look, then the sort and Add icon buttons at the 44px floor. The filter
+   field's own 12px bottom margin would sit inside the centring box and
+   lift the field 6px above the icons (#1541), so the toolbar owns that
+   gap instead. */
 .jobs-toolbar {
   display: flex;
   align-items: center;
   gap: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
-.jobs-toolbar .jobs-search { flex: 1; min-width: 0; }
+.jobs-toolbar .jobs-search { flex: 1; min-width: 0; margin: 0; }
 .jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
 /* The field's clear button, pulled to its right edge like the Projects
    filter's star. */
@@ -4303,7 +4306,9 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .usage-meter-full {
   flex-direction: column;
   gap: 6px;
-  padding: 8px 4px;
+  /* Vertical only: the card's own padding is the content edge the heading
+     icon, the rows and the footer share (#1541). */
+  padding: 8px 0;
   font-size: var(--font-body-sm);
 }
 .usage-meter-full .um-head,
