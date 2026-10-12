@@ -65,6 +65,13 @@ def _forbid_run_reads(monkeypatch) -> list:
 def test_warm_snapshot_serves_both_polls_without_reading_a_run(
     webapp_client, real_ages, monkeypatch
 ):
+    # Warm means "younger than MAX_AGE_SECONDS", and on the real clock that
+    # held only while the cold build and three GETs fit in 10 s: a loaded gate
+    # box took 10.4 s, the snapshot rightly expired, and the next GET walked
+    # (#1533). Freeze the snapshot's own clock (it reads nothing else from
+    # `time`), so its age is 0 for the whole test; the expiry tests below keep
+    # the real one.
+    monkeypatch.setattr(jobs_snapshot, "time", SimpleNamespace(monotonic=lambda: 1000.0))
     client, _app, overrides = webapp_client
     local_now = datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
     _seed_job(overrides, "pipeline", _failed_today(local_now))

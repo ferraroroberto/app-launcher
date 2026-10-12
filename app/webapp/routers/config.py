@@ -74,6 +74,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "coding_model_choice": cfg.coding_model_choice,
         # Telegram channel sessions leave the Board and session list (#1384).
         "hide_channel_sessions": cfg.hide_channel_sessions,
+        # ...and start by themselves when the webapp starts (#1542).
+        "autostart_channel_sessions": cfg.autostart_channel_sessions,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "fleet_config_dir": cfg.fleet_config_dir,
@@ -168,6 +170,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "coding_favorite_agent",
         "coding_model_choice",
         "hide_channel_sessions",
+        "autostart_channel_sessions",
         "apps_scan_root",
         "life_os_dir",
         "fleet_config_dir",
@@ -224,14 +227,14 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail="large_upload_max_mb must be a whole number of MB"
             )
-    # A switch (#1384): anything but a real boolean is a client bug, and a
-    # truthy string must never flip it ("false" is truthy in Python).
-    if "hide_channel_sessions" in patch and not isinstance(
-        patch["hide_channel_sessions"], bool
-    ):
-        raise HTTPException(
-            status_code=400, detail="hide_channel_sessions must be true or false"
-        )
+    # The switches (#1384, #1542): anything but a real boolean is a client
+    # bug, and a truthy string must never flip one ("false" is truthy in
+    # Python).
+    for key in ("hide_channel_sessions", "autostart_channel_sessions"):
+        if key in patch and not isinstance(patch[key], bool):
+            raise HTTPException(
+                status_code=400, detail=f"{key} must be true or false"
+            )
     # The favourite agent (#1070) must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
     # coerced to DEFAULT_AGENT rather than stored, because the row renders

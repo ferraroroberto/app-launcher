@@ -439,6 +439,12 @@ class WebappConfig:
     # Extra IPs / CIDRs allowed to reach the terminal endpoints on top of
     # loopback + the Tailscale CGNAT range (100.64.0.0/10). Empty by default.
     tailnet_allowlist: list = field(default_factory=list)
+    # Folders, besides a session's own, that an agent may send a file to the
+    # Chat pane from (#1530): its outbox and Claude's SendUserFile. %VAR% and ~
+    # expand, so a temp-dir root needs no machine path. Defaults to Claude's
+    # scratch base, where its SendUserFile files live; a configured non-empty
+    # list replaces it (an empty one reads as unset, like every list setting).
+    outbox_scratch_roots: list = field(default_factory=lambda: ["%TEMP%/claude"])
     # When true, launching a session from the phone also opens an
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
@@ -449,6 +455,10 @@ class WebappConfig:
     # on their Stop would cut off a person's channel. Off restores today's
     # behaviour exactly. UI-only: the sessions themselves are untouched.
     hide_channel_sessions: bool = True
+    # Start every ready Telegram channel profile when the webapp starts
+    # (#1542), so the bots answer again after a reboot. Off by default: it
+    # launches real sessions, so an absent setting must never arm it.
+    autostart_channel_sessions: bool = False
     # Where a link tapped in Chat or a transcript opens when the page runs on
     # the PC itself (#1274): "chrome" (found through the registry's App
     # Paths, falling back to the default when absent) or "system" (the

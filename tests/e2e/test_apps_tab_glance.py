@@ -86,6 +86,10 @@ def _open_apps(page: Page, base_url: str, apps: dict = _APPS) -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabApps").click()
     expect(page.locator("#runningAppsList li.action-row")).to_have_count(1, timeout=10_000)
+    # The registry renders on its own fetch, chained behind the real
+    # /api/agents: on a loaded box it lands after the running list, and a raw
+    # measurement taken before it reads the still-hidden scan row as 0px (#1512).
+    expect(page.locator("#appsList li.action-row").first).to_be_attached(timeout=10_000)
 
 
 def _app_row(page: Page, app_id: str):

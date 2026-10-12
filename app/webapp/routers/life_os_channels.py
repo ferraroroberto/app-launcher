@@ -22,6 +22,11 @@ terminal to watch.
 so a second session on the same profile would fight the first with a 409. The
 guard looks the profile's label up in the session-host's live list, under a
 per-profile lock so two quick taps cannot both pass it.
+
+**Boot-time autostart (#1542).** With ``autostart_channel_sessions`` on, the
+webapp's lifespan calls :func:`autostart_channel_sessions`, which starts each
+ready profile through :func:`start_channel_session` — the launch route's own
+body, so the lock and the already-running refusal hold for it too.
 """
 
 from __future__ import annotations
@@ -147,12 +152,6 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
     conversation the picker selects.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    life_os_dir = Path(cfg.life_os_dir)
-    if not life_os_dir.is_dir():
-        raise HTTPException(
-            status_code=400,
-            detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
-        )
     profiles, _problems = _profiles(request)
     profile = next((p for p in profiles if p.id == profile_id), None)
     if profile is None:
@@ -171,8 +170,37 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=400,
             detail="Telegram channel sessions run on Claude only",
         )
+    return await start_channel_session(
+        cfg, profile, model=model, resume=bool(body.get("resume", False)),
+        body=body, request=request,
+    )
+
+
+async def start_channel_session(
+    cfg: WebappConfig,
+    profile: ChannelProfile,
+    *,
+    model: str,
+    resume: bool,
+    body: Dict[str, Any],
+    request: Optional[Request],
+) -> Dict[str, Any]:
+    """Start one profile's channel session — the launch route's body, shared
+    with the boot-time autostart (#1542) so both go through the per-profile
+    lock and the already-running refusal: never two sessions on one bot.
+
+    ``request`` is ``None`` for the autostart, which has no client to audit
+    and no one watching, so it opens no PC mirror window (as the fleet
+    chief's unwatched dispatch, #1283). Refusals raise ``HTTPException``
+    with the same status and detail the route returns.
+    """
+    life_os_dir = Path(cfg.life_os_dir)
+    if not life_os_dir.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
+        )
     skill = _resolve_skill(cfg, profile.skill)
-    resume = bool(body.get("resume", False))
 
     lock = _launch_locks.setdefault(profile.id, asyncio.Lock())
     async with lock:
@@ -213,9 +241,135 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             cfg, request, life_os_dir,
             flags=flags, name=skill.name, kind="pty", agent="claude",
             model=model, resume=resume, audit_skill=skill.id, body=body,
-            label=profile_session_label(profile.id),
+            label=profile_session_label(profile.id), mirror=request is not None,
         )
     logger.info(
         f"✅ channel profile {profile.id} launched ({'resume' if resume else 'skill'})"
     )
     return {"launched": skill.id, "profile": profile.id, **result}
+
+
+# --- boot-time autostart (#1542) -----------------------------------------
+# A reboot (a forced Windows update) kills every channel session, and the
+# launcher comes back at log-on without them. With the setting on, the
+# lifespan starts each ready profile once. The session-host may still be
+# booting when the webapp is, so the start waits for it — bounded, logged.
+AUTOSTART_HOST_WAIT_SECONDS = 180.0
+AUTOSTART_HOST_POLL_SECONDS = 3.0
+
+
+async def _wait_for_session_host(cfg: WebappConfig) -> bool:
+    """Poll the session-host until it answers, at most
+    ``AUTOSTART_HOST_WAIT_SECONDS``. ``False`` means it never did."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + AUTOSTART_HOST_WAIT_SECONDS
+    while True:
+        try:
+            await asyncio.to_thread(
+                session_client.list_sessions, cfg.session_host_port
+            )
+            return True
+        except session_client.SessionHostError as exc:
+            if loop.time() >= deadline:
+                logger.warning(
+                    f"⚠️ Telegram autostart: session-host still unreachable "
+                    f"after {AUTOSTART_HOST_WAIT_SECONDS:.0f}s ({exc}); "
+                    "no channel session started"
+                )
+                return False
+        await asyncio.sleep(AUTOSTART_HOST_POLL_SECONDS)
+
+
+def _autostart_blocker(
+    cfg: WebappConfig, installed_plugins_path: Optional[Path]
+) -> Optional[str]:
+    """Why no profile can start at all, or ``None`` when the shared checks
+    pass. The plugin record's unknown (``None``) blocks too: a start the
+    launcher could not confirm would only fail inside the session."""
+    life_os_dir = Path(cfg.life_os_dir)
+    if not life_os_dir.is_dir():
+        return "the life-os folder was not found"
+    if not bun_available():
+        return "Bun is not on PATH"
+    plugin = plugin_installed_for(life_os_dir, installed_plugins_path)
+    if plugin is None:
+        return "the Telegram plugin's install record could not be read"
+    if not plugin:
+        return "the Telegram plugin is not installed for life-os"
+    return None
+
+
+async def autostart_channel_sessions(
+    cfg: WebappConfig,
+    *,
+    profiles_path: Optional[Path] = None,
+    installed_plugins_path: Optional[Path] = None,
+) -> List[str]:
+    """Start every ready profile that has no live session; return the ids
+    started. Never raises: each skip is one info line naming why, and one
+    profile failing never stops the others."""
+    started: List[str] = []
+    try:
+        profiles, problems = load_channel_profiles(profiles_path)
+        for problem in problems:
+            logger.info(f"ℹ️ Telegram autostart: profile file: {problem}")
+        if not profiles:
+            logger.info("ℹ️ Telegram autostart: no channel profiles to start")
+            return started
+        blocker = _autostart_blocker(cfg, installed_plugins_path)
+        if blocker:
+            logger.info(
+                f"ℹ️ Telegram autostart: skipped all {len(profiles)} "
+                f"profile(s): {blocker}"
+            )
+            return started
+        skill_ids = {s.id for s in scan_skills(Path(cfg.life_os_dir))}
+        ready: List[ChannelProfile] = []
+        for profile in profiles:
+            if profile.skill not in skill_ids:
+                why = f"its skill {profile.skill!r} was not found"
+            elif not env_file_present(profile):
+                why = "its token file (.env) is missing"
+            else:
+                ready.append(profile)
+                continue
+            logger.info(
+                f"ℹ️ Telegram autostart: profile {profile.id} skipped: {why}"
+            )
+        if not ready:
+            return started
+        logger.info(
+            f"ℹ️ Telegram autostart: waiting for the session-host to start "
+            f"{len(ready)} profile(s)"
+        )
+        if not await _wait_for_session_host(cfg):
+            return started
+    except Exception:  # noqa: BLE001 — never take the lifespan down
+        logger.exception("❌ Telegram autostart failed before any launch")
+        return started
+
+    for profile in ready:
+        try:
+            result = await start_channel_session(
+                cfg, profile, model=cfg.claude_model, resume=False, body={},
+                request=None,
+            )
+        except HTTPException as exc:
+            # 409 is the already-running refusal: that bot is fine as it is.
+            logger.info(
+                f"ℹ️ Telegram autostart: profile {profile.id} skipped: "
+                f"{exc.detail}"
+            )
+            continue
+        except Exception:  # noqa: BLE001 — one profile never stops the others
+            logger.exception(
+                f"❌ Telegram autostart: profile {profile.id} failed to start"
+            )
+            continue
+        sid = str((result.get("session") or {}).get("session_id") or "")
+        logger.info(
+            f"✅ Telegram autostart: profile {profile.id} started in "
+            f"session {sid[:8]}"
+        )
+        started.append(profile.id)
+    return started

@@ -17,6 +17,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
 )
@@ -185,7 +186,8 @@ def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 name=str(update.get("title") or "tool"),
                 summary=_tool_summary(update.get("rawInput")),
                 result=None, result_truncated=False, sidechain=False,
-            ), _tool_action(str(update.get("title") or ""), update.get("rawInput")))
+            ), _tool_action(str(update.get("title") or ""), update.get("rawInput")),
+                _tool_description(update.get("rawInput")))
             entries.append(entry)
             if update.get("toolCallId"):
                 open_calls[str(update["toolCallId"])] = entry

@@ -10,6 +10,7 @@
  */
 
 import { fmtAgo } from './sessions.js';
+import { daysAndHours } from './dom-utils.js';
 import { actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
 import { createRowMenu } from './row-menu.js';
@@ -84,6 +85,8 @@ export function formatDuration(seconds) {
     return minutes + 'm' + (remainder ? ' ' + remainder + 's' : '');
   }
   const hours = Math.floor(seconds / 3600);
+  const days = daysAndHours(hours);
+  if (days) return days;
   const minutes = Math.round((seconds - hours * 3600) / 60);
   return hours + 'h' + (minutes ? ' ' + minutes + 'm' : '');
 }

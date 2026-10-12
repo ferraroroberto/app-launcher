@@ -277,7 +277,10 @@ def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
         expect(card).to_be_hidden()
         return
     row = card.locator("li.lifeos-recap-item")
+    expect(row.locator(".action-row-title")).to_have_text("Weekly recap")
     expect(row.locator(".avatar")).to_have_count(1)
+    # #167's coloured-dot badge is gone since #1439: only the chips remain.
+    expect(page.locator(".lifeos-recap-badge")).to_have_count(0)
     # The meta's text is its own span only when chips follow it.
     text = row.locator(".action-row-meta-text" if chips else ".action-row-meta")
     expect(text).to_have_text(meta)
@@ -370,8 +373,10 @@ def test_every_life_overlay_backs_out_the_same_way(life) -> None:
         expect(back).to_have_class(re.compile(r"\bicon-button\b"))
         expect(back).to_have_text("")
         expect(back.locator("use")).to_have_attribute("href", "#i-chevron-left")
-    sort = page.locator("#lifeOsConvosSort")
-    expect(sort).to_have_class(re.compile(r"\bicon-button\b"))
+    # The Conversations sort lives in its filter field's sheet (#1528), behind
+    # the same glyph-only icon-button shape.
+    filters = page.locator("#lifeOsConvosFilters")
+    expect(filters).to_have_class(re.compile(r"\bicon-button\b"))
 
 
 # Two Code-tab project rows as actionRow built them before `titleIcon`

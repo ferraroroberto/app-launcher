@@ -36,6 +36,12 @@ _SLOW_LOG_PATH = (
     Path(__file__).resolve().parent.parent.parent / "webapp" / "slow-requests.log"
 )
 
+_AUTOSTART_LOG_PATH = (
+    Path(__file__).resolve().parent.parent.parent
+    / "webapp"
+    / "channel-autostart.log"
+)
+
 DEFAULT_SLOW_REQUEST_S = 3.0
 # The SPA's boot legitimately fans out ~9 parallel fetches (observed in the
 # e2e gate), so the floor sits well above that — a breadcrumb here must mean
@@ -73,6 +79,42 @@ def ensure_slow_log_handler() -> None:
         slow_logger.setLevel(logging.WARNING)
     except OSError as exc:
         logger.warning(f"⚠️  Could not open {_SLOW_LOG_PATH}: {exc}")
+
+
+def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
+    """Send the Telegram autostart breadcrumbs (#1542) to
+    ``webapp/channel-autostart.log`` at INFO (#1546). Idempotent per logger —
+    safe to call from ``create_app()`` on every boot. Under the tray's
+    ``pythonw`` there is no stderr and these loggers have no file handler, so
+    the "autostart is off" / per-profile started-or-skipped lines (and the
+    unreachable-session-host warning, which falls to ``logging.lastResort``
+    and its ``None`` stderr) would otherwise vanish. Pass the autostart
+    loggers only, never the root: other modules' INFO stays out."""
+    path = _AUTOSTART_LOG_PATH.resolve()
+    pending = [
+        t
+        for t in targets
+        if not any(
+            isinstance(h, logging.FileHandler)
+            and Path(h.baseFilename).resolve() == path
+            for h in t.handlers
+        )
+    ]
+    if not pending:
+        return
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.FileHandler(path, encoding="utf-8")
+    except OSError as exc:
+        logger.warning(f"⚠️  Could not open {path}: {exc}")
+        return
+    fh.setLevel(logging.INFO)
+    fh.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    for target in pending:
+        target.addHandler(fh)
+        target.setLevel(logging.INFO)
 
 
 class SlowRequestLogMiddleware:

@@ -21,6 +21,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
     _with_placeholders,
@@ -173,7 +174,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         name=str(block.get("name") or "tool"),
                         summary=_tool_summary(block.get("arguments")),
                         result=None, result_truncated=False, sidechain=False,
-                    ), _tool_action(str(block.get("name") or ""), block.get("arguments")))
+                    ), _tool_action(str(block.get("name") or ""), block.get("arguments")), _tool_description(block.get("arguments")))
                     entries.append(call)
                     if block.get("id"):
                         open_calls[str(block["id"])] = call

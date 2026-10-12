@@ -241,6 +241,47 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     assert never == {"note": "Quota unknown", "codex": "unavailable", "bars": 0}, never
 
 
+@pytest.mark.iphone
+@pytest.mark.parametrize("shown", ["claude", "codex"])
+def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
+    authed_page: Page, base_url: str, shown: str
+) -> None:
+    """#1510: with one harness shown the heading row is gone, but a chip on
+    that reading (stale) is still visible, ahead of the windows."""
+    authed_page.add_init_script("""
+      (() => {
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+          const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+          if (url.pathname === '/api/rate-limits') return new Promise(() => {});
+          return nativeFetch(input, init);
+        };
+      })();
+    """)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(authed_page.locator("#codingUsage")).to_be_attached()
+
+    authed_page.evaluate("""async (shown) => {
+      const m = await import('/static/usage-meter.js');
+      const nowS = Date.now() / 1000;
+      const win = (pct) => ({used_percentage: pct, resets_at: nowS + 3600, duration_minutes: 300});
+      m.setUsageShows(shown);
+      m.renderUsage([
+        {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
+         five_hour: win(40), weekly: win(20)},
+        {harness: 'codex', label: 'Codex', state: 'stale', stale: true,
+         five_hour: win(40), weekly: win(20)},
+      ]);
+    }""", shown)
+
+    full = authed_page.locator("#codingUsage .usage-meter-full")
+    expect(full.locator(".um-head .chip")).to_have_text("stale")
+    expect(full.locator(".um-name")).to_have_count(0)
+    expect(full.locator(".um-mark")).to_have_count(0)
+    expect(full.locator(".um-row")).to_have_count(2)
+    _no_page_overflow(authed_page)
+
+
 def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
     authed_page: Page, base_url: str
 ) -> None:
@@ -267,6 +308,46 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
     expect(sheet).to_be_visible()
     sheet.locator("#usageSheetDone").click()
     expect(sheet).to_be_hidden()
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_usage_rows_share_the_cards_left_and_right_edges(
+    authed_page: Page, base_url: str, theme: str
+) -> None:
+    """#1541: the 5h / Week labels start on the card's content edge, level
+    with the heading icon and the context-filter footer, and the reset column
+    ends where the heading's right-hand text ends. The meter used to inset
+    its rows 4px on both sides. Read in one stable_eval (#1346)."""
+    authed_page.add_init_script(_QUOTA_SHIM)
+    _mock_board(authed_page)
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+    card = authed_page.locator("#codingUsageCard")
+    expect(card.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
+    expect(card.locator("#codingUsageFooter")).to_be_visible()
+    m = stable_eval(card, """card => {
+      if (!card.isConnected) return null;
+      const text = (el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        return range.getBoundingClientRect();
+      };
+      const rows = Array.from(card.querySelectorAll('.um-row'));
+      return {
+        icon: card.querySelector('#codingUsageTitle .icon').getBoundingClientRect().left,
+        footer: text(card.querySelector('#codingUsageFooter')).left,
+        labels: rows.map(r => text(r.querySelector('.um-label')).left),
+        meta: text(card.querySelector('#codingUsageMeta')).right,
+        resets: rows.map(r => r.querySelector('.um-reset').getBoundingClientRect().right),
+      };
+    }""")
+    for left in m["labels"]:
+        assert abs(left - m["footer"]) <= 1, f"row label vs footer text ({theme}): {m}"
+        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon ({theme}): {m}"
+    for right in m["resets"]:
+        assert abs(right - m["meta"]) <= 1, f"reset column vs heading text ({theme}): {m}"
 
 
 def _serve_usage_shows(page: Page, current: dict) -> list:
@@ -323,10 +404,18 @@ def test_usage_shows_draws_only_the_chosen_providers(
 
     expect(full).to_be_visible(timeout=10_000)
     expect(card).to_be_visible()
-    names = {"claude": ["Claude Code"], "codex": ["Codex"],
-             "both": ["Claude Code", "Codex"]}[mode]
-    expect(full.locator(".um-name")).to_have_text(names)
-    expect(full.locator(".um-mark")).to_have_count(len(names))
+    # #1510: the harness heading (mark + name) shows only when both are
+    # shown; alone, the windows sit straight under the card title.
+    if mode == "both":
+        expect(full.locator(".um-name")).to_have_text(["Claude Code", "Codex"])
+        expect(full.locator(".um-mark")).to_have_count(2)
+    else:
+        expect(full.locator(".um-head")).to_have_count(0)
+        expect(full.locator(".um-name")).to_have_count(0)
+        expect(full.locator(".um-mark")).to_have_count(0)
+        expect(full.locator(".um-row")).to_have_count(2)
+        # The windows are the first thing in the meter: one row shorter.
+        assert full.evaluate("el => el.firstElementChild.classList.contains('um-windows')")
     label = full.get_attribute("aria-label")
     assert ("Claude" in label) == (mode in ("claude", "both")), label
     assert ("Codex" in label) == (mode in ("codex", "both")), label

@@ -29,6 +29,7 @@ remove` fail as "busy"). See issue #709.
 from __future__ import annotations
 
 import functools
+import glob
 import json
 import logging
 import os
@@ -872,6 +873,24 @@ _DEFAULT_TIMEOUT_MS = int(os.environ.get("E2E_DEFAULT_TIMEOUT_MS", "15000"))
 OVERLAY_OPEN_MS = int(os.environ.get("E2E_OVERLAY_OPEN_MS", "30000"))
 
 
+# ----------------------------------------------- the boot build readout (#1513)
+#
+# `#buildReadout` fills from `GET /api/version`, a server round trip that runs
+# `git` in a worker thread and probes the session-host, issued alongside the
+# rest of boot's reads. Measured under a CPU burn at core count (#1509's
+# diagnosis): the call takes ~0.9 s on a quiet box but up to 5.6 s loaded, and
+# the readout fills up to 8.3 s after page start. Five tests waited on it with
+# a literal 10 s, which a heavily loaded full gate run exceeded; the settings
+# test, which also aborts the first two calls (#1287) and so adds the retry
+# backoff (500 ms + 1 s) on top, failed most often. At 32 burners on the
+# 16-core box the old budget went red in 1 of 4 chromium and 2 of 4 webkit
+# runs. 30 s is ~3.6x the loaded max and, like OVERLAY_OPEN_MS, still well
+# under the 120 s `pytest-timeout`, so a readout that really never fills fails
+# fast and named. One budget for every `#buildReadout` wait, not a literal per
+# test.
+BUILD_READOUT_MS = int(os.environ.get("E2E_BUILD_READOUT_MS", "30000"))
+
+
 # --------------------------------------------------- opening a session row
 #
 # #1025 removed the running-sessions row's actions gear, which used to be the
@@ -1156,24 +1175,40 @@ def launch_target_dir() -> Optional[Path]:
 
 
 def pin_launch_target(cfg: dict, target: Path) -> dict:
-    """Make ``cfg`` scan ``target``, so its coding row always resolves.
+    """Make ``cfg`` scan ``target`` and nothing else, so its coding row resolves.
 
     Pins the Coding-tab scan root to ``target``'s parent and drops any
-    inherited ignore pattern that would hide ``target`` itself. On the primary
-    checkout this is already exactly what the real config says, so it changes
-    nothing there; in a fresh scratch checkout (which has no config at all) it
-    is what stops the launch 404ing (issue #932). Nothing here is a credential
-    — a checkout's own path is not secret — so it does not reopen #907 / PR
-    #911.
+    inherited ignore pattern that would hide ``target`` itself, so the launch
+    stops 404ing in a fresh scratch checkout (issue #932). Nothing here is a
+    credential — a checkout's own path is not secret — so it does not reopen
+    #907 / PR #911.
+
+    Every sibling of ``target`` is ignored (issue #1512). The SPA fetches
+    ``/api/claude-code/git-status`` on every page boot, and that runs two or
+    three ``git`` processes per scanned project: with the whole projects dir
+    (~50 repos on the dev box) each test's boot spawned ~150 of them, the
+    disposable webapps spent most of their time in git, and the box sat at
+    100% CPU for the whole browser phase until unrelated page loads timed out.
+    A test that needs other project rows mocks ``/api/apps`` or git-status.
 
     Mutates and returns ``cfg``. Pinned by ``tests/test_e2e_launch_target.py``.
     """
     cfg["projects_dir"] = str(target.parent)
-    cfg["projects_ignore"] = [
+    kept = [
         pattern
         for pattern in (cfg.get("projects_ignore") or [])
         if not dir_ignored(target.name, [pattern])
     ]
+    try:
+        siblings = sorted(
+            child.name for child in target.parent.iterdir() if child.name != target.name
+        )
+    except OSError as exc:
+        logger.warning("⚠️ could not list %s, the e2e webapp will scan all of it: %s",
+                       target.parent, exc)
+        siblings = []
+    # glob.escape: a sibling name holding [ ] * ? must match only itself.
+    cfg["projects_ignore"] = kept + [glob.escape(name) for name in siblings]
     return cfg
 
 

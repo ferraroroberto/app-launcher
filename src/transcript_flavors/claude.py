@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
 from src.board_transcript import _typed_user_kind
 from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
+from src.session_outbox import clean_name, kind_of
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
     Entry,
@@ -24,6 +25,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
     _with_placeholders,
@@ -33,6 +35,23 @@ from src.transcript_flavors._shared import (
     diff_counts,
     recorded_hunks,
 )
+
+
+# Claude Code's own "put this file in front of the owner" tool (#1530). Its
+# input is ``{"files": [path, ...], "caption"?: str}``, paths absolute or
+# relative to the session's cwd; the Chat pane renders each one the way an
+# outbox file renders, through ``/transcript/file`` and the outbox's guards.
+SEND_FILE_TOOL = "SendUserFile"
+
+
+def sent_file_paths(inputs: Any) -> List[str]:
+    """The paths a ``SendUserFile`` input lists, in order; [] for any other shape."""
+    files = inputs.get("files") if isinstance(inputs, dict) else None
+    if isinstance(files, str):
+        files = [files]
+    if not isinstance(files, list):
+        return []
+    return [f for f in files if isinstance(f, str) and f.strip()]
 
 
 def _same_path(a: Any, b: Any) -> bool:
@@ -150,7 +169,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         name=str(block.get("name") or "tool"),
                         summary=_tool_summary(block.get("input")),
                         result=None, result_truncated=False, sidechain=sidechain,
-                    ), _tool_action(str(block.get("name") or ""), block.get("input")))
+                    ), _tool_action(str(block.get("name") or ""), block.get("input")), _tool_description(block.get("input")))
                     if e["name"] == ASK_TOOL_NAME:
                         # The Chat pane's question card (#1149): the one tool
                         # whose structured input is forwarded, plus the id
@@ -160,6 +179,20 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         if questions:
                             e["questions"] = questions
                             e["call_id"] = str(block.get("id") or "")
+                    elif e["name"] == SEND_FILE_TOOL:
+                        # Each listed file is a ref the file route answers
+                        # (offset of this line, index among its sent files),
+                        # never the bytes or the full path.
+                        paths = sent_file_paths(block.get("input"))
+                        if paths:
+                            start = sum(len(c.get("sent_files") or []) for c in entries if c.get("offset") == offset)
+                            e["sent_files"] = [
+                                {"offset": offset, "n": start + i, "name": clean_name(_basename(p)),
+                                 "kind": kind_of(_basename(p))}
+                                for i, p in enumerate(paths)
+                            ]
+                            caption = (block.get("input") or {}).get("caption")
+                            e["caption"] = _cap(str(caption).strip(), SYSTEM_TEXT_CAP)[0] if isinstance(caption, str) else ""
                     elif e["name"] == PLAN_TOOL_NAME:
                         # The plan card (#1151): the whole plan, not the
                         # summary's one truncated line of it.
@@ -253,6 +286,28 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             continue
         # Everything else is metadata without conversation text.
     return entries
+
+
+def _basename(path: str) -> str:
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or path
+
+
+def sent_file_at(raw: str, n: int) -> Optional[Tuple[str, Optional[str]]]:
+    """``(path as written, the line's cwd)`` of sent file ``n`` on one
+    assistant line, else None. Numbered the way :func:`claude_entries` numbers
+    them: every ``SendUserFile`` block on the line, in order."""
+    obj = _loads(raw)
+    if obj is None or obj.get("type") != "assistant" or n < 0:
+        return None
+    msg = obj.get("message") if isinstance(obj.get("message"), dict) else {}
+    paths: List[str] = []
+    for block in msg.get("content") if isinstance(msg.get("content"), list) else []:
+        if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == SEND_FILE_TOOL:
+            paths.extend(sent_file_paths(block.get("input")))
+    if n >= len(paths):
+        return None
+    cwd = obj.get("cwd")
+    return paths[n], (cwd if isinstance(cwd, str) and cwd else None)
 
 
 def _claude_line_key(raw: str) -> Optional[str]:

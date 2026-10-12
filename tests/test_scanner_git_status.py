@@ -184,8 +184,14 @@ def test_route_a_caller_never_gets_a_scan_older_than_its_arrival(webapp_client, 
     """#1268: sharing must not go stale. A repo dirtied while a scan is
     already running is reported dirty to the call that arrives after the
     change: it waits for the next scan rather than joining the running one,
-    which read the repo before the change."""
+    which read the repo before the change.
+
+    Ordering is driven by events, not sleeps (#1511): the first scan is held
+    open until the second call has queued behind it, so a loaded runner can
+    neither start the first scan late (it would read the dirtied repo) nor
+    finish it early (the second call would just start its own scan)."""
     import asyncio
+    import threading
     import time
 
     import httpx
@@ -197,23 +203,41 @@ def test_route_a_caller_never_gets_a_scan_older_than_its_arrival(webapp_client, 
     repos = [ProjectDir(id="alpha", name="alpha", project_dir="C:/fake/alpha")]
     monkeypatch.setattr(claude_code, "scan_project_dirs", lambda *a, **k: repos)
     repo = {"dirty": False}
+    first_scan_read = threading.Event()
+    release_first_scan = threading.Event()
 
     def slow_status(_path):
         seen = repo["dirty"]          # read at scan start, like git would
-        time.sleep(0.3)
+        first_scan_read.set()
+        # Held open until the test says so; the follow-up scan finds it already set.
+        assert release_first_scan.wait(timeout=30), "test never released the first scan"
         return GitStatus(is_git=True, branch="main", default_branch="main", dirty=seen)
 
     monkeypatch.setattr(claude_code, "git_status", slow_status)
+
+    async def until(predicate, what):
+        deadline = time.monotonic() + 30
+        while not predicate():
+            assert time.monotonic() < deadline, f"timed out waiting for {what}"
+            await asyncio.sleep(0.01)
 
     async def run():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             before = asyncio.create_task(client.get("/api/claude-code/git-status"))
-            await asyncio.sleep(0.1)
+            await until(first_scan_read.is_set, "the first scan to read the repo")
             repo["dirty"] = True
-            after = await client.get("/api/claude-code/git-status")
-            return (await before).json()["projects"][0], after.json()["projects"][0]
+            after = asyncio.create_task(client.get("/api/claude-code/git-status"))
+            await until(
+                lambda: any(not f.done() for f in claude_code._GIT_STATUS_NEXT.values()),
+                "the second call to queue behind the running scan",
+            )
+            release_first_scan.set()
+            return (await before).json()["projects"][0], (await after).json()["projects"][0]
 
-    before, after = asyncio.run(run())
+    try:
+        before, after = asyncio.run(run())
+    finally:
+        release_first_scan.set()      # never strand a pool thread on a failed run
     assert before["dirty"] is False
     assert after["dirty"] is True, "a call after the change was served the scan that began before it"

@@ -91,7 +91,7 @@ export function renderJobs() {
   host.replaceChildren();
   renderHomeHead();
   syncJobsEmpty();
-  syncSort();
+  syncSortControls();
 
   if (state.jobsSearchQuery) {
     // Jobs whose name matches come first, as ordinary rows (#1132: the
@@ -141,7 +141,6 @@ function renderSearchMatches(host, namedCount) {
 async function runJobsSearch() {
   const query = (els.jobsSearchInput && els.jobsSearchInput.value || '').trim();
   state.jobsSearchQuery = query;
-  if (els.jobsSearchClear) els.jobsSearchClear.hidden = !query;
   if (!query) {
     state.jobsSearchMatches = [];
     renderJobs();
@@ -167,7 +166,6 @@ function openSearchMatch(match) {
     return;
   }
   if (els.jobsSearchInput) els.jobsSearchInput.value = '';
-  if (els.jobsSearchClear) els.jobsSearchClear.hidden = true;
   state.jobsSearchQuery = '';
   state.jobsSearchMatches = [];
   openJobSheet(match.job_id, match.run_id);
@@ -201,22 +199,41 @@ function byName(a, b) {
   return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
 }
 
-// The labelled segmented sort (#1501, was a glyph-only toggle): Next · A–Z,
-// the raised segment is the current order.
-function syncSort() {
-  if (!els.jobsSort) return;
-  els.jobsSort.querySelectorAll('.range-tab').forEach(function (b) {
-    const on = b.dataset.sort === state.jobsSort;
-    b.classList.toggle('active', on);
-    b.setAttribute('aria-checked', on ? 'true' : 'false');
+const JOBS_SORT_NAMES = { next: 'next run', name: 'A–Z' };
+
+// The sort's entry button and sheet (#1538, the Conversations pattern of
+// #1528): the sliders button names the order in force, and the sheet's tabs
+// mark it. Re-synced on every change.
+function syncSortControls() {
+  const btn = els.jobsFilters;
+  if (!btn) return;
+  const label = 'Sort and filter: sorted by ' + JOBS_SORT_NAMES[state.jobsSort];
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  btn.dataset.sort = state.jobsSort;
+  els.jobsSortTabs.querySelectorAll('.range-tab').forEach(function (tab) {
+    const on = tab.dataset.sort === state.jobsSort;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 }
 
-function setSort(order) {
-  if (order !== 'next' && order !== 'name') return;
-  state.jobsSort = order;
+function setSort(mode) {
+  if (!JOBS_SORT_NAMES[mode]) return;
+  state.jobsSort = mode;
   try { localStorage.setItem('launcher.jobsSort', state.jobsSort); } catch (_) { /* storage blocked */ }
+  syncSortControls();
   renderJobs();
+}
+
+function openSortSheet() {
+  if (!els.jobsSortSheet) return;
+  syncSortControls();
+  els.jobsSortSheet.showModal();
+}
+
+function closeSortSheet() {
+  if (els.jobsSortSheet && els.jobsSortSheet.open) els.jobsSortSheet.close();
 }
 
 // ------------------------------------------------------------- job sheet
@@ -955,8 +972,8 @@ export async function fetchJobs() {
 
 export function wireJobs() {
   if (!els.tabJobs) return;
-  // Empty-state actions (#1238 J-09): the Add job flow, and the search
-  // field's own clear.
+  // Empty-state actions (#1238 J-09): the Add job flow, and clearing the
+  // search field.
   const jobsEmptyAction = document.getElementById('jobsEmptyAction');
   if (jobsEmptyAction) {
     jobsEmptyAction.addEventListener('click', function () { openJobDialog(null); });
@@ -964,33 +981,36 @@ export function wireJobs() {
   const jobsFilterEmptyAction = document.getElementById('jobsFilterEmptyAction');
   if (jobsFilterEmptyAction) {
     jobsFilterEmptyAction.addEventListener('click', function () {
-      if (els.jobsSearchClear) els.jobsSearchClear.click();
+      if (els.jobsSearchInput) els.jobsSearchInput.value = '';
+      runJobsSearch();
+      if (els.jobsSearchInput) els.jobsSearchInput.focus();
     });
   }
   els.tabJobs.addEventListener('click', function () {
     fetchJobs().catch(function () {});
   });
-  if (els.jobsSort) {
-    els.jobsSort.addEventListener('click', function (ev) {
-      const seg = ev.target.closest('.range-tab');
-      if (seg) setSort(seg.dataset.sort);
+  if (els.jobsFilters) {
+    els.jobsFilters.addEventListener('click', function (ev) {
+      // Inside the field's <label>: keep the tap from also focusing the box.
+      ev.preventDefault();
+      openSortSheet();
     });
-    // Marked from the saved order now, not on the first jobs render (#1176).
-    syncSort();
+    els.jobsSortTabs.addEventListener('click', function (ev) {
+      const tab = ev.target.closest('.range-tab');
+      if (tab) setSort(tab.dataset.sort);
+    });
+    // Clear: back to the default order.
+    els.jobsSortSheetClear.addEventListener('click', function () { setSort('next'); });
+    els.jobsSortSheetDone.addEventListener('click', closeSortSheet);
+    els.jobsSortSheetClose.addEventListener('click', closeSortSheet);
+    // Labelled from the saved order now, not on the first jobs render — the
+    // button was blank while the tab loaded (#1176).
+    syncSortControls();
   }
   if (els.jobsSearchInput) {
     els.jobsSearchInput.addEventListener('input', function () {
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(function () { runJobsSearch(); }, 250);
-    });
-  }
-  if (els.jobsSearchClear) {
-    els.jobsSearchClear.addEventListener('click', function (ev) {
-      // Inside the field's <label>: keep the click from focusing through it.
-      ev.preventDefault();
-      if (els.jobsSearchInput) els.jobsSearchInput.value = '';
-      runJobsSearch();
-      if (els.jobsSearchInput) els.jobsSearchInput.focus();
     });
   }
   if (els.jobSheet) {

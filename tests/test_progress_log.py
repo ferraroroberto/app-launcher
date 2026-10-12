@@ -26,8 +26,11 @@ def _run_inner_pytest(test_dir: Path, source: str, *plugins: str,
     test_dir.mkdir(parents=True, exist_ok=True)
     (test_dir / "test_inner.py").write_text(textwrap.dedent(source), encoding="utf-8")
     log = test_dir / "progress.log"
+    # The gate runs this suite on xdist workers (#1512). An inherited
+    # PYTEST_XDIST_WORKER would make the inner run's plugin act as a worker
+    # and leave the log to a controller that does not exist.
     env = {
-        **os.environ,
+        **{k: v for k, v in os.environ.items() if not k.startswith("PYTEST_XDIST_")},
         "PYTHONPATH": str(PROJECT_ROOT),
         "PYTHONUTF8": "1",
         # Hermetic: only the plugins named with -p load.

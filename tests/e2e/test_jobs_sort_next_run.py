@@ -4,7 +4,7 @@ The Jobs list defaults to **Next run** order — ascending by the server-compute
 ``next_run_epoch`` — so imminent jobs float to the top and manual-only / paused
 jobs (no next fire) sink to the bottom. Each scheduled row's meta line leads
 with a relative countdown ("in 3h · Daily 12:00"; it was a "Next in" pill
-before #1438); a toolbar icon button flips the order to A–Z.
+before #1438); the sort-and-filter sheet (#1538) flips the order to A–Z.
 
 Hermetic: route-mock ``/api/jobs`` with three fixed jobs whose next-run order
 (Zeta, Alpha, Mango) deliberately differs from A–Z (Alpha, Mango, Zeta) so the
@@ -136,34 +136,45 @@ def test_jobs_default_to_next_run_order_with_countdown(
     # it flips the persisted sort pref) --
     assert _row_ids(authed_page) == ["zeta", "alpha", "mango"]
 
-    # Next → A–Z on the labelled segmented control (#1501, was a glyph-only
-    # toggle). It sits in the card's toolbar (not the summary); the tap must
-    # flip the sort without collapsing the <details>.
-    sort = authed_page.locator("#jobsSort")
-    expect(sort.locator(".range-tab")).to_have_text(["Next", "A–Z"])
-    next_seg = sort.locator(".range-tab[data-sort='next']")
-    name_seg = sort.locator(".range-tab[data-sort='name']")
-    expect(next_seg).to_have_attribute("aria-checked", "true")
-    expect(name_seg).to_have_attribute("aria-checked", "false")
+    # Sort sheet (#1538): the same sort-and-filter sheet as Conversations
+    # (#1528). The sliders button in the search field names the order in force
+    # and opens the sheet; a tab applies as it is tapped, without collapsing
+    # the <details>; Clear is back to Next run; Done closes.
+    filters = authed_page.locator("#jobsFilters")
+    sheet = authed_page.locator("#jobsSortSheet")
     expect(authed_page.locator("#jobsSortBtn")).to_have_count(0)
-    name_seg.click()
-    assert _is_open(authed_page), "the sort must not collapse the jobs panel"
-    expect(name_seg).to_have_attribute("aria-checked", "true")
-    expect(name_seg).to_have_class(re.compile(r"\bactive\b"))
-    expect(next_seg).to_have_attribute("aria-checked", "false")
-    assert authed_page.evaluate("() => localStorage.getItem('launcher.jobsSort')") == "name"
+    expect(filters).to_have_attribute("data-sort", "next")
+    expect(filters).to_have_attribute("aria-label", re.compile("sorted by next run"))
+    filters.click()
+    expect(sheet).to_be_visible()
+    expect(sheet.locator("h2")).to_have_text("Sort and filter")
+    tabs = sheet.locator("#jobsSortTabs .range-tab")
+    expect(tabs).to_have_text(["Next run", "A–Z"])
+    expect(tabs.nth(0)).to_have_attribute("aria-pressed", "true")
+    tabs.nth(1).click()
+    assert _is_open(authed_page), "sorting must not collapse the jobs panel"
+    expect(tabs.nth(1)).to_have_attribute("aria-pressed", "true")
+    expect(filters).to_have_attribute("data-sort", "name")
+    expect(filters).to_have_attribute("aria-label", re.compile("sorted by A–Z"))
     expect(authed_page.locator("#jobsList li.job-row[data-id]").first).to_have_attribute(
         "data-id", "alpha"
     )
     assert _row_ids(authed_page) == ["alpha", "mango", "zeta"], (
         "A–Z order should be name-sorted regardless of next fire"
     )
-    # And back: both orders work from the control.
-    next_seg.click()
-    expect(next_seg).to_have_attribute("aria-checked", "true")
-    expect(authed_page.locator("#jobsList li.job-row[data-id]").first).to_have_attribute(
-        "data-id", "zeta"
-    )
+    # Persists as it did before the sheet: the same pref key.
+    assert authed_page.evaluate("localStorage.getItem('launcher.jobsSort')") == "name"
+    sheet.locator("#jobsSortSheetDone").click()
+    expect(sheet).to_be_hidden()
+
+    # Clear → the default order again.
+    filters.click()
+    sheet.locator("#jobsSortSheetClear").click()
+    expect(filters).to_have_attribute("data-sort", "next")
+    assert _row_ids(authed_page) == ["zeta", "alpha", "mango"]
+    assert authed_page.evaluate("localStorage.getItem('launcher.jobsSort')") == "next"
+    sheet.locator("#jobsSortSheetClose").click()
+    expect(sheet).to_be_hidden()
 
 
 def test_external_schedule_card_only_offers_history(

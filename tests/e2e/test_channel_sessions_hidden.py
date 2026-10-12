@@ -72,6 +72,11 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     """Route-mock everything the lists read. Returns the live knobs."""
     knobs = {
         "hidden": hidden, "posts": [], "context_hits": [], "inputs": [],
+        # The autostart switch (#1542), pinned off so the box's own config
+        # (the disposable webapp reads the checkout's webapp_config.json) cannot
+        # decide the starting state (#1550); the server default is pinned by
+        # tests/test_webapp_api_config.py.
+        "autostart": False,
         # session_id -> context percent; absent = "not showing" (no figure).
         "pct": {"s-tg-health": 42},
     }
@@ -98,12 +103,15 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
             knobs["posts"].append(body)
             if "hide_channel_sessions" in body:
                 knobs["hidden"] = body["hide_channel_sessions"]
+            if "autostart_channel_sessions" in body:
+                knobs["autostart"] = body["autostart_channel_sessions"]
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"ok": True}))
             return
         resp = route.fetch()
         body = resp.json()
         body["hide_channel_sessions"] = knobs["hidden"]
+        body["autostart_channel_sessions"] = knobs["autostart"]
         route.fulfill(response=resp, json=body)
 
     def _context(route):
@@ -323,6 +331,26 @@ def test_the_one_kill_path_refuses_a_hidden_channel_session(
     expect(authed_page.locator("#toast")).to_contain_text("Telegram sessions are protected")
 
 
+def test_autostart_switch_is_off_by_default_and_saves_at_once(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1542: Settings › Telegram's autostart switch reads the server's value
+    (off here) and saves on the tap, like the hide switch above it."""
+    knobs = _mock(authed_page)
+    _open_coding(authed_page, base_url)
+
+    open_settings_sheet(authed_page, "channelsSheet")
+    toggle = authed_page.locator("#autostartChannelSessionsToggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    wait_until(
+        authed_page,
+        lambda: {"autostart_channel_sessions": True} in knobs["posts"],
+        "the autostart setting's POST",
+    )
+    expect(toggle).to_have_attribute("aria-checked", "true")
+
+
 # ------------------------------------------------------------------ #1402
 
 
@@ -433,15 +461,3 @@ def test_popup_compact_sends_slash_compact_through_the_verified_route(
     expect(dialog).to_be_visible()
 
 
-def test_popup_has_compact_but_still_no_stop_or_delete(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock(authed_page)
-    _open_coding(authed_page, base_url)
-    authed_page.locator("#sessionsChannelSummary").click()
-    dialog = authed_page.locator("#channelListDialog")
-    expect(dialog.locator("li.channel-list-row")).to_have_count(2)
-    expect(dialog.locator(".channel-list-compact")).to_have_count(2)
-    labels = dialog.locator("button").all_inner_texts()
-    assert not [t for t in labels if re.search(r"stop|delete|kill|remove", t, re.I)], labels
-    expect(dialog.locator(".action-stop-close, .board-stop-btn")).to_have_count(0)

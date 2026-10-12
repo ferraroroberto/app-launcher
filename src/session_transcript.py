@@ -49,7 +49,7 @@ from src.transcript_flavors._shared import (
     Entry, EntryBuilder, Line, _loads, _line_image_blocks, _image_data, cap_diff,
 )
 from src.transcript_flavors.antigravity import _antigravity_line_key, antigravity_entries
-from src.transcript_flavors.claude import _claude_line_key, claude_entries
+from src.transcript_flavors.claude import _claude_line_key, claude_entries, sent_file_at
 from src.transcript_flavors.codex import _codex_line_key, codex_entries
 from src.transcript_flavors.copilot import _copilot_line_key, copilot_entries
 from src.transcript_flavors.grok import _grok_line_key, grok_entries
@@ -644,6 +644,9 @@ def _step_label(entry: Entry) -> str:
         return "Writing a reply" if kind == "assistant" else "Thinking"
     if entry.get("result") is not None:
         return "Thinking"  # the call is done; the agent is reading what it returned
+    label = entry.get("label")
+    if label and label != entry.get("summary"):
+        return str(label)  # the call's own description (#1532)
     name = str(entry.get("name") or "tool")
     action = entry.get("action")
     verb = action.get("verb") if isinstance(action, dict) else None
@@ -754,6 +757,24 @@ def _sniff_image(data: bytes) -> Optional[str]:
     return None
 
 
+def _line_at(path: Path, offset: int, cap: int) -> Optional[str]:
+    """The whole line starting at byte ``offset``, or None when ``offset``
+    doesn't start a line or the line runs past ``cap`` bytes. Raises OSError
+    on a read failure."""
+    with path.open("rb") as fh:
+        if offset > 0:
+            fh.seek(offset - 1)
+            if fh.read(1) != b"\n":
+                return None
+        raw = fh.read(cap + 1)
+    end = raw.find(b"\n")
+    if end < 0:
+        if len(raw) > cap:
+            return None
+        end = len(raw)
+    return raw[:end].decode("utf-8", "replace")
+
+
 def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[Tuple[bytes, str]]:
     """``(bytes, media type)`` of image ``n`` on the line starting at ``offset``.
 
@@ -765,18 +786,10 @@ def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[T
     """
     if flavor not in _IMAGE_FLAVORS or offset < 0 or n < 0:
         return None
-    with path.open("rb") as fh:
-        if offset > 0:
-            fh.seek(offset - 1)
-            if fh.read(1) != b"\n":
-                return None
-        raw = fh.read(IMAGE_LINE_CAP + 1)
-    end = raw.find(b"\n")
-    if end < 0:
-        if len(raw) > IMAGE_LINE_CAP:
-            return None
-        end = len(raw)
-    obj = _loads(raw[:end].decode("utf-8", "replace"))
+    raw = _line_at(path, offset, IMAGE_LINE_CAP)
+    if raw is None:
+        return None
+    obj = _loads(raw)
     msg = obj.get("message") if obj and isinstance(obj.get("message"), dict) else {}
     blocks = _line_image_blocks(msg.get("content"))
     if n >= len(blocks):
@@ -790,6 +803,29 @@ def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[T
         return None
     media = _sniff_image(decoded)
     return (decoded, media) if media and len(decoded) <= IMAGE_BYTE_CAP else None
+
+
+# ------------------------------------------------- sent files (#1530)
+#
+# A Claude ``SendUserFile`` call names files by path. The page carries refs
+# (``{"offset", "n", "name"}``), never the path or the bytes; the file route
+# re-reads that one line for the path and hands it to the outbox's guards
+# (``src.session_outbox.read_source``), which read the file live from disk.
+
+SENT_FILE_LINE_CAP = 1024 * 1024
+_SENT_FILE_FLAVORS = frozenset({"claude"})
+
+
+def transcript_sent_file(
+    path: Path, offset: int, n: int, flavor: str
+) -> Optional[Tuple[str, Optional[str]]]:
+    """``(path as the call wrote it, the line's cwd)`` of sent file ``n`` on
+    the line starting at ``offset``, else None (a flavour with no such tool,
+    a bad ref, or a file that moved on). Raises OSError on a read failure."""
+    if flavor not in _SENT_FILE_FLAVORS or offset < 0 or n < 0:
+        return None
+    raw = _line_at(path, offset, SENT_FILE_LINE_CAP)
+    return sent_file_at(raw, n) if raw is not None else None
 
 
 # How far a harness's own history can be trusted to mark a failed tool call

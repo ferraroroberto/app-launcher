@@ -293,10 +293,26 @@ def recorded_hunks(patch: Any, created_text: Optional[str] = None) -> List[Hunk]
 
 
 
-def _with_action(entry: Entry, action: Optional[Dict[str, Any]]) -> Entry:
-    """Attach :func:`_tool_action`'s result to a ``tool_call`` entry, when there is one."""
+def _tool_description(inputs: Any, key: str = "description") -> str:
+    """The call's own one-line description (#1532), else ``""``. Claude's
+    Bash/PowerShell/Agent, Copilot's ``powershell`` and Grok's
+    ``run_terminal_command`` carry ``description``, Antigravity its
+    ``toolSummary`` UI label (probed from the newest transcripts of each
+    harness, key names only); Codex and Pi record none."""
+    value = inputs.get(key) if isinstance(inputs, dict) else None
+    if not isinstance(value, str):
+        return ""
+    return _cap(" ".join(value.split()), TOOL_SUMMARY_CAP)[0]
+
+
+def _with_action(entry: Entry, action: Optional[Dict[str, Any]], description: str = "") -> Entry:
+    """Finish a ``tool_call`` entry: :func:`_tool_action`'s result, when there
+    is one, and its ``label`` (#1532) -- the call's ``description``, else its
+    ``summary``. Every flavour's calls pass through here, so a harness that
+    records no description still gets a label."""
     if action:
         entry["action"] = action
+    entry["label"] = description or entry.get("summary") or ""
     return entry
 
 

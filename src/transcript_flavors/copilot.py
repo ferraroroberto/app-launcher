@@ -16,6 +16,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
 )
@@ -199,7 +200,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
                 name=str(data.get("toolName") or "tool"),
                 summary=_tool_summary(data.get("arguments")),
                 result=None, result_truncated=False, sidechain=False,
-            ), _tool_action(str(data.get("toolName") or ""), data.get("arguments")))
+            ), _tool_action(str(data.get("toolName") or ""), data.get("arguments")), _tool_description(data.get("arguments")))
             entries.append(entry)
             if call_id:
                 open_calls[call_id] = entry

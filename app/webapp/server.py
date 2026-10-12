@@ -79,6 +79,7 @@ from src.webauthn_gate import WebAuthnGate
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
+    ensure_autostart_log_handler,
     ensure_slow_log_handler,
 )
 from app.webapp.routers import (
@@ -97,9 +98,13 @@ from app.webapp.routers import (
     tokens,
     webauthn,
 )
+from app.webapp.routers import life_os_channels
 from app.webapp.routers._helpers import STATIC_DIR
 
 _log = logging.getLogger(__name__)
+# The lifespan's Telegram autostart lines (#1546): a child so the file handler
+# takes these and not every other INFO this module logs.
+_autostart_log = logging.getLogger(f"{__name__}.autostart")
 
 _LONG_CACHE = "public, max-age=31536000, immutable"
 _DAY_CACHE = "public, max-age=86400"
@@ -349,6 +354,32 @@ async def _session_retention_tick(app: FastAPI) -> None:
         await asyncio.sleep(_RETENTION_INTERVAL_SECONDS)
 
 
+def _autostart_channel_sessions_on(cfg: object) -> bool:
+    """Whether the Telegram autostart (#1542) is switched on. Only a real
+    ``True`` arms it: it launches sessions, so a config without the key (a
+    stub) or a non-boolean must read as off, like the retention sweep."""
+    return getattr(cfg, "autostart_channel_sessions", False) is True
+
+
+async def _channel_autostart(app: FastAPI) -> None:
+    """Start the ready Telegram channel profiles once, at boot (#1542).
+
+    Canonical-instance only: a disposable gate webapp has its own empty
+    session-host, so its "already running" check would see none of the live
+    bots and start a second listener on each one's token.
+    """
+    from app.webapp.routers.life_os_channels import autostart_channel_sessions
+
+    cfg = getattr(app.state, "webapp_config", None)
+    if cfg is None:
+        return
+    await autostart_channel_sessions(
+        cfg,
+        profiles_path=getattr(app.state, "channel_profiles_path", None),
+        installed_plugins_path=getattr(app.state, "installed_plugins_path", None),
+    )
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
@@ -363,19 +394,26 @@ async def _lifespan(app: FastAPI):
             tasks.append(asyncio.create_task(_coverage_tick(app)))
         if _session_retention_days(cfg) > 0:
             tasks.append(asyncio.create_task(_session_retention_tick(app)))
+        if _autostart_channel_sessions_on(cfg):
+            tasks.append(asyncio.create_task(_channel_autostart(app)))
+        else:
+            _autostart_log.info(
+                "ℹ️ Telegram autostart is off; no channel session started"
+            )
     elif not canonical:
         # The autoboot case is expected on every gate run, so it stays quiet;
         # any *other* non-canonical instance is a surprise worth finding in
         # the log after the phone buzzes (#736).
         emit, mark = (
-            (_log.debug, "ℹ️")
+            (_autostart_log.debug, "ℹ️")
             if role_reason == instance_role.REASON_DISPOSABLE
-            else (_log.warning, "⚠️")
+            else (_autostart_log.warning, "⚠️")
         )
         emit(
-            "%s jobs coverage + session retention ticks skipped — "
-            "non-canonical instance (%s, root=%s); only the canonical "
-            "checkout may alert or reap (#736, #902)",
+            "%s jobs coverage + session retention ticks and Telegram "
+            "autostart skipped — non-canonical instance (%s, root=%s); only "
+            "the canonical checkout may alert, reap or launch (#736, #902, "
+            "#1542)",
             mark,
             role_reason,
             instance_role.PROJECT_ROOT,
@@ -397,6 +435,7 @@ def create_app() -> FastAPI:
 
     auth.ensure_log_handler()
     ensure_slow_log_handler()
+    ensure_autostart_log_handler(_autostart_log, life_os_channels.logger)
 
     app = FastAPI(
         title="Launcher",

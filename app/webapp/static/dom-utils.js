@@ -358,7 +358,16 @@ export function wireModelCombo(root, onChange) {
 // shapes: a pre-computed duration in seconds (`fromEpoch: false`, the
 // default), or an epoch second diffed against now (`fromEpoch: true`).
 // `granular: true` also switches sub-minute output from "now" to "Ns" and
-// caps the format at hours+minutes instead of rolling into days.
+// shows hours+minutes, rolling into "Nd Nh" past 24 h (#1523).
+
+// Past 24 h a whole-hours count reads as "11d 4h", not "268h" (#1523); below
+// that it returns null so each caller keeps its own "Nh Nm" shape. Shared by
+// fmtDuration's granular mode and jobs-row.js's formatDuration.
+export function daysAndHours(hrs) {
+  if (hrs < 24) return null;
+  return Math.floor(hrs / 24) + 'd ' + (hrs % 24) + 'h';
+}
+
 export function fmtDuration(value, opts) {
   const o = opts || {};
   let secs;
@@ -373,7 +382,7 @@ export function fmtDuration(value, opts) {
   const mins = Math.floor(secs / 60);
   if (mins < 60) return mins + 'm';
   const hrs = Math.floor(mins / 60);
-  if (o.granular) return hrs + 'h ' + (mins % 60) + 'm';
+  if (o.granular) return daysAndHours(hrs) || hrs + 'h ' + (mins % 60) + 'm';
   if (secs < 86400) return hrs + 'h';
   return Math.floor(secs / 86400) + 'd';
 }

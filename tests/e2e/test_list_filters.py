@@ -145,3 +145,38 @@ def test_jobs_search_matches_job_names(authed_page: Page, base_url: str) -> None
     page.locator("#jobsFilterEmptyAction").click()
     expect(page.locator("#jobsSearchInput")).to_have_value("")
     expect(page.locator("#jobsFilterEmpty")).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_search_fields_show_exactly_one_clear_control(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1554: the Jobs field had its own ✕ button beside the engine's native
+    one once text was typed. Every ``type="search"`` filter now relies on the
+    native clear alone: no filter wraps a clear button of its own, and nothing
+    hides the engine's cancel button."""
+    page = authed_page
+    _mock(page)
+    page.route(
+        re.compile(r".*/api/jobs/runs/search.*"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps({"matches": []})),
+    )
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabJobs").click()
+    _open_all(page)
+    page.locator("#jobsSearchInput").fill("man")
+    expect(page.locator("#jobsList li.job-row[data-id='mango']")).to_be_visible(timeout=5_000)
+
+    own_clear = page.locator("label:has(> input[type='search']) button").filter(
+        has=page.locator("use[href='#i-x']"))
+    expect(own_clear.filter(visible=True)).to_have_count(0)
+    expect(page.locator("#jobsSearchClear")).to_have_count(0)
+
+    hidden = page.evaluate(
+        """() => [...document.querySelectorAll('input[type="search"]')]
+            .filter((el) => getComputedStyle(el, '::-webkit-search-cancel-button')
+                .display === 'none')
+            .map((el) => el.id)"""
+    )
+    assert hidden == [], f"native search clear hidden on: {hidden}"

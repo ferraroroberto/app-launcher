@@ -21,6 +21,8 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, Response, expect
 
+from tests.e2e.conftest import BUILD_READOUT_MS
+
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 TAB_ORDER = [
@@ -209,7 +211,7 @@ def test_primary_nav_is_responsive_and_accessible(
         _assert_iphone_viewport_active(authed_page)
         _assert_index_cache_control(authed_page, index_response)
     expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
+        "Build:", timeout=BUILD_READOUT_MS
     )
 
     tabs = authed_page.locator("nav.tabs")

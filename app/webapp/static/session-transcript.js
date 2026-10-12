@@ -311,9 +311,9 @@ export function meta(label, ts) {
   return el;
 }
 
-export function pre(text, truncated) {
+export function pre(text, truncated, className) {
   const el = document.createElement('pre');
-  el.className = 'tr-pre';
+  el.className = className || 'tr-pre';
   el.textContent = text || '';
   linkify(el);
   if (truncated) {
@@ -369,9 +369,123 @@ function deltaEl(added, removed, className) {
   return el;
 }
 
-function term(el) {
-  el.classList.add('tr-term');
+// --- an opened step (#1532) ----------------------------------------------
+//
+// A card on the code-listing frame: a small header (the tool, the file as
+// "folder / name", a recorded exit status), then the call's input and its
+// output as separate blocks. A command reads `$ command` with light shell
+// highlighting. Escape-first: the command is cut into tokens and every token
+// is a text node or a span's textContent, never markup, so a command holding
+// `<script>` reads as exactly that.
+
+// One token per match, in order, and every character lands in one: the last
+// alternative takes whatever the others don't, so the tokens always rejoin
+// to the command.
+const SHELL_TOKEN_RE = /\s+|'[^']*'?|"(?:\\.|[^"\\])*"?|\d*>>?(?:&\d+)?|&&|\|\||\$\(|[|;&<()]|\$\{[^}]*\}?|\$(?:env:)?\w+|[^\s'"|;&<>()$]+|[\s\S]/g;
+// After these the next word is a command again.
+const SHELL_CMD_AFTER = new Set(['&&', '||', '|', ';', '&', '$(', '(']);
+
+function shellTokens(command) {
+  const out = [];
+  let expectCmd = true;
+  const re = new RegExp(SHELL_TOKEN_RE.source, 'g');
+  let m;
+  while ((m = re.exec(command))) {
+    const t = m[0];
+    let kind = '';
+    if (/^\s/.test(t)) {
+      if (t.indexOf('\n') !== -1) expectCmd = true;
+    } else if (t.charAt(0) === '\'' || t.charAt(0) === '"') {
+      kind = 'str';
+      expectCmd = false;
+    } else if (SHELL_CMD_AFTER.has(t)) {
+      kind = 'op';
+      expectCmd = true;
+    } else if (/^\d*>|^[<)]$/.test(t)) {
+      kind = 'op';
+    } else if (t.charAt(0) === '$' && t.length > 1) {
+      kind = 'var';
+      expectCmd = false;
+    } else if (expectCmd && !/^\w+=/.test(t)) {
+      kind = 'cmd';
+      expectCmd = false;
+    } else if (t.charAt(0) === '-' && t.length > 1) {
+      kind = 'flag';
+    }
+    out.push([kind, t]);
+  }
+  return out;
+}
+
+function cmdBlock(command) {
+  const el = document.createElement('pre');
+  el.className = 'tr-cmd';
+  const prompt = document.createElement('span');
+  prompt.className = 'tr-cmd-prompt';
+  prompt.setAttribute('aria-hidden', 'true');
+  prompt.textContent = '$ ';
+  const text = document.createElement('span');
+  text.className = 'tr-cmd-text';
+  shellTokens(command).forEach(function (tok) {
+    if (!tok[0]) {
+      text.append(tok[1]);
+      return;
+    }
+    const span = document.createElement('span');
+    span.className = 'sh-' + tok[0];
+    span.textContent = tok[1];
+    text.appendChild(span);
+  });
+  el.append(prompt, text);
   return el;
+}
+
+// Claude opens a failed command's output with "Exit code N" (every failed
+// Bash result on the dev box did); no other harness records one. The code
+// moves to the header, where it reads quietly, instead of leading the output.
+const EXIT_LINE_RE = /^Exit code (\d+)[ \t]*(?:\r?\n|$)/;
+
+function stepCard(e) {
+  const a = e.action;
+  const ran = !!(a && a.verb === 'ran');
+  const card = document.createElement('div');
+  card.className = 'tr-cmd-card';
+  const head = document.createElement('div');
+  head.className = 'tr-cmd-head';
+  const tool = document.createElement('span');
+  tool.className = 'tr-cmd-tool';
+  tool.textContent = e.name || 'tool';
+  head.appendChild(tool);
+  if (a && a.path) {
+    // "folder / name" (#1476), never the whole absolute path; that stays on hover.
+    const f = fileParts(a.path);
+    const where = document.createElement('span');
+    where.className = 'tr-cmd-path';
+    where.title = a.path;
+    where.textContent = f.dir ? f.dir + ' / ' + f.base : f.base;
+    head.appendChild(where);
+  }
+  let result = e.result;
+  const exit = ran && e.error === true && result != null ? EXIT_LINE_RE.exec(result) : null;
+  if (exit) {
+    result = result.slice(exit[0].length);
+    const code = document.createElement('span');
+    code.className = 'tr-cmd-exit';
+    code.textContent = 'exit ' + exit[1];
+    head.appendChild(code);
+  }
+  card.appendChild(head);
+  if (ran) card.appendChild(cmdBlock(a.command));
+  else if (!(a && a.path) && e.summary) card.appendChild(pre(e.summary, false, 'tr-cmd tr-cmd-plain'));
+  if (result != null) {
+    card.appendChild(pre(result, e.result_truncated, 'tr-out'));
+  } else {
+    const none = document.createElement('div');
+    none.className = 'tr-trunc tr-out-none';
+    none.textContent = 'no result on this page';
+    card.appendChild(none);
+  }
+  return card;
 }
 
 // --- image thumbnails (#1265) ---------------------------------------------
@@ -418,9 +532,12 @@ async function loadThumb(btn) {
   btn.disabled = false;
 }
 
-function observeThumb(btn) {
+// Run `load(el)` once `el` scrolls near the viewport: a thumbnail's bytes, or
+// a sent file's (#1530).
+function observeLazy(el, load) {
+  el._trLoad = load;
   if (!('IntersectionObserver' in window)) {
-    loadThumb(btn);
+    load(el);
     return;
   }
   if (!thumbObserver) {
@@ -428,11 +545,11 @@ function observeThumb(btn) {
       seen.forEach(function (hit) {
         if (!hit.isIntersecting) return;
         thumbObserver.unobserve(hit.target);
-        loadThumb(hit.target);
+        hit.target._trLoad(hit.target);
       });
     }, { rootMargin: '200px' });
   }
-  thumbObserver.observe(btn);
+  thumbObserver.observe(el);
 }
 
 // Small lazy thumbnails for an entry's images; a tap opens the full size in
@@ -459,7 +576,7 @@ function thumbs(refs) {
       if (img.src) openImageLightbox(img.src, img.alt);
     });
     wrap.appendChild(btn);
-    observeThumb(btn);
+    observeLazy(btn, loadThumb);
   });
   return wrap;
 }
@@ -467,6 +584,255 @@ function thumbs(refs) {
 function dropThumbs() {
   thumbUrls.forEach(function (objectUrl) { URL.revokeObjectURL(objectUrl); });
   thumbUrls.clear();
+  fileBlobs.forEach(function (got) { URL.revokeObjectURL(got.objectUrl); });
+  fileBlobs.clear();
+}
+
+// --- files the agent sent (#1530) -------------------------------------------
+//
+// Two sources, one card. An outbox entry (any harness: the agent posted the
+// file to its session's outbox, and the transcript responses carry the list)
+// becomes a `{kind: 'file'}` entry merged into the conversation by time; a
+// Claude SendUserFile call is a tool call with `sent_files` refs. Either way
+// the bytes come from a passkey-gated route, fetched like a thumbnail once
+// the card scrolls near, and the card shows an image or a PDF inline, a text
+// file's opening lines, or the server's reason for refusing it. Every name
+// and caption goes in as text, never markup.
+
+const fileBlobs = new Map();
+const FILE_PREVIEW_CHARS = 3000;
+
+function sessionPath(sid) {
+  return '/api/claude-code/sessions/' + encodeURIComponent(sid);
+}
+
+function sentFileUrl(sid, ref) {
+  return sessionPath(sid) + '/transcript/file?offset=' + ref.offset + '&n=' + ref.n;
+}
+
+function outboxFileUrl(sid, id) {
+  return sessionPath(sid) + '/outbox/' + encodeURIComponent(id);
+}
+
+function isSentFile(e) {
+  return e.kind === 'file' ||
+    (e.kind === 'tool_call' && !e.sidechain && Array.isArray(e.sent_files) && e.sent_files.length > 0);
+}
+
+// The type a card's object URL carries, from the kind the card was built for
+// rather than the response header: the Open link and the PDF frame are
+// same-origin blob URLs that keep none of the route's nosniff/sandbox
+// headers, so nothing the server sends may turn one into a page.
+function blobType(kind, served) {
+  if (kind === 'image') return /^image\/(png|jpeg|gif|webp)$/.test(served) ? served : 'application/octet-stream';
+  if (kind === 'pdf') return 'application/pdf';
+  return 'text/plain;charset=utf-8';
+}
+
+// The bytes behind a card, once per URL while this session's Chat is open.
+// Throws an Error whose message is the server's own reason for a refusal.
+async function fetchFileBlob(sid, url, kind) {
+  const got = fileBlobs.get(url);
+  if (got) return got;
+  const tt = await ensureTerminalToken();
+  const res = await api(url, { headers: authHeaders({ terminalToken: tt }) });
+  if (!res.ok) {
+    let message = 'couldn’t load it (status ' + res.status + ')';
+    try {
+      const body = await res.json();
+      if (body && body.detail && body.detail.message) message = body.detail.message;
+    } catch (_exc) { /* not JSON: keep the status */ }
+    throw new Error(message);
+  }
+  const raw = await res.blob();
+  const blob = new Blob([raw], { type: blobType(kind, raw.type) });
+  const entry = { blob: blob, objectUrl: URL.createObjectURL(blob) };
+  // A view that closed meanwhile has already dropped its URLs.
+  if (!view || view.session.session_id !== sid) {
+    URL.revokeObjectURL(entry.objectUrl);
+    throw new Error('the chat closed');
+  }
+  fileBlobs.set(url, entry);
+  return entry;
+}
+
+function fmtBytes(n) {
+  if (typeof n !== 'number') return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (Math.round(n / (1024 * 102.4)) / 10) + ' MB';
+}
+
+function fileNote(card, text) {
+  const note = document.createElement('div');
+  note.className = 'tr-file-note';
+  note.textContent = text;
+  card.appendChild(note);
+}
+
+async function loadFileCard(card) {
+  let got;
+  try {
+    got = await fetchFileBlob(card.dataset.sid, card._trUrl, card.dataset.kind);
+  } catch (exc) {
+    if (!card.isConnected) return;
+    card.classList.add('tr-file-failed');
+    fileNote(card, 'Not shown: ' + exc.message);
+    return;
+  }
+  if (!card.isConnected) return;
+  const open = card.querySelector('.tr-file-open');
+  open.href = got.objectUrl;
+  open.hidden = false;
+  const kind = card.dataset.kind;
+  const name = card._trName;
+  if (kind === 'image') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tr-file-image';
+    btn.setAttribute('aria-label', 'Open ' + name + ' full size');
+    const img = document.createElement('img');
+    img.alt = name;
+    img.src = got.objectUrl;
+    btn.appendChild(img);
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openImageLightbox(got.objectUrl, name);
+    });
+    card.appendChild(btn);
+  } else if (kind === 'pdf') {
+    const frame = document.createElement('iframe');
+    frame.className = 'tr-file-pdf';
+    frame.title = name;
+    frame.src = got.objectUrl;
+    card.appendChild(frame);
+  } else {
+    const text = await got.blob.text();
+    if (!card.isConnected) return;
+    const cut = text.length > FILE_PREVIEW_CHARS;
+    const preview = document.createElement('pre');
+    preview.className = 'tr-file-preview';
+    preview.textContent = cut ? text.slice(0, FILE_PREVIEW_CHARS) : text;
+    card.appendChild(preview);
+    if (cut) fileNote(card, 'Preview cut short — Open shows the whole file');
+  }
+}
+
+// One file's card: its name, size and an Open link (live once the bytes are
+// in), then the content. A null `kind` is a type the server will refuse; the
+// card still asks, so it shows the server's own reason. No `url` (the Life OS
+// viewer, which has no session to ask) leaves the head alone.
+function fileCard(name, kind, size, url) {
+  const card = document.createElement('div');
+  card.className = 'tr-file-card';
+  card.dataset.kind = kind || '';
+  card._trName = name;
+  card._trUrl = url;
+  const head = document.createElement('div');
+  head.className = 'tr-file-head';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tr-file-name';
+  nameEl.textContent = name;
+  nameEl.title = name;
+  head.appendChild(nameEl);
+  const sizeText = fmtBytes(size);
+  if (sizeText) {
+    const sizeEl = document.createElement('span');
+    sizeEl.className = 'tr-file-size';
+    sizeEl.textContent = sizeText;
+    head.appendChild(sizeEl);
+  }
+  const open = document.createElement('a');
+  open.className = 'tr-file-open';
+  open.textContent = 'Open';
+  open.target = '_blank';
+  open.rel = 'noopener';
+  open.hidden = true;
+  head.appendChild(open);
+  card.appendChild(head);
+  if (view && url) {
+    card.dataset.sid = view.session.session_id;
+    observeLazy(card, loadFileCard);
+  }
+  return card;
+}
+
+// The turn part for one send: the caption, then a card per file.
+function renderSentFiles(e) {
+  const li = document.createElement('li');
+  li.className = 'tr-file-item';
+  const sid = view ? view.session.session_id : null;
+  const files = e.kind === 'file'
+    ? [{ name: e.file.name, kind: e.file.kind, size: e.file.size, url: sid && outboxFileUrl(sid, e.file.id) }]
+    : e.sent_files.map(function (ref) {
+      return { name: ref.name, kind: ref.kind, size: null, url: sid && sentFileUrl(sid, ref) };
+    });
+  const caption = e.kind === 'file' ? e.file.caption : e.caption;
+  if (caption) {
+    const cap = document.createElement('div');
+    cap.className = 'tr-file-caption';
+    cap.textContent = caption;
+    li.appendChild(cap);
+  }
+  files.forEach(function (f) {
+    li.appendChild(fileCard(f.name || 'file', f.kind || null, f.size, f.url || null));
+  });
+  return li;
+}
+
+function entryTime(e) {
+  if (!e || e.timestamp == null) return null;
+  const t = new Date(e.timestamp).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+// The earliest time a set of entries carries (-Infinity for none), so an
+// outbox file older than everything loaded waits for an older page.
+function oldestTime(entries) {
+  let oldest = Infinity;
+  entries.forEach(function (e) {
+    const t = entryTime(e);
+    if (t != null && t < oldest) oldest = t;
+  });
+  return oldest === Infinity ? -Infinity : oldest;
+}
+
+// `entries` with `files` slotted in by time: each file goes before the first
+// entry stamped after it; entries with no usable time keep their place.
+function mergeFiles(entries, files) {
+  if (!files.length) return entries;
+  const pending = files.slice().sort(function (a, b) { return entryTime(a) - entryTime(b); });
+  const out = [];
+  entries.forEach(function (e) {
+    const t = entryTime(e);
+    while (pending.length && t != null && entryTime(pending[0]) < t) out.push(pending.shift());
+    out.push(e);
+  });
+  return out.concat(pending);
+}
+
+// The files of a transcript response that aren't on screen yet: those at or
+// after `since` to render now, the rest held back for an older page.
+function takeOutbox(body, since) {
+  if (!view || body.outbox_rev === undefined) return [];
+  view.outboxRev = body.outbox_rev;
+  const now = [];
+  (body.outbox || []).forEach(function (f) {
+    if (!f || !f.id || view.outboxShown.has(f.id)) return;
+    view.outboxShown.add(f.id);
+    const e = { kind: 'file', timestamp: f.timestamp, file: f };
+    const t = entryTime(e);
+    if (t == null || t >= since) now.push(e);
+    else view.outboxHeld.push(e);
+  });
+  return now;
+}
+
+// The held files an older page now reaches back to.
+function releaseHeld(since) {
+  const held = view.outboxHeld || [];
+  view.outboxHeld = held.filter(function (f) { return entryTime(f) < since; });
+  return held.filter(function (f) { return entryTime(f) >= since; });
 }
 
 // --- links open in the PC's browser (#1274) --------------------------------
@@ -671,7 +1037,7 @@ function renderPrompt(e) {
   const d = document.createElement('details');
   d.className = 'tr-turn tr-user';
   d.open = true;
-  tagKey(d, e);
+  tagKey(d, e, 'prompt');
   const s = document.createElement('summary');
   s.className = 'tr-bubble tr-prompt-folded';
   const hint = document.createElement('span');
@@ -750,7 +1116,7 @@ function renderAgentTurn(first, agent, edited) {
   const d = document.createElement('details');
   d.className = 'tr-turn tr-assistant';
   d.open = true;
-  tagKey(d, first);
+  tagKey(d, first, 'turn');
   const s = document.createElement('summary');
   s.className = 'tr-turn-summary';
   const mark = document.createElement('span');
@@ -795,7 +1161,7 @@ function syncTurnHead(li) {
   li._trWhen.textContent = time ? '· ' + time : '';
   let hint = replies.length ? textHint(replies[0]) : '';
   if (!hint) {
-    const title = li._trParts.querySelector('.tr-step-label');
+    const title = li._trParts.querySelector('.tr-file-name, .tr-step-label');
     hint = title ? title.textContent : '';
   }
   li._trHint.textContent = hint;
@@ -808,7 +1174,7 @@ function syncTurnHead(li) {
 // keeps it: the work still has a trace (#1477).
 function markSilent(li) {
   const quiet = !turnReplies(li).length && !li._trEdited &&
-    !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item');
+    !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item, :scope > .tr-file-item');
   li.classList.toggle('tr-turn-silent', quiet);
 }
 
@@ -1082,7 +1448,7 @@ function joinOlderTurn(frag) {
   while (older._trParts.firstChild) moving.appendChild(older._trParts.firstChild);
   newer._trParts.insertBefore(moving, newer._trParts.firstChild);
   newer._trFirst = older._trFirst;
-  tagKey(newer.querySelector('.tr-turn'), older._trFirst);
+  tagKey(newer.querySelector('.tr-turn'), older._trFirst, 'turn');
   older.remove();
   syncTurnHead(newer);
 }
@@ -1219,6 +1585,66 @@ function renderStripLine() {
     window.clearInterval(activityTimer);
     activityTimer = null;
   }
+  syncLiveStep();
+}
+
+// --- the step in progress (#1532) ------------------------------------------
+//
+// While the agent is working and its newest tool call has no result yet, that
+// call's step line counts up from the call's own timestamp in place of the
+// run's duration. The result landing, the turn ending or the pane leaving
+// Chat puts the duration back. An activity the server could not establish
+// (null) never ticks: a counter that never stops would be a guess.
+
+let stepTimer = null;
+
+// The newest tool call, when it is in progress; else null.
+function liveStep() {
+  if (!view || !view.entries || !liveAllowed() || !(view.activity && view.activity.working)) return null;
+  for (let i = view.entries.length - 1; i >= 0; i -= 1) {
+    const e = view.entries[i];
+    if (e.kind !== 'tool_call') continue;
+    const since = Date.parse(e.timestamp);
+    return e.result == null && e.error !== true && !Number.isNaN(since) ? e : null;
+  }
+  return null;
+}
+
+function liveStepEl(e) {
+  const el = document.createElement('span');
+  el.className = 'tr-step-live';
+  el._trEntry = e;
+  el.innerHTML = icon('timer', 'tr-step-live-icon');
+  const text = document.createElement('span');
+  text.className = 'tr-step-live-text';
+  text.textContent = fmtElapsed(Date.now() - Date.parse(e.timestamp));
+  el.appendChild(text);
+  return el;
+}
+
+// Put the counter on the step in progress, take it off one that no longer
+// is, and redraw it; the tick lives exactly as long as a counter shows.
+function syncLiveStep() {
+  const list = els.transcriptList;
+  const live = liveStep();
+  let shown = list ? list.querySelector('.tr-step-live') : null;
+  if (list && (shown ? shown._trEntry : null) !== live) {
+    const runs = Array.prototype.filter.call(list.querySelectorAll('.tr-run'), function (li) {
+      return (shown && li.contains(shown)) || (live && (li._trRun || []).indexOf(live) !== -1);
+    });
+    runs.forEach(syncRunSummary);
+    shown = list.querySelector('.tr-step-live');
+  }
+  if (shown) {
+    shown.querySelector('.tr-step-live-text').textContent =
+      fmtElapsed(Date.now() - Date.parse(shown._trEntry.timestamp));
+  }
+  if (shown && !stepTimer) {
+    stepTimer = window.setInterval(syncLiveStep, ACTIVITY_TICK_MS);
+  } else if (!shown && stepTimer) {
+    window.clearInterval(stepTimer);
+    stepTimer = null;
+  }
 }
 
 // --- per-step diffs (#1349) -------------------------------------------------
@@ -1305,7 +1731,7 @@ function fullDiffControl(wrap, diff) {
 function renderItem(e, toolErrors) {
   const d = document.createElement('details');
   d.className = 'tr-item tr-item-' + e.kind;
-  tagKey(d, e);
+  tagKey(d, e, 'item');
   // A failed call is marked on the row itself, so it reads as failed while
   // the group is still folded open at one item — never as a banner over the
   // whole turn (#1020).
@@ -1321,8 +1747,14 @@ function renderItem(e, toolErrors) {
     // Plain words where the server knows the tool (#1266): the command's
     // first line, or the file's name with its folder as the hint (#1476)
     // and, for an edit, its +N −M.
+    // A call that carries its own description (#1532) is named by it, its
+    // command the hint.
     const a = e.action;
-    if (a && a.verb === 'ran') {
+    if (a && a.verb === 'ran' && described(e)) {
+      name.textContent = e.label;
+      hint.textContent = firstLine(a.command, 80);
+      hint.classList.add('tr-item-cmd');
+    } else if (a && a.verb === 'ran') {
       name.textContent = firstLine(a.command, 80);
       name.classList.add('tr-item-cmd');
     } else if (a && (a.verb === 'edited' || a.verb === 'wrote' || a.verb === 'read')) {
@@ -1333,7 +1765,7 @@ function renderItem(e, toolErrors) {
       if (a.verb !== 'read' && e.error !== true) delta = deltaEl(a.added, a.removed, 'tr-item-delta');
     } else {
       name.textContent = e.name || 'tool';
-      hint.textContent = e.summary || '';
+      hint.textContent = e.label || e.summary || '';
     }
   } else if (e.kind === 'tool_result') {
     name.textContent = 'result';
@@ -1362,26 +1794,16 @@ function renderItem(e, toolErrors) {
   const body = document.createElement('div');
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
-    // A command opens as a terminal: `$ command`, then its output (#1266).
     // An edit opens as its diff (#1349) and nothing else: the tool's own
     // "file has been updated" line was a second box saying less (#1476).
-    const ran = e.action && e.action.verb === 'ran';
+    // Anything else opens as a card: header, input, output (#1532).
     const diff = stepDiff(e);
-    if (ran) body.appendChild(term(pre('$ ' + e.action.command, false)));
-    else if (diff) body.appendChild(diff);
-    else if (e.summary) body.appendChild(pre(e.summary, false));
     if (diff) {
-      // The diff is the result.
-    } else if (e.result != null) {
-      const out = pre(e.result, e.result_truncated);
-      body.appendChild(ran ? term(out) : out);
-      const shots = thumbs(e.result_images);
-      if (shots) body.appendChild(shots);
+      body.appendChild(diff);
     } else {
-      const none = document.createElement('div');
-      none.className = 'tr-trunc';
-      none.textContent = 'no result on this page';
-      body.appendChild(none);
+      body.appendChild(stepCard(e));
+      const shots = e.result != null ? thumbs(e.result_images) : null;
+      if (shots) body.appendChild(shots);
     }
   } else {
     body.appendChild(pre(e.text, e.truncated));
@@ -1459,16 +1881,58 @@ function runSummary(run) {
   return { parts: parts, total: total };
 }
 
-// The label: verbs muted, what they acted on in the text colour.
-function fillStepLabel(el, parts) {
+// Whether a call carries its own description (#1532): the server's `label`
+// is the description when the harness recorded one, else the summary.
+function described(e) {
+  return !!e.label && e.label !== e.summary;
+}
+
+// One step in plain words (#1532): its description, else what it did
+// ("Ran pytest -q", "Edited main.js"), else the tool and its summary.
+function stepText(e) {
+  if (described(e)) return e.label;
+  const a = e.action;
+  if (a && a.verb === 'ran') return firstLine(a.command, 80);
+  if (a && a.path && VERB_ICON[a.verb]) {
+    return a.verb.charAt(0).toUpperCase() + a.verb.slice(1) + ' ' + baseName(a.path);
+  }
+  const what = firstLine(e.label || e.summary, 80);
+  return (e.name || 'tool') + (what ? ' ' + what : '');
+}
+
+// The newest tool call a run holds, or null.
+function latestCall(run) {
+  for (let i = run.length - 1; i >= 0; i -= 1) {
+    if (run[i].kind === 'tool_call') return run[i];
+  }
+  return null;
+}
+
+// The label (#1532): the newest step in plain words, then, for a run of
+// more than one entry, the counts in muted secondary text. A run with no
+// tool call keeps the counts alone. Counts: verbs muted, what they acted on
+// in the text colour while they lead the line.
+function fillStepLabel(el, parts, latest) {
   el.textContent = '';
+  let counts = el;
+  if (latest) {
+    const now = document.createElement('span');
+    now.className = 'tr-step-now';
+    now.textContent = stepText(latest);
+    el.appendChild(now);
+    if (!parts.length) return;
+    counts = document.createElement('span');
+    counts.className = 'tr-step-counts';
+    counts.append(' · ');
+    el.appendChild(counts);
+  }
   parts.forEach(function (p, i) {
-    if (i) el.append(', ');
+    if (i) counts.append(', ');
     const verb = i === 0 ? p[0].charAt(0).toUpperCase() + p[0].slice(1) : p[0];
-    if (verb) el.append(verb + ' ');
+    if (verb) counts.append(verb + ' ');
     const what = document.createElement('b');
     what.textContent = p[1];
-    el.appendChild(what);
+    counts.appendChild(what);
   });
 }
 
@@ -1507,7 +1971,7 @@ function renderRun(run, toolErrors) {
   li._trRun = run.slice();
   const d = document.createElement('details');
   d.className = 'tr-step';
-  tagKey(d, run[0]);
+  tagKey(d, run[0], 'step');
   const s = document.createElement('summary');
   s.className = 'tr-step-line';
   s.innerHTML = icon('chevron-right', 'tr-step-chevron');
@@ -1530,9 +1994,14 @@ function renderRun(run, toolErrors) {
 // entry it renders, so an open card can be found again after the region is
 // rebuilt. Offsets are stable identities: an entry keeps the offset of the
 // line it started at for as long as that file is not rewritten.
+//
+// The key is namespaced by what kind of disclosure it is (#1531): a turn that
+// opens with a tool call, its step line and the call's own item all render
+// the same entry, so a bare offset let a folded step line's state be restored
+// onto the open turn and a new reply arrived folded.
 
-export function tagKey(el, entry) {
-  if (entry && entry.offset != null) el.dataset.trKey = String(entry.offset);
+export function tagKey(el, entry, kind) {
+  if (entry && entry.offset != null) el.dataset.trKey = kind + ':' + entry.offset;
 }
 
 // Open/closed state of every keyed disclosure inside `nodes`, so a rebuild
@@ -1567,8 +2036,9 @@ function syncRunSummary(li) {
   const run = li._trRun || [];
   const line = li.querySelector('.tr-step-line');
   const sum = runSummary(run);
-  fillStepLabel(line.querySelector('.tr-step-label'), sum.parts);
-  line.querySelectorAll(':scope > .tr-step-delta, :scope > .tr-fail-count, :scope > .tr-step-dur')
+  const latest = latestCall(run);
+  fillStepLabel(line.querySelector('.tr-step-label'), latest && run.length < 2 ? [] : sum.parts, latest);
+  line.querySelectorAll(':scope > .tr-step-delta, :scope > .tr-fail-count, :scope > .tr-step-dur, :scope > .tr-step-live')
     .forEach(function (n) { n.remove(); });
   if (sum.total) line.appendChild(deltaEl(sum.total.added, sum.total.removed, 'tr-step-delta'));
   const failed = failedCount(run);
@@ -1577,6 +2047,12 @@ function syncRunSummary(li) {
     chip.className = 'tr-fail-count';
     chip.textContent = failed + ' failed';
     line.appendChild(chip);
+  }
+  // The step in progress counts up in the duration's place (#1532).
+  const live = liveStep();
+  if (live && run.indexOf(live) !== -1) {
+    line.appendChild(liveStepEl(live));
+    return;
   }
   const span = runSpan(li);
   if (span) {
@@ -1630,6 +2106,8 @@ function appendEntries(container, entries, opts) {
       addPart(turn, renderQuestion(e, opts.toolErrors, opts.answering));
     } else if (isPlan(e)) {
       addPart(turn, renderPlan(e, opts.toolErrors, opts.answering));
+    } else if (isSentFile(e)) {
+      addPart(turn, renderSentFiles(e));
     } else {
       const last = turn._trParts.lastElementChild;
       if (last && last.classList.contains('tr-run') && (!opts.pending || ownRuns.has(last))) {
@@ -1704,11 +2182,11 @@ export function atBottom() {
 // Apply one tick's worth of new content. The reader's position is the point:
 // following the conversation keeps following it, and having scrolled up into
 // history stays exactly put.
-function applyLive(settled, pending, toolErrors) {
+function applyLive(settled, pending, toolErrors, files) {
   const stick = atBottom();
   const open = clearPending();
-  if (settled.length) {
-    appendSettled(settled, toolErrors);
+  if (settled.length || (files && files.length)) {
+    appendSettled(mergeFiles(settled, files || []), toolErrors);
     restoreOpen(els.transcriptList, open);
     view.settled = view.settled.concat(settled);
   }
@@ -1716,6 +2194,7 @@ function applyLive(settled, pending, toolErrors) {
   view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
   view.entries = view.settled.concat(view.pending);
   syncDecisionCards();
+  syncLiveStep();
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
@@ -1838,6 +2317,7 @@ async function forwardRead(target, manual) {
   pollPicker();
   const q = new URLSearchParams({ after: String(target.tail) });
   if (target.size != null) q.set('size', String(target.size));
+  if (target.outboxRev != null) q.set('ob', String(target.outboxRev));
   let body;
   try {
     body = await jsonApi(
@@ -1881,12 +2361,16 @@ async function forwardRead(target, manual) {
     target.activity = body.activity;
     renderStripLine();
   }
+  // A file sent since the last read is the newest thing there is: it lands
+  // after whatever settled this tick, never back in time (#1530).
+  const files = takeOutbox(body, -Infinity);
   if (body.changed) {
     target.tail = body.tail;
     target.size = body.size;
-    applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors);
-  } else if (body.size != null) {
-    target.size = body.size;
+    applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors, files);
+  } else {
+    if (body.size != null) target.size = body.size;
+    if (files.length) applyLive([], target.pending || [], target.toolErrors, files);
   }
   syncFileChips();
   if (syncEditedCards() && stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
@@ -1929,6 +2413,9 @@ async function loadNewest() {
   view.ended = false;
   view.backoff = 0;
   view.reasonShown = false;
+  view.outboxRev = null;
+  view.outboxShown = new Set();
+  view.outboxHeld = [];
   showState('Loading…');
   let body;
   try {
@@ -1969,7 +2456,9 @@ async function loadNewest() {
   view.entries = entries.concat(pending);
   view.tail = body.tail != null ? body.tail : 0;
   view.size = body.size;
-  if (!view.entries.length && body.next_cursor == null) {
+  // Sent files (#1530) older than this page wait for the page that reaches them.
+  const files = takeOutbox(body, body.next_cursor == null ? -Infinity : oldestTime(all));
+  if (!view.entries.length && !files.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
     // Still live: an empty transcript is the normal state of a session that
     // has just started, and its first turn should appear on its own.
@@ -1981,11 +2470,12 @@ async function loadNewest() {
   // session — read from the newest page and reused when older pages are
   // prepended.
   view.toolErrors = body.tool_errors || 'reported';
-  appendSettled(entries, view.toolErrors);
+  appendSettled(mergeFiles(entries, files), view.toolErrors);
   view.pendingNodes = pending.length
     ? renderPending(pending, view.toolErrors, null)
     : [];
   syncDecisionCards();
+  syncLiveStep();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   syncFileChips();
@@ -2055,9 +2545,10 @@ async function loadOlder() {
     }
   }
   if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
-  if (older.length) {
+  const files = releaseHeld(cursor == null ? -Infinity : oldestTime(older));
+  if (older.length || files.length) {
     const frag = document.createDocumentFragment();
-    appendEntries(frag, older, chatOpts(toolErrors || view.toolErrors || 'reported', false));
+    appendEntries(frag, mergeFiles(older, files), chatOpts(toolErrors || view.toolErrors || 'reported', false));
     joinOlderTurn(frag);
     els.transcriptList.insertBefore(frag, els.transcriptList.firstChild);
     // Older entries join `view.entries` too, so a question on an older page

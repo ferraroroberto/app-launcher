@@ -11,7 +11,7 @@ the route, so each live (pid, port) is probed once. Without a
 from __future__ import annotations
 
 import asyncio
-import time
+import threading
 from dataclasses import replace
 
 import httpx
@@ -75,8 +75,18 @@ def test_probe_scan_leaves_the_event_loop_free(webapp_client, monkeypatch):
     monkeypatch.setattr(misc, "_LISTENER_SCHEMES", {})
     app.state.app_config = replace(app.state.app_config, tailnet_host="")
 
+    # Ordered by events, not a wall-clock budget (#1512): the scan holds until
+    # the test releases it, so on a loaded box /healthz either answers while
+    # the scan is provably still running or the test fails. On the loop, the
+    # scan would block it for its whole 5 s wait and finish before /healthz.
+    scan_started = threading.Event()
+    release = threading.Event()
+    scan_finished = threading.Event()
+
     def slow_scan():
-        time.sleep(1.0)
+        scan_started.set()
+        release.wait(5.0)
+        scan_finished.set()
         return _owners()
 
     monkeypatch.setattr(misc, "list_app_listeners", slow_scan)
@@ -84,16 +94,19 @@ def test_probe_scan_leaves_the_event_loop_free(webapp_client, monkeypatch):
     async def run():
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            started = time.perf_counter()
             probe = asyncio.create_task(client.get("/api/ports/probe"))
-            await asyncio.sleep(0.2)
+            for _ in range(500):
+                if scan_started.is_set():
+                    break
+                await asyncio.sleep(0.01)
             health = await client.get("/healthz")
-            health_at = time.perf_counter() - started
-            return health.status_code, health_at, (await probe).status_code
+            answered_mid_scan = scan_started.is_set() and not scan_finished.is_set()
+            release.set()
+            return health.status_code, answered_mid_scan, (await probe).status_code
 
-    health, health_at, probe_status = asyncio.run(run())
+    health, answered_mid_scan, probe_status = asyncio.run(run())
     assert health == 200 and probe_status == 200
-    assert health_at < 0.7, (
-        f"/healthz answered {health_at:.2f}s after the probe started, behind "
-        "its 1 s scan: the scan is blocking the event loop"
+    assert answered_mid_scan, (
+        "/healthz did not answer while the listener scan was still running: "
+        "the scan is blocking the event loop"
     )
