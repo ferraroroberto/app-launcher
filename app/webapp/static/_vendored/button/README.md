@@ -8,7 +8,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 - `.button-surface` — card-off fill at control height. Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
 - `.button-tint.danger` — the tint recipe restated on `--deficit`, text in `--danger-text`, for a destructive action.
 - Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
-- One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat card-off/line/muted trio, never opacity on a solid fill.
+- One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat control-fill/line/muted trio, never opacity on a solid fill. The disabled fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so a disabled button never reads as a black well on a dark card (fleet-config#1368, project-scaffolding#356).
 
 ## Files
 
@@ -64,7 +64,8 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | tint fill |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | tint border |
 | `--accent-border-strong` | `color-mix(in srgb, var(--accent) 28%, transparent)` | primary border |
-| `--card-off` | `#f6f8fa` | surface fill, disabled fill (all tiers) |
+| `--card-off` | `#f6f8fa` | surface fill |
+| `--input-bg` | `#f6f8fa` (dark `#21262d`) | disabled fill (all tiers); falls back to `var(--card-off)` if undefined |
 | `--line` | `#d1d9e0` | ghost/surface border, disabled border |
 | `--muted` | `#656d76` | ghost/surface text, disabled text |
 | `--deficit` | `#cf222e` | base the danger tint mixes from |
