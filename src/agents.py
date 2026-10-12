@@ -86,6 +86,14 @@ class Agent:
     session-host's remote input path; ``False`` means *not probed*, never
     *known broken* — a menu must not offer a dead end, so an unprobed
     agent simply gets no item until it is probed.
+
+    ``type_ahead`` records whether a CR typed while the agent is mid-turn was
+    empirically shown to *queue* the composer for the agent rather than be
+    lost (issue #1548: Claude Code v2.1.296 paints "Press up to edit queued
+    messages" and answers the message once the turn yields). The
+    session-host's deferred submit presses Enter at once for such an agent
+    instead of waiting for the turn to go quiet. ``False`` means *not
+    probed*, and keeps the wait-for-quiet watcher.
     """
 
     id: str
@@ -97,6 +105,7 @@ class Agent:
     native_name_flag: str = ""
     per_launch_model: bool = False
     console_input: bool = False
+    type_ahead: bool = False
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -106,6 +115,7 @@ AGENTS: Dict[str, Agent] = {
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
         native_name_flag="--name", per_launch_model=True, console_input=True,
+        type_ahead=True,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
@@ -290,6 +300,13 @@ def supports_console_input(agent_id: str) -> bool:
     """
     agent = SESSION_HOST_AGENTS.get(agent_id)
     return bool(agent is not None and agent.console_input)
+
+
+def supports_type_ahead(agent_id: str) -> bool:
+    """Whether a CR sent to a mid-turn ``agent_id`` queues its composer
+    (``Agent.type_ahead``, issue #1548). Unknown ids are ``False``."""
+    agent = SESSION_HOST_AGENTS.get(agent_id)
+    return bool(agent is not None and agent.type_ahead)
 
 
 def is_installed(agent_id: str) -> bool:
