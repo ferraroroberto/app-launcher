@@ -41,6 +41,9 @@ _OFF_SCALE = """
   document.querySelectorAll('svg.icon').forEach((el) => {
     const r = el.getBoundingClientRect();
     if (!r.width) return;   // not rendered (hidden tab, closed popover)
+    // A busy control's glyph is mid-spin (the Board's refresh, #1502): its
+    // rotated box is no size step.
+    if (el.closest('[aria-busy="true"]')) return;
     const w = Math.round(r.width * 100) / 100;
     const h = Math.round(r.height * 100) / 100;
     if (steps.includes(w) && steps.includes(h)) return;

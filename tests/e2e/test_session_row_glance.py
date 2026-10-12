@@ -88,12 +88,15 @@ def _mock(page: Page) -> None:
 # rebuild between reads can never mix two renders.
 _ROW_GEOMETRY = """el => {
   if (!el.isConnected) return null;
-  const tap = el.querySelector('.session-open, .board-card');
+  // Code's tap target is the row; the Board's action-row (#1502) is the
+  // <li>, whose 60px include the hairline above it.
+  const tap = el.querySelector('.session-open') || el;
   const r = tap.getBoundingClientRect();
-  const title = el.querySelector('.srow-title');
-  const meta = el.querySelector('.srow-meta');
+  // Code's session row, or the Board's action-row (#1502): same anatomy.
+  const title = el.querySelector('.srow-title, .action-row-title');
+  const meta = el.querySelector('.srow-meta, .action-row-meta');
   const line = (n) => parseFloat(getComputedStyle(n).lineHeight);
-  const chips = Array.from(el.querySelectorAll('.srow-meta .chip')).map(c => {
+  const chips = Array.from(el.querySelectorAll('.srow-meta .chip, .action-row-meta .chip')).map(c => {
     const b = c.getBoundingClientRect();
     return {text: c.textContent, inside: b.right <= r.right + 0.5,
             whole: c.scrollWidth <= c.clientWidth + 0.5};
@@ -162,9 +165,9 @@ def test_code_rows_and_board_cards_share_the_session_row(
     expect(stalled).to_have_text("stalled")
     expect(stalled).to_have_attribute("data-tone", "danger")
     # Status is plain meta: "repo · status · age"; stalled says it once, as the chip.
-    expect(card("b-wait").locator(".board-card-meta .srow-meta-text")).to_have_text(
+    expect(card("b-wait").locator(".board-card-meta")).to_have_text(
         "demo-garden · needs you · 5m")
-    expect(card("b-stalled").locator(".board-card-meta .srow-meta-text")).to_have_text(
+    expect(card("b-stalled").locator(".board-card-meta .action-row-meta-text")).to_have_text(
         "demo-garden · 5m")
     expect(card("b-wait").locator(".chip")).to_have_count(0)
     expect(card("b-idle").locator('.avatar-badge[data-badge="alive"]')).to_have_count(1)
