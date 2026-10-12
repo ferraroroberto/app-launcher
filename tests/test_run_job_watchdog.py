@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from types import SimpleNamespace
@@ -59,6 +60,64 @@ def _sleeper(seconds: float = 30.0) -> "subprocess.Popen[bytes]":
         stdin=subprocess.DEVNULL,
         creationflags=NO_WINDOW,
     )
+
+
+class _SteppedWatchdogClock:
+    """A fake clock plus a hand-cranked poll loop for :class:`sup.RunWatchdog`.
+
+    The watchdog's only real-time inputs are ``time.monotonic()`` and the
+    ``_stop.wait(interval)`` that paces its loop. This replaces both: the
+    module's ``time`` is swapped for a shim whose ``monotonic`` the test moves
+    by hand, and the watchdog's stop event parks the loop at each wait until
+    :meth:`tick` runs exactly one more iteration. Every tick therefore happens
+    at a moment the test chose, however loaded the machine is.
+    """
+
+    _TIMEOUT = 30.0
+
+    def __init__(self, monkeypatch) -> None:
+        self.now = 1000.0
+        self._parked = threading.Semaphore(0)
+        self._go = threading.Semaphore(0)
+        self._stopped = False
+        monkeypatch.setattr(
+            sup, "time", SimpleNamespace(monotonic=lambda: self.now)
+        )
+
+    def install(self, watchdog: "sup.RunWatchdog") -> None:
+        self._watchdog = watchdog
+        watchdog._stop = self
+
+    # --- the slice of threading.Event the watchdog loop uses -----------------
+    def wait(self, _timeout=None) -> bool:
+        self._parked.release()
+        assert self._go.acquire(timeout=self._TIMEOUT), "test never ticked the watchdog"
+        return self._stopped
+
+    def set(self) -> None:
+        self._stopped = True
+        self._go.release()
+
+    # --- test controls -------------------------------------------------------
+    def wait_until_parked(self) -> None:
+        """Block until the loop has reached its first wait."""
+        assert self._parked.acquire(timeout=self._TIMEOUT), "watchdog loop never started"
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+    def tick(self) -> None:
+        """Run one loop iteration and return once it is parked again."""
+        self._go.release()
+        deadline = time.monotonic() + self._TIMEOUT
+        while not self._parked.acquire(timeout=0.05):
+            if not self._watchdog._thread.is_alive():
+                return  # the tick fired (and ended) the watchdog; the caller asserts on it
+            assert time.monotonic() < deadline, "watchdog tick never finished"
+
+    def release(self) -> None:
+        """Let a still-parked loop exit (safe to call after it already has)."""
+        self.set()
 
 
 def _wait_for(predicate, timeout: float = 10.0) -> bool:
@@ -113,25 +172,36 @@ class TestRunWatchdog:
                 proc.kill()
             proc.wait(timeout=10)
 
-    def test_growing_output_never_trips_the_no_output_signal(self, tmp_path):
+    def test_growing_output_never_trips_the_no_output_signal(
+        self, tmp_path, monkeypatch
+    ):
+        """Driven by a stepped clock, not real time (#1511): the old version
+        wrote every 0.1 s against a 0.4 s threshold, so a CI runner that
+        starved the writer thread for 0.4 s tripped a *correct* watchdog."""
         log = tmp_path / "output.log"
         log.write_bytes(b"")
+        clock = _SteppedWatchdogClock(monkeypatch)
         proc = _sleeper()
         wd = sup.RunWatchdog(
             proc, log, max_runtime_seconds=None, no_output_seconds=0.4
         )
+        clock.install(wd)
         wd.start()
         try:
-            # Keep the file growing for comfortably longer than the
-            # threshold — a healthy chatty run must never be killed.
-            deadline = time.monotonic() + 1.5
-            while time.monotonic() < deadline:
+            clock.wait_until_parked()
+            # Keep the file growing for far longer than the threshold (3 s of
+            # watchdog time against 0.4 s) — a healthy chatty run must never
+            # be killed. Each step is one watchdog tick that has seen the
+            # growth, so no real-time scheduling decides the outcome.
+            for _ in range(30):
                 with log.open("ab") as fh:
                     fh.write(b"tick\n")
-                time.sleep(0.1)
-            assert not wd.fired
+                clock.advance(0.1)
+                clock.tick()
+                assert not wd.fired
             assert proc.poll() is None
         finally:
+            clock.release()
             wd.stop()
             proc.kill()
             proc.wait(timeout=10)
