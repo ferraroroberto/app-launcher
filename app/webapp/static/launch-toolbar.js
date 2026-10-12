@@ -54,6 +54,13 @@ function labelledSwitch(spec) {
   });
   sw.id = spec.id;
   sw.title = spec.title;
+  // A tap on the switch is handled by the switch alone. Its click handler
+  // rebuilds its insides, so a tap that landed on the knob (where the knob
+  // sits once it is on) leaves a detached target, and WebKit's <label> then
+  // reads the click as outside its control and clicks the switch again:
+  // two toggles, no change (#1503). Cancelling the click stops the label's
+  // re-dispatch; a tap on the word still reaches the switch through it.
+  sw.addEventListener('click', function (ev) { ev.preventDefault(); });
   wrap.appendChild(sw);
   return { wrap: wrap, sw: sw };
 }
