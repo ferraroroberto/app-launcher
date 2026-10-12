@@ -24,6 +24,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
     _with_placeholders,
@@ -150,7 +151,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         name=str(block.get("name") or "tool"),
                         summary=_tool_summary(block.get("input")),
                         result=None, result_truncated=False, sidechain=sidechain,
-                    ), _tool_action(str(block.get("name") or ""), block.get("input")))
+                    ), _tool_action(str(block.get("name") or ""), block.get("input")), _tool_description(block.get("input")))
                     if e["name"] == ASK_TOOL_NAME:
                         # The Chat pane's question card (#1149): the one tool
                         # whose structured input is forwarded, plus the id

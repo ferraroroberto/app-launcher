@@ -18,6 +18,7 @@ from src.transcript_flavors._shared import (
     _loads,
     _text_entry,
     _tool_action,
+    _tool_description,
     _tool_summary,
     _with_action,
 )
@@ -182,15 +183,14 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
                     continue
                 key = f"{offset}:{index}"
                 args = call.get("args")
+                unwrapped = {k: _agy_arg(v) for k, v in args.items()} if isinstance(args, dict) else args
                 entry = _with_action(_entry(
                     "tool_call", offset, ts,
                     name=str(_agy_arg(call.get("name")) or "tool"),
                     summary=_agy_tool_summary(args),
                     result=None, result_truncated=False, sidechain=False,
-                ), _tool_action(
-                    str(_agy_arg(call.get("name")) or ""),
-                    {k: _agy_arg(v) for k, v in args.items()} if isinstance(args, dict) else args,
-                ))
+                ), _tool_action(str(_agy_arg(call.get("name")) or ""), unwrapped),
+                    _tool_description(unwrapped, "toolSummary"))
                 entries.append(entry)
                 open_calls[key] = entry
                 unanswered.append(key)

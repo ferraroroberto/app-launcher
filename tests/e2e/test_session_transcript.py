@@ -455,11 +455,12 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     _menu_item(authed_page, "Show steps: tool calls and system entries").click()
     expect(menu).to_be_hidden()
     expect(group).to_be_visible()
-    # The run reads in plain words (#1266): what ran, what was edited, what
-    # was read; entries without an action are still counted. The edits'
-    # +N −M is its own element after the label (#1476).
-    expect(group.locator(".tr-step-label")).to_have_text(
-        "Edited test_git_status_flags.py, ran a command, read conftest.py, "
+    # The run reads as its newest step (#1532), then in plain words (#1266):
+    # what ran, what was edited, what was read; entries without an action are
+    # still counted. The edits' +N −M is its own element after the label (#1476).
+    expect(group.locator(".tr-step-now")).to_have_text("Read conftest.py")
+    expect(group.locator(".tr-step-counts")).to_have_text(
+        " · Edited test_git_status_flags.py, ran a command, read conftest.py, "
         "1 thinking, 1 system")
     expect(group.locator(".tr-step-delta")).to_have_text("+4 \u22120")
     items = group.locator(".tr-item")
@@ -471,17 +472,18 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(group).to_have_js_property("open", True)
     expect(items.first).to_be_visible()
     # Each item is still closed until tapped; the second one is the Bash call,
-    # labelled by its command's first line. Opened, it reads as a terminal:
-    # the whole command, then the output below it.
+    # labelled by its command's first line. Opened, it is a card (#1532): the
+    # whole command, then the output in a block of its own below it.
     bash = items.nth(1)
     expect(bash.locator(".tr-item-name")).to_have_text("pytest tests/e2e -q")
-    expect(bash.locator(".tr-pre.tr-term")).to_have_count(2)
+    expect(bash.locator(".tr-cmd")).to_have_count(1)
+    expect(bash.locator(".tr-out")).to_have_count(1)
     expect(bash).to_have_js_property("open", False)
     bash.locator("summary").click()
     expect(bash).to_have_js_property("open", True)
-    expect(bash.locator(".tr-term").first).to_have_text("$ pytest tests/e2e -q\necho done")
-    expect(bash.locator(".tr-pre").last).to_be_visible()
-    expect(bash.locator(".tr-pre").last).to_contain_text("3 passed in 1.2s")
+    expect(bash.locator(".tr-cmd")).to_have_text("$ pytest tests/e2e -q\necho done")
+    expect(bash.locator(".tr-out")).to_be_visible()
+    expect(bash.locator(".tr-out")).to_contain_text("3 passed in 1.2s")
     # The edit is its file's name and line counts; the read, its file's name.
     edit = items.nth(2)
     expect(edit.locator(".tr-item-name")).to_have_text("test_git_status_flags.py")
@@ -934,8 +936,9 @@ def test_unreported_outcome_says_so_instead_of_reading_as_success(
     # Nothing claimed, nothing decorated, nothing counted.
     expect(group.locator(".tr-fail-count")).to_have_count(0)
     expect(group.locator(".tr-item-failed")).to_have_count(0)
-    # …and the closed header is unchanged from a `reported` flavour.
-    expect(group.locator(".tr-step-label")).to_have_text("1 tool call")
+    # …and the closed header is unchanged from a `reported` flavour: the
+    # one step in plain words (#1532).
+    expect(group.locator(".tr-step-label")).to_have_text("Read docs/board.md")
 
     group.locator("summary.tr-step-line").click()
     item = group.locator(".tr-item").first
@@ -973,5 +976,5 @@ def test_reported_harness_adds_no_note_to_a_clean_call(
     item = group.locator(".tr-item").first
     item.locator("summary").click()
     expect(item).to_have_js_property("open", True)
-    expect(item.locator(".tr-pre")).not_to_have_count(0)
+    expect(item.locator(".tr-out")).not_to_have_count(0)
     expect(item.locator(".tr-outcome-unknown")).to_have_count(0)

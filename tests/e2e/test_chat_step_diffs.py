@@ -15,7 +15,8 @@ editor. Pinned here, against a stubbed page (every path and line synthetic):
   fetches ``/transcript/diff`` by the step's ref and swaps the whole diff in;
 * a Write worked out from its input shows as all added with **no** gutter —
   it has no real line numbers, and none are made up;
-* a failed Edit and a tool the server doesn't recognise keep today's body;
+* a failed Edit and a tool the server doesn't recognise open as a step card
+  (#1532) rather than a diff;
 * at phone width a long diff line wraps inside the box: no sideways scroll
   in the diff or the page.
 
@@ -121,11 +122,13 @@ def _open_items(page: Page):
     expect(page.locator("#transcriptList .tr-turn")).not_to_have_count(0)
     step = page.locator("#transcriptList .tr-step")
     expect(step).to_be_visible()
-    # One quiet line: verbs and what they acted on, then the parts no
-    # ellipsis may cut. The failed edit changed nothing, so it is a call
-    # here, never part of the +N −M; the duration runs to the reply after.
+    # One quiet line: the newest step (#1532), then verbs and what they acted
+    # on, then the parts no ellipsis may cut. The failed edit changed nothing,
+    # so it is a call here, never part of the +N −M; the duration runs to the
+    # reply after.
     line = step.locator("summary.tr-step-line")
-    expect(line.locator(".tr-step-label")).to_have_text("Edited 2 files, 2 other tool calls")
+    expect(line.locator(".tr-step-now")).to_have_text("Grep keep")
+    expect(line.locator(".tr-step-counts")).to_have_text(" · Edited 2 files, 2 other tool calls")
     expect(line.locator(".tr-step-label b")).to_have_text(["2 files", "2 other tool calls"])
     expect(line.locator(".tr-step-delta")).to_have_text("+10 −1")
     expect(line.locator(".tr-fail-count")).to_have_text("1 failed")
@@ -227,10 +230,16 @@ def test_edit_step_opens_as_a_numbered_diff_with_full_fetch(
     expect(wdiff.locator(".d-hunk")).to_have_count(0)
     expect(write.locator(".tr-diff-more")).to_have_count(0)
 
-    # A failed edit and an unrecognised tool keep today's body.
+    # A failed edit and an unrecognised tool open as a step card (#1532): the
+    # failed edit's file as "folder / name" in the header, the tool's input
+    # and its output as blocks of their own.
     failed.locator("summary").click()
     expect(failed.locator(".tr-diff")).to_have_count(0)
-    expect(failed.locator(".tr-pre").first).to_have_text("src/gone.py")
+    expect(failed.locator(".tr-cmd-path")).to_have_text("src / gone.py")
+    expect(failed.locator(".tr-cmd")).to_have_count(0)
+    expect(failed.locator(".tr-out")).to_have_text("String to replace not found in file.")
     grep.locator("summary").click()
     expect(grep.locator(".tr-diff")).to_have_count(0)
-    expect(grep.locator(".tr-pre").first).to_have_text("keep")
+    expect(grep.locator(".tr-cmd-tool")).to_have_text("Grep")
+    expect(grep.locator(".tr-cmd")).to_have_text("keep")
+    expect(grep.locator(".tr-out")).to_have_text("src/pkg/module.py:3:keep")
