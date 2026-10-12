@@ -2959,6 +2959,8 @@ textarea.input-native { height: auto; }
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .tr-file-note {
   padding: 8px 12px;
