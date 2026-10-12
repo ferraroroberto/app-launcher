@@ -952,9 +952,11 @@ button.settings-row:active { background: var(--card-2); }
 }
 .jobs-toolbar .jobs-search { flex: 1; min-width: 0; margin: 0; }
 .jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
-/* The field's clear button, pulled to its right edge like the Projects
+/* The field's clear button, then the sort sheet's trigger (#1538, as the
+   Conversations field's, #1528) pulled to the right edge like the Projects
    filter's star. */
-.jobs-search-clear { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
+.jobs-search-clear { --icon-btn-box: var(--control-h); flex: none; }
+.jobs-filters { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
 .jobs-search-empty {
   list-style: none;
   padding: 16px 4px;
@@ -4023,11 +4025,15 @@ body.terminal-open {
    footer is Clear beside Done (design.md "Long lists") — the one place this
    app's stacked detail-actions runs as a row. Clear takes the primary's
    48px height and type so the pair reads as one footer. */
-.lifeos-convo-sheet .range-tabs { flex: 1; margin-bottom: 0; }
+.lifeos-convo-sheet .range-tabs,
+.jobs-sort-sheet .range-tabs { flex: 1; margin-bottom: 0; }
 .lifeos-convo-sheet .range-tab[hidden] { display: none; }
-.lifeos-convo-sheet .detail-actions { flex-direction: row; }
-.lifeos-convo-sheet .detail-actions .button-primary { flex: 1; }
-.lifeos-convo-sheet .detail-actions .button-ghost {
+.lifeos-convo-sheet .detail-actions,
+.jobs-sort-sheet .detail-actions { flex-direction: row; }
+.lifeos-convo-sheet .detail-actions .button-primary,
+.jobs-sort-sheet .detail-actions .button-primary { flex: 1; }
+.lifeos-convo-sheet .detail-actions .button-ghost,
+.jobs-sort-sheet .detail-actions .button-ghost {
   min-height: 48px;
   padding-inline: 16px;
   font-size: var(--font-body);
