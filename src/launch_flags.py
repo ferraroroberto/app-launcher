@@ -239,7 +239,7 @@ def build_grok_flags(cfg: WebappConfig) -> str:
 
 def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
-    session_id: Optional[str] = None,
+    session_id: Optional[str] = None, *, keep_model: bool = False,
 ) -> str:
     """Compose the full flags string for a *Resume* launch (issue #151).
 
@@ -266,10 +266,20 @@ def build_resume_flags(
     ``--resume <id>`` accepts a session id directly, non-interactively).
     Omitted (the default, and every caller before #633), the bare token
     renders the picker exactly as before.
+
+    ``keep_model`` (#1503, Life OS's swipe-Resume) resumes a Claude
+    conversation on its own model: no ``--model`` at all, because a bare
+    ``--resume <id>`` keeps the conversation's model and ``--model`` would
+    override it (probed, see :mod:`src.conversation_model`). Codex has no such
+    memory, so a Codex caller passes the recorded model as ``model_override``
+    and ``keep_model`` changes nothing there. An absent model is never read as
+    "keep": that means the persisted default, as it always has.
     """
     token = resume_command_for(agent_id)
     if session_id:
         token = f"{token} {session_id}"
+    if keep_model and agent_id == "claude":
+        model_override = ""  # not a valid model, so build_claude_flags adds no --model
     if agent_id == "codex":
         parts = [token]
         model = model_override if model_override is not None else cfg.codex_model

@@ -3,14 +3,17 @@
 The Life OS tab (issue #102) is ~80% a clone of the Coding tab,
 specialised to the skills in the sibling ``life-os`` repo:
 
-    GET  /api/life-os/skills                  → list skills (public, token-gated)
+    GET  /api/life-os/skills                  → list skills, with when each was last
+                                                 used (public, token-gated)
     POST /api/life-os/skills/{id}/launch      → spawn a skill session (token)
     GET  /api/life-os/channels                → Telegram channel profiles (#1366)
     POST /api/life-os/channels/{id}/launch    → start/resume a profile's skill session
                                                  with its Telegram bot (Tailscale + passkey)
     POST /api/life-os/skills/{id}/conversations/launch → verified source resume
                                                  or new handoff (Tailscale + passkey)
-    GET  /api/life-os/skills/{id}/files        → file tree   (Tailscale + passkey)
+    POST /api/life-os/skills/{id}/conversations/resume-latest → the newest
+                                                 conversation, on its own model (Tailscale + passkey)
+    GET  /api/life-os/skills/{id}/files       → file tree   (Tailscale + passkey)
     GET  /api/life-os/skills/{id}/conversations → digested conversation index
                                                  (Tailscale + passkey)
     GET  /api/life-os/conversations/search     → ranked cross-skill search
@@ -60,6 +63,7 @@ from app.webapp.routers.life_os_conversations import (
     _SESSION_ID_RE,
     _launch_conversation,
     _require_history_access,
+    skill_last_used,
 )
 from app.webapp.routers.life_os_files import _walk_files
 from app.webapp.routers.life_os_spawn import (
@@ -161,9 +165,14 @@ async def list_skills(request: Request) -> Dict[str, Any]:
     except (OSError, ValueError):
         life_os_root = life_os_dir
     favorites = frozenset(cfg.life_os_favorites)
-    skills = [
-        _skill_to_api(s, life_os_root, favorites) for s in scan_skills(life_os_dir)
-    ] if available else []
+    skills = []
+    for s in (scan_skills(life_os_dir) if available else []):
+        entry = _skill_to_api(s, life_os_root, favorites)
+        # When the skill was last used (#1503): the row's meta, its place in
+        # the order and the fold. From the conversation index, never a capture.
+        last_used, has_conversations = skill_last_used(life_os_dir, s)
+        entry.update(last_used=last_used, has_conversations=has_conversations)
+        skills.append(entry)
     return {
         "skills": skills,
         "life_os_dir": cfg.life_os_dir,
