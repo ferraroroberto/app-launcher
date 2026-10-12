@@ -23,6 +23,7 @@ from playwright.sync_api import Locator, Page, expect
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
 from tests.e2e.conftest import (
     flush_requests,
+    life_launch_switch,
     open_settings_sheet,
     stable_eval,
     stable_read,
@@ -136,16 +137,16 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     # The old standalone options card no longer exists.
     expect(authed_page.locator("#lifeOsOptions")).to_have_count(0)
 
-    # The model dropdown + both toggles render in the Skills card's toolbar
-    # (#1132 moved them out of its <summary>).
+    # The model dropdown renders in the Skills card's toolbar (#1132 moved
+    # it out of its <summary>); both toggles live in its menu (#1503).
     toolbar = authed_page.locator("details.lifeos-list-card .card-toolbar")
-    for cid in ("#lifeOsModelCombo", "#lifeOsDetached", "#lifeOsResume"):
-        expect(toolbar.locator(cid)).to_be_visible()
+    expect(toolbar.locator("#lifeOsModelCombo")).to_be_visible()
+    expect(toolbar.locator(".launch-toolbar-switches")).to_have_count(0)
 
     # A toggle tap flips the switch but must not collapse the open panel.
     skills_card = authed_page.locator("details.lifeos-list-card")
     assert skills_card.evaluate("el => el.open") is True
-    authed_page.locator("#lifeOsDetached").click()
+    life_launch_switch(authed_page, "#lifeOsDetached")
     expect(authed_page.locator("#lifeOsDetached")).to_have_attribute(
         "aria-checked", "true"
     )
@@ -206,9 +207,9 @@ def _launch_journal_daily(
         page.locator("#lifeOsModelBtn").click()
         page.locator(f"#lifeOsModelMenu button[data-value='{model}']").click()
     if detached:
-        page.locator("#lifeOsDetached").click()
+        life_launch_switch(page, "#lifeOsDetached")
     if resume:
-        page.locator("#lifeOsResume").click()
+        life_launch_switch(page, "#lifeOsResume")
 
     tile = page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily']")
     tile.locator(".action-row-main").click()
@@ -1028,7 +1029,7 @@ def test_life_os_row_menu_holds_every_other_action(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     # Detached, so the resume lands in a console, not the terminal overlay.
-    authed_page.locator("#lifeOsDetached").click()
+    life_launch_switch(authed_page, "#lifeOsDetached")
     _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
     _open_convos_model_menu(authed_page, "claude:opus").click()
@@ -1362,7 +1363,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
     )
     # Detached on, so the resume lands in a console instead of opening the
     # terminal overlay (nothing to tear down in the assertion).
-    authed_page.locator("#lifeOsDetached").click()
+    life_launch_switch(authed_page, "#lifeOsDetached")
 
     _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
@@ -1878,7 +1879,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), launch)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabLifeOS").click()
-    page.locator("#lifeOsDetached").click()
+    life_launch_switch(page, "#lifeOsDetached")
     _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
     _open_convos_model_menu(page, source_choice).click()
@@ -2089,7 +2090,7 @@ def test_life_os_launch_sends_terminal_token(
         timeout=5_000
     )
     # Detached → remote, so the mocked response opens no terminal overlay.
-    authed_page.locator("#lifeOsDetached").click()
+    life_launch_switch(authed_page, "#lifeOsDetached")
     if target == "skill":
         authed_page.locator(
             "#lifeOsList li.lifeos-item[data-id='journal-daily'] .action-row-main"

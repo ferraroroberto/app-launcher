@@ -32,7 +32,13 @@ from datetime import date, timedelta
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import flush_requests, open_settings_sheet, stable_eval, wait_until
+from tests.e2e.conftest import (
+    flush_requests,
+    life_launch_switch,
+    open_settings_sheet,
+    stable_eval,
+    wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -207,16 +213,16 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     assert launches[0]["body"]["model"] == "claude:sonnet"
 
     # Detached on: refused, as before (a Telegram session is a terminal).
-    page.locator("#lifeOsDetached").click()
+    life_launch_switch(page, "#lifeOsDetached")
     garden.locator(".action-row-kebab").click()
     garden.locator(".lifeos-channel-start-btn").click()
     expect(page.locator("#toast")).to_contain_text("turn Detached off")
     flush_requests(page)
     assert len(launches) == 1, launches
-    page.locator("#lifeOsDetached").click()
+    life_launch_switch(page, "#lifeOsDetached")
 
     # Resume on: the toolbar's Resume reaches the bot's launch too.
-    page.locator("#lifeOsResume").click()
+    life_launch_switch(page, "#lifeOsResume")
     garden.locator(".action-row-kebab").click()
     garden.locator(".lifeos-channel-start-btn").click()
     wait_until(page, lambda: len(launches) == 2, "the resumed channel launch")
@@ -324,7 +330,7 @@ def test_the_recap_verb_launches_with_the_toolbar(life) -> None:
         )
 
     page.route(re.compile(r".*/api/life-os/recap/launch$"), _launch)
-    page.locator("#lifeOsDetached").click()
+    life_launch_switch(page, "#lifeOsDetached")
     page.locator("#lifeOsRecapLaunch").click()
     wait_until(page, lambda: len(posted) == 1, "the recap launch POST")
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet"}, posted
@@ -541,7 +547,7 @@ def test_the_kebab_resumes_the_last_conversation_on_its_own_model(
         "conversation_action": "resume", "model": "claude-opus-5-5", "model_kept": True,
         "session": {"session_id": "s-r", "kind": "remote"}})
     # Detached so nothing opens a terminal; the combo shows Sonnet.
-    page.locator("#lifeOsDetached").click()
+    life_launch_switch(page, "#lifeOsDetached")
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
     garden.locator(".lifeos-resume-last-btn").click()
@@ -574,8 +580,8 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
                       body=_json.dumps({"session": {"session_id": "s-n", "kind": "remote"}}))
 
     page.route(re.compile(r".*/api/life-os/skills/garden-notes/launch$"), _launch)
-    page.locator("#lifeOsDetached").click()
-    page.locator("#lifeOsResume").click()
+    life_launch_switch(page, "#lifeOsDetached")
+    life_launch_switch(page, "#lifeOsResume")
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
     garden.locator(".lifeos-start-new-btn").click()

@@ -979,6 +979,20 @@ def close_settings_sheets(page: Page) -> None:
     expect(page.locator("dialog.settings-sheet[open]")).to_have_count(0)
 
 
+def life_launch_switch(page: Page, switch_id: str) -> None:
+    """Flip one of Life's launch switches (``#lifeOsDetached`` /
+    ``#lifeOsResume``), which live in the model combo's menu since #1503:
+    open the menu, tap the switch (the menu stays open), close it again with
+    the trigger."""
+    menu = page.locator("#lifeOsModelMenu")
+    page.locator("#lifeOsModelBtn").click()
+    expect(menu).to_be_visible()
+    page.locator(switch_id).click()
+    expect(menu).to_be_visible()
+    page.locator("#lifeOsModelBtn").click()
+    expect(menu).to_be_hidden()
+
+
 def session_menu_item(page: Page, name: str):
     """Open the overlay bar's ⋮ menu and return the item with ``aria-label``
     ``name`` (``Rename session`` / ``Copy session link`` /

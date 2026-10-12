@@ -21,6 +21,14 @@
  * design.md), each with its word beside it. The word is the switch's
  * <label>, so a tap on either toggles it. They are client-side state read at launch time, never
  * saved: a launch mode that survives a reload would surprise the next tap.
+ *
+ * `switchesInMenu` (#1503 decision 6, Life only) folds the switch row into
+ * the combo's menu: the model list on top (a pick commits and closes, as
+ * ever), the two switches under it (they toggle in place and leave the menu
+ * open), then an optional help line. The combo's label then names any
+ * switch that is on ("Claude · Sonnet · Detached"), so a mode left on is
+ * never out of sight. A toolbar mounted without it is byte-identical to one
+ * mounted before it existed.
  */
 
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
@@ -39,7 +47,10 @@ function labelledSwitch(spec) {
   wrap.appendChild(el('span', 'launch-switch-label', spec.text));
   const sw = switchEl(false, {
     label: spec.label,
-    onToggle: function (next, btn) { setSwitch(btn, next); },
+    onToggle: function (next, btn) {
+      setSwitch(btn, next);
+      if (spec.onChange) spec.onChange();
+    },
   });
   sw.id = spec.id;
   sw.title = spec.title;
@@ -55,6 +66,9 @@ function labelledSwitch(spec) {
 //   detachedTitle / resumeTitle — each switch's hover hint
 //   trailing   optional element pinned right on the model's row (Code puts
 //              its git refresh there)
+//   switchesInMenu  the switches live in the combo's menu, under the model
+//              list, and the label names any that is on (#1503)
+//   menuHint   with switchesInMenu: a short help line under the switches
 // Returns { root, combo, isDetached(), isResume() }.
 export function mountLaunchToolbar(host, opts) {
   if (!host) return null;
@@ -68,24 +82,35 @@ export function mountLaunchToolbar(host, opts) {
   const combo = el('span', 'model-combo');
   combo.id = ids.combo;
   combo.dataset.value = model.value;
+  const inMenu = !!opts.switchesInMenu;
   const trigger = el('button', 'model-combo-trigger', model.label);
   trigger.type = 'button';
   trigger.id = ids.trigger;
-  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-haspopup', inMenu ? 'dialog' : 'listbox');
   trigger.setAttribute('aria-expanded', 'false');
   trigger.setAttribute('aria-controls', ids.menu);
   trigger.title = model.title;
   const menu = el('span', 'model-combo-menu');
   menu.id = ids.menu;
-  menu.setAttribute('role', 'listbox');
+  // With the switches inside, the menu is a small dialog holding the model
+  // listbox and the switch group (a listbox may hold only options).
+  menu.setAttribute('role', inMenu ? 'dialog' : 'listbox');
   menu.setAttribute('aria-label', model.menuLabel);
   menu.hidden = true;
+  let list = menu;
+  if (inMenu) {
+    menu.classList.add('launch-menu');
+    list = el('span', 'model-combo-list');
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-label', model.menuLabel);
+    menu.appendChild(list);
+  }
   const first = el('button', null, model.label);
   first.type = 'button';
   first.setAttribute('role', 'option');
   first.dataset.value = model.value;
   first.setAttribute('aria-selected', 'true');
-  menu.appendChild(first);
+  list.appendChild(first);
   combo.appendChild(trigger);
   combo.appendChild(menu);
   head.appendChild(combo);
@@ -94,22 +119,45 @@ export function mountLaunchToolbar(host, opts) {
     head.appendChild(opts.trailing);
   }
 
+  // In the menu, the label names the switches that are on, so the closed
+  // combo still says how the next launch will run.
+  const onChange = inMenu ? function () { nameSwitches(); } : null;
   const detached = labelledSwitch({
     id: ids.detached, text: 'Detached', label: 'Launch detached',
-    title: opts.detachedTitle,
+    title: opts.detachedTitle, onChange: onChange,
   });
   const resume = labelledSwitch({
     id: ids.resume, text: 'Resume', label: 'Resume session',
-    title: opts.resumeTitle,
+    title: opts.resumeTitle, onChange: onChange,
   });
-  switches.appendChild(detached.wrap);
-  switches.appendChild(resume.wrap);
-  root.appendChild(head);
-  root.appendChild(switches);
+  if (inMenu) {
+    const group = el('span', 'launch-menu-options');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'Launch options');
+    group.appendChild(detached.wrap);
+    group.appendChild(resume.wrap);
+    if (opts.menuHint) group.appendChild(el('span', 'launch-menu-hint', opts.menuHint));
+    menu.appendChild(group);
+    root.appendChild(head);
+  } else {
+    switches.appendChild(detached.wrap);
+    switches.appendChild(resume.wrap);
+    root.appendChild(head);
+    root.appendChild(switches);
+  }
 
   host.replaceChildren(root);
 
   function on(sw) { return sw.getAttribute('aria-checked') === 'true'; }
+  // The label's tail (CSS draws `data-note` after the model's name, so the
+  // combo's own relabel on a pick never drops it).
+  function nameSwitches() {
+    const names = [];
+    if (on(detached.sw)) names.push('Detached');
+    if (on(resume.sw)) names.push('Resume');
+    if (names.length) trigger.dataset.note = names.join(' · ');
+    else delete trigger.dataset.note;
+  }
   return {
     root: root,
     combo: combo,

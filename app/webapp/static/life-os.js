@@ -45,7 +45,9 @@ const skillMenu = createRowMenu('project-menu');
 const convoMenu = createRowMenu('project-menu');
 
 // The Skills card's launch toolbar (#1439): the shared component Code ›
-// Projects mounts (#1434), so both launch surfaces look and behave alike.
+// Projects mounts (#1434), so both launch surfaces look and behave alike,
+// except that here Detached and Resume live in the model combo's menu
+// (#1503 decision 6).
 // Mounted at load so wireLifeOs finds its model combo by id; every launch
 // reads the switches through it. The ids are the hooks the launch and e2e
 // code have always used.
@@ -61,6 +63,12 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   },
   detachedTitle: 'Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal',
   resumeTitle: 'Resume: reopen the selected agent’s session picker (drops the skill prompt), in a phone terminal, or in the detached console when Detached is also on',
+  // Decision 6 (#1503): the switches sit in the combo's menu, under the
+  // model list, and its label names any that is on.
+  switchesInMenu: true,
+  menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
+    'Resume makes a tap on a skill open the session picker. ' +
+    'For a skill’s last conversation, use its ⋮ › Resume last conversation.',
   // The cross-skill conversation search rides the model row, pinned right.
   trailing: document.getElementById('lifeOsConvoSearch'),
 });

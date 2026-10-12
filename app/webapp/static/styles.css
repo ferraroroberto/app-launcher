@@ -4310,7 +4310,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   width: max-content;
 }
 .model-combo-menu[hidden] { display: none; }
-.model-combo-menu button {
+.model-combo-menu button:not(.toggle) {
   padding: 8px 14px;
   text-align: left;
   background: none;
@@ -4320,8 +4320,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   cursor: pointer;
   white-space: nowrap;
 }
-.model-combo-menu button:hover,
-.model-combo-menu button:focus-visible,
+.model-combo-menu button:not(.toggle):hover,
+.model-combo-menu button:not(.toggle):focus-visible,
 .model-combo-menu button[aria-selected="true"] {
   background: var(--card);
   color: var(--accent);
@@ -4332,7 +4332,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   cursor: not-allowed;
   opacity: 0.72;
 }
-.model-combo-menu button:disabled {
+.model-combo-menu button:not(.toggle):disabled {
   background: var(--card-2);
   color: var(--muted);
   cursor: not-allowed;
@@ -5492,4 +5492,35 @@ span.chief-answer-ref { color: var(--muted); }
   color: var(--fg);
   cursor: pointer;
   user-select: none;
+}
+/* The switches in the combo's menu (launch-toolbar.js `switchesInMenu`,
+   #1503): under the model list on a hairline, one 44px row each with the
+   word left and the track right, then a muted help line. */
+.launch-menu .model-combo-list {
+  display: flex;
+  flex-direction: column;
+}
+.launch-menu-options {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-muted);
+  padding: 4px 0;
+}
+.launch-menu-options .launch-switch {
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 14px;
+}
+.launch-menu-hint {
+  max-width: 280px;
+  padding: 4px 14px 8px;
+  font-size: var(--font-caption);
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: normal;
+}
+/* The closed combo names any switch that is on, after the model's name. */
+.model-combo-trigger[data-note]::after {
+  content: "· " attr(data-note);
+  margin-left: 0.3em;
 }

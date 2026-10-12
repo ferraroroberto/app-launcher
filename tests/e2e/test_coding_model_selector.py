@@ -358,7 +358,10 @@ def test_server_catalog_populates_shared_model_selectors(
         root = authed_page.locator(selector)
         expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))
         expect(root.locator(".model-combo-trigger")).to_have_count(1)
-        expect(root.locator(".model-combo-menu[role='listbox']")).to_have_count(1)
+        # One model listbox each: the menu itself, or (Life's, which also
+        # holds the launch switches, #1503) a list inside it.
+        expect(root.locator("[role='listbox']")).to_have_count(1)
+        expect(root.locator(".model-combo-menu")).to_have_count(1)
 
     board = authed_page.locator("#boardDispatchModel")
     expect(board.locator("[role='option']")).to_have_count(7)
