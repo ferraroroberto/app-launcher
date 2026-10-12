@@ -955,10 +955,9 @@ button.settings-row:active { background: var(--card-2); }
 }
 .jobs-toolbar .jobs-search { flex: 1; min-width: 0; margin: 0; }
 .jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
-/* The field's clear button, then the sort sheet's trigger (#1538, as the
-   Conversations field's, #1528) pulled to the right edge like the Projects
-   filter's star. */
-.jobs-search-clear { --icon-btn-box: var(--control-h); flex: none; }
+/* The sort sheet's trigger (#1538, as the Conversations field's, #1528)
+   pulled to the right edge like the Projects filter's star. The field's
+   clear is the engine's own ✕, as on every other filter (#1554). */
 .jobs-filters { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
 .jobs-search-empty {
   list-style: none;

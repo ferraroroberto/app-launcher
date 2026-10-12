@@ -141,7 +141,6 @@ function renderSearchMatches(host, namedCount) {
 async function runJobsSearch() {
   const query = (els.jobsSearchInput && els.jobsSearchInput.value || '').trim();
   state.jobsSearchQuery = query;
-  if (els.jobsSearchClear) els.jobsSearchClear.hidden = !query;
   if (!query) {
     state.jobsSearchMatches = [];
     renderJobs();
@@ -167,7 +166,6 @@ function openSearchMatch(match) {
     return;
   }
   if (els.jobsSearchInput) els.jobsSearchInput.value = '';
-  if (els.jobsSearchClear) els.jobsSearchClear.hidden = true;
   state.jobsSearchQuery = '';
   state.jobsSearchMatches = [];
   openJobSheet(match.job_id, match.run_id);
@@ -974,8 +972,8 @@ export async function fetchJobs() {
 
 export function wireJobs() {
   if (!els.tabJobs) return;
-  // Empty-state actions (#1238 J-09): the Add job flow, and the search
-  // field's own clear.
+  // Empty-state actions (#1238 J-09): the Add job flow, and clearing the
+  // search field.
   const jobsEmptyAction = document.getElementById('jobsEmptyAction');
   if (jobsEmptyAction) {
     jobsEmptyAction.addEventListener('click', function () { openJobDialog(null); });
@@ -983,7 +981,9 @@ export function wireJobs() {
   const jobsFilterEmptyAction = document.getElementById('jobsFilterEmptyAction');
   if (jobsFilterEmptyAction) {
     jobsFilterEmptyAction.addEventListener('click', function () {
-      if (els.jobsSearchClear) els.jobsSearchClear.click();
+      if (els.jobsSearchInput) els.jobsSearchInput.value = '';
+      runJobsSearch();
+      if (els.jobsSearchInput) els.jobsSearchInput.focus();
     });
   }
   els.tabJobs.addEventListener('click', function () {
@@ -1011,15 +1011,6 @@ export function wireJobs() {
     els.jobsSearchInput.addEventListener('input', function () {
       if (searchTimer) clearTimeout(searchTimer);
       searchTimer = setTimeout(function () { runJobsSearch(); }, 250);
-    });
-  }
-  if (els.jobsSearchClear) {
-    els.jobsSearchClear.addEventListener('click', function (ev) {
-      // Inside the field's <label>: keep the click from focusing through it.
-      ev.preventDefault();
-      if (els.jobsSearchInput) els.jobsSearchInput.value = '';
-      runJobsSearch();
-      if (els.jobsSearchInput) els.jobsSearchInput.focus();
     });
   }
   if (els.jobSheet) {
