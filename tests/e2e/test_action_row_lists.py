@@ -22,16 +22,21 @@ from tests.e2e.test_row_name_typography import _APP, _PROJECT, _json_route, _moc
 
 pytestmark = pytest.mark.smoke
 
-# Per row: the controls a thumb can hit directly, beside the row itself.
+# Per row: the controls a thumb can hit directly, beside the row itself. A
+# swipeable row (Life's skills, #1503) holds them on its sliding surface, one
+# level down; its panes are reached by a swipe, never a direct tap.
 _ROW_SHAPE = """
-(sel) => Array.from(document.querySelectorAll(sel)).map((li) => ({
-  id: li.dataset.id,
-  main: li.querySelectorAll(':scope > .action-row-main').length,
-  kebab: li.querySelectorAll(':scope > .action-row-kebab').length,
-  leading: li.querySelectorAll(':scope > .action-row-fav, :scope > .toggle').length,
-  direct: li.querySelectorAll(':scope > button').length,
-  rail: li.querySelectorAll('.row-actions, .app-launch-actions').length,
-}))
+(sel) => Array.from(document.querySelectorAll(sel)).map((li) => {
+  const row = li.querySelector(':scope > .swipe-track > .swipe-surface') || li;
+  return {
+    id: li.dataset.id,
+    main: row.querySelectorAll(':scope > .action-row-main').length,
+    kebab: row.querySelectorAll(':scope > .action-row-kebab').length,
+    leading: row.querySelectorAll(':scope > .action-row-fav, :scope > .toggle').length,
+    direct: row.querySelectorAll(':scope > button').length,
+    rail: li.querySelectorAll('.row-actions, .app-launch-actions').length,
+  };
+})
 """
 
 
@@ -58,7 +63,7 @@ _ROW_BLEED = """
 # the same test, each paying its own boot for one evaluate).
 _LISTS = (
     ("#tabClaude", "#claudeList > li"),    # Code > Projects (details.projects-card)
-    ("#tabLifeOS", "#lifeOsList > li"),    # Life > Skills
+    ("#tabLifeOS", "#lifeOsList > li.action-row"),  # Life > Skills (not its fold row)
     ("#tabApps", "#appsList > li"),        # Apps (.apps-list-card)
     ("#tabApps", "#registeredTraysList > li"),  # Apps > Trays
 )
