@@ -1,18 +1,22 @@
 /* Life OS conversation viewer (#1119): one captured conversation, read-only,
  * chat-style.
  *
- * Opened from the 📖 on a Conversations row. The capture is parsed
+ * Opened by a tap on a Conversations row. The capture is parsed
  * server-side (`/api/life-os/file/transcript`, src/life_os_capture.py) into
  * the entry shape the session overlay's Chat pane already renders, and it is
  * rendered by that pane's own renderer (session-transcript.js) — one
  * transcript surface, two mounts (#979). There is no composer: this is a
  * finished conversation, reopened through Resume if it is to continue.
  *
- * Every action lives in the bar's ⋮ menu, on the shared row-menu component
- * (the session overlay's menu, terminal-bar.js, is the model): Resume in
- * <provider> / Start new in <other>, Show/Hide tool calls, Rename, Delete,
- * Open raw. The actions themselves stay in life-os.js — this module is
- * handed them as callbacks, so the two never import each other.
+ * Above the transcript, the summary block (#1528): who the conversation was
+ * with and when, its one-paragraph summary, and this view's primary action,
+ * Resume (or Start new in <other> when the bar's model is another
+ * provider's), with the reason on screen when neither can run. Every other
+ * action lives in the bar's ⋮ menu, on the shared row-menu component (the
+ * session overlay's menu, terminal-bar.js, is the model): Show/Hide tool
+ * calls, Copy link, Rename, Open raw, Delete. The actions themselves stay in
+ * life-os.js — this module is handed them as callbacks, so the two never
+ * import each other.
  */
 
 import { els } from './state.js';
@@ -73,14 +77,23 @@ function openRawAction() {
   };
 }
 
-// Why this conversation can't be resumed from here, said on screen rather
-// than in a disabled menu row's tooltip — a phone has no hover.
-function syncNote() {
-  const note = els.lifeOsViewerNote;
-  const reason = viewer ? viewer.actions.state(viewer.row).reason : '';
-  note.hidden = !reason;
-  note.innerHTML = reason ? icon('info') : '';
-  if (reason) note.appendChild(document.createTextNode(' ' + reason));
+// The summary block (#1528), filled on every open: the meta line, the
+// summary paragraph (hidden when the digest has none), and the primary
+// action. A Resume that cannot run stays visible and disabled, and the note
+// under it says why — a phone has no hover for a tooltip.
+function syncSummary() {
+  const about = viewer.actions.describe(viewer.row);
+  els.lifeOsViewerMeta.textContent = about.meta;
+  els.lifeOsViewerMeta.hidden = !about.meta;
+  els.lifeOsViewerDigest.textContent = about.summary;
+  els.lifeOsViewerDigest.hidden = !about.summary;
+  const action = viewer.actions.resumeAction(viewer.row);
+  const btn = els.lifeOsViewerResume;
+  btn.textContent = action.text;
+  btn.setAttribute('aria-label', action.label);
+  btn.disabled = !action.kind;
+  els.lifeOsViewerNote.textContent = action.reason;
+  els.lifeOsViewerNote.hidden = !action.reason;
 }
 
 async function load() {
@@ -131,9 +144,8 @@ async function load() {
 }
 
 // `row` is one Conversations row; `actions` is life-os.js's callbacks:
-// state(row) → {canResume, resumeEnabled, provider, reason, canHandoff,
-// handoffTo}, plus resume / handoff / canLink / copyLink / rename / del /
-// openRaw.
+// describe(row) → {meta, summary}, resumeAction(row) → {kind, text, label,
+// reason}, plus resume / canLink / copyLink / rename / del / openRaw.
 export function openConvoViewer(row, actions) {
   if (!els.lifeOsConvoViewer) return;
   viewer = { row: row, actions: actions };
@@ -141,7 +153,7 @@ export function openConvoViewer(row, actions) {
   syncGroups();
   viewerMenu.close();
   els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'conversation';
-  syncNote();
+  syncSummary();
   els.lifeOsConvoViewer.hidden = false;
   load();
 }
@@ -156,10 +168,6 @@ export function closeConvoViewer() {
   hideState();
 }
 
-function stateOf() {
-  return viewer ? viewer.actions.state(viewer.row) : {};
-}
-
 export function wireConvoViewer() {
   if (!els.lifeOsConvoViewer) return;
   els.lifeOsViewerBack.addEventListener('click', closeConvoViewer);
@@ -167,25 +175,10 @@ export function wireConvoViewer() {
   // Opening at the top (a finished conversation reads from its start), the
   // shared ↓ Latest pill (#1140) shows whenever the end is off screen.
   mountScrollerPill(els.lifeOsViewerLatest, els.lifeOsViewerBody);
+  els.lifeOsViewerResume.addEventListener('click', function () {
+    if (viewer) viewer.actions.resume(viewer.row);
+  });
   const menu = viewerMenu.attach('lifeos-viewer', els.lifeOsViewerMenu, [
-    {
-      glyph: 'rotate-ccw',
-      className: 'lifeos-viewer-resume',
-      label: function () { return 'Resume in ' + (stateOf().provider || 'Claude'); },
-      text: function () { return 'Resume in ' + (stateOf().provider || 'Claude'); },
-      hidden: function () { return !stateOf().canResume; },
-      disabled: function () { return !stateOf().resumeEnabled; },
-      title: function () { return stateOf().reason; },
-      onTap: function () { if (viewer) viewer.actions.resume(viewer.row); },
-    },
-    {
-      glyph: 'messages-square',
-      className: 'lifeos-viewer-handoff',
-      label: function () { return 'Start new in ' + stateOf().handoffTo; },
-      text: function () { return 'Start new in ' + stateOf().handoffTo; },
-      hidden: function () { return !stateOf().canHandoff; },
-      onTap: function () { if (viewer) viewer.actions.handoff(viewer.row); },
-    },
     {
       glyph: function () { return groupsHidden ? 'eye' : 'eye-off'; },
       className: 'lifeos-viewer-groups',
@@ -200,7 +193,7 @@ export function wireConvoViewer() {
       onTap: function () { groupsHidden = !groupsHidden; syncGroups(); },
     },
     {
-      // The same ?convo= link as the row's Copy link (#1170); the tap writes
+      // The same ?convo= link as the row's ⋮ Copy link (#1170); the tap writes
       // the clipboard synchronously (iOS).
       glyph: 'link', className: 'lifeos-viewer-copy-link',
       label: 'Copy a link to this conversation', text: 'Copy link',

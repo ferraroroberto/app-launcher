@@ -3260,27 +3260,6 @@ body.terminal-open {
    minimum (issue #477) — restated here for clarity even though the base
    .term-btn now carries 44×44 itself (#496). */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
-/* The Conversations bar (#864) mixes text term-btns ("‹ Skills", "All
-   skills") with a .model-combo-trigger in the same row — neither is an
-   icon-only touch target here, so match the shorter combo footprint
-   instead of the icon-target minimum reasserted just above. */
-#lifeOsConvos .terminal-bar .term-btn:not(.icon-button) {
-  position: relative;
-  height: var(--control-h);
-  min-height: var(--control-h);
-  min-width: 0;
-  padding: 0 12px;
-  font-size: var(--font-caption);
-}
-/* Kept at the combo's 36px look, but tappable at 44: the same vertical-only
-   expansion the model combo beside them carries (#1124), so two neighbours in
-   this row can never share a pixel. Flagged 73x36 / 83x36 by the rendered
-   design review (TOUCH-01). */
-#lifeOsConvos .terminal-bar .term-btn:not(.icon-button)::before {
-  content: "";
-  position: absolute;
-  inset: -5px 0;
-}
 /* (#886) A fourth control pushed this bar past a 430px viewport. Two flex
    defaults then made that overflow ugly rather than scrollable: the title is
    the only item with `min-width: 0`, so it absorbed the squeeze and collapsed
@@ -3824,156 +3803,68 @@ body.terminal-open {
   gap: 8px;
   padding: 8px;
 }
-.lifeos-convo-search {
-  display: flex;
+/* The list's filter field (#1528): the vendored .action-row-filter, full
+   width of the body so its left and right insets match, with the grid's gap
+   below it rather than the list-filter margin. */
+.action-row-filter.lifeos-convo-search { margin: 0; }
+/* The count placeholder ellipsizes rather than clipping mid-word when the
+   scope chip takes its share of a 390px field. */
+.lifeos-convo-search input { text-overflow: ellipsis; }
+/* The skill a scoped view narrows to: a chip inside the field (design.md
+   "Long lists"). The button is the field's full 44px height, so its target
+   is real geometry beside the sliders button, never an overlapping
+   expansion; the chip is only its look. */
+.lifeos-convo-scope {
+  flex: none;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 4px;
-  color: var(--muted);
-}
-.lifeos-convo-search .input-native { flex: 1; min-width: 0; }
-
-.lifeos-convo-list {
-  list-style: none;
-  margin: 0;
+  height: var(--row-sm);
   padding: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-/* Flat full-bleed rows on a hairline — the shared list-row contract, never a
-   card per entry. */
-.lifeos-convo-row + .lifeos-convo-row { border-top: 1px solid var(--line-muted); }
-
-.lifeos-convo-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: var(--row-md);
-  padding: 8px 4px;
-  background: none;
   border: 0;
-  color: var(--fg);
-  text-align: left;
+  background: none;
   font: inherit;
   cursor: pointer;
 }
-/* (#886) Two stacked dates in the one date column — the active sort's on
-   top, the other (when it differs) beneath it. Two caption lines at 1.2
-   line-height still sit inside .lifeos-convo-head's --row-md minimum, so
-   the row keeps its height and nothing beside it shifts. */
-.lifeos-convo-when {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-  font-size: var(--font-caption);
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.lifeos-convo-when-primary { color: var(--fg); }
-.lifeos-convo-when-alt { opacity: 0.72; }
-.lifeos-convo-topic {
-  flex: 1;
-  min-width: 0;
+.lifeos-convo-scope[hidden] { display: none; }
+.lifeos-convo-scope .chip { gap: 4px; padding-inline: 8px 6px; }
+.lifeos-convo-scope .icon { width: var(--icon-inline); height: var(--icon-inline); }
+/* A long skill name ellipsizes inside the chip instead of squeezing the
+   search box to nothing. */
+#lifeOsConvosScopeName {
+  max-width: 8rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The digest topic under an owner title (#1495): muted, one line. */
-.lifeos-convo-topic-sub {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: var(--font-caption);
-  color: var(--muted);
-}
-.lifeos-convo-tag {
+/* The sort-and-filter sheet's trigger, at the field's trailing edge like the
+   Coding filter's star, with the count of narrowing filters on as a chip. */
+.lifeos-convo-filters {
+  --icon-btn-box: var(--control-h);
+  position: relative;
   flex: none;
-  font-size: var(--font-caption);
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  padding: 2px 8px;
+  margin-right: -8px;
 }
-.lifeos-convo-detail { padding: 0 4px 10px; }
-/* The summary block is a button-role div (#1410): it opens the transcript viewer. It
-   looks like the plain text block it was; only the "Tap to read" line says
-   it does something. Full row width so the whole block is the target. */
-.lifeos-convo-summary {
-  display: block;
-  width: 100%;
-  margin: 0 0 6px;
-  padding: 0;
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  text-align: left;
+.lifeos-convo-filters .chip { position: absolute; top: 2px; right: 2px; padding: 0 5px; }
+
+.lifeos-convo-list {
+  margin: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
-[role="button"].lifeos-convo-summary { cursor: pointer; }
-.lifeos-convo-read-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--row-sm);
-  font-size: var(--font-label);
-  color: var(--accent-text);
-}
-.lifeos-convo-field {
-  margin: 0 0 6px;
-  font-size: var(--font-label);
-  color: var(--muted);
-  line-height: 1.45;
-}
-.lifeos-convo-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-/* One size for every button on the row, whatever its tier (#1170): the tint
-   primary used to keep .button-tint's 14px block padding and render 52px
-   beside a 44px Read. Real 44px geometry rather than an invisible expansion:
-   these sit side by side, so expanded hit rectangles would overlap and land
-   taps on the wrong control. `width: auto` because this app's own
-   .button-tint stretches to 100% for its full-width modal and panel
-   instances (#1125); `font: inherit` because a <button> otherwise takes the
-   UA's font, which rendered its label in a serif face on WebKit. */
-.lifeos-convo-actions button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex-shrink: 0;
-  width: auto;
-  min-width: var(--row-sm);
-  height: var(--row-sm);
-  min-height: var(--row-sm);
-  padding-block: 0;
-  padding-inline: 14px;
-  font: inherit;
-}
-/* Not a disabled button: a phone has no hover to explain one, and a capture
-   with no stored session id is a normal state for part of the archive. */
-.lifeos-convo-nosession {
-  font-size: var(--font-body-sm);
-  color: var(--muted);
-  background: var(--card-off);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  padding: 4px 10px;
-}
-/* The one lifecycle block — glyph, one-line reason, at most one Retry. */
-#lifeOsConvoState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  align-self: start;
-}
-#lifeOsConvoState .icon { font-size: var(--icon-feature); }
 .lifeos-convo-retry { min-width: 96px; }
+/* Sort and filter sheet (#1528): the tabs fill the row's value side, and the
+   footer is Clear beside Done (design.md "Long lists") — the one place this
+   app's stacked detail-actions runs as a row. Clear takes the primary's
+   48px height and type so the pair reads as one footer. */
+.lifeos-convo-sheet .range-tabs { flex: 1; margin-bottom: 0; }
+.lifeos-convo-sheet .range-tab[hidden] { display: none; }
+.lifeos-convo-sheet .detail-actions { flex-direction: row; }
+.lifeos-convo-sheet .detail-actions .button-primary { flex: 1; }
+.lifeos-convo-sheet .detail-actions .button-ghost {
+  min-height: 48px;
+  padding-inline: 16px;
+  font-size: var(--font-body);
+}
 
 /* ---------- conversation viewer (#1119) ---------- */
 /* One capture, read-only, in the Chat pane's own cards. A reading surface
@@ -3981,8 +3872,24 @@ body.terminal-open {
    over #lifeOsConvos (290) and under the raw document browser (300), which
    its ⋮ "Open raw" opens on top of it. */
 #lifeOsConvoViewer.terminal-overlay { background: var(--bg); z-index: 295; }
-/* The reason Resume is unavailable, in the chat-note band under the bar. */
-#lifeOsViewerNote { border-bottom: 1px solid var(--line-muted); }
+/* The summary block under the bar (#1528): the meta line, the summary
+   paragraph and the reason Resume can't run are secondary lines (body-sm,
+   muted); Resume is the view's one full-width primary. */
+.lifeos-viewer-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  flex-shrink: 0;
+  padding: var(--gap);
+  border-bottom: 1px solid var(--line-muted);
+}
+.lifeos-viewer-summary p {
+  margin: 0;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.lifeos-viewer-resume { width: 100%; }
 #lifeOsViewerState {
   display: flex;
   flex-direction: column;

@@ -1801,23 +1801,14 @@
     </div>
 
     <!-- Conversations (#727): the digested conversation index + ranked
-         cross-skill search, with a per-row ↺ that reattaches to that exact
-         session instead of opening Claude's native picker. Same overlay
-         chrome as the Browse viewer above. -->
+         cross-skill search. Each row is the shared action-row (#1528): a tap
+         reads the conversation, the ⋮ holds Resume, Rename, Copy link and
+         Delete. Same overlay chrome as the Browse viewer above. -->
     <div id="lifeOsConvos" class="terminal-overlay" hidden>
       <div class="terminal-bar">
         <button id="lifeOsConvosBack" type="button" class="icon-button term-btn" title="Back to skills" aria-label="Back to skills"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
         <span id="lifeOsConvosTitle" class="terminal-title">Conversations</span>
         <div class="terminal-bar-actions">
-          <!-- Sort toggle (#886): one button flipping last-interaction (the
-               default) against creation date, the Jobs tab's sort button
-               (#1439): an icon button whose glyph is the current order and
-               whose name says what a tap does, both written by
-               life-os.js::syncConvoSortBtn. It leads this group because it
-               is the one you touch on every visit — the model combo only
-               matters once you are actually resuming a row. -->
-          <button id="lifeOsConvosSort" type="button" class="icon-button term-btn lifeos-convo-sort"
-                  aria-label="Change conversation sort order"></button>
           <span class="model-combo" id="lifeOsConvosModelCombo" data-value="claude:sonnet">
             <button type="button" class="model-combo-trigger" aria-label="Conversation resume model"
                     aria-haspopup="listbox" aria-expanded="false" aria-controls="lifeOsConvosModelMenu"
@@ -1825,31 +1816,70 @@
             <span id="lifeOsConvosModelMenu" class="model-combo-menu" role="listbox"
                   aria-label="Conversation resume model" hidden><button type="button" role="option" data-value="sonnet" aria-selected="true">Sonnet</button></span>
           </span>
-          <!-- Scope toggle: a view opened from a skill tile starts scoped to
-               that skill; this widens it to every skill without leaving the
-               view. Hidden when the view was already opened unscoped. -->
-          <button id="lifeOsConvosScope" type="button" class="term-btn"
-                  aria-pressed="false" title="Search every skill, not just this one" hidden>All skills</button>
         </div>
       </div>
       <div class="lifeos-convos-body">
-        <div class="lifeos-convo-search">
+        <!-- The list's filter field (design.md action-row "Long lists"): the
+             placeholder carries the count; the skill a scoped view narrows to
+             is a chip inside the field (✕ widens to every skill); sort and
+             scope live in the sheet behind the trailing sliders button, which
+             shows how many narrowing filters are on. -->
+        <label class="action-row-filter list-filter lifeos-convo-search">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
-          <input id="lifeOsConvoQuery" type="search" class="input-native"
+          <input id="lifeOsConvoQuery" type="search"
                  autocomplete="off" autocapitalize="none" spellcheck="false"
-                 placeholder="Search conversations…" aria-label="Search conversations">
-        </div>
-        <ul id="lifeOsConvoList" class="lifeos-convo-list" aria-label="Conversations"></ul>
+                 placeholder="Search conversations" aria-label="Search conversations">
+          <button id="lifeOsConvosScope" type="button" class="lifeos-convo-scope" hidden><span class="chip"><span id="lifeOsConvosScopeName"></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></span></button>
+          <button id="lifeOsConvosFilters" type="button" class="icon-button lifeos-convo-filters"
+                  aria-haspopup="dialog" aria-controls="lifeOsConvoSheet"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg><span id="lifeOsConvosFilterCount" class="chip" data-tone="accent" hidden></span></button>
+        </label>
+        <ul id="lifeOsConvoList" class="action-rows lifeos-convo-list" aria-label="Conversations"></ul>
         <div id="lifeOsConvoState" class="empty" role="status" aria-live="polite" hidden></div>
       </div>
     </div>
 
+    <!-- Sort and filter (#1528): the Conversations list's filter sheet
+         (design.md action-row "Long lists") — sort first, then the skill
+         scope, each applying as it changes; Clear beside Done. "Best match"
+         is offered only while a query is in the box, and the Skill row only
+         for a view opened from a skill. -->
+    <dialog id="lifeOsConvoSheet" class="detail-dialog lifeos-convo-sheet" aria-labelledby="lifeOsConvoSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsConvoSheetTitle" tabindex="-1" autofocus>Sort and filter</h2>
+          <button type="button" id="lifeOsConvoSheetClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="row">
+          <span>Sort</span>
+          <nav id="lifeOsConvoSortTabs" class="range-tabs" aria-label="Sort conversations">
+            <button type="button" class="range-tab" data-sort="relevance">Best match</button>
+            <button type="button" class="range-tab" data-sort="interaction">Last active</button>
+            <button type="button" class="range-tab" data-sort="created">Created</button>
+          </nav>
+        </div>
+        <div id="lifeOsConvoScopeRow" class="row">
+          <span>Skill</span>
+          <nav id="lifeOsConvoScopeTabs" class="range-tabs" aria-label="Which skills to show">
+            <button type="button" class="range-tab" data-scope="skill"></button>
+            <button type="button" class="range-tab" data-scope="all">All skills</button>
+          </nav>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsConvoSheetClear" class="button-ghost">Clear</button>
+          <button type="button" id="lifeOsConvoSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- One captured conversation, read-only (#1119): the same chat-style
          cards the session overlay's Chat pane renders, over a capture parsed
          server-side (/api/life-os/file/transcript) — one transcript surface,
-         two mounts (#979). Opened by the 📖 on a Conversations row, over that
-         view; every action lives in the bar's one ⋮ menu (life-os-viewer.js),
-         and there is deliberately no composer. -->
+         two mounts (#979). Opened by a tap on a Conversations row, over that
+         view; Resume is the summary block's primary, every other action lives
+         in the bar's one ⋮ menu (life-os-viewer.js), and there is
+         deliberately no composer. -->
     <div id="lifeOsConvoViewer" class="terminal-overlay" hidden>
       <div class="terminal-bar">
         <button id="lifeOsViewerBack" type="button" class="icon-button term-btn" title="Back to conversations" aria-label="Back to conversations"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
@@ -1858,9 +1888,17 @@
           <button id="lifeOsViewerMenu" type="button" class="icon-button term-btn" title="Conversation actions" aria-label="Conversation actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
         </div>
       </div>
-      <!-- Why Resume is off for this capture, said on screen: a phone has no
-           hover to read a disabled menu row's tooltip (#727's chip, moved). -->
-      <div id="lifeOsViewerNote" class="chat-note" hidden></div>
+      <!-- The conversation's one-paragraph summary and this view's primary
+           action (#1528): who it was with and when, the digest, then Resume
+           (or the explicit new-conversation handoff for another provider).
+           When neither can run, the button stays, disabled, and the note
+           under it says why: a phone has no hover for a tooltip. -->
+      <section id="lifeOsViewerSummary" class="lifeos-viewer-summary">
+        <p id="lifeOsViewerMeta" class="lifeos-viewer-meta"></p>
+        <p id="lifeOsViewerDigest" class="lifeos-viewer-digest" hidden></p>
+        <button id="lifeOsViewerResume" type="button" class="button-primary lifeos-viewer-resume">Resume</button>
+        <p id="lifeOsViewerNote" class="lifeos-viewer-note" hidden></p>
+      </section>
       <!-- Anchors the shared ↓ Latest pill (#1140) to the scroller's
            bottom edge, as in the Chat pane. -->
       <div class="latest-frame">

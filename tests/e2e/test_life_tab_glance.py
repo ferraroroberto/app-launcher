@@ -369,8 +369,10 @@ def test_every_life_overlay_backs_out_the_same_way(life) -> None:
         expect(back).to_have_class(re.compile(r"\bicon-button\b"))
         expect(back).to_have_text("")
         expect(back.locator("use")).to_have_attribute("href", "#i-chevron-left")
-    sort = page.locator("#lifeOsConvosSort")
-    expect(sort).to_have_class(re.compile(r"\bicon-button\b"))
+    # The Conversations sort lives in its filter field's sheet (#1528), behind
+    # the same glyph-only icon-button shape.
+    filters = page.locator("#lifeOsConvosFilters")
+    expect(filters).to_have_class(re.compile(r"\bicon-button\b"))
 
 
 # Two Code-tab project rows as actionRow built them before `titleIcon`
