@@ -720,6 +720,18 @@ class TestPauseResume:
 # ============================================ elevated jobs skip schtasks
 
 
+def _scheduler_writes(runner) -> list:
+    """The runner's calls other than a read-only ``schtasks /Query``.
+
+    The jobs snapshot tick warms its bulk ``/Query`` cache in the background
+    whenever the process-local cache is cold, through this same runner, so a
+    bare ``runner.called`` depends on which tests ran earlier in the process
+    (it failed under xdist, #1512). Create, change, run and delete are what
+    these tests are about.
+    """
+    return [c.args[0] for c in runner.call_args_list if c.args[0][1:2] != ["/Query"]]
+
+
 class TestElevatedJobsSkipTaskScheduler:
     """Issue #352: create/edit on an ``elevated: true`` job
     must never *create* a Task Scheduler entry via the real schtasks
@@ -856,19 +868,19 @@ class TestElevatedJobsSkipTaskScheduler:
         assert (
             f"-TaskName '{created['id']}'" in created["registration_command"]
         )
-        assert not real_schtasks_runner.called
+        assert not _scheduler_writes(real_schtasks_runner)
 
         job_id = created["id"]
         for path in ("pause", "resume"):
             resp = client.post(f"/api/jobs/{job_id}/{path}")
             assert resp.status_code == 409
             assert "externally managed" in resp.json()["detail"]
-        assert not real_schtasks_runner.called
+        assert not _scheduler_writes(real_schtasks_runner)
 
         # Editing any field must not start touching Task Scheduler either.
         resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
         assert resp.status_code == 200
-        assert not real_schtasks_runner.called
+        assert not _scheduler_writes(real_schtasks_runner)
 
     def test_session_less_with_visible_is_rejected(
         self, webapp_client, real_schtasks_runner
@@ -923,23 +935,23 @@ class TestElevatedJobsSkipTaskScheduler:
         )
         assert resp.status_code == 200
         created = resp.json()["job"]
-        assert real_schtasks_runner.called
+        assert _scheduler_writes(real_schtasks_runner)
         real_schtasks_runner.reset_mock()
 
         job_id = created["id"]
         resp = client.put(f"/api/jobs/{job_id}", json={"name": "Renamed"})
         assert resp.status_code == 200
-        assert real_schtasks_runner.called
+        assert _scheduler_writes(real_schtasks_runner)
         real_schtasks_runner.reset_mock()
 
         resp = client.post(f"/api/jobs/{job_id}/pause")
         assert resp.status_code == 200
-        assert real_schtasks_runner.called
+        assert _scheduler_writes(real_schtasks_runner)
         real_schtasks_runner.reset_mock()
 
         resp = client.post(f"/api/jobs/{job_id}/resume")
         assert resp.status_code == 200
-        assert real_schtasks_runner.called
+        assert _scheduler_writes(real_schtasks_runner)
 
 
 class TestOnceSchedule:

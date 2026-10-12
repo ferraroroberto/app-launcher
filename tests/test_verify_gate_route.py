@@ -66,6 +66,15 @@ _WORKER_CASES: dict[str, tuple[str, str]] = {
     "full-negative": ("full", "-2"),
 }
 
+# Non-browser phase plans (#1512): UNIT_WORKERS value -> Get-UnitWorkerArgs.
+_UNIT_CASES: dict[str, str] = {
+    "unit-default": "",
+    "unit-three": "3",
+    "unit-one": "1",
+    "unit-zero": "0",
+    "unit-word": "six",
+}
+
 _HARNESS = r"""
 $ErrorActionPreference = 'Stop'
 . $env:E2E_ROUTE_PS1
@@ -90,6 +99,16 @@ foreach ($w in ($env:E2E_WORKER_CASES | ConvertFrom-Json)) {
     }
 }
 $out['__workers__'] = $workers
+$units = @{}
+foreach ($u in ($env:UNIT_WORKER_CASES | ConvertFrom-Json)) {
+    try {
+        $plan = Get-UnitWorkerArgs -Setting $u.setting
+        $units[$u.name] = [pscustomobject]@{ Workers = $plan.Workers; Args = (@($plan.Args) -join ' '); Error = '' }
+    } catch {
+        $units[$u.name] = [pscustomobject]@{ Workers = 0; Args = ''; Error = $_.Exception.Message }
+    }
+}
+$out['__units__'] = $units
 $out | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -114,12 +133,15 @@ def routes() -> dict[str, dict]:
         env=dict(os.environ, E2E_ROUTE_PS1=str(ROUTE_PS1), E2E_FAKE_CASES=json.dumps(cases),
                  E2E_WORKER_CASES=json.dumps([
                      {"name": name, "lines": _CASES[route]["lines"], "setting": setting}
-                     for name, (route, setting) in _WORKER_CASES.items()])),
+                     for name, (route, setting) in _WORKER_CASES.items()]),
+                 UNIT_WORKER_CASES=json.dumps([
+                     {"name": name, "setting": setting} for name, setting in _UNIT_CASES.items()])),
         stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=120,
     )
     assert out.returncode == 0, out.stderr
     result = json.loads(out.stdout)
     _WORKER_PLANS.update(result.pop("__workers__"))
+    _UNIT_PLANS.update(result.pop("__units__"))
     # ConvertTo-Json can flatten a one-element array in Windows PowerShell 5.1.
     for route in result.values():
         for key in ("Targets", "Browsers"):
@@ -132,6 +154,7 @@ def routes() -> dict[str, dict]:
 
 # Filled by the `routes` fixture from the same PowerShell run.
 _WORKER_PLANS: dict[str, dict] = {}
+_UNIT_PLANS: dict[str, dict] = {}
 
 
 def _shape(route: dict) -> tuple:
@@ -192,16 +215,18 @@ def test_gate_runs_the_helper_verdict() -> None:
     assert "Get-E2EWorkerArgs -Route $route -Setting $env:E2E_WORKERS" in gate
     assert "@($workerPlan.Args)" in gate
     assert "@($workerPlan.SerialArgs)" in gate
+    assert "Get-UnitWorkerArgs -Setting $env:UNIT_WORKERS" in gate
+    assert "--ignore=tests/e2e @($unitPlan.Args)" in gate
 
 
-def test_dual_projection_tiers_run_on_two_workers_by_default(routes: dict) -> None:
-    """#1231: full and surface runs spread over 2 xdist workers (the measured
-    trade-off against the live webapp's latency), minus the `serial` tests,
-    which get their own pass once the workers are done."""
+def test_dual_projection_tiers_run_on_three_workers_by_default(routes: dict) -> None:
+    """#1231, #1512: full and surface runs spread over 3 xdist workers (the
+    measured trade-off against box load), minus the `serial` tests, which get
+    their own pass once the workers are done."""
     for case in ("full-default", "surface-default"):
         plan = _WORKER_PLANS[case]
         assert (plan["Workers"], plan["Args"], plan["SerialArgs"], plan["Error"]) == (
-            2, "-n 2 --dist load -m not serial", "-m serial", ""), (case, plan)
+            3, "-n 3 --dist load -m not serial", "-m serial", ""), (case, plan)
 
 
 def test_e2e_workers_overrides_the_count_and_one_or_zero_is_serial(routes: dict) -> None:
@@ -221,6 +246,16 @@ def test_single_projection_and_skipped_tiers_stay_serial(routes: dict) -> None:
 def test_a_bad_worker_count_fails_loudly_instead_of_guessing(routes: dict) -> None:
     for case in ("full-word", "full-negative"):
         assert "E2E_WORKERS must be a whole number" in _WORKER_PLANS[case]["Error"], case
+
+
+def test_non_browser_phase_runs_on_six_workers_by_default(routes: dict) -> None:
+    """#1512: the ~3,000 non-browser tests spread over xdist workers;
+    UNIT_WORKERS overrides the count, 0 or 1 runs them serially."""
+    assert _UNIT_PLANS["unit-default"] == {"Workers": 6, "Args": "-n 6", "Error": ""}
+    assert _UNIT_PLANS["unit-three"]["Args"] == "-n 3"
+    for case in ("unit-one", "unit-zero"):
+        assert (_UNIT_PLANS[case]["Workers"], _UNIT_PLANS[case]["Args"]) == (1, ""), case
+    assert "UNIT_WORKERS must be a whole number" in _UNIT_PLANS["unit-word"]["Error"]
 
 
 def test_helper_is_ascii_for_windows_powershell_5_1() -> None:

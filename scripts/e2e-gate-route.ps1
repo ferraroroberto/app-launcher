@@ -3,9 +3,10 @@
 # Turns scripts/classify_e2e.py's E2E_* lines into what the gate runs: the
 # tier, the pytest target arguments, the browsers, and whether the run must
 # hold the machine-wide dual-projection mutex -- plus, from Get-E2EWorkerArgs
-# at the bottom, how many parallel workers it runs on. Dot-sourced by the gate
-# and kept free of side effects so tests/test_verify_gate_route.py can drive it
-# with fake classifier output.
+# at the bottom, how many parallel workers it runs on, and from
+# Get-UnitWorkerArgs how many the non-browser phase runs on. Dot-sourced by
+# the gate and kept free of side effects so tests/test_verify_gate_route.py
+# can drive it with fake classifier output.
 #
 # Fail-safe: anything the gate can't use -- no verdict, an unknown tier, a
 # repeated E2E_* key, a static/full/surface verdict with no target -- runs the
@@ -117,13 +118,32 @@ function Get-E2ERoute {
 # machine-wide dual-projection mutex (#685), which serialises gates across
 # checkouts, not the workers within one.
 #
-# Why 2, not the 4 #1220 proposed (measured 2026-09-25, table in #1231's PR):
-# the workers share this box with the live webapp the phone uses. Serially the
-# live /api/board answered in 0.30 s (median); at 2 workers 3.0 s; at 3 or 4
-# about 10 s for the whole run. Below-normal process priority did not change
-# that. 2 workers cut the browser leg from ~30 to ~20 min without making the
-# live app sluggish; set E2E_WORKERS=4 (~13 min) when nobody is using it.
-$E2EDefaultWorkers = 2
+# Why 3 (re-measured 2026-10-12, #1512): #1231 held this at 2 because the live
+# webapp's /api/board slowed to ~10 s at 3 or 4 workers. That load turned out
+# to be the gate's own: every test's page boot ran `git status` across the
+# whole projects folder until tests/e2e/conftest.py::pin_launch_target scoped
+# the disposable webapp to the launch target. Since then the live /api/board
+# median stays 0.06 s, the same as idle, at 3 and 4 workers. Full gate:
+# 2 workers ~17 min, 3 workers ~11 min at 63% mean box CPU, 4 workers ~10 min
+# at 83%. 3 keeps headroom for whatever else the box runs.
+$E2EDefaultWorkers = 3
+
+# A worker-count override (E2E_WORKERS, UNIT_WORKERS): empty keeps the
+# default, anything but a whole number throws instead of guessing.
+function Resolve-WorkerCount {
+    param(
+        [AllowEmptyString()][AllowNull()][string]$Setting,
+        [int]$Default,
+        [string]$Name
+    )
+
+    if (-not $Setting) { return $Default }
+    $parsed = 0
+    if (-not [int]::TryParse($Setting.Trim(), [ref]$parsed) -or $parsed -lt 0) {
+        throw ("{0} must be a whole number of workers (0 or 1 = serial), got '{1}'" -f $Name, $Setting)
+    }
+    return $parsed
+}
 
 function Get-E2EWorkerArgs {
     param(
@@ -131,14 +151,7 @@ function Get-E2EWorkerArgs {
         [AllowEmptyString()][AllowNull()][string]$Setting
     )
 
-    $workers = $E2EDefaultWorkers
-    if ($Setting) {
-        $parsed = 0
-        if (-not [int]::TryParse($Setting.Trim(), [ref]$parsed) -or $parsed -lt 0) {
-            throw ("E2E_WORKERS must be a whole number of workers (0 or 1 = serial), got '{0}'" -f $Setting)
-        }
-        $workers = $parsed
-    }
+    $workers = Resolve-WorkerCount -Setting $Setting -Default $E2EDefaultWorkers -Name "E2E_WORKERS"
     if (-not $Route.Serialize -or $workers -le 1) {
         return [pscustomobject]@{ Workers = 1; Args = @(); SerialArgs = @() }
     }
@@ -147,4 +160,22 @@ function Get-E2EWorkerArgs {
         Args       = @("-n", [string]$workers, "--dist", "load", "-m", "not serial")
         SerialArgs = @("-m", "serial")
     }
+}
+
+# The non-browser phase's xdist workers (#1512): $UnitDefaultWorkers,
+# overridable with UNIT_WORKERS (0 or 1 = serial). ~3,000 short tests, run
+# serially, took ~250 s of a gate run; on 6 workers they take ~50 s (4: ~65 s,
+# 8: ~43 s, 16: ~45 s, measured 2026-10-12). 6 keeps most of the gain and
+# leaves cores for whatever else the box is running. A test that only passes
+# serially is order-dependent; fix the test, or set UNIT_WORKERS=1 to confirm.
+$UnitDefaultWorkers = 6
+
+function Get-UnitWorkerArgs {
+    param([AllowEmptyString()][AllowNull()][string]$Setting)
+
+    $workers = Resolve-WorkerCount -Setting $Setting -Default $UnitDefaultWorkers -Name "UNIT_WORKERS"
+    if ($workers -le 1) {
+        return [pscustomobject]@{ Workers = 1; Args = @() }
+    }
+    return [pscustomobject]@{ Workers = $workers; Args = @("-n", [string]$workers) }
 }
