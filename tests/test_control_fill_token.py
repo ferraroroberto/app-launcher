@@ -1,0 +1,66 @@
+"""Fields, the composer and a disabled in-card button share one fill (#1525).
+
+Dark's ``--card-off`` is true black (``#010409``), so a text field or a disabled
+button painted with it reads as a black well inside a card, next to a composer
+painted ``--card-2``. Owner decision fleet-config#1368: one control fill,
+``--input-bg`` (light ``canvas-subtle``, dark ``border-muted``). This guard
+fails when one of those controls goes back to a literal or to ``--card-off``,
+or when dark's ``--input-bg`` drifts back to a true-black fill.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+import pytest
+
+STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
+
+# Selectors whose background is the control fill. ``--card-off`` stays for
+# off-card wells (code blocks, the segmented track), so it is not listed.
+_CONTROLS = [
+    ".tr-ask-input",
+    ".compose-input",
+    ".input-native",
+    ".login-card input",
+    '.session-mode-btn[aria-disabled="true"]',
+    ".key-btn:disabled",
+    '.board-drawer-action[aria-disabled="true"],\n.board-drawer-action[aria-disabled="true"]:active',
+]
+
+
+def _css() -> str:
+    css = (STATIC / "styles.css").read_text(encoding="utf-8").replace("\r\n", "\n")
+    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+
+
+def _background_of(selector: str) -> str:
+    for sel_text, body in re.findall(r"([^{}]+)\{([^{}]*)\}", _css()):
+        if sel_text.strip() == selector:
+            m = re.search(r"(?<![\w-])background:\s*([^;]+);", body)
+            assert m, f"{selector} sets no background"
+            return m.group(1).strip()
+    raise AssertionError(f"no rule for {selector!r} in styles.css")
+
+
+@pytest.mark.parametrize("selector", _CONTROLS)
+def test_control_paints_the_shared_fill(selector: str) -> None:
+    assert _background_of(selector) == "var(--input-bg)"
+
+
+def test_dark_control_fill_is_not_true_black() -> None:
+    css = _css()
+    dark = re.search(r'\[data-theme="dark"\]\s*\{([^{}]*)\}', css)
+    assert dark, "dark token block not found"
+    m = re.search(r"--input-bg:\s*([^;]+);", dark.group(1))
+    assert m, "dark block does not override --input-bg"
+    assert m.group(1).strip() == "var(--line-muted)"
+    assert re.search(r"--line-muted:\s*#21262d;", dark.group(1)), "border-muted drifted"
+    assert re.search(r"--card-2:\s*#21262d;", dark.group(1))
+
+
+def test_light_control_fill_is_unchanged() -> None:
+    root = re.search(r":root\s*\{(.*?)\n\}", _css(), flags=re.S)
+    assert root, ":root block not found"
+    assert re.search(r"--input-bg:\s*var\(--card-off\);", root.group(1))

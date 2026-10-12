@@ -116,8 +116,11 @@
   --font-code: 13px;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;
-  /* The vendored select-native/modal components fill their controls with
-     `--input-bg` (#1133); this app's inset-control fill is --card-off. */
+  /* The one control fill (#1525): every text field, the composer and a
+     disabled button inside a card paint this, never `--card-off` (true black
+     in dark, fleet-config#1368). Light keeps canvas-subtle; dark overrides to
+     border-muted below. The vendored select-native/modal fill with it too
+     (#1133). `--card-off` stays for off-card wells. */
   --input-bg: var(--card-off);
   /* unified row-height scale for repeated list rows (issue #365): sm =
      utility/action targets (iOS 44px tap minimum), md = single-line rows,
@@ -1327,7 +1330,7 @@ button.settings-row:active { background: var(--card-2); }
 /* A form field is a row, not an inline control: the 44px floor, not the
    36px control height (#1124 — these measured 39px rendered). */
 .input-native {
-  background: var(--card-off);
+  background: var(--input-bg);
   color: var(--fg);
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
@@ -1684,7 +1687,7 @@ textarea.input-native { height: auto; }
 }
 .login-card h2 { margin: 0; font-size: var(--font-body); }
 .login-card input {
-  background: var(--card-off);
+  background: var(--input-bg);
   color: var(--fg);
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
@@ -2046,7 +2049,7 @@ textarea.input-native { height: auto; }
   box-shadow: 0 1px 2px rgb(from var(--fg) r g b / 0.12);
 }
 .session-mode-btn[aria-disabled="true"] {
-  background: var(--card-off);
+  background: var(--input-bg);
   border-color: var(--line);
   color: var(--muted);
   box-shadow: none;
@@ -2732,7 +2735,7 @@ textarea.input-native { height: auto; }
   padding: 0 12px;
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
-  background: var(--card-off);
+  background: var(--input-bg);
   color: var(--fg);
   font: inherit;
   font-size: var(--font-body);
@@ -3568,7 +3571,7 @@ body.terminal-open {
    recipe (design.md button-disabled), never opacity on a solid fill. */
 .key-btn:disabled {
   color: var(--muted);
-  background: var(--card-2);
+  background: var(--input-bg);
   cursor: default;
 }
 .terminal-host {
@@ -3741,7 +3744,7 @@ body.terminal-open {
   font-size: var(--font-body);
   line-height: 20px;
   padding: 10px 12px;
-  background: var(--card-2);
+  background: var(--input-bg);
   color: var(--fg);
   border: 1px solid var(--control-border);
   border-radius: var(--radius-md);
@@ -4948,7 +4951,7 @@ span.chief-answer-ref { color: var(--muted); }
    tap still toasts the reason. */
 .board-drawer-action[aria-disabled="true"],
 .board-drawer-action[aria-disabled="true"]:active {
-  background: var(--card-off);
+  background: var(--input-bg);
   border-color: var(--line);
   color: var(--muted);
   cursor: default;
