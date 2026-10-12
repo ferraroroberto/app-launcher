@@ -21,7 +21,13 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e._geometry import assert_min_target
-from tests.e2e.conftest import flush_requests, open_settings_sheet, stable_read, wait_until
+from tests.e2e.conftest import (
+    flush_requests,
+    open_settings_sheet,
+    stable_eval,
+    stable_read,
+    wait_until,
+)
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_overlay_standalone_scrollable import (
     _PATCH_MATCH_MEDIA,
@@ -769,6 +775,47 @@ def test_life_os_convos_bar_buttons_match_model_selector(
     expect(sort).to_be_visible()
     for locator in (back, scope, sort, combo):
         assert_min_target(locator)
+
+
+@pytest.mark.iphone
+def test_life_os_convos_bar_centres_share_one_line(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1526: the Conversations bar's actions group stretched its children,
+    so the 36px model combo hugged the top of a 44px row while the icon
+    buttons and the title centred on it, and the chevron (drawn at 50% of the
+    wrapper, not of the trigger) rode below the label. Every control's box
+    centre must sit on the bar's centre line, and the combo wrapper (which
+    the chevron is positioned against) must share the trigger's centre."""
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+    expect(authed_page.locator("#lifeOsConvosScope")).to_be_visible()
+
+    # One call: a poll re-render between two reads must not skew the sums.
+    centres = stable_eval(
+        authed_page.locator("#lifeOsConvos .terminal-bar"),
+        """bar => {
+            const mid = (el) => {
+              const r = el.getBoundingClientRect();
+              return r.top + r.height / 2;
+            };
+            const q = (sel) => bar.querySelector(sel);
+            return {
+              bar: mid(bar),
+              back: mid(q('#lifeOsConvosBack')),
+              title: mid(q('#lifeOsConvosTitle')),
+              sort: mid(q('#lifeOsConvosSort')),
+              scope: mid(q('#lifeOsConvosScope')),
+              trigger: mid(q('#lifeOsConvosModelCombo .model-combo-trigger')),
+              combo: mid(q('#lifeOsConvosModelCombo')),
+            };
+        }""",
+    )
+    assert centres is not None
+    for name in ("back", "title", "sort", "scope", "trigger"):
+        assert abs(centres[name] - centres["bar"]) <= 1, (name, centres)
+    assert abs(centres["combo"] - centres["trigger"]) <= 1, centres
 
 
 def test_life_os_unresumable_row_says_so(
