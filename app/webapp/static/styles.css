@@ -3289,6 +3289,13 @@ body.terminal-open {
    controls to their natural single-line width and give the title a floor,
    and the row scrolls instead of deforming. */
 #lifeOsConvos .terminal-title { min-width: 4.5rem; }
+/* (#1526) The actions group is a flex row with the default align-items:
+   stretch, so the 44px sort icon set its height and the 36px combo and
+   "All skills" button hugged the top of it while the back button and title
+   (centred by the bar) sat lower — and the combo's chevron, drawn at 50% of
+   the stretched wrapper, rode below the label. Centre the group's items so
+   every box shares the bar's centre line and the wrapper hugs the trigger. */
+#lifeOsConvos .terminal-bar-actions { align-items: center; }
 #lifeOsConvos .terminal-bar > .term-btn,
 #lifeOsConvos .terminal-bar-actions > * {
   flex: none;
