@@ -117,12 +117,14 @@
 
 /* One disabled recipe for every tier, both themes (home-automation#362):
    opacity on a solid fill blends sub-AA either way; the flat card-off/line/
-   muted trio reads identically greyed-out in both themes and passes AA. */
+   muted trio reads identically greyed-out in both themes and passes AA.
+   The fill is the control fill (--input-bg): card-off in light, border-muted
+   (#21262d) in dark, never true black on a dark card (fleet-config#1368). */
 .button-primary:disabled,
 .button-tint:disabled,
 .button-ghost:disabled,
 .button-surface:disabled {
-  background: var(--card-off);
+  background: var(--input-bg, var(--card-off));
   border-color: var(--line);
   color: var(--muted);
   cursor: default;

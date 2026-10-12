@@ -36,7 +36,7 @@ The fleet's canonical **empty state**: a centered column — feature-size muted 
 ```
 
 - `grid-column: 1 / -1` makes the block span a grid container's full width (inert in flex/block containers).
-- The action is the **quiet secondary** look (card-off + hairline), never a solid primary — an empty state suggests, it doesn't demand.
+- The action is the **quiet secondary** look (control fill + hairline), never a solid primary — an empty state suggests, it doesn't demand. The fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so the action never sits on true black inside a dark card (fleet-config#1368, project-scaffolding#352).
 
 ## Required design tokens
 
@@ -45,7 +45,7 @@ The fleet's canonical **empty state**: a centered column — feature-size muted 
 | `--muted` | `#656d76` | glyph + text |
 | `--ink` | `#1f2328` | action text |
 | `--line` | `#d1d9e0` | action border |
-| `--card-off` | `#f6f8fa` | action fill |
+| `--input-bg` | `#f6f8fa` (dark `#21262d`) | action fill (falls back to `var(--card-off)` if undefined) |
 | `--radius-md` | `12px` | action corners |
 | `--space-sm` | `8px` | column gap |
 | `--space-md` | `16px` | horizontal padding |

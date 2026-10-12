@@ -25,8 +25,9 @@
 .empty-state-icon { width: var(--icon-feature); height: var(--icon-feature); color: var(--muted); }
 .empty-state-message { margin: 0; font-size: var(--font-body); }
 
-/* The optional action: the quiet secondary look (card-off fill + hairline),
- * never a solid primary — an empty state suggests, it doesn't demand. */
+/* The optional action: the quiet secondary look (control fill + hairline),
+ * the fill being card-off in light and border-muted in dark so it never sits
+ * on true black inside a dark card (fleet-config#1368), never a solid primary — an empty state suggests, it doesn't demand. */
 .empty-state-action {
   flex: none;
   width: auto;
@@ -35,7 +36,7 @@
   padding: 8px 20px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--card-off);
+  background: var(--input-bg, var(--card-off));
   color: var(--ink);
   font: inherit;
   font-size: var(--font-label);
