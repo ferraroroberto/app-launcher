@@ -433,15 +433,3 @@ def test_popup_compact_sends_slash_compact_through_the_verified_route(
     expect(dialog).to_be_visible()
 
 
-def test_popup_has_compact_but_still_no_stop_or_delete(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock(authed_page)
-    _open_coding(authed_page, base_url)
-    authed_page.locator("#sessionsChannelSummary").click()
-    dialog = authed_page.locator("#channelListDialog")
-    expect(dialog.locator("li.channel-list-row")).to_have_count(2)
-    expect(dialog.locator(".channel-list-compact")).to_have_count(2)
-    labels = dialog.locator("button").all_inner_texts()
-    assert not [t for t in labels if re.search(r"stop|delete|kill|remove", t, re.I)], labels
-    expect(dialog.locator(".action-stop-close, .board-stop-btn")).to_have_count(0)

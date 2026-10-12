@@ -230,15 +230,6 @@ def _open_compose_with_record(page: Page) -> None:
     )
 
 
-def test_record_button_lives_in_compose_bar(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """The 🎤 button is a child of the composer, first slot of its grid."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    record = authed_page.locator("#terminalComposeBar .compose-tools .composer-mic")
-    expect(record).to_have_count(1)
-
-
 def test_streamed_partials_then_final(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:

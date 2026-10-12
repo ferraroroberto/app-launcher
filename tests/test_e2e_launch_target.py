@@ -248,3 +248,18 @@ def test_unreadable_trust_state_is_unknown_not_trusted(
     shapeless = _state_file(tmp_path, {"projects": ["not", "a", "map"]})
     monkeypatch.setattr(e2e_conftest, "_CLAUDE_STATE_FILE", shapeless)
     assert e2e_conftest.agent_trusts_dir(Path("E:/anything")) is None
+
+
+def test_pinning_scans_the_launch_target_alone(tmp_path: Path) -> None:
+    """#1512: the disposable webapp's Coding scan covers the target and no
+    sibling. Every page boot runs ``git`` per scanned project, and a whole
+    projects folder of them held the box at 100% CPU for the browser phase.
+    A sibling whose name holds a glob class (``[x]``) must hide only itself."""
+    target = _scratch_checkout(tmp_path)
+    for sibling in ("other-repo", "glob[x]"):
+        (target.parent / sibling).mkdir()
+    cfg = e2e_conftest.pin_launch_target(
+        disposable_webapp_config(Path("does-not-exist.json"), "tok-placeholder"), target
+    )
+
+    assert _resolved_ids(cfg) == [slugify(target.name)]

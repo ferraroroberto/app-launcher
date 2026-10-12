@@ -110,8 +110,18 @@ try {
     & $python -m compileall -q app src tests
     if ($LASTEXITCODE -ne 0) { Fail "byte-compile failed." }
 
-    Phase "pytest (non-e2e)..."
-    & $python -m pytest -q --ignore=tests/e2e
+    # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
+    # #1512); a bad override fails here, before any phase runs.
+    . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
+    try {
+        $unitPlan = Get-UnitWorkerArgs -Setting $env:UNIT_WORKERS
+    }
+    catch {
+        Fail $_.Exception.Message
+    }
+    $unitLabel = if ($unitPlan.Workers -gt 1) { "$($unitPlan.Workers) workers" } else { "serial" }
+    Phase "pytest (non-e2e, $unitLabel)..."
+    & $python -m pytest -q --ignore=tests/e2e @($unitPlan.Args)
     if ($LASTEXITCODE -ne 0) { Fail "non-e2e pytest suite failed." }
 
     # Diff-proportionate e2e routing (issues #568, #955). Classify the branch's
@@ -125,7 +135,6 @@ try {
     # scripts/e2e-gate-route.ps1 turns its verdict into pytest arguments. On CI
     # the browser suite is skipped entirely (#1041) -- that job runs the
     # clean-machine half, and this gate, here, is the contract for the rest.
-    . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
     $classifyOut = @()
     if ($env:CI -ne "true") {
         $classifyOut = & $python (Join-Path $repoRoot "scripts\classify_e2e.py")
