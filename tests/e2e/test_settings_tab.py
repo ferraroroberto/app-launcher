@@ -31,6 +31,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import (
+    BUILD_READOUT_MS,
     close_settings_sheets,
     open_settings,
     open_settings_sheet,
@@ -75,7 +76,7 @@ def test_settings_pane_controls_and_theme_toggle(
     authed_page.route(re.compile(r".*/api/version$"), _flaky_version)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
+        "Build:", timeout=BUILD_READOUT_MS
     )
     assert len(version_calls) == 3, version_calls
 

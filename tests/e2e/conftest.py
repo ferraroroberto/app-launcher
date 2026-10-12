@@ -873,6 +873,24 @@ _DEFAULT_TIMEOUT_MS = int(os.environ.get("E2E_DEFAULT_TIMEOUT_MS", "15000"))
 OVERLAY_OPEN_MS = int(os.environ.get("E2E_OVERLAY_OPEN_MS", "30000"))
 
 
+# ----------------------------------------------- the boot build readout (#1513)
+#
+# `#buildReadout` fills from `GET /api/version`, a server round trip that runs
+# `git` in a worker thread and probes the session-host, issued alongside the
+# rest of boot's reads. Measured under a CPU burn at core count (#1509's
+# diagnosis): the call takes ~0.9 s on a quiet box but up to 5.6 s loaded, and
+# the readout fills up to 8.3 s after page start. Five tests waited on it with
+# a literal 10 s, which a heavily loaded full gate run exceeded; the settings
+# test, which also aborts the first two calls (#1287) and so adds the retry
+# backoff (500 ms + 1 s) on top, failed most often. At 32 burners on the
+# 16-core box the old budget went red in 1 of 4 chromium and 2 of 4 webkit
+# runs. 30 s is ~3.6x the loaded max and, like OVERLAY_OPEN_MS, still well
+# under the 120 s `pytest-timeout`, so a readout that really never fills fails
+# fast and named. One budget for every `#buildReadout` wait, not a literal per
+# test.
+BUILD_READOUT_MS = int(os.environ.get("E2E_BUILD_READOUT_MS", "30000"))
+
+
 # --------------------------------------------------- opening a session row
 #
 # #1025 removed the running-sessions row's actions gear, which used to be the
