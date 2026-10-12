@@ -319,8 +319,8 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
             (p.endswith("/conversations") or p.endswith("/conversations/launch"))
         ),
         "passkey",
-        "Life OS conversation index (#727): the digest — topic, decisions, open "
-        "loops — is a distillation of terminal content, so it is gated exactly "
+        "Life OS conversation index (#727): the digest — topic and summary "
+        "— is a distillation of terminal content, so it is gated exactly "
         "like the captures it summarises.",
     ),
     (

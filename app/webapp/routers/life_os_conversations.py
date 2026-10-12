@@ -187,7 +187,8 @@ def _conversation_rows(
             "skill": owner, "file": str(row.get("file") or ""),
             "path": _capture_rel(root, path) if path and source["readable"] else "",
             **{key: str(row.get(key) or "") for key in
-               ("date", "slug", "title", "topic", "decisions", "open_loops")},
+               ("date", "slug", "title", "topic", "summary", "decisions",
+                "open_loops")},
             "last_interaction": _last_interaction(path, str(row.get("date") or "")),
             "turns": row.get("turns") or 0,
             "agent": agent, "sid": source.get("sid", ""),
@@ -336,7 +337,8 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
     Reads ``<skill>/conversations/index.json`` — the machine-readable twin of
     ``index.md``, written by life-os's own capture/index pipeline
     (life-os#68) — and returns its entries newest-first. Each carries the
-    digest (topic / decisions / open loops), the stored session id, and a
+    digest (topic, plus one ``summary`` paragraph or the older decisions /
+    open loops pair), the stored session id, and a
     ``path`` to the raw capture for the existing file viewer.
     """
     cfg: WebappConfig = request.app.state.webapp_config

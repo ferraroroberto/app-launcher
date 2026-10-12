@@ -123,6 +123,8 @@ def _make_life_os(root: Path) -> Path:
                 "sid": "", "agent": "claude",
                 "topic": "notion schema", "decisions": "none",
                 "open_loops": "none",
+                # The one-paragraph digest shape (fleet-config#1373).
+                "summary": "Settled the property types for the reading list.",
             },
         ]),
         encoding="utf-8",
@@ -1196,6 +1198,18 @@ class TestConversationsList:
         assert row["decisions"] == "took the 07:40"
         assert row["open_loops"] == "confirm the return leg"
         assert row["turns"] == 12
+
+    def test_summary_passes_through_for_both_digest_shapes(self, life_os_client):
+        """#1528: the newer index writes one ``summary`` paragraph
+        (fleet-config#1373); older entries have only decisions / open loops.
+        Both shapes reach the client, and an old entry reads as an empty
+        summary rather than a missing key."""
+        client, _, _ = life_os_client
+        resp = client.get("/api/life-os/skills/journal-daily/conversations")
+        rows = {r["file"]: r for r in resp.json()["conversations"]}
+        assert rows["2026-07-02-1030-notion-schema.md"]["summary"] == (
+            "Settled the property types for the reading list.")
+        assert rows["2026-08-01-0900-ferry-booking.md"]["summary"] == ""
 
     def test_resumable_only_for_claude_with_canonical_sid(self, life_os_client):
         """The rule the launch route enforces, computed server-side.
