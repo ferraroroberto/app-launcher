@@ -1,12 +1,14 @@
-"""The Board tab's "Your turn" badge in the nav (issue #1436, decision 2 of
-#1432), from the vendored nav's ``setBadge`` (project-scaffolding#338).
+"""The Board tab's badge in the nav (issue #1436, decision 2 of #1432), from
+the vendored nav's ``setBadge`` (project-scaffolding#338).
 
-The badge counts the sessions in Your turn and is visible from every tab.
-Off the Board, the sessions poll (which runs on every tab) carries each
-session's Board column (#1434), so the count stays live without polling
-``/api/board``; on the Board, its own payload is the count, so the badge
-matches the lane. No badge at 0, and the tab's accessible name carries the
-count ("Board, 2 waiting").
+The badge counts what waits on you, visible from every tab: the sessions in
+Your turn, plus the chief's unanswered questions since #1502. Off the Board,
+the sessions poll (which runs on every tab) carries each session's Board
+column (#1434) and the question count (``chief_questions``), so the count
+stays live without polling ``/api/board``; on the Board, its own payload is
+the count, so the badge matches the lanes. A question count that could not
+be read adds nothing. No badge at 0, and the tab's accessible name carries
+the count ("Board, 2 waiting").
 
 Hermetic: the session list and the Board are route-mocked before ``goto()``
 (#510), with fictional sessions.
@@ -22,6 +24,7 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.test_board_chief import _plan_with
 from tests.e2e.test_board_tab import _FAKE_BOARD, _board_payload, _mock_board
 
 pytestmark = pytest.mark.smoke
@@ -49,10 +52,10 @@ _SESSIONS = [
 ]
 
 
-def _mock_sessions(page: Page, sessions: list[dict]) -> None:
+def _mock_sessions(page: Page, sessions: list[dict], **extra) -> None:
     page.route(re.compile(r".*/api/claude-code/sessions$"), lambda route: route.fulfill(
         status=200, content_type="application/json",
-        body=_json.dumps({"sessions": sessions})))
+        body=_json.dumps({"sessions": sessions, **extra})))
 
 
 def _route_board(page: Page, current: dict) -> None:
@@ -114,3 +117,67 @@ def test_board_badge_caps_at_nine_plus_and_keeps_the_real_count_spoken(
     tab = authed_page.locator("#tabBoard")
     expect(tab.locator(".tab-badge")).to_have_text("9+")
     expect(tab).to_have_accessible_name("Board, 12 waiting")
+
+
+@pytest.mark.iphone
+def test_board_badge_and_header_count_the_chiefs_open_questions(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1502 (decision 1 of #1500): the chief's unanswered questions,
+    fleet-wide, join Your turn in the badge from every tab and lead the
+    Board's header ("2 questions · 1 needs you"). An answered question is not
+    counted."""
+    plan = _plan_with(tmp_path, [
+        {"id": "q-a", "text": "Ship the widget?", "ref": "demo-repo#1"},
+        {"text": "Rename the gadget?", "ref": "other-repo#2"},
+        {"text": "Keep the sprocket?"},
+    ])
+    plan["answered"] = ["q-a"]
+    _mock_board(authed_page, _board_payload(), plan=plan)
+    # Off the Board the webapp's own count rides the sessions poll.
+    _mock_sessions(authed_page, _SESSIONS, chief_questions=5)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    tab = authed_page.locator("#tabBoard")
+    badge = tab.locator(".tab-badge")
+    expect(authed_page.locator("#paneClaude")).to_be_visible()
+    expect(badge).to_have_text("7")
+    expect(tab).to_have_accessible_name("Board, 7 waiting")
+
+    # On the Board its own payload is both halves: 1 in Your turn, 2 open.
+    tab.click()
+    expect(authed_page.locator("#boardChiefPlan li.board-plan-waiting")).to_have_count(3)
+    expect(badge).to_have_text("3")
+    expect(tab).to_have_accessible_name("Board, 3 waiting")
+    head = authed_page.locator("#boardHeadStatus")
+    expect(head).to_have_text("2 questions · 1 needs you")
+    parts = head.locator(".head-exception")
+    expect(parts).to_have_count(2)
+    for i in range(2):
+        expect(parts.nth(i)).to_have_attribute("data-tone", "attention")
+    # Two parts on one line at the phone's width, no word clipped.
+    clipped = authed_page.evaluate(
+        "() => { const el = document.getElementById('boardHeadStatus');"
+        " return el.scrollWidth > el.clientWidth + 1; }")
+    assert not clipped, "the Board header clips its two parts"
+
+
+def test_an_unreadable_plan_adds_no_question_count(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1502: a plan that can't be read is unknown, never zero and never a
+    guess: the header shows no question part and the badge counts sessions
+    only, on the Board and off it."""
+    _mock_board(authed_page, _board_payload(), plan={"state": "unreadable"})
+    _mock_sessions(authed_page, _SESSIONS, chief_questions=None)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    tab = authed_page.locator("#tabBoard")
+    badge = tab.locator(".tab-badge")
+    expect(authed_page.locator("#paneClaude")).to_be_visible()
+    expect(badge).to_have_text("2")
+
+    tab.click()
+    expect(authed_page.locator("#boardChiefPlan .board-plan-note")).to_have_text("Plan unreadable.")
+    expect(badge).to_have_text("1")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")

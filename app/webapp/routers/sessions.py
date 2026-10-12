@@ -36,7 +36,7 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, board, launcher, session_client
+from src import audit, board, chief_answers, launcher, session_client
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
@@ -95,6 +95,19 @@ def _session_board_columns(
     return columns
 
 
+def _chief_questions(cfg: WebappConfig) -> Optional[int]:
+    """The chief's unanswered questions, fleet-wide (#1502), or ``None`` when
+    the plan can't be read: unknown, never zero."""
+    try:
+        plan = chief_answers.read_plan_with_answers(
+            Path(cfg.chief_plan_file), cfg.github_owner
+        )
+    except Exception as exc:
+        logger.warning(f"⚠️ chief questions unavailable: {exc.__class__.__name__}")
+        return None
+    return chief_answers.unanswered_count(plan)
+
+
 @router.get("/api/claude-code/sessions")
 async def claude_sessions(request: Request) -> Dict[str, Any]:
     """List launcher-owned PTY sessions (public, token-gated).
@@ -110,6 +123,11 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     Coding tab's rows show the Board's "needs you" / "stalled" chips from
     this poll alone (#1434). Both are ``None`` when the Board placement could
     not be worked out: unknown, never "normal".
+
+    ``chief_questions`` (#1502) is how many of the chief's questions no
+    device has answered yet, fleet-wide, so the Board tab's badge counts them
+    from every tab; ``None`` when the plan can't be read. It is computed from
+    the same plan reader and answered marks as ``/api/board/chief-plan``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     try:
@@ -134,7 +152,8 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
             placed = (columns or {}).get(str(sess.get("session_id")))
             sess["board_column"] = placed["column"] if placed else None
             sess["board_status"] = placed["status"] if placed else None
-    return {"sessions": sessions}
+    questions = await asyncio.to_thread(_chief_questions, cfg)
+    return {"sessions": sessions, "chief_questions": questions}
 
 
 @router.post("/api/claude-code/sessions/{sid}/stop")

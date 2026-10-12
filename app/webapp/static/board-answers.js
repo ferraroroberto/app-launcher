@@ -40,6 +40,7 @@ import { growTextarea, mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
 import { renderBoard } from './board.js';
+import { itemKey, markSent } from './chief-keys.js';
 
 const DONE_LABEL = 'Done';
 // Question and answer are joined by an arrow in the message the chief
@@ -62,30 +63,8 @@ let sending = false;
 
 // ------------------------------------------------------ answered marks
 
-// What this page sent, on which version of the plan.
-let sent = { updated_at: null, ids: [] };
-
-function union(a, b) {
-  return a.concat(b.filter(function (k) { return a.indexOf(k) === -1; }));
-}
-
-// The item's key: the chief's own id, else its position in the list.
-export function itemKey(item, index) {
-  return item.id || String(index);
-}
-
-// The keys answered on this version of the plan: from any device, as the
-// webapp recorded them, plus what this page sent.
-export function answeredKeys(plan) {
-  if (!plan) return [];
-  const recorded = Array.isArray(plan.answered) ? plan.answered.map(String) : [];
-  return sent.updated_at === (plan.updated_at || '') ? union(recorded, sent.ids) : recorded;
-}
-
-function markSent(plan, keys) {
-  const version = plan.updated_at || '';
-  sent = { updated_at: version, ids: union(sent.updated_at === version ? sent.ids : [], keys) };
-}
+// The keys, and this page's own marks, live in chief-keys.js (#1502), shared
+// with the Board's counts.
 
 // Share the marks with every device. The webapp records them only while
 // this is still the plan on disk; whatever it answers is the current marks,
@@ -332,8 +311,9 @@ export function syncChiefAnswers(run) {
 // `shown` is the plan positions to ask: the Board's repo filter (#1332)
 // minus what is already answered (#1487); omitted, every item. Drafts stay
 // indexed by plan position, so narrowing or widening it between opens keeps
-// whatever was typed.
-export function openChiefAnswers(plan, run, shown) {
+// whatever was typed. `startAt` (#1502), a plan position among them, opens
+// the sheet scrolled to that question: a tap on its Board row.
+export function openChiefAnswers(plan, run, shown, startAt) {
   const dialog = els.chiefAnswersDialog;
   if (!dialog || !plan) return;
   const items = plan.waiting_on_roberto || [];
@@ -362,6 +342,17 @@ export function openChiefAnswers(plan, run, shown) {
   }));
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
+  const start = startAt == null ? null
+    : els.chiefAnswersList.querySelector('[data-key="' + CSS.escape(itemKey(items[startAt], startAt)) + '"]');
+  // The dialog is the scroller, scrolled by hand two frames on: in WebKit
+  // the modal's autofocused title (#1537) scrolls itself into view on the
+  // first frame after showModal(), undoing an earlier scroll, and it ignores
+  // scrollIntoView() inside the modal altogether.
+  if (start) {
+    requestAnimationFrame(function () { requestAnimationFrame(function () {
+      dialog.scrollTop += start.getBoundingClientRect().top - dialog.getBoundingClientRect().top;
+    }); });
+  }
 }
 
 async function submitAnswers() {

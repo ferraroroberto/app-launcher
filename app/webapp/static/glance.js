@@ -63,13 +63,13 @@ export function avatar(glyph, badge, extraClass) {
   return el;
 }
 
-// The session row's leading avatar and text column, shared by the Code
-// tab's rows and the Board's session cards; each caller puts them in its
-// own tap target (the row button / the drawer toggle) and adds its own
-// trailing accessory.
+// The session row's leading avatar and text column, for the Code tab's rows
+// (the Board's session rows are action-rows with the same avatar, #1502).
+// The caller puts them in its own tap target and adds its own trailing
+// accessory.
 //
 // opts: agentId, agentLabel, badge, title, meta (text), chips (elements),
-//       iconClass / titleClass / metaClass (each surface's existing hooks).
+//       iconClass / titleClass / metaClass (the caller's own hooks).
 // Returns [avatarEl, textEl].
 export function sessionRowBody(opts) {
   const lead = avatar(

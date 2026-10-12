@@ -14,6 +14,7 @@
 
 import { BOARD_POLL_MS, els, state } from './state.js';
 import { isHiddenChannel } from './channel-sessions.js';
+import { openQuestionCount } from './chief-keys.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
 
@@ -76,23 +77,30 @@ export function renderHomeHead() {
 // response never hands the count back and forth between the two sources.
 const BOARD_BADGE_FRESH_MS = 2 * BOARD_POLL_MS;
 
-// The Board tab's badge (#1436, decision 2 of #1432): how many sessions are
-// in Your turn, visible from every tab. While the Board is up its own payload
-// is the count, so the badge matches the lane, external sessions included.
-// Everywhere else the sessions poll, which runs on every tab, carries each
-// session's Board column (#1434) from the server's same routing, so the
-// count stays live without polling /api/board off the Board.
+// The Board tab's badge (#1436, decision 2 of #1432; questions since #1502):
+// what waits on you, visible from every tab — the chief's unanswered
+// questions, fleet-wide, plus the sessions in Your turn. While the Board is
+// up its own payload is both halves, so the badge matches the lanes,
+// external sessions included. Everywhere else the sessions poll, which runs
+// on every tab, carries each session's Board column (#1434) and the
+// question count, from the server's same routing and the same key rule
+// (chief-keys.js), so the badge stays live without polling /api/board off
+// the Board. A question count that could not be read adds nothing: the
+// badge then counts sessions only, never a made-up zero.
 export function renderBoardBadge() {
-  let n;
+  let sessions;
+  let questions;
   if (state.board && Date.now() - state.boardFetchedAt < BOARD_BADGE_FRESH_MS) {
-    n = ((state.board.columns || {}).your_turn || [])
+    sessions = ((state.board.columns || {}).your_turn || [])
       .filter(function (c) { return !isHiddenChannel(c); }).length;
+    questions = openQuestionCount(state.chiefPlan);
   } else {
-    n = state.sessions.filter(function (s) {
+    sessions = state.sessions.filter(function (s) {
       return !isHiddenChannel(s) && s.board_column === 'your_turn';
     }).length;
+    questions = state.chiefQuestions;
   }
-  setTabBadge('board', n, 'waiting');
+  setTabBadge('board', sessions + (questions || 0), 'waiting');
 }
 
 // Apps (#1437): "N down" while a tunnel's probe says down, else "N apps ·

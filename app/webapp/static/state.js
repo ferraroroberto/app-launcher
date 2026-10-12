@@ -113,6 +113,9 @@ export const state = {
   boardFetchedAt: 0,
   // GET /api/board/chief-plan's last answer (#1279), fetched with `board`.
   chiefPlan: null,
+  // The chief's unanswered questions, fleet-wide, from the sessions poll
+  // (#1502): the Board tab's badge off the Board. null = unknown.
+  chiefQuestions: null,
   // Session id whose drawer is open (#301). The board poll keeps running;
   // renderBoard() keeps this drawer's node so a reply being typed survives
   // (#958).

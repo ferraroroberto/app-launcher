@@ -56,7 +56,6 @@ from src import (
     audit,
     board,
     chief_answers,
-    chief_plan,
     dispatch_brief,
     github_client,
     jobs_snapshot,
@@ -288,10 +287,7 @@ async def get_chief_plan(request: Request) -> Dict[str, Any]:
 
 
 def _read_plan_with_answers(cfg: WebappConfig) -> Dict[str, Any]:
-    plan = chief_plan.read_chief_plan(Path(cfg.chief_plan_file), cfg.github_owner)
-    if plan["state"] == "ok":
-        plan["answered"] = chief_answers.read_answered(plan["updated_at"])
-    return plan
+    return chief_answers.read_plan_with_answers(Path(cfg.chief_plan_file), cfg.github_owner)
 
 
 @router.post("/api/board/chief/answered")

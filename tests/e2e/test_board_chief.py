@@ -196,9 +196,9 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     # and no "not running" line. An absent updated_at is said, not hidden.
     plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
     row = plan_body.locator("li.board-plan-row")
-    expect(row.locator(".board-card-title-compact")).to_have_text("chief's plan card")
+    expect(row.locator(".action-row-title")).to_have_text("chief's plan card")
     # No ref_url in this plan: the ref stays plain text, never a dead link.
-    expect(row.locator(".board-card-meta-inline")).to_have_text("app-launcher#1279")
+    expect(row.locator(".action-row-meta-text")).to_have_text("app-launcher#1279")
     expect(row.locator("a")).to_have_count(0)
     expect(plan_body.locator(".board-plan-age")).to_have_text("Update time unknown")
     expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
@@ -267,12 +267,13 @@ def test_chief_recognized_by_name_when_label_missing(
     expect(chief.locator(".board-chief-crown")).to_have_count(1)
 
 
-def test_chief_stop_requires_confirm_other_cards_do_not(
+def test_stop_always_confirms_and_the_chief_keeps_its_wording(
     authed_page: Page, base_url: str
 ) -> None:
-    """#245 kill protection: the chief's ✕ asks first (dismiss → no stop,
-    accept → stop); a worker card keeps the deliberate one-tap stop (#253)
-    with no dialog at all."""
+    """#245 kill protection, widened by #1502: Stop, in the drawer's kebab,
+    asks first for every session (dismiss → no stop, accept → stop). The
+    chief keeps its own "Kill the chief session?" words; a worker gets a
+    plain "Stop <name>?"."""
     _mock_board(authed_page, _board_payload(with_chief=True))
     _mock_exchange(authed_page, sid="s-chief")
     _mock_exchange(authed_page, sid="s-work")
@@ -298,9 +299,13 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     authed_page.on("dialog", lambda d: dialogs.append(d.message))
     confirm = authed_page.locator("#confirmDialog")
 
+    def _menu_stop():
+        authed_page.locator(".board-drawer .board-drawer-kebab").click()
+        authed_page.locator(".board-drawer .board-stop-btn").click()
+
     # 1. Chief + ✕ → drawer stays, stop never fires.
     authed_page.locator("li.board-item-chief button.board-card").click()
-    authed_page.locator(".board-stop-btn").click()
+    _menu_stop()
     expect(confirm).to_be_visible()
     expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Kill the chief session?")
     expect(authed_page.locator("#confirmDialogOk")).to_have_text("Kill")
@@ -311,20 +316,26 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     expect(authed_page.locator(".board-drawer")).to_be_visible()
 
     # 2. Chief + the action → stop fires.
-    authed_page.locator(".board-stop-btn").click()
+    _menu_stop()
     expect(confirm).to_be_visible()
     authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(stops) >= 1, "the confirmed chief stop POST")
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
 
-    # 3. Worker card → one-tap stop, no dialog.
+    # 3. Worker card → asks too, in plain words; a dismiss stops nothing.
     authed_page.locator(
         "li.board-item:not(.board-item-chief) button.board-card"
     ).first.click()
-    authed_page.locator(".board-stop-btn").click()
-    wait_until(authed_page, lambda: len(stops) >= 2, "the worker stop POST")
+    _menu_stop()
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text(re.compile(r"^Stop .+\?$"))
+    expect(authed_page.locator("#confirmDialogOk")).to_have_text("Stop")
+    authed_page.locator("#confirmDialogClose").click()
     flush_requests(authed_page)
-    expect(confirm).to_be_hidden()
+    assert len(stops) == 1, "dismissing the confirm must not stop the worker"
+    _menu_stop()
+    authed_page.locator("#confirmDialogOk").click()
+    wait_until(authed_page, lambda: len(stops) >= 2, "the confirmed worker stop POST")
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
     assert dialogs == [], f"a native dialog was raised: {dialogs}"
 
@@ -1294,3 +1305,74 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
         ),
         "submit": True,
     }], posts
+
+
+@pytest.mark.iphone
+def test_questions_are_one_line_rows_three_then_more_then_one_answer(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1502 (decision 2 of #1500): each waiting question is one shared
+    action-row, its text on one line with the ref as meta and a chevron, no
+    amber bar. The first three show, then one "N more" row that unfolds the
+    rest in place, then the one Answer button. A tap on a row opens the
+    answer sheet on that question."""
+    waiting = [
+        {"id": f"q-{i}", "ref": f"demo-repo#{i}",
+         "text": f"Question {i}: should the sprocket keep a deliberately long name "
+                 "that no row on a phone, nor a lane on the widest desktop grid, "
+                 "can ever hold on one line without cutting it short?",
+         "question": f"Full question {i}?"}
+        for i in range(1, 7)
+    ]
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
+    _open_board(authed_page, base_url)
+
+    group = authed_page.locator("#boardChiefPlan .board-plan-group-waiting")
+    rows = group.locator("li.board-plan-waiting")
+    more = group.locator("li.board-plan-more")
+    expect(rows).to_have_count(3)
+    expect(more).to_have_count(1)
+    expect(more.locator(".action-row-title")).to_have_text("3 more questions")
+    expect(group.locator(".board-plan-answer")).to_have_text("Answer 6 questions")
+    # Order: the rows, then "N more", then the button.
+    expect(group.locator("li")).to_have_count(4)
+    expect(group.locator("li").nth(3)).to_have_class(re.compile(r"\bboard-plan-more\b"))
+
+    first = rows.nth(0)
+    expect(first).to_have_class(re.compile(r"\baction-row\b"))
+    expect(first.locator(".action-row-meta")).to_have_text("demo-repo#1")
+    expect(first.locator(".board-plan-chevron")).to_have_count(1)
+    # No amber bar or stripe left on the row.
+    expect(first).to_have_css("box-shadow", "none")
+    # One line at the rows.md height, the text clipped by its ellipsis.
+    m = stable_eval(first, (
+        "el => { const t = el.querySelector('.action-row-title');"
+        " if (!t || !t.clientWidth) return null;"
+        " return {h: el.getBoundingClientRect().height,"
+        " clipped: t.scrollWidth > t.clientWidth,"
+        " th: t.getBoundingClientRect().height,"
+        " lh: parseFloat(getComputedStyle(t).lineHeight)}; }"))
+    assert m is not None
+    assert abs(m["h"] - 52) <= 1, f"question row is not rows.md tall: {m}"
+    assert m["th"] <= m["lh"] + 1, f"question title wraps: {m}"
+    assert m["clipped"], f"a long question should ellipsize: {m}"
+
+    # "N more" unfolds the rest in place, and stays unfolded across a poll.
+    more.locator(".action-row-main").click()
+    expect(rows).to_have_count(6)
+    expect(more).to_have_count(0)
+    with authed_page.expect_response(
+        lambda resp: resp.url.endswith("/api/board/chief-plan"), timeout=15_000
+    ):
+        pass
+    expect(rows).to_have_count(6)
+
+    # A row opens the sheet on its own question: the last one, scrolled to.
+    rows.nth(5).locator(".action-row-main").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator(".chief-answer")).to_have_count(6)
+    expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_be_in_viewport()
+    expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_have_text(
+        "Full question 6?")

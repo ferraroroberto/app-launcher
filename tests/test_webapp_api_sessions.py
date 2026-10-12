@@ -18,7 +18,7 @@ class TestListSessions:
         overrides["session"].list_sessions.return_value = []
         resp = client.get("/api/claude-code/sessions")
         assert resp.status_code == 200
-        assert resp.json() == {"sessions": []}
+        assert resp.json() == {"sessions": [], "chief_questions": 0}
 
     def test_lists_sessions_from_session_host(self, webapp_client):
         client, _, overrides = webapp_client
@@ -61,7 +61,7 @@ class TestListSessions:
         )
         resp = client.get("/api/claude-code/sessions")
         assert resp.status_code == 200
-        assert resp.json() == {"sessions": []}
+        assert resp.json() == {"sessions": [], "chief_questions": 0}
 
 
 class TestSharedSessionName:
@@ -129,7 +129,7 @@ class TestSharedSessionName:
         overrides["session"].list_sessions.return_value = []
         resp = client.get("/api/claude-code/sessions")
         assert resp.status_code == 200
-        assert resp.json() == {"sessions": []}
+        assert resp.json() == {"sessions": [], "chief_questions": 0}
 
 
 class TestBoardPlacement:

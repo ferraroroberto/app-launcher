@@ -223,12 +223,14 @@ def test_board_renders_columns_counts_and_cards(
         "#boardUsage, #paneBoard .usage-meter")).to_have_count(0)
     expect(authed_page.locator("#paneBoard .collapse-title", has_text="Dispatch")).to_have_count(0)
 
-    # The header (#1436): exceptions only, in their tones; no slogan.
+    # The header (#1436): exceptions only, in their tones, two at most; no
+    # slogan. The chief's unanswered question leads (#1502), then Your turn;
+    # the failing job is the third exception and waits its turn.
     head = authed_page.locator("#boardHeadStatus")
-    expect(head).to_have_text("1 needs you · 1 failing")
+    expect(head).to_have_text("1 question · 1 needs you")
     expect(head.locator(".head-exception")).to_have_count(2)
     expect(head.locator(".head-exception").nth(0)).to_have_attribute("data-tone", "attention")
-    expect(head.locator(".head-exception").nth(1)).to_have_attribute("data-tone", "danger")
+    expect(head.locator(".head-exception").nth(1)).to_have_attribute("data-tone", "attention")
 
     sections = authed_page.locator("#boardColumns details.board-col")
     expect(sections).to_have_count(5)
@@ -279,10 +281,10 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours.nth(0).locator(".board-card > :first-child")).to_have_class(
         re.compile(r"\bavatar\b")
     )
-    title = yours.nth(0).locator(".board-card .srow-text > :first-child")
+    title = yours.nth(0).locator(".board-card .action-row-text > :first-child")
     expect(title).to_have_class(re.compile(r"\bboard-card-title\b"))
     expect(title).to_have_attribute("title", "chunk merge fix")
-    expect(yours.nth(0).locator(".board-card .srow-text > :nth-child(2)")).to_have_class(
+    expect(yours.nth(0).locator(".board-card .action-row-text > :nth-child(2)")).to_have_class(
         re.compile(r"\bboard-card-meta\b")
     )
 
@@ -353,28 +355,28 @@ def test_board_renders_columns_counts_and_cards(
     expect(queue).to_have_count(2)
     # Title first (#1297): the repo and number follow as secondary text, a
     # link to the issue.
-    first_title = queue.nth(0).locator(".board-card-text > *").first
-    expect(first_title).to_have_class(re.compile(r"\bboard-card-title-compact\b"))
+    first_title = queue.nth(0).locator(".action-row-main > *").first
+    expect(first_title).to_have_class(re.compile(r"\baction-row-title\b"))
     expect(first_title).to_have_text("Chat by default on desktop")
-    first_ref = queue.nth(0).locator(".board-card-meta-inline a.board-plan-ref")
+    first_ref = queue.nth(0).locator(".action-row-meta-text a.board-plan-ref")
     expect(first_ref).to_have_text("app-launcher#1273")
     expect(first_ref).to_have_attribute("href", "https://github.com/octo/app-launcher/issues/1273")
-    expect(queue.nth(0).locator(".board-card-meta-inline")).to_have_text("app-launcher#1273")
+    expect(queue.nth(0).locator(".action-row-meta-text")).to_have_text("app-launcher#1273")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")
-    expect(queue.nth(1).locator(".board-card-meta-inline")).to_have_text(
+    expect(queue.nth(1).locator(".action-row-meta-text")).to_have_text(
         "automation#135 · before Thu 1 Oct 16:00")
     # An unknown status is shown as it is, on the neutral chip.
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_text("someday")
     expect(queue.nth(1).locator(".board-plan-chip")).to_have_attribute("data-tone", "neutral")
     if viewport["width"] < 700:
-        # At the narrowest phone a long title ellipsizes at the shared
-        # two-line cap and nothing scrolls sideways (#1297).
+        # At the narrowest phone a long title ellipsizes on its one line
+        # (#1502) and nothing scrolls sideways (#1297).
         authed_page.set_viewport_size({"width": 320, "height": viewport["height"]})
-        long_title = queue.nth(1).locator(".board-card-title-compact")
+        long_title = queue.nth(1).locator(".action-row-title")
         clipped = stable_eval(
-            long_title, "el => el.scrollHeight > el.clientHeight + 1 && el.clientHeight > 0")
-        assert clipped, "long queue title should be clamped with an ellipsis at 320px"
+            long_title, "el => el.scrollWidth > el.clientWidth + 1 && el.clientWidth > 0")
+        assert clipped, "long queue title should ellipsize on one line at 320px"
         overflow = stable_read(lambda: authed_page.evaluate(
             "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"))
         assert overflow <= 0, f"page scrolls sideways at 320px by {overflow}px"
@@ -409,9 +411,8 @@ def test_board_renders_columns_counts_and_cards(
     # is the avatar's, not the title's.
     inset = """(li) => {
       const list = li.closest('.board-list').getBoundingClientRect();
-      const btn = li.querySelector('.board-card');
-      const lead = btn.querySelector('.avatar') ||
-        btn.querySelector('.board-card-title, .board-card-title-compact');
+      const btn = li.querySelector('.action-row-main');
+      const lead = btn.querySelector('.avatar') || btn.querySelector('.action-row-title');
       return lead.getBoundingClientRect().left - list.left;
     }"""
     claude_card = authed_page.locator('.board-list[data-col="claude_turn"] li.board-item').first
@@ -639,10 +640,10 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     expect(authed_page.locator("#boardStatus")).to_contain_text(
         "session-host unreachable"
     )
-    # The header shows the one exception it knows (the failed job); never
-    # "0 sessions" (#1436).
+    # The header shows the exceptions it knows (the chief's question, #1502,
+    # and the failed job); never "0 sessions" (#1436).
     head = authed_page.locator("#boardHeadStatus")
-    expect(head).to_have_text("1 failing")
+    expect(head).to_have_text("1 question · 1 failing")
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("3")
     unreadable = authed_page.locator(
@@ -974,9 +975,9 @@ def test_backlog_start_button_posts_issue_start(
 def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     authed_page: Page, base_url: str
 ) -> None:
-    """#339 / #1436: the backlog issue tile is a flat separator row (no card
-    background/border), the title over "repo #N", with one trailing tint verb,
-    ▶ Start, vertically centred, and a kebab holding YOLO (start and ship),
+    """#339 / #1436 / #1502: the backlog issue tile is a flat action-row (no
+    card background/border), the title over "repo #N", with one trailing plain
+    verb, ▶ Start, vertically centred, and a kebab holding YOLO (start and ship),
     Open on GitHub and Copy link (decision 3 of #1432). YOLO from the menu
     posts mode=yolo."""
     _mock_apps_with_app_launcher(authed_page)
@@ -997,8 +998,8 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
     expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
-    expect(tile.locator(".board-card-meta-inline")).to_have_text("app-launcher #301")
-    expect(tile.locator(".board-card-title-compact")).to_have_text(
+    expect(tile.locator(".action-row-meta")).to_have_text("app-launcher #301")
+    expect(tile.locator(".action-row-title")).to_have_text(
         "Board tab 2/3: drill-down + reply"
     )
 
@@ -1012,7 +1013,7 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     zero_radius = re.compile(r"^0(px)?$")
     expect(tile).to_have_css("border-radius", zero_radius)
     expect(tile).to_have_css("border-top-style", "none")
-    expect(tile.locator(".board-card-flat")).to_have_css("border-radius", zero_radius)
+    expect(tile).to_have_class(re.compile(r"\baction-row\b"))
 
     # Same /api/apps-population race as test_backlog_start_button_posts_issue_start
     # above: ▶ only renders once state.apps has landed, which can trail the
@@ -1026,7 +1027,7 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
     expect(tile.locator(".board-issue-btn")).to_have_count(1)
     # No git tint on the meta any more (#1436): git lives on Code › Projects.
-    expect(tile.locator(".board-card-meta-inline")).not_to_have_class(
+    expect(tile.locator(".action-row-meta")).not_to_have_class(
         re.compile(r"\bgit-(dirty|off-main)\b"))
 
     kebab = tile.locator(".board-issue-kebab")
@@ -1166,24 +1167,27 @@ def test_backlog_issue_claim_states_stale_and_unverified(
 
 
 @pytest.mark.iphone
-def test_backlog_issue_tile_wraps_a_long_title_and_grows(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize("width", [390, 1280], ids=["phone", "desktop"])
+def test_backlog_issue_tile_keeps_a_long_title_on_one_line(
+    authed_page: Page, base_url: str, width: int
 ) -> None:
-    """#862 regression guard: a long title wraps and grows the backlog row
-    instead of being clipped with an ellipsis on a phone-width viewport.
-    #1198: it leads the row, above its repo/# line, and wraps to the shared
-    two-line cap at most, with the full text in its title attribute."""
-    authed_page.set_viewport_size({"width": 430, "height": 739})
+    """#1502 (decision 3 of #1500, reversing #339/#862's two-line wrap): a
+    long Backlog title stays on one line with an ellipsis on every width, the
+    full text in its title attribute; its repo reference ellipsizes inside
+    the meta line rather than pushing past it (LAYOUT-08), and the ▶ verb
+    stays centred against the one-line row."""
+    authed_page.set_viewport_size({"width": width, "height": 900})
     long_title = (
         "This is a deliberately very long issue title meant to overflow the "
-        "available card width so the wrapping behavior is actually exercised"
+        "available card width so the ellipsis is actually exercised"
     )
     payload = copy.deepcopy(_FAKE_BOARD)
     payload["columns"]["backlog"] = [{
-        "kind": "issue", "repo": "app-launcher", "number": 999,
-        "title": long_title,
+        "kind": "issue", "repo": "a-repository-name-" + "far-too-long-" * 12 + "for-any-meta-line",
+        "number": 999, "title": long_title,
         "url": "https://github.com/ferraroroberto/app-launcher/issues/999",
         "updated_at": "2026-07-01T10:00:00Z", "labels": [],
+        "in_progress": True,
     }]
     _mock_apps_with_app_launcher(authed_page)
     _mock_board(authed_page, payload)
@@ -1191,67 +1195,40 @@ def test_backlog_issue_tile_wraps_a_long_title_and_grows(
     _unfold(authed_page, "boardColBacklog")
 
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
-    title_el = tile.locator(".board-card-title-compact")
+    title_el = tile.locator(".action-row-title")
     expect(title_el).to_be_visible(timeout=15_000)
     expect(title_el).to_have_attribute("title", long_title)
-    expect(tile.locator(".board-card-text > :first-child")).to_have_class(
-        re.compile(r"\bboard-card-title-compact\b")
-    )
+    expect(title_el).to_have_css("white-space", "nowrap")
+    expect(title_el).to_have_css("text-overflow", "ellipsis")
 
-    # A wrapped title fits inside its box: scrollWidth must not exceed
-    # clientWidth. Read the two widths (not the comparison) so a mid-rebuild
-    # read is recognisable as the 0/0 artifact it is rather than a silent
-    # False (#680).
-    widths = stable_eval(
-        title_el,
-        "el => el.scrollWidth && el.clientWidth"
-        " ? [el.scrollWidth, el.clientWidth] : null",
-    )
-    assert widths is not None, "title box never reported non-zero widths"
-    assert widths[0] <= widths[1], (
-        "title box still overflows horizontally instead of wrapping "
-        f"(scrollWidth={widths[0]}, clientWidth={widths[1]})"
-    )
-
-    # Keep the three related measurements on one DOM generation; individually
-    # valid reads can still straddle a Board re-render (#868). On a node that
-    # re-render already detached, every box reads 0: the "title is only 0px
-    # tall" red of #1346. stable_eval measures the live node only.
-    boxes = stable_eval(
+    # One generation of the row (#868, #1346): the title is one line and
+    # clipped, the meta text clipped inside its line with the chip whole, and
+    # nothing in the row reaches past the row's right edge.
+    m = stable_eval(
         tile,
         "el => {"
-        " const title = el.querySelector('.board-card-title-compact');"
-        " const action = el.querySelector('.board-issue-start');"
-        " if (!title || !action) return null;"
-        " const titleBox = title.getBoundingClientRect();"
-        " const tileBox = el.getBoundingClientRect();"
-        " const actionBox = action.getBoundingClientRect();"
+        " const title = el.querySelector('.action-row-title');"
+        " const meta = el.querySelector('.action-row-meta');"
+        " const text = el.querySelector('.action-row-meta-text');"
+        " const chip = el.querySelector('.board-claim-chip');"
+        " if (!title || !meta || !text || !chip || !title.clientWidth) return null;"
         " const cs = getComputedStyle(title);"
-        " const lineHeight = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2;"
-        " return {title: {height: titleBox.height, lineHeight: lineHeight},"
-        " tile: {y: tileBox.y, height: tileBox.height},"
-        " action: {y: actionBox.y, height: actionBox.height}};"
+        " const row = el.getBoundingClientRect();"
+        " return {titleH: title.getBoundingClientRect().height,"
+        " lineH: parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.5,"
+        " titleClipped: title.scrollWidth > title.clientWidth,"
+        " textClipped: text.scrollWidth > text.clientWidth,"
+        " metaRight: meta.getBoundingClientRect().right,"
+        " chipRight: chip.getBoundingClientRect().right,"
+        " rowRight: row.right};"
         "}",
     )
-    assert boxes is not None
-    title_box = boxes["title"]
-    tile_box = boxes["tile"]
-    action_box = boxes["action"]
-    assert title_box["height"] > 26, (
-        f"title is only {title_box['height']}px tall — it did not wrap"
-    )
-    assert title_box["height"] <= 2 * title_box["lineHeight"] + 1, (
-        f"title is {title_box['height']}px tall — over the two-line cap "
-        f"({title_box['lineHeight']}px lines)"
-    )
-    assert tile_box["height"] > 60, (
-        f"tile is only {tile_box['height']}px tall — it did not grow with the title"
-    )
-    tile_center = tile_box["y"] + tile_box["height"] / 2
-    action_center = action_box["y"] + action_box["height"] / 2
-    assert abs(action_center - tile_center) <= 1, (
-        f"issue action is not vertically centered: {action_center} vs {tile_center}"
-    )
+    assert m is not None, "the row never measured"
+    assert m["titleH"] <= m["lineH"] + 1, f"title wraps: {m}"
+    assert m["titleClipped"], f"a long title should ellipsize: {m}"
+    assert m["textClipped"], f"a long repo reference should ellipsize: {m}"
+    assert m["chipRight"] <= m["metaRight"] + 0.5, f"the chip spills off the meta line: {m}"
+    assert m["metaRight"] <= m["rowRight"] + 0.5, f"the meta line overflows the row: {m}"
 
 
 @pytest.mark.parametrize("state_sid", [
@@ -1434,16 +1411,22 @@ def test_drawer_mic_renders_when_voice_available(
 
 
 @pytest.mark.iphone
-def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
+def test_board_drawer_chat_primary_menu_and_stop_confirms(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
-    """#984 (mockup screen 8): under the shared composer the drawer lays out
-    one row of four equal buttons — Rename · Stop · Chat · Terminal, each a
-    glyph over its label at the 44px floor, Terminal last (#496 round 2) —
-    and Stop kills the session via the unified stop path (#253: POST
-    .../stop {mode: 'quit'}), closing the drawer."""
+    """#1502 (decision 4 of #1500, was #984's four equal buttons): under the
+    shared composer the drawer shows Chat, the one tint primary, with
+    Terminal beside it, each a glyph beside its label at the 44px floor, then
+    a kebab holding Rename and Stop. The exchange renders as markdown. Stop
+    always asks, in the themed dialog: "no" keeps the session, "Stop" kills it
+    via the unified stop path (#253: POST .../stop {mode: 'quit'}) and closes
+    the drawer."""
     _mock_board(authed_page)
-    _mock_exchange(authed_page)
+    _mock_exchange(authed_page, payload={
+        "available": True, "reason": None,
+        "user": {"text": "status?", "timestamp": None},
+        "assistant": {"text": "Merge **fixed**:\n\n- tests green\n- ready", "timestamp": None},
+    })
 
     captured: dict = {}
 
@@ -1466,22 +1449,32 @@ def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
 
+    # Markdown, through Chat mode's renderer: real markup, no raw asterisks.
+    assistant = drawer.locator(".board-exchange-assistant")
+    expect(assistant.locator("strong")).to_have_text("fixed")
+    expect(assistant.locator("li")).to_have_text(["tests green", "ready"])
+    expect(assistant).not_to_contain_text("**")
+
     composer = drawer.locator(".board-drawer-composer")
     expect(composer.locator(".composer-input")).to_be_visible()
     actions = drawer.locator(".board-drawer-actions")
     buttons = actions.locator(":scope > button")
-    expect(buttons).to_have_count(4)
-    order = ["board-rename-btn", "board-stop-btn", "board-open-chat", "board-open-terminal"]
-    labels = ["Rename", "Stop", "Chat", "Terminal"]
-    for i, (cls, label) in enumerate(zip(order, labels)):
-        expect(buttons.nth(i)).to_have_class(re.compile(r"\b" + cls + r"\b"))
-        expect(buttons.nth(i)).to_have_text(label)
-        # A full-control Claude session can take every action.
-        expect(buttons.nth(i)).not_to_have_attribute("aria-disabled", "true")
-    expect(buttons.nth(0)).to_have_attribute("aria-label", "Rename this session")
+    expect(buttons).to_have_count(3)
+    chat, terminal, kebab = buttons.nth(0), buttons.nth(1), buttons.nth(2)
+    expect(chat).to_have_class(re.compile(r"\bboard-open-chat\b.*\bis-primary\b"))
+    expect(chat).to_have_text("Chat")
+    expect(terminal).to_have_class(re.compile(r"\bboard-open-terminal\b"))
+    expect(terminal).to_have_text("Terminal")
+    expect(terminal).not_to_have_class(re.compile(r"\bis-primary\b"))
+    expect(kebab).to_have_attribute("aria-label", "Session actions")
+    # A full-control Claude session can take every action.
+    for b in (chat, terminal):
+        expect(b).not_to_have_attribute("aria-disabled", "true")
+    # Rename and Stop are not on the row: they are in the kebab's menu.
+    expect(actions.locator(":scope > .board-rename-btn, :scope > .board-stop-btn")).to_have_count(0)
 
-    # The composer sits above the action row, and the four buttons are equal
-    # columns of one row at the 44px floor. Raw geometry on a Board node goes
+    # The composer sits above the action row; Chat and Terminal are equal,
+    # side by side, at the 44px floor. Raw geometry on a Board node goes
     # through stable_read (#680).
     box_composer = stable_read(composer.bounding_box)
     box_actions = stable_read(actions.bounding_box)
@@ -1489,37 +1482,64 @@ def test_board_drawer_four_equal_actions_terminal_last_and_stop_kills_session(
     assert box_actions["y"] >= box_composer["y"] + box_composer["height"] - 2, (
         "the action row must sit below the composer"
     )
-    boxes = [stable_read(buttons.nth(i).bounding_box) for i in range(4)]
+    boxes = [stable_read(buttons.nth(i).bounding_box) for i in range(3)]
     assert all(boxes), f"drawer buttons not laid out: {boxes}"
-    widths = [b["width"] for b in boxes]
-    assert max(widths) - min(widths) <= 1, f"drawer buttons not equal width: {widths}"
-    assert len({round(b["y"]) for b in boxes}) == 1, f"drawer buttons not one row: {boxes}"
     for box in boxes:
         assert box["height"] >= 44 and box["width"] >= 44, (
             f"drawer button under the 44px floor: {box}"
         )
-    assert box_actions["x"] + box_actions["width"] >= boxes[3]["x"] + boxes[3]["width"] - 1, (
-        "the action row must stay inside the drawer"
-    )
+    if box_actions["width"] >= 280:
+        # Room for both labels beside the kebab: one row, Chat and Terminal
+        # equal.
+        assert abs(boxes[0]["width"] - boxes[1]["width"]) <= 1, f"Chat and Terminal differ: {boxes}"
+        assert len({round(b["y"]) for b in boxes}) == 1, f"drawer actions not one row: {boxes}"
+    else:
+        # A narrow desktop column: Chat and the kebab, then Terminal across
+        # the drawer.
+        assert boxes[0]["y"] == boxes[2]["y"] < boxes[1]["y"], f"narrow drawer layout: {boxes}"
 
-    # #1174: the one row is the wide-drawer layout, not a promise at every
-    # width. A desktop column narrows the drawer to ~90px at 700px, where
-    # four columns came to 16px each; below the room for four 44px buttons
-    # the actions fold to 2x2, then to one column — never under the floor.
+    # #1174: never under the floor at a narrow desktop column either.
     if browser_name == "chromium":
         for width in (1100, 700):
             authed_page.set_viewport_size({"width": width, "height": 900})
             expect(drawer).to_be_visible()
-            for i in range(4):
+            for i in range(3):
                 box = stable_read(buttons.nth(i).bounding_box)
                 assert box and box["width"] >= 44 and box["height"] >= 44, (
-                    f"drawer button {labels[i]} under the 44px floor at {width}px: {box}"
+                    f"drawer action {i} under the 44px floor at {width}px: {box}"
                 )
+            if width < 1100:
+                continue  # five lanes in 700px leave words no room; only the floor holds
+            # Chat and Terminal keep their whole words in a desktop lane.
+            clipped = stable_eval(actions, (
+                "el => el.isConnected ? Array.from(el.querySelectorAll("
+                "'.board-drawer-action-label')).filter("
+                "l => l.scrollWidth > l.clientWidth + 1).map(l => l.textContent) : null"))
+            assert clipped == [], f"drawer labels clipped at {width}px: {clipped}"
 
-    buttons.nth(1).click()
+    kebab.click()
+    menu = drawer.locator(".board-drawer-actions .row-menu")
+    expect(menu).to_be_visible()
+    expect(menu.locator(".row-menu-btn .row-menu-label")).to_have_text(["Rename", "Stop"])
+    expect(menu.locator(".board-stop-btn")).to_have_class(re.compile(r"\brow-menu-danger\b"))
+
+    # Stop asks first, in the themed dialog; "no" keeps the session.
+    menu.locator(".board-stop-btn").click()
+    dialog = authed_page.locator("#confirmDialog")
+    expect(dialog).to_be_visible()
+    expect(dialog.locator("#confirmDialogTitle")).to_have_text(re.compile(r"^Stop .+\?$"))
+    dialog.locator("#confirmDialogClose").click()
+    expect(dialog).to_be_hidden()
+    flush_requests(authed_page)
+    assert "method" not in captured, "Stop posted without a yes"
+    expect(drawer).to_be_visible()
+
+    kebab.click()
+    menu.locator(".board-stop-btn").click()
+    expect(dialog).to_be_visible()
+    dialog.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: captured.get("method") == "POST",
                "the drawer's quit POST")
-    assert captured.get("method") == "POST"
     assert captured.get("body") == {"mode": "quit"}
     # The drawer closes (boardExpanded cleared + re-render).
     expect(drawer).to_be_hidden()
@@ -1665,7 +1685,7 @@ def test_backlog_meta_carries_no_git_tint(
     _unfold(authed_page, "boardColBacklog")
 
     meta = authed_page.locator(
-        '.board-list[data-col="backlog"] .board-card-meta-inline'
+        '.board-list[data-col="backlog"] .action-row-meta'
     ).first
     expect(meta).to_be_visible(timeout=15_000)
     wait_until(authed_page, lambda: served.get("git"), "boot fetching git-status")
@@ -1692,7 +1712,9 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     Board's own poll. Reproduced with the #510 diagnostic technique: tag the
     rename button's live DOM node once the drawer is open, wait for a whole
     poll to land and render, then confirm the tagged node (and the drawer)
-    survive untouched — on the poll's own response, not a fixed sleep."""
+    survive untouched — on the poll's own response, not a fixed sleep. On the
+    action-row (#1502) the drawer's kebab menu is part of the kept node: one
+    left open stays open across the poll."""
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
@@ -1703,8 +1725,8 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
 
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
-    rename = drawer.locator(".board-rename-btn")
-    expect(rename).to_be_visible()
+    terminal = drawer.locator(".board-open-terminal")
+    expect(terminal).to_be_visible()
     # The shared composer (#984) lives inside the kept node: a draft typed
     # into it must survive the re-render too.
     draft = drawer.locator(".board-drawer-composer .composer-input")
@@ -1713,7 +1735,10 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     # Tag the live DOM node — if renderBoard() rebuilds the drawer, the tag
     # is lost even though the drawer stays open (boardExpanded is preserved
     # either way).
-    rename.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
+    terminal.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
+    drawer.locator(".board-drawer-kebab").click()
+    menu = drawer.locator(".board-drawer-actions .row-menu")
+    expect(menu.locator(".board-rename-btn")).to_be_visible()
 
     # One poll: the Board and the chief's plan are fetched together, and the
     # render follows both answers; two frames later it has run.
@@ -1728,8 +1753,9 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
         "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
 
     expect(drawer).to_be_visible()
-    expect(rename).to_have_attribute("data-e2e-tag", "pre-poll")
+    expect(terminal).to_have_attribute("data-e2e-tag", "pre-poll")
     expect(draft).to_have_value("half-typed reply")
+    expect(menu.locator(".board-rename-btn")).to_be_visible()
     # The kept drawer gets a fresh header (#958); it still declares the
     # disclosure open (#1259).
     header = authed_page.locator("li.board-item.expanded > button.board-card")
@@ -1829,6 +1855,99 @@ def test_desktop_project_filter_is_as_wide_as_the_backlog_column(
             f"{width}px: filter right edge {f} vs Backlog {b}"
         )
         assert r["x"] >= f["x"] + f["w"], f"{width}px: ↻ not beside the filter: {boxes}"
+
+
+@pytest.mark.iphone
+def test_refresh_in_flight_spins_at_full_strength(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1502 (COLOR-02): while a GitHub refresh runs, ↻ keeps its glyph and
+    colour and says it is busy (aria-busy), instead of a disabled "…" whose
+    line colour measured 1.55:1 on dark; at least 3:1 in both themes. A
+    second tap meanwhile sends nothing."""
+    _mock_board(authed_page)
+    held: list = []
+    authed_page.route(re.compile(r".*/api/board/github/refresh$"), lambda route: held.append(route))
+    _open_board(authed_page, base_url)
+
+    refresh = authed_page.locator("#boardRefresh")
+    refresh.click()
+    wait_until(authed_page, lambda: len(held) >= 1, "the refresh POST")
+    expect(refresh).to_have_attribute("aria-busy", "true")
+    expect(refresh.locator("svg.icon")).to_have_count(1)
+    expect(refresh).not_to_have_attribute("disabled", "")
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        ratio = contrast_ratio(refresh)
+        assert ratio >= 3, f"{theme}: refresh in flight at {ratio:.2f}:1, under 3:1"
+    authed_page.evaluate("delete document.documentElement.dataset.theme")
+
+    # aria-disabled keeps it reachable; Playwright treats it as not enabled.
+    refresh.click(force=True)
+    flush_requests(authed_page)
+    assert len(held) == 1, "a tap during the refresh sent a second one"
+
+    held[0].fulfill(status=200, content_type="application/json", body=_json.dumps(
+        {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}))
+    expect(refresh).to_have_attribute("aria-busy", "false")
+
+
+def test_desktop_empty_lane_is_a_one_line_strip(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    """#1502 — at the wide query an empty lane is a one-line strip across the
+    grid (title, count, its empty sentence and its one action inline), and
+    the lanes that hold rows share the width, side by side, the project
+    filter still exactly one of them wide (#1464). Chromium only: the iPhone
+    projection is a coarse pointer, which the desktop block never applies
+    to."""
+    if browser_name != "chromium":
+        pytest.skip("desktop grid needs a fine pointer; the WebKit projection is the iPhone")
+    payload = _board_payload()
+    payload["columns"]["your_turn"] = []
+    payload["columns"]["done"] = []
+    _mock_board(authed_page, payload)
+    authed_page.set_viewport_size({"width": 1280, "height": 900})
+    _open_board(authed_page, base_url)
+    expect(authed_page.locator("#boardColYours")).to_have_class(re.compile(r"\bis-empty\b"))
+    expect(authed_page.locator("#boardColBacklog")).not_to_have_class(re.compile(r"\bis-empty\b"))
+
+    boxes = stable_eval(
+        authed_page.locator("#paneBoard"),
+        """pane => {
+          const box = el => {
+            const r = el.getBoundingClientRect();
+            return {x: r.x, y: r.y, w: r.width, h: r.height, cy: r.y + r.height / 2};
+          };
+          const q = sel => pane.querySelector(sel);
+          return {
+            grid: box(q('#boardColumns')), backlog: box(q('#boardColBacklog')),
+            stack: box(q('.board-col-stack')), other: box(q('#boardColOther')),
+            yours: box(q('#boardColYours')), done: box(q('#boardColDone')),
+            title: box(q('#boardColYours .collapse-title')),
+            message: box(q('#boardColYours .empty-state-message')),
+            action: box(q('#boardColYours .empty-state-action')),
+            filter: box(q('#boardDispatchRepoBtn')),
+          };
+        }""",
+    )
+    b, g = boxes["backlog"], boxes["grid"]
+    for strip in ("yours", "done"):
+        s_ = boxes[strip]
+        assert s_["h"] <= 60, f"{strip} strip is {s_['h']}px tall, not one line"
+        assert abs(s_["w"] - g["w"]) <= 1, f"{strip} strip does not span the grid: {s_} vs {g}"
+        assert s_["y"] >= b["y"] + b["h"], f"{strip} strip sits beside a lane: {s_} vs {b}"
+    for part in ("message", "action"):
+        assert abs(boxes[part]["cy"] - boxes["title"]["cy"]) <= 4, (
+            f"the strip's {part} is not on the title's line: {boxes}")
+    # Three lanes with rows (Backlog, the plan + Claude's turn, PRs and jobs)
+    # share the width in order, side by side.
+    assert abs(b["y"] - boxes["stack"]["y"]) <= 1 and abs(b["y"] - boxes["other"]["y"]) <= 1
+    assert b["x"] < boxes["stack"]["x"] < boxes["other"]["x"]
+    assert b["w"] > g["w"] / 3 - 20, f"Backlog did not take the empty lanes' width: {b} vs {g}"
+    f = boxes["filter"]
+    assert abs(f["x"] - b["x"]) <= 1 and abs((f["x"] + f["w"]) - (b["x"] + b["w"])) <= 1, (
+        f"filter is not one lane wide: {f} vs {b}")
 
 
 # The shortest drawer a live session can produce: the reader found one side of

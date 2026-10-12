@@ -472,6 +472,8 @@ export async function fetchSessions() {
   try {
     const body = await jsonApi('/api/claude-code/sessions');
     state.sessions = body.sessions || [];
+    // Unknown (null) unless the server said a number: never read as zero.
+    state.chiefQuestions = typeof body.chief_questions === 'number' ? body.chief_questions : null;
     renderSessions();
   } catch (exc) {
     // Sessions polling is best-effort — don't spam toasts.
