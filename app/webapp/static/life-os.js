@@ -68,8 +68,7 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   // model list, and its label names any that is on.
   switchesInMenu: true,
   menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
-    'Resume makes a tap on a skill open the session picker. ' +
-    'For a skill’s last conversation, swipe it right, or use its ⋮ › Resume last conversation.',
+    'Resume: a tap opens the session picker.',
   // The cross-skill conversation search rides the model row, pinned right.
   trailing: document.getElementById('lifeOsConvoSearch'),
 });

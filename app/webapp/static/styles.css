@@ -3968,7 +3968,12 @@ body.terminal-open {
 .action-row[data-swipe="leading"] .swipe-pane--leading,
 .action-row[data-swipe="trailing"] .swipe-pane--trailing { visibility: visible; }
 .swipe-pane[data-tone="accent"] { background: var(--accent-fill); color: var(--accent-fg); }
-.swipe-pane[data-tone="neutral"] { background: var(--neutral-soft); color: var(--fg); }
+/* Mixed onto the card, not the translucent neutral-soft, which all but
+   vanishes against a dark row. */
+.swipe-pane[data-tone="neutral"] {
+  background: color-mix(in srgb, var(--muted) 32%, var(--card));
+  color: var(--fg);
+}
 .swipe-pane.is-disabled { background: var(--neutral-soft); color: var(--muted); }
 .swipe-pane-btn {
   width: 88px;
@@ -5588,10 +5593,13 @@ span.chief-answer-ref { color: var(--muted); }
   display: flex;
   flex-direction: column;
 }
+/* A phone thumb picks the model here too: every option at the 44px floor. */
+.launch-menu .model-combo-list [role="option"] { min-height: var(--hit-min); }
+/* `line`, not `line-muted`: in dark, line-muted is the menu's own fill. */
 .launch-menu-options {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--line-muted);
+  border-top: 1px solid var(--line);
   padding: 4px 0;
 }
 .launch-menu-options .launch-switch {
@@ -5599,12 +5607,14 @@ span.chief-answer-ref { color: var(--muted); }
   gap: 24px;
   padding: 0 14px;
 }
+/* body-sm in fg: helper copy, and muted on the menu's card-2 fill falls
+   under 4.5:1 in dark. */
 .launch-menu-hint {
   max-width: 280px;
-  padding: 4px 14px 8px;
-  font-size: var(--font-caption);
+  padding: 4px 14px 10px;
+  font-size: var(--font-body-sm);
   line-height: 1.4;
-  color: var(--muted);
+  color: var(--fg);
   white-space: normal;
 }
 /* The closed combo names any switch that is on, after the model's name. */
