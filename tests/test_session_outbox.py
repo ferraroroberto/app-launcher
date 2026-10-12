@@ -18,6 +18,7 @@ import pytest
 
 from src import board, session_outbox
 from src.session_outbox import OutboxRefusal
+from src.webapp_config import WebappConfig
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 PDF = b"%PDF-1.7\n%fake\n"
@@ -106,6 +107,73 @@ def test_a_declared_scratch_root_admits_its_files_with_env_vars_expanded(
     roots = _roots(proj, "%OUTBOX_TEST_SCRATCH%/scratch")
     _, _, kind, media = session_outbox.read_source(str(scratch / "report.md"), str(proj), roots)
     assert (kind, media) == ("markdown", session_outbox.TEXT_MEDIA)
+
+
+@pytest.fixture
+def temp_base(tmp_path: Path, monkeypatch) -> Path:
+    """An invented %TEMP% holding Claude's scratch base, ``claude``."""
+    temp = tmp_path / "fake-temp"
+    (temp / "claude").mkdir(parents=True)
+    monkeypatch.setenv("TEMP", str(temp))
+    monkeypatch.setenv("TMP", str(temp))
+    return temp
+
+
+def _default_roots(proj: Path) -> List[Path]:
+    # The roots a fresh install resolves: no scratch setting authored.
+    return session_outbox.allowed_roots(str(proj), WebappConfig().outbox_scratch_roots)
+
+
+def test_claudes_scratch_base_is_a_scratch_root_by_default(temp_base: Path, proj: Path):
+    # Any session's scratch folder, not only the asking session's own.
+    other = temp_base / "claude" / "E--some-project" / "session-b" / "scratchpad"
+    other.mkdir(parents=True)
+    (other / "chart.png").write_bytes(PNG)
+    _, _, kind, media = session_outbox.read_source(str(other / "chart.png"), str(proj), _default_roots(proj))
+    assert (kind, media) == ("image", "image/png")
+
+
+def test_a_configured_scratch_list_replaces_the_default(tmp_path: Path, temp_base: Path, proj: Path):
+    (temp_base / "claude" / "note.md").write_text("# n\n", encoding="utf-8")
+    mine = tmp_path / "mine"
+    mine.mkdir()
+    roots = session_outbox.allowed_roots(str(proj), [str(mine)])
+    assert _refusal(temp_base / "claude" / "note.md", proj, roots) == "out_of_root"
+
+
+def test_a_folder_sharing_the_scratch_base_prefix_is_out_of_root(temp_base: Path, proj: Path):
+    # A string-prefix check reads ".../claude-other/x.png" as inside ".../claude".
+    sibling = temp_base / "claude-other"
+    sibling.mkdir()
+    (sibling / "x.png").write_bytes(PNG)
+    assert _refusal(sibling / "x.png", proj, _default_roots(proj)) == "out_of_root"
+    # The temp folder itself is not the scratch base either.
+    (temp_base / "loose.png").write_bytes(PNG)
+    assert _refusal(temp_base / "loose.png", proj, _default_roots(proj)) == "out_of_root"
+
+
+def test_a_junction_from_scratch_to_outside_is_out_of_root(tmp_path: Path, temp_base: Path, proj: Path):
+    _winapi = pytest.importorskip("_winapi")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keys.txt").write_text("private", encoding="utf-8")
+    link = temp_base / "claude" / "looks-scratch"
+    try:
+        _winapi.CreateJunction(str(outside), str(link))
+    except OSError as exc:  # pragma: no cover - a filesystem without junctions
+        pytest.skip(f"cannot create a junction here: {exc}")
+    assert _refusal(link / "keys.txt", proj, _default_roots(proj)) == "out_of_root"
+
+
+def test_a_symlink_from_scratch_to_outside_is_out_of_root(tmp_path: Path, temp_base: Path, proj: Path):
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(PNG)
+    link = temp_base / "claude" / "inside.png"
+    try:
+        os.symlink(outside, link)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"cannot create a symlink here: {exc}")
+    assert _refusal(link, proj, _default_roots(proj)) == "out_of_root"
 
 
 @pytest.mark.parametrize("name", ["page.html", "logo.svg", "tool.exe", "data.xlsx", "noext"])
