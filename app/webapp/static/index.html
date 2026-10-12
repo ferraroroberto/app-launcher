@@ -1574,6 +1574,11 @@
             <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="hideChannelSessionsHelp" class="field-help">A Telegram session serves someone through their own chat, and stopping it cuts that chat off. On, those sessions leave the Board and the session list; one line there says how many are running and opens a read-only list — no Stop, no delete. Off, they show and behave like any other session.</p>
+          <div class="switch-row settings-switch-row">
+            <span>Start Telegram sessions automatically</span>
+            <button type="button" id="autostartChannelSessionsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start Telegram sessions automatically" aria-describedby="autostartChannelSessionsHelp" title="Start Telegram sessions automatically"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="autostartChannelSessionsHelp" class="field-help">After a restart of the PC every Telegram session is gone, and its bot stays silent until someone starts it. On, the launcher starts each ready profile when it starts itself — a fresh session in the profile's skill, with the Claude model from Settings. A profile that is already running, or not ready, is left alone.</p>
           <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; on the Life tab its skill then wears a send glyph, green while the bot runs, and the skill's menu starts or opens it. Nothing here edits files — it shows what is ready and what is missing.</p>
           <h4 class="context-filter-subhead">Checks</h4>
           <ul id="channelChecks" class="card-list channel-check-list" aria-label="Telegram setup checks"></ul>

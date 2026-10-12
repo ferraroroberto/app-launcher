@@ -360,6 +360,38 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.hide_channel_sessions is True
 
+    def test_autostart_channel_sessions_defaults_off_and_round_trips(
+        self, webapp_client
+    ):
+        """autostart_channel_sessions (#1542): starts the Telegram bots when the
+        webapp starts. Default OFF (it launches real sessions); the choice must
+        reach disk, because the webapp only reads it when it next starts."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["autostart_channel_sessions"] is False
+
+        resp = client.post("/api/config", json={"autostart_channel_sessions": True})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.autostart_channel_sessions is True
+        assert client.get("/api/config").json()["autostart_channel_sessions"] is True
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).autostart_channel_sessions is True
+
+        resp = client.post("/api/config", json={"autostart_channel_sessions": False})
+        assert resp.status_code == 200
+        assert load_webapp_config(cfg_path).autostart_channel_sessions is False
+
+    @pytest.mark.parametrize("junk", ["true", "yes", 0, 1, None, []])
+    def test_autostart_channel_sessions_rejects_non_booleans(
+        self, webapp_client, junk
+    ):
+        """"true" is a string: only a real boolean may arm a launch at boot."""
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"autostart_channel_sessions": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.autostart_channel_sessions is False
+
     def test_usage_shows_defaults_to_both_and_round_trips(self, webapp_client):
         """usage_shows (#1451): which providers the usage meter draws. Default
         "both" (today's behaviour); each choice must reach disk so it applies

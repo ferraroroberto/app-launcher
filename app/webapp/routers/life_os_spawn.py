@@ -15,7 +15,7 @@ launches through this tail) never import each other — the role
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, Request
 
@@ -85,7 +85,7 @@ def _resolve_skill(cfg: WebappConfig, skill_id: str) -> Skill:
 
 async def _spawn_skill_session(
     cfg: WebappConfig,
-    request: Request,
+    request: Optional[Request],
     life_os_dir: Path,
     *,
     flags: str,
@@ -98,6 +98,7 @@ async def _spawn_skill_session(
     body: Dict[str, Any],
     resume_sid: str = "",
     label: str = "",
+    mirror: bool = True,
 ) -> Dict[str, Any]:
     """Spawn a Claude or Codex session in life-os and shape the reply.
 
@@ -106,7 +107,8 @@ async def _spawn_skill_session(
     the spawn + audit + optional PC mirror identically and returns the common
     response fields. The caller prepends its own ``launched`` id. ``label``
     tags the session with a role (#1366's ``telegram:<profile>``); ``""``
-    for every other launch.
+    for every other launch. ``request`` is ``None`` (and ``mirror`` off) only
+    for the Telegram boot-time autostart (#1542), which no client asked for.
     """
     # The phone passes its real terminal size (issue #374): a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120
@@ -129,7 +131,7 @@ async def _spawn_skill_session(
         cfg, request, body,
         sid=sid, agent=agent, name=name, project=str(life_os_dir),
         skill=audit_skill, resume=resume, kind=kind, resume_sid=resume_sid,
-        audit_mod=audit, mirror_fn=open_local_terminal_window,
+        audit_mod=audit, mirror_fn=open_local_terminal_window, mirror=mirror,
     )
 
     return {
