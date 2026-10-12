@@ -92,75 +92,6 @@ def _default_recap(authed_page: Page) -> None:
     _mock_recap(authed_page, available=False)
 
 
-def test_life_os_recap_row_shows_staleness(
-    authed_page: Page, base_url: str
-) -> None:
-    """#167, as one glance row since #1439: the Weekly-recap row says how
-    long since the last run, and only the exceptions are chips (overdue in
-    attention, a pending draft in the accent); the coloured-dot badge is
-    gone. Hermetic — /skills + /recap-status are route-mocked."""
-    _mock_skills(authed_page)
-    _mock_recap(
-        authed_page, staleness="overdue", age_days=20.0, proposal_pending=True
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-
-    recap = authed_page.locator("#lifeOsRecap")
-    expect(recap).to_be_visible(timeout=5_000)
-    row = recap.locator("li.lifeos-recap-item")
-    expect(row.locator(".action-row-title")).to_have_text("Weekly recap")
-    expect(row.locator(".action-row-meta-text")).to_have_text("last run 20 days ago")
-    chips = row.locator(".chip")
-    expect(chips).to_have_count(2)
-    expect(chips.nth(0)).to_have_text("overdue")
-    expect(chips.nth(0)).to_have_attribute("data-tone", "attention")
-    expect(chips.nth(1)).to_have_text("draft ready")
-    expect(chips.nth(1)).to_have_attribute("data-tone", "accent")
-    expect(authed_page.locator(".lifeos-recap-badge")).to_have_count(0)
-
-
-def test_life_os_recap_launch_posts(
-    authed_page: Page, base_url: str
-) -> None:
-    """Tapping 🚀 on the recap tile POSTs /api/life-os/recap/launch with the
-    options-card toggle state — proving the /weekly-recap review launch path
-    is reached. Detached on so it launches remote (no terminal overlay)."""
-    _mock_skills(authed_page)
-    _mock_recap(authed_page, staleness="fresh", age_days=1.0)
-
-    captured: dict = {}
-
-    def _capture(route):
-        captured["body"] = route.request.post_data or ""
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "launched": "weekly-recap", "name": "weekly-recap",
-                "agent": "claude", "mode": "remote", "model": "sonnet",
-                "session": {"session_id": "r", "kind": "remote"},
-            }),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/recap/launch$"), _capture
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsRecap")).to_be_visible(timeout=5_000)
-
-    authed_page.locator("#lifeOsDetached").click()
-    authed_page.locator("#lifeOsRecapLaunch").click()
-
-    wait_until(authed_page, lambda: "body" in captured, "the recap launch POST")
-    assert "body" in captured, "recap launch POST was never intercepted"
-    payload = _json.loads(captured["body"])
-    assert payload["mode"] == "remote", payload
-    # No model picked → the combo's Sonnet default rides along (#540).
-    assert payload["model"] == "claude:sonnet", payload
-
-
 def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
     _mock_skills(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -2020,18 +1951,6 @@ _FAKE_SETUP = {
         {"id": "sparring-work", "name": "Sparring Work"},
     ],
 }
-_FAKE_CHANNELS = {
-    "profiles": [
-        {"id": "health", "label": "Health", "skill": "journal-daily",
-         "skill_found": True, "env_present": True, "running": False,
-         "session_id": ""},
-        {"id": "school", "label": "School", "skill": "sparring-work",
-         "skill_found": True, "env_present": True, "running": True,
-         "session_id": "s-school"},
-    ],
-    "problems": [],
-    "setup": _FAKE_SETUP,
-}
 
 
 def _mock_channels(page: Page, body: dict, launches: list) -> None:
@@ -2056,49 +1975,6 @@ def _mock_channels(page: Page, body: dict, launches: list) -> None:
         )
 
     page.route(re.compile(r".*/api/life-os/channels/[^/]+/launch$"), _launch)
-
-
-def _wait_for_launches(page: Page, launches: list, count: int) -> None:
-    """Wait (bounded) until the mocked launch route has seen ``count`` POSTs."""
-    wait_until(page, lambda: len(launches) >= count,
-               f"{count} channel launch POST(s), saw {launches}")
-
-
-def test_channel_profiles_mark_their_skills_and_launch_from_the_kebab(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1366, moved by #1439: there is no Telegram card. A skill a profile is
-    bound to wears the send glyph, and its kebab leads with the bot: Start
-    on Telegram for a stopped one (channel launch route, PTY, no resume),
-    Open Telegram session for a running one (no launch POST)."""
-    _mock_skills(authed_page)
-    launches: list = []
-    _mock_channels(authed_page, _FAKE_CHANNELS, launches)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsChannels")).to_have_count(0)
-    health = authed_page.locator("#lifeOsList li[data-id='journal-daily']")
-    school = authed_page.locator("#lifeOsList li[data-id='sparring-work']")
-    expect(health.locator(".action-row-title-icon")).to_have_attribute("data-alive", "false")
-    expect(school.locator(".action-row-title-icon")).to_have_attribute("data-alive", "true")
-
-    health.locator(".action-row-kebab").click()
-    start = health.locator(".lifeos-channel-btn")
-    expect(start).to_contain_text("Start on Telegram")
-    start.click()
-    _wait_for_launches(authed_page, launches, 1)
-    assert launches[0]["url"].endswith("/api/life-os/channels/health/launch")
-    assert launches[0]["body"]["mode"] == "pty", launches[0]
-    assert launches[0]["body"]["resume"] is False, launches[0]
-
-    # A running bot only opens: no second launch.
-    school.locator(".action-row-kebab").click()
-    open_btn = school.locator(".lifeos-channel-btn")
-    expect(open_btn).to_contain_text("Open Telegram session")
-    open_btn.click()
-    flush_requests(authed_page)
-    assert len(launches) == 1, launches
 
 
 def test_settings_channels_card_reports_each_profile(

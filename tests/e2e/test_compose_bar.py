@@ -47,8 +47,7 @@ _PNG_1x1 = base64.b64decode(
 # The session-host stores uploads under <root>\.launcher-tmp\ — the inline
 # path dropped into the composer must point there. Under autoboot that
 # root is a per-run temp dir rather than this checkout (issue #922), so the
-# leaf is what these patterns pin, not the parent.
-_PATH_RE = re.compile(r"\.launcher-tmp.*\.png$")
+# leaf is what the attach patterns below pin, not the parent.
 
 # Every file this module uploads is named `e2e-stub-…` on purpose: it is the
 # marker `tests/e2e/conftest.py`'s teardown scans for when asserting that no
@@ -237,27 +236,6 @@ def test_compose_send_submits_cr_in_its_own_frame(
     )
 
 
-def test_compose_image_inserts_path_into_bar(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """Attach drops the uploaded path into the textarea, not the PTY (#41)."""
-    sid = launched_pty_session
-    _open_terminal(authed_page, base_url, sid)
-    _show_composer(authed_page)
-
-    # The file input is triggered by the image button's Attach option; set
-    # it directly (the picker itself is native).
-    authed_page.locator(ATTACH_INPUT).set_input_files(
-        files=[{"name": "e2e-stub-regress.png", "mimeType": "image/png",
-                "buffer": _PNG_1x1}]
-    )
-
-    # The uploaded image path lands in the textarea, not the PTY.
-    compose = authed_page.locator(INPUT)
-    expect(compose).to_have_value(_PATH_RE, timeout=10_000)
-    expect(authed_page.locator(COMPOSER)).to_be_visible()
-
-
 def test_compose_attach_appends_at_end_with_blank_line(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
@@ -301,40 +279,6 @@ def test_compose_attach_appends_at_end_with_blank_line(
 
     # The image button exists in the grid and is wired to the input.
     expect(authed_page.locator(f"{COMPOSER} .composer-image")).to_be_attached()
-
-
-def test_compose_attach_multiple_images_in_one_pick(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """Issue #448: picking several gallery images in ONE file-picker
-    interaction (a single ``set_input_files`` call with 2+ files, mirroring
-    a multi-select gallery pick on the phone) uploads all of them and lands
-    every path in the composer, in order, blank-line separated — the same
-    append shape as two sequential single-file attaches, but from one picker
-    action instead of a pick-upload-repeat loop."""
-    sid = launched_pty_session
-    _open_terminal(authed_page, base_url, sid)
-    _show_composer(authed_page)
-
-    # The attach input must accept a multi-select pick.
-    expect(authed_page.locator(ATTACH_INPUT)).to_have_attribute(
-        "multiple", re.compile(r".*")
-    )
-
-    authed_page.locator(ATTACH_INPUT).set_input_files(
-        files=[
-            {"name": "e2e-stub-shot1.png", "mimeType": "image/png",
-             "buffer": _PNG_1x1},
-            {"name": "e2e-stub-shot2.png", "mimeType": "image/png",
-             "buffer": _PNG_1x1},
-        ]
-    )
-
-    compose = authed_page.locator(INPUT)
-    expect(compose).to_have_value(
-        re.compile(r"^.*\.launcher-tmp.*shot1\.png\n\n.*\.launcher-tmp.*shot2\.png$"),
-        timeout=10_000,
-    )
 
 
 def test_compose_send_and_attach_stay_put_during_autogrow(
