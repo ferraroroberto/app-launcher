@@ -449,6 +449,10 @@ class WebappConfig:
     # on their Stop would cut off a person's channel. Off restores today's
     # behaviour exactly. UI-only: the sessions themselves are untouched.
     hide_channel_sessions: bool = True
+    # Start every ready Telegram channel profile when the webapp starts
+    # (#1542), so the bots answer again after a reboot. Off by default: it
+    # launches real sessions, so an absent setting must never arm it.
+    autostart_channel_sessions: bool = False
     # Where a link tapped in Chat or a transcript opens when the page runs on
     # the PC itself (#1274): "chrome" (found through the registry's App
     # Paths, falling back to the default when absent) or "system" (the

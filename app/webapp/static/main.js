@@ -87,6 +87,20 @@ function wireChannelHide() {
   });
 }
 
+// Start Telegram sessions automatically (#1542): saves at once; the server
+// reads it when the webapp next starts, so nothing here repaints.
+function wireChannelAutostart() {
+  const el = els.autostartChannelSessionsToggle;
+  if (!el) return;
+  el.addEventListener('click', async function () {
+    const next = el.getAttribute('aria-checked') !== 'true';
+    setSwitch(el, next);
+    if (!(await patchConfig({ autostart_channel_sessions: next }))) {
+      setSwitch(el, !next);   // patchConfig already fired the failure toast
+    }
+  });
+}
+
 // --------------------------------------------------------- theme toggle
 function wireTheme() {
   // The pre-paint boot script in index.html already stamped
@@ -343,6 +357,7 @@ wireLoginForm(boot);
 wireTabs();
 wireClaudeOptions();
 wireChannelHide();
+wireChannelAutostart();
 wireChannelSessions();
 wireSessions();
 wireUsageMeter();

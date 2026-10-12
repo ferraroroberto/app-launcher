@@ -119,6 +119,9 @@ export async function fetchConfig(shouldApply) {
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);
   }
+  if (els.autostartChannelSessionsToggle) {
+    setSwitch(els.autostartChannelSessionsToggle, body.autostart_channel_sessions === true);
+  }
   renderClaudeOptions();
   renderSettingsValues();
   return true;

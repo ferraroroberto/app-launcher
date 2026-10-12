@@ -430,7 +430,7 @@ async def spawn_launcher_session(
 
 async def audit_session_start_and_maybe_mirror(
     cfg: WebappConfig,
-    request: Request,
+    request: Optional[Request],
     body: Dict[str, Any],
     *,
     sid: str,
@@ -491,7 +491,9 @@ async def audit_session_start_and_maybe_mirror(
         # A Board issue-start dispatch brief (#1114): its size only, never
         # its content. None (no brief) is dropped from the line.
         brief_chars=brief_chars,
-        client=client_ip(request),
+        # No request: the Telegram boot-time autostart (#1542), which no
+        # client asked for.
+        client=client_ip(request) if request is not None else "startup",
     )
     await audit_off_loop(
         audit_mod.session_log,
@@ -504,7 +506,7 @@ async def audit_session_start_and_maybe_mirror(
     # dispatch (#1283), which runs unwatched until Roberto opens it.
     # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
     # credentials, keyed on the active cert (#356).
-    if mirror and kind == "pty" and should_mirror_to_pc(
+    if mirror and request is not None and kind == "pty" and should_mirror_to_pc(
         cfg.claude_show_local_window, request, body
     ):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &

@@ -72,6 +72,8 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     """Route-mock everything the lists read. Returns the live knobs."""
     knobs = {
         "hidden": hidden, "posts": [], "context_hits": [], "inputs": [],
+        # The autostart switch (#1542); None = the server's own value.
+        "autostart": None,
         # session_id -> context percent; absent = "not showing" (no figure).
         "pct": {"s-tg-health": 42},
     }
@@ -98,12 +100,16 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
             knobs["posts"].append(body)
             if "hide_channel_sessions" in body:
                 knobs["hidden"] = body["hide_channel_sessions"]
+            if "autostart_channel_sessions" in body:
+                knobs["autostart"] = body["autostart_channel_sessions"]
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"ok": True}))
             return
         resp = route.fetch()
         body = resp.json()
         body["hide_channel_sessions"] = knobs["hidden"]
+        if knobs["autostart"] is not None:
+            body["autostart_channel_sessions"] = knobs["autostart"]
         route.fulfill(response=resp, json=body)
 
     def _context(route):
@@ -321,6 +327,26 @@ def test_the_one_kill_path_refuses_a_hidden_channel_session(
     flush_requests(authed_page)
     assert stops == [], f"a hidden Telegram session was stopped: {stops}"
     expect(authed_page.locator("#toast")).to_contain_text("Telegram sessions are protected")
+
+
+def test_autostart_switch_is_off_by_default_and_saves_at_once(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1542: Settings › Telegram's autostart switch reads the server's value
+    (off unless set) and saves on the tap, like the hide switch above it."""
+    knobs = _mock(authed_page)
+    _open_coding(authed_page, base_url)
+
+    open_settings_sheet(authed_page, "channelsSheet")
+    toggle = authed_page.locator("#autostartChannelSessionsToggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    wait_until(
+        authed_page,
+        lambda: {"autostart_channel_sessions": True} in knobs["posts"],
+        "the autostart setting's POST",
+    )
+    expect(toggle).to_have_attribute("aria-checked", "true")
 
 
 # ------------------------------------------------------------------ #1402
