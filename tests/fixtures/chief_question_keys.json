@@ -1,0 +1,52 @@
+{
+  "_doc": "One fixture, two readers (#1502): src/chief_answers.py (item_key, unanswered_count) and app/webapp/static/chief-keys.js (itemKey, unansweredCount) must agree on every case. Invented data only.",
+  "cases": [
+    {
+      "name": "ids and positions mixed",
+      "waiting": [
+        {"id": "q-alpha", "question": "Ship the widget?"},
+        {"id": "", "question": "Rename the gadget?"},
+        {"question": "Keep the sprocket?"}
+      ],
+      "answered": ["q-alpha"],
+      "keys": ["q-alpha", "1", "2"],
+      "unanswered": 2
+    },
+    {
+      "name": "a position key answered",
+      "waiting": [
+        {"question": "First?"},
+        {"question": "Second?"}
+      ],
+      "answered": ["1"],
+      "keys": ["0", "1"],
+      "unanswered": 1
+    },
+    {
+      "name": "a mark for a key that is not there",
+      "waiting": [
+        {"id": "q-one", "question": "One?"}
+      ],
+      "answered": ["q-gone", "0"],
+      "keys": ["q-one"],
+      "unanswered": 1
+    },
+    {
+      "name": "everything answered",
+      "waiting": [
+        {"id": "q-a", "question": "A?"},
+        {"question": "B?"}
+      ],
+      "answered": ["q-a", "1"],
+      "keys": ["q-a", "1"],
+      "unanswered": 0
+    },
+    {
+      "name": "no questions",
+      "waiting": [],
+      "answered": [],
+      "keys": [],
+      "unanswered": 0
+    }
+  ]
+}

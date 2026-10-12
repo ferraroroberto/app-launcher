@@ -20,8 +20,8 @@
  *
  * Act-from-the-card loop (#301): tapping a live session row opens an
  * inline drawer with the last user↔assistant exchange (passkey-gated — it
- * is transcript text), the shared composer (#984) and Rename · Stop · Chat ·
- * Terminal;
+ * is transcript text, rendered as markdown), the shared composer (#984),
+ * Chat and Terminal, and Rename and Stop in its kebab (#1502);
  * backlog rows of repos present in the projects folder carry one ▶ Start
  * verb, with YOLO in the row's kebab (#1436); `?board=<sid>` deep-links onto a
  * card with its drawer open. The poll keeps running while a drawer is open
@@ -61,10 +61,11 @@ import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isHiddenChannel } from './channel-sessions.js';
 import {
-  CHIEF_KILL_CONFIRM, channelKillConfirm, channelSessionName, fmtDuration,
+  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtDuration,
   isChannelSession,
 } from './dom-utils.js';
-import { chip, sessionRowBody } from './glance.js';
+import { renderMarkdown } from './markdown.js';
+import { avatar, chip } from './glance.js';
 import { actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
@@ -78,9 +79,8 @@ import {
   syncDispatchBar,
   wireDispatch,
 } from './board-dispatch.js';
-import {
-  answeredKeys, itemKey, openChiefAnswers, syncChiefAnswers, wireChiefAnswers,
-} from './board-answers.js';
+import { openChiefAnswers, syncChiefAnswers, wireChiefAnswers } from './board-answers.js';
+import { answeredKeys, itemKey, openQuestionCount } from './chief-keys.js';
 
 // `gh` marks where a column's cards come from (#910): 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -151,15 +151,9 @@ const CHIEF_STANDING_BY_META = { text: 'standing by', cls: 'is-idle' };
 
 // ----------------------------------------------------------------- cards
 
-// Every Board card leads with its title (#1198), clamped to two lines, and
-// the full text stays reachable through the element's `title` attribute.
-function cardTitleEl(cls, text) {
-  const title = document.createElement('span');
-  title.className = cls;
-  title.textContent = text;
-  if (text) title.title = text;
-  return title;
-}
+// Every Board row is the shared action-row (#1501, #1502): one title line
+// with an ellipsis on every width (decision 3 of #1500, reversing #339's
+// two-line clamp), the full text in the title's `title` attribute.
 
 // A PR, job or done row on the shared action-row (#1501, was its own
 // cardShell): a one-line title, one muted meta line, and a chip only for an
@@ -207,59 +201,57 @@ function renderSessionCard(card, openItem) {
     .filter(Boolean);
   const known = state.agents.find(function (a) { return a.id === card.agent; });
   const agentId = String(card.agent || 'claude');
+  const title = sessionLabel(card);
 
-  const li = document.createElement('li');
-  li.className = 'app-item board-item board-item-session' + (meta.cls ? ' ' + meta.cls : '');
-  // The chief is marked by its crown avatar badge, not a tint (#1449).
-  if (chief) li.classList.add('board-item-chief');
-  if (isChannelSession(card)) li.classList.add('board-item-channel');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'launch-btn board-card board-card-session';
-  sessionRowBody({
-    agentId: agentId,
-    agentLabel: known ? known.label : agentId,
-    badge: chief ? 'crown' : (card.alive === false ? 'down' : 'alive'),
-    title: sessionLabel(card),
+  // On the shared action-row (#1502): the row's main button is the drawer's
+  // disclosure. Tap toggles the drill-down drawer (#301); Chat and Terminal
+  // inside it are the ways into the session.
+  const row = actionRow({
+    className: 'board-item board-item-session' + (meta.cls ? ' ' + meta.cls : ''),
+    avatar: avatar(
+      brandIconEl(agentId, 'session-agent-icon board-agent-icon', known ? known.label : agentId),
+      chief ? 'crown' : (card.alive === false ? 'down' : 'alive'),
+      'session-avatar'
+    ),
+    title: title,
     meta: bits.join(' · '),
     chips: chips,
-    iconClass: 'board-agent-icon',
-    titleClass: 'board-card-title',
-    metaClass: 'board-card-meta',
-  }).forEach(function (node) { btn.appendChild(node); });
-  li.appendChild(btn);
-  if (card.session_id) {
-    li.dataset.sessionId = card.session_id;
-    // Tap toggles the drill-down drawer (#301); the ⚡ button inside it is
-    // the way into the full terminal now.
-    btn.addEventListener('click', function () {
+    label: [title].concat(bits, chips.map(function (c) { return c.textContent; })).join(', '),
+    onMain: function () {
       state.boardExpanded =
         state.boardExpanded === card.session_id ? null : card.session_id;
       renderBoard();
       if (!state.boardExpanded) fetchBoard().catch(function () {});
-    });
-    // The header is a disclosure for the drawer (#1259, WAI-ARIA disclosure
-    // pattern): every render rebuilds it, so its state is set here, and a
-    // kept drawer's fresh header below carries it too.
-    const expanded = state.boardExpanded === card.session_id;
-    btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-    if (expanded) btn.setAttribute('aria-controls', drawerId(card));
-    if (expanded) {
-      if (openItem) {
-        // The header button is always the <li>'s first child, the drawer
-        // after it — only the header is replaced.
-        openItem.className = li.className + ' expanded';
-        openItem.replaceChild(btn, openItem.firstElementChild);
-        return openItem;
-      }
-      li.classList.add('expanded');
-      li.dataset.drawerShape = drawerShape(card);
-      li.appendChild(buildDrawer(card));
-    }
-  } else {
-    btn.classList.add('inert');
-    btn.disabled = true;
+    },
+    disabled: !card.session_id,
+  });
+  // `board-card*` stay as the hooks the poll's tests have always used.
+  row.main.classList.add('board-card', 'board-card-session');
+  row.title.classList.add('board-card-title');
+  if (row.meta) row.meta.classList.add('board-card-meta');
+  const li = row.li;
+  // The chief is marked by its crown avatar badge, not a tint (#1449).
+  if (chief) li.classList.add('board-item-chief');
+  if (isChannelSession(card)) li.classList.add('board-item-channel');
+  if (!card.session_id) return li;
+  li.dataset.sessionId = card.session_id;
+  // The main button is a disclosure for the drawer (#1259, WAI-ARIA
+  // disclosure pattern): every render rebuilds it, so its state is set here,
+  // and a kept drawer's fresh button below carries it too.
+  const expanded = state.boardExpanded === card.session_id;
+  row.main.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  if (!expanded) return li;
+  row.main.setAttribute('aria-controls', drawerId(card));
+  if (openItem) {
+    // A kept drawer (#958): only the row's main button is replaced; the
+    // drawer after it, with its draft, focus and mic, stays.
+    openItem.className = li.className + ' expanded';
+    openItem.replaceChild(row.main, openItem.querySelector(':scope > .action-row-main'));
+    return openItem;
   }
+  li.classList.add('expanded');
+  li.dataset.drawerShape = drawerShape(card);
+  li.appendChild(buildDrawer(card));
   return li;
 }
 
@@ -285,6 +277,10 @@ const CHIEF_EXCHANGE_POLL_MS = 5000;
 // rule as chiefExchangeTimer. A kept drawer (#958) keeps this instance, its
 // draft and a live recording included.
 let drawerComposer = null;
+
+// The open drawer's kebab menu (#1502: Rename, Stop). A kept drawer (#958)
+// keeps its menu, open or not; renderBoard() ends it with a drawer it drops.
+const drawerMenu = createRowMenu('project-menu');
 
 const DRAWER_KEYS_OFF = 'Open the terminal for keys';
 
@@ -331,11 +327,11 @@ function buildDrawerComposer(card) {
   return host;
 }
 
-// One of the drawer's four equal actions (mockup screen 8): glyph over label.
-// An action the session can't take stays in the row, aria-disabled so a tap
-// still reaches it and toasts the reason (a phone has no hover) — the same
-// convention as the overlay's mode segments (#982) — so the row never
-// changes shape.
+// Chat or Terminal, the drawer's two visible actions (decision 4 of #1500):
+// glyph beside label. An action the session can't take stays in the row,
+// aria-disabled so a tap still reaches it and toasts the reason (a phone has
+// no hover) — the same convention as the overlay's mode segments (#982) — so
+// the row never changes shape.
 function drawerAction(cls, glyph, label, title, reason, onTap) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -387,54 +383,21 @@ function buildDrawer(card) {
   // into its PC console through the same /input route (#967).
   drawer.appendChild(buildDrawerComposer(card));
 
-  // One row of four equal actions — Rename · Stop · Chat · Terminal, with
-  // Terminal deliberately last (#496 round 2).
+  // Decision 4 of #1500: Chat, the one tint primary, with Terminal beside it,
+  // then a kebab holding Rename and Stop.
   const actions = document.createElement('div');
   actions.className = 'board-drawer-actions';
-  // Rename: the launcher-native override (no PTY needed). The drawer stays
-  // open across a rename (unlike Chat/Terminal, which navigate away), so the
-  // completion callback patches the card optimistically rather than waiting
-  // for the next poll. A kept drawer (#958) can outlive the payload its
-  // `card` came from, so the patch goes to the card in the current payload.
-  actions.appendChild(drawerAction(
-    'board-rename-btn', 'pencil', 'Rename', 'Rename this session', null,
-    function () {
-      openSessionRename(card, function (title) {
-        card.manual_title = title;
-        const current = boardCard(card.session_id);
-        if (current) current.manual_title = title;
-        renderBoard();
-      });
-    }
-  ));
-  // Stop: the unified stop path the Coding tab's row menu uses for both
-  // kinds (#253: the agent's own quit, force-fallback server-side), one tap,
-  // no confirm — except the chief (#245), the one session a mis-tap
-  // shouldn't take down.
-  actions.appendChild(drawerAction(
-    'board-stop-btn', 'x', 'Stop', 'Stop and kill this session', null,
-    async function (btn) {
-      if (isChiefCard(card) && !(await confirmDialog(CHIEF_KILL_CONFIRM))) return;
-      if (isChannelSession(card) && !(await confirmDialog(channelKillConfirm(card)))) return;
-      btn.disabled = true;
-      // Close the drawer first — the session it belongs to is going away.
-      state.boardExpanded = null;
-      renderBoard();
-      await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
-      // The host stops gracefully (quit → force) — give it the same beat
-      // sessions.js gives fetchSessions before reconciling the board.
-      setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
-    }
-  ));
   const session = overlaySession(card);
-  actions.appendChild(drawerAction(
+  const chat = drawerAction(
     'board-open-chat', 'messages-square', 'Chat', 'Open the chat view',
     chatAvailable(session) ? null : modeReason(session, 'chat'),
     function () {
       state.boardExpanded = null;
       openSessionOverlay(session, 'chat');
     }
-  ));
+  );
+  chat.classList.add('is-primary');
+  actions.appendChild(chat);
   actions.appendChild(drawerAction(
     'board-open-terminal', 'terminal', 'Terminal', 'Open the full terminal',
     terminalAvailable(session) ? null : modeReason(session, 'terminal'),
@@ -443,8 +406,65 @@ function buildDrawer(card) {
       openTerminal(session);
     }
   ));
+  const kebab = document.createElement('button');
+  kebab.type = 'button';
+  kebab.className = 'icon-button board-drawer-kebab';
+  kebab.innerHTML = icon('ellipsis-vertical');
+  kebab.title = 'Session actions';
+  kebab.setAttribute('aria-label', kebab.title);
+  actions.appendChild(kebab);
+  actions.appendChild(drawerMenu.attach(card.session_id, kebab, [
+    {
+      // Rename: the launcher-native override (no PTY needed). The drawer
+      // stays open across a rename (unlike Chat/Terminal, which navigate
+      // away), so the completion callback patches the card optimistically
+      // rather than waiting for the next poll. A kept drawer (#958) can
+      // outlive the payload its `card` came from, so the patch goes to the
+      // card in the current payload.
+      className: 'board-rename-btn', glyph: 'pencil',
+      label: 'Rename this session', text: 'Rename',
+      onTap: function () {
+        openSessionRename(card, function (title) {
+          card.manual_title = title;
+          const current = boardCard(card.session_id);
+          if (current) current.manual_title = title;
+          renderBoard();
+        });
+      },
+    },
+    {
+      // Stop: the unified stop path the Coding tab's row menu uses for both
+      // kinds (#253: the agent's own quit, force-fallback server-side),
+      // always behind the themed confirm (#1502).
+      className: 'board-stop-btn', glyph: 'octagon-x',
+      label: 'Stop and kill this session', text: 'Stop',
+      danger: true,
+      onTap: async function () {
+        if (!(await confirmDialog(stopConfirm(card)))) return;
+        // Close the drawer first — the session it belongs to is going away.
+        state.boardExpanded = null;
+        renderBoard();
+        await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
+        // The host stops gracefully (quit → force) — give it the same beat
+        // sessions.js gives fetchSessions before reconciling the board.
+        setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
+      },
+    },
+  ]));
   drawer.appendChild(actions);
   return drawer;
+}
+
+// Stop asks every time (#1502): the chief (#245) and a Telegram channel
+// (#1366) keep their own words, any other session gets a plain one.
+function stopConfirm(card) {
+  if (isChiefCard(card)) return CHIEF_KILL_CONFIRM;
+  if (isChannelSession(card)) return channelKillConfirm(card);
+  return {
+    title: 'Stop ' + sessionLabel(card) + '?',
+    message: 'The agent quits and its terminal closes.',
+    action: 'Stop',
+  };
 }
 
 async function loadExchange(card, el) {
@@ -467,16 +487,18 @@ async function loadExchange(card, el) {
       return;
     }
     el.dataset.state = 'ready';
+    // Rendered as markdown by Chat mode's renderer (#1502), which escapes
+    // the text before it builds any markup.
     if (body.user && body.user.text) {
       const u = document.createElement('div');
-      u.className = 'board-exchange-user';
-      u.textContent = body.user.text;
+      u.className = 'board-exchange-user tr-md';
+      u.innerHTML = renderMarkdown(body.user.text);
       el.appendChild(u);
     }
     if (body.assistant && body.assistant.text) {
       const a = document.createElement('div');
-      a.className = 'board-exchange-assistant';
-      a.textContent = body.assistant.text;
+      a.className = 'board-exchange-assistant tr-md';
+      a.innerHTML = renderMarkdown(body.assistant.text);
       el.appendChild(a);
     }
     el.scrollTop = el.scrollHeight;
@@ -577,7 +599,8 @@ async function startIssue(card, mode, btn) {
 
 // The Backlog rows' kebab menus (#1436), one shared row-menu: the 5 s poll
 // rebuilds every row, and attach() reopens the open one on its rebuilt row.
-const issueMenu = createRowMenu('session-menu');
+// It drops below the row, right-aligned, as every action-row's menu does.
+const issueMenu = createRowMenu('project-menu');
 
 async function copyLink(url) {
   try {
@@ -588,75 +611,55 @@ async function copyLink(url) {
   }
 }
 
-// A Backlog row (#1436, on the shared anatomy): the title (two lines at most,
-// #1198), one meta line "repo #N" with an accent "in progress" chip while a
-// lane holds the issue, then one trailing plain verb (#1501), ▶ Start, and a kebab
-// holding YOLO (start and ship), Open on GitHub and Copy link (decision 3 of
-// #1432: YOLO takes two taps now). Git state is no longer drawn here; it lives
-// on Code › Projects. A tap on the row opens the issue on GitHub. The <li> is
-// the flex row, so the text button and the rail sit side by side without
-// nesting a <button> in a <button>.
+// A Backlog row (#1436, on the shared action-row since #1502): the one-line
+// title, the meta "repo #N" with an accent "in progress" chip while a lane
+// holds the issue, then one trailing plain verb (#1501), ▶ Start, and the
+// kebab holding YOLO (start and ship), Open on GitHub and Copy link
+// (decision 3 of #1432: YOLO takes two taps now). Git state is no longer
+// drawn here; it lives on Code › Projects. A tap on the row opens the issue
+// on GitHub.
 function renderIssueCard(card) {
-  const li = document.createElement('li');
-  li.className = 'app-item board-item board-item-issue';
   // Claim owner liveness (#948): 'dead' is a provably gone lane — not in
   // progress, startable again; 'unknown' keeps the in-progress lock but says
   // the owner could not be verified.
   const isInProgress = card.in_progress === true;
   const claimUnverified = isInProgress && card.claim_state === 'unknown';
   const claimStale = card.claim_state === 'dead';
-  if (isInProgress) li.classList.add('is-in-progress');
-
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'launch-btn board-card board-card-flat';
-  const textCol = document.createElement('span');
-  textCol.className = 'board-card-text';
-  const meta = document.createElement('span');
-  meta.className = 'board-card-meta-inline';
-  const metaText = document.createElement('span');
-  metaText.className = 'board-card-meta-text';
-  metaText.textContent = [card.repo, '#' + card.number].filter(Boolean).join(' ');
-  meta.appendChild(metaText);
-  if (claimUnverified) meta.appendChild(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
-  else if (isInProgress) meta.appendChild(chip('in progress', 'accent', 'board-claim-chip'));
-  else if (claimStale) meta.appendChild(chip('stale claim', 'neutral', 'board-claim-chip'));
-  textCol.appendChild(cardTitleEl('board-card-title-compact', card.title || ''));
-  textCol.appendChild(meta);
-  btn.appendChild(textCol);
-  li.appendChild(btn);
-  if (card.url) {
-    btn.addEventListener('click', function () {
-      window.open(card.url, '_blank', 'noopener');
-    });
-  }
+  const chips = [];
+  if (claimUnverified) chips.push(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
+  else if (isInProgress) chips.push(chip('in progress', 'accent', 'board-claim-chip'));
+  else if (claimStale) chips.push(chip('stale claim', 'neutral', 'board-claim-chip'));
 
   // One-tap start (#301) — only for repos the Coding tab could launch in.
-  const startable = !!(card.number && repoInProjects(card.repo));
-  if (!startable && !card.url) return li;
-  const rail = document.createElement('div');
-  rail.className = 'row-actions session-actions board-issue-actions';
-  const inProgressTitle = 'Issue #' + card.number + ' is already in progress' +
-    (claimUnverified ? ' (owner unverified)' : '');
   // While a lane holds the issue the verb steps aside: the chip says why.
+  const startable = !!(card.number && repoInProjects(card.repo));
+  let start = null;
   if (startable && !isInProgress) {
-    const start = document.createElement('button');
+    start = document.createElement('button');
     start.type = 'button';
     start.className = 'row-verb-plain board-issue-btn board-issue-start';
     start.innerHTML = icon('play');
     start.title = '/issue-start ' + card.number + ' in ' + card.repo;
     start.setAttribute('aria-label', 'Start issue #' + card.number);
     start.addEventListener('click', function () { startIssue(card, 'start', start); });
-    rail.appendChild(start);
   }
-  const kebab = document.createElement('button');
-  kebab.type = 'button';
-  kebab.className = 'icon-button session-kebab board-issue-kebab';
-  kebab.innerHTML = icon('ellipsis-vertical');
-  kebab.title = 'Issue #' + card.number + ' actions';
-  kebab.setAttribute('aria-label', kebab.title);
-  rail.appendChild(kebab);
-  rail.appendChild(issueMenu.attach(card.repo + '#' + card.number, kebab, [
+  const row = actionRow({
+    className: 'board-item board-item-issue' + (isInProgress ? ' is-in-progress' : ''),
+    title: card.title || '',
+    meta: [card.repo, '#' + card.number].filter(Boolean).join(' '),
+    chips: chips,
+    label: 'Open issue #' + card.number + ' on GitHub',
+    onMain: openUrl(card.url),
+    inert: !card.url,
+    trailing: start,
+    kebabLabel: startable || card.url ? 'Issue #' + card.number + ' actions' : null,
+    kebabClass: 'board-issue-kebab',
+  });
+  if (!row.kebab) return row.li;
+  const inProgressTitle = 'Issue #' + card.number + ' is already in progress' +
+    (claimUnverified ? ' (owner unverified)' : '');
+  const kebab = row.kebab;
+  row.li.appendChild(issueMenu.attach(card.repo + '#' + card.number, kebab, [
     {
       className: 'board-issue-yolo', glyph: 'zap',
       label: 'YOLO issue #' + card.number + ' (start and ship)', text: 'YOLO (start and ship)',
@@ -678,8 +681,7 @@ function renderIssueCard(card) {
       onTap: function () { copyLink(card.url); },
     },
   ]));
-  li.appendChild(rail);
-  return li;
+  return row.li;
 }
 
 function renderPrCard(card) {
@@ -871,19 +873,22 @@ function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
 }
 
-// The page header (#1436, the header rule): only the exceptions — "N needs
-// you" (Your turn) and "N failing" (failed or stuck jobs) — fleet-wide,
-// whatever the project filter narrows the lanes to. With nothing wrong, the
-// plain totals; a count that could not be read is said, never shown as zero
-// (#910, #915).
+// The page header (#1436, the header rule): only the exceptions — "N
+// questions" (the chief's, unanswered, #1502), "N needs you" (Your turn) and
+// "N failing" (failed or stuck jobs), two at most — fleet-wide, whatever the
+// project filter narrows the lanes to. With nothing wrong, the plain totals;
+// a count that could not be read is said, never shown as zero (#910, #915):
+// an unreadable plan adds no question part.
 function renderBoardHead(body, ghLoaded, liveRead) {
   const columns = body.columns || {};
   const sessions = function (key) {
     return (columns[key] || []).filter(function (c) { return !isHiddenChannel(c); }).length;
   };
+  const questions = openQuestionCount(state.chiefPlan);
   const yours = sessions('your_turn');
   const failing = (columns.other || []).filter(jobFailing).length;
   const exceptions = [];
+  if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), tone: 'attention' });
   if (yours) exceptions.push({ text: yours + ' needs you', tone: 'attention' });
   if (failing) exceptions.push({ text: failing + ' failing', tone: 'danger' });
   const live = yours + sessions('claude_turn');
@@ -1018,36 +1023,51 @@ function queueRow(q) {
     }
   }
   if (q.note) meta.push((meta.length ? ' · ' : '') + q.note);
-  return planRow(q.title || label, meta, q.status, '', q.model);
+  return planRow(q.title || label, meta, q.status, q.model);
 }
 
-// `meta` is a line of text, or a list of text and nodes (a queue row's link).
-// `model` is the chief's optional lane/queue model (#1352): quiet muted text
-// beside the status chip, sentence case, absent when blank.
-function planRow(title, meta, status, cls, model) {
-  const li = document.createElement('li');
-  li.className = 'app-item board-item board-plan-row' + (cls ? ' ' + cls : '');
-  const body = document.createElement('div');
-  body.className = 'launch-btn board-card board-card-flat inert';
-  const textCol = document.createElement('span');
-  textCol.className = 'board-card-text';
-  textCol.appendChild(cardTitleEl('board-card-title-compact', title));
-  if (meta && meta.length) {
-    const m = document.createElement('span');
-    m.className = 'board-card-meta-inline';
-    m.append.apply(m, Array.isArray(meta) ? meta : [meta]);
-    textCol.appendChild(m);
-  }
-  body.appendChild(textCol);
+// A lane or queue row (#1502, on the shared action-row): one small line, the
+// title, then the meta, then the optional model word and the status chip.
+// The plan reports, it is not a control, so the row is inert. `meta` is a
+// line of text, or a list of text and nodes (a queue row's link). `model` is
+// the chief's optional lane/queue model (#1352): quiet muted text beside the
+// status chip, sentence case, absent when blank.
+function planRow(title, meta, status, model) {
+  const chips = [];
   if (model) {
     const tag = document.createElement('span');
     tag.className = 'board-plan-model';
     tag.textContent = model.charAt(0).toUpperCase() + model.slice(1);
-    body.appendChild(tag);
+    chips.push(tag);
   }
-  if (status) body.appendChild(chip(status, PLAN_TONES[status] || 'neutral', 'board-plan-chip'));
-  li.appendChild(body);
-  return li;
+  if (status) chips.push(chip(status, PLAN_TONES[status] || 'neutral', 'board-plan-chip'));
+  const parts = Array.isArray(meta) ? meta : (meta ? [meta] : []);
+  const row = actionRow({
+    className: 'board-item board-plan-row',
+    title: title,
+    meta: parts.map(function (p) { return typeof p === 'string' ? p : p.textContent; }).join(''),
+    chips: chips,
+    density: 'small',
+    inert: true,
+  });
+  // A link in the meta takes the place of its own plain words, so the line
+  // still ellipsizes as one.
+  if (row.meta && parts.some(function (p) { return typeof p !== 'string'; })) {
+    const text = row.meta.querySelector('.action-row-meta-text') || row.meta;
+    text.replaceChildren.apply(text, parts);
+  }
+  return row.li;
+}
+
+// A row's trailing chevron (design.md action-row: a row that opens a sheet
+// carries one). It sits outside the main button, so it takes the same tap.
+function chevron(glyph, onTap) {
+  const el = document.createElement('span');
+  el.className = 'board-plan-chevron';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = icon(glyph);
+  el.addEventListener('click', onTap);
+  return el;
 }
 
 // The questions still waiting on you that the repo filter shows, unanswered:
@@ -1057,6 +1077,50 @@ function pendingQuestions(plan, answered, filter) {
   return (plan.waiting_on_roberto || []).filter(function (w, i) {
     return planRowShown(w, filter) && answered.indexOf(itemKey(w, i)) === -1;
   }).length;
+}
+
+// Decision 2 of #1500: the first QUESTIONS_SHOWN questions, then one "N more"
+// row that unfolds the rest in place (for as long as the page lives), then
+// the one Answer button.
+const QUESTIONS_SHOWN = 3;
+let questionsUnfolded = false;
+
+// One waiting question (#1502): its one-line text (the sheet asks the full
+// question), its ref as the meta, a chevron; a tap opens the answer sheet on
+// it. One already answered says so and does nothing on tap: the sheet skips
+// it.
+function questionRow(plan, run, open, i, answered) {
+  const w = plan.waiting_on_roberto[i];
+  const sent = answered.indexOf(itemKey(w, i)) !== -1;
+  const title = w.text || w.question || w.ref;
+  const ref = (w.text || w.question) ? (w.ref || w.repo) : '';
+  const openSheet = function () { openChiefAnswers(plan, run, open, i); };
+  return actionRow({
+    className: 'board-item board-plan-row board-plan-waiting' + (sent ? ' is-answered' : ''),
+    title: title,
+    meta: [ref, sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
+    density: 'one-line',
+    label: 'Answer: ' + title,
+    onMain: openSheet,
+    inert: sent,
+    trailing: sent ? null : chevron('chevron-right', openSheet),
+  }).li;
+}
+
+function moreRow(n) {
+  const unfold = function () {
+    questionsUnfolded = true;
+    renderBoard();
+  };
+  const text = plural(n, 'more question', 'more questions');
+  return actionRow({
+    className: 'board-item board-plan-more',
+    title: text,
+    label: 'Show ' + text,
+    density: 'one-line',
+    onMain: unfold,
+    trailing: chevron('chevron-down', unfold),
+  }).li;
 }
 
 function renderChiefPlan(body, liveRead) {
@@ -1072,10 +1136,10 @@ function renderChiefPlan(body, liveRead) {
   const filter = boardRepoFilter();
   const pending = pendingQuestions(plan, answered, filter);
   setLaneException(els.boardChiefPlan,
-    pending ? pending + (pending === 1 ? ' question' : ' questions') + ' for you' : '',
+    pending ? plural(pending, 'question', 'questions') + ' for you' : '',
     'attention');
   // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age, answered, filter]);
+  const sig = JSON.stringify([plan, run, age, answered, filter, questionsUnfolded]);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.dataset.state = plan.state;
@@ -1097,18 +1161,16 @@ function renderChiefPlan(body, liveRead) {
     waiting.forEach(function (w, i) { if (planRowShown(w, filter)) shown.push(i); });
     const hidden = waiting.length - shown.length;
     if (shown.length) {
-      const group = planGroup('Waiting on you', shown.map(function (i) {
-        const w = waiting[i];
-        const sent = answered.indexOf(itemKey(w, i)) !== -1;
-        const meta = [w.text ? w.ref : '', sent ? 'answered, waiting for the chief' : '']
-          .filter(Boolean).join(' · ');
-        return planRow(w.text || w.question || w.ref, meta, '',
-          'board-plan-waiting' + (sent ? ' is-answered' : ''));
-      }), 'board-plan-group-waiting');
       // Answered from any device (#1487): not counted, not asked again.
       const open = shown.filter(function (i) {
         return answered.indexOf(itemKey(waiting[i], i)) === -1;
       });
+      // "1 more" would take a row to save one: fold only from two hidden.
+      const folded = !questionsUnfolded && shown.length > QUESTIONS_SHOWN + 1;
+      const listed = folded ? shown.slice(0, QUESTIONS_SHOWN) : shown;
+      const rows = listed.map(function (i) { return questionRow(plan, run, open, i, answered); });
+      if (folded) rows.push(moreRow(shown.length - listed.length));
+      const group = planGroup('Waiting on you', rows, 'board-plan-group-waiting');
       if (open.length) group.appendChild(answerButton(plan, run, open));
       nodes.push(group);
     }
@@ -1120,7 +1182,7 @@ function renderChiefPlan(body, liveRead) {
     const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
     if (lanes.length) {
       nodes.push(planGroup('Lanes', lanes.map(function (l) {
-        return planRow(l.repo || 'lane', l.item, l.status, '', l.model);
+        return planRow(l.repo || 'lane', l.item, l.status, l.model);
       })));
     }
     // Unfiltered, the Queue heading shows even when empty, as it always has;
@@ -1129,6 +1191,17 @@ function renderChiefPlan(body, liveRead) {
     if (queue.length || !filter) nodes.push(planGroup('Queue', queue.map(queueRow)));
   }
   host.replaceChildren.apply(host, nodes);
+}
+
+// The desktop grid (#1502): one column per lane that holds rows, the plan
+// and Claude's turn sharing one as always; an empty lane spans the grid as
+// a strip under them (CSS). The pane carries the count, so the project
+// filter above stays exactly one lane wide (#1464).
+function sizeLaneGrid() {
+  const cells = Array.from(els.boardColumns.children).filter(function (el) {
+    return !el.classList.contains('is-empty');
+  }).length;
+  els.boardColumns.parentElement.style.setProperty('--board-lanes', String(Math.max(1, cells)));
 }
 
 export function renderBoard() {
@@ -1211,6 +1284,8 @@ export function renderBoard() {
       const count = section.querySelector('.board-count');
       if (count) count.textContent = shown;
       section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
+      // At the wide query an empty lane is a one-line strip (#1502).
+      section.classList.toggle('is-empty', cards.length === 0);
       // PRs and jobs, folded, says what is wrong instead of its count.
       if (col.key === 'other') {
         const failing = cards.filter(jobFailing).length;
@@ -1241,6 +1316,8 @@ export function renderBoard() {
     }
   });
 
+  sizeLaneGrid();
+
   // A card that changed column moved its kept <li> between lists, which
   // blurs; hand the focus back.
   if (activeEl && document.activeElement !== activeEl && activeEl.isConnected) {
@@ -1249,6 +1326,8 @@ export function renderBoard() {
 
   // The open Backlog kebab's row is gone (issue closed, filtered out).
   issueMenu.endRender();
+  // A kept drawer keeps its menu; one rebuilt re-attached it; none, ends it.
+  if (!openItem) drawerMenu.endRender();
   renderBacklogFoot(body, ghLoaded);
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
@@ -1363,11 +1442,19 @@ function ghStale(body) {
   return isNaN(t) || Date.now() - t > GH_STALE_MS;
 }
 
+// While a refresh runs the ↻ spins (#1502, COLOR-02): aria-busy, never the
+// disabled look, whose line colour measured 1.55:1 on dark. A second tap is
+// a no-op (refreshInFlight).
+function setRefreshBusy(busy) {
+  els.boardRefresh.setAttribute('aria-busy', busy ? 'true' : 'false');
+  if (busy) els.boardRefresh.setAttribute('aria-disabled', 'true');
+  else els.boardRefresh.removeAttribute('aria-disabled');
+}
+
 async function refreshGithub() {
   if (refreshInFlight) return;
   refreshInFlight = true;
-  els.boardRefresh.disabled = true;
-  els.boardRefresh.textContent = '…';
+  setRefreshBusy(true);
   try {
     const github = await jsonApi('/api/board/github/refresh', { method: 'POST' });
     if (github && github.error) {
@@ -1376,8 +1463,7 @@ async function refreshGithub() {
     await fetchBoard();
   } finally {
     refreshInFlight = false;
-    els.boardRefresh.disabled = false;
-    els.boardRefresh.innerHTML = icon('refresh-cw');
+    setRefreshBusy(false);
   }
 }
 

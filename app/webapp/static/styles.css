@@ -1801,7 +1801,7 @@ textarea.input-native { height: auto; }
 }
 .avatar-badge[data-badge="crown"] .icon { width: var(--icon-inline); height: var(--icon-inline); }
 
-/* Session row (Code rows, Board session cards): the avatar, then a text
+/* Session row (Code rows): the avatar, then a text
    column of one title line (body, 600) and one meta line (body-sm, muted)
    on the action-row's typography. Two lines tall = rows.lg. The meta text
    ellipsizes; the chips after it never do. */
@@ -1838,9 +1838,7 @@ textarea.input-native { height: auto; }
   white-space: nowrap;
 }
 .srow-meta-text:empty { display: none; }
-/* Both tap targets lay the row out the same way. */
-.session-item .session-open,
-.board-card.board-card-session {
+.session-item .session-open {
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
@@ -1848,7 +1846,6 @@ textarea.input-native { height: auto; }
   min-height: var(--row-lg);
   padding: 8px 4px 8px 14px;
 }
-.board-card.board-card-session { padding-right: var(--board-card-inset); }
 /* ---------- row action menus: session kebab (#953) + project ⋯ (#977) ---------- */
 /* One anchor in the rail opens a floating vertical list — one icon + label
    row per action — on the same raised-chrome recipe as the git-status
@@ -4470,8 +4467,9 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 
 /* The chief's plan (#1279) sits under Claude's turn: the two share one
    wrapper, a grid cell on the desktop and plain stacked cards on the phone.
-   Its rows are the Board's flat card rows, not tappable, each with a
-   kind-pill status chip; an unknown status keeps the neutral pill. */
+   Its rows are the shared action-row (#1502): questions open the answer
+   sheet, lanes and queue rows only report, each with its status chip; an
+   unknown status keeps the neutral chip. */
 .board-col-stack { min-width: 0; }
 .board-plan-line { margin: 0 0 6px; }
 .board-plan-heading {
@@ -4480,34 +4478,31 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   font-weight: 600;
   color: var(--muted);
 }
-.board-plan-row .board-card-flat { gap: 8px; }
-/* A queue row's repo#N (#1297): the secondary line, linked to the issue. */
+/* A queue row's repo#N (#1297): its meta, linked to the issue. */
 .board-plan-ref { color: var(--accent-text); }
-.launch-btn .kind-pill.board-plan-chip {
-  flex: 0 0 auto;
-  margin-right: 0;
-  white-space: nowrap;
-}
-.launch-btn .kind-pill.board-plan-chip[data-tone="active"] {
-  background: var(--accent-soft);
-  color: var(--accent-text);
-}
-.launch-btn .kind-pill.board-plan-chip[data-tone="attention"] { color: var(--attention-text); }
-.launch-btn .kind-pill.board-plan-chip[data-tone="done"] { color: var(--success-text); }
 /* A row's model (#1352): quiet text beside the status chip -- muted caption,
    no fill, so it never competes with the status. */
-.launch-btn .board-plan-model {
+.board-plan-model {
   flex: 0 0 auto;
   font-size: var(--font-caption);
   font-weight: 600;
   color: var(--muted);
   white-space: nowrap;
 }
-/* What waits on Roberto leads the card, marked like an attention item. */
+/* What waits on you (#1502, decision 2 of #1500): plain one-line rows under
+   an attention heading, no bar or stripe; a chevron says a row opens the
+   answer sheet. "N more" unfolds the rest in place. */
 .board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
-.board-plan-waiting { box-shadow: inset 3px 0 0 var(--attention); }
-.board-plan-waiting .board-card-flat { padding-left: 12px; }
-.board-plan-waiting.is-answered { box-shadow: inset 3px 0 0 var(--line); }
+.board-plan-chevron {
+  width: var(--row-sm);
+  height: var(--row-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.board-plan-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .board-plan-answer {
   display: inline-flex;
   align-items: center;
@@ -4578,83 +4573,19 @@ span.chief-answer-ref { color: var(--muted); }
 }
 
 .board-list { list-style: none; margin: 0; padding: 0; }
-/* Column, not the shared .app-item row: the drawer and the issue-action
-   buttons must land BELOW the card, never split it horizontally (#301
-   phone feedback). */
-.board-item {
-  margin: 0;
-  flex-direction: column;
-  align-items: stretch;
-}
-/* Flat separator row (issue #365 — the backlog's #337/#339 look extended
-   to Claude's/Yours/Done): no per-card box; the status accents below keep
-   signalling on the row's left edge. */
-.board-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
-  width: 100%;
-  min-height: var(--row-lg);
-  text-align: left;
-  background: none;
-  border: none;
-  /* The text's left inset inside a column, one source for every card kind
-     (#1303: the Backlog row reads it too). */
-  --board-card-inset: 14px;
-  padding: 12px var(--board-card-inset);
-  color: var(--fg);
-  cursor: pointer;
-}
-.board-card:disabled { cursor: default; opacity: 0.75; }
-.board-card-meta {
-  font-size: var(--font-body-sm);
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.board-agent-icon { width: 16px; height: 16px; }
-/* Title first on every card (#1198), and one shared cap: two lines, the full
-   text in the element's title attribute. Not a one-line ellipsis — that hid
-   too much of a backlog title on a phone (#339). */
-.board-card-title,
-.board-card-title-compact {
-  font-size: var(--font-label);
-  line-height: 1.3;
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-/* PR, job and done rows (#1436): the shared anatomy, no left-edge status
-   border. A job's state is its chip (failed: danger; stuck, not confirmed,
-   unreadable: attention), after the meta text, which ellipsizes first. */
-.board-card-meta-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* Fleet chief card (#245): the crown avatar badge (#1433) and the "chief"
-   label identify it; it carries no background tint (#1449) and reads like
-   every other session card. */
-.board-empty { margin: 0; }
-/* A lane row on the shared action-row (#1501: PRs and jobs, Done): the
-   .board-item hook stays for tests and the poll, but the row is the
-   action-row's flex row, not the session card's column. */
+/* Every Board row is the shared action-row (#1501, #1502); .board-item stays
+   the hook the poll and the tests use. A session row wraps, so its drawer
+   lands below the row at full width (#301 phone feedback), never beside it.
+   Titles are one line with an ellipsis on every width (decision 3 of #1500,
+   reversing #339's two-line clamp), the full text in the title attribute;
+   the repo reference is part of the meta text that ellipsizes. */
 .board-list .action-row.board-item {
-  flex-direction: row;
-  align-items: center;
+  margin: 0;
+  flex-wrap: wrap;
 }
-
-
+.board-list .action-row.board-item > .board-drawer { flex: 0 0 100%; }
+.board-agent-icon { width: 16px; height: 16px; }
+.board-empty { margin: 0; }
 
 /* Telegram sessions hidden from the lists (#1384): the Coding tab's
    Telegram row (.channel-row) stands in for them and opens a read-only list;
@@ -4766,88 +4697,6 @@ span.chief-answer-ref { color: var(--muted); }
   overflow-wrap: anywhere;
 }
 
-/* Backlog issue tiles (#337, restyled #339, on the shared anatomy since
-   #1436): a flat separator row — no card background/border/radius, just a
-   bottom-border divider between rows (GitHub-issue-list style) — with the
-   title over "repo #N", and the ▶ verb and kebab vertically centered
-   against the full row height.
-   .app-item is already a row flexbox by default; .board-item overrides that
-   to a column for the stacked layout the other card kinds use, so this
-   pairs both classes to opt back into a row. Since issue #365 the flat
-   look IS the .app-item base (this pattern got generalized app-wide), so
-   the old box-resetting overrides are gone — only the row direction and
-   the flat button geometry remain. The text stack still needs
-   `min-width: 0` along the row axis (.board-card-text), not just its
-   ancestors — a flex item's default min-width is `auto` (content-based),
-   which otherwise lets a long title widen the row instead of wrapping inside
-   the available space (the textbook flex sizing bug, not a mobile-Safari
-   quirk). */
-.board-item.board-item-issue {
-  flex-direction: row;
-  align-items: center;
-  gap: 4px;
-}
-.board-card-flat {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  flex: 1;
-  min-width: 0;
-  width: auto;
-  padding: 10px 4px;
-}
-/* A Backlog row's text starts where the other columns' cards' does (#1303);
-   the right side stays tight so the action rail keeps its edge. The
-   Chief's-plan rows keep the small inset that lines them up with the plan
-   card's own headings. */
-.board-item-issue .board-card-flat { padding-left: var(--board-card-inset); }
-.board-card-text {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1;
-  min-width: 0;
-  gap: 2px;
-}
-/* Backlog titles wrap to the shared two-line cap above rather than a
-   one-line ellipsis; the row grows with the text column, while the sibling
-   action rail stays vertically centered. */
-.board-card-title-compact {
-  min-width: 0;
-  white-space: normal;
-  font-weight: 600;
-}
-/* The meta line: plain text, then a chip ("in progress") that never
-   ellipsizes away. */
-.board-card-meta-inline {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: var(--font-body-sm);
-  font-weight: 400;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-/* The Backlog row's rail (#1436): one tint verb, ▶ Start, then the kebab,
-   each a real 44px target 8px apart, centred against the row. The kebab's
-   menu floats left of the rail like the Code tab's (.session-menu). */
-.app-item .row-actions.board-issue-actions {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  padding-right: 4px;
-}
-.board-issue-actions .board-issue-start {
-  flex: none;
-  width: var(--row-sm);
-  min-width: var(--row-sm);
-  min-height: var(--row-sm);
-  padding: 0;
-}
-
 /* Drill-down drawer (#301): last exchange + reply, inline under the card. */
 .board-drawer {
   margin: 6px 0 4px;
@@ -4879,11 +4728,9 @@ span.chief-answer-ref { color: var(--muted); }
 .board-exchange-user {
   color: var(--fg);
   font-size: var(--font-body-sm);
-  white-space: pre-wrap;
   border-left: 2px solid var(--muted);
   padding-left: 8px;
 }
-.board-exchange-assistant { white-space: pre-wrap; }
 /* The drawer's mount of the shared composer (#984, mockup screen 8): the
    bar sits inside the drawer's own surface, so it drops the docked bar's
    padding, hairline and card fill. */
@@ -4892,65 +4739,68 @@ span.chief-answer-ref { color: var(--muted); }
   border-top: 0;
   background: transparent;
 }
-/* Every drawer action button gets the dark theme explicitly — without this
-   they render as the UA's native white buttons (phone feedback, #301). */
+/* Drawer actions (#1502, decision 4 of #1500): Chat, the one tint primary,
+   then Terminal on the secondary surface, each a glyph beside its label at
+   the 44px floor, then the kebab holding Rename and Stop. The drawer's own
+   width decides the layout, never squeezing a button under the floor
+   (#1174): one row while the two labelled buttons keep their words beside
+   the kebab; in a narrow desktop column Chat and the kebab share the first
+   row and Terminal spans the second; in the narrowest, one column.
+   minmax(0, 1fr) keeps the buttons inside the drawer (#473). The kebab's
+   menu drops below the row. */
+.board-drawer { container-type: inline-size; }
+.board-drawer-actions {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--row-sm);
+  gap: 8px;
+}
+@container (max-width: 279.98px) {
+  .board-drawer-actions {
+    grid-template-columns: minmax(0, 1fr) var(--row-sm);
+    grid-template-areas: "chat menu" "terminal terminal";
+  }
+  .board-drawer-actions > .board-open-chat { grid-area: chat; }
+  .board-drawer-actions > .board-open-terminal { grid-area: terminal; }
+  .board-drawer-actions > .board-drawer-kebab { grid-area: menu; }
+}
+@container (max-width: 103.98px) {
+  .board-drawer-actions {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "chat" "terminal" "menu";
+  }
+}
 .board-drawer-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: var(--row-sm);
+  padding: 0 10px;
   background: var(--card-2);
   color: var(--fg);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 8px 14px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body-sm);
+  font-weight: 600;
   cursor: pointer;
 }
 .board-drawer-action:active { background: var(--card); }
-/* Drawer actions (#984, mockup screen 8): four equal buttons — Rename ·
-   Stop · Chat · Terminal — each a glyph stacked over its label at the 44px
-   floor. The drawer's own width decides the layout, never squeezing a
-   button under the floor (#1174): one row while four 44px columns fit —
-   with an 8px gap from 200px (4x44 + 3x8), a 4px one from 188px, which is
-   what holds the row at 1280px beside the rail — then 2x2 from 96px, then
-   one column (a desktop Board column leaves the drawer ~90px at a 700px
-   window). minmax(0, 1fr) keeps the columns equal and inside the drawer
-   (#473). */
-.board-drawer { container-type: inline-size; }
-.board-drawer-actions {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+.board-drawer-action.is-primary {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-soft);
+  color: var(--accent-text);
 }
-@container (max-width: 199.98px) {
-  .board-drawer-actions { gap: var(--space-xs); }
-}
-@container (max-width: 187.98px) {
-  .board-drawer-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-}
-@container (max-width: 95.98px) {
-  .board-drawer-actions { grid-template-columns: minmax(0, 1fr); }
-}
-.board-drawer-action {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-width: 0;
-  min-height: var(--row-sm);
-  padding: 9px 6px;
-  font-weight: 600;
-}
+.board-drawer-action.is-primary:active { filter: brightness(0.9); }
+.board-drawer-action .icon { flex: none; }
 .board-drawer-action-label {
-  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Stop: the danger action, as the terminal bar's Stop and kill row. */
-.board-stop-btn { color: var(--danger); }
-.board-stop-btn:active {
-  background: rgb(from var(--danger) r g b / 0.2);
-  border-color: var(--danger);
-}
+.board-drawer-kebab { --icon-btn-box: var(--row-sm); justify-self: end; }
 /* An action the session can't take (Terminal for a detached session, Chat
    with no transcript reader): design.md button-disabled — flat muted text on
    the subtle surface, never opacity. aria-disabled, not :disabled, so the
@@ -4961,6 +4811,16 @@ span.chief-answer-ref { color: var(--muted); }
   border-color: var(--line);
   color: var(--muted);
   cursor: default;
+  filter: none;
+}
+
+/* The GitHub refresh in flight (#1502, COLOR-02): the ↻ spins at full
+   strength instead of a disabled "…" (1.55:1 on dark). Still, under reduced
+   motion. */
+.board-refresh[aria-busy="true"] .icon { animation: board-refresh-spin 0.9s linear infinite; }
+@keyframes board-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .board-refresh[aria-busy="true"] .icon { animation: none; }
 }
 
 /* Desktop / wide: all five column sections side by side.
@@ -4984,12 +4844,54 @@ span.chief-answer-ref { color: var(--muted); }
   }
   /* `start`, not the grid's default stretch: a folded section keeps its
      52px summary height instead of growing an empty card to the row. */
+  /* One column per lane that holds rows (board.js sizeLaneGrid sets
+     --board-lanes on the pane, #1502); an empty lane spans the grid as a
+     strip, and `dense` keeps the lanes with rows side by side above the
+     strips, each set in lane order. */
   .board-columns {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--board-lanes, 5), minmax(0, 1fr));
+    grid-auto-flow: row dense;
     align-items: start;
     gap: var(--board-col-gap);
   }
+  .board-columns > .board-col.is-empty { grid-column: 1 / -1; }
+  /* The strip (#1502): title and count, then the empty sentence and its one
+     action inline, on one line; the sentence ellipsizes first. */
+  .board-col.is-empty[open] {
+    display: flex;
+    align-items: center;
+  }
+  /* One line, so no divider under the summary; the chevron keeps a gap
+     from the count. */
+  .board-col.is-empty[open] > .collapse-summary {
+    flex: none;
+    column-gap: 12px;
+    border-bottom: 0;
+  }
+  .board-col.is-empty[open] > .collapse-body {
+    flex: 1;
+    min-width: 0;
+    padding: 0 14px 0 0;
+  }
+  .board-col.is-empty .board-lane-toolbar,
+  .board-col.is-empty .board-lane-foot,
+  .board-col.is-empty .empty-state-icon { display: none; }
+  .board-col.is-empty .empty-state {
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 0;
+    min-height: 0;
+  }
+  .board-col.is-empty .empty-state-message {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .board-col.is-empty .empty-state-action { flex: none; margin: 0; }
   .board-col { margin: 0; }
   .board-col-stack {
     display: flex;
@@ -4998,14 +4900,16 @@ span.chief-answer-ref { color: var(--muted); }
   }
   .board-chief-plan { margin: 0; }
   /* A fifth of the pane is narrow: the body's 14px sides on top of each
-     row's own 14px inset left the drawer's four actions too little room for
-     one row. The rows carry that inset already, level with the summary's
-     title, so the grid's bodies drop the sides. */
+     row's own inset left the drawer's actions too little room for one row.
+     The rows carry an inset already, so the grid's bodies drop the sides. */
   .board-col > .collapse-body { padding: 4px 0 8px; }
   /* A full-bleed pane makes a full-width filter absurdly long: it is exactly
-     one lane wide (the toolbar and the grid share the pane's content box),
-     so its edges line up with the Backlog column's, ↻ beside it (#1464). */
-  .board-toolbar .board-repo-combo { flex: 0 0 calc((100% - 4 * var(--board-col-gap)) / 5); }
+     one lane wide (the toolbar and the grid share the pane's content box and
+     --board-lanes), so its edges line up with the first column's, ↻ beside
+     it (#1464). */
+  .board-toolbar .board-repo-combo {
+    flex: 0 0 calc((100% - (var(--board-lanes, 5) - 1) * var(--board-col-gap)) / var(--board-lanes, 5));
+  }
 }
 .lifeos-file-btn {
   flex: 1;

@@ -305,6 +305,8 @@ def test_board_drawer_rename_patches_card_in_place(
 
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
+    # Rename lives in the drawer's kebab menu (#1502).
+    drawer.locator(".board-drawer-kebab").click()
     drawer.locator("button.board-rename-btn").click()
 
     dialog = authed_page.locator("#sessionRenameDialog")
@@ -387,9 +389,9 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     # drawer-actions row overflow past its own column — the empty "Your
     # turn" column (stretched tall by CSS Grid's default row `align-items:
     # stretch` once the drawer expands its sibling) then won by paint order
-    # and swallowed the click. The 4-column `minmax(0, 1fr)` grid on
-    # `.board-drawer-actions` (#984) keeps the row inside its own column at
-    # every width in this range.
+    # and swallowed the click. The `minmax(0, 1fr)` grid on
+    # `.board-drawer-actions` (#984, #1502) keeps the row and its kebab menu
+    # inside its own column at every width in this range.
     captured: dict = {}
     _mock_board(authed_page)
     _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)
@@ -408,5 +410,7 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
 
     drawer = authed_page.locator(".board-drawer")
     expect(drawer).to_be_visible()
+    # Rename lives in the drawer's kebab menu (#1502).
+    drawer.locator(".board-drawer-kebab").click()
     drawer.locator("button.board-rename-btn").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
