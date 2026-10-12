@@ -212,7 +212,9 @@ export function renderSkills() {
   renderHomeHead();
   host.innerHTML = '';
   const skills = state.lifeOsSkills;
-  els.lifeOsEmpty.hidden = skills.length !== 0;
+  // "No skills found" only after a good read: before one, an empty list is
+  // lifeOsState's loading or error, not an empty folder (#1501).
+  els.lifeOsEmpty.hidden = skills.length !== 0 || !skillsReadAt;
 
   // Starred skills pinned to the top (#1070), the Coding tab's treatment
   // (#250) replicated here. `skills` arrives alphabetical from the scanner,

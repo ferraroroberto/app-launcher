@@ -78,8 +78,10 @@ function renderBatLists() {
   appMenu.endRender();
   appsFilter.apply();
 
-  els.registeredTraysEmpty.hidden = trayApps.length !== 0;
-  els.appsEmpty.hidden = otherApps.length !== 0;
+  // The true-empty blocks only after a good read: before one, an empty list
+  // is appsState's loading or error, not an empty registry (#1501).
+  els.registeredTraysEmpty.hidden = trayApps.length !== 0 || !appsReadAt;
+  els.appsEmpty.hidden = otherApps.length !== 0 || !appsReadAt;
   // The empty state offers the scan itself; the row would say it twice.
   els.appsScanRow.hidden = otherApps.length === 0;
   const autostart = trayApps.filter(function (a) { return a.autostart; }).length;
