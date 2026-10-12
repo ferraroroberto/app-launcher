@@ -609,3 +609,165 @@ def test_pin_to_top_posts_the_pin_and_unpin_is_offered_back(authed_page: Page, l
     reading = _row(page, "reading-list")
     reading.locator(".action-row-kebab").click()
     expect(reading.locator(".lifeos-pin-btn")).to_have_text("Unpin")
+
+
+# --------------------------------------------- swipe actions (#1503, step D)
+# Playwright's touch emulation only taps, so these drive synthetic pointer
+# events through the real handlers (swipe-row.js); the thresholds themselves
+# are pinned under plain Node (tests/js/swipe_row.test.mjs). Moves are spaced
+# in time so a partial swipe is slow, not a flick.
+_SWIPE = """async ({ id, dx, dy, startX, type, steps, pause }) => {
+  const li = document.querySelector(`#lifeOsList li[data-id="${id}"]`);
+  const surface = li.querySelector('.swipe-surface');
+  const r = surface.getBoundingClientRect();
+  const x0 = startX == null ? r.left + r.width / 2 : startX;
+  const y0 = r.top + r.height / 2;
+  const fire = (kind, x, y) => surface.dispatchEvent(new PointerEvent(kind, {
+    pointerId: 7, pointerType: type, isPrimary: true,
+    clientX: x, clientY: y, bubbles: true, cancelable: true,
+  }));
+  fire('pointerdown', x0, y0);
+  for (let i = 1; i <= steps; i++) {
+    await new Promise((done) => setTimeout(done, pause));
+    fire('pointermove', x0 + dx * i / steps, y0 + dy * i / steps);
+  }
+  const during = { side: li.dataset.swipe || '', armed: li.classList.contains('is-armed') };
+  fire('pointerup', x0 + dx, y0 + dy);
+  return { during, after: li.dataset.swipe || '', width: r.width };
+}"""
+
+
+def _phone(page: Page) -> None:
+    """A phone-width viewport: the swipe distances below are a 390px row's."""
+    page.set_viewport_size({"width": 390, "height": 844})
+
+
+def _swipe(page: Page, skill_id: str, dx: float, *, dy: float = 0, start_x=None,
+           kind: str = "touch", steps: int = 10, pause: int = 40) -> dict:
+    return page.evaluate(_SWIPE, {"id": skill_id, "dx": dx, "dy": dy, "startX": start_x,
+                                  "type": kind, "steps": steps, "pause": pause})
+
+
+def _launch_route(page: Page) -> list:
+    posted: list = []
+
+    def _launch(route):
+        posted.append(_json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json",
+                      body=_json.dumps({"session": {"session_id": "s-n", "kind": "remote"}}))
+
+    page.route(re.compile(r".*/api/life-os/skills/[^/]+/launch$"), _launch)
+    return posted
+
+
+@pytest.mark.iphone
+def test_swipe_right_resumes_and_a_partial_swipe_left_rests_on_new(
+    authed_page: Page, life
+) -> None:
+    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _USED)
+    _phone(authed_page)
+    page = life()
+    resumed = _resume_latest_route(page, {
+        "conversation_action": "resume", "model": "claude-sonnet-5-5", "model_kept": True,
+        "session": {"session_id": "s-r", "kind": "remote"}})
+    launched = _launch_route(page)
+    # Detached, so nothing opens a terminal; Resume on, which swipes ignore.
+    life_launch_switch(page, "#lifeOsDetached")
+    life_launch_switch(page, "#lifeOsResume")
+
+    row = _row(page, "garden-notes")
+    expect(row).to_have_class(re.compile(r"\bhas-swipe\b"))
+    # The panes are behind the surface, hidden, and out of reach of AT.
+    expect(row.locator(".swipe-pane--leading")).to_have_attribute("aria-hidden", "true")
+    expect(row.locator(".swipe-pane-btn").first).to_have_attribute("tabindex", "-1")
+
+    # A full swipe right arms before release, then resumes the newest
+    # conversation directly: no model, no picker.
+    full = _swipe(page, "garden-notes", 330, steps=10, pause=16)
+    assert full["during"] == {"side": "leading", "armed": True}, full
+    assert full["after"] == "", full
+    wait_until(page, lambda: len(resumed) == 1, "the resume-latest POST")
+    assert resumed[0]["url"].endswith("/garden-notes/conversations/resume-latest")
+    assert resumed[0]["body"] == {"mode": "remote"}, resumed
+    expect(page.locator("#toast")).to_contain_text("Resumed garden-notes (Sonnet)")
+
+    # A slow partial swipe left rests open on New; nothing launches yet.
+    partial = _swipe(page, "garden-notes", -100)
+    assert partial["during"] == {"side": "trailing", "armed": False}, partial
+    assert partial["after"] == "trailing", partial
+    pane = row.locator(".swipe-pane--trailing")
+    expect(pane).to_be_visible()
+    expect(pane).to_contain_text("New")
+    flush_requests(page)
+    assert launched == [], launched
+    # A tap on the pane commits: a new conversation, the Resume switch ignored.
+    pane.locator(".swipe-pane-btn").click()
+    wait_until(page, lambda: len(launched) == 1, "the launch POST")
+    assert launched[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, launched
+    expect(row).not_to_have_attribute("data-swipe", re.compile(".*"))
+    assert len(resumed) == 1
+
+
+@pytest.mark.iphone
+def test_a_swipe_never_starts_from_a_scroll_a_mouse_or_the_edge(
+    authed_page: Page, life
+) -> None:
+    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _USED)
+    _phone(authed_page)
+    page = life()
+    resumed = _resume_latest_route(page, {"conversation_action": "resume", "session": None})
+    launched = _launch_route(page)
+    for label, kwargs in (
+        ("a vertical scroll", {"dx": 30, "dy": 200}),
+        ("a mouse", {"dx": 330, "kind": "mouse", "pause": 16}),
+        ("the back-gesture edge", {"dx": 330, "start_x": 10, "pause": 16}),
+    ):
+        out = _swipe(page, "garden-notes", **kwargs)
+        assert out["during"]["side"] == "" and out["after"] == "", (label, out)
+    # A skill with no conversation yet: Resume shows why and never commits.
+    page.locator("#lifeOsList .lifeos-fold-btn").click()
+    blocked = _swipe(page, "yoga-log", 330, pause=16)
+    assert blocked["during"] == {"side": "leading", "armed": False}, blocked
+    assert blocked["after"] == "leading", blocked
+    expect(_row(page, "yoga-log").locator(".swipe-pane--leading")).to_contain_text(
+        "No conversation yet")
+    flush_requests(page)
+    assert resumed == [] and launched == [], (resumed, launched)
+
+
+@pytest.mark.iphone
+def test_skill_rows_run_full_bleed_on_the_phone_only(authed_page: Page, life) -> None:
+    """The experiment the owner asked for: on the phone the Skills card runs
+    edge to edge, so a row and its panes span the screen, while its header,
+    toolbar and the rows' text keep the inset they had. Wide, it stays a
+    card."""
+    page = life()
+    measure = """el => {
+      if (!el.isConnected) return null;
+      const box = (n) => n.getBoundingClientRect();
+      const card = el.closest('.lifeos-list-card');
+      const row = el.querySelector("li[data-id='garden-notes']");
+      const app = el.closest('.app');
+      return {
+        // The content edge, without the desktop scrollbar a narrow window keeps.
+        edge: box(app).left + app.clientWidth,
+        card: box(card), row: box(row),
+        radius: getComputedStyle(card).borderTopLeftRadius,
+        head: box(card.querySelector('.collapse-main')),
+        filter: box(card.querySelector('.action-row-filter')),
+        avatar: box(row.querySelector('.avatar')),
+      };
+    }"""
+    page.set_viewport_size({"width": 390, "height": 844})
+    phone = stable_eval(page.locator("#lifeOsList"), measure)
+    assert round(phone["row"]["left"]) == 0, phone
+    assert abs(phone["row"]["right"] - phone["edge"]) <= 1, phone
+    assert phone["radius"] == "0px", phone
+    # The text keeps its inset (the gutter plus the card's 14px): header,
+    # filter and avatar line up, off the edge.
+    assert phone["filter"]["left"] >= 24, phone
+    for part in ("avatar", "head"):
+        assert abs(phone[part]["left"] - phone["filter"]["left"]) <= 2, (part, phone)
+    page.set_viewport_size({"width": 1024, "height": 800})
+    wide = stable_eval(page.locator("#lifeOsList"), measure)
+    assert wide["card"]["left"] > 0 and wide["radius"] != "0px", wide

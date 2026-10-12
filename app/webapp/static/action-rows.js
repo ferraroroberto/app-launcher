@@ -9,6 +9,7 @@
  */
 
 import { icon } from './_vendored/icons/icons.js';
+import { attachSwipe } from './swipe-row.js';
 
 // opts:
 //   id         -> li[data-id]
@@ -30,7 +31,12 @@ import { icon } from './_vendored/icons/icons.js';
 //                 row's one other trailing item (a chevron, an Answer button)
 //   inert      -> the text column is a plain <div>, not a button: a row that
 //                 reports a fact and does nothing on tap (onMain unused)
-// Each of the last three is optional: a row built without them is
+//   swipe      -> { leading, trailing }, each { label, glyph, tone, onCommit,
+//                 disabled, reason }: swipe actions on a touch screen
+//                 (swipe-row.js, #1503). The row's content moves into one
+//                 sliding surface; the actions must also be in the kebab,
+//                 the route for a mouse and for assistive tech
+// Each of the last four is optional: a row built without them is
 // byte-identical to one built before they existed (the golden in
 // tests/e2e/test_life_tab_glance.py).
 // Returns { li, main, title, meta, kebab } for the caller to finish.
@@ -119,6 +125,19 @@ export function actionRow(opts) {
     kebab.title = opts.kebabLabel;
     kebab.setAttribute('aria-label', opts.kebabLabel);
     li.appendChild(kebab);
+  }
+
+  if (opts.swipe) {
+    // Everything the row shows slides together on one surface, the panes
+    // behind it, both inside a track that clips them; the kebab's menu,
+    // appended to the row later, stays outside the clip.
+    const track = document.createElement('div');
+    track.className = 'swipe-track';
+    const surface = document.createElement('div');
+    while (li.firstChild) surface.appendChild(li.firstChild);
+    track.appendChild(surface);
+    li.appendChild(track);
+    attachSwipe(li, surface, opts.swipe, icon);
   }
 
   return { li: li, main: main, title: title, meta: meta, kebab: kebab };

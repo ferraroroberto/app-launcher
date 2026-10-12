@@ -7,8 +7,9 @@
  * mounts (#1439, launch-toolbar.js), at the top of the Skills card. Each row
  * leads with an avatar and says when the skill was last used; pinned skills
  * come first, then the most recently used, and skills not used lately fold
- * under one row (#1503). The kebab resumes the newest conversation on its own
- * model or starts a new one. A skill a Telegram profile is bound to says so
+ * under one row (#1503). A swipe right (or the kebab) resumes the newest
+ * conversation on its own model, a swipe left starts a new one; on the phone
+ * the rows run edge to edge to give the swipe room. A skill a Telegram profile is bound to says so
  * in its meta, wears the green badge while that bot runs, and starts or opens
  * the bot from its kebab; there is no Telegram card (#1439). The Read item opens
  * an overlay that reads each skill's files — public SKILL.md/description.md
@@ -68,7 +69,7 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   switchesInMenu: true,
   menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
     'Resume makes a tap on a skill open the session picker. ' +
-    'For a skill’s last conversation, use its ⋮ › Resume last conversation.',
+    'For a skill’s last conversation, swipe it right, or use its ⋮ › Resume last conversation.',
   // The cross-skill conversation search rides the model row, pinned right.
   trailing: document.getElementById('lifeOsConvoSearch'),
 });
@@ -281,8 +282,9 @@ function skillAvatar(s, alive) {
 let skillsUnfolded = false;
 
 // The kebab's launch items (#1503), first so the swipe actions have a
-// single-pointer route (WCAG 2.5.1): resume the newest conversation, or
-// start a new one. Both ignore the toolbar's Resume switch.
+// single-pointer route (WCAG 2.5.1), the only one with a mouse: resume the
+// newest conversation, or start a new one. Both ignore the toolbar's Resume
+// switch.
 function launchMenuItems(s) {
   return [
     {
@@ -350,6 +352,21 @@ export function renderSkills() {
       onMain: function () { launchSkill(s); },
       kebabClass: 'lifeos-menu-anchor',
       kebabLabel: 'Skill actions',
+      // Swipe right resumes the newest conversation (the frequent one, so
+      // the leading edge, iOS Mail's rule); swipe left starts a new one.
+      // Both are also the kebab's first two items, and both ignore the
+      // Resume switch (#1503).
+      swipe: {
+        leading: {
+          label: 'Resume', glyph: 'rotate-ccw', tone: 'accent',
+          disabled: !s.has_conversations, reason: 'No conversation yet',
+          onCommit: function () { resumeLatest(s); },
+        },
+        trailing: {
+          label: 'New', glyph: 'circle-plus', tone: 'neutral',
+          onCommit: function () { launchSkill(s, { fresh: true }); },
+        },
+      },
     });
     if (s.is_favorite) row.li.dataset.pinned = 'true';
     row.li.appendChild(skillMenu.attach(s.id, row.kebab, launchMenuItems(s).concat(
