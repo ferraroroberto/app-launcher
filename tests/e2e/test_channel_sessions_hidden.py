@@ -72,8 +72,11 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     """Route-mock everything the lists read. Returns the live knobs."""
     knobs = {
         "hidden": hidden, "posts": [], "context_hits": [], "inputs": [],
-        # The autostart switch (#1542); None = the server's own value.
-        "autostart": None,
+        # The autostart switch (#1542), pinned off so the box's own config
+        # (the disposable webapp reads the checkout's webapp_config.json) cannot
+        # decide the starting state (#1550); the server default is pinned by
+        # tests/test_webapp_api_config.py.
+        "autostart": False,
         # session_id -> context percent; absent = "not showing" (no figure).
         "pct": {"s-tg-health": 42},
     }
@@ -108,8 +111,7 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
         resp = route.fetch()
         body = resp.json()
         body["hide_channel_sessions"] = knobs["hidden"]
-        if knobs["autostart"] is not None:
-            body["autostart_channel_sessions"] = knobs["autostart"]
+        body["autostart_channel_sessions"] = knobs["autostart"]
         route.fulfill(response=resp, json=body)
 
     def _context(route):
@@ -333,7 +335,7 @@ def test_autostart_switch_is_off_by_default_and_saves_at_once(
     authed_page: Page, base_url: str
 ) -> None:
     """#1542: Settings › Telegram's autostart switch reads the server's value
-    (off unless set) and saves on the tap, like the hide switch above it."""
+    (off here) and saves on the tap, like the hide switch above it."""
     knobs = _mock(authed_page)
     _open_coding(authed_page, base_url)
 
