@@ -27,7 +27,7 @@ import os
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS
+from tests.e2e.conftest import BUILD_READOUT_MS, OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -59,7 +59,7 @@ def test_terminal_view_has_back_arrow_and_session_menu(
     _skip_unless_phone(browser_name)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
+        "Build:", timeout=BUILD_READOUT_MS
     )
 
     # Target the row for the session THIS test launched, by id — never
@@ -112,7 +112,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     _skip_unless_phone(browser_name)
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
+        "Build:", timeout=BUILD_READOUT_MS
     )
 
     # Scope to the session this test launched (issue #260) — never ".first".

@@ -27,7 +27,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS
+from tests.e2e.conftest import BUILD_READOUT_MS, OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -531,7 +531,7 @@ def test_leaving_terminal_mid_recording_releases_mic(
     )
     authed_page.goto(base_url, wait_until="domcontentloaded")
     expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=10_000
+        "Build:", timeout=BUILD_READOUT_MS
     )
 
     row = authed_page.locator(
