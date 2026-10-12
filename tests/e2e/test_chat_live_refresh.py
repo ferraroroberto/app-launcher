@@ -652,6 +652,60 @@ def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
     assert after == before, f"the reader was moved: {before} -> {after}"
 
 
+def test_a_reply_arriving_after_tool_calls_is_unfolded_and_a_user_fold_stays(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1531 — a new agent reply must read straight away, never arrive folded.
+
+    A turn that starts with a tool call is keyed on that entry's offset, and
+    so are its step line and the call's own item (both folded by default). The
+    provisional tail is harvested by key before it is replaced, so the closed
+    step line's state used to be restored onto the open turn the moment the
+    reply settled it: the reply arrived behind a one-line summary. Only a fold
+    the reader made themselves may persist, and only on that turn.
+    """
+    page = authed_page
+    _mock_sessions_list(page)
+    tr = _Transcript(page)
+    tr.append(_turn("user", "please look at the flaky test", 100))
+    _fake_clock.install(page)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(page)
+    turns = page.locator("#transcriptList .tr-assistant")
+    expect(page.locator("#transcriptList .tr-user")).to_have_count(1)
+
+    # The turn is born in the provisional tail, as a bare step line...
+    tr.append(_tool("Bash", "pytest tests/e2e -q", "3 passed", 150))
+    _tick(page, tr)
+    expect(turns).to_have_count(1, timeout=OVERLAY_OPEN_MS)
+    expect(turns.first).to_have_attribute("open", "")
+    # ...and the reply that follows settles it.
+    tr.append(_turn("assistant", "the reply the reader is waiting for", 200))
+    _tick(page, tr)
+    expect(page.locator("#transcriptList")).to_contain_text(
+        "the reply the reader is waiting for", timeout=OVERLAY_OPEN_MS
+    )
+    expect(turns).to_have_count(1)
+    expect(turns.first).to_have_attribute("open", "")
+
+    # The reader folds this turn; a later turn must not inherit that fold.
+    turns.first.locator("summary.tr-turn-summary").click()
+    expect(turns.first).not_to_have_attribute("open", "")
+    tr.append(
+        _turn("user", "next question", 300),
+        _tool("Bash", "git status", "clean", 350),
+    )
+    _tick(page, tr)
+    tr.append(_turn("assistant", "the second reply", 400))
+    _tick(page, tr)
+    expect(page.locator("#transcriptList")).to_contain_text(
+        "the second reply", timeout=OVERLAY_OPEN_MS
+    )
+    expect(turns).to_have_count(2)
+    expect(turns.first).not_to_have_attribute("open", "")
+    expect(turns.nth(1)).to_have_attribute("open", "")
+
+
 def test_a_session_that_ends_stops_refreshing_and_says_so(
     authed_page: Page, base_url: str
 ) -> None:

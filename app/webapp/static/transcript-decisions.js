@@ -101,7 +101,7 @@ export function renderQuestion(e, toolErrors, answering) {
   if (e.call_id) li.dataset.callId = e.call_id;
   const card = document.createElement('div');
   card.className = 'tr-ask';
-  tagKey(card, e);
+  tagKey(card, e, 'card');
   if (e.error === true) card.classList.add('tr-item-failed');
   const head = document.createElement('div');
   head.className = 'tr-ask-head';
@@ -510,7 +510,7 @@ export function renderPlan(e, toolErrors, answering) {
   if (e.call_id) li.dataset.callId = e.call_id;
   const card = document.createElement('div');
   card.className = 'tr-ask tr-plan';
-  tagKey(card, e);
+  tagKey(card, e, 'card');
   const head = document.createElement('div');
   head.className = 'tr-ask-head';
   head.innerHTML = icon('file-text');

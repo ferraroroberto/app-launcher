@@ -671,7 +671,7 @@ function renderPrompt(e) {
   const d = document.createElement('details');
   d.className = 'tr-turn tr-user';
   d.open = true;
-  tagKey(d, e);
+  tagKey(d, e, 'prompt');
   const s = document.createElement('summary');
   s.className = 'tr-bubble tr-prompt-folded';
   const hint = document.createElement('span');
@@ -750,7 +750,7 @@ function renderAgentTurn(first, agent, edited) {
   const d = document.createElement('details');
   d.className = 'tr-turn tr-assistant';
   d.open = true;
-  tagKey(d, first);
+  tagKey(d, first, 'turn');
   const s = document.createElement('summary');
   s.className = 'tr-turn-summary';
   const mark = document.createElement('span');
@@ -1082,7 +1082,7 @@ function joinOlderTurn(frag) {
   while (older._trParts.firstChild) moving.appendChild(older._trParts.firstChild);
   newer._trParts.insertBefore(moving, newer._trParts.firstChild);
   newer._trFirst = older._trFirst;
-  tagKey(newer.querySelector('.tr-turn'), older._trFirst);
+  tagKey(newer.querySelector('.tr-turn'), older._trFirst, 'turn');
   older.remove();
   syncTurnHead(newer);
 }
@@ -1305,7 +1305,7 @@ function fullDiffControl(wrap, diff) {
 function renderItem(e, toolErrors) {
   const d = document.createElement('details');
   d.className = 'tr-item tr-item-' + e.kind;
-  tagKey(d, e);
+  tagKey(d, e, 'item');
   // A failed call is marked on the row itself, so it reads as failed while
   // the group is still folded open at one item — never as a banner over the
   // whole turn (#1020).
@@ -1507,7 +1507,7 @@ function renderRun(run, toolErrors) {
   li._trRun = run.slice();
   const d = document.createElement('details');
   d.className = 'tr-step';
-  tagKey(d, run[0]);
+  tagKey(d, run[0], 'step');
   const s = document.createElement('summary');
   s.className = 'tr-step-line';
   s.innerHTML = icon('chevron-right', 'tr-step-chevron');
@@ -1530,9 +1530,14 @@ function renderRun(run, toolErrors) {
 // entry it renders, so an open card can be found again after the region is
 // rebuilt. Offsets are stable identities: an entry keeps the offset of the
 // line it started at for as long as that file is not rewritten.
+//
+// The key is namespaced by what kind of disclosure it is (#1531): a turn that
+// opens with a tool call, its step line and the call's own item all render
+// the same entry, so a bare offset let a folded step line's state be restored
+// onto the open turn and a new reply arrived folded.
 
-export function tagKey(el, entry) {
-  if (entry && entry.offset != null) el.dataset.trKey = String(entry.offset);
+export function tagKey(el, entry, kind) {
+  if (entry && entry.offset != null) el.dataset.trKey = kind + ':' + entry.offset;
 }
 
 // Open/closed state of every keyed disclosure inside `nodes`, so a rebuild
