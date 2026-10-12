@@ -29,6 +29,7 @@ remove` fail as "busy"). See issue #709.
 from __future__ import annotations
 
 import functools
+import glob
 import json
 import logging
 import os
@@ -1156,24 +1157,40 @@ def launch_target_dir() -> Optional[Path]:
 
 
 def pin_launch_target(cfg: dict, target: Path) -> dict:
-    """Make ``cfg`` scan ``target``, so its coding row always resolves.
+    """Make ``cfg`` scan ``target`` and nothing else, so its coding row resolves.
 
     Pins the Coding-tab scan root to ``target``'s parent and drops any
-    inherited ignore pattern that would hide ``target`` itself. On the primary
-    checkout this is already exactly what the real config says, so it changes
-    nothing there; in a fresh scratch checkout (which has no config at all) it
-    is what stops the launch 404ing (issue #932). Nothing here is a credential
-    — a checkout's own path is not secret — so it does not reopen #907 / PR
-    #911.
+    inherited ignore pattern that would hide ``target`` itself, so the launch
+    stops 404ing in a fresh scratch checkout (issue #932). Nothing here is a
+    credential — a checkout's own path is not secret — so it does not reopen
+    #907 / PR #911.
+
+    Every sibling of ``target`` is ignored (issue #1512). The SPA fetches
+    ``/api/claude-code/git-status`` on every page boot, and that runs two or
+    three ``git`` processes per scanned project: with the whole projects dir
+    (~50 repos on the dev box) each test's boot spawned ~150 of them, the
+    disposable webapps spent most of their time in git, and the box sat at
+    100% CPU for the whole browser phase until unrelated page loads timed out.
+    A test that needs other project rows mocks ``/api/apps`` or git-status.
 
     Mutates and returns ``cfg``. Pinned by ``tests/test_e2e_launch_target.py``.
     """
     cfg["projects_dir"] = str(target.parent)
-    cfg["projects_ignore"] = [
+    kept = [
         pattern
         for pattern in (cfg.get("projects_ignore") or [])
         if not dir_ignored(target.name, [pattern])
     ]
+    try:
+        siblings = sorted(
+            child.name for child in target.parent.iterdir() if child.name != target.name
+        )
+    except OSError as exc:
+        logger.warning("⚠️ could not list %s, the e2e webapp will scan all of it: %s",
+                       target.parent, exc)
+        siblings = []
+    # glob.escape: a sibling name holding [ ] * ? must match only itself.
+    cfg["projects_ignore"] = kept + [glob.escape(name) for name in siblings]
     return cfg
 
 
