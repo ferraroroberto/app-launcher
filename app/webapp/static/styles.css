@@ -2880,6 +2880,95 @@ textarea.input-native { height: auto; }
 .tr-thumb:disabled { cursor: default; }
 .tr-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .tr-thumb-failed { border-style: dashed; }
+/* Files the agent sent (#1530): the caption reads as reply text, then a card
+   per file in the step card's frame -- a caption-size header (name, size,
+   Open) over the content: an image or a PDF at the card's width, or a text
+   file's opening lines. Two sizes only: the body's and the caption's. */
+.tr-file-item { min-width: 0; margin: 0 0 8px; }
+.tr-file-caption {
+  margin: 0 0 8px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.tr-file-card {
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+.tr-file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-file-size { flex: none; font-variant-numeric: tabular-nums; }
+/* Real 44px geometry: it sits in a row beside the name, so no invisible
+   expansion (design.md Touch targets). */
+.tr-file-open {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  color: var(--accent-text);
+  text-decoration: none;
+}
+.tr-file-open[hidden] { display: none; }
+.tr-file-image {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  background: var(--card-off);
+  cursor: zoom-in;
+}
+.tr-file-image img { display: block; width: 100%; max-height: 50vh; object-fit: contain; }
+.tr-file-pdf {
+  display: block;
+  width: 100%;
+  height: 60vh;
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  background: var(--card-off);
+}
+.tr-file-preview {
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-caption);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.tr-file-note {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-caption);
+}
+.tr-file-failed { border-style: dashed; }
 
 /* ---------- Show changes overlay (#977) ---------- */
 /* GitHub "Files changed" on the phone: a summary line, then flat list-row

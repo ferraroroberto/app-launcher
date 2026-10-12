@@ -249,6 +249,21 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "transcript, decoded on demand — the transcript's own sensitivity.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/file"),
+        "passkey",
+        "Chat sent files (#1530): a file a Claude SendUserFile call named, read "
+        "from disk through the outbox's guards: the transcript's own sensitivity.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and (
+            p.endswith("/outbox") or "/outbox/" in p
+        ),
+        "passkey",
+        "Chat sent files (#1530): a session's outbox list and one file's bytes. "
+        "The POST that fills it is loopback-only in its handler, so this row "
+        "only ever admits the phone to read.",
+    ),
+    (
         lambda p: p == "/api/board/issues/start",
         "passkey",
         "Board drill-down (#301): issue-start spawns a coding session.",

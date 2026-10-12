@@ -44,6 +44,8 @@ webapp/terminal-themes.json
 webapp/sessions/
 # Board issue-start dispatch briefs (issue #1114) — launcher-written, TTL-pruned
 webapp/briefs/
+# Files agents sent to their session's Chat (issue #1530) — launcher-written, TTL-pruned
+webapp/outbox/
 webapp/jobs/
 # durable chief-conversation pointer (issue #675) — machine-written state
 webapp/chief-pointer.json

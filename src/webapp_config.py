@@ -439,6 +439,12 @@ class WebappConfig:
     # Extra IPs / CIDRs allowed to reach the terminal endpoints on top of
     # loopback + the Tailscale CGNAT range (100.64.0.0/10). Empty by default.
     tailnet_allowlist: list = field(default_factory=list)
+    # Folders, besides a session's own, that an agent may send a file to the
+    # Chat pane from (#1530): its outbox and Claude's SendUserFile. %VAR% and ~
+    # expand, so a temp-dir root needs no machine path. Defaults to Claude's
+    # scratch base, where its SendUserFile files live; a configured non-empty
+    # list replaces it (an empty one reads as unset, like every list setting).
+    outbox_scratch_roots: list = field(default_factory=lambda: ["%TEMP%/claude"])
     # When true, launching a session from the phone also opens an
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
