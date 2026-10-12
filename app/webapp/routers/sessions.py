@@ -449,10 +449,12 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
     Issue #763 adds one more: ``reason: "deferred"`` (HTTP **202**) means the
     payload is in the composer but the agent was still working, so the
     submitting CR is with a bounded background watcher that will press Enter
-    once the agent settles — the message is in flight, not stranded. It
+    once the agent settles, or at once for an agent that queues type-ahead
+    (#1548) — the message is in flight, not stranded. It
     replaces the former ``settle_cap``, which reported a CR already fired
-    blind mid-repaint. The watcher's own verdict (``ok`` /
-    ``defer_timeout`` / ``defer_vanished`` / ``defer_unclear``) lands on the
+    blind mid-repaint. The watcher's own verdict (``ok``, with ``queued``
+    when the agent queued it / ``unverified`` / ``defer_timeout`` /
+    ``defer_vanished`` / ``defer_unclear`` / ``defer_failed``) lands on the
     session's ``last_input``, readable via the session list, so a caller
     follows it up there rather than by holding this request open.
 

@@ -192,9 +192,12 @@ def test_idle_prompt_with_background_agents_submits_and_confirms(scripted, monke
 
 
 def test_a_running_main_turn_still_defers(scripted, monkeypatch):
-    """The busy-agent protection #763 exists for is untouched: with the main
-    turn's spinner repainting, background agents or not, no CR goes in."""
+    """On an agent whose type-ahead was never probed, #763's wait stands:
+    with the main turn's spinner repainting, background agents or not, no CR
+    goes in. (A type-ahead agent gets Enter at once instead — #1548, pinned
+    in ``test_session_host_typeahead_submit``.)"""
     session, pty, clock = scripted
+    session.agent = "codex"
     pty.paint(_BG_WAIT_FRAME)
     idle_tick = _idle_with_agents(pty)
 

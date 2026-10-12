@@ -25,6 +25,8 @@ from collections import deque
 from dataclasses import dataclass, replace
 from typing import Any, Dict, List, Optional
 
+from src.agents import supports_type_ahead
+
 logger = logging.getLogger(__name__)
 
 # Settle-then-submit for bulk input (issue #611) — ported from
@@ -161,12 +163,18 @@ _DEFER_QUIET_MS = 1500
 # and keeps reporting INPUT_DEFER_TIMEOUT honestly.
 _DEFER_CAP_MS = 1_800_000
 _DEFER_POLL_S = 0.25
-# How far back the pre-fire re-check looks for the payload. The composer is
-# repainted on essentially every frame, so a payload still sitting unsent
-# keeps reappearing, whereas one that was submitted (or scrolled away behind
-# a dialog) stops being repainted and only survives in older scrollback.
-# Sampling _output_total on every poll and scanning from the oldest retained
-# sample is what turns "the payload was there once" into "it is there now".
+# How far back the pre-fire re-check looks for the payload. Sampling
+# _output_total on every poll and scanning from the oldest retained sample is
+# what turns "the payload was there once" into "it is there now".
+#
+# It is only positive evidence, never negative (#1548). The premise that the
+# composer is repainted on essentially every frame is false for Claude Code's
+# differential renderer, which repaints only the cells that changed: an
+# unchanged composer under a ticking status row is never painted again, so a
+# steer still sitting on the input line read as gone, and the watcher reported
+# ``defer_vanished`` after ~113 s and pressed nothing. What proves the payload
+# is still there is that no keystroke has touched the composer since the paste
+# (``PtySession._composer_touches``); this scan only matters once one has.
 _DEFER_FRAME_LOOKBACK_MS = 6000
 _DEFER_FRAME_SAMPLES = max(2, int(_DEFER_FRAME_LOOKBACK_MS / 1000 / _DEFER_POLL_S))
 # Defence in depth for the one case the positive check above cannot rule out
@@ -224,6 +232,62 @@ _OSC_TAIL_RE = re.compile(r"\x1b\][^\x07\x1b]*$")
 # 4.7 s after it. The wait runs on the watcher thread, never on a caller.
 _BG_SUBMIT_CONFIRM_MS = 15000
 
+# Type-ahead (issue #1548). #763 assumed a CR sent while the agent works is
+# absorbed as a literal newline, and so waited for the turn to go quiet. That
+# was never probed, and for Claude Code it is not what happens: a probe on
+# v2.1.296 (2026-10-12) pasted a 1,034-byte, six-paragraph steer into a
+# throwaway session mid-turn, sent the CR 3 s later — the moment this module
+# hands the submit to its watcher — and Claude Code moved the message out of
+# the composer at once, painted "Press up to edit queued messages" in its
+# place and "ctrl+x ctrl+s to send now" under the queued text, and answered it
+# when the turn yielded. Waiting for quiet instead strands a steer for as long
+# as the turn runs (a gate run, background agents, a status row that keeps
+# ticking), and the owner pressed Enter by hand on two such steers.
+#
+# So for an agent whose ``type_ahead`` was probed (``src.agents``), a running
+# main turn is the cue to press Enter now rather than the thing to wait out.
+# "Running" means a main-turn spinner glyph (``_MAIN_SPINNER_RE``) painted
+# within _TYPEAHEAD_LIVE_MS: the spinner repaints several times a second for
+# as long as a turn runs, and stops when a dialog takes over the screen.
+_TYPEAHEAD_LIVE_MS = 1000
+# The queued-state markers, normalized (see _normalize_echo). Either one is
+# the confirmation; Claude Code paints both. No marker within
+# _TYPEAHEAD_CONFIRM_MS means the CR went in and nothing showed it was taken,
+# reported as unconfirmed, never as ``ok``. The probe saw them within 0.5 s.
+_QUEUED_MARKERS = ("queuedmessages", "tosendnow")
+_TYPEAHEAD_CONFIRM_MS = 10000
+
+# What released the deferred watcher's Enter: a quiet window (#763), the
+# idle-with-background-agents screen (#1319), or a running turn on a
+# type-ahead agent (#1548). The last two confirm their CR afterwards.
+_DEFER_MODE_QUIET = "quiet"
+_DEFER_MODE_BG = "bg_waiting"
+_DEFER_MODE_TYPEAHEAD = "type_ahead"
+
+# What a keyboard write must carry to count as touching the composer
+# (``PtySession._composer_touches``, #1548): any control character, which is
+# every key that can submit, clear, delete, recall history or paste. Before
+# the check, the replies a terminal emulator sends on its own are removed —
+# focus in/out, device attributes, cursor position, mode reports, OSC/DCS
+# strings — since an attached xterm sends those without anybody typing. An
+# unrecognised sequence counts as a touch: the watcher then falls back to
+# reading the screen, which is the pre-#1548 rule, never something riskier.
+_TERMINAL_REPLY_RE = re.compile(
+    r"\x1b\[(?:[IO]|[?>][\d;]*[cu]|\?[\d;]*\$y|\d+;\d+R)"
+    r"|\x1b[\]P][^\x07\x1b]*(?:\x07|\x1b\\)"
+)
+_CONTROL_KEY_RE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def touches_composer(data: str) -> bool:
+    """Can this keyboard write change what the composer holds? (#1548)
+
+    Plain typed text cannot remove a payload already there, so it does not
+    count — consistent with a human typing never superseding the watcher.
+    """
+    return _CONTROL_KEY_RE.search(_TERMINAL_REPLY_RE.sub("", data)) is not None
+
+
 # Outcome reasons for a server-initiated write (issue #760). Distinct
 # conditions get distinct reasons — "couldn't establish delivery" is never
 # folded into the success state.
@@ -233,14 +297,18 @@ INPUT_NOT_INGESTED = "not_ingested"    # written, never echoed → not delivered
 INPUT_DROPPED = "dropped"              # a write never reached the PTY
 INPUT_NOOP = "noop"                    # nothing was asked for
 # Deferred-submit reasons (issue #763). INPUT_DEFERRED is what the /input
-# call itself returns once the watcher is armed; the other three are the
+# call itself returns once the watcher is armed; the others are the
 # watcher's own terminal verdicts, recorded onto ``last_input`` when it
 # finishes. It replaces the former "settle_cap" reason, which reported a CR
 # that had already been fired blind — there is no longer such a CR to report.
 INPUT_DEFERRED = "deferred"            # ingested; submit handed to the watcher
 INPUT_DEFER_TIMEOUT = "defer_timeout"  # never went quiet within _DEFER_CAP_MS
-INPUT_DEFER_VANISHED = "defer_vanished"  # quiet, but the payload is gone
-INPUT_DEFER_UNCLEAR = "defer_unclear"  # quiet, payload there, but a dialog too
+INPUT_DEFER_VANISHED = "defer_vanished"  # composer touched, payload not on screen
+INPUT_DEFER_UNCLEAR = "defer_unclear"  # payload there, but a dialog too
+# The watcher itself failed before writing any CR (issue #1548). Recorded so
+# a broken watcher ends on a verdict instead of leaving ``last_input`` at
+# ``pending`` for good.
+INPUT_DEFER_FAILED = "defer_failed"
 # Detached (console) targets only — RemoteSession.submit_input (issue #967):
 # the console-input helper could not attach/type (a distinct 502 from
 # ``not_ingested``: nothing was written, the console may be gone).
@@ -286,6 +354,10 @@ class InputOutcome:
     # happen — never as a plain paste that needed none. ``submit_input``
     # stamps the real value from its own ``submit`` argument.
     submit_requested: bool = True
+    # The submit was taken into the agent's own queue (issue #1548): Enter
+    # went in mid-turn and the agent showed the message queued for when the
+    # turn yields. Only ever True next to a confirmed submit.
+    queued: bool = False
 
     @property
     def submit_state(self) -> str:
@@ -332,6 +404,7 @@ class InputOutcome:
             "submit_state": self.submit_state,
             "waited_ms": self.waited_ms,
             "deferred": self.deferred,
+            "queued": self.queued,
         }
 
 
@@ -480,6 +553,7 @@ class InputProtocol:
         self._bg_waiting = state
         if not state:
             self._main_turn_at = self._output_total
+            self._main_turn_seen_at = time.time()
 
     def _normalized_since(self, mark: int) -> str:
         """Normalized form of everything the PTY has painted since ``mark``.
@@ -589,7 +663,9 @@ class InputProtocol:
           CR at the settle cap either (issue #763). The submit is handed to a
           bounded background watcher instead, the call returns ``deferred``,
           and ``_write_lock`` is released immediately so a keyboard writer is
-          never blocked behind the wait. See :meth:`_await_deferred_submit`.
+          never blocked behind the wait. For an agent that queues type-ahead
+          the watcher presses Enter at once while the turn runs (issue
+          #1548). See :meth:`_await_deferred_submit`.
 
         Returns an :class:`InputOutcome` describing what actually happened —
         superseding the old bare ``bool`` (#607), which could only say "the
@@ -645,9 +721,19 @@ class InputProtocol:
                 f"{outcome.waited_ms}ms, window {_DEFER_CAP_MS}ms)"
             )
         elif outcome.deferred and outcome.reason == INPUT_OK:
+            how = "queued by the agent mid-turn" if outcome.queued else "landed"
             logger.info(
-                f"✅ PTY {sid} deferred submit landed after "
+                f"✅ PTY {sid} deferred submit {how} after "
                 f"{outcome.waited_ms}ms ({nbytes} chars)"
+            )
+        elif outcome.deferred and outcome.submitted:
+            # The watcher's Enter went in, but nothing confirmed it was taken
+            # (#1319, #1548). Delivered-but-unconfirmed fell through every
+            # branch here before, so this verdict left no line at all.
+            logger.info(
+                f"❔ PTY {sid} deferred submit sent, not confirmed "
+                f"({outcome.reason}, {nbytes} chars, waited "
+                f"{outcome.waited_ms}ms)"
             )
         elif not outcome.delivered:
             # Names the submit's fate too (#929): a paste stranded unsent in
@@ -678,6 +764,7 @@ class InputProtocol:
             return InputOutcome(reason=INPUT_UNVERIFIED, submitted=True)
         framed = "\x1b[200~" + data + "\x1b[201~" if self._bracketed_paste_mode else data
         mark = self._output_total
+        touches = self._composer_touches
         sent_at = time.time()
         if not self._write_locked(framed):
             return InputOutcome(reason=INPUT_DROPPED)
@@ -763,6 +850,7 @@ class InputProtocol:
                 mark,
                 needles,
                 _chip_id_in(self._normalized_since(mark), image),
+                touches,
             )
             return InputOutcome(
                 reason=INPUT_DEFERRED,
@@ -789,6 +877,8 @@ class InputProtocol:
         mark: int,
         needles: List[str],
         chip_id: Optional[str],
+        touches: Optional[int] = None,
+        *,
         nbytes: int,
     ) -> None:
         """Hand a still-unsubmitted payload to a background watcher thread.
@@ -798,7 +888,8 @@ class InputProtocol:
         """
         threading.Thread(
             target=self._run_deferred_submit,
-            args=(seq, mark, needles, chip_id, nbytes),
+            args=(seq, mark, needles, chip_id, touches),
+            kwargs={"nbytes": nbytes},
             name=f"defer-submit-{self.session_id[:8]}",
             daemon=True,
         ).start()
@@ -809,18 +900,41 @@ class InputProtocol:
         mark: int,
         needles: List[str],
         chip_id: Optional[str],
+        touches: Optional[int] = None,
+        *,
         nbytes: int,
     ) -> None:
-        """Thread body: run the watcher, then record whatever it concluded."""
+        """Thread body: run the watcher, then record whatever it concluded.
+
+        Every path ends on a recorded verdict or a log line saying why there
+        is none (#1548): ``last_input`` left at ``pending`` by a watcher that
+        died is indistinguishable from one still waiting.
+        """
+        sid = self.session_id[:8]
+        started_at = time.time()
         try:
-            outcome = self._await_deferred_submit(seq, mark, needles, chip_id)
+            outcome = self._await_deferred_submit(seq, mark, needles, chip_id, touches)
         except Exception as exc:  # noqa: BLE001 — a watcher must never crash the host
-            logger.debug(
-                f"PTY {self.session_id[:8]} deferred submit watcher failed: {exc}"
+            # Only the pre-CR part can get here: the CR write itself never
+            # raises (``_write_locked`` returns False instead), and the
+            # confirmation that follows it catches its own failures. So no
+            # CR was written, and the verdict says so.
+            logger.info(f"❌ PTY {sid} deferred submit watcher failed: {exc!r}")
+            if self._defer_seq != seq:
+                return
+            outcome = InputOutcome(
+                reason=INPUT_DEFER_FAILED,
+                ingested=True,
+                deferred=True,
+                submit_confirmed=False,
+                waited_ms=int((time.time() - started_at) * 1000),
+            )
+        if outcome is None:
+            logger.info(
+                f"↪️ PTY {sid} deferred submit superseded by a newer write or a "
+                f"stop — the verdict on record is that write's"
             )
             return
-        if outcome is None:
-            return  # superseded — ``last_input`` belongs to the newer write
         self._record_input(outcome, nbytes, True)
 
     def _await_deferred_submit(
@@ -829,42 +943,46 @@ class InputProtocol:
         mark: int,
         needles: List[str],
         chip_id: Optional[str] = None,
+        touches: Optional[int] = None,
     ) -> Optional["InputOutcome"]:
-        """Wait for a genuine quiet window, then press Enter — or don't.
+        """Press Enter once the agent can take it — or don't.
 
         This is the API's version of what a human does with a stranded
-        ``[Pasted text #N]`` chip: wait until the agent stops working, check
-        the message is still sitting there unsent, and press Enter once. It
-        never resends the text (see ``_DEFER_QUIET_MS``'s note).
+        ``[Pasted text #N]`` chip: check the message is still sitting there
+        unsent, and press Enter once. It never resends the text (see
+        ``_DEFER_QUIET_MS``'s note).
 
-        Three things have to hold before the CR is written, and any of them
-        failing means *nothing* is written — the steer stays stranded and
-        honestly reported, which is exactly the pre-#763 state, never worse:
+        When to press, the first of:
 
-        1. **A real quiet window** (``_DEFER_QUIET_MS``), inside
-           ``_DEFER_CAP_MS``. A working agent repaints far more often than
-           that, so quiet means its turn is genuinely over.
-        2. **The payload — *ours* — is still visible in the terminal's recent
-           output.** The composer is repainted on essentially every frame, so
-           a payload still sitting unsent keeps reappearing; one that was
-           submitted, or scrolled behind something else, stops being
-           repainted. Scanning only from the oldest sample in the rolling
-           ``frames`` window (~``_DEFER_FRAME_LOOKBACK_MS``) is what makes
-           this "it is there now" rather than "it was there once", and
-           ``chip_id`` (#1075) is what makes it "it is *mine*" rather than
-           "some paste is there" — see :meth:`_payload_still_visible`.
-        3. **No dialog in that same window** (``_DEFER_DIALOG_MARKERS``) —
+        - **The agent's turn is running and it takes type-ahead** (#1548): a
+          main-turn spinner painted within ``_TYPEAHEAD_LIVE_MS`` on an agent
+          whose ``type_ahead`` was probed. Enter goes in now and the agent
+          queues the message; the CR is confirmed afterwards by the queued
+          markers (:meth:`_confirm_typeahead_submit`).
+        - **A real quiet window** (``_DEFER_QUIET_MS``), inside
+          ``_DEFER_CAP_MS``. A working agent repaints far more often than
+          that, so quiet means its turn is genuinely over.
+        - **Idle at its prompt with background agents running** (#1319,
+          ``_bg_waiting``), a state whose agent rows repaint every second
+          forever. Its CR is confirmed afterwards too: the main turn has to
+          start (:meth:`_confirm_bg_submit`).
+
+        An image still being converted holds all three. Then two things have
+        to hold before the CR is written, and either failing means *nothing*
+        is written — the steer stays stranded and honestly reported:
+
+        1. **The payload — *ours* — is still in the composer.** Proven by no
+           keystroke having touched the composer since the paste (``touches``
+           against ``_composer_touches``, #1548), or, once one has, by the
+           payload showing in the terminal's recent output: scanning only
+           from the oldest sample in the rolling ``frames`` window
+           (~``_DEFER_FRAME_LOOKBACK_MS``) makes that "it is there now", and
+           ``chip_id`` (#1075) makes it "it is *mine*" — see
+           :meth:`_payload_still_visible`. ``touches`` is ``None`` when the
+           count was not taken; only the screen counts then.
+        2. **No dialog in that same window** (``_DEFER_DIALOG_MARKERS``) —
            a bare CR into a permission or AskUserQuestion modal picks an
            option instead of submitting.
-
-        Condition 1 has one alternative (#1319): the screen says the main
-        agent is idle at its prompt with background agents running
-        (``_bg_waiting``), a state whose agent rows repaint every second
-        forever. Conditions 2 and 3 still apply to it, an image still being
-        converted still holds it, and because it rests on reading the screen
-        rather than on silence its CR is confirmed afterwards: the main turn
-        has to start (:meth:`_confirm_bg_submit`), or the outcome says the
-        submit is unconfirmed rather than ``ok``.
 
         Returns ``None`` when a newer write superseded this watcher; the
         caller then leaves ``last_input`` alone, since it now describes that
@@ -873,12 +991,14 @@ class InputProtocol:
         started_at = time.time()
         deadline = started_at + _DEFER_CAP_MS / 1000
         quiet_s = _DEFER_QUIET_MS / 1000
+        live_s = _TYPEAHEAD_LIVE_MS / 1000
+        type_ahead = supports_type_ahead(self.agent)
         # Seeded with the pre-write mark so an agent that settles almost
         # immediately still matches against its own original echo; the seed
         # ages out of the deque within _DEFER_FRAME_LOOKBACK_MS, after which
         # only fresh repaints count.
         frames: "deque[int]" = deque([mark], maxlen=_DEFER_FRAME_SAMPLES)
-        bg_waiting = False
+        mode = _DEFER_MODE_QUIET
         while True:
             if self._defer_seq != seq:
                 return None
@@ -890,11 +1010,19 @@ class InputProtocol:
                     deferred=True,
                     waited_ms=int((now - started_at) * 1000),
                 )
+            if (
+                type_ahead
+                and not self._bg_waiting
+                and now - self._main_turn_seen_at <= live_s
+                and not _attach_converting(self._normalized_since(mark))
+            ):
+                mode = _DEFER_MODE_TYPEAHEAD
+                break
             last_out = self._last_output_at
             if last_out and (now - last_out) >= quiet_s:
                 break
             if self._bg_waiting and not _attach_converting(self._normalized_since(mark)):
-                bg_waiting = True
+                mode = _DEFER_MODE_BG
                 break
             if now >= deadline:
                 return InputOutcome(
@@ -907,9 +1035,10 @@ class InputProtocol:
             frames.append(self._output_total)
             time.sleep(_DEFER_POLL_S)
 
-        # Quiet. Re-check under ``_write_lock`` so nothing can write between
-        # the check and the CR, and re-check ``_defer_seq`` inside it too —
-        # a superseding write bumps the counter while holding the same lock.
+        # Re-check under ``_write_lock`` so nothing can write between the
+        # check and the CR, and re-check ``_defer_seq`` inside it too — a
+        # superseding write bumps the counter while holding the same lock.
+        sid = self.session_id[:8]
         with self._write_lock:
             if self._defer_seq != seq:
                 return None
@@ -922,7 +1051,16 @@ class InputProtocol:
                     waited_ms=waited_ms,
                 )
             normalized = self._normalized_since(frames[0])
-            if not self._payload_still_visible(normalized, needles, chip_id):
+            untouched = touches is not None and self._composer_touches == touches
+            if not (
+                untouched or self._payload_still_visible(normalized, needles, chip_id)
+            ):
+                logger.info(
+                    f"🔎 PTY {sid} deferred submit: the composer was touched "
+                    f"since the paste and the payload is not on screen "
+                    f"(touches {touches}→{self._composer_touches}, chip "
+                    f"{chip_id}, mode {mode})"
+                )
                 return InputOutcome(
                     reason=INPUT_DEFER_VANISHED,
                     ingested=True,
@@ -938,14 +1076,20 @@ class InputProtocol:
                     submit_confirmed=False,
                     waited_ms=waited_ms,
                 )
-            if bg_waiting:
+            composer = "untouched" if untouched else "touched, payload on screen"
+            if mode == _DEFER_MODE_BG:
                 # Breadcrumb for the next occurrence (#1319): the state is
                 # recognised from screen markers that drift across Claude
                 # Code versions, so say when it was the reason for a CR.
                 logger.info(
-                    f"🧵 PTY {self.session_id[:8]} idle at its prompt with "
-                    f"background agents running — submitting without a quiet "
-                    f"window (waited {waited_ms}ms)"
+                    f"🧵 PTY {sid} idle at its prompt with background agents "
+                    f"running — submitting without a quiet window (waited "
+                    f"{waited_ms}ms, composer {composer})"
+                )
+            elif mode == _DEFER_MODE_TYPEAHEAD:
+                logger.info(
+                    f"⌨️ PTY {sid} agent mid-turn — pressing Enter for it to "
+                    f"queue (waited {waited_ms}ms, composer {composer})"
                 )
             cr_mark = self._output_total
             if not self._write_locked("\r"):
@@ -955,8 +1099,20 @@ class InputProtocol:
                     deferred=True,
                     waited_ms=waited_ms,
                 )
-        if bg_waiting:
-            return self._confirm_bg_submit(seq, cr_mark, waited_ms)
+        try:
+            if mode == _DEFER_MODE_BG:
+                return self._confirm_bg_submit(seq, cr_mark, waited_ms)
+            if mode == _DEFER_MODE_TYPEAHEAD:
+                return self._confirm_typeahead_submit(seq, cr_mark, waited_ms)
+        except Exception as exc:  # noqa: BLE001 — the CR is in; say so
+            logger.info(f"❔ PTY {sid} deferred submit confirmation failed: {exc!r}")
+            return InputOutcome(
+                reason=INPUT_UNVERIFIED,
+                ingested=True,
+                submitted=True,
+                deferred=True,
+                waited_ms=waited_ms,
+            )
         return InputOutcome(
             reason=INPUT_OK,
             ingested=True,
@@ -965,6 +1121,47 @@ class InputProtocol:
             deferred=True,
             waited_ms=waited_ms,
         )
+
+    def _confirm_typeahead_submit(
+        self, seq: int, cr_mark: int, waited_ms: int
+    ) -> Optional["InputOutcome"]:
+        """Did the agent queue the message a mid-turn Enter sent? (#1548)
+
+        Confirmed by a queued-state marker (``_QUEUED_MARKERS``) painted after
+        the CR, within ``_TYPEAHEAD_CONFIRM_MS``. Without one the outcome is
+        unverified with the submit unconfirmed, never ``ok``: a CR the agent
+        absorbed as a newline would look exactly like that, and pressing
+        again is the operator's call, not the watcher's. Runs outside
+        ``_write_lock``. ``None`` when a newer write superseded the watcher.
+        """
+        confirm_by = time.time() + _TYPEAHEAD_CONFIRM_MS / 1000
+        while True:
+            if self._defer_seq != seq:
+                return None
+            normalized = self._normalized_since(cr_mark)
+            if any(marker in normalized for marker in _QUEUED_MARKERS):
+                return InputOutcome(
+                    reason=INPUT_OK,
+                    ingested=True,
+                    submitted=True,
+                    submit_confirmed=True,
+                    deferred=True,
+                    waited_ms=waited_ms,
+                    queued=True,
+                )
+            if self._exited or time.time() >= confirm_by:
+                logger.info(
+                    f"⚠️ PTY {self.session_id[:8]} mid-turn Enter sent, but no "
+                    f"queued message showed within {_TYPEAHEAD_CONFIRM_MS}ms"
+                )
+                return InputOutcome(
+                    reason=INPUT_UNVERIFIED,
+                    ingested=True,
+                    submitted=True,
+                    deferred=True,
+                    waited_ms=waited_ms,
+                )
+            time.sleep(_BULK_POLL_S)
 
     def _confirm_bg_submit(
         self, seq: int, cr_mark: int, waited_ms: int

@@ -49,6 +49,7 @@ from src.session_host_input import (
     SUBMIT_NOT_SUBMITTED,
     SUBMIT_UNCONFIRMED,
     InputProtocol,
+    touches_composer,
 )
 from src.session_host_scan import (  # noqa: F401 — re-exported for callers/tests
     _PROMPT_TITLE_MAX_CHARS,
@@ -344,19 +345,33 @@ class PtySession(InputProtocol):
     # Set by _submit_input_locked when it hands a submit to the watcher, read
     # (and cleared) by submit_input once the ``deferred`` verdict is recorded,
     # so the watcher can never record its own outcome first.
-    # ``(seq, mark, needles, chip_id)`` — chip_id is the paste or image chip
-    # pinned at ingest (#1075, #1212), or None when the composer echoed the
-    # payload verbatim instead of collapsing it into a chip.
-    _defer_args: Optional[Tuple[int, int, List[str], Optional[str]]] = None
+    # ``(seq, mark, needles, chip_id, touches)`` — chip_id is the paste or
+    # image chip pinned at ingest (#1075, #1212), or None when the composer
+    # echoed the payload verbatim instead of collapsing it into a chip;
+    # touches is ``_composer_touches`` at ingest (#1548).
+    _defer_args: Optional[Tuple[int, int, List[str], Optional[str], int]] = None
+    # Keystrokes that can change what the composer holds (issue #1548):
+    # ``write()`` — the keyboard path — bumps it for any write carrying a
+    # control key (Enter, Backspace, Ctrl-C, Esc, arrows, a paste), while
+    # plain typed text and the terminal's own query replies leave it alone.
+    # Nothing leaves the composer without one, so a deferred watcher whose
+    # count is unchanged knows its payload is still sitting there — a fact a
+    # differential renderer that never repaints an unchanged composer cannot
+    # show it. ``submit_input`` writes through ``_write_locked`` and is
+    # counted by ``_defer_seq`` instead.
+    _composer_touches: int = 0
     # Turn state read off the agent's own screen (issue #1319), kept by the
     # reader thread (``InputProtocol._track_turn_state``). ``_bg_waiting`` is
     # True while the main agent sits idle at its prompt with background
     # agents running — the one state that is ready for a submit yet never
     # goes quiet. ``_main_turn_at`` is the ``_output_total`` reading at the
     # last main-turn spinner, which is how the deferred watcher confirms its
-    # CR started a turn.
+    # CR started a turn. ``_main_turn_seen_at`` is the wall time of that same
+    # spinner (#1548): a recent one means the main turn is running right now,
+    # which is when a type-ahead agent queues an Enter.
     _bg_waiting: bool = False
     _main_turn_at: int = 0
+    _main_turn_seen_at: float = 0.0
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -533,6 +548,8 @@ class PtySession(InputProtocol):
         can't interleave its own bytes between this payload's chunks.
         """
         with self._write_lock:
+            if touches_composer(data):
+                self._composer_touches += 1
             return self._write_locked(data)
 
     def _write_locked(self, data: str) -> bool:

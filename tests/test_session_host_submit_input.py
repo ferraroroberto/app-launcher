@@ -582,7 +582,7 @@ def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(clock, monkeyp
     outcome = session.submit_input(payload, True)
 
     assert outcome.reason == INPUT_DEFERRED
-    seq, mark, needles, chip_id = armed[0]
+    seq, mark, needles, chip_id, _touches = armed[0]
     assert chip_id == "[pastedtext#7"
 
     # The agent finishes; the composer still shows our chip, and goes quiet.
@@ -735,7 +735,7 @@ def test_busy_agent_pins_the_image_chip_for_the_watcher(clock, monkeypatch):
 
     assert outcome.reason == INPUT_DEFERRED
     assert outcome.submit_state == "pending"
-    seq, mark, needles, chip_id = armed[0]
+    seq, mark, needles, chip_id, _touches = armed[0]
     assert chip_id == "[image#4"
 
     # Another image chip alone is not ours: the watcher must not fire.
@@ -872,7 +872,7 @@ def test_deferred_verdict_is_recorded_on_the_session(clock):
     session._last_output_at = clock.now
 
     session._run_deferred_submit(
-        session._defer_seq, mark, needles, None, len(payload)
+        session._defer_seq, mark, needles, None, nbytes=len(payload)
     )
 
     last_input = session.to_api()["last_input"]
