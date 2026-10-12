@@ -79,6 +79,7 @@ from src.webauthn_gate import WebAuthnGate
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
+    ensure_autostart_log_handler,
     ensure_slow_log_handler,
 )
 from app.webapp.routers import (
@@ -97,9 +98,13 @@ from app.webapp.routers import (
     tokens,
     webauthn,
 )
+from app.webapp.routers import life_os_channels
 from app.webapp.routers._helpers import STATIC_DIR
 
 _log = logging.getLogger(__name__)
+# The lifespan's Telegram autostart lines (#1546): a child so the file handler
+# takes these and not every other INFO this module logs.
+_autostart_log = logging.getLogger(f"{__name__}.autostart")
 
 _LONG_CACHE = "public, max-age=31536000, immutable"
 _DAY_CACHE = "public, max-age=86400"
@@ -392,15 +397,17 @@ async def _lifespan(app: FastAPI):
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
         else:
-            _log.info("ℹ️ Telegram autostart is off; no channel session started")
+            _autostart_log.info(
+                "ℹ️ Telegram autostart is off; no channel session started"
+            )
     elif not canonical:
         # The autoboot case is expected on every gate run, so it stays quiet;
         # any *other* non-canonical instance is a surprise worth finding in
         # the log after the phone buzzes (#736).
         emit, mark = (
-            (_log.debug, "ℹ️")
+            (_autostart_log.debug, "ℹ️")
             if role_reason == instance_role.REASON_DISPOSABLE
-            else (_log.warning, "⚠️")
+            else (_autostart_log.warning, "⚠️")
         )
         emit(
             "%s jobs coverage + session retention ticks and Telegram "
@@ -428,6 +435,7 @@ def create_app() -> FastAPI:
 
     auth.ensure_log_handler()
     ensure_slow_log_handler()
+    ensure_autostart_log_handler(_autostart_log, life_os_channels.logger)
 
     app = FastAPI(
         title="Launcher",
