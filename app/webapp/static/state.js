@@ -275,7 +275,6 @@ export const els = {
   jobsSortSheetClear: document.getElementById('jobsSortSheetClear'),
   jobsSortSheetDone: document.getElementById('jobsSortSheetDone'),
   jobsSearchInput: document.getElementById('jobsSearchInput'),
-  jobsSearchClear: document.getElementById('jobsSearchClear'),
   jobsNextUpList: document.getElementById('jobsNextUpList'),
   jobsNextUpState: document.getElementById('jobsNextUpState'),
   jobsAgendaOpen: document.getElementById('jobsAgendaOpen'),
