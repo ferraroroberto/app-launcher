@@ -538,6 +538,7 @@ pytest_targets = [
     "tests/e2e/test_vendored_empty_and_select.py",
     "tests/e2e/test_touch_targets.py",
     "tests/e2e/test_settings_sheets.py",
+    "tests/e2e/test_dialog_title_focus.py",
 ]
 
 # [design] wide_views -- tabs whose content is two-dimensional (the Board's lanes) may
