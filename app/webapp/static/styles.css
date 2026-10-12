@@ -3911,6 +3911,25 @@ body.terminal-open {
 /* The weekly-recap glance row (#1439): the action-row with the notebook
    avatar, glyph in the accent like the job avatars, and its ▶ verb. */
 .lifeos-recap-avatar .avatar-glyph { color: var(--accent); }
+/* A skill row's avatar (#1503): the skill's own glyph (its SKILL.md `icon:`)
+   or, without one, its name's first letter, in the accent like the recap's
+   and the job rows'. */
+.lifeos-avatar .avatar-glyph { color: var(--accent); }
+.lifeos-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1;
+}
+/* The fold (#1503): skills not used lately sit under one "N more skills"
+   row and show once it opens, or while a filter is typed (which searches
+   every skill, so the row itself steps aside). */
+#lifeOsList:not(.is-unfolded):not(.is-filtering) > .is-folded { display: none; }
+#lifeOsList.is-filtering > .lifeos-fold { display: none; }
+.lifeos-fold + .action-row { border-top: 1px solid var(--line-muted); }
+.lifeos-fold-avatar .avatar-glyph { color: var(--muted); }
 
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
@@ -5261,35 +5280,6 @@ span.chief-answer-ref { color: var(--muted); }
   min-width: 0;
   display: flex;
   flex-direction: column;
-}
-
-/* A title marker (action-rows.js `titleIcon`, #1439: a skill's linked
-   Telegram bot): a muted 16px glyph right after the name, on the title's
-   line, so the row keeps its one-line height. The name ellipsizes, the
-   glyph never shrinks. Its dot is the avatar's alive badge, scaled to the
-   glyph. */
-.action-row-title-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.action-row-title-line .action-row-title { min-width: 0; }
-.action-row-title-icon {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  color: var(--muted);
-}
-.action-row-title-icon .icon {
-  width: var(--icon-inline);
-  height: var(--icon-inline);
-}
-.action-row-title-icon .avatar-badge {
-  right: -4px;
-  bottom: -3px;
-  width: 10px;
-  height: 10px;
 }
 
 /* A drill-in row at the foot of a list (Other ports, Scan for new apps):

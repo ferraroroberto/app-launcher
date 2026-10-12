@@ -139,6 +139,8 @@ def _skill_to_api(
         "name": skill.name,
         "command": skill.command,
         "description": skill.description,
+        # The avatar's glyph (#1503); "" draws the name's monogram.
+        "icon": skill.icon,
         "skill_md": skill_md_rel,
         # Starred by the user (#1070) — the Coding tab's `is_favorite`
         # contract (#250), replicated here.

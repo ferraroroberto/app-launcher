@@ -2844,3 +2844,24 @@ class TestRecordedModel:
         twin.mkdir(parents=True)
         (twin / f"rollout-2026-09-04T08-00-00-{CODEX_SID}.jsonl").write_text("{}", encoding="utf-8")
         assert recorded_model("codex", CODEX_SID) == ""
+
+
+class TestSkillIcon:
+    """The optional SKILL.md ``icon:`` (#1503): a glyph name, or nothing."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("sprout", "sprout"), ("Book-Open", "book-open"), ("", ""),
+        ("../sprout", ""), ("sprout fill", ""), ("<svg>", ""), ("-sprout", ""),
+    ])
+    def test_icon_is_a_glyph_name_or_empty(self, life_os_client, raw, expected):
+        client, _, overrides = life_os_client
+        skill_md = overrides["life_os_dir"] / ".claude/skills/journal-daily/SKILL.md"
+        skill_md.write_text(
+            f'---\nname: journal-daily\ndescription: A fictional skill.\nicon: "{raw}"\n---\n',
+            encoding="utf-8",
+        )
+        assert client.get("/api/life-os/skills").json()["skills"][0]["icon"] == expected
+
+    def test_no_icon_key_is_empty(self, life_os_client):
+        client, _, _ = life_os_client
+        assert client.get("/api/life-os/skills").json()["skills"][0]["icon"] == ""

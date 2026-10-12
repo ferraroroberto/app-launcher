@@ -158,6 +158,13 @@ _SKILL_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$", re.IGNORECASE)
 # skills (`_template`, `_recap`); plus the usual VCS / cache noise.
 _SKILLS_SKIP_PREFIX = "_"
 
+# The optional frontmatter ``icon:`` (#1503): a glyph name from the launcher's
+# icon sprite, shown in the skill row's avatar. Only the shape is checked
+# here; the page draws it only when its sprite has that glyph, and falls back
+# to a monogram otherwise. The launcher ships no per-skill glyphs: the owner
+# picks them in their own skill files.
+_SKILL_ICON_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
 
 @dataclass(frozen=True)
 class Skill:
@@ -168,7 +175,8 @@ class Skill:
     slash-command base used at launch (``/journal-daily``); it is the
     frontmatter ``name`` when that is a valid slug, else the folder name,
     and is always validated against :data:`_SKILL_SLUG_RE`. ``name`` is
-    the display label; ``description`` the one-paragraph blurb.
+    the display label; ``description`` the one-paragraph blurb; ``icon`` the
+    frontmatter's glyph name, or ``""`` when absent or not a glyph name.
     """
 
     id: str
@@ -176,6 +184,7 @@ class Skill:
     command: str
     description: str
     skill_dir: Path
+    icon: str = ""
 
 
 def _read_frontmatter(skill_md: Path) -> dict:
@@ -267,6 +276,7 @@ def scan_skills(life_os_dir: Path) -> List[Skill]:
         description = str(fm.get("description") or "").strip()
         if not description:
             description = _first_paragraph(child / "description.md")
+        icon = str(fm.get("icon") or "").strip().lower()
 
         results.append(
             Skill(
@@ -275,6 +285,7 @@ def scan_skills(life_os_dir: Path) -> List[Skill]:
                 command=command,
                 description=description,
                 skill_dir=child,
+                icon=icon if _SKILL_ICON_RE.match(icon) else "",
             )
         )
     results.sort(key=lambda s: s.name.lower())

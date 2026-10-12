@@ -1062,10 +1062,12 @@ def test_life_os_row_menu_holds_every_other_action(
     _open_convos_model_menu(authed_page, "claude:opus").click()
     _row_menu(authed_page, 0).locator(".lifeos-convo-resume").click()
     expect(authed_page.locator("#lifeOsConvos")).to_be_hidden()
+    # A resume keeps the conversation's own model (#1503): `keep_model`.
     assert launches == [{
         "mode": "remote", "model": "claude:opus", "action": "resume",
         "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
                     for key in ("path", "revision", "agent", "sid")},
+        "keep_model": True,
     }], launches
 
 
@@ -1411,10 +1413,13 @@ def test_life_os_conversation_resume_posts_the_session_id(
         authed_page.locator("#lifeOsViewerResume").click()
 
     payload = _json.loads(request_info.value.post_data or "")
+    # The resume keeps the conversation's own model (#1503): the server
+    # leaves --model out on `keep_model`, whatever the bar says.
     assert payload == {
         "mode": "remote", "model": "claude:opus", "action": "resume",
         "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
                     for key in ("path", "revision", "agent", "sid")},
+        "keep_model": True,
     }, payload
 
 
@@ -1930,16 +1935,17 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     assert native == [], native
 
 
-def test_life_os_skill_can_be_starred_and_sorts_to_the_top(
+def test_life_os_skill_can_be_pinned_and_sorts_to_the_top(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1070 — the Coding tab's favorites treatment (#250), on the skills list.
+    """#1070's favorites, as Pin to top since #1503 (decision 5).
 
-    A skill row carries a star; starred skills sort above the rest; the
-    partition is stable, so both groups stay in the scanner's alphabetical
-    order rather than reshuffling around a star. The state is server-side —
-    `life_os_favorites` in the webapp config — so it survives a re-render
-    and a reload, which is what makes it worth a round trip at all.
+    "Pin to top" is in the row's kebab (the star is gone: the avatar is the
+    row's one leading slot); pinned skills sort above the rest. The state is
+    server-side — `life_os_favorites` in the webapp config, the key #1070
+    starred into, so an existing star is a pin with no migration — so it
+    survives a re-render and a reload, which is what makes it worth a round
+    trip at all.
 
     The skills list is route-mocked (the dev box's real life-os checkout is
     not a fixture), so the mock is what flips: this asserts the ordering and
@@ -1978,23 +1984,22 @@ def test_life_os_skill_can_be_starred_and_sorts_to_the_top(
 
     rows = authed_page.locator("#lifeOsList li.lifeos-item")
     expect(rows.first).to_be_visible(timeout=5_000)
-    # Alphabetical to start, nothing starred.
+    # Alphabetical to start (nothing pinned or used), and no star anywhere.
     assert _skill_order(authed_page) == ["journal-daily", "sparring-work"]
-    star = authed_page.locator(
-        "#lifeOsList li[data-id='sparring-work'] .star-btn"
-    )
-    expect(star).to_have_count(1)
-    expect(star).to_have_attribute("aria-pressed", "false")
+    expect(authed_page.locator("#lifeOsList .star-btn")).to_have_count(0)
+    pin = _skill_menu_item(authed_page, "sparring-work", ".lifeos-pin-btn")
+    expect(pin).to_have_text("Pin to top")
 
-    star.click()
-    # Sorted to the top, and painted as starred, from the re-fetched payload.
+    pin.click()
+    # Sorted to the top, and marked pinned, from the re-fetched payload.
     expect(
         authed_page.locator("#lifeOsList li.lifeos-item").first
     ).to_have_attribute("data-id", "sparring-work", timeout=5_000)
     assert _skill_order(authed_page) == ["sparring-work", "journal-daily"]
     expect(
-        authed_page.locator("#lifeOsList li[data-id='sparring-work'] .star-btn")
-    ).to_have_attribute("aria-pressed", "true")
+        authed_page.locator("#lifeOsList li[data-id='sparring-work']")
+    ).to_have_attribute("data-pinned", "true")
+    expect(_skill_menu_item(authed_page, "sparring-work", ".lifeos-pin-btn")).to_have_text("Unpin")
 
     assert posted == [{"id": "sparring-work", "favorite": True}], posted
 
@@ -2158,8 +2163,8 @@ def test_settings_channels_card_reports_each_profile(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     expect(
-        authed_page.locator("#lifeOsList li[data-id='journal-daily'] .action-row-title-icon")
-    ).to_be_visible(timeout=5_000)
+        authed_page.locator("#lifeOsList li[data-id='journal-daily'] .action-row-meta")
+    ).to_contain_text("Telegram", timeout=5_000)
     # The broken profile and the problem are Settings' alone (#1439).
     expect(authed_page.locator("#paneLifeOS")).not_to_contain_text("School")
     expect(authed_page.locator("#paneLifeOS")).not_to_contain_text("house")

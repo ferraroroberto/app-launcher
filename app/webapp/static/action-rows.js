@@ -21,10 +21,6 @@ import { icon } from './_vendored/icons/icons.js';
 //   avatar     -> an avatar element (glance.js avatar(), #1437) leading the
 //                 text column inside the main button, so the tap target
 //                 stays the whole row
-//   titleIcon  -> { glyph, label, alive } a small muted glyph right after the
-//                 title, on its line (a skill's linked Telegram bot, #1439),
-//                 carrying the avatar's green alive dot when `alive`. Unset,
-//                 the row's markup is exactly what it was without it
 //   kebabClass / kebabLabel -> the trailing kebab's hook class and name;
 //                 no kebabLabel, no kebab
 //   density    -> 'one-line': the meta runs after the title on one line, at
@@ -77,17 +73,7 @@ export function actionRow(opts) {
   title.className = 'action-row-title';
   title.textContent = opts.title;
   title.title = opts.title;
-  if (opts.titleIcon) {
-    // The title keeps its own ellipsis; the glyph never shrinks, so a long
-    // name truncates before the marker does.
-    const line = document.createElement('span');
-    line.className = 'action-row-title-line';
-    line.appendChild(title);
-    line.appendChild(titleIcon(opts.titleIcon));
-    column.appendChild(line);
-  } else {
-    column.appendChild(title);
-  }
+  column.appendChild(title);
   // The context line: the plain meta text, then any exception chips
   // (glance.js chip(), #1434) after it, so a chip never ellipsizes away.
   let meta = null;
@@ -136,21 +122,4 @@ export function actionRow(opts) {
   }
 
   return { li: li, main: main, title: title, meta: meta, kebab: kebab };
-}
-
-// The title marker: a plain fact ("has a bot"), so a muted glyph, not a
-// chip. Its dot is the avatar's alive badge, the one green on the page.
-function titleIcon(spec) {
-  const mark = document.createElement('span');
-  mark.className = 'action-row-title-icon';
-  mark.innerHTML = icon(spec.glyph);
-  mark.title = spec.label;
-  mark.dataset.alive = spec.alive ? 'true' : 'false';
-  if (spec.alive) {
-    const dot = document.createElement('span');
-    dot.className = 'avatar-badge';
-    dot.dataset.badge = 'alive';
-    mark.appendChild(dot);
-  }
-  return mark;
 }

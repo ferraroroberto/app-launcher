@@ -19,7 +19,9 @@ function save(key, value) {
   } catch (exc) { /* private mode: the filter just doesn't persist */ }
 }
 
-// { input, list, empty, storageKey } -> { apply }
+// { input, list, empty, storageKey, onApply } -> { apply }
+// onApply(query), optional: told the folded query after every apply, so a
+// list can react to filtering as a whole (Life's fold opens, #1503).
 export function listFilter(opts) {
   const input = opts.input;
   if (!input) return { apply: function () {} };
@@ -38,6 +40,7 @@ export function listFilter(opts) {
       if (hit) shown += 1;
     });
     if (opts.empty) opts.empty.hidden = !(query && rows && !shown);
+    if (opts.onApply) opts.onApply(query);
   }
 
   input.addEventListener('input', function () {
