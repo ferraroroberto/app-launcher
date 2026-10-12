@@ -253,11 +253,20 @@ function renderFull(claude, codex, show) {
   const r = lead.reading;
   const btn = meterButton('full', r, [show.claude && claude, show.codex && codex].filter(Boolean));
 
-  const head = el('span', 'um-head');
-  head.appendChild(mark(lead.harness));
-  head.appendChild(el('span', 'um-name', r ? r.label : (lead.harness === 'codex' ? 'Codex' : 'Claude Code')));
-  if (r && r.chip) head.appendChild(chip(r.chip, 'neutral', 'um-chip'));
-  btn.appendChild(head);
+  // The harness heading names a line only when there is more than one to tell
+  // apart (#1510); alone, the card title and the button's name already say
+  // whose it is. A chip (stale, ...) has no other home, so it keeps a row of
+  // its own, ahead of the windows, with no heading beside it.
+  const both = show.claude && show.codex;
+  if (both || (r && r.chip)) {
+    const head = el('span', 'um-head');
+    if (both) {
+      head.appendChild(mark(lead.harness));
+      head.appendChild(el('span', 'um-name', r ? r.label : (lead.harness === 'codex' ? 'Codex' : 'Claude Code')));
+    }
+    if (r && r.chip) head.appendChild(chip(r.chip, 'neutral', 'um-chip'));
+    btn.appendChild(head);
+  }
 
   if (!r || r.note) {
     btn.appendChild(el('span', 'um-note', 'Quota ' + (r ? r.note : 'unknown')));
@@ -269,7 +278,7 @@ function renderFull(claude, codex, show) {
   }
 
   // Codex rides under Claude Code only when both are shown; alone it leads.
-  if (!(show.claude && show.codex)) return btn;
+  if (!both) return btn;
   const codexRow = el('span', 'um-codex');
   codexRow.appendChild(mark('codex'));
   codexRow.appendChild(el('span', 'um-name', codex ? codex.label : 'Codex'));
