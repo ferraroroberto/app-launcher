@@ -644,6 +644,9 @@ def _step_label(entry: Entry) -> str:
         return "Writing a reply" if kind == "assistant" else "Thinking"
     if entry.get("result") is not None:
         return "Thinking"  # the call is done; the agent is reading what it returned
+    label = entry.get("label")
+    if label and label != entry.get("summary"):
+        return str(label)  # the call's own description (#1532)
     name = str(entry.get("name") or "tool")
     action = entry.get("action")
     verb = action.get("verb") if isinstance(action, dict) else None

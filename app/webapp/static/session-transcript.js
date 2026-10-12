@@ -311,9 +311,9 @@ export function meta(label, ts) {
   return el;
 }
 
-export function pre(text, truncated) {
+export function pre(text, truncated, className) {
   const el = document.createElement('pre');
-  el.className = 'tr-pre';
+  el.className = className || 'tr-pre';
   el.textContent = text || '';
   linkify(el);
   if (truncated) {
@@ -369,9 +369,123 @@ function deltaEl(added, removed, className) {
   return el;
 }
 
-function term(el) {
-  el.classList.add('tr-term');
+// --- an opened step (#1532) ----------------------------------------------
+//
+// A card on the code-listing frame: a small header (the tool, the file as
+// "folder / name", a recorded exit status), then the call's input and its
+// output as separate blocks. A command reads `$ command` with light shell
+// highlighting. Escape-first: the command is cut into tokens and every token
+// is a text node or a span's textContent, never markup, so a command holding
+// `<script>` reads as exactly that.
+
+// One token per match, in order, and every character lands in one: the last
+// alternative takes whatever the others don't, so the tokens always rejoin
+// to the command.
+const SHELL_TOKEN_RE = /\s+|'[^']*'?|"(?:\\.|[^"\\])*"?|\d*>>?(?:&\d+)?|&&|\|\||\$\(|[|;&<()]|\$\{[^}]*\}?|\$(?:env:)?\w+|[^\s'"|;&<>()$]+|[\s\S]/g;
+// After these the next word is a command again.
+const SHELL_CMD_AFTER = new Set(['&&', '||', '|', ';', '&', '$(', '(']);
+
+function shellTokens(command) {
+  const out = [];
+  let expectCmd = true;
+  const re = new RegExp(SHELL_TOKEN_RE.source, 'g');
+  let m;
+  while ((m = re.exec(command))) {
+    const t = m[0];
+    let kind = '';
+    if (/^\s/.test(t)) {
+      if (t.indexOf('\n') !== -1) expectCmd = true;
+    } else if (t.charAt(0) === '\'' || t.charAt(0) === '"') {
+      kind = 'str';
+      expectCmd = false;
+    } else if (SHELL_CMD_AFTER.has(t)) {
+      kind = 'op';
+      expectCmd = true;
+    } else if (/^\d*>|^[<)]$/.test(t)) {
+      kind = 'op';
+    } else if (t.charAt(0) === '$' && t.length > 1) {
+      kind = 'var';
+      expectCmd = false;
+    } else if (expectCmd && !/^\w+=/.test(t)) {
+      kind = 'cmd';
+      expectCmd = false;
+    } else if (t.charAt(0) === '-' && t.length > 1) {
+      kind = 'flag';
+    }
+    out.push([kind, t]);
+  }
+  return out;
+}
+
+function cmdBlock(command) {
+  const el = document.createElement('pre');
+  el.className = 'tr-cmd';
+  const prompt = document.createElement('span');
+  prompt.className = 'tr-cmd-prompt';
+  prompt.setAttribute('aria-hidden', 'true');
+  prompt.textContent = '$ ';
+  const text = document.createElement('span');
+  text.className = 'tr-cmd-text';
+  shellTokens(command).forEach(function (tok) {
+    if (!tok[0]) {
+      text.append(tok[1]);
+      return;
+    }
+    const span = document.createElement('span');
+    span.className = 'sh-' + tok[0];
+    span.textContent = tok[1];
+    text.appendChild(span);
+  });
+  el.append(prompt, text);
   return el;
+}
+
+// Claude opens a failed command's output with "Exit code N" (every failed
+// Bash result on the dev box did); no other harness records one. The code
+// moves to the header, where it reads quietly, instead of leading the output.
+const EXIT_LINE_RE = /^Exit code (\d+)[ \t]*(?:\r?\n|$)/;
+
+function stepCard(e) {
+  const a = e.action;
+  const ran = !!(a && a.verb === 'ran');
+  const card = document.createElement('div');
+  card.className = 'tr-cmd-card';
+  const head = document.createElement('div');
+  head.className = 'tr-cmd-head';
+  const tool = document.createElement('span');
+  tool.className = 'tr-cmd-tool';
+  tool.textContent = e.name || 'tool';
+  head.appendChild(tool);
+  if (a && a.path) {
+    // "folder / name" (#1476), never the whole absolute path; that stays on hover.
+    const f = fileParts(a.path);
+    const where = document.createElement('span');
+    where.className = 'tr-cmd-path';
+    where.title = a.path;
+    where.textContent = f.dir ? f.dir + ' / ' + f.base : f.base;
+    head.appendChild(where);
+  }
+  let result = e.result;
+  const exit = ran && e.error === true && result != null ? EXIT_LINE_RE.exec(result) : null;
+  if (exit) {
+    result = result.slice(exit[0].length);
+    const code = document.createElement('span');
+    code.className = 'tr-cmd-exit';
+    code.textContent = 'exit ' + exit[1];
+    head.appendChild(code);
+  }
+  card.appendChild(head);
+  if (ran) card.appendChild(cmdBlock(a.command));
+  else if (!(a && a.path) && e.summary) card.appendChild(pre(e.summary, false, 'tr-cmd tr-cmd-plain'));
+  if (result != null) {
+    card.appendChild(pre(result, e.result_truncated, 'tr-out'));
+  } else {
+    const none = document.createElement('div');
+    none.className = 'tr-trunc tr-out-none';
+    none.textContent = 'no result on this page';
+    card.appendChild(none);
+  }
+  return card;
 }
 
 // --- image thumbnails (#1265) ---------------------------------------------
@@ -1219,6 +1333,66 @@ function renderStripLine() {
     window.clearInterval(activityTimer);
     activityTimer = null;
   }
+  syncLiveStep();
+}
+
+// --- the step in progress (#1532) ------------------------------------------
+//
+// While the agent is working and its newest tool call has no result yet, that
+// call's step line counts up from the call's own timestamp in place of the
+// run's duration. The result landing, the turn ending or the pane leaving
+// Chat puts the duration back. An activity the server could not establish
+// (null) never ticks: a counter that never stops would be a guess.
+
+let stepTimer = null;
+
+// The newest tool call, when it is in progress; else null.
+function liveStep() {
+  if (!view || !view.entries || !liveAllowed() || !(view.activity && view.activity.working)) return null;
+  for (let i = view.entries.length - 1; i >= 0; i -= 1) {
+    const e = view.entries[i];
+    if (e.kind !== 'tool_call') continue;
+    const since = Date.parse(e.timestamp);
+    return e.result == null && e.error !== true && !Number.isNaN(since) ? e : null;
+  }
+  return null;
+}
+
+function liveStepEl(e) {
+  const el = document.createElement('span');
+  el.className = 'tr-step-live';
+  el._trEntry = e;
+  el.innerHTML = icon('timer', 'tr-step-live-icon');
+  const text = document.createElement('span');
+  text.className = 'tr-step-live-text';
+  text.textContent = fmtElapsed(Date.now() - Date.parse(e.timestamp));
+  el.appendChild(text);
+  return el;
+}
+
+// Put the counter on the step in progress, take it off one that no longer
+// is, and redraw it; the tick lives exactly as long as a counter shows.
+function syncLiveStep() {
+  const list = els.transcriptList;
+  const live = liveStep();
+  let shown = list ? list.querySelector('.tr-step-live') : null;
+  if (list && (shown ? shown._trEntry : null) !== live) {
+    const runs = Array.prototype.filter.call(list.querySelectorAll('.tr-run'), function (li) {
+      return (shown && li.contains(shown)) || (live && (li._trRun || []).indexOf(live) !== -1);
+    });
+    runs.forEach(syncRunSummary);
+    shown = list.querySelector('.tr-step-live');
+  }
+  if (shown) {
+    shown.querySelector('.tr-step-live-text').textContent =
+      fmtElapsed(Date.now() - Date.parse(shown._trEntry.timestamp));
+  }
+  if (shown && !stepTimer) {
+    stepTimer = window.setInterval(syncLiveStep, ACTIVITY_TICK_MS);
+  } else if (!shown && stepTimer) {
+    window.clearInterval(stepTimer);
+    stepTimer = null;
+  }
 }
 
 // --- per-step diffs (#1349) -------------------------------------------------
@@ -1321,8 +1495,14 @@ function renderItem(e, toolErrors) {
     // Plain words where the server knows the tool (#1266): the command's
     // first line, or the file's name with its folder as the hint (#1476)
     // and, for an edit, its +N −M.
+    // A call that carries its own description (#1532) is named by it, its
+    // command the hint.
     const a = e.action;
-    if (a && a.verb === 'ran') {
+    if (a && a.verb === 'ran' && described(e)) {
+      name.textContent = e.label;
+      hint.textContent = firstLine(a.command, 80);
+      hint.classList.add('tr-item-cmd');
+    } else if (a && a.verb === 'ran') {
       name.textContent = firstLine(a.command, 80);
       name.classList.add('tr-item-cmd');
     } else if (a && (a.verb === 'edited' || a.verb === 'wrote' || a.verb === 'read')) {
@@ -1333,7 +1513,7 @@ function renderItem(e, toolErrors) {
       if (a.verb !== 'read' && e.error !== true) delta = deltaEl(a.added, a.removed, 'tr-item-delta');
     } else {
       name.textContent = e.name || 'tool';
-      hint.textContent = e.summary || '';
+      hint.textContent = e.label || e.summary || '';
     }
   } else if (e.kind === 'tool_result') {
     name.textContent = 'result';
@@ -1362,26 +1542,16 @@ function renderItem(e, toolErrors) {
   const body = document.createElement('div');
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
-    // A command opens as a terminal: `$ command`, then its output (#1266).
     // An edit opens as its diff (#1349) and nothing else: the tool's own
     // "file has been updated" line was a second box saying less (#1476).
-    const ran = e.action && e.action.verb === 'ran';
+    // Anything else opens as a card: header, input, output (#1532).
     const diff = stepDiff(e);
-    if (ran) body.appendChild(term(pre('$ ' + e.action.command, false)));
-    else if (diff) body.appendChild(diff);
-    else if (e.summary) body.appendChild(pre(e.summary, false));
     if (diff) {
-      // The diff is the result.
-    } else if (e.result != null) {
-      const out = pre(e.result, e.result_truncated);
-      body.appendChild(ran ? term(out) : out);
-      const shots = thumbs(e.result_images);
-      if (shots) body.appendChild(shots);
+      body.appendChild(diff);
     } else {
-      const none = document.createElement('div');
-      none.className = 'tr-trunc';
-      none.textContent = 'no result on this page';
-      body.appendChild(none);
+      body.appendChild(stepCard(e));
+      const shots = e.result != null ? thumbs(e.result_images) : null;
+      if (shots) body.appendChild(shots);
     }
   } else {
     body.appendChild(pre(e.text, e.truncated));
@@ -1459,16 +1629,58 @@ function runSummary(run) {
   return { parts: parts, total: total };
 }
 
-// The label: verbs muted, what they acted on in the text colour.
-function fillStepLabel(el, parts) {
+// Whether a call carries its own description (#1532): the server's `label`
+// is the description when the harness recorded one, else the summary.
+function described(e) {
+  return !!e.label && e.label !== e.summary;
+}
+
+// One step in plain words (#1532): its description, else what it did
+// ("Ran pytest -q", "Edited main.js"), else the tool and its summary.
+function stepText(e) {
+  if (described(e)) return e.label;
+  const a = e.action;
+  if (a && a.verb === 'ran') return firstLine(a.command, 80);
+  if (a && a.path && VERB_ICON[a.verb]) {
+    return a.verb.charAt(0).toUpperCase() + a.verb.slice(1) + ' ' + baseName(a.path);
+  }
+  const what = firstLine(e.label || e.summary, 80);
+  return (e.name || 'tool') + (what ? ' ' + what : '');
+}
+
+// The newest tool call a run holds, or null.
+function latestCall(run) {
+  for (let i = run.length - 1; i >= 0; i -= 1) {
+    if (run[i].kind === 'tool_call') return run[i];
+  }
+  return null;
+}
+
+// The label (#1532): the newest step in plain words, then, for a run of
+// more than one entry, the counts in muted secondary text. A run with no
+// tool call keeps the counts alone. Counts: verbs muted, what they acted on
+// in the text colour while they lead the line.
+function fillStepLabel(el, parts, latest) {
   el.textContent = '';
+  let counts = el;
+  if (latest) {
+    const now = document.createElement('span');
+    now.className = 'tr-step-now';
+    now.textContent = stepText(latest);
+    el.appendChild(now);
+    if (!parts.length) return;
+    counts = document.createElement('span');
+    counts.className = 'tr-step-counts';
+    counts.append(' · ');
+    el.appendChild(counts);
+  }
   parts.forEach(function (p, i) {
-    if (i) el.append(', ');
+    if (i) counts.append(', ');
     const verb = i === 0 ? p[0].charAt(0).toUpperCase() + p[0].slice(1) : p[0];
-    if (verb) el.append(verb + ' ');
+    if (verb) counts.append(verb + ' ');
     const what = document.createElement('b');
     what.textContent = p[1];
-    el.appendChild(what);
+    counts.appendChild(what);
   });
 }
 
@@ -1572,8 +1784,9 @@ function syncRunSummary(li) {
   const run = li._trRun || [];
   const line = li.querySelector('.tr-step-line');
   const sum = runSummary(run);
-  fillStepLabel(line.querySelector('.tr-step-label'), sum.parts);
-  line.querySelectorAll(':scope > .tr-step-delta, :scope > .tr-fail-count, :scope > .tr-step-dur')
+  const latest = latestCall(run);
+  fillStepLabel(line.querySelector('.tr-step-label'), latest && run.length < 2 ? [] : sum.parts, latest);
+  line.querySelectorAll(':scope > .tr-step-delta, :scope > .tr-fail-count, :scope > .tr-step-dur, :scope > .tr-step-live')
     .forEach(function (n) { n.remove(); });
   if (sum.total) line.appendChild(deltaEl(sum.total.added, sum.total.removed, 'tr-step-delta'));
   const failed = failedCount(run);
@@ -1582,6 +1795,12 @@ function syncRunSummary(li) {
     chip.className = 'tr-fail-count';
     chip.textContent = failed + ' failed';
     line.appendChild(chip);
+  }
+  // The step in progress counts up in the duration's place (#1532).
+  const live = liveStep();
+  if (live && run.indexOf(live) !== -1) {
+    line.appendChild(liveStepEl(live));
+    return;
   }
   const span = runSpan(li);
   if (span) {
@@ -1721,6 +1940,7 @@ function applyLive(settled, pending, toolErrors) {
   view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
   view.entries = view.settled.concat(view.pending);
   syncDecisionCards();
+  syncLiveStep();
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
@@ -1991,6 +2211,7 @@ async function loadNewest() {
     ? renderPending(pending, view.toolErrors, null)
     : [];
   syncDecisionCards();
+  syncLiveStep();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
   syncFileChips();

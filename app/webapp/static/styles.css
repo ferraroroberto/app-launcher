@@ -2520,6 +2520,23 @@ textarea.input-native { height: auto; }
   text-overflow: ellipsis;
 }
 .tr-step-label b { color: var(--fg); font-weight: 600; }
+/* The newest step in plain words leads (#1532), in fg; the counts trail it,
+   all muted, as secondary text the ellipsis takes first. */
+.tr-step-now { color: var(--fg); }
+.tr-step-counts b { color: inherit; font-weight: inherit; }
+/* The step in progress counts up in the duration's place (#1532). */
+.tr-step-live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tr-step-live-icon { width: 14px; height: 14px; flex: none; }
 .tr-step-delta,
 .tr-item-delta {
   flex: none;
@@ -2578,6 +2595,9 @@ textarea.input-native { height: auto; }
   text-overflow: ellipsis;
 }
 .tr-item-body { padding-bottom: 12px; }
+/* Open, the card under the row names the command or the file in full
+   (#1532), so the row's one-line hint would only say it twice. */
+.tr-item[open] > summary > .tr-item-hint { visibility: hidden; }
 /* A failed tool call (#1020). --danger is a state color, and a call that
    errored is state — but it stays a row-level mark, never a banner: the
    glyph turns red and one small tinted chip sits beside the name, which is
@@ -2777,14 +2797,64 @@ textarea.input-native { height: auto; }
    vertically. A chat fence does not: the whole turn is already collapsible,
    and a nested scroller inside a scrolling transcript is a phone trap. */
 .tr-pre { max-height: 40vh; overflow-y: auto; }
-/* An opened command reads as a terminal (#1266): `$ command`, then its
-   output, on the terminal's own screen colours (which follow the theme). */
-.tr-pre.tr-term {
-  background: var(--term-bg);
-  color: var(--term-fg);
+/* An opened step (#1532): the code-listing frame (`.md-block`'s card surface
+   on a hairline, never `--card-off`, the dark black hole), a small caption
+   header -- the tool, the file as "folder / name", a recorded exit status --
+   then the input and the output as two blocks split by a quiet hairline.
+   Both wrap rather than scroll (see `.tr-pre`); a command wraps at its own
+   spaces first and hangs its continuation lines past the `$ `. */
+.tr-cmd-card {
+  margin: 0 0 8px;
   border: 1px solid var(--line);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
 }
+.tr-cmd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-cmd-tool { flex: none; color: var(--fg); }
+.tr-cmd-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-cmd-exit { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
+.tr-cmd,
+.tr-out {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tr-cmd { padding-left: calc(12px + 2ch); text-indent: -2ch; }
+.tr-cmd-plain { padding-left: 12px; text-indent: 0; }
+.tr-out { border-top: 1px solid var(--line-muted); max-height: 40vh; overflow-y: auto; }
+.tr-cmd-head + .tr-out { border-top: 0; }
+.tr-out-none { padding: 8px 12px; }
+.tr-cmd-prompt { color: var(--muted); -webkit-user-select: none; user-select: none; }
+/* Light shell highlighting, from colours the system already has: the command
+   word in fg bold, flags in the accent text, strings in success text,
+   variables in attention text, operators muted. */
+.sh-cmd { color: var(--fg); font-weight: 600; }
+.sh-flag { color: var(--accent-text); }
+.sh-str { color: var(--success-text); }
+.sh-var { color: var(--attention-text); }
+.sh-op { color: var(--muted); font-weight: 600; }
 /* Transcript images (#1265): small lazy thumbnails, a tap opens the full
    size in the image overlay. The frame holds its size while the bytes load,
    so the list doesn't jump. */
