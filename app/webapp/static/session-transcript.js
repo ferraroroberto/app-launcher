@@ -532,9 +532,12 @@ async function loadThumb(btn) {
   btn.disabled = false;
 }
 
-function observeThumb(btn) {
+// Run `load(el)` once `el` scrolls near the viewport: a thumbnail's bytes, or
+// a sent file's (#1530).
+function observeLazy(el, load) {
+  el._trLoad = load;
   if (!('IntersectionObserver' in window)) {
-    loadThumb(btn);
+    load(el);
     return;
   }
   if (!thumbObserver) {
@@ -542,11 +545,11 @@ function observeThumb(btn) {
       seen.forEach(function (hit) {
         if (!hit.isIntersecting) return;
         thumbObserver.unobserve(hit.target);
-        loadThumb(hit.target);
+        hit.target._trLoad(hit.target);
       });
     }, { rootMargin: '200px' });
   }
-  thumbObserver.observe(btn);
+  thumbObserver.observe(el);
 }
 
 // Small lazy thumbnails for an entry's images; a tap opens the full size in
@@ -573,7 +576,7 @@ function thumbs(refs) {
       if (img.src) openImageLightbox(img.src, img.alt);
     });
     wrap.appendChild(btn);
-    observeThumb(btn);
+    observeLazy(btn, loadThumb);
   });
   return wrap;
 }
@@ -581,6 +584,255 @@ function thumbs(refs) {
 function dropThumbs() {
   thumbUrls.forEach(function (objectUrl) { URL.revokeObjectURL(objectUrl); });
   thumbUrls.clear();
+  fileBlobs.forEach(function (got) { URL.revokeObjectURL(got.objectUrl); });
+  fileBlobs.clear();
+}
+
+// --- files the agent sent (#1530) -------------------------------------------
+//
+// Two sources, one card. An outbox entry (any harness: the agent posted the
+// file to its session's outbox, and the transcript responses carry the list)
+// becomes a `{kind: 'file'}` entry merged into the conversation by time; a
+// Claude SendUserFile call is a tool call with `sent_files` refs. Either way
+// the bytes come from a passkey-gated route, fetched like a thumbnail once
+// the card scrolls near, and the card shows an image or a PDF inline, a text
+// file's opening lines, or the server's reason for refusing it. Every name
+// and caption goes in as text, never markup.
+
+const fileBlobs = new Map();
+const FILE_PREVIEW_CHARS = 3000;
+
+function sessionPath(sid) {
+  return '/api/claude-code/sessions/' + encodeURIComponent(sid);
+}
+
+function sentFileUrl(sid, ref) {
+  return sessionPath(sid) + '/transcript/file?offset=' + ref.offset + '&n=' + ref.n;
+}
+
+function outboxFileUrl(sid, id) {
+  return sessionPath(sid) + '/outbox/' + encodeURIComponent(id);
+}
+
+function isSentFile(e) {
+  return e.kind === 'file' ||
+    (e.kind === 'tool_call' && !e.sidechain && Array.isArray(e.sent_files) && e.sent_files.length > 0);
+}
+
+// The type a card's object URL carries, from the kind the card was built for
+// rather than the response header: the Open link and the PDF frame are
+// same-origin blob URLs that keep none of the route's nosniff/sandbox
+// headers, so nothing the server sends may turn one into a page.
+function blobType(kind, served) {
+  if (kind === 'image') return /^image\/(png|jpeg|gif|webp)$/.test(served) ? served : 'application/octet-stream';
+  if (kind === 'pdf') return 'application/pdf';
+  return 'text/plain;charset=utf-8';
+}
+
+// The bytes behind a card, once per URL while this session's Chat is open.
+// Throws an Error whose message is the server's own reason for a refusal.
+async function fetchFileBlob(sid, url, kind) {
+  const got = fileBlobs.get(url);
+  if (got) return got;
+  const tt = await ensureTerminalToken();
+  const res = await api(url, { headers: authHeaders({ terminalToken: tt }) });
+  if (!res.ok) {
+    let message = 'couldn’t load it (status ' + res.status + ')';
+    try {
+      const body = await res.json();
+      if (body && body.detail && body.detail.message) message = body.detail.message;
+    } catch (_exc) { /* not JSON: keep the status */ }
+    throw new Error(message);
+  }
+  const raw = await res.blob();
+  const blob = new Blob([raw], { type: blobType(kind, raw.type) });
+  const entry = { blob: blob, objectUrl: URL.createObjectURL(blob) };
+  // A view that closed meanwhile has already dropped its URLs.
+  if (!view || view.session.session_id !== sid) {
+    URL.revokeObjectURL(entry.objectUrl);
+    throw new Error('the chat closed');
+  }
+  fileBlobs.set(url, entry);
+  return entry;
+}
+
+function fmtBytes(n) {
+  if (typeof n !== 'number') return '';
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + ' KB';
+  return (Math.round(n / (1024 * 102.4)) / 10) + ' MB';
+}
+
+function fileNote(card, text) {
+  const note = document.createElement('div');
+  note.className = 'tr-file-note';
+  note.textContent = text;
+  card.appendChild(note);
+}
+
+async function loadFileCard(card) {
+  let got;
+  try {
+    got = await fetchFileBlob(card.dataset.sid, card._trUrl, card.dataset.kind);
+  } catch (exc) {
+    if (!card.isConnected) return;
+    card.classList.add('tr-file-failed');
+    fileNote(card, 'Not shown: ' + exc.message);
+    return;
+  }
+  if (!card.isConnected) return;
+  const open = card.querySelector('.tr-file-open');
+  open.href = got.objectUrl;
+  open.hidden = false;
+  const kind = card.dataset.kind;
+  const name = card._trName;
+  if (kind === 'image') {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tr-file-image';
+    btn.setAttribute('aria-label', 'Open ' + name + ' full size');
+    const img = document.createElement('img');
+    img.alt = name;
+    img.src = got.objectUrl;
+    btn.appendChild(img);
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      openImageLightbox(got.objectUrl, name);
+    });
+    card.appendChild(btn);
+  } else if (kind === 'pdf') {
+    const frame = document.createElement('iframe');
+    frame.className = 'tr-file-pdf';
+    frame.title = name;
+    frame.src = got.objectUrl;
+    card.appendChild(frame);
+  } else {
+    const text = await got.blob.text();
+    if (!card.isConnected) return;
+    const cut = text.length > FILE_PREVIEW_CHARS;
+    const preview = document.createElement('pre');
+    preview.className = 'tr-file-preview';
+    preview.textContent = cut ? text.slice(0, FILE_PREVIEW_CHARS) : text;
+    card.appendChild(preview);
+    if (cut) fileNote(card, 'Preview cut short — Open shows the whole file');
+  }
+}
+
+// One file's card: its name, size and an Open link (live once the bytes are
+// in), then the content. A null `kind` is a type the server will refuse; the
+// card still asks, so it shows the server's own reason. No `url` (the Life OS
+// viewer, which has no session to ask) leaves the head alone.
+function fileCard(name, kind, size, url) {
+  const card = document.createElement('div');
+  card.className = 'tr-file-card';
+  card.dataset.kind = kind || '';
+  card._trName = name;
+  card._trUrl = url;
+  const head = document.createElement('div');
+  head.className = 'tr-file-head';
+  const nameEl = document.createElement('span');
+  nameEl.className = 'tr-file-name';
+  nameEl.textContent = name;
+  nameEl.title = name;
+  head.appendChild(nameEl);
+  const sizeText = fmtBytes(size);
+  if (sizeText) {
+    const sizeEl = document.createElement('span');
+    sizeEl.className = 'tr-file-size';
+    sizeEl.textContent = sizeText;
+    head.appendChild(sizeEl);
+  }
+  const open = document.createElement('a');
+  open.className = 'tr-file-open';
+  open.textContent = 'Open';
+  open.target = '_blank';
+  open.rel = 'noopener';
+  open.hidden = true;
+  head.appendChild(open);
+  card.appendChild(head);
+  if (view && url) {
+    card.dataset.sid = view.session.session_id;
+    observeLazy(card, loadFileCard);
+  }
+  return card;
+}
+
+// The turn part for one send: the caption, then a card per file.
+function renderSentFiles(e) {
+  const li = document.createElement('li');
+  li.className = 'tr-file-item';
+  const sid = view ? view.session.session_id : null;
+  const files = e.kind === 'file'
+    ? [{ name: e.file.name, kind: e.file.kind, size: e.file.size, url: sid && outboxFileUrl(sid, e.file.id) }]
+    : e.sent_files.map(function (ref) {
+      return { name: ref.name, kind: ref.kind, size: null, url: sid && sentFileUrl(sid, ref) };
+    });
+  const caption = e.kind === 'file' ? e.file.caption : e.caption;
+  if (caption) {
+    const cap = document.createElement('div');
+    cap.className = 'tr-file-caption';
+    cap.textContent = caption;
+    li.appendChild(cap);
+  }
+  files.forEach(function (f) {
+    li.appendChild(fileCard(f.name || 'file', f.kind || null, f.size, f.url || null));
+  });
+  return li;
+}
+
+function entryTime(e) {
+  if (!e || e.timestamp == null) return null;
+  const t = new Date(e.timestamp).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+// The earliest time a set of entries carries (-Infinity for none), so an
+// outbox file older than everything loaded waits for an older page.
+function oldestTime(entries) {
+  let oldest = Infinity;
+  entries.forEach(function (e) {
+    const t = entryTime(e);
+    if (t != null && t < oldest) oldest = t;
+  });
+  return oldest === Infinity ? -Infinity : oldest;
+}
+
+// `entries` with `files` slotted in by time: each file goes before the first
+// entry stamped after it; entries with no usable time keep their place.
+function mergeFiles(entries, files) {
+  if (!files.length) return entries;
+  const pending = files.slice().sort(function (a, b) { return entryTime(a) - entryTime(b); });
+  const out = [];
+  entries.forEach(function (e) {
+    const t = entryTime(e);
+    while (pending.length && t != null && entryTime(pending[0]) < t) out.push(pending.shift());
+    out.push(e);
+  });
+  return out.concat(pending);
+}
+
+// The files of a transcript response that aren't on screen yet: those at or
+// after `since` to render now, the rest held back for an older page.
+function takeOutbox(body, since) {
+  if (!view || body.outbox_rev === undefined) return [];
+  view.outboxRev = body.outbox_rev;
+  const now = [];
+  (body.outbox || []).forEach(function (f) {
+    if (!f || !f.id || view.outboxShown.has(f.id)) return;
+    view.outboxShown.add(f.id);
+    const e = { kind: 'file', timestamp: f.timestamp, file: f };
+    const t = entryTime(e);
+    if (t == null || t >= since) now.push(e);
+    else view.outboxHeld.push(e);
+  });
+  return now;
+}
+
+// The held files an older page now reaches back to.
+function releaseHeld(since) {
+  const held = view.outboxHeld || [];
+  view.outboxHeld = held.filter(function (f) { return entryTime(f) < since; });
+  return held.filter(function (f) { return entryTime(f) >= since; });
 }
 
 // --- links open in the PC's browser (#1274) --------------------------------
@@ -909,7 +1161,7 @@ function syncTurnHead(li) {
   li._trWhen.textContent = time ? '· ' + time : '';
   let hint = replies.length ? textHint(replies[0]) : '';
   if (!hint) {
-    const title = li._trParts.querySelector('.tr-step-label');
+    const title = li._trParts.querySelector('.tr-file-name, .tr-step-label');
     hint = title ? title.textContent : '';
   }
   li._trHint.textContent = hint;
@@ -922,7 +1174,7 @@ function syncTurnHead(li) {
 // keeps it: the work still has a trace (#1477).
 function markSilent(li) {
   const quiet = !turnReplies(li).length && !li._trEdited &&
-    !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item');
+    !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item, :scope > .tr-file-item');
   li.classList.toggle('tr-turn-silent', quiet);
 }
 
@@ -1854,6 +2106,8 @@ function appendEntries(container, entries, opts) {
       addPart(turn, renderQuestion(e, opts.toolErrors, opts.answering));
     } else if (isPlan(e)) {
       addPart(turn, renderPlan(e, opts.toolErrors, opts.answering));
+    } else if (isSentFile(e)) {
+      addPart(turn, renderSentFiles(e));
     } else {
       const last = turn._trParts.lastElementChild;
       if (last && last.classList.contains('tr-run') && (!opts.pending || ownRuns.has(last))) {
@@ -1928,11 +2182,11 @@ export function atBottom() {
 // Apply one tick's worth of new content. The reader's position is the point:
 // following the conversation keeps following it, and having scrolled up into
 // history stays exactly put.
-function applyLive(settled, pending, toolErrors) {
+function applyLive(settled, pending, toolErrors, files) {
   const stick = atBottom();
   const open = clearPending();
-  if (settled.length) {
-    appendSettled(settled, toolErrors);
+  if (settled.length || (files && files.length)) {
+    appendSettled(mergeFiles(settled, files || []), toolErrors);
     restoreOpen(els.transcriptList, open);
     view.settled = view.settled.concat(settled);
   }
@@ -2063,6 +2317,7 @@ async function forwardRead(target, manual) {
   pollPicker();
   const q = new URLSearchParams({ after: String(target.tail) });
   if (target.size != null) q.set('size', String(target.size));
+  if (target.outboxRev != null) q.set('ob', String(target.outboxRev));
   let body;
   try {
     body = await jsonApi(
@@ -2106,12 +2361,16 @@ async function forwardRead(target, manual) {
     target.activity = body.activity;
     renderStripLine();
   }
+  // A file sent since the last read is the newest thing there is: it lands
+  // after whatever settled this tick, never back in time (#1530).
+  const files = takeOutbox(body, -Infinity);
   if (body.changed) {
     target.tail = body.tail;
     target.size = body.size;
-    applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors);
-  } else if (body.size != null) {
-    target.size = body.size;
+    applyLive(body.entries || [], body.pending || [], body.tool_errors || target.toolErrors, files);
+  } else {
+    if (body.size != null) target.size = body.size;
+    if (files.length) applyLive([], target.pending || [], target.toolErrors, files);
   }
   syncFileChips();
   if (syncEditedCards() && stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
@@ -2154,6 +2413,9 @@ async function loadNewest() {
   view.ended = false;
   view.backoff = 0;
   view.reasonShown = false;
+  view.outboxRev = null;
+  view.outboxShown = new Set();
+  view.outboxHeld = [];
   showState('Loading…');
   let body;
   try {
@@ -2194,7 +2456,9 @@ async function loadNewest() {
   view.entries = entries.concat(pending);
   view.tail = body.tail != null ? body.tail : 0;
   view.size = body.size;
-  if (!view.entries.length && body.next_cursor == null) {
+  // Sent files (#1530) older than this page wait for the page that reaches them.
+  const files = takeOutbox(body, body.next_cursor == null ? -Infinity : oldestTime(all));
+  if (!view.entries.length && !files.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
     // Still live: an empty transcript is the normal state of a session that
     // has just started, and its first turn should appear on its own.
@@ -2206,7 +2470,7 @@ async function loadNewest() {
   // session — read from the newest page and reused when older pages are
   // prepended.
   view.toolErrors = body.tool_errors || 'reported';
-  appendSettled(entries, view.toolErrors);
+  appendSettled(mergeFiles(entries, files), view.toolErrors);
   view.pendingNodes = pending.length
     ? renderPending(pending, view.toolErrors, null)
     : [];
@@ -2281,9 +2545,10 @@ async function loadOlder() {
     }
   }
   if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
-  if (older.length) {
+  const files = releaseHeld(cursor == null ? -Infinity : oldestTime(older));
+  if (older.length || files.length) {
     const frag = document.createDocumentFragment();
-    appendEntries(frag, older, chatOpts(toolErrors || view.toolErrors || 'reported', false));
+    appendEntries(frag, mergeFiles(older, files), chatOpts(toolErrors || view.toolErrors || 'reported', false));
     joinOlderTurn(frag);
     els.transcriptList.insertBefore(frag, els.transcriptList.firstChild);
     // Older entries join `view.entries` too, so a question on an older page

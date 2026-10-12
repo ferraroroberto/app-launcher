@@ -84,22 +84,32 @@ from src.session_transcript import (
     transcript_activity,
     transcript_image,
     transcript_page,
+    transcript_sent_file,
     transcript_tail,
 )
+from src import session_outbox
 from src.session_changes import changed_files, file_steps
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import attach_provider_web_urls
+from app.webapp.routers import session_outbox_routes
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+# Files an agent sends to the chat (#1530): their own routes, mounted here
+# because the transcript responses below carry the outbox alongside.
+router.include_router(session_outbox_routes.router)
 
 # Agents whose native history this reader understands. The values are the
 # line grammars in `src.session_transcript.FLAVORS`; the client's own
 # availability list (`session-transcript.js`'s `TRANSCRIPT_AGENTS`) mirrors
 # the keys, so Chat mode is offered for exactly these agents.
+# A byte offset no transcript reaches. A larger one overflows `seek` with an
+# OverflowError, which the read routes' OSError handling would not catch.
+MAX_OFFSET = 2 ** 62
+
 _FLAVOR_BY_AGENT = {
     "claude": "claude", "codex": "codex", "grok": "grok", "pi": "pi",
     "antigravity": "antigravity", "copilot": "copilot",
@@ -227,6 +237,7 @@ async def session_transcript(
     after: Optional[int] = Query(default=None, ge=0),
     size: Optional[int] = Query(default=None, ge=0),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    ob: Optional[int] = Query(default=None, ge=0),
 ) -> Dict[str, Any]:
     """One page of a live session's transcript (Tailscale + passkey).
 
@@ -245,6 +256,11 @@ async def session_transcript(
     session-scoped route with no explicit level) — real work for no gain,
     since this serves the same resource to the same caller under the same
     gate, only from the other end of the file.
+
+    ``ob`` is the outbox rev the caller already holds (#1530). Every answer
+    with a transcript carries ``outbox_rev``, and the session's sent files
+    (``outbox``) only when that rev moved, so the chat sees a new file on
+    its next tick without a poll of its own.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     if before is not None and after is not None:
@@ -262,7 +278,10 @@ async def session_transcript(
             )
         return _unavailable(sid, reason)
     if after is not None:
-        return await _tail_response(sid, agent, flavor, path, after, size, session)
+        tail = await _tail_response(sid, agent, flavor, path, after, size, session)
+        if tail.get("available"):
+            tail.update(await asyncio.to_thread(session_outbox_routes.outbox_fields, sid, ob))
+        return tail
     try:
         page = await asyncio.to_thread(
             transcript_page, path, before=before, limit=limit, flavor=flavor
@@ -288,6 +307,7 @@ async def session_transcript(
     if before is None:
         # The newest page is the chat's first read: its activity line starts here.
         body["activity"] = await _activity(session, flavor, path)
+        body.update(await asyncio.to_thread(session_outbox_routes.outbox_fields, sid, ob))
     return body
 
 
@@ -502,7 +522,7 @@ async def session_changed_file_diff(
 async def session_transcript_image(
     sid: str,
     request: Request,
-    offset: int = Query(ge=0),
+    offset: int = Query(ge=0, le=MAX_OFFSET),
     n: int = Query(ge=0, le=999),
 ) -> Response:
     """One transcript image's bytes, decoded on demand (Tailscale + passkey, #1265).
@@ -536,4 +556,56 @@ async def session_transcript_image(
     return Response(
         content=data, media_type=media,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@router.get("/api/claude-code/sessions/{sid}/transcript/file")
+async def session_transcript_file(
+    sid: str,
+    request: Request,
+    offset: int = Query(ge=0, le=MAX_OFFSET),
+    n: int = Query(ge=0, le=999),
+) -> Response:
+    """One file a Claude ``SendUserFile`` call sent (Tailscale + passkey, #1530).
+
+    ``offset`` and ``n`` are a ``sent_files`` ref off a page's tool call. The
+    path comes from the transcript line, never from the request, and goes
+    through the outbox's guards (:func:`src.session_outbox.read_source`): a
+    path outside the session's folder and its declared scratch roots, a type
+    off the allowlist, or an oversize file is refused with its own reason,
+    exactly as a post to the outbox would be.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, flavor, path, agent, _why, session = await _resolve_source(sid, cfg)
+    if reason == SESSION_HOST_UNREACHABLE:
+        raise HTTPException(
+            status_code=503, detail={"reason": reason, "message": "the session-host is not answering"},
+        )
+    if reason is not None:
+        raise HTTPException(status_code=404, detail={"reason": reason, "message": "no transcript to read"})
+    try:
+        found = await asyncio.to_thread(transcript_sent_file, path, offset, n, flavor)
+    except OSError as exc:
+        logger.warning(
+            "⚠️ transcript file %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
+        )
+        raise HTTPException(
+            status_code=404, detail={"reason": "read_failed", "message": "the transcript could not be read"},
+        ) from exc
+    if found is None:
+        logger.info("ℹ️ transcript file %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
+        raise HTTPException(status_code=404, detail={"reason": "file_not_found", "message": "no sent file there"})
+    sent, line_cwd = found
+    project_dir = str((session or {}).get("project_dir") or "") or None
+    roots = session_outbox.allowed_roots(project_dir, cfg.outbox_scratch_roots)
+    try:
+        resolved, data, _kind, media = await asyncio.to_thread(
+            session_outbox.read_source, sent, line_cwd or project_dir, roots,
+        )
+    except session_outbox.OutboxRefusal as exc:
+        logger.info("ℹ️ transcript file %s (%s) refused: %s", sid[:8], agent, exc.reason)
+        raise session_outbox_routes.refusal_error(exc) from None
+    return Response(
+        content=data, media_type=media,
+        headers=session_outbox_routes.file_headers(resolved.name, media),
     )
