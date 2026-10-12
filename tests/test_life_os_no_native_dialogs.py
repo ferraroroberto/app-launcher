@@ -1,9 +1,11 @@
-"""The Life tab asks through the vendored dialogs, never the browser's (#1439).
+"""The app asks through the vendored dialogs, never the browser's.
 
 A native ``confirm()`` / ``prompt()`` is the unstyled system sheet the modal
-contract (#545) replaced: rename, delete and the handoff confirmation go
-through ``confirmDialog`` and the rename dialog instead. Comments may still
-name the old calls, so they are stripped before the search.
+contract (#545) replaced. The Life tab went first (#1439); #1501 moved the
+last callers (session Stop, chief Restart, passkeys) to ``confirmDialog`` /
+``promptDialog``, so every first-party module is checked now, outside the
+vendored components and the terminal modules. Comments may still name the
+old calls, so they are stripped before the search.
 """
 
 from __future__ import annotations
@@ -18,7 +20,16 @@ _COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 _NATIVE = re.compile(r"(?<![\w.$])(?:window\.)?(confirm|prompt|alert)\s*\(")
 
 
-@pytest.mark.parametrize("module", ["life-os.js", "life-os-viewer.js"])
+_MODULES = sorted(
+    p.name for p in _STATIC.glob("*.js") if not p.name.startswith("terminal")
+)
+
+
+def test_the_module_list_is_real() -> None:
+    assert "life-os.js" in _MODULES and "board.js" in _MODULES, _MODULES
+
+
+@pytest.mark.parametrize("module", _MODULES)
 def test_no_native_dialog_is_left(module: str) -> None:
     code = _COMMENTS.sub("", (_STATIC / module).read_text(encoding="utf-8"))
     found = [m.group(0) for m in _NATIVE.finditer(code)]

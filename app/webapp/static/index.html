@@ -823,6 +823,9 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="appsFilterInput" type="search" autocomplete="off" placeholder="Filter apps" aria-label="Filter apps">
         </label>
+        <!-- Loading, a failed first read with Retry, or a stale line over the
+             last good list (async-state.js, #1501). -->
+        <div id="appsState" class="empty-state" role="status" hidden></div>
         <ul id="appsList" class="card-list action-rows" aria-label="Apps"></ul>
         <div id="appsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
@@ -1004,6 +1007,7 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="lifeOsFilterInput" type="search" autocomplete="off" placeholder="Filter skills" aria-label="Filter skills">
         </label>
+        <div id="lifeOsState" class="empty-state" role="status" hidden></div>
         <ul id="lifeOsList" class="card-list action-rows" aria-label="Life OS skills"></ul>
         <div id="lifeOsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
@@ -1065,6 +1069,10 @@
       <!-- One attention banner, only while a source is down or stale
            (renderStatusLine). -->
       <div id="boardStatus" class="board-status" role="status" hidden></div>
+      <!-- The Board's own read (async-state.js, #1501): loading, a failed
+           first read with Retry in place of the lanes, or a stale line over
+           the last good lanes. -->
+      <div id="boardFetchState" class="empty-state" role="status" hidden></div>
       <!-- Each lane is a section card like every other tab's (#1198):
            stacked on the phone, side by side in the desktop grid, in the
            order Backlog, Chief's plan, Claude's turn, Your turn, PRs and
@@ -2192,7 +2200,7 @@
         </div>
         <div id="jobSheetBody" class="job-sheet-body" data-role="history-body"></div>
         <div class="detail-actions">
-          <button type="button" id="jobSheetRun" class="button-primary detail-save-btn"></button>
+          <button type="button" id="jobSheetRun" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run now</button>
         </div>
       </div>
     </dialog>
@@ -2251,8 +2259,9 @@
           </button>
         </div>
         <p id="confirmDialogMessage" class="confirm-dialog-message"></p>
+        <input id="confirmDialogInput" type="text" class="input-native confirm-dialog-input" autocomplete="off" hidden>
         <div class="detail-actions">
-          <button type="button" id="confirmDialogOk" class="button-tint danger detail-save-btn"></button>
+          <button type="button" id="confirmDialogOk" class="button-tint danger detail-save-btn">Confirm</button>
         </div>
       </div>
     </dialog>

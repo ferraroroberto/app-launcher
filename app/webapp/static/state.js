@@ -160,6 +160,7 @@ export const els = {
 
   boardColumns: document.getElementById('boardColumns'),
   boardStatus: document.getElementById('boardStatus'),
+  boardFetchState: document.getElementById('boardFetchState'),
   boardRefresh: document.getElementById('boardRefresh'),
   boardColBacklog: document.getElementById('boardColBacklog'),
   boardColClaude: document.getElementById('boardColClaude'),
@@ -182,6 +183,7 @@ export const els = {
 
   lifeOsList: document.getElementById('lifeOsList'),
   lifeOsEmpty: document.getElementById('lifeOsEmpty'),
+  lifeOsState: document.getElementById('lifeOsState'),
   lifeOsFilterInput: document.getElementById('lifeOsFilterInput'),
   lifeOsFilterEmpty: document.getElementById('lifeOsFilterEmpty'),
   lifeOsRecap: document.getElementById('lifeOsRecap'),
@@ -388,6 +390,7 @@ export const els = {
   appsFilterInput: document.getElementById('appsFilterInput'),
   appsFilterEmpty: document.getElementById('appsFilterEmpty'),
   appsEmpty: document.getElementById('appsEmpty'),
+  appsState: document.getElementById('appsState'),
   registeredTraysList: document.getElementById('registeredTraysList'),
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
   traysSummaryMeta: document.getElementById('traysSummaryMeta'),

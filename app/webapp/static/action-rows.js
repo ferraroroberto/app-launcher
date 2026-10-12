@@ -27,10 +27,21 @@ import { icon } from './_vendored/icons/icons.js';
 //                 the row's markup is exactly what it was without it
 //   kebabClass / kebabLabel -> the trailing kebab's hook class and name;
 //                 no kebabLabel, no kebab
+//   density    -> 'one-line': the meta runs after the title on one line, at
+//                 --row-md (the Board's question rows, #1501); 'small': the
+//                 same at --row-sm (the plan lane)
+//   trailing   -> an element after the main button and before any kebab: the
+//                 row's one other trailing item (a chevron, an Answer button)
+//   inert      -> the text column is a plain <div>, not a button: a row that
+//                 reports a fact and does nothing on tap (onMain unused)
+// Each of the last three is optional: a row built without them is
+// byte-identical to one built before they existed (the golden in
+// tests/e2e/test_life_tab_glance.py).
 // Returns { li, main, title, meta, kebab } for the caller to finish.
 export function actionRow(opts) {
   const li = document.createElement('li');
   li.className = 'action-row' + (opts.className ? ' ' + opts.className : '');
+  if (opts.density) li.classList.add('action-row--' + opts.density);
   if (opts.id != null) li.dataset.id = opts.id;
 
   if (opts.favorite) {
@@ -48,9 +59,10 @@ export function actionRow(opts) {
     li.appendChild(fav);
   }
 
-  const main = document.createElement('button');
-  main.type = 'button';
+  const main = document.createElement(opts.inert ? 'div' : 'button');
+  if (!opts.inert) main.type = 'button';
   main.className = 'action-row-main';
+  if (opts.inert) main.classList.add('is-inert');
   // With an avatar the main button lays out as a row: the avatar, then the
   // title and meta stacked in their own column.
   let column = main;
@@ -95,7 +107,9 @@ export function actionRow(opts) {
     }
     column.appendChild(meta);
   }
-  if (opts.disabled) {
+  if (opts.inert) {
+    // Nothing to name: the row's own text is what a reader hears.
+  } else if (opts.disabled) {
     main.disabled = true;
     main.setAttribute('aria-label', opts.hint || opts.label);
   } else {
@@ -103,6 +117,10 @@ export function actionRow(opts) {
     main.addEventListener('click', opts.onMain);
   }
   li.appendChild(main);
+  if (opts.trailing) {
+    opts.trailing.classList.add('action-row-trailing');
+    li.appendChild(opts.trailing);
+  }
 
   // A row with nothing behind a menu (the Jobs tab's Next up fires) passes
   // no kebabLabel and gets no kebab.

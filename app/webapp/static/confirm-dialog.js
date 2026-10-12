@@ -6,6 +6,9 @@
  * for a step that destroys nothing (the modal contract, #545). The ✕,
  * Escape and a backdrop tap all answer "no".
  *
+ * promptDialog() is the same sheet with one text field (#1501, in place of
+ * native prompt()): it resolves the trimmed text, or null on a "no".
+ *
  * Opens over another dialog too (Stop process from the Other ports sheet):
  * showModal() stacks it in the top layer.
  */
@@ -35,6 +38,12 @@ function wire(d) {
   d.querySelector('#confirmDialogOk').addEventListener('click', function () {
     finish(true);
   });
+  // Enter in the text field is the action, as it was in the native prompt.
+  d.querySelector('#confirmDialogInput').addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter') return;
+    ev.preventDefault();
+    finish(true);
+  });
   // Escape closes the dialog natively; any close that was not the action
   // is a "no". The event is queued, so one from an earlier answer can land
   // after the next confirm has opened: an open dialog ignores it.
@@ -55,20 +64,40 @@ const ACTION_CLASS = {
   primary: 'button-primary detail-save-btn',
 };
 
-// opts: title, message, action (the button's text), tone ('danger' or
-// 'primary'). Resolves true only when the action button was tapped.
-export function confirmDialog(opts) {
+function open(opts, field) {
   const d = dialogEl();
   if (!d || !d.showModal) return Promise.resolve(false);
   wire(d);
   if (settle) finish(false);
   d.querySelector('#confirmDialogTitle').textContent = opts.title;
-  d.querySelector('#confirmDialogMessage').textContent = opts.message || '';
+  const message = d.querySelector('#confirmDialogMessage');
+  message.textContent = opts.message || '';
+  message.hidden = !opts.message;
   const ok = d.querySelector('#confirmDialogOk');
   ok.textContent = opts.action;
   ok.className = ACTION_CLASS[opts.tone] || ACTION_CLASS.danger;
+  const input = d.querySelector('#confirmDialogInput');
+  input.hidden = !field;
+  input.value = field ? field.value || '' : '';
+  input.setAttribute('aria-label', field ? field.label : '');
   return new Promise(function (resolve) {
     settle = resolve;
     d.showModal();
+    if (field) input.select();
+  });
+}
+
+// opts: title, message (optional), action (the button's text), tone
+// ('danger' or 'primary'). Resolves true only when the action was tapped.
+export function confirmDialog(opts) {
+  return open(opts, null);
+}
+
+// opts: as confirmDialog's, plus value (the field's starting text) and
+// label (its accessible name). Resolves the trimmed text, or null.
+export function promptDialog(opts) {
+  return open(opts, { value: opts.value, label: opts.label }).then(function (ok) {
+    if (!ok) return null;
+    return dialogEl().querySelector('#confirmDialogInput').value.trim();
   });
 }

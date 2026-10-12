@@ -294,33 +294,39 @@ def test_chief_stop_requires_confirm_other_cards_do_not(
     dialogs: list[str] = []
     _open_board(authed_page, base_url)
 
-    # 1. Chief + dismiss → drawer stays, stop never fires.
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.dismiss()))
+    # The ask is the themed confirm (#1501), never a native one.
+    authed_page.on("dialog", lambda d: dialogs.append(d.message))
+    confirm = authed_page.locator("#confirmDialog")
+
+    # 1. Chief + ✕ → drawer stays, stop never fires.
     authed_page.locator("li.board-item-chief button.board-card").click()
     authed_page.locator(".board-stop-btn").click()
-    wait_until(authed_page, lambda: len(dialogs) >= 1, "the chief stop confirm")
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Kill the chief session?")
+    expect(authed_page.locator("#confirmDialogOk")).to_have_text("Kill")
+    authed_page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
     flush_requests(authed_page)
-    assert len(dialogs) == 1 and "chief" in dialogs[0].lower()
     assert stops == [], "dismissing the confirm must not stop the chief"
     expect(authed_page.locator(".board-drawer")).to_be_visible()
 
-    # 2. Chief + accept → stop fires.
-    authed_page.once("dialog", lambda d: (dialogs.append(d.message), d.accept()))
+    # 2. Chief + the action → stop fires.
     authed_page.locator(".board-stop-btn").click()
+    expect(confirm).to_be_visible()
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(stops) >= 1, "the confirmed chief stop POST")
-    assert len(dialogs) == 2
     assert len(stops) == 1 and "/sessions/s-chief/stop" in stops[0]["url"]
 
-    # 3. Worker card → one-tap stop, no dialog. (An unexpected confirm would
-    # be auto-dismissed by Playwright and show up as a missing stop call.)
+    # 3. Worker card → one-tap stop, no dialog.
     authed_page.locator(
         "li.board-item:not(.board-item-chief) button.board-card"
     ).first.click()
     authed_page.locator(".board-stop-btn").click()
     wait_until(authed_page, lambda: len(stops) >= 2, "the worker stop POST")
     flush_requests(authed_page)
-    assert len(dialogs) == 2, "a worker stop must not raise a confirm"
+    expect(confirm).to_be_hidden()
     assert len(stops) == 2 and "/sessions/s-work/stop" in stops[1]["url"]
+    assert dialogs == [], f"a native dialog was raised: {dialogs}"
 
 
 def test_chief_settings_sheet_roundtrip(

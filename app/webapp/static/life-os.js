@@ -24,6 +24,7 @@ import { renderMarkdown } from './markdown.js';
 import { actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
+import { failedFetchState, setAsyncState } from './async-state.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
@@ -91,13 +92,25 @@ function lifeOsModel() {
 }
 
 // ----------------------------------------------------------- skills list
+// When the skills last read well (#1501): a failure before it is the
+// list's error with Retry, one after it a stale line over the last list.
+let skillsReadAt = 0;
+
+function retrySkills() {
+  fetchSkills().catch(function () {});
+}
+
 export async function fetchSkills() {
+  if (!skillsReadAt) setAsyncState(els.lifeOsState, 'loading', { message: 'Reading skills…' });
   try {
     const body = await jsonApi('/api/life-os/skills');
+    skillsReadAt = Date.now();
+    setAsyncState(els.lifeOsState, 'ready');
     state.lifeOsSkills = body.skills || [];
     renderSkills();
   } catch (exc) {
     logPollFailure('life-os skills fetch failed', exc);
+    failedFetchState(els.lifeOsState, !!skillsReadAt, skillsReadAt, 'the skills', retrySkills);
   }
   // The Telegram profiles ride every skills refresh (tab open, Settings
   // save, boot) so they never need a refresh point of their own (#1366).
@@ -199,7 +212,9 @@ export function renderSkills() {
   renderHomeHead();
   host.innerHTML = '';
   const skills = state.lifeOsSkills;
-  els.lifeOsEmpty.hidden = skills.length !== 0;
+  // "No skills found" only after a good read: before one, an empty list is
+  // lifeOsState's loading or error, not an empty folder (#1501).
+  els.lifeOsEmpty.hidden = skills.length !== 0 || !skillsReadAt;
 
   // Starred skills pinned to the top (#1070), the Coding tab's treatment
   // (#250) replicated here. `skills` arrives alphabetical from the scanner,
@@ -327,7 +342,7 @@ function renderRecap() {
   const verb = document.createElement('button');
   verb.type = 'button';
   verb.id = 'lifeOsRecapLaunch';
-  verb.className = 'action-row-verb lifeos-recap-launch';
+  verb.className = 'action-row-verb row-verb-plain lifeos-recap-launch';
   verb.innerHTML = icon('play');
   verb.title = 'Review the weekly recap (/weekly-recap)';
   verb.setAttribute('aria-label', 'Launch weekly recap review');

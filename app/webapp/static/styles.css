@@ -4646,6 +4646,13 @@ span.chief-answer-ref { color: var(--muted); }
    label identify it; it carries no background tint (#1449) and reads like
    every other session card. */
 .board-empty { margin: 0; }
+/* A lane row on the shared action-row (#1501: PRs and jobs, Done): the
+   .board-item hook stays for tests and the poll, but the row is the
+   action-row's flex row, not the session card's column. */
+.board-list .action-row.board-item {
+  flex-direction: row;
+  align-items: center;
+}
 
 
 
@@ -4835,10 +4842,10 @@ span.chief-answer-ref { color: var(--muted); }
 }
 .board-issue-actions .board-issue-start {
   flex: none;
-  width: auto;
-  min-width: 44px;
-  min-height: 44px;
-  padding: 0 10px;
+  width: var(--row-sm);
+  min-width: var(--row-sm);
+  min-height: var(--row-sm);
+  padding: 0;
 }
 
 /* Drill-down drawer (#301): last exchange + reply, inline under the card. */
@@ -5440,12 +5447,31 @@ span.chief-answer-ref { color: var(--muted); }
   margin-bottom: 2px;
 }
 
+/* A list's stale line (async-state.js, #1501): the last good data stays
+   below it, and it says how old that data is. */
+.async-stale {
+  margin: 0 0 8px;
+  padding: 0 14px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+
 /* The confirm sheet (confirm-dialog.js): one muted line under the title. */
 .confirm-dialog-message {
   margin: 0 0 16px;
   font-size: var(--font-body);
   color: var(--muted);
 }
+/* promptDialog's one field (#1501): the full width, above the action.
+   16px text so iOS doesn't zoom the page on focus. */
+.confirm-dialog-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  font-size: var(--font-body);
+}
+
 
 /* Projects: the uncommitted count in the summary, behind an attention dot. */
 .projects-summary-meta,
@@ -5481,6 +5507,62 @@ span.chief-answer-ref { color: var(--muted); }
   white-space: nowrap;
 }
 .action-row-meta-text:empty { display: none; }
+
+/* actionRow's optional variants (#1501, action-rows.js), app-side so the
+   vendored action-row.css stays verbatim. One-line: the meta runs after the
+   title on the same line at rows.md, the title ellipsizing first; small is
+   the same at rows.sm. Inert: a row that reports and does nothing on tap,
+   so no pointer and no pressed fill. Trailing: the row's one other trailing
+   item keeps its own width. */
+.action-row.action-row--one-line,
+.action-row.action-row--one-line:has(.action-row-meta) { min-height: var(--row-md); }
+.action-row.action-row--small,
+.action-row.action-row--small:has(.action-row-meta) { min-height: var(--row-sm); }
+.action-row--one-line .action-row-main,
+.action-row--small .action-row-main {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.action-row--small .action-row-main { padding-block: 2px; }
+.action-row--one-line .action-row-title,
+.action-row--small .action-row-title { flex: 0 1 auto; min-width: 0; }
+.action-row--one-line .action-row-meta,
+.action-row--small .action-row-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; }
+.action-row-main.is-inert { cursor: default; }
+.action-row-main.is-inert:active { background: transparent; }
+.action-row > .action-row-trailing { flex: none; }
+
+/* The plain row verb (#1501): an icon-only verb drawn like the kebab, a
+   glyph on nothing (design.md action-row: an icon-only verb is an unpainted
+   icon-button), at the real 44px square and still named. Stacks on the
+   vendored .action-row-verb (two classes win over its tint) or stands
+   alone in a rail (the Board's Backlog ▶ Start). */
+.row-verb-plain,
+.action-row-verb.row-verb-plain {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-sm);
+  height: var(--row-sm);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.row-verb-plain .icon {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+}
+.row-verb-plain:not(:disabled):hover { color: var(--ink); }
+.row-verb-plain:not(:disabled):active { color: var(--accent-text); }
+/* Mid-launch (startIssue disables it): visibly not tappable. */
+.row-verb-plain:disabled { opacity: 0.5; cursor: default; }
 
 /* The Projects toolbar is the launch toolbar alone; the git refresh rides
    its model row as the trailing control. */

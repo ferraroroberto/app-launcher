@@ -391,6 +391,11 @@ def test_board_renders_columns_counts_and_cards(
     assert other.count() == 2
     expect(other.nth(0)).to_contain_text("PR #158")
     expect(other.nth(0).locator(".chip")).to_have_count(0)
+    # Both rows ride the shared action-row now (#1501, no cardShell), with
+    # a one-line title.
+    for i in range(2):
+        expect(other.nth(i)).to_have_class(re.compile(r"\baction-row\b"))
+        expect(other.nth(i).locator(".action-row-title")).to_have_css("white-space", "nowrap")
     job_chip = other.nth(1).locator(".board-job-chip")
     expect(job_chip).to_have_text("failed")
     expect(job_chip).to_have_attribute("data-tone", "danger")
@@ -420,6 +425,8 @@ def test_board_renders_columns_counts_and_cards(
     done = authed_page.locator('.board-list[data-col="done"] li.board-item')
     expect(done.first).to_contain_text("#87")
     expect(done.first).to_contain_text("closed")
+    expect(done.first).to_have_class(re.compile(r"\baction-row\b"))
+    expect(done.first.locator(".action-row-title")).to_have_css("white-space", "nowrap")
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
     # (the fold that must survive a poll; last: it changes section state) --
@@ -641,7 +648,7 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     unreadable = authed_page.locator(
         '.board-list[data-col="other"] li.board-item.is-unreadable'
     )
-    expect(unreadable.locator(".board-card-meta-text")).to_have_text(re.compile(r"^job\b"))
+    expect(unreadable.locator(".action-row-meta-text")).to_have_text(re.compile(r"^job\b"))
     expect(unreadable.locator(".board-job-chip")).to_have_text("unreadable")
     expect(unreadable.locator(".board-job-chip")).to_have_attribute("data-tone", "attention")
     expect(unreadable).to_contain_text("daily digest")
@@ -1013,7 +1020,10 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     start = tile.locator(".board-issue-start")
     expect(start).to_be_visible(timeout=15_000)
     expect(start).to_have_attribute("aria-label", "Start issue #301")
-    expect(start).to_have_class(re.compile(r"\bbutton-tint\b"))
+    # The plain verb (#1501): a glyph on nothing, never the tint fill.
+    expect(start).to_have_class(re.compile(r"\brow-verb-plain\b"))
+    expect(start).not_to_have_class(re.compile(r"\bbutton-tint\b"))
+    expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
     expect(tile.locator(".board-issue-btn")).to_have_count(1)
     # No git tint on the meta any more (#1436): git lives on Code › Projects.
     expect(tile.locator(".board-card-meta-inline")).not_to_have_class(
