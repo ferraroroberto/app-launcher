@@ -91,7 +91,7 @@ export function renderJobs() {
   host.replaceChildren();
   renderHomeHead();
   syncJobsEmpty();
-  syncSortBtn();
+  syncSortControls();
 
   if (state.jobsSearchQuery) {
     // Jobs whose name matches come first, as ordinary rows (#1132: the
@@ -201,24 +201,41 @@ function byName(a, b) {
   return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
 }
 
-// An icon button (#1438): the glyph is the current order, and the name says
-// what a tap does.
-function syncSortBtn() {
-  const btn = els.jobsSortBtn;
+const JOBS_SORT_NAMES = { next: 'next run', name: 'A–Z' };
+
+// The sort's entry button and sheet (#1538, the Conversations pattern of
+// #1528): the sliders button names the order in force, and the sheet's tabs
+// mark it. Re-synced on every change.
+function syncSortControls() {
+  const btn = els.jobsFilters;
   if (!btn) return;
-  const byNameNow = state.jobsSort === 'name';
-  btn.innerHTML = icon(byNameNow ? 'arrow-down-up' : 'timer');
-  btn.title = byNameNow
-    ? 'Sorted A–Z — tap to sort by next run'
-    : 'Sorted by next run — tap to sort A–Z';
-  btn.setAttribute('aria-label', btn.title);
+  const label = 'Sort and filter: sorted by ' + JOBS_SORT_NAMES[state.jobsSort];
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
   btn.dataset.sort = state.jobsSort;
+  els.jobsSortTabs.querySelectorAll('.range-tab').forEach(function (tab) {
+    const on = tab.dataset.sort === state.jobsSort;
+    tab.classList.toggle('active', on);
+    tab.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
 }
 
-function toggleSort() {
-  state.jobsSort = state.jobsSort === 'next' ? 'name' : 'next';
+function setSort(mode) {
+  if (!JOBS_SORT_NAMES[mode]) return;
+  state.jobsSort = mode;
   try { localStorage.setItem('launcher.jobsSort', state.jobsSort); } catch (_) { /* storage blocked */ }
+  syncSortControls();
   renderJobs();
+}
+
+function openSortSheet() {
+  if (!els.jobsSortSheet) return;
+  syncSortControls();
+  els.jobsSortSheet.showModal();
+}
+
+function closeSortSheet() {
+  if (els.jobsSortSheet && els.jobsSortSheet.open) els.jobsSortSheet.close();
 }
 
 // ------------------------------------------------------------- job sheet
@@ -972,11 +989,23 @@ export function wireJobs() {
   els.tabJobs.addEventListener('click', function () {
     fetchJobs().catch(function () {});
   });
-  if (els.jobsSortBtn) {
-    els.jobsSortBtn.addEventListener('click', toggleSort);
+  if (els.jobsFilters) {
+    els.jobsFilters.addEventListener('click', function (ev) {
+      // Inside the field's <label>: keep the tap from also focusing the box.
+      ev.preventDefault();
+      openSortSheet();
+    });
+    els.jobsSortTabs.addEventListener('click', function (ev) {
+      const tab = ev.target.closest('.range-tab');
+      if (tab) setSort(tab.dataset.sort);
+    });
+    // Clear: back to the default order.
+    els.jobsSortSheetClear.addEventListener('click', function () { setSort('next'); });
+    els.jobsSortSheetDone.addEventListener('click', closeSortSheet);
+    els.jobsSortSheetClose.addEventListener('click', closeSortSheet);
     // Labelled from the saved order now, not on the first jobs render — the
     // button was blank while the tab loaded (#1176).
-    syncSortBtn();
+    syncSortControls();
   }
   if (els.jobsSearchInput) {
     els.jobsSearchInput.addEventListener('input', function () {

@@ -327,8 +327,8 @@ def test_wide_layout_docks_the_sheet_beside_the_list(
 def test_toolbar_icons_are_centred_on_the_search_field(
     authed_page: Page, base_url: str, theme: str
 ) -> None:
-    """#1541: the sort and Add icons sit on the search field's vertical
-    centre, not below it. Measured in one stable_eval so a poll's re-render
+    """#1541: the sort sheet's trigger (inside the field since #1538) and the
+    Add icon sit on the search field's vertical centre, not below it. Measured in one stable_eval so a poll's re-render
     cannot split the reads."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
@@ -340,9 +340,9 @@ def test_toolbar_icons_are_centred_on_the_search_field(
         const r = bar.querySelector(sel).getBoundingClientRect();
         return r.top + r.height / 2;
       };
-      return { field: mid('.jobs-search'), sort: mid('#jobsSortBtn'), add: mid('#jobsAddBtn'),
+      return { field: mid('.jobs-search'), sort: mid('#jobsFilters'), add: mid('#jobsAddBtn'),
                fieldH: bar.querySelector('.jobs-search').getBoundingClientRect().height,
-               sortH: bar.querySelector('#jobsSortBtn').getBoundingClientRect().height };
+               sortH: bar.querySelector('#jobsFilters').getBoundingClientRect().height };
     }""")
-    assert abs(m["sort"] - m["field"]) <= 1, f"sort icon is off the field's centre ({theme}): {m}"
+    assert abs(m["sort"] - m["field"]) <= 1, f"sort button is off the field's centre ({theme}): {m}"
     assert abs(m["add"] - m["field"]) <= 1, f"add icon is off the field's centre ({theme}): {m}"

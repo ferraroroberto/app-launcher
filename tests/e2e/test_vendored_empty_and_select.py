@@ -80,7 +80,7 @@ def test_zero_item_lists_render_the_canonical_empty_state(
     expect(page.locator("#jobsLoading")).to_contain_text("Loading jobs")
     expect(page.locator("#jobsEmpty")).to_be_hidden()
     # The sort button is glyph-only since #1438, so its label is the aria-label.
-    expect(page.locator("#jobsSortBtn")).to_have_attribute("aria-label", re.compile(r"\S"))
+    expect(page.locator("#jobsFilters")).to_have_attribute("aria-label", re.compile(r"\S"))
     released.append(True)
     for route in held:
         route.fulfill(status=200, content_type="application/json", body='{"jobs": []}')

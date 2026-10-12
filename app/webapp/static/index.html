@@ -927,13 +927,14 @@
           <label class="action-row-filter list-filter jobs-search">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
             <input id="jobsSearchInput" type="search" autocomplete="off"
-                   placeholder="Search jobs and run output" aria-label="Search jobs and run output">
+                   placeholder="Search jobs and runs" aria-label="Search jobs and run output">
             <button id="jobsSearchClear" type="button" class="icon-button jobs-search-clear"
                     aria-label="Clear run search" title="Clear run search" hidden>
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
             </button>
+            <button id="jobsFilters" type="button" class="icon-button jobs-filters"
+                    aria-haspopup="dialog" aria-controls="jobsSortSheet"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg></button>
           </label>
-          <button id="jobsSortBtn" type="button" class="icon-button jobs-sort-btn" aria-label="Change job sort order"></button>
           <button id="jobsAddBtn" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
         </div>
         <ul id="jobsList" class="card-list action-rows" aria-label="Jobs"></ul>
@@ -1874,6 +1875,32 @@
         <div class="detail-actions">
           <button type="button" id="lifeOsConvoSheetClear" class="button-ghost">Clear</button>
           <button type="button" id="lifeOsConvoSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Sort (#1538): the Jobs list's sort-and-filter sheet, the same shape as
+         the Conversations one (#1528) — the sort as range tabs, each applying
+         as it is tapped, Clear beside Done. Jobs has no filter of its own, so
+         the sheet carries the one Sort row. -->
+    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" aria-labelledby="jobsSortSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobsSortSheetTitle" tabindex="-1" autofocus>Sort and filter</h2>
+          <button type="button" id="jobsSortSheetClose" class="detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="row">
+          <span>Sort</span>
+          <nav id="jobsSortTabs" class="range-tabs" aria-label="Sort jobs">
+            <button type="button" class="range-tab" data-sort="next">Next run</button>
+            <button type="button" class="range-tab" data-sort="name">A–Z</button>
+          </nav>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="jobsSortSheetClear" class="button-ghost">Clear</button>
+          <button type="button" id="jobsSortSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
