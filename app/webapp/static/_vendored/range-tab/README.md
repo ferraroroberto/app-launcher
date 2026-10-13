@@ -1,6 +1,6 @@
 # `range-tab` — the ghost segmented control
 
-The fleet's canonical **range-tab**: a row of equal-width pills (Day/Week/Month, timer presets, …) — resting is `card-off` fill + hairline border + muted text, active is `accent-soft` fill + `accent-text` text + a solid `accent` border. One height everywhere (`--control-h`, 36px — home-automation issue #361's census found 34/32/24px across five call sites before this settled on one canonical height). At most five pills per row, each label on one line. `~/.claude/design.md` has no range-tab entry yet, so this README is the contract. It draws on the spec's `control` height, the `accent-soft` active tint (shared with `nav-tab-active`) and "Touch targets".
+The fleet's canonical **range-tab**: a row of equal-width pills (Day/Week/Month, timer presets, …) — resting is the control fill (`--input-bg`: `card-off` in light, `border-muted` `#21262d` in dark, never a black well) + hairline border + muted text (`--ink` in dark, since muted is 4.08:1 on the dark fill), active is `accent-soft` fill + `accent-text` text + a solid `accent` border. One height everywhere (`--control-h`, 36px — home-automation issue #361's census found 34/32/24px across five call sites before this settled on one canonical height). At most five pills per row, each label on one line. `~/.claude/design.md` has no range-tab entry yet, so this README is the contract. It draws on the spec's `control` height, the `accent-soft` active tint (shared with `nav-tab-active`) and "Touch targets".
 
 ## Files
 
@@ -43,9 +43,11 @@ The fleet's canonical **range-tab**: a row of equal-width pills (Day/Week/Month,
 
 | Token | Light value | Used for |
 | --- | --- | --- |
-| `--card-off` | `#f6f8fa` | resting fill |
+| `--input-bg` | `#f6f8fa` (dark `#21262d`) | resting fill; falls back to `var(--card-off)` if undefined |
+| `--card-off` | `#f6f8fa` | fallback for `--input-bg` |
 | `--line` | `#d1d9e0` | resting border |
-| `--muted` | `#656d76` | resting text |
+| `--muted` | `#656d76` | resting text (light) |
+| `--ink` | `#1f2328` (dark `#e6edf3`) | resting text, dark theme only (`[data-theme="dark"]`) |
 | `--accent` | `#0969da` | active border |
 | `--accent-text` | `#0550ae` (dark `#58a6ff`) | active text |
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active fill |

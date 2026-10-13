@@ -7,8 +7,9 @@
  * heights across energy/forecast/wake-timer/security/net instances before
  * this settled on one canonical height).
  *
- * Contract: a row of equal-width pills, resting state is card-off fill +
- * hairline border + muted text; the active pill is accent-soft fill + accent
+ * Contract: a row of equal-width pills, resting state is the control fill
+ * (--input-bg: card-off in light, border-muted in dark) + hairline border +
+ * muted text (fg in dark); the active pill is accent-soft fill + accent
  * text + a solid accent border. Height is fixed (--control-h) and content is
  * flex-centered so a smaller font-size override in a compact context changes
  * only the label, never the box. Labels stay on one line, and a row holds at
@@ -24,7 +25,7 @@
   align-items: center;
   justify-content: center;
   height: var(--control-h);
-  background: var(--card-off);
+  background: var(--input-bg, var(--card-off));   /* the control fill, fleet-config#1375 */
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   padding: 0 10px;
@@ -42,6 +43,9 @@
  * pattern). Expansion is vertical only, so side-by-side pills in the cluster
  * never overlap. */
 .range-tab::before { content: ""; position: absolute; inset: -4px 0; }
+/* Dark resting label is fg, not fg-muted (4.08:1 on the control fill). Sits
+ * before .active so the selected pill keeps its accent text. */
+[data-theme="dark"] .range-tab { color: var(--ink); }
 .range-tab.active {
   background: var(--accent-soft);
   color: var(--accent-text);

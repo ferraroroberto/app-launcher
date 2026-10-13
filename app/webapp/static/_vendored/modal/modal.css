@@ -9,14 +9,17 @@
  * them away.
  *
  * Requires select-native.css (.input-native/.select-native, the shared 36px
- * inline control) and button.css (.button-primary) linked alongside — the
- * recipes live there once, not re-declared here.
+ * inline control), button.css (.button-primary) and icon-button.css (the
+ * close's `.icon-button`) linked alongside — the recipes live there once, not
+ * re-declared here.
  *
- * Contract: heading-lg title + an unpainted 34px × close (modal.closeSize)
- * with a 44px effective hit area; label/value rows at 12px 0 on a top-border
- * divider, value control >= 55%; exactly one full-width primary button,
- * whose disabled state clears AA in both themes; the nav hides while the
- * dialog is open; top-anchored on mobile so it never jumps on open/close.
+ * Contract: heading-lg title + an unpainted 34px × close (modal.closeSize,
+ * an `.icon-button`) with a 44px effective hit area; label/value rows at
+ * 12px 0 on a top-border divider, value control >= 55%; exactly one
+ * full-width primary button, whose disabled state is button's one recipe
+ * (4.93:1 light, 4.08:1 dark; see button.css);
+ * the nav hides while the dialog is open; top-anchored on mobile so it never
+ * jumps on open/close.
  */
 
 .detail-dialog {
@@ -79,10 +82,11 @@ body:has(dialog[open]) .app { overflow: hidden; }
   padding: 18px;
 }
 
-/* Header: heading-lg title left, close button right. The close is an icon
-   button (design.md, fleet-config#1259; icon-button/): an invisible 34px box,
-   no fill, border or shadow at rest — --close-bg defaults to transparent and
-   an app leaves it unset. */
+/* Header: heading-lg title left, close button right. The close is an
+   `.icon-button` (design.md, fleet-config#1259; icon-button/) — the markup
+   carries both classes and icon-button.css owns the unpainted box, the glyph
+   states and the invisible 44px target. Only the modal specifics live here:
+   the 34px box and the title-size glyph. */
 .detail-header {
   display: flex;
   align-items: center;
@@ -90,27 +94,17 @@ body:has(dialog[open]) .app { overflow: hidden; }
   margin-bottom: 10px;
 }
 .detail-header h2 { margin: 0; font-size: var(--font-heading-lg); }
-.detail-close {
-  position: relative;
-  background: var(--close-bg, transparent);
-  border: none;
-  border-radius: var(--radius-md);
-  width: 34px;                /* modal.closeSize */
-  height: 34px;
-  cursor: pointer;
-  color: var(--muted);
-  font: inherit;
-  line-height: normal;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-/* 34px is below the 44px tap floor (design.md "Touch targets"); expand the
-   hit area invisibly rather than inflating the visual button (34 + 2*5 = 44). */
-.detail-close::before { content: ""; position: absolute; inset: -5px; }
-.detail-close .icon { width: var(--icon-title); height: var(--icon-title); }
+/* 34px is below the 44px tap floor (design.md "Touch targets"); icon-button's
+   ::before grows the hit area invisibly (34 + 2*5 = 44) rather than inflating
+   the visual button. */
+.detail-close { --icon-btn-box: 34px; /* modal.closeSize */ }
+/* Two classes + .icon, so the title-size glyph beats icon-button's 16px
+   `.icon` whatever the link order. */
+.detail-header .detail-close .icon { width: var(--icon-title); height: var(--icon-title); }
 
-/* Label/value rows: label left, control right (>= 55%), top-border divider. */
+/* Label/value rows: label left, control right (>= 55%), top-border divider.
+   The label is the row's first `span` child; any other span (a muted note,
+   a fix-it line) keeps its own colour and weight (project-scaffolding#363). */
 .detail-card .row {
   display: flex;
   align-items: center;
@@ -119,7 +113,7 @@ body:has(dialog[open]) .app { overflow: hidden; }
   padding: 12px 0;            /* modal.rowPadding */
   border-top: 1px solid var(--line);
 }
-.detail-card .row span { color: var(--ink); font-weight: 600; }
+.detail-card .row > span:first-child { color: var(--ink); font-weight: 600; }
 .detail-card .row .select-native,
 .detail-card .row .input-native { min-width: 55%; }
 
@@ -134,7 +128,7 @@ body:has(dialog[open]) .app { overflow: hidden; }
   border-radius: 0 0 var(--radius) var(--radius);
 }
 /* The footer primary is `button-primary` (button.css — design.md
-   modal.primaryButton: the spec's 48px, never --control-h, #280; the AA
+   modal.primaryButton: the spec's 48px, never --control-h, #280; the
    disabled recipe lives there too, home-automation#362); the modal only
    stretches it to the full footer width. */
 .detail-save-btn { width: 100%; }

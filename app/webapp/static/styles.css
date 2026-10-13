@@ -1467,11 +1467,8 @@ button.settings-row:active { background: var(--card-2); }
 .detail-card .row:has(> textarea) { flex-direction: column; align-items: stretch; }
 textarea.input-native { height: auto; }
 /* The chief's model picker is a phrasing-only combo (#540), not a select:
-   give it the modal's value-column width, and keep the row label's weight
-   off its trigger and menu. */
+   give it the modal's value-column width. */
 .detail-card .row .model-combo { min-width: 55%; }
-.detail-card .row span.model-combo,
-.detail-card .row span.model-combo-menu { font-weight: 400; }
 /* Footer: the job editor can show a warn-tier "Save anyway" above the
    primary, so the footer stacks; the primary can lead with a glyph (Run). */
 .detail-actions { display: flex; flex-direction: column; gap: 8px; }
@@ -4761,38 +4758,33 @@ span.chief-answer-ref { color: var(--muted); }
 .channel-check-chip {
   flex-shrink: 0;
   font-size: var(--font-caption);
-  font-weight: 700;
+  font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-/* The vendored modal's `.detail-card .row span` paints every span in a
-   sheet's row in --ink at 600, so these rules sit one class deeper to keep
-   their own colour and weight: a chip its tone's text, a value plain, and
-   the detail line under a title muted. Muted on the sheet's card measures
-   5.25:1 light and 4.64:1 dark (COLOR-02, #1506; pinned by
-   test_settings_sheets.py). */
-.detail-card .channel-check .channel-check-chip-attention {
+/* A chip its tone's text, a value plain. The vendored modal paints only a
+   row's first span (its label) in --ink at 600 (project-scaffolding#363),
+   so the value and the chip keep their own colour and weight. */
+.channel-check-chip-attention {
   background: rgb(from var(--attention) r g b / 0.16);
   color: var(--attention-text);
 }
-.detail-card .channel-check .channel-check-chip-neutral {
+.channel-check-chip-neutral {
   background: var(--neutral-soft);
   color: var(--fg);
 }
-.detail-card .channel-check .channel-check-value,
-.detail-card .context-filter-harness .context-filter-status {
+.channel-check-value,
+.context-filter-status {
   flex-shrink: 0;
   font-size: var(--font-body-sm);
-  font-weight: 400;
-  color: var(--fg);
   white-space: nowrap;
 }
-.detail-card .channel-check .muted,
-.detail-card .context-filter-harness .muted {
-  color: var(--muted);
-  font-weight: 400;
-}
+/* A meta column (a check, a harness, an API token) is that first span, so
+   the detail line under its title would inherit the label's 600; it stays
+   muted at 400. Muted on the sheet's card measures 5.25:1 light and 4.64:1
+   dark (COLOR-02, #1506; pinned by test_settings_sheets.py). */
+.detail-card .row > span:first-child .muted { font-weight: 400; }
 .channel-skill-chips {
   display: flex;
   flex-wrap: wrap;
@@ -5573,10 +5565,10 @@ span.chief-answer-ref { color: var(--muted); }
 /* The plain row verb (#1501): an icon-only verb drawn like the kebab, a
    glyph on nothing (design.md action-row: an icon-only verb is an unpainted
    icon-button), at the real 44px square and still named. Stacks on the
-   vendored .action-row-verb (two classes win over its tint) or stands
-   alone in a rail (the Board's Backlog ▶ Start). */
+   vendored .action-row-verb (three classes win over its tint and its hover
+   colour) or stands alone in a rail (the Board's Backlog ▶ Start). */
 .row-verb-plain,
-.action-row-verb.row-verb-plain {
+.action-row .action-row-verb.row-verb-plain {
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -5595,8 +5587,10 @@ span.chief-answer-ref { color: var(--muted); }
   width: var(--icon-inline);
   height: var(--icon-inline);
 }
-.row-verb-plain:not(:disabled):hover { color: var(--ink); }
-.row-verb-plain:not(:disabled):active { color: var(--accent-text); }
+.row-verb-plain:not(:disabled):hover,
+.action-row .action-row-verb.row-verb-plain:not(:disabled):hover { color: var(--ink); }
+.row-verb-plain:not(:disabled):active,
+.action-row .action-row-verb.row-verb-plain:not(:disabled):active { color: var(--accent-text); }
 /* Mid-launch (startIssue disables it): visibly not tappable. */
 .row-verb-plain:disabled { opacity: 0.5; cursor: default; }
 

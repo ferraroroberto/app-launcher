@@ -84,6 +84,18 @@ nav.setBadge('board', 0);              // removes it (null, undefined and non-nu
 
 At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-config#968) the segmented control becomes a **left rail**: `layout.rail` (80px) wide, full height, on the `card` surface with a `line` hairline on its right edge. It shows the same tabs stacked top to bottom, each an `--icon-feature` glyph over a `--font-caption` label, never icon-only. Only the placement changes. The active tint, `aria-selected` and persistence are the same rules, and the markup is the same skeleton. The file offsets your content past the rail itself: `body:has(> .tabs)` gets `padding-left: var(--layout-rail)`, and `.tabs ~ .app` gets the top gap the sticky control used to supply. Both are keyed on the nav so they outrank an app's own `body` / `.app` padding shorthand loaded after this file. Below 1100px the control keeps the `layout.measure` column (`--layout-measure`, 772px); on a coarse pointer nothing changes at any width. Master-detail and a board's full-width exception are app layout, not nav, so they stay in your CSS (#281, lifted from app-launcher#1166).
 
+## Bottom reserve and hit area (phone)
+
+On the phone pill (`(pointer: coarse) and (max-width: 520px)`), `nav-tabs.css` sets `.app`'s `padding-bottom` and `scroll-padding-bottom` to one reserve:
+
+```
+env(safe-area-inset-bottom) + --bottom-tabs-margin + --bottom-tabs-height + --bottom-tabs-margin + --gap
+```
+
+That is 21 + 61 + 21 + 12 = 115px with no safe area, plus the home-indicator inset on an iPhone. Scrolled to the end, the last row's bottom edge sits at least `--bottom-tabs-margin + --gap` (33px) above the pill, so no tap rectangle of the last row meets a tab's. Do not add your own bottom padding for the nav on top of it.
+
+Above the end, rows scroll under the floating pill by design, so the pill must win every tap in each tab's rectangle. Tabs are rectangles, but the bar's corners are rounded (`--radius-nav`), and a rounded corner takes no taps outside its curve. A transparent `.tabs::before` layer fills the bar's square padding box under the tabs, so a tap in an outer tab's corner sliver lands on the nav, not on the row beneath. It is never painted and exists only on the phone pill: the desktop control and the wide rail have no such layer (#348, design rubric TOUCH-02). The layer is the nav's own `::before`, so don't put an app rule on `.tabs::before`.
+
 ## Required design tokens
 
 `nav-tabs.css` references these CSS custom properties — define them in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Don't copy the spec; point your tokens at it. Reference values (light) from the canonical implementation. The mobile geometry below is the phone-validated standard promoted from `home-automation` issue #118: measured from 1290px-wide iPhone screenshots of the GitHub/VLC apps (~3x CSS pixels), then validated live on Roberto's iPhone.
@@ -98,7 +110,7 @@ At `(min-width: 1100px) and (pointer: fine)` (`design.md` `layout.wide`, fleet-c
 | `--muted` | `#656d76` | inactive-tab text |
 | `--line` | `#d1d9e0` | bar border, active-tab border (mobile) |
 | `--space-xs` | `4px` | bar padding / gap (desktop) |
-| `--gap` | `12px` | bottom-padding reserve; phone `.app` side padding (the phone top padding is `env(safe-area-inset-top)` alone, #288) |
+| `--gap` | `12px` | last term of the phone bottom reserve (see "Bottom reserve and hit area"); phone `.app` side padding (the phone top padding is `env(safe-area-inset-top)` alone, #288) |
 | `--font-label` | `0.875rem` | tab label (desktop) |
 | `--font-caption` | `0.75rem` | tab label (narrow desktop) |
 | `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
