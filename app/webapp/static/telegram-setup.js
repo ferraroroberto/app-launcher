@@ -10,19 +10,22 @@
  * content — and this module adds nothing to that.
  *
  * A check the server could not establish (`null`) renders as "Unknown", never
- * as ready or missing.
+ * as found or missing.
  */
 
 import { els, state } from './state.js';
 
-// One status pill per check: state → [chip class suffix, label].
+// A healthy check reads as a plain value in the row's text colour; only an
+// exception wears a chip, on the tone map (#1506): what needs you is
+// attention, an unknown is neutral. state → [chip class suffix, label].
 const CHIP = {
-  ok: ['ok', 'Ready'],
-  missing: ['missing', 'Missing'],
-  unknown: ['unknown', 'Unknown'],
+  missing: ['attention', 'Missing'],
+  unknown: ['neutral', 'Unknown'],
 };
 
-function checkRow(title, detail, status, chipLabel) {
+// `value` is the healthy word ("Found"): status 'ok' shows it plain, any
+// other status its chip (`chipLabel` overriding the chip's word).
+function checkRow(title, detail, status, value, chipLabel) {
   const li = document.createElement('li');
   li.className = 'row channel-check';
   const meta = document.createElement('span');
@@ -37,21 +40,34 @@ function checkRow(title, detail, status, chipLabel) {
     meta.appendChild(note);
   }
   li.appendChild(meta);
-  const chip = document.createElement('span');
-  const pick = CHIP[status] || CHIP.unknown;
-  chip.className = 'channel-check-chip channel-check-chip-' + pick[0];
-  chip.textContent = chipLabel || pick[1];
-  li.appendChild(chip);
+  const end = document.createElement('span');
+  if (status === 'ok') {
+    end.className = 'channel-check-value';
+    end.textContent = value;
+  } else {
+    const pick = CHIP[status] || CHIP.unknown;
+    end.className = 'channel-check-chip channel-check-chip-' + pick[0];
+    end.textContent = chipLabel || pick[1];
+  }
+  li.appendChild(end);
   return li;
 }
 
-// true → ready, false → missing, null/undefined → unknown.
+// true → ok, false → missing, null/undefined → unknown.
 function tri(value) {
   if (value === true) return 'ok';
   if (value === false) return 'missing';
   return 'unknown';
 }
 
+// A profile is usable once its skill exists and its bot token file is in
+// place; the profile rows, the Settings row and the header count the rest.
+export function profileNeedsSetup(p) {
+  return !(p.skill_found && p.env_present);
+}
+
+// A passing check names nothing but itself: the profiles file's path is an
+// instruction, so it shows only in the fix-it line of a failing check.
 function renderChecks(setup) {
   const host = els.channelChecks;
   if (!host) return;
@@ -61,26 +77,26 @@ function renderChecks(setup) {
     return;
   }
   host.appendChild(checkRow(
-    'Profile file',
-    setup.file_present ? 'config/channel_profiles.json' : 'Copy config/channel_profiles.sample.json to config/channel_profiles.json',
-    tri(setup.file_present)
+    'Profiles file',
+    setup.file_present ? '' : 'Copy config/channel_profiles.sample.json to config/channel_profiles.json',
+    tri(setup.file_present), 'Found'
   ));
   host.appendChild(checkRow(
     'Life OS folder',
     setup.life_os_found ? '' : 'Set the Life OS folder above',
-    tri(setup.life_os_found)
+    tri(setup.life_os_found), 'Found'
   ));
   host.appendChild(checkRow(
     'Telegram plugin',
-    setup.plugin === true ? 'Installed for the life-os project'
+    setup.plugin === true ? ''
       : setup.plugin === false ? 'In the life-os project run /plugin install telegram@claude-plugins-official'
       : 'Claude’s plugin record could not be read',
-    tri(setup.plugin)
+    tri(setup.plugin), 'Installed'
   ));
   host.appendChild(checkRow(
     'Bun',
     setup.bun ? '' : 'Install Bun (bun.sh) and put it on your PATH',
-    tri(setup.bun)
+    tri(setup.bun), 'Found'
   ));
 }
 
@@ -92,11 +108,11 @@ function renderProfiles(profiles, problems) {
     const missing = [];
     if (!p.skill_found) missing.push('skill “' + p.skill + '” not found');
     if (!p.env_present) missing.push('no .env with the bot token in its folder');
-    const ready = missing.length === 0;
+    const ready = !profileNeedsSetup(p);
     const detail = ready
       ? 'skill ' + p.skill + ' · token file present' + (p.running ? ' · running' : '')
       : missing.join(' · ');
-    host.appendChild(checkRow(p.label, detail, ready ? 'ok' : 'missing', ready ? 'Ready' : 'Needs setup'));
+    host.appendChild(checkRow(p.label, detail, ready ? 'ok' : 'missing', 'Ready', 'Needs setup'));
   });
   if (els.channelProfilesEmpty) els.channelProfilesEmpty.hidden = profiles.length !== 0;
   const note = els.channelProfileProblems;

@@ -22,7 +22,7 @@
  */
 
 import { els, state } from './state.js';
-import { renderHomeHead } from './home-head.js';
+import { renderHomeHead, renderSettingsHead } from './home-head.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -145,12 +145,15 @@ export async function fetchChannels() {
       problems: body.problems || [],
       setup: body.setup || null,
     };
+    state.lifeOsChannelsFailed = false;
     renderSkills();
     renderChannelSetup();
     renderSettingsValues();
   } catch (exc) {
     logPollFailure('life-os channels fetch failed', exc);
+    state.lifeOsChannelsFailed = true;
   }
+  renderSettingsHead();
 }
 
 // The usable profiles bound to one skill. A broken profile (its skill not

@@ -7,7 +7,8 @@ Browser-side contract for the mint/list/revoke panel:
     the scope <select>.
   * Mint POSTs ``{label, jobs: [<selected job>]}`` and surfaces the
     response's raw token in the show-once box.
-  * Revoke DELETEs by id and the list re-renders without the row.
+  * Revoke asks in the themed confirm dialog (#1506); cancelling keeps the
+    token, confirming DELETEs by id and the list re-renders without the row.
 
 Backend contracts (hashing, scope enforcement over real HTTP, show-once
 persistence) are covered by ``tests/test_webapp_api_tokens.py``; this
@@ -26,7 +27,7 @@ from typing import Any, Dict
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_settings_sheet
+from tests.e2e.conftest import flush_requests, open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
@@ -157,7 +158,24 @@ def test_mint_list_and_revoke_a_token(authed_page: Page, base_url: str) -> None:
     # -- was test_revoke_removes_row (revokes the row just minted, id
     # tok-abc123 — the same _MINTED row that test seeded) --
     expect(authed_page.locator("#tokensList .token-row")).to_have_count(1)
-    authed_page.locator("#tokensList .token-row button", has_text="Revoke").click()
+    # Revoke asks first, in the themed dialog (#1506); the ✕ is a "no" and
+    # keeps the token, with no DELETE sent.
+    revoke = authed_page.locator("#tokensList .token-row button", has_text="Revoke")
+    confirm = authed_page.locator("#confirmDialog")
+    revoke.click()
+    expect(confirm).to_be_visible()
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Revoke this token?")
+    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("Deck btn")
+    expect(authed_page.locator("#confirmDialogOk")).to_have_text("Revoke")
+    expect(authed_page.locator("#confirmDialogOk")).to_have_class(re.compile(r"\bdanger\b"))
+    authed_page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
+    flush_requests(authed_page)
+    assert "revoked" not in state
+    expect(authed_page.locator("#tokensList .token-row")).to_have_count(1)
+    # Confirmed, it revokes.
+    revoke.click()
+    authed_page.locator("#confirmDialogOk").click()
     assert_revoked = authed_page.locator("#tokensList .token-row")
     expect(assert_revoked).to_have_count(0)
     expect(authed_page.locator("#tokensEmpty")).to_be_visible()

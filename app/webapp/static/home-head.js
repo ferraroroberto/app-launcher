@@ -8,8 +8,8 @@
  * holds only the exceptions, each in its tone colour ("1 needs you · 1
  * stalled"), and falls back to the plain count when nothing is wrong. At
  * 390px that leaves about 22 characters, so at most two parts. Code, the
- * Board (#1436), Apps (#1437), Jobs (#1438) and Life (#1439) are on it,
- * all through renderHeadStatus.
+ * Board (#1436), Apps (#1437), Jobs (#1438), Life (#1439) and Settings
+ * (#1506) are on it, all through renderHeadStatus.
  */
 
 import { BOARD_POLL_MS, els, state } from './state.js';
@@ -17,6 +17,7 @@ import { isHiddenChannel } from './channel-sessions.js';
 import { openQuestionCount } from './chief-keys.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
+import { profileNeedsSetup } from './telegram-setup.js';
 
 // The most exceptions one header line shows (about 22 characters at 390px).
 export const HEAD_MAX_PARTS = 2;
@@ -25,12 +26,8 @@ function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
 }
 
-function setStatus(el, text) {
-  if (el) el.textContent = text;
-}
-
 // The header rule: `exceptions` is [{ text, tone }] in priority order
-// (tone: attention | danger), `fallback` the plain count. Exceptions win,
+// (tone: attention | danger | neutral), `fallback` the plain count. Exceptions win,
 // two at most, each its own span in its tone.
 export function renderHeadStatus(el, exceptions, fallback) {
   if (!el) return;
@@ -151,10 +148,26 @@ function renderLifeHead() {
   );
 }
 
+// Settings (#1506, decision 10 of #1500): only what the pane itself shows as
+// a problem — a Telegram profile that needs setup, or a setup status that
+// could not be read — else the build this page runs ("Build a1b2c3d"), so a
+// stale PWA shows from the header. Blank until /api/version answers.
+export function renderSettingsHead() {
+  const ch = state.lifeOsChannels;
+  const exceptions = [];
+  const missing = (ch.profiles || []).filter(profileNeedsSetup).length;
+  if (missing) exceptions.push({ text: 'Telegram: ' + missing + ' missing', tone: 'attention' });
+  if (!ch.setup && state.lifeOsChannelsFailed) {
+    exceptions.push({ text: 'Telegram unreadable', tone: 'neutral' });
+  }
+  renderHeadStatus(els.settingsHeadStatus, exceptions,
+    state.buildSha ? 'Build ' + state.buildSha : '');
+}
+
 function renderOtherHeads() {
   renderAppsHead();
   renderJobsHead();
   renderLifeHead();
   // The Board's line is live (#1436): board.js writes it on every render.
-  setStatus(els.settingsHeadStatus, 'This launcher, on this PC');
+  renderSettingsHead();
 }
