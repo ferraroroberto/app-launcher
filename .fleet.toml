@@ -57,6 +57,8 @@ runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c0
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "scripts/classify_e2e.py" }
 icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "app/webapp/static/_vendored/icon-button" }
 notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "src/notify" }
+usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "app/webapp/static/_vendored/usage-log" }
+usage_log = { src = "src/usage_log.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "src/usage_log.py" }
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's

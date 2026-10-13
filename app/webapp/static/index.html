@@ -651,12 +651,12 @@
         <span id="homeHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" id="themeToggle" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" id="themeToggle" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
-        <button type="button" id="settingsOpen" class="home-toggle hit-target settings-open-btn"
+        <button type="button" id="settingsOpen" class="home-toggle hit-target settings-open-btn" data-track="settings-open"
                 title="Settings" aria-label="Settings">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
@@ -697,7 +697,7 @@
         <ul id="sessionsList" class="card-list" aria-label="Running sessions"></ul>
         <!-- Telegram channel sessions hidden from the list above (#1384): one
              flat row that opens the read-only list. channel-sessions.js. -->
-        <button type="button" id="sessionsChannelSummary" class="channel-row" aria-haspopup="dialog" hidden>
+        <button type="button" id="sessionsChannelSummary" data-track="channel-summary" class="channel-row" aria-haspopup="dialog" hidden>
           <span class="avatar session-avatar channel-row-avatar" data-badge="none">
             <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
           </span>
@@ -735,14 +735,14 @@
                takes the git refresh below as its model row's trailing
                control. -->
           <div id="codingLaunchToolbar" class="launch-toolbar-slot"></div>
-          <button id="gitRefreshBtn" type="button" class="icon-button git-refresh-btn"
+          <button id="gitRefreshBtn" data-track="git-refresh" type="button" class="icon-button git-refresh-btn"
                   title="Check each project's git branch and uncommitted changes"
                   aria-label="Check git status of all projects"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
         </div>
         <label class="action-row-filter list-filter">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="claudeFilterInput" type="search" autocomplete="off" placeholder="Filter projects" aria-label="Filter projects">
-          <button id="favFilterBtn" type="button" class="icon-button fav-filter-btn"
+          <button id="favFilterBtn" data-track="fav-filter" type="button" class="icon-button fav-filter-btn"
                   aria-pressed="false" aria-label="Show only favorites"
                   title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
         </label>
@@ -773,12 +773,12 @@
         <span id="appsHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
-        <button type="button" class="home-toggle hit-target settings-open-btn"
+        <button type="button" class="home-toggle hit-target settings-open-btn" data-track="settings-open"
                 title="Settings" aria-label="Settings">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
@@ -810,7 +810,7 @@
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
           <p class="empty-state-message">Nothing launched from here is running.</p>
         </div>
-        <button type="button" id="otherPortsRow" class="drill-row other-ports-row" aria-haspopup="dialog">
+        <button type="button" id="otherPortsRow" data-track="other-ports" class="drill-row other-ports-row" aria-haspopup="dialog">
           <span class="avatar" data-badge="none">
             <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
           </span>
@@ -871,7 +871,7 @@
         </div>
         <!-- The card's last row (#1437, moved from Settings › Folders): the
              same scan dialog. Hidden while the empty state offers it. -->
-        <button type="button" id="appsScanRow" class="drill-row apps-scan-row" aria-haspopup="dialog">
+        <button type="button" id="appsScanRow" data-track="apps-scan" class="drill-row apps-scan-row" aria-haspopup="dialog">
           <span class="avatar" data-badge="none">
             <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           </span>
@@ -919,12 +919,12 @@
         <span id="jobsHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
-        <button type="button" class="home-toggle hit-target settings-open-btn"
+        <button type="button" class="home-toggle hit-target settings-open-btn" data-track="settings-open"
                 title="Settings" aria-label="Settings">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
@@ -935,7 +935,7 @@
            visit to the tab. -->
       <section id="jobsNextUpCard" class="card jobs-next-card" data-state="loading" aria-labelledby="jobsNextUpTitle">
         <h3 id="jobsNextUpTitle" class="card-title jobs-next-title">
-          <button type="button" id="jobsAgendaOpen" class="jobs-next-head" aria-haspopup="dialog"
+          <button type="button" id="jobsAgendaOpen" data-track="jobs-agenda" class="jobs-next-head" aria-haspopup="dialog"
                   aria-label="Next up, open the 7-day schedule">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
             <span class="jobs-next-head-text">Next up</span>
@@ -966,10 +966,10 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
             <input id="jobsSearchInput" type="search" autocomplete="off"
                    placeholder="Search jobs and runs" aria-label="Search jobs and run output">
-            <button id="jobsFilters" type="button" class="icon-button jobs-filters"
+            <button id="jobsFilters" data-track="jobs-filters" type="button" class="icon-button jobs-filters"
                     aria-haspopup="dialog" aria-controls="jobsSortSheet"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg></button>
           </label>
-          <button id="jobsAddBtn" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
+          <button id="jobsAddBtn" data-track="jobs-add" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
         </div>
         <ul id="jobsList" class="card-list action-rows" aria-label="Jobs"></ul>
         <div id="jobsFilterEmpty" class="empty-state" hidden>
@@ -1001,12 +1001,12 @@
         <span id="lifeHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
-        <button type="button" class="home-toggle hit-target settings-open-btn"
+        <button type="button" class="home-toggle hit-target settings-open-btn" data-track="settings-open"
                 title="Settings" aria-label="Settings">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
@@ -1063,9 +1063,9 @@
         <section id="lifeOsConvoGroup" class="lifeos-convo-group" aria-labelledby="lifeOsConvoHead" hidden>
           <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
           <nav id="lifeOsConvoSort" class="range-tabs lifeos-convo-sort" aria-label="Sort conversations">
-            <button type="button" class="range-tab" data-sort="relevance" aria-pressed="false">Relevance</button>
-            <button type="button" class="range-tab" data-sort="interaction" aria-pressed="false">Recent</button>
-            <button type="button" class="range-tab" data-sort="created" aria-pressed="false">Created</button>
+            <button type="button" class="range-tab" data-sort="relevance" data-track="life-sort.relevance" aria-pressed="false">Relevance</button>
+            <button type="button" class="range-tab" data-sort="interaction" data-track="life-sort.interaction" aria-pressed="false">Recent</button>
+            <button type="button" class="range-tab" data-sort="created" data-track="life-sort.created" aria-pressed="false">Created</button>
           </nav>
           <div id="lifeOsConvoState" role="status" aria-live="polite" hidden></div>
           <ul id="lifeOsConvoList" class="card-list action-rows lifeos-convo-list" aria-label="Conversations"></ul>
@@ -1093,12 +1093,12 @@
         <span id="boardHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
         </button>
-        <button type="button" class="home-toggle hit-target settings-open-btn"
+        <button type="button" class="home-toggle hit-target settings-open-btn" data-track="settings-open"
                 title="Settings" aria-label="Settings">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
@@ -1109,13 +1109,13 @@
            under Code › Sessions (#1436 decision log). -->
       <div class="board-toolbar board-filter-row">
         <div class="board-repo-combo">
-          <button type="button" id="boardDispatchRepoBtn" class="board-repo-input"
+          <button type="button" id="boardDispatchRepoBtn" data-track="board-dispatch-repo" class="board-repo-input"
                   aria-haspopup="listbox" aria-expanded="false"
                   aria-controls="boardDispatchRepoList" aria-label="Project filter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span class="board-repo-label">All projects</span></button>
           <input type="hidden" id="boardDispatchRepo">
           <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
         </div>
-        <button id="boardRefresh" type="button" class="icon-button board-refresh"
+        <button id="boardRefresh" data-track="board-refresh" type="button" class="icon-button board-refresh"
                 title="Refresh GitHub issues / PRs / done-today (runs gh)"
                 aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
       </div>
@@ -1258,7 +1258,7 @@
         <span id="settingsHeadStatus" class="status"></span>
         <button type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
-        <button type="button" class="home-toggle hit-target theme-toggle-btn"
+        <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
           <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
@@ -1280,12 +1280,12 @@
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
           <span class="settings-row-label text-size-label">Text size</span>
           <nav class="range-tabs segmented" id="textSizeControl" aria-label="Text size">
-            <button type="button" class="range-tab" data-textsize="small">Small</button>
-            <button type="button" class="range-tab" data-textsize="default">Default</button>
-            <button type="button" class="range-tab" data-textsize="large">Large</button>
+            <button type="button" class="range-tab" data-textsize="small" data-track="text-size.small">Small</button>
+            <button type="button" class="range-tab" data-textsize="default" data-track="text-size.default">Default</button>
+            <button type="button" class="range-tab" data-textsize="large" data-track="text-size.large">Large</button>
           </nav>
         </div>
-        <button type="button" class="settings-row" data-sheet="usageShowsSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="usageShowsSheet" data-track="settings.usage-shows" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
           <span class="settings-row-label">Usage meter</span>
           <span class="settings-row-value" data-settings-value="usage"></span>
@@ -1295,13 +1295,13 @@
 
       <h2 class="settings-overline">Agents</h2>
       <div class="card settings-group">
-        <button type="button" class="settings-row" data-sheet="launchDefaultsSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="launchDefaultsSheet" data-track="settings.launch-defaults" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg>
           <span class="settings-row-label">Launch defaults</span>
           <span class="settings-row-value" data-settings-value="launch"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
-        <button type="button" class="settings-row" data-sheet="chiefSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="chiefSheet" data-track="settings.chief" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
           <span class="settings-row-label">Chief</span>
           <span class="settings-row-value" data-settings-value="chief"></span>
@@ -1311,19 +1311,19 @@
 
       <h2 class="settings-overline">Connections</h2>
       <div class="card settings-group">
-        <button type="button" class="settings-row" data-sheet="channelsSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="channelsSheet" data-track="settings.channels" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
           <span class="settings-row-label">Telegram</span>
           <span class="settings-row-value" data-settings-value="telegram"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
-        <button type="button" class="settings-row" data-sheet="contextFilterSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="contextFilterSheet" data-track="settings.context-filter" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
           <span class="settings-row-label">Context filter</span>
           <span class="settings-row-value" data-settings-value="context-filter"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
-        <button type="button" class="settings-row" data-sheet="tokensSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="tokensSheet" data-track="settings.tokens" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
           <span class="settings-row-label">API tokens</span>
           <span class="settings-row-value" data-settings-value="tokens"></span>
@@ -1333,19 +1333,19 @@
 
       <h2 class="settings-overline">This PC</h2>
       <div class="card settings-group">
-        <button type="button" class="settings-row" data-sheet="foldersSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="foldersSheet" data-track="settings.folders" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
           <span class="settings-row-label">Folders</span>
           <span class="settings-row-value" data-settings-value="folders"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
-        <button type="button" class="settings-row" data-sheet="passkeysSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="passkeysSheet" data-track="settings.passkeys" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
           <span class="settings-row-label">Passkeys</span>
           <span class="settings-row-value" data-settings-value="passkeys"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
-        <button type="button" class="settings-row" data-sheet="terminalSheet" aria-haspopup="dialog">
+        <button type="button" class="settings-row" data-sheet="terminalSheet" data-track="settings.terminal" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
           <span class="settings-row-label">Terminal</span>
           <span class="settings-row-value" data-settings-value="terminal"></span>
@@ -1354,7 +1354,7 @@
         <div class="settings-row settings-row--inline">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-power"></use></svg>
           <span class="settings-row-label">Start at log on</span>
-          <button type="button" id="bootAutostartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button type="button" id="bootAutostartToggle" data-track="settings.boot-autostart" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
       </div>
       <p id="bootAutostartHelp" class="field-help settings-footnote">Start at log on starts app-launcher when you sign in to Windows, from your Startup folder; no admin rights needed.</p>
