@@ -4491,17 +4491,35 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   font-weight: 600;
   color: var(--muted);
 }
-/* A queue row's repo#N (#1297): its meta, linked to the issue. */
-.board-plan-ref { color: var(--accent-text); }
-/* A row's model (#1352): quiet text beside the status chip -- muted caption,
-   no fill, so it never competes with the status. */
-.board-plan-model {
-  flex: 0 0 auto;
-  font-size: var(--font-caption);
-  font-weight: 600;
-  color: var(--muted);
-  white-space: nowrap;
+/* A lane, queue or parked row (#1578): two lines on the default action-row,
+   the title over `repo#N, Model`, the status chip pushed to the right end of
+   line 2 so the title keeps the whole first line, and (on a row that opens its
+   issue) a chevron as the one trailing item. The model word is quiet text
+   inside the meta line (#1352). */
+.board-plan-model { white-space: nowrap; }
+.board-plan-row .action-row-meta .chip { margin-left: auto; }
+.board-plan-section-note { margin: 0 0 4px; }
+/* Parked folds (#1578): its heading is the <details> summary, with the
+   section's own chevron instead of the browser marker. */
+.board-plan-parked-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--row-sm);
+  margin: 0;
+  cursor: pointer;
+  list-style: none;
 }
+.board-plan-parked-summary::-webkit-details-marker { display: none; }
+.board-plan-parked-chevron {
+  margin-left: auto;
+  display: inline-flex;
+  width: var(--row-sm);
+  justify-content: center;
+  transition: transform 0.15s;
+}
+.board-plan-parked-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.board-plan-parked[open] > .board-plan-parked-summary .board-plan-parked-chevron { transform: rotate(90deg); }
 /* What waits on you (#1502, decision 2 of #1500): plain one-line rows under
    an attention heading, no bar or stripe; a chevron says a row opens the
    answer sheet. "N more" unfolds the rest in place. */

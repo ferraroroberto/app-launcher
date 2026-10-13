@@ -348,7 +348,7 @@ def test_board_renders_columns_counts_and_cards(
     expect(waiting.locator("li.board-plan-waiting")).to_contain_text("Remember the last tab?")
     expect(waiting.locator("li.board-plan-waiting")).to_contain_text("app-launcher#1131")
     groups = plan_body.locator(".board-plan-heading")
-    expect(groups).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    expect(groups).to_have_text(["Waiting on you", "Lanes (1)", "Queue (2)"])
     lane = plan_body.locator(".board-plan-group").nth(1).locator("li.board-plan-row")
     expect(lane).to_have_count(1)
     expect(lane).to_contain_text("app-launcher")
@@ -357,14 +357,12 @@ def test_board_renders_columns_counts_and_cards(
     expect(lane.locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")
     queue = plan_body.locator(".board-plan-group").nth(2).locator("li.board-plan-row")
     expect(queue).to_have_count(2)
-    # Title first (#1297): the repo and number follow as secondary text, a
-    # link to the issue.
+    # Title first (#1297): the repo and number follow on line 2 (#1578); the
+    # row itself opens the issue, so no inline link sits inside it.
     first_title = queue.nth(0).locator(".action-row-main > *").first
     expect(first_title).to_have_class(re.compile(r"\baction-row-title\b"))
     expect(first_title).to_have_text("Chat by default on desktop")
-    first_ref = queue.nth(0).locator(".action-row-meta-text a.board-plan-ref")
-    expect(first_ref).to_have_text("app-launcher#1273")
-    expect(first_ref).to_have_attribute("href", "https://github.com/octo/app-launcher/issues/1273")
+    expect(queue.nth(0).locator("a")).to_have_count(0)
     expect(queue.nth(0).locator(".action-row-meta-text")).to_have_text("app-launcher#1273")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_text("gate")
     expect(queue.nth(0).locator(".board-plan-chip")).to_have_attribute("data-tone", "accent")

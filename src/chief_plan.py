@@ -15,11 +15,11 @@ additive fields ``id``, ``repo``, ``question``, ``detail``, ``recommendation``,
 never failing the item, and an old text-only item reads as a free-text
 question. A ``ref`` shaped ``repo#N`` (or ``#N`` beside a ``repo``) gains a
 ``ref_url`` on the configured GitHub owner; any other ref stays plain text.
-Queue rows gain a ``ref_url`` the same way, for the card's title-first rows
-(#1297), where the repo and number are the secondary, linked text.
+Queue rows gain a ``ref_url`` the same way, and lanes from their ``item``
+(#1578): the card's rows open that issue on a tap (#1297, #1578).
 
 Lane and queue rows may carry an optional ``model`` (``opus`` | ``sonnet``,
-#1352). It passes through unvalidated for the card's quiet chip; anything but
+#1352). It passes through unvalidated for the card's quiet text; anything but
 a string reads as blank.
 """
 
@@ -148,10 +148,13 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
         return {"state": "empty"}
     for row in queue:
         row["ref_url"] = _ref_url(row["ref"], row["repo"], github_owner)
+    lanes = _rows(data.get("lanes"), _LANE_FIELDS)
+    for lane in lanes:
+        lane["ref_url"] = _ref_url(lane["item"], lane["repo"], github_owner)
     return {
         "state": "ok",
         "updated_at": _text(data.get("updated_at")),
-        "lanes": _rows(data.get("lanes"), _LANE_FIELDS),
+        "lanes": lanes,
         "queue": queue,
         "waiting_on_roberto": _waiting(data.get("waiting_on_roberto"), github_owner),
     }
