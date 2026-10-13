@@ -1522,6 +1522,65 @@ class TestChiefManagedMarking:
         assert resp.status_code == 200
         assert resp.json()["session"]["session_id"] == "spawned-1"
 
+    # #1579: a chief-dispatched lane is named after its issue, not after the
+    # launch command the first-prompt capture would otherwise read.
+
+    def _dispatch(self, webapp_client, monkeypatch, *, chief: bool, cached,
+                  body_extra=None):
+        from src import github_client
+
+        client, _, overrides = webapp_client
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir(exist_ok=True)
+        monkeypatch.setattr(
+            github_client, "snapshot", lambda: {"issues": cached}
+        )
+        self._set_live_sessions(overrides, [
+            {"session_id": "chief-1", "kind": "pty", "alive": True,
+             "label": "chief"},
+        ] if chief else [])
+        resp = client.post(
+            "/api/board/issues/start",
+            json={"repo": "myrepo", "number": 42, "mode": "start",
+                  **(body_extra or {})},
+        )
+        assert resp.status_code == 200
+        return overrides["session"].rename
+
+    _CACHED = [
+        {"repo": "other", "number": 42, "title": "Wrong repo"},
+        {"repo": "MyRepo", "number": 42, "title": "Stop: vendored recipe"},
+    ]
+
+    def test_chief_dispatch_is_named_repo_number_and_cached_title(
+        self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo,
+        _fake_run, _mirror_asked, monkeypatch,
+    ):
+        rename = self._dispatch(
+            webapp_client, monkeypatch, chief=True, cached=self._CACHED)
+        rename.assert_called_once_with(
+            8446, "spawned-1", "myrepo#42 Stop: vendored recipe")
+
+    def test_chief_dispatch_without_a_cached_title_falls_back_to_repo_number(
+        self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo,
+        _fake_run, _mirror_asked, monkeypatch,
+    ):
+        rename = self._dispatch(
+            webapp_client, monkeypatch, chief=True, cached=[])
+        rename.assert_called_once_with(8446, "spawned-1", "myrepo#42")
+
+    def test_manual_start_keeps_todays_naming(
+        self, webapp_client, _bypass_gate, _spawn, _fleet_config_repo,
+        _fake_run, _mirror_asked, monkeypatch,
+    ):
+        # No chief alive: no title -> no rename at all; a title -> the title.
+        rename = self._dispatch(
+            webapp_client, monkeypatch, chief=False, cached=self._CACHED)
+        rename.assert_not_called()
+        rename = self._dispatch(
+            webapp_client, monkeypatch, chief=False, cached=self._CACHED,
+            body_extra={"title": "Card title"})
+        rename.assert_called_once_with(8446, "spawned-1", "Card title")
+
 
 # -------------------------------------------------------- exchange endpoint
 

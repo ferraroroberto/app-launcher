@@ -429,6 +429,27 @@ def _opens_pc_window(chief_dispatch: bool, body: Dict[str, Any]) -> bool:
     return not chief_dispatch or bool(body.get("desktop")) or bool(body.get("in_page"))
 
 
+def _dispatch_session_name(repo: str, number: int, title: str) -> str:
+    """``<repo>#<N> <issue title>`` for a chief-dispatched session (#1579).
+
+    ``title`` is the request's own when it carries one, else the Board's
+    cached GitHub issue (a pure memory read). Neither known -> ``<repo>#<N>``
+    alone, never a guess. The session-host caps a manual title at its own
+    length limit, after the ``<repo>#<N>`` prefix that identifies the work.
+    """
+    if not title:
+        title = next(
+            (
+                str(row.get("title") or "").strip()
+                for row in github_client.snapshot().get("issues") or []
+                if row.get("number") == number
+                and str(row.get("repo") or "").lower() == repo.lower()
+            ),
+            "",
+        )
+    return f"{repo}#{number} {title}".strip()
+
+
 @router.post("/api/board/issues/start")
 async def start_issue(request: Request) -> Dict[str, Any]:
     """One-tap ▶ Start / ⚡ YOLO on a backlog card (Tailscale + passkey, #301).
@@ -527,10 +548,16 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     # the PTY (the racy agent-native injection was removed in #555). Agents
     # with a verified spawn-time --name flag also receive the same safe title
     # above, so their native resume picker is synchronized from birth (#556).
-    if sid and title:
+    # A chief dispatch types only the launch command, so the first-prompt
+    # capture (#266) would name the lane after that command and its brief path
+    # (#1579). It is named `<repo>#<N> <issue title>` instead, through the same
+    # rename; the host keeps `manual_title` apart from the captured prompt
+    # title, so the name survives the capture. Manual starts keep `title`.
+    name = _dispatch_session_name(entry.name, number, title) if chief_dispatch else title
+    if sid and name:
         try:
             await asyncio.to_thread(
-                session_client.rename, cfg.session_host_port, sid, title
+                session_client.rename, cfg.session_host_port, sid, name
             )
         except session_client.SessionHostError as exc:
             logger.warning(
