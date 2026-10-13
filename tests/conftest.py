@@ -530,6 +530,9 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(life_os_files_router, "audit", audit_mock)
     monkeypatch.setattr(board_router, "audit", audit_mock)
     monkeypatch.setattr(board_chief_router, "audit", audit_mock)
+    # The Screen view's connect/disconnect lines (#1520).
+    from app.webapp.routers import desktop_screen as desktop_screen_router
+    monkeypatch.setattr(desktop_screen_router, "audit", audit_mock)
 
     # WebAuthnGate doesn't touch disk until configured (rp_id + origin set)
     # so default tests are safe. We still stub it for the few endpoints that

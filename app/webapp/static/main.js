@@ -23,6 +23,7 @@ import { fetchJobs, wireJobs } from './jobs.js';
 import { fetchSkills, openConvoByLink, wireLifeOs } from './life-os.js';
 import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
 import { wireImageLightbox } from './lightbox.js';
+import { openScreenWindow, wireScreenView } from './screen-view.js';
 import { wireTokens } from './tokens.js';
 import { wireSettingsSheets } from './settings-sheets.js';
 import { openTerminal, wireTerminal } from './terminal.js';
@@ -207,7 +208,12 @@ async function fetchConfigForBoot() {
   }
 }
 
+// The Screen view's pop-out window (#1520) opens on ?screen=1. Read once, at
+// the first boot: a login in between re-runs boot() after the param is gone.
+let screenWindow = null;
+
 async function boot() {
+  if (screenWindow === null) screenWindow = consumeUrlParam('screen') !== null;
   const fromUrl = consumeUrlParam('token');
   if (fromUrl) writeToken(fromUrl);
   // A launcher-spawned PC mirror window on the ts.net URL carries a
@@ -236,6 +242,15 @@ async function boot() {
   const safe = function (fn) { return fn().catch(function (exc) {
     console.warn('boot: non-critical fetch failed', exc);
   }); };
+
+  // The pop-out is the viewer alone: it needs the passkey gate's state
+  // (reachability + whether a passkey is set up) and nothing else, so none of
+  // the panel fetches or polls below start in it.
+  if (screenWindow) {
+    await Promise.all([safe(fetchStatus), safe(fetchWebauthnStatus)]);
+    openScreenWindow();
+    return;
+  }
 
   // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
   // into the same session; only the former set state.isMirrorWindow above.
@@ -381,6 +396,7 @@ wireJobs();
 wireLifeOs();
 wireBoard();
 wireImageLightbox();
+wireScreenView();
 wireTerminal();
 wireChatPane();
 wireQuoteCopy();

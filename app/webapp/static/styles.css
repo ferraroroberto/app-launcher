@@ -5590,3 +5590,95 @@ span.chief-answer-ref { color: var(--muted); }
   content: "· " attr(data-note);
   margin-left: 0.3em;
 }
+
+/* The PC load sheet's Screen row (#1520): a link row that acts on tap, on
+   the sheet's own inset, divided from the readings above like a row. */
+.detail-card .cpu-sheet-screen {
+  padding-inline: 0;
+  border-top: 1px solid var(--line-muted);
+}
+
+/* The Screen view (#1520): the PC's desktop, full screen. A bar on the card
+   surface (title, the display picker when there is more than one, the
+   modal's x) over a stage the frame fills, letterboxed on the canvas. The
+   page is zoom-locked, so pinch and pan are the view's own (screen-view.js):
+   the stage takes every touch, and the frame moves by transform alone. */
+.screen-view {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+.screen-view[open] { display: flex; flex-direction: column; }
+.screen-view::backdrop { background: var(--bg); }
+.screen-view-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--row-md);
+  padding: env(safe-area-inset-top, 0px) 14px 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.screen-view-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--font-heading-lg);
+}
+.screen-view-title .icon { width: var(--icon-title); height: var(--icon-title); color: var(--muted); }
+.screen-picker { flex: 1 1 auto; min-width: 0; margin: 0; }
+.screen-picker[hidden] { display: none; }
+.screen-view-bar .detail-close { margin-left: auto; }
+.screen-view-bar .detail-close .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.screen-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.screen-image[hidden] { display: none; }
+/* The state block floats centred over the stage as a card, so it reads over
+   the last frame as well as over an empty canvas. */
+.screen-state {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100% - 2 * var(--gap)));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.screen-state[hidden] { display: none; }
+.screen-state.async-stale {
+  top: var(--gap);
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  margin: 0;
+  text-align: center;
+}
