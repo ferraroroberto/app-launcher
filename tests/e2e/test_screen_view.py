@@ -9,6 +9,11 @@ pinch zooms locally, and the x closes it (the pop-out closes its window).
 Nothing here touches the real screen: ``/api/screen/monitors`` and the
 ``/api/screen/ws`` socket are context-routed (so the pop-out page gets them
 too) before navigation, and the frame is a tiny invented JPEG.
+
+Control (#1521): in Control mode a tap, double-tap, long-press and drag send
+the input messages the stub records, with the tapped spot as 0-1 in the
+frame; View mode sends nothing; the keyboard types text and sticky-modifier
+combos. No input reaches a PC: the stub socket is the only receiver.
 """
 from __future__ import annotations
 
@@ -43,7 +48,16 @@ def _frame() -> bytes:
 
 
 def _stub_screen(context: BrowserContext, on_connect=None) -> Dict[str, List]:
-    seen: Dict[str, List] = {"urls": [], "acks": []}
+    """Route the monitor list and the socket; ``seen`` collects the socket
+    URLs, the frame acks, and every other message the view sends (the
+    input messages, #1521), parsed."""
+    seen: Dict[str, List] = {"urls": [], "acks": [], "inputs": []}
+
+    def on_message(msg) -> None:
+        if msg == "ack":
+            seen["acks"].append(msg)
+        else:
+            seen["inputs"].append(json.loads(msg))
     context.route(
         re.compile(r".*/api/screen/monitors$"),
         lambda route: route.fulfill(
@@ -53,7 +67,7 @@ def _stub_screen(context: BrowserContext, on_connect=None) -> Dict[str, List]:
 
     def handler(ws: WebSocketRoute) -> None:
         seen["urls"].append(ws.url)
-        ws.on_message(lambda msg: seen["acks"].append(msg) if msg == "ack" else None)
+        ws.on_message(on_message)
         if on_connect:
             on_connect(ws)
         else:
@@ -173,3 +187,182 @@ def test_a_locked_screen_and_a_refusal_each_say_so(
     retry.click()
     wait_until(view_page, lambda: len(seen["urls"]) == 2, "the retry's reconnect")
     expect(state).to_contain_text("locked or asleep")
+
+
+# ------------------------------------------------------------ control (#1521)
+#
+# Taps are synthetic pointer events dispatched at a point on the drawn
+# picture (the swipe rows' approach, #1503): Playwright's touch emulation
+# does not reach a WebKit pointer stream on every host. The point is placed
+# from the rendered stage and the image's natural size, independently of
+# the app's own mapping, and the socket stub records what the view sends.
+
+_POINT_JS = """([fx, fy]) => {
+  const s = document.getElementById('screenStage');
+  const img = document.getElementById('screenImage');
+  const r = s.getBoundingClientRect();
+  const fit = Math.min(s.clientWidth / img.naturalWidth, s.clientHeight / img.naturalHeight);
+  const w = img.naturalWidth * fit, h = img.naturalHeight * fit;
+  return { x: r.left + (s.clientWidth - w) / 2 + fx * w,
+           y: r.top + (s.clientHeight - h) / 2 + fy * h };
+}"""
+
+_POINTER_JS = """([type, x, y, id]) => {
+  document.getElementById('screenStage').dispatchEvent(new PointerEvent(type, {
+    pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: 'touch',
+    isPrimary: id === 1, button: 0 }));
+}"""
+
+
+def _point(page: Page, fx: float, fy: float) -> Dict[str, float]:
+    return page.evaluate(_POINT_JS, [fx, fy])
+
+
+def _pointer(page: Page, kind: str, pt: Dict[str, float], pointer_id: int = 1) -> None:
+    page.evaluate(_POINTER_JS, [kind, pt["x"], pt["y"], pointer_id])
+
+
+def _tap(page: Page, fx: float, fy: float) -> None:
+    pt = _point(page, fx, fy)
+    _pointer(page, "pointerdown", pt)
+    _pointer(page, "pointerup", pt)
+
+
+def _live_view(authed_page: Page, base_url: str):
+    seen = _stub_screen(authed_page.context)
+    view_page = _open_from_sheet(authed_page, base_url)
+    expect(view_page.locator("#screenImage")).to_be_visible()
+    wait_until(view_page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    return seen, view_page
+
+
+def _set_mode(page: Page, mode: str) -> None:
+    btn = page.locator(f'#screenMode .range-tab[data-mode="{mode}"]')
+    btn.click()
+    expect(btn).to_have_attribute("aria-pressed", "true")
+
+
+def _near(a: float, b: float) -> bool:
+    return abs(a - b) < 0.01
+
+
+def test_control_mode_taps_send_where_tapped_and_view_mode_sends_nothing(
+    authed_page: Page, base_url: str
+) -> None:
+    seen, page = _live_view(authed_page, base_url)
+
+    # View is the default: a tap only touches the local view, the keyboard
+    # toggle is not offered, and nothing goes to the PC.
+    expect(page.locator('#screenMode .range-tab[data-mode="view"]')).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(page.locator("#screenKeyboard")).to_be_hidden()
+    _tap(page, 0.5, 0.5)
+
+    # Control: a tap is a left click at the tapped spot, 0-1 in the frame.
+    _set_mode(page, "control")
+    expect(page.locator("#screenKeyboard")).to_be_visible()
+    _tap(page, 0.25, 0.75)
+    wait_until(page, lambda: len(seen["inputs"]) >= 1, "the click")
+    click = seen["inputs"][0]
+    assert (click["type"], click["button"]) == ("click", "left"), seen["inputs"]
+    assert _near(click["x"], 0.25) and _near(click["y"], 0.75), click
+    # Socket messages arrive in order, so the View-mode tap sent nothing.
+    assert len(seen["inputs"]) == 1, seen["inputs"]
+
+    # A second tap at once, a few px off: the double click's second click
+    # lands on the first one's spot.
+    near = _point(page, 0.25, 0.75)
+    near = {"x": near["x"] + 4, "y": near["y"] + 3}
+    _pointer(page, "pointerdown", near)
+    _pointer(page, "pointerup", near)
+    wait_until(page, lambda: len(seen["inputs"]) >= 2, "the double click")
+    assert (seen["inputs"][1]["x"], seen["inputs"][1]["y"]) == (click["x"], click["y"])
+
+    # Long-press: a right click where the finger rests.
+    held = _point(page, 0.6, 0.4)
+    _pointer(page, "pointerdown", held)
+    wait_until(page, lambda: len(seen["inputs"]) >= 3, "the long-press")
+    _pointer(page, "pointerup", held)
+    right = seen["inputs"][2]
+    assert (right["type"], right["button"]) == ("click", "right"), seen["inputs"]
+    assert _near(right["x"], 0.6) and _near(right["y"], 0.4), right
+
+    # Press and drag: down at the start, moves, up at the end.
+    a, b = _point(page, 0.2, 0.2), _point(page, 0.7, 0.5)
+    _pointer(page, "pointerdown", a)
+    _pointer(page, "pointermove", {"x": (a["x"] + b["x"]) / 2, "y": (a["y"] + b["y"]) / 2})
+    _pointer(page, "pointermove", b)
+    _pointer(page, "pointerup", b)
+    wait_until(page, lambda: seen["inputs"][-1]["type"] == "up", "the drag's up")
+    drag = seen["inputs"][3:]
+    assert drag[0]["type"] == "down" and _near(drag[0]["x"], 0.2), drag
+    assert all(m["type"] == "move" for m in drag[1:-1]) and len(drag) >= 3, drag
+    assert _near(drag[-1]["x"], 0.7) and _near(drag[-1]["y"], 0.5), drag
+
+    # Back to View: taps are local again.
+    _set_mode(page, "view")
+    expect(page.locator("#screenKeyboard")).to_be_hidden()
+    count = len(seen["inputs"])
+    _tap(page, 0.5, 0.5)
+    _set_mode(page, "control")
+    _tap(page, 0.1, 0.1)
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the next control click")
+    assert len(seen["inputs"]) == count + 1, seen["inputs"][count:]
+
+
+def test_the_keyboard_types_text_and_sticky_modifier_combos(
+    authed_page: Page, base_url: str
+) -> None:
+    seen, page = _live_view(authed_page, base_url)
+    _set_mode(page, "control")
+    toggle = page.locator("#screenKeyboard")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    keys = page.locator("#screenKeys")
+    expect(keys).to_be_visible()
+    expect(page.locator("#screenKeyInput")).to_be_focused()
+
+    # Every key in the bar stays at the 44px floor.
+    sizes = page.locator("#screenKeys .key-btn").evaluate_all(
+        "els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; })"
+    )
+    assert len(sizes) == 13
+    assert all(w >= 40 and h >= 44 for w, h in sizes), sizes
+
+    # Typed text goes out verbatim, Unicode included.
+    page.keyboard.type("ñ€ hola")
+    wait_until(
+        page,
+        lambda: "".join(m.get("text", "") for m in seen["inputs"]) == "ñ€ hola",
+        "the typed text",
+    )
+    assert {m["type"] for m in seen["inputs"]} == {"text"}
+
+    # Backspace from the phone keyboard is the Backspace key.
+    page.keyboard.press("Backspace")
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "backspace", "Backspace")
+
+    # Sticky Ctrl: held for the next key, which goes out as a shortcut, then
+    # it lets go.
+    ctrl = keys.locator('[data-mod="ctrl"]')
+    ctrl.click()
+    expect(ctrl).to_have_attribute("aria-pressed", "true")
+    page.keyboard.type("a")
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "a", "Ctrl+A")
+    assert seen["inputs"][-1] == {"type": "key", "key": "a", "mods": ["ctrl"]}
+    expect(ctrl).to_have_attribute("aria-pressed", "false")
+    ctrl.click()
+    page.keyboard.type("c")
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "c", "Ctrl+C")
+    assert seen["inputs"][-1]["mods"] == ["ctrl"]
+
+    # The bar's own keys.
+    keys.locator('[data-key="esc"]').click()
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "esc", "Esc")
+    assert seen["inputs"][-1] == {"type": "key", "key": "esc", "mods": []}
+
+    # The toggle takes the bar away again.
+    toggle.click()
+    expect(keys).to_be_hidden()
+    expect(toggle).to_have_attribute("aria-pressed", "false")
