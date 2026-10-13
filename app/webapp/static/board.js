@@ -286,6 +286,13 @@ const drawerMenu = createRowMenu({
   placement: { against: function (kebab) { return kebab.parentElement; }, offset: 2, inset: 4 },
 });
 
+// Bumped when a rename the server has confirmed is patched into the Board
+// (#1573). A Board read issued before that carries the old title, and its
+// reply can land after the patch (the poll also awaits the chief's plan), so
+// fetchBoard() drops a payload whose read predates the last bump; the next
+// poll brings the server's view.
+let boardEditSeq = 0;
+
 const DRAWER_KEYS_OFF = 'Open the terminal for keys';
 
 // What the session overlay needs to decide its modes (#982): kind picks
@@ -429,6 +436,7 @@ function buildDrawer(card) {
       label: 'Rename', ariaLabel: 'Rename this session',
       onTap: function () {
         openSessionRename(card, function (title) {
+          boardEditSeq += 1;
           card.manual_title = title;
           const current = boardCard(card.session_id);
           if (current) current.manual_title = title;
@@ -1351,6 +1359,7 @@ export async function fetchBoard() {
   // open drawer's node instead, so a poll can't wipe a reply being typed.
   if (state.tab !== 'board') return;
   if (!state.board) setAsyncState(els.boardFetchState, 'loading', { message: 'Reading the Board…' });
+  const editSeq = boardEditSeq;
   // The chief's plan rides the same poll (#1279). Its failure is the card's
   // own quiet note, never the Board's error.
   let board, plan;
@@ -1367,6 +1376,8 @@ export async function fetchBoard() {
     if (els.boardColumns) els.boardColumns.hidden = !state.board;
     throw exc;
   }
+  // Read before a rename landed: it would put the old title back (#1573).
+  if (editSeq !== boardEditSeq) return;
   setAsyncState(els.boardFetchState, 'ready');
   if (els.boardColumns) els.boardColumns.hidden = false;
   state.board = board;

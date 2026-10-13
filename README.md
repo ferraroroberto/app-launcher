@@ -575,6 +575,7 @@ app-launcher/
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── session_changes.py      # a session's Changed files, folded from its transcript (never `git diff`)
 │   ├── session_outbox.py       # files an agent sends to Chat: path/type/size guards + runtime store (#1530)
+│   ├── usage_log.py            # vendored: local view/tap log router + SQLite store (#1524)
 │   ├── resume_picker.py        # Claude Code's `/resume` picker, answered from a Chat card
 │   ├── plan_picker.py          # Claude Code's plan picker, read off the live terminal screen
 │   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it (#794, #1111)
@@ -809,6 +810,12 @@ Settings-tab toggle from using this mechanism itself.
 - The launcher only ever runs bats from the registered list (id is checked against `config/apps.json`) or `claude` in a registered project_dir — it can't be coerced into running an arbitrary path.
 - The smart-kill endpoint accepts any port in range but only acts on PIDs LISTENing on that port — a port no one is using is a no-op.
 - Local TLS is the Tailscale LE cert, issued for the ts.net name only. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert doesn't cover the public hostname.
+
+## Usage log (#1524)
+
+The app records which tabs and main controls you open, and on which device class, so a design review reads real frequency instead of asking. It is the vendored `usage-log` component (`src/usage_log.py` plus `app/webapp/static/_vendored/usage-log/`, both declared in `.fleet.toml`). Events land in `usage.sqlite3` under the app's runtime-data directory (`<runtime root>/app-launcher/`, `APP_LAUNCHER_DATA_DIR` overrides it), outside git, on this machine only; nothing is sent to any other origin.
+
+What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `session_end`), a view id (a tab name, or `settings`), a control id, a random per-visit session id, device class (phone / tablet / desktop), OS class, and a timestamp. Never message text, names, queries, form values, URLs with query strings, IP addresses or the raw user-agent; the server drops anything outside the bounded id pattern. Control ids are constants written as `data-track="…"` in `index.html`; no script builds one from element text. `GET /api/usage/summary?days=30` reads the counts back. The route sits behind the bearer token like every other `/api` route; `static/usage.js` hands the vendored client the bearer header through its `headers` option, a function so a rotated token is read on every send (without it a phone's events would 401 silently and only the PC would ever be logged); nothing wraps `window.fetch` or `navigator.sendBeacon`. Rows older than 365 days are pruned. The file needs the same backup treatment as other runtime SQLite state; losing it loses history, not function.
 
 ---
 
