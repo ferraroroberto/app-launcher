@@ -275,3 +275,57 @@ def test_large_sets_18px_body_and_survives_reload(
 
     # Last: resizes and reloads the page.
     _assert_large_at_320px_never_scrolls_or_clips(page)
+
+
+# Rendered lightness of the selected segment and of the track as the eye sees
+# it: each fill is painted on a 1px canvas (so `color-mix()` and translucent
+# tints resolve to real sRGB), the track over the card it sits on, the
+# selection over that track.
+_SEGMENT_LIGHTNESS = """
+(nav) => {
+  const ctx = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  const lum = (...fills) => {
+    ctx.clearRect(0, 0, 1, 1);
+    for (const f of fills) { ctx.fillStyle = f; ctx.fillRect(0, 0, 1, 1); }
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const bg = (el) => getComputedStyle(el).backgroundColor;
+  const card = bg(nav.closest('.card'));
+  const track = lum(card, bg(nav));
+  return {
+    theme: document.documentElement.dataset.theme,
+    track,
+    selected: lum(card, bg(nav), bg(nav.querySelector('.range-tab.active'))),
+    card: lum(card),
+  };
+}
+"""
+
+
+@pytest.mark.parametrize("scheme", ["dark", "light"])
+def test_selected_segment_is_raised_above_the_track(
+    authed_page: Page, base_url: str, scheme: str
+) -> None:
+    """#1575: the selected text-size segment reads raised, not pressed in.
+
+    With no stored theme the boot follows ``prefers-color-scheme`` (the
+    "system" path) and still stamps ``data-theme``, so the dark rule applies.
+    In dark the selection must be lighter than the track it sits in; in light
+    it stays the card surface, which is lighter too.
+    """
+    page = authed_page
+    page.emulate_media(color_scheme=scheme)
+    page.add_init_script("try { localStorage.removeItem('app-launcher.theme'); } catch (e) {}")
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_settings(page)
+
+    expect(page.locator("html")).to_have_attribute("data-theme", scheme)
+    control = page.locator("#textSizeControl")
+    expect(control.locator("[data-textsize='default']")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    got = stable_eval(control, _SEGMENT_LIGHTNESS)
+    assert got["selected"] > got["track"], got
+    if scheme == "light":
+        assert got["selected"] == got["card"], got

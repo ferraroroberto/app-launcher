@@ -7,18 +7,32 @@ a *pre-existing* wedge; it does nothing about browser **child** processes
 the missing half: after the session ends, look for helper processes that
 belong to *this* checkout and are genuinely orphaned, and tree-kill them.
 
-Two findings from #203's investigation shape the design — read them before
-changing anything here:
+Three findings shape the design — read them before changing anything here:
 
-1. **Classify before killing; an already-exited helper is not a leak.** Every
-   "orphan" inspected on the fleet host reported `GetExitCodeProcess` == 0 —
-   it had already exited cleanly. Windows keeps an exited process's object
+1. **An exit code is not an exit. Classify before killing, but do not read
+   "exited" off `GetExitCodeProcess` alone.** #203 measured every "orphan" on
+   the fleet host reporting `GetExitCodeProcess` == 0 and concluded they had
+   all exited cleanly. Windows *does* keep a genuinely-exited process's object
    (and its row in `tasklist` / `Win32_Process` / bulk `Get-Process`) alive
-   until the last handle to it closes, so a *zombie* looks exactly like a
-   live orphan to a name-based scan. It cannot be killed (`taskkill` and
-   `Stop-Process` correctly answer "no such process") and it holds no
-   sockets. A sweep that treats these as failures never goes green, so they
-   get their own verdict (`VERDICT_ZOMBIE`) and no kill attempt.
+   until the last handle to it closes, so a real *zombie* looks exactly like a
+   live orphan to a name-based scan: unkillable (`taskkill` and `Stop-Process`
+   correctly answer "no such process"), holding no sockets, and harmless.
+   That much held. What did not is the inverse inference — #236 measured 39
+   such helpers on `home-automation`'s host (`home-automation#681`) where
+   `GetExitCodeProcess` said `0` but `GetProcessTimes` reported **no exit
+   time**, Toolhelp32 reported a **live thread**, `ReadProcessMemory` on the
+   PEB **succeeded**, and the working directory was a real worktree path.
+   Those are processes **wedged inside termination**: `ExitStatus` is set, so
+   every Win32 accessor answers "gone", but a thread never finished dying and
+   the **cwd handle is still held**. They are unkillable *and* still pinning a
+   directory — the one state that makes `git worktree remove` fail as "busy",
+   and precisely the state the old `exited -> VERDICT_ZOMBIE` shortcut
+   swallowed before cwd was ever consulted. Six empty, undeletable worktrees
+   accumulated over four days while the sweep reported `zombie=39` and exited
+   green. So liveness is a **tri-state plus unknown** (`STATE_RUNNING` /
+   `STATE_EXITED` / `STATE_WEDGED` / `STATE_UNKNOWN`, see `liveness`), a wedged
+   helper gets its cwd read and its own verdict, and only a genuinely-exited
+   one is a `zombie`.
 2. **Never kill by name.** A kill needs three independent facts: the process
    is really running, its parent is dead (a *live* parent means a legitimate
    in-flight session — an agent's headed verification loop, a sibling job),
@@ -26,6 +40,15 @@ changing anything here:
    the sweep cannot establish gets its own verdict, never folded into
    "killed" or "clean" — the same rule as the fleet's shared-Chrome-profile
    and safe-restart conventions: never kill a live holder.
+3. **Reporting a wedge is all this module can do about one — the fix is
+   upstream.** Nothing can reap a process wedged mid-exit, so a sweep that
+   *sees* one still cannot free the directory it pins. The actual remedy is to
+   stop helpers rooting in the checkout at all: start the Playwright driver
+   from a neutral cwd (`tests/e2e/conftest.py`'s `_neutral_driver_cwd`), and a
+   wedged helper then pins `%TEMP%` instead of a worktree. For a pin already on
+   disk, the cwd handle can be closed remotely
+   (`NtDuplicateObject(..., DUPLICATE_CLOSE_SOURCE)`) — see
+   `docs/playwright-ui-testing.md`; rebooting the host is *not* the remedy.
 
 Working directory is what attributes a helper back to the checkout that
 spawned it: helpers inherit the pytest process's cwd, so a run inside
@@ -68,12 +91,37 @@ HELPER_IMAGE_NAMES: frozenset[str] = frozenset(
     }
 )
 
+#: Liveness of a helper process. Deliberately four states, not a bool: the
+#: whole point of #236 is that "Win32 reports an exit code" and "the process
+#: is gone" are different claims, and folding them lost the only state that
+#: actually pins a directory.
+STATE_RUNNING = "running"
+"""Still executing: `GetExitCodeProcess` returns `STILL_ACTIVE`."""
+STATE_EXITED = "exited"
+"""Really gone: an exit code *and* a recorded exit time. A harmless zombie object."""
+STATE_WEDGED = "wedged"
+"""Exit code set, no exit time — dying but not dead. Unkillable, still holds its cwd."""
+STATE_UNKNOWN = "unknown"
+"""Could not be established (no handle, unreadable times). Never assume either way."""
+
 VERDICT_KILLED = "killed"
 VERDICT_KILL_FAILED = "kill-failed"
+VERDICT_WOULD_KILL = "would-kill"
+"""Dry-run twin of `VERDICT_KILLED` — nominated for the kill, never attempted."""
 VERDICT_ZOMBIE = "zombie"
+VERDICT_WEDGED_PINNING = "wedged:pins-scope"
+"""Wedged **and** rooted in this run's scope — the leak that blocks worktree removal."""
+VERDICT_WEDGED_ELSEWHERE = "wedged:out-of-scope"
+VERDICT_WEDGED_CWD_UNKNOWN = "wedged:cwd-unknown"
+VERDICT_STATE_UNKNOWN = "skipped:state-unknown"
 VERDICT_PARENT_ALIVE = "skipped:parent-alive"
 VERDICT_OUT_OF_SCOPE = "skipped:out-of-scope"
 VERDICT_CWD_UNKNOWN = "skipped:cwd-unknown"
+
+#: Every verdict meaning "wedged inside termination", whatever its scope.
+WEDGED_VERDICTS: frozenset[str] = frozenset(
+    {VERDICT_WEDGED_PINNING, VERDICT_WEDGED_ELSEWHERE, VERDICT_WEDGED_CWD_UNKNOWN}
+)
 
 _STILL_ACTIVE = 259
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -96,8 +144,8 @@ class HelperProcess:
     pid: int
     ppid: int
     name: str
-    exited: bool
-    """True when the OS reports a real exit code — an already-dead zombie object."""
+    state: str
+    """One of `STATE_RUNNING` / `STATE_EXITED` / `STATE_WEDGED` / `STATE_UNKNOWN`."""
     parent_alive: bool
     cwd: str | None
     """Working directory, or ``None`` when it could not be read (never assume)."""
@@ -113,7 +161,7 @@ class SweepEntry:
     def __str__(self) -> str:
         return (
             f"{self.process.name}#{self.process.pid} {self.verdict} "
-            f"cwd={self.process.cwd or '<unreadable>'}"
+            f"state={self.process.state} cwd={self.process.cwd or '<unreadable>'}"
         )
 
 
@@ -133,8 +181,23 @@ class SweepResult:
         return self.with_verdict(VERDICT_KILLED)
 
     @property
+    def would_kill(self) -> tuple[SweepEntry, ...]:
+        """Dry-run nominees: what a real run would have killed, untouched."""
+        return self.with_verdict(VERDICT_WOULD_KILL)
+
+    @property
     def zombies(self) -> tuple[SweepEntry, ...]:
         return self.with_verdict(VERDICT_ZOMBIE)
+
+    @property
+    def wedged(self) -> tuple[SweepEntry, ...]:
+        """Helpers stuck inside termination — unkillable, and still holding a cwd."""
+        return tuple(entry for entry in self.entries if entry.verdict in WEDGED_VERDICTS)
+
+    @property
+    def pinning_scope(self) -> tuple[SweepEntry, ...]:
+        """The subset that pins *this* scope: why `git worktree remove` says "busy"."""
+        return self.with_verdict(VERDICT_WEDGED_PINNING)
 
     def summary(self) -> str:
         if not self.supported:
@@ -148,7 +211,17 @@ class SweepResult:
         for entry in self.entries:
             counts[entry.verdict] = counts.get(entry.verdict, 0) + 1
         breakdown = ", ".join(f"{verdict}={n}" for verdict, n in sorted(counts.items()))
-        return f"[e2e] browser sweep (scope {self.scope}): {breakdown}"
+        line = f"[e2e] browser sweep (scope {self.scope}): {breakdown}"
+        if self.pinning_scope:
+            # Loud, because nothing here can fix it: a wedged helper cannot be
+            # reaped, so this scope will refuse to delete until its cwd handle
+            # is closed remotely (docs/playwright-ui-testing.md, #236).
+            line += (
+                f" -- {len(self.pinning_scope)} wedged helper(s) PIN this scope "
+                "and cannot be killed; the directory will not delete until their "
+                "cwd handle is closed (docs/playwright-ui-testing.md)"
+            )
+        return line
 
 
 def path_is_within(candidate: str | None, scope: Path) -> bool:
@@ -168,16 +241,53 @@ def path_is_within(candidate: str | None, scope: Path) -> bool:
     return resolved == scope_resolved or scope_resolved in resolved.parents
 
 
+def liveness(exit_code: int | None, exit_time: int | None) -> str:
+    """Turn the two OS probes into one honest liveness state (#236).
+
+    `GetExitCodeProcess` alone cannot tell a finished process from one wedged
+    inside termination: both report a real exit code. `GetProcessTimes`'s
+    *exit* time is the discriminator — the kernel stamps it only once the
+    process has actually finished dying, so an exit code with a zero exit time
+    is a process that is still holding its address space and its cwd handle.
+
+    *exit_time* is consulted only for an exit-code-bearing process (a running
+    one has a zero exit time too, which is why order matters). Either probe
+    coming back `None` means the fact was not established: `STATE_UNKNOWN`,
+    never a guess in either direction.
+    """
+    if exit_code is None:
+        return STATE_UNKNOWN
+    if exit_code == _STILL_ACTIVE:
+        return STATE_RUNNING
+    if exit_time is None:
+        return STATE_UNKNOWN
+    return STATE_EXITED if exit_time > 0 else STATE_WEDGED
+
+
 def classify(process: HelperProcess, scope: Path) -> str:
     """Decide what to do about one helper. Pure — the unit-tested core.
 
-    Order matters: an already-exited zombie is reported first (nothing to
-    kill, whatever its cwd says), then a live parent (a legitimate in-flight
-    session), then an unreadable cwd (unknown, so hands off), and only a
-    running + orphaned + in-scope process is nominated for the kill.
+    Order matters. An unestablished state is reported first (hands off), then
+    a genuinely-exited zombie (nothing to kill, whatever its cwd says), then a
+    wedged helper — which *is* judged on its cwd, because a wedge rooted in
+    this scope is exactly the leak that blocks the scope's deletion and the
+    old code swallowed it as a zombie (#236). Only then the live cases: a live
+    parent (a legitimate in-flight session), an unreadable cwd (unknown, so
+    hands off), and finally a running + orphaned + in-scope process, the only
+    one ever nominated for the kill.
     """
-    if process.exited:
+    if process.state == STATE_UNKNOWN:
+        return VERDICT_STATE_UNKNOWN
+    if process.state == STATE_EXITED:
         return VERDICT_ZOMBIE
+    if process.state == STATE_WEDGED:
+        # No kill is attempted either way — a wedged process is unkillable.
+        # The cwd decides how loudly it is reported, not what is done to it.
+        if process.cwd is None:
+            return VERDICT_WEDGED_CWD_UNKNOWN
+        if path_is_within(process.cwd, scope):
+            return VERDICT_WEDGED_PINNING
+        return VERDICT_WEDGED_ELSEWHERE
     if process.parent_alive:
         return VERDICT_PARENT_ALIVE
     if process.cwd is None:
@@ -264,7 +374,14 @@ def _exit_code(pid: int) -> int | None:
         _k32.CloseHandle(handle)
 
 
-def _creation_time(pid: int) -> int | None:
+def _process_times(pid: int) -> tuple[int, int] | None:
+    """`(creation, exit)` FILETIMEs as 64-bit ints, or None when unreadable.
+
+    The *exit* half is what separates a finished process from one wedged
+    inside termination: the kernel leaves it zero until the process has
+    genuinely finished dying, however clean an exit code it already reports
+    (#236). Both are returned together because they come from one call.
+    """
     handle = _open_process(_PROCESS_QUERY_LIMITED_INFORMATION, pid)
     if not handle:
         return None
@@ -282,9 +399,23 @@ def _creation_time(pid: int) -> int | None:
         )
         if not ok:
             return None
-        return (int(created.dwHighDateTime) << 32) | int(created.dwLowDateTime)
+        return (
+            (int(created.dwHighDateTime) << 32) | int(created.dwLowDateTime),
+            (int(exited.dwHighDateTime) << 32) | int(exited.dwLowDateTime),
+        )
     finally:
         _k32.CloseHandle(handle)
+
+
+def _creation_time(pid: int) -> int | None:
+    times = _process_times(pid)
+    return None if times is None else times[0]
+
+
+def _exit_time(pid: int) -> int | None:
+    """When the process finished dying, `0` if it has not. None when unreadable."""
+    times = _process_times(pid)
+    return None if times is None else times[1]
 
 
 def _parent_is_alive(pid: int, ppid: int) -> bool:
@@ -295,6 +426,10 @@ def _parent_is_alive(pid: int, ppid: int) -> bool:
     or a genuine orphan is silently skipped. Comparing creation times settles
     it; when either timestamp is unreadable, err towards *alive* (skip the
     kill) rather than killing on a guess.
+
+    A parent *wedged* inside termination (#236) reports an exit code and so
+    reads as dead here — correctly: it is no longer an in-flight session, and
+    the child it left behind is a genuine orphan.
     """
     if ppid <= 0:
         return False
@@ -408,7 +543,14 @@ def _open_snapshot() -> int:
 def enumerate_browser_helpers(
     image_names: frozenset[str] = HELPER_IMAGE_NAMES,
 ) -> list[HelperProcess]:
-    """Every live-or-zombie browser helper process visible on this host."""
+    """Every running, wedged or zombie browser helper process on this host.
+
+    The cwd is read for a **wedged** helper as well as a running one — that is
+    the #236 fix. A wedged process still has an intact address space, so the
+    PEB walk succeeds, and its cwd is the whole reason it matters; the old code
+    passed `cwd=None` for anything the exit code called "exited" and so could
+    not have seen the pin even in principle.
+    """
     if sys.platform != "win32":
         return []
     helpers: list[HelperProcess] = []
@@ -416,24 +558,22 @@ def enumerate_browser_helpers(
         if name not in image_names:
             continue
         code = _exit_code(pid)
-        if code is None:
-            # Cannot even open it. Report it as an unreadable already-gone
-            # entry rather than nominating an un-inspectable process to kill.
-            helpers.append(
-                HelperProcess(
-                    pid=pid, ppid=ppid, name=name, exited=True, parent_alive=False, cwd=None
-                )
-            )
-            continue
-        exited = code != _STILL_ACTIVE
+        # A running process has a zero exit time too, so only ask once the exit
+        # code says the process claims to be finished.
+        exit_time = None if code is None or code == _STILL_ACTIVE else _exit_time(pid)
+        state = liveness(code, exit_time)
         helpers.append(
             HelperProcess(
                 pid=pid,
                 ppid=ppid,
                 name=name,
-                exited=exited,
-                parent_alive=False if exited else _parent_is_alive(pid, ppid),
-                cwd=None if exited else _read_process_cwd(pid),
+                state=state,
+                parent_alive=_parent_is_alive(pid, ppid) if state == STATE_RUNNING else False,
+                cwd=(
+                    _read_process_cwd(pid)
+                    if state in (STATE_RUNNING, STATE_WEDGED)
+                    else None
+                ),
             )
         )
     return helpers
@@ -450,7 +590,13 @@ def sweep_browser_helpers(
     *scope* must be a directory only this run owns — the repo/worktree root
     the suite ran from. Pass *processes* to classify an already-captured
     table (tests, or a caller enumerating once for several scopes);
-    *dry_run* classifies without killing anything.
+    *dry_run* classifies without killing anything — a kill-nominated helper
+    is reported as `VERDICT_WOULD_KILL`, never `VERDICT_KILLED`, because
+    nothing was actually touched.
+
+    Only a `STATE_RUNNING` helper is ever killed. A wedged one is *reported*
+    against the scope it pins and never touched — no signal can reap it
+    (#236); see `SweepResult.pinning_scope`.
     """
     if sys.platform != "win32" and processes is None:
         return SweepResult(supported=False, scope=str(scope), entries=())
@@ -459,8 +605,11 @@ def sweep_browser_helpers(
     entries: list[SweepEntry] = []
     for process in table:
         verdict = classify(process, scope)
-        if verdict == VERDICT_KILLED and not dry_run and not kill_process_tree(process.pid):
-            verdict = VERDICT_KILL_FAILED
+        if verdict == VERDICT_KILLED:
+            if dry_run:
+                verdict = VERDICT_WOULD_KILL
+            elif not kill_process_tree(process.pid):
+                verdict = VERDICT_KILL_FAILED
         entries.append(SweepEntry(process=process, verdict=verdict))
     return SweepResult(supported=True, scope=str(scope), entries=tuple(entries))
 
@@ -472,6 +621,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     worktree as its cwd is what makes the removal fail as "busy".
 
         python tests/e2e/_browser_sweep.py E:/automation/my-repo-wt-203 [--dry-run]
+
+    Exit codes: `0` nothing pins *scope*; `1` the sweep could not run at all
+    (non-Windows — unknown, not clean) **or** a wedged helper pins *scope*, in
+    which case the removal this is a preflight for will fail and no kill can
+    help (#236). `--dry-run` classifies without killing.
     """
     args = list(sys.argv[1:] if argv is None else argv)
     dry_run = "--dry-run" in args
@@ -481,7 +635,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(result.summary())
     for entry in result.entries:
         print(f"  {entry}")
-    return 0 if result.supported else 1
+    return 0 if result.supported and not result.pinning_scope else 1
 
 
 if __name__ == "__main__":
