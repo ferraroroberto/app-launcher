@@ -240,6 +240,7 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
 _BOARD_TARGETS = (
     "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py "
     "tests/e2e/test_board_nav_badge.py tests/e2e/test_page_headers.py "
+    "tests/e2e/test_header_cpu_reading.py "
     "tests/e2e/test_text_size.py "
     "tests/e2e/test_wide_layout.py "
     "tests/e2e/test_wide_code_detail.py "
@@ -257,6 +258,7 @@ _BOARD_TARGETS = (
 _LIFEOS_TARGETS = (
     "tests/e2e/test_life_os_tab.py tests/e2e/test_life_tab_glance.py "
     "tests/e2e/test_resume_toggle.py tests/e2e/test_page_headers.py "
+    "tests/e2e/test_header_cpu_reading.py "
     "tests/e2e/test_text_size.py "
     "tests/e2e/test_action_row_lists.py "
     "tests/e2e/test_markdown_link_rendering.py "
