@@ -1,48 +1,29 @@
 /* Life OS conversation viewer (#1119): one captured conversation, read-only,
  * chat-style.
  *
- * Opened by a tap on a Conversations row. The capture is parsed
- * server-side (`/api/life-os/file/transcript`, src/life_os_capture.py) into
- * the entry shape the session overlay's Chat pane already renders, and it is
- * rendered by that pane's own renderer (session-transcript.js) — one
- * transcript surface, two mounts (#979). There is no composer: this is a
- * finished conversation, reopened through Resume if it is to continue.
- *
- * Above the transcript, the summary block (#1528): who the conversation was
- * with and when, its one-paragraph summary, and this view's primary action,
- * Resume (or Start new in <other> when the bar's model is another
- * provider's), with the reason on screen when neither can run. Every other
- * action lives in the bar's ⋮ menu, on the shared row-menu component (the
- * session overlay's menu, terminal-bar.js, is the model): Show/Hide tool
- * calls, Copy link, Rename, Open raw, Delete. The actions themselves stay in
- * life-os.js — this module is handed them as callbacks, so the two never
- * import each other.
+ * Opened by the conversation sheet's "Read the conversation" (#1504), as a
+ * tall sheet stacked over it: ✕, Escape and Done all come back to the sheet,
+ * which holds every action (Resume, Rename, Copy link, Open raw, Delete).
+ * The capture is parsed server-side (`/api/life-os/file/transcript`,
+ * src/life_os_capture.py) into the entry shape the session overlay's Chat
+ * pane already renders, and it is rendered by that pane's own renderer
+ * (session-transcript.js): one transcript surface, two mounts (#979). There
+ * is no composer: this is a finished conversation, reopened through Resume if
+ * it is to continue. The capture reader keeps speaker turns only, so there
+ * are no tool-call groups to show, and the old "Show tool calls" toggle is
+ * gone with the ⋮ menu that held it.
  */
 
 import { els } from './state.js';
 import { jsonApi } from './api.js';
-import { createRowMenu } from './row-menu.js';
 import { openLinksOnThePc, renderEntries } from './session-transcript.js';
-import { isDecisionCard } from './transcript-decisions.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 
-const viewerMenu = createRowMenu('terminal-menu');
-
-// null while closed, else { row, actions, seq }. `seq` drops a slow read
+// null while closed, else { row, openRaw, seq }. `seq` drops a slow read
 // that lands after the viewer moved on to another conversation.
 let viewer = null;
 let seq = 0;
-// Whether folded tool-call / system runs are hidden, as in the Chat pane.
-// A capture carries none today (the capture reader excludes them upstream),
-// so the menu row is disabled with that reason rather than being a toggle
-// that visibly does nothing.
-let groupsHidden = true;
-let hasGroups = false;
-
-function syncGroups() {
-  els.lifeOsViewerList.classList.toggle('tr-hide-groups', groupsHidden);
-}
 
 // The canonical lifecycle block — glyph, one-line reason, at most one action
 // (design.md "Async data & feedback"): never a blank pane.
@@ -73,34 +54,14 @@ function hideState() {
 function openRawAction() {
   return {
     text: 'Open raw',
-    onTap: function () { if (viewer) viewer.actions.openRaw(viewer.row); },
+    onTap: function () { if (viewer) viewer.openRaw(viewer.row); },
   };
-}
-
-// The summary block (#1528), filled on every open: the meta line, the
-// summary paragraph (hidden when the digest has none), and the primary
-// action. A Resume that cannot run stays visible and disabled, and the note
-// under it says why — a phone has no hover for a tooltip.
-function syncSummary() {
-  const about = viewer.actions.describe(viewer.row);
-  els.lifeOsViewerMeta.textContent = about.meta;
-  els.lifeOsViewerMeta.hidden = !about.meta;
-  els.lifeOsViewerDigest.textContent = about.summary;
-  els.lifeOsViewerDigest.hidden = !about.summary;
-  const action = viewer.actions.resumeAction(viewer.row);
-  const btn = els.lifeOsViewerResume;
-  btn.textContent = action.text;
-  btn.setAttribute('aria-label', action.label);
-  btn.disabled = !action.kind;
-  els.lifeOsViewerNote.textContent = action.reason;
-  els.lifeOsViewerNote.hidden = !action.reason;
 }
 
 async function load() {
   const mine = ++seq;
   const row = viewer.row;
   els.lifeOsViewerList.innerHTML = '';
-  hasGroups = false;
   showState('hourglass', 'Reading conversation…');
   let body;
   try {
@@ -123,16 +84,10 @@ async function load() {
       'This capture has no turns this view can read.', openRawAction());
     return;
   }
-  const entries = body.entries || [];
-  // A decision card (#1149 question, #1151 plan) renders beside the turns,
-  // not in a group.
-  hasGroups = entries.some(function (e) {
-    return e.kind !== 'user' && e.kind !== 'assistant' && !isDecisionCard(e);
-  });
   hideState();
   // The capture's agent heads its turns (#1475), as the session's does in Chat.
   els.lifeOsViewerList.appendChild(
-    renderEntries(entries, 'reported', null, body.agent || row.agent)
+    renderEntries(body.entries || [], 'reported', null, body.agent || row.agent)
   );
   if (body.truncated) {
     const li = document.createElement('li');
@@ -143,87 +98,43 @@ async function load() {
   els.lifeOsViewerBody.scrollTop = 0;
 }
 
-// `row` is one Conversations row; `actions` is life-os.js's callbacks:
-// describe(row) → {meta, summary}, resumeAction(row) → {kind, text, label,
-// reason}, plus resume / canLink / copyLink / rename / del / openRaw.
-export function openConvoViewer(row, actions) {
-  if (!els.lifeOsConvoViewer) return;
-  viewer = { row: row, actions: actions };
-  groupsHidden = true;
-  syncGroups();
-  viewerMenu.close();
-  els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'conversation';
-  syncSummary();
-  els.lifeOsConvoViewer.hidden = false;
+// `row` is one conversation (an index or search row); `openRaw(row)` opens
+// its capture raw in the document sheet, the fallback when it can't be read.
+export function openConvoViewer(row, openRaw) {
+  const d = els.lifeOsConvoViewer;
+  if (!d || !d.showModal) return;
+  viewer = { row: row, openRaw: openRaw };
+  els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'Conversation';
+  if (!d.open) d.showModal();
   load();
 }
 
 export function closeConvoViewer() {
-  if (!els.lifeOsConvoViewer) return;
+  const d = els.lifeOsConvoViewer;
+  if (!d) return;
+  if (d.open) d.close();
+}
+
+// Escape closes the dialog natively, so the reset lives on its close event.
+function reset() {
   seq += 1;
   viewer = null;
-  viewerMenu.close();
-  els.lifeOsConvoViewer.hidden = true;
   els.lifeOsViewerList.innerHTML = '';
   hideState();
 }
 
 export function wireConvoViewer() {
-  if (!els.lifeOsConvoViewer) return;
-  els.lifeOsViewerBack.addEventListener('click', closeConvoViewer);
+  const d = els.lifeOsConvoViewer;
+  if (!d) return;
+  els.lifeOsViewerClose.addEventListener('click', closeConvoViewer);
+  els.lifeOsViewerDone.addEventListener('click', closeConvoViewer);
+  d.addEventListener('close', reset);
+  // A tap on the backdrop lands on the <dialog> itself, outside the card.
+  d.addEventListener('click', function (ev) {
+    if (ev.target === d) closeConvoViewer();
+  });
   openLinksOnThePc(els.lifeOsViewerList);
   // Opening at the top (a finished conversation reads from its start), the
   // shared ↓ Latest pill (#1140) shows whenever the end is off screen.
   mountScrollerPill(els.lifeOsViewerLatest, els.lifeOsViewerBody);
-  els.lifeOsViewerResume.addEventListener('click', function () {
-    if (viewer) viewer.actions.resume(viewer.row);
-  });
-  const menu = viewerMenu.attach('lifeos-viewer', els.lifeOsViewerMenu, [
-    {
-      glyph: function () { return groupsHidden ? 'eye' : 'eye-off'; },
-      className: 'lifeos-viewer-groups',
-      label: function () {
-        return groupsHidden
-          ? 'Show tool calls and system entries'
-          : 'Hide tool calls and system entries';
-      },
-      text: function () { return groupsHidden ? 'Show tool calls' : 'Hide tool calls'; },
-      disabled: function () { return !hasGroups; },
-      title: 'This capture holds no tool calls',
-      onTap: function () { groupsHidden = !groupsHidden; syncGroups(); },
-    },
-    {
-      // The same ?convo= link as the row's ⋮ Copy link (#1170); the tap writes
-      // the clipboard synchronously (iOS).
-      glyph: 'link', className: 'lifeos-viewer-copy-link',
-      label: 'Copy a link to this conversation', text: 'Copy link',
-      hidden: function () { return !viewer || !viewer.actions.canLink(viewer.row); },
-      onTap: function () { if (viewer) viewer.actions.copyLink(viewer.row); },
-    },
-    {
-      glyph: 'pencil', className: 'lifeos-viewer-rename',
-      label: 'Rename this conversation', text: 'Rename',
-      // The dialog and the round trip both take a while: hold the open
-      // conversation's own callbacks rather than reading `viewer` after the
-      // await, which a Back tap meanwhile would have nulled.
-      onTap: async function () {
-        const open = viewer;
-        if (open && await open.actions.rename(open.row)) closeConvoViewer();
-      },
-    },
-    {
-      glyph: 'trash-2', className: 'lifeos-viewer-delete', danger: true,
-      label: 'Delete this conversation', text: 'Delete',
-      onTap: async function () {
-        const open = viewer;
-        if (open && await open.actions.del(open.row)) closeConvoViewer();
-      },
-    },
-    {
-      glyph: 'file-text', className: 'lifeos-viewer-open-raw',
-      label: 'Open the raw capture', text: 'Open raw',
-      onTap: function () { if (viewer) viewer.actions.openRaw(viewer.row); },
-    },
-  ]);
-  els.lifeOsViewerMenu.closest('.terminal-bar').appendChild(menu);
 }

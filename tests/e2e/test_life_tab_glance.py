@@ -120,6 +120,10 @@ def life(authed_page: Page, base_url: str):
     """The Life tab over fictional skills, profiles and a fresh recap."""
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _SKILLS)
     _json_route(authed_page, r".*/api/life-os/channels$", _CHANNELS)
+    # The skills field searches conversations from two letters (#1504): a
+    # stub, so a typed filter never reaches a real conversation index.
+    _json_route(authed_page, r".*/api/life-os/conversations/search.*",
+                {"available": True, "query": "", "skill": "", "results": []})
     _recap(authed_page)
 
     def _open() -> Page:
@@ -242,7 +246,7 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
 def test_the_skills_filter_narrows_and_persists(life) -> None:
     page = life()
     flt = page.locator("#lifeOsFilterInput")
-    expect(flt).to_have_attribute("placeholder", "Filter skills")
+    expect(flt).to_have_attribute("placeholder", "Skills and conversations")
     flt.fill("READ")
     expect(page.locator("#lifeOsList li.lifeos-item:not([hidden])")).to_have_count(1)
     expect(_row(page, "reading-list")).to_be_visible()
@@ -384,19 +388,24 @@ def test_rename_goes_through_the_dialog(life) -> None:
     assert native == [], native
 
 
-def test_every_life_overlay_backs_out_the_same_way(life) -> None:
+def test_every_life_sheet_backs_out_the_same_way(life) -> None:
+    """#1504: one back style everywhere. The conversation sheet, the reader,
+    Browse and its document are all the vendored modal, each closed by its
+    header ✕ (and a Done primary on the reading sheets), never a ‹ back."""
     page = life()
-    backs = page.locator("#lifeOsBrowserBack, #lifeOsConvosBack, #lifeOsViewerBack")
-    expect(backs).to_have_count(3)
-    for i in range(3):
-        back = backs.nth(i)
-        expect(back).to_have_class(re.compile(r"\bicon-button\b"))
-        expect(back).to_have_text("")
-        expect(back.locator("use")).to_have_attribute("href", "#i-chevron-left")
-    # The Conversations sort lives in its filter field's sheet (#1528), behind
-    # the same glyph-only icon-button shape.
-    filters = page.locator("#lifeOsConvosFilters")
-    expect(filters).to_have_class(re.compile(r"\bicon-button\b"))
+    closes = page.locator(
+        "#lifeOsConvoSheetClose, #lifeOsViewerClose, #lifeOsBrowserClose, #lifeOsDocClose")
+    expect(closes).to_have_count(4)
+    for i in range(4):
+        close = closes.nth(i)
+        expect(close).to_have_class(re.compile(r"\bdetail-close\b"))
+        expect(close.locator("use")).to_have_attribute("href", "#i-x")
+        expect(close.locator("xpath=ancestor::dialog")).to_have_class(
+            re.compile(r"\bdetail-dialog\b"))
+    expect(page.locator(".terminal-overlay[id^='lifeOs']")).to_have_count(0)
+    expect(page.locator("[id^='lifeOs'] use[href='#i-chevron-left']")).to_have_count(0)
+    for done in ("#lifeOsViewerDone", "#lifeOsBrowserDone", "#lifeOsDocDone"):
+        expect(page.locator(done)).to_have_class(re.compile(r"\bbutton-primary\b"))
 
 
 # Two Code-tab project rows as actionRow built them before the optional

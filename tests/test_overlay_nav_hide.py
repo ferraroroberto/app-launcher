@@ -77,7 +77,7 @@ def test_overlay_ids_are_found() -> None:
     ids = _overlay_ids()
     # A guard on the scan itself: if it finds nothing, the checks below pass
     # without checking anything.
-    for known in ("terminalOverlay", "lifeOsBrowser", "loginOverlay", "summaryModal"):
+    for known in ("terminalOverlay", "changesOverlay", "loginOverlay", "summaryModal"):
         assert known in ids, f"overlay scan lost #{known}: {ids}"
 
 

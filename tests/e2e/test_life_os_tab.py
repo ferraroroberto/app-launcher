@@ -37,6 +37,8 @@ from tests.e2e.test_overlay_standalone_scrollable import (
 
 pytestmark = pytest.mark.smoke
 
+_SEARCH_URL = re.compile(r".*/api/life-os/conversations/search.*")
+
 _FAKE_SKILLS = {
     "available": True,
     "life_os_dir": "E:/automation/life-os",
@@ -97,6 +99,12 @@ def _default_recap(authed_page: Page) -> None:
     tests register their own ``_mock_recap`` after this; Playwright matches
     routes last-registered-first, so that one wins."""
     _mock_recap(authed_page, available=False)
+    # The skills field searches conversations from two letters (#1504): a
+    # default stub, so no test's typing reaches a real conversation index.
+    # Tests that search register their own, which wins (last-registered).
+    authed_page.route(_SEARCH_URL, lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=_json.dumps({"available": True, "query": "", "skill": "", "results": []})))
 
 
 def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> None:
@@ -335,12 +343,13 @@ def test_life_os_tile_keeps_name_and_buttons_on_one_row(
     )
 
 
-def test_life_os_browser_full_screen_doc_toggle(
+def test_life_os_browser_sheet_opens_a_file_over_the_list(
     authed_page: Page, base_url: str
 ) -> None:
-    """📖 Browse shows a full-screen file list; tapping a file opens it
-    full-screen with a ✕ close-doc button that's hidden until then, and ✕
-    returns to the list. Hermetic — /files + /file are route-mocked."""
+    """Read opens the Browse sheet on the skill's file list; a file opens in
+    the document sheet over it, whose ✕ comes back to the list, and the
+    list's ✕ closes Browse (#1504: sheets, one back style). Hermetic —
+    /files + /file are route-mocked."""
     _mock_skills(authed_page)
     authed_page.route(
         re.compile(r".*/api/life-os/skills/journal-daily/files$"),
@@ -370,40 +379,34 @@ def test_life_os_browser_full_screen_doc_toggle(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
-    tile = authed_page.locator(
-        "#lifeOsList li.lifeos-item[data-id='journal-daily']"
-    )
-    expect(tile).to_be_visible(timeout=5_000)
     # Read lives in the row's ⋯ menu since #1128.
-    tile.locator(".action-row-kebab").click()
-    tile.locator("button[title^='Browse']").click()
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-browse-btn").click()
 
-    # File list full-screen; content layer + ✕ hidden.
-    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
-    expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(
-        timeout=5_000
-    )
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsDocClose")).to_be_hidden()
+    browser = authed_page.locator("#lifeOsBrowser")
+    doc = authed_page.locator("#lifeOsDoc")
+    expect(browser).to_be_visible()
+    expect(authed_page.locator("#lifeOsBrowserTitle")).to_have_text("journal-daily")
+    expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(timeout=5_000)
+    expect(doc).to_be_hidden()
 
-    # Open a file → content + ✕ visible.
     authed_page.locator(".lifeos-file-btn").first.click()
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
-    expect(authed_page.locator("#lifeOsFileContent")).to_contain_text(
-        "body text"
-    )
-    expect(authed_page.locator("#lifeOsDocClose")).to_be_visible()
+    expect(doc).to_be_visible()
+    expect(authed_page.locator("#lifeOsFileContent")).to_contain_text("body text")
+    expect(authed_page.locator("#lifeOsDocTitle")).to_have_text("SKILL.md")
+    # Not a conversation log: nothing to rename or delete.
+    expect(authed_page.locator("#lifeOsDocLinks")).to_be_hidden()
 
-    # ✕ closes the doc → back to the list, ✕ hidden again.
     authed_page.locator("#lifeOsDocClose").click()
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsDocClose")).to_be_hidden()
+    expect(doc).to_be_hidden()
+    expect(browser).to_be_visible()
+    authed_page.locator("#lifeOsBrowserClose").click()
+    expect(browser).to_be_hidden()
 
 
-def test_life_os_delete_conversation_log_from_doc_toolbar(
+def test_life_os_delete_conversation_log_from_the_document_sheet(
     authed_page: Page, base_url: str
 ) -> None:
-    """🗑️ never appears in the browse list; it shows in the document toolbar
+    """🗑️ never appears in the browse list; Delete log shows under the text
     only when the open file is a conversation log. Confirming DELETEs and
     returns to the list, which reloads without the log. Hermetic — /files
     reload drops the log on the 2nd call, DELETE is mocked."""
@@ -454,45 +457,42 @@ def test_life_os_delete_conversation_log_from_doc_toolbar(
     authed_page.locator("#tabLifeOS").click()
     _skill_menu_item(authed_page, "journal-daily", ".lifeos-browse-btn").click()
 
-    # No delete control anywhere in the list, and the toolbar 🗑️ stays hidden.
+    # No delete control anywhere in the list.
     expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(
         timeout=5_000
     )
-    expect(authed_page.locator(".lifeos-file-del")).to_have_count(0)
-    expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsFileList button:not(.lifeos-file-btn)")).to_have_count(0)
 
-    # Open the memory file → 🗑️ stays hidden (not a conversation log).
-    authed_page.locator(
-        ".lifeos-file-btn:has-text('observations.md')"
-    ).click()
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
+    # Open the memory file → Delete log stays hidden (not a conversation log).
+    authed_page.locator(".lifeos-file-btn:has-text('observations.md')").click()
+    expect(authed_page.locator("#lifeOsDoc")).to_be_visible()
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
     authed_page.locator("#lifeOsDocClose").click()
 
-    # Open the conversation log → 🗑️ appears in the bar.
-    authed_page.locator(
-        ".lifeos-file-btn:has-text('trial.md')"
-    ).click()
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
+    # Open the conversation log → Delete log shows under its text.
+    authed_page.locator(".lifeos-file-btn:has-text('trial.md')").click()
+    expect(authed_page.locator("#lifeOsFileContent")).to_contain_text("log body")
     expect(authed_page.locator("#lifeOsDocDelete")).to_be_visible()
 
     # Confirm delete (the vendored confirm sheet, #1439, never a native
-    # confirm()) → DELETE fires, doc closes back to the list, log gone.
+    # confirm()) → DELETE fires, the document closes back to the list, log gone.
     authed_page.locator("#lifeOsDocDelete").click()
     expect(authed_page.locator("#confirmDialog")).to_be_visible()
     expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("trial.md")
     authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: deleted["hit"], "the doc DELETE")
     assert native == [], native
-    assert deleted["hit"], "DELETE /api/life-os/file was never called"
-    expect(authed_page.locator("#lifeOsFileContent")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsDocDelete")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsDoc")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
     expect(
         authed_page.locator(".lifeos-file-btn:has-text('trial.md')")
     ).to_have_count(0)
 
 
 # ------------------------------------------------- conversations (issue #727)
+# Since #1504 they live in the skills field: a search shows them as a second
+# group under the skills, a skill's ⋮ Conversations narrows that group to the
+# skill (the chip in the field), and a row opens the conversation sheet.
 
 _RESUMABLE_SID = "e70b4cb1-9f3d-4a21-8c55-2b7d19a4f6e0"
 
@@ -536,23 +536,29 @@ def _mock_conversations(page: Page, body: dict = None) -> None:
     )
 
 
-def _open_convos_model_menu(page: Page, value: str) -> Locator:
-    """Open the Conversations model combo once ``value`` is one of its options.
+def _mock_search(page: Page, results: list, *, seen: list = None, **extra) -> None:
+    """Stub the cross-skill search; ``seen`` collects every request URL."""
+    def _fulfill(route):
+        if seen is not None:
+            seen.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"available": True, "query": "", "skill": "", "results": results, **extra}))
+    page.route(_SEARCH_URL, _fulfill)
 
-    #935: the options arrive with the boot GET /api/config, and
-    ``wireModelCombo``'s ``setOptions`` closes the menu and replaces every
-    option. The tab is interactive before that fetch resolves, so on a loaded
-    host the test could open the menu first and have it shut underneath it —
-    the option click then timed out on "element is not visible". The option
-    existing is the real readiness signal: ``setOptions`` runs once at boot, so
-    a menu opened after it stays open. ``wait_for`` rather than ``expect``'s 5s
-    keeps the suite's default action budget the option click already had.
-    """
-    option = page.locator(f"#lifeOsConvosModelMenu button[data-value='{value}']")
+
+def _pick_life_model(page: Page, value: str) -> None:
+    """Pick ``value`` in the Skills toolbar's model combo (#1503: inside its
+    menu, under the model list), the model a handoff starts in (#1504).
+
+    #935: the options arrive with the boot GET /api/config, whose
+    ``setOptions`` closes the menu and replaces every option, so the option
+    existing is the readiness signal before opening the menu."""
+    option = page.locator(f"#lifeOsModelMenu button[data-value='{value}']")
     option.wait_for(state="attached")
-    page.locator("#lifeOsConvosModelCombo .model-combo-trigger").click()
+    page.locator("#lifeOsModelBtn").click()
     expect(option).to_be_visible()
-    return option
+    option.click()
+    expect(page.locator("#lifeOsModelCombo")).to_have_attribute("data-value", value)
 
 
 _FAKE_TRANSCRIPT = {
@@ -583,30 +589,28 @@ def _mock_transcript(page: Page, body: dict = None) -> None:
     )
 
 
+def _convo_rows(page: Page) -> Locator:
+    return page.locator("#lifeOsConvoList .lifeos-convo-row")
+
+
+def _open_sheet(page: Page, index: int = 0) -> Locator:
+    """Open conversation row ``index``'s sheet: a tap on the row (#1504)."""
+    _convo_rows(page).nth(index).locator(".action-row-main").click()
+    sheet = page.locator("#lifeOsConvoSheet")
+    expect(sheet).to_be_visible(timeout=5_000)
+    return sheet
+
+
+def _close_sheet(page: Page) -> None:
+    page.locator("#lifeOsConvoSheetClose").click()
+    expect(page.locator("#lifeOsConvoSheet")).to_be_hidden()
+
+
 def _open_viewer(page: Page, index: int = 0) -> Locator:
-    """Open conversation row ``index`` in the transcript viewer: a tap on the
-    row is Read (#1528, the shared action-row)."""
-    rows = page.locator("#lifeOsConvoList .lifeos-convo-row")
-    rows.nth(index).locator(".action-row-main").click()
+    """Open row ``index``'s sheet, then its Read: the reader stacks over it."""
+    _open_sheet(page, index).locator(".lifeos-convo-read").click()
     expect(page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
     return page.locator("#lifeOsViewerList")
-
-
-def _row_menu(page: Page, index: int = 0) -> Locator:
-    """Open conversation row ``index``'s ⋮ and return its menu (#1528)."""
-    row = page.locator("#lifeOsConvoList .lifeos-convo-row").nth(index)
-    row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
-    expect(menu).to_be_visible()
-    return menu
-
-
-def _open_convo_sheet(page: Page) -> Locator:
-    """Open the Conversations sort-and-filter sheet (#1528)."""
-    page.locator("#lifeOsConvosFilters").click()
-    sheet = page.locator("#lifeOsConvoSheet")
-    expect(sheet).to_be_visible()
-    return sheet
 
 
 def _month_day(month: str, day: int) -> str:
@@ -616,37 +620,47 @@ def _month_day(month: str, day: int) -> str:
     return rf"{day} {month}(?: \d{{4}})?"
 
 
-def _open_viewer_menu(page: Page) -> Locator:
-    page.locator("#lifeOsViewerMenu").click()
-    menu = page.locator("#lifeOsConvoViewer .row-menu")
-    expect(menu).to_be_visible()
-    return menu
+def _open_life(page: Page, base_url: str) -> None:
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabLifeOS").click()
+    # Attached, not visible: a restored filter may hide the first row.
+    expect(page.locator("#lifeOsList li.lifeos-item")).to_have_count(2, timeout=5_000)
 
 
 def _open_conversations(page: Page, base_url: str) -> None:
-    """Open the Life OS tab and the per-skill Conversations view."""
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabLifeOS").click()
-    expect(page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
+    """Open the Life OS tab and journal-daily's ⋮ Conversations."""
+    _open_life(page, base_url)
     _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
-    expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    expect(page.locator("#lifeOsConvoGroup")).to_be_visible(timeout=5_000)
 
 
-def test_life_os_conversations_open_from_tile(
+def test_life_os_skill_conversations_list_under_a_scope_chip(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727: a skill's ⋮ Conversations opens its digested index. #1528: each
-    row is the shared action-row — the title, then one context line with the
-    date and the summary as plain sentences (the digest's labels gone, its
-    literal "none" dropped) — and nothing destructive shows on the row."""
+    """#1504: a skill's ⋮ Conversations empties and focuses the field, narrows
+    it to the skill with a chip, and lists that skill's index newest first in
+    the Conversations group, where the skill rows step aside. #1528's row:
+    the title, then one context line with the date and the summary as plain
+    sentences (the digest's labels gone, its literal "none" dropped); a tap
+    opens the sheet, and nothing destructive shows on the row."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
+    authed_page.add_init_script(
+        "localStorage.setItem('app-launcher.filter.skills', 'journal')")
     _open_conversations(authed_page, base_url)
 
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    field = authed_page.locator("#lifeOsFilterInput")
+    expect(field).to_have_value("")
+    expect(field).to_be_focused()
+    scope = authed_page.locator("#lifeOsConvoScope")
+    expect(scope).to_be_visible()
+    expect(scope).to_have_text("in journal-daily")
+    expect(authed_page.locator("#lifeOsList")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_be_hidden()
+
+    rows = _convo_rows(authed_page)
     expect(rows).to_have_count(2)
+    expect(authed_page.locator("#lifeOsConvoCount")).to_have_text("(2)")
     expect(rows.locator(".action-row-title")).to_have_text(
         ["booking the ferry", "an early trial run"]
     )
@@ -656,24 +670,24 @@ def test_life_os_conversations_open_from_tile(
     expect(rows.nth(1).locator(".action-row-meta")).to_have_text(
         re.compile("^" + _month_day("Jun", 1) + "$")
     )
+    # The skill's avatar leads, and a chevron says the row opens a sheet.
+    expect(rows.first.locator(".lifeos-avatar")).to_have_count(1)
+    expect(rows.first.locator(".lifeos-convo-chevron")).to_have_count(1)
+    expect(rows.locator(".action-row-kebab")).to_have_count(0)
     listing = authed_page.locator("#lifeOsConvoList")
     for label in ("Decisions", "Open loops", "Source", "none"):
         expect(listing).not_to_contain_text(label)
-    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-delete:visible")).to_have_count(0)
-    # The filter field's placeholder is the list's count.
-    expect(authed_page.locator("#lifeOsConvoQuery")).to_have_attribute(
-        "placeholder", "Search 2 conversations"
-    )
 
 
 @pytest.mark.iphone
-def test_life_os_conversation_sort_toggle(
+def test_life_os_conversation_sort_is_a_segmented_control(
     authed_page: Page, base_url: str
 ) -> None:
-    """#886: the conversations list orders by last interaction by default,
-    flips to creation-date order, and remembers the choice — all without a
-    second fetch. #1528: the order is chosen in the sort-and-filter sheet,
-    and the row's date is the active order's.
+    """#886/#1504: a skill's list orders by last interaction (Recent) by
+    default, flips to creation order (Created) on the labelled segmented
+    control, and remembers the choice on the device — all without a second
+    fetch. Relevance is a search-only order, so browsing hides it, and the
+    row's date is the active order's.
 
     The fixture is deliberately built so the two orderings disagree: the
     older-*created* "trial" capture is the more recently *touched* one, so a
@@ -702,11 +716,16 @@ def test_life_os_conversation_sort_toggle(
     )
     _open_conversations(authed_page, base_url)
 
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows = _convo_rows(authed_page)
     titles = rows.locator(".action-row-title")
     expect(rows).to_have_count(2)
-    filters = authed_page.locator("#lifeOsConvosFilters")
-    expect(filters).to_have_attribute("data-sort", "interaction")
+    sort = authed_page.locator("#lifeOsConvoSort")
+    tab = lambda mode: sort.locator(f".range-tab[data-sort='{mode}']")  # noqa: E731
+    expect(sort).to_have_attribute("data-sort", "interaction")
+    expect(tab("relevance")).to_be_hidden()
+    expect(tab("interaction")).to_have_text("Recent")
+    expect(tab("interaction")).to_have_attribute("aria-pressed", "true")
+    expect(tab("created")).to_have_text("Created")
 
     # Default: most recently interacted with first — the resumed trial run,
     # even though it was created two months before the ferry booking, and
@@ -717,33 +736,32 @@ def test_life_os_conversation_sort_toggle(
     )
 
     before = fetches["n"]
-    sheet = _open_convo_sheet(authed_page)
-    # Browsing has no rank to order by: Best match is a search-only order.
-    expect(sheet.locator(".range-tab[data-sort='relevance']")).to_be_hidden()
-    expect(sheet.locator(".range-tab[data-sort='interaction']")).to_have_attribute(
-        "aria-pressed", "true"
-    )
-    sheet.locator(".range-tab[data-sort='created']").click()
-    expect(filters).to_have_attribute("data-sort", "created")
+    tab("created").click()
+    expect(sort).to_have_attribute("data-sort", "created")
+    expect(tab("created")).to_have_attribute("aria-pressed", "true")
     expect(titles).to_have_text(["booking the ferry", "an early trial run"])
     expect(rows.nth(1).locator(".action-row-meta")).to_have_text(
         re.compile("^" + _month_day("Jun", 1))   # creation now leads the trial
     )
-    authed_page.locator("#lifeOsConvoSheetDone").click()
-    expect(sheet).to_be_hidden()
+    flush_requests(authed_page)
     assert fetches["n"] == before, "re-sorting refetched the list"
+    # Three peers on one track, each a real target, none overlapping.
+    segments = [tab("interaction"), tab("created")]
+    for segment in segments:
+        assert_min_target(segment)
+    assert_no_overlap(segments)
 
     # The choice sticks across a reload of the whole tab.
     _open_conversations(authed_page, base_url)
-    expect(filters).to_have_attribute("data-sort", "created")
+    expect(sort).to_have_attribute("data-sort", "created")
     expect(titles.first).to_have_text("booking the ferry")
 
 
 def test_life_os_conversations_empty_state_when_no_index(
     authed_page: Page, base_url: str
 ) -> None:
-    """A skill the indexer hasn't digested yet gets an honest empty state —
-    not a blank pane and not an error toast."""
+    """A skill the indexer hasn't digested yet gets an honest empty state in
+    the group — not a blank pane and not an error toast."""
     _mock_skills(authed_page)
     _mock_conversations(
         authed_page,
@@ -751,125 +769,97 @@ def test_life_os_conversations_empty_state_when_no_index(
     )
     _open_conversations(authed_page, base_url)
 
-    expect(authed_page.locator("#lifeOsConvoState")).to_be_visible()
-    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
-        "No conversation index yet"
-    )
-    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(0)
+    state = authed_page.locator("#lifeOsConvoState")
+    expect(state).to_be_visible()
+    expect(state).to_contain_text("No conversation index yet")
+    expect(state).to_have_attribute("data-state", "empty")
+    expect(_convo_rows(authed_page)).to_have_count(0)
+    expect(authed_page.locator("#toast")).to_be_hidden()
 
 
 @pytest.mark.iphone
-def test_life_os_convos_controls_are_full_targets(
+def test_life_os_conversation_controls_are_full_targets(
     authed_page: Page, base_url: str
 ) -> None:
-    """#864/#1124: the bar's model combo keeps its 36px, 12px look and is
-    still a 44px target. #1528: the filter field's scope chip and its sort
-    and filter button, and each row's ⋮, are 44px targets too, and the two
-    controls side by side in the field never share a pixel."""
+    """#1528/#1504: the field's scope chip, each conversation row and the
+    sheet's ✕, link rows and Resume are 44px targets, and the chip never
+    shares a pixel with the box it sits in."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _open_conversations(authed_page, base_url)
 
-    combo = authed_page.locator("#lifeOsConvosModelCombo .model-combo-trigger")
-    expect(combo).to_have_css("height", "36px")
-    expect(combo).to_have_css("font-size", "12px")
-    scope = authed_page.locator("#lifeOsConvosScope")
-    filters = authed_page.locator("#lifeOsConvosFilters")
-    expect(scope).to_be_visible()  # opened scoped from a skill
-    expect(scope).to_contain_text("journal-daily")
-    expect(authed_page.locator("#lifeOsConvosFilterCount")).to_have_text("1")
-    kebab = authed_page.locator("#lifeOsConvoList .action-row-kebab").first
-    for locator in (authed_page.locator("#lifeOsConvosBack"), combo, scope, filters, kebab):
-        assert_min_target(locator)
-    assert_no_overlap([scope, filters])
+    scope = authed_page.locator("#lifeOsConvoScope")
+    assert_min_target(scope)
+    assert_min_target(_convo_rows(authed_page).first.locator(".action-row-main"))
+    assert_no_overlap([authed_page.locator("#lifeOsFilterInput"), scope])
+    sheet = _open_sheet(authed_page, 0)
+    assert_min_target(authed_page.locator("#lifeOsConvoSheetClose"))
+    links = sheet.locator(".settings-row:visible")
+    expect(links).to_have_count(5)   # Read, Rename, Copy link, Open raw, Delete
+    for i in range(5):
+        assert_min_target(links.nth(i))
+    assert_min_target(authed_page.locator("#lifeOsConvoSheetResume"))
 
 
-@pytest.mark.iphone
-def test_life_os_convos_bar_centres_share_one_line(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1526: the Conversations bar's actions group stretched its children,
-    so the 36px model combo hugged the top of a 44px row while the icon
-    buttons and the title centred on it, and the chevron (drawn at 50% of the
-    wrapper, not of the trigger) rode below the label. Every control's box
-    centre must sit on the bar's centre line, and the combo wrapper (which
-    the chevron is positioned against) must share the trigger's centre."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-    expect(authed_page.locator("#lifeOsConvosModelCombo")).to_be_visible()
-
-    # One call: a poll re-render between two reads must not skew the sums.
-    centres = stable_eval(
-        authed_page.locator("#lifeOsConvos .terminal-bar"),
-        """bar => {
-            const mid = (el) => {
-              const r = el.getBoundingClientRect();
-              return r.top + r.height / 2;
-            };
-            const q = (sel) => bar.querySelector(sel);
-            return {
-              bar: mid(bar),
-              back: mid(q('#lifeOsConvosBack')),
-              title: mid(q('#lifeOsConvosTitle')),
-              trigger: mid(q('#lifeOsConvosModelCombo .model-combo-trigger')),
-              combo: mid(q('#lifeOsConvosModelCombo')),
-            };
-        }""",
-    )
-    assert centres is not None
-    for name in ("back", "title", "trigger"):
-        assert abs(centres[name] - centres["bar"]) <= 1, (name, centres)
-    assert abs(centres["combo"] - centres["trigger"]) <= 1, centres
-
-
-# The filter field's bordered box and every text size in a row, in one read:
-# the box is the nearest ancestor-or-self of the query input that draws a
-# border, so the measurement follows whatever element draws the field.
-_MEASURE_FIELD_AND_ROWS = """root => {
-  let box = root.querySelector('#lifeOsConvoQuery');
-  while (box && box !== root && getComputedStyle(box).borderLeftWidth === '0px') {
-    box = box.parentElement;
-  }
-  const field = box.getBoundingClientRect();
-  const pane = root.getBoundingClientRect();
+# Every text size in a conversation row (its avatar's monogram aside), in one
+# read, and the sheet's width against the viewport's.
+_MEASURE_ROWS = """root => {
   const sizes = new Set();
-  root.querySelectorAll('#lifeOsConvoList .lifeos-convo-row *').forEach(el => {
-    if (el.closest('.row-menu')) return;
+  root.querySelectorAll('.lifeos-convo-row *').forEach(el => {
+    if (el.closest('.avatar')) return;
     if ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) {
       sizes.add(getComputedStyle(el).fontSize);
     }
   });
-  return { left: field.left - pane.left, right: pane.right - field.right,
-           sizes: [...sizes].sort() };
+  return [...sizes].sort();
+}"""
+
+_MEASURE_SHEET = """d => {
+  const card = d.querySelector('.detail-card').getBoundingClientRect();
+  const resume = d.querySelector('#lifeOsConvoSheetResume').getBoundingClientRect();
+  return { vw: window.innerWidth, left: card.left, right: card.right,
+           cardWidth: card.width, resumeWidth: resume.width,
+           overflow: d.scrollWidth - d.clientWidth };
 }"""
 
 
 @pytest.mark.iphone
-def test_life_os_convos_field_is_symmetric_and_rows_use_two_sizes(
+def test_life_os_conversation_rows_and_sheet_fit_the_phone(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1528: the search field's left and right insets from the screen edge
-    match (the old field drew its border on the input, 36px in on the left
-    behind a free-standing glyph and 12px on the right), and a row uses two
-    type sizes only: 16px for its title and 14px for everything else."""
+    """#1528: a row uses two type sizes only, 16px for its title and 14px for
+    everything else. #1504: at 390px the conversation sheet sits inside the
+    screen with nothing to scroll sideways, and Resume runs the width of its
+    footer, in light and dark."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _open_conversations(authed_page, base_url)
-    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(2)
+    expect(_convo_rows(authed_page)).to_have_count(2)
 
-    m = stable_eval(authed_page.locator("#lifeOsConvos"), _MEASURE_FIELD_AND_ROWS)
-    assert m is not None
-    assert abs(m["left"] - m["right"]) <= 1, f"search field insets differ: {m}"
-    assert m["sizes"] == ["14px", "16px"], f"a row mixes other type sizes: {m}"
+    sizes = stable_eval(authed_page.locator("#lifeOsConvoList"), _MEASURE_ROWS)
+    assert sizes == ["14px", "16px"], f"a row mixes other type sizes: {sizes}"
+
+    sheet = _open_sheet(authed_page, 0)
+    # A long name ellipsizes: the header h2 is a flex row, where
+    # text-overflow does nothing and the title was cut mid-letter.
+    title = authed_page.locator("#lifeOsConvoSheetTitle")
+    expect(title).to_have_css("display", "block")
+    expect(title).to_have_css("text-overflow", "ellipsis")
+    for theme in ("light", "dark"):
+        authed_page.evaluate("t => document.documentElement.dataset.theme = t", theme)
+        m = sheet.evaluate(_MEASURE_SHEET)
+        assert m["left"] >= 0 and m["right"] <= m["vw"] + 0.5, (theme, m)
+        assert m["overflow"] <= 0, (theme, m)
+        assert m["resumeWidth"] >= m["cardWidth"] - 2 * 18 - 1, (theme, m)
 
 
-def test_life_os_summary_is_one_paragraph_for_both_index_shapes(
+def test_life_os_sheet_summary_is_one_paragraph_for_both_index_shapes(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1528: the reader's summary block says who and when, then the summary
-    as one unlabelled paragraph — a newer index entry's ``summary`` as written
+    """#1528, in the sheet since #1504: the meta line says the skill, when,
+    how many messages and which harness, then the summary as one unlabelled
+    paragraph — a newer index entry's ``summary`` as written
     (fleet-config#1373), an older entry's decisions and open loops as
     consecutive sentences, and nothing at all for an entry whose digest was
     "none" on both counts."""
@@ -883,98 +873,103 @@ def test_life_os_summary_is_one_paragraph_for_both_index_shapes(
     _mock_skills(authed_page)
     _mock_conversations(authed_page, dict(
         _FAKE_CONVERSATIONS, conversations=[newer] + _FAKE_CONVERSATIONS["conversations"]))
-    _mock_transcript(authed_page)
     _open_conversations(authed_page, base_url)
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows = _convo_rows(authed_page)
     expect(rows).to_have_count(3)
     expect(rows.first.locator(".action-row-meta")).to_contain_text(
         "Booked the early sailing; the return leg is still open.")
 
-    digest = authed_page.locator("#lifeOsViewerDigest")
-    summary = authed_page.locator("#lifeOsViewerSummary")
+    summary = authed_page.locator("#lifeOsConvoSheetSummary")
+    meta = authed_page.locator("#lifeOsConvoSheetMeta")
     for index, text in ((0, "Booked the early sailing; the return leg is still open."),
                         (1, "took the 07:40. confirm the return leg.")):
-        _open_viewer(authed_page, index)
-        expect(digest).to_have_text(text)
-        expect(authed_page.locator("#lifeOsViewerMeta")).to_contain_text("Claude · started")
+        sheet = _open_sheet(authed_page, index)
+        expect(summary).to_have_text(text)
+        expect(meta).to_have_text(re.compile(
+            r"^journal-daily · " + _month_day("Aug", index and 1 or 2)
+            + r" · 12 messages · from Claude$"))
         for label in ("Decisions", "Open loops", "Source"):
-            expect(summary).not_to_contain_text(label)
-        authed_page.locator("#lifeOsViewerBack").click()
-    _open_viewer(authed_page, 2)
-    expect(digest).to_be_hidden()
+            expect(sheet).not_to_contain_text(label)
+        _close_sheet(authed_page)
+    _open_sheet(authed_page, 2)
+    expect(summary).to_be_hidden()
+    expect(meta).to_contain_text("4 messages")
 
 
-def test_life_os_unresumable_row_says_so(
+def test_life_os_unresumable_conversation_says_so(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727, re-homed in the viewer (#1119): a capture with no stored session
-    id is readable but cannot be reopened. A phone has no hover, so the
-    reason is a visible note under the summary's disabled Resume (#1528) —
-    and roughly a quarter of the archive is in this state, so it must not
-    read as breakage."""
+    """#727, in the sheet since #1504: a capture with no stored session id is
+    readable but cannot be reopened. A phone has no hover, so the reason is a
+    visible note and Resume stays, disabled — and roughly a quarter of the
+    archive is in this state, so it must not read as breakage."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page)
     _open_conversations(authed_page, base_url)
 
-    resume = authed_page.locator("#lifeOsViewerResume")
-    note = authed_page.locator("#lifeOsViewerNote")
-    _open_viewer(authed_page, 1)
+    resume = authed_page.locator("#lifeOsConvoSheetResume")
+    note = authed_page.locator("#lifeOsConvoSheetNote")
+    _open_sheet(authed_page, 1)
     expect(note).to_be_visible()
     expect(note).to_contain_text("readable only")
     expect(resume).to_be_disabled()
-    authed_page.locator("#lifeOsViewerBack").click()
+    expect(authed_page.locator("#lifeOsConvoSheet .lifeos-convo-read")).to_be_visible()
+    _close_sheet(authed_page)
 
     # The resumable row is the contrast: it offers the action, and says
     # nothing about why it could not.
-    _open_viewer(authed_page, 0)
+    _open_sheet(authed_page, 0)
     expect(note).to_be_hidden()
     expect(resume).to_be_enabled()
 
 
-def test_life_os_viewer_resume_is_the_summary_primary(
+def test_life_os_sheet_has_resume_primary_and_link_rows(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1528: Resume is the reader's one primary, under the summary — on
-    screen, enabled with a matching model and labelled just "Resume" (the
-    bar's model picks the provider). It has one home there: the ⋮ menu holds
-    the rest."""
+    """#1504: the sheet's one primary is Resume, and every other action of the
+    old row menu and reader menu is a link row — Read, Rename, Copy link,
+    Open raw — with Delete alone last in the danger tone. With the
+    toolbar on the conversation's own harness there is no handoff to offer.
+    Copy link writes the ?convo= link (#1170)."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page)
     authed_page.add_init_script(_CLIPBOARD_MOCK)
     _open_conversations(authed_page, base_url)
-    _open_convos_model_menu(authed_page, "claude:opus").click()
 
-    _open_viewer(authed_page, 0)
-    resume = authed_page.locator("#lifeOsViewerResume")
-    expect(resume).to_be_visible()
-    expect(resume).to_be_enabled()
+    sheet = _open_sheet(authed_page, 0)
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
+    resume = authed_page.locator("#lifeOsConvoSheetResume")
     expect(resume).to_have_text("Resume")
     expect(resume).to_have_class(re.compile(r"\bbutton-primary\b"))
-    menu = _open_viewer_menu(authed_page)
-    expect(menu.locator(".lifeos-viewer-resume, .lifeos-viewer-handoff")).to_have_count(0)
-    # #1170: Copy link sits with the safe actions; destructive Delete stays last.
-    expect(menu.locator(".row-menu-btn").last).to_have_class(
-        re.compile(r"\blifeos-viewer-delete\b"))
-    menu.locator(".lifeos-viewer-copy-link").click()
+    expect(sheet.locator(".detail-actions button")).to_have_count(1)
+    expect(sheet.locator(".settings-row:visible .settings-row-label")).to_have_text(
+        ["Read the conversation", "Rename", "Copy link", "Open raw", "Delete"])
+    expect(sheet.locator(".lifeos-convo-handoff")).to_be_hidden()
+    delete = sheet.locator(".lifeos-convo-delete")
+    expect(delete).to_have_class(re.compile(r"\blifeos-sheet-danger\b"))
+    # Delete is alone in the last box, after every other row.
+    expect(delete.locator("xpath=..")).to_have_class(re.compile(r"\blifeos-sheet-links\b"))
+    expect(delete.locator("xpath=../button")).to_have_count(1)
+
+    sheet.locator(".lifeos-convo-copy-link").click()
     authed_page.wait_for_function(
         "() => Array.isArray(window.__copied) && window.__copied.length > 0")
     assert authed_page.evaluate("() => window.__copied[0]") == (
         f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
 
 
-def test_life_os_convo_link_opens_that_conversation(
+def test_life_os_convo_link_opens_the_sheet_and_the_reader(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1170: a copied ``?convo=<skill>/<file>`` link lands on the Life OS tab
-    with that capture open in the viewer, and strips the param. A link that no
-    longer resolves says so in the Conversations overlay — never a blank
-    pane.
+    """#1170, through the sheet since #1504: a copied
+    ``?convo=<skill>/<file>`` link lands on the Life OS tab with that capture
+    in the reader, stacked over its conversation sheet, and strips the param.
+    A link that no longer resolves says so in the Conversations group — never
+    a blank pane.
 
     #1222: the link must not wait on the rest of boot. The git-status fan-out
     that ran ahead of it took 1–7 s on an idle box and timed the link out
-    under load, so it is held pending here for the whole test — the viewer
+    under load, so it is held pending here for the whole test — the reader
     has to open with it still in flight."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
@@ -984,102 +979,37 @@ def test_life_os_convo_link_opens_that_conversation(
     authed_page.goto(
         f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md",
         wait_until="domcontentloaded")
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=10_000)
+    viewer = authed_page.locator("#lifeOsConvoViewer")
+    expect(viewer).to_be_visible(timeout=10_000)
     expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
     expect(authed_page.locator("#tabLifeOS")).to_have_attribute("aria-selected", "true")
     assert "convo=" not in authed_page.url
+    # ✕ comes back to the sheet the link opened under it.
+    authed_page.locator("#lifeOsViewerClose").click()
+    expect(viewer).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
+    expect(authed_page.locator("#lifeOsConvoSheet")).to_be_visible()
 
     authed_page.goto(f"{base_url}/?convo=journal-daily/2026-01-01-gone.md",
                      wait_until="domcontentloaded")
-    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
-        "no longer matches", timeout=10_000)
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    state = authed_page.locator("#lifeOsConvoState")
+    expect(state).to_contain_text("no longer matches", timeout=10_000)
+    expect(viewer).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoSheet")).to_be_hidden()
 
     authed_page.goto(f"{base_url}/?convo=no-such-skill/x.md",
                      wait_until="domcontentloaded")
-    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
-        "no-such-skill", timeout=10_000)
+    expect(state).to_contain_text("no-such-skill", timeout=10_000)
 
 
-@pytest.mark.iphone
-def test_life_os_row_menu_holds_every_other_action(
+def test_life_os_sheet_delete_confirms_then_returns_to_the_refreshed_list(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1528, the action-row contract: a row's tap reads it and its ⋮ holds
-    the rest — Resume, Rename, Copy link, then Delete last after the divider
-    in the danger colour. Resume follows the bar's model on every open: the
-    explicit new-conversation handoff for another provider, and a disabled
-    Resume with its reason as the menu's first line when neither can run.
-    From the menu, Resume posts exactly what the viewer's Resume posts."""
-    _mock_skills(authed_page)
-    _mock_conversations(authed_page)
-    _mock_transcript(authed_page)
-    authed_page.add_init_script(_CLIPBOARD_MOCK)
-    launches = []
-
-    def _launch(route):
-        launches.append(_json.loads(route.request.post_data or ""))
-        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
-            {"session": {"session_id": "synthetic", "kind": "remote"}}))
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"),
-        _launch,
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    # Detached, so the resume lands in a console, not the terminal overlay.
-    life_launch_switch(authed_page, "#lifeOsDetached")
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
-    _open_convos_model_menu(authed_page, "claude:opus").click()
-
-    menu = _row_menu(authed_page, 0)
-    items = menu.locator(".row-menu-btn")
-    expect(items).to_have_text(["Resume", "Rename", "Copy link", "Delete"])
-    expect(items.last).to_have_class(re.compile(r"\brow-menu-danger\b"))
-    expect(menu.locator(".row-menu-divider")).to_have_count(1)
-    expect(menu.locator(".lifeos-convo-resume")).to_be_enabled()
-    menu.locator(".lifeos-convo-copy-link").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0")
-    assert authed_page.evaluate("() => window.__copied[0]") == (
-        f"{base_url}/?convo=journal-daily/2026-08-01-0900-ferry-booking.md")
-
-    # Another provider: the same item becomes the explicit handoff.
-    _open_convos_model_menu(authed_page, "codex:gpt-6-astra").click()
-    handoff = _row_menu(authed_page, 0).locator(".lifeos-convo-resume")
-    expect(handoff).to_have_text("Start new in Codex")
-    expect(handoff).to_be_enabled()
-    authed_page.keyboard.press("Escape")
-
-    # An unresumable row says why, first thing in its menu.
-    other = _row_menu(authed_page, 1)
-    expect(other.locator(".row-menu-head")).to_contain_text("readable only")
-    expect(other.locator(".lifeos-convo-resume")).to_be_disabled()
-    authed_page.keyboard.press("Escape")
-
-    # Back on a matching model, the menu's Resume posts the viewer's payload.
-    _open_convos_model_menu(authed_page, "claude:opus").click()
-    _row_menu(authed_page, 0).locator(".lifeos-convo-resume").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_hidden()
-    # A resume keeps the conversation's own model (#1503): `keep_model`.
-    assert launches == [{
-        "mode": "remote", "model": "claude:opus", "action": "resume",
-        "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
-                    for key in ("path", "revision", "agent", "sid")},
-        "keep_model": True,
-    }], launches
-
-
-def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1410: the row's ⋮ Delete (#1528) asks first (naming the conversation
-    and what goes), Cancel leaves everything alone, a refusal keeps the row
-    and says why, and confirming sends one DELETE for that capture, closes
-    the viewer and lands back on the refreshed list without the row, with a
-    toast."""
+    """#1410, from the sheet since #1504: Delete asks first (naming the
+    conversation and what goes), Cancel leaves everything alone, a refusal
+    keeps the sheet and says why, and confirming sends one DELETE for that
+    capture, closes the sheet and the reader and lands back on the refreshed
+    list without the row, with a toast."""
     _mock_skills(authed_page)
     _mock_transcript(authed_page)
     remaining = list(_FAKE_CONVERSATIONS["conversations"])
@@ -1105,38 +1035,42 @@ def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
                       lambda route: _delete(route) if route.request.method == "DELETE"
                       else route.fallback())
     _open_conversations(authed_page, base_url)
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows = _convo_rows(authed_page)
     expect(rows).to_have_count(2)
+    sheet = _open_sheet(authed_page, 0)
+    delete = sheet.locator(".lifeos-convo-delete")
 
-    def _delete_first() -> None:
-        _row_menu(authed_page, 0).locator(".lifeos-convo-delete").click()
-
-    # Cancel: the confirm sheet (#1439, never a native confirm()) names the
-    # conversation and what goes; its ✕ sends nothing.
+    # Cancel: the confirm sheet (#1439, never a native confirm()) stacks over
+    # this one, names the conversation and what goes; its ✕ sends nothing.
     native: list = []
     authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     confirm = authed_page.locator("#confirmDialog")
-    _delete_first()
+    delete.click()
     expect(confirm).to_be_visible()
     expect(authed_page.locator("#confirmDialogTitle")).to_contain_text("booking the ferry")
     expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("transcript")
     expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("cannot be undone")
     authed_page.locator("#confirmDialogClose").click()
     expect(confirm).to_be_hidden()
+    expect(sheet).to_be_visible()
     flush_requests(authed_page)
     assert deletes == []
-    expect(rows).to_have_count(2)
 
-    # A refusal (the conversation is open in a running session): row stays.
-    _delete_first()
+    # A refusal (the conversation is open in a running session): all stays.
+    delete.click()
     authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(deletes) == 1, "the refused DELETE")
     expect(authed_page.locator("#toast")).to_contain_text("running session")
+    expect(sheet).to_be_visible()
     expect(rows).to_have_count(2)
 
-    # Confirm: one DELETE for that capture, then the refreshed list.
+    # Confirm, from under the reader: one DELETE for that capture, then the
+    # refreshed list with every layer closed.
     refuse["on"] = False
-    _delete_first()
+    sheet.locator(".lifeos-convo-read").click()
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible()
+    authed_page.locator("#lifeOsViewerClose").click()
+    delete.click()
     authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(deletes) == 2, "the confirmed DELETE")
     assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
@@ -1144,43 +1078,9 @@ def test_life_os_row_delete_confirms_then_returns_to_the_refreshed_list(
     expect(rows).to_have_count(1)
     expect(rows.first.locator(".action-row-title")).to_have_text("an early trial run")
     expect(authed_page.locator("#toast")).to_contain_text("Deleted booking the ferry")
+    expect(sheet).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
     assert native == [], native
-
-
-def test_life_os_viewer_delete_is_the_full_delete(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1410: the viewer's ⋮ Delete is the same confirmed, full delete as the
-    row's (never a second, narrower one), and it closes the viewer on the way
-    back to the refreshed list."""
-    _mock_skills(authed_page)
-    _mock_transcript(authed_page)
-    remaining = list(_FAKE_CONVERSATIONS["conversations"])
-    deletes: list = []
-
-    def _delete(route):
-        deletes.append(route.request.url)
-        remaining.pop(0)
-        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
-            {"deleted": "x", "removed": {"capture": True, "transcript": "not_found"}}))
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/skills/journal-daily/conversations$"),
-        lambda route: route.fulfill(status=200, content_type="application/json", body=_json.dumps(
-            {**_FAKE_CONVERSATIONS, "conversations": remaining})))
-    authed_page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"),
-                      lambda route: _delete(route) if route.request.method == "DELETE"
-                      else route.fallback())
-    _open_conversations(authed_page, base_url)
-    _open_viewer(authed_page, 0)
-    menu = _open_viewer_menu(authed_page)
-    menu.locator(".lifeos-viewer-delete").click()
-    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text("transcript")
-    authed_page.locator("#confirmDialogOk").click()
-    wait_until(authed_page, lambda: len(deletes) == 1, "the viewer's DELETE")
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(1)
 
 
 def _mock_renamable_conversations(page: Page):
@@ -1218,36 +1118,39 @@ def _mock_renamable_conversations(page: Page):
     return patches, titles
 
 
-def test_life_os_row_rename_survives_a_reload_and_clears_back_to_the_topic(
+def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1495: Rename in the row's ⋮ opens the sheet (never a native prompt()),
-    Save sends one PATCH with the typed name, the list shows it — and only it:
-    #1528 dropped the digest topic's muted second line — a reload still shows
-    it, and saving the field empty clears it back to the topic."""
+    """#1495, from the sheet since #1504: Rename opens the rename dialog over
+    the sheet (never a native prompt()), Save sends one PATCH with the typed
+    name, and the sheet and the list show it — and only it: #1528 dropped
+    the digest topic's muted second line. Reopened, the list still shows it,
+    and saving the field empty clears it back to the topic."""
     _mock_skills(authed_page)
     patches, titles = _mock_renamable_conversations(authed_page)
     native: list = []
     authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     _open_conversations(authed_page, base_url)
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    rows = _convo_rows(authed_page)
     first = rows.first
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
 
     dialog = authed_page.locator("#lifeOsRenameDialog")
-    _row_menu(authed_page, 0).locator(".lifeos-convo-rename").click()
+    rename = _open_sheet(authed_page, 0).locator(".lifeos-convo-rename")
+    rename.click()
     expect(dialog).to_be_visible()
     expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
     expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("")
     expect(authed_page.locator("#lifeOsRenameInput")).to_have_attribute(
         "placeholder", "booking the ferry")
-    # The header ✕ cancels without a request.
+    # The header ✕ cancels without a request, back on the sheet.
     authed_page.locator("#lifeOsRenameClose").click()
     expect(dialog).to_be_hidden()
+    expect(authed_page.locator("#lifeOsConvoSheet")).to_be_visible()
     flush_requests(authed_page)
     assert patches == []
 
-    _row_menu(authed_page, 0).locator(".lifeos-convo-rename").click()
+    rename.click()
     authed_page.locator("#lifeOsRenameInput").fill("  Ferry  to the island ")
     authed_page.locator("#lifeOsRenameSave").click()
     wait_until(authed_page, lambda: len(patches) == 1, "the rename PATCH")
@@ -1255,56 +1158,32 @@ def test_life_os_row_rename_survives_a_reload_and_clears_back_to_the_topic(
     assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
         "2026-08-01-0900-ferry-booking.md" in patches[0][0]
     expect(authed_page.locator("#toast")).to_contain_text("Renamed to Ferry to the island")
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("Ferry to the island")
     expect(first.locator(".action-row-title")).to_have_text("Ferry to the island")
     expect(first).not_to_contain_text("booking the ferry")
+    _close_sheet(authed_page)
 
-    # Leave and reopen the overlay: the list is fetched afresh, so the stored
-    # name is what it loads. (Not a second page.goto: a full document load is
-    # the step that times out on a loaded gate box, and this test is about the
+    # Widen and narrow again: the list is fetched afresh, so the stored name
+    # is what it loads. (Not a second page.goto: a full document load is the
+    # step that times out on a loaded gate box, and this test is about the
     # list, not the boot. The server leg is pinned in the API tests.)
-    authed_page.locator("#lifeOsConvosBack").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_hidden()
+    authed_page.locator("#lifeOsConvoScope").click()
+    expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden()
     _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible()
-    first = rows.first
     expect(first.locator(".action-row-title")).to_have_text("Ferry to the island")
     expect(first).not_to_contain_text("booking the ferry")
 
-    # The sheet opens on the current title; saving it empty clears it.
-    _row_menu(authed_page, 0).locator(".lifeos-convo-rename").click()
+    # The dialog opens on the current title; saving it empty clears it.
+    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
     expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("Ferry to the island")
     authed_page.locator("#lifeOsRenameInput").fill("")
     authed_page.locator("#lifeOsRenameSave").click()
     wait_until(authed_page, lambda: len(patches) == 2, "the clearing PATCH")
     assert patches[1][1] == {"title": ""}
     assert titles == {}
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
     assert native == [], native
-
-
-def test_life_os_viewer_rename_is_the_title_rename(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1495: the viewer's ⋮ Rename is the same title rename as the row's (the
-    log's file name is renamed from the Browse list), and the viewer's heading
-    follows the title the next time it opens."""
-    _mock_skills(authed_page)
-    _mock_transcript(authed_page)
-    patches, _ = _mock_renamable_conversations(authed_page)
-    _open_conversations(authed_page, base_url)
-    _open_viewer(authed_page, 0)
-    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
-    _open_viewer_menu(authed_page).locator(".lifeos-viewer-rename").click()
-    expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
-    authed_page.locator("#lifeOsRenameInput").fill("Island trip")
-    authed_page.locator("#lifeOsRenameSave").click()
-    wait_until(authed_page, lambda: len(patches) == 1, "the viewer's PATCH")
-    assert patches[0][1] == {"title": "Island trip"}
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsConvoList .action-row-title").first).to_have_text(
-        "Island trip")
-    _open_viewer(authed_page, 0)
-    expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("Island trip")
 
 
 def test_life_os_rename_refusal_keeps_the_row_and_says_why(
@@ -1321,11 +1200,12 @@ def test_life_os_rename_refusal_keeps_the_row_and_says_why(
             body=_json.dumps({"detail": "That conversation is no longer in the index; refresh the list."}))
         if route.request.method == "PATCH" else route.fallback())
     _open_conversations(authed_page, base_url)
-    first = authed_page.locator("#lifeOsConvoList .lifeos-convo-row").first
-    _row_menu(authed_page, 0).locator(".lifeos-convo-rename").click()
+    first = _convo_rows(authed_page).first
+    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
     authed_page.locator("#lifeOsRenameInput").fill("Nope")
     authed_page.locator("#lifeOsRenameSave").click()
     expect(authed_page.locator("#toast")).to_contain_text("no longer in the index")
+    expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
 
 
@@ -1333,20 +1213,23 @@ def test_life_os_rename_refusal_keeps_the_row_and_says_why(
 def test_life_os_conversation_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727, the point of the whole feature: Resume posts that exact
-    ``resume_sid`` — no native picker — honouring the Skills header's
-    Detached toggle and model combo like every other Life OS launch."""
+    """#727, the point of the whole feature: the sheet's Resume posts that
+    exact capture — no native picker — honouring the Skills toolbar's
+    Detached switch like every other Life OS launch, and keeping the
+    conversation's own model (#1503) whatever the toolbar's model says. The
+    sheet closes as the launch lands."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page)
+    launches: list = []
 
     def _fulfill_launch(route):
+        launches.append(_json.loads(route.request.post_data or ""))
         route.fulfill(
             status=200, content_type="application/json",
             body=_json.dumps({
                 "launched": "journal-daily", "name": "journal-daily",
-                "agent": "claude", "mode": "remote", "model": "opus",
-                "resume": True, "resume_sid": _RESUMABLE_SID,
+                "agent": "claude", "mode": "remote", "model": "claude-opus-5-5",
+                "model_kept": True, "resume": True, "resume_sid": _RESUMABLE_SID,
                 "session": {"session_id": "x", "kind": "remote"},
             }),
         )
@@ -1355,141 +1238,110 @@ def test_life_os_conversation_resume_posts_the_session_id(
         re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"),
         _fulfill_launch,
     )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
+    _open_life(authed_page, base_url)
     # Detached on, so the resume lands in a console instead of opening the
     # terminal overlay (nothing to tear down in the assertion).
     life_launch_switch(authed_page, "#lifeOsDetached")
-
+    _pick_life_model(authed_page, "claude:opus")
     _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
-    expect(authed_page.locator("#lifeOsConvosModelCombo")).to_be_visible()
-    option = _open_convos_model_menu(authed_page, "claude:opus")
-    menu = authed_page.locator("#lifeOsConvosModelMenu")
-    expect(menu).to_have_class(re.compile(r"\bmodel-combo-menu--portal\b"))
-    assert menu.evaluate("el => el.parentElement === document.body")
-    menu_box = menu.bounding_box()
-    assert menu_box is not None
-    viewport = authed_page.viewport_size or {"width": 0, "height": 0}
-    assert menu_box["x"] >= 0 and menu_box["y"] >= 0
-    assert menu_box["x"] + menu_box["width"] <= viewport["width"]
-    assert menu_box["y"] + menu_box["height"] <= viewport["height"]
-    z_indexes = authed_page.evaluate(
-        """() => [
-          Number(getComputedStyle(document.getElementById('lifeOsConvosModelMenu')).zIndex),
-          Number(getComputedStyle(document.getElementById('lifeOsConvos')).zIndex)
-        ]"""
-    )
-    assert z_indexes[0] > z_indexes[1], z_indexes
-    hit_target = option.evaluate(
-        """el => {
-          const box = el.getBoundingClientRect();
-          const hit = document.elementFromPoint(
-            box.left + box.width / 2, box.top + box.height / 2
-          );
-          return !!hit && (hit === el || el.contains(hit));
-        }"""
-    )
-    assert hit_target, "conversation model option is clipped by the toolbar"
-    for theme in ("light", "dark"):
-        authed_page.evaluate(
-            "value => document.documentElement.dataset.theme = value", theme
-        )
-        expect(option).to_be_visible()
-        assert menu.evaluate("el => getComputedStyle(el).backgroundColor") != "rgba(0, 0, 0, 0)"
-    option.click()
-    expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
-        "data-value", "claude:opus"
-    )
-    _open_viewer(authed_page, 0)
-    with authed_page.expect_request(
-        re.compile(
-            r".*/api/life-os/skills/journal-daily/conversations/launch$"
-        )
-    ) as request_info:
-        authed_page.locator("#lifeOsViewerResume").click()
 
-    payload = _json.loads(request_info.value.post_data or "")
+    _open_sheet(authed_page, 0)
+    authed_page.locator("#lifeOsConvoSheetResume").click()
+    wait_until(authed_page, lambda: len(launches) == 1, "the resume POST")
     # The resume keeps the conversation's own model (#1503): the server
-    # leaves --model out on `keep_model`, whatever the bar says.
-    assert payload == {
+    # leaves --model out on `keep_model`, whatever the toolbar says.
+    assert launches[0] == {
         "mode": "remote", "model": "claude:opus", "action": "resume",
         "capture": {key: _FAKE_CONVERSATIONS["conversations"][0][key]
                     for key in ("path", "revision", "agent", "sid")},
         "keep_model": True,
-    }, payload
+    }, launches
+    expect(authed_page.locator("#lifeOsConvoSheet")).to_be_hidden()
+    expect(authed_page.locator("#toast")).to_contain_text("Resumed booking the ferry (Opus)")
 
 
-def test_life_os_header_search_spans_every_skill(
+def test_life_os_field_searches_conversations_across_every_skill(
     authed_page: Page, base_url: str
 ) -> None:
-    """#727: the Skills header's 🔎 opens the same view unscoped, and a query
-    returns ranked hits from every skill, each naming the skill it came from
-    in its context line (#1528) — the case the per-skill index cannot
-    answer."""
+    """#1504, decision 9: the skills field filters skill names at once and,
+    from two characters after the debounce, adds a Conversations group with
+    ranked hits from every skill, each naming its skill (#1528) — the case
+    the per-skill index cannot answer. One letter searches nothing."""
     _mock_skills(authed_page)
+    seen: list = []
+    _mock_search(authed_page, [
+        dict(_FAKE_CONVERSATIONS["conversations"][0]),
+        dict(_FAKE_CONVERSATIONS["conversations"][1], skill="sparring-work",
+             topic="the ferry conversation at work"),
+    ], seen=seen)
+    _open_life(authed_page, base_url)
+    field = authed_page.locator("#lifeOsFilterInput")
+    expect(field).to_have_attribute("placeholder", "Skills and conversations")
+    group = authed_page.locator("#lifeOsConvoGroup")
 
-    seen: dict = {}
+    field.fill("s")
+    flush_requests(authed_page)
+    authed_page.wait_for_timeout(400)   # past the 250 ms debounce
+    flush_requests(authed_page)
+    assert seen == [], seen
+    expect(group).to_be_hidden()
 
-    def _capture_search(route):
-        seen["url"] = route.request.url
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "available": True, "query": "ferry", "skill": "",
-                "results": [
-                    dict(_FAKE_CONVERSATIONS["conversations"][0]),
-                    dict(
-                        _FAKE_CONVERSATIONS["conversations"][1],
-                        skill="sparring-work",
-                        topic="the ferry conversation at work",
-                    ),
-                ],
-            }),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/life-os/conversations/search.*"), _capture_search
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-    authed_page.locator("#lifeOsConvoSearch").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
-    # Opened unscoped: there is no skill to narrow to, so no scope chip, no
-    # filter count and no Skill row in the sheet.
-    expect(authed_page.locator("#lifeOsConvosScope")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsConvosFilterCount")).to_be_hidden()
-    sheet = _open_convo_sheet(authed_page)
-    expect(sheet.locator("#lifeOsConvoScopeRow")).to_be_hidden()
-    authed_page.locator("#lifeOsConvoSheetClose").click()
-    expect(sheet).to_be_hidden()
-
-    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    field.fill("spar")
+    rows = _convo_rows(authed_page)
     expect(rows).to_have_count(2, timeout=5_000)
+    # Names first: the skills group filters to the match and is counted.
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (1)")
+    expect(authed_page.locator("#lifeOsList li.lifeos-item:visible")).to_have_count(1)
+    expect(authed_page.locator("#lifeOsConvoHead")).to_have_text("Conversations (2)")
     # No skill filter in the request, and every row names its own skill.
-    assert "skill=" not in seen.get("url", ""), seen
+    assert len(seen) == 1 and "q=spar" in seen[0] and "skill=" not in seen[0], seen
     expect(rows.first.locator(".action-row-meta")).to_contain_text("journal-daily")
     expect(rows.nth(1).locator(".action-row-meta")).to_contain_text("sparring-work")
+    expect(rows.nth(1).locator(".lifeos-monogram")).to_have_text("S")
+    # The search is the owner's own words: nothing beyond the skills
+    # filter's existing value holds them.
+    stored = authed_page.evaluate(
+        "() => Object.keys(localStorage).filter(k => k !== 'app-launcher.filter.skills'"
+        " && String(localStorage.getItem(k)).includes('spar'))")
+    assert stored == [], stored
+
+    # Clearing the field ends the search and the group steps aside.
+    field.fill("")
+    expect(group).to_be_hidden(timeout=5_000)
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_be_hidden()
+
+
+def test_life_os_restored_field_never_searches_conversations(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1504: the text the field restores from the device filters the skills
+    alone. No conversation search runs at boot or on opening the tab — only
+    typing in this session starts one."""
+    _mock_skills(authed_page)
+    seen: list = []
+    _mock_search(authed_page, [dict(_FAKE_CONVERSATIONS["conversations"][0])], seen=seen)
+    authed_page.add_init_script(
+        "localStorage.setItem('app-launcher.filter.skills', 'journal')")
+    _open_life(authed_page, base_url)
+    expect(authed_page.locator("#lifeOsFilterInput")).to_have_value("journal")
+    expect(authed_page.locator("#lifeOsList li.lifeos-item:visible")).to_have_count(1)
+    authed_page.locator("#tabLifeOS").click()
+    authed_page.wait_for_timeout(400)   # past the 250 ms debounce
+    flush_requests(authed_page)
+    assert seen == [], seen
+    expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden()
 
 
 def test_life_os_search_results_keep_server_relevance_order(
     authed_page: Page, base_url: str
 ) -> None:
     """#1074: the client used to push search hits through the #886 date sort,
-    so the best match sank below rows that merely mention the word.
+    so the best match sank below rows that merely mention the word. #1504:
+    while searching, Relevance is the first segment and the default.
 
     The fixture makes the top-ranked hit the *oldest* row on both date axes,
     so a list that re-sorted by either date would render it last — and the
-    three orderings disagree pairwise, so each state of the toggle is
+    three orderings disagree pairwise, so each state of the control is
     distinguishable from the other two.
     """
     _mock_skills(authed_page)
@@ -1507,143 +1359,121 @@ def test_life_os_search_results_keep_server_relevance_order(
     best = _row("the ferry deep dive", "2026-06-01", "2026-06-02")   # oldest both
     mention = _row("a ferry mention", "2026-08-01", "2026-08-02")    # newest created
     passing = _row("ferry in passing", "2026-07-01", "2026-09-05")   # newest touched
+    _mock_search(authed_page, [best, mention, passing])   # server's rank order
+    _mock_conversations(authed_page)
+    _open_life(authed_page, base_url)
 
-    authed_page.route(
-        re.compile(r".*/api/life-os/conversations/search.*"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "available": True, "query": "ferry", "skill": "",
-                "results": [best, mention, passing],   # server's rank order
-            }),
-        ),
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-    authed_page.locator("#lifeOsConvoSearch").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
-
-    filters = authed_page.locator("#lifeOsConvosFilters")
-    # Browsing starts on the remembered date sort; a query switches the
-    # order to relevance.
-    expect(filters).to_have_attribute("data-sort", "interaction")
-
-    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
+    authed_page.locator("#lifeOsFilterInput").fill("ferry")
+    rows = _convo_rows(authed_page)
     expect(rows).to_have_count(3, timeout=5_000)
     titles = rows.locator(".action-row-title")
+    sort = authed_page.locator("#lifeOsConvoSort")
+    tab = lambda mode: sort.locator(f".range-tab[data-sort='{mode}']")  # noqa: E731
     expect(titles).to_have_text(
         ["the ferry deep dive", "a ferry mention", "ferry in passing"]
     )
-    expect(filters).to_have_attribute("data-sort", "relevance")
+    expect(sort).to_have_attribute("data-sort", "relevance")
+    expect(sort.locator(".range-tab:visible")).to_have_text(["Relevance", "Recent", "Created"])
+    # No skill is called "ferry": the count says so, and the no-match block
+    # stays out of the way of the conversations under it.
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (0)")
+    expect(authed_page.locator("#lifeOsFilterEmpty")).to_be_hidden()
 
-    # A date ordering of the hits is still reachable from the sheet, where
-    # Best match is offered while a query is in the box.
-    sheet = _open_convo_sheet(authed_page)
-    tab = lambda mode: sheet.locator(f".range-tab[data-sort='{mode}']")  # noqa: E731
-    expect(tab("relevance")).to_be_visible()
     tab("interaction").click()
-    expect(filters).to_have_attribute("data-sort", "interaction")
+    expect(sort).to_have_attribute("data-sort", "interaction")
     expect(titles).to_have_text(
         ["ferry in passing", "a ferry mention", "the ferry deep dive"]
     )
     tab("created").click()
-    expect(filters).to_have_attribute("data-sort", "created")
+    expect(sort).to_have_attribute("data-sort", "created")
     expect(titles).to_have_text(
         ["a ferry mention", "ferry in passing", "the ferry deep dive"]
     )
 
     # …and relevance survives the round trip, because the re-sort runs off
-    # the server's array rather than the rendered one. Clear is the same
-    # trip: back to the search's own default.
+    # the server's array rather than the rendered one.
     tab("relevance").click()
-    expect(filters).to_have_attribute("data-sort", "relevance")
+    expect(sort).to_have_attribute("data-sort", "relevance")
     expect(titles).to_have_text(
         ["the ferry deep dive", "a ferry mention", "ferry in passing"]
     )
+
+    # A search's ordering is transient: a skill's list afterwards opens on
+    # the browse default, never on the search's date pick.
     tab("created").click()
-    authed_page.locator("#lifeOsConvoSheetClear").click()
-    expect(filters).to_have_attribute("data-sort", "relevance")
-    authed_page.locator("#lifeOsConvoSheetDone").click()
-    expect(sheet).to_be_hidden()
-
-    # Clearing the box drops the transient ordering: browsing keeps its own
-    # date default (#886/#890).
-    authed_page.locator("#lifeOsConvoQuery").fill("")
-    expect(filters).to_have_attribute("data-sort", "interaction", timeout=5_000)
+    authed_page.locator("#lifeOsFilterInput").fill("")
+    expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden(timeout=5_000)
+    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
+    expect(sort).to_have_attribute("data-sort", "interaction")
 
 
-def test_life_os_scope_chip_widens_and_the_sheet_narrows_back(
+def test_life_os_scope_chip_narrows_the_search_and_widens_it(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1528: a view opened from a skill is narrowed to it, shown as a chip
-    inside the filter field. The chip's ✕ widens to every skill (the search
-    prompt replaces the skill's list), and the sheet's Skill row narrows back
-    to the skill's list."""
+    """#1504: typed while narrowed to a skill, the search asks for that skill
+    only; the chip's ✕ widens the same search to every skill, and the skill
+    rows come back above it."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
+    seen: list = []
+    _mock_search(authed_page, [dict(_FAKE_CONVERSATIONS["conversations"][0])], seen=seen)
     _open_conversations(authed_page, base_url)
-    rows = authed_page.locator("#lifeOsConvoList .lifeos-convo-row")
-    expect(rows).to_have_count(2)
-    scope = authed_page.locator("#lifeOsConvosScope")
-    count = authed_page.locator("#lifeOsConvosFilterCount")
-    expect(count).to_have_text("1")
+    expect(_convo_rows(authed_page)).to_have_count(2)
 
+    authed_page.locator("#lifeOsFilterInput").fill("ferry")
+    wait_until(authed_page, lambda: len(seen) == 1, "the scoped search")
+    assert "skill=journal-daily" in seen[0], seen
+    expect(_convo_rows(authed_page)).to_have_count(1)
+    # Within one skill, the rows need not repeat its name.
+    expect(_convo_rows(authed_page).first.locator(".action-row-meta")).not_to_contain_text(
+        "journal-daily")
+
+    scope = authed_page.locator("#lifeOsConvoScope")
     scope.click()
     expect(scope).to_be_hidden()
-    expect(count).to_be_hidden()
-    expect(authed_page.locator("#lifeOsConvoState")).to_contain_text(
-        "Search every skill", timeout=5_000)
-    expect(rows).to_have_count(0)
-    expect(authed_page.locator("#lifeOsConvoQuery")).to_have_attribute(
-        "placeholder", "Search conversations")
-
-    sheet = _open_convo_sheet(authed_page)
-    expect(sheet.locator(".range-tab[data-scope='all']")).to_have_attribute("aria-pressed", "true")
-    sheet.locator(".range-tab[data-scope='skill']").click()
-    expect(rows).to_have_count(2, timeout=5_000)
-    expect(scope).to_be_visible()
-    expect(count).to_have_text("1")
-    authed_page.locator("#lifeOsConvoSheetDone").click()
-    expect(sheet).to_be_hidden()
+    wait_until(authed_page, lambda: len(seen) == 2, "the widened search")
+    assert "skill=" not in seen[1], seen
+    expect(authed_page.locator("#lifeOsFilterInput")).to_be_focused()
+    expect(authed_page.locator(".lifeos-list-card")).not_to_have_class(
+        re.compile(r"is-convo-scoped"))
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (0)")
+    expect(_convo_rows(authed_page).first.locator(".action-row-meta")).to_contain_text(
+        "journal-daily")
 
 
-def test_life_os_search_unavailable_is_not_an_error(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize("failure", ["unavailable", "forbidden"])
+def test_life_os_search_failure_stays_in_its_group(
+    authed_page: Page, base_url: str, failure: str
 ) -> None:
-    """A missing search CLI or database degrades to a stated 'unavailable'
-    inside the view — never an error toast, and never a blank list."""
+    """A missing search CLI or database degrades to a stated 'unavailable',
+    and a 403 (not an enrolled device, or off the tailnet) says so in plain
+    words — both inside the Conversations group (#1504), never an error
+    toast and never a blank list, while the skills group keeps working."""
     _mock_skills(authed_page)
-    authed_page.route(
-        re.compile(r".*/api/life-os/conversations/search.*"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
+    if failure == "unavailable":
+        authed_page.route(_SEARCH_URL, lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps({
                 "available": False,
                 "reason": "no conversation index has been built yet",
                 "results": [],
-            }),
-        ),
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabLifeOS").click()
-    expect(authed_page.locator("#lifeOsList li.lifeos-item").first).to_be_visible(
-        timeout=5_000
-    )
-    authed_page.locator("#lifeOsConvoSearch").click()
-    authed_page.locator("#lifeOsConvoQuery").fill("ferry")
+            })))
+    else:
+        authed_page.route(_SEARCH_URL, lambda route: route.fulfill(
+            status=403, content_type="application/json",
+            body=_json.dumps({"detail": "Tailscale only"})))
+    _open_life(authed_page, base_url)
+    authed_page.locator("#lifeOsFilterInput").fill("journal")
 
     state = authed_page.locator("#lifeOsConvoState")
     expect(state).to_be_visible(timeout=5_000)
-    expect(state).to_contain_text("Search unavailable")
+    expect(state).to_have_attribute("data-state", "error")
+    expect(state).to_contain_text(
+        "Search unavailable" if failure == "unavailable" else "Tailscale-only")
     # Passive/background status belongs beside the surface it describes; a
     # toast is for user-initiated command results only.
     expect(authed_page.locator("#toast")).to_be_hidden()
+    expect(authed_page.locator("#lifeOsList li.lifeos-item:visible")).to_have_count(1)
+    expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (1)")
 
 
 # A capture carrying an AskUserQuestion call (#1149). Today's capture reader
@@ -1668,14 +1498,19 @@ _QUESTION_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=_FAKE_TRANSCRIPT["entries"
 def test_capture_opens_in_the_chat_transcript_view(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1119: the row's book icon opens the capture in the session overlay's
-    own Chat renderer — real turn cards, the user's prompt as plain text and
-    the reply through markdown — not the raw document viewer. One surface,
-    two mounts (#979), so the assertion is on that renderer's own classes.
-    #1149: a question card renders here too, and read-only."""
+    """#1119: Read opens the capture in the session overlay's own Chat
+    renderer — real turn cards, the user's prompt as plain text and the reply
+    through markdown — not the raw document viewer. One surface, two mounts
+    (#979), so the assertion is on that renderer's own classes. #1149: a
+    question card renders here too, and read-only. #1504: the reader is a
+    sheet over the conversation sheet, which keeps Open raw."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
     _mock_transcript(authed_page, _QUESTION_TRANSCRIPT)
+    authed_page.route(re.compile(r".*/api/life-os/file\?.*$"), lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(
+            {"path": "x", "name": "2026-08-01-0900-ferry-booking.md",
+             "content": "You: book the ferry", "truncated": False})))
     _open_conversations(authed_page, base_url)
 
     viewer_list = _open_viewer(authed_page, 0)
@@ -1687,7 +1522,7 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(turns.nth(1)).to_have_class(re.compile(r"\btr-assistant\b"))
     # The reply goes through the markdown renderer; the prompt does not.
     expect(turns.nth(1).locator(".tr-md strong")).to_have_text("07:40")
-    # Read-only: no composer anywhere in this overlay.
+    # Read-only: no composer anywhere in the reader.
     expect(authed_page.locator("#lifeOsConvoViewer .composer")).to_have_count(0)
     # #1149: the question renders as its card, beside the turns rather than
     # in a group, with no live control — not one enabled option, no text
@@ -1707,20 +1542,18 @@ def test_capture_opens_in_the_chat_transcript_view(
     expect(plan.locator(".tr-plan-body h2")).to_have_text("Book it")
     expect(plan).to_have_attribute("data-mode", "approved")
     expect(plan.locator("button")).to_have_count(0)
-    # #1140: a capture that fits on screen has no end to jump to.
-    pill = authed_page.locator("#lifeOsViewerLatest")
-    expect(pill).to_have_count(1)
-    expect(pill).to_be_hidden()
-    # The raw viewer is still one tap away, and lands back here on close.
-    _open_viewer_menu(authed_page)
-    expect(authed_page.locator(".lifeos-viewer-groups")).to_be_disabled()
-    authed_page.locator(".lifeos-viewer-open-raw").click()
-    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
+    # Done comes back to the sheet; its Open raw stacks the raw document over
+    # it, and the document's ✕ comes back to the sheet again.
+    authed_page.locator("#lifeOsViewerDone").click()
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
+    sheet = authed_page.locator("#lifeOsConvoSheet")
+    expect(sheet).to_be_visible()
+    sheet.locator(".lifeos-convo-open-raw").click()
+    expect(authed_page.locator("#lifeOsDoc")).to_be_visible()
+    expect(authed_page.locator("#lifeOsFileContent")).to_contain_text("book the ferry")
     authed_page.locator("#lifeOsDocClose").click()
-    expect(authed_page.locator("#lifeOsBrowser")).to_be_hidden()
-    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible()
-    authed_page.locator("#lifeOsViewerBack").click()
-    expect(authed_page.locator("#lifeOsConvos")).to_be_visible()
+    expect(authed_page.locator("#lifeOsDoc")).to_be_hidden()
+    expect(sheet).to_be_visible()
 
 
 _LONG_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=[
@@ -1734,18 +1567,27 @@ _LONG_TRANSCRIPT = dict(_FAKE_TRANSCRIPT, entries=[
 def test_viewer_latest_pill_jumps_to_the_last_turn(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1140: the shared ↓ Latest pill on the conversation viewer. A finished
-    conversation still opens at its start — it reads top-down — but a long
-    one shows the pill straight away, and one tap reaches the last turn."""
+    """#1140: the shared ↓ Latest pill on the conversation reader. A capture
+    that fits has no end to jump to. A long one still opens at its start — it
+    reads top-down — but shows the pill straight away, and one tap reaches
+    the last turn."""
     _mock_skills(authed_page)
     _mock_conversations(authed_page)
-    _mock_transcript(authed_page, _LONG_TRANSCRIPT)
+    # The first row's capture is long, the second's two turns.
+    authed_page.route(re.compile(r".*/api/life-os/file/transcript.*"), lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(
+            _LONG_TRANSCRIPT if "ferry-booking" in route.request.url else _FAKE_TRANSCRIPT)))
     _open_conversations(authed_page, base_url)
+
+    pill = authed_page.locator("#lifeOsViewerLatest")
+    expect(_open_viewer(authed_page, 1).locator(".tr-turn")).to_have_count(2)
+    expect(pill).to_be_hidden()
+    authed_page.locator("#lifeOsViewerClose").click()
+    _close_sheet(authed_page)
 
     turns = _open_viewer(authed_page, 0).locator(".tr-turn")
     expect(turns).to_have_count(40)
     expect(turns.first).to_be_in_viewport()
-    pill = authed_page.locator("#lifeOsViewerLatest")
     expect(pill).to_be_visible()
 
     pill.click()
@@ -1763,7 +1605,6 @@ _MEASURE_PILL = """
     top: r.top, bottom: r.bottom, left: r.left, right: r.right,
     hittable: !!hit && (hit === pill || pill.contains(hit)),
     hitBy: hit ? (hit.id || hit.className || hit.tagName) : null,
-    scrollRange: document.scrollingElement.scrollHeight - document.scrollingElement.clientHeight,
     appOverflowY: getComputedStyle(document.querySelector('main.app')).overflowY,
   };
 }
@@ -1771,15 +1612,14 @@ _MEASURE_PILL = """
 
 
 @pytest.mark.iphone
-def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
+def test_reader_covers_the_tab_bar_in_the_standalone_shell(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     """#1143: in the installed PWA the floating tab bar sat on top of the
-    conversation viewer and hid its ↓ Latest pill. The standalone shell makes
-    .app position: fixed, so the list and the viewer (both nested inside
-    .app) stack below the body-level bar unless its hide rule names them. The
-    viewer only ever opens over the list, so the list's missing entry is what
-    showed on the phone. tests/test_overlay_nav_hide.py checks each entry.
+    conversation viewer and hid its ↓ Latest pill. Since #1504 the reader and
+    the conversation sheet are native dialogs in the top layer, which the
+    vendored shell hides the bar for (body:has(dialog[open])): the pill must
+    be on screen and hittable, and .app locked behind them.
 
     Neither headless engine supports display-mode: standalone, so this
     projects the shell the way #1099's test does. A pass here doesn't replace
@@ -1804,10 +1644,11 @@ def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
 
     page.locator("#tabLifeOS").click()
     _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
-    expect(page.locator("#lifeOsConvos")).to_be_visible(timeout=5_000)
+    expect(_convo_rows(page)).to_have_count(2, timeout=5_000)
+    _open_sheet(page, 0)
     expect(tabs).to_be_hidden()
 
-    expect(_open_viewer(page, 0).locator(".tr-turn")).to_have_count(40)
+    expect(_open_viewer_from_sheet(page).locator(".tr-turn")).to_have_count(40)
     expect(tabs).to_be_hidden()
     pill = page.locator("#lifeOsViewerLatest")
     expect(pill).to_be_visible()
@@ -1815,17 +1656,19 @@ def test_viewer_covers_the_tab_bar_in_the_standalone_shell(
     assert m["top"] >= 0 and m["bottom"] <= m["vh"] + 0.5, f"pill off-screen vertically: {m}"
     assert m["left"] >= 0 and m["right"] <= m["vw"] + 0.5, f"pill off-screen horizontally: {m}"
     assert m["hittable"], f"the ↓ Latest pill is covered at its centre by {m['hitBy']!r}: {m}"
-    assert m["appOverflowY"] == "hidden", f".app stays scrollable behind the viewer: {m}"
-    assert m["scrollRange"] >= 1, (
-        f"the document lost its 1px scrollable overflow under the viewer (#1099): {m}"
-    )
+    assert m["appOverflowY"] == "hidden", f".app stays scrollable behind the reader: {m}"
     pill.click()
     expect(page.locator("#lifeOsViewerList .tr-turn").last).to_be_in_viewport()
 
-    page.locator("#lifeOsViewerBack").click()
-    page.locator("#lifeOsConvosBack").click()
-    expect(page.locator("#lifeOsConvos")).to_be_hidden()
+    page.locator("#lifeOsViewerClose").click()
+    _close_sheet(page)
     expect(tabs).to_be_visible()
+
+
+def _open_viewer_from_sheet(page: Page) -> Locator:
+    page.locator("#lifeOsConvoSheet .lifeos-convo-read").click()
+    expect(page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
+    return page.locator("#lifeOsViewerList")
 
 
 def test_unparseable_capture_falls_back_to_the_raw_view(
@@ -1850,17 +1693,19 @@ def test_unparseable_capture_falls_back_to_the_raw_view(
     # Passive status belongs beside the surface, not in a toast.
     expect(authed_page.locator("#toast")).to_be_hidden()
     state.locator(".lifeos-viewer-raw").click()
-    expect(authed_page.locator("#lifeOsBrowser")).to_be_visible()
+    expect(authed_page.locator("#lifeOsDoc")).to_be_visible()
 
 
 @pytest.mark.iphone
 @pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:opus")])
 def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_url: str, source: str, target: str, browser_name: str) -> None:
-    """Source-aware actions, now the reader's primary (#1528); handoff is
-    explicit.
+    """Source-aware actions in the sheet (#1504); handoff is explicit.
 
-    The primary re-resolves on every open, so the model chosen in the
-    Conversations bar (under the viewer) decides what it offers."""
+    Resume is the primary whatever the toolbar's model (the old "select a
+    model from the source harness" lockout is gone, #1503 keeps the
+    conversation's own model). "Start new in <other>" is a link row that
+    shows only while the toolbar names the other harness and the capture can
+    seed one, and it takes the toolbar's model."""
     page = authed_page
     _mock_skills(page)
     row = dict(_FAKE_CONVERSATIONS["conversations"][0], agent=source,
@@ -1870,69 +1715,70 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     unavailable = dict(unknown, topic="Unavailable model source", agent="codex",
                        resume_reason="Codex CLI is unavailable on this computer.")
     _mock_conversations(page, dict(_FAKE_CONVERSATIONS, conversations=[row, unknown, unavailable]))
-    _mock_transcript(page)
     launches = []
     def launch(route):
         launches.append(_json.loads(route.request.post_data))
         route.fulfill(status=200, content_type="application/json", body=_json.dumps({
             "session": {"session_id": "synthetic", "kind": "remote"}, "handoff_truncated": True}))
     page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), launch)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabLifeOS").click()
+    _open_life(page, base_url)
     life_launch_switch(page, "#lifeOsDetached")
-    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
-    _open_convos_model_menu(page, source_choice).click()
-    resume = page.locator("#lifeOsViewerResume")
-    note = page.locator("#lifeOsViewerNote")
-    # Matching provider: Resume is live, and the summary names the source.
-    _open_viewer(page, 0)
+    _pick_life_model(page, source_choice)
+    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
+    resume = page.locator("#lifeOsConvoSheetResume")
+    note = page.locator("#lifeOsConvoSheetNote")
+    handoff = page.locator("#lifeOsConvoSheet .lifeos-convo-handoff")
+    # Matching provider: Resume is live, no handoff, and the meta names the source.
+    _open_sheet(page, 0)
     expect(resume).to_be_enabled()
     expect(resume).to_have_text("Resume")
     expect(note).to_be_hidden()
-    expect(page.locator("#lifeOsViewerMeta")).to_contain_text(source.capitalize())
-    page.locator("#lifeOsViewerBack").click()
-    # The other two rows carry their own reasons, each said in its viewer.
+    expect(handoff).to_be_hidden()
+    expect(page.locator("#lifeOsConvoSheetMeta")).to_contain_text("from " + source.capitalize())
+    _close_sheet(page)
+    # The other two rows carry their own reasons, each said in its sheet.
     for index, fragment in ((1, "Native resume is not verified"),
                             (2, "CLI is unavailable")):
-        _open_viewer(page, index)
+        _open_sheet(page, index)
         expect(note).to_contain_text(fragment)
         expect(resume).to_be_disabled()
-        page.locator("#lifeOsViewerBack").click()
+        _close_sheet(page)
 
-    # Other provider: the primary becomes the explicit handoff.
-    _open_convos_model_menu(page, target).click()
-    _open_viewer(page, 0)
+    # Other provider: Resume still resumes, and the handoff row appears.
+    _pick_life_model(page, target)
+    _open_sheet(page, 0)
     target_name = "Codex" if target.startswith("codex") else "Claude"
-    expect(resume).to_have_text("Start new in " + target_name)
     expect(resume).to_be_enabled()
-    expect(note).to_be_hidden()
+    expect(resume).to_have_text("Resume")
+    expect(handoff).to_be_visible()
+    expect(handoff).to_have_text("Start new in " + target_name)
     # Both projections and themes remain legible and inside the viewport.
     for theme in ("light", "dark"):
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
-        expect(resume).to_be_visible()
-        assert page.locator("#lifeOsConvoViewer").evaluate("el => el.scrollWidth <= el.clientWidth")
-    # The handoff asks first, in the confirm sheet (#1439, never a native
-    # confirm()), with a primary action: it starts something, deletes nothing.
+        expect(handoff).to_be_visible()
+        assert page.locator("#lifeOsConvoSheet").evaluate("el => el.scrollWidth <= el.clientWidth")
+    # The handoff asks first, in the confirm sheet stacked over this one
+    # (#1439, never a native confirm()), with a primary action: it starts
+    # something, deletes nothing.
     native: list = []
     page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
-    resume.click()
+    handoff.click()
     expect(page.locator("#confirmDialogTitle")).to_contain_text("new conversation")
     expect(page.locator("#confirmDialogMessage")).to_contain_text(re.compile(r"24[,.]000"))
     expect(page.locator("#confirmDialogOk")).to_have_class(re.compile(r"\bbutton-primary\b"))
     page.locator("#confirmDialogClose").click()
     flush_requests(page)
     assert not launches
-    resume.click()
+    handoff.click()
     page.locator("#confirmDialogOk").click()
-    expect(page.locator("#lifeOsConvoViewer")).to_be_hidden()
-    expect(page.locator("#lifeOsConvos")).to_be_hidden()
+    expect(page.locator("#lifeOsConvoSheet")).to_be_hidden()
     assert len(launches) == 1
     payload = launches[0]
     assert payload["action"] == "handoff" and payload["confirm_new"] is True
     assert payload["model"] == target and payload["mode"] == "remote"
     assert payload["capture"] == {key: row[key] for key in ("path", "revision", "agent", "sid")}
-    assert "resume_sid" not in payload
+    assert "resume_sid" not in payload and "keep_model" not in payload
     assert native == [], native
 
 
