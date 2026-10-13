@@ -19,12 +19,14 @@ function save(key, value) {
   } catch (exc) { /* private mode: the filter just doesn't persist */ }
 }
 
-// { input, list, empty, storageKey, onApply } -> { apply }
+// { input, list, empty, storageKey, onApply } -> { apply, set }
 // onApply(query), optional: told the folded query after every apply, so a
 // list can react to filtering as a whole (Life's fold opens, #1503).
+// set(value) replaces the text as typing would: through an input event, so
+// any other listener on the field (Life's conversation search) hears it too.
 export function listFilter(opts) {
   const input = opts.input;
-  if (!input) return { apply: function () {} };
+  if (!input) return { apply: function () {}, set: function () {} };
   input.value = load(opts.storageKey);
 
   function apply() {
@@ -43,6 +45,11 @@ export function listFilter(opts) {
     if (opts.onApply) opts.onApply(query);
   }
 
+  function set(value) {
+    input.value = value;
+    input.dispatchEvent(new Event('input'));
+  }
+
   input.addEventListener('input', function () {
     save(opts.storageKey, input.value.trim());
     apply();
@@ -51,11 +58,9 @@ export function listFilter(opts) {
   const clear = opts.empty && opts.empty.querySelector('.empty-state-action');
   if (clear) {
     clear.addEventListener('click', function () {
-      input.value = '';
-      save(opts.storageKey, '');
-      apply();
+      set('');
       input.focus();
     });
   }
-  return { apply: apply };
+  return { apply: apply, set: set };
 }

@@ -609,10 +609,20 @@ tab = "lifeos"
 id = "skill-menu"
 click = ".lifeos-menu-anchor"
 
+# A skill's conversations (#1504) read its private index, so these two run on
+# the synthetic instance only; the chevron opens the conversation sheet
+# (a row's main tap stays in no_go).
 [[design.review.extra_steps]]
 tab = "lifeos"
 id = "conversations"
-click = "#lifeOsConvoSearch"
+clicks = [".lifeos-menu-anchor", ".lifeos-convo-btn"]
+synthetic = true
+
+[[design.review.extra_steps]]
+tab = "lifeos"
+id = "conversation-sheet"
+clicks = [".lifeos-menu-anchor", ".lifeos-convo-btn", ".lifeos-convo-chevron"]
+synthetic = true
 
 [[design.review.extra_steps]]
 tab = "jobs"

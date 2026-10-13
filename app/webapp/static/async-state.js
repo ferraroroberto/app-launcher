@@ -13,9 +13,9 @@
  * The block is the vendored empty-state's markup (glyph, message, action)
  * drawn into the host, so the host carries the .empty-state look itself.
  * Repeating the same state is a no-op: a poll that fails every 5 s must not
- * rebuild the Retry button under a keyboard user's focus. The jobs-agenda
- * (setNextUpState) and conversation (showConvoState) blocks predate this and
- * move onto it with their own steps.
+ * rebuild the Retry button under a keyboard user's focus. Life's
+ * Conversations group uses it too (#1504); the jobs-agenda block
+ * (setNextUpState) predates it and moves onto it with its own step.
  */
 
 import { icon } from './_vendored/icons/icons.js';

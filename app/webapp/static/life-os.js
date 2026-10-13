@@ -11,12 +11,14 @@
  * conversation on its own model, a swipe left starts a new one; on the phone
  * the rows run edge to edge to give the swipe room. A skill a Telegram profile is bound to says so
  * in its meta, wears the green badge while that bot runs, and starts or opens
- * the bot from its kebab; there is no Telegram card (#1439). The Read item opens
- * an overlay that reads each skill's files — public SKILL.md/description.md
- * plus the private context/memory/examples/conversations + shared
- * identity. Those content endpoints are Tailscale + passkey gated
- * server-side, so a fetch may 403; we surface the reason rather than a
- * blank pane.
+ * the bot from its kebab; there is no Telegram card (#1439). The skills
+ * field searches the conversations too (#1504): matches show as a second
+ * group under the skills, and a conversation opens in its own sheet. The
+ * Read item opens a sheet that reads each skill's files — public
+ * SKILL.md/description.md plus the private context/memory/examples/
+ * conversations + shared identity. Those content endpoints are Tailscale +
+ * passkey gated server-side, so a fetch may 403; we surface the reason
+ * rather than a blank pane.
  */
 
 import { els, state } from './state.js';
@@ -41,9 +43,6 @@ import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-vi
 
 // The skill rows' kebab menu (#1128), on the shared row-menu.js.
 const skillMenu = createRowMenu('project-menu');
-// The Conversations rows' kebab menu (#1528): the same component and
-// placement as the skill rows'.
-const convoMenu = createRowMenu('project-menu');
 
 // The Skills card's launch toolbar (#1439): the shared component Code ›
 // Projects mounts (#1434), so both launch surfaces look and behave alike,
@@ -69,8 +68,6 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   switchesInMenu: true,
   menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
     'Resume: a tap opens the session picker.',
-  // The cross-skill conversation search rides the model row, pinned right.
-  trailing: document.getElementById('lifeOsConvoSearch'),
 });
 
 function launchDetached() { return !!(lifeLaunch && lifeLaunch.isDetached()); }
@@ -83,28 +80,25 @@ const skillsFilter = listFilter({
   list: els.lifeOsList,
   empty: els.lifeOsFilterEmpty,
   storageKey: 'app-launcher.filter.skills',
-  // A typed filter searches every skill: the fold opens while it is set.
+  // A typed filter searches every skill: the fold opens while it is set,
+  // and the Skills group's count follows what it shows.
   onApply: function (query) {
     if (els.lifeOsList) els.lifeOsList.classList.toggle('is-filtering', !!query);
+    syncSkillsHead();
   },
 });
 
 // The launch-model dropdown controller ({setValue, getValue}), wired in the
 // tab's wiring (#540). Read at launch time; no server round-trip — it's
-// per-launch, like the Board dispatch combo.
+// per-launch, like the Board dispatch combo. It is also the model a
+// conversation's "Start new in …" hands off to (#1504).
 let lifeOsModelCombo = null;
-let lifeOsConvosModelCombo = null;
 export function setLifeOsModelOptions(items) {
   if (lifeOsModelCombo) lifeOsModelCombo.setOptions(items);
-  if (lifeOsConvosModelCombo) lifeOsConvosModelCombo.setOptions(items);
 }
 
 function lifeOsModel() {
-  if (!els.lifeOsConvos || els.lifeOsConvos.hidden) {
-    return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'claude:sonnet';
-  }
-  return (lifeOsConvosModelCombo && lifeOsConvosModelCombo.getValue()) ||
-    'claude:sonnet';
+  return (lifeOsModelCombo && lifeOsModelCombo.getValue()) || 'claude:sonnet';
 }
 
 // ----------------------------------------------------------- skills list
@@ -378,8 +372,8 @@ export function renderSkills() {
           onTap: function () { openBrowser(s); },
         },
         {
-          // The digested index for this skill, with a per-row ↺ that
-          // reattaches to that exact session (#727).
+          // This skill's own conversations, newest first, in the field's
+          // Conversations group behind a scope chip (#727, #1504).
           className: 'lifeos-convo-btn', glyph: 'messages-square',
           label: 'Conversations with ' + s.name, text: 'Conversations',
           onTap: function () { openConvos(s); },
@@ -644,25 +638,26 @@ async function resumeLatest(s) {
 }
 
 // --------------------------------------------------- content browser
-// The file currently shown in the doc view — drives the toolbar 🗑️ (which
-// deletes conversation logs only). Null while we're on the file list.
+// Browse is a sheet of the skill's readable files; a tap opens the file in
+// the document sheet over it, whose ✕ comes back to the list (#1504). A
+// capture opened raw from the conversation sheet uses the same document
+// sheet, over that one.
+
+// The file the document sheet shows, which its Rename log and Delete log
+// rows act on. Null while the sheet is closed.
 let openDocFile = null;
-// True when the browser overlay was opened *only* to read one capture from
-// the Conversations view (#727) — there is no file list behind it, so
-// closing the document closes the whole overlay and lands back on that view.
-let captureOnlyDoc = false;
 
 async function openBrowser(s) {
-  captureOnlyDoc = false;
+  const d = els.lifeOsBrowser;
+  if (!d || !d.showModal) return;
   state.lifeOsBrowser = { skillId: s.id, name: s.name, files: [] };
   els.lifeOsBrowserTitle.textContent = s.name;
-  closeDoc();                       // start on the full-screen file list
-  els.lifeOsBrowser.hidden = false;
+  if (!d.open) d.showModal();
   await loadFileList();
 }
 
 // (Re)load the current skill's file list — runs every time the browser
-// overlay opens, so a conversation log added on the PC shows up on reopen.
+// opens, so a conversation log added on the PC shows up on reopen.
 async function loadFileList() {
   const b = state.lifeOsBrowser;
   if (!b) return;
@@ -675,8 +670,7 @@ async function loadFileList() {
     renderFileList(b.files);
   } catch (exc) {
     // The content endpoints are Tailscale + passkey gated — a 403 here
-    // means this connection can't reach them. Say so plainly, in the
-    // (full-screen) list area.
+    // means this connection can't reach them. Say so plainly, in the list.
     const msg = (exc && exc.status === 403)
       ? 'The content browser is Tailscale-only (and passkey-gated). Open the ' +
         'launcher over your Tailscale URL on an enrolled device.'
@@ -715,58 +709,50 @@ function renderFileList(files) {
     btn.className = 'lifeos-file-btn';
     btn.textContent = f.name;
     btn.title = f.path;
-    btn.addEventListener('click', function () {
-      Array.prototype.forEach.call(
-        host.querySelectorAll('.lifeos-file-btn.active'),
-        function (b) { b.classList.remove('active'); }
-      );
-      btn.classList.add('active');
-      loadFile(f);
-    });
+    btn.addEventListener('click', function () { loadFile(f); });
     li.appendChild(btn);
-    // No delete control in the list — the list is navigation only. The 🗑️
-    // for a disposable conversation log lives in the document toolbar and
-    // appears once the log is open (see openDoc / loadFile below).
+    // No delete control in the list — the list is navigation only. A
+    // disposable conversation log's Rename and Delete sit under its text
+    // in the document sheet (see loadFile below).
     host.appendChild(li);
   });
 }
 
-// Resolves true when the log is gone — the transcript viewer (#1119) closes
-// itself on that, since what it was showing no longer exists.
+function closeBrowser() {
+  if (els.lifeOsBrowser && els.lifeOsBrowser.open) els.lifeOsBrowser.close();
+}
+
 async function deleteFile(f) {
   const ok = await confirmDialog({
     title: 'Delete this conversation log?',
     message: f.name + ' is removed from disk. This cannot be undone.',
     action: 'Delete',
   });
-  if (!ok) return false;
+  if (!ok) return;
   try {
     await jsonApi(
       '/api/life-os/file?path=' + encodeURIComponent(f.path),
       { method: 'DELETE' }
     );
-    toast('Deleted ' + f.name, 'good', { icon: 'trash-2' });
-    closeDoc();             // in case the deleted file was the open one
-    await refreshAfterLogChange();
-    return true;
   } catch (exc) {
     apiFailToast('Delete failed', exc);
-    return false;
-  }
-}
-
-// A conversation log can be deleted or renamed from either surface — the
-// Browse file list or the Conversations view (#727). Refresh whichever one
-// is actually on screen; refreshing the other would render into a hidden
-// overlay and leave the visible list stale.
-async function refreshAfterLogChange() {
-  if (els.lifeOsConvos && !els.lifeOsConvos.hidden) {
-    const query = els.lifeOsConvoQuery.value.trim();
-    if (query) await runConvoSearch(query);
-    else if (convoScope()) await loadConvos();
     return;
   }
-  await loadFileList();
+  toast('Deleted ' + f.name, 'good', { icon: 'trash-2' });
+  closeDoc();
+  // The conversation it was the capture of is gone with it.
+  if (sheetRow && sheetRow.path === f.path) closeConvoLayers();
+  await refreshAfterLogChange();
+}
+
+// A conversation log can be deleted or renamed from Browse, from a capture
+// opened raw, or from the conversation sheet. Refresh every list on screen
+// that could show it: the Browse file list and the Conversations group.
+async function refreshAfterLogChange() {
+  const reads = [];
+  if (els.lifeOsBrowser && els.lifeOsBrowser.open) reads.push(loadFileList());
+  if (convoMode === 'browse' || convoMode === 'search') reads.push(refreshConvos());
+  await Promise.all(reads);
 }
 
 // Lower-case, spaces (and any other punctuation) → single dashes, trimmed —
@@ -852,37 +838,39 @@ function wireRenameDialog() {
 
 async function renameFile(f) {
   const proposed = await askName(logSlug(f.name), RENAME_LOG_SHEET);
-  if (proposed === null) return false;      // cancelled
+  if (proposed === null) return;            // cancelled
   const slug = slugify(proposed);
-  if (!slug) { toast('Name cannot be empty', 'error'); return false; }
+  if (!slug) { toast('Name cannot be empty', 'error'); return; }
+  let body;
   try {
-    const body = await jsonApi('/api/life-os/file/rename', {
+    body = await jsonApi('/api/life-os/file/rename', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path: f.path, slug: slug }),
     });
-    toast('Renamed to ' + (body.name || slug), 'good', { icon: 'pencil' });
-    closeDoc();             // name (and path) changed — back to the list
-    await refreshAfterLogChange();
-    return true;
   } catch (exc) {
     apiFailToast('Rename failed', exc);
-    return false;
+    return;
   }
+  toast('Renamed to ' + (body.name || slug), 'good', { icon: 'pencil' });
+  // Name (and path) changed: back to the list, and a conversation sheet
+  // still holding the old path has nothing left to act on.
+  closeDoc();
+  if (sheetRow && sheetRow.path === f.path) closeConvoLayers();
+  await refreshAfterLogChange();
 }
 
 // Rename one conversation as the owner sees it (#1495): a title kept beside the
-// capture, shown in place of the digest topic. Empty clears it. Resolves true
-// when the server took the change (the viewer's ⋮ Rename closes itself on
-// that), false for a cancel, no change, or a refusal.
+// capture, shown in place of the digest topic. Empty clears it. The open
+// conversation sheet takes the new name in place.
 async function renameConversationTitle(r) {
   const current = r.title || '';
   const typed = await askName(
     current, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: r.topic || '' })
   );
-  if (typed === null) return false;         // cancelled
+  if (typed === null) return;               // cancelled
   const title = typed.trim().replace(/\s+/g, ' ');
-  if (title === current) return false;
+  if (title === current) return;
   try {
     await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(r.skill) +
@@ -895,23 +883,30 @@ async function renameConversationTitle(r) {
     );
   } catch (exc) {
     apiFailToast('Rename failed', exc);
-    return false;
+    return;
   }
   toast(title ? 'Renamed to ' + title : 'Name cleared', 'good', { icon: 'pencil' });
+  r.title = title;
+  if (sheetRow === r) fillConvoSheet();
   await refreshAfterLogChange();
-  return true;
 }
 
 async function loadFile(f) {
-  // The file view is a full-screen layer over the list; the ✕ close-doc
-  // button in the bar appears only while it's open.
+  const d = els.lifeOsDoc;
+  if (!d || !d.showModal) return;
   openDocFile = f;
-  openDoc(f);
+  els.lifeOsDocTitle.textContent = f.name || 'File';
+  // Rename and Delete only for a conversation log — disposable run
+  // transcripts, editable while you read them. Every other category (and
+  // the .gitkeep placeholder) only reads.
+  els.lifeOsDocLinks.hidden = !isEditableLog(f);
   els.lifeOsFileContent.innerHTML = '<p class="muted small">Loading…</p>';
+  if (!d.open) d.showModal();
   try {
     const body = await jsonApi(
       '/api/life-os/file?path=' + encodeURIComponent(f.path)
     );
+    if (openDocFile !== f) return;          // closed or moved on meanwhile
     els.lifeOsFileContent.innerHTML = renderMarkdown(body.content || '');
     if (body.truncated) {
       const note = document.createElement('p');
@@ -921,6 +916,7 @@ async function loadFile(f) {
     }
     els.lifeOsFileContent.scrollTop = 0;
   } catch (exc) {
+    if (openDocFile !== f) return;
     els.lifeOsFileContent.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'muted small';
@@ -929,7 +925,7 @@ async function loadFile(f) {
   }
 }
 
-// A conversation log the toolbar may act on — any file under a skill's
+// A conversation log the sheet may act on — any file under a skill's
 // conversations/ EXCEPT the .gitkeep placeholder that keeps the (otherwise
 // empty) dir tracked in git. Deleting/renaming that would untrack the dir,
 // so it stays off-limits (the server refuses it too — defence in depth).
@@ -938,198 +934,205 @@ function isEditableLog(f) {
     !/(^|\/)\.gitkeep$/.test(f.name || '');
 }
 
-// Reveal the full-screen file view (overlaying the list) + the ✕ button.
-// The 🗑️ delete and ✏️ rename show only for a conversation log — disposable
-// run transcripts, editable while you read them. Every other category (and
-// the .gitkeep placeholder) keeps both hidden.
-function openDoc(f) {
-  els.lifeOsFileContent.hidden = false;
-  if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = false;
-  const editable = isEditableLog(f);
-  if (els.lifeOsDocDelete) els.lifeOsDocDelete.hidden = !editable;
-  if (els.lifeOsDocRename) els.lifeOsDocRename.hidden = !editable;
-}
-
-// Close the open file → back to the full-screen file list, or — when the
-// overlay only ever held this one capture — back to the Conversations view.
 function closeDoc() {
-  if (captureOnlyDoc) {
-    captureOnlyDoc = false;
-    closeBrowser();
-    return;
-  }
-  openDocFile = null;
-  els.lifeOsFileContent.hidden = true;
-  els.lifeOsFileContent.innerHTML = '';
-  if (els.lifeOsDocClose) els.lifeOsDocClose.hidden = true;
-  if (els.lifeOsDocDelete) els.lifeOsDocDelete.hidden = true;
-  if (els.lifeOsDocRename) els.lifeOsDocRename.hidden = true;
-  Array.prototype.forEach.call(
-    els.lifeOsFileList.querySelectorAll('.lifeos-file-btn.active'),
-    function (b) { b.classList.remove('active'); }
-  );
+  if (els.lifeOsDoc && els.lifeOsDoc.open) els.lifeOsDoc.close();
 }
 
-// Close the whole browser → back to the skill tiles.
-function closeBrowser() {
-  state.lifeOsBrowser = null;
-  closeDoc();
-  els.lifeOsBrowser.hidden = true;
+// The sheets' shared closing (#1504): ✕ and Done close, a tap on the
+// backdrop (which lands on the <dialog> itself) closes, Escape closes
+// natively, and `onClose` runs after any of them.
+function wireSheet(d, buttons, onClose) {
+  if (!d) return;
+  buttons.forEach(function (b) {
+    if (b) b.addEventListener('click', function () { d.close(); });
+  });
+  d.addEventListener('click', function (ev) {
+    if (ev.target === d) d.close();
+  });
+  if (onClose) d.addEventListener('close', onClose);
 }
 
-// --------------------------------------------------- conversations (#727)
-// The digested conversation index + ranked cross-skill search, with a ↺ that
-// reattaches to one exact session instead of opening Claude's native picker.
-// Opened scoped from a tile's 🕘, or unscoped from the Skills header's 🔎.
+// ----------------------------- conversations in the skills field (#1504)
+// The skills field searches conversations too (decision 9 of #1500): from
+// CONVO_MIN_QUERY characters, after the debounce, the matches show as a
+// second group under the skills. A skill's ⋮ Conversations narrows the group
+// to that skill's own list, newest first (the chip in the field); the chip's
+// ✕ widens it to every skill. A search runs only on typing: the text a
+// reload restores filters the skills alone.
 //
-// { skill: <id|null>, name: <label>, allSkills: bool, scoped: bool,
-//   searching: bool, sourceRows: [], rows: [] }
-let convoView = null;
+// The group's mode: 'off' (hidden), 'browse' (one skill's index, nothing
+// typed), 'search' (ranked hits, within the scope if there is one), or
+// 'notice' (a ?convo= link that could not resolve, saying so).
+let convoMode = 'off';
+// The skill the group is narrowed to ({ id, name }), or null for every skill.
+let convoScope = null;
+// The rows on screen, as the server sent them (so a date re-sort of search
+// hits can return to relevance without a refetch) and as rendered.
+let convoSourceRows = [];
+let convoRows = [];
 let convoQueryTimer = null;
+// Bumped by every read and by switching the group off, so an answer that
+// lands after the field or scope moved on is dropped.
+let convoSeq = 0;
+// One letter matches nearly everything: the search starts at two.
+const CONVO_MIN_QUERY = 2;
 
 // The ordering applied to *search* results — 'relevance' (the server's rank
-// order) until the user taps the toggle, and reset to it whenever the query
-// box is cleared or the view is reopened. Deliberately not persisted: the
-// browse list keeps its own remembered date sort in state.lifeOsConvoSort.
+// order) until the user picks another, and reset to it whenever the search
+// ends. Deliberately not persisted: the browse list keeps its own remembered
+// date sort in state.lifeOsConvoSort.
 let convoSearchSort = 'relevance';
 
-function convoScope() {
-  // The skill filter actually sent to the server: null once the view has been
-  // widened to every skill, even though it was opened from one tile.
-  return (convoView && !convoView.allSkills) ? convoView.skill : null;
+function fieldQuery() {
+  return els.lifeOsFilterInput ? els.lifeOsFilterInput.value.trim() : '';
 }
 
-// Resolves to the skill's index rows once loaded (null otherwise), which is
-// what a ?convo= link resolves against; tap callers ignore it.
-export function openConvos(skill) {
-  // A cached older index.html with this newer bundle would have no overlay to
-  // render into — bail rather than throwing on the first property access.
-  if (!els.lifeOsConvos || !els.lifeOsConvoQuery) return Promise.resolve(null);
-  convoView = {
-    skill: skill ? skill.id : null,
-    name: skill ? skill.name : 'Conversations',
-    allSkills: !skill,
-    // Whether the rows on screen came from a single-skill list — set by
-    // renderConvoRows, so a sort toggle can re-render without a refetch.
-    scoped: !!skill,
-    // Whether those rows are search hits (server-ranked) rather than a
-    // browse index — the two lists do not want the same default order.
-    searching: false,
-    // The rows exactly as the server sent them, so a date re-sort of search
-    // results is reversible back to relevance without a refetch.
-    sourceRows: [],
-    rows: [],
-  };
+// Whatever the field and the scope now ask for. Resolves to the rows
+// rendered (a ?convo= link resolves against them), or null.
+function refreshConvos() {
+  window.clearTimeout(convoQueryTimer);
+  const query = fieldQuery();
+  if (query.length >= CONVO_MIN_QUERY) return runConvoSearch(query);
+  // Nothing (or one letter) typed: the search's transient order goes, and
+  // the group falls back to the skill's own list, or steps aside.
   convoSearchSort = 'relevance';
-  els.lifeOsConvoQuery.value = '';
-  els.lifeOsConvoQuery.placeholder = 'Search conversations';
-  syncConvoControls();
-  els.lifeOsConvos.hidden = false;
-  if (skill) return loadConvos();
-  showConvoState('empty', 'Search every skill’s conversations.');
+  if (convoScope) return loadConvos();
+  setConvoMode('off');
   return Promise.resolve(null);
 }
 
-function closeConvos() {
-  closeConvoViewer();   // it is layered over this view — never outlive it
-  convoMenu.close();
-  closeConvoSheet();
-  convoView = null;
+function onFieldInput() {
   window.clearTimeout(convoQueryTimer);
-  els.lifeOsConvos.hidden = true;
-  els.lifeOsConvoList.innerHTML = '';
+  convoQueryTimer = window.setTimeout(refreshConvos, 250);
 }
 
-// The five lifecycle states render through one canonical block — a glyph, a
-// one-line reason, and at most one Retry — never a blank pane and never a
-// toast for something that isn't a user-initiated command.
-const CONVO_STATE_ICON = {
+function setConvoMode(mode) {
+  convoMode = mode;
+  if (mode === 'off') {
+    convoSeq += 1;
+    convoSourceRows = [];
+    convoRows = [];
+    els.lifeOsConvoList.replaceChildren();
+    setAsyncState(els.lifeOsConvoState, 'ready');
+  }
+  syncConvoGroup();
+}
+
+// The field's chip, the group, and the Skills group beside it. Narrowed to
+// one skill, the group is that skill's list, so the other skills step aside.
+function syncConvoGroup() {
+  els.lifeOsConvoGroup.hidden = convoMode === 'off';
+  const card = els.lifeOsList.closest('.lifeos-list-card');
+  if (card) {
+    card.classList.toggle('is-convo-scoped', !!convoScope);
+    // With the group under it, "Skills (0)" says what the no-match block
+    // would, and the block would push the conversations off the screen.
+    card.classList.toggle('is-convo-on', convoMode !== 'off');
+  }
+  els.lifeOsConvoScope.hidden = !convoScope;
+  if (convoScope) {
+    els.lifeOsConvoScopeName.textContent = 'in ' + convoScope.name;
+    els.lifeOsConvoScope.setAttribute('aria-label',
+      'Showing ' + convoScope.name + ' only. Remove to search every skill');
+  }
+  syncSkillsHead();
+  syncConvoSort();
+}
+
+// "Skills (n)" heads the skill rows only while the Conversations group shows
+// under them, so the two groups read as one result.
+function syncSkillsHead() {
+  const head = els.lifeOsSkillsHead;
+  if (!head) return;
+  head.hidden = convoMode === 'off' || !!convoScope;
+  if (head.hidden) return;
+  const shown = els.lifeOsList.querySelectorAll(':scope > li.lifeos-item:not([hidden])').length;
+  els.lifeOsSkillsCount.textContent = '(' + shown + ')';
+}
+
+// A collapsed Skills card would hide the group it holds.
+function revealSkillsCard() {
+  const card = els.lifeOsList && els.lifeOsList.closest('details');
+  if (card && !card.open) card.open = true;
+}
+
+// The group's lifecycle states through the shared helper (#1501): a glyph,
+// one line, and at most one Retry, never a blank group and never a toast.
+const CONVO_STATE_GLYPH = {
   loading: 'hourglass',
   empty: 'messages-square',
   error: 'triangle-alert',
 };
 
 function showConvoState(kind, message, retry) {
-  const host = els.lifeOsConvoState;
-  if (!host) return;
-  els.lifeOsConvoList.innerHTML = '';
   // No rows on screen means none to re-sort: a sort change must not bring
-  // back the list this state replaced (a widened, still-empty search).
-  if (convoView) {
-    convoView.sourceRows = [];
-    convoView.rows = [];
-    els.lifeOsConvoQuery.placeholder = 'Search conversations';
-  }
-  host.innerHTML = '';
-  host.hidden = false;
-  const glyph = document.createElement('div');
-  glyph.innerHTML = icon(CONVO_STATE_ICON[kind] || 'messages-square');
-  host.appendChild(glyph);
-  const text = document.createElement('div');
-  text.textContent = message;
-  host.appendChild(text);
-  if (retry) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'button-ghost lifeos-convo-retry';
-    btn.textContent = 'Retry';
-    btn.addEventListener('click', retry);
-    host.appendChild(btn);
-  }
+  // back the list this state replaced.
+  convoSourceRows = [];
+  convoRows = [];
+  els.lifeOsConvoList.replaceChildren();
+  els.lifeOsConvoCount.textContent = '';
+  setAsyncState(els.lifeOsConvoState, kind,
+    { message: message, glyph: CONVO_STATE_GLYPH[kind], retry: retry });
+  syncConvoSort();
 }
 
-function hideConvoState() {
-  if (els.lifeOsConvoState) els.lifeOsConvoState.hidden = true;
-}
-
-// Browse one skill's index — the no-query view. `available: false` means the
+// One skill's index — the no-query view. `available: false` means the
 // indexer simply hasn't digested this skill yet; that's an honest empty
 // state, not an error. Resolves to the rows it rendered, or null.
 async function loadConvos() {
-  const skill = convoView && convoView.skill;
-  if (!skill) return null;
+  const scope = convoScope;
+  if (!scope) return null;
+  const mine = ++convoSeq;
+  setConvoMode('browse');
   showConvoState('loading', 'Reading conversations…');
   try {
     const body = await jsonApi(
-      '/api/life-os/skills/' + encodeURIComponent(skill) + '/conversations'
+      '/api/life-os/skills/' + encodeURIComponent(scope.id) + '/conversations'
     );
-    if (!convoView || convoView.skill !== skill) return null;   // view moved on
+    if (mine !== convoSeq) return null;     // the field or scope moved on
     if (!body.available) {
       showConvoState('empty', 'No conversation index yet for this skill.');
       return null;
     }
     const rows = body.conversations || [];
-    renderConvoRows(rows, { scoped: true, search: false });
+    renderConvoRows(rows);
     return rows;
   } catch (exc) {
-    showConvoState('error', convoFailure(exc), loadConvos);
+    if (mine !== convoSeq) return null;
+    showConvoState('error', convoFailure(exc), refreshConvos);
     return null;
   }
 }
 
-// Ranked search across every skill (or the current scope). The server owns
-// the ranking; a missing CLI or database comes back as available:false with a
+// Ranked search across every skill (or the scope). The server owns the
+// ranking; a missing CLI or database comes back as available:false with a
 // short reason, which reads as "search unavailable" — never an error toast.
+// The skills group above keeps working whatever this says.
 async function runConvoSearch(query) {
-  const scope = convoScope();
-  showConvoState('loading', 'Searching…');
+  const scope = convoScope;
+  const mine = ++convoSeq;
+  setConvoMode('search');
+  showConvoState('loading', 'Searching conversations…');
   let url = '/api/life-os/conversations/search?q=' + encodeURIComponent(query);
-  if (scope) url += '&skill=' + encodeURIComponent(scope);
+  if (scope) url += '&skill=' + encodeURIComponent(scope.id);
   try {
     const body = await jsonApi(url);
-    if (!convoView || els.lifeOsConvoQuery.value.trim() !== query) return;
+    if (mine !== convoSeq) return null;
     if (!body.available) {
       showConvoState('error', 'Search unavailable — ' + (body.reason || 'try again later.'));
-      return;
+      return null;
     }
     const rows = body.results || [];
     if (!rows.length) {
       showConvoState('empty', 'Nothing matched “' + query + '”.');
-      return;
+      return null;
     }
-    renderConvoRows(rows, { scoped: !!scope, search: true });
+    renderConvoRows(rows);
+    return rows;
   } catch (exc) {
-    showConvoState('error', convoFailure(exc), function () { runConvoSearch(query); });
+    if (mine !== convoSeq) return null;
+    showConvoState('error', convoFailure(exc), refreshConvos);
+    return null;
   }
 }
 
@@ -1143,39 +1146,50 @@ function convoFailure(exc) {
   return 'Could not load conversations.';
 }
 
-function onConvoQuery() {
-  window.clearTimeout(convoQueryTimer);
-  const query = els.lifeOsConvoQuery.value.trim();
-  convoQueryTimer = window.setTimeout(function () {
-    if (query) { runConvoSearch(query); return; }
-    // Cleared box: drop the transient search ordering (the browse list keeps
-    // its own remembered date sort) and go back to the no-query view.
-    convoSearchSort = 'relevance';
-    if (convoView) convoView.searching = false;
-    syncConvoControls();
-    if (convoScope()) loadConvos();
-    else showConvoState('empty', 'Search every skill’s conversations.');
-  }, 250);
+// A skill's ⋮ Conversations: the field, emptied, narrowed to that skill, its
+// list newest first. Resolves to the rows once loaded (null otherwise),
+// which is what a ?convo= link resolves against. `quiet` (the link) leaves
+// the keyboard down.
+export function openConvos(skill, opts) {
+  if (!els.lifeOsConvoGroup || !skill) return Promise.resolve(null);
+  convoScope = { id: skill.id, name: skill.name };
+  revealSkillsCard();
+  // set() goes through the field's input event, which schedules a debounced
+  // refresh; refreshConvos() runs it now and drops that timer.
+  skillsFilter.set('');
+  const loaded = refreshConvos();
+  if (!(opts && opts.quiet)) els.lifeOsFilterInput.focus();
+  return loaded;
+}
+
+// A ?convo= link for a skill that is gone: say so in the group.
+function showConvoNotice(message) {
+  revealSkillsCard();
+  convoSeq += 1;
+  convoScope = null;
+  setConvoMode('notice');
+  showConvoState('error', message);
 }
 
 // ------------------------------------------------- sort (#886, #1074)
 //
-// Orderings over rows already on the client, so a toggle costs no round
+// Orderings over rows already on the client, so a change costs no round
 // trip. The browse list and the search results land here with *different*
 // defaults (#1074): browsing defaults to a date sort, while a search
 // defaults to 'relevance' — the server's FTS5 rank order, which the client's
 // only job is not to destroy.
 //
-// 'interaction' is the browse default and the point of #886:
+// 'interaction' (Recent) is the browse default and the point of #886:
 // `last_interaction` is the capture file's mtime, which life-os moves
 // forward whenever a resumed session appends turns, so the conversation you
 // were last in floats to the top. 'created' is the date-stamped filename
 // order the index is written in.
 
+const CONVO_SORTS = ['relevance', 'interaction', 'created'];
+
 // The ordering in force for whatever is on screen right now.
 function activeConvoSort() {
-  if (convoView && convoView.searching) return convoSearchSort;
-  return state.lifeOsConvoSort;
+  return convoMode === 'search' ? convoSearchSort : state.lifeOsConvoSort;
 }
 
 // Which date leads each row. In relevance order neither date drives the
@@ -1203,52 +1217,28 @@ function sortedConvoRows(rows) {
   });
 }
 
-// What each ordering is called, in the filter button's accessible name.
-const CONVO_SORT_NAMES = {
-  relevance: 'best match', interaction: 'last active', created: 'creation date',
-};
-
-// The filter field and its sheet (#1528), re-synced on every render and every
-// change: the scope chip shows only while the view is narrowed to its skill,
-// the sliders button counts the narrowing filters on and names the whole
-// state, and the sheet's tabs mark what is in force. "Best match" exists only
-// while a query is in the box; the Skill row only for a view opened from a
-// skill.
-function syncConvoControls() {
-  if (!convoView || !els.lifeOsConvosFilters) return;
-  const scoped = !!convoView.skill && !convoView.allSkills;
+// The segmented control shows while the group lists conversations (it stays
+// through a search's loading, so the group never jumps), Relevance only while
+// searching, and the segment in force pressed.
+function syncConvoSort() {
+  const nav = els.lifeOsConvoSort;
+  if (!nav) return;
   const mode = activeConvoSort();
-  els.lifeOsConvosScope.hidden = !scoped;
-  els.lifeOsConvosScopeName.textContent = convoView.name;
-  els.lifeOsConvosScope.setAttribute('aria-label',
-    'Showing ' + convoView.name + ' only. Remove to show every skill');
-  els.lifeOsConvosFilterCount.hidden = !scoped;
-  els.lifeOsConvosFilterCount.textContent = scoped ? '1' : '';
-  const name = 'Sort and filter: ' + (scoped ? convoView.name + ' only' : 'every skill') +
-    ', sorted by ' + CONVO_SORT_NAMES[mode];
-  els.lifeOsConvosFilters.setAttribute('aria-label', name);
-  els.lifeOsConvosFilters.title = name;
-  els.lifeOsConvosFilters.dataset.sort = mode;
-  els.lifeOsConvoSortTabs.querySelectorAll('.range-tab').forEach(function (btn) {
-    btn.hidden = btn.dataset.sort === 'relevance' && !convoView.searching;
+  nav.hidden = convoMode !== 'browse' && convoMode !== 'search';
+  nav.dataset.sort = mode;
+  nav.querySelectorAll('.range-tab').forEach(function (btn) {
+    btn.hidden = btn.dataset.sort === 'relevance' && convoMode !== 'search';
     const on = btn.dataset.sort === mode;
-    btn.classList.toggle('active', on);
-    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  });
-  els.lifeOsConvoScopeRow.hidden = !convoView.skill;
-  els.lifeOsConvoScopeTabs.querySelectorAll('.range-tab').forEach(function (btn) {
-    if (btn.dataset.scope === 'skill') btn.textContent = convoView.name;
-    const on = (btn.dataset.scope === 'all') === !!convoView.allSkills;
     btn.classList.toggle('active', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 }
 
 function setConvoSort(mode) {
-  if (!convoView || !CONVO_SORT_NAMES[mode]) return;
-  if (convoView.searching) {
-    // Search orderings are transient: clearing the box restores the browse
-    // default (#1074), so a date ordering of the hits never sticks.
+  if (CONVO_SORTS.indexOf(mode) === -1) return;
+  if (convoMode === 'search') {
+    // Search orderings are transient: the end of the search restores the
+    // browse default (#1074), so a date ordering of the hits never sticks.
     convoSearchSort = mode;
   } else {
     if (mode === 'relevance') return;   // browsing has no rank to restore
@@ -1258,72 +1248,21 @@ function setConvoSort(mode) {
   // Re-order what is already on screen; a refetch would return the same rows.
   // Re-sorting from the *server's* order, not the rendered one, is what makes
   // relevance reachable again after a date sort.
-  if (convoView.sourceRows.length) {
-    renderConvoRows(convoView.sourceRows, {
-      scoped: convoView.scoped, search: convoView.searching,
-    });
-  } else {
-    syncConvoControls();
-  }
+  if (convoSourceRows.length) renderConvoRows(convoSourceRows);
+  else syncConvoSort();
 }
 
-// Narrow the view to the skill it was opened from, or widen it to every
-// skill, without leaving it: the chip's ✕ and the sheet's Skill row.
-function setConvoScope(all) {
-  if (!convoView || !convoView.skill || convoView.allSkills === all) return;
-  convoView.allSkills = all;
-  syncConvoControls();
-  onConvoQuery();
-}
-
-function openConvoSheet() {
-  if (!convoView || !els.lifeOsConvoSheet) return;
-  syncConvoControls();
-  els.lifeOsConvoSheet.showModal();
-}
-
-function closeConvoSheet() {
-  if (els.lifeOsConvoSheet && els.lifeOsConvoSheet.open) els.lifeOsConvoSheet.close();
-}
-
-// Clear: back to the view's defaults — the search's rank order (or the
-// browse list's last-active order) and the skill the view was opened from.
-function clearConvoFilters() {
-  if (!convoView) return;
-  setConvoSort(convoView.searching ? 'relevance' : 'interaction');
-  setConvoScope(false);
-}
-
-function renderConvoRows(rows, opts) {
-  const host = els.lifeOsConvoList;
-  hideConvoState();
-  host.innerHTML = '';
-  convoView.scoped = !!(opts && opts.scoped);
-  // Set before sorting: sortedConvoRows() reads it to pick the ordering.
-  convoView.searching = !!(opts && opts.search);
-  convoView.sourceRows = rows.slice();
-  // Store the sorted order: a row hands its own object to the viewer, and
-  // callers read this array expecting the order actually rendered.
-  convoView.rows = sortedConvoRows(rows);
-  // The controls depend on which list is on screen, so they are re-synced on
-  // every render, not only on a tap.
-  syncConvoControls();
-  // The filter field's placeholder is the list's count (design.md "Long
-  // lists"), that count's one home; a search's hits are not the list.
-  if (!convoView.searching) {
-    const n = convoView.rows.length;
-    els.lifeOsConvoQuery.placeholder =
-      'Search ' + n + ' conversation' + (n === 1 ? '' : 's');
-  }
-  if (!convoView.rows.length) {
+function renderConvoRows(rows) {
+  setAsyncState(els.lifeOsConvoState, 'ready');
+  convoSourceRows = rows.slice();
+  convoRows = sortedConvoRows(rows);
+  syncConvoSort();
+  if (!convoRows.length) {
     showConvoState('empty', 'No conversations yet.');
     return;
   }
-  convoView.rows.forEach(function (r) {
-    host.appendChild(convoRow(r, convoView.scoped));
-  });
-  // An open menu whose row is gone drops its state; a reopened one keeps it.
-  convoMenu.endRender();
+  els.lifeOsConvoCount.textContent = '(' + convoRows.length + ')';
+  els.lifeOsConvoList.replaceChildren.apply(els.lifeOsConvoList, convoRows.map(convoRow));
 }
 
 // What a conversation is called: the owner's title (#1495) when set, else the
@@ -1332,73 +1271,46 @@ function convoName(r) {
   return r.title || r.topic || r.slug || r.file || 'untitled';
 }
 
-// One conversation on the shared action-row (#1528): a tap reads it, the
-// title is what it is called (an owner's rename replaces the topic outright),
-// and the one context line is when it was last touched (or created, under
-// that sort), which skill it is from when the list spans several, and the
-// start of its summary. Everything else is in the row's ⋮.
-function convoRow(r, scoped) {
+// The avatar of the skill a conversation is from: its glyph or monogram,
+// the same as on its skill row.
+function convoAvatar(r) {
+  const skill = (state.lifeOsSkills || []).find(function (s) { return s.id === r.skill; });
+  return skillAvatar(skill || { id: r.skill, name: r.skill }, false);
+}
+
+// The row's one trailing item: a chevron, because a tap opens a sheet.
+function rowChevron(onTap) {
+  const el = document.createElement('span');
+  el.className = 'lifeos-convo-chevron';
+  el.setAttribute('aria-hidden', 'true');
+  el.innerHTML = icon('chevron-right');
+  el.addEventListener('click', onTap);
+  return el;
+}
+
+// One conversation on the shared action-row (#1528, #1504): a tap opens its
+// sheet, the title is what it is called (an owner's rename replaces the
+// topic outright), and the one context line is when it was last touched (or
+// created, under that sort), which skill it is from when the group spans
+// several, and the start of its summary.
+function convoRow(r) {
   const name = convoName(r);
   const meta = [
     convoWhen(convoDateSort() === 'created' ? r.date : (r.last_interaction || r.date)),
-    (!scoped && r.skill) ? r.skill : '',
+    convoScope ? '' : r.skill,
     convoSummary(r),
   ].filter(Boolean).join(' · ');
-  const row = actionRow({
+  const open = function () { openConvoSheet(r); };
+  return actionRow({
     id: (r.skill || '') + '/' + (r.file || ''),
     className: 'lifeos-convo-row',
     title: name,
     meta: meta,
-    label: 'Read ' + name,
-    // A row with no readable capture path has nothing the viewer could open.
-    disabled: !r.path,
-    hint: 'This conversation has no readable capture',
-    onMain: function () { openConvoViewer(r, CONVO_VIEWER_ACTIONS); },
-    kebabClass: 'lifeos-convo-menu-anchor',
-    kebabLabel: 'Conversation actions',
-  });
-  row.li.appendChild(convoMenu.attach(row.li.dataset.id, row.kebab, convoMenuItems(r), {
-    // A phone has no hover to explain a disabled Resume, so its reason is
-    // the menu's first line.
-    header: function () { return convoResumeAction(r).reason; },
-  }));
-  return row.li;
-}
-
-// The row's ⋮ (#1528): Resume first (or the explicit new-conversation
-// handoff when another provider is chosen), then Rename and Copy link, and
-// Delete last, after the menu's divider, behind its confirm. Labels and
-// state are functions, so every open reflects the model chosen in the bar.
-function convoMenuItems(r) {
-  const editable = !!(r.path && r.skill);
-  return [
-    {
-      className: 'lifeos-convo-resume',
-      glyph: function () {
-        return convoResumeAction(r).kind === 'handoff' ? 'messages-square' : 'rotate-ccw';
-      },
-      text: function () { return convoResumeAction(r).text; },
-      label: function () { return convoResumeAction(r).label; },
-      disabled: function () { return !convoResumeAction(r).kind; },
-      title: function () { return convoResumeAction(r).reason; },
-      onTap: function () { runConvoResume(r); },
-    },
-    {
-      className: 'lifeos-convo-rename', glyph: 'pencil', text: 'Rename',
-      label: 'Rename this conversation', hidden: !editable,
-      onTap: function () { renameConversationTitle(r); },
-    },
-    {
-      className: 'lifeos-convo-copy-link', glyph: 'link', text: 'Copy link',
-      label: 'Copy a link to this conversation', hidden: !(r.skill && r.file),
-      onTap: function () { copyConvoLink(r); },
-    },
-    {
-      className: 'lifeos-convo-delete', glyph: 'trash-2', text: 'Delete', danger: true,
-      label: 'Delete this conversation', hidden: !editable,
-      onTap: function () { deleteConversation(r); },
-    },
-  ];
+    avatar: convoAvatar(r),
+    label: 'Open ' + name,
+    onMain: open,
+    trailing: rowChevron(open),
+  }).li;
 }
 
 // A day as people say it: Today, Yesterday, "3 days ago" within the week,
@@ -1438,55 +1350,95 @@ function convoSummary(r) {
     .join(' ');
 }
 
-// What the viewer's summary block says above its Resume (#1528): who the
-// conversation was with and when, then the summary paragraph.
-function convoDescribe(r) {
-  const lower = function (when) {
-    return /^(Today|Yesterday)$/.test(when) ? when.toLowerCase() : when;
-  };
-  const created = convoWhen(r.date);
-  const touched = convoWhen(r.last_interaction || r.date);
-  const parts = [];
-  if (r.agent) parts.push(nameLabel(r.agent));
-  if (created) parts.push('started ' + lower(created));
-  if (touched && touched !== created) parts.push('last active ' + lower(touched));
-  return { meta: parts.join(' · '), summary: convoSummary(r) };
+// ------------------------------------------- conversation sheet (#1504)
+// One conversation: its name, "skill · when · N messages · from <harness>",
+// the summary, then Resume as the one primary and every other action as a
+// link row, Delete last in danger. Opened from a row and from a ?convo=
+// link; the reader, a raw capture, the rename and the confirms all stack
+// over it.
+
+// The conversation the sheet shows, or null while it is closed.
+let sheetRow = null;
+
+// Resume reattaches the stored session on the conversation's own model
+// (#1503), so the toolbar's provider does not have to match it: there is no
+// "select a Claude model" lockout. The index carries no model, so the
+// button cannot name one ahead of time; the toast after it does.
+function canResume(r) {
+  return !!(r.resumable && r.skill);
 }
 
-// What Resume does for this conversation with the model chosen in the
-// Conversations bar (#727's rules, one action since #1528): reattach the
-// stored session when the providers match; when they don't and the capture
-// can seed one, start an explicit new conversation in the chosen provider;
-// with no handoff to offer, still resume, on the conversation's own model
-// (#1503); otherwise nothing, and `reason` says why on screen. Asked by the row's ⋮
-// and the viewer's Resume on every open, so both follow the bar's model.
-function convoResumeAction(r) {
+// The harness a "Start new in …" would hand off to: the toolbar's, when it
+// is not the conversation's own and the capture can seed one. '' when no
+// handoff applies.
+function handoffTarget(r) {
   const target = lifeOsModel().split(':')[0];
-  const matches = target === r.agent;
-  if (r.resumable && r.skill && matches) {
-    return { kind: 'resume', text: 'Resume', label: 'Resume this conversation', reason: '' };
-  }
-  if (r.handoff_available && r.skill && !matches && ['claude', 'codex'].includes(target)) {
-    const to = target === 'codex' ? 'Codex' : 'Claude';
-    return {
-      kind: 'handoff', text: 'Start new in ' + to,
-      label: 'Start a new ' + to + ' conversation from this one', reason: '',
-    };
-  }
-  if (r.resumable && r.skill) {
-    // Resume keeps the conversation's own model (#1503), so the bar's
-    // provider does not have to match it.
-    return { kind: 'resume', text: 'Resume', label: 'Resume this conversation', reason: '' };
-  }
-  return {
-    kind: null, text: 'Resume', label: 'Resume this conversation',
-    reason: r.resume_reason || 'No stored session; readable only.',
-  };
+  if (!r.handoff_available || !r.skill || target === r.agent) return '';
+  if (target === 'codex') return 'Codex';
+  if (target === 'claude') return 'Claude';
+  return '';
 }
 
-function runConvoResume(r) {
-  const action = convoResumeAction(r);
-  if (action.kind) resumeConversation(r, action.kind);
+function convoSheetMeta(r) {
+  const turns = Number(r.turns) || 0;
+  return [
+    r.skill,
+    convoWhen(r.last_interaction || r.date),
+    turns ? turns + (turns === 1 ? ' message' : ' messages') : '',
+    r.agent ? 'from ' + nameLabel(r.agent) : '',
+  ].filter(Boolean).join(' · ');
+}
+
+function sheetLink(cls) {
+  return els.lifeOsConvoSheet.querySelector('.' + cls);
+}
+
+function fillConvoSheet() {
+  const r = sheetRow;
+  if (!r) return;
+  els.lifeOsConvoSheetTitle.textContent = convoName(r);
+  els.lifeOsConvoSheetTitle.title = convoName(r);
+  els.lifeOsConvoSheetMeta.textContent = convoSheetMeta(r);
+  const summary = convoSummary(r);
+  els.lifeOsConvoSheetSummary.textContent = summary;
+  els.lifeOsConvoSheetSummary.hidden = !summary;
+  // A Resume that cannot run stays, disabled, and the note says why: a
+  // phone has no hover for a tooltip.
+  const resumable = canResume(r);
+  els.lifeOsConvoSheetResume.disabled = !resumable;
+  els.lifeOsConvoSheetNote.textContent = resumable ? ''
+    : (r.resume_reason || 'No stored session; readable only.');
+  els.lifeOsConvoSheetNote.hidden = resumable;
+  const handoff = handoffTarget(r);
+  const handoffRow = sheetLink('lifeos-convo-handoff');
+  handoffRow.hidden = !handoff;
+  handoffRow.querySelector('.settings-row-label').textContent = 'Start new in ' + handoff;
+  // A row with no readable capture has nothing to read, open or change.
+  const editable = !!(r.path && r.skill);
+  sheetLink('lifeos-convo-read').hidden = !r.path;
+  sheetLink('lifeos-convo-open-raw').hidden = !r.path;
+  sheetLink('lifeos-convo-rename').hidden = !editable;
+  sheetLink('lifeos-convo-copy-link').hidden = !(r.skill && r.file);
+  sheetLink('lifeos-convo-delete').parentElement.hidden = !editable;
+}
+
+function openConvoSheet(r) {
+  const d = els.lifeOsConvoSheet;
+  if (!d || !d.showModal) return;
+  sheetRow = r;
+  fillConvoSheet();
+  if (!d.open) d.showModal();
+}
+
+function closeConvoSheet() {
+  if (els.lifeOsConvoSheet && els.lifeOsConvoSheet.open) els.lifeOsConvoSheet.close();
+}
+
+// Everything a conversation stacked: the raw capture, the reader, the sheet.
+function closeConvoLayers() {
+  closeDoc();
+  closeConvoViewer();
+  closeConvoSheet();
 }
 
 // The launcher link that reopens one capture (#1170): main.js boot reads
@@ -1513,49 +1465,37 @@ function copyConvoLink(r) {
   }
 }
 
-// The callbacks the viewer drives (life-os-viewer.js owns the overlay, this
-// module owns the actions — so neither imports the other).
-const CONVO_VIEWER_ACTIONS = {
-  describe: convoDescribe,
-  resumeAction: convoResumeAction,
-  resume: runConvoResume,
-  canLink: function (r) { return !!(r.skill && r.file); },
-  copyLink: copyConvoLink,
-  rename: renameConversationTitle,
-  del: deleteConversation,
-  openRaw: openCapture,
-};
-
-// Open one capture from a ?convo= link (#1170): the Conversations overlay
-// scoped to its skill, then the viewer on top — the same layering a tap
-// builds. The viewer needs the full row, so the link resolves through the
-// skill's index; anything that doesn't resolve says so in the overlay.
+// Open one capture from a ?convo= link (#1170): the field narrowed to its
+// skill, then the conversation sheet and the reader over it, the same
+// layering a tap builds. The sheet needs the full row, so the link resolves
+// through the skill's index; anything that doesn't resolve says so in the
+// Conversations group.
 export async function openConvoByLink(skillId, file) {
   const skill = (state.lifeOsSkills || []).find(function (s) {
     return s.id === skillId;
   });
   if (!skill) {
-    openConvos(null);
-    showConvoState('error',
+    showConvoNotice(
       'This link is for the skill “' + skillId + '”, which Life OS no longer lists.');
     return;
   }
-  const rows = await openConvos(skill);
-  if (!rows || !convoView || convoView.skill !== skill.id) return;
+  const rows = await openConvos(skill, { quiet: true });
+  if (!rows || !convoScope || convoScope.id !== skill.id) return;
   const row = rows.find(function (r) { return r.file === file; });
   if (!row) {
     showConvoState('error',
       'This link no longer matches a conversation — it may have been renamed or deleted.');
     return;
   }
-  openConvoViewer(row, CONVO_VIEWER_ACTIONS);
+  openConvoSheet(row);
+  if (row.path) openConvoViewer(row, openCapture);
 }
 
 // Delete one conversation everywhere it lives (#1410): the capture, the
 // Claude Code transcript it was captured from, and the indexes. One confirm
-// that names the conversation and says what goes. Resolves true when it is
-// gone — the viewer's ⋮ Delete closes itself on that — and false for a
-// cancel or a refusal (a conversation open in a running session says so).
+// that names the conversation and says what goes; a refusal (a conversation
+// open in a running session, an unreachable session host) toasts the
+// server's reason and changes nothing.
 async function deleteConversation(r) {
   const title = convoName(r);
   const ok = await confirmDialog({
@@ -1564,7 +1504,7 @@ async function deleteConversation(r) {
       'from, and its index entries. It cannot be undone.',
     action: 'Delete',
   });
-  if (!ok) return false;
+  if (!ok) return;
   try {
     await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(r.skill) +
@@ -1573,25 +1513,22 @@ async function deleteConversation(r) {
     );
   } catch (exc) {
     apiFailToast('Delete failed', exc);
-    return false;
+    return;
   }
-  closeConvoViewer();
+  closeConvoLayers();
   toast('Deleted ' + title, 'good', { icon: 'trash-2' });
   await refreshAfterLogChange();
-  return true;
 }
 
-// Read one capture *raw* in the existing document viewer, layered over the
-// transcript viewer — closing it comes straight back here, not to a file
-// list we never loaded.
+// Read one capture *raw* in the document sheet, over the sheet that asked —
+// closing it comes straight back there.
 function openCapture(r) {
-  captureOnlyDoc = true;
-  els.lifeOsBrowserTitle.textContent = r.skill || 'conversation';
-  els.lifeOsFileList.innerHTML = '';
-  els.lifeOsBrowser.hidden = false;
   loadFile({ path: r.path, name: r.file, category: 'conversations' });
 }
 
+// action 'resume' reattaches the stored session on its own model (#1503);
+// 'handoff' starts a new conversation in the toolbar's harness, seeded from
+// the capture, after a confirm.
 async function resumeConversation(r, action) {
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
@@ -1599,8 +1536,8 @@ async function resumeConversation(r, action) {
     mode: mode, model: model, action: action,
     capture: { path: r.path, revision: r.revision, agent: r.agent, sid: r.sid },
   };
-  // A resume comes back on the conversation's own model (#1503); the bar's
-  // model applies only to the new conversation a handoff starts.
+  // A resume comes back on the conversation's own model (#1503); the
+  // toolbar's model applies only to the new conversation a handoff starts.
   if (action === 'resume') payload.keep_model = true;
   if (action === 'handoff') {
     const scope = r.handoff_truncated ?
@@ -1631,11 +1568,35 @@ async function resumeConversation(r, action) {
         (mode === 'remote' ? ' (detached)' : ''),
       'good', { icon: action === 'handoff' ? 'messages-square' : 'rotate-ccw' }
     );
-    closeConvos();
+    // The terminal opens over the page, not in the top layer: the sheets
+    // must go first.
+    closeConvoLayers();
     handleLaunchResponse(body.session);
   } catch (exc) {
     apiFailToast(action === 'handoff' ? 'New conversation failed' : 'Resume failed', exc);
   }
+}
+
+// The sheet's actions read the conversation it shows at tap time, and hold
+// it through any await (a ✕ meanwhile clears sheetRow).
+function wireConvoSheet() {
+  const d = els.lifeOsConvoSheet;
+  if (!d) return;
+  wireSheet(d, [els.lifeOsConvoSheetClose], function () { sheetRow = null; });
+  const on = function (cls, act) {
+    sheetLink(cls).addEventListener('click', function () {
+      if (sheetRow) act(sheetRow);
+    });
+  };
+  on('lifeos-convo-read', function (r) { openConvoViewer(r, openCapture); });
+  on('lifeos-convo-rename', renameConversationTitle);
+  on('lifeos-convo-handoff', function (r) { resumeConversation(r, 'handoff'); });
+  on('lifeos-convo-copy-link', copyConvoLink);
+  on('lifeos-convo-open-raw', openCapture);
+  on('lifeos-convo-delete', deleteConversation);
+  els.lifeOsConvoSheetResume.addEventListener('click', function () {
+    if (sheetRow && canResume(sheetRow)) resumeConversation(sheetRow, 'resume');
+  });
 }
 
 // --------------------------------------------------------------- wire
@@ -1655,82 +1616,50 @@ export function wireLifeOs() {
       });
     });
   }
-  if (els.lifeOsBrowserBack) {
-    els.lifeOsBrowserBack.addEventListener('click', closeBrowser);
-  }
-  if (els.lifeOsDocClose) {
-    els.lifeOsDocClose.addEventListener('click', closeDoc);
-  }
+  // Browse and its document sheet (#1504): ✕ or Done closes each, back to
+  // the one under it.
+  wireSheet(els.lifeOsBrowser, [els.lifeOsBrowserClose, els.lifeOsBrowserDone],
+    function () { state.lifeOsBrowser = null; });
+  wireSheet(els.lifeOsDoc, [els.lifeOsDocClose, els.lifeOsDocDone], function () {
+    openDocFile = null;
+    els.lifeOsFileContent.innerHTML = '';
+  });
   if (els.lifeOsDocDelete) {
-    // Delete the open conversation log → confirm, DELETE, back to the list
-    // (deleteFile closeDoc()s, exactly like ✕).
     els.lifeOsDocDelete.addEventListener('click', function () {
       if (openDocFile) deleteFile(openDocFile);
     });
   }
   if (els.lifeOsDocRename) {
-    // Rename the open conversation log → the rename sheet, POST, back to
-    // the list.
     els.lifeOsDocRename.addEventListener('click', function () {
       if (openDocFile) renameFile(openDocFile);
     });
   }
   wireRenameDialog();
-  // Conversations view (#727): ✕ back to the tiles, the debounced query box,
-  // the scope chip that widens a skill-scoped view to every skill, and the
-  // sort-and-filter sheet (#1528).
-  if (els.lifeOsConvosBack) {
-    els.lifeOsConvosBack.addEventListener('click', closeConvos);
-  }
-  wireConvoViewer();
-  if (els.lifeOsConvoQuery) {
-    els.lifeOsConvoQuery.addEventListener('input', onConvoQuery);
-  }
-  if (els.lifeOsConvosScope) {
-    els.lifeOsConvosScope.addEventListener('click', function (ev) {
-      // Inside the field's <label>: keep the tap from also focusing the box.
+  // The skills field's conversation half (#1504): the debounced search, the
+  // scope chip that widens to every skill, the sort, and the sheet a row
+  // opens.
+  if (els.lifeOsFilterInput && els.lifeOsConvoGroup) {
+    els.lifeOsFilterInput.addEventListener('input', onFieldInput);
+    els.lifeOsConvoScope.addEventListener('click', function (ev) {
+      // Inside the field's <label>: the tap would also focus the box, which
+      // is where it should land anyway, so it does that once, here.
       ev.preventDefault();
-      setConvoScope(true);
+      convoScope = null;
+      refreshConvos();
+      els.lifeOsFilterInput.focus();
     });
-  }
-  if (els.lifeOsConvosFilters) {
-    els.lifeOsConvosFilters.addEventListener('click', function (ev) {
-      ev.preventDefault();
-      openConvoSheet();
-    });
-    els.lifeOsConvoSortTabs.addEventListener('click', function (ev) {
+    els.lifeOsConvoSort.addEventListener('click', function (ev) {
       const tab = ev.target.closest('.range-tab');
       if (tab) setConvoSort(tab.dataset.sort);
     });
-    els.lifeOsConvoScopeTabs.addEventListener('click', function (ev) {
-      const tab = ev.target.closest('.range-tab');
-      if (tab) setConvoScope(tab.dataset.scope === 'all');
-    });
-    els.lifeOsConvoSheetClear.addEventListener('click', clearConvoFilters);
-    els.lifeOsConvoSheetDone.addEventListener('click', closeConvoSheet);
-    els.lifeOsConvoSheetClose.addEventListener('click', closeConvoSheet);
   }
-  // The Skills toolbar's conversations button opens the same view unscoped.
-  if (els.lifeOsConvoSearch) {
-    els.lifeOsConvoSearch.addEventListener('click', function () {
-      openConvos(null);
-      if (els.lifeOsConvoQuery) els.lifeOsConvoQuery.focus();
-    });
-  }
+  wireConvoSheet();
+  wireConvoViewer();
   // Detached/Resume are the launch toolbar's own switches (issue #355: no
   // server config, read at launch time above). The provider-qualified model
   // dropdown (#540/#845) is its first row; wireModelCombo owns its
   // open/close.
-  lifeOsModelCombo = wireModelCombo(
-    document.getElementById('lifeOsModelCombo'), function (choice) {
-      if (lifeOsConvosModelCombo) lifeOsConvosModelCombo.setValue(choice);
-    }
-  );
-  lifeOsConvosModelCombo = wireModelCombo(
-    document.getElementById('lifeOsConvosModelCombo'), function (choice) {
-      if (lifeOsModelCombo) lifeOsModelCombo.setValue(choice);
-    }
-  );
+  lifeOsModelCombo = wireModelCombo(document.getElementById('lifeOsModelCombo'));
   // Refresh skills + recap staleness the moment the tab opens (cheap: a live
   // directory scan + a single ledger stat).
   if (els.tabLifeOS) {

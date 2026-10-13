@@ -350,10 +350,9 @@ def test_server_catalog_populates_shared_model_selectors(
 
     shared = (
         "#codingModelCombo, #claudeModel, #codexModel, #piModel, "
-        "#lifeOsModelCombo, #lifeOsConvosModelCombo, #boardDispatchModel, "
-        "#chiefModelSelect"
+        "#lifeOsModelCombo, #boardDispatchModel, #chiefModelSelect"
     )
-    expect(authed_page.locator(shared)).to_have_count(8)
+    expect(authed_page.locator(shared)).to_have_count(7)
     for selector in shared.split(", "):
         root = authed_page.locator(selector)
         expect(root).to_have_class(re.compile(r"\bmodel-combo\b"))

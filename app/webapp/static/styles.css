@@ -360,9 +360,6 @@ html, body {
    stacks inside it and the body-level bar (z-index 120) paints over them. */
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
-  body:has(#lifeOsBrowser:not([hidden])) .tabs,
-  body:has(#lifeOsConvos:not([hidden])) .tabs,
-  body:has(#lifeOsConvoViewer:not([hidden])) .tabs,
   body:has(#changesOverlay:not([hidden])) .tabs,
   body:has(#loginOverlay:not([hidden])) .tabs,
   body:has(#imageLightbox:not([hidden])) .tabs,
@@ -384,9 +381,6 @@ html, body {
      vendored body::after spacer. */
   @media (display-mode: standalone) {
     body.terminal-open .app,
-    body:has(#lifeOsBrowser:not([hidden])) .app,
-    body:has(#lifeOsConvos:not([hidden])) .app,
-    body:has(#lifeOsConvoViewer:not([hidden])) .app,
     body:has(#changesOverlay:not([hidden])) .app,
     body:has(#loginOverlay:not([hidden])) .app,
     body:has(#imageLightbox:not([hidden])) .app,
@@ -476,7 +470,8 @@ html, body {
    a sheet. A row that holds its control inline (Text size, Start at log
    on) drops the value and chevron. */
 .settings-overline,
-.jobs-agenda-day {
+.jobs-agenda-day,
+.lifeos-group-head {
   margin: 4px 14px 6px;
   font-size: var(--font-caption);
   font-weight: 600;
@@ -3428,27 +3423,6 @@ body.terminal-open {
    minimum (issue #477) — restated here for clarity even though the base
    .term-btn now carries 44×44 itself (#496). */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
-/* (#886) A fourth control pushed this bar past a 430px viewport. Two flex
-   defaults then made that overflow ugly rather than scrollable: the title is
-   the only item with `min-width: 0`, so it absorbed the squeeze and collapsed
-   to a single letter ("g…" for "general"), and every button shrank below its
-   text and wrapped to two lines. The bar's own answer to running out of room
-   is .terminal-bar-actions' internal horizontal scroll (#514) — so pin the
-   controls to their natural single-line width and give the title a floor,
-   and the row scrolls instead of deforming. */
-#lifeOsConvos .terminal-title { min-width: 4.5rem; }
-/* (#1526) The actions group is a flex row with the default align-items:
-   stretch, so the 44px sort icon set its height and the 36px combo and
-   "All skills" button hugged the top of it while the back button and title
-   (centred by the bar) sat lower — and the combo's chevron, drawn at 50% of
-   the stretched wrapper, rode below the label. Centre the group's items so
-   every box shares the bar's centre line and the wrapper hugs the trigger. */
-#lifeOsConvos .terminal-bar-actions { align-items: center; }
-#lifeOsConvos .terminal-bar > .term-btn,
-#lifeOsConvos .terminal-bar-actions > * {
-  flex: none;
-  white-space: nowrap;
-}
 /* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
    the #259 close-tap complaint, but the extra 24px pushed the eight-button
    row past the phone viewport (#514). Reverted to the uniform 44px HIG
@@ -4024,27 +3998,110 @@ body.terminal-open {
   #lifeOsList .drill-row { padding-left: calc(14px + var(--gap)); }
 }
 
-/* Read-only content browser: a full-screen file list; tapping a file
-   opens it in a full-screen layer that overlays the list (the ✕ in the
-   bar closes it back to the list). Inside the reused .terminal-overlay. */
-/* The Life OS browser reuses .terminal-overlay for its full-screen shell,
-   but it is a READING surface, not a terminal screen — it follows the app
-   theme instead of the invariant --term-bg (issue #355 PR 3 on-device
-   review: dark background stuck in light theme). */
-#lifeOsBrowser.terminal-overlay { background: var(--bg); }
+/* ---------- Life OS: one field for skills and conversations (#1504) ---------- */
+.lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
+/* The placeholder ellipsizes rather than clipping mid-word when the scope
+   chip takes its share of a 390px field. */
+.lifeos-search input { text-overflow: ellipsis; }
+/* The skill a skill's ⋮ Conversations narrows the group to: a chip inside the
+   field (design.md "Long lists"), its ✕ widening to every skill. The button
+   is the field's full 44px height, so its target is real geometry; the chip
+   is only its look. */
+.lifeos-convo-scope {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: var(--row-sm);
+  margin-right: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.lifeos-convo-scope .chip { gap: 4px; padding-inline: 8px 6px; }
+/* A long skill name ellipsizes inside the chip instead of squeezing the
+   search box to nothing. */
+#lifeOsConvoScopeName {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Narrowed to one skill, the group is that skill's own list: the other
+   skills step aside. */
+.lifeos-list-card.is-convo-scoped #lifeOsList,
+.lifeos-list-card.is-convo-on #lifeOsFilterEmpty { display: none; }
+/* The two groups the field's results show as. The Conversations group runs
+   its rows to the card's edges like the skill rows above it; its head, sort
+   and state keep the card's text inset. */
+.card.action-list.lifeos-list-card > .collapse-body > .lifeos-convo-group { margin-inline: 0; }
+.lifeos-convo-group { margin-top: 12px; }
+.lifeos-convo-group > :not(.action-rows) { margin-inline: 14px; }
+/* Three short labels: on a wide card the track keeps a phone's width. */
+.lifeos-convo-sort { max-width: 360px; margin-bottom: 8px; }
+@media (max-width: 520px) {
+  .lifeos-convo-group > :not(.action-rows) { margin-inline: calc(14px + var(--gap)); }
+  #lifeOsConvoList > .action-row { padding-inline: calc(4px + var(--gap)); }
+}
+.lifeos-group-count { font-weight: 400; }
 
-.lifeos-browser-body {
-  position: relative;
+/* ---------- Life OS sheets (#1504) ---------- */
+/* The conversation sheet, the reader and Browse's two sheets are the
+   vendored modal. The title is one line, the full name in its title. A
+   block, not the header h2's flex row: text-overflow does not apply to a
+   flex container's text, which clipped mid-letter instead. */
+.detail-header .lifeos-sheet-title {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The conversation sheet's meta, summary and the reason Resume can't run are
+   secondary lines (body-sm, muted, the shade the owner kept in #1528). */
+.lifeos-sheet-line {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* Link rows (design.md: the settings row is the link row inside a detail
+   sheet), boxed; Delete sits alone in the last box, in danger. */
+.lifeos-sheet-links { margin-top: 12px; }
+.lifeos-sheet-danger,
+.lifeos-sheet-danger .settings-row-icon { color: var(--danger-text); }
+/* The reader and Browse's sheets are tall reading surfaces: the vendored
+   modal at full height, the card exactly that tall so the text scrolls
+   inside it and the Done footer stays at its foot. */
+.lifeos-reader-sheet {
+  width: min(560px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
+}
+.lifeos-reader-sheet .detail-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+.lifeos-reader-sheet .detail-header,
+.lifeos-reader-sheet .detail-actions,
+#lifeOsDocLinks { flex: none; }
+/* The scroller clips at its own edge: room for a bubble's 1px border. */
+.lifeos-reader-sheet .transcript-body { padding-inline: 2px; }
+
+/* Browse's file list. */
+.lifeos-file-list {
   flex: 1;
   min-height: 0;
-}
-.lifeos-file-list {
   list-style: none;
   margin: 0;
-  padding: 8px;
-  height: 100%;
+  padding: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .lifeos-file-cat {
   font-size: var(--font-caption);
@@ -4058,92 +4115,15 @@ body.terminal-open {
   gap: 6px;
   margin: 4px 0;
 }
+.lifeos-convo-list { margin: 0; }
 
-/* ---------- Life OS conversations (issue #727) ---------- */
-/* The conversations button rides the launch toolbar's model row (#1439),
-   the place Code's git refresh takes, at the same control-height box. */
-.lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
-.lifeos-convo-open { --icon-btn-box: var(--control-h); }
-
-/* Sits one layer *below* the Browse viewer and the terminal (both z-index
-   300) on purpose: tapping a row's 📖 opens the document viewer over this
-   list, and ↺ opens the terminal over it — closing either lands back here
-   rather than on the skill tiles. Explicit, so it doesn't depend on which
-   overlay happens to come later in the markup. */
-#lifeOsConvos.terminal-overlay { background: var(--bg); z-index: 290; }
-
-.lifeos-convos-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  /* minmax(0, 1fr) — the row list holds long, no-wrap topic text; a bare
-     track would inherit its min-content width and widen the overlay. */
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px;
-}
-/* The list's filter field (#1528): the vendored .action-row-filter, full
-   width of the body so its left and right insets match, with the grid's gap
-   below it rather than the list-filter margin. */
-.action-row-filter.lifeos-convo-search { margin: 0; }
-/* The count placeholder ellipsizes rather than clipping mid-word when the
-   scope chip takes its share of a 390px field. */
-.lifeos-convo-search input { text-overflow: ellipsis; }
-/* The skill a scoped view narrows to: a chip inside the field (design.md
-   "Long lists"). The button is the field's full 44px height, so its target
-   is real geometry beside the sliders button, never an overlapping
-   expansion; the chip is only its look. */
-.lifeos-convo-scope {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  height: var(--row-sm);
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  cursor: pointer;
-}
-.lifeos-convo-scope[hidden] { display: none; }
-.lifeos-convo-scope .chip { gap: 4px; padding-inline: 8px 6px; }
-.lifeos-convo-scope .icon { width: var(--icon-inline); height: var(--icon-inline); }
-/* A long skill name ellipsizes inside the chip instead of squeezing the
-   search box to nothing. */
-#lifeOsConvosScopeName {
-  max-width: 8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The sort-and-filter sheet's trigger, at the field's trailing edge like the
-   Coding filter's star, with the count of narrowing filters on as a chip. */
-.lifeos-convo-filters {
-  --icon-btn-box: var(--control-h);
-  position: relative;
-  flex: none;
-  margin-right: -8px;
-}
-.lifeos-convo-filters .chip { position: absolute; top: 2px; right: 2px; padding: 0 5px; }
-
-.lifeos-convo-list {
-  margin: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-.lifeos-convo-retry { min-width: 96px; }
-/* Sort and filter sheet (#1528): the tabs fill the row's value side, and the
-   footer is Clear beside Done (design.md "Long lists") — the one place this
-   app's stacked detail-actions runs as a row. Clear takes the primary's
-   48px height and type so the pair reads as one footer. */
-.lifeos-convo-sheet .range-tabs,
+/* The Jobs sort-and-filter sheet (#1538): the tabs fill the row's value
+   side, and the footer is Clear beside Done (design.md "Long lists") — the
+   one place this app's stacked detail-actions runs as a row. Clear takes the
+   primary's 48px height and type so the pair reads as one footer. */
 .jobs-sort-sheet .range-tabs { flex: 1; margin-bottom: 0; }
-.lifeos-convo-sheet .range-tab[hidden] { display: none; }
-.lifeos-convo-sheet .detail-actions,
 .jobs-sort-sheet .detail-actions { flex-direction: row; }
-.lifeos-convo-sheet .detail-actions .button-primary,
 .jobs-sort-sheet .detail-actions .button-primary { flex: 1; }
-.lifeos-convo-sheet .detail-actions .button-ghost,
 .jobs-sort-sheet .detail-actions .button-ghost {
   min-height: 48px;
   padding-inline: 16px;
@@ -4151,29 +4131,8 @@ body.terminal-open {
 }
 
 /* ---------- conversation viewer (#1119) ---------- */
-/* One capture, read-only, in the Chat pane's own cards. A reading surface
-   like the Browse viewer, so the app theme rather than --term-bg; layered
-   over #lifeOsConvos (290) and under the raw document browser (300), which
-   its ⋮ "Open raw" opens on top of it. */
-#lifeOsConvoViewer.terminal-overlay { background: var(--bg); z-index: 295; }
-/* The summary block under the bar (#1528): the meta line, the summary
-   paragraph and the reason Resume can't run are secondary lines (body-sm,
-   muted); Resume is the view's one full-width primary. */
-.lifeos-viewer-summary {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-sm);
-  flex-shrink: 0;
-  padding: var(--gap);
-  border-bottom: 1px solid var(--line-muted);
-}
-.lifeos-viewer-summary p {
-  margin: 0;
-  font-size: var(--font-body-sm);
-  line-height: 1.45;
-  color: var(--muted);
-}
-.lifeos-viewer-resume { width: 100%; }
+/* One capture, read-only, in the Chat pane's own cards, scrolling inside
+   the reader sheet. */
 #lifeOsViewerState {
   display: flex;
   flex-direction: column;
@@ -4183,7 +4142,7 @@ body.terminal-open {
 }
 #lifeOsViewerState .icon { font-size: var(--icon-feature); }
 /* Adjacent-cluster rule doesn't apply (it stands alone), but it is still a
-   pointer target: real 44px geometry, like the Conversations Retry. */
+   pointer target: real 44px geometry. */
 .lifeos-viewer-raw {
   min-width: 96px;
   min-height: var(--row-sm);
@@ -4605,7 +4564,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
    an attention heading, no bar or stripe; a chevron says a row opens the
    answer sheet. "N more" unfolds the rest in place. */
 .board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
-.board-plan-chevron {
+.board-plan-chevron,
+.lifeos-convo-chevron {
   width: var(--row-sm);
   height: var(--row-sm);
   display: inline-flex;
@@ -4614,7 +4574,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   color: var(--muted);
   cursor: pointer;
 }
-.board-plan-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.board-plan-chevron .icon,
+.lifeos-convo-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .board-plan-answer {
   display: inline-flex;
   align-items: center;
@@ -5033,20 +4994,16 @@ span.chief-answer-ref { color: var(--muted); }
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: var(--font-label);
-  min-height: 40px;
+  min-height: var(--row-sm);   /* the 44px touch floor */
   cursor: pointer;
 }
-.lifeos-file-btn.active {
-  border-color: var(--accent);
-  background: rgb(from var(--accent) r g b / 0.18);
-}
+/* The document sheet's text, scrolling inside the reader sheet (#1504). */
 .lifeos-file-content {
-  position: absolute;
-  inset: 0;
-  background: var(--bg);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 12px 16px 32px;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .lifeos-file-content h1,
 .lifeos-file-content h2,
