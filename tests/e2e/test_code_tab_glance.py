@@ -82,8 +82,8 @@ def test_rows_carry_the_boards_needs_you_and_stalled_chips(
     expect(head).to_have_text("1 stalled · 1 needs you")
     parts = head.locator(".head-exception")
     expect(parts).to_have_count(2)
-    expect(parts.nth(0)).to_have_attribute("data-tone", "attention")
-    expect(parts.nth(1)).to_have_attribute("data-tone", "danger")
+    expect(parts.nth(0)).to_have_attribute("data-tone", "danger")
+    expect(parts.nth(1)).to_have_attribute("data-tone", "attention")
 
 
 def test_header_falls_back_to_the_plain_count(

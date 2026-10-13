@@ -156,7 +156,7 @@ def test_settings_pane_controls_and_theme_toggle(
 
     control = authed_page.locator("#contextFilterMode")
     expect(control.locator("button")).to_have_count(3)
-    active = control.locator("button.active")
+    active = control.locator("button[aria-pressed=true]")
     expect(active).to_have_count(1)
     expect(active).to_have_attribute(
         "data-value", re.compile(r"^(off|shadow|rewrite)$")
