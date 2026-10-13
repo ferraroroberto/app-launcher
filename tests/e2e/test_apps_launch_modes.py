@@ -135,10 +135,10 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     # wanted when renaming/removing, so #790 moved it behind Edit mode.
     row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    # One title line, one context line (#1128): the kind in sentence case
-    # (#1156) folded into the context line, no path.
+    # One title line and nothing else (#1505): the avatar says the kind, so
+    # an idle app row has no context line, and never the path.
     expect(row.locator(".action-row-title")).to_have_text("Photo OCR")
-    expect(row.locator(".action-row-meta")).to_have_text("Streamlit")
+    expect(row.locator(".action-row-meta")).to_have_count(0)
 
     # -- was test_tunnel_url_lives_in_the_row_menu_not_as_text --
     # #790: a cloudflared URL with a `?token=…` wrapped to three lines on
@@ -214,15 +214,23 @@ def test_path_and_rename_remove_live_in_the_menu(
     authed_page: Page, base_url: str, edit: bool
 ) -> None:
     """#1437 (decision 5 of #1432): Rename and Remove are in every app's
-    kebab whatever the Jobs tab's Edit mode says, and the bat path is the
-    menu's header line instead of swapping into the context line."""
+    kebab whatever the Jobs tab's Edit mode says. Since #1505 the menu's
+    header names the kind, and the bat path is its Copy path item."""
     _navigate(authed_page, base_url, edit=edit)
     row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
-    expect(row.locator(".action-row-meta")).to_have_text("Streamlit")
+    expect(row.locator(".action-row-meta")).to_have_count(0)
     row.locator(".action-row-kebab").click()
     menu = row.locator(".row-menu")
-    expect(menu.locator(".row-menu-head")).to_have_text("C:\\stub\\photo-ocr\\run.bat")
+    expect(menu.locator(".row-menu-head")).to_have_text("Streamlit app")
     expect(menu.locator(".app-rename-btn")).to_be_visible()
+    # Copy path puts the bat path on the clipboard, never on screen.
+    authed_page.evaluate(
+        "() => { window.__copied = []; navigator.clipboard.writeText ="
+        " t => { window.__copied.push(t); return Promise.resolve(); }; }")
+    menu.locator(".app-copy-path-btn").click()
+    expect(authed_page.locator("#toast")).to_contain_text("Path copied")
+    assert authed_page.evaluate("() => window.__copied") == ["C:\\stub\\photo-ocr\\run.bat"]
+    row.locator(".action-row-kebab").click()
     # Remove is the danger item, last.
     expect(menu.locator(":scope > *").last).to_have_class(re.compile(r"\bapp-remove-btn\b"))

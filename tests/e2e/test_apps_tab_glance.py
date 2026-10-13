@@ -96,8 +96,12 @@ def _app_row(page: Page, app_id: str):
     return page.locator(f'#appsList li.action-row[data-id="{app_id}"]')
 
 
+@pytest.mark.iphone
 def test_running_card_badges_header_and_other_ports(authed_page: Page, base_url: str) -> None:
     page = authed_page
+    # The phone's Apps tab: the wide layout puts Other ports inline instead
+    # (#1505, test_apps_wide_layout.py).
+    page.set_viewport_size({"width": 390, "height": 844})
     _open_apps(page, base_url)
 
     # The header: a down tunnel is the exception, in its danger tone.
@@ -106,8 +110,11 @@ def test_running_card_badges_header_and_other_ports(authed_page: Page, base_url:
     expect(head.locator(".head-exception")).to_have_attribute("data-tone", "danger")
 
     # The Running card is first and open; the Port listeners card is gone.
-    cards = page.locator("#paneApps > details")
-    expect(cards.first).to_have_class(re.compile(r"\brunning-apps-card\b"))
+    # It sits in the "what is up now" column (#1505), first under the header.
+    expect(page.locator("#paneApps > :not(.page-head)").first).to_have_id("appsNowCol")
+    expect(page.locator("#appsNowCol > details").first).to_have_class(
+        re.compile(r"\brunning-apps-card\b"))
+    expect(page.locator("#otherPortsCard")).to_be_hidden()
     expect(page.locator("#paneApps .listeners-card")).to_have_count(0)
 
     # Other ports counts the top-level listeners the launcher did not start.
@@ -154,6 +161,8 @@ def test_apps_list_is_open_with_live_badges_and_scan_row(authed_page: Page, base
     expect(_app_row(page, "beta-web").locator(".avatar")).to_have_attribute("data-badge", "alive")
     expect(_app_row(page, "alpha-dash").locator(".avatar")).to_have_attribute("data-badge", "none")
     # An up tunnel is alive with no chip; a down one is red with a danger chip.
+    # An idle app row is one line (#1505): the avatar says the kind.
+    expect(_app_row(page, "alpha-dash").locator(".action-row-meta")).to_have_count(0)
     up = _app_row(page, "gamma-tunnel")
     expect(up.locator(".avatar")).to_have_attribute("data-badge", "alive")
     expect(up.locator(".chip")).to_have_count(0)
@@ -231,9 +240,9 @@ def test_remove_asks_through_the_vendored_dialog(authed_page: Page, base_url: st
 
 @pytest.mark.iphone
 def test_drill_rows_and_menu_header_fit_the_phone(authed_page: Page, base_url: str) -> None:
-    """The new rows keep the 44px floor, avatar rows take the two-line row
-    height, and a long bat path in the menu's header wraps instead of
-    widening the menu off a 390px screen."""
+    """The new rows keep the 44px floor, an idle app row is the one-line row
+    height while a tunnel keeps its two lines (#1505), and the menu, headed by
+    the kind, stays on a 390px screen with the long path behind Copy path."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     long_path = "C:\\stub\\" + "a-very-long-folder-name\\" * 6 + "run_streamlit.bat"
@@ -245,12 +254,16 @@ def test_drill_rows_and_menu_header_fit_the_phone(authed_page: Page, base_url: s
         h = stable_eval(page.locator(sel), "el => el.getBoundingClientRect().height")
         assert h is not None and h >= 44, f"{sel} is {h}px tall, under the 44px floor"
     h = stable_eval(_app_row(page, "alpha-dash"), "el => el.getBoundingClientRect().height")
-    assert h is not None and h >= 60, f"an avatar row is {h}px, not rows.lg"
+    assert h is not None and 44 <= h < 60, f"an idle app row is {h}px, not one line"
+    h = stable_eval(_app_row(page, "gamma-tunnel"), "el => el.getBoundingClientRect().height")
+    assert h is not None and h >= 60, f"a tunnel row is {h}px, not rows.lg"
 
     row = _app_row(page, "alpha-dash")
     row.locator(".action-row-kebab").click()
     menu = row.locator(".row-menu")
-    expect(menu.locator(".row-menu-head")).to_have_text(long_path)
+    expect(menu.locator(".row-menu-head")).to_have_text("Streamlit app")
+    expect(menu.locator(".app-copy-path-btn")).to_be_visible()
+    assert long_path not in (menu.inner_text() or ""), "the path is on screen in the menu"
     box = stable_eval(menu, "el => { const r = el.getBoundingClientRect();"
                             " return { left: r.left, right: r.right }; }")
     assert box is not None and box["left"] >= 0 and box["right"] <= 390, (

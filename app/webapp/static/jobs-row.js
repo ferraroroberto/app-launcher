@@ -42,7 +42,8 @@ function fmtUntil(epochSeconds) {
  *
  * `spark` is the history dot's class. A run in progress is `live`, drawn in
  * the accent (work in progress, #1438): amber means unconfirmed, and the
- * avatar's alive badge already says the job is running. */
+ * avatar's alive badge already says the job is running. A healthy run (`up`)
+ * is muted since #1505, so a failure is the only colour in the strip. */
 const STATUS_META = {
   running: { icon: 'hourglass', spark: 'live' },
   pending: { icon: 'hourglass', spark: 'live' },
@@ -187,6 +188,22 @@ export function runBlockedReason(job) {
   return '';
 }
 
+/* The avatar's glyph says what kind of job it is (#1505): the kind names
+ * src/jobs_kinds registers. A kind this map does not know, or a payload
+ * without `target_kind`, keeps the generic `activity`. */
+const KIND_GLYPH = {
+  batch: 'file-text',
+  'http-check': 'globe',
+  'inline-shell': 'zap',
+  powershell: 'terminal',
+  python: 'code-xml',
+  'shell-wsl': 'monitor',
+};
+
+export function jobKindGlyph(job) {
+  return KIND_GLYPH[job && job.target_kind] || 'activity';
+}
+
 // handlers: onOpen (the row tap), onRun, onPause, onEdit, onRemove.
 export function renderJobRow(job, handlers) {
   const row = actionRow({
@@ -195,7 +212,7 @@ export function renderJobRow(job, handlers) {
     title: job.name,
     meta: jobMeta(job),
     chips: jobChips(job),
-    avatar: avatar('activity', job.running ? 'alive' : null, 'job-avatar'),
+    avatar: avatar(jobKindGlyph(job), job.running ? 'alive' : null, 'job-avatar'),
     label: 'Open ' + job.name,
     onMain: function () { handlers.onOpen(job); },
     kebabClass: 'job-menu-anchor',

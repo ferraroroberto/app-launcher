@@ -106,6 +106,11 @@ _JOBS = [
              status="failed", outcome="deferred", exit_code=3,
              reason="exit 3 is declared deferred by this job",
          )),
+    # A run with no outcome at all (#1505): it must not read as a healthy one
+    # now that healthy is muted too.
+    _job("Skipped sweep", job_id="skipped",
+         last7=[{"status": "skipped", "outcome": "skipped", "run_id": "r4"}],
+         last_run=_last_run(status="skipped", outcome="skipped", exit_code=0, reason=None)),
 ]
 
 
@@ -142,10 +147,17 @@ def _first_dot(page: Page, job_id: str):
 
 
 # What a history dot looks like, as rendered: the deferred ring differs from
-# the muted `unknown` dot only by its transparent fill and ring, so the
-# signature is fill + ring + colour rather than a colour alone.
+# the muted `unknown` dot only by its transparent fill and ring, and the
+# healthy dot (muted since #1505) from the `unknown` dash only by its height,
+# so the signature is fill + ring + colour + height rather than a colour alone.
 _DOT_LOOK = """el => { const s = getComputedStyle(el);
-  return [s.backgroundColor, s.boxShadow, s.color].join('|'); }"""
+  return [s.backgroundColor, s.boxShadow, s.color, s.height].join('|'); }"""
+
+# A dot's colour beside the theme's --muted, resolved the same way.
+_DOT_VS_MUTED = """el => { const p = document.createElement('span');
+  p.style.color = 'var(--muted)'; el.parentNode.appendChild(p);
+  const muted = getComputedStyle(p).color; p.remove();
+  return muted ? [getComputedStyle(el).color, muted].join('|') : ''; }"""
 
 
 @pytest.mark.iphone
@@ -189,6 +201,7 @@ def test_terminal_outcomes_render_distinctly(
     expect(_first_dot(authed_page, "truncated")).to_have_class(re.compile(r"\bunconfirmed\b"))
     expect(_first_dot(authed_page, "broken")).to_have_class(re.compile(r"\bdown\b"))
     expect(_first_dot(authed_page, "clean")).to_have_class(re.compile(r"\bup\b"))
+    expect(_first_dot(authed_page, "skipped")).to_have_class(re.compile(r"\bunknown\b"))
 
     # #1316: a declared deferral is its own state on the sparkline, neither the
     # success class nor the failure one, and raises no chip (it needs nobody).
@@ -202,15 +215,27 @@ def test_terminal_outcomes_render_distinctly(
     # palette change cannot make this pass while the states look alike. (The
     # row's status dot is gone; the history dot and the two chips carry it.)
     looks = {}
-    for job_id in ("clean", "truncated", "broken", "deferred"):
+    for job_id in ("clean", "truncated", "broken", "deferred", "skipped"):
         expect(_first_dot(authed_page, job_id)).to_be_visible()
         looks[job_id] = stable_read(
             lambda jid=job_id: _first_dot(authed_page, jid).evaluate(_DOT_LOOK))
     assert all(looks.values()), f"unreadable looks: {looks}"
-    assert len(set(looks.values())) == 4, (
-        "success, unconfirmed, failed and deferred must each look different; "
-        f"got {looks}"
+    assert len(set(looks.values())) == 5, (
+        "success, unconfirmed, failed, deferred and no-outcome must each look "
+        f"different; got {looks}"
     )
+    # Healthy is quiet (#1505, decision 7 of #1500): the success dot is the
+    # theme's muted colour, so a failure is the only colour in a strip, in
+    # both themes. The failed dot keeps its own.
+    for theme in ("light", "dark"):
+        authed_page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        clean = stable_read(lambda: _first_dot(authed_page, "clean").evaluate(_DOT_VS_MUTED))
+        broken = stable_read(lambda: _first_dot(authed_page, "broken").evaluate(_DOT_VS_MUTED))
+        dot, muted = str(clean).split("|")
+        assert dot == muted, f"{theme}: a healthy dot is coloured: {clean}"
+        dot, muted = str(broken).split("|")
+        assert dot != muted, f"{theme}: a failed dot is muted: {broken}"
+    authed_page.evaluate("delete document.documentElement.dataset.theme")
     chip_colours = [
         stable_read(lambda c=c: c.evaluate("el => getComputedStyle(el).color"))
         for c in (unconfirmed, failed)

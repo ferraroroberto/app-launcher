@@ -11,8 +11,10 @@ expanded child, and the Kill tap must never toggle the collapse.
 Approach: the real listener set isn't deterministic across environments,
 so we intercept ``/api/ports/probe`` with a canned payload — one parent
 with two helper children plus one standalone listener — then assert the
-DOM. Runs in both projections — the wiring is browser-agnostic but the
-iPhone projection confirms the phone surface too.
+DOM. Runs at two layouts (#1505): the phone's, where the list is in the
+Other ports sheet, and the wide one, where the same list sits inline in the
+Apps tab's Other ports card. The rows and the confirmed stop are the same
+code in both, so every check below runs against each.
 """
 
 from __future__ import annotations
@@ -71,8 +73,16 @@ _PROBE_PAYLOAD = {
 }
 
 
-@pytest.fixture()
-def listeners_page(authed_page: Page, base_url: str) -> Page:
+# The phone layout (the sheet) and the wide one (inline, 1280px with the
+# Chromium projection's fine pointer).
+_LAYOUTS = {"phone": {"width": 390, "height": 844}, "wide": {"width": 1280, "height": 900}}
+
+
+@pytest.fixture(params=sorted(_LAYOUTS))
+def listeners_page(request, authed_page: Page, base_url: str, browser_name: str) -> Page:
+    if request.param == "wide" and browser_name != "chromium":
+        pytest.skip("the wide layout needs a fine pointer: desktop Chromium only")
+    authed_page.set_viewport_size(_LAYOUTS[request.param])
     authed_page.route(
         "**/api/ports/probe",
         lambda route: route.fulfill(
@@ -83,11 +93,18 @@ def listeners_page(authed_page: Page, base_url: str) -> Page:
     )
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabApps").click()
-    # The listeners live in the Other ports sheet since #1437, opened from
-    # the Running card's last row.
-    authed_page.locator("#otherPortsRow").click()
-    expect(authed_page.locator("#otherPortsSheet")).to_be_visible()
+    if request.param == "phone":
+        # The listeners live in the Other ports sheet since #1437, opened
+        # from the Running card's last row.
+        authed_page.locator("#otherPortsRow").click()
+        expect(authed_page.locator("#otherPortsSheet")).to_be_visible()
+    else:
+        # Inline under Running on the wide layout (#1505), no sheet.
+        expect(authed_page.locator("#otherPortsRow")).to_be_hidden()
+        expect(authed_page.locator("#otherPortsCard #listenersList")).to_be_visible()
     authed_page.wait_for_selector("#listenersList .listener-row", timeout=10_000)
+    authed_page.listeners_host = (  # type: ignore[attr-defined]
+        "#otherPortsSheet" if request.param == "phone" else "#otherPortsCard")
     return authed_page
 
 
@@ -95,6 +112,7 @@ def _parent_row(page: Page):
     return page.locator("#listenersList .listener-row.expandable")
 
 
+@pytest.mark.iphone
 def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     """Every listener-row check on one canned probe render (#1215).
 
@@ -184,8 +202,8 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     confirm.locator("#confirmDialogOk").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     assert killed_ports == ["8000"], f"parent kill hit {killed_ports!r}"
-    # The sheet the confirm opened over is still up.
-    expect(page.locator("#otherPortsSheet")).to_be_visible()
+    # The sheet (or the inline card) the confirm opened over is still up.
+    expect(page.locator(page.listeners_host)).to_be_visible()
 
     # Expand, then kill one child individually.
     _parent_row(page).locator(".action-row-main").click()

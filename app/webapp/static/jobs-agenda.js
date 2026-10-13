@@ -1,10 +1,13 @@
 /* Jobs tab: the Next up card and the 7-day agenda sheet (#230, #1438).
  *
- * One GET /api/jobs/agenda payload feeds both: the card shows the next
- * three fires without a tap, and its header opens the whole week in a
- * sheet, day-grouped (the deliberate alternative to a 2D calendar grid),
- * with the frequent jobs that would flood it in the footer. A fire opens
- * its job's sheet (jobs.js openJobSheet).
+ * One GET /api/jobs/agenda payload feeds all three: the card shows the next
+ * three distinct jobs without a tap (a job firing again the same day folds
+ * into its row as "also 18:00", #1505), and its header opens the whole week
+ * in a sheet, day-grouped (the deliberate alternative to a 2D calendar
+ * grid), with the frequent jobs that would flood it in the footer. On the
+ * wide layout the same week fills the detail pane while no job is open
+ * (#1505, decision 8 of #1500). A fire opens its job's sheet (jobs.js
+ * openJobSheet).
  *
  * Fetched once per visit to the tab and again when the app comes back to
  * the foreground on it, never on the 4s jobs poll. A refresh that fails
@@ -72,14 +75,22 @@ function openFire(o) {
   openJobSheet(o.job_id);
 }
 
+// Later fires the same day, as "also 12:00, 18:00", and "+N" past two.
+function _alsoText(also) {
+  if (!also || !also.length) return '';
+  const shown = also.slice(0, 2).map(function (o) { return _clock(o.fire_epoch); });
+  return 'also ' + shown.join(', ') + (also.length > 2 ? ' +' + (also.length - 2) : '');
+}
+
 // One fire on the action-row: the time as the leading value, the job's
-// name, and a meta line. Next up's carries the day ("tomorrow · Daily
-// 03:00"); the sheet's rows sit under a day header and carry the cadence.
-function fireRow(o, withDay) {
+// name, and a meta line. Next up's carries the day and any same-day repeats
+// ("today · also 18:00 · Daily 06:00, 18:00"); the sheet's rows sit under a
+// day header and carry the cadence.
+function fireRow(o, withDay, also) {
   const time = document.createElement('span');
   time.className = 'jobs-fire-time';
   time.textContent = _clock(o.fire_epoch);
-  const meta = [withDay ? _dayWord(o.fire_epoch) : '', cadenceText(o.cadence)]
+  const meta = [withDay ? _dayWord(o.fire_epoch) : '', _alsoText(also), cadenceText(o.cadence)]
     .filter(Boolean).join(' · ');
   const row = actionRow({
     className: 'jobs-fire-row',
@@ -109,6 +120,26 @@ function setNextUpState(name, glyph, message) {
   box.appendChild(p);
 }
 
+// The Next up rows: the first fire of each of the next NEXT_UP_COUNT
+// distinct jobs, each carrying that job's later fires on the same day. The
+// payload is in fire order, so a job's first appearance is its next fire.
+function nextUpRows(occurrences) {
+  const rows = [];
+  const byJob = {};
+  (occurrences || []).forEach(function (o) {
+    const seen = byJob[o.job_id];
+    if (seen) {
+      if (_dayKey(o.fire_epoch) === _dayKey(seen.fire.fire_epoch)) seen.also.push(o);
+      return;
+    }
+    if (rows.length >= NEXT_UP_COUNT) return;
+    const row = { fire: o, also: [] };
+    byJob[o.job_id] = row;
+    rows.push(row);
+  });
+  return rows;
+}
+
 function renderNextUp() {
   const host = els.jobsNextUpList;
   if (!host) return;
@@ -118,19 +149,20 @@ function renderNextUp() {
     else setNextUpState('loading', 'hourglass', 'Reading the schedule…');
     return;
   }
-  const occ = (agenda.occurrences || []).slice(0, NEXT_UP_COUNT);
-  if (!occ.length) {
+  const rows = nextUpRows(agenda.occurrences);
+  if (!rows.length) {
     setNextUpState('empty', 'calendar-days',
       'Nothing scheduled in the next ' + (agenda.days || AGENDA_DAYS) + ' days.');
     return;
   }
-  occ.forEach(function (o) { host.appendChild(fireRow(o, true)); });
+  rows.forEach(function (r) { host.appendChild(fireRow(r.fire, true, r.also)); });
   setNextUpState('ready');
 }
 
-function renderAgendaSheet() {
-  const host = els.jobsAgendaBody;
-  if (!host) return;
+// The week, day-grouped, into `host`: the sheet's body and, on the wide
+// layout, the empty detail pane's. `onAdd` is the true-empty state's Add
+// job, which closes whatever surrounds it first.
+function buildAgenda(host, onAdd) {
   host.replaceChildren();
   if (!agenda) {
     host.appendChild(agendaFailed
@@ -146,10 +178,7 @@ function renderAgendaSheet() {
     host.appendChild(emptyStateEl(
       'calendar-days',
       'No scheduled runs in the next ' + (agenda.days || AGENDA_DAYS) + ' days.',
-      { actionLabel: 'Add job', onAction: function () {
-        els.jobsAgendaSheet.close();
-        openJobDialog(null);
-      } }
+      { actionLabel: 'Add job', onAction: onAdd }
     ));
     return;
   }
@@ -181,6 +210,22 @@ function renderAgendaSheet() {
   }
 }
 
+function renderAgendaSheet() {
+  if (!els.jobsAgendaBody) return;
+  buildAgenda(els.jobsAgendaBody, function () {
+    els.jobsAgendaSheet.close();
+    openJobDialog(null);
+  });
+}
+
+// The wide layout's detail pane while no job is open (#1505): CSS shows it
+// only there, so on the phone this renders into a hidden node.
+function renderWeekPane() {
+  const host = document.getElementById('jobWeekBody');
+  if (!host) return;
+  buildAgenda(host, function () { openJobDialog(null); });
+}
+
 export async function fetchAgenda() {
   try {
     agenda = await jsonApi('/api/jobs/agenda?days=' + AGENDA_DAYS);
@@ -190,6 +235,7 @@ export async function fetchAgenda() {
     agendaFailed = true;
   }
   renderNextUp();
+  renderWeekPane();
   if (els.jobsAgendaSheet && els.jobsAgendaSheet.open) renderAgendaSheet();
 }
 
@@ -208,6 +254,7 @@ function onJobsVisit() {
 
 export function wireJobsAgenda() {
   if (!els.jobsNextUpList) return;
+  renderWeekPane();
   document.addEventListener('launcher:tab', function (ev) {
     if (ev.detail && ev.detail.tab === 'jobs') onJobsVisit();
     else visitFetched = false;

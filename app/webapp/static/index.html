@@ -778,6 +778,12 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
         </button>
       </div>
+      <!-- The "what is up now" column (#1505). On the phone it is just the
+           Running card, first in the tab. On the wide layout apps.js moves
+           it after the Trays card (keyboard order: list, then pane) and CSS
+           docks it as the right-hand column, with Other ports inline under
+           Running instead of behind the sheet. -->
+      <div id="appsNowCol" class="apps-now-col">
       <!-- The Running card (#1437), the tab's glance card: apps launched from
            here, each with its kind avatar and the alive badge, then "Other
            ports", which opens the listener sheet (the Port listeners card
@@ -791,8 +797,11 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <!-- Loading, a failed first read with Retry, or a stale line over the
+             last good list (async-state.js, #1505). -->
+        <div id="runningAppsState" class="empty-state" role="status" hidden></div>
         <ul id="runningAppsList" class="card-list action-rows" aria-label="Running apps"></ul>
-        <div id="runningAppsEmpty" class="empty-state">
+        <div id="runningAppsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
           <p class="empty-state-message">Nothing launched from here is running.</p>
         </div>
@@ -806,9 +815,27 @@
           </span>
           <span class="drill-row-chevron" aria-hidden="true">›</span>
         </button>
-        <p id="runningAppsNote" class="group-footer running-apps-note">Only apps launched from here appear.</p>
+        <!-- Wide layout only (#1505): with nothing running, one plain line
+             with the app count in place of the empty-state block. -->
+        <p id="appsIdleLine" class="apps-idle-line" hidden></p>
+        <p id="runningAppsNote" class="group-footer running-apps-note" hidden>Only apps launched from here appear.</p>
         </div>
       </details>
+      <!-- Wide layout only (#1505): Other ports inline under Running. The
+           sheet's own list (#listenersBody) moves in here at that query and
+           back into the sheet below it, so both are the same rows and the
+           same confirmed stop. -->
+      <details id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
+            <h3 class="collapse-title">Other ports</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div id="otherPortsCardBody" class="collapse-body"></div>
+      </details>
+      </div>
 
       <details class="card card--collapsible action-list apps-list-card" open>
         <summary class="collapse-summary">
@@ -864,6 +891,7 @@
           <span class="collapse-chevron" aria-hidden="true">›</span>
         </summary>
         <div class="collapse-body">
+        <div id="traysState" class="empty-state" role="status" hidden></div>
         <ul id="registeredTraysList" class="card-list action-rows" aria-label="Trays"></ul>
         <div id="registeredTraysEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
@@ -2257,12 +2285,17 @@
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
+        <!-- Moves into the Apps tab's Other ports card on the wide layout
+             (#1505); apps.js puts it back here below that query. -->
+        <div id="listenersBody" class="listeners-body">
+        <div id="listenersState" class="empty-state" role="status" hidden></div>
         <ul id="listenersList" class="card-list action-rows" aria-label="Port listeners"></ul>
         <div id="listenersEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
           <p class="empty-state-message">Nothing running on common app ports.</p>
         </div>
         <p class="group-footer listeners-footer">The launcher itself isn't listed.</p>
+        </div>
         <div class="detail-actions">
           <button type="button" id="listenersCheckAgain" class="button-primary detail-save-btn">Check again</button>
         </div>
@@ -2443,13 +2476,13 @@
   </div>
 
   <!-- Wide layout only (#1438): the Jobs tab's detail pane while no job is
-       docked in it. CSS shows it at the wide query on the Jobs tab;
-       everywhere else it is display: none. -->
-  <div id="jobDetailEmpty" class="job-detail-empty">
-    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
-    <p class="session-detail-empty-title">No job open</p>
-    <p class="session-detail-empty-hint">A job's details, runs and output open here, beside the list.</p>
-  </div>
+       docked in it, showing the week's schedule (#1505, the same content
+       as the Schedule sheet, from the same agenda fetch). CSS shows it at
+       the wide query on the Jobs tab; everywhere else it is display: none. -->
+  <section id="jobDetailEmpty" class="job-detail-empty" aria-labelledby="jobWeekTitle">
+    <h2 id="jobWeekTitle" class="job-week-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg> This week</h2>
+    <div id="jobWeekBody" class="jobs-agenda-body job-week-body"></div>
+  </section>
 
   <!-- The session overlay (#982, Step 3 of #979): one shell, two render
        modes. `data-mode="terminal"` shows the live PTY (#terminalHost + the

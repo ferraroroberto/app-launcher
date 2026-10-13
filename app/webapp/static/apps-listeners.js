@@ -1,9 +1,13 @@
 /* Apps tab "Other ports" (#1437): what is bound on this machine right now,
  * with helper services collapsed under their parent app's row (#224/#480)
- * and a per-port Stop process in each row's ⋮ menu (#1129). The list lives
- * in a sheet opened from the Running card's last row, which carries the
- * count of listeners the launcher did not start (the Port listeners card
- * merged into Running).
+ * and a per-port Stop process in each row's ⋮ menu (#1129). On the phone the
+ * list lives in a sheet opened from the Running card's last row, which
+ * carries the count of listeners the launcher did not start (the Port
+ * listeners card merged into Running); on the wide layout the same list
+ * sits inline under Running (#1505, apps.js moves it).
+ *
+ * The probe is Apps-only (#1505): it reads nothing while another tab is up
+ * or the page is hidden, and runs once when the tab opens.
  *
  * Split out of apps.js in issue #723. It owns its own fetch and expand
  * state, and imports nothing from apps.js (apps.js imports copyUrl and the
@@ -15,6 +19,7 @@ import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { actionRow } from './action-rows.js';
 import { createRowMenu } from './row-menu.js';
 import { confirmDialog } from './confirm-dialog.js';
+import { setAsyncState, staleMessage } from './async-state.js';
 
 const listenerMenu = createRowMenu('project-menu');
 
@@ -22,24 +27,55 @@ const listenerMenu = createRowMenu('project-menu');
 // (#480). Module-level so the expand state survives the poll's re-renders.
 const expandedListenerPorts = new Set();
 
-// The one Copy URL every Apps-tab menu uses (Running, Apps, Other ports).
-export async function copyUrl(url) {
+// The one copy every Apps-tab menu uses: `what` names the thing copied
+// ("Link", "Path") in the toast.
+export async function copyText(text, what) {
   try {
-    await navigator.clipboard.writeText(url);
-    toast('Link copied', 'good');
+    await navigator.clipboard.writeText(text);
+    toast(what + ' copied', 'good');
   } catch (exc) {
-    apiFailToast('Could not copy the link', exc);
+    apiFailToast('Could not copy the ' + what.toLowerCase(), exc);
   }
 }
 
+// The one Copy URL every Apps-tab menu uses (Running, Apps, Other ports).
+export function copyUrl(url) {
+  return copyText(url, 'Link');
+}
+
+// When the probe last read well, and whether the last one failed: before a
+// good read a failure is "Could not check" with Retry, never an endless
+// "Checking…"; after one, a stale line over the last list.
+let listenersReadAt = 0;
+let listenersFailed = false;
+
+function retryListeners() {
+  fetchListeners().catch(function () {});
+}
+
 export async function fetchListeners() {
+  // Apps-tab-only, like fetchRunningApps (#1505): nothing else reads
+  // state.listeners, so a probe for another tab or a hidden page is waste.
+  if (state.tab !== 'apps' || document.hidden) return;
   try {
     const body = await jsonApi('/api/ports/probe');
     state.listeners = body.listeners || [];
+    listenersReadAt = Date.now();
+    listenersFailed = false;
+    setAsyncState(els.listenersState, 'ready');
     renderListeners();
   } catch (exc) {
     // Best-effort poll — don't spam toasts.
     logPollFailure('listeners fetch failed', exc);
+    listenersFailed = true;
+    if (listenersReadAt) {
+      setAsyncState(els.listenersState, 'stale', { message: staleMessage(listenersReadAt) });
+    } else {
+      setAsyncState(els.listenersState, 'error', {
+        message: 'Could not check the ports.', retry: retryListeners,
+      });
+    }
+    renderOtherPortsRow();
   }
 }
 
@@ -63,11 +99,12 @@ function groupListeners(items) {
 // The Running card's last row: how many top-level listeners (an app with
 // its helpers counts once) are on a port no app launched from here holds.
 // The running list comes from the same tab's poll, so both are current
-// together; before the first probe the row says it is still checking.
+// together; before the first probe the row says it is still checking, or
+// that it could not (a tap opens the sheet, which probes again).
 export function renderOtherPortsRow() {
   if (!els.otherPortsMeta) return;
   if (state.listeners == null) {
-    els.otherPortsMeta.textContent = 'Checking…';
+    els.otherPortsMeta.textContent = listenersFailed ? 'Could not check' : 'Checking…';
     return;
   }
   const ours = new Set();

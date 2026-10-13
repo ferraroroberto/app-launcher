@@ -44,9 +44,9 @@ pytestmark = pytest.mark.smoke
 _ANCHOR = _dt.datetime(2026, 6, 11, 12, 0)  # a Thursday, local wall clock
 _MIDNIGHT = _ANCHOR.replace(hour=0, minute=0)
 
-# Rows: 13:00 on the anchor day, then 01:00 and 07:00 the next day. (The
-# client renders what the mock returns; it does not filter by "now", so a
-# past time-of-day is fine.)
+# Rows: Alpha at 13:00 and 18:00 on the anchor day, then Zeta 01:00, Kappa
+# 04:00 and Alpha again 07:00 the next day. (The client renders what the mock
+# returns; it does not filter by "now", so a past time-of-day is fine.)
 
 
 def _epoch(hours: float) -> int:
@@ -59,8 +59,12 @@ _AGENDA = {
     "occurrences": [
         {"job_id": "alpha", "name": "Alpha", "fire_epoch": _epoch(13),
          "fire_iso": "", "cadence": "daily 13:00"},
+        {"job_id": "alpha", "name": "Alpha", "fire_epoch": _epoch(18),
+         "fire_iso": "", "cadence": "daily 13:00"},
         {"job_id": "zeta", "name": "Zeta", "fire_epoch": _epoch(25),
          "fire_iso": "", "cadence": "daily 01:00"},
+        {"job_id": "kappa", "name": "Kappa", "fire_epoch": _epoch(28),
+         "fire_iso": "", "cadence": "daily 04:00"},
         {"job_id": "alpha", "name": "Alpha", "fire_epoch": _epoch(31),
          "fire_iso": "", "cadence": "daily 13:00"},
     ],
@@ -103,7 +107,8 @@ def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> list:
         re.compile(r".*/api/jobs(\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({"jobs": [_job("alpha", "Alpha"), _job("zeta", "Zeta")]})),
+            body=_json.dumps({"jobs": [_job("alpha", "Alpha"), _job("zeta", "Zeta"),
+                                       _job("kappa", "Kappa")]})),
     )
     return agenda_calls
 
@@ -128,14 +133,17 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
 
-    # Next up (#1438): the first three fires, no tap needed — time, name, and
-    # "<day> · <Cadence>" (the cadence's first letter lifted).
+    # Next up (#1438): three fires, no tap needed — time, name, and
+    # "<day> · <Cadence>" (the cadence's first letter lifted). Since #1505 they
+    # are three distinct jobs: Alpha's 18:00 folds into its row as "also
+    # 18:00", and its fire the next day is not a row of its own.
     nxt = authed_page.locator("#jobsNextUpList li.jobs-fire-row")
     expect(nxt).to_have_count(3)
-    assert nxt.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta", "alpha"]
-    expect(nxt.locator(".jobs-fire-time")).to_have_text(["13:00", "01:00", "07:00"])
+    assert nxt.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta", "kappa"]
+    expect(nxt.locator(".jobs-fire-time")).to_have_text(["13:00", "01:00", "04:00"])
     expect(nxt.locator(".action-row-meta")).to_have_text(
-        ["today · Daily 13:00", "tomorrow · Daily 01:00", "tomorrow · Daily 13:00"])
+        ["today · also 18:00 · Daily 13:00", "tomorrow · Daily 01:00",
+         "tomorrow · Daily 04:00"])
 
     authed_page.locator("#jobsAgendaOpen").click()
     expect(authed_page.locator("#jobsAgendaSheet")).to_be_visible()
@@ -145,7 +153,9 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
 
     ids = authed_page.eval_on_selector_all(
         "#jobsAgendaBody .jobs-fire-row", "els => els.map(e => e.dataset.jobId)")
-    assert ids == ["alpha", "zeta", "alpha"], "rows must be time-ordered across days"
+    # The week sheet is unchanged by the folding: every fire, in time order.
+    assert ids == ["alpha", "alpha", "zeta", "kappa", "alpha"], (
+        "rows must be time-ordered across days")
     # Each fire is a tap target (it opens its job): the 44px floor, not the
     # 38px its padding alone gave (#1174).
     heights = authed_page.eval_on_selector_all(
@@ -167,7 +177,7 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     authed_page.evaluate("delete document.documentElement.dataset.theme")
 
     # Dense cadences are summarised, not expanded into the list.
-    expect(authed_page.locator(".jobs-agenda-frequent")).to_contain_text("Mango")
+    expect(authed_page.locator("#jobsAgendaBody .jobs-agenda-frequent")).to_contain_text("Mango")
 
     # One fetch per visit: neither opening the sheet nor the 4s jobs poll asks
     # again (#1438).
