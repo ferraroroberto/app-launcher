@@ -553,45 +553,18 @@ def test_new_turns_appear_with_no_user_action(authed_page: Page, base_url: str) 
     }, picker.answers
 
 
-def test_terminal_mode_does_not_fetch_chat(authed_page: Page, base_url: str) -> None:
-    """A window sitting on Terminal must not also stream chat for that
-    session — half of the "10 windows" constraint."""
-    page = authed_page
-    tr = _boot(page, base_url)
-    _open_chat(page)
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-    _tick(page, tr)          # at least one tick while Chat shows
-    assert tr.tail_calls() >= 1, "Chat mode should have ticked at least once"
-
-    page.locator("#sessionModeTerminal").click()
-    expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", "terminal")
-    settled = tr.tail_calls()
-    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)          # long enough for several ticks
-    assert tr.tail_calls() == settled, (
-        "Terminal mode kept fetching chat: "
-        f"{tr.tail_calls() - settled} request(s) after the switch"
-    )
-
-
-def test_a_closed_overlay_fetches_nothing(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    tr = _boot(page, base_url)
-    _open_chat(page)
-    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
-    _tick(page, tr)
-    assert tr.tail_calls() >= 1
-
-    page.locator("#terminalBack").click()
-    expect(page.locator("#terminalOverlay")).to_be_hidden()
-    settled = tr.tail_calls()
-    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)
-    assert tr.tail_calls() == settled, "a closed overlay kept polling"
-
-
-def test_only_the_open_conversation_is_refreshed(
+def test_live_polling_follows_the_visible_chat_only(
     authed_page: Page, base_url: str
 ) -> None:
-    """The other live session's transcript is never asked for."""
+    """The live poll runs for the open conversation in Chat mode and nowhere
+    else (#1515 folded three tests that each paid for their own boot, row open
+    and tick; the one boot now walks all three states in turn):
+
+    * The other live session's transcript is never asked for.
+    * A closed overlay fetches nothing.
+    * A window sitting on Terminal must not also stream chat for that session
+      — half of the "10 windows" constraint.
+    """
     page = authed_page
     tr = _boot(page, base_url)
     other_calls: list[str] = []
@@ -606,6 +579,29 @@ def test_only_the_open_conversation_is_refreshed(
     expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
     _tick(page, tr)
     assert tr.tail_calls() >= 1
+    assert other_calls == [], "a session nobody opened was polled"
+
+    # Closed overlay: the poll stops.
+    page.locator("#terminalBack").click()
+    expect(page.locator("#terminalOverlay")).to_be_hidden()
+    settled = tr.tail_calls()
+    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)
+    assert tr.tail_calls() == settled, "a closed overlay kept polling"
+
+    # Reopened on Chat it ticks again; switched to Terminal it stops again.
+    _open_chat(page)
+    expect(page.locator("#transcriptList .tr-turn")).to_have_count(2)
+    _tick(page, tr)          # at least one tick while Chat shows
+    assert tr.tail_calls() > settled, "Chat mode should have ticked at least once"
+
+    page.locator("#sessionModeTerminal").click()
+    expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", "terminal")
+    settled = tr.tail_calls()
+    _fake_clock.advance(page, 2 * _BACKOFF_MAX_MS)          # long enough for several ticks
+    assert tr.tail_calls() == settled, (
+        "Terminal mode kept fetching chat: "
+        f"{tr.tail_calls() - settled} request(s) after the switch"
+    )
     assert other_calls == [], "a session nobody opened was polled"
 
 

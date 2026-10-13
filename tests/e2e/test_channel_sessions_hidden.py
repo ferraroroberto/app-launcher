@@ -37,7 +37,9 @@ from tests.e2e.conftest import (
     wait_until,
 )
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+# Only the two tests that measure geometry or computed style carry ``iphone``
+# (#1220, #1515); the other nine read DOM state and run on Chromium alone.
+pytestmark = pytest.mark.smoke
 
 
 def _session(sid: str, label: str, name: str, **extra) -> dict:
@@ -154,6 +156,7 @@ def _open_board(page: Page, base_url: str) -> None:
     expect(page.locator("#paneBoard")).to_be_visible()
 
 
+@pytest.mark.iphone
 def test_coding_list_swaps_channel_rows_for_a_summary_line(
     authed_page: Page, base_url: str
 ) -> None:
@@ -402,6 +405,7 @@ def test_alert_follows_the_context_as_it_changes(
     expect(_context_chip(authed_page)).to_have_count(0)
 
 
+@pytest.mark.iphone
 def test_popup_compact_sends_slash_compact_through_the_verified_route(
     authed_page: Page, base_url: str
 ) -> None:

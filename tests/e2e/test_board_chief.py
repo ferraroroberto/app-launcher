@@ -31,6 +31,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src import chief_answers, chief_plan
+from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
     HeldUploads, _seed_token_init_script, flush_requests, open_settings_sheet,
     stable_eval, stable_read, wait_until,
@@ -472,6 +473,7 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
         _capture_input,
     )
 
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
 
     # No chief card, composer or mode control on the Board (#1382, #1436);
@@ -522,10 +524,11 @@ def test_board_keeps_polling_with_chief_drawer_open_and_reply_survives(
     }]
     board["body"] = _json.dumps(changed)
 
-    # Two poll intervals (BOARD_POLL_MS is 5 s) of margin for a loaded box.
+    # One poll (BOARD_POLL_MS is 5 s), jumped on the fake clock (#1515).
+    _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
     expect(
         authed_page.locator('.board-list[data-col="claude_turn"]')
-    ).to_contain_text("fresh lane", timeout=12_000)
+    ).to_contain_text("fresh lane")
     expect(
         authed_page.locator('.board-list[data-col="done"]')
     ).to_contain_text("closed while chatting")
@@ -633,7 +636,6 @@ def _capture_chief_input(page: Page) -> list:
     return posts
 
 
-@pytest.mark.iphone
 def test_plan_rows_show_the_model_only_when_the_chief_named_one(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
@@ -1074,12 +1076,18 @@ def test_answered_marks_show_on_every_device_until_the_plan_moves(
         context_b.close()
 
 
-@pytest.mark.iphone
-def test_answer_sheet_done_disabled_when_no_chief(
+def test_answer_sheet_with_no_chief_disables_done_and_says_why_an_attachment_failed(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
-    """#1295: with no chief running there is nobody to send to — Done is
-    disabled with a plain note, answers typed or not, and nothing is sent."""
+    """The answer sheet with no chief running (#1515 merged two tests that
+    shared this boot and sheet open; no tap or layout is measured, so it runs
+    on Chromium only).
+
+    #1295: with no chief running there is nobody to send to — Done is
+    disabled with a plain note, answers typed or not, and nothing is sent.
+
+    #1354: with no chief there is no session to store an attachment on; the
+    summary toast says so instead of a silent nothing."""
     _mock_board(authed_page, _board_payload(with_chief=False))
     _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
     posts = _capture_chief_input(authed_page)
@@ -1090,6 +1098,15 @@ def test_answer_sheet_done_disabled_when_no_chief(
     dialog.locator(".chief-answer").nth(2).locator(".tr-ask-input").fill("yes")
     expect(dialog.locator("#chiefAnswersDone")).to_be_disabled()
     expect(dialog.locator("#chiefAnswersNote")).to_have_text("Chief not running.")
+
+    also = dialog.locator("#chiefAnswersAlso")
+    also.locator(".composer-attach-input").set_input_files(files=[
+        {"name": "e2e-stub-a.png", "mimeType": "image/png", "buffer": _PNG_1x1},
+    ])
+    expect(authed_page.locator("#toast")).to_have_text(
+        "Uploaded 0 of 1 — 1 failed: e2e-stub-a.png (the chief is not running)")
+    expect(also.locator(".composer-input")).to_have_value("")
+
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
     assert posts == []
@@ -1126,26 +1143,6 @@ def test_answer_sheet_attach_shows_progress_and_names_a_failure(
     expect(authed_page.locator("#toast")).to_have_text(
         "Uploaded 1 of 2 — 1 failed: e2e-stub-b.png (file exceeds 12 MB)")
     expect(also.locator(".composer-input")).to_have_value(_CHIEF_UPLOAD)
-
-
-@pytest.mark.iphone
-def test_answer_sheet_attach_with_no_chief_says_why(
-    authed_page: Page, base_url: str, tmp_path
-) -> None:
-    """#1354: with no chief there is no session to store an attachment on; the
-    summary toast says so instead of a silent nothing."""
-    _mock_board(authed_page, _board_payload(with_chief=False))
-    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
-    _open_board(authed_page, base_url)
-
-    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
-    also = authed_page.locator("#chiefAnswersDialog #chiefAnswersAlso")
-    also.locator(".composer-attach-input").set_input_files(files=[
-        {"name": "e2e-stub-a.png", "mimeType": "image/png", "buffer": _PNG_1x1},
-    ])
-    expect(authed_page.locator("#toast")).to_have_text(
-        "Uploaded 0 of 1 — 1 failed: e2e-stub-a.png (the chief is not running)")
-    expect(also.locator(".composer-input")).to_have_value("")
 
 
 @pytest.mark.iphone
@@ -1328,6 +1325,7 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
     ]
     _mock_board(authed_page, _board_payload(with_chief=True))
     _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
 
     group = authed_page.locator("#boardChiefPlan .board-plan-group-waiting")
@@ -1365,9 +1363,11 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
     expect(rows).to_have_count(6)
     expect(more).to_have_count(0)
     with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board/chief-plan"), timeout=15_000
+        lambda resp: resp.url.endswith("/api/board/chief-plan")
     ):
-        pass
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
+    authed_page.evaluate(
+        "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
     expect(rows).to_have_count(6)
 
     # A row opens the sheet on its own question: the last one, scrolled to.

@@ -224,40 +224,15 @@ def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     )
 
 
-def test_speak_button_in_toolbar(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """The 🔊 button is a top-bar control, right before the ⋮ session menu —
-    NOT in the composer (which is for editing). Paste, Image, Compose and
-    Keys left the bar in #980; ✕ Kill and ↓ Jump left it in #981."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    expect(
-        authed_page.locator(".terminal-bar-actions #terminalSpeak")
-    ).to_have_count(1)
-    expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
-    # Document order: 🔊 Speak → ⋮ menu, the group's last control. Scoped to
-    # the session bar: the Show changes panel's own bar sits after it in the
-    # DOM since #1349.
-    order = authed_page.eval_on_selector_all(
-        "#terminalOverlay .terminal-bar-actions .term-btn", "els => els.map(e => e.id)"
-    )
-    assert order.index("terminalMenu") == order.index("terminalSpeak") + 1
-    assert order[-1] == "terminalMenu"
-    for gone in (
-        "terminalPaste", "terminalImage", "terminalCompose", "terminalKeys",
-        "terminalKill", "terminalJumpEnd",
-    ):
-        assert gone not in order, f"{gone} is back in the bar (#980 / #981 removed it)"
-
-
 @pytest.mark.iphone
 def test_toast_sits_above_terminal_overlay(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """Read-aloud feedback (and every terminal toast) must out-rank the
     full-screen terminal overlay — otherwise it renders behind it and the
-    user sees nothing on the phone."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    user sees nothing on the phone. A stylesheet fact, so the overlay need not
+    be open (and no session launched) to read the two z-indexes (#1515)."""
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     z = authed_page.evaluate(
         """() => {
           const zi = (el) => parseInt(
@@ -371,11 +346,11 @@ def test_color_path_classifies_bullets_from_real_buffer(
 
 
 def test_speak_synthesizes_then_cancels(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """speak() queues per-sentence utterances; cancelSpeech() stops them."""
     authed_page.add_init_script(_SPEECH_MOCK)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     result = authed_page.evaluate(
         "() => { window.__readback.speak('Build is green. Merge now.');"
         " return { spoken: window.speechSynthesis._spoken,"
@@ -395,13 +370,13 @@ def test_speak_synthesizes_then_cancels(
 
 
 def test_speech_finish_resets_and_toasts(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """When the reply finishes reading on its own, the button resets to idle
     and a 'Finished reading' toast confirms it (the iOS onend-unreliability
     fix — the watchdog/onend must finalize, not leave the button stuck)."""
     authed_page.add_init_script(_SPEECH_MOCK)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     authed_page.evaluate("() => window.__readback.speak('All done now.')")
     expect(authed_page.locator("#toast")).to_contain_text(
         "Finished reading", timeout=5000

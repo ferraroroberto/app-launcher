@@ -385,6 +385,10 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     assert bar_ids == [
         "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu",
     ], bar_ids
+    # 🔊 is a top-bar control, NOT in the composer (which is for editing). The
+    # bar is one shared element in both modes, so this list is also the
+    # terminal-mode bar test_voice_readback.py used to pin separately (#1515).
+    expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
     expect(authed_page.locator("#contextRing")).to_be_hidden()
     expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
     # A full-control session has no detached note.

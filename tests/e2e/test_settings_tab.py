@@ -327,7 +327,6 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
 
 
-@pytest.mark.iphone
 def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     authed_page: Page, base_url: str
 ) -> None:

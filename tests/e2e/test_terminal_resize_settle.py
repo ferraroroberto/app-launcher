@@ -27,13 +27,16 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
+from tests.e2e import _fake_clock
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
-# Settle window plus generous headroom for a loaded runner: long enough that a
-# settled frame has certainly gone out, still far below any test timeout.
-_AFTER_SETTLE_MS = 1500
+# terminal.js RESIZE_SETTLE_MS (300), plus one: the clock jump that lets a
+# settled frame go out. The settle is a plain setTimeout, so the tests jump the
+# fake clock (#1376, #1515) instead of waiting 1.5 s of real time per step — a
+# settle that grew past this, or was dropped, turns the assertions below red.
+_AFTER_SETTLE_MS = 301
 
 # Record every resize frame the page sends, before any app script runs.
 _RECORD_RESIZE_FRAMES = r"""
@@ -86,6 +89,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
             "row-tap opens a PC mirror window, which never sends resize frames"
         )
     page = authed_page
+    _fake_clock.install(page)
     page.add_init_script(_RECORD_RESIZE_FRAMES)
     # Open via the session-list row — the phone path. The ?terminal= deep link
     # classifies a loopback open as the PC mirror window (#241), which never
@@ -103,7 +107,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
 
     # Establish a known tall baseline and let it settle out.
     page.evaluate(_SWEEP, [600])
-    page.wait_for_timeout(_AFTER_SETTLE_MS)
+    _fake_clock.advance(page, _AFTER_SETTLE_MS)
     _clear(page)
 
     # 1. Keyboard up and back down: nothing mid-sweep, nothing after it.
@@ -113,7 +117,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
         "intermediate keyboard sample SIGWINCHes the agent into another "
         "full-viewport repaint (issue #930)"
     )
-    page.wait_for_timeout(_AFTER_SETTLE_MS)
+    _fake_clock.advance(page, _AFTER_SETTLE_MS)
     assert _frames(page) == [], (
         f"a sweep that returned to its starting size sent {_frames(page)!r} — "
         "each frame is a repaint that duplicates the conversation in scrollback"
@@ -121,7 +125,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
 
     # 2. Keyboard up and staying up: exactly one frame, for the final size.
     page.evaluate(_SWEEP, [300, 90, 300])
-    page.wait_for_timeout(_AFTER_SETTLE_MS)
+    _fake_clock.advance(page, _AFTER_SETTLE_MS)
     settled = _frames(page)
     assert len(settled) == 1, (
         f"expected exactly one settled resize frame, got {settled!r}"
@@ -130,7 +134,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
 
     # 3. A sub-floor sample is clamped before it reaches the PTY.
     page.evaluate(_SWEEP, [10])
-    page.wait_for_timeout(_AFTER_SETTLE_MS)
+    _fake_clock.advance(page, _AFTER_SETTLE_MS)
     floored = _frames(page)
     min_rows = page.evaluate("import('/static/terminal.js').then(m => m.PTY_MIN_ROWS)")
     assert len(floored) == 1, f"expected one floored frame, got {floored!r}"

@@ -131,73 +131,41 @@ def _show_composer(page: Page) -> None:
     expect(page.locator(COMPOSER)).to_be_visible()
 
 
-def test_composer_hidden_in_mirror(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """Loopback open is the PC mirror — the composer must stay hidden."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    expect(authed_page.locator(COMPOSER)).to_be_hidden()
-
-
-def test_composer_grid_shape(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """#980: today's shape on every surface — textarea + 2×2 grid, in the
-    order mic · keys / image · send, with no Compose toggle, no OCR button of
-    its own, and none of the folded controls left in the bar."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    _show_composer(authed_page)
-    order = authed_page.eval_on_selector_all(
-        f"{COMPOSER} .compose-tools > button",
-        "els => els.map(e => e.className.split(' ').find(c => c.startsWith('composer-')))",
-    )
-    assert order == ["composer-mic", "composer-keys", "composer-image", "composer-send"], order
-    for gone in ("#terminalCompose", "#terminalPaste", "#terminalImage", "#terminalKeys",
-                 "#terminalScreenshot", "#terminalComposeAttach"):
-        assert authed_page.locator(gone).count() == 0, f"{gone} should be gone (#980)"
-
-
 def test_compose_send_forwards_text_to_pty(
     authed_page: Page,
     base_url: str,
     launched_pty_session: str,
     wait_for_session_log,
 ) -> None:
-    """➤ Send forwards the textarea contents + Enter to the PTY."""
-    sid = launched_pty_session
-    _open_terminal(authed_page, base_url, sid)
-    _show_composer(authed_page)
+    r"""One terminal open, the composer's whole send contract (#1515 folded
+    four tests that each paid for their own stub launch and overlay open):
 
-    payload = "compose-{regress}"
-    authed_page.locator(INPUT).fill(payload)
-    authed_page.locator(SEND).click()
-
-    # Bar clears and stays docked after Send.
-    expect(authed_page.locator(INPUT)).to_have_value("")
-    expect(authed_page.locator(COMPOSER)).to_be_visible()
-
-    assert wait_for_session_log(authed_page, sid, payload), (
-        f"➤ Send did not deliver the compose text to webapp/sessions/{sid}.log "
-        "— the text never reached the live PTY session"
-    )
-
-
-def test_compose_send_submits_cr_in_its_own_frame(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    r"""➤ Send delivers the submitting CR immediately after the text (#166).
-
-    The intermittent "Send does nothing" bug was the trailing ``\r`` riding
-    in the same WS frame as the ``\x1b[201~`` paste-end marker, where the TUI
-    sometimes swallowed it into paste finalization instead of submitting. We
-    spy on every outgoing ``input`` frame and pin that the payload frame is
-    followed immediately by a lone ``\r`` with no CR glued onto the text — the
-    ordering invariant, holding whether or not the live agent has bracketed
-    paste enabled. Xterm may emit unrelated focus-report input frames before
-    or after that pair.
+    * Loopback open is the PC mirror — the composer must stay hidden (#37).
+    * #980: today's shape on every surface — textarea + 2×2 grid, in the order
+      mic · keys / image · send, with no Compose toggle, no OCR button of its
+      own, and none of the folded controls left in the bar.
+    * #1072: Ctrl/Cmd+Enter sends in Chat mode only. The binding is opt-in per
+      mount (``sendOnModEnter``) precisely so the terminal, which has its own
+      input path, keeps today's behaviour. What this pins is that the opt-in
+      stayed opt-in: the shortcut does not deliver here (a terminal send is
+      synchronous and clears the box, so an unchanged draft is the tell), and
+      the Send title does not advertise a shortcut this mount hasn't got — the
+      exact class of lie the old 'Send (with Enter)' title was.
+    * ➤ Send forwards the textarea contents + Enter to the PTY, the bar clears
+      and stays docked.
+    * #166: the submitting CR is delivered immediately after the text, as its
+      own frame. The intermittent "Send does nothing" bug was the trailing
+      ``\r`` riding in the same WS frame as the ``\x1b[201~`` paste-end
+      marker, where the TUI sometimes swallowed it into paste finalization
+      instead of submitting. We spy on every outgoing ``input`` frame and pin
+      that the payload frame is followed immediately by a lone ``\r`` with no
+      CR glued onto the text — the ordering invariant, holding whether or not
+      the live agent has bracketed paste enabled. Xterm may emit unrelated
+      focus-report input frames before or after that pair.
     """
     sid = launched_pty_session
     _open_terminal(authed_page, base_url, sid)
+    expect(authed_page.locator(COMPOSER)).to_be_hidden()
 
     # Record the data of every outgoing WS `input` frame, in order. Patching
     # the prototype catches the already-open socket too (send resolves on the
@@ -217,9 +185,30 @@ def test_compose_send_submits_cr_in_its_own_frame(
     )
     _show_composer(authed_page)
 
-    payload = "compose-cr-frame"
-    authed_page.locator(INPUT).fill(payload)
+    order = authed_page.eval_on_selector_all(
+        f"{COMPOSER} .compose-tools > button",
+        "els => els.map(e => e.className.split(' ').find(c => c.startsWith('composer-')))",
+    )
+    assert order == ["composer-mic", "composer-keys", "composer-image", "composer-send"], order
+    for gone in ("#terminalCompose", "#terminalPaste", "#terminalImage", "#terminalKeys",
+                 "#terminalScreenshot", "#terminalComposeAttach"):
+        assert authed_page.locator(gone).count() == 0, f"{gone} should be gone (#980)"
+
+    field = authed_page.locator(INPUT)
+    field.fill("not a send here")
+    field.press("Control+Enter")
+    # Tolerate a browser-default newline from the unhandled chord; the point
+    # is that the draft was not delivered and cleared.
+    expect(field).to_have_value(re.compile(r"^not a send here\n?$"))
+    expect(authed_page.locator(SEND)).to_have_attribute("title", "Send")
+
+    payload = "compose-{regress}"
+    field.fill(payload)
     authed_page.locator(SEND).click()
+
+    # Bar clears and stays docked after Send.
+    expect(field).to_have_value("")
+    expect(authed_page.locator(COMPOSER)).to_be_visible()
 
     frames = authed_page.evaluate("() => window.__sentInput")
     assert len(frames) >= 2, f"➤ Send produced too few input frames: {frames!r}"
@@ -233,6 +222,11 @@ def test_compose_send_submits_cr_in_its_own_frame(
     )
     assert frames[payload_index + 1] == "\r", (
         f"submit CR was not its own frame immediately after the payload: {frames!r}"
+    )
+
+    assert wait_for_session_log(authed_page, sid, payload), (
+        f"➤ Send did not deliver the compose text to webapp/sessions/{sid}.log "
+        "— the text never reached the live PTY session"
     )
 
 
@@ -408,26 +402,3 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
             f"{idle['height']:.1f}px, inset) = {expected:.1f}px: the inset is "
             "stacking under the reserved row instead of overlapping it"
         )
-
-
-def test_terminal_composer_has_no_mod_enter_send(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """#1072: Ctrl/Cmd+Enter sends in Chat mode only.
-
-    The binding is opt-in per mount (``sendOnModEnter``) precisely so the
-    terminal, which has its own input path, keeps today's behaviour. What this
-    pins is that the opt-in stayed opt-in: the shortcut does not deliver here
-    (a terminal send is synchronous and clears the box, so an unchanged draft
-    is the tell), and the Send title does not advertise a shortcut this mount
-    hasn't got — the exact class of lie the old 'Send (with Enter)' title was.
-    """
-    _open_terminal(authed_page, base_url, launched_pty_session)
-    _show_composer(authed_page)
-    field = authed_page.locator(INPUT)
-    field.fill("not a send here")
-    field.press("Control+Enter")
-    # Tolerate a browser-default newline from the unhandled chord; the point
-    # is that the draft was not delivered and cleared.
-    expect(field).to_have_value(re.compile(r"^not a send here\n?$"))
-    expect(authed_page.locator(SEND)).to_have_attribute("title", "Send")

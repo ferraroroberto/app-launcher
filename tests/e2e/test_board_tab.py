@@ -205,6 +205,7 @@ def test_board_renders_columns_counts_and_cards(
     the GitHub-fed columns' cards, and last a fold that must survive a poll.
     """
     _mock_board(authed_page, plan=_plan(tmp_path))
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
@@ -436,12 +437,12 @@ def test_board_renders_columns_counts_and_cards(
     # (the fold that must survive a poll; last: it changes section state) --
     authed_page.locator("#boardColYours > summary").click()
     expect(yours_section).not_to_have_attribute("open", "")
-    # Wait out one full poll: its response lands, then its render runs.
-    with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
-    ):
-        pass
-    authed_page.wait_for_timeout(300)
+    # Jump one full poll on the fake clock (#1515): its response lands, then
+    # its render runs (two frames later it has).
+    with authed_page.expect_response(lambda resp: resp.url.endswith("/api/board")):
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
+    authed_page.evaluate(
+        "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
     expect(yours_section).not_to_have_attribute("open", "")
 
 
@@ -582,6 +583,7 @@ def test_board_poll_heals_github_emptied_by_restart(
     _mock_board(authed_page)
     current = {"body": _board_payload()}  # fresh: opening the tab stays free
     _route_board_from(authed_page, current)
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
 
@@ -590,6 +592,7 @@ def test_board_poll_heals_github_emptied_by_restart(
         timeout=15_000,
     ):
         current["body"] = _unfetched_payload()
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
 
 
 def _blind_payload() -> dict:
@@ -1685,6 +1688,7 @@ def test_backlog_meta_carries_no_git_tint(
         )
 
     authed_page.route("**/api/claude-code/git-status", _git_status)
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
     _unfold(authed_page, "boardColBacklog")
 
@@ -1693,10 +1697,8 @@ def test_backlog_meta_carries_no_git_tint(
     ).first
     expect(meta).to_be_visible(timeout=15_000)
     wait_until(authed_page, lambda: served.get("git"), "boot fetching git-status")
-    with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board"), timeout=15_000
-    ):
-        pass
+    with authed_page.expect_response(lambda resp: resp.url.endswith("/api/board")):
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
     muted = authed_page.evaluate(
         "() => { const el = document.createElement('span');"
         " el.style.color = 'var(--muted)'; document.body.appendChild(el);"
@@ -1722,6 +1724,7 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
     authed_page.locator(
         '.board-list[data-col="your_turn"] li.board-item'
@@ -1747,12 +1750,10 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     # One poll: the Board and the chief's plan are fetched together, and the
     # render follows both answers; two frames later it has run.
     with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board/chief-plan"), timeout=15_000
+        lambda resp: resp.url.endswith("/api/board/chief-plan")
     ):
-        with authed_page.expect_response(
-            lambda resp: resp.url.endswith("/api/board"), timeout=15_000
-        ):
-            pass
+        with authed_page.expect_response(lambda resp: resp.url.endswith("/api/board")):
+            _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
     authed_page.evaluate(
         "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
 
