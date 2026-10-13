@@ -12,7 +12,7 @@ The server enforces it again: unknown kinds, ids outside the bounded id pattern 
 
 | File | Role |
 | --- | --- |
-| `usage-log.js` | `initUsageLog(opts?)` → `{ trackView, flush, currentView }`; also exports `deviceClass()` / `osClass()`. Batches events and sends them with `fetch` (`keepalive`) or `navigator.sendBeacon` when the page is hidden. No dependencies. |
+| `usage-log.js` | `initUsageLog(opts?)` → `{ trackView, flush, currentView }`; also exports `deviceClass()` / `osClass()`. Batches events and sends them with `fetch` (`keepalive`) or `navigator.sendBeacon` when the page is hidden (a `keepalive` fetch instead when the `headers` option is set). No dependencies. |
 
 The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, because it lives in `src/`, not in this static tree).
 
@@ -38,6 +38,20 @@ The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, bec
    initNavTabs({ storageKey: 'my-app.tab', onChange: usage.trackView });
    ```
 4. Add `data-track="<id>"` to the controls that matter. Not every control: the ones a design review would ask about.
+
+## Authenticated endpoints
+
+An app whose API sits behind a token (loopback bypasses it, a phone on the tunnel or tailnet does not) passes its auth header through `headers`, never by wrapping `window.fetch` or `navigator.sendBeacon`:
+
+```js
+const usage = initUsageLog({
+  headers: () => ({ Authorization: 'Bearer ' + readToken() }),
+});
+```
+
+- `headers` is an object, or a function returning one. A function is called on every send, so a token that rotates is read fresh. It is merged into the request headers; `Content-Type` stays `application/json`.
+- A beacon cannot carry headers, so when `headers` is given the page-hide send is a `keepalive` fetch instead of `sendBeacon`. Without `headers`, sends are unchanged.
+- Same-origin only and the privacy contract are unchanged: the headers go to the app's own endpoint, and nothing new is recorded. A `headers` function that throws is swallowed and the send goes without extra headers.
 
 ## Markup contract
 

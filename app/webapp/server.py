@@ -493,8 +493,8 @@ def create_app() -> FastAPI:
     app.include_router(board.router)
     app.include_router(webauthn.router)
     # Local-only view/tap log (#1524). Behind the bearer-token middleware like
-    # every /api route; the vendored client sends no Authorization header, so
-    # static/usage.js adds it for this one endpoint.
+    # every /api route; static/usage.js hands the vendored client the bearer
+    # header through its `headers` option.
     app.include_router(usage_router(
         runtime_db_path("app-launcher", "usage.sqlite3", create=True),
     ))

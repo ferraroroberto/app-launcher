@@ -50,8 +50,8 @@ def test_views_and_taps_reach_the_own_origin_with_the_contract_only(
     page.locator("#tabApps").click()
     page.locator("#tabJobs").click()
     page.locator("#paneJobs .settings-open-btn").click()
-    # The page goes hidden: the client flushes through sendBeacon, which the
-    # app's wrapper turns into an authorised fetch.
+    # The page goes hidden: the client flushes with a keepalive fetch carrying
+    # the bearer header (a beacon cannot), and replaces nothing global.
     page.evaluate(
         "Object.defineProperty(document, 'visibilityState',"
         " { value: 'hidden', configurable: true });"
@@ -82,4 +82,6 @@ def test_views_and_taps_reach_the_own_origin_with_the_contract_only(
             if field in e:
                 assert _ID.match(e[field]), e
     assert foreign == [], f"a POST left the app's own origin: {foreign}"
+    for api in ("window.fetch", "navigator.sendBeacon"):
+        assert page.evaluate(f"{api}.toString().includes('[native code]')"), f"{api} was wrapped"
     expect(page.locator("#paneSettings")).to_be_visible()

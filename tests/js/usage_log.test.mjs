@@ -78,6 +78,8 @@ function control(track, text) {
 }
 
 // ------------------------------------------------------------- drive a visit
+const fetchBefore = globalThis.fetch;
+const beaconBefore = navigator.sendBeacon;
 wireUsageLog();
 fire('document', 'launcher:tab', { detail: { tab: 'board' } });
 fire('document', 'click', { target: control('board-refresh', 'SECRET-BUTTON-TEXT') });
@@ -89,7 +91,8 @@ fire('document', 'click', { target: control('https://invented.example/a?q=SECRET
 fire('document', 'launcher:tab', { detail: { tab: 'settings' } });
 fire('document', 'click', { target: control('settings.tokens', 'x') });
 
-// The page goes hidden: the client uses sendBeacon, which cannot carry a header.
+// The page goes hidden: with a `headers` option the client sends a keepalive
+// fetch, since sendBeacon cannot carry the bearer header.
 document.visibilityState = 'hidden';
 fire('document', 'visibilitychange');
 await new Promise(function (resolve) { setTimeout(resolve, 20); });
@@ -105,19 +108,25 @@ sent.forEach(function (r) {
 assert.equal(USAGE_ENDPOINT, '/api/usage/events');
 
 // 2. The bearer token is on every usage request (a phone is not loopback),
-//    including the page-hidden one the beacon wrapper turned into a fetch.
+//    including the page-hidden one (a keepalive fetch, never a beacon).
 usagePosts.forEach(function (r) {
   assert.equal(r.init.headers.Authorization, 'Bearer invented-bearer');
+  assert.equal(r.init.headers['Content-Type'], 'application/json');
   assert.equal(r.init.method, 'POST');
   assert.equal(r.init.credentials, 'same-origin');
 });
+assert.ok(usagePosts.some(function (r) { return r.init.keepalive === true; }),
+  'the page-hidden flush was not a keepalive fetch');
 
-// 3. The wrappers touch that one path only.
+// 3. Nothing global is wrapped: window.fetch and navigator.sendBeacon are the
+//    very functions the page had before wireUsageLog(), so every other request
+//    goes through untouched.
+assert.equal(globalThis.fetch, fetchBefore, 'window.fetch was replaced');
+assert.equal(navigator.sendBeacon, beaconBefore, 'navigator.sendBeacon was replaced');
 await fetch('/api/other', { headers: { Accept: 'x' } });
 const other = sent[sent.length - 1];
 assert.equal(other.url, '/api/other');
 assert.deepEqual(other.init.headers, { Accept: 'x' }, 'a non-usage request was modified');
-assert.throws(function () { navigator.sendBeacon('/api/other', 'x'); }, /real sendBeacon/);
 
 // 4. What was sent: an exact envelope, an allowlist of kinds, bounded ids, and
 //    none of the forbidden values anywhere in the bytes.

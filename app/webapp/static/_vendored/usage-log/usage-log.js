@@ -25,6 +25,9 @@
  *   initNavTabs({ storageKey: 'app.tab', onChange: usage.trackView });
  *   usage.trackView('settings-sheet');             // a sheet/dialog opening
  *
+ * An app whose API sits behind a token passes it through `opts.headers`
+ * (an object, or a function called per send), never by wrapping `fetch`.
+ *
  * Instrumentation never breaks the app: every failure (no endpoint, network
  * error, 4xx/5xx, storage blocked) is swallowed silently.
  */
@@ -80,6 +83,11 @@ function noop() {}
  *   start with a single "/"; anything else (an absolute or protocol-relative
  *   URL) disables the logger with a console warning — it never sends off-origin.
  * @param {number} [opts.flushMs=10000]  send the queue at most this often.
+ * @param {object|function(): object} [opts.headers]  extra request headers for
+ *   an authenticated endpoint (e.g. `() => ({ Authorization: 'Bearer ' + t })`).
+ *   A function is called on every send, so a rotating token is read fresh. A
+ *   beacon cannot carry headers, so when this is given the page-hide send is a
+ *   `keepalive` fetch instead. Omitted, sends are unchanged.
  * @param {Document|HTMLElement} [opts.root=document]  where the delegated
  *   `data-track` tap listener is attached.
  * @returns {{ trackView: (id: string) => void, flush: () => void,
@@ -90,8 +98,10 @@ export function initUsageLog(opts = {}) {
   const {
     endpoint = DEFAULT_ENDPOINT,
     flushMs = 10000,
+    headers = null,
     root = document,
   } = opts;
+  const hasHeaders = typeof headers === 'function' || (headers !== null && typeof headers === 'object');
 
   if (typeof endpoint !== 'string' || endpoint[0] !== '/' || endpoint[1] === '/') {
     console.warn('usage-log: endpoint must be a same-origin path like "/api/usage/events"; logging disabled');
@@ -107,15 +117,22 @@ export function initUsageLog(opts = {}) {
   let view = null;
   let timer = null;
 
+  function extraHeaders() {
+    try {
+      const h = typeof headers === 'function' ? headers() : headers;
+      return h && typeof h === 'object' ? h : {};
+    } catch (_) { return {}; }
+  }
+
   function send(events, beacon) {
     const body = JSON.stringify(Object.assign({}, envelope, { events: events }));
     try {
-      if (beacon && navigator.sendBeacon) {
+      if (beacon && !hasHeaders && navigator.sendBeacon) {
         if (navigator.sendBeacon(endpoint, new Blob([body], { type: 'application/json' }))) return;
       }
       fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({}, extraHeaders(), { 'Content-Type': 'application/json' }),
         body: body,
         credentials: 'same-origin',
         keepalive: true,
