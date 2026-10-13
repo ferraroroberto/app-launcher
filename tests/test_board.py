@@ -2427,7 +2427,7 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
         "state": "ok",
         "updated_at": "2026-09-26T14:40:00Z",
         "lanes": [{"repo": "app-launcher", "session": "s-1", "item": "#1273", "status": "gate",
-                   "model": "opus"}],
+                   "model": "opus", "ref_url": ""}],
         # `model` (#1352): a string reads through; a wrong type (5) or a
         # missing value reads as blank.
         "queue": [
@@ -2486,6 +2486,10 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
         "https://github.com/octo/app-launcher/issues/1273",
         "https://github.com/octo/automation/issues/135",
         "https://github.com/octo/automation/issues/136",
+    ]
+    # A lane links from its `item` the same way (#1578).
+    assert [lane["ref_url"] for lane in plan["lanes"]] == [
+        "https://github.com/octo/app-launcher/issues/1273",
     ]
     first, second, third = plan["waiting_on_roberto"]
     assert first == {

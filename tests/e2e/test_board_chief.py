@@ -198,9 +198,12 @@ def test_chief_card_distinct_and_mocked_reply_renders_in_drawer(
     plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
     row = plan_body.locator("li.board-plan-row")
     expect(row.locator(".action-row-title")).to_have_text("chief's plan card")
-    # No ref_url in this plan: the ref stays plain text, never a dead link.
+    # No ref_url in this plan: the ref stays plain text and the row inert
+    # (no tap, no chevron), never a dead link.
     expect(row.locator(".action-row-meta-text")).to_have_text("app-launcher#1279")
     expect(row.locator("a")).to_have_count(0)
+    expect(row.locator(".action-row-main")).to_have_class(re.compile(r"\bis-inert\b"))
+    expect(row.locator(".board-plan-chevron")).to_have_count(0)
     expect(plan_body.locator(".board-plan-age")).to_have_text("Update time unknown")
     expect(plan_body.locator(".board-plan-chief")).to_have_count(0)
     # The crown glyph marks the card; it carries no tint of its own (#1449):
@@ -918,7 +921,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     expect(waiting.nth(1)).to_contain_text("Pause every lane tonight?")
     expect(button).to_have_text("Answer 2 questions")
     expect(hidden_note).to_have_text("2 more questions in other projects")
-    expect(headings).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    expect(headings).to_have_text(["Waiting on you", "Lanes (1)", "Queue (1)"])
     expect(plan_body.locator(".board-plan-group").nth(1).locator("li")).to_have_count(1)
     expect(plan_body.locator(".board-plan-group").nth(2).locator("li")).to_have_count(1)
     expect(plan_body.locator(".board-plan-group").nth(2)).to_contain_text("answer sheet")
@@ -956,7 +959,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     expect(waiting).to_have_count(4)
     expect(button).to_have_text("Answer 3 questions")
     expect(hidden_note).to_have_count(0)
-    expect(headings).to_have_text(["Waiting on you", "Lanes", "Queue"])
+    expect(headings).to_have_text(["Waiting on you", "Lanes (2)", "Queue (2)"])
     expect(waiting.nth(2)).to_contain_text("answered, waiting for the chief")
     expect(waiting.nth(0)).not_to_contain_text("answered")
 
@@ -1378,3 +1381,102 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
     expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_be_in_viewport()
     expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_have_text(
         "Full question 6?")
+
+
+@pytest.mark.iphone
+def test_plan_sections_split_queue_from_parked_and_rows_open_their_issue(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1578: Lanes, Queue and Parked each carry a count; a `parked` or
+    `waiting-roberto` item leaves the Queue for Parked, which starts folded on
+    a phone. A row is two lines (title, then `repo#N · Model` with the status
+    chip at that line's right end) and the title is readable on its own line;
+    a row with a `repo#N` ref opens its issue on a tap of the row or the
+    chevron, a row without one stays inert."""
+    authed_page.add_init_script(
+        "window.__opened = [];"
+        " window.open = function (u) { window.__opened.push(u); return null; };")
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z",
+        "lanes": [
+            {"repo": "app-launcher", "session": "s-a", "item": "#1578", "status": "building",
+             "model": "opus"},
+        ],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1500", "title": "Adopt the usage log",
+             "status": "queued", "model": "sonnet"},
+            {"repo": "fleet-config", "ref": "#12", "title": "Second in line", "status": "building"},
+            {"repo": "app-launcher", "ref": "#1400", "title": "Parked with a ref", "status": "parked"},
+            {"repo": "automation", "ref": "", "title": "Parked without a ref",
+             "status": "waiting-roberto"},
+        ],
+    }), encoding="utf-8")
+    _route_plan_from(authed_page, {"plan": chief_plan.read_chief_plan(f, "octo")})
+    _open_board(authed_page, base_url)
+
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    expect(plan_body.locator(".board-plan-heading")).to_have_text(
+        ["Lanes (1)", "Queue (2)", "Parked (2)"])
+    queue_group = plan_body.locator(".board-plan-group").nth(1)
+    queue = queue_group.locator("li.board-plan-row")
+    expect(queue).to_have_count(2)
+    expect(queue.locator(".action-row-title")).to_have_text(["Adopt the usage log", "Second in line"])
+    expect(queue.locator(".board-plan-chip")).to_have_text(["queued", "building"])
+    expect(queue_group.locator(".board-plan-section-note")).to_contain_text("Backlog")
+
+    # Parked folds on a phone, opens on the desktop board.
+    parked = plan_body.locator(".board-plan-parked")
+    parked_rows = parked.locator("li.board-plan-row")
+    on_phone = (authed_page.viewport_size or {"width": 0})["width"] < 700
+    if on_phone:
+        expect(parked_rows.first).to_be_hidden()
+        summary = parked.locator("summary")
+        box = stable_read(summary.bounding_box)
+        assert box and box["height"] >= 44, f"Parked summary is below a 44px target: {box}"
+        summary.click()
+    expect(parked_rows).to_have_count(2)
+    expect(parked_rows.first).to_be_visible()
+    expect(parked_rows.locator(".board-plan-chip")).to_have_text(["parked", "waiting-roberto"])
+
+    # Two lines: the title over the meta, the chip at the meta line's right
+    # end, the chevron after the title's column, the whole row a 44px target.
+    expect(queue.first.locator(".action-row-meta-text")).to_have_text("app-launcher#1500 · Sonnet")
+    expect(queue.first.locator(".board-plan-model")).to_have_text("Sonnet")
+    geo = stable_eval(queue.first, (
+        "el => { const r = el.getBoundingClientRect();"
+        " const t = el.querySelector('.action-row-title');"
+        " const tb = t.getBoundingClientRect();"
+        " const m = el.querySelector('.action-row-meta-text').getBoundingClientRect();"
+        " const c = el.querySelector('.board-plan-chip').getBoundingClientRect();"
+        " const v = el.querySelector('.board-plan-chevron').getBoundingClientRect();"
+        " return {h: r.height, titleBottom: tb.bottom, metaTop: m.top, titleRight: tb.right,"
+        " chipLeft: c.left, metaLeft: m.left, chipRight: c.right, chevLeft: v.left,"
+        " chevW: v.width, clipped: t.scrollWidth > t.clientWidth}; }"))
+    assert geo["h"] >= 44, geo
+    assert geo["metaTop"] >= geo["titleBottom"] - 1, f"meta is not under the title: {geo}"
+    assert geo["chipLeft"] > geo["metaLeft"] and geo["chipRight"] <= geo["chevLeft"] + 1, geo
+    assert geo["titleRight"] <= geo["chevLeft"] + 1, f"title runs under the chevron: {geo}"
+    assert geo["chevW"] >= 44, geo
+    assert not geo["clipped"], f"a short queue title is clipped: {geo}"
+
+    # Taps: the row, then its chevron, open the issue; the lane opens its own;
+    # a parked row with no ref does nothing.
+    def opened() -> list:
+        return authed_page.evaluate("() => window.__opened")
+
+    queue.first.locator(".action-row-main").click()
+    queue.first.locator(".board-plan-chevron").click()
+    plan_body.locator(".board-plan-group").nth(0).locator(".action-row-main").click()
+    assert opened() == [
+        "https://github.com/octo/app-launcher/issues/1500",
+        "https://github.com/octo/app-launcher/issues/1500",
+        "https://github.com/octo/app-launcher/issues/1578",
+    ]
+    inert = parked_rows.nth(1)
+    expect(inert.locator(".action-row-main")).to_have_class(re.compile(r"is-inert"))
+    expect(inert.locator(".board-plan-chevron")).to_have_count(0)
+    inert.locator(".action-row-main").click()
+    assert len(opened()) == 3

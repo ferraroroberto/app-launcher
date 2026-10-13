@@ -969,16 +969,49 @@ function planLine(cls, text) {
   return p;
 }
 
-function planGroup(heading, rows, cls) {
+// A plan section (#1578): its heading carries the row count, "Lanes (2)", and
+// an optional muted line under it (`note`) says what the number counts.
+function planGroup(heading, rows, cls, note) {
   const wrap = document.createElement('div');
   wrap.className = 'board-plan-group' + (cls ? ' ' + cls : '');
   const h = document.createElement('h4');
   h.className = 'board-plan-heading';
   h.textContent = heading;
+  wrap.appendChild(h);
+  if (note) wrap.appendChild(planLine('board-plan-section-note', note));
   const list = document.createElement('ul');
   list.className = 'card-list board-list';
   rows.forEach(function (row) { list.appendChild(row); });
-  wrap.append(h, list);
+  wrap.appendChild(list);
+  return wrap;
+}
+
+// Parked (#1578): the same section as a <details>, so a long parked list does
+// not push the queue off a phone. Collapsed by default on a phone, open on the
+// desktop board; once the reader toggles it the choice holds across rebuilds.
+let parkedOpen = null;
+
+function parkedGroup(rows) {
+  const open = parkedOpen === null
+    ? !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches)
+    : parkedOpen;
+  const wrap = document.createElement('details');
+  wrap.className = 'board-plan-group board-plan-parked';
+  wrap.open = open;
+  const sum = document.createElement('summary');
+  sum.className = 'board-plan-heading board-plan-parked-summary';
+  const label = document.createElement('span');
+  label.textContent = 'Parked (' + rows.length + ')';
+  const mark = document.createElement('span');
+  mark.className = 'board-plan-parked-chevron';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.innerHTML = icon('chevron-right');
+  sum.append(label, mark);
+  const list = document.createElement('ul');
+  list.className = 'card-list board-list';
+  rows.forEach(function (row) { list.appendChild(row); });
+  wrap.append(sum, list);
+  wrap.addEventListener('toggle', function () { parkedOpen = wrap.open; });
   return wrap;
 }
 
@@ -1013,60 +1046,80 @@ function planRowShown(row, filter) {
   return !repo || matchesRepoFilter({ repo: repo }, filter);
 }
 
-// A queue row's secondary text (#1297): the repo and number (`repo#N`, a
-// link when the reader resolved one), then the chief's note. The title leads
-// the row, so an item without one is named by this label and keeps just the
-// note here.
+// What the chief has set aside (#1578): shown under Parked, never in the
+// queue. Every other status is work in the queue's order.
+const PARKED_STATUSES = ['parked', 'waiting-roberto'];
+
+function isParked(q) {
+  return PARKED_STATUSES.indexOf(q.status) !== -1;
+}
+
+// A queue row (#1297): the issue title leads, the meta is `repo#N`, then the
+// chief's note. An item without a title is named by its label and keeps just
+// the note here.
 function queueRow(q) {
   const ref = q.ref && q.ref.charAt(0) === '#' && q.repo ? q.repo + q.ref : q.ref;
   const label = ref || q.repo;
   const meta = [];
-  if (q.title && label) {
-    if (q.ref_url) {
-      const a = document.createElement('a');
-      a.className = 'board-plan-ref';
-      a.href = q.ref_url;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.textContent = label;
-      meta.push(a);
-    } else {
-      meta.push(label);
-    }
-  }
-  if (q.note) meta.push((meta.length ? ' · ' : '') + q.note);
-  return planRow(q.title || label, meta, q.status, q.model);
+  if (q.title && label) meta.push(label);
+  if (q.note) meta.push(q.note);
+  return planRow({
+    title: q.title || label,
+    meta: meta,
+    status: q.status,
+    model: q.model,
+    url: q.ref_url,
+    ref: label,
+  });
 }
 
-// A lane or queue row (#1502, on the shared action-row): one small line, the
-// title, then the meta, then the optional model word and the status chip.
-// The plan reports, it is not a control, so the row is inert. `meta` is a
-// line of text, or a list of text and nodes (a queue row's link). `model` is
-// the chief's optional lane/queue model (#1352): quiet muted text beside the
-// status chip, sentence case, absent when blank.
-function planRow(title, meta, status, model) {
-  const chips = [];
-  if (model) {
+// A lane (#1578): the repo is its title, the item (`#N`) its meta.
+function planLaneRow(l) {
+  return planRow({
+    title: l.repo || 'lane',
+    meta: l.item ? [l.item] : [],
+    status: l.status,
+    model: l.model,
+    url: l.ref_url,
+    ref: l.item ? (l.repo || '') + l.item : '',
+  });
+}
+
+// A lane, queue or parked row (#1578, on the shared action-row as the Backlog
+// card's rows are): line 1 the title, on its own so it reads in full; line 2
+// the meta pieces joined by " · " with the chief's optional model word (#1352)
+// among them, the status chip at the right end of that line. A row with a
+// link (`url`, resolved by the reader from its `repo#N`) is a tap that opens
+// it and carries the trailing chevron that says so; a row without one reports
+// and does nothing.
+function planRow(o) {
+  const pieces = o.meta.slice();
+  if (o.model) {
     const tag = document.createElement('span');
     tag.className = 'board-plan-model';
-    tag.textContent = model.charAt(0).toUpperCase() + model.slice(1);
-    chips.push(tag);
+    tag.textContent = o.model.charAt(0).toUpperCase() + o.model.slice(1);
+    pieces.splice(Math.min(1, pieces.length), 0, tag);
   }
-  if (status) chips.push(chip(status, PLAN_TONES[status] || 'neutral', 'board-plan-chip'));
-  const parts = Array.isArray(meta) ? meta : (meta ? [meta] : []);
+  const open = o.url ? function () { window.open(o.url, '_blank', 'noopener'); } : null;
   const row = actionRow({
-    className: 'board-item board-plan-row',
-    title: title,
-    meta: parts.map(function (p) { return typeof p === 'string' ? p : p.textContent; }).join(''),
-    chips: chips,
-    density: 'small',
-    inert: true,
+    className: 'board-item board-plan-row' + (open ? ' is-link' : ''),
+    title: o.title,
+    meta: pieces.length ? ' ' : '',
+    chips: o.status ? [chip(o.status, PLAN_TONES[o.status] || 'neutral', 'board-plan-chip')] : [],
+    label: 'Open ' + (o.ref || o.title) + ' on GitHub',
+    onMain: open,
+    inert: !open,
+    trailing: open ? chevron('chevron-right', open) : null,
   });
-  // A link in the meta takes the place of its own plain words, so the line
-  // still ellipsizes as one.
-  if (row.meta && parts.some(function (p) { return typeof p !== 'string'; })) {
-    const text = row.meta.querySelector('.action-row-meta-text') || row.meta;
-    text.replaceChildren.apply(text, parts);
+  // The pieces take the place of the meta text, so the line still
+  // ellipsizes as one and the chip never does.
+  const text = row.meta && row.meta.querySelector('.action-row-meta-text');
+  if (text) {
+    text.textContent = '';
+    pieces.forEach(function (p, i) {
+      if (i) text.appendChild(document.createTextNode(' · '));
+      text.appendChild(typeof p === 'string' ? document.createTextNode(p) : p);
+    });
   }
   return row.li;
 }
@@ -1193,14 +1246,19 @@ function renderChiefPlan(body, liveRead) {
     }
     const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
     if (lanes.length) {
-      nodes.push(planGroup('Lanes', lanes.map(function (l) {
-        return planRow(l.repo || 'lane', l.item, l.status, l.model);
-      })));
+      nodes.push(planGroup('Lanes (' + lanes.length + ')', lanes.map(planLaneRow)));
     }
     // Unfiltered, the Queue heading shows even when empty, as it always has;
-    // a filter that empties it hides it, as the columns do.
-    const queue = (plan.queue || []).filter(function (q) { return planRowShown(q, filter); });
-    if (queue.length || !filter) nodes.push(planGroup('Queue', queue.map(queueRow)));
+    // a filter that empties it hides it, as the columns do. Parked items
+    // (#1578) leave the queue for their own section below it.
+    const planned = (plan.queue || []).filter(function (q) { return planRowShown(q, filter); });
+    const queue = planned.filter(function (q) { return !isParked(q); });
+    const parked = planned.filter(isParked);
+    if (queue.length || !filter) {
+      nodes.push(planGroup('Queue (' + queue.length + ')', queue.map(queueRow), '',
+        'Only what the chief has scheduled; the Backlog counts every open issue.'));
+    }
+    if (parked.length) nodes.push(parkedGroup(parked.map(queueRow)));
   }
   host.replaceChildren.apply(host, nodes);
 }
