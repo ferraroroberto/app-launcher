@@ -201,8 +201,33 @@ export function createDictation(opts) {
     _idleLabel = null;
   }
 
+  // #1581: what a tap on the mic would do right now, as the usage log's
+  // `data-track` control id (usage.js). The log's click listener reads the
+  // attribute when the tap lands, before toggle() runs, so the id is kept in
+  // step with the state — each tap is then logged under what it did. A phone's
+  // console is out of reach; the server-side log is not. Constant ids only
+  // (the usage-log privacy contract): nothing about the take is recorded.
+  const _TAP_IDS = {
+    start: 'mic.start',
+    stop: 'mic.stop',
+    arming: 'mic.ignored-arming',
+    finalizing: 'mic.cancel-finalizing',
+  };
+
+  function tapState() {
+    if (_arming) return 'arming';
+    if (_finishOp) return 'finalizing';
+    if (_recorder && _recorder.state === 'recording') return 'stop';
+    return 'start';
+  }
+
+  function syncTrackId() {
+    if (button) button.setAttribute('data-track', _TAP_IDS[tapState()]);
+  }
+
   function setArmingUI() {
     _arming = true;
+    syncTrackId();
     if (!button) return;
     holdLabel('Starting…');
     button.classList.add('arming');
@@ -211,6 +236,7 @@ export function createDictation(opts) {
 
   function setRecordingUI(on) {
     _arming = false;
+    syncTrackId();
     if (!button) return;
     if (button.classList.contains('arming')) {
       button.classList.remove('arming');
@@ -470,6 +496,7 @@ export function createDictation(opts) {
     _finishing = true;
     holdLabel('Cancel dictation');
     _finishOp = { stopTimer: startWorkTimer(button, icon('mic')) };
+    syncTrackId();
     return _finishOp;
   }
 
@@ -479,6 +506,7 @@ export function createDictation(opts) {
     if (_finishOp !== op) return false;
     _finishOp = null;
     _finishing = false;
+    syncTrackId();
     op.stopTimer();
     releaseLabel();
     return true;
@@ -632,16 +660,31 @@ export function createDictation(opts) {
     setRecordingUI(false);
   }
 
+  syncTrackId();
+
   const api = {
     toggle: function () {
-      if (_arming) return;
+      // #1581: one info line per tap saying what it did. A report of "the mic
+      // needed two taps" then reads off the device console: no line means the
+      // tap never reached us (touch/layout), "ignored"/"cancelled" means the
+      // state swallowed it, "start" means we did begin.
+      if (_arming) {
+        console.info('[dictation] tap ignored: the mic is still arming');
+        return;
+      }
       // A tap while the stopped take is still transcribing cancels it (#1413).
       if (dropFinishing()) {
+        console.info('[dictation] tap cancelled the take that was still finalizing');
         toast('Dictation cancelled', undefined, { icon: 'mic' });
         return;
       }
-      if (_recorder && _recorder.state === 'recording') stopRecording();
-      else startRecording();
+      if (_recorder && _recorder.state === 'recording') {
+        console.info('[dictation] tap: stop recording');
+        stopRecording();
+      } else {
+        console.info('[dictation] tap: start recording');
+        startRecording();
+      }
     },
     stop: stopRecording,
     dispose: dispose,
