@@ -5243,6 +5243,43 @@ span.chief-answer-ref { color: var(--muted); }
 .head-exception[data-tone="attention"] { color: var(--attention-text); }
 .head-exception[data-tone="danger"] { color: var(--danger-text); }
 
+/* The header's CPU reading (#1522), left of the theme toggle on every tab:
+   a quiet muted number, colour only for an exception. A fixed 38px box so
+   "9%" to "100%" never moves the row; .hit-target's ::before takes it past
+   the 44px floor, and the row's 12px gap keeps it off the toggle's. */
+.home-head .cpu-reading {
+  flex: none;
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-label);
+  font-variant-numeric: tabular-nums;
+  line-height: normal;
+  text-align: center;
+  cursor: pointer;
+}
+.home-head .cpu-reading[data-level="attention"] { color: var(--attention-text); }
+.home-head .cpu-reading[data-level="danger"] { color: var(--danger-text); }
+/* A quiet reading yields to the header line's exceptions: at 390px the line's
+   two parts need the reading's 50px, and no ellipsis may cut the part that
+   matters (design.md page-header). A hot reading is itself the exception, so
+   it always shows. */
+.home-head:has(> .status[data-tone]) .cpu-reading:is([data-level="normal"], [data-level="unknown"]) {
+  display: none;
+}
+.cpu-sheet-body .usage-sheet-value[data-tone="attention"] { color: var(--attention-text); }
+.cpu-sheet-body .usage-sheet-value[data-tone="danger"] { color: var(--danger-text); }
+.cpu-sheet-caption {
+  margin: var(--space-md) 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+
 /* Usage: the full meter in a card. The whole card is one tap to the Usage
    sheet; the meter inside is its keyboard target. */
 .usage-card { cursor: pointer; }

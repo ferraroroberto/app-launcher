@@ -5,7 +5,7 @@
  * each fetchX() refreshes its slice of state and re-renders.
  */
 
-import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
+import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, SYSTEM_LOAD_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
 import { AuthRequiredError, apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
 import { setTab, wireTabs } from './tabs.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
@@ -14,6 +14,7 @@ import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './
 import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './context-filter.js';
 import { wireUsageMeter } from './usage-meter.js';
+import { fetchSystemLoad, wireSystemLoad } from './system-load.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps-coding.js';
 import { fetchListeners } from './apps-listeners.js';
@@ -279,6 +280,7 @@ async function boot() {
   const usage = Promise.all([safe(fetchRateLimits), safe(fetchContextFilter)]);
   const listeners = safe(fetchListeners);
   const running = safe(fetchRunningApps);
+  const load = safe(fetchSystemLoad);
   const others = [safe(fetchVersion)];
   // The Board card link fetches the Board itself, so it needs none of these.
   if (boardSid) openBoardCard(boardSid).catch(function () {});
@@ -325,6 +327,12 @@ async function boot() {
       fetchWebauthnStatus().catch(noop);
     }, WEBAUTHN_POLL_MS);
   });
+  load.then(function () {
+    setInterval(function () {
+      // Every tab's header shows it; fetchSystemLoad() skips a hidden page.
+      fetchSystemLoad().catch(noop);
+    }, SYSTEM_LOAD_POLL_MS);
+  });
   git.then(function () {
     setInterval(function () {
       // Always-on git flags (#496): refresh only while the tab that shows
@@ -353,7 +361,7 @@ async function boot() {
   }
   // safe() never rejects, so neither does this: boot() resolves once every
   // boot fetch has settled.
-  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running].concat(others));
+  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
 }
 
 // --------------------------------------------------------- wire + go
@@ -365,6 +373,7 @@ wireChannelAutostart();
 wireChannelSessions();
 wireSessions();
 wireUsageMeter();
+wireSystemLoad();
 wireApps();
 wireJobs();
 wireLifeOs();

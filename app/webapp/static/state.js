@@ -30,6 +30,11 @@ export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
 export const JOBS_POLL_MS = 4000;         // refresh Jobs tab while it's visible
 export const BOARD_POLL_MS = 5000;        // refresh Board tab while it's visible
 export const WEBAUTHN_POLL_MS = 15000;
+// The header's CPU reading (#1522): one poll for the whole page, foreground
+// only; the server samples every 5 s, so 10 s never reads the same sample
+// twice in a row by much. The retry covers the sampler's ~2 s first sample.
+export const SYSTEM_LOAD_POLL_MS = 10000;
+export const SYSTEM_LOAD_WARMING_RETRY_MS = 3000;
 // Git-status refresh (#496, reversing #115's tap-only contract): slow on
 // purpose — one git run per project per tick, gated to the tabs that show
 // the flags (Coding tiles, Board backlog) and to a foreground page.

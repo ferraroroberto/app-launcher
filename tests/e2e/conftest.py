@@ -1124,11 +1124,28 @@ def authed_page(
 ) -> Iterator[Page]:
     if auth_token:
         context.add_init_script(_seed_token_init_script(auth_token))
+    # The header's CPU reading (#1522) reads the real box, and the gate loads
+    # it: a hot reading shows beside the header line and would make every
+    # header-width test depend on the gate's own load. A quiet default; a
+    # page.route() in a test takes precedence over this context route.
+    context.route(
+        re.compile(r".*/api/system/load$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_QUIET_SYSTEM_LOAD
+        ),
+    )
     page = context.new_page()
     try:
         yield page
     finally:
         page.close()
+
+
+_QUIET_SYSTEM_LOAD = json.dumps({
+    "level": "normal", "reason": None, "cpu_percent": 12.0,
+    "memory": {"used_bytes": 8 * 1024**3, "total_bytes": 32 * 1024**3, "percent": 25.0},
+    "top": [], "cores": 8, "age_seconds": 1.0,
+})
 
 
 @pytest.fixture
