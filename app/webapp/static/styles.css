@@ -554,6 +554,13 @@ button.settings-row:active { background: var(--card-2); }
   background: var(--card);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
+/* Dark: `card` is darker than the track, so the card fill reads pressed in.
+   The selection takes the scaffold's `segmented` dark fill (project-
+   scaffolding#377, fleet-config#1396): the muted tint at 30% over the card,
+   a step above the track's. Light is unchanged (#1575). */
+[data-theme="dark"] .range-tabs.segmented .range-tab.active {
+  background: color-mix(in srgb, var(--muted) 30%, var(--card));
+}
 /* A row's value that is an exception (settings-sheets.js setValue). */
 .settings-row-value[data-tone="attention"] { color: var(--attention-text); }
 /* The note under This PC: it wraps, unlike a one-line group footer. */

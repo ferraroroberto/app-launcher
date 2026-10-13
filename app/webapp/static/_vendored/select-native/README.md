@@ -40,7 +40,7 @@ The fleet's canonical **native `<select>`**: sized to the `control` token (36px)
 | `--font-label` | `0.875rem` | option/label text |
 | `--radius-md` | `12px` | corners |
 | `--control-border` | `#818b98` (dark `#6e7681`) | border (WCAG 1.4.11 control boundary) |
-| `--input-bg` | `var(--card-off)` | fill |
+| `--input-bg` | `var(--card-off)` (dark `#21262d`, the `border-muted` value) | fill — the control fill, never true black inside a dark card (fleet-config#1368, project-scaffolding#356) |
 | `--ink` | `#1f2328` | text |
 
 ## Don't diverge

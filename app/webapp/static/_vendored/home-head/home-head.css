@@ -54,37 +54,25 @@
 
 /* Icon-only trailing actions: the theme toggle and the Settings gear, pinned
  * right (the first one's margin-left:auto holds the pair there even when no
- * .status is present). Each is an icon button (design.md, fleet-config#1259;
- * the same contract as the modal's .detail-close and icon-button/): a glyph
- * on nothing — no fill, border or shadow at rest: --close-bg defaults to
- * transparent, and an app leaves it unset. Neither carries a button tier:
+ * .status is present). Each is an `.icon-button` (icon-button/, design.md,
+ * fleet-config#1259) — the markup carries both classes, and icon-button.css
+ * owns the unpainted box, the glyph colour states and the invisible 44px
+ * target. This file keeps only the home-head specifics: the 34px box, the
+ * placement and the title-size glyph. Neither carries a button tier:
  * `.button-surface` is the labelled utility button, never a glyph.
  *
- * The 34px box is invisible; the ::before extends each target to the 44px
- * floor (34 + 2 x 5). The pair's --gap (12px) is wider than the two 5px
- * expansions together, so neighbouring targets never share a tappable pixel. */
+ * The pair's --gap (12px) is wider than the two 5px target expansions
+ * together (44 - 34 = 10), so neighbouring targets never share a tappable
+ * pixel. */
 .home-head .home-toggle {
-  position: relative;
-  flex: none;
+  --icon-btn-box: 34px;
   margin-left: auto;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: var(--radius-md);
-  background: var(--close-bg, transparent);
-  color: var(--muted);
-  font: inherit;
-  line-height: normal;
-  cursor: pointer;
 }
-.home-head .home-toggle::before { content: ""; position: absolute; inset: -5px; }
 /* The second action in the cluster must not also take an auto margin, or the
  * free space splits between the two. */
 .home-head .home-toggle + .home-toggle { margin-left: 0; }
+/* Three classes, so the title-size glyph beats icon-button's 16px `.icon`
+ * whatever the link order. */
 .home-head .home-toggle .icon {
   width: var(--icon-title);
   height: var(--icon-title);

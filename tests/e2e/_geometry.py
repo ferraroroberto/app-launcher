@@ -35,7 +35,13 @@ from playwright.sync_api import Locator, Page
 # element (`position: absolute`); each negative computed inset side grows the
 # effective rect outward by its magnitude (the `.hit-target` pattern — e.g.
 # a 34px visual control with `::before { inset: -5px }` hits 44px effective).
-_EFFECTIVE_RECT_JS = """el => {
+#
+# Public because it has a second consumer: fleet-config's /design-review
+# (`skills/_lib/design_review/walk.py`) imports it from the scaffold checkout
+# and splices it into its in-page measurement, so an edit here is scored
+# against the design rubric (TOUCH-01/TOUCH-02), not only asserted by this
+# repo's e2e tests. Keep the name and the returned keys stable.
+EFFECTIVE_RECT_JS = """el => {
   const rect = el.getBoundingClientRect();
   const expansion = { left: 0, right: 0, top: 0, bottom: 0 };
   for (const which of ['::before', '::after']) {
@@ -53,6 +59,8 @@ _EFFECTIVE_RECT_JS = """el => {
     expandTop: expansion.top, expandBottom: expansion.bottom,
   };
 }"""
+# The name the helpers below were written against; kept so nothing else moves.
+_EFFECTIVE_RECT_JS = EFFECTIVE_RECT_JS
 
 
 @dataclass(frozen=True)

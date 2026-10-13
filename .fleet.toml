@@ -33,9 +33,9 @@ switch = { src = "app/webapp/static/_vendored/switch", sha = "7e1433c70cac1bdcdb
 button = { src = "app/webapp/static/_vendored/button", sha = "e907d119608d492f561a040a3c4b5949e16f447c", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/card" }
 disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/disclosure" }
-home-head = { src = "app/webapp/static/_vendored/home-head", sha = "28c3e2c09a6bdc224a2188dfd2abcea2d99744f7", dest = "app/webapp/static/_vendored/home-head" }
+home-head = { src = "app/webapp/static/_vendored/home-head", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "e907d119608d492f561a040a3c4b5949e16f447c", dest = "app/webapp/static/_vendored/nav" }
-select-native = { src = "app/webapp/static/_vendored/select-native", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/select-native" }
+select-native = { src = "app/webapp/static/_vendored/select-native", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "app/webapp/static/_vendored/select-native" }
 empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "69351311c9c4d6500c79f45ddd3c4441b1e90fa4", dest = "app/webapp/static/_vendored/empty-state" }
 range-tab = { src = "app/webapp/static/_vendored/range-tab", sha = "e907d119608d492f561a040a3c4b5949e16f447c", dest = "app/webapp/static/_vendored/range-tab" }
 modal = { src = "app/webapp/static/_vendored/modal", sha = "e907d119608d492f561a040a3c4b5949e16f447c", dest = "app/webapp/static/_vendored/modal" }
@@ -51,8 +51,8 @@ row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "63dd40986faf7e
 # it would let /propagate-vendored overwrite the sprite and delete them. Every
 # other component above is byte-identical to the scaffold and declared;
 # tests/test_vendored_manifest.py pins that.
-browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "60dc05f990bfdd0b479179f02f6e5e0e0c53a7f3", dest = "tests/e2e/_browser_sweep.py" }
-geometry = { src = "tests/e2e/_geometry.py", sha = "05f3e6b2a8dc5a39f46be955055ccc3fe20b23a0", dest = "tests/e2e/_geometry.py" }
+browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_browser_sweep.py" }
+geometry = { src = "tests/e2e/_geometry.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "scripts/classify_e2e.py" }
 icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "app/webapp/static/_vendored/icon-button" }
