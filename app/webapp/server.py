@@ -68,11 +68,13 @@ from starlette.types import Scope
 
 from src import instance_role, jobs_snapshot, launcher, session_client
 from src.app_config import load_app_config
+from src.runtime_data import runtime_db_path
 from src.static_versioning import (
     compute_asset_hashes,
     fleet_hash_of,
     rewrite_js_imports,
 )
+from src.usage_log import usage_router
 from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.webauthn_gate import WebAuthnGate
 
@@ -486,6 +488,12 @@ def create_app() -> FastAPI:
     app.include_router(life_os.router)
     app.include_router(board.router)
     app.include_router(webauthn.router)
+    # Local-only view/tap log (#1524). Behind the bearer-token middleware like
+    # every /api route; the vendored client sends no Authorization header, so
+    # static/usage.js adds it for this one endpoint.
+    app.include_router(usage_router(
+        runtime_db_path("app-launcher", "usage.sqlite3", create=True),
+    ))
 
     return app
 
