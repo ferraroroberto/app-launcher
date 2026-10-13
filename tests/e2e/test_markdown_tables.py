@@ -28,7 +28,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_read
+from tests.e2e.conftest import OVERLAY_OPEN_MS, open_row_menu, stable_read
 from tests.e2e.test_session_mode_toggle import (
     _mock_git_status,
     _mock_sessions_list,
@@ -187,7 +187,7 @@ def test_life_os_document_renders_a_markdown_table(authed_page: Page, base_url: 
     expect(tile).to_be_visible()
     # Read lives in the row's ⋯ menu since #1128.
     tile.locator(".action-row-kebab").click()
-    tile.locator("button[title^='Browse']").click()
+    open_row_menu(authed_page).locator("[data-item=lifeos-browse-btn]").click()
     authed_page.locator(".lifeos-file-btn").first.click()
     expect(authed_page.locator("#lifeOsFileContent")).to_be_visible()
 
