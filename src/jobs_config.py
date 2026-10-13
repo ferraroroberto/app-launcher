@@ -62,7 +62,7 @@ import logging
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
 from src._json_io import atomic_write_json, file_lock
 from src.jobs_config_chain import (
@@ -170,8 +170,22 @@ def load_jobs(path: Optional[Path] = None) -> JobsConfig:
         try:
             jobs.append(job_from_dict(row))
         except ValueError as exc:
-            logger.warning(f"⚠️  Skipping malformed job row: {exc} ({row!r})")
+            _warn_malformed_row_once(f"{exc} ({row!r})")
     return JobsConfig(jobs=jobs)
+
+
+# Every malformed row already warned about. The registry is re-read on every
+# Board and Jobs poll, so one bad row logged once per poll: 181 lines per job
+# in one e2e worker's log (#1516). A row that changes is a new message and
+# warns again.
+_warned_malformed_rows: Set[str] = set()
+
+
+def _warn_malformed_row_once(detail: str) -> None:
+    if detail in _warned_malformed_rows:
+        return
+    _warned_malformed_rows.add(detail)
+    logger.warning(f"⚠️  Skipping malformed job row: {detail}")
 
 
 def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:

@@ -694,6 +694,34 @@ class TestJobsConfigPersistence:
         cfg = load_jobs(path=path)
         assert [j.id for j in cfg.jobs] == ["ok"]
 
+    def test_a_malformed_row_warns_once_not_on_every_read(
+        self, tmp_path, caplog, monkeypatch
+    ):
+        """#1516: the registry is re-read on every Board and Jobs poll, so a
+        bad row used to log once per poll. A row that changes warns again."""
+        import src.jobs_config as jobs_config_mod
+
+        monkeypatch.setattr(jobs_config_mod, "_warned_malformed_rows", set())
+        path = tmp_path / "jobs.json"
+
+        def _write(script_path: str) -> None:
+            path.write_text(
+                json.dumps({"jobs": [{"id": "bad", "name": "Bad", "script_path": script_path}]}),
+                encoding="utf-8",
+            )
+
+        def _warnings() -> int:
+            return sum("Skipping malformed job row" in r.getMessage() for r in caplog.records)
+
+        _write("")
+        with caplog.at_level("WARNING", logger=jobs_config_mod.logger.name):
+            for _ in range(3):
+                assert load_jobs(path=path).jobs == []
+            assert _warnings() == 1
+            _write("C:\\bad.txt")
+            load_jobs(path=path)
+            assert _warnings() == 2
+
 
 class TestMutations:
     def test_add_rejects_duplicate(self, tmp_path, monkeypatch):
@@ -1089,6 +1117,44 @@ class TestBulkParser:
         )
         assert out["\\AppLauncher\\demo-1"] is None
         assert out["\\AppLauncher\\demo-2"] is None
+
+
+class TestBulkQueryScope:
+    """#1516: ``_bulk_records`` asks for the ``\\AppLauncher\\`` folder, and
+    falls back to the whole-machine query only when that fails."""
+
+    _FOLDER = "TaskName: \\AppLauncher\\demo\nNext Run Time: 2026-06-01 06:00:00\n\n"
+
+    @staticmethod
+    def _runner(answers):
+        calls: List[List[str]] = []
+
+        def run(argv):
+            calls.append(argv)
+            rc, stdout, stderr = answers[len(calls) - 1]
+            return subprocess.CompletedProcess(argv, rc, stdout=stdout, stderr=stderr)
+
+        return run, calls
+
+    def test_the_folder_query_answers_alone(self):
+        run, calls = self._runner([(0, self._FOLDER, "")])
+        out = jobs_schtasks_mod._bulk_records(runner=run)
+        assert list(out) == ["\\AppLauncher\\demo"]
+        assert calls == [["schtasks", "/Query", "/TN", "\\AppLauncher\\", "/FO", "LIST", "/V"]]
+
+    def test_a_missing_folder_falls_back_and_still_means_no_tasks(self):
+        # schtasks refuses a folder that does not exist yet; the full query
+        # then answers, and "no AppLauncher tasks" stays {} rather than None.
+        missing = (1, "", "ERROR: The system cannot find the file specified.\n")
+        foreign = (0, "TaskName: \\Foreign\\task\nNext Run Time: N/A\n\n", "")
+        run, calls = self._runner([missing, foreign])
+        assert jobs_schtasks_mod._bulk_records(runner=run) == {}
+        assert calls[1] == ["schtasks", "/Query", "/FO", "LIST", "/V"]
+
+    def test_both_queries_failing_is_still_unknown(self):
+        run, calls = self._runner([(1, "", "boom"), (1, "", "boom")])
+        assert jobs_schtasks_mod._bulk_records(runner=run) is None
+        assert len(calls) == 2
 
 
 # ================================================================ executor
