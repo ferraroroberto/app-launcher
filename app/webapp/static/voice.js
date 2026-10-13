@@ -634,14 +634,27 @@ export function createDictation(opts) {
 
   const api = {
     toggle: function () {
-      if (_arming) return;
+      // #1581: one info line per tap saying what it did. A report of "the mic
+      // needed two taps" then reads off the device console: no line means the
+      // tap never reached us (touch/layout), "ignored"/"cancelled" means the
+      // state swallowed it, "start" means we did begin.
+      if (_arming) {
+        console.info('[dictation] tap ignored: the mic is still arming');
+        return;
+      }
       // A tap while the stopped take is still transcribing cancels it (#1413).
       if (dropFinishing()) {
+        console.info('[dictation] tap cancelled the take that was still finalizing');
         toast('Dictation cancelled', undefined, { icon: 'mic' });
         return;
       }
-      if (_recorder && _recorder.state === 'recording') stopRecording();
-      else startRecording();
+      if (_recorder && _recorder.state === 'recording') {
+        console.info('[dictation] tap: stop recording');
+        stopRecording();
+      } else {
+        console.info('[dictation] tap: start recording');
+        startRecording();
+      }
     },
     stop: stopRecording,
     dispose: dispose,
