@@ -30,7 +30,7 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import close_settings_sheets, open_settings_sheet
+from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stable_eval
 
 pytestmark = pytest.mark.smoke
 
@@ -289,7 +289,10 @@ def test_brand_marks_are_sprite_symbols_with_no_chip(
         # non-favourite mark lives since #1070.
         gh = _open_menu(authed_page).locator(".project-github-btn .agent-icon")
         expect(gh).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        seen[theme] = mono.evaluate("el => getComputedStyle(el).color")
+        # A raw evaluate here read '' whenever the poll rebuilt the menu
+        # between resolve and run (#680), red in 3 of 5 loaded gate runs
+        # (#1562); stable_eval reads the live node only.
+        seen[theme] = stable_eval(mono, "el => getComputedStyle(el).color")
 
     assert seen["light"] and seen["dark"], seen
     assert seen["light"] != seen["dark"], (

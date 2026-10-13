@@ -1341,7 +1341,10 @@ class TestBulkCacheNextRun:
         def fake_run(argv):
             import subprocess
             calls.append(list(argv))
-            return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+            # A working query: an empty answer reads as a failed one and
+            # falls back to the whole-machine query, a second call (#1516).
+            stdout = "TaskName: \\AppLauncher\\demo\nNext Run Time: N/A\n"
+            return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout, stderr="")
 
         # _run_schtasks is owned by src.jobs_schtasks (issue #315 split).
         monkeypatch.setattr(jobs_schtasks_mod, "_run_schtasks", fake_run)

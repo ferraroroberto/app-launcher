@@ -50,6 +50,7 @@ import requests
 from playwright.sync_api import BrowserContext, Locator, Page, expect
 
 from src.git_utils import run_git
+from src.github_client import GH_CMD_ENV
 from src.scanner import dir_ignored, slugify
 
 from tests._credential_hygiene import (
@@ -133,6 +134,14 @@ _UPLOADS_DIR = _REPO_ROOT / ".launcher-tmp"
 # `[e2e-stub]` transcript banner: a real photo the user sends from the phone
 # to the live tray mid-run must never trip the check.
 _UPLOAD_MARKER = "e2e-stub-"
+# The `gh` the disposable webapp runs (#1516). Any test that opens the Board
+# without mocking it sets off the GitHub refresh (a never-filled cache heals
+# on the first poll, #910), so one profiled gate run went out to real GitHub
+# 15 times: 45 `gh.exe` spawns. `src.github_client` honours
+# `LAUNCHER_GH_CMD` for exactly this; the synthetic `gh` the design-review
+# instance already uses answers the three searches with a few public-safe
+# rows, so the Backlog still has cards to lay out and nothing reaches GitHub.
+_SYNTHETIC_GH_CMD = json.dumps([sys.executable, str(_REPO_ROOT / "scripts" / "synthetic_gh.py")])
 _AUTOBOOT_ENV = "LAUNCHER_E2E_AUTOBOOT"
 # Filled by _autoboot_server so the lightweight fixture can create sessions
 # directly on the disposable session-host (the sentinel flag can't travel
@@ -605,6 +614,7 @@ def _autoboot_server(
                     _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
                     _STARTUP_DIR_ENV: str(startup_dir),
                     _AUDIT_DIR_ENV: str(audit_dir),
+                    GH_CMD_ENV: _SYNTHETIC_GH_CMD,
                 },
             )
 
@@ -889,6 +899,37 @@ OVERLAY_OPEN_MS = int(os.environ.get("E2E_OVERLAY_OPEN_MS", "30000"))
 # fast and named. One budget for every `#buildReadout` wait, not a literal per
 # test.
 BUILD_READOUT_MS = int(os.environ.get("E2E_BUILD_READOUT_MS", "30000"))
+
+# The readout only shows the server's constant `git_sha` and `built_at`, but
+# the server answers every call with fresh `git` reads (HEAD, the default
+# remote ref and its sha) and a session-host probe: four or five `git` spawns
+# per page boot, the largest `git` cost a profiled gate run had left after
+# #1512 (#1516). Under autoboot each context serves the first good body this
+# worker read. A test's own `page.route` still wins over a context route.
+# The body is read here, not by `route.fetch()` from the handler: a fetch
+# still in flight when its test's context closed raised `TargetClosedError`
+# into the next test's setup.
+_VERSION_BODY: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _cached_version_route(request: pytest.FixtureRequest, context: BrowserContext) -> None:
+    if not _autoboot_enabled(request.config):
+        return
+    if "body" not in _VERSION_BODY:
+        base = request.getfixturevalue("base_url")
+        try:
+            res = _loopback("GET", f"{base}/api/version")
+            res.raise_for_status()
+        except requests.RequestException as exc:
+            logger.warning("⚠️ /api/version not cached, pages read the server: %s", exc)
+            return
+        _VERSION_BODY["body"] = res.text
+    body = _VERSION_BODY["body"]
+    context.route(
+        re.compile(r".*/api/version$"),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=body),
+    )
 
 
 # --------------------------------------------------- opening a session row

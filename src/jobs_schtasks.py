@@ -801,8 +801,20 @@ def _bulk_records(
     query worked and there are no AppLauncher tasks"). The coverage check
     (:mod:`src.jobs_coverage`) needs that distinction: without it, one
     failed query would flag every scheduled job as missing its task.
+
+    Asks for the ``\\AppLauncher\\`` folder first (#1516): the unscoped
+    query dumps every task on the machine, measured at 1.74 s and 466 KB
+    against 0.14 s and 36 KB for the folder, with an identical parsed map.
+    The jobs tick re-runs it every ~24 s while the Board or Jobs tab polls.
+    A folder that does not exist yet is an error to ``schtasks`` ("cannot
+    find the file specified"), not an empty answer, so any failure of the
+    scoped query falls back to the full one, which keeps ``{}`` meaning
+    "no tasks" and ``None`` meaning "query failed".
     """
     runner = runner or _run_schtasks
+    scoped = runner(["schtasks", "/Query", "/TN", TASK_FOLDER_PREFIX, "/FO", "LIST", "/V"])
+    if scoped.returncode == 0 and scoped.stdout:
+        return _parse_bulk_records(scoped.stdout)
     proc = runner(["schtasks", "/Query", "/FO", "LIST", "/V"])
     if proc.returncode != 0 or not proc.stdout:
         # Silence here is what let #743 hide for weeks: every consumer

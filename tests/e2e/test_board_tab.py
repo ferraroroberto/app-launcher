@@ -26,10 +26,13 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
+from scripts import synthetic_gh
 from src import chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.conftest import flush_requests, stable_eval, stable_read, wait_until
+from tests.e2e.conftest import (
+    _autoboot_enabled, flush_requests, stable_eval, stable_read, wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -1891,6 +1894,29 @@ def test_refresh_in_flight_spins_at_full_strength(
         {"fetched_at": _iso_utc(datetime.now(timezone.utc)), "error": None}))
     expect(refresh).to_have_attribute("aria-busy", "false")
 
+
+
+def test_the_disposable_webapp_refreshes_github_from_the_synthetic_gh(
+    request: pytest.FixtureRequest, authed_page: Page, base_url: str
+) -> None:
+    """#1516: the gate never reaches the real ``gh``. Any test that opens the
+    Board unmocked sets off the GitHub refresh (about 15 real refreshes per
+    gate run before), so autoboot points the disposable webapp's
+    ``LAUNCHER_GH_CMD`` at ``scripts/synthetic_gh.py``. A refresh the real
+    ``gh`` answered would carry the owner's real repositories."""
+    if not _autoboot_enabled(request.config):
+        pytest.skip("live-tray run: the live webapp reads the real gh by design")
+    refresh = authed_page.request.post(f"{base_url}/api/board/github/refresh")
+    assert refresh.ok, refresh.status
+    assert refresh.json()["error"] is None
+    board = authed_page.request.get(f"{base_url}/api/board").json()
+    repos = {
+        card["repo"]
+        for column in ("backlog", "other", "done")
+        for card in board["columns"][column]
+        if card.get("kind") != "job"
+    }
+    assert repos == {synthetic_gh.REPO}, sorted(repos)
 
 def test_desktop_empty_lane_is_a_one_line_strip(
     authed_page: Page, base_url: str, browser_name: str
