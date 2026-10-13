@@ -1,0 +1,19 @@
+<!-- Markup skeleton — copy and adapt. One `.segmented` track (role="group",
+     with an accessible name) holding 2-5 `<button class="segmented-item">`s.
+     Exactly one carries aria-pressed="true"; the rest carry "false". Flipping
+     it is the caller's job (see README). A segment that cannot apply now is
+     `disabled` with a title saying why; it keeps its label colour.
+     Add `segmented--verbs` when the choice acts on the world (a mode, a
+     blind), so each segment is a real 44px row. -->
+<div class="segmented" role="group" aria-label="Period">
+  <button type="button" class="segmented-item" aria-pressed="true" data-value="day">Day</button>
+  <button type="button" class="segmented-item" aria-pressed="false" data-value="week">Week</button>
+  <button type="button" class="segmented-item" aria-pressed="false" data-value="month">Month</button>
+</div>
+
+<div class="segmented segmented--verbs" role="group" aria-label="Alarm mode">
+  <button type="button" class="segmented-item" aria-pressed="true" data-value="off">Off</button>
+  <button type="button" class="segmented-item" aria-pressed="false" data-value="partial">Partial</button>
+  <button type="button" class="segmented-item" aria-pressed="false" data-value="full"
+          disabled title="A door is open">Full</button>
+</div>

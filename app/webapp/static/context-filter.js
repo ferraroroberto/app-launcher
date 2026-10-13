@@ -7,7 +7,7 @@
  * routers/context_filter.py later.
  *
  * GET /api/context-filter -> {mode, harnesses, stats}. The mode control is a
- * three-way row of the vendored range-tab pills (#1133), the same shape as
+ * three-way row of the vendored segmented control (#1586), the same shape as
  * claude-options.js's permission rows. A click PUTs then
  * re-fetches; never an optimistic flip (main.js's toggleBootAutostart
  * precedent).
@@ -37,10 +37,10 @@ function renderModeControl(mode) {
   MODES.forEach(function (m) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'range-tab';
+    b.className = 'segmented-item';
     b.textContent = MODE_LABELS[m];
     b.dataset.value = m;
-    if (m === mode) b.classList.add('active');
+    b.setAttribute('aria-pressed', m === mode ? 'true' : 'false');
     b.addEventListener('click', function () {
       if (m !== mode) putContextFilterMode(m);
     });

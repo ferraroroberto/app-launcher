@@ -160,7 +160,7 @@ def test_a_quiet_reading_yields_to_the_header_exceptions_a_hot_one_does_not(
 
     status = page.locator("#homeHeadStatus")
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
-    expect(status).to_have_text("1 needs you · 1 stalled")
+    expect(status).to_have_text("1 stalled · 1 needs you")
     expect(reading).to_have_text("30%")
     expect(reading).to_be_hidden()
 

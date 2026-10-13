@@ -234,15 +234,6 @@
   outline-offset: 2px;
 }
 
-/* showModal() focuses a dialog's title (autofocus, tabindex -1) rather than a
-   control, so the keyboard stays down and the sheet is announced (#1537).
-   iOS matches :focus-visible on that script focus, so every dialog title drew
-   a ring as if it were selected. A heading is no control, so it draws none;
-   the controls inside keep the ring above. Lives here, not in the vendored
-   modal CSS; scaffold follow-up: project-scaffolding#359. */
-dialog h2[tabindex="-1"]:focus,
-dialog h2[tabindex="-1"]:focus-visible { outline: none; }
-
 /* Lucide sprite glyphs (_vendored/icons required CSS contract — verbatim
    from its README). Icons inherit currentColor; size via width/height or
    the surrounding font-size (1em default). */
@@ -528,39 +519,9 @@ button.settings-row:active { background: var(--card-2); }
   height: var(--icon-inline);
   color: var(--muted);
 }
-/* Text size (#1134): the label beside the vendored range-tab row. */
+/* Text size (#1134): the label beside the vendored segmented control. */
 .settings-row--inline .text-size-label { flex: none; }
-.text-size-card .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
-/* The segmented control (design.md `segmented`, #1506): one rounded.md
-   track on neutral-soft with a 3px inset, equal borderless segments at the
-   control height, every label fg, and the selected segment raised on the
-   card surface, which is the state (never a colour). App-side over the
-   vendored range-tab row, so its markup hooks and bindTextSize stay; the
-   range-tab's own ::before band still makes each target 44px tall. */
-.range-tabs.segmented {
-  gap: 0;
-  padding: 3px;
-  background: var(--neutral-soft);
-  border-radius: var(--radius-md);
-}
-.range-tabs.segmented .range-tab,
-.range-tabs.segmented .range-tab.active {
-  background: transparent;
-  border-color: transparent;
-  border-radius: calc(var(--radius-md) - 3px);
-  color: var(--fg);
-}
-.range-tabs.segmented .range-tab.active {
-  background: var(--card);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
-}
-/* Dark: `card` is darker than the track, so the card fill reads pressed in.
-   The selection takes the scaffold's `segmented` dark fill (project-
-   scaffolding#377, fleet-config#1396): the muted tint at 30% over the card,
-   a step above the track's. Light is unchanged (#1575). */
-[data-theme="dark"] .range-tabs.segmented .range-tab.active {
-  background: color-mix(in srgb, var(--muted) 30%, var(--card));
-}
+.text-size-card .segmented { flex: 1; min-width: 0; }
 /* A row's value that is an exception (settings-sheets.js setValue). */
 .settings-row-value[data-tone="attention"] { color: var(--attention-text); }
 /* The note under This PC: it wraps, unlike a one-line group footer. */
@@ -596,10 +557,6 @@ button.settings-row:active { background: var(--card-2); }
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* A sheet is narrower than a card on the pane, so its range-tab rows share
-   the width rather than each pill keeping its text width: four "Usage
-   shows" pills at Large text on a 320px phone ran 25px past the sheet. */
-.settings-sheet .range-tab { min-width: 0; padding-inline: 6px; }
 .settings-sheet-back {
   --icon-btn-box: 34px;
   margin-left: -8px;
@@ -740,9 +697,12 @@ button.settings-row:active { background: var(--card-2); }
   width: 56px;
   flex-shrink: 0;
 }
-/* The vendored range-tab row (#1133) sits in an .opt-row beside its label:
+/* The vendored segmented control (#1133, #1586) sits in an .opt-row beside its label:
    it takes the row's remaining width, and the row owns the spacing. */
-.opt-row .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
+.opt-row .segmented { flex: 1; min-width: 0; }
+/* A control stacked under its label keeps the 12px the retired range-tabs row
+   carried before the line of help below it. */
+.stacked > .segmented { margin-bottom: 12px; }
 .toggles {
   display: flex;
   flex-wrap: wrap;
@@ -1960,8 +1920,8 @@ textarea.input-native { height: auto; }
 /* Terminal ⇄ Chat toggle in the bar (#982): an inset track at the bar's
    44px control height, icon-only so the title keeps most of a 390px phone
    (labels were measured to crush it — #979 decision log). A toolbar toggle,
-   not a range, so it stays app-side rather than on the vendored range-tab
-   (#1133). The active segment lifts on the card surface in accent; an
+   not a range, so it stays app-side rather than on the vendored segmented
+   control (#1133). The active segment lifts on the card surface in accent; an
    unavailable one takes the fleet's one disabled recipe (canvas-subtle /
    hairline / muted, never opacity) and toasts its reason on tap. */
 .session-mode {
@@ -4063,7 +4023,7 @@ body.terminal-open {
    side, and the footer is Clear beside Done (design.md "Long lists") — the
    one place this app's stacked detail-actions runs as a row. Clear takes the
    primary's 48px height and type so the pair reads as one footer. */
-.jobs-sort-sheet .range-tabs { flex: 1; margin-bottom: 0; }
+.jobs-sort-sheet .segmented { flex: 1; }
 .jobs-sort-sheet .detail-actions { flex-direction: row; }
 .jobs-sort-sheet .detail-actions .button-primary { flex: 1; }
 .jobs-sort-sheet .detail-actions .button-ghost {
@@ -4995,8 +4955,8 @@ span.chief-answer-ref { color: var(--muted); }
 .lifeos-file-content pre.md-code { overflow-x: auto; }
 
 /* ---------- context filter (issue #713) ---------- */
-/* The Settings-tab card's mode control is the vendored range-tab row
-   (#1133), the same pills as the Coding-options permission rows. */
+/* The Settings-tab card's mode control is the vendored segmented control
+   (#1586), the same one as the Coding-options permission rows. */
 .context-filter-subhead {
   margin: 16px 0 6px;
   font-size: var(--font-caption);

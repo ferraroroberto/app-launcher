@@ -69,7 +69,8 @@ import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js'
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
-import { renderBoardBadge, renderHeadStatus } from './home-head.js';
+import { renderBoardBadge } from './home-head.js';
+import { renderHeadStatus } from './_vendored/home-head/home-head.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
   boardRepoFilter,

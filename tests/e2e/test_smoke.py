@@ -63,16 +63,16 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
         "() => document.querySelectorAll('#claudeModelMenu > [role=option]').length > 0",
         timeout=5_000,
     )
-    # Effort is a select-native and Permission a vendored range-tab row
-    # (#1133): six effort levels pass range-tab's five-pill cap.
+    # Effort is a select-native and Permission a vendored segmented control
+    # (#1133, #1586): six effort levels pass segmented's five-option cap.
     authed_page.wait_for_selector("select#claudeEffort > option", state="attached", timeout=5_000)
-    authed_page.wait_for_selector("#claudePermission > button.range-tab", timeout=5_000)
+    authed_page.wait_for_selector("#claudePermission > button.segmented-item", timeout=5_000)
     model_count = authed_page.locator("#claudeModelMenu > [role='option']").count()
     effort_count = authed_page.locator("select#claudeEffort > option").count()
-    perm_count = authed_page.locator("#claudePermission > button.range-tab").count()
+    perm_count = authed_page.locator("#claudePermission > button.segmented-item").count()
     assert model_count >= 1, f"#claudeModel rendered no buttons (got {model_count})"
     assert effort_count >= 1, f"#claudeEffort rendered no options (got {effort_count})"
-    assert perm_count == 2, f"#claudePermission expected 2 range-tab pills (got {perm_count})"
+    assert perm_count == 2, f"#claudePermission expected 2 segmented items (got {perm_count})"
     assert len(config_calls) >= 2, f"boot never retried /api/config: {config_calls}"
 
 

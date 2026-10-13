@@ -1231,10 +1231,9 @@ function syncConvoSort() {
   const mode = activeConvoSort();
   nav.hidden = convoMode !== 'browse' && convoMode !== 'search';
   nav.dataset.sort = mode;
-  nav.querySelectorAll('.range-tab').forEach(function (btn) {
+  nav.querySelectorAll('.segmented-item').forEach(function (btn) {
     btn.hidden = btn.dataset.sort === 'relevance' && convoMode !== 'search';
     const on = btn.dataset.sort === mode;
-    btn.classList.toggle('active', on);
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 }
@@ -1654,7 +1653,7 @@ export function wireLifeOs() {
       els.lifeOsFilterInput.focus();
     });
     els.lifeOsConvoSort.addEventListener('click', function (ev) {
-      const tab = ev.target.closest('.range-tab');
+      const tab = ev.target.closest('.segmented-item');
       if (tab) setConvoSort(tab.dataset.sort);
     });
   }

@@ -132,7 +132,7 @@ def test_the_sheet_opens_a_live_view_of_the_chosen_display(
     assert geo["navSpotInView"], "the nav must not sit over the view"
 
     # Both displays as a picker; the one above the primary reconnects.
-    picker = view_page.locator("#screenPicker .range-tab")
+    picker = view_page.locator("#screenPicker .segmented-item")
     expect(picker).to_have_text(["Main", "Above"])
     expect(picker.nth(0)).to_have_attribute("aria-pressed", "true")
     picker.nth(1).click()
@@ -237,7 +237,7 @@ def _live_view(authed_page: Page, base_url: str):
 
 
 def _set_mode(page: Page, mode: str) -> None:
-    btn = page.locator(f'#screenMode .range-tab[data-mode="{mode}"]')
+    btn = page.locator(f'#screenMode .segmented-item[data-mode="{mode}"]')
     btn.click()
     expect(btn).to_have_attribute("aria-pressed", "true")
 
@@ -253,7 +253,7 @@ def test_control_mode_taps_send_where_tapped_and_view_mode_sends_nothing(
 
     # View is the default: a tap only touches the local view, the keyboard
     # toggle is not offered, and nothing goes to the PC.
-    expect(page.locator('#screenMode .range-tab[data-mode="view"]')).to_have_attribute(
+    expect(page.locator('#screenMode .segmented-item[data-mode="view"]')).to_have_attribute(
         "aria-pressed", "true"
     )
     expect(page.locator("#screenKeyboard")).to_be_hidden()

@@ -721,7 +721,7 @@ def test_life_os_conversation_sort_is_a_segmented_control(
     titles = rows.locator(".action-row-title")
     expect(rows).to_have_count(2)
     sort = authed_page.locator("#lifeOsConvoSort")
-    tab = lambda mode: sort.locator(f".range-tab[data-sort='{mode}']")  # noqa: E731
+    tab = lambda mode: sort.locator(f".segmented-item[data-sort='{mode}']")  # noqa: E731
     expect(sort).to_have_attribute("data-sort", "interaction")
     expect(tab("relevance")).to_be_hidden()
     expect(tab("interaction")).to_have_text("Recent")
@@ -1369,12 +1369,12 @@ def test_life_os_search_results_keep_server_relevance_order(
     expect(rows).to_have_count(3, timeout=5_000)
     titles = rows.locator(".action-row-title")
     sort = authed_page.locator("#lifeOsConvoSort")
-    tab = lambda mode: sort.locator(f".range-tab[data-sort='{mode}']")  # noqa: E731
+    tab = lambda mode: sort.locator(f".segmented-item[data-sort='{mode}']")  # noqa: E731
     expect(titles).to_have_text(
         ["the ferry deep dive", "a ferry mention", "ferry in passing"]
     )
     expect(sort).to_have_attribute("data-sort", "relevance")
-    expect(sort.locator(".range-tab:visible")).to_have_text(["Relevance", "Recent", "Created"])
+    expect(sort.locator(".segmented-item:visible")).to_have_text(["Relevance", "Recent", "Created"])
     # No skill is called "ferry": the count says so, and the no-match block
     # stays out of the way of the conversations under it.
     expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (0)")

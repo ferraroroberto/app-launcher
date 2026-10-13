@@ -79,7 +79,7 @@ def test_rows_carry_the_boards_needs_you_and_stalled_chips(
 
     # The header names the exceptions in their tones, nothing else.
     head = authed_page.locator("#homeHeadStatus")
-    expect(head).to_have_text("1 needs you · 1 stalled")
+    expect(head).to_have_text("1 stalled · 1 needs you")
     parts = head.locator(".head-exception")
     expect(parts).to_have_count(2)
     expect(parts.nth(0)).to_have_attribute("data-tone", "attention")
@@ -108,7 +108,7 @@ def test_header_exceptions_fit_at_390px(authed_page: Page, base_url: str) -> Non
     _mock(authed_page, [_CHIEF, _WAITING, _STALLED])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     head = authed_page.locator("#homeHeadStatus")
-    expect(head).to_have_text("1 needs you · 1 stalled")
+    expect(head).to_have_text("1 stalled · 1 needs you")
     widths = stable_eval(
         head, "el => el.isConnected && el.clientWidth ? [el.clientWidth, el.scrollWidth] : null"
     )

@@ -183,4 +183,4 @@ def test_an_unreadable_plan_adds_no_question_count(
     tab.click()
     expect(authed_page.locator("#boardChiefPlan .board-plan-note")).to_have_text("Plan unreadable.")
     expect(badge).to_have_text("1")
-    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")

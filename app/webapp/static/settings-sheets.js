@@ -212,7 +212,7 @@ function tokensValue() {
 
 // The context filter's sheet is context-filter.js's: read the mode it shows.
 function contextFilterValue() {
-  const active = document.querySelector('#contextFilterMode .range-tab.active');
+  const active = document.querySelector('#contextFilterMode .segmented-item[aria-pressed="true"]');
   return active ? active.textContent : '';
 }
 

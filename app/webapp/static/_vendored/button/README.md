@@ -6,7 +6,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 - `.button-tint` — accent-soft fill, `accent-text` text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
 - `.button-ghost` — transparent fill, hairline border, muted text. Quiet tertiary actions. **Ghost means transparent** — a tinted fill is a tint, never a "ghost".
 - `.button-surface` — the control fill (`--input-bg`: `card-off` in light, `border-muted` `#21262d` in dark, never a black well) at control height; the dark label is `--ink` (`fg`, 12.88:1), not `--muted` (4.08:1) (fleet-config#1375, project-scaffolding#358). Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
-- `.button-tint.danger` — the tint recipe restated on `--deficit`, text in `--danger-text`, for a destructive action.
+- `.button-tint.danger` — the **outlined** destructive recipe: transparent fill, `--danger-text` label, `--deficit` hairline border. Never a fill or tint, the final Delete of a confirm dialog included (design.md, fleet-config#1403; project-scaffolding#379). The class keeps its historical name so apps' existing markup keeps working after a re-vendor; only its look changed.
 - Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
 - One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat control-fill/line/muted trio, never opacity on a solid fill. The disabled fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so a disabled button never reads as a black well on a dark card (fleet-config#1368, project-scaffolding#356).
 
@@ -14,7 +14,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 
 | File | Role |
 | --- | --- |
-| `button.css` | Visual contract — the four tiers, the danger variant, the shared disabled recipe. References design tokens only. |
+| `button.css` | Visual contract — the four tiers, the outlined danger variant, the shared disabled recipe. References design tokens only. |
 | `button.html` | Markup skeletons to copy and adapt. |
 
 ## How to vendor
@@ -38,7 +38,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 
 - Exactly **one** `.button-primary` per view — secondary emphasis is `.button-tint`, never a second solid fill.
 - Disabled is the plain `disabled` attribute on any tier, not a separate class — the shared recipe handles the look.
-- `.danger` only composes with `.button-tint` (the vendored recipe covers that one combination; a primary/ghost/surface destructive action is out of scope until a real usage shows up).
+- `.danger` only composes with `.button-tint` and is outlined, so use it for every destructive verb, a confirm dialog's Delete included (the vendored recipe covers that one combination; a primary/ghost/surface destructive action is out of scope until a real usage shows up).
 
 ## Legacy-class migration
 
@@ -69,10 +69,8 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--ink` | `#1f2328` (dark `#e6edf3`) | surface label, dark theme only (`[data-theme="dark"]`) |
 | `--line` | `#d1d9e0` | ghost/surface border, disabled border |
 | `--muted` | `#656d76` | ghost text, light surface text, disabled text |
-| `--deficit` | `#cf222e` | base the danger tint mixes from |
-| `--danger-text` | `#a40e26` (dark `#ff7b72`) | danger text |
-| `--deficit-soft` | `color-mix(in srgb, var(--deficit) 12%, transparent)` | danger fill |
-| `--deficit-border-soft` | `color-mix(in srgb, var(--deficit) 30%, transparent)` | danger border |
+| `--deficit` | `#cf222e` (dark `#f85149`) | danger border (outlined destructive button) |
+| `--danger-text` | `#a40e26` (dark `#ff7b72`) | danger label (7.87:1 light / 6.86:1 dark on the card) |
 | `--radius-md` | `12px` | corners (`rounded.md`), all tiers |
 | `--control-h` | `36px` | surface tier height |
 | `--font-body` | `1rem` | tint text |

@@ -15,7 +15,7 @@ so both halves are asserted.
 
 The sweep has no exclusions for sub-floor controls. The old `.segmented`
 control (29px buttons) was left out of the first version on purpose, to keep
-that gap visible. It is now the vendored `range-tab` (#1133), whose `::before`
+that gap visible. It is now the vendored `segmented` (#1133, #1586), whose `::before`
 expands every pill to 44px vertically without overlapping its neighbours, so
 the sweep covers it like everything else.
 

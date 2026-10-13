@@ -57,12 +57,14 @@
  * @returns {{
  *   setTab: (tab: string) => void,
  *   getTab: () => string,
- *   setBadge: (tab: string, count: number|null|undefined, noun?: string) => void,
+ *   setBadge: (tab: string, count: number|null|undefined, noun?: string, tone?: string) => void,
  * }} setBadge shows a count badge on the tab named by data-tab: 1–9 render the
  *   digit, 10 and up render "9+", and 0 / null / undefined / a non-number remove
  *   it. The optional `noun` is what the count counts ("waiting"), spoken as part
  *   of the tab's accessible name: setBadge('board', 2, 'waiting') → "Board, 2
- *   waiting". An unknown tab is ignored, so a poll loop can call it freely.
+ *   waiting". The optional `tone` is 'attention' (the default) or 'danger', set
+ *   as `data-tone` on the badge; any other value renders as attention. An unknown
+ *   tab is ignored, so a poll loop can call it freely.
  */
 export function initNavTabs(opts = {}) {
   const {
@@ -133,7 +135,7 @@ export function initNavTabs(opts = {}) {
   // until an app calls setBadge, so an app that never does renders as before.
   // The badge sits on the icon's top-right corner: the first badge wraps the
   // icon in .tab-icon-wrap (the positioning box) and the last one unwraps it.
-  function setBadge(tab, count, noun) {
+  function setBadge(tab, count, noun, tone) {
     const entry = tabs.get(tab);
     if (!entry) return;
     const button = entry.button;
@@ -170,6 +172,9 @@ export function initNavTabs(opts = {}) {
       }
     }
     badge.textContent = n > 9 ? '9+' : String(n);
+    // Set on every call, so a count that escalates to danger (and settles back)
+    // repaints the existing badge without removing it first.
+    badge.dataset.tone = tone === 'danger' ? 'danger' : 'attention';
 
     if (!hidden) {
       hidden = document.createElement('span');

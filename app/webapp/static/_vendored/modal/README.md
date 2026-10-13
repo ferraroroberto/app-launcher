@@ -31,7 +31,7 @@ The fleet's canonical **editor modal**: a native `<dialog>` with a `heading-lg` 
 <dialog class="detail-dialog">
   <div class="detail-card">
     <div class="detail-header">
-      <h2>Title</h2>
+      <h2 tabindex="-1" autofocus>Title</h2>
       <button class="icon-button detail-close" aria-label="Close">…×…</button>
     </div>
     <div class="row"><span>Label</span> <input class="input-native"></div>
@@ -45,6 +45,7 @@ The fleet's canonical **editor modal**: a native `<dialog>` with a `heading-lg` 
 
 - The row **label** is the row's first `span` child (`.detail-card .row > span:first-child`): `ink`, weight 600. Any other `span` in the row (a muted note, a fix-it line) is not styled by the modal and keeps your own class's colour and weight. Put the label first and give secondary text its own class.
 - Use the **native** dialog API (`showModal()`/`close()`) — never a hand-rolled overlay (the shadcn Dialog rule in `design.md`).
+- The **title takes focus on open**: `<h2 tabindex="-1" autofocus>`. The keyboard stays down on a phone and the sheet is announced to a screen reader. A title is not a control, so `modal.css` removes the app-wide `:focus-visible` ring from `dialog h2[tabindex="-1"]` and from nothing else — every control in the dialog keeps its ring. Do not add a local `h2:focus` override.
 - Exactly **one** primary action; it starts `disabled` until something changes.
 - The disabled recipe (control-fill/muted/line) is part of the contract, inherited from `button-primary` — opacity-based disabling drops sub-AA in both themes. `.detail-save-btn` only adds the footer's full width.
 - On mobile the dialog is top-anchored (safe-area aware); on desktop it keeps UA centering. Don't override.

@@ -1352,7 +1352,7 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(other).to_have_count(1)
     expect(other.first).to_contain_text("PR #158")
     # The header is the fleet's, not the filtered view's.
-    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")
 
     # Picking "All projects" again restores every column.
     repo_btn.click()

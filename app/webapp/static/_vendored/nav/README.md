@@ -64,21 +64,23 @@ Each `.tab` holds one `<svg class="tab-icon">` stroke glyph and one `<span class
 
 ## Count badge (optional)
 
-A small count on a tab says "something over there needs you" from every tab, so no page header has to repeat it (app-launcher's Board tab carries the number of sessions waiting on the user). It is opt-in: `initNavTabs` returns `setBadge(tab, count, noun?)` next to `setTab` / `getTab`, and a nav that never calls it renders exactly as before, with none of the badge elements in the DOM.
+A small count on a tab says "something over there needs you" from every tab, so no page header has to repeat it (app-launcher's Board tab carries the number of sessions waiting on the user). It is opt-in: `initNavTabs` returns `setBadge(tab, count, noun?, tone?)` next to `setTab` / `getTab`, and a nav that never calls it renders exactly as before, with none of the badge elements in the DOM.
 
 ```js
 const nav = initNavTabs({ storageKey: 'my-app.tab' });
 nav.setBadge('board', 2, 'waiting');   // badge "2"; the tab's name reads "Board, 2 waiting"
 nav.setBadge('board', 12, 'waiting');  // badge "9+"; the name still says "12 waiting"
 nav.setBadge('board', 0);              // removes it (null, undefined and non-numbers do too)
+nav.setBadge('security', 1, 'triggered', 'danger');  // the same badge in the danger tone
 ```
 
 - `tab` is the tab's `data-tab`. An unknown tab is ignored, so a poll loop can call it on every refresh. Calling it again with a new count only updates the text.
 - `count` 1 to 9 shows the digit, 10 or more shows `9+`. The accessible name keeps the real number.
 - `noun` is optional: what the count counts. It is spoken, not painted: `", 2 waiting"` is appended to the label, so a screen reader announces the tab once, with its count (the painted digit is `aria-hidden`). Without a noun the name reads `Board, 2`.
+- `tone` is optional: `'attention'` (the default) or `'danger'`. It is set as `data-tone` on the badge, and the CSS maps `danger` to the `--deficit` fill under the same `--card` text. Use `danger` for a count that is an alarm (a triggered alarm) and `attention` for one that is a to-do (detector trouble, sessions waiting). Any other value renders as `attention`, and omitting it renders exactly as before. A later call with a different tone repaints the existing badge.
 - The badge sits on the icon's top-right corner in the phone pill, the inline desktop tabs and the wide left rail. The first badge on a tab wraps its icon in a `<span class="tab-icon-wrap">`, the box the badge is positioned against; removing the last one unwraps it again. The active tab's tint cannot hide it: the fill is opaque.
-- Style (`design.md`): `rounded.pill`, 12px semibold tabular numerals, 16px minimum height, `attention` fill with `card` text. The size is in px so it does not reflow with the Large text size. It is never animated. Contrast is 4.87:1 in light and 6.85:1 in dark, asserted in `tests/e2e/test_vendored_nav.py`; if your `--attention` / `--card` values differ, re-measure.
-- Needs the `--attention` token (below). It is read only while a badge is shown.
+- Style (`design.md`): `rounded.pill`, 12px semibold tabular numerals, 16px minimum height, `attention` fill (or `danger`, see `tone`) with `card` text. The size is in px so it does not reflow with the Large text size. It is never animated. Contrast is 4.87:1 in light and 6.85:1 in dark for `attention`, and 5.36:1 in light and 5.16:1 in dark for `danger`, asserted in `tests/e2e/test_vendored_nav.py`; if your `--attention` / `--deficit` / `--card` values differ, re-measure.
+- Needs the `--attention` token (below), plus `--deficit` if you use the `danger` tone. They are read only while a badge is shown.
 
 ## Wide layout: left rail
 
@@ -107,6 +109,7 @@ Above the end, rows scroll under the floating pill by design, so the pill must w
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | active-tab border (mobile) |
 | `--accent-text` | `#0550ae` (dark `#58a6ff`) | active-tab text/icon (text on the `accent-soft` tint, fleet-config#963) |
 | `--attention` | `#9a6700` (dark `#d29922`) | count-badge fill; `--card` is its text — only read when `setBadge` shows a badge |
+| `--deficit` | `#cf222e` (dark `#f85149`) | count-badge fill in the `danger` tone; `--card` is its text — only read when `setBadge` shows a `danger` badge |
 | `--muted` | `#656d76` | inactive-tab text |
 | `--line` | `#d1d9e0` | bar border, active-tab border (mobile) |
 | `--space-xs` | `4px` | bar padding / gap (desktop) |
