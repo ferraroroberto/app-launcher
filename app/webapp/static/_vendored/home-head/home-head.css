@@ -52,6 +52,14 @@
   font-size: var(--font-label);
 }
 
+/* Exception parts of the live context line (design.md `page-header`: "each part
+ * in its tone's *-text"). home-head.js writes one `.head-exception` span per
+ * part; the slot itself stays muted for the plain fallback. A neutral or
+ * unknown tone has no rule on purpose: it keeps the slot's muted colour. The
+ * three-class selector wins over `.status` whatever the link order. */
+.home-head .status .head-exception[data-tone="attention"] { color: var(--attention-text); }
+.home-head .status .head-exception[data-tone="danger"] { color: var(--danger-text); }
+
 /* Icon-only trailing actions: the theme toggle and the Settings gear, pinned
  * right (the first one's margin-left:auto holds the pair there even when no
  * .status is present). Each is an `.icon-button` (icon-button/, design.md,

@@ -228,12 +228,13 @@ def test_board_renders_columns_counts_and_cards(
     expect(authed_page.locator("#paneBoard .collapse-title", has_text="Dispatch")).to_have_count(0)
 
     # The header (#1436): exceptions only, in their tones, two at most; no
-    # slogan. The chief's unanswered question leads (#1502), then Your turn;
-    # the failing job is the third exception and waits its turn.
+    # slogan. Worst tone first (#1586, the vendored renderHeadStatus): the
+    # failing job (danger) leads, then the chief's unanswered question
+    # (#1502); "needs you", the third exception, waits its turn.
     head = authed_page.locator("#boardHeadStatus")
-    expect(head).to_have_text("1 question · 1 needs you")
+    expect(head).to_have_text("1 failing · 1 question")
     expect(head.locator(".head-exception")).to_have_count(2)
-    expect(head.locator(".head-exception").nth(0)).to_have_attribute("data-tone", "attention")
+    expect(head.locator(".head-exception").nth(0)).to_have_attribute("data-tone", "danger")
     expect(head.locator(".head-exception").nth(1)).to_have_attribute("data-tone", "attention")
 
     sections = authed_page.locator("#boardColumns details.board-col")
@@ -647,7 +648,7 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     # The header shows the exceptions it knows (the chief's question, #1502,
     # and the failed job); never "0 sessions" (#1436).
     head = authed_page.locator("#boardHeadStatus")
-    expect(head).to_have_text("1 question · 1 failing")
+    expect(head).to_have_text("1 failing · 1 question")
     expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("3")
     unreadable = authed_page.locator(
@@ -1352,7 +1353,7 @@ def test_dispatch_repo_dropdown_is_tap_only_and_filters_board_columns(
     expect(other).to_have_count(1)
     expect(other.first).to_contain_text("PR #158")
     # The header is the fleet's, not the filtered view's.
-    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")
 
     # Picking "All projects" again restores every column.
     repo_btn.click()

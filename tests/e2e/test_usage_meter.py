@@ -458,19 +458,19 @@ def test_usage_shows_setting_saves_and_repaints_the_card(
     expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
 
     open_settings_sheet(authed_page, "usageShowsSheet")
-    tabs = authed_page.locator("#usageShows .range-tab")
+    tabs = authed_page.locator("#usageShows .segmented-item")
     expect(tabs).to_have_text(["Claude", "Codex", "Both", "None"])
-    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Both")
+    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("Both")
 
     tabs.nth(3).click()
-    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("None")
+    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("None")
     assert [p for p in posted if "usage_shows" in p] == [{"usage_shows": "none"}], posted
     # The Code pane is not showing, so read the card's own hidden state.
     card = authed_page.locator("#codingUsageCard")
     expect(card).to_have_attribute("hidden", "")
 
     tabs.nth(0).click()
-    expect(authed_page.locator("#usageShows .range-tab.active")).to_have_text("Claude")
+    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("Claude")
     expect(card).not_to_have_attribute("hidden", "")
     # An open sheet makes the nav inert: close it before leaving Settings.
     close_settings_sheets(authed_page)

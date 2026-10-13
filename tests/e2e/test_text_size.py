@@ -2,7 +2,7 @@
 
 The viewport meta locks pinch-zoom (the app reads as a native shell), so
 until now there was no way to make the text bigger (WCAG 1.4.4). Settings
-now carries the vendored text-size range-tab row: Small / Default / Large
+now carries the vendored text-size segmented control: Small / Default / Large
 scale the root font-size, so every rem size follows and px geometry (nav,
 rows, hit targets) does not. Since #1506 the row is drawn as one segmented
 track (design.md `segmented`), with the same hooks, key and boot.
@@ -127,15 +127,15 @@ def _open_settings(page: Page) -> None:
 _SEGMENTED = """
 (nav) => {
   const cs = getComputedStyle(nav);
-  const segs = Array.from(nav.querySelectorAll('.range-tab'));
-  const on = nav.querySelector('.range-tab.active');
+  const segs = Array.from(nav.querySelectorAll('.segmented-item'));
+  const on = nav.querySelector('.segmented-item[aria-pressed=true]');
   const fg = getComputedStyle(document.body).color;
   const band = getComputedStyle(segs[0], '::before');
   return {
     track: cs.backgroundColor,
     inset: cs.paddingTop,
     gap: cs.columnGap,
-    borders: segs.map((s) => getComputedStyle(s).borderTopColor),
+    borders: segs.map((s) => getComputedStyle(s).borderTopWidth),
     labelsFg: segs.every((s) => getComputedStyle(s).color === fg),
     filled: segs.filter((s) => getComputedStyle(s).backgroundColor !== 'rgba(0, 0, 0, 0)')
       .map((s) => s.dataset.textsize),
@@ -152,10 +152,10 @@ def _assert_one_segmented_track(control) -> None:
     geo = stable_eval(control, _SEGMENTED)
     assert geo["track"] not in ("rgba(0, 0, 0, 0)", "transparent"), geo
     assert geo["inset"] == "3px" and geo["gap"] in ("0px", "normal"), geo
-    assert set(geo["borders"]) == {"rgba(0, 0, 0, 0)"}, geo
+    assert set(geo["borders"]) == {"0px"}, geo
     assert geo["labelsFg"], geo
     assert geo["filled"] == [geo["selected"]], geo
-    assert geo["height"] == 36 and geo["tapBand"] >= 44, geo
+    assert geo["height"] == 30 and geo["tapBand"] >= 44, geo
 
 
 def _assert_small_and_default_steps(page: Page) -> None:
@@ -249,7 +249,7 @@ def test_large_sets_18px_body_and_survives_reload(
     _open_settings(page)
 
     control = page.locator("#textSizeControl")
-    expect(control.locator(".range-tab")).to_have_count(3)
+    expect(control.locator(".segmented-item")).to_have_count(3)
     expect(control.locator("[data-textsize='default']")).to_have_attribute(
         "aria-pressed", "true"
     )
@@ -296,7 +296,7 @@ _SEGMENT_LIGHTNESS = """
   return {
     theme: document.documentElement.dataset.theme,
     track,
-    selected: lum(card, bg(nav), bg(nav.querySelector('.range-tab.active'))),
+    selected: lum(card, bg(nav), bg(nav.querySelector('.segmented-item[aria-pressed=true]'))),
     card: lum(card),
   };
 }

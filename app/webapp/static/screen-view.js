@@ -171,12 +171,11 @@ function renderPicker() {
   view.monitors.forEach(function (m, i) {
     const btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'range-tab';
+    btn.className = 'segmented-item';
     btn.textContent = labels[i];
     btn.dataset.monitor = String(m.id);
     btn.setAttribute('aria-label', labels[i] + ', ' + m.width + ' by ' + m.height);
     const active = m.id === view.monitorId;
-    btn.classList.toggle('active', active);
     btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     btn.addEventListener('click', function () {
       if (m.id === view.monitorId) return;
@@ -392,9 +391,8 @@ function setMode(mode) {
   if (dialog) dialog.dataset.mode = mode;
   const picker = $('screenMode');
   if (picker) {
-    picker.querySelectorAll('.range-tab').forEach(function (btn) {
+    picker.querySelectorAll('.segmented-item').forEach(function (btn) {
       const active = btn.dataset.mode === mode;
-      btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
   }
@@ -796,7 +794,7 @@ export function wireScreenView() {
   const modePicker = $('screenMode');
   if (modePicker) {
     modePicker.addEventListener('click', function (e) {
-      const btn = e.target.closest('.range-tab');
+      const btn = e.target.closest('.segmented-item');
       if (btn && btn.dataset.mode && btn.dataset.mode !== view.mode) setMode(btn.dataset.mode);
     });
   }

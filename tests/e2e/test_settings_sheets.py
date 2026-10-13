@@ -94,7 +94,7 @@ def test_groups_render_with_values_matching_the_saved_config(
 
     # The context filter's value is the mode its own sheet shows as active.
     open_settings_sheet(authed_page, "contextFilterSheet")
-    active = authed_page.locator("#contextFilterMode .range-tab.active")
+    active = authed_page.locator("#contextFilterMode .segmented-item[aria-pressed=true]")
     expect(active).to_have_count(1)
     mode = active.inner_text()
     close_settings_sheets(authed_page)

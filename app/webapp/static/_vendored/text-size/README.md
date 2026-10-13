@@ -9,7 +9,7 @@ The fleet's canonical **text-size setting** (`~/.claude/design.md` → "Layout" 
 | `text-size-boot.html` | The inline `<head>` boot script. Stamps `html[data-theme]` from `<app>.theme` (else `prefers-color-scheme`) and `html[data-textsize]` from `<app>.textsize` (else `default`). Replaces the app's own theme boot script. |
 | `text-size.css` | The three `html[data-textsize]` → root `font-size` steps. |
 | `text-size.js` | `bindTextSize(group, app)` wires the control; `readTextSize(app)`, `applyTextSize(size)` and `TEXT_SIZES` are exported too. |
-| `text-size.html` | The control: a `range-tabs` row with three `data-textsize` buttons, and the one-line binding. |
+| `text-size.html` | The control: a `segmented` group with three `data-textsize` buttons, and the one-line binding. |
 
 ## How to vendor
 
@@ -19,11 +19,20 @@ The fleet's canonical **text-size setting** (`~/.claude/design.md` → "Layout" 
    ```html
    <link rel="stylesheet" href="/static/_vendored/text-size/text-size.css">
    ```
-4. **Control:** paste `text-size.html` into your Settings, with the vendored `range-tab` component linked for its look, and bind it with the same prefix:
+4. **Control:** paste `text-size.html` into your Settings, with the vendored [`segmented`](../segmented/) component linked for its look (`segmented/segmented.css`), and bind it with the same prefix:
    ```js
    import { bindTextSize } from '/static/_vendored/text-size/text-size.js';
    bindTextSize(document.getElementById('textSizeControl'), 'app-launcher');
    ```
+   The control is one `segmented` group of three buttons, each carrying `data-textsize`:
+   ```html
+   <div class="segmented" id="textSizeControl" role="group" aria-label="Text size">
+     <button type="button" class="segmented-item" aria-pressed="false" data-textsize="small">Small</button>
+     <button type="button" class="segmented-item" aria-pressed="true" data-textsize="default">Default</button>
+     <button type="button" class="segmented-item" aria-pressed="false" data-textsize="large">Large</button>
+   </div>
+   ```
+   Migrating from the deprecated `range-tab` row: swap the `.range-tabs` / `.range-tab` markup for the group above and keep every `data-textsize` attribute and the `bindTextSize` call as they are. See `range-tab/README.md` → "Migrating to `segmented`".
 
 ## Contract
 
@@ -31,11 +40,11 @@ The fleet's canonical **text-size setting** (`~/.claude/design.md` → "Layout" 
 - **Pre-paint:** the boot script runs inline in `<head>`, so the first paint already uses the stored size and theme; nothing reflows. Don't move it to a `<script src>`, which would block first paint on a request.
 - **What scales:** the root `font-size`, so every rem-based type role (`--font-body`, `--font-body-sm`, `--font-label`, …) scales with it.
 - **What doesn't scale:** geometry stays in **px**. That covers the nav pill, the `rows` heights, the 44px hit target, the `control` height (`--control-h`) and the icon sizes. Never express geometry in rem, or the Large step reflows the nav and every row along with the text.
-- **Selected step:** `bindTextSize` puts `.active` (the range-tab selected look) and `aria-pressed="true"` on the stored step's button, and keeps them in step on every click.
+- **Selected step:** `bindTextSize` puts `aria-pressed="true"` on the stored step's button (and `"false"` on the others) and keeps them in step on every click. That attribute is what `segmented` styles as the raised, selected segment. The binder also toggles an `.active` class, which `segmented` ignores and the deprecated `range-tab` styles, so it needs no change to drive either control.
 
 ## Required design tokens
 
-None of its own. The steps are the spec's `text-size.small` / `default` / `large` values, fixed in `text-size.css`. The control borrows `range-tab`'s tokens (see that README).
+None of its own. The steps are the spec's `text-size.small` / `default` / `large` values, fixed in `text-size.css`. The control borrows `segmented`'s tokens (see that README).
 
 ## Don't diverge
 

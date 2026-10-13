@@ -80,7 +80,12 @@
    Geometry is px, not rem/em: the badge must not reflow with the Large text
    size. Never animated, so there is nothing for prefers-reduced-motion to
    cancel. Opaque, so the active tab's accent-soft tint can't hide it.
-   Requires --attention, read with no fallback, only when a badge is shown. */
+   The optional danger tone (project-scaffolding#342, setBadge's `tone`) swaps
+   the fill for the danger one (--deficit) under the same card text, for a count
+   that is an alarm rather than a to-do; attention stays the default. Both tones
+   are contrast-measured in test_vendored_nav.
+   Requires --attention (and --deficit for the danger tone), read with no
+   fallback, only when a badge is shown. */
 .tabs .tab-icon-wrap {
   position: relative;
   display: block;
@@ -104,6 +109,9 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
   pointer-events: none;
+}
+.tabs .tab-badge[data-tone="danger"] {
+  background: var(--deficit);
 }
 /* Spoken as part of the tab's name, never painted. Deliberately inline with a
    zero font size, not the usual absolutely positioned 1px box: an absolute box

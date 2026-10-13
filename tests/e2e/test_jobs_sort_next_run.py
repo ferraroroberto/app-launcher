@@ -148,7 +148,7 @@ def test_jobs_default_to_next_run_order_with_countdown(
     filters.click()
     expect(sheet).to_be_visible()
     expect(sheet.locator("h2")).to_have_text("Sort and filter")
-    tabs = sheet.locator("#jobsSortTabs .range-tab")
+    tabs = sheet.locator("#jobsSortTabs .segmented-item")
     expect(tabs).to_have_text(["Next run", "A–Z"])
     expect(tabs.nth(0)).to_have_attribute("aria-pressed", "true")
     tabs.nth(1).click()

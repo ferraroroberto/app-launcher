@@ -211,9 +211,8 @@ function syncSortControls() {
   btn.setAttribute('aria-label', label);
   btn.title = label;
   btn.dataset.sort = state.jobsSort;
-  els.jobsSortTabs.querySelectorAll('.range-tab').forEach(function (tab) {
+  els.jobsSortTabs.querySelectorAll('.segmented-item').forEach(function (tab) {
     const on = tab.dataset.sort === state.jobsSort;
-    tab.classList.toggle('active', on);
     tab.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
 }
@@ -996,7 +995,7 @@ export function wireJobs() {
       openSortSheet();
     });
     els.jobsSortTabs.addEventListener('click', function (ev) {
-      const tab = ev.target.closest('.range-tab');
+      const tab = ev.target.closest('.segmented-item');
       if (tab) setSort(tab.dataset.sort);
     });
     // Clear: back to the default order.

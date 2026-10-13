@@ -153,11 +153,14 @@ def test_board_badge_and_header_count_the_chiefs_open_questions(
     expect(badge).to_have_text("3")
     expect(tab).to_have_accessible_name("Board, 3 waiting")
     head = authed_page.locator("#boardHeadStatus")
-    expect(head).to_have_text("2 questions · 1 needs you")
+    # Three exceptions, two shown, worst tone first (#1586): the failing job
+    # (danger) leads and pushes "needs you" out; the questions keep their
+    # place ahead of it.
+    expect(head).to_have_text("1 failing · 2 questions")
     parts = head.locator(".head-exception")
     expect(parts).to_have_count(2)
-    for i in range(2):
-        expect(parts.nth(i)).to_have_attribute("data-tone", "attention")
+    expect(parts.nth(0)).to_have_attribute("data-tone", "danger")
+    expect(parts.nth(1)).to_have_attribute("data-tone", "attention")
     # Two parts on one line at the phone's width, no word clipped.
     clipped = authed_page.evaluate(
         "() => { const el = document.getElementById('boardHeadStatus');"
@@ -183,4 +186,4 @@ def test_an_unreadable_plan_adds_no_question_count(
     tab.click()
     expect(authed_page.locator("#boardChiefPlan .board-plan-note")).to_have_text("Plan unreadable.")
     expect(badge).to_have_text("1")
-    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 needs you · 1 failing")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")

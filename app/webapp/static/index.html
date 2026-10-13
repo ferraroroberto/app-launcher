@@ -45,7 +45,7 @@
   <link rel="stylesheet" href="/static/_vendored/icon-button/icon-button.css">
   <link rel="stylesheet" href="/static/_vendored/switch/switch.css">
   <link rel="stylesheet" href="/static/_vendored/select-native/select-native.css">
-  <link rel="stylesheet" href="/static/_vendored/range-tab/range-tab.css">
+  <link rel="stylesheet" href="/static/_vendored/segmented/segmented.css">
   <link rel="stylesheet" href="/static/_vendored/modal/modal.css">
   <link rel="stylesheet" href="/static/_vendored/action-row/action-row.css">
   <link rel="stylesheet" href="/static/_vendored/row-menu/row-menu.css">
@@ -1062,11 +1062,11 @@
              searching. -->
         <section id="lifeOsConvoGroup" class="lifeos-convo-group" aria-labelledby="lifeOsConvoHead" hidden>
           <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
-          <nav id="lifeOsConvoSort" class="range-tabs lifeos-convo-sort" aria-label="Sort conversations">
-            <button type="button" class="range-tab" data-sort="relevance" data-track="life-sort.relevance" aria-pressed="false">Relevance</button>
-            <button type="button" class="range-tab" data-sort="interaction" data-track="life-sort.interaction" aria-pressed="false">Recent</button>
-            <button type="button" class="range-tab" data-sort="created" data-track="life-sort.created" aria-pressed="false">Created</button>
-          </nav>
+          <div id="lifeOsConvoSort" class="segmented lifeos-convo-sort" role="group" aria-label="Sort conversations">
+            <button type="button" class="segmented-item" data-sort="relevance" data-track="life-sort.relevance" aria-pressed="false">Relevance</button>
+            <button type="button" class="segmented-item" data-sort="interaction" data-track="life-sort.interaction" aria-pressed="false">Recent</button>
+            <button type="button" class="segmented-item" data-sort="created" data-track="life-sort.created" aria-pressed="false">Created</button>
+          </div>
           <div id="lifeOsConvoState" role="status" aria-live="polite" hidden></div>
           <ul id="lifeOsConvoList" class="card-list action-rows lifeos-convo-list" aria-label="Conversations"></ul>
         </section>
@@ -1279,11 +1279,11 @@
         <div class="settings-row settings-row--inline text-size-card">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
           <span class="settings-row-label text-size-label">Text size</span>
-          <nav class="range-tabs segmented" id="textSizeControl" aria-label="Text size">
-            <button type="button" class="range-tab" data-textsize="small" data-track="text-size.small">Small</button>
-            <button type="button" class="range-tab" data-textsize="default" data-track="text-size.default">Default</button>
-            <button type="button" class="range-tab" data-textsize="large" data-track="text-size.large">Large</button>
-          </nav>
+          <div class="segmented" id="textSizeControl" role="group" aria-label="Text size">
+            <button type="button" class="segmented-item" data-textsize="small" data-track="text-size.small" aria-pressed="false">Small</button>
+            <button type="button" class="segmented-item" data-textsize="default" data-track="text-size.default" aria-pressed="false">Default</button>
+            <button type="button" class="segmented-item" data-textsize="large" data-track="text-size.large" aria-pressed="false">Large</button>
+          </div>
         </div>
         <button type="button" class="settings-row" data-sheet="usageShowsSheet" data-track="settings.usage-shows" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
@@ -1375,7 +1375,7 @@
         <div class="settings-sheet-body">
           <div class="stacked">
             <span id="usageShowsLabel">Usage shows</span>
-            <div id="usageShows" class="range-tabs" role="radiogroup" aria-labelledby="usageShowsLabel" aria-describedby="usageShowsHelp"></div>
+            <div id="usageShows" class="segmented" role="group" aria-labelledby="usageShowsLabel" aria-describedby="usageShowsHelp"></div>
           </div>
           <p id="usageShowsHelp" class="field-help">Which providers the Usage card and the Board's usage line draw. None hides the card. It saves at once and applies on every device.</p>
         </div>
@@ -1485,7 +1485,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="claudePermission" class="range-tabs" role="radiogroup" aria-label="Permission mode"></div>
+            <div id="claudePermission" class="segmented" role="group" aria-label="Permission mode"></div>
           </div>
           <div class="toggles">
             <span class="switch-row"><span>Verbose</span><button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
@@ -1509,7 +1509,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="codexPermission" class="range-tabs" role="radiogroup" aria-label="Codex permission mode"></div>
+            <div id="codexPermission" class="segmented" role="group" aria-label="Codex permission mode"></div>
           </div>
           <p class="opt-hint">Runs on your ChatGPT-plan login (<code>codex login</code>). Model and compatible reasoning effort are passed explicitly; each model remembers its last effort. Luna defaults to Extra High.</p>
           <div id="codexFlagsPreview" class="flags-preview">codex</div>
@@ -1545,7 +1545,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Project trust</span>
-            <div id="piTrust" class="range-tabs" role="radiogroup" aria-label="Pi project trust"></div>
+            <div id="piTrust" class="segmented" role="group" aria-label="Pi project trust"></div>
           </div>
           <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong>/<strong>Fable</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>Luna</strong>/<strong>Terra</strong>/<strong>Sol</strong> run on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Unavailable rollout models stay disabled. Effort maps to <code>--thinking</code>.</p>
           <div id="piFlagsPreview" class="flags-preview">pi</div>
@@ -1557,7 +1557,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
-            <div id="grokPermission" class="range-tabs" role="radiogroup" aria-label="Grok permission mode"></div>
+            <div id="grokPermission" class="segmented" role="group" aria-label="Grok permission mode"></div>
           </div>
           <p class="opt-hint">Runs on your <code>grok.com</code> login (<code>grok login</code>) — model stays the account default (<code>grok-4.5</code>, the only one <code>grok models</code> lists); the tiers map to <code>--reasoning-effort</code>.</p>
           <div id="grokFlagsPreview" class="flags-preview">grok</div>
@@ -1691,7 +1691,7 @@
         </div>
         <div class="settings-sheet-body">
           <p class="muted small">Shortens long command output before coding agents read it, to save tokens. The mode applies right away to every coding-agent session on this PC. Measure only counts the savings without changing anything.</p>
-          <div id="contextFilterMode" class="range-tabs" role="group" aria-label="Context filter mode"></div>
+          <div id="contextFilterMode" class="segmented" role="group" aria-label="Context filter mode"></div>
 
           <h4 class="context-filter-subhead">Coding agents it covers</h4>
           <ul id="contextFilterHarnesses" class="card-list context-filter-harness-list" aria-label="Coding agents the filter reaches"></ul>
@@ -1999,10 +1999,10 @@
         </div>
         <div class="row">
           <span>Sort</span>
-          <nav id="jobsSortTabs" class="range-tabs" aria-label="Sort jobs">
-            <button type="button" class="range-tab" data-sort="next">Next run</button>
-            <button type="button" class="range-tab" data-sort="name">A–Z</button>
-          </nav>
+          <div id="jobsSortTabs" class="segmented" role="group" aria-label="Sort jobs">
+            <button type="button" class="segmented-item" data-sort="next" aria-pressed="false">Next run</button>
+            <button type="button" class="segmented-item" data-sort="name" aria-pressed="false">A–Z</button>
+          </div>
         </div>
         <div class="detail-actions">
           <button type="button" id="jobsSortSheetClear" class="button-ghost">Clear</button>
@@ -2472,7 +2472,7 @@
     <dialog id="screenView" class="screen-view" aria-labelledby="screenViewTitle">
       <div class="screen-view-bar">
         <h2 id="screenViewTitle" class="screen-view-title" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Screen</h2>
-        <nav id="screenPicker" class="range-tabs segmented screen-picker" aria-label="Display" hidden></nav>
+        <div id="screenPicker" class="segmented screen-picker" role="group" aria-label="Display" hidden></div>
         <button type="button" id="screenViewClose" class="icon-button detail-close" aria-label="Close">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
         </button>
@@ -2481,10 +2481,10 @@
            tap never clicks); Control turns touches into clicks, drags and
            scrolls on the PC, and shows the keyboard toggle. -->
       <div class="screen-view-tools">
-        <nav id="screenMode" class="range-tabs segmented screen-mode" aria-label="Mode">
-          <button type="button" class="range-tab active" data-mode="view" aria-pressed="true">View</button>
-          <button type="button" class="range-tab" data-mode="control" aria-pressed="false">Control</button>
-        </nav>
+        <div id="screenMode" class="segmented screen-mode" role="group" aria-label="Mode">
+          <button type="button" class="segmented-item" data-mode="view" aria-pressed="true">View</button>
+          <button type="button" class="segmented-item" data-mode="control" aria-pressed="false">Control</button>
+        </div>
         <button type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
         </button>

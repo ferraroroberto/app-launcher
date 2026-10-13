@@ -94,6 +94,13 @@ body:has(dialog[open]) .app { overflow: hidden; }
   margin-bottom: 10px;
 }
 .detail-header h2 { margin: 0; font-size: var(--font-heading-lg); }
+/* A title that takes focus on open (`<h2 tabindex="-1" autofocus>`: the
+   keyboard stays down and the sheet is announced) is not a control, so the
+   app-wide `:focus-visible` ring round it reads as a stray selection
+   (project-scaffolding#359). Only that programmatically focusable title is
+   quieted; every control in the dialog keeps its ring. */
+dialog h2[tabindex="-1"]:focus,
+dialog h2[tabindex="-1"]:focus-visible { outline: none; }
 /* 34px is below the 44px tap floor (design.md "Touch targets"); icon-button's
    ::before grows the hit area invisibly (34 + 2*5 = 44) rather than inflating
    the visual button. */

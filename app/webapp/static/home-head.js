@@ -5,49 +5,25 @@
  * contract.
  *
  * The header rule (#1434, for every tab as #1432 moves it over): the line
- * holds only the exceptions, each in its tone colour ("1 needs you · 1
- * stalled"), and falls back to the plain count when nothing is wrong. At
+ * holds only the exceptions, each in its tone colour ("1 stalled · 1
+ * needs you"), worst first, and falls back to the plain count when nothing is wrong. At
  * 390px that leaves about 22 characters, so at most two parts. Code, the
  * Board (#1436), Apps (#1437), Jobs (#1438), Life (#1439) and Settings
- * (#1506) are on it, all through renderHeadStatus.
+ * (#1506) are on it, all through the vendored renderHeadStatus
+ * (_vendored/home-head/home-head.js, #1586), which sorts exceptions by
+ * severity: "stalled" (danger) shows before "needs you" (attention).
  */
 
 import { BOARD_POLL_MS, els, state } from './state.js';
+import { renderHeadStatus } from './_vendored/home-head/home-head.js';
 import { isHiddenChannel } from './channel-sessions.js';
 import { openQuestionCount } from './chief-keys.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
 import { profileNeedsSetup } from './telegram-setup.js';
 
-// The most exceptions one header line shows (about 22 characters at 390px).
-export const HEAD_MAX_PARTS = 2;
-
 function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
-}
-
-// The header rule: `exceptions` is [{ text, tone }] in priority order
-// (tone: attention | danger | neutral), `fallback` the plain count. Exceptions win,
-// two at most, each its own span in its tone.
-export function renderHeadStatus(el, exceptions, fallback) {
-  if (!el) return;
-  const shown = (exceptions || []).filter(function (x) { return x && x.text; })
-    .slice(0, HEAD_MAX_PARTS);
-  if (!shown.length) {
-    el.textContent = fallback;
-    delete el.dataset.tone;
-    return;
-  }
-  el.replaceChildren();
-  shown.forEach(function (x, i) {
-    if (i) el.appendChild(document.createTextNode(' · '));
-    const part = document.createElement('span');
-    part.className = 'head-exception';
-    part.dataset.tone = x.tone;
-    part.textContent = x.text;
-    el.appendChild(part);
-  });
-  el.dataset.tone = shown[0].tone;
 }
 
 // Code: "N needs you" / "N stalled" from the Board's own column routing
