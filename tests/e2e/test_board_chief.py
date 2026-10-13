@@ -33,7 +33,7 @@ from playwright.sync_api import Page, expect
 from src import chief_answers, chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
-    HeldUploads, _seed_token_init_script, flush_requests, open_settings_sheet,
+    HeldUploads, _seed_token_init_script, flush_requests, open_row_menu, open_settings_sheet,
     stable_eval, stable_read, wait_until,
 )
 
@@ -302,7 +302,7 @@ def test_stop_always_confirms_and_the_chief_keeps_its_wording(
 
     def _menu_stop():
         authed_page.locator(".board-drawer .board-drawer-kebab").click()
-        authed_page.locator(".board-drawer .board-stop-btn").click()
+        open_row_menu(authed_page).locator("[data-item=board-stop-btn]").click()
 
     # 1. Chief + ✕ → drawer stays, stop never fires.
     authed_page.locator("li.board-item-chief button.board-card").click()

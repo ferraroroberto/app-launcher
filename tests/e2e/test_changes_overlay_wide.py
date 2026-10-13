@@ -22,7 +22,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_eval
+from tests.e2e.conftest import OVERLAY_OPEN_MS, open_row_menu, stable_eval
 from tests.e2e.test_coding_changes_overlay import AGENTS, CHANGES, _app
 from tests.e2e.test_session_mode_toggle import (
     _mock_git_status,
@@ -83,7 +83,7 @@ def _open_session_changes(page: Page, base_url: str) -> None:
     _row(page, _SID).locator(".session-open").click()
     expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
     page.locator("#terminalMenu").click()
-    page.locator("#terminalOverlay .terminal-menu").get_by_role("menuitem", name="Changed files").click()
+    page.locator(".terminal-menu").get_by_role("menuitem", name="Changed files").click()
 
 
 def _open_project_changes(page: Page, base_url: str) -> None:
@@ -122,7 +122,7 @@ def _open_project_changes(page: Page, base_url: str) -> None:
     anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
     expect(anchor).to_be_enabled(timeout=5_000)
     anchor.click()
-    page.locator('.coding-item[data-id="alpha"] .project-changes-btn').click()
+    open_row_menu(page).locator("[data-item=project-changes-btn]").click()
 
 
 @pytest.mark.parametrize("opener", [_open_session_changes, _open_project_changes],

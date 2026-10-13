@@ -20,7 +20,7 @@ stale copy. The two consequences this pins:
 
 Since #1438 the bug is fixed by construction: the poll re-renders every row
 from the fresh ``/api/jobs`` payload (no in-place patching) and the actions
-are the kebab menu's ``.job-run-item`` / ``.job-edit-item`` (there is no
+are the kebab menu's ``[data-item=job-run-item]`` / ``[data-item=job-edit-item]`` (there is no
 per-row Run button and no Edit mode). The confirmation is the vendored
 ``#confirmDialog`` sheet (``#confirmDialogOk``), not a native ``confirm()``.
 The pin is kept behaviourally: the kebab is opened **before** the change
@@ -40,7 +40,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import wait_until
+from tests.e2e.conftest import open_row_menu, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -121,7 +121,7 @@ def _wait_for_polls(page: Page, state: dict, target: int) -> None:
 def _open_kebab(row) -> None:
     """Open the row's ⋯ menu; the menu reopens across the poll's re-render."""
     row.locator("button.job-menu-anchor").click()
-    expect(row.locator(".job-run-item")).to_be_visible()
+    expect(open_row_menu(row.page).locator("[data-item=job-run-item]")).to_be_visible()
 
 
 def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
@@ -147,7 +147,7 @@ def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
     _wait_for_polls(authed_page, state, state["polls"] + 2)
 
     # The menu is still (or again) open after the re-render.
-    run_item = row.locator(".job-run-item")
+    run_item = open_row_menu(authed_page).locator("[data-item=job-run-item]")
     expect(run_item).to_be_visible()
     run_item.click()
 
@@ -189,7 +189,7 @@ def test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render(
     state["args"] = "--new"
     _wait_for_polls(authed_page, state, state["polls"] + 2)
 
-    edit_btn = row.locator(".job-edit-item")
+    edit_btn = open_row_menu(authed_page).locator("[data-item=job-edit-item]")
     expect(edit_btn).to_be_visible()
     edit_btn.click()
     args_input = authed_page.locator("#jobArgsInput")

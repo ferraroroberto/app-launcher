@@ -72,10 +72,14 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     # The row's stop is the one inside its kebab menu (#1025) — the unified
     # 🛑 (issue #253). It is never a control loose on the row itself, and
     # the menu stays closed until the kebab is tapped.
-    expect(pty_row.locator(".session-menu .action-stop-close")).to_have_count(1)
-    expect(pty_row.locator(".session-menu")).to_be_hidden()
-    expect(pty_row.locator(".action-stop:not(.action-stop-close)")).to_have_count(0)
-    expect(pty_row.locator(".row-actions > .action-stop-close")).to_have_count(0)
+    row_menu = authed_page.locator(".session-menu")
+    expect(row_menu).to_be_hidden()
+    pty_row.locator(".session-kebab").click()
+    expect(row_menu.locator("[data-item=action-stop-close]")).to_have_count(1)
+    authed_page.keyboard.press("Escape")
+    expect(row_menu).to_be_hidden()
+    expect(pty_row.locator(".action-stop:not([data-item=action-stop-close])")).to_have_count(0)
+    expect(pty_row.locator(".row-actions > [data-item=action-stop-close]")).to_have_count(0)
 
     pty_row.locator(".session-open").click()
     authed_page.wait_for_selector(
@@ -96,14 +100,14 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     # ⋮ opens Rename · Copy link · Changed files (#1349) · Compact (#1218) —
     # both for a Claude session — · Stop and kill, in that order.
     authed_page.locator("#terminalMenu").click()
-    menu = authed_page.locator("#terminalOverlay .terminal-menu")
+    menu = authed_page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator(".row-menu-label")).to_have_text(
         ["Rename", "Copy link", "Changed files", "Compact", "Stop and kill"]
     )
     # The overlay's own copy of the unified stop (#253) — the same path the
     # row menu's Stop calls, reached from inside the session view.
-    expect(menu.locator(".action-stop-close")).to_have_count(1)
+    expect(menu.locator("[data-item=action-stop-close]")).to_have_count(1)
     expect(authed_page.locator("#terminalMenu")).to_have_attribute(
         "aria-expanded", "true"
     )

@@ -106,7 +106,7 @@ def _open_session(page: Page, base_url: str) -> None:
 
 def _menu(page: Page):
     page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     return menu
 

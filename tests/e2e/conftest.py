@@ -1034,12 +1034,21 @@ def life_launch_switch(page: Page, switch_id: str) -> None:
     expect(menu).to_be_hidden()
 
 
+def open_row_menu(page: Page):
+    """The open row menu (any ⋮ kebab's). The vendored row-menu (#1565)
+    mounts a menu only while it is open, on <body> (or the open <dialog>),
+    never inside its row, so a row-scoped locator cannot reach it. At most
+    one is open at a time, so this page-wide locator is that one."""
+    return page.locator(".row-menu")
+
+
 def session_menu_item(page: Page, name: str):
-    """Open the overlay bar's ⋮ menu and return the item with ``aria-label``
-    ``name`` (``Rename session`` / ``Copy session link`` /
-    ``Stop and kill session``). The overlay must already be open."""
+    """Open the overlay bar's ⋮ menu and return the item named ``name``
+    (``Rename session`` / ``Copy session link`` / ``Stop and kill session``).
+    The overlay must already be open. The open menu is mounted on <body>
+    (the vendored row-menu, #1565), not inside the overlay."""
     page.locator("#terminalMenu").click()
-    expect(page.locator("#terminalOverlay .terminal-menu")).to_be_visible()
+    expect(page.locator(".terminal-menu")).to_be_visible()
     return page.get_by_role("menuitem", name=name)
 
 

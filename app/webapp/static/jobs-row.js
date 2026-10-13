@@ -11,15 +11,15 @@
 
 import { fmtAgo } from './sessions.js';
 import { daysAndHours } from './dom-utils.js';
-import { actionRow } from './action-rows.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 
 // One menu instance for every job row (the pattern apps-coding.js uses for
 // the ⋯ project menu): it remembers which row was open across the 4s poll's
 // re-render and reopens it there.
-const jobMenu = createRowMenu('project-menu');
+const jobMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 
 export function endJobRowRender() {
   jobMenu.endRender();
@@ -225,38 +225,38 @@ export function renderJobRow(job, handlers) {
   const hasSchedule = job.paused ||
     (job.schedule && job.schedule.type && job.schedule.type !== 'none');
   const canPause = hasSchedule && job.schedule_controls_allowed !== false;
-  row.li.appendChild(jobMenu.attach(job.id, row.kebab, [
+  jobMenu.attach(job.id, row.kebab, [
     {
-      className: 'job-run-item', glyph: 'play',
-      label: 'Run ' + job.name + ' now', text: 'Run now',
+      dataset: { item: 'job-run-item' }, glyph: 'play',
+      label: 'Run now', ariaLabel: 'Run ' + job.name + ' now',
       disabled: !!runBlockedReason(job),
-      title: runBlockedReason(job),
+      hint: runBlockedReason(job),
       onTap: function () { handlers.onRun(job); },
     },
     {
-      className: 'job-pause-item',
+      dataset: { item: 'job-pause-item' },
       glyph: job.paused ? 'play' : 'pause',
-      label: (job.paused ? 'Resume schedule for ' : 'Pause schedule for ') + job.name,
-      text: job.paused ? 'Resume' : 'Pause',
+      label: job.paused ? 'Resume' : 'Pause',
+      ariaLabel: (job.paused ? 'Resume schedule for ' : 'Pause schedule for ') + job.name,
       hidden: !canPause,
       onTap: function () { handlers.onPause(job); },
     },
     {
-      className: 'job-dry-run-item', glyph: 'flask-conical',
-      label: 'Dry-run check', text: 'Dry-run check',
+      dataset: { item: 'job-dry-run-item' }, glyph: 'flask-conical',
+      label: 'Dry-run check',
       onTap: function () { handlers.onRun(job, { dryRun: 'check', skipDialog: true }); },
     },
     {
-      className: 'job-edit-item', glyph: 'pencil',
-      label: 'Edit ' + job.name, text: 'Edit',
+      dataset: { item: 'job-edit-item' }, glyph: 'pencil',
+      label: 'Edit', ariaLabel: 'Edit ' + job.name,
       onTap: function () { handlers.onEdit(job); },
     },
     {
-      className: 'job-remove-item', glyph: 'trash-2', danger: true,
-      label: 'Remove ' + job.name, text: 'Remove',
+      dataset: { item: 'job-remove-item' }, glyph: 'trash-2', danger: true,
+      label: 'Remove', ariaLabel: 'Remove ' + job.name,
       onTap: function () { handlers.onRemove(job); },
     },
-  ]));
+  ]);
   return row.li;
 }
 

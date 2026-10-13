@@ -311,7 +311,7 @@ def _pull(page: Page, dy: int) -> None:
 
 def _menu_item(page: Page, name: str):
     page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     return menu.get_by_role("menuitem", name=name)
 

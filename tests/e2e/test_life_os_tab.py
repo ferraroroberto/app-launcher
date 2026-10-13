@@ -24,6 +24,7 @@ from tests.e2e._geometry import assert_min_target, assert_no_overlap
 from tests.e2e.conftest import (
     flush_requests,
     life_launch_switch,
+    open_row_menu,
     open_settings_sheet,
     stable_eval,
     stable_read,
@@ -380,7 +381,7 @@ def test_life_os_browser_sheet_opens_a_file_over_the_list(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
     # Read lives in the row's ⋯ menu since #1128.
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-browse-btn").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-browse-btn]").click()
 
     browser = authed_page.locator("#lifeOsBrowser")
     doc = authed_page.locator("#lifeOsDoc")
@@ -455,7 +456,7 @@ def test_life_os_delete_conversation_log_from_the_document_sheet(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabLifeOS").click()
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-browse-btn").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-browse-btn]").click()
 
     # No delete control anywhere in the list.
     expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(
@@ -630,7 +631,7 @@ def _open_life(page: Page, base_url: str) -> None:
 def _open_conversations(page: Page, base_url: str) -> None:
     """Open the Life OS tab and journal-daily's ⋮ Conversations."""
     _open_life(page, base_url)
-    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     expect(page.locator("#lifeOsConvoGroup")).to_be_visible(timeout=5_000)
 
 
@@ -1169,7 +1170,7 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     # list, not the boot. The server leg is pinned in the API tests.)
     authed_page.locator("#lifeOsConvoScope").click()
     expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden()
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     expect(first.locator(".action-row-title")).to_have_text("Ferry to the island")
     expect(first).not_to_contain_text("booking the ferry")
 
@@ -1243,7 +1244,7 @@ def test_life_os_conversation_resume_posts_the_session_id(
     # terminal overlay (nothing to tear down in the assertion).
     life_launch_switch(authed_page, "#lifeOsDetached")
     _pick_life_model(authed_page, "claude:opus")
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
 
     _open_sheet(authed_page, 0)
     authed_page.locator("#lifeOsConvoSheetResume").click()
@@ -1403,7 +1404,7 @@ def test_life_os_search_results_keep_server_relevance_order(
     tab("created").click()
     authed_page.locator("#lifeOsFilterInput").fill("")
     expect(authed_page.locator("#lifeOsConvoGroup")).to_be_hidden(timeout=5_000)
-    _skill_menu_item(authed_page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     expect(sort).to_have_attribute("data-sort", "interaction")
 
 
@@ -1643,7 +1644,7 @@ def test_reader_covers_the_tab_bar_in_the_standalone_shell(
     expect(tabs).to_be_visible()
 
     page.locator("#tabLifeOS").click()
-    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     expect(_convo_rows(page)).to_have_count(2, timeout=5_000)
     _open_sheet(page, 0)
     expect(tabs).to_be_hidden()
@@ -1725,7 +1726,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     life_launch_switch(page, "#lifeOsDetached")
     source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
     _pick_life_model(page, source_choice)
-    _skill_menu_item(page, "journal-daily", ".lifeos-convo-btn").click()
+    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     resume = page.locator("#lifeOsConvoSheetResume")
     note = page.locator("#lifeOsConvoSheetNote")
     handoff = page.locator("#lifeOsConvoSheet .lifeos-convo-handoff")
@@ -1834,7 +1835,7 @@ def test_life_os_skill_can_be_pinned_and_sorts_to_the_top(
     # Alphabetical to start (nothing pinned or used), and no star anywhere.
     assert _skill_order(authed_page) == ["journal-daily", "sparring-work"]
     expect(authed_page.locator("#lifeOsList .star-btn")).to_have_count(0)
-    pin = _skill_menu_item(authed_page, "sparring-work", ".lifeos-pin-btn")
+    pin = _skill_menu_item(authed_page, "sparring-work", "[data-item=lifeos-pin-btn]")
     expect(pin).to_have_text("Pin to top")
 
     pin.click()
@@ -1846,7 +1847,7 @@ def test_life_os_skill_can_be_pinned_and_sorts_to_the_top(
     expect(
         authed_page.locator("#lifeOsList li[data-id='sparring-work']")
     ).to_have_attribute("data-pinned", "true")
-    expect(_skill_menu_item(authed_page, "sparring-work", ".lifeos-pin-btn")).to_have_text("Unpin")
+    expect(_skill_menu_item(authed_page, "sparring-work", "[data-item=lifeos-pin-btn]")).to_have_text("Unpin")
 
     assert posted == [{"id": "sparring-work", "favorite": True}], posted
 
@@ -1856,7 +1857,7 @@ def _skill_menu_item(page: Page, skill_id: str, item: str):
     and Conversations moved off the row into its one kebab)."""
     row = page.locator(f"#lifeOsList li.lifeos-item[data-id='{skill_id}']")
     row.locator(".action-row-kebab").click()
-    return row.locator(item)
+    return open_row_menu(page).locator(item)
 
 
 def _skill_order(page: Page) -> list:

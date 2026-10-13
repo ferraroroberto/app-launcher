@@ -9,7 +9,7 @@ shape the server produces (jobs.py:538-546) exercises the real jsonApi/toast
 code path, and pin the non-cooldown failure path stays unchanged.
 
 Since #1438 there is no per-row Run button: the run is fired from the row's
-kebab menu (``.job-run-item``), which calls the same ``runJobNow`` as the job
+kebab menu (``[data-item=job-run-item]``), which calls the same ``runJobNow`` as the job
 sheet's ``#jobSheetRun``. The server-side shapes pinned here are unchanged.
 """
 
@@ -20,6 +20,8 @@ import re
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import open_row_menu
 
 pytestmark = pytest.mark.smoke
 
@@ -78,7 +80,7 @@ def test_cooldown_429_shows_skipped_toast(authed_page: Page, base_url: str) -> N
     row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
     row.locator("button.job-menu-anchor").click()
-    row.locator(".job-run-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-run-item]").click()
 
     expect(authed_page.locator(".toast")).to_contain_text("cooled down")
     expect(authed_page.locator(".toast")).not_to_contain_text("Run failed")
@@ -103,6 +105,6 @@ def test_non_cooldown_failure_still_shows_run_failed(
     row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
     row.locator("button.job-menu-anchor").click()
-    row.locator(".job-run-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-run-item]").click()
 
     expect(authed_page.locator(".toast")).to_contain_text("Run failed")

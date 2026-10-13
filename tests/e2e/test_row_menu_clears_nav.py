@@ -2,10 +2,10 @@
 
 On the phone, the Jobs tab's ⋮ on a row near the bottom of the list opened
 its menu downwards, behind the floating bottom-tab pill, and the lower items
-could not be tapped. row-menu.js now keeps every open menu inside the band
-above the pill: it opens on its CSS side when that fits, flips to the
-anchor's other side when it would run under the nav, and only clamps (with an
-internal scroll) when neither side fits. One rule for every caller; Jobs is
+could not be tapped. The row menu (the vendored row-menu since #1565) keeps
+every open menu inside the band above the pill: it opens on its own side when
+that fits, flips to the anchor's other side when it would run under the nav,
+and only clamps (with an internal scroll) when neither side fits. One rule for every caller; Jobs is
 just where it was seen.
 
 The pill only renders under ``(pointer: coarse) and (max-width: 520px)``, so
@@ -67,9 +67,9 @@ _MEASURE = """
 (menu) => {
   const r = (el) => el.getBoundingClientRect();
   const m = r(menu);
-  const kebab = r(menu.parentElement.querySelector('.action-row-kebab'));
+  const kebab = r(document.querySelector('.row-menu-anchor[aria-expanded="true"]'));
   const nav = r(document.querySelector('nav.tabs'));
-  const items = Array.from(menu.querySelectorAll('.row-menu-btn')).map((b) => {
+  const items = Array.from(menu.querySelectorAll('.row-menu-item')).map((b) => {
     const br = r(b);
     const hit = document.elementFromPoint(br.left + br.width / 2, br.top + br.height / 2);
     return { label: b.getAttribute('aria-label'), hittable: !!hit && b.contains(hit) };
@@ -83,7 +83,8 @@ _MEASURE = """
 def _open_menu(page: Page, index: int):
     row = page.locator("#jobsList li.job-row").nth(index)
     row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
+    # Mounted on <body> while open, not inside its row (#1565).
+    menu = page.locator(".row-menu")
     expect(menu).to_be_visible()
     return menu
 
@@ -151,7 +152,7 @@ def test_open_menu_refits_when_scrolling_brings_its_row_down_to_the_nav(
     page.evaluate("(dy) => window.scrollBy(0, -dy)", shift)
     page.wait_for_function(
         """() => {
-          const menu = document.querySelector('#jobsList .row-menu:not([hidden])');
+          const menu = document.querySelector('.row-menu');
           const nav = document.querySelector('nav.tabs').getBoundingClientRect();
           return !!menu && menu.getBoundingClientRect().bottom <= nav.top;
         }""",

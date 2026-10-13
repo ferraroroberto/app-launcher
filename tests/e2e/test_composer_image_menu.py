@@ -35,11 +35,12 @@ from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 COMPOSER = "#terminalComposeBar"
 IMAGE_BTN = f"{COMPOSER} .composer-image"
-MENU = f"{COMPOSER} .composer-menu"
-PHOTO_OPTION = f"{MENU} [aria-label='Photo']"
-OCR_OPTION = f"{MENU} [aria-label='Extract text (OCR)']"
-ATTACH_OPTION = f"{MENU} [aria-label='Attach file (to context)']"
-LARGE_OPTION = f"{MENU} [aria-label='Attach large file (not read)']"
+# The open menu is mounted on <body>, not inside the composer (#1565).
+MENU = ".composer-menu"
+PHOTO_OPTION = f"{MENU} [data-item=composer-menu-photo]"
+OCR_OPTION = f"{MENU} [data-item=composer-menu-ocr]"
+ATTACH_OPTION = f"{MENU} [data-item=composer-menu-attach]"
+LARGE_OPTION = f"{MENU} [data-item=composer-menu-large]"
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -127,17 +128,20 @@ def test_attach_menu_without_ocr_keeps_three_options(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     authed_page.route(re.compile(r".*/api/status$"), _status_with_ocr(False))
-    _open_composer(authed_page, base_url, launched_pty_session)
+    # The menu reads photo-ocr's availability when it opens, so the status
+    # that turns OCR off must have landed before the tap.
+    with authed_page.expect_response(re.compile(r".*/api/status$")):
+        _open_composer(authed_page, base_url, launched_pty_session)
 
     image = authed_page.locator(IMAGE_BTN)
     _expect_no_dot(image)
-    expect(authed_page.locator(OCR_OPTION)).to_have_attribute("hidden", "")
 
     image.click()
     expect(authed_page.locator(MENU)).to_be_visible()
     for option in (PHOTO_OPTION, ATTACH_OPTION, LARGE_OPTION):
         expect(authed_page.locator(option)).to_be_visible()
-    expect(authed_page.locator(OCR_OPTION)).to_be_hidden()
+    # Left out of the menu, not drawn hidden inside it.
+    expect(authed_page.locator(OCR_OPTION)).to_have_count(0)
 
 
 def test_large_file_round_trip_appends_a_not_read_line(

@@ -28,7 +28,7 @@ import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
 import { nameLabel, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
-import { actionRow } from './action-rows.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
@@ -37,12 +37,12 @@ import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './telegram-setup.js';
 import { renderSettingsValues } from './settings-sheets.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { terminalJsonApi } from './webauthn.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
 
-// The skill rows' kebab menu (#1128), on the shared row-menu.js.
-const skillMenu = createRowMenu('project-menu');
+// The skill rows' kebab menu (#1128), on the vendored row-menu.
+const skillMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 
 // The Skills card's launch toolbar (#1439): the shared component Code ›
 // Projects mounts (#1434), so both launch surfaces look and behave alike,
@@ -172,11 +172,13 @@ function channelMenuItems(profiles) {
     const running = p.running === true;
     const suffix = named ? ' · ' + p.label : '';
     return {
-      className: 'lifeos-channel-btn ' + (running ? 'lifeos-channel-open-btn' : 'lifeos-channel-start-btn'),
-      dataset: { profile: p.id },
+      dataset: {
+        item: running ? 'lifeos-channel-open-btn' : 'lifeos-channel-start-btn',
+        profile: p.id,
+      },
       glyph: 'send-horizontal',
-      label: (running ? 'Open the ' : 'Start the ') + p.label + ' Telegram session',
-      text: (running ? 'Open Telegram session' : 'Start on Telegram') + suffix,
+      label: (running ? 'Open Telegram session' : 'Start on Telegram') + suffix,
+      ariaLabel: (running ? 'Open the ' : 'Start the ') + p.label + ' Telegram session',
       onTap: function () {
         if (running) openChannelSession(p); else launchChannel(p);
       },
@@ -284,23 +286,23 @@ let skillsUnfolded = false;
 function launchMenuItems(s) {
   return [
     {
-      className: 'lifeos-resume-last-btn', glyph: 'rotate-ccw',
-      label: 'Resume the last conversation with ' + s.name,
-      text: 'Resume last conversation',
+      dataset: { item: 'lifeos-resume-last-btn' }, glyph: 'rotate-ccw',
+      label: 'Resume last conversation',
+      ariaLabel: 'Resume the last conversation with ' + s.name,
       disabled: !s.has_conversations,
-      title: s.has_conversations ? '' : 'No conversation yet',
+      hint: 'No conversation yet',
       onTap: function () { resumeLatest(s); },
     },
     {
-      className: 'lifeos-start-new-btn', glyph: 'circle-plus',
-      label: 'Start a new conversation with ' + s.name,
-      text: 'Start new conversation',
+      dataset: { item: 'lifeos-start-new-btn' }, glyph: 'circle-plus',
+      label: 'Start new conversation',
+      ariaLabel: 'Start a new conversation with ' + s.name,
       onTap: function () { launchSkill(s, { fresh: true }); },
     },
     {
-      className: 'lifeos-pin-btn', glyph: 'pin',
-      label: (s.is_favorite ? 'Unpin ' : 'Pin ') + s.name,
-      text: s.is_favorite ? 'Unpin' : 'Pin to top',
+      dataset: { item: 'lifeos-pin-btn' }, glyph: 'pin',
+      label: s.is_favorite ? 'Unpin' : 'Pin to top',
+      ariaLabel: (s.is_favorite ? 'Unpin ' : 'Pin ') + s.name,
       onTap: function () { toggleSkillPin(s); },
     },
   ];
@@ -365,20 +367,20 @@ export function renderSkills() {
       },
     });
     if (s.is_favorite) row.li.dataset.pinned = 'true';
-    row.li.appendChild(skillMenu.attach(s.id, row.kebab, launchMenuItems(s).concat(
+    skillMenu.attach(s.id, row.kebab, launchMenuItems(s).concat(
       channelMenuItems(profiles),
       [
         {
           // The read-only content browser for this skill.
-          className: 'lifeos-browse-btn', glyph: 'book-open',
-          label: 'Browse ' + s.name, text: 'Read',
+          dataset: { item: 'lifeos-browse-btn' }, glyph: 'book-open',
+          label: 'Read', ariaLabel: 'Browse ' + s.name,
           onTap: function () { openBrowser(s); },
         },
         {
           // This skill's own conversations, newest first, in the field's
           // Conversations group behind a scope chip (#727, #1504).
-          className: 'lifeos-convo-btn', glyph: 'messages-square',
-          label: 'Conversations with ' + s.name, text: 'Conversations',
+          dataset: { item: 'lifeos-convo-btn' }, glyph: 'messages-square',
+          label: 'Conversations', ariaLabel: 'Conversations with ' + s.name,
           onTap: function () { openConvos(s); },
         },
       ]
@@ -386,7 +388,7 @@ export function renderSkills() {
       // A phone has no hover to explain a disabled Resume, so its reason is
       // the menu's first line (the Conversations rows' rule, #1528).
       header: s.has_conversations ? '' : 'No conversation yet',
-    }));
+    });
     host.appendChild(row.li);
   }
 

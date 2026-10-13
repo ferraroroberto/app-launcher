@@ -10,7 +10,7 @@
  *   only] · [Compact, Claude sessions only, #1218] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
  *   same resolution the Rename / link dialog uses (#1096 — see
- *   sessionCopyLink below). Built once on the shared row-menu.js component
+ *   sessionCopyLink below). Built once on the vendored row-menu component
  *   (the same one as the sessions-list gear); the chat-only rows are
  *   declared with function-valued `hidden`, so the menu re-evaluates them
  *   on every open and they are simply absent from the DOM in Terminal
@@ -29,7 +29,7 @@ import {
   sendSessionMessage, sessionTitle, stopSession,
 } from './sessions.js';
 import { openSessionChanges } from './changes-overlay.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { createLatestPill } from './latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
 import {
@@ -38,7 +38,16 @@ import {
 import { inChatMode } from './session-overlay.js';
 import { isHiddenChannel } from './channel-sessions.js';
 
-const terminalMenu = createRowMenu('terminal-menu');
+// Drops below the overlay bar, right edges 8px in. The offset is measured
+// from the bar's border box, so 1 here puts the menu 2px under its padding
+// box, where it always sat (the bar's bottom border is 1px).
+const terminalMenu = createRowMenu({
+  className: 'terminal-menu',
+  placement: {
+    against: function (kebab) { return kebab.closest('.terminal-bar'); },
+    offset: 1, inset: 8,
+  },
+});
 
 // The open session as the list knows it (it carries kind / agent /
 // manual_title for the chief guard and the rename dialog). Falls back to
@@ -105,9 +114,9 @@ function hasChangedFiles(s) {
 let latestPill = null;
 
 export function wireTerminalMenu() {
-  const menu = terminalMenu.attach('terminal', els.terminalMenu, [
+  terminalMenu.attach('terminal', els.terminalMenu, [
     {
-      glyph: 'pencil', label: 'Rename session', text: 'Rename',
+      glyph: 'pencil', label: 'Rename', ariaLabel: 'Rename session',
       onTap: function () {
         const s = currentSession();
         if (!s) return;
@@ -130,7 +139,7 @@ export function wireTerminalMenu() {
       },
     },
     {
-      glyph: 'link', label: 'Copy session link', text: 'Copy link',
+      glyph: 'link', label: 'Copy link', ariaLabel: 'Copy session link',
       onTap: function () {
         const s = currentSession();
         if (!s) return;
@@ -146,7 +155,7 @@ export function wireTerminalMenu() {
     // Changed files (#1349): every file this session edited, folded from
     // its transcript into the Show changes panel. In both modes.
     {
-      glyph: 'file-diff', label: 'Changed files', text: 'Changed files',
+      glyph: 'file-diff', label: 'Changed files',
       hidden: function () { return !hasChangedFiles(currentSession()); },
       onTap: function () {
         const s = currentSession();
@@ -155,28 +164,28 @@ export function wireTerminalMenu() {
     },
     // Chat-only (#982): the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
-    // Terminal mode (function-valued `hidden`, row-menu.js). The step lines
+    // Terminal mode (function-valued `hidden`, the row menu). The step lines
     // show by default since #1476, so the item reads "Hide steps" first.
     {
       glyph: function () { return groupsAreHidden() ? 'eye' : 'eye-off'; },
-      label: function () {
+      label: function () { return groupsAreHidden() ? 'Show steps' : 'Hide steps'; },
+      ariaLabel: function () {
         return groupsAreHidden()
           ? 'Show steps: tool calls and system entries'
           : 'Hide steps: tool calls and system entries';
       },
-      text: function () { return groupsAreHidden() ? 'Show steps' : 'Hide steps'; },
       hidden: notInChat,
       onTap: toggleGroups,
     },
     // Load new (#1292): only what came after the newest turn shown, the
     // live tick's own read, forced now. Reload stays as the full escape hatch.
     {
-      glyph: 'arrow-down', label: 'Load new messages', text: 'Load new',
+      glyph: 'arrow-down', label: 'Load new', ariaLabel: 'Load new messages',
       hidden: notInChat,
       onTap: loadNew,
     },
     {
-      glyph: 'rotate-ccw', label: 'Reload transcript', text: 'Reload',
+      glyph: 'rotate-ccw', label: 'Reload', ariaLabel: 'Reload transcript',
       hidden: notInChat,
       onTap: reloadNewest,
     },
@@ -185,7 +194,7 @@ export function wireTerminalMenu() {
     // toast says what actually happened. Claude only: /compact is its
     // command, and other agents would take it as a prompt.
     {
-      glyph: 'chevrons-down-up', label: 'Compact conversation', text: 'Compact',
+      glyph: 'chevrons-down-up', label: 'Compact', ariaLabel: 'Compact conversation',
       hidden: function () { return !canCompact(currentSession()); },
       onTap: function () {
         const s = currentSession();
@@ -200,8 +209,8 @@ export function wireTerminalMenu() {
       },
     },
     {
-      className: 'action-stop-close', glyph: 'x', danger: true,
-      label: 'Stop and kill session', text: 'Stop and kill',
+      dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
+      label: 'Stop and kill', ariaLabel: 'Stop and kill session',
       // A hidden Telegram session can be looked at, never stopped (#1384).
       hidden: function () { return isHiddenChannel(currentSession()); },
       // stopSession() keeps the chief confirm (#547) and closes the overlay
@@ -212,7 +221,6 @@ export function wireTerminalMenu() {
       },
     },
   ]);
-  els.terminalMenu.closest('.terminal-bar').appendChild(menu);
 
   latestPill = createLatestPill(els.terminalLatest, {
     isAway: function () {

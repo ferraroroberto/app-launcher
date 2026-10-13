@@ -14,7 +14,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_agent_sheet
+from tests.e2e.conftest import open_agent_sheet, open_row_menu
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -178,7 +178,7 @@ def test_pty_session_renders_with_both_stop_buttons(
         assert row.locator(".session-chevron").count() == 0, (
             f"row {i} ({kind}): stray chevron"
         )
-        assert row.locator(".row-actions > .action-stop-close").count() == 0, (
+        assert row.locator(".row-actions > [data-item=action-stop-close]").count() == 0, (
             f"row {i} ({kind}): stray Stop button loose on the row"
         )
         # Every row is a real button since #1025 — including a detached row
@@ -214,7 +214,7 @@ def test_pty_session_renders_with_both_stop_buttons(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
     )
     launched.locator(".session-kebab").click()
-    expect(launched.locator(".session-copy-path-btn")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=session-copy-path-btn]")).to_be_visible()
     authed_page.keyboard.press("Escape")
 
 
@@ -303,7 +303,7 @@ def test_parameterised_job_run_dialog_posts_values(
     ``{params: {...}}`` to ``/api/jobs/<id>/run``.
 
     Since #1438 the run is started from the row's kebab ``Run now`` item
-    (``.job-run-item``; there is no per-row ▶ button).
+    (``[data-item=job-run-item]``; there is no per-row ▶ button).
 
     Hermetic: we route-mock ``/api/jobs`` to return one synthetic
     parameterised job, intercept the run endpoint, and assert the
@@ -364,7 +364,7 @@ def test_parameterised_job_run_dialog_posts_values(
     # Run now from the kebab — for a parameterised job this must open the
     # run dialog, NOT fire the API directly.
     row.locator("button.job-menu-anchor").click()
-    row.locator(".job-run-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-run-item]").click()
 
     dialog = authed_page.locator("#jobRunDialog")
     expect(dialog).to_be_visible()

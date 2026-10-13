@@ -226,7 +226,7 @@ def test_an_ended_turn_closes_with_its_edited_files(authed_page: Page, base_url:
 
     # Hide steps leaves the card: the work still has a trace.
     page.locator("#terminalMenu").click()
-    page.locator("#terminalOverlay .terminal-menu").get_by_role("menuitem", name="Hide steps").click()
+    page.locator(".terminal-menu").get_by_role("menuitem", name="Hide steps").click()
     expect(page.locator("#transcriptList .tr-run").first).to_be_hidden()
     expect(card).to_be_visible()
 

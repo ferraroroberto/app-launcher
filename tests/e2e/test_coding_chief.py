@@ -26,6 +26,7 @@ from tests.e2e._geometry import assert_no_overlap
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
     flush_requests,
+    open_row_menu,
     open_session_row,
     stub_session_mirror,
     wait_until,
@@ -157,9 +158,9 @@ def test_chief_stop_requires_confirm_worker_row_does_not(
         gear of its own, so this is where a session's stop is reached from
         the Coding tab (the Board drawer's own button is the other path)."""
         authed_page.locator("#terminalMenu").click()
-        menu = authed_page.locator("#terminalOverlay .terminal-menu")
+        menu = authed_page.locator(".terminal-menu")
         expect(menu).to_be_visible()
-        menu.locator(".action-stop-close").click()
+        menu.locator("[data-item=action-stop-close]").click()
 
     # 1. Chief + dismiss -> stop never fires. The overlay stays open, so
     # step 2 reuses it rather than reopening.
@@ -259,18 +260,18 @@ def test_coding_tab_hides_start_when_chief_alive(
     expect(authed_page.locator("#codingChiefResume")).to_have_count(0)
 
     chief_row.locator(".session-kebab").click()
-    items = chief_row.locator(".session-menu button")
-    expect(chief_row.locator(".chief-restart-btn")).to_be_visible()
-    expect(chief_row.locator(".chief-settings-btn")).to_be_visible()
-    expect(items.last).to_have_class(re.compile(r"action-stop-close"))
+    items = open_row_menu(authed_page).locator(".row-menu-item")
+    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_be_visible()
+    expect(items.last).to_have_attribute("data-item", "action-stop-close")
 
     # The worker's menu has neither.
     worker_row = authed_page.locator('#sessionsList li[data-session-id="s-work"]')
     authed_page.keyboard.press("Escape")
     worker_row.locator(".session-kebab").click()
-    expect(worker_row.locator(".action-stop-close")).to_be_visible()
-    expect(worker_row.locator(".chief-restart-btn")).to_have_count(0)
-    expect(worker_row.locator(".chief-settings-btn")).to_have_count(0)
+    expect(open_row_menu(authed_page).locator("[data-item=action-stop-close]")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_have_count(0)
+    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_have_count(0)
 
 
 def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> None:
@@ -298,8 +299,11 @@ def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> N
 
     first = authed_page.locator("#sessionsList > li").first
     first.locator(".session-kebab").click()
-    expect(first.locator(".chief-restart-btn")).to_have_count(0)  # stopped: nothing to restart
-    first.locator(".chief-settings-btn").click()
+    menu = open_row_menu(authed_page)
+    expect(menu.locator("[data-item=chief-settings-btn]")).to_be_visible()
+    # Stopped: nothing to restart.
+    expect(menu.locator("[data-item=chief-restart-btn]")).to_have_count(0)
+    menu.locator("[data-item=chief-settings-btn]").click()
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     expect(authed_page.locator("#chiefSheet")).to_be_visible()
     expect(authed_page.locator("#chiefSettingsDialog")).to_have_count(0)
@@ -394,7 +398,7 @@ def test_chief_row_restart_confirms_then_resumes_the_conversation(
 
     row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
     row.locator(".session-kebab").click()
-    restart = row.locator(".chief-restart-btn")
+    restart = open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")
     expect(restart).to_be_visible()
     restart.click()
     # Restart asks in the themed confirm (#1501), same words as before.

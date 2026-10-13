@@ -17,6 +17,8 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_row_menu
+
 pytestmark = pytest.mark.smoke
 
 
@@ -56,9 +58,9 @@ def _github_item(page: Page):
     anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
     expect(anchor).to_be_enabled(timeout=5_000)
     anchor.click()
-    menu = page.locator('.coding-item[data-id="alpha"] .project-menu')
+    menu = open_row_menu(page)
     expect(menu).to_be_visible()
-    return menu.locator(".project-github-btn")
+    return menu.locator("[data-item=project-github-btn]")
 
 
 def test_github_icon_opens_open_issues_sorted_by_updated(

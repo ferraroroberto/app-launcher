@@ -17,10 +17,11 @@ smoke suite.
 from __future__ import annotations
 
 import json
-import re
 
 import pytest
 from playwright.sync_api import Page, expect
+
+from tests.e2e.conftest import open_row_menu
 
 pytestmark = pytest.mark.smoke
 
@@ -149,16 +150,17 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     assert "whisper.example.com" not in (tunnel.inner_text() or "")
 
     tunnel.locator(".action-row-kebab").click()
-    expect(tunnel.locator(".app-tunnel-link")).to_be_enabled()
-    expect(tunnel.locator(".app-copy-url-btn")).to_be_enabled()
+    menu = open_row_menu(authed_page)
+    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_enabled()
+    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_enabled()
     authed_page.keyboard.press("Escape")
 
     # A tunnel that isn't up offers the same rows, disabled; its context
     # line says it is down.
     dead = authed_page.locator('#appsList li.action-row[data-id="dead-tunnel"]')
     dead.locator(".action-row-kebab").click()
-    expect(dead.locator(".app-tunnel-link")).to_be_disabled()
-    expect(dead.locator(".app-copy-url-btn")).to_be_disabled()
+    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_disabled()
+    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_disabled()
     authed_page.keyboard.press("Escape")
 
     # -- was test_row_launches_visible_and_menu_launches_hidden --
@@ -175,17 +177,17 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
 
     # Visible: no `stealth` key at all, so the server keeps its default.
     row.locator(".action-row-kebab").click()
-    expect(row.locator(".app-visible-btn")).to_have_text("Launch visible")
+    expect(menu.locator("[data-item=app-visible-btn]")).to_have_text("Launch visible")
     # #1278: its icon is the eye (the pair to the row's eye-off), and the
     # <use> must resolve to a symbol in the page's inline sprite — a glyph
     # the per-app trim lacks renders as nothing.
-    use = row.locator(".app-visible-btn svg use")
+    use = menu.locator("[data-item=app-visible-btn] svg use")
     expect(use).to_have_attribute("href", "#i-eye")
     assert use.evaluate(
         "u => !!document.querySelector('symbol' + u.getAttribute('href'))"
     ), "Launch visible's icon names a symbol the sprite does not have"
     expect(row.locator(".app-stealth-btn")).to_have_count(0)
-    row.locator(".app-visible-btn").click()
+    menu.locator("[data-item=app-visible-btn]").click()
     expect(authed_page.locator("#toast")).not_to_contain_text("(stealth)")
     assert launches == [{"stealth": True}, {}], f"visible launch sent {launches}"
 
@@ -221,16 +223,16 @@ def test_path_and_rename_remove_live_in_the_menu(
     expect(row).to_be_visible(timeout=5_000)
     expect(row.locator(".action-row-meta")).to_have_count(0)
     row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
+    menu = open_row_menu(authed_page)
     expect(menu.locator(".row-menu-head")).to_have_text("Streamlit app")
-    expect(menu.locator(".app-rename-btn")).to_be_visible()
+    expect(menu.locator("[data-item=app-rename-btn]")).to_be_visible()
     # Copy path puts the bat path on the clipboard, never on screen.
     authed_page.evaluate(
         "() => { window.__copied = []; navigator.clipboard.writeText ="
         " t => { window.__copied.push(t); return Promise.resolve(); }; }")
-    menu.locator(".app-copy-path-btn").click()
+    menu.locator("[data-item=app-copy-path-btn]").click()
     expect(authed_page.locator("#toast")).to_contain_text("Path copied")
     assert authed_page.evaluate("() => window.__copied") == ["C:\\stub\\photo-ocr\\run.bat"]
     row.locator(".action-row-kebab").click()
     # Remove is the danger item, last.
-    expect(menu.locator(":scope > *").last).to_have_class(re.compile(r"\bapp-remove-btn\b"))
+    expect(menu.locator(":scope > *").last).to_have_attribute("data-item", "app-remove-btn")

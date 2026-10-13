@@ -32,6 +32,7 @@ from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
     close_settings_sheets,
     flush_requests,
+    open_row_menu,
     open_settings_sheet,
     stable_eval,
     wait_until,
@@ -236,7 +237,7 @@ def test_summary_opens_a_read_only_list_and_polls_context_fast_only_while_open(
     # two ways to close — no Stop, no delete, no kill anywhere in it.
     labels = dialog.locator("button").all_inner_texts()
     assert not [t for t in labels if re.search(r"stop|delete|kill|remove", t, re.I)], labels
-    expect(dialog.locator(".action-stop-close, .board-stop-btn")).to_have_count(0)
+    expect(dialog.locator("[data-item=action-stop-close], [data-item=board-stop-btn]")).to_have_count(0)
 
     # Polls while open…
     before = len(knobs["context_hits"])
@@ -272,10 +273,10 @@ def test_a_hidden_channel_session_opens_for_a_look_but_cannot_be_stopped(
     expect(authed_page.locator("#channelListDialog")).to_be_hidden()
 
     authed_page.locator("#terminalMenu").click()
-    menu = authed_page.locator("#terminalOverlay .row-menu")
+    menu = authed_page.locator(".terminal-menu")
     expect(menu.first).to_be_visible()
     # The destructive item is not in the menu at all while the session is hidden.
-    expect(menu.locator(".action-stop-close")).to_have_count(0)
+    expect(menu.locator("[data-item=action-stop-close]")).to_have_count(0)
     expect(menu.locator("button", has_text="Stop")).to_have_count(0)
 
 
@@ -302,7 +303,9 @@ def test_switching_the_setting_off_restores_rows_cards_and_stop(
     expect(authed_page.locator("#sessionsList .session-channel-tag")).to_have_count(2)
     expect(authed_page.locator("#sessionsChannelSummary")).to_be_hidden()
     row = authed_page.locator('#sessionsList li[data-session-id="s-tg-health"]')
-    expect(row.locator(".action-stop-close")).to_have_count(1)
+    row.locator(".session-kebab").click()
+    expect(open_row_menu(authed_page).locator("[data-item=action-stop-close]")).to_have_count(1)
+    authed_page.keyboard.press("Escape")
 
     authed_page.locator("#tabBoard").click()
     expect(authed_page.locator("#boardColumns li.board-item")).to_have_count(3)

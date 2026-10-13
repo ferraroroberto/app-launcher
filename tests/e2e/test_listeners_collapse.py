@@ -25,6 +25,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_row_menu
+
 pytestmark = pytest.mark.smoke
 
 _PROBE_PAYLOAD = {
@@ -136,11 +138,11 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
 
     row = page.locator("#listenersList .listener-row").first
     row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
+    menu = open_row_menu(page)
     expect(menu).to_be_visible()
     last = menu.locator(":scope > *").last
     expect(last).to_have_class(re.compile(r"\brow-menu-danger\b"))
-    expect(last).to_have_class(re.compile(r"\blistener-kill\b"))
+    expect(last).to_have_attribute("data-item", "listener-kill")
     expect(menu.locator(":scope > .row-menu-divider")).to_have_count(1)
     assert menu.evaluate(
         "m => m.lastElementChild.previousElementSibling.classList.contains('row-menu-divider')"
@@ -190,7 +192,7 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     # expand the row — the children stay hidden.
     parent = _parent_row(page)
     parent.locator(".action-row-kebab").click()
-    parent.locator(".listener-kill").click()
+    open_row_menu(page).locator("[data-item=listener-kill]").click()
     expect(confirm).to_be_visible()
     # Its ✕ is a "no": nothing is killed.
     confirm.locator("#confirmDialogClose").click()
@@ -198,7 +200,7 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     assert killed_ports == [], f"a dismissed confirm still killed {killed_ports!r}"
     parent = _parent_row(page)
     parent.locator(".action-row-kebab").click()
-    parent.locator(".listener-kill").click()
+    open_row_menu(page).locator("[data-item=listener-kill]").click()
     confirm.locator("#confirmDialogOk").click()
     expect(page.locator("#listenersList .listener-row.child")).to_have_count(0)
     assert killed_ports == ["8000"], f"parent kill hit {killed_ports!r}"
@@ -209,7 +211,7 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     _parent_row(page).locator(".action-row-main").click()
     child = page.locator("#listenersList .listener-row.child").first
     child.locator(".action-row-kebab").click()
-    child.locator(".listener-kill").click()
+    open_row_menu(page).locator("[data-item=listener-kill]").click()
     confirm.locator("#confirmDialogOk").click()
     expect(confirm).to_be_hidden()
     assert killed_ports == ["8000", "8081"], f"child kill hit {killed_ports!r}"

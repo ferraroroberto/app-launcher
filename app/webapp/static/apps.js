@@ -21,21 +21,21 @@ import {
   wireCoding, wireFavoriteAgent,
 } from './apps-coding.js';
 import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
-import { actionRow } from './action-rows.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
 import { nameLabel } from './dom-utils.js';
 import {
   copyText, copyUrl, fetchListeners, renderOtherPortsRow, wireListeners,
 } from './apps-listeners.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { WIDE_LAYOUT_QUERY, isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
 
-// The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
-const appMenu = createRowMenu('project-menu');
+// The Apps and Trays rows' kebab menu (#1128), on the vendored row-menu.
+const appMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 // The Apps list's name filter (#1132), re-applied after every render.
 const appsFilter = listFilter({
   input: els.appsFilterInput,
@@ -187,52 +187,52 @@ function renderList(host, items, running) {
         },
       }), row.main);
     }
-    row.li.appendChild(appMenu.attach(a.id, row.kebab, [
+    appMenu.attach(a.id, row.kebab, [
       {
         // The same bat in a console window you can watch (#790's ⚡); the
         // row tap is the hidden launch (#1269).
-        className: 'app-visible-btn', glyph: 'eye',
-        label: 'Launch ' + a.name + ' in a visible window', text: 'Launch visible',
+        dataset: { item: 'app-visible-btn' }, glyph: 'eye',
+        label: 'Launch visible', ariaLabel: 'Launch ' + a.name + ' in a visible window',
         onTap: function () { launchApp(a, undefined, false); },
       },
       {
         // A tunnel's URL is tapped, never read: a cloudflared URL with a
         // `?token=…` on it wrapped to three lines on the phone.
-        className: 'app-tunnel-link', glyph: 'link',
-        label: a.tunnel_url ? 'Open ' + a.name + ' tunnel' : a.name + ' tunnel not running',
-        text: 'Open link',
+        dataset: { item: 'app-tunnel-link' }, glyph: 'link',
+        label: 'Open link',
+        ariaLabel: a.tunnel_url ? 'Open ' + a.name + ' tunnel' : a.name + ' tunnel not running',
         hidden: !tunnel,
         disabled: !a.tunnel_url,
-        title: 'Tunnel not running',
+        hint: 'Tunnel not running',
         onTap: function () { window.open(a.tunnel_url, '_blank', 'noopener'); },
       },
       {
-        className: 'app-copy-url-btn', glyph: 'copy',
-        label: 'Copy ' + a.name + ' tunnel URL', text: 'Copy URL',
+        dataset: { item: 'app-copy-url-btn' }, glyph: 'copy',
+        label: 'Copy URL', ariaLabel: 'Copy ' + a.name + ' tunnel URL',
         hidden: !tunnel,
         disabled: !a.tunnel_url,
-        title: 'Tunnel not running',
+        hint: 'Tunnel not running',
         onTap: function () { copyUrl(a.tunnel_url); },
       },
       {
         // Always offered (decision 5 of #1432, #1437): there is no Edit mode
         // anywhere since #1438.
-        className: 'app-rename-btn', glyph: 'pencil',
-        label: 'Rename ' + a.name, text: 'Rename',
+        dataset: { item: 'app-rename-btn' }, glyph: 'pencil',
+        label: 'Rename', ariaLabel: 'Rename ' + a.name,
         onTap: function () { openRename(a); },
       },
       {
-        className: 'app-copy-path-btn', glyph: 'clipboard',
-        label: 'Copy the path of ' + a.name, text: 'Copy path',
+        dataset: { item: 'app-copy-path-btn' }, glyph: 'clipboard',
+        label: 'Copy path', ariaLabel: 'Copy the path of ' + a.name,
         hidden: !path,
         onTap: function () { copyText(path, 'Path'); },
       },
       {
-        className: 'app-remove-btn', glyph: 'trash-2', danger: true,
-        label: 'Remove ' + a.name, text: 'Remove',
+        dataset: { item: 'app-remove-btn' }, glyph: 'trash-2', danger: true,
+        label: 'Remove', ariaLabel: 'Remove ' + a.name,
         onTap: function () { removeApp(a); },
       },
-    ], { header: kindLabel(a.kind) }));
+    ], { header: kindLabel(a.kind) });
     host.appendChild(row.li);
   });
 }
@@ -408,7 +408,7 @@ export async function fetchAgents() {
 // confirmed) are in its ⋮ menu rather than a visible button. Since #1437 a
 // row leads with its kind avatar wearing the alive badge, its context line
 // is "up 2h · :8501", and the pid is the menu's header line.
-const runningMenu = createRowMenu('project-menu');
+const runningMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 // The running app ids the Apps list was last badged from: it re-renders
 // only when that set changes, not on every poll.
 let badgedRunning = '';
@@ -496,20 +496,20 @@ export function renderRunningApps() {
     });
     row.li.dataset.pid = r.pid;
     row.main.classList.add('action-open');
-    row.li.appendChild(runningMenu.attach(r.app_id + ':' + r.pid, row.kebab, [
+    runningMenu.attach(r.app_id + ':' + r.pid, row.kebab, [
       {
-        className: 'running-app-copy-btn', glyph: 'copy',
-        label: 'Copy ' + r.name + ' URL', text: 'Copy URL',
+        dataset: { item: 'running-app-copy-btn' }, glyph: 'copy',
+        label: 'Copy URL', ariaLabel: 'Copy ' + r.name + ' URL',
         disabled: !r.url,
-        title: noUrl,
+        hint: noUrl,
         onTap: function () { copyUrl(r.url); },
       },
       {
-        className: 'action-stop-close', glyph: 'square', danger: true,
-        label: 'Stop ' + r.name, text: 'Stop',
+        dataset: { item: 'action-stop-close' }, glyph: 'square', danger: true,
+        label: 'Stop', ariaLabel: 'Stop ' + r.name,
         onTap: function () { stopAppInstance(r); },
       },
-    ], { header: 'pid ' + r.pid }));
+    ], { header: 'pid ' + r.pid });
     host.appendChild(row.li);
   });
   runningMenu.endRender();

@@ -21,7 +21,7 @@ import time
 import pytest
 from playwright.sync_api import Page, WebSocketRoute, expect
 
-from tests.e2e.conftest import flush_requests, stable_eval, wait_until
+from tests.e2e.conftest import flush_requests, open_row_menu, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -129,7 +129,7 @@ def _row(page: Page, job_id: str):
 
 def _menu(page: Page, job_id: str):
     _row(page, job_id).locator(".job-menu-anchor").click()
-    return _row(page, job_id).locator(".row-menu")
+    return open_row_menu(page)
 
 
 def test_header_next_up_and_the_agenda_sheet(authed_page: Page, base_url: str) -> None:
@@ -202,16 +202,16 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
 
     # Run now, the kebab's first item (test_jobs_row_anatomy pins the set),
     # fires straight away for a plain job.
-    _menu(page, "ledger").locator(".job-run-item").click()
+    _menu(page, "ledger").locator("[data-item=job-run-item]").click()
     wait_until(page, lambda: len(seen["fired"]) == 1, "the run POST")
     assert "confirmed" not in seen["fired"][0]
 
     # A running job cannot be run again from its kebab.
-    expect(_menu(page, "archive").locator(".job-run-item")).to_be_disabled()
+    expect(_menu(page, "archive").locator("[data-item=job-run-item]")).to_be_disabled()
     page.keyboard.press("Escape")
 
     # A confirm job asks through the vendored dialog first.
-    _menu(page, "guarded").locator(".job-run-item").click()
+    _menu(page, "guarded").locator("[data-item=job-run-item]").click()
     confirm = page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
     expect(page.locator("#confirmDialogTitle")).to_have_text("Run Guarded export?")
@@ -220,19 +220,19 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
     assert "confirmed=1" in seen["fired"][1]
 
     # A job with params opens its run dialog instead of firing.
-    _menu(page, "shaped").locator(".job-run-item").click()
+    _menu(page, "shaped").locator("[data-item=job-run-item]").click()
     expect(page.locator("#jobRunDialog")).to_be_visible()
     page.locator("#jobRunCancel").click()
     flush_requests(page)
     assert len(seen["fired"]) == 2
 
     # Remove asks through the vendored dialog; dismissing it removes nothing.
-    _menu(page, "planner").locator(".job-remove-item").click()
+    _menu(page, "planner").locator("[data-item=job-remove-item]").click()
     expect(page.locator("#confirmDialogTitle")).to_have_text("Remove Planner sync?")
     page.locator("#confirmDialogClose").click()
     flush_requests(page)
     assert seen["deleted"] == []
-    _menu(page, "planner").locator(".job-remove-item").click()
+    _menu(page, "planner").locator("[data-item=job-remove-item]").click()
     page.locator("#confirmDialogOk").click()
     wait_until(page, lambda: len(seen["deleted"]) == 1, "the DELETE")
     assert seen["deleted"][0].endswith("/api/jobs/planner")

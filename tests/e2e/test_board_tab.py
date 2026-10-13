@@ -31,7 +31,7 @@ from src import chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
-    _autoboot_enabled, flush_requests, stable_eval, stable_read, wait_until,
+    _autoboot_enabled, flush_requests, open_row_menu, stable_eval, stable_read, wait_until,
 )
 
 pytestmark = pytest.mark.smoke
@@ -1039,11 +1039,11 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     kebab = tile.locator(".board-issue-kebab")
     expect(kebab).to_have_attribute("aria-label", "Issue #301 actions")
     kebab.click()
-    menu = tile.locator(".row-menu")
+    menu = open_row_menu(authed_page)
     expect(menu).to_be_visible()
-    expect(menu.locator(".row-menu-btn .row-menu-label")).to_have_text(
+    expect(menu.locator(".row-menu-item .row-menu-label")).to_have_text(
         ["YOLO (start and ship)", "Open on GitHub", "Copy link"])
-    yolo = menu.locator(".board-issue-yolo")
+    yolo = menu.locator("[data-item=board-issue-yolo]")
     expect(yolo).to_be_enabled()
     with authed_page.expect_request(start_url) as start_request:
         yolo.click()
@@ -1126,10 +1126,10 @@ def test_backlog_issue_in_progress_shows_a_chip_and_blocks_both_starts(
     expect(normal.locator(".board-issue-start")).to_be_enabled()
     expect(active.locator(".board-issue-start")).to_have_count(0)
     active.locator(".board-issue-kebab").click()
-    expect(active.locator(".row-menu .board-issue-yolo")).to_be_disabled()
+    expect(open_row_menu(authed_page).locator("[data-item=board-issue-yolo]")).to_be_disabled()
     authed_page.keyboard.press("Escape")
     normal.locator(".board-issue-kebab").click()
-    expect(normal.locator(".row-menu .board-issue-yolo")).to_be_enabled()
+    expect(open_row_menu(authed_page).locator("[data-item=board-issue-yolo]")).to_be_enabled()
     authed_page.keyboard.press("Escape")
 
     # No row tint: the chip carries the state (re-resolving, #680).
@@ -1478,7 +1478,7 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
     for b in (chat, terminal):
         expect(b).not_to_have_attribute("aria-disabled", "true")
     # Rename and Stop are not on the row: they are in the kebab's menu.
-    expect(actions.locator(":scope > .board-rename-btn, :scope > .board-stop-btn")).to_have_count(0)
+    expect(actions.locator(":scope > [data-item=board-rename-btn], :scope > [data-item=board-stop-btn]")).to_have_count(0)
 
     # The composer sits above the action row; Chat and Terminal are equal,
     # side by side, at the 44px floor. Raw geometry on a Board node goes
@@ -1525,13 +1525,13 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
             assert clipped == [], f"drawer labels clipped at {width}px: {clipped}"
 
     kebab.click()
-    menu = drawer.locator(".board-drawer-actions .row-menu")
+    menu = open_row_menu(authed_page)
     expect(menu).to_be_visible()
-    expect(menu.locator(".row-menu-btn .row-menu-label")).to_have_text(["Rename", "Stop"])
-    expect(menu.locator(".board-stop-btn")).to_have_class(re.compile(r"\brow-menu-danger\b"))
+    expect(menu.locator(".row-menu-item .row-menu-label")).to_have_text(["Rename", "Stop"])
+    expect(menu.locator("[data-item=board-stop-btn]")).to_have_class(re.compile(r"\brow-menu-danger\b"))
 
     # Stop asks first, in the themed dialog; "no" keeps the session.
-    menu.locator(".board-stop-btn").click()
+    menu.locator("[data-item=board-stop-btn]").click()
     dialog = authed_page.locator("#confirmDialog")
     expect(dialog).to_be_visible()
     expect(dialog.locator("#confirmDialogTitle")).to_have_text(re.compile(r"^Stop .+\?$"))
@@ -1542,7 +1542,7 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
     expect(drawer).to_be_visible()
 
     kebab.click()
-    menu.locator(".board-stop-btn").click()
+    menu.locator("[data-item=board-stop-btn]").click()
     expect(dialog).to_be_visible()
     dialog.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: captured.get("method") == "POST",
@@ -1603,7 +1603,10 @@ def test_board_drawer_detached_session_sends_through_the_shared_composer(
 
     terminal = drawer.locator(".board-open-terminal")
     expect(terminal).to_have_attribute("aria-disabled", "true")
-    expect(drawer.locator(".board-stop-btn")).not_to_have_attribute("aria-disabled", "true")
+    drawer.locator(".board-drawer-kebab").click()
+    expect(open_row_menu(authed_page).locator("[data-item=board-stop-btn]")).not_to_have_attribute(
+        "aria-disabled", "true")
+    authed_page.keyboard.press("Escape")
     expect(drawer.locator(".board-open-chat")).not_to_have_attribute("aria-disabled", "true")
     # aria-disabled keeps the tap reachable (it toasts the reason), but
     # Playwright treats it as not enabled, hence force (#982's gotcha).
@@ -1744,8 +1747,8 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     # either way).
     terminal.evaluate("el => { el.dataset.e2eTag = 'pre-poll'; }")
     drawer.locator(".board-drawer-kebab").click()
-    menu = drawer.locator(".board-drawer-actions .row-menu")
-    expect(menu.locator(".board-rename-btn")).to_be_visible()
+    menu = open_row_menu(authed_page)
+    expect(menu.locator("[data-item=board-rename-btn]")).to_be_visible()
 
     # One poll: the Board and the chief's plan are fetched together, and the
     # render follows both answers; two frames later it has run.
@@ -1760,7 +1763,7 @@ def test_board_drawer_survives_a_board_poll_mid_interaction(
     expect(drawer).to_be_visible()
     expect(terminal).to_have_attribute("data-e2e-tag", "pre-poll")
     expect(draft).to_have_value("half-typed reply")
-    expect(menu.locator(".board-rename-btn")).to_be_visible()
+    expect(menu.locator("[data-item=board-rename-btn]")).to_be_visible()
     # The kept drawer gets a fresh header (#958); it still declares the
     # disclosure open (#1259).
     header = authed_page.locator("li.board-item.expanded > button.board-card")
@@ -2015,7 +2018,8 @@ def test_drawer_image_menu_is_not_clipped_above_a_top_of_column_card(
     the horizontal overflow, so it never clipped there).
 
     The fix floats the menu in viewport coordinates while it is open, which
-    no ancestor's overflow clips. Asserted the way the user sees it — the
+    no ancestor's overflow clips; since #1565 the vendored row-menu does that
+    by mounting the open menu on <body>. Asserted the way the user sees it — the
     menu's own top edge is painted — and paired with the placement it must
     keep, so the desktop projection pins that the fix moved nothing.
     """
@@ -2037,12 +2041,12 @@ def test_drawer_image_menu_is_not_clipped_above_a_top_of_column_card(
         timeout=15_000,
     )
     drawer.locator(".composer-image").click()
-    menu = drawer.locator(".composer-menu")
+    menu = authed_page.locator(".composer-menu")
     expect(menu).to_be_visible()
 
     measured = stable_read(lambda: authed_page.evaluate(
         """() => {
-          const menu = document.querySelector('.board-drawer .composer-menu');
+          const menu = document.querySelector('.composer-menu');
           const composer = document.querySelector('.board-drawer .composer');
           if (!menu || !composer) return null;
           const m = menu.getBoundingClientRect();
