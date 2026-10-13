@@ -1244,10 +1244,12 @@ def test_answer_sheet_other_fields_dictate_into_the_draft(
     posts = _capture_chief_input(authed_page)
     _open_board(authed_page, base_url)
     # The sheet reads dictation availability when it opens: wait for the
-    # status that turns it on to have landed.
+    # status that turns it on to have landed. The predicate must be sync:
+    # wait_for_function passes on an async one's Promise at once, which let
+    # the sheet open before the status under load (0 mics).
+    authed_page.evaluate("async () => { window.__e2eVoice = await import('/static/voice.js'); }")
     authed_page.wait_for_function(
-        "async () => (await import('/static/voice.js')).voiceDictationAvailable()",
-        timeout=15_000)
+        "() => window.__e2eVoice.voiceDictationAvailable()", timeout=15_000)
 
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
