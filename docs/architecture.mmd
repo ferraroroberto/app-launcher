@@ -43,7 +43,7 @@ flowchart TB
     MW["middleware.py\nBearerTokenMiddleware"]
     MGR["manager.py\nWebappManager (start/stop/status)"]
     subgraph routers["routers/"]
-      R_MISC["misc.py — /, /healthz, /api/version"]
+      R_MISC["misc.py — /, /healthz, /api/version, /api/system/load"]
       R_AUTH["auth.py — /api/login"]
       R_CONFIG["config.py — /api/config, /api/status, /api/ports"]
       R_CONTEXTFILTER["context_filter.py — /api/context-filter\nfleet filter mode + shadow stats (#713/#714)"]
@@ -111,6 +111,7 @@ life-os.js, life-os-viewer.js, voice.js"]
     JOBSOUTCOME["jobs_outcome.py\nexit code → success / failed / unconfirmed (#916)"]
     JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
     JOBSSNAPSHOT["jobs_snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
+    SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
     JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
     JOBSARGV["jobs_argv.py"]
@@ -175,6 +176,8 @@ life-os.js, life-os-viewer.js, voice.js"]
   WSERVER -->|"lifespan coverage tick (#697)"| JOBSCOVERAGE
   WSERVER -->|"lifespan snapshot tick, while polled (#1324)"| JOBSSNAPSHOT
   R_JOBS --> JOBSSNAPSHOT
+  WSERVER -->|"lifespan load sampler, while polled (#1522)"| SYSLOAD
+  R_MISC --> SYSLOAD
   BOARD --> JOBSSNAPSHOT
   JOBSSNAPSHOT --> JOBSFACADE
   JOBSHISTORY -->|"run.json written here: mark dirty"| JOBSSNAPSHOT

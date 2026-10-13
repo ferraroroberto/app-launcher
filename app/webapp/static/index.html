@@ -649,6 +649,8 @@
           Code
         </span>
         <span id="homeHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" id="themeToggle" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -769,6 +771,8 @@
           Apps
         </span>
         <span id="appsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -913,6 +917,8 @@
           Jobs
         </span>
         <span id="jobsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -993,6 +999,8 @@
           Life
         </span>
         <span id="lifeHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -1083,6 +1091,8 @@
           Board
         </span>
         <span id="boardHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -1246,6 +1256,8 @@
           Settings
         </span>
         <span id="settingsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
           <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
@@ -2425,6 +2437,24 @@
         <div id="usageSheetBody" class="usage-sheet-body"></div>
         <div class="detail-actions">
           <button type="button" id="usageSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The CPU sheet (#1522), behind every page header's CPU reading: total
+         CPU, memory and the busiest processes (names only). system-load.js
+         fills it on open and on each poll while it is open. -->
+    <dialog id="cpuSheet" class="detail-dialog" aria-labelledby="cpuSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="cpuSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> PC load</h2>
+          <button type="button" id="cpuSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="cpuSheetBody" class="usage-sheet-body cpu-sheet-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="cpuSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>

@@ -17,12 +17,35 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_row_menu, open_session_row, stub_session_mirror
+from tests.e2e import _fake_clock
+from tests.e2e.conftest import (
+    open_row_menu,
+    open_session_row,
+    stable_eval,
+    stub_session_mirror,
+    wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
 _CODING_SID = "s-rename-coding"
 _BOARD_SID = "s-rename-board"
+
+# Counts the /api/board bodies the page has parsed (jsonVerdict's
+# `res.json()`), so a test knows when a held Board read has been acted on.
+_COUNT_BOARD_BODIES = r"""
+(() => {
+  window.__boardBodies = 0;
+  const json = Response.prototype.json;
+  Response.prototype.json = function () {
+    const board = /\/api\/board$/.test(new URL(this.url).pathname);
+    return json.call(this).then(function (v) {
+      if (board) window.__boardBodies += 1;
+      return v;
+    });
+  };
+})()
+"""
 
 _CLIPBOARD_MOCK = """
 (() => {
@@ -85,37 +108,56 @@ def _mock_rename(page: Page, sid: str, state: dict, captured: dict) -> None:
     page.route(re.compile(r".*/api/claude-code/sessions/" + sid + r"/rename$"), _handler)
 
 
-def _mock_board(page: Page) -> None:
+def _board_body(manual_title: str) -> str:
+    """One live Board card, carrying ``manual_title`` as the real
+    ``/api/board`` does (``board_sessions.py`` reads the session-host's)."""
+    return _json.dumps({
+        "generated_at": "2026-07-08T12:00:00Z",
+        "columns": {
+            "backlog": [], "your_turn": [], "other": [], "done": [],
+            "claude_turn": [{
+                "session_id": _BOARD_SID,
+                "kind": "pty",
+                "agent": "claude",
+                "project_dir": "E:/automation/boardrenameproj",
+                "name": "boardrenameproj",
+                "alive": True,
+                "started_at": "2026-07-08T11:30:00Z",
+                "live_title": "",
+                "prompt_title": "",
+                "manual_title": manual_title,
+                "project": "boardrenameproj",
+                "status": "working",
+                "age_seconds": 60,
+            }],
+        },
+        "github": {"fetched_at": "2026-07-08T11:00:00Z", "error": None},
+        "sessions_state": {
+            "available": True, "stale": False,
+            "updated_at": "2026-07-08T11:58:00Z",
+        },
+    })
+
+
+def _mock_board(page: Page, state: dict | None = None) -> None:
+    """Serve the Board. `state`, when given, is the dict `_mock_rename`
+    writes, read on every request, so a read after a rename returns the new
+    title as the server does (#1573)."""
+    state = state if state is not None else {"manual_title": ""}
     page.route(
         re.compile(r".*/api/board(?:\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({
-                "generated_at": "2026-07-08T12:00:00Z",
-                "columns": {
-                    "backlog": [], "your_turn": [], "other": [], "done": [],
-                    "claude_turn": [{
-                        "session_id": _BOARD_SID,
-                        "kind": "pty",
-                        "agent": "claude",
-                        "project_dir": "E:/automation/boardrenameproj",
-                        "name": "boardrenameproj",
-                        "alive": True,
-                        "started_at": "2026-07-08T11:30:00Z",
-                        "live_title": "",
-                        "prompt_title": "",
-                        "manual_title": "",
-                        "project": "boardrenameproj",
-                        "status": "working",
-                        "age_seconds": 60,
-                    }],
-                },
-                "github": {"fetched_at": "2026-07-08T11:00:00Z", "error": None},
-                "sessions_state": {
-                    "available": True, "stale": False,
-                    "updated_at": "2026-07-08T11:58:00Z",
-                },
-            }),
+            body=_board_body(state["manual_title"]),
+        ),
+    )
+    # The chief's plan rides every Board read (#1279): left to the real
+    # server, its timing gates when a Board payload renders (#510, #1573).
+    page.route(
+        re.compile(r".*/api/board/chief-plan$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"state": "empty"}),
         ),
     )
     page.route(
@@ -286,9 +328,12 @@ def test_detached_rename_dialog_does_not_offer_terminal_link(
 def test_board_drawer_rename_patches_card_in_place(
     authed_page: Page, base_url: str
 ) -> None:
+    # One state for both routes, so a Board poll after the rename serves the
+    # new title as the real server does (#1573).
+    state = {"manual_title": ""}
     captured: dict = {}
-    _mock_board(authed_page)
-    _mock_rename(authed_page, _BOARD_SID, {"manual_title": ""}, captured)
+    _mock_board(authed_page, state)
+    _mock_rename(authed_page, _BOARD_SID, state, captured)
     # git-status is stubbed by _mock_board above (#510/#680).
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -311,19 +356,92 @@ def test_board_drawer_rename_patches_card_in_place(
 
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
+    # The patch renders in the same task that closes the dialog, so the title
+    # read when `close` fires is the patch's, not a later Board poll's: a
+    # poll now serves the new title too, and the final check alone would
+    # pass without any patch (#1573).
+    authed_page.evaluate(
+        """() => document.getElementById('sessionRenameDialog')
+            .addEventListener('close', () => {
+              const t = document.querySelector(
+                '.board-list[data-col="claude_turn"] .board-card-title');
+              window.__titleAtClose = t ? t.textContent : null;
+            }, { once: true })"""
+    )
     authed_page.locator("#sessionRenameInput").fill("Board custom title")
     authed_page.locator("#sessionRenameForm button[type='submit']").click()
 
     authed_page.wait_for_function(
-        "() => !document.getElementById('sessionRenameDialog').open",
-        timeout=3_000,
+        "() => window.__titleAtClose !== undefined", timeout=3_000,
     )
     assert captured.get("body") == {"title": "Board custom title"}
     # Optimistic in-place patch — the title updates without waiting for the
-    # next /api/board poll.
-    expect(card.locator(".board-card-title")).to_have_text(
-        "Board custom title", timeout=5_000
+    # next /api/board poll…
+    assert authed_page.evaluate("() => window.__titleAtClose") == "Board custom title"
+    # …and stays, now that a poll serves it as well.
+    expect(card.locator(".board-card-title")).to_have_text("Board custom title")
+
+
+def test_board_read_in_flight_across_a_rename_keeps_the_patch(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1573: a Board poll sent before the rename and answered after it
+    carries the old title. Rendered, it undid the optimistic patch until the
+    next poll — the under-load red of the test above."""
+    _fake_clock.install(authed_page)
+    authed_page.add_init_script(_COUNT_BOARD_BODIES)
+    state = {"manual_title": ""}
+    captured: dict = {}
+    _mock_board(authed_page, state)
+    _mock_rename(authed_page, _BOARD_SID, state, captured)
+    held: list = []
+    hold = {"next": False}
+
+    def _board(route):
+        # Registered after _mock_board, so matched first: park the one read
+        # asked for, pass every other through.
+        if hold["next"]:
+            hold["next"] = False
+            held.append(route)
+            return
+        route.fallback()
+
+    authed_page.route(re.compile(r".*/api/board(?:\?.*)?$"), _board)
+
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabBoard").click()
+    card = authed_page.locator(
+        '.board-list[data-col="claude_turn"] li.board-item'
+    ).first.locator("button.board-card")
+    title = card.locator(".board-card-title")
+    expect(title).to_have_text("boardrenameproj", timeout=10_000)
+    card.click()
+    drawer = authed_page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    drawer.locator(".board-drawer-kebab").click()
+    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
+    expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
+    authed_page.locator("#sessionRenameInput").fill("Board custom title")
+
+    # The poll goes out before the rename and is still unanswered after it.
+    hold["next"] = True
+    _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
+    wait_until(authed_page, lambda: bool(held), "a Board poll in flight")
+    authed_page.locator("#sessionRenameForm button[type='submit']").click()
+    expect(title).to_have_text("Board custom title")
+    assert captured.get("body") == {"title": "Board custom title"}
+
+    # Answered now, with what the server held when the poll reached it. The
+    # page has acted on it once its body is parsed: fetchBoard() resumes in
+    # the same microtask checkpoint as the counter below.
+    bodies = authed_page.evaluate("() => window.__boardBodies")
+    held[0].fulfill(
+        status=200, content_type="application/json", body=_board_body(""),
     )
+    authed_page.wait_for_function("n => window.__boardBodies > n", arg=bodies)
+    # One read, not an auto-retrying expect: the next poll serves the new
+    # title, so a retry would pass straight through a revert.
+    assert stable_eval(title, "el => el.textContent") == "Board custom title"
 
 
 @pytest.mark.iphone

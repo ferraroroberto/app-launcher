@@ -8,6 +8,7 @@ full per-family surface.  Top-level families:
                  GET  /healthz                  → liveness probe
                  GET  /api/version              → git_sha + asset_hash
                  GET  /api/agents               → registered coding agents
+                 GET  /api/system/load          → header CPU reading (cached)
 
     auth         POST /api/login                → swap password for token
 
@@ -66,7 +67,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import instance_role, jobs_snapshot, launcher, session_client
+from src import instance_role, jobs_snapshot, launcher, session_client, system_load
 from src.app_config import load_app_config
 from src.runtime_data import runtime_db_path
 from src.static_versioning import (
@@ -389,6 +390,9 @@ async def _lifespan(app: FastAPI):
     # only walks while those polls are asking, so every instance runs it:
     # the reads it serves happen on every instance too.
     tasks = [asyncio.create_task(jobs_snapshot.tick_forever())]
+    # The header's CPU reading (#1522): one shared sampler, awake only while
+    # a page polls /api/system/load.
+    tasks.append(asyncio.create_task(system_load.tick_forever()))
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
     if cfg is not None and canonical:
