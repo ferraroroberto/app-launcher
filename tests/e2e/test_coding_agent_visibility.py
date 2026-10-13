@@ -101,9 +101,18 @@ def _menu(page: Page):
 
 
 def _open_menu(page: Page):
+    """Open the ⋯ menu unless it is open already, and return it.
+
+    "Open" is the anchor's aria-expanded, never the menu's visibility: a
+    rebuild of the rows (the git-status refresh) reopens an open menu on its
+    new, not yet inserted anchor, and the row-menu holds it hidden until the
+    next frame places it. A click in that frame toggles the open menu shut
+    (#1573), so the click is only for a menu that is really closed, and the
+    visibility wait below is what covers the placement."""
     menu = _menu(page)
-    if not menu.is_visible():
-        page.locator('.coding-item[data-id="alpha"] .project-menu-anchor').click()
+    anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
+    if anchor.get_attribute("aria-expanded") != "true":
+        anchor.click()
     expect(menu).to_be_visible()
     return menu
 
