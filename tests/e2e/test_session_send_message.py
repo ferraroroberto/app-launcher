@@ -561,7 +561,7 @@ def _paste_or_drop(page: Page, kind: str, *, with_text: bool = False) -> bool:
 #
 # The composer had no key handler at all, so ➤ was the only way to deliver and
 # the button's title ("Send (with Enter)") promised a shortcut nothing
-# implemented. These four pin the shape the issue asked for: a modifier gesture
+# implemented. These pin the shape the issue asked for: a modifier gesture
 # sends, the bare return key is untouched, and the shortcut is a second way to
 # reach `submit()` rather than a second send path that could skip its gates.
 
@@ -571,33 +571,6 @@ def test_mod_enter_sends_from_the_chat_composer(
     authed_page: Page, base_url: str, modifier: str
 ) -> None:
     # Same modifier gesture, two keyboards: Ctrl on a PC, Cmd on a Mac.
-    captured: dict = {}
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    _mock_input(authed_page, captured, [(200, _UNCONFIRMED_DETACHED)])
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page)
-    field = authed_page.locator(INPUT)
-    field.fill("sent from the keyboard")
-    field.press(f"{modifier}+Enter")
-
-    # Delivered through the same /input route as a tap, and the draft clears.
-    expect(field).to_have_value("")
-    assert captured["body"] == {"data": "sent from the keyboard", "submit": True}
-    expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
-
-
-def test_plain_enter_still_inserts_a_newline_and_sends_nothing(
-    authed_page: Page, base_url: str
-) -> None:
-    # The half of #1072 that must NOT change. Multi-line prompts are the normal
-    # case here, so the return key stays a newline — and on the WebKit/iPhone
-    # projection this is the proof that the phone's on-screen keyboard is
-    # untouched: the binding needs a Ctrl/Cmd the soft keyboard has no key for,
-    # so its return key can never match the guard. That is why the
-    # implementation is a plain modifier check and not a touch-device sniff.
     captured: dict = {}
     calls: list = []
     posts: list = []
@@ -614,12 +587,39 @@ def test_plain_enter_still_inserts_a_newline_and_sends_nothing(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_chat(authed_page)
     field = authed_page.locator(INPUT)
-    field.fill("first line")
-    field.press("Enter")
-    field.type("second line")
 
-    expect(field).to_have_value("first line\nsecond line")
-    assert posts == [], f"a bare Enter sent the draft: {posts}"
+    if modifier == "Control":
+        # The tooltip discrepancy #1072 found: 'Send (with Enter)' described
+        # behaviour no code had, on every surface. Chat opts into the shortcut,
+        # so its title names it. The other half — a non-opted surface must not
+        # claim a shortcut it doesn't have — is pinned on the terminal composer
+        # in test_compose_bar.py, which already has that mount's harness.
+        expect(authed_page.locator(SEND)).to_have_attribute(
+            "title", "Send (Ctrl/Cmd+Enter)"
+        )
+
+        # The half of #1072 that must NOT change. Multi-line prompts are the
+        # normal case here, so the return key stays a newline — and on the
+        # WebKit/iPhone projection this is the proof that the phone's on-screen
+        # keyboard is untouched: the binding needs a Ctrl/Cmd the soft keyboard
+        # has no key for, so its return key can never match the guard. That is
+        # why the implementation is a plain modifier check and not a
+        # touch-device sniff. (Folded in by #1515: it shared this test's boot
+        # and row open, and the plain-Enter and title checks are
+        # modifier-independent, so they ride the first leg only.)
+        field.fill("first line")
+        field.press("Enter")
+        field.type("second line")
+        expect(field).to_have_value("first line\nsecond line")
+        assert posts == [], f"a bare Enter sent the draft: {posts}"
+
+    field.fill("sent from the keyboard")
+    field.press(f"{modifier}+Enter")
+
+    # Delivered through the same /input route as a tap, and the draft clears.
+    expect(field).to_have_value("")
+    assert captured["body"] == {"data": "sent from the keyboard", "submit": True}
+    expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
 
 
 def test_mod_enter_does_not_bypass_a_refused_send(
@@ -661,19 +661,3 @@ def test_mod_enter_does_not_bypass_a_refused_send(
     expect(authed_page.locator("#toast")).to_have_text(re.compile(r"No console input"))
     expect(field).to_have_value("the shortcut must not sneak this through")
     assert posts == [], f"the shortcut bypassed the send gate: {posts}"
-
-
-def test_send_title_names_the_binding_that_exists(
-    authed_page: Page, base_url: str
-) -> None:
-    # The tooltip discrepancy #1072 found: 'Send (with Enter)' described
-    # behaviour no code had, on every surface. Chat opts into the shortcut, so
-    # its title names it. The other half — a non-opted surface must not claim a
-    # shortcut it doesn't have — is pinned on the terminal composer in
-    # test_compose_bar.py, which already has that mount's harness.
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page)
-    expect(authed_page.locator(SEND)).to_have_attribute("title", "Send (Ctrl/Cmd+Enter)")

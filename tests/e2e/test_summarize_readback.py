@@ -74,6 +74,15 @@ _AUDIO_MOCK = """
 _PCM = b"\xc2\xff\xc0\xff\xc5\xff\xca\xff"
 
 
+def _load_readback(page: Page, base_url: str) -> None:
+    """Land on the SPA until the ``window.__readback`` seam exists. These tests
+    drive the JS read-aloud surface through that seam and stubbed audio/hub
+    routes, so they need the page's modules, not a live PTY session or the
+    terminal overlay (#954, #1515)."""
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.wait_for_function("() => window.__readback")
+
+
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
@@ -106,12 +115,12 @@ def _route_hub(page: Page, *, available: bool = True,
 
 
 def test_summarize_reply_returns_summary(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """summarizeReply() POSTs the reply to /api/tts/summarize and resolves the
     hub's condensed summary string."""
     _route_hub(authed_page, summary="Tests pass. Decide whether to merge.")
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => window.__readback.summarizeReply('a long reply', "
         "{ token: 'bt', terminalToken: 'tt' })"
@@ -120,12 +129,12 @@ def test_summarize_reply_returns_summary(
 
 
 def test_summarize_reply_rejects_on_error(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """A failed summarize POST makes summarizeReply() reject, so the click
     handler can surface an error and skip the read."""
     _route_hub(authed_page, summarize_status=502)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     rejected = authed_page.evaluate(
         "async () => { try { await window.__readback.summarizeReply('x', {});"
         " return false; } catch (_) { return true; } }"
@@ -134,14 +143,14 @@ def test_summarize_reply_rejects_on_error(
 
 
 def test_summarize_then_play_composes(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The summarize action's composition: arm the hub audio in the gesture
     (prepareHub), await the summary (summarizeReply), then read it into the
     armed context (speakHubInto) — the audio still plays after the round-trip."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, summary="Shipped. Your call: deploy now?")
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => {"
         "  const handle = window.__readback.prepareHub();"
@@ -179,12 +188,12 @@ def test_menu_offers_both_actions_when_hub_available(
 
 
 def test_summary_modal_autocloses_when_reading_ends(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The summary modal is shown while the summary is read aloud and must
     auto-close the moment reading stops — wired through the speaking-state
     machine, so a natural finish, a stop, or a tab-leave all close it."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     # Open the modal, then drive the speaking state to idle (cancelHub flips it).
     authed_page.evaluate("() => { document.getElementById('summaryModal').hidden = false; }")
     expect(authed_page.locator("#summaryModal")).to_be_visible()
@@ -193,10 +202,10 @@ def test_summary_modal_autocloses_when_reading_ends(
 
 
 def test_summary_modal_tap_dismisses(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """Tapping the modal dismisses it (and stops the read)."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     authed_page.evaluate("() => { document.getElementById('summaryModal').hidden = false; }")
     expect(authed_page.locator("#summaryModal")).to_be_visible()
     authed_page.locator("#summaryModal").click()

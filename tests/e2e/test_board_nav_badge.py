@@ -24,6 +24,7 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e import _fake_clock
 from tests.e2e.test_board_chief import _plan_with
 from tests.e2e.test_board_tab import _FAKE_BOARD, _board_payload, _mock_board
 
@@ -73,6 +74,7 @@ def test_board_badge_counts_your_turn_from_every_tab(
     current = {"body": _board_payload()}
     _route_board(authed_page, current)
     _mock_sessions(authed_page, _SESSIONS)
+    _fake_clock.install(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     tab = authed_page.locator("#tabBoard")
@@ -100,8 +102,9 @@ def test_board_badge_counts_your_turn_from_every_tab(
     empty = copy.deepcopy(current["body"])
     empty["columns"]["your_turn"] = []
     current["body"] = empty
-    with authed_page.expect_response(lambda r: r.url.endswith("/api/board"), timeout=15_000):
-        pass
+    # One Board poll, jumped on the fake clock (#1515) rather than waited out.
+    with authed_page.expect_response(lambda r: r.url.endswith("/api/board")):
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
     expect(badge).to_have_count(0)
     expect(tab).to_have_accessible_name("Board")
 

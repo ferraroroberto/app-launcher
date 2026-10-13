@@ -12,15 +12,14 @@ reachability so the click can pick the path; ``cancelHub()`` closes the context
 
 The ``AudioContext`` and the hub endpoints are stubbed (no live hub on :8000,
 no real audio pipeline in headless WebKit). The JS hub surface is driven
-through the ``window.__readback`` seam, mirroring ``test_voice_readback.py``.
+through the ``window.__readback`` seam, mirroring ``test_voice_readback.py``. No PTY
+session is launched and no terminal opened: the seam exists on module load (#1515).
 """
 
 from __future__ import annotations
 
 import pytest
 from playwright.sync_api import Page
-
-from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
 
@@ -99,9 +98,13 @@ _AUDIO_MOCK = """
 _PCM = b"\xc2\xff\xc0\xff\xc5\xff\xca\xff"
 
 
-def _open_terminal(page: Page, base_url: str, sid: str) -> None:
-    page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+def _load_readback(page: Page, base_url: str) -> None:
+    """Land on the SPA until the ``window.__readback`` seam exists. These tests
+    drive the JS read-aloud surface through that seam and stubbed audio/hub
+    routes, so they need the page's modules, not a live PTY session or the
+    terminal overlay (#954, #1515)."""
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.wait_for_function("() => window.__readback")
 
 
 def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
@@ -125,11 +128,11 @@ def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
 
 
 def test_probe_caches_hub_availability(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """probeHub() reflects the /api/tts/health verdict; isHubAvailable() caches it."""
     _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => { const ok = await window.__readback.probeHub({});"
         " return { ok, cached: window.__readback.isHubAvailable() }; }"
@@ -138,13 +141,13 @@ def test_probe_caches_hub_availability(
 
 
 def test_speak_hub_plays_pcm_via_web_audio(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """speakHub() creates + resumes an AudioContext, POSTs to /api/tts/speak,
     then decodes the PCM stream and schedules it on the Web Audio timeline."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => { const ok = await window.__readback.speakHub("
         "  'Build is green.', { token: 'bt', terminalToken: 'tt' });"
@@ -158,7 +161,7 @@ def test_speak_hub_plays_pcm_via_web_audio(
 
 
 def test_speak_hub_finishes_on_last_buffer_end(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """Playback finalizes on the LAST scheduled buffer's onended (the real end),
     not a timer computed from a possibly-drifted playHead — so a slower-than-
@@ -166,7 +169,7 @@ def test_speak_hub_finishes_on_last_buffer_end(
     onended resets the button to idle."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     pressed = authed_page.evaluate(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
         " window.__lastNode.onended();"   # the final buffer drains
@@ -177,13 +180,13 @@ def test_speak_hub_finishes_on_last_buffer_end(
 
 
 def test_speak_hub_failure_rejects_for_fallback(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """A failed POST makes speakHub() reject, so the click handler can fall
     back to Web Speech."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True, speak_status=502)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     rejected = authed_page.evaluate(
         "async () => { try { await window.__readback.speakHub('hi', {}); return false; }"
         " catch (_) { return true; } }"
@@ -192,13 +195,13 @@ def test_speak_hub_failure_rejects_for_fallback(
 
 
 def test_cancel_hub_stops_audio(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """cancelHub() closes the AudioContext (silencing scheduled audio) and
     resets the button to idle."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
         " window.__readback.cancelHub();"
@@ -211,7 +214,7 @@ def test_cancel_hub_stops_audio(
 
 
 def test_screen_lock_reschedules_pending_buffers(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """A screen-lock mid-playback (#248) must not drop the read-aloud tail.
 
@@ -223,7 +226,7 @@ def test_screen_lock_reschedules_pending_buffers(
     new clock position (no buffer lost) and playback must not finish early."""
     authed_page.add_init_script(_AUDIO_MOCK)
     _route_hub(authed_page, available=True)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => {"
         "  await window.__readback.speakHub('Reading a long reply.', {});"
@@ -254,13 +257,13 @@ def test_screen_lock_reschedules_pending_buffers(
 
 
 def test_chunk_for_hub_bounds_long_text(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """chunkForHub() keeps every segment under the per-request budget and loses
     no text (#254). A short reply stays a single segment (one request, unchanged);
     a long reply splits into several bounded segments whose concatenation still
     covers the whole input."""
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "() => {"
         "  const short = 'Build is green.';"
@@ -289,7 +292,7 @@ def test_chunk_for_hub_bounds_long_text(
 
 
 def test_long_reply_issues_multiple_bounded_requests(
-    authed_page: Page, base_url: str, launched_pty_session: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The acceptance for #254: a verbatim reply longer than the hub's per-request
     cap (~49.6 s of speech ≈ ~900 chars) must NOT be silently truncated. The hub
@@ -318,7 +321,7 @@ def test_long_reply_issues_multiple_bounded_requests(
         ),
     )
     authed_page.route("**/api/tts/speak", _capture)
-    _open_terminal(authed_page, base_url, launched_pty_session)
+    _load_readback(authed_page, base_url)
 
     # ~1800 chars ≈ 98 s of Orpheus speech at the measured ~18 chars/s — well past
     # the single-request ~49.6 s / ~900-char cap, so a non-chunking path truncates.

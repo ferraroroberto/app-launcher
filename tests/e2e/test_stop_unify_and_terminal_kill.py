@@ -12,10 +12,12 @@ Two iPhone bites in one issue:
 Complements ``test_smoke.py``'s per-row button assertion; this one drives
 the terminal-view kill end to end.
 
-Both tests open the terminal by tapping the session row, which is an *in-page*
+One test covers both (the row-stop and bar-anatomy checks were folded into the
+kill test by #1515, which shared its stub launch and overlay open). It opens
+the terminal by tapping the session row, which is an *in-page*
 terminal only on a touch (phone) client now — a desktop browser opens a
-dedicated PC Edge mirror window instead (issue #282). So they run on the
-iPhone (WebKit) projection, where the in-page terminal view they exercise is
+dedicated PC Edge mirror window instead (issue #282). So it runs on the
+iPhone (WebKit) projection, where the in-page terminal view it exercises is
 the real behaviour; the desktop row-tap is covered by
 ``test_desktop_session_mirror.py``.
 """
@@ -53,7 +55,7 @@ def _skip_unless_phone(browser_name: str) -> None:
         )
 
 
-def test_terminal_view_has_back_arrow_and_session_menu(
+def test_kill_from_terminal_view_stops_and_returns_to_list(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
     _skip_unless_phone(browser_name)
@@ -62,14 +64,11 @@ def test_terminal_view_has_back_arrow_and_session_menu(
         "Build:", timeout=BUILD_READOUT_MS
     )
 
-    # Target the row for the session THIS test launched, by id — never
-    # ".first", which on a shared/live host could be the user's own session
-    # (issue #260). The disposable autoboot host makes this deterministic.
+    # Scope to the session this test launched (issue #260) — never ".first".
     pty_row = authed_page.locator(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
     )
     expect(pty_row).to_be_visible(timeout=8_000)
-
     # The row's stop is the one inside its kebab menu (#1025) — the unified
     # 🛑 (issue #253). It is never a control loose on the row itself, and
     # the menu stays closed until the kebab is tapped.
@@ -82,6 +81,10 @@ def test_terminal_view_has_back_arrow_and_session_menu(
     authed_page.wait_for_selector(
         "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
+
+    # One tap stops — stopSession() no longer guards with a confirm() dialog
+    # (issue #253 follow-up); a stray dialog would mean the guard came back.
+    authed_page.on("dialog", lambda d: pytest.fail(f"unexpected dialog: {d.message}"))
 
     # The icon-only back arrow and the ⋮ session menu live in the bar; the
     # old permanent ✕ and ↓ are gone from it (#981).
@@ -105,33 +108,9 @@ def test_terminal_view_has_back_arrow_and_session_menu(
         "aria-expanded", "true"
     )
 
-
-def test_kill_from_terminal_view_stops_and_returns_to_list(
-    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
-) -> None:
-    _skip_unless_phone(browser_name)
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    expect(authed_page.locator("#buildReadout")).to_contain_text(
-        "Build:", timeout=BUILD_READOUT_MS
-    )
-
-    # Scope to the session this test launched (issue #260) — never ".first".
-    pty_row = authed_page.locator(
-        f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
-    )
-    expect(pty_row).to_be_visible(timeout=8_000)
-    pty_row.locator(".session-open").click()
-    authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
-    )
-
-    # One tap stops — stopSession() no longer guards with a confirm() dialog
-    # (issue #253 follow-up); a stray dialog would mean the guard came back.
-    authed_page.on("dialog", lambda d: pytest.fail(f"unexpected dialog: {d.message}"))
-
     # Two taps from the terminal since #981, and since #1025 the only taps
-    # there are: ⋮, then Stop and kill.
-    authed_page.locator("#terminalMenu").click()
+    # there are: ⋮, then Stop and kill. The menu is already open from the
+    # check above (#1515 folded that test in), so tap Stop and kill straight.
     authed_page.get_by_role("menuitem", name="Stop and kill session").click()
 
     # The stop POST waits out the graceful-then-force window on the host;

@@ -153,10 +153,23 @@ def test_ctrl_toggle_sends_control_c(
     base_url: str,
     launched_pty_session: str,
     wait_for_session_log,
+    session_log_path,
 ) -> None:
     """Issue #986: Ctrl is a sticky toggle like ⇧ — Ctrl then C sends \\x03
     (interrupt). C/U/X are disabled until Ctrl is armed (so a stray tap can't
     type a letter into the prompt), and Ctrl/⇧ are mutually exclusive.
+
+    Issue #1024 (folded in by #1515): one C tap is one ``\\x03`` — the launcher
+    never doubles it. #1024 reported that one Ctrl+C from the popover does not
+    cancel a Grok turn; live ConPTY probes of Grok Build 1.0.34 disproved the
+    premise (a single ``\\x03`` cancels a running turn; the "press again to
+    quit" is Grok's *idle* Ctrl+C), so the fix is no byte change and this pins
+    that. The obvious wrong fix (``CTRL_KEY_BYTES.c = '\\x03\\x03'``, or a second
+    ``send`` per tap) would be a second interrupt for Claude Code, which acts on
+    the first. The needle is the whole logged chunk (``[input] '\\x03'\\n``)
+    because ``session_input`` writes one ``repr()``-ed line per chunk, so a
+    doubled byte logs as ``'\\x03\\x03'`` and fails the equality rather than
+    hiding inside a substring match.
     """
     sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
@@ -197,64 +210,9 @@ def test_ctrl_toggle_sends_control_c(
     expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
     c_key.click()
     expect(popover).to_be_visible()
-    assert wait_for_session_log(authed_page, sid, "\\x03"), (
-        "Ctrl + C did not deliver the interrupt byte to "
+    assert wait_for_session_log(authed_page, sid, "[input] '\\x03'\n"), (
+        "Ctrl + C did not deliver a bare \\x03 chunk to "
         f"webapp/sessions/{sid}.log — the phone can't interrupt a live agent"
-    )
-
-    # Ctrl stays armed across the tap (chaining a second interrupt); closing
-    # the popover releases it.
-    expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
-    ctrl.click()
-    expect(ctrl).not_to_have_class(re.compile(r"\bactive\b"))
-    expect(c_key).to_be_disabled()
-
-
-def test_ctrl_c_delivers_exactly_one_interrupt_byte(
-    authed_page: Page,
-    base_url: str,
-    launched_pty_session: str,
-    wait_for_session_log,
-    session_log_path,
-) -> None:
-    """Issue #1024: one C tap is one ``\\x03`` — the launcher never doubles it.
-
-    #1024 reported that one Ctrl+C from the popover does not cancel a Grok
-    turn, and proposed sending whatever Grok needs. Live ConPTY probes of
-    Grok Build 1.0.34 disproved the premise: a single ``\\x03`` cancels a
-    running turn ("Turn cancelled by user"), and the "press again to quit"
-    the report saw is Grok's *idle* Ctrl+C — the quit confirmation it prints
-    when there is no turn to cancel. So the fix is no byte change, and this
-    pins that: the obvious wrong fix (``CTRL_KEY_BYTES.c = '\\x03\\x03'``, or
-    a second ``send`` per tap) would be a second interrupt for Claude Code,
-    which acts on the first.
-
-    ``test_ctrl_toggle_sends_control_c`` above pins the toggle mechanics and
-    that the byte arrives at all; this one counts. The needle is the whole
-    logged chunk (``[input] '\\x03'\\n``) because ``session_input`` writes one
-    ``repr()``-ed line per chunk, so a doubled byte logs as ``'\\x03\\x03'``
-    and fails the equality rather than hiding inside a substring match.
-    """
-    sid = launched_pty_session
-    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
-    authed_page.wait_for_function(
-        "() => document.getElementById('terminalStatus') "
-        "&& document.getElementById('terminalStatus').hidden === true",
-        timeout=OVERLAY_OPEN_MS,
-    )
-
-    authed_page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
-    popover = authed_page.locator("#terminalComposeBar .keys-popover")
-    authed_page.locator("#terminalComposeBar .composer-keys").click()
-    expect(popover).to_be_visible()
-    authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="ctrl"]').click()
-    authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="c"]').click()
-
-    needle = "[input] '\\x03'\n"
-    assert wait_for_session_log(authed_page, sid, needle), (
-        f"Ctrl + C did not deliver a bare \\x03 chunk to webapp/sessions/{sid}.log"
     )
     # Settle past the poller's own granularity so a (wrongly) queued second
     # write would have landed before the count is taken.
@@ -266,6 +224,13 @@ def test_ctrl_c_delivers_exactly_one_interrupt_byte(
         f"{len(interrupts)} — Claude Code acts on the first \\x03, so a second "
         f"is a second interrupt. Input lines: {[ln for ln in log.splitlines() if '[input]' in ln]}"
     )
+
+    # Ctrl stays armed across the tap (chaining a second interrupt); closing
+    # the popover releases it.
+    expect(ctrl).to_have_class(re.compile(r"\bactive\b"))
+    ctrl.click()
+    expect(ctrl).not_to_have_class(re.compile(r"\bactive\b"))
+    expect(c_key).to_be_disabled()
 
 
 def test_no_stale_ctrlc_quit_buttons(authed_page: Page, base_url: str) -> None:

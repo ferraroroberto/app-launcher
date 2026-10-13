@@ -61,3 +61,10 @@ def wait_for_interval(page: Page, ms: int, calls: str | None = None) -> None:
         " && (!calls || s.includes(calls)))",
         arg=[ms, calls],
     )
+
+
+def jump_interval(page: Page, ms: int, calls: str | None = None) -> None:
+    """Fire the poll armed at ``ms`` once: wait for it to exist, then jump one
+    full period. The replacement for waiting out a real poll interval (#1515)."""
+    wait_for_interval(page, ms, calls)
+    advance(page, ms)
