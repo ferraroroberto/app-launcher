@@ -50,7 +50,7 @@ export function actionRow(opts) {
     const fav = document.createElement('button');
     fav.type = 'button';
     // `star-btn` stays as the hook the e2e suite has always used.
-    fav.className = 'action-row-fav star-btn';
+    fav.className = 'icon-button action-row-fav star-btn';
     fav.setAttribute('aria-pressed', opts.favorite.on ? 'true' : 'false');
     fav.title = opts.favorite.on
       ? 'Unstar (remove from favorites)'
@@ -120,7 +120,7 @@ export function actionRow(opts) {
   if (opts.kebabLabel) {
     kebab = document.createElement('button');
     kebab.type = 'button';
-    kebab.className = 'action-row-kebab' + (opts.kebabClass ? ' ' + opts.kebabClass : '');
+    kebab.className = 'icon-button action-row-kebab' + (opts.kebabClass ? ' ' + opts.kebabClass : '');
     kebab.innerHTML = icon('ellipsis-vertical');
     kebab.title = opts.kebabLabel;
     kebab.setAttribute('aria-label', opts.kebabLabel);

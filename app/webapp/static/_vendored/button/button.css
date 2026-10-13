@@ -42,7 +42,7 @@
  * tinted fill. button-surface is a labelled toolbar/utility button at the
  * control height; a glyph-only control is not a tier here but its own
  * component, icon-button/ (unpainted at rest, fleet-config#1259). Every tier shares the one button-disabled recipe (flat
- * card-off / line / muted trio — AA in both themes). A destructive action
+ * card-off / line / muted trio — 4.93:1 light, 4.08:1 dark; see the disabled rule). A destructive action
  * restates the tint recipe on `.danger` (deficit-tinted border and shade, danger-text text);
  * status colors never fill a non-status button.
  *
@@ -102,7 +102,9 @@
 }
 
 .button-surface {
-  background: var(--card-off);
+  /* The control fill (--input-bg): card-off in light, border-muted (#21262d)
+     in dark, never true black on a dark card (fleet-config#1375). */
+  background: var(--input-bg, var(--card-off));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   height: var(--control-h);
@@ -114,10 +116,16 @@
   font-weight: 600;
   cursor: pointer;
 }
+/* Dark label is fg (12.88:1 on the control fill); fg-muted would be 4.08:1
+   (fleet-config#1375). Sits before the disabled rule so that stays muted. */
+[data-theme="dark"] .button-surface { color: var(--ink); }
 
 /* One disabled recipe for every tier, both themes (home-automation#362):
    opacity on a solid fill blends sub-AA either way; the flat card-off/line/
-   muted trio reads identically greyed-out in both themes and passes AA.
+   muted trio reads identically greyed-out in both themes. Measured muted-on-
+   fill: 4.93:1 light, 4.08:1 dark, so dark is under the 4.5:1 AA text bar.
+   Accepted: WCAG 2.2 SC 1.4.3 exempts text in an inactive UI component.
+   Do not raise the colours without the owner (project-scaffolding#360).
    The fill is the control fill (--input-bg): card-off in light, border-muted
    (#21262d) in dark, never true black on a dark card (fleet-config#1368). */
 .button-primary:disabled,

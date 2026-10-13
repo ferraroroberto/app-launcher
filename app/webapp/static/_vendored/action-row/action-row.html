@@ -5,7 +5,15 @@
      a SIBLING of the main button so taps never nest. Drop `.action-row-fav`,
      `.action-row-meta` and `.action-row-verb` when the row has none.
      The kebab's menu is app-side (see README): its last item is the
-     destructive one, after a divider, in danger-text, behind a confirm. -->
+     destructive one, after a divider, in danger-text, behind a confirm.
+
+     The second row shows the optional extensions (#341): a leading avatar
+     INSIDE the main button (title and meta then move into .action-row-text),
+     its badge as data-badge="up|down" (omit it when the item is plainly off),
+     and one trailing item in place of the kebab (here a switch; or a value,
+     a stepper or a segmented verb cluster). The row tap opens the item's
+     detail sheet. The third row leads with a check instead (one leading slot
+     per row) and trails a value. -->
 <div class="card action-list">
   <label class="action-row-filter">
     <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
@@ -13,7 +21,7 @@
   </label>
   <ul class="action-rows">
     <li class="action-row">
-      <button type="button" class="action-row-fav" aria-pressed="true" aria-label="Favorite">
+      <button type="button" class="icon-button action-row-fav" aria-pressed="true" aria-label="Favorite">
         <svg class="icon action-row-fav-off" aria-hidden="true"><use href="#i-star"></use></svg>
         <svg class="icon action-row-fav-on" aria-hidden="true"><use href="#i-star-fill"></use></svg>
       </button>
@@ -21,13 +29,43 @@
         <span class="action-row-title">journal-daily</span>
         <span class="action-row-meta">Last run yesterday · 3 conversations</span>
       </button>
-      <button type="button" class="action-row-verb" aria-label="Run">
+      <button type="button" class="icon-button action-row-verb" aria-label="Run">
         <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>
       </button>
-      <button type="button" class="action-row-kebab" aria-label="More actions"
+      <!-- A verb that stops or destroys (Stop, Delete, Remove) is outlined, never tinted:
+           <button type="button" class="icon-button action-row-verb action-row-verb--stop" aria-label="Stop">
+             <svg class="icon" aria-hidden="true"><use href="#i-square"></use></svg>
+           </button> -->
+      <button type="button" class="icon-button action-row-kebab" aria-label="More actions"
               aria-haspopup="menu" aria-expanded="false">
         <svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"></use></svg>
       </button>
+    </li>
+    <li class="action-row">
+      <button type="button" class="action-row-main" aria-haspopup="dialog">
+        <span class="action-row-avatar" data-badge="up" aria-hidden="true">
+          <svg class="icon"><use href="#i-plug"></use></svg>
+        </span>
+        <span class="action-row-text">
+          <span class="action-row-title">Sample plug</span>
+          <span class="action-row-meta">On · 12 W</span>
+        </span>
+      </button>
+      <button type="button" class="toggle on action-row-trail" role="switch"
+              aria-checked="true" aria-label="Sample plug">
+        <span class="knob"></span><span class="toggle-label">ON</span>
+      </button>
+    </li>
+    <li class="action-row">
+      <button type="button" class="icon-button action-row-check" aria-pressed="false" aria-label="Got it">
+        <svg class="icon action-row-check-off" aria-hidden="true"><use href="#i-circle"></use></svg>
+        <svg class="icon action-row-check-on" aria-hidden="true"><use href="#i-circle-check"></use></svg>
+      </button>
+      <button type="button" class="action-row-main" aria-haspopup="dialog">
+        <span class="action-row-title">Olive oil</span>
+        <span class="action-row-meta">Oils · 1 left</span>
+      </button>
+      <span class="action-row-trail action-row-value">2</span>
     </li>
   </ul>
 </div>

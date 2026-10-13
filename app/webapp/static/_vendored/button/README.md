@@ -5,7 +5,7 @@ The fleet's canonical **button**: four tiers covering every action, settled by t
 - `.button-primary` — solid `accent-fill`. The one main action per view.
 - `.button-tint` — accent-soft fill, `accent-text` text, soft accent border. Secondary emphasis. **A tint is not a ghost.**
 - `.button-ghost` — transparent fill, hairline border, muted text. Quiet tertiary actions. **Ghost means transparent** — a tinted fill is a tint, never a "ghost".
-- `.button-surface` — card-off fill at control height. Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
+- `.button-surface` — the control fill (`--input-bg`: `card-off` in light, `border-muted` `#21262d` in dark, never a black well) at control height; the dark label is `--ink` (`fg`, 12.88:1), not `--muted` (4.08:1) (fleet-config#1375, project-scaffolding#358). Labelled toolbar/utility buttons. A glyph-only control is not a button tier: it is [`icon-button/`](../icon-button/), unpainted at rest (fleet-config#1259).
 - `.button-tint.danger` — the tint recipe restated on `--deficit`, text in `--danger-text`, for a destructive action.
 - Text on a tint is always the `*-text` token and the primary fills with `--accent-fill` (fleet-config#963): the base hue drops under AA on its own tint, and white on the dark base accent is 3.75:1.
 - One shared `:disabled` recipe applies to all four tiers (home-automation#362) — the flat control-fill/line/muted trio, never opacity on a solid fill. The disabled fill is `--input-bg`: `card-off` in light, `border-muted` (`#21262d`) in dark, so a disabled button never reads as a black well on a dark card (fleet-config#1368, project-scaffolding#356).
@@ -64,10 +64,11 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | tint fill |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | tint border |
 | `--accent-border-strong` | `color-mix(in srgb, var(--accent) 28%, transparent)` | primary border |
-| `--card-off` | `#f6f8fa` | surface fill |
-| `--input-bg` | `#f6f8fa` (dark `#21262d`) | disabled fill (all tiers); falls back to `var(--card-off)` if undefined |
+| `--card-off` | `#f6f8fa` | fallback fill when `--input-bg` is undefined |
+| `--input-bg` | `#f6f8fa` (dark `#21262d`) | surface fill and disabled fill (all tiers); falls back to `var(--card-off)` if undefined |
+| `--ink` | `#1f2328` (dark `#e6edf3`) | surface label, dark theme only (`[data-theme="dark"]`) |
 | `--line` | `#d1d9e0` | ghost/surface border, disabled border |
-| `--muted` | `#656d76` | ghost/surface text, disabled text |
+| `--muted` | `#656d76` | ghost text, light surface text, disabled text |
 | `--deficit` | `#cf222e` | base the danger tint mixes from |
 | `--danger-text` | `#a40e26` (dark `#ff7b72`) | danger text |
 | `--deficit-soft` | `color-mix(in srgb, var(--deficit) 12%, transparent)` | danger fill |

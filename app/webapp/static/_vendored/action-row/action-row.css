@@ -12,15 +12,35 @@
  * Every other action sits behind ONE trailing 44px kebab, a sibling of the
  * main button so taps never nest. A row may add at most one leading toggle
  * (.action-row-fav) and at most one other visible action (.action-row-verb),
- * only when it is the row's dominant verb. Title: body at 600, one line,
- * ellipsized, never broken mid-word; context: at most one body-sm line in
- * muted. No vertical rules between controls. Destructive actions live in the
- * row menu, never on the row (the menu is app-side, see README).
+ * only when it is the row's dominant verb. That verb is tinted unless it stops
+ * or destroys something: Stop, Delete and Remove take the outlined recipe
+ * (.action-row-verb--stop), never the tint (fleet-config#1386, #361). Title:
+ * body at 600, one line, ellipsized, never broken mid-word; context: at most
+ * one body-sm line in muted. No vertical rules between controls. Other
+ * destructive actions live in the row menu, never on the row (the menu is
+ * app-side, see README).
+ *
+ * The accessories are `.icon-button`s (icon-button/, fleet-config#1259): the
+ * markup carries both classes and icon-button.css, linked alongside, owns the
+ * unpainted box, the glyph states and the target. Here each takes the 44px
+ * row box (--icon-btn-box: --row-sm, so the target needs no expansion) and
+ * only the row-specific rules below remain: the favorite's glyph swap, the
+ * verb's tint (or its outlined stop variant) and the open kebab's accent.
  *
  * Geometry: the accessories are real 44x44 boxes sitting side by side with no
  * gap, so their hit rectangles touch but never overlap (design.md "Touch
  * targets", adjacent cluster). Heights come from the rows scale: a one-line
  * row is --row-md, a row with a context line is --row-lg.
+ *
+ * Optional extensions (project-scaffolding#341, normalized from
+ * home-automation's row.js, #880): exactly one leading slot, which may be
+ * an avatar (design.md `avatar`) INSIDE the main button, so it is part of the
+ * row's tap target, or a check (.action-row-check) as the leading toggle;
+ * and, in place of the kebab, exactly one trailing item (.action-row-trail):
+ * a switch, a value, a stepper or a segmented verb cluster, a sibling of the
+ * main button so a press on it never opens the row's detail sheet. Every
+ * rule below that serves them is new and selects only their own classes, so
+ * a row without them renders exactly as before.
  */
 
 /* The rows are full-bleed, so the card that holds them drops its padding.
@@ -88,52 +108,149 @@
   color: var(--muted);
 }
 
-/* Accessories: the leading toggle, the dominant verb and the kebab share one
- * 44px square. */
-.action-row-fav,
-.action-row-verb,
-.action-row-kebab {
-  flex: none;
-  width: var(--row-sm);
-  height: var(--row-sm);
-  display: inline-flex;
+/* A leading avatar sits inside the main button, so the text column moves into
+ * an .action-row-text wrapper beside it. Only a main button holding an avatar
+ * switches to a row layout. */
+.action-row-main:has(> .action-row-avatar) {
+  flex-direction: row;
   align-items: center;
+  justify-content: flex-start;
+  gap: var(--gap);
+}
+.action-row-text {
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  padding: 0;
-  border: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Avatar (design.md `avatar`): a 36px rounded.md squircle on neutral-soft with
+ * one nav-tab-size glyph in fg. It is decoration (the caller marks it
+ * aria-hidden); whatever it says, the meta line says too. */
+.action-row-avatar {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;                 /* avatar.size */
+  height: 36px;
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  line-height: normal;
-  cursor: pointer;
+  background: var(--neutral-soft);
+  color: var(--ink);
 }
-.action-row-fav .icon,
-.action-row-verb .icon,
-.action-row-kebab .icon {
-  width: var(--icon-inline);
-  height: var(--icon-inline);
+.action-row-avatar .icon {
+  width: var(--bottom-tabs-icon, 20px);    /* icons.size.nav-tab */
+  height: var(--bottom-tabs-icon, 20px);
 }
+/* The corner badge means alive and nothing else: up = connected and running
+ * (success), down = should be reachable and is not (danger). No badge when
+ * the item is simply off. Ringed in card so it reads cut out. Only the two
+ * known values paint, so a stray value can never draw a success dot. */
+.action-row-avatar:is([data-badge="up"], [data-badge="down"])::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 12px;                 /* avatar.badgeSize */
+  height: 12px;
+  border-radius: 50%;
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--card);
+}
+.action-row-avatar[data-badge="down"]::after { background: var(--deficit); }
+
+/* Accessories: the leading toggle, the dominant verb and the kebab share one
+ * 44px square (icon-button's box; the glyph is its 16px --icon-inline). */
+.action-row-fav,
+.action-row-check,
+.action-row-verb,
+.action-row-kebab { --icon-btn-box: var(--row-sm); }
+
+/* Check: the other leading toggle (an item got, a step done). An empty circle
+ * at rest, a checked one when pressed: the glyph's shape is the channel that
+ * reads without hue, and icon-button's pressed colour (accent-text) is the
+ * second. The caller flips aria-pressed only. The pressed colour holds under
+ * hover (icon-button's hover would otherwise win, and a tap leaves a sticky
+ * hover on a phone), as the favorite's does. */
+.action-row-check .action-row-check-on { display: none; }
+.action-row .action-row-check[aria-pressed="true"],
+.action-row .action-row-check[aria-pressed="true"]:not(:disabled):hover {
+  color: var(--accent-text);
+}
+.action-row-check[aria-pressed="true"] .action-row-check-off { display: none; }
+.action-row-check[aria-pressed="true"] .action-row-check-on { display: inline-block; }
 
 /* Favorite: an outline star at rest, a filled one when pressed. The fill is
  * the channel that reads without hue (a CSS fill cannot reach the sprite's
  * fill="none" symbols, hence the two glyphs); the caller flips aria-pressed
- * only. */
+ * only. `.action-row` in the selectors lifts them above icon-button's own
+ * pressed/hover colours whatever the link order. */
 .action-row-fav .action-row-fav-on { display: none; }
-.action-row-fav[aria-pressed="true"] { color: var(--attention); }
+.action-row .action-row-fav[aria-pressed="true"],
+.action-row .action-row-fav[aria-pressed="true"]:not(:disabled):hover {
+  color: var(--attention);
+}
 .action-row-fav[aria-pressed="true"] .action-row-fav-off { display: none; }
 .action-row-fav[aria-pressed="true"] .action-row-fav-on { display: inline-block; }
 
 /* The one visible dominant verb (Run on a job row): the tint recipe at the
- * 44px square. */
-.action-row-verb {
-  margin-right: 4px;
-  border: 1px solid var(--accent-border-soft);
-  background: var(--accent-soft);
+ * 44px square — the one accessory that is painted, so it overrides
+ * icon-button's border, fill, radius and hover glyph colour. */
+.action-row .action-row-verb,
+.action-row .action-row-verb:not(:disabled):hover {
   color: var(--accent-text);
 }
+.action-row .action-row-verb {
+  margin-right: 4px;
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+}
 
-.action-row-kebab[aria-expanded="true"] { color: var(--accent); }
+/* The same verb when it stops or destroys something (Stop, Delete, Remove;
+ * fleet-config#1386): never the tinted one, even as the row's only visible
+ * verb, so the most prominent control on a list of running things is not the
+ * one that ends them. The outlined recipe (button-ghost: transparent on a
+ * hairline) at the same 44px, radius and margin. The boundary is
+ * --control-border so the box still reads at 3:1; the glyph is --ink. It
+ * restates the colour under hover and sits after the tint, so it wins at
+ * equal specificity. */
+.action-row .action-row-verb--stop,
+.action-row .action-row-verb--stop:not(:disabled):hover {
+  color: var(--ink);
+}
+.action-row .action-row-verb--stop {
+  border-color: var(--control-border);
+  background: transparent;
+}
+
+.action-row .action-row-kebab[aria-expanded="true"],
+.action-row .action-row-kebab[aria-expanded="true"]:not(:disabled):hover {
+  color: var(--accent);
+}
+
+/* The one trailing item in place of the kebab: a switch (.toggle), a value, a
+ * stepper or a segmented verb cluster. The row tap opens the detail sheet,
+ * which holds every other action. Inset so its right edge lines up with the
+ * text column's left inset (row 4px + this 10px = main's 4px + 10px). The
+ * item brings its own 44px target. */
+.action-row-trail {
+  flex: none;
+  margin-right: 10px;
+}
+/* A value: one tabular figure in fg (a reading, a price, a count). */
+.action-row-value {
+  color: var(--ink);
+  font-size: var(--font-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* A segmented verb cluster (segmented/ with `segmented--verbs`): 44px per
+ * segment, so each glyph segment is a real 44x44 target; the cluster sizes to
+ * its segments instead of stretching across the row. */
+.action-row-trail.segmented { grid-auto-columns: var(--row-sm); }
 
 /* Filter field above a list that can exceed ~12 rows: 44px, a control-border
  * boundary on card, one ring around the whole field on keyboard focus. */

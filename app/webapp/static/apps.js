@@ -428,10 +428,12 @@ function renderIdleLine() {
 // A running row's common actions as visible buttons (#1505): CSS shows them
 // at the wide layout only, where hiding them behind the kebab is a phone
 // compromise; the kebab keeps them for the phone. Open is also the row tap.
+// Open and Copy are plain verbs; Stop ends the app, so it is the vendored
+// outlined stop verb (action-row-verb--stop, fleet-config#1386).
 function runningVerb(className, glyph, label, onTap, disabled, hint) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'row-verb-plain ' + className;
+  btn.className = className;
   btn.innerHTML = icon(glyph);
   btn.title = disabled ? hint : label;
   btn.setAttribute('aria-label', label);
@@ -444,11 +446,12 @@ function runningActions(r, noUrl) {
   const box = document.createElement('span');
   box.className = 'running-app-actions';
   box.append(
-    runningVerb('running-app-open-inline', 'globe', 'Open ' + r.name,
+    runningVerb('row-verb-plain running-app-open-inline', 'globe', 'Open ' + r.name,
       function () { window.open(r.url, '_blank', 'noopener,noreferrer'); }, !r.url, noUrl),
-    runningVerb('running-app-copy-inline', 'copy', 'Copy ' + r.name + ' URL',
+    runningVerb('row-verb-plain running-app-copy-inline', 'copy', 'Copy ' + r.name + ' URL',
       function () { copyUrl(r.url); }, !r.url, noUrl),
-    runningVerb('running-app-stop-inline', 'square', 'Stop ' + r.name,
+    runningVerb('icon-button action-row-verb action-row-verb--stop running-app-stop-inline',
+      'square', 'Stop ' + r.name,
       function () { stopAppInstance(r); }),
   );
   return box;

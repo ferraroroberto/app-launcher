@@ -338,6 +338,18 @@
     backdrop-filter: blur(20px) saturate(1.25);
     -webkit-backdrop-filter: blur(20px) saturate(1.25);
   }
+  /* Hit area only, never painted (#348, TOUCH-02). Each tab's tap rectangle
+     is square-cornered, but the bar's rounded corners (radius-nav) take no
+     taps outside the curve, so a list row scrolled under the pill took taps
+     in the outer tabs' corner slivers. This transparent square layer below
+     the tabs (they are z-index 1) gives the bar its whole padding box, so the
+     nav wins every point of every tab rectangle. It inherits the modal-hide
+     rule's visibility and pointer-events from .tabs. */
+  .tabs::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
 
   /* Standalone-PWA nav anchoring (home-automation#303, pairs with the shell
      above; placed after the base rule so the cascade picks it). Two changes:
