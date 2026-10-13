@@ -2783,9 +2783,9 @@ def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
     from src import active_issue_claims
 
     cards = [
-        {"session_id": "s-stall", "status": "stalled", "label": ""},
-        {"session_id": "s-wait", "status": "awaiting-decision", "label": ""},
-        {"session_id": "s-work", "status": "working", "label": ""},
+        {"session_id": "s-stall", "status": "stalled", "label": "", "age_seconds": 900},
+        {"session_id": "s-wait", "status": "awaiting-decision", "label": "", "age_seconds": 60},
+        {"session_id": "s-work", "status": "working", "label": "", "age_seconds": 540},
         {"session_id": "s-chief", "status": "awaiting-input", "label": "chief"},
         {"session_id": None, "status": "stalled", "label": ""},
     ]
@@ -2793,9 +2793,10 @@ def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
     monkeypatch.setattr(active_issue_claims, "classify_claims", lambda *a, **k: {})
     placed = board.session_board_columns([], {}, {}, fleet_config_dir=tmp_path)
     assert placed == {
-        "s-stall": {"column": "your_turn", "status": "stalled"},
-        "s-wait": {"column": "your_turn", "status": "awaiting-decision"},
-        "s-work": {"column": "claude_turn", "status": "working"},
-        "s-chief": {"column": "claude_turn", "status": "awaiting-input"},
+        "s-stall": {"column": "your_turn", "status": "stalled", "age_seconds": 900},
+        "s-wait": {"column": "your_turn", "status": "awaiting-decision", "age_seconds": 60},
+        "s-work": {"column": "claude_turn", "status": "working", "age_seconds": 540},
+        # No age anchor on the card: carried as None (unknown), never 0.
+        "s-chief": {"column": "claude_turn", "status": "awaiting-input", "age_seconds": None},
     }
 

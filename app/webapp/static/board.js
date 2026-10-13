@@ -65,7 +65,7 @@ import {
   isChannelSession,
 } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
-import { avatar, chip } from './glance.js';
+import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
@@ -121,34 +121,6 @@ function sessionLabel(card) {
 }
 
 
-// #608: the hook-written needs-you is split server-side into five
-// caller-actionable values (src/board_transcript.py::_refine_waiting_status)
-// — the raw "needs-you" string itself never reaches a card's status field.
-// tool-pending (#813) is a pending ordinary tool_use — genuinely ambiguous
-// between "still executing" and "permission-gated", so it renders as an
-// ambient working-ish state rather than an alert.
-const STATUS_META = {
-  working: { text: 'working', cls: 'is-working' },
-  'tool-pending': { text: 'running', cls: 'is-tool-pending' },
-  stalled: { text: 'stalled', cls: 'is-stalled' },
-  'awaiting-decision': { text: 'awaiting decision', cls: 'is-awaiting-decision' },
-  'awaiting-input': { text: 'needs you', cls: 'is-awaiting-input' },
-  'idle-finished': { text: 'finished', cls: 'is-idle-finished' },
-  idle: { text: 'idle', cls: 'is-idle' },
-  unknown: { text: '', cls: 'is-unknown' },
-};
-
-// The chief's Stop-hook status sits in the needs-you family for nearly all
-// of its life between dispatches (#575) — the server already routes it out
-// of Your turn (build_board's _is_chief_card carve-out). #608 sharpened
-// what "resting state" actually means: idle-finished/awaiting-input/
-// awaiting-decision are all ordinary waiting for a long-lived chat session,
-// so they get the same "standing by" label. stalled is deliberately
-// excluded — a chief dispatch that's been outstanding this long is a real
-// anomaly worth surfacing, not hiding behind a benign label.
-const CHIEF_STANDING_BY_STATUSES = new Set(['idle-finished', 'awaiting-input', 'awaiting-decision']);
-const CHIEF_STANDING_BY_META = { text: 'standing by', cls: 'is-idle' };
-
 // ----------------------------------------------------------------- cards
 
 // Every Board row is the shared action-row (#1501, #1502): one title line
@@ -181,10 +153,7 @@ function openUrl(url) {
 // (#958); the card's fresh header is swapped into it instead of a new drawer.
 function renderSessionCard(card, openItem) {
   const chief = isChiefCard(card);
-  const meta =
-    chief && CHIEF_STANDING_BY_STATUSES.has(card.status)
-      ? CHIEF_STANDING_BY_META
-      : STATUS_META[card.status] || STATUS_META.unknown;
+  const meta = sessionStatusMeta(card.status, chief);
   // The shared session row (#1433), the same anatomy as the Coding tab's:
   // avatar with the agent's mark and alive badge (crown for the chief), a
   // one-line title, one meta line "repo · status · age". Status is plain
@@ -197,8 +166,9 @@ function renderSessionCard(card, openItem) {
   if (isChannelSession(card)) chips.push(chip(channelSessionName(card), 'neutral', 'session-channel-tag'));
   if (stalled) chips.push(chip('stalled', 'danger', 'board-stalled-chip'));
   if (card.kind === 'remote') chips.push(chip('detached', 'neutral', 'session-detached'));
-  const bits = [card.project || '', stalled ? '' : meta.text, fmtDuration(card.age_seconds)]
-    .filter(Boolean);
+  const bits = [card.project || ''].concat(
+    sessionStatusBits(card.status, card.age_seconds, { chief: chief, hideStatus: stalled })
+  ).filter(Boolean);
   const known = state.agents.find(function (a) { return a.id === card.agent; });
   const agentId = String(card.agent || 'claude');
   const title = sessionLabel(card);

@@ -257,8 +257,8 @@ def session_board_columns(
     *,
     fleet_config_dir: Path,
     now: Optional[datetime] = None,
-) -> Dict[str, Dict[str, str]]:
-    """Each live session's Board column and status, keyed by session id (#1434).
+) -> Dict[str, Dict[str, Any]]:
+    """Each live session's Board column, status and age, keyed by session id (#1434).
 
     The Coding tab's rows carry the Board's status vocabulary ("needs you",
     "stalled") without polling ``/api/board``: its own sessions poll asks this
@@ -267,7 +267,8 @@ def session_board_columns(
     a session can never be "Your turn" on one tab and quiet on the other.
 
     A session absent from the result has no known column; callers show no
-    chip for it rather than guess. Blocking (transcript tails and a pid probe
+    chip for it rather than guess. ``age_seconds`` is the Board card's own
+    last-activity age (#1580), ``None`` when it has no anchor. Blocking (transcript tails and a pid probe
     per owned claim row) — callers wrap in ``asyncio.to_thread``.
     """
     claim_states = active_issue_claims.classify_claims(
@@ -280,10 +281,14 @@ def session_board_columns(
         active_issue_repos=active_issue_repos(active_issue_rows, claim_states),
     )
     columns = build_board(cards, {}, [])
-    out: Dict[str, Dict[str, str]] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     for column in ("claude_turn", "your_turn"):
         for card in columns[column]:
             sid = card.get("session_id")
             if sid:
-                out[str(sid)] = {"column": column, "status": str(card["status"])}
+                out[str(sid)] = {
+                    "column": column,
+                    "status": str(card["status"]),
+                    "age_seconds": card.get("age_seconds"),
+                }
     return out

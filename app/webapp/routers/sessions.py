@@ -74,8 +74,8 @@ def _session_board_columns(
     cfg: WebappConfig,
     sessions: List[Dict[str, Any]],
     state_rows: Dict[str, Dict[str, Any]],
-) -> Optional[Dict[str, Dict[str, str]]]:
-    """Each session's Board column + status, or ``None`` when unknowable (#1434)."""
+) -> Optional[Dict[str, Dict[str, Any]]]:
+    """Each session's Board column + status + age, or ``None`` when unknowable (#1434)."""
     global _board_columns_failing
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
     try:
@@ -121,8 +121,10 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     Each also carries ``board_column`` (``claude_turn`` / ``your_turn``) and
     ``board_status`` (the Board card's status, e.g. ``stalled``), so the
     Coding tab's rows show the Board's "needs you" / "stalled" chips from
-    this poll alone (#1434). Both are ``None`` when the Board placement could
-    not be worked out: unknown, never "normal".
+    this poll alone (#1434). ``board_age_seconds`` (#1580) is the card's
+    last-activity age, the number the Board's own row prints. All three are
+    ``None`` when the Board placement could not be worked out: unknown, never
+    "normal".
 
     ``chief_questions`` (#1502) is how many of the chief's questions no
     device has answered yet, fleet-wide, so the Board tab's badge counts them
@@ -152,6 +154,7 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
             placed = (columns or {}).get(str(sess.get("session_id")))
             sess["board_column"] = placed["column"] if placed else None
             sess["board_status"] = placed["status"] if placed else None
+            sess["board_age_seconds"] = placed.get("age_seconds") if placed else None
     questions = await asyncio.to_thread(_chief_questions, cfg)
     return {"sessions": sessions, "chief_questions": questions}
 
