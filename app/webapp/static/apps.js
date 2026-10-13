@@ -24,11 +24,15 @@ import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js'
 import { actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
 import { nameLabel } from './dom-utils.js';
-import { copyUrl, renderOtherPortsRow, wireListeners } from './apps-listeners.js';
+import {
+  copyText, copyUrl, fetchListeners, renderOtherPortsRow, wireListeners,
+} from './apps-listeners.js';
 import { createRowMenu } from './row-menu.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
+import { WIDE_LAYOUT_QUERY, isWideLayout } from './layout.js';
+import { icon } from './_vendored/icons/icons.js';
 
 // The Apps and Trays rows' kebab menu (#1128), on the shared row-menu.js.
 const appMenu = createRowMenu('project-menu');
@@ -46,6 +50,21 @@ const KIND_GLYPH = { streamlit: 'gauge', webapp: 'globe', tunnel: 'cloud', tray:
 
 function kindAvatar(kind, badge) {
   return avatar(KIND_GLYPH[kind] || 'layout-grid', badge, 'app-avatar');
+}
+
+// The kind in words, for the kebab's header line (#1505): the row itself
+// says it only through the avatar.
+const KIND_LABEL = { streamlit: 'Streamlit app', webapp: 'Web app', tunnel: 'Tunnel', tray: 'Tray' };
+
+function kindLabel(kind) {
+  return KIND_LABEL[kind] || nameLabel(kind);
+}
+
+// The registry apps the Apps card lists (not coding projects, not trays).
+function launchableApps() {
+  return state.apps.filter(function (a) {
+    return a.kind !== 'claude-code' && a.kind !== 'tray';
+  });
 }
 
 // The registry ids with a launcher-spawned instance up (the running-apps
@@ -66,9 +85,7 @@ export function renderApps() {
 // of running apps changes, so a launch gains its badge on the next poll.
 function renderBatLists() {
   const trayApps = state.apps.filter(function (a) { return a.kind === 'tray'; });
-  const otherApps = state.apps.filter(function (a) {
-    return a.kind !== 'claude-code' && a.kind !== 'tray';
-  });
+  const otherApps = launchableApps();
   const running = runningIds();
 
   renderList(els.registeredTraysList, trayApps, running);
@@ -87,6 +104,7 @@ function renderBatLists() {
   const autostart = trayApps.filter(function (a) { return a.autostart; }).length;
   els.traysSummaryMeta.hidden = trayApps.length === 0;
   els.traysSummaryMeta.textContent = trayApps.length + ' · ' + autostart + ' autostart';
+  renderIdleLine();
   renderHomeHead();
 }
 
@@ -131,9 +149,11 @@ function trayMeta(a, running) {
 // launches the bat hidden, with no console window (#790's 🚫👁): the
 // phone-first case, the PC unattended (#1269). Launch visible (watch a
 // Streamlit boot, read a traceback) and every other action ride the kebab,
-// whose header line is the bat path (#1437). An app row leads with its
-// kind avatar; the context line is the kind, plus a danger "down" chip for
-// a tunnel that is down (Up is normal, so it gets none). A tray row keeps
+// whose header line names the kind; the bat path is its Copy path item
+// (#1505). An app row leads with its kind avatar and is one line: the
+// avatar already says the kind (#1505). A tunnel keeps "Tunnel" as its
+// context line, since it is not the app's own web row, plus a danger "down"
+// chip when it is down (Up is normal, so it gets none). A tray row keeps
 // its autostart switch as the row's one leading toggle — it is state read
 // at a glance, unlabelled because the panel is called Trays; screen readers
 // still get "Autostart <name> at boot".
@@ -141,12 +161,14 @@ function renderList(host, items, running) {
   host.innerHTML = '';
   items.forEach(function (a) {
     const tray = a.kind === 'tray';
-    const down = a.kind === 'tunnel' && a.health === 'down';
+    const tunnel = a.kind === 'tunnel';
+    const down = tunnel && a.health === 'down';
+    const path = a.bat_path || a.project_dir || '';
     const row = actionRow({
       id: a.id,
       className: 'app-row',
       title: a.name,
-      meta: tray ? trayMeta(a, running) : nameLabel(a.kind),
+      meta: tray ? trayMeta(a, running) : (tunnel ? kindLabel(a.kind) : ''),
       chips: down ? [chip('down', 'danger', 'app-down-chip')] : [],
       avatar: tray ? null : kindAvatar(a.kind, appBadge(a, running)),
       label: 'Launch ' + a.name + ' hidden, with no window',
@@ -165,7 +187,6 @@ function renderList(host, items, running) {
         },
       }), row.main);
     }
-    const tunnel = a.kind === 'tunnel';
     row.li.appendChild(appMenu.attach(a.id, row.kebab, [
       {
         // The same bat in a console window you can watch (#790's ⚡); the
@@ -201,11 +222,17 @@ function renderList(host, items, running) {
         onTap: function () { openRename(a); },
       },
       {
+        className: 'app-copy-path-btn', glyph: 'clipboard',
+        label: 'Copy the path of ' + a.name, text: 'Copy path',
+        hidden: !path,
+        onTap: function () { copyText(path, 'Path'); },
+      },
+      {
         className: 'app-remove-btn', glyph: 'trash-2', danger: true,
         label: 'Remove ' + a.name, text: 'Remove',
         onTap: function () { removeApp(a); },
       },
-    ], { header: a.bat_path || a.project_dir || '' }));
+    ], { header: kindLabel(a.kind) }));
     host.appendChild(row.li);
   });
 }
@@ -328,16 +355,22 @@ function retryApps() {
 }
 
 export async function fetchApps() {
-  if (!appsReadAt) setAsyncState(els.appsState, 'loading', { message: 'Reading apps…' });
+  if (!appsReadAt) {
+    setAsyncState(els.appsState, 'loading', { message: 'Reading apps…' });
+    setAsyncState(els.traysState, 'loading', { message: 'Reading trays…' });
+  }
   let body;
   try {
     body = await jsonApi('/api/apps');
   } catch (exc) {
+    // The Trays card reads the same registry, so it fails with it (#1505).
     failedFetchState(els.appsState, !!appsReadAt, appsReadAt, 'the apps', retryApps);
+    failedFetchState(els.traysState, !!appsReadAt, appsReadAt, 'the trays', retryApps);
     throw exc;
   }
   appsReadAt = Date.now();
   setAsyncState(els.appsState, 'ready');
+  setAsyncState(els.traysState, 'ready');
   state.apps = body.apps || [];
   renderApps();
 }
@@ -379,13 +412,55 @@ const runningMenu = createRowMenu('project-menu');
 // The running app ids the Apps list was last badged from: it re-renders
 // only when that set changes, not on every poll.
 let badgedRunning = '';
+// When the running list last read well (#1505): its empty state and the
+// footnote wait for one, and a failure before it is the error with Retry.
+let runningReadAt = 0;
+
+// The wide layout's line in place of the empty-state block (#1505): CSS
+// shows it only at that query, and only while nothing runs.
+function renderIdleLine() {
+  if (!els.appsIdleLine) return;
+  const n = launchableApps().length;
+  els.appsIdleLine.hidden = !runningReadAt || state.runningApps.length !== 0;
+  els.appsIdleLine.textContent = 'Nothing running · ' + n + (n === 1 ? ' app' : ' apps') + ' to start';
+}
+
+// A running row's common actions as visible buttons (#1505): CSS shows them
+// at the wide layout only, where hiding them behind the kebab is a phone
+// compromise; the kebab keeps them for the phone. Open is also the row tap.
+function runningVerb(className, glyph, label, onTap, disabled, hint) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'row-verb-plain ' + className;
+  btn.innerHTML = icon(glyph);
+  btn.title = disabled ? hint : label;
+  btn.setAttribute('aria-label', label);
+  btn.disabled = !!disabled;
+  btn.addEventListener('click', onTap);
+  return btn;
+}
+
+function runningActions(r, noUrl) {
+  const box = document.createElement('span');
+  box.className = 'running-app-actions';
+  box.append(
+    runningVerb('running-app-open-inline', 'globe', 'Open ' + r.name,
+      function () { window.open(r.url, '_blank', 'noopener,noreferrer'); }, !r.url, noUrl),
+    runningVerb('running-app-copy-inline', 'copy', 'Copy ' + r.name + ' URL',
+      function () { copyUrl(r.url); }, !r.url, noUrl),
+    runningVerb('running-app-stop-inline', 'square', 'Stop ' + r.name,
+      function () { stopAppInstance(r); }),
+  );
+  return box;
+}
 
 export function renderRunningApps() {
   const host = els.runningAppsList;
   host.innerHTML = '';
   const none = state.runningApps.length === 0;
-  els.runningAppsEmpty.hidden = !none;
-  els.runningAppsNote.hidden = !none;
+  els.runningAppsEmpty.hidden = !none || !runningReadAt;
+  els.runningAppsNote.hidden = !none || !runningReadAt;
+  renderIdleLine();
   renderOtherPortsRow();
   const ids = Array.from(runningIds()).sort().join('\n');
   if (ids !== badgedRunning) {
@@ -412,6 +487,7 @@ export function renderRunningApps() {
       disabled: !r.url,
       hint: noUrl,
       onMain: function () { window.open(r.url, '_blank', 'noopener,noreferrer'); },
+      trailing: runningActions(r, noUrl),
       kebabClass: 'running-app-menu-anchor',
       kebabLabel: r.name + ' actions',
     });
@@ -460,26 +536,70 @@ async function stopAppInstance(r) {
   }
 }
 
+function retryRunning() {
+  fetchRunningApps().catch(function () {});
+}
+
 export async function fetchRunningApps() {
   // Apps-tab-only poll: pause while another tab is showing so the
   // background interval doesn't hit the API for an invisible panel.
   if (state.tab !== 'apps') return;
+  if (!runningReadAt) {
+    setAsyncState(els.runningAppsState, 'loading', { message: 'Reading running apps…' });
+  }
   try {
     const body = await jsonApi('/api/apps/running');
     state.runningApps = body.running || [];
-    renderRunningApps();
   } catch (exc) {
-    // Best-effort poll — don't spam toasts.
+    // Best-effort poll — don't spam toasts; the card says it instead.
     logPollFailure('running apps fetch failed', exc);
+    failedFetchState(els.runningAppsState, !!runningReadAt, runningReadAt,
+      'the running apps', retryRunning);
+    return;
   }
+  runningReadAt = Date.now();
+  setAsyncState(els.runningAppsState, 'ready');
+  renderRunningApps();
+}
+
+// The wide layout (#1505): two columns right of the rail. The left is the
+// page itself (header, Apps, Trays); the "what is up now" column moves after
+// Trays, so the keyboard reaches the list before the pane, and CSS docks it
+// on the right. Other ports' list moves out of its sheet into the inline
+// card there, so the rows and their confirmed stop are the same code. Below
+// the query everything goes back where the phone has it.
+function wireWideApps() {
+  const col = els.appsNowCol;
+  const pane = col && col.parentNode;
+  const listCard = pane && pane.querySelector('.apps-list-card');
+  const body = els.listenersBody;
+  if (!col || !listCard || !body || !els.otherPortsCardBody) return;
+  const sheetHome = body.parentNode;
+  const sheetNext = body.nextSibling;
+  function place() {
+    if (isWideLayout()) {
+      if (els.otherPortsSheet.open) els.otherPortsSheet.close();
+      pane.appendChild(col);
+      els.otherPortsCardBody.appendChild(body);
+    } else {
+      pane.insertBefore(col, listCard);
+      sheetHome.insertBefore(body, sheetNext);
+    }
+  }
+  place();
+  try {
+    window.matchMedia(WIDE_LAYOUT_QUERY).addEventListener('change', place);
+  } catch (_) { /* no matchMedia: the phone placement stands */ }
 }
 
 export function wireApps() {
-  // Refresh the running-apps panel the moment the Apps tab is opened —
-  // the background poll pauses while the tab is hidden.
+  // Refresh the running-apps panel and the port probe the moment the Apps
+  // tab is opened — both polls pause while the tab is hidden.
   els.tabApps.addEventListener('click', function () {
     fetchRunningApps().catch(function () {});
+    fetchListeners().catch(function () {});
   });
+  wireWideApps();
   // Nothing running points at Other ports, the row right under the empty
   // state, which is where a restart's orphans show.
   wireListeners();

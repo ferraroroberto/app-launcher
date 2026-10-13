@@ -46,8 +46,8 @@ def _job(job_id: str, name: str, **extra) -> dict:
 
 
 _JOBS = [
-    _job("ledger", "Ledger reconciliation", alert_on_failure=True),
-    _job("mailbox", "Mailbox sweep", schedule_chip="every 15 min",
+    _job("ledger", "Ledger reconciliation", alert_on_failure=True, target_kind="python"),
+    _job("mailbox", "Mailbox sweep", schedule_chip="every 15 min", target_kind="http-check",
          next_run_epoch=_NOW + 300,
          last_run={"run_id": "m1", "status": "failed", "outcome": "failed",
                    "started_at": "2026-01-01T09:00:00"}),
@@ -168,6 +168,18 @@ def test_header_next_up_and_the_agenda_sheet(authed_page: Page, base_url: str) -
     expect(sheet).to_be_hidden()
     expect(page.locator("#jobSheet")).to_be_visible()
     expect(page.locator("#jobSheetTitle")).to_have_text("Planner sync")
+
+
+def test_avatar_glyph_names_the_job_kind(authed_page: Page, base_url: str) -> None:
+    """#1505: each job kind has its own avatar glyph; a kind the map does not
+    know keeps the generic one, and the running badge is unchanged."""
+    page = authed_page
+    _open_jobs(page, base_url)
+    for job_id, glyph in (("ledger", "#i-code-xml"), ("mailbox", "#i-globe"),
+                          ("planner", "#i-activity")):
+        expect(_row(page, job_id).locator(".job-avatar .avatar-glyph use")).to_have_attribute(
+            "href", glyph)
+    expect(_row(page, "archive").locator(".job-avatar")).to_have_attribute("data-badge", "alive")
 
 
 def test_header_falls_back_to_the_count(authed_page: Page, base_url: str) -> None:
@@ -305,11 +317,19 @@ def test_wide_layout_docks_the_sheet_beside_the_list(
     page = authed_page
     page.set_viewport_size({"width": 1440, "height": 900})
     _open_jobs(page, base_url)
-    expect(page.locator("#jobDetailEmpty")).to_be_visible()
+    # With no job open the pane shows the week (#1505, decision 8 of #1500):
+    # the Schedule sheet's content, from the same one agenda fetch.
+    week = page.locator("#jobDetailEmpty")
+    expect(week).to_be_visible()
+    expect(week.locator("#jobWeekTitle")).to_have_text("This week")
+    expect(week.locator("li.jobs-fire-row")).to_have_count(4)
+    expect(week.locator(".jobs-agenda-day").first).to_be_visible()
+    expect(week.locator(".jobs-agenda-frequent")).to_have_text(
+        "Also frequent: Mailbox sweep (every 15 min)")
     _row(page, "ledger").locator(".action-row-main").click()
     sheet = page.locator("#jobSheet")
     expect(sheet).to_be_visible()
-    expect(page.locator("#jobDetailEmpty")).to_be_hidden()
+    expect(week).to_be_hidden()
     # Docked, not modal: the list beside it stays usable and another row
     # swaps the job in place.
     assert sheet.evaluate("d => !d.matches(':modal')")
@@ -317,6 +337,13 @@ def test_wide_layout_docks_the_sheet_beside_the_list(
     _row(page, "planner").locator(".action-row-main").click()
     expect(page.locator("#jobSheetTitle")).to_have_text("Planner sync")
     expect(_row(page, "planner")).to_have_attribute("aria-current", "true")
+    # Closing the job brings the week back; a fire there opens its job.
+    page.locator("#jobSheetClose").click()
+    expect(sheet).to_be_hidden()
+    expect(week).to_be_visible()
+    week.locator('li.jobs-fire-row[data-job-id="planner"] .action-row-main').click()
+    expect(sheet).to_be_visible()
+    expect(page.locator("#jobSheetTitle")).to_have_text("Planner sync")
     # Leaving the tab closes it.
     page.locator("#tabApps").click()
     expect(sheet).to_be_hidden()
@@ -346,3 +373,20 @@ def test_toolbar_icons_are_centred_on_the_search_field(
     }""")
     assert abs(m["sort"] - m["field"]) <= 1, f"sort button is off the field's centre ({theme}): {m}"
     assert abs(m["add"] - m["field"]) <= 1, f"add icon is off the field's centre ({theme}): {m}"
+
+
+@pytest.mark.iphone
+def test_search_placeholder_fits_at_phone_width(authed_page: Page, base_url: str) -> None:
+    """#1505: the Jobs search's placeholder is read whole at 390px, not cut."""
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    _open_jobs(page, base_url)
+    m = stable_eval(page.locator("#jobsSearchInput"), """el => {
+      const s = getComputedStyle(el);
+      const ctx = document.createElement('canvas').getContext('2d');
+      ctx.font = [s.fontStyle, s.fontWeight, s.fontSize, s.fontFamily].join(' ');
+      return { text: ctx.measureText(el.placeholder).width,
+               room: el.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight),
+               placeholder: el.placeholder };
+    }""")
+    assert m["text"] <= m["room"], f"the placeholder is cut at 390px: {m}"

@@ -57,6 +57,7 @@ def _two_row_payload() -> dict:
     }
 
 
+@pytest.mark.iphone
 def test_section_renders_empty(authed_page: Page, base_url: str) -> None:
     authed_page.route(
         "**/api/apps/running",
@@ -66,6 +67,9 @@ def test_section_renders_empty(authed_page: Page, base_url: str) -> None:
             body=json.dumps({"running": []}),
         ),
     )
+    # The phone's empty state: the wide layout shows one plain line instead
+    # (#1505, test_apps_wide_layout.py).
+    authed_page.set_viewport_size({"width": 390, "height": 844})
     errors = _navigate(authed_page, base_url)
     authed_page.locator("#tabApps").click()
 
