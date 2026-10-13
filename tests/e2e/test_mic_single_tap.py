@@ -10,12 +10,13 @@ no real microphone is ever touched.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS
+from tests.e2e.conftest import OVERLAY_OPEN_MS, flush_requests, wait_until
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -95,11 +96,39 @@ def _info_lines(page: Page) -> list[str]:
     return lines
 
 
+def _usage_capture(page: Page) -> list[dict]:
+    """Stub the usage-log endpoint (#1524) and collect every event it is sent."""
+    events: list[dict] = []
+
+    def record(route) -> None:
+        body = json.loads(route.request.post_data or "{}")
+        events.extend(body.get("events", []))
+        route.fulfill(status=200, content_type="application/json",
+                      body='{"accepted":0,"rejected":0}')
+
+    page.route(re.compile(r".*/api/usage/events$"), record)
+    return events
+
+
+def _mic_taps(page: Page, events: list[dict]) -> list[str]:
+    """Hide the page (the client's flush) and return the mic control ids sent."""
+    page.evaluate(
+        "Object.defineProperty(document, 'visibilityState',"
+        " { value: 'hidden', configurable: true });"
+        " document.dispatchEvent(new Event('visibilitychange'));"
+    )
+    wait_until(page, lambda: any(e.get("kind") == "session_end" for e in events),
+               "the page-hidden usage flush")
+    flush_requests(page)
+    return [e["id"] for e in events if e.get("kind") == "tap" and e["id"].startswith("mic.")]
+
+
 def test_tap_swallowed_while_arming_leaves_a_breadcrumb(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     """A tap the state machine ignores is logged, so the next report is readable."""
     lines = _info_lines(authed_page)
+    usage = _usage_capture(authed_page)
     _open_composer(authed_page, base_url, launched_pty_session, hold_gum=True)
     mic = authed_page.locator("#terminalComposeBar .composer-mic")
     mic.click()
@@ -109,12 +138,16 @@ def test_tap_swallowed_while_arming_leaves_a_breadcrumb(
     assert any("tap: start recording" in t for t in lines), lines
     assert any("tap ignored" in t and "arming" in t for t in lines), lines
     assert authed_page.evaluate("window.__gumCalls") == 1
+    # The server-side usage log gets the same two outcomes: a phone's console
+    # is out of reach, so this is what the next report is read from.
+    assert _mic_taps(authed_page, usage) == ["mic.start", "mic.ignored-arming"]
 
 
 def test_tap_cancelling_a_finalizing_take_leaves_a_breadcrumb(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     lines = _info_lines(authed_page)
+    usage = _usage_capture(authed_page)
     # The single-shot transcribe never answers: the take stays finalizing.
     authed_page.route("**/api/transcribe", lambda route: None)
     _open_composer(authed_page, base_url, launched_pty_session)
@@ -127,3 +160,6 @@ def test_tap_cancelling_a_finalizing_take_leaves_a_breadcrumb(
     expect(mic).not_to_have_class(re.compile(r"\bworking\b"))
     assert any("tap: stop recording" in t for t in lines), lines
     assert any("cancelled" in t and "finalizing" in t for t in lines), lines
+    assert _mic_taps(authed_page, usage) == [
+        "mic.start", "mic.stop", "mic.cancel-finalizing",
+    ]
