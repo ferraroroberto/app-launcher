@@ -531,6 +531,31 @@ button.settings-row:active { background: var(--card-2); }
 /* Text size (#1134): the label beside the vendored range-tab row. */
 .settings-row--inline .text-size-label { flex: none; }
 .text-size-card .range-tabs { flex: 1; min-width: 0; margin-bottom: 0; }
+/* The segmented control (design.md `segmented`, #1506): one rounded.md
+   track on neutral-soft with a 3px inset, equal borderless segments at the
+   control height, every label fg, and the selected segment raised on the
+   card surface, which is the state (never a colour). App-side over the
+   vendored range-tab row, so its markup hooks and bindTextSize stay; the
+   range-tab's own ::before band still makes each target 44px tall. */
+.range-tabs.segmented {
+  gap: 0;
+  padding: 3px;
+  background: var(--neutral-soft);
+  border-radius: var(--radius-md);
+}
+.range-tabs.segmented .range-tab,
+.range-tabs.segmented .range-tab.active {
+  background: transparent;
+  border-color: transparent;
+  border-radius: calc(var(--radius-md) - 3px);
+  color: var(--fg);
+}
+.range-tabs.segmented .range-tab.active {
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+/* A row's value that is an exception (settings-sheets.js setValue). */
+.settings-row-value[data-tone="attention"] { color: var(--attention-text); }
 /* The note under This PC: it wraps, unlike a one-line group footer. */
 .settings-footnote { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
 /* Launch defaults' per-agent rows: the same rows, boxed inside the sheet. */
@@ -4719,7 +4744,9 @@ span.chief-answer-ref { color: var(--muted); }
 .channel-list-context[data-tier="danger"] { color: var(--danger); }
 
 /* Settings → Telegram channels (#1369): read-only check rows, the same
-   meta-left / pill-right shape as the context-filter harness rows. */
+   meta-left / value-right shape as the context-filter harness rows. A
+   healthy check's value is plain text; only an exception wears a chip
+   (#1506): attention for what needs you, neutral for an unknown. */
 .channel-check-list .channel-check {
   justify-content: space-between;
   gap: var(--space-sm);
@@ -4739,17 +4766,32 @@ span.chief-answer-ref { color: var(--muted); }
   border-radius: var(--radius-pill);
   white-space: nowrap;
 }
-.channel-check-chip-ok {
-  background: rgb(from var(--success) r g b / 0.16);
-  color: var(--success-text);
+/* The vendored modal's `.detail-card .row span` paints every span in a
+   sheet's row in --ink at 600, so these rules sit one class deeper to keep
+   their own colour and weight: a chip its tone's text, a value plain, and
+   the detail line under a title muted. Muted on the sheet's card measures
+   5.25:1 light and 4.64:1 dark (COLOR-02, #1506; pinned by
+   test_settings_sheets.py). */
+.detail-card .channel-check .channel-check-chip-attention {
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
 }
-.channel-check-chip-missing {
-  background: rgb(from var(--danger) r g b / 0.16);
-  color: var(--danger-text);
-}
-.channel-check-chip-unknown {
+.detail-card .channel-check .channel-check-chip-neutral {
   background: var(--neutral-soft);
   color: var(--fg);
+}
+.detail-card .channel-check .channel-check-value,
+.detail-card .context-filter-harness .context-filter-status {
+  flex-shrink: 0;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.detail-card .channel-check .muted,
+.detail-card .context-filter-harness .muted {
+  color: var(--muted);
+  font-weight: 400;
 }
 .channel-skill-chips {
   display: flex;
@@ -5050,26 +5092,9 @@ span.chief-answer-ref { color: var(--muted); }
   min-width: 0;
   flex: 1;
 }
-.context-filter-status {
-  flex-shrink: 0;
-  font-size: var(--font-caption);
-  font-weight: 700;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  white-space: nowrap;
-}
-.context-filter-status-active {
-  background: rgb(from var(--success) r g b / 0.16);
-  color: var(--success-text);
-}
-.context-filter-status-unsupported {
-  background: rgb(from var(--danger) r g b / 0.16);
-  color: var(--danger-text);
-}
-.context-filter-status-planned {
-  background: var(--neutral-soft);
-  color: var(--fg);
-}
+/* A harness's status is a plain value (#1506): Active, Unsupported and
+   Planned are facts, not exceptions, so none wears a chip or a colour. Its
+   rule sits with the Telegram check values above. */
 .context-filter-stats {
   display: flex;
   flex-direction: column;

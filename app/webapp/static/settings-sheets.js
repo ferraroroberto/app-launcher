@@ -28,6 +28,7 @@ import { fetchConfig, patchConfig, USAGE_SHOWS_LABELS } from './claude-options.j
 import { terminalJsonApi } from './webauthn.js';
 import { fetchApps } from './apps.js';
 import { fetchSkills } from './life-os.js';
+import { profileNeedsSetup } from './telegram-setup.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -161,9 +162,13 @@ const AGENT_SUMMARY = {
   },
 };
 
-function setValue(key, text) {
+// `tone` (optional) colours an exception, e.g. 'attention'; a plain value
+// clears it.
+function setValue(key, text, tone) {
   document.querySelectorAll('[data-settings-value="' + key + '"]').forEach(function (el) {
     el.textContent = text;
+    if (tone) el.dataset.tone = tone;
+    else delete el.dataset.tone;
   });
 }
 
@@ -174,13 +179,22 @@ function launchValue(cfg) {
   return joined([label ? label.textContent : fav, model]);
 }
 
-function telegramValue() {
+// "3 profiles", or "1 needs setup" in attention while one does (#1506): a
+// healthy state is a plain count, never a "ready" word.
+function renderTelegramValue() {
   const ch = state.lifeOsChannels;
-  if (!ch || (!ch.setup && !(ch.profiles || []).length)) return '';
+  if (!ch || (!ch.setup && !(ch.profiles || []).length)) {
+    setValue('telegram', '');
+    return;
+  }
   const profiles = ch.profiles || [];
-  if (!profiles.length) return 'Not set up';
-  const ready = profiles.filter(function (p) { return p.skill_found && p.env_present; }).length;
-  return ready + ' ready';
+  if (!profiles.length) {
+    setValue('telegram', 'Not set up');
+    return;
+  }
+  const needs = profiles.filter(profileNeedsSetup).length;
+  if (needs) setValue('telegram', needs + ' needs setup', 'attention');
+  else setValue('telegram', plural(profiles.length, 'profile', 'profiles'));
 }
 
 function passkeysValue() {
@@ -204,7 +218,7 @@ function contextFilterValue() {
 
 export function renderSettingsValues() {
   const cfg = state.config;
-  setValue('telegram', telegramValue());
+  renderTelegramValue();
   setValue('context-filter', contextFilterValue());
   setValue('tokens', tokensValue());
   setValue('passkeys', passkeysValue());

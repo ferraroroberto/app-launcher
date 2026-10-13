@@ -66,8 +66,11 @@ function renderHarnesses(harnesses) {
       meta.appendChild(note);
     }
     li.appendChild(meta);
+    // A plain value, no chip (#1506): none of these is an exception the
+    // owner has to act on, so none wears a status colour.
     const status = document.createElement('span');
-    status.className = 'context-filter-status context-filter-status-' + (h.status || 'planned');
+    status.className = 'context-filter-status';
+    status.dataset.status = h.status || 'planned';
     status.textContent = STATUS_LABELS[h.status] || h.status || '';
     li.appendChild(status);
     els.contextFilterHarnesses.appendChild(li);

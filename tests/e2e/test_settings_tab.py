@@ -164,6 +164,11 @@ def test_settings_pane_controls_and_theme_toggle(
 
     harnesses = authed_page.locator("#contextFilterHarnesses li")
     expect(harnesses).to_have_count(6)
+    # Each harness's status is a plain value, never a coloured pill (#1506).
+    classes = harnesses.locator(".context-filter-status").evaluate_all(
+        "els => els.map((e) => e.className)"
+    )
+    assert classes == ["context-filter-status"] * 6, classes
 
     close_settings_sheets(authed_page)
 

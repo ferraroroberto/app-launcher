@@ -29,6 +29,7 @@ import { wireQuoteCopy } from './quote-copy.js';
 import { wireChanges } from './changes-overlay.js';
 import { markMirrorWindowEarly } from './terminal-mirror.js';
 import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauthn.js';
+import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
@@ -160,6 +161,9 @@ async function fetchVersion() {
       const sha = body.git_sha || 'unknown';
       const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
       els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
+      // The Settings header carries the sha too, without the time (#1506).
+      state.buildSha = sha;
+      renderSettingsHead();
       return;
     } catch (exc) {
       els.buildReadout.textContent = '';

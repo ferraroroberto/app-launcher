@@ -1260,11 +1260,13 @@
       <div class="card settings-group">
         <!-- Text size (#1134): the escape from the viewport zoom lock (WCAG
              1.4.4). Scales the root font-size, so rem type grows and px
-             geometry (nav, rows, hit targets) does not. -->
+             geometry (nav, rows, hit targets) does not. One segmented track
+             since #1506; the data-textsize hooks stay the vendored
+             bindTextSize's. -->
         <div class="settings-row settings-row--inline text-size-card">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
           <span class="settings-row-label text-size-label">Text size</span>
-          <nav class="range-tabs" id="textSizeControl" aria-label="Text size">
+          <nav class="range-tabs segmented" id="textSizeControl" aria-label="Text size">
             <button type="button" class="range-tab" data-textsize="small">Small</button>
             <button type="button" class="range-tab" data-textsize="default">Default</button>
             <button type="button" class="range-tab" data-textsize="large">Large</button>

@@ -4,7 +4,8 @@ The viewport meta locks pinch-zoom (the app reads as a native shell), so
 until now there was no way to make the text bigger (WCAG 1.4.4). Settings
 now carries the vendored text-size range-tab row: Small / Default / Large
 scale the root font-size, so every rem size follows and px geometry (nav,
-rows, hit targets) does not.
+rows, hit targets) does not. Since #1506 the row is drawn as one segmented
+track (design.md `segmented`), with the same hooks, key and boot.
 
 The pre-paint boot script stamps html[data-textsize] from
 ``app-launcher.textsize`` before any stylesheet is parsed, so a reload or a
@@ -15,7 +16,12 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stable_read
+from tests.e2e.conftest import (
+    close_settings_sheets,
+    open_settings_sheet,
+    stable_eval,
+    stable_read,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -114,6 +120,44 @@ def _open_settings(page: Page) -> None:
     expect(page.locator("#paneSettings")).to_be_visible()
 
 
+# The control's look (#1506, design.md `segmented`): one track with a 3px
+# inset, borderless segments touching inside it, every label in fg, and only
+# the selected segment filled (the card surface). Each segment is the control
+# height with a 44px tap band.
+_SEGMENTED = """
+(nav) => {
+  const cs = getComputedStyle(nav);
+  const segs = Array.from(nav.querySelectorAll('.range-tab'));
+  const on = nav.querySelector('.range-tab.active');
+  const fg = getComputedStyle(document.body).color;
+  const band = getComputedStyle(segs[0], '::before');
+  return {
+    track: cs.backgroundColor,
+    inset: cs.paddingTop,
+    gap: cs.columnGap,
+    borders: segs.map((s) => getComputedStyle(s).borderTopColor),
+    labelsFg: segs.every((s) => getComputedStyle(s).color === fg),
+    filled: segs.filter((s) => getComputedStyle(s).backgroundColor !== 'rgba(0, 0, 0, 0)')
+      .map((s) => s.dataset.textsize),
+    selected: on ? on.dataset.textsize : null,
+    height: segs[0].getBoundingClientRect().height,
+    tapBand: segs[0].getBoundingClientRect().height
+      - parseFloat(band.top) - parseFloat(band.bottom),
+  };
+}
+"""
+
+
+def _assert_one_segmented_track(control) -> None:
+    geo = stable_eval(control, _SEGMENTED)
+    assert geo["track"] not in ("rgba(0, 0, 0, 0)", "transparent"), geo
+    assert geo["inset"] == "3px" and geo["gap"] in ("0px", "normal"), geo
+    assert set(geo["borders"]) == {"rgba(0, 0, 0, 0)"}, geo
+    assert geo["labelsFg"], geo
+    assert geo["filled"] == [geo["selected"]], geo
+    assert geo["height"] == 36 and geo["tapBand"] >= 44, geo
+
+
 def _assert_small_and_default_steps(page: Page) -> None:
     """Formerly ``test_small_and_default_steps``."""
     control = page.locator("#textSizeControl")
@@ -209,6 +253,7 @@ def test_large_sets_18px_body_and_survives_reload(
     expect(control.locator("[data-textsize='default']")).to_have_attribute(
         "aria-pressed", "true"
     )
+    _assert_one_segmented_track(control)
 
     _assert_small_and_default_steps(page)
 

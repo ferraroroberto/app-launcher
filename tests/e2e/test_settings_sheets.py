@@ -15,9 +15,12 @@ vendored modal shell: a header back + ✕ and one full-width Done. Contract:
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
     _auth_headers,
     _loopback,
@@ -219,3 +222,73 @@ def test_passkeys_sheet_lists_removes_and_enrols(authed_page: Page, base_url: st
     expect(page.locator("#toast")).to_contain_text("Enrollment failed")
     assert begins == [{"label": "Second phone"}]
     assert native == [], f"a native dialog was raised: {native}"
+
+
+def _channel_profile(label: str, ready: bool) -> dict:
+    return {
+        "id": label.lower(), "label": label, "skill": "notes-daily",
+        "skill_found": True, "env_present": ready, "running": False,
+        "session_id": "",
+    }
+
+
+def test_telegram_reads_plain_and_only_exceptions_wear_a_chip(
+    authed_page: Page, base_url: str
+) -> None:
+    """Settings › Telegram finishes the contract (#1506): a healthy check or
+    profile is a plain value, the profiles file's path shows only in a
+    failing check's fix-it line, the row counts profiles and turns attention
+    only while one needs setup, and the checks' muted text holds 4.5:1 on
+    the sheet in both themes."""
+    page = authed_page
+    channels = {
+        "profiles": [_channel_profile("Alpha", True), _channel_profile("Beta", True)],
+        "problems": [],
+        "setup": {"file_present": True, "life_os_found": True, "bun": True,
+                  "plugin": True, "skills": []},
+    }
+    page.route(re.compile(r".*/api/life-os/channels$"),
+               lambda route: route.fulfill(json=channels))
+    page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(page)
+    value = _value(page, "telegram")
+    expect(value).to_have_text("2 profiles")
+    assert not value.evaluate("(el) => el.hasAttribute('data-tone')")
+
+    open_settings_sheet(page, "channelsSheet")
+    checks = page.locator("#channelChecks .channel-check")
+    expect(checks.locator(".channel-check-value")).to_have_text(
+        ["Found", "Found", "Installed", "Found"]
+    )
+    expect(checks.first).to_contain_text("Profiles file")
+    expect(page.locator("#channelChecks .channel-check-chip")).to_have_count(0)
+    expect(page.locator("#channelChecks")).not_to_contain_text("channel_profiles")
+    profiles = page.locator("#channelProfileChecks .channel-check")
+    expect(profiles.locator(".channel-check-value")).to_have_text(["Ready", "Ready"])
+    expect(page.locator("#channelProfileChecks .channel-check-chip")).to_have_count(0)
+
+    detail = page.locator("#channelProfileChecks .muted.small")
+    for theme in ("light", "dark"):
+        page.evaluate("(t) => { document.documentElement.dataset.theme = t; }", theme)
+        ratio = contrast_ratio(detail)
+        assert ratio >= 4.5, f"profile check text is {ratio:.2f}:1 in {theme}"
+
+    # The exceptions: a missing profiles file names its path in the fix-it
+    # line, and a profile that needs setup wears the attention chip.
+    channels["setup"]["file_present"] = False
+    channels["profiles"][1]["env_present"] = False
+    page.locator("#channelRecheck").click()
+    missing = checks.filter(has_text="Profiles file")
+    expect(missing.locator(".channel-check-chip")).to_have_text("Missing")
+    expect(missing.locator(".channel-check-chip")).to_have_class(
+        re.compile(r"\bchannel-check-chip-attention\b")
+    )
+    expect(missing).to_contain_text("config/channel_profiles.json")
+    for theme in ("light", "dark"):
+        page.evaluate("(t) => { document.documentElement.dataset.theme = t; }", theme)
+        ratio = contrast_ratio(missing.locator(".channel-check-chip"))
+        assert ratio >= 4.5, f"the Missing chip is {ratio:.2f}:1 in {theme}"
+    expect(profiles.nth(1).locator(".channel-check-chip")).to_have_text("Needs setup")
+    close_settings_sheets(page)
+    expect(value).to_have_text("1 needs setup")
+    expect(value).to_have_attribute("data-tone", "attention")

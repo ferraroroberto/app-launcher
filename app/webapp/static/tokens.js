@@ -1,6 +1,7 @@
 /* Settings-tab "API tokens" panel (issue #72).
  *
- * Mint / list / revoke job-scoped bearer tokens against /api/tokens. The
+ * Mint / list / revoke (after a confirm, #1506) job-scoped bearer tokens
+ * against /api/tokens. The
  * raw token appears exactly once, in the mint response — the panel shows
  * it in a readonly field with a copy button and it is gone on the next
  * render. Lazy: nothing is fetched until the Settings tab is first
@@ -10,6 +11,7 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
+import { confirmDialog } from './confirm-dialog.js';
 import { revealInCard } from './dom-utils.js';
 import { renderSettingsValues } from './settings-sheets.js';
 
@@ -52,7 +54,15 @@ function renderTokens(tokens) {
     revoke.type = 'button';
     revoke.className = 'button-ghost';
     revoke.textContent = 'Revoke';
+    // Asked first, in the themed dialog (#1506), like removing a passkey:
+    // a revoked token cannot be brought back.
     revoke.addEventListener('click', async function () {
+      if (!(await confirmDialog({
+        title: 'Revoke this token?',
+        message: 'Anything still calling the launcher with "' + (t.label || t.id) +
+          '" stops working. A new token has to be created and pasted in its place.',
+        action: 'Revoke',
+      }))) return;
       try {
         await jsonApi('/api/tokens/' + encodeURIComponent(t.id), {
           method: 'DELETE',

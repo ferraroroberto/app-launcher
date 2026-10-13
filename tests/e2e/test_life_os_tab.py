@@ -2023,8 +2023,14 @@ def test_settings_channels_card_reports_each_profile(
     open_settings_sheet(authed_page, "channelsSheet")
     rows = authed_page.locator("#channelProfileChecks .channel-check")
     expect(rows).to_have_count(2)
-    expect(rows.nth(0).locator(".channel-check-chip")).to_have_text("Ready")
+    # A ready profile reads as a plain value, no chip; only the exception
+    # wears one, in attention (#1506).
+    expect(rows.nth(0).locator(".channel-check-value")).to_have_text("Ready")
+    expect(rows.nth(0).locator(".channel-check-chip")).to_have_count(0)
     expect(rows.nth(1).locator(".channel-check-chip")).to_have_text("Needs setup")
+    expect(rows.nth(1).locator(".channel-check-chip")).to_have_class(
+        re.compile(r"\bchannel-check-chip-attention\b")
+    )
     expect(rows.nth(1)).to_contain_text("skill “nope” not found")
     expect(rows.nth(1)).to_contain_text("no .env")
     expect(authed_page.locator("#channelProfileProblems")).to_contain_text("house")
@@ -2034,7 +2040,7 @@ def test_settings_channels_card_reports_each_profile(
     )
     body["profiles"][1].update({"skill_found": True, "env_present": True})
     authed_page.locator("#channelRecheck").click()
-    expect(rows.nth(1).locator(".channel-check-chip")).to_have_text("Ready")
+    expect(rows.nth(1).locator(".channel-check-value")).to_have_text("Ready")
 
 
 def test_channel_session_carries_its_label_in_the_coding_list(

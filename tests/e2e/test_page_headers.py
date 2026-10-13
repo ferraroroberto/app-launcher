@@ -30,10 +30,17 @@ confirms the phone surface.
 """
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import (
+    BUILD_READOUT_MS,
+    close_settings_sheets,
+    open_settings_sheet,
+    stable_read,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -195,3 +202,70 @@ def test_every_pane_opens_with_its_header_and_a_settings_gear(
 
     # Last: resizes and reloads the page.
     _assert_five_tabs_with_labels_at_320px(page)
+
+
+_CHANNEL_SETUP = {"file_present": True, "life_os_found": True, "bun": True,
+                  "plugin": True, "skills": []}
+
+
+def _channel_profile(label: str, ready: bool) -> dict:
+    return {
+        "id": label.lower(), "label": label, "skill": "notes-daily",
+        "skill_found": True, "env_present": ready, "running": False,
+        "session_id": "",
+    }
+
+
+def test_settings_header_names_a_problem_else_the_build(
+    authed_page: Page, base_url: str
+) -> None:
+    """Decision 10 of #1500 (#1506): the Settings header line holds only what
+    the pane shows as a problem, in its tone, and falls back to the build
+    ("Build <short sha>") when nothing is wrong. The fixed slogan is gone and
+    the bottom readout keeps the timestamp the header omits."""
+    page = authed_page
+    channels = {"ok": False, "body": {}}
+
+    def _channels(route) -> None:
+        if channels["ok"]:
+            route.fulfill(json=channels["body"])
+        else:
+            route.fulfill(status=503, json={"detail": "unavailable"})
+
+    page.route(re.compile(r".*/api/version$"), lambda route: route.fulfill(
+        json={"git_sha": "a1b2c3d", "built_at": "2026-01-02T03:04:05"}))
+    page.route(re.compile(r".*/api/life-os/channels$"), _channels)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#paneClaude > .home-head .settings-open-btn").click()
+    status = page.locator("#settingsHeadStatus")
+    readout = page.locator("#buildReadout")
+
+    # An unreadable setup status is an exception, neutral.
+    expect(readout).to_have_text("Build: a1b2c3d · 2026-01-02 03:04",
+                                 timeout=BUILD_READOUT_MS)
+    expect(status).to_have_text("Telegram unreadable")
+    expect(status.locator(".head-exception")).to_have_attribute("data-tone", "neutral")
+
+    # Read and healthy: the build, no exception.
+    channels.update(ok=True, body={
+        "profiles": [_channel_profile("Alpha", True)], "problems": [],
+        "setup": _CHANNEL_SETUP,
+    })
+    open_settings_sheet(page, "channelsSheet")
+    page.locator("#channelRecheck").click()
+    expect(page.locator("#channelChecks .channel-check-value").first).to_have_text("Found")
+    close_settings_sheets(page)
+    expect(status).to_have_text("Build a1b2c3d")
+    expect(status.locator(".head-exception")).to_have_count(0)
+    expect(page.locator("#paneSettings")).not_to_contain_text("This launcher, on this PC")
+
+    # A profile that needs setup: the attention exception, on one line.
+    channels["body"]["profiles"].append(_channel_profile("Beta", False))
+    open_settings_sheet(page, "channelsSheet")
+    page.locator("#channelRecheck").click()
+    expect(page.locator("#channelProfileChecks .channel-check-chip")).to_have_text("Needs setup")
+    close_settings_sheets(page)
+    expect(status).to_have_text("Telegram: 1 missing")
+    expect(status.locator(".head-exception")).to_have_attribute("data-tone", "attention")
+    spill = stable_read(lambda: status.evaluate("(el) => el.scrollWidth - el.clientWidth"))
+    assert spill <= 0, f"the Settings header line is cut off by {spill}px"

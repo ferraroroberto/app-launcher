@@ -124,6 +124,11 @@ export const state = {
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
   lifeOsChannels: { profiles: [], problems: [], setup: null },
+  // The last channels read failed (#1506): with no setup read yet, the
+  // Settings header says the status could not be read.
+  lifeOsChannelsFailed: false,
+  // The short git sha /api/version reports, for the Settings header (#1506).
+  buildSha: null,
   lifeOsRecap: null,   // /api/life-os/recap-status, once the tab has read it
   // How many API tokens exist (#1435, Settings › API tokens' value); null
   // until Settings first loads the list.
