@@ -46,6 +46,7 @@ TERMINAL_PREFIXES = (
     "/api/tts",                   # read-aloud of the agent's last reply
     "/api/webauthn",              # the ceremony that issues terminal tokens
     "/api/ports",                 # listener kill reaches :8446 and every PTY
+    "/api/screen",                # the PC desktop, live (#1520)
 )
 
 # Routes under a prefix above that are deliberately left on the ordinary

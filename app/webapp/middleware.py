@@ -347,6 +347,14 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "a hit can quote anything the terminal ever showed.",
     ),
     (
+        lambda p: p.startswith("/api/screen/"),
+        "passkey",
+        "Screen view (#1520): the PC's desktop, live — whatever is on screen, "
+        "terminals included, so terminal-grade. The /api/screen/ws stream is "
+        "a WebSocket this middleware never sees; desktop_screen.screen_ws "
+        "re-applies these legs inline.",
+    ),
+    (
         lambda p: p.startswith("/api/ports/") and p.endswith("/kill"),
         "tailnet",
         "Listener kill (#1002): force-kills whatever process owns the port, "

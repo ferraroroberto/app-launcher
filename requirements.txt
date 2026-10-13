@@ -13,11 +13,12 @@ PyYAML>=6.0
 # Process introspection (port-owner lookup, smart kill)
 psutil>=5.9
 
-# Icon generation — dev-only: scripts/gen_icons.py calls project-scaffolding's
-# shared brand_gen.py, which rasterizes the vendored Lucide master SVGs with
-# resvg-py (prebuilt wheel, no system deps) and assembles the .ico/.png set
-# with Pillow. Generated assets are committed; the runtime webapp never
-# imports either.
+# Pillow is a runtime import: the Screen view (src/desktop_capture.py, #1520)
+# resizes and JPEG-encodes each captured frame with it. It also assembles the
+# icon set: scripts/gen_icons.py calls project-scaffolding's shared
+# brand_gen.py, which rasterizes the vendored Lucide master SVGs with resvg-py
+# (prebuilt wheel, no system deps). resvg-py is dev-only; generated icons are
+# committed and the webapp never imports it.
 Pillow>=10.0
 resvg-py>=0.3.0
 

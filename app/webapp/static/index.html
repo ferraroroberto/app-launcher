@@ -2453,9 +2453,33 @@
           </button>
         </div>
         <div id="cpuSheetBody" class="usage-sheet-body cpu-sheet-body"></div>
+        <!-- The Screen view's entry (#1520): a link row that acts on tap, so
+             no chevron. screen-view.js owns the tap (openScreen). -->
+        <button type="button" id="cpuSheetScreen" class="settings-row cpu-sheet-screen" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg>
+          <span class="settings-row-label">Screen</span>
+          <span class="settings-row-value">View live</span>
+        </button>
         <div class="detail-actions">
           <button type="button" id="cpuSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
+      </div>
+    </dialog>
+
+    <!-- The Screen view (#1520): the PC's desktop, live, full screen. Opened
+         from the PC load sheet's Screen row; on a desktop browser the same
+         view runs in its own pop-out window. screen-view.js drives it. -->
+    <dialog id="screenView" class="screen-view" aria-labelledby="screenViewTitle">
+      <div class="screen-view-bar">
+        <h2 id="screenViewTitle" class="screen-view-title" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Screen</h2>
+        <nav id="screenPicker" class="range-tabs segmented screen-picker" aria-label="Display" hidden></nav>
+        <button type="button" id="screenViewClose" class="icon-button detail-close" aria-label="Close">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+      <div id="screenStage" class="screen-stage">
+        <img id="screenImage" class="screen-image" alt="The PC's screen" draggable="false" hidden>
+        <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
       </div>
     </dialog>
 
