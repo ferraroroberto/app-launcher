@@ -251,7 +251,8 @@ _BOARD_TARGETS = (
     "tests/e2e/test_primary_nav.py tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
     "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py "
-    "tests/e2e/test_session_row_glance.py tests/e2e/test_usage_meter.py"
+    "tests/e2e/test_session_row_glance.py tests/e2e/test_code_row_status_age.py "
+    "tests/e2e/test_usage_meter.py"
     " tests/e2e/test_settings_sheets.py"
     " tests/e2e/test_action_row_variants.py tests/e2e/test_async_list_states.py"
 )
