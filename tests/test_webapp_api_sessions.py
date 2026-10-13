@@ -149,14 +149,19 @@ class TestBoardPlacement:
         overrides["session"].list_sessions.return_value = list(self._LIVE)
         monkeypatch.setattr(
             board, "session_board_columns",
-            lambda *a, **k: {"a": {"column": "your_turn", "status": "stalled"}},
+            lambda *a, **k: {
+                "a": {"column": "your_turn", "status": "stalled", "age_seconds": 540},
+            },
         )
         sessions = client.get("/api/claude-code/sessions").json()["sessions"]
         by_id = {s["session_id"]: s for s in sessions}
         assert by_id["a"]["board_column"] == "your_turn"
         assert by_id["a"]["board_status"] == "stalled"
+        # The Board card's last-activity age rides along (#1580).
+        assert by_id["a"]["board_age_seconds"] == 540
         assert by_id["b"]["board_column"] is None
         assert by_id["b"]["board_status"] is None
+        assert by_id["b"]["board_age_seconds"] is None
 
     def test_failed_placement_is_unknown_not_a_500(self, webapp_client, monkeypatch):
         from src import board
@@ -172,6 +177,7 @@ class TestBoardPlacement:
         for sess in resp.json()["sessions"]:
             assert sess["board_column"] is None
             assert sess["board_status"] is None
+            assert sess["board_age_seconds"] is None
 
 
 class TestStopSession:

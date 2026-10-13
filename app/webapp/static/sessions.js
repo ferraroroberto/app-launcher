@@ -33,7 +33,7 @@ import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
 import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
 import { confirmDialog } from './confirm-dialog.js';
-import { attentionChip, chip, sessionRowBody } from './glance.js';
+import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
 import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -271,7 +271,7 @@ export function renderSessions() {
 
     // The shared session row (#1433): the agent's mark in an avatar whose
     // badge says it is alive (the chief's says crown), a one-line title, and
-    // one meta line, "folder · uptime". Chips only for exceptions: a detached
+    // one meta line, "folder · status · age", then "up uptime" (#1580). Chips only for exceptions: a detached
     // row says so; a full-control row is the normal case and says nothing.
     // The agent resolves against the registry (state.agents) so a new
     // agent's mark flows through untouched, falling back to Claude Code.
@@ -285,6 +285,14 @@ export function renderSessions() {
     if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
     if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
     const ago = fmtAgo(s.started_at);
+    // The Board's own "status · age" (#1580), from this poll's Board
+    // placement: the same formatter and words as the Board's row. The word
+    // is dropped where the attention chip already says it; the age
+    // stays. No placement (null) shows neither.
+    const statusBits = sessionStatusBits(s.board_status, s.board_age_seconds, {
+      chief: isChief,
+      hideStatus: !!attention,
+    });
     // The folder name, not the full Windows path that wrapped to four lines
     // on a phone (#1238 J-10). The full path is the row's hover hint and the
     // row menu's Copy path.
@@ -293,7 +301,8 @@ export function renderSessions() {
       agentLabel: known ? known.label : 'Claude Code',
       badge: isChief ? 'crown' : (s.alive === false ? 'down' : 'alive'),
       title: sessionTitle(s),
-      meta: [projectFolder(s), ago ? 'up ' + ago : ''].filter(Boolean).join(' · '),
+      meta: [projectFolder(s)].concat(statusBits).filter(Boolean).join(' · '),
+      metaTail: ago ? 'up ' + ago : '',
       chips: chips,
       // `.name`: the hook every row test reads the title through.
       titleClass: 'name',
