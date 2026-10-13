@@ -206,6 +206,24 @@ def _no_real_mirror_window(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fake_injector(monkeypatch):
+    """Never inject real mouse or keyboard input from a test (#1521).
+
+    Every Screen-control event goes out through ``desktop_input.get_injector``;
+    here it is a recorder for the whole suite, so no test can move the
+    owner's mouse or type into their desktop. A test that asserts on what
+    would have been sent asks for this fixture by name. The e2e suite's
+    disposable webapp gets the same through ``LAUNCHER_SCREEN_FAKE_INPUT=1``.
+    """
+    from src import desktop_input
+
+    recorder = desktop_input.RecordingInjector()
+    monkeypatch.setattr(desktop_input, "get_injector", lambda: recorder)
+    monkeypatch.setattr(desktop_input, "_injector", recorder)
+    return recorder
+
+
+@pytest.fixture(autouse=True)
 def _isolated_jobs_index(tmp_path, monkeypatch):
     """Give each test its own Jobs index.
 

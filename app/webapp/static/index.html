@@ -2477,9 +2477,40 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
         </button>
       </div>
+      <!-- Control (#1521): View only pans and zooms (the default, so a stray
+           tap never clicks); Control turns touches into clicks, drags and
+           scrolls on the PC, and shows the keyboard toggle. -->
+      <div class="screen-view-tools">
+        <nav id="screenMode" class="range-tabs segmented screen-mode" aria-label="Mode">
+          <button type="button" class="range-tab active" data-mode="view" aria-pressed="true">View</button>
+          <button type="button" class="range-tab" data-mode="control" aria-pressed="false">Control</button>
+        </nav>
+        <button type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
+        </button>
+      </div>
       <div id="screenStage" class="screen-stage">
         <img id="screenImage" class="screen-image" alt="The PC's screen" draggable="false" hidden>
         <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
+      </div>
+      <!-- The keys the phone keyboard lacks (#1521). Ctrl / Alt / Shift / Win
+           are sticky for one key: tap Ctrl, then c, for Ctrl+C. The hidden
+           input raises the phone keyboard; what it types goes to the PC. -->
+      <div id="screenKeys" class="screen-keys" role="group" aria-label="Keys" hidden>
+        <button type="button" class="key-btn" data-key="esc">Esc</button>
+        <button type="button" class="key-btn" data-key="tab">Tab</button>
+        <button type="button" class="key-btn" data-mod="ctrl" aria-pressed="false">Ctrl</button>
+        <button type="button" class="key-btn" data-mod="alt" aria-pressed="false">Alt</button>
+        <button type="button" class="key-btn" data-mod="shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>
+        <button type="button" class="key-btn" data-mod="win" aria-pressed="false">Win</button>
+        <button type="button" class="key-btn" data-key="delete">Del</button>
+        <button type="button" class="key-btn" data-key="left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>
+        <button type="button" class="key-btn" data-key="up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>
+        <button type="button" class="key-btn" data-key="down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>
+        <button type="button" class="key-btn" data-key="right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>
+        <button type="button" class="key-btn" data-key="backspace" aria-label="Backspace">&#x232B;</button>
+        <button type="button" class="key-btn screen-key-enter" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>
+        <input id="screenKeyInput" class="screen-key-input" type="text" aria-label="Type on the PC" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       </div>
     </dialog>
 

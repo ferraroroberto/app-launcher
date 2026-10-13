@@ -5689,3 +5689,62 @@ span.chief-answer-ref { color: var(--muted); }
   margin: 0;
   text-align: center;
 }
+
+/* Screen control (#1521). A toolbar row under the bar, on the same card
+   surface: the View / Control segmented control, and the keyboard toggle (an
+   icon button, pressed while the keys are up) once Control is on. */
+.screen-view-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 6px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.screen-mode { flex: 0 1 240px; min-width: 0; margin: 0; }
+.screen-keyboard { margin-left: auto; --icon-btn-box: var(--control-h); }
+.screen-keyboard[hidden] { display: none; }
+.screen-keyboard .icon { width: var(--icon-title); height: var(--icon-title); }
+/* No long-press callout or text selection over the frame: a long-press is a
+   right click here. */
+.screen-stage { -webkit-touch-callout: none; }
+.screen-view[data-mode="control"] .screen-stage { cursor: crosshair; }
+.screen-view.keys-open .screen-stage { padding-bottom: 0; }
+/* The keys bar: two rows of real 44px keys on a 7-column grid, Enter two
+   wide, over the bottom safe area. Same key-btn look as the terminal's keys
+   popover; a held modifier takes its .active state. */
+.screen-keys {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+.screen-keys[hidden] { display: none; }
+.screen-keys .key-btn {
+  min-width: 0;
+  min-height: var(--hit-min, 44px);
+  padding: 0;
+  font-size: var(--font-body);
+}
+.screen-keys .key-btn .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-key-enter { grid-column: span 2; }
+/* The phone keyboard's target: focusable and on screen (iOS raises the
+   keyboard only for a visible field), but invisible and untouchable. 16px
+   keeps iOS from zooming the page when it takes focus. */
+.screen-key-input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  pointer-events: none;
+}

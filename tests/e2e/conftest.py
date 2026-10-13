@@ -49,6 +49,7 @@ import pytest
 import requests
 from playwright.sync_api import BrowserContext, Locator, Page, expect
 
+from src.desktop_input import FAKE_INPUT_ENV as _FAKE_INPUT_ENV
 from src.git_utils import run_git
 from src.github_client import GH_CMD_ENV
 from src.scanner import dir_ignored, slugify
@@ -615,6 +616,9 @@ def _autoboot_server(
                     _STARTUP_DIR_ENV: str(startup_dir),
                     _AUDIT_DIR_ENV: str(audit_dir),
                     GH_CMD_ENV: _SYNTHETIC_GH_CMD,
+                    # The Screen view's input is recorded, never sent: the
+                    # gate runs on the owner's desktop (#1521).
+                    _FAKE_INPUT_ENV: "1",
                 },
             )
 

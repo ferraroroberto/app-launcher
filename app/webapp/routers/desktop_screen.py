@@ -15,6 +15,14 @@ reads them the same way.
 Protocol: the server sends binary JPEG frames and JSON text status messages
 (``{"type": "status", "state": "unavailable" | "live"}``); the client sends
 the text ``ack`` after drawing each frame, and the next frame waits for it.
+
+Input (#1521): every other text frame the client sends is a JSON input
+message (click, down/move/up, scroll, text, key), handed to a
+:class:`src.desktop_input.InputSession` for this socket's monitor. The reader
+that receives them only starts after the gate above has passed, so input
+rides the same socket and the same gate as the picture; there is no other
+input path (``tests/test_desktop_input.py`` fails if one appears). When the
+socket goes away, every key and button the session still holds is released.
 """
 
 from __future__ import annotations
@@ -28,7 +36,7 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from src import audit, desktop_capture
+from src import audit, desktop_capture, desktop_input
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -92,14 +100,25 @@ def _int_param(websocket: WebSocket, name: str) -> Optional[int]:
         return None
 
 
-async def _read_acks(
-    websocket: WebSocket, acked: asyncio.Event, stopped: asyncio.Event
+async def _read_client(
+    websocket: WebSocket,
+    acked: asyncio.Event,
+    stopped: asyncio.Event,
+    session: Optional[desktop_input.InputSession] = None,
 ) -> None:
-    """Turn the client's ``ack`` messages into ``acked``; a disconnect stops."""
+    """Turn the client's ``ack`` messages into ``acked`` and hand every other
+    text frame to ``session`` as input, in order; a disconnect stops.
+
+    Input runs off the loop: ``SendInput`` is quick, but a slow low-level
+    hook elsewhere on the PC can hold it, and that must not stall the app.
+    """
     try:
         while True:
-            if await websocket.receive_text() == "ack":
+            text = await websocket.receive_text()
+            if text == "ack":
                 acked.set()
+            elif session is not None:
+                await asyncio.to_thread(session.handle_text, text)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
@@ -147,7 +166,8 @@ async def screen_ws(websocket: WebSocket) -> None:
     async def send_status(state: str) -> None:
         await websocket.send_text(json.dumps({"type": "status", "state": state}))
 
-    reader = asyncio.create_task(_read_acks(websocket, acked, stopped))
+    session = desktop_input.InputSession(desktop_input.get_injector(), monitor, monitors)
+    reader = asyncio.create_task(_read_client(websocket, acked, stopped, session))
     try:
         await desktop_capture.stream_frames(
             lambda: desktop_capture.grab_monitor(monitor),
@@ -157,6 +177,12 @@ async def screen_ws(websocket: WebSocket) -> None:
         logger.debug("Screen socket ended while sending: %s", exc)
     finally:
         stopped.set()
+        # First, and synchronously: nothing below may stop a dropped phone
+        # from lifting a held Ctrl or mouse button on the PC.
+        try:
+            session.release_all()
+        except Exception as exc:  # noqa: BLE001 - the close audit must still run
+            logger.warning("⚠️ Screen: releasing held input failed: %s", exc)
         reader.cancel()
         try:
             await reader
@@ -165,4 +191,5 @@ async def screen_ws(websocket: WebSocket) -> None:
         await audit_off_loop(
             audit.audit_event, "screen_close", client=client, monitor=monitor.id,
             duration_s=round(time.monotonic() - started, 1), frames=sent["frames"],
+            inputs=session.count,
         )

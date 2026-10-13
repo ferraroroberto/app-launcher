@@ -55,7 +55,7 @@ flowchart TB
       R_SCREEN["session_screen.py — /api/claude-code/sessions/{sid}/answer, plan-picker,
 resume, context
 reads the PTY screen + types keystrokes (#1424)"]
-      R_DESKTOP["desktop_screen.py — /api/screen/monitors, WS /api/screen/ws\nthe PC desktop, live, passkey-gated (#1520)"]
+      R_DESKTOP["desktop_screen.py — /api/screen/monitors, WS /api/screen/ws\nthe PC desktop, live, passkey-gated (#1520)\n+ click / drag / scroll / type on the same socket (#1521)"]
       R_JOBS["jobs.py + jobs_run_store_routes.py\n+ jobs_webhook_routes.py\n/api/jobs/* (Jobs tab)"]
       R_LIFEOS["life_os.py — /api/life-os/* (Life OS tab) launch\n+ life_os_conversations.py (history index/search/relaunch)\n+ life_os_files.py (path-jailed content browser,
   /file/transcript: capture parsed to Chat entries)\n+ life_os_spawn.py (shared skill resolve + spawn tail)
@@ -113,6 +113,7 @@ life-os.js, life-os-viewer.js, voice.js"]
     JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
     JOBSSNAPSHOT["jobs_snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
     DESKCAP["desktop_capture.py\nScreen view: per-monitor BitBlt + JPEG,\nack-paced, only while a viewer is connected (#1520)"]
+    DESKIN["desktop_input.py\nScreen control: 0-1 to virtual-desktop mapping,\nthe one SendInput seam, held input released on close (#1521)"]
     SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
     JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
@@ -181,6 +182,7 @@ life-os.js, life-os-viewer.js, voice.js"]
   WSERVER -->|"lifespan load sampler, while polled (#1522)"| SYSLOAD
   R_MISC --> SYSLOAD
   R_DESKTOP -->|"capture only inside a connected WS"| DESKCAP
+  R_DESKTOP -->|"input only on the gated WS"| DESKIN
   BOARD --> JOBSSNAPSHOT
   JOBSSNAPSHOT --> JOBSFACADE
   JOBSHISTORY -->|"run.json written here: mark dirty"| JOBSSNAPSHOT

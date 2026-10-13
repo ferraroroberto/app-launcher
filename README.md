@@ -430,7 +430,7 @@ After that, opening any session prompts Face ID once per 12 h.
 
 ## Screen view from the phone
 
-A live, read-only view of what is on the PC's screen (issue #1520; input is Step 2/2). Tap the CPU reading in any page header to open the **PC load** sheet, then its **Screen** row. On the phone the view opens full screen. On a desktop browser the same row pops the view out into its own window (`/?screen=1`, which boots only the viewer). It needs no extra app and no admin rights: the tray-owned webapp runs in your interactive session, so it reads the desktop directly with plain GDI.
+A live view of what is on the PC's screen (issue #1520) that you can also click, drag, scroll and type into (issue #1521, **Control** below). Tap the CPU reading in any page header to open the **PC load** sheet, then its **Screen** row. On the phone the view opens full screen. On a desktop browser the same row pops the view out into its own window (`/?screen=1`, which boots only the viewer). It needs no extra app and no admin rights: the tray-owned webapp runs in your interactive session, so it reads the desktop directly with plain GDI.
 
 - **Displays.** With more than one monitor, a picker in the bar names them by where they sit: **Main** for the primary, then **Above**, **Below**, **Left** or **Right**. It opens on the primary. Monitors use virtual-desktop coordinates, so one above or left of the primary (a negative origin) works like any other.
 - **Zoom.** Pinch to zoom (up to 5×) and drag to pan. On a desktop, scroll the wheel to zoom and double-click to reset. The zoom is local to the view, since the page itself stays zoom-locked.
@@ -447,9 +447,37 @@ A live, read-only view of what is on the PC's screen (issue #1520; input is Step
 - **Flow control is client-acked.** The next frame is grabbed only after the viewer acks the last one it drew, at most one every 150 ms (~7 fps), so a slow link never builds a queue.
 - **Capture runs only while a viewer is connected.** There is no background task. Closing the view, or hiding the page, closes the socket, and the loop stops with it.
 
-Every connect and disconnect writes one line to `webapp/terminal_audit.log` (`[screen_open]` / `[screen_close]`, with client IP, monitor, duration and frames sent).
+Every connect and disconnect writes one line to `webapp/terminal_audit.log` (`[screen_open]` / `[screen_close]`, with client IP, monitor, duration, frames sent and, on close, the number of input messages acted on). What was typed is never logged.
 
-Capture lives in the webapp process, so `tray.bat --restart` makes a change here live. Nothing here is part of the session-host.
+### Controlling the PC
+
+A **View / Control** switch sits under the Screen bar. **View** is the default every time the view opens, so a stray tap never clicks: touches only zoom and pan the picture, as above. **Control** sends what you do to the PC:
+
+- **Tap** clicks there. Two quick taps double-click, on the first tap's spot.
+- **Long-press** (half a second) right-clicks.
+- **Press and drag** drags with the left button held (move a window, select text).
+- **Two-finger drag** scrolls the wheel, in the phone's own direction (fingers down shows what is above). Sideways scrolls horizontally.
+- **Pinch** still zooms, and moving the pinch pans, which is how you move around a zoomed picture in Control.
+- On a desktop browser the mouse works the same way. Right-click right-clicks, and the wheel scrolls the PC (ctrl+wheel or a trackpad pinch zooms).
+
+**Keyboard.** In Control, the keyboard button raises the phone keyboard and shows a keys bar. Whatever you type goes to the PC verbatim, accents and symbols included (`ñ€` arrive as typed, sent as Unicode). Backspace and Return work from the phone keyboard. The bar adds what a phone keyboard lacks: Esc, Tab, Del, the arrows, Backspace and Enter, plus **Ctrl, Alt, Shift and Win**. The modifiers are sticky for one key: tap Ctrl, then `c`, for Ctrl+C. Several can be held together (Ctrl, Shift, then Esc). A held modifier lights up and lets go after the next key, so a forgotten Ctrl never turns later typing into shortcuts. Combos go out as real key presses, so apps see Ctrl+C as a shortcut, not as a typed character. A modifier applies to letters, digits and the bar's keys; any other character is typed as is.
+
+**Input is never sent at a stale picture.** While the screen can't be read (locked, asleep, disconnected) the view sends nothing, since a tap would land on whatever is really there now.
+
+**Same socket, same gate.** Input travels as JSON messages on the Screen view's own `WS /api/screen/ws`, so it has the same edge / Tailscale / bearer / passkey gate as the picture, and there is no other input route. `tests/test_desktop_input.py` fails if any other module calls a Windows input API, or if anything but the Screen socket imports the injector. Each message is checked (coordinates within 0-1, known keys and buttons, bounded text and scroll), and anything else is dropped. When the socket closes, for whatever reason, every mouse button and key still held on the PC is released, so a dropped phone mid-drag never leaves a button stuck.
+
+**How it maps** (`src/desktop_input.py`). The phone sends positions as 0-1 within the monitor it shows. The server turns that into a physical pixel on that monitor, then into the 0-65535 range Windows `SendInput` takes over the whole virtual desktop (`MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK`). Rects are physical pixels (the process is per-monitor-v2 DPI aware), so a scaled monitor, or one above or left of the primary, maps like any other. Text goes out as `KEYEVENTF_UNICODE` key packets, and named keys and modifiers as virtual keys. No extra tool, no admin rights: `SendInput` is reached through `ctypes`.
+
+**Known limits.**
+
+- **Elevated windows (UIPI).** The webapp runs without admin rights, and Windows doesn't let a non-elevated process send input to an elevated window (an admin terminal, Task Manager, an installer). The input is silently dropped, so the click does nothing. Not a bug; use the PC itself for those.
+- **The lock screen, UAC prompts and the secure desktop** take no input from here, and the picture can't show them either.
+- **No clipboard sync, file transfer or audio.**
+- A long-press can't be told from a slow tap under half a second, so tap briskly for a left click.
+
+**Tests never touch the real desktop.** Every event goes through one injector seam. The test suite swaps it for a recorder, and the pre-ship gate's disposable webapp starts with `LAUNCHER_SCREEN_FAKE_INPUT=1`, which records and sends nothing. The real check (taps on both monitors, the context menu, typing `ñ€ hola` into Notepad, Ctrl+A / Ctrl+C) is on the phone.
+
+Capture and input live in the webapp process, so `tray.bat --restart` makes a change here live. Nothing here is part of the session-host.
 
 ---
 

@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import sys
 import time
 import types
 from pathlib import Path
-from typing import List
+from typing import Dict, List
 
 import pytest
 from PIL import Image
@@ -82,6 +83,30 @@ def _ws_close_code(client: TestClient, url: str, headers=None) -> int:
         with client.websocket_connect(url, headers=headers or {}) as ws:
             ws.receive_bytes()
     return excinfo.value.code
+
+
+def _wait_for(predicate, what: str, timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        if time.monotonic() > deadline:
+            raise AssertionError(f"timed out waiting for {what}")
+        time.sleep(0.01)
+
+
+def _close_and_wait(ws, audit) -> Dict:
+    """Close from the client, as a phone does, and wait for the handler's
+    own end; the close audit's fields.
+
+    Leaving the ``with`` block instead makes TestClient cancel the handler,
+    and anyio then re-cancels every await in its ``finally``, so the close
+    audit's off-loop write can be lost (1 in 15 runs on the pre-#1521 code).
+    uvicorn never cancels a handler on a client close; this matches it."""
+    ws.close()
+    _wait_for(
+        lambda: "screen_close" in [c.args[0] for c in audit.audit_event.call_args_list],
+        "the close audit",
+    )
+    return audit.audit_event.call_args_list[-1].kwargs
 
 
 # ------------------------------------------------------------- HTTP gate
@@ -217,14 +242,9 @@ def test_ws_audits_connect_and_disconnect(screen, webapp_client):
     audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
         ws.receive_bytes()
-    # The close line is written off the loop in the handler's finally, which
-    # can still be running when the client side of the socket has returned.
-    deadline = time.monotonic() + 5
-    while len(audit.audit_event.call_args_list) < 2 and time.monotonic() < deadline:
-        time.sleep(0.01)
+        closed = _close_and_wait(ws, audit)
     events = [c.args[0] for c in audit.audit_event.call_args_list]
     assert events == ["screen_open", "screen_close"]
-    closed = audit.audit_event.call_args_list[1].kwargs
     assert closed["client"] == LOOPBACK and closed["monitor"] == 0
     assert closed["frames"] == 1 and closed["duration_s"] >= 0
 
@@ -236,14 +256,9 @@ def test_capture_stops_when_the_viewer_disconnects(screen, webapp_client):
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
         ws.receive_bytes()
         ws.send_text("ack")
-    # Measure from the handler's own end (its close audit), not from the
-    # client returning, which can come first.
-    deadline = time.monotonic() + 5
-    while (
-        "screen_close" not in [c.args[0] for c in audit.audit_event.call_args_list]
-        and time.monotonic() < deadline
-    ):
-        time.sleep(0.01)
+        # Measure from the handler's own end (its close audit), not from the
+        # client returning, which can come first.
+        _close_and_wait(ws, audit)
     settled = len(grabs)
     assert settled >= 1
     time.sleep(desktop_capture.FRAME_INTERVAL_S * 4)
@@ -271,10 +286,118 @@ def test_a_viewer_disconnect_stops_the_capture_loop():
 
     async def go():
         acked, stopped = asyncio.Event(), asyncio.Event()
-        await desktop_screen._read_acks(_ScriptedSocket(["ack"]), acked, stopped)
+        await desktop_screen._read_client(_ScriptedSocket(["ack"]), acked, stopped)
         return acked.is_set(), stopped.is_set()
 
     assert _run(go()) == (True, True)
+
+
+# ------------------------------------------------------- input (#1521)
+#
+# Every test here runs against tests/conftest.py's recording fake injector:
+# nothing reaches the real desktop.
+
+_CLICK = json.dumps({"type": "click", "button": "left", "x": 0.5, "y": 0.5})
+_DOWN = json.dumps({"type": "down", "button": "left", "x": 0.25, "y": 0.25})
+
+
+def _ws_input_refused(client: TestClient, url: str, headers=None) -> int:
+    """Send input on a socket the gate refuses; the close code it got."""
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect(url, headers=headers or {}) as ws:
+            ws.send_text(_CLICK)
+            ws.send_text(_DOWN)
+            ws.receive_bytes()
+    return excinfo.value.code
+
+
+@pytest.mark.parametrize(
+    "host, token, with_tt, headers, code",
+    [
+        (TAILNET, TOKEN, True, {"cf-ray": "abc-AMS"}, 4403),   # the public edge
+        (LOOPBACK, "", False, {"cf-ray": "abc-AMS"}, 4403),    # edge over loopback
+        (LAN, TOKEN, True, None, 4403),                         # off the tailnet
+        (TAILNET, "", True, None, 4401),                        # no bearer
+        (TAILNET, TOKEN, False, None, 4401),                    # no passkey unlock
+    ],
+    ids=["cloudflare", "cloudflare-loopback", "off-tailnet", "no-bearer", "no-passkey"],
+)
+def test_a_refused_socket_injects_nothing(screen, fake_injector, host, token, with_tt, headers, code):
+    app, tt, grabs = screen
+    url = _ws_url(token, tt if with_tt else "")
+    assert _ws_input_refused(_as(app, host), url, headers) == code
+    time.sleep(0.1)  # give a (wrongly) running reader every chance to act
+    assert fake_injector.batches == [], "a refused socket's input reached the injector"
+    assert grabs == []
+
+
+def test_a_forged_passkey_token_injects_nothing(screen, fake_injector):
+    app, _, _ = screen
+    assert _ws_input_refused(_as(app, TAILNET), _ws_url(TOKEN, "not-minted")) == 4401
+    time.sleep(0.1)
+    assert fake_injector.batches == []
+
+
+def test_an_unlocked_tailnet_client_clicks_where_it_taps(screen, fake_injector):
+    from src import desktop_input as di
+
+    app, tt, _ = screen
+    with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt)) as ws:
+        ws.receive_bytes()
+        ws.send_text(_CLICK)
+        _wait_for(lambda: fake_injector.batches, "the click")
+    # The fixture's desktop: PRIMARY (64x36 at 0,0) under ABOVE (0,-36), so
+    # the virtual desktop is 64x72 at (0,-36); the primary's centre pixel
+    # (32, 18) is (32, 54) into it.
+    move, down, up = fake_injector.batches[0]
+    assert (move.dx, move.dy) == (round(32 * 65535 / 63), round(54 * 65535 / 71))
+    assert move.flags & di.MOUSEEVENTF_ABSOLUTE and move.flags & di.MOUSEEVENTF_VIRTUALDESK
+    assert (down.flags, up.flags) == (di.MOUSEEVENTF_LEFTDOWN, di.MOUSEEVENTF_LEFTUP)
+
+
+def test_input_maps_onto_the_monitor_being_viewed(screen, fake_injector):
+    app, _, _ = screen
+    with _as(app, LOOPBACK).websocket_connect(_ws_url(monitor="1")) as ws:
+        ws.receive_bytes()
+        ws.send_text(json.dumps({"type": "click", "x": 0, "y": 0}))
+        _wait_for(lambda: fake_injector.batches, "the click")
+    move = fake_injector.batches[0][0]
+    assert (move.dx, move.dy) == (0, 0), "ABOVE's top-left is the desktop's"
+
+
+def test_disconnect_releases_a_held_button(screen, fake_injector, webapp_client):
+    from src import desktop_input as di
+
+    app, _, _ = screen
+    audit = webapp_client[2]["audit"]
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        ws.receive_bytes()
+        ws.send_text(_DOWN)
+        _wait_for(lambda: fake_injector.batches, "the press")
+    # The phone went away mid-drag. Leaving the block this way cancels the
+    # handler (TestClient does; anyio then re-cancels every later await), the
+    # harshest end a socket can have: the release is the first, synchronous
+    # step of the handler's finally, so it still runs.
+    _wait_for(lambda: len(fake_injector.batches) == 2, "the release")
+    assert fake_injector.batches[-1] == [di.MouseEvent(di.MOUSEEVENTF_LEFTUP)]
+
+
+def test_the_close_audit_counts_inputs_and_never_logs_what_was_typed(
+    screen, fake_injector, webapp_client
+):
+    app, _, _ = screen
+    audit = webapp_client[2]["audit"]
+    secret = "hunter2-ñ€"
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        ws.receive_bytes()
+        ws.send_text(json.dumps({"type": "text", "text": secret}))
+        ws.send_text(json.dumps({"type": "key", "key": "c", "mods": ["ctrl"]}))
+        ws.send_text("not an input message")
+        _wait_for(lambda: len(fake_injector.batches) == 2, "both inputs")
+        closed = _close_and_wait(ws, audit)
+    assert closed["inputs"] == 2
+    for call in audit.audit_event.call_args_list:
+        assert secret not in repr(call), "typed text reached the audit log"
 
 
 # ------------------------------------------------------------ capture loop
