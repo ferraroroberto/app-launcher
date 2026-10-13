@@ -66,11 +66,11 @@ import {
 } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { avatar, chip } from './glance.js';
-import { actionRow } from './action-rows.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { renderBoardBadge, renderHeadStatus } from './home-head.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
   boardRepoFilter,
   getBoardDispatchModel,
@@ -280,7 +280,11 @@ let drawerComposer = null;
 
 // The open drawer's kebab menu (#1502: Rename, Stop). A kept drawer (#958)
 // keeps its menu, open or not; renderBoard() ends it with a drawer it drops.
-const drawerMenu = createRowMenu('project-menu');
+// It drops below the drawer's action row, right edges 4px in.
+const drawerMenu = createRowMenu({
+  className: 'project-menu',
+  placement: { against: function (kebab) { return kebab.parentElement; }, offset: 2, inset: 4 },
+});
 
 const DRAWER_KEYS_OFF = 'Open the terminal for keys';
 
@@ -413,7 +417,7 @@ function buildDrawer(card) {
   kebab.title = 'Session actions';
   kebab.setAttribute('aria-label', kebab.title);
   actions.appendChild(kebab);
-  actions.appendChild(drawerMenu.attach(card.session_id, kebab, [
+  drawerMenu.attach(card.session_id, kebab, [
     {
       // Rename: the launcher-native override (no PTY needed). The drawer
       // stays open across a rename (unlike Chat/Terminal, which navigate
@@ -421,8 +425,8 @@ function buildDrawer(card) {
       // rather than waiting for the next poll. A kept drawer (#958) can
       // outlive the payload its `card` came from, so the patch goes to the
       // card in the current payload.
-      className: 'board-rename-btn', glyph: 'pencil',
-      label: 'Rename this session', text: 'Rename',
+      dataset: { item: 'board-rename-btn' }, glyph: 'pencil',
+      label: 'Rename', ariaLabel: 'Rename this session',
       onTap: function () {
         openSessionRename(card, function (title) {
           card.manual_title = title;
@@ -436,8 +440,8 @@ function buildDrawer(card) {
       // Stop: the unified stop path the Coding tab's row menu uses for both
       // kinds (#253: the agent's own quit, force-fallback server-side),
       // always behind the themed confirm (#1502).
-      className: 'board-stop-btn', glyph: 'octagon-x',
-      label: 'Stop and kill this session', text: 'Stop',
+      dataset: { item: 'board-stop-btn' }, glyph: 'octagon-x',
+      label: 'Stop', ariaLabel: 'Stop and kill this session',
       danger: true,
       onTap: async function () {
         if (!(await confirmDialog(stopConfirm(card)))) return;
@@ -450,7 +454,7 @@ function buildDrawer(card) {
         setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
       },
     },
-  ]));
+  ]);
   drawer.appendChild(actions);
   return drawer;
 }
@@ -600,7 +604,7 @@ async function startIssue(card, mode, btn) {
 // The Backlog rows' kebab menus (#1436), one shared row-menu: the 5 s poll
 // rebuilds every row, and attach() reopens the open one on its rebuilt row.
 // It drops below the row, right-aligned, as every action-row's menu does.
-const issueMenu = createRowMenu('project-menu');
+const issueMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 
 async function copyLink(url) {
   try {
@@ -659,28 +663,28 @@ function renderIssueCard(card) {
   const inProgressTitle = 'Issue #' + card.number + ' is already in progress' +
     (claimUnverified ? ' (owner unverified)' : '');
   const kebab = row.kebab;
-  row.li.appendChild(issueMenu.attach(card.repo + '#' + card.number, kebab, [
+  issueMenu.attach(card.repo + '#' + card.number, kebab, [
     {
-      className: 'board-issue-yolo', glyph: 'zap',
-      label: 'YOLO issue #' + card.number + ' (start and ship)', text: 'YOLO (start and ship)',
+      dataset: { item: 'board-issue-yolo' }, glyph: 'zap',
+      label: 'YOLO (start and ship)', ariaLabel: 'YOLO issue #' + card.number + ' (start and ship)',
       hidden: !startable,
       disabled: isInProgress,
-      title: inProgressTitle,
+      hint: inProgressTitle,
       onTap: function () { startIssue(card, 'yolo', kebab); },
     },
     {
-      className: 'board-issue-open', glyph: 'globe',
-      label: 'Open issue #' + card.number + ' on GitHub', text: 'Open on GitHub',
+      dataset: { item: 'board-issue-open' }, glyph: 'globe',
+      label: 'Open on GitHub', ariaLabel: 'Open issue #' + card.number + ' on GitHub',
       hidden: !card.url,
       onTap: function () { window.open(card.url, '_blank', 'noopener'); },
     },
     {
-      className: 'board-issue-copy', glyph: 'copy',
-      label: 'Copy the link to issue #' + card.number, text: 'Copy link',
+      dataset: { item: 'board-issue-copy' }, glyph: 'copy',
+      label: 'Copy link', ariaLabel: 'Copy the link to issue #' + card.number,
       hidden: !card.url,
       onTap: function () { copyLink(card.url); },
     },
-  ]));
+  ]);
   return row.li;
 }
 

@@ -857,8 +857,10 @@ button.settings-row:active { background: var(--card-2); }
   --icon-btn-box: var(--hit-min);
   align-items: flex-end;
 }
-.app-item .row-actions .action-stop-close:active,
-.terminal-bar .row-menu .action-stop-close:active {
+/* The session and terminal menus' Stop row (data-item, sessions.js and
+   terminal-bar.js) tints on press. */
+.session-menu .row-menu-item[data-item="action-stop-close"]:active,
+.terminal-menu .row-menu-item[data-item="action-stop-close"]:active {
   background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger-text);
 }
@@ -1872,121 +1874,36 @@ textarea.input-native { height: auto; }
   padding: 8px 4px 8px 14px;
 }
 /* ---------- row action menus: session kebab (#953) + project ⋯ (#977) ---------- */
-/* One anchor in the rail opens a floating vertical list — one icon + label
-   row per action — on the same raised-chrome recipe as the git-status
-   summary popover (row-menu.js). Two placements: the session menu floats
-   left of the rail, top-aligned so a four-row menu grows downward over the
-   rows below it (z-index) rather than climbing off the top of the list; the
-   project menu drops below its rail, right-aligned, so it works both beside
-   the name (desktop) and on the stacked phone row. */
+/* The floating menu is the vendored row-menu (_vendored/row-menu/, #1565):
+   row-menu.js mounts the open menu on <body> and places it against the
+   element each caller names, and row-menu.css owns its look. What stays
+   here is this app's side of it. The session rail centres its kebab
+   against the row's full height, the alignment #1025 asked for. */
 .app-item .row-actions.session-actions {
-  position: relative;
   justify-content: center;
 }
-/* The kebab keeps the 52px slot the gear held, and `justify-content: center`
-   on the rail above centres it against the row's full height — the
-   alignment #1025 asked for. */
+/* The vendored menu stacks at 200, but this app's layers sit higher: the
+   terminal overlay at 300, and on the wide Code tab the fixed list column
+   at 310, which covered every menu opened from it. One step over that
+   column, still under the Changes panel (320), the lightbox (350) and the
+   toast (400). Each caller's className is the hook. */
+.row-menu.project-menu,
+.row-menu.session-menu,
+.row-menu.terminal-menu,
+.row-menu.composer-menu {
+  z-index: 315;
+}
+/* The open menu's anchor keeps the accent while hovered: the vendored
+   icon-button's hover colour outranks the vendored `.row-menu-anchor`
+   rule, so these restate it more specifically. */
 .app-item .row-actions .row-menu-anchor[aria-expanded="true"],
 .terminal-bar .row-menu-anchor[aria-expanded="true"] {
   color: var(--accent);
 }
-.row-menu {
-  position: absolute;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 200px;
-  padding: 4px;
-  background: var(--card-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow);
-}
-/* A menu that opted into viewport placement (#996, row-menu.js
-   `placeAgainst`): only `position` changes — row-menu.js writes the top/left
-   its own CSS placement resolved to (and neutralises that rule's bottom/right
-   inline), so the menu lands where the rules below put it while no scrolling
-   ancestor can clip it. `fixed` is what buys that: its containing block is
-   the viewport, not the scroller. */
-.row-menu--fixed { position: fixed; }
-.session-menu { top: 0; right: calc(100% - 4px); }
-.project-menu { top: calc(100% + 2px); right: 4px; }
-/* An action-row's kebab menu (#1128) drops below the row, right-aligned
-   under the kebab: the row is the positioned box. A tray row's autostart
-   switch, its one leading toggle, keeps its own width. */
+/* A tray row's autostart switch, its one leading toggle, keeps its own
+   width. */
 .action-row { position: relative; }
 .action-row > .toggle { flex: none; margin: 0 6px; }
-/* The terminal bar's ⋮ menu (#981) drops below the bar, right-aligned under
-   its anchor — the bar itself is the positioned box, as for .speak-popover. */
-.terminal-menu { top: calc(100% + 2px); right: 8px; }
-/* Menu rows: full-width, 44px min (hit-target.min), glyph then label,
-   left-aligned — not rail cells (the .icon-btn.row-menu-btn specificity
-   outranks the rail's width / divider rules). The stop row keeps
-   `action-stop-close` (danger tint on press, below). */
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn,
-.action-row .row-menu .icon-btn.row-menu-btn,
-.composer .row-menu .icon-btn.row-menu-btn,
-.terminal-bar .row-menu .icon-btn.row-menu-btn {
-  /* The composer's and terminal bar's menus sit outside a rail, so they
-     never inherit the rail .icon-btn's flex box — set the flex/border/background basics here too,
-     or `gap` has nothing to act on and the glyph glues to its label. */
-  display: flex;
-  align-items: center;
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  flex: none;
-  width: 100%;
-  min-height: 44px;
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 0 12px;
-  border-top: 0;
-  border-left: 0;
-  border-radius: var(--radius-sm);
-  font-family: inherit;
-  font-size: var(--font-body);
-  font-weight: 500;
-  color: var(--fg);
-  text-align: left;
-  white-space: nowrap;
-}
-/* One shared disabled recipe (design.md button-disabled): flat muted text,
-   never opacity — the VS Code item when the `code` CLI is off PATH. */
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled,
-.action-row .row-menu .icon-btn.row-menu-btn:disabled,
-.composer .row-menu .icon-btn.row-menu-btn:disabled,
-.terminal-bar .row-menu .icon-btn.row-menu-btn:disabled {
-  color: var(--muted);
-  cursor: default;
-}
-/* A destructive item (#1129, row-menu.js `danger`): last, after a divider,
-   in the danger text colour — never a filled or tinted red button on the
-   row itself (the action-row contract). */
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn.row-menu-danger,
-.action-row .row-menu .icon-btn.row-menu-btn.row-menu-danger,
-.composer .row-menu .icon-btn.row-menu-btn.row-menu-danger,
-.terminal-bar .row-menu .icon-btn.row-menu-btn.row-menu-danger {
-  color: var(--danger-text);
-}
-.row-menu-divider {
-  height: 1px;
-  margin: 4px 8px;
-  background: var(--line);
-}
-.row-menu .row-menu-label { line-height: 1.2; }
-/* A brand mark as a menu glyph sits at the Lucide inline step. This rule
-   was the one place already doing the right thing before #1070; the chip
-   overrides it used to cancel are gone from .agent-icon now. */
-.row-menu .row-menu-brand {
-  width: 18px;
-  height: 18px;
-}
-.app-item .row-actions .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand,
-.action-row .row-menu .icon-btn.row-menu-btn:disabled .row-menu-brand {
-  filter: grayscale(1);
-}
 
 /* ---------- session transcript: the Chat pane (#953, #982) ---------- */
 /* The transcript is the session overlay's Chat mode: the same shell as the
@@ -3639,24 +3556,12 @@ body.terminal-open {
 }
 /* The shared composer (#980, composer.js): a column of OCR tray + compose
    bar, always docked under the terminal (and, later, under Chat mode and
-   in the Board drawer). Positioned so the keys D-pad and the image menu
-   can float above it. */
+   in the Board drawer). Positioned so the keys D-pad can float above it. */
 .composer {
   position: relative;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-}
-/* The image button's options menu (Attach image or file / Extract text from
-   screenshots): the row-menu recipe, floating above the composer at its
-   right edge — mockup screen 3. These two offsets stay the one source of the
-   placement: row-menu.js measures where they put the menu and re-applies it
-   in viewport coordinates while the menu is open, so the Board drawer's
-   scrolling ancestor cannot clip it (#996, `.row-menu--fixed` above). */
-.composer-menu {
-  bottom: calc(100% + 6px);
-  right: 10px;
-  min-width: 260px;
 }
 /* An attach batch in flight (#1354). The image button swaps its glyph for an
    hourglass over "N/M" and stays tappable (a second pick queues behind the
@@ -5457,23 +5362,6 @@ span.chief-answer-ref { color: var(--muted); }
 .trays-footer { margin-top: 4px; }
 .running-apps-note[hidden] { display: none; }
 .listeners-footer { margin: 12px 0; }
-
-/* A row menu's header line (row-menu.js `header`): a muted fact above the
-   items, a pid or a bat path. It takes the menu's width from the items
-   (width 0, min-width 100%) and wraps a long path rather than widening the
-   menu off the screen. */
-.row-menu-head {
-  width: 0;
-  min-width: 100%;
-  box-sizing: border-box;
-  padding: 8px 12px 6px;
-  font-size: var(--font-body-sm);
-  line-height: 1.45;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 2px;
-}
 
 /* A list's stale line (async-state.js, #1501): the last good data stays
    below it, and it says how old that data is. */

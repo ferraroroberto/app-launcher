@@ -140,7 +140,7 @@ def _open_session_menu(page: Page, sid: str = _SID, mode: str | None = None):
     stub_session_mirror(page)
     open_session_row(page, _open_row(page, sid), mode=mode)
     page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     return menu
 
@@ -191,7 +191,8 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
 def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
     # #967's shape contract for the shared row-menu component. Pinned on the
     # overlay's ⋮ menu since #1025 retired the row gear that first grew it —
-    # same component (row-menu.js), so the contract is unchanged.
+    # the same component (the vendored row-menu since #1565), so the contract
+    # is unchanged.
     _mock_sessions_list(authed_page, kind="pty")
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="terminal")
@@ -222,9 +223,9 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
         assert b["height"] >= 44 - 1, f"row under the 44px hit-target floor: {b}"
         assert b["width"] >= 150, f"row too narrow for icon + label: {b}"
     # Existing hooks the smoke test relies on survive.
-    expect(menu.locator(".action-stop-close")).to_have_count(1)
-    expect(menu.locator('button[aria-label="Stop and kill session"]')).to_have_class(
-        re.compile(r"\baction-stop-close\b")
+    expect(menu.locator("[data-item=action-stop-close]")).to_have_count(1)
+    expect(menu.locator('button[aria-label="Stop and kill session"]')).to_have_attribute(
+        "data-item", "action-stop-close"
     )
 
 

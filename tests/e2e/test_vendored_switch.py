@@ -8,6 +8,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_row_menu
+
 pytestmark = pytest.mark.smoke
 
 _ONE_APP = {
@@ -164,7 +166,7 @@ def test_job_dialog_switches_use_vendored_component(
     # mode to switch on first, and the menu items carry their own classes.
     row = authed_page.locator("#jobsList li.job-row[data-id='alpha']")
     row.locator("button.job-menu-anchor").click()
-    row.locator(".job-edit-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-edit-item]").click()
 
     expect(authed_page.locator("#jobDialog")).to_be_visible()
     _assert_switch(authed_page, "#jobConfirmInput")
@@ -178,10 +180,10 @@ def test_job_dialog_switches_use_vendored_component(
     )
 
     authed_page.locator("#jobCancel").click()
-    # Run now is the kebab's `.job-run-item` (no per-row Run button, #1438);
+    # Run now is the kebab's `[data-item=job-run-item]` (no per-row Run button, #1438);
     # alpha declares a param, so it opens the run dialog.
     row.locator("button.job-menu-anchor").click()
-    row.locator(".job-run-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-run-item]").click()
 
     expect(authed_page.locator("#jobRunDialog")).to_be_visible()
     _assert_switch(

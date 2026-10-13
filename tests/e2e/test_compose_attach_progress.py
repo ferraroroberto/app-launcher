@@ -187,7 +187,7 @@ def test_a_tap_on_the_busy_button_cancels_and_a_fresh_pick_works(
     expect(button.locator('use[href="#i-paperclip"]')).to_have_count(1)
     expect(authed_page.locator(STATUS)).to_be_hidden()
     # No picker or menu opened in place of the cancel.
-    expect(authed_page.locator(".composer-menu:not([hidden])")).to_have_count(0)
+    expect(authed_page.locator(".composer-menu")).to_have_count(0)
     expect(authed_page.locator(INPUT)).to_have_value("")
     assert held.count == 1, "the dropped file must never be requested"
 

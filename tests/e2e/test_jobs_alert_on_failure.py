@@ -18,6 +18,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_row_menu
+
 pytestmark = pytest.mark.smoke
 
 _BASE_JOB = {
@@ -106,7 +108,7 @@ def test_bell_icon_dialog_toggle_order_and_save(
     # -- was test_toggle_precedes_confirm_toggle_in_dialog --
     # Edit is in the row's ⋯ menu (#1130), reachable without an Edit mode (#1438).
     off_row.locator(".action-row-kebab").click()
-    off_row.locator(".job-edit-item").click()
+    open_row_menu(authed_page).locator("[data-item=job-edit-item]").click()
 
     expect(authed_page.locator("#jobDialog")).to_be_visible()
     alert_toggle = authed_page.locator("#jobAlertOnFailureInput")

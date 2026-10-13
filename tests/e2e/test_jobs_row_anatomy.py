@@ -28,7 +28,7 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_eval, stable_read
+from tests.e2e.conftest import open_row_menu, stable_eval, stable_read
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -208,9 +208,12 @@ def test_the_kebab_holds_run_pause_dry_run_edit_and_remove(
         "Edit Nightly reconciliation",
         "Remove Nightly reconciliation",
     ]
+    menu = open_row_menu(authed_page)
     for label in labels:
-        expect(row.locator(f".row-menu-btn[aria-label='{label}']")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name=label, exact=True)).to_be_visible()
     # Remove is last, the danger item; Edit no longer waits for an Edit mode.
-    assert row.locator(".row-menu-btn").evaluate_all(
-        "els => els.map((e) => e.getAttribute('aria-label'))") == labels
-    expect(row.locator(".job-remove-item")).to_have_class(re.compile(r"\brow-menu-danger\b"))
+    # An item whose caption is its whole name carries no aria-label.
+    assert menu.locator(".row-menu-item").evaluate_all(
+        "els => els.map((e) => e.getAttribute('aria-label') || e.textContent.trim())"
+    ) == labels
+    expect(menu.locator("[data-item=job-remove-item]")).to_have_class(re.compile(r"\brow-menu-danger\b"))

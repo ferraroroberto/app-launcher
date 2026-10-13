@@ -37,7 +37,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import close_settings_sheets, open_settings_sheet
+from tests.e2e.conftest import close_settings_sheets, open_row_menu, open_settings_sheet
 
 pytestmark = pytest.mark.smoke
 
@@ -142,8 +142,9 @@ def _anchor(page: Page, app_id: str = "alpha"):
     return page.locator(f'.coding-item[data-id="{app_id}"] .project-menu-anchor')
 
 
-def _menu(page: Page, app_id: str = "alpha"):
-    return page.locator(f'.coding-item[data-id="{app_id}"] .project-menu')
+def _menu(page: Page):
+    """The open ⋯ menu, whichever row opened it (it is mounted on <body>)."""
+    return open_row_menu(page)
 
 
 def test_row_carries_three_controls_and_the_menu_holds_the_rest(
@@ -228,14 +229,14 @@ def test_row_carries_three_controls_and_the_menu_holds_the_rest(
     expect(_anchor(authed_page)).to_have_attribute("aria-expanded", "true")
 
     # Open in VS Code: #802's POST, unchanged, and the menu closes on the tap.
-    menu.locator(".project-vscode-btn").click()
+    menu.locator("[data-item=project-vscode-btn]").click()
     expect(authed_page.locator("#toast")).to_contain_text("alpha.code-workspace", timeout=5_000)
     assert posted["vscode"] and posted["vscode"][0].endswith("/api/claude-code/vscode/alpha")
     expect(menu).to_be_hidden()
 
     # Open folder: its own POST, toast names Explorer.
     _anchor(authed_page).click()
-    menu.locator(".project-folder-btn").click()
+    menu.locator("[data-item=project-folder-btn]").click()
     expect(authed_page.locator("#toast")).to_contain_text("Explorer", timeout=5_000)
     assert posted["folder"] and posted["folder"][0].endswith("/api/claude-code/folder/alpha")
     expect(menu).to_be_hidden()
@@ -250,20 +251,20 @@ def test_vscode_item_disabled_when_cli_missing_and_changes_hidden_for_non_git(
     _open_projects(authed_page)
 
     _anchor(authed_page).click()
-    item = _menu(authed_page).locator(".project-vscode-btn")
+    item = _menu(authed_page).locator("[data-item=project-vscode-btn]")
     expect(item).to_be_disabled(timeout=5_000)
     expect(item).to_have_attribute("title", "Visual Studio Code is not installed")
-    expect(_menu(authed_page).locator(".project-changes-btn")).to_have_count(1)
+    expect(_menu(authed_page).locator("[data-item=project-changes-btn]")).to_have_count(1)
     authed_page.keyboard.press("Escape")
     assert posted["vscode"] == []
 
     # `plain` isn't a git repo (mocked git-status): no Show changes item,
     # the other two still there.
     _anchor(authed_page, "plain").click()
-    menu = _menu(authed_page, "plain")
+    menu = _menu(authed_page)
     expect(menu).to_be_visible()
-    expect(menu.locator(".project-changes-btn")).to_have_count(0)
-    expect(menu.locator(".project-folder-btn")).to_have_count(1)
+    expect(menu.locator("[data-item=project-changes-btn]")).to_have_count(0)
+    expect(menu.locator("[data-item=project-folder-btn]")).to_have_count(1)
 
 
 def test_menu_is_not_hideable_and_a_stored_vscode_value_is_inert(
@@ -300,10 +301,9 @@ def test_menu_is_not_hideable_and_a_stored_vscode_value_is_inert(
     # … and the stored value does not hide it either.
     expect(_anchor(authed_page)).to_have_count(1)
     menu = _menu(authed_page)
-    expect(menu).to_have_count(1)
     _anchor(authed_page).click()
     expect(menu).to_be_visible()
-    expect(menu.locator(".project-vscode-btn")).to_have_count(1)
+    expect(menu.locator("[data-item=project-vscode-btn]")).to_have_count(1)
 
     # The stored value survives untouched — nothing migrated it away.
     stored = authed_page.request.get(f"{base_url}/api/config").json()
@@ -363,8 +363,8 @@ def test_favorite_agent_dropdown_moves_the_button_with_no_reload(
     _anchor(authed_page).click()
     menu = _menu(authed_page)
     expect(menu).to_be_visible()
-    expect(menu.locator('.project-launch-btn[data-agent="claude"]')).to_have_count(1)
-    expect(menu.locator('.project-launch-btn[data-agent="codex"]')).to_have_count(0)
+    expect(menu.locator('[data-item=project-launch-btn][data-agent="claude"]')).to_have_count(1)
+    expect(menu.locator('[data-item=project-launch-btn][data-agent="codex"]')).to_have_count(0)
     authed_page.keyboard.press("Escape")
 
     # Persisted server-side, not a client-side illusion.
@@ -403,7 +403,7 @@ def test_favorite_agent_stays_on_the_row_even_when_hidden(
     menu = _menu(authed_page)
     expect(menu).to_be_visible()
     # …and never repeated inside the menu, hidden or not.
-    expect(menu.locator(".project-launch-btn")).to_have_count(0)
-    expect(menu.locator(".project-github-btn")).to_have_count(0)
+    expect(menu.locator("[data-item=project-launch-btn]")).to_have_count(0)
+    expect(menu.locator("[data-item=project-github-btn]")).to_have_count(0)
     # The three project actions are not agents and stay put.
-    expect(menu.locator(".project-vscode-btn")).to_have_count(1)
+    expect(menu.locator("[data-item=project-vscode-btn]")).to_have_count(1)

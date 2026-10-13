@@ -20,6 +20,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.conftest import open_row_menu
+
 pytestmark = pytest.mark.smoke
 
 AGENTS = [
@@ -113,7 +115,7 @@ def _open_projects(page: Page) -> None:
 
 def _open_via_menu(page: Page, app_id: str = "alpha") -> None:
     page.locator(f'.coding-item[data-id="{app_id}"] .project-menu-anchor').click()
-    page.locator(f'.coding-item[data-id="{app_id}"] .project-changes-btn').click()
+    open_row_menu(page).locator("[data-item=project-changes-btn]").click()
 
 
 @pytest.mark.iphone

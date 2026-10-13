@@ -30,7 +30,7 @@ import json
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stable_eval
+from tests.e2e.conftest import close_settings_sheets, open_row_menu, open_settings_sheet, stable_eval
 
 pytestmark = pytest.mark.smoke
 
@@ -94,9 +94,10 @@ def _back_to_coding(page: Page) -> None:
 
 
 def _menu(page: Page):
-    """The row's ⋯ menu. Opened once; row-menu.js reopens it on the rebuilt
-    row after a re-render, so the handle stays usable across a save."""
-    return page.locator('.coding-item[data-id="alpha"] .project-menu')
+    """The open ⋯ menu. The vendored row-menu mounts it on <body> only while
+    it is open (#1565), and reopens it on the rebuilt row after a re-render,
+    so the handle stays usable across a save."""
+    return open_row_menu(page)
 
 
 def _open_menu(page: Page):
@@ -107,16 +108,30 @@ def _open_menu(page: Page):
     return menu
 
 
+def _close_menu(page: Page) -> None:
+    page.keyboard.press("Escape")
+    expect(_menu(page)).to_be_hidden()
+
+
 def _codex_btn(page: Page):
     """Codex's launch row inside the ⋯ menu (#1070 moved it off the rail).
 
-    A hidden row is *detached* from the menu by row-menu.js rather than
-    marked [hidden], so a count of 0 means genuinely not offered."""
-    return _menu(page).locator('.project-launch-btn[data-agent="codex"]')
+    A hidden row is *detached* from the menu rather than marked [hidden], so
+    a count of 0 in the open menu means genuinely not offered."""
+    return _menu(page).locator('[data-item=project-launch-btn][data-agent="codex"]')
 
 
 def _github_btn(page: Page):
-    return _menu(page).locator(".project-github-btn")
+    return _menu(page).locator("[data-item=project-github-btn]")
+
+
+def _expect_offered(page: Page, count: int) -> None:
+    """Open the ⋯ menu, check Codex and GitHub each appear `count` times,
+    and close it again: a closed menu is not in the document to count."""
+    _open_menu(page)
+    expect(_codex_btn(page)).to_have_count(count)
+    expect(_github_btn(page)).to_have_count(count)
+    _close_menu(page)
 
 
 def _reset_visibility(page: Page, base_url: str) -> None:
@@ -149,16 +164,16 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(codex_toggle).to_have_attribute("aria-checked", "true", timeout=5_000)
     expect(authed_page.locator('[data-visibility-toggle="claude"]')).to_have_count(1)
     expect(authed_page.locator('[data-visibility-toggle="vscode"]')).to_have_count(0)
-    expect(_codex_btn(authed_page)).to_have_count(1)
-    expect(_github_btn(authed_page)).to_have_count(1)
+    _expect_offered(authed_page, 1)
 
     # Toggling off drops the row from the ⋯ menu with no reload.
     _open_visibility(authed_page)
     codex_toggle.click()
-    expect(_codex_btn(authed_page)).to_have_count(0)
+    expect(codex_toggle).to_have_attribute("aria-checked", "false")
     github_toggle.click()
-    expect(_github_btn(authed_page)).to_have_count(0)
+    expect(github_toggle).to_have_attribute("aria-checked", "false")
     _back_to_coding(authed_page)
+    _expect_offered(authed_page, 0)
     # The favourite's launch button stays on the row — it is the row's one
     # launch affordance, so it is not the visibility list's to hide (#1070).
     expect(
@@ -177,16 +192,16 @@ def test_hidden_agent_and_github_buttons_disappear_and_persist(
     expect(authed_page.locator('[data-visibility-toggle="codex"]')).to_have_attribute(
         "aria-checked", "false", timeout=5_000
     )
-    expect(_codex_btn(authed_page)).to_have_count(0)
-    expect(_github_btn(authed_page)).to_have_count(0)
+    _expect_offered(authed_page, 0)
 
     # Toggling back on restores both menu rows.
     _open_visibility(authed_page)
-    authed_page.locator('[data-visibility-toggle="codex"]').click()
-    authed_page.locator('[data-visibility-toggle="github"]').click()
-    expect(_codex_btn(authed_page)).to_have_count(1)
-    expect(_github_btn(authed_page)).to_have_count(1)
-    close_settings_sheets(authed_page)
+    for agent in ("codex", "github"):
+        toggle = authed_page.locator(f'[data-visibility-toggle="{agent}"]')
+        toggle.click()
+        expect(toggle).to_have_attribute("aria-checked", "true")
+    _back_to_coding(authed_page)
+    _expect_offered(authed_page, 1)
 
 
 def test_agent_visibility_switch_identity_survives_successful_save(
@@ -223,8 +238,12 @@ def test_agent_visibility_switch_identity_survives_successful_save(
     codex_toggle.click()
     expect(codex_toggle).to_have_attribute("aria-checked", "false", timeout=5_000)
     # The save is real (unmocked) and round-trips through GET /api/config;
-    # give any rebuild triggered by it time to run.
+    # give any rebuild triggered by it time to run: the Codex row has left the
+    # ⋯ menu once it has. Closing the sheet leaves the switch DOM in place.
+    _back_to_coding(authed_page)
+    _open_menu(authed_page)
     expect(_codex_btn(authed_page)).to_have_count(0)
+    _close_menu(authed_page)
 
     survived = authed_page.evaluate(
         """() => {
@@ -265,29 +284,28 @@ def test_brand_marks_are_sprite_symbols_with_no_chip(
     row = authed_page.locator('.coding-item[data-id="alpha"]')
     # Since #1128 the row itself is the favourite's launch (text, no mark),
     # so every brand mark lives in the ⋯ menu.
-    mark = row.locator('.project-launch-btn[data-agent="codex"] .agent-icon')
-    expect(mark).to_have_count(1, timeout=5_000)
-    # The mechanism: an inline sprite reference, and no <img> left on the row.
-    expect(mark.locator('use[href="#b-codex"]')).to_have_count(1)
+    menu = _open_menu(authed_page)
+    mono = menu.locator('[data-item=project-launch-btn][data-agent="codex"] .row-menu-brand')
+    expect(mono).to_have_count(1, timeout=5_000)
+    # The mechanism: an inline sprite reference, and no <img> left on the row
+    # or in its menu.
+    expect(mono.locator('use[href="#b-codex"]')).to_have_count(1)
     expect(row.locator("img")).to_have_count(0)
+    expect(menu.locator("img")).to_have_count(0)
 
     # A monochrome mark paints with currentColor, so its resolved colour has
     # to actually differ between the themes — that, not the mid-tone the chip
     # used to guarantee, is what keeps it legible on a bare card.
-    mono = _menu(authed_page).locator(
-        '.project-launch-btn[data-agent="codex"] .agent-icon'
-    )
-    expect(mono).to_have_count(1)
     seen = {}
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
         )
         # The chip is gone in both themes — this is the acceptance criterion.
-        expect(mark).to_have_css("background-color", "rgba(0, 0, 0, 0)")
-        # …including the marks inside the ⋯ menu, which is where every
+        expect(mono).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        # …and the GitHub mark beside it, in the same ⋯ menu where every
         # non-favourite mark lives since #1070.
-        gh = _open_menu(authed_page).locator(".project-github-btn .agent-icon")
+        gh = _open_menu(authed_page).locator("[data-item=project-github-btn] .row-menu-brand")
         expect(gh).to_have_css("background-color", "rgba(0, 0, 0, 0)")
         # A raw evaluate here read '' whenever the poll rebuilt the menu
         # between resolve and run (#680), red in 3 of 5 loaded gate runs

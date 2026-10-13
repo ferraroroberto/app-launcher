@@ -117,7 +117,7 @@
 import { apiFailToast, apiRawJson, toast } from './api.js';
 import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { bindLongPressHint } from './long-press-hint.js';
 import { mountKeysPopover } from './terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -541,36 +541,41 @@ export function mountComposer(host, opts) {
     ev.stopImmediatePropagation();
     attachQueue.cancel();
   });
-  // Floated against the composer while open (#996): the Board drawer mounts
-  // this composer inside the column carousel, and an absolutely-positioned
-  // menu rising above the *top* card's drawer was clipped by that scroller.
-  const imageMenu = createRowMenu('composer-menu', {
-    placeAgainst: function () { return host; },
+  // Above the composer, right edges 10px in (mockup screen 3). The vendored
+  // row-menu mounts the open menu on <body>, so the Board drawer's column
+  // carousel, which clipped an absolutely-positioned menu, cannot (#996).
+  const imageMenu = createRowMenu({
+    className: 'composer-menu',
+    placement: {
+      against: function () { return host; },
+      side: 'above', offset: 6, inset: 10, minWidth: 260,
+    },
   });
-  const menu = imageMenu.attach('image', el.image, [
+  // OCR is offered only while photo-ocr is configured (setAvailability).
+  let ocrOffered = true;
+  imageMenu.attach('image', el.image, [
     {
-      glyph: 'image', label: _LABEL_PHOTO, text: _LABEL_PHOTO,
-      className: 'composer-menu-photo',
+      glyph: 'image', label: _LABEL_PHOTO,
+      dataset: { item: 'composer-menu-photo' },
       onTap: function () { el.photoInput.click(); },
     },
     {
-      glyph: 'scan-text', label: _LABEL_OCR, text: _LABEL_OCR,
-      className: 'composer-menu-ocr',
+      glyph: 'scan-text', label: _LABEL_OCR,
+      dataset: { item: 'composer-menu-ocr' },
+      hidden: function () { return !ocrOffered; },
       onTap: function () { el.ocrInput.click(); },
     },
     {
-      glyph: 'file-text', label: _LABEL_ATTACH, text: _LABEL_ATTACH,
-      className: 'composer-menu-attach',
+      glyph: 'file-text', label: _LABEL_ATTACH,
+      dataset: { item: 'composer-menu-attach' },
       onTap: function () { el.attachInput.click(); },
     },
     {
-      glyph: 'package', label: _LABEL_LARGE, text: _LABEL_LARGE,
-      className: 'composer-menu-large',
+      glyph: 'package', label: _LABEL_LARGE,
+      dataset: { item: 'composer-menu-large' },
       onTap: function () { el.largeInput.click(); },
     },
   ]);
-  host.appendChild(menu);
-  const ocrItem = menu.querySelector('.composer-menu-ocr');
   labelImage(_TITLE_ATTACH);
 
   // ---- send --------------------------------------------------------------
@@ -666,7 +671,7 @@ export function mountComposer(host, opts) {
     if (a && 'dictate' in a) {
       setButtonState(el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF);
     }
-    if (a && 'ocr' in a) ocrItem.hidden = !a.ocr;
+    if (a && 'ocr' in a) ocrOffered = !!a.ocr;
   }
 
   function setSendable(enabled, reason) {

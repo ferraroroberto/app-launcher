@@ -4,8 +4,8 @@
  * button the full height of the row. Beside it sit at most a leading
  * favorite star and one trailing kebab, both siblings of the main button,
  * so a tap on one never also fires the row. Everything else goes in the
- * kebab's row menu (row-menu.js). Projects, Life OS skills, and the Apps
- * and Trays lists are all built here.
+ * kebab's row menu (the vendored row-menu). Projects, Life OS skills, and
+ * the Apps and Trays lists are all built here.
  */
 
 import { icon } from './_vendored/icons/icons.js';
@@ -142,3 +142,13 @@ export function actionRow(opts) {
 
   return { li: li, main: main, title: title, meta: meta, kebab: kebab };
 }
+
+// Where an action-row's kebab menu opens (the vendored row-menu's
+// `placement`, #1565): below the row, 2px off it, its right edge 4px in from
+// the row's, which is the row's own right padding, so the menu lines up
+// under the kebab.
+export const ACTION_ROW_MENU = {
+  against: function (kebab) { return kebab.closest('.action-row'); },
+  offset: 2,
+  inset: 4,
+};

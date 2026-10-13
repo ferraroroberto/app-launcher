@@ -145,21 +145,24 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
 @pytest.mark.parametrize(
     "trigger, sheet_id, field_id",
     [
-        ("#claudeEmptyAction", "foldersSheet", "projectsDir"),
-        ("#lifeOsEmptyAction", "foldersSheet", "lifeOsDir"),
+        (("#claudeEmptyAction",), "foldersSheet", "projectsDir"),
+        (("#lifeOsEmptyAction",), "foldersSheet", "lifeOsDir"),
         # The Code tab's chief row kebab item (#1434; the Board's gear went
-        # with its chief card in #1436).
-        ("#sessionsList .chief-settings-btn", "chiefSheet", None),
+        # with its chief card in #1436). The menu is in the document only
+        # while open (#1565), so the kebab comes first.
+        (("#sessionsList li.session-item-chief .session-kebab",
+          ".session-menu [data-item=chief-settings-btn]"), "chiefSheet", None),
     ],
 )
 def test_open_settings_at_callers_land_in_their_sheet(
-    authed_page: Page, base_url: str, trigger: str, sheet_id: str, field_id: str | None
+    authed_page: Page, base_url: str, trigger: tuple, sheet_id: str, field_id: str | None
 ) -> None:
     """Each caller is clicked through its own listener (a dispatched click:
     the empty states only show when their list is empty)."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    expect(authed_page.locator(trigger)).to_be_attached()
-    authed_page.locator(trigger).dispatch_event("click")
+    for selector in trigger:
+        expect(authed_page.locator(selector)).to_be_attached()
+        authed_page.locator(selector).dispatch_event("click")
     expect(authed_page.locator("#paneSettings")).to_be_visible()
     expect(authed_page.locator(f"#{sheet_id}")).to_be_visible()
     expect(authed_page.locator("dialog.settings-sheet[open]")).to_have_count(1)

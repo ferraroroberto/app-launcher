@@ -42,6 +42,7 @@ modal = { src = "app/webapp/static/_vendored/modal", sha = "e907d119608d492f561a
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "ad963f3010f7fb012959527fdf893a7041004ced", dest = "app/webapp/static/_vendored/text-size" }
 base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
 action-row = { src = "app/webapp/static/_vendored/action-row", sha = "e907d119608d492f561a040a3c4b5949e16f447c", dest = "app/webapp/static/_vendored/action-row" }
+row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "63dd40986faf7eafb030ee28f9726c6a584eef21", dest = "app/webapp/static/_vendored/row-menu" }
 # icons is deliberately NOT declared (#1004): our icons-sprite.html is the
 # scaffold's symbols (i-star-fill merged in from 6204cbc, #1156) plus 9
 # app-launcher-only additions (i-bell, i-chevron-right, i-copy, i-eye-off, i-gauge,

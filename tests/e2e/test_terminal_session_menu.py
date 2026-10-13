@@ -134,7 +134,7 @@ def _inject_web_url(page: Page, sid: str, web_url: str) -> None:
 
 
 def _copy_link(page: Page) -> None:
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     page.locator("#terminalMenu").click()
     expect(menu).to_be_visible()
     page.get_by_role("menuitem", name="Copy session link").click()

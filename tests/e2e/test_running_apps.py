@@ -17,6 +17,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
+from tests.e2e.conftest import open_row_menu
 
 pytestmark = pytest.mark.smoke
 
@@ -111,7 +112,7 @@ def test_section_renders_rows(authed_page: Page, base_url: str) -> None:
     expect(row0.locator(".avatar use")).to_have_attribute("href", "#i-globe")
     expect(row1.locator(".avatar use")).to_have_attribute("href", "#i-gauge")
     row0.locator(".action-row-kebab").click()
-    expect(row0.locator(".row-menu-head")).to_have_text("pid 12345")
+    expect(open_row_menu(authed_page).locator(".row-menu-head")).to_have_text("pid 12345")
     authed_page.keyboard.press("Escape")
 
     expect(row1.locator(".action-row-title")).to_have_text("Photo OCR")
@@ -188,7 +189,7 @@ def test_stop_confirms_and_posts(authed_page: Page, base_url: str) -> None:
     expect(rows).to_have_count(1, timeout=5_000)
     # Stop is the ⋮ menu's last, danger item now (#1129), still confirmed.
     rows.first.locator(".action-row-kebab").click()
-    rows.first.locator(".action-stop-close").click()
+    open_row_menu(authed_page).locator("[data-item=action-stop-close]").click()
     confirm = authed_page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
     expect(confirm.locator("#confirmDialogTitle")).to_have_text("Stop Voice Transcriber?")

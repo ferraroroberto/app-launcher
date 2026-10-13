@@ -20,7 +20,7 @@ import time
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import stable_read
+from tests.e2e.conftest import open_row_menu, stable_read
 
 pytestmark = pytest.mark.smoke
 
@@ -128,8 +128,8 @@ def test_jobs_default_to_next_run_order_with_countdown(
     assert all(xs), f"kebabs not laid out: {xs}"
     assert abs(xs[0]["x"] - xs[1]["x"]) <= 1, f"kebab jumps sideways on a manual job: {xs}"
     mango.locator(".action-row-kebab").click()
-    expect(mango.locator(".job-run-item")).to_be_visible()
-    expect(mango.locator(".job-pause-item")).to_have_count(0)
+    expect(open_row_menu(authed_page).locator("[data-item=job-run-item]")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=job-pause-item]")).to_have_count(0)
     authed_page.keyboard.press("Escape")
 
     # -- was test_sort_toggle_switches_to_alphabetical (merged in #1215; last:
@@ -207,10 +207,10 @@ def test_external_schedule_card_only_offers_history(
     # disabled with the reason and Pause is left out, since every control an
     # externally managed schedule cannot take is withheld.
     row.locator(".action-row-kebab").click()
-    run_item = row.locator(".job-run-item")
+    run_item = open_row_menu(authed_page).locator("[data-item=job-run-item]")
     expect(run_item).to_be_disabled()
     expect(run_item).to_have_attribute("title", re.compile("externally managed"))
-    expect(row.locator(".job-pause-item")).to_have_count(0)
+    expect(open_row_menu(authed_page).locator("[data-item=job-pause-item]")).to_have_count(0)
     authed_page.keyboard.press("Escape")
     row.locator(".action-row-main").click()
     details = authed_page.locator("#jobSheetBody [data-role='job-details']")

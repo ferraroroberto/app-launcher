@@ -16,12 +16,12 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
-import { actionRow } from './action-rows.js';
-import { createRowMenu } from './row-menu.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { setAsyncState, staleMessage } from './async-state.js';
 
-const listenerMenu = createRowMenu('project-menu');
+const listenerMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 
 // Parent rows with dependent children keep them collapsed behind a tap
 // (#480). Module-level so the expand state survives the poll's re-renders.
@@ -198,30 +198,30 @@ function buildListenerRow(l, isChild, hasChildren) {
     row.li.insertBefore(chev, row.kebab);
   }
 
-  row.li.appendChild(listenerMenu.attach('port:' + l.port, row.kebab, [
+  listenerMenu.attach('port:' + l.port, row.kebab, [
     {
-      className: 'listener-open-btn', glyph: 'globe',
-      label: l.url ? 'Open ' + l.url : 'Set tailnet_host in config/config.json to enable Open',
-      text: 'Open',
+      dataset: { item: 'listener-open-btn' }, glyph: 'globe',
+      label: 'Open',
+      ariaLabel: l.url ? 'Open ' + l.url : 'Set tailnet_host in config/config.json to enable Open',
       disabled: !l.url,
-      title: 'Set tailnet_host in config/config.json to enable Open',
+      hint: 'Set tailnet_host in config/config.json to enable Open',
       onTap: function () { window.open(l.url, '_blank', 'noopener,noreferrer'); },
     },
     {
-      className: 'listener-copy-btn', glyph: 'copy',
-      label: 'Copy ' + label + ' URL', text: 'Copy URL',
+      dataset: { item: 'listener-copy-btn' }, glyph: 'copy',
+      label: 'Copy URL', ariaLabel: 'Copy ' + label + ' URL',
       disabled: !l.url,
-      title: 'Set tailnet_host in config/config.json to enable Open',
+      hint: 'Set tailnet_host in config/config.json to enable Open',
       onTap: function () { copyUrl(l.url); },
     },
     {
       // `power` reads as "shut this down" (#782); `octagon-x` is this app's
       // *failure* mark (a killed job run).
-      className: 'listener-kill', glyph: 'power', danger: true,
-      label: 'Stop ' + label + ' (pid ' + l.pid + ')', text: 'Stop process',
+      dataset: { item: 'listener-kill' }, glyph: 'power', danger: true,
+      label: 'Stop process', ariaLabel: 'Stop ' + label + ' (pid ' + l.pid + ')',
       onTap: function () { killListener(l, label); },
     },
-  ]));
+  ]);
   return row.li;
 }
 

@@ -159,16 +159,16 @@ def _open_chat(page: Page, row) -> None:
 
 def _menu_item(page: Page, name: str):
     page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     return menu.get_by_role("menuitem", name=name)
 
 
-# The row's own action menu (#1025). `name` is the item's accessible name,
-# which row-menu.js sets from each item's `label`.
+# The row's own action menu (#1025), mounted on <body> while open (#1565).
+# `name` is the item's accessible name: its `ariaLabel`, else its caption.
 def _row_menu_item(page: Page, row, name: str):
     row.locator(".session-kebab").click()
-    menu = row.locator(".session-menu")
+    menu = page.locator(".session-menu")
     expect(menu).to_be_visible()
     return menu.get_by_role("menuitem", name=name)
 
@@ -238,7 +238,7 @@ def test_row_menu_holds_the_full_option_set_in_order(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
     row.locator(".session-kebab").click()
-    menu = row.locator(".session-menu")
+    menu = authed_page.locator(".session-menu")
     expect(menu).to_be_visible()
 
     # A full-control Claude row offers all five, top to bottom. Copy path
@@ -255,8 +255,8 @@ def test_row_menu_holds_the_full_option_set_in_order(
         "Rename session",
         "Stop and kill session",
     ]
-    # Stop keeps the class that paints it danger-red on press.
-    expect(menu.locator(".action-stop-close")).to_have_count(1)
+    # Stop keeps the hook that tints it danger-red on press.
+    expect(menu.locator("[data-item=action-stop-close]")).to_have_count(1)
 
 
 def test_row_tap_opens_the_session_and_kebab_tap_does_not(
@@ -272,12 +272,12 @@ def test_row_tap_opens_the_session_and_kebab_tap_does_not(
 
     # Kebab: menu opens, overlay stays shut.
     row.locator(".session-kebab").click()
-    expect(row.locator(".session-menu")).to_be_visible()
+    expect(authed_page.locator(".session-menu")).to_be_visible()
     expect(overlay).to_be_hidden()
 
     # Close the menu (tap the anchor again), then tap the row itself.
     row.locator(".session-kebab").click()
-    expect(row.locator(".session-menu")).to_be_hidden()
+    expect(authed_page.locator(".session-menu")).to_be_hidden()
     row.locator(".session-open").click()
     authed_page.wait_for_selector(
         "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
@@ -341,7 +341,7 @@ def test_detached_reader_less_row_still_reaches_rename_and_stop(
     # ⋮ menu, two reads — `_menu_item` toggles the anchor, so calling it
     # twice would close the menu again.
     authed_page.locator("#terminalMenu").click()
-    menu = authed_page.locator("#terminalOverlay .terminal-menu")
+    menu = authed_page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator('button[aria-label="Rename session"]')).to_be_visible()
     expect(menu.locator('button[aria-label="Stop and kill session"]')).to_be_visible()
@@ -374,7 +374,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
     # The row's own menu exists (#1025) but stays closed behind the overlay:
     # opening a session is not what opens it.
-    expect(row.locator(".session-menu")).to_be_hidden()
+    expect(authed_page.locator(".session-menu")).to_be_hidden()
     # The shared bar: the context ring's slot (#1223), then the Terminal /
     # Chat segments, 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only
     # bar buttons. The ring stays hidden here: this session's context use is
@@ -448,7 +448,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     group = authed_page.locator("#transcriptList .tr-step")
     expect(group).to_have_count(1)
     expect(group).to_be_visible()
-    menu = authed_page.locator("#terminalOverlay .terminal-menu")
+    menu = authed_page.locator(".terminal-menu")
     eye = _menu_item(authed_page, "Hide steps: tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
         ["Rename", "Copy link", "Changed files", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]

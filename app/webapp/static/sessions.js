@@ -35,7 +35,7 @@ import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelS
 import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody } from './glance.js';
 import { renderUsage } from './usage-meter.js';
-import { createRowMenu } from './row-menu.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
@@ -127,9 +127,16 @@ export function sessionTitle(s) {
 // One kebab per row opens a floating menu of the row's actions. The rail has
 // no room for four separate icons on the phone without crowding the title,
 // so they live behind one anchor. The menu machinery (open/close, outside
-// tap, Escape, surviving the 4s poll re-render) is the shared row-menu.js
-// helper since #977.
-const sessionMenu = createRowMenu('session-menu');
+// tap, Escape, surviving the 4s poll re-render) is the vendored row-menu
+// (#1565). It floats left of the row's button column, top-aligned and
+// overlapping it by 4px, so a long menu grows down over the rows below.
+const sessionMenu = createRowMenu({
+  className: 'session-menu',
+  placement: {
+    against: function (kebab) { return kebab.parentElement; },
+    side: 'left', align: 'start', offset: -4,
+  },
+});
 
 // The chief's kebab items beyond a session's own (#1434): Restart, the same
 // graceful stop-then-resume as the Board's Restart, and Chief settings,
@@ -138,8 +145,8 @@ const sessionMenu = createRowMenu('session-menu');
 function chiefMenuItems(kebab, alive) {
   return [
     {
-      className: 'chief-restart-btn', glyph: 'rotate-ccw',
-      label: 'Restart the chief', text: 'Restart',
+      dataset: { item: 'chief-restart-btn' }, glyph: 'rotate-ccw',
+      label: 'Restart', ariaLabel: 'Restart the chief',
       hidden: !alive,
       onTap: function () {
         runChiefAction({
@@ -149,8 +156,8 @@ function chiefMenuItems(kebab, alive) {
       },
     },
     {
-      className: 'chief-settings-btn', glyph: 'sliders-horizontal',
-      label: 'Chief settings', text: 'Chief settings',
+      dataset: { item: 'chief-settings-btn' }, glyph: 'sliders-horizontal',
+      label: 'Chief settings',
       onTap: function () { openSettingsAt('chiefSheet'); },
     },
   ];
@@ -208,7 +215,7 @@ function stoppedChiefRow() {
   kebab.title = 'Chief actions';
   kebab.setAttribute('aria-label', 'Chief actions');
   actions.appendChild(kebab);
-  actions.appendChild(sessionMenu.attach('chief:stopped', kebab, chiefMenuItems(kebab, false)));
+  sessionMenu.attach('chief:stopped', kebab, chiefMenuItems(kebab, false));
   li.appendChild(actions);
   return li;
 }
@@ -321,8 +328,8 @@ export function renderSessions() {
     //     title clears it, reverting to the automatic precedence.
     //   · Stop-and-kill (issue #253), both kinds: the session-host quits
     //     gracefully then force-falls-back; the window always closes. Keeps
-    //     the `action-stop-close` class (muted by default, danger-red on
-    //     press).
+    //     the `action-stop-close` hook (data-item; danger text, a danger
+    //     tint on press).
     // The glyph is the kebab the Coding tile's project menu already uses;
     // the contents are the gear's, unchanged (#1025, second attempt).
     const kebab = document.createElement('button');
@@ -333,38 +340,37 @@ export function renderSessions() {
     kebab.setAttribute('aria-label', 'Session actions');
     const items = [
       {
-        className: 'session-terminal-btn', glyph: 'terminal',
-        label: 'Open terminal', text: 'Terminal',
+        dataset: { item: 'session-terminal-btn' }, glyph: 'terminal',
+        label: 'Terminal', ariaLabel: 'Open terminal',
         hidden: remote,
         onTap: function () { openSession(s, 'terminal'); },
       },
       {
-        className: 'session-chat-btn', glyph: 'messages-square',
-        label: 'Open chat', text: 'Chat',
+        dataset: { item: 'session-chat-btn' }, glyph: 'messages-square',
+        label: 'Chat', ariaLabel: 'Open chat',
         hidden: !reader,
         onTap: function () { openSession(s, 'chat'); },
       },
       {
-        className: 'session-copy-path-btn', glyph: 'copy',
-        label: 'Copy the project path', text: 'Copy path',
+        dataset: { item: 'session-copy-path-btn' }, glyph: 'copy',
+        label: 'Copy path', ariaLabel: 'Copy the project path',
         hidden: !s.project_dir,
         onTap: function () { copyProjectPath(s.project_dir); },
       },
       {
-        glyph: 'pencil', label: 'Rename session', text: 'Rename',
+        glyph: 'pencil', label: 'Rename', ariaLabel: 'Rename session',
         onTap: function () { openSessionRename(s); },
       },
     ];
     // The chief's own controls sit before Stop, which stays last (#1434).
     if (isChief) Array.prototype.push.apply(items, chiefMenuItems(kebab, s.alive !== false));
     items.push({
-      className: 'action-stop-close', glyph: 'x', danger: true,
-      label: 'Stop and kill session', text: 'Stop',
+      dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
+      label: 'Stop', ariaLabel: 'Stop and kill session',
       onTap: function () { stopSession(s); },
     });
-    const menu = sessionMenu.attach(s.session_id, kebab, items);
     actions.appendChild(kebab);
-    actions.appendChild(menu);
+    sessionMenu.attach(s.session_id, kebab, items);
 
     li.appendChild(actions);
 

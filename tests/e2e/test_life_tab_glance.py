@@ -35,6 +35,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.conftest import (
     flush_requests,
     life_launch_switch,
+    open_row_menu,
     open_settings_sheet,
     stable_eval,
     wait_until,
@@ -203,12 +204,12 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     # A stopped bot: "Start on Telegram", after the launch items and Pin.
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    items = garden.locator(".row-menu-btn")
+    items = open_row_menu(page).locator(".row-menu-item")
     expect(items).to_have_text([
         "Resume last conversation", "Start new conversation", "Pin to top",
         "Start on Telegram", "Read", "Conversations",
     ])
-    expect(items.nth(3)).to_have_class(re.compile(r"\blifeos-channel-start-btn\b"))
+    expect(items.nth(3)).to_have_attribute("data-item", "lifeos-channel-start-btn")
     items.nth(3).click()
     wait_until(page, lambda: len(launches) == 1, "the channel launch POST")
     assert launches[0]["url"].endswith("/api/life-os/channels/allotment/launch")
@@ -219,7 +220,7 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     # Detached on: refused, as before (a Telegram session is a terminal).
     life_launch_switch(page, "#lifeOsDetached")
     garden.locator(".action-row-kebab").click()
-    garden.locator(".lifeos-channel-start-btn").click()
+    open_row_menu(page).locator("[data-item=lifeos-channel-start-btn]").click()
     expect(page.locator("#toast")).to_contain_text("turn Detached off")
     flush_requests(page)
     assert len(launches) == 1, launches
@@ -228,15 +229,15 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     # Resume on: the toolbar's Resume reaches the bot's launch too.
     life_launch_switch(page, "#lifeOsResume")
     garden.locator(".action-row-kebab").click()
-    garden.locator(".lifeos-channel-start-btn").click()
+    open_row_menu(page).locator("[data-item=lifeos-channel-start-btn]").click()
     wait_until(page, lambda: len(launches) == 2, "the resumed channel launch")
     assert launches[1]["body"]["resume"] is True
 
     # A running bot: "Open Telegram session", and no launch.
     reading = _row(page, "reading-list")
     reading.locator(".action-row-kebab").click()
-    open_btn = reading.locator(".row-menu-btn").nth(3)
-    expect(open_btn).to_have_class(re.compile(r"\blifeos-channel-open-btn\b"))
+    open_btn = open_row_menu(page).locator(".row-menu-item").nth(3)
+    expect(open_btn).to_have_attribute("data-item", "lifeos-channel-open-btn")
     expect(open_btn).to_contain_text("Open Telegram session")
     open_btn.click()
     flush_requests(page)
@@ -366,7 +367,7 @@ def test_rename_goes_through_the_dialog(life) -> None:
 
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    garden.locator(".lifeos-browse-btn").click()
+    open_row_menu(page).locator("[data-item=lifeos-browse-btn]").click()
     page.locator(".lifeos-file-btn").first.click()
     dialog = page.locator("#lifeOsRenameDialog")
 
@@ -559,7 +560,7 @@ def test_the_kebab_resumes_the_last_conversation_on_its_own_model(
     life_launch_switch(page, "#lifeOsDetached")
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    garden.locator(".lifeos-resume-last-btn").click()
+    open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]").click()
     wait_until(page, lambda: len(posted) == 1, "the resume-latest POST")
     assert posted[0]["url"].endswith("/api/life-os/skills/garden-notes/conversations/resume-latest")
     # No model: the conversation keeps its own.
@@ -573,9 +574,9 @@ def test_resume_last_is_disabled_with_no_conversation_yet(authed_page: Page, lif
     page.locator("#lifeOsList .lifeos-fold-btn").click()
     yoga = _row(page, "yoga-log")
     yoga.locator(".action-row-kebab").click()
-    item = yoga.locator(".lifeos-resume-last-btn")
+    item = open_row_menu(page).locator("[data-item=lifeos-resume-last-btn]")
     expect(item).to_be_disabled()
-    expect(yoga.locator(".row-menu-head")).to_contain_text("No conversation yet")
+    expect(open_row_menu(page).locator(".row-menu-head")).to_contain_text("No conversation yet")
 
 
 def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
@@ -593,7 +594,7 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
     life_launch_switch(page, "#lifeOsResume")
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    garden.locator(".lifeos-start-new-btn").click()
+    open_row_menu(page).locator("[data-item=lifeos-start-new-btn]").click()
     wait_until(page, lambda: len(posted) == 1, "the launch POST")
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
 
@@ -611,13 +612,13 @@ def test_pin_to_top_posts_the_pin_and_unpin_is_offered_back(authed_page: Page, l
     page.route(re.compile(r".*/api/life-os/favorites$"), _pin)
     garden = _row(page, "garden-notes")
     garden.locator(".action-row-kebab").click()
-    expect(garden.locator(".lifeos-pin-btn")).to_have_text("Pin to top")
-    garden.locator(".lifeos-pin-btn").click()
+    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Pin to top")
+    open_row_menu(page).locator("[data-item=lifeos-pin-btn]").click()
     wait_until(page, lambda: len(posted) == 1, "the pin POST")
     assert posted == [{"id": "garden-notes", "favorite": True}], posted
     reading = _row(page, "reading-list")
     reading.locator(".action-row-kebab").click()
-    expect(reading.locator(".lifeos-pin-btn")).to_have_text("Unpin")
+    expect(open_row_menu(page).locator("[data-item=lifeos-pin-btn]")).to_have_text("Unpin")
 
 
 # --------------------------------------------- swipe actions (#1503, step D)

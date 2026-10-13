@@ -17,7 +17,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import open_session_row, stub_session_mirror
+from tests.e2e.conftest import open_row_menu, open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -153,7 +153,7 @@ def _open_rename(page: Page, row) -> None:
     stub_session_mirror(page)
     open_session_row(page, row)
     page.locator("#terminalMenu").click()
-    menu = page.locator("#terminalOverlay .terminal-menu")
+    menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     menu.locator('button[aria-label="Rename session"]').click()
 
@@ -307,7 +307,7 @@ def test_board_drawer_rename_patches_card_in_place(
     expect(drawer).to_be_visible()
     # Rename lives in the drawer's kebab menu (#1502).
     drawer.locator(".board-drawer-kebab").click()
-    drawer.locator("button.board-rename-btn").click()
+    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
 
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
@@ -412,5 +412,5 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     expect(drawer).to_be_visible()
     # Rename lives in the drawer's kebab menu (#1502).
     drawer.locator(".board-drawer-kebab").click()
-    drawer.locator("button.board-rename-btn").click()
+    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()

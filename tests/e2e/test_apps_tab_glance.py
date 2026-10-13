@@ -17,7 +17,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import flush_requests, stable_eval, wait_until
+from tests.e2e.conftest import flush_requests, open_row_menu, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -128,10 +128,11 @@ def test_running_card_badges_header_and_other_ports(authed_page: Page, base_url:
     # Same kebab as before, Stop process last.
     row = sheet.locator("#listenersList .listener-row").first
     row.locator(".action-row-kebab").click()
-    expect(row.locator(".row-menu > *").last).to_have_class(re.compile(r"\blistener-kill\b"))
+    menu = open_row_menu(page)
+    expect(menu.locator(":scope > *").last).to_have_attribute("data-item", "listener-kill")
     # Escape closes the menu only, not the sheet under it.
     page.keyboard.press("Escape")
-    expect(row.locator(".row-menu")).to_be_hidden()
+    expect(menu).to_be_hidden()
     expect(sheet).to_be_visible()
     # Check again is the sheet's one primary action, and re-probes.
     probes: list = []
@@ -221,7 +222,7 @@ def test_remove_asks_through_the_vendored_dialog(authed_page: Page, base_url: st
 
     row = _app_row(page, "alpha-dash")
     row.locator(".action-row-kebab").click()
-    row.locator(".app-remove-btn").click()
+    open_row_menu(page).locator("[data-item=app-remove-btn]").click()
     confirm = page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
     expect(confirm.locator("#confirmDialogTitle")).to_have_text("Remove Alpha Dashboard?")
@@ -232,7 +233,7 @@ def test_remove_asks_through_the_vendored_dialog(authed_page: Page, base_url: st
     assert deletes == [], f"a dismissed confirm still removed: {deletes!r}"
 
     row.locator(".action-row-kebab").click()
-    row.locator(".app-remove-btn").click()
+    open_row_menu(page).locator("[data-item=app-remove-btn]").click()
     confirm.locator("#confirmDialogOk").click()
     wait_until(page, lambda: len(deletes) == 1, "the Remove DELETE")
     assert native == [], f"a native dialog fired: {native!r}"
@@ -260,9 +261,9 @@ def test_drill_rows_and_menu_header_fit_the_phone(authed_page: Page, base_url: s
 
     row = _app_row(page, "alpha-dash")
     row.locator(".action-row-kebab").click()
-    menu = row.locator(".row-menu")
+    menu = open_row_menu(page)
     expect(menu.locator(".row-menu-head")).to_have_text("Streamlit app")
-    expect(menu.locator(".app-copy-path-btn")).to_be_visible()
+    expect(menu.locator("[data-item=app-copy-path-btn]")).to_be_visible()
     assert long_path not in (menu.inner_text() or ""), "the path is on screen in the menu"
     box = stable_eval(menu, "el => { const r = el.getBoundingClientRect();"
                             " return { left: r.left, right: r.right }; }")

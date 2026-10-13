@@ -11,11 +11,11 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
-import { brandIcon, fmtDuration } from './dom-utils.js';
+import { fmtDuration } from './dom-utils.js';
 import { chip } from './glance.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
-import { createRowMenu } from './row-menu.js';
-import { actionRow } from './action-rows.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
+import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
 import { openChanges } from './changes-overlay.js';
 import { icon } from './_vendored/icons/icons.js';
@@ -74,9 +74,9 @@ export const codingLaunch = mountLaunchToolbar(document.getElementById('codingLa
   trailing: document.getElementById('gitRefreshBtn'),
 });
 
-// The ⋯ menu shared by every Coding row; drops below the rail (see
-// `.project-menu` in styles.css) and survives the ~4 s apps re-render.
-const projectMenu = createRowMenu('project-menu');
+// The ⋯ menu shared by every Coding row; drops below the row and survives
+// the ~4 s apps re-render.
+const projectMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 // The Projects list's name filter (#1132), re-applied after every render.
 const projectsFilter = listFilter({
   input: els.claudeFilterInput,
@@ -313,60 +313,59 @@ export function renderCodingList(host, items) {
     //     name can't be its own tap target inside the row's launch button.
     //   · Open folder — the project directory in Explorer on the PC.
     // Declared in the item list rather than appended conditionally:
-    // row-menu.js detaches a hidden row instead of marking it [hidden], so a
+    // the row menu detaches a hidden row instead of marking it [hidden], so a
     // count of the menu's buttons only ever sees what is actually offered.
     const menuItems = agents
       .filter(function (agent) { return agent.id !== favoriteId; })
       .map(function (agent) {
         return {
-          className: 'project-launch-btn',
-          dataset: { agent: agent.id },
-          html: brandIcon(agent.id, 'row-menu-brand'),
-          label: agent.available
+          dataset: { item: 'project-launch-btn', agent: agent.id },
+          brand: 'b-' + agent.id,
+          label: agent.label,
+          ariaLabel: agent.available
             ? 'Launch ' + agent.label
             : agent.label + ' is not installed',
-          text: agent.label,
           hidden: hidden.has(agent.id),
           disabled: !agent.available,
-          title: agent.label + ' is not installed',
+          hint: agent.label + ' is not installed',
           onTap: function () { launchApp(a, agent.id); },
         };
       });
     menuItems.push({
-      className: 'project-github-btn',
-      html: brandIcon('github', 'row-menu-brand'),
-      label: a.repo_url ? 'Open GitHub issues' : 'No GitHub remote',
-      text: GITHUB_BUTTON_LABEL,
+      dataset: { item: 'project-github-btn' },
+      brand: 'b-github',
+      label: GITHUB_BUTTON_LABEL,
+      ariaLabel: a.repo_url ? 'Open GitHub issues' : 'No GitHub remote',
       hidden: hidden.has(GITHUB_BUTTON_ID),
       disabled: !a.repo_url,
-      title: 'No GitHub remote',
+      hint: 'No GitHub remote',
       onTap: function () {
         const issuesUrl = a.repo_url +
           '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
         window.open(issuesUrl, '_blank', 'noopener,noreferrer');
       },
     });
-    row.li.appendChild(projectMenu.attach(a.id, row.kebab, menuItems.concat([
+    projectMenu.attach(a.id, row.kebab, menuItems.concat([
       {
-        className: 'project-vscode-btn',
-        html: brandIcon('vscode', 'row-menu-brand'),
-        label: 'Open in ' + VSCODE_BUTTON_LABEL, text: 'Open in VS Code',
+        dataset: { item: 'project-vscode-btn' },
+        brand: 'b-vscode',
+        label: 'Open in VS Code', ariaLabel: 'Open in ' + VSCODE_BUTTON_LABEL,
         disabled: !state.vscodeAvailable,
-        title: VSCODE_BUTTON_LABEL + ' is not installed',
+        hint: VSCODE_BUTTON_LABEL + ' is not installed',
         onTap: function () { openInVscode(a); },
       },
       {
-        className: 'project-changes-btn', glyph: 'git-branch',
-        label: 'Show changes', text: 'Show changes',
+        dataset: { item: 'project-changes-btn' }, glyph: 'git-branch',
+        label: 'Show changes',
         hidden: !!(gs && !gs.is_git),
         onTap: function () { openChanges(a); },
       },
       {
-        className: 'project-folder-btn', glyph: 'folder',
-        label: 'Open folder', text: 'Open folder',
+        dataset: { item: 'project-folder-btn' }, glyph: 'folder',
+        label: 'Open folder',
         onTap: function () { openFolder(a); },
       },
-    ])));
+    ]));
     host.appendChild(row.li);
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
