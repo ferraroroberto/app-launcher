@@ -122,9 +122,16 @@ class TestMarkup:
 
     def test_no_script_derives_a_control_id_at_runtime(self):
         """Ids are developer-chosen constants in the markup, never built from
-        element text or data, so no first-party script may set one."""
+        element text or data, so no first-party script may set one.
+
+        One exception (#1581): ``voice.js`` keeps the dictation mic's id in step
+        with its state, from a closed map of literal ids (the id a tap is
+        logged under is what that tap did). The second test below pins that
+        it stays a literal map of valid ids, never anything built from data."""
         offenders = []
         for path in _STATIC.glob("*.js"):
+            if path.name == "voice.js":
+                continue
             text = path.read_text(encoding="utf-8")
             if re.search(r"data-track|dataset\.track|dataset\[['\"]track", text):
                 # usage.js only names the attribute in prose; it must not set it.
@@ -132,6 +139,20 @@ class TestMarkup:
                 if re.search(r"data-track|dataset\.track|dataset\[['\"]track", code):
                     offenders.append(path.name)
         assert not offenders, f"scripts that set data-track: {offenders}"
+
+
+    def test_the_mic_ids_are_a_closed_map_of_literals(self):
+        """The one script allowed to set ``data-track`` (#1581) sets it only
+        from a literal id map: valid constants, no id built at runtime."""
+        text = (_STATIC / "voice.js").read_text(encoding="utf-8")
+        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
+        sets = [ln for ln in code.splitlines() if "data-track" in ln]
+        assert sets == ["    if (button) button.setAttribute('data-track', _TAP_IDS[tapState()]);"], sets
+        block = re.search(r"const _TAP_IDS = \{(.*?)\};", code, flags=re.S)
+        assert block, "voice.js lost its _TAP_IDS map"
+        ids = re.findall(r"^\s*\w+: '([^']*)',?$", block.group(1), flags=re.M)
+        assert len(ids) == 4 and len(block.group(1).strip().splitlines()) == 4, block.group(1)
+        assert all(ID_PATTERN.fullmatch(i) for i in ids), ids
 
 
 class TestOnlyTheOwnOrigin:
