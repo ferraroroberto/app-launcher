@@ -2,6 +2,9 @@
 
     POST /api/life-os/skills/{id}/conversations/launch → verified source resume
                                                  or new handoff (Tailscale + passkey)
+    POST /api/life-os/skills/{id}/conversations/resume-latest
+                                               → the newest resumable conversation,
+                                                 on its own model (Tailscale + passkey, #1503)
     GET  /api/life-os/skills/{id}/conversations → digested conversation index
                                                  (Tailscale + passkey)
     DELETE /api/life-os/skills/{id}/conversations?path=<capture>
@@ -49,11 +52,12 @@ from src import audit, board, session_client
 from src.agents import is_installed
 from src.life_os_history import MAX_HANDOFF_CHARS, read_captures, write_handoff
 from src.life_os_transcript import claude_projects_dir, remove_claude_transcript
+from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, skills_dir_for
 from src.subprocess_flags import NO_WINDOW
 from src.transcript_locate import claude_resume_id
-from src.webapp_config import WebappConfig
+from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
@@ -223,10 +227,14 @@ async def _launch_conversation(
 ) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     root = Path(cfg.life_os_dir)
-    agent, model = _resolve_launch_choice(body)
     action = body.get("action", "resume")
     if action not in ("resume", "handoff"):
         raise HTTPException(400, "unknown conversation action")
+    # Resume on the conversation's own model (#1503): only an explicit
+    # `keep_model: true` asks for it. An absent `model` keeps meaning Sonnet,
+    # which a cached older client still relies on.
+    keep_model = body.get("keep_model") is True and action == "resume"
+    agent, model = ("", "") if keep_model else _resolve_launch_choice(body)
     selection = body.get("capture")
     if not isinstance(selection, dict):
         # Old Claude UI: lookup is conservative, scoped, and still header-verified.
@@ -251,17 +259,30 @@ async def _launch_conversation(
         raise HTTPException(409, "Capture changed or source identity does not match; refresh history.")
     if body.get("resume_sid") and body["resume_sid"] != source.get("sid"):
         raise HTTPException(409, "Requested session does not match this capture.")
+    if keep_model:
+        agent = str(source.get("agent") or "")
+        if not source.get("native"):
+            raise HTTPException(409, source["reason"])
     if not is_installed(agent):
         raise HTTPException(409, f"{agent.title()} CLI is unavailable on this computer.")
     resume_sid = ""
     handoff_path = None
+    # Whether the resumed conversation is on its own model: `None` when the
+    # request chose a model, so the reply says nothing about keeping one.
+    model_kept: Optional[bool] = None
     if action == "resume":
         if not source.get("native"):
             raise HTTPException(409, source["reason"])
         if agent != source["agent"]:
             raise HTTPException(400, "Choose a model from the source harness to resume, or start a new conversation with a handoff.")
         resume_sid = source["sid"]
-        flags = build_resume_flags(cfg, agent, model_override=model, session_id=resume_sid)
+        if keep_model:
+            model, model_kept = await _kept_model(cfg, agent, resume_sid)
+            override = model if agent == "codex" else None
+            flags = build_resume_flags(cfg, agent, model_override=override,
+                                       session_id=resume_sid, keep_model=True)
+        else:
+            flags = build_resume_flags(cfg, agent, model_override=model, session_id=resume_sid)
     else:
         if body.get("confirm_new") is not True or body.get("resume") or body.get("resume_sid"):
             raise HTTPException(400, "Explicitly confirm a new conversation; handoff cannot resume a native session.")
@@ -296,9 +317,30 @@ async def _launch_conversation(
             except OSError:
                 logger.warning("Life OS failed-launch handoff cleanup unavailable")
         raise
-    logger.info("Life OS history launch action=%s source=%s target=%s", action, source.get("agent") or "unknown", agent)
+    logger.info("Life OS history launch action=%s source=%s target=%s keep_model=%s model=%s",
+                action, source.get("agent") or "unknown", agent,
+                keep_model, model or "unknown")
     return {"launched": skill.id, **result, "conversation_action": action,
+            "model_kept": model_kept,
             "handoff_truncated": action == "handoff" and len(source["body"]) > MAX_HANDOFF_CHARS}
+
+
+async def _kept_model(cfg: WebappConfig, agent: str, sid: str) -> tuple[str, bool]:
+    """The model a keep-model resume runs on, and whether it is the conversation's own.
+
+    Claude keeps its own model natively, so the answer is always "kept"; the
+    recorded id is only for the toast and may be ``""`` (not known). Codex
+    must be told: its recorded model when one is readable and still offered,
+    otherwise the persisted Codex default, reported as not kept so the phone
+    can say so rather than claim a model it did not keep.
+    """
+    recorded = await asyncio.to_thread(recorded_model, agent, sid)
+    if agent != "codex":
+        return recorded, True
+    if recorded in VALID_CODEX_MODELS:
+        return recorded, True
+    logger.info("ℹ️ Life OS keep-model resume: Codex model not readable, using the default")
+    return cfg.codex_model, False
 
 
 def _safe_conversation_index(root: Path, skill: Skill) -> Optional[Path]:
@@ -361,8 +403,8 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
     }
 
 
-async def _live_conversation_ids(cfg: WebappConfig) -> set[str]:
-    """Claude conversation ids a running launcher session is attached to.
+async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
+    """Claude conversation ids a running launcher session is attached to, each to its session.
 
     Two independent signals, either of which makes a conversation live: the
     id a session was *launched* to resume (``--resume <id>`` in its flags, what
@@ -375,15 +417,121 @@ async def _live_conversation_ids(cfg: WebappConfig) -> set[str]:
     sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
     alive = [s for s in sessions if s.get("alive", True)]
     state = await asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file))
-    ids: set[str] = set()
+    live: Dict[str, Dict[str, Any]] = {}
     for sess in alive:
         resumed = claude_resume_id(sess)
         if resumed:
-            ids.add(resumed)
+            live[resumed.lower()] = sess
         claimed = board.state_sid_for_session(alive, state["rows"], str(sess.get("session_id")))
         if claimed:
-            ids.add(str(claimed).lower())
-    return ids
+            live[str(claimed).lower()] = sess
+    return live
+
+
+# ------------------------------------------- resume the latest (#1503)
+# Life OS's swipe-Resume and the kebab's "Resume last conversation": one
+# gesture back into a skill's newest conversation, on that conversation's own
+# model. Newest is by capture-file mtime, not the date in the file name: life-os
+# rewrites a capture when a resumed session adds turns, so a conversation
+# resumed yesterday beats one merely created later.
+
+
+def _capture_mtime(root: Path, rel: str) -> float:
+    try:
+        return (root / rel).stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+@router.post("/api/life-os/skills/{skill_id}/conversations/resume-latest")
+async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[str, Any]:
+    """Resume a skill's newest resumable conversation on its own model (Tailscale + passkey).
+
+    Body: ``{"mode": "pty"|"remote", "rows", "cols"}``. No model: this route
+    always keeps the conversation's (see :func:`_kept_model`). Runs the same
+    validated :func:`_launch_conversation` path as a Resume picked from the
+    list, so the capture identity checks are unchanged. 409 with a plain
+    reason when nothing is resumable. A conversation already open in a running
+    session is not resumed a second time: the reply is that session
+    (``conversation_action: "open"``) for the phone to open. When the session
+    host can't be asked, that is not known, and nothing is launched (503).
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    root = Path(cfg.life_os_dir)
+    skill = _resolve_skill(cfg, skill_id)
+    body = await maybe_json(request)
+    index = _safe_conversation_index(root, skill)
+    rows = _read_conversation_index(index) if index else None
+    if not rows:
+        raise HTTPException(409, "No conversation with this skill yet.")
+    candidates = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
+    resumable = [r for r in candidates if r["resumable"] and r["path"]]
+    if not resumable:
+        raise HTTPException(409, "None of this skill's conversations can be resumed; "
+                                 "open Conversations to read them.")
+    latest = max(resumable, key=lambda r: _capture_mtime(root, r["path"]))
+    try:
+        live = await _live_conversations(cfg)
+    except session_client.SessionHostError as exc:
+        logger.warning("⚠️ Life OS resume-latest: session host unavailable (%s)", exc)
+        raise HTTPException(503, "Not resumed: the session host can't be reached, so it isn't "
+                                 "known whether this conversation is already open.")
+    running = live.get(str(latest["sid"]).lower())
+    if running:
+        logger.info("ℹ️ Life OS resume-latest: skill=%s already open in a running session", skill.id)
+        return {
+            "launched": skill.id, "conversation_action": "open", "name": skill.name,
+            "agent": latest["agent"], "model": "", "model_kept": None,
+            "session": {
+                "session_id": running.get("session_id"),
+                "kind": running.get("kind") or "pty",
+                "name": running.get("name") or skill.name,
+            },
+        }
+    launch = {key: value for key, value in body.items() if key != "model"}
+    launch.update(action="resume", keep_model=True, capture={
+        key: latest[key] for key in ("path", "revision", "agent", "sid")})
+    return await _launch_conversation(skill, request, launch)
+
+
+# ------------------------------------------- a skill's last use (#1503)
+# The Life tab's "last used" meta and its fold read when a skill's newest
+# conversation was captured: the index, then one stat per listed capture, and
+# never a capture's contents or a subprocess. Cached per index by its mtime,
+# so a skills poll with nothing new costs one stat per skill.
+_last_used_cache: Dict[str, tuple[int, str, bool]] = {}
+
+
+def skill_last_used(root: Path, skill: Skill) -> tuple[str, bool]:
+    """``(last_used, has_conversations)`` for one skill.
+
+    ``last_used`` is the newest listed capture's mtime as a local
+    ``YYYY-MM-DD`` (its file-name date when it can't be statted), or ``""``
+    with no index or no rows. That is the last *captured* conversation: a
+    launch that never produced a capture does not count.
+    """
+    index = _safe_conversation_index(root, skill)
+    if index is None:
+        return "", False
+    try:
+        stamp = index.stat().st_mtime_ns
+    except OSError:
+        return "", False
+    key = str(index)
+    cached = _last_used_cache.get(key)
+    if cached and cached[0] == stamp:
+        return cached[1], cached[2]
+    rows = _read_conversation_index(index) or []
+    folder = index.parent
+    newest = ""
+    for row in rows:
+        filename = str(row.get("file") or "")
+        if Path(filename).name != filename:
+            continue
+        day = _last_interaction(folder / filename, str(row.get("date") or ""))
+        newest = max(newest, day)
+    _last_used_cache[key] = (stamp, newest, bool(rows))
+    return newest, bool(rows)
 
 
 @router.delete("/api/life-os/skills/{skill_id}/conversations")
@@ -422,7 +570,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
                                  f"capture belongs to. {source['reason']}")
     agent, sid = str(source.get("agent", "")), str(source.get("sid", "")).lower()
     try:
-        live = await _live_conversation_ids(cfg)
+        live = await _live_conversations(cfg)
     except session_client.SessionHostError as exc:
         logger.warning("⚠️ Life OS delete: session host unavailable (%s)", exc)
         raise HTTPException(503, "Nothing was deleted: the session host can't be reached, so "

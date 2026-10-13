@@ -194,15 +194,15 @@ def test_launch_toolbar_switches_are_vendored_and_accent_when_on(
 
 
 @pytest.mark.iphone
-def test_life_launch_toolbar_is_the_same_component(
+def test_life_launch_options_live_in_the_model_menu(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1439 (step 7 of #1432): Life › Skills mounts the launch toolbar Code
-    › Projects does (#1434), so its Detached and Resume are the vendored
-    switch beside their words too, with no glyph pill left on the tab, and
-    on is the accent fill, never success (#1396, fleet-config#1200). Resolved
-    from the page's own tokens in light and dark; auto-retrying
-    `to_have_css` (#680)."""
+    """#1503 decision 6: Life's Detached and Resume moved into the model
+    combo's menu, under the model list. They are still the vendored switch
+    beside its word, accent when on (never success), and toggle in place
+    without closing the menu; a model pick is still one tap that closes it.
+    Closed, the combo's label names any switch that is on. Resolved from the
+    page's own tokens in light and dark; auto-retrying `to_have_css` (#680)."""
     _install_mocks(authed_page)
     authed_page.add_init_script(
         "document.addEventListener('DOMContentLoaded', () => {"
@@ -216,17 +216,32 @@ def test_life_launch_toolbar_is_the_same_component(
     authed_page.locator("#tabLifeOS").click()
     toolbar = authed_page.locator("#lifeOsLaunchToolbar .launch-toolbar")
     expect(toolbar).to_be_visible()
+    expect(toolbar.locator(".launch-toolbar-switches")).to_have_count(0)
     expect(authed_page.locator("#paneLifeOS .detached-toggle")).to_have_count(0)
+
+    combo = authed_page.locator("#lifeOsModelCombo")
+    trigger = authed_page.locator("#lifeOsModelBtn")
+    menu = authed_page.locator("#lifeOsModelMenu")
+    expect(trigger).to_have_attribute("aria-haspopup", "dialog")
+    trigger.click()
+    expect(menu).to_be_visible()
+    expect(menu).to_have_attribute("role", "dialog")
+    options = menu.locator(".model-combo-list[role='listbox'] [role='option']")
+    expect(options.first).to_be_visible()
     for sel, word in (("#lifeOsDetached", "Detached"), ("#lifeOsResume", "Resume")):
-        sw = toolbar.locator(sel)
+        sw = menu.locator(".launch-menu-options[role='group'] " + sel)
         expect(sw).to_have_class(re.compile(r"\btoggle\b"))
         expect(sw).to_have_attribute("role", "switch")
         expect(sw.locator("xpath=..")).to_contain_text(word)
+        row = sw.locator("xpath=..").bounding_box()
+        assert row and row["height"] >= 44, (sel, row)
+    expect(menu.locator(".launch-menu-hint")).to_contain_text("a resumed one keeps its own")
 
-    detached = toolbar.locator("#lifeOsDetached")
+    detached = menu.locator("#lifeOsDetached")
     expect(detached).not_to_be_checked()
-    toolbar.locator(".launch-switch-label", has_text="Detached").click()
+    menu.locator(".launch-switch-label", has_text="Detached").click()
     expect(detached).to_be_checked()
+    expect(menu).to_be_visible()   # a switch toggles in place
     for theme in ("light", "dark"):
         authed_page.evaluate(
             "t => document.documentElement.setAttribute('data-theme', t)", theme
@@ -235,3 +250,62 @@ def test_life_launch_toolbar_is_the_same_component(
         success = authed_page.evaluate(_RESOLVE, "--success")
         assert fill != success, f"{theme}: the probe cannot tell the accent from success"
         expect(detached).to_have_css("background-color", fill)
+        # The off switch keeps its own track, not the menu buttons' blank one.
+        expect(menu.locator("#lifeOsResume")).not_to_have_css(
+            "background-color", "rgba(0, 0, 0, 0)")
+
+    # A model pick is one tap, closes the menu, and the label keeps its note.
+    pick = options.nth(1)
+    value = pick.get_attribute("data-value")
+    pick.click()
+    expect(menu).to_be_hidden()
+    expect(combo).to_have_attribute("data-value", value)
+    expect(trigger).to_have_attribute("data-note", "Detached")
+    after = trigger.evaluate("el => getComputedStyle(el, '::after').content")
+    assert "Detached" in after, after
+
+    trigger.click()
+    menu.locator("#lifeOsResume").click()
+    expect(trigger).to_have_attribute("data-note", "Detached · Resume")
+    menu.locator("#lifeOsDetached").click()
+    menu.locator("#lifeOsResume").click()
+    expect(trigger).not_to_have_attribute("data-note", re.compile(".*"))
+    assert trigger.evaluate("el => getComputedStyle(el, '::after').content") in ("none", "normal")
+
+
+# Code › Projects' launch toolbar as mountLaunchToolbar built it before
+# `switchesInMenu` existed, captured on main (cc222f5) by running
+# _CODE_TOOLBAR there. Code does not pass the option, so it must not change.
+_CODE_TOOLBAR = """async () => {
+  const { mountLaunchToolbar } = await import('/static/launch-toolbar.js');
+  const host = document.createElement('div');
+  mountLaunchToolbar(host, {
+    ids: { combo: 'gc', trigger: 'gt', menu: 'gm', detached: 'gd', resume: 'gr' },
+    model: { value: 'claude:opus', label: 'Claude · Opus', title: 'Model', menuLabel: 'Launch model' },
+    detachedTitle: 'Detached title', resumeTitle: 'Resume title',
+  });
+  return host.innerHTML;
+}"""
+
+_CODE_TOOLBAR_GOLDEN = (
+    "<div class=\"launch-toolbar\"><div class=\"launch-toolbar-head\"><span class=\"model-combo\" id="
+    "\"gc\" data-value=\"claude:opus\"><button class=\"model-combo-trigger\" type=\"button\" id=\"gt\" ar"
+    "ia-haspopup=\"listbox\" aria-expanded=\"false\" aria-controls=\"gm\" title=\"Model\">Claude \u00b7 Opus"
+    "</button><span class=\"model-combo-menu\" id=\"gm\" role=\"listbox\" aria-label=\"Launch model\" h"
+    "idden=\"\"><button type=\"button\" role=\"option\" data-value=\"claude:opus\" aria-selected=\"true\""
+    ">Claude \u00b7 Opus</button></span></span></div><div class=\"launch-toolbar-switches\"><label cla"
+    "ss=\"launch-switch\"><span class=\"launch-switch-label\">Detached</span><button type=\"button\" "
+    "aria-label=\"Launch detached\" role=\"switch\" class=\"toggle\" aria-checked=\"false\" id=\"gd\" tit"
+    "le=\"Detached title\"><span class=\"knob\"></span><span class=\"toggle-label\">OFF</span></butto"
+    "n></label><label class=\"launch-switch\"><span class=\"launch-switch-label\">Resume</span><but"
+    "ton type=\"button\" aria-label=\"Resume session\" role=\"switch\" class=\"toggle\" aria-checked=\"f"
+    "alse\" id=\"gr\" title=\"Resume title\"><span class=\"knob\"></span><span class=\"toggle-label\">OF"
+    "F</span></button></label></div></div>"
+)
+
+
+def test_a_toolbar_without_switches_in_menu_is_byte_identical(
+    authed_page: Page, base_url: str
+) -> None:
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    assert authed_page.evaluate(_CODE_TOOLBAR) == _CODE_TOOLBAR_GOLDEN

@@ -4,9 +4,14 @@
  * ~80% a clone of the Coding tab. A row launches a Claude session in the
  * life-os repo that auto-invokes the bare /<skill> slash-command; the model,
  * Detached and Resume controls are the shared launch toolbar Code › Projects
- * mounts (#1439, launch-toolbar.js), at the top of the Skills card. A skill
- * a Telegram profile is bound to wears a send glyph and starts or opens that
- * bot from its kebab; there is no Telegram card (#1439). The Read item opens
+ * mounts (#1439, launch-toolbar.js), at the top of the Skills card. Each row
+ * leads with an avatar and says when the skill was last used; pinned skills
+ * come first, then the most recently used, and skills not used lately fold
+ * under one row (#1503). A swipe right (or the kebab) resumes the newest
+ * conversation on its own model, a swipe left starts a new one; on the phone
+ * the rows run edge to edge to give the swipe room. A skill a Telegram profile is bound to says so
+ * in its meta, wears the green badge while that bot runs, and starts or opens
+ * the bot from its kebab; there is no Telegram card (#1439). The Read item opens
  * an overlay that reads each skill's files — public SKILL.md/description.md
  * plus the private context/memory/examples/conversations + shared
  * identity. Those content endpoints are Tailscale + passkey gated
@@ -41,7 +46,9 @@ const skillMenu = createRowMenu('project-menu');
 const convoMenu = createRowMenu('project-menu');
 
 // The Skills card's launch toolbar (#1439): the shared component Code ›
-// Projects mounts (#1434), so both launch surfaces look and behave alike.
+// Projects mounts (#1434), so both launch surfaces look and behave alike,
+// except that here Detached and Resume live in the model combo's menu
+// (#1503 decision 6).
 // Mounted at load so wireLifeOs finds its model combo by id; every launch
 // reads the switches through it. The ids are the hooks the launch and e2e
 // code have always used.
@@ -57,6 +64,11 @@ const lifeLaunch = mountLaunchToolbar(document.getElementById('lifeOsLaunchToolb
   },
   detachedTitle: 'Launch detached: a console window on the PC, listed and killable in the Coding tab but no phone terminal',
   resumeTitle: 'Resume: reopen the selected agent’s session picker (drops the skill prompt), in a phone terminal, or in the detached console when Detached is also on',
+  // Decision 6 (#1503): the switches sit in the combo's menu, under the
+  // model list, and its label names any that is on.
+  switchesInMenu: true,
+  menuHint: 'The model is for new conversations; a resumed one keeps its own. ' +
+    'Resume: a tap opens the session picker.',
   // The cross-skill conversation search rides the model row, pinned right.
   trailing: document.getElementById('lifeOsConvoSearch'),
 });
@@ -71,6 +83,10 @@ const skillsFilter = listFilter({
   list: els.lifeOsList,
   empty: els.lifeOsFilterEmpty,
   storageKey: 'app-launcher.filter.skills',
+  // A typed filter searches every skill: the fold opens while it is set.
+  onApply: function (query) {
+    if (els.lifeOsList) els.lifeOsList.classList.toggle('is-filtering', !!query);
+  },
 });
 
 // The launch-model dropdown controller ({setValue, getValue}), wired in the
@@ -206,72 +222,217 @@ async function launchChannel(p) {
   }
 }
 
+// A skill counts as in use for this many days after its last captured
+// conversation (#1503): pinned skills and these show, the rest fold under
+// one "N more skills" row.
+const RECENT_DAYS = 30;
+
+// Whole days from a YYYY-MM-DD (read as a local calendar day) to today, or
+// null for no date.
+function daysSince(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
+  if (!m) return null;
+  const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((today - day) / 86400000));
+}
+
+// The row's meta (#1503): when the skill was last used, in words. That is
+// its newest captured conversation, so a skill launched but never captured
+// says "no conversations yet", not "never used".
+function lastUsedMeta(s) {
+  const days = daysSince(s.last_used);
+  if (days === null) return 'no conversations yet';
+  if (days === 0) return 'used today';
+  if (days === 1) return 'used yesterday';
+  if (days < 7) return 'used ' + days + ' days ago';
+  if (days < 14) return 'used last week';
+  if (days < 30) return 'used ' + Math.floor(days / 7) + ' weeks ago';
+  if (days < 60) return 'used last month';
+  return 'used ' + Math.floor(days / 30) + ' months ago';
+}
+
+// Pinned first, then the most recently used, then A to Z (#1503 decision 5).
+function compareSkills(a, b) {
+  if (!!a.is_favorite !== !!b.is_favorite) return a.is_favorite ? -1 : 1;
+  const au = a.last_used || '';
+  const bu = b.last_used || '';
+  if (au !== bu) return au < bu ? 1 : -1;
+  return String(a.name).localeCompare(String(b.name));
+}
+
+// The avatar's glyph: the skill's own frontmatter `icon:` when the page's
+// sprite has that glyph, else the name's first letter.
+function skillAvatar(s, alive) {
+  let glyph = null;
+  if (s.icon && document.getElementById('i-' + s.icon)) {
+    glyph = s.icon;
+  } else {
+    glyph = document.createElement('span');
+    glyph.className = 'lifeos-monogram';
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.textContent = String(s.name || s.id || '?').charAt(0).toUpperCase();
+  }
+  return avatar(glyph, alive ? 'alive' : 'none', 'lifeos-avatar');
+}
+
+// Whether the rows under the fold are showing; kept across re-renders.
+let skillsUnfolded = false;
+
+// The kebab's launch items (#1503), first so the swipe actions have a
+// single-pointer route (WCAG 2.5.1), the only one with a mouse: resume the
+// newest conversation, or start a new one. Both ignore the toolbar's Resume
+// switch.
+function launchMenuItems(s) {
+  return [
+    {
+      className: 'lifeos-resume-last-btn', glyph: 'rotate-ccw',
+      label: 'Resume the last conversation with ' + s.name,
+      text: 'Resume last conversation',
+      disabled: !s.has_conversations,
+      title: s.has_conversations ? '' : 'No conversation yet',
+      onTap: function () { resumeLatest(s); },
+    },
+    {
+      className: 'lifeos-start-new-btn', glyph: 'circle-plus',
+      label: 'Start a new conversation with ' + s.name,
+      text: 'Start new conversation',
+      onTap: function () { launchSkill(s, { fresh: true }); },
+    },
+    {
+      className: 'lifeos-pin-btn', glyph: 'pin',
+      label: (s.is_favorite ? 'Unpin ' : 'Pin ') + s.name,
+      text: s.is_favorite ? 'Unpin' : 'Pin to top',
+      onTap: function () { toggleSkillPin(s); },
+    },
+  ];
+}
+
 export function renderSkills() {
   const host = els.lifeOsList;
   if (!host) return;
   renderHomeHead();
   host.innerHTML = '';
-  const skills = state.lifeOsSkills;
+  const skills = state.lifeOsSkills.slice().sort(compareSkills);
   // "No skills found" only after a good read: before one, an empty list is
   // lifeOsState's loading or error, not an empty folder (#1501).
   els.lifeOsEmpty.hidden = skills.length !== 0 || !skillsReadAt;
 
-  // Starred skills pinned to the top (#1070), the Coding tab's treatment
-  // (#250) replicated here. `skills` arrives alphabetical from the scanner,
-  // so a stable partition keeps both groups A–Z rather than reshuffling the
-  // rest of the list around a star.
-  const favs = skills.filter(function (s) { return s.is_favorite; });
-  const rest = skills.filter(function (s) { return !s.is_favorite; });
+  // The fold (#1503): pinned skills and those used in the last RECENT_DAYS
+  // show; the rest sit under one row that opens in place. With nothing in
+  // use yet (a fresh install), everything shows and there is no fold.
+  const inUse = function (s) {
+    const days = daysSince(s.last_used);
+    return s.is_favorite || (days !== null && days <= RECENT_DAYS);
+  };
+  let shown = skills.filter(inUse);
+  let folded = skills.filter(function (s) { return !inUse(s); });
+  if (!shown.length) {
+    shown = skills;
+    folded = [];
+  }
+  host.classList.toggle('is-unfolded', skillsUnfolded);
 
-  favs.concat(rest).forEach(function (s) {
+  function addRow(s, isFolded) {
     // Tapping the row launches the skill (#1128, the action-row contract):
-    // a fresh Claude session that auto-invokes /<skill>. The star leads;
-    // the bot, Read and Conversations live in the one trailing kebab. The
-    // row is Code's project row exactly (#1439): a linked bot adds only the
-    // glyph after the name.
+    // a fresh conversation that auto-invokes /<skill>, or the session picker
+    // with the toolbar's Resume on. The avatar leads (a running Telegram bot
+    // is its green badge); everything else is in the one trailing kebab.
     const profiles = skillProfiles(s);
     const alive = profiles.some(function (p) { return p.running === true; });
     const row = actionRow({
       id: s.id,
-      className: 'lifeos-item',
+      className: 'lifeos-item' + (isFolded ? ' is-folded' : ''),
       title: s.name,
-      titleIcon: profiles.length ? {
-        glyph: 'send-horizontal', alive: alive,
-        label: alive ? 'Its Telegram bot is running' : 'Has a Telegram bot',
-      } : null,
+      meta: lastUsedMeta(s) + (profiles.length ? ' · Telegram' : ''),
+      avatar: skillAvatar(s, alive),
       label: 'Launch ' + s.name,
       onMain: function () { launchSkill(s); },
-      favorite: { on: s.is_favorite, onToggle: function () { toggleSkillFavorite(s); } },
       kebabClass: 'lifeos-menu-anchor',
       kebabLabel: 'Skill actions',
+      // Swipe right resumes the newest conversation (the frequent one, so
+      // the leading edge, iOS Mail's rule); swipe left starts a new one.
+      // Both are also the kebab's first two items, and both ignore the
+      // Resume switch (#1503).
+      swipe: {
+        leading: {
+          label: 'Resume', glyph: 'rotate-ccw', tone: 'accent',
+          disabled: !s.has_conversations, reason: 'No conversation yet',
+          onCommit: function () { resumeLatest(s); },
+        },
+        trailing: {
+          label: 'New', glyph: 'circle-plus', tone: 'neutral',
+          onCommit: function () { launchSkill(s, { fresh: true }); },
+        },
+      },
     });
-    row.li.appendChild(skillMenu.attach(s.id, row.kebab, channelMenuItems(profiles).concat([
-      {
-        // The read-only content browser for this skill.
-        className: 'lifeos-browse-btn', glyph: 'book-open',
-        label: 'Browse ' + s.name, text: 'Read',
-        onTap: function () { openBrowser(s); },
-      },
-      {
-        // The digested index for this skill, with a per-row ↺ that
-        // reattaches to that exact session (#727).
-        className: 'lifeos-convo-btn', glyph: 'messages-square',
-        label: 'Conversations with ' + s.name, text: 'Conversations',
-        onTap: function () { openConvos(s); },
-      },
-    ])));
+    if (s.is_favorite) row.li.dataset.pinned = 'true';
+    row.li.appendChild(skillMenu.attach(s.id, row.kebab, launchMenuItems(s).concat(
+      channelMenuItems(profiles),
+      [
+        {
+          // The read-only content browser for this skill.
+          className: 'lifeos-browse-btn', glyph: 'book-open',
+          label: 'Browse ' + s.name, text: 'Read',
+          onTap: function () { openBrowser(s); },
+        },
+        {
+          // The digested index for this skill, with a per-row ↺ that
+          // reattaches to that exact session (#727).
+          className: 'lifeos-convo-btn', glyph: 'messages-square',
+          label: 'Conversations with ' + s.name, text: 'Conversations',
+          onTap: function () { openConvos(s); },
+        },
+      ]
+    ), {
+      // A phone has no hover to explain a disabled Resume, so its reason is
+      // the menu's first line (the Conversations rows' rule, #1528).
+      header: s.has_conversations ? '' : 'No conversation yet',
+    }));
     host.appendChild(row.li);
-  });
+  }
+
+  shown.forEach(function (s) { addRow(s, false); });
+  if (folded.length) host.appendChild(foldRow(folded.length));
+  folded.forEach(function (s) { addRow(s, true); });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
   skillMenu.endRender();
   skillsFilter.apply();
 }
 
-// Star / unstar a Life OS skill (#1070). Persists server-side, then
-// re-fetches the skills list so the star and the favorites-first ordering
-// update from the authoritative payload — no optimistic local mutation to
-// drift, exactly like the Coding tab's toggleFavorite (#250).
-async function toggleSkillFavorite(s) {
+// The one row the folded skills sit under. It has no .action-row-title, so
+// the filter passes over it; while a filter is typed the fold opens and this
+// row steps aside (CSS, keyed on the list's is-filtering class).
+function foldRow(count) {
+  const li = document.createElement('li');
+  li.className = 'lifeos-fold';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'drill-row lifeos-fold-btn';
+  btn.setAttribute('aria-expanded', skillsUnfolded ? 'true' : 'false');
+  const text = document.createElement('span');
+  text.className = 'srow-text';
+  const title = document.createElement('span');
+  title.className = 'srow-title';
+  title.textContent = skillsUnfolded ? 'Fewer skills'
+    : count + (count === 1 ? ' more skill' : ' more skills');
+  text.appendChild(title);
+  btn.appendChild(avatar('chevrons-up-down', 'none', 'lifeos-fold-avatar'));
+  btn.appendChild(text);
+  btn.addEventListener('click', function () {
+    skillsUnfolded = !skillsUnfolded;
+    renderSkills();
+  });
+  li.appendChild(btn);
+  return li;
+}
+
+// Pin / unpin a skill (#1503 decision 5, over #1070's favorites list, so a
+// starred skill is pinned with no migration). Persists server-side, then
+// re-fetches the skills list so the order comes from the authoritative
+// payload, exactly like the Coding tab's toggleFavorite (#250).
+async function toggleSkillPin(s) {
   try {
     await jsonApi('/api/life-os/favorites', {
       method: 'POST',
@@ -280,7 +441,7 @@ async function toggleSkillFavorite(s) {
     });
     await fetchSkills();
   } catch (exc) {
-    apiFailToast('Could not update favorite', exc);
+    apiFailToast(s.is_favorite ? 'Could not unpin' : 'Could not pin', exc);
   }
 }
 
@@ -329,6 +490,7 @@ function renderRecap() {
     chips.push(chip(status, 'attention', 'lifeos-recap-chip'));
   }
   if (r.proposal_pending) chips.push(chip('draft ready', 'accent', 'lifeos-recap-chip'));
+  placeRecap(host, chips.length > 0);
   const row = actionRow({
     id: 'weekly-recap',
     className: 'lifeos-recap-item',
@@ -349,6 +511,19 @@ function renderRecap() {
   verb.addEventListener('click', launchRecap);
   row.li.appendChild(verb);
   list.replaceChildren(row.li);
+}
+
+// The recap keeps its row under Skills, and rises above it as the tab's
+// exception while it is due or overdue or a draft is ready (#1503).
+function placeRecap(card, exception) {
+  const skills = document.querySelector('#paneLifeOS .lifeos-list-card');
+  if (!skills || !card.parentNode) return;
+  if (exception) {
+    if (card.nextElementSibling !== skills) skills.parentNode.insertBefore(card, skills);
+  } else if (skills.nextElementSibling !== card) {
+    skills.parentNode.insertBefore(card, skills.nextSibling);
+  }
+  card.classList.toggle('is-exception', exception);
 }
 
 // Toast suffix for the launch model: silent on the Sonnet default (the
@@ -390,13 +565,15 @@ async function launchRecap() {
   }
 }
 
-async function launchSkill(s) {
+// opts.fresh (#1503): a new conversation whatever the Resume switch says —
+// the kebab's "Start new conversation" and the swipe's New are explicit.
+async function launchSkill(s, opts) {
   // Resume (issue #151) reopens Claude's session picker, dropping the
   // /<skill> prompt. Detached and Resume are orthogonal (issue #157,
   // matching the Coding tab): Detached → 'remote' independent of Resume, so
   // a Detached+Resume launch renders the picker in the detached console
   // while Resume alone streams it to the phone over a PTY.
-  const resume = launchResume();
+  const resume = !(opts && opts.fresh) && launchResume();
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
   const payload = { mode: mode, model: model, resume: resume };
@@ -422,6 +599,47 @@ async function launchSkill(s) {
     handleLaunchResponse(body.session);
   } catch (exc) {
     apiFailToast('Launch failed', exc);
+  }
+}
+
+// The model a resumed conversation came back on, for its toast (#1503): the
+// server reads it from the conversation's own transcript, so it can be
+// unknown (""), and for Codex it can be the default standing in for a model
+// that could not be read (model_kept false).
+function resumedModelTag(body) {
+  const raw = String((body && body.model) || '');
+  if (!raw) return '';
+  const family = /^claude-([a-z]+)/.exec(raw);
+  let label = family ? family[1] : raw.replace(/^gpt-(?:5\.6|6)-/, '');
+  label = label.charAt(0).toUpperCase() + label.slice(1);
+  return body.model_kept === false
+    ? ' (' + label + ': its own model could not be read)'
+    : ' (' + label + ')';
+}
+
+// Resume a skill's newest conversation on that conversation's own model
+// (#1503): the kebab's "Resume last conversation" and the swipe's Resume.
+// Detached applies; the model combo and the Resume switch do not. One that
+// is already open in a running session opens instead of starting a copy.
+async function resumeLatest(s) {
+  const mode = launchDetached() ? 'remote' : 'pty';
+  const payload = { mode: mode };
+  if (mode !== 'remote') applyLaunchSizePayload(payload);
+  try {
+    const body = await terminalJsonApi(
+      '/api/life-os/skills/' + encodeURIComponent(s.id) + '/conversations/resume-latest',
+      { method: 'POST', body: payload }
+    );
+    if (body.conversation_action === 'open') {
+      toast('Opened ' + s.name + ': that conversation is already running', 'good',
+        { icon: 'rotate-ccw' });
+    } else {
+      toast('Resumed ' + s.name + resumedModelTag(body) +
+        (mode === 'remote' ? ' (detached)' : ''), 'good', { icon: 'rotate-ccw' });
+    }
+    handleLaunchResponse(body.session);
+  } catch (exc) {
+    apiFailToast('Resume failed', exc);
   }
 }
 
@@ -1239,7 +1457,8 @@ function convoDescribe(r) {
 // Conversations bar (#727's rules, one action since #1528): reattach the
 // stored session when the providers match; when they don't and the capture
 // can seed one, start an explicit new conversation in the chosen provider;
-// otherwise nothing, and `reason` says why on screen. Asked by the row's ⋮
+// with no handoff to offer, still resume, on the conversation's own model
+// (#1503); otherwise nothing, and `reason` says why on screen. Asked by the row's ⋮
 // and the viewer's Resume on every open, so both follow the bar's model.
 function convoResumeAction(r) {
   const target = lifeOsModel().split(':')[0];
@@ -1254,12 +1473,14 @@ function convoResumeAction(r) {
       label: 'Start a new ' + to + ' conversation from this one', reason: '',
     };
   }
-  const provider = r.agent === 'codex' ? 'Codex' : 'Claude';
+  if (r.resumable && r.skill) {
+    // Resume keeps the conversation's own model (#1503), so the bar's
+    // provider does not have to match it.
+    return { kind: 'resume', text: 'Resume', label: 'Resume this conversation', reason: '' };
+  }
   return {
     kind: null, text: 'Resume', label: 'Resume this conversation',
-    reason: !r.resumable
-      ? (r.resume_reason || 'No stored session; readable only.')
-      : 'Select a ' + provider + ' model to resume this source.',
+    reason: r.resume_reason || 'No stored session; readable only.',
   };
 }
 
@@ -1378,6 +1599,9 @@ async function resumeConversation(r, action) {
     mode: mode, model: model, action: action,
     capture: { path: r.path, revision: r.revision, agent: r.agent, sid: r.sid },
   };
+  // A resume comes back on the conversation's own model (#1503); the bar's
+  // model applies only to the new conversation a handoff starts.
+  if (action === 'resume') payload.keep_model = true;
   if (action === 'handoff') {
     const scope = r.handoff_truncated ?
       'Only the first ' + (r.handoff_limit || 24000).toLocaleString() + ' characters will be included.' :
@@ -1401,7 +1625,8 @@ async function resumeConversation(r, action) {
     );
     toast(
       (action === 'handoff' ? 'Started new conversation from ' : 'Resumed ') +
-        (r.title || r.topic || r.skill) + modelTag(model) +
+        (r.title || r.topic || r.skill) +
+        (action === 'handoff' ? modelTag(model) : resumedModelTag(body)) +
         (body.handoff_truncated ? ' (selected context truncated)' : '') +
         (mode === 'remote' ? ' (detached)' : ''),
       'good', { icon: action === 'handoff' ? 'messages-square' : 'rotate-ccw' }

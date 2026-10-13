@@ -97,11 +97,17 @@ export function bindOutsideClickToClose(box, toggle, closer) {
 // is portaled to <body> while open so toolbar/card overflow cannot clip it;
 // controls inside a native <dialog> stay in that top layer. Returns the one
 // controller used by every model surface, or null when markup is absent.
+//
+// A menu that holds more than the model list (Life's launch options, #1503)
+// wraps the options in a `.model-combo-list` listbox; setOptions then
+// rebuilds that list alone and leaves the rest of the menu in place. A tap
+// on anything that is not an option keeps the menu open.
 export function wireModelCombo(root, onChange) {
   if (!root) return null;
   const trigger = root.querySelector('.model-combo-trigger');
   const menu = root.querySelector('.model-combo-menu');
   if (!trigger || !menu) return null;
+  const list = menu.querySelector('.model-combo-list') || menu;
   let dispose = null;
   let positionFrame = null;
   const menuParent = menu.parentNode;
@@ -318,7 +324,7 @@ export function wireModelCombo(root, onChange) {
     setOptions: function (items) {
       const current = root.dataset.value || '';
       close(false);
-      menu.replaceChildren();
+      list.replaceChildren();
       (items || []).forEach(function (item) {
         const data = typeof item === 'string'
           ? { value: item, label: item, available: true }
@@ -337,7 +343,7 @@ export function wireModelCombo(root, onChange) {
         } else if (data.title) {
           option.title = data.title;
         }
-        menu.appendChild(option);
+        list.appendChild(option);
       });
       if (findOption(current)) apply(current, false);
     },

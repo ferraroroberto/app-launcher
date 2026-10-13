@@ -3911,6 +3911,118 @@ body.terminal-open {
 /* The weekly-recap glance row (#1439): the action-row with the notebook
    avatar, glyph in the accent like the job avatars, and its ▶ verb. */
 .lifeos-recap-avatar .avatar-glyph { color: var(--accent); }
+/* A skill row's avatar (#1503): the skill's own glyph (its SKILL.md `icon:`)
+   or, without one, its name's first letter, in the accent like the recap's
+   and the job rows'. */
+.lifeos-avatar .avatar-glyph { color: var(--accent); }
+.lifeos-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1;
+}
+/* The fold (#1503): skills not used lately sit under one "N more skills"
+   row and show once it opens, or while a filter is typed (which searches
+   every skill, so the row itself steps aside). */
+#lifeOsList:not(.is-unfolded):not(.is-filtering) > .is-folded { display: none; }
+#lifeOsList.is-filtering > .lifeos-fold { display: none; }
+.lifeos-fold + .action-row { border-top: 1px solid var(--line-muted); }
+.lifeos-fold-avatar .avatar-glyph { color: var(--muted); }
+
+/* Swipe actions on a row (swipe-row.js, action-rows.js `swipe`, #1503).
+   The row's content is one opaque surface that slides over two panes; the
+   track clips both, so the row's own kebab menu is never clipped. The
+   surface takes the row's inline padding and lets vertical pans through
+   (touch-action: pan-y), so scrolling the list is never blocked. */
+.action-row.has-swipe { padding: 0; }
+.swipe-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  overflow: hidden;
+}
+.swipe-surface {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  background: var(--card);
+  touch-action: pan-y;
+  transition: transform 0.2s ease-out;
+}
+.action-row.is-dragging .swipe-surface { transition: none; }
+.swipe-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  visibility: hidden;
+}
+.swipe-pane--trailing { justify-content: flex-end; }
+.action-row[data-swipe="leading"] .swipe-pane--leading,
+.action-row[data-swipe="trailing"] .swipe-pane--trailing { visibility: visible; }
+.swipe-pane[data-tone="accent"] { background: var(--accent-fill); color: var(--accent-fg); }
+/* Mixed onto the card, not the translucent neutral-soft, which all but
+   vanishes against a dark row. */
+.swipe-pane[data-tone="neutral"] {
+  background: color-mix(in srgb, var(--muted) 32%, var(--card));
+  color: var(--fg);
+}
+.swipe-pane.is-disabled { background: var(--neutral-soft); color: var(--muted); }
+.swipe-pane-btn {
+  width: 88px;
+  min-height: var(--hit-min);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+.swipe-pane-btn:disabled { cursor: default; }
+.swipe-pane-btn .icon { width: 20px; height: 20px; transition: transform 0.15s ease-out; }
+/* Past the full-swipe line the pane arms: its glyph grows, so a release
+   there is seen to commit before it does. */
+.action-row.is-armed .swipe-pane-btn .icon { transform: scale(1.3); }
+@media (prefers-reduced-motion: reduce) {
+  .swipe-surface,
+  .swipe-pane-btn .icon { transition: none; }
+}
+
+/* Full-bleed Skills rows on the phone (#1503, an experiment the owner asked
+   for, one switch to revert on its own): the Skills card runs to the
+   screen's edges so a row and its swipe panes are edge to edge, with
+   hairlines between rows. Its header, toolbar, filter and the rows' text
+   keep the inset they had inside the card. The wide layout keeps the card. */
+@media (max-width: 520px) {
+  .lifeos-list-card {
+    margin-inline: calc(-1 * var(--gap));
+    border-inline-width: 0;
+    border-radius: 0;
+  }
+  .lifeos-list-card > .collapse-summary { padding-inline: calc(14px + var(--gap)); }
+  /* Beats `.card.action-list > .collapse-body > :not(.action-rows)`. */
+  .card.action-list.lifeos-list-card > .collapse-body > :not(.action-rows) {
+    margin-inline: calc(14px + var(--gap));
+  }
+  #lifeOsList > .action-row:not(.has-swipe),
+  #lifeOsList .swipe-surface { padding-inline: calc(4px + var(--gap)); }
+  #lifeOsList .drill-row { padding-left: calc(14px + var(--gap)); }
+}
 
 /* Read-only content browser: a full-screen file list; tapping a file
    opens it in a full-screen layer that overlays the list (the ✕ in the
@@ -4291,7 +4403,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   width: max-content;
 }
 .model-combo-menu[hidden] { display: none; }
-.model-combo-menu button {
+.model-combo-menu button:not(.toggle) {
   padding: 8px 14px;
   text-align: left;
   background: none;
@@ -4301,8 +4413,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   cursor: pointer;
   white-space: nowrap;
 }
-.model-combo-menu button:hover,
-.model-combo-menu button:focus-visible,
+.model-combo-menu button:not(.toggle):hover,
+.model-combo-menu button:not(.toggle):focus-visible,
 .model-combo-menu button[aria-selected="true"] {
   background: var(--card);
   color: var(--accent);
@@ -4313,7 +4425,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   cursor: not-allowed;
   opacity: 0.72;
 }
-.model-combo-menu button:disabled {
+.model-combo-menu button:not(.toggle):disabled {
   background: var(--card-2);
   color: var(--muted);
   cursor: not-allowed;
@@ -5263,35 +5375,6 @@ span.chief-answer-ref { color: var(--muted); }
   flex-direction: column;
 }
 
-/* A title marker (action-rows.js `titleIcon`, #1439: a skill's linked
-   Telegram bot): a muted 16px glyph right after the name, on the title's
-   line, so the row keeps its one-line height. The name ellipsizes, the
-   glyph never shrinks. Its dot is the avatar's alive badge, scaled to the
-   glyph. */
-.action-row-title-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-.action-row-title-line .action-row-title { min-width: 0; }
-.action-row-title-icon {
-  position: relative;
-  flex: none;
-  display: inline-flex;
-  color: var(--muted);
-}
-.action-row-title-icon .icon {
-  width: var(--icon-inline);
-  height: var(--icon-inline);
-}
-.action-row-title-icon .avatar-badge {
-  right: -4px;
-  bottom: -3px;
-  width: 10px;
-  height: 10px;
-}
-
 /* A drill-in row at the foot of a list (Other ports, Scan for new apps):
    the action-row's geometry and hairline, the avatar in the leading slot,
    a chevron in the kebab's 44px column, because it opens a sheet. */
@@ -5502,4 +5585,40 @@ span.chief-answer-ref { color: var(--muted); }
   color: var(--fg);
   cursor: pointer;
   user-select: none;
+}
+/* The switches in the combo's menu (launch-toolbar.js `switchesInMenu`,
+   #1503): under the model list on a hairline, one 44px row each with the
+   word left and the track right, then a muted help line. */
+.launch-menu .model-combo-list {
+  display: flex;
+  flex-direction: column;
+}
+/* A phone thumb picks the model here too: every option at the 44px floor. */
+.launch-menu .model-combo-list [role="option"] { min-height: var(--hit-min); }
+/* `line`, not `line-muted`: in dark, line-muted is the menu's own fill. */
+.launch-menu-options {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
+.launch-menu-options .launch-switch {
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 14px;
+}
+/* body-sm in fg: helper copy, and muted on the menu's card-2 fill falls
+   under 4.5:1 in dark. */
+.launch-menu-hint {
+  max-width: 280px;
+  padding: 4px 14px 10px;
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+  color: var(--fg);
+  white-space: normal;
+}
+/* The closed combo names any switch that is on, after the model's name. */
+.model-combo-trigger[data-note]::after {
+  content: "· " attr(data-note);
+  margin-left: 0.3em;
 }
