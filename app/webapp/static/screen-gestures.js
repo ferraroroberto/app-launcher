@@ -35,6 +35,9 @@ export const GESTURE = {
   padGainSlow: 0.8,
   padGainFast: 2.5,
   padFastSpeed: 1.5,
+  // A trackpad tap's click waits this long (ms) for a second touch, which
+  // makes it a double click, or, held and moved, a drag instead.
+  padTapWaitMs: 250,
   // Zoomed in, the cursor stays at least this far (CSS px) inside the stage.
   padFollowMargin: 48,
   // After the last input sent, the server's cursor messages still describe

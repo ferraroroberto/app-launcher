@@ -468,9 +468,12 @@ A **View / Control** switch sits under the Screen bar. **View** is the default e
 
 **Touch or Trackpad.** Once Control is on, a second switch beside it picks how one finger drives the PC. **Touch** is the list above: the tap point is the click point, which is quick for big targets. **Trackpad** works like a laptop's trackpad, so your finger never covers what it aims at:
 
-- **One-finger drag**, anywhere on the picture, moves the cursor by how far the finger travels, not to where it lands. Slow is precise, a quick flick crosses the screen.
-- **Tap** clicks at the cursor. Two quick taps double-click there.
-- **Long-press** (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. Long-press, then move: a drag with the left button held, released when you lift.
+The gestures follow the Windows remote desktop app's mouse-pointer mode. Touching never clicks by itself:
+
+- **One-finger drag**, anywhere on the picture, moves the cursor by how far the finger travels, not to where it lands, and never clicks, however long the finger rested first. Slow is precise, a quick flick crosses the screen.
+- **Tap** (touch and lift without moving) clicks at the cursor. Two quick taps double-click there. A single tap's click waits a quarter second for a possible second tap.
+- **Long-press** without moving (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. A **two-finger tap** right-clicks too.
+- **Double-tap and hold, then drag**: a drag with the left button held (move a window, select text), released when you lift.
 - **Two-finger drag** scrolls at the cursor, and **pinch** zooms as in Touch. While zoomed in, the picture pans to keep the cursor in view.
 - The cursor starts on the PC's own, or mid-picture when the PC's is on another display. Move the real mouse and the next drag starts from there.
 

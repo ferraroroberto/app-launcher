@@ -41,11 +41,12 @@
  * Trackpad (#1599). Control has two styles, picked by the Touch / Trackpad
  * switch beside it: Touch is the above, Trackpad works like a laptop's. One
  * finger moves the cursor (view.pad, 0-1 in the frame) by how far it
- * travels, wherever it lands; a tap clicks at the cursor, two taps
- * double-click there, a long-press lifted right-clicks there and a
- * long-press then a move drags with the left button held. Two fingers
- * scroll at the cursor or pinch, and a zoomed picture pans to keep the
- * cursor in view. The style is remembered per device and applies when
+ * travels, wherever it lands, and a move never clicks; a tap clicks at the
+ * cursor, two taps double-click there, a long-press lifted without moving
+ * and a two-finger tap right-click there, and a double-tap held then moved
+ * drags with the left button held (the Windows remote desktop app's
+ * gestures). Two fingers scroll at the cursor or pinch, and a zoomed
+ * picture pans to keep the cursor in view. The style is remembered per device and applies when
  * Control is picked; the view still opens in View. The overlay draws the
  * server's cursor, except while the finger is moving it and its messages
  * lag behind: then the locally moved one, which is where it is going.
@@ -586,7 +587,13 @@ function queueMove(msg) {
 }
 
 function cancelGesture() {
+  // A tap's click waiting on a second touch goes out first.
+  flushPadTap();
   if (!gesture) return;
+  // A touch that began inside a tap's wait: that tap still clicks.
+  if (gesture.kind === 'pad' && gesture.second) {
+    sendInput({ type: 'click', button: 'left', x: gesture.second.x, y: gesture.second.y });
+  }
   if (gesture.timer) clearTimeout(gesture.timer);
   if (gesture.kind === 'drag') {
     flushMove();
@@ -735,69 +742,94 @@ function movePad(from, to) {
   queueMove({ type: 'move', x: view.pad.x, y: view.pad.y });
 }
 
+// Trackpad gestures, after the Windows remote desktop app's mouse-pointer
+// mode (#1599). Touching never clicks by itself: a touch that moves only
+// moves the cursor, however long it rested first. A clean tap clicks, two
+// quick taps double-click, a long-press lifted without moving right-clicks,
+// as does a two-finger tap, and a double-tap held then moved drags with the
+// left button down. A tap's click waits padTapWaitMs for a second touch,
+// so a double-tap drag never clicks first.
+//
 // The gesture in flight in Trackpad (besides 'two' and 'spent' above):
-//   {kind: 'pad', start, last, from, timer, held}  one finger, a tap or
-//       long-press so far; `from` is the cursor where it began, and `held`
-//       is set once the long-press time passes without moving off
+//   {kind: 'pad', start, timer, held, second}  one finger that has not
+//       moved yet: a tap or long-press so far. `held` once the long-press
+//       time passes; `second` is the earlier tap's spot when this touch
+//       began inside its wait, its click still unsent
 //   {kind: 'pad-move', last}   moving the cursor, no button
 //   {kind: 'pad-drag', last}   the left button is down at the cursor
+let padTap = null;   // a tap's click waiting on a second touch: {at, timer}
+
+function flushPadTap() {
+  if (!padTap) return;
+  clearTimeout(padTap.timer);
+  const at = padTap.at;
+  padTap = null;
+  sendInput({ type: 'click', button: 'left', x: at.x, y: at.y });
+}
+
+function padClick(button, at) {
+  sendInput({ type: 'click', button: button, x: at.x, y: at.y });
+}
+
 function padDown(pointers, e, pt) {
   if (pointers.size === 1) {
     if (!view.pad) view.pad = { x: 0.5, y: 0.5 };
     if (e.pointerType === 'mouse' && e.button === 2) {
-      sendInput({ type: 'click', button: 'right', x: view.pad.x, y: view.pad.y });
+      flushPadTap();
+      padClick('right', view.pad);
       gesture = { kind: 'spent' };
       return;
+    }
+    // Inside a tap's wait: what this touch becomes decides that click.
+    let second = null;
+    if (padTap) {
+      clearTimeout(padTap.timer);
+      second = padTap.at;
+      padTap = null;
     }
     gesture = {
       kind: 'pad',
       start: pt,
-      last: pt,
-      from: view.pad,
       held: false,
+      second: second,
       timer: setTimeout(function () {
         if (!gesture || gesture.kind !== 'pad') return;
-        // A finger resting is not a move: back to where the press began.
         gesture.held = true;
         gesture.timer = null;
-        setPad(gesture.from);
-        queueMove({ type: 'move', x: gesture.from.x, y: gesture.from.y });
         showHeld(true);
       }, GESTURE.longPressMs),
     };
   } else if (pointers.size === 2) {
-    // The first finger's few px before the second landed were not a move.
-    if (gesture && gesture.kind === 'pad') setPad(gesture.from);
     cancelGesture();
     const p = twoFingerState(pointers);
-    gesture = { kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null };
+    gesture = {
+      kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null, t0: Date.now(),
+    };
   }
 }
 
 function padMove(pointers, pt) {
   if (!gesture) return;
   if (gesture.kind === 'pad') {
-    if (movedPastTap(gesture.start, pt)) {
-      if (gesture.timer) clearTimeout(gesture.timer);
-      if (gesture.held) {
-        showHeld(false);
-        flushMove();
-        if (!view.pad || !sendInput({ type: 'down', button: 'left', x: view.pad.x, y: view.pad.y })) {
-          gesture = { kind: 'spent' };
-          return;
-        }
-        gesture = { kind: 'pad-drag', last: gesture.last };
-      } else {
-        gesture = { kind: 'pad-move', last: gesture.last };
+    // Still a tap or long-press: the cursor stays put.
+    if (!movedPastTap(gesture.start, pt)) return;
+    if (gesture.timer) clearTimeout(gesture.timer);
+    showHeld(false);
+    if (gesture.second) {
+      // A double-tap held, then moved: a drag from the cursor.
+      flushMove();
+      if (!view.pad || !sendInput({ type: 'down', button: 'left', x: view.pad.x, y: view.pad.y })) {
+        gesture = { kind: 'spent' };
+        return;
       }
-    } else if (gesture.held) {
-      // Held: the cursor stays put until the finger moves off.
-      gesture.last = pt;
-      return;
+      gesture = { kind: 'pad-drag', last: pt };
+    } else {
+      gesture = { kind: 'pad-move', last: pt };
     }
+    // The cursor moves from here on, so it doesn't jump by the slop.
+    return;
   }
-  if (gesture.kind === 'pad' || gesture.kind === 'pad-move' || gesture.kind === 'pad-drag') {
-    // The cursor follows from the first pixel; a tap puts it back.
+  if (gesture.kind === 'pad-move' || gesture.kind === 'pad-drag') {
     movePad(gesture.last, pt);
     gesture.last = pt;
     return;
@@ -808,21 +840,28 @@ function padMove(pointers, pt) {
 function padUp(pointers) {
   if (!gesture) return;
   if (gesture.kind === 'pad') {
-    if (gesture.timer) clearTimeout(gesture.timer);
-    // A tap clicks where the cursor was when it began, so a second tap soon
-    // after lands on the same pixel: a double click. A held one right-clicks.
-    const at = gesture.from;
-    const button = gesture.held ? 'right' : 'left';
+    const g = gesture;
+    if (g.timer) clearTimeout(g.timer);
     gesture = null;
     showHeld(false);
-    setPad(at);
-    flushMove();   // a jitter's move goes before the click, never after
-    sendInput({ type: 'click', button: button, x: at.x, y: at.y });
+    if (g.second) padClick('left', g.second);   // the earlier tap's own click
+    if (g.held) {
+      padClick('right', view.pad);
+    } else if (g.second) {
+      padClick('left', g.second);   // its partner: a double click
+    } else {
+      const at = view.pad;
+      padTap = { at: at, timer: setTimeout(flushPadTap, GESTURE.padTapWaitMs) };
+    }
   } else if (gesture.kind === 'pad-drag') {
     cancelGesture();
   } else if (gesture.kind === 'pad-move') {
     gesture = null;
   } else if (gesture.kind === 'two') {
+    // Two fingers down and up without scrolling or pinching: a right click.
+    if (!gesture.cls && Date.now() - gesture.t0 < GESTURE.longPressMs && view.pad) {
+      padClick('right', view.pad);
+    }
     gesture = { kind: 'spent' };
   }
   if (pointers.size === 0) gesture = null;

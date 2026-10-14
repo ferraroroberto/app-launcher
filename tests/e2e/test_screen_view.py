@@ -511,7 +511,8 @@ def test_a_control_tap_on_the_cursor_still_clicks_the_pc(
 # ------------------------------------------------------------ trackpad (#1599)
 #
 # Trackpad moves the cursor by how far the finger travels, wherever it lands,
-# and clicks at the cursor. Where the cursor is, is read back from the move
+# never clicks on a move, and clicks at the cursor (the Windows remote desktop
+# app's mouse-pointer gestures). Where the cursor is, is read back from the move
 # messages the stub records, and the drawn overlay is checked against them.
 
 
@@ -520,6 +521,22 @@ def _drag(page: Page, start: Dict[str, float], dx: float, steps: int = 3) -> Non
     for i in range(1, steps + 1):
         _pointer(page, "pointermove", {"x": start["x"] + dx * i / steps, "y": start["y"]})
     _pointer(page, "pointerup", {"x": start["x"] + dx, "y": start["y"]})
+
+
+_SEQUENCE_JS = """(steps) => {
+  const s = document.getElementById('screenStage');
+  for (const [type, x, y, id] of steps) {
+    s.dispatchEvent(new PointerEvent(type, {
+      pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: 'touch',
+      isPrimary: id === 1, button: 0 }));
+  }
+}"""
+
+
+def _sequence(page: Page, steps: List) -> None:
+    """Several pointer events in one evaluate, so a double-tap stays inside
+    its wait however slow the round trips are."""
+    page.evaluate(_SEQUENCE_JS, [[t, pt["x"], pt["y"], i] for t, pt, i in steps])
 
 
 def _settled(page: Page, seen: Dict[str, List], what: str) -> None:
@@ -585,23 +602,45 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     _cursor_on(page, 0.5, 0.5, "the trackpad cursor mid-picture")
 
     # A drag that starts far off, low on the left, moves the cursor right
-    # from where it was, not to the finger.
-    _drag(page, _point(page, 0.1, 0.9), 30)
+    # from where it was, not to the finger, and clicks nothing.
+    _drag(page, _point(page, 0.1, 0.9), 40, steps=4)
     _settled(page, seen, "the cursor where it moved")
     moves = [m for m in seen["inputs"] if m["type"] == "move"]
     assert all(m["y"] == 0.5 for m in moves), moves
-    assert 0.5 < moves[0]["x"] <= moves[-1]["x"] < 0.95, moves
+    assert 0.5 < moves[0]["x"] <= moves[-1]["x"] < 0.8, moves
     assert all(m["type"] == "move" for m in seen["inputs"]), "a move clicks nothing"
-    x1 = moves[-1]["x"]
+    x0 = moves[-1]["x"]
 
-    # A tap anywhere clicks at the cursor; a second one at once is a double
-    # click on the same spot.
+    # A finger that rests (long enough to hold) and then moves still only
+    # moves the cursor: no button goes down, nothing clicks.
+    count = len(seen["inputs"])
+    start = _point(page, 0.6, 0.6)
+    _pointer(page, "pointerdown", start)
+    _held(page)
+    for i in (1, 2, 3, 4):
+        _pointer(page, "pointermove", {"x": start["x"] + 10 * i, "y": start["y"]})
+    _pointer(page, "pointerup", {"x": start["x"] + 40, "y": start["y"]})
+    _settled(page, seen, "the cursor after a rest, then a move")
+    rested = seen["inputs"][count:]
+    assert rested and all(m["type"] == "move" for m in rested), rested
+    x1 = rested[-1]["x"]
+    assert x0 < x1 < 0.95, (x0, x1)
+
+    # A tap anywhere clicks at the cursor, once its wait for a second touch
+    # is over.
     count = len(seen["inputs"])
     _tap(page, 0.9, 0.1)
-    _tap(page, 0.2, 0.3)
-    wait_until(page, lambda: len(seen["inputs"]) >= count + 2, "the two clicks")
-    clicks = seen["inputs"][count:]
-    assert clicks == [{"type": "click", "button": "left", "x": x1, "y": 0.5}] * 2, clicks
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the tap's click")
+    assert seen["inputs"][count:] == [{"type": "click", "button": "left", "x": x1, "y": 0.5}]
+
+    # Two quick taps, anywhere: a double click on the cursor's spot.
+    count = len(seen["inputs"])
+    a, b = _point(page, 0.2, 0.3), _point(page, 0.7, 0.8)
+    _sequence(page, [("pointerdown", a, 1), ("pointerup", a, 1),
+                     ("pointerdown", b, 1), ("pointerup", b, 1)])
+    wait_until(page, lambda: len(seen["inputs"]) >= count + 2, "the double click")
+    left = {"type": "click", "button": "left", "x": x1, "y": 0.5}
+    assert seen["inputs"][count:] == [left, left], seen["inputs"][count:]
 
     # A long-press lifted where it rests right-clicks at the cursor.
     count = len(seen["inputs"])
@@ -609,28 +648,36 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     _pointer(page, "pointerdown", rest)
     _held(page)
     _pointer(page, "pointerup", rest)
-    wait_until(page, lambda: seen["inputs"][-1]["type"] == "click", "the right click")
-    assert seen["inputs"][-1] == {"type": "click", "button": "right", "x": x1, "y": 0.5}
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the right click")
+    right = {"type": "click", "button": "right", "x": x1, "y": 0.5}
+    assert seen["inputs"][count:] == [right], seen["inputs"][count:]
 
-    # A long-press then a move drags: the button goes down at the cursor and
-    # comes up where the drag ends.
+    # So does a two-finger tap.
     count = len(seen["inputs"])
-    start = _point(page, 0.6, 0.6)
-    _pointer(page, "pointerdown", start)
-    _held(page)
-    for i in (1, 2, 3):
-        _pointer(page, "pointermove", {"x": start["x"] + 10 * i, "y": start["y"]})
-    _pointer(page, "pointerup", {"x": start["x"] + 30, "y": start["y"]})
+    p, q = _point(page, 0.4, 0.5), _point(page, 0.6, 0.5)
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2),
+                     ("pointerup", p, 1), ("pointerup", q, 2)])
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the two-finger right click")
+    assert seen["inputs"][count:] == [right], seen["inputs"][count:]
+
+    # Double-tap and hold, then drag: the button goes down at the cursor,
+    # with no click first, and comes up where the drag ends.
+    count = len(seen["inputs"])
+    s = _point(page, 0.4, 0.4)
+    _sequence(page, [("pointerdown", s, 1), ("pointerup", s, 1), ("pointerdown", s, 1)]
+              + [("pointermove", {"x": s["x"] + 10 * i, "y": s["y"]}, 1) for i in (1, 2, 3, 4)]
+              + [("pointerup", {"x": s["x"] + 40, "y": s["y"]}, 1)])
     wait_until(page, lambda: seen["inputs"][-1]["type"] == "up", "the drag's up")
-    drag = [m for m in seen["inputs"][count:] if m["type"] != "move" or m["x"] != x1]
+    drag = seen["inputs"][count:]
     assert drag[0] == {"type": "down", "button": "left", "x": x1, "y": 0.5}, drag
+    assert all(m["type"] == "move" for m in drag[1:-1]), drag
     assert drag[-1]["type"] == "up" and drag[-1]["x"] > x1 and drag[-1]["y"] == 0.5, drag
 
     # The PC's own cursor moved: the next drag starts from there.
     _send_cursor(sockets[-1], x=0.25, y=0.25, shape="arrow", visible=True)
     _cursor_on(page, 0.25, 0.25, "the trackpad cursor taking the PC's")
     count = len(seen["inputs"])
-    _drag(page, _point(page, 0.8, 0.8), 30)
+    _drag(page, _point(page, 0.8, 0.8), 40, steps=4)
     wait_until(page, lambda: len(seen["inputs"]) > count, "the moves from the PC's cursor")
     moved = [m for m in seen["inputs"][count:] if m["type"] == "move"]
     assert moved and 0.25 < moved[-1]["x"] < 0.6 and moved[-1]["y"] == 0.25, moved
