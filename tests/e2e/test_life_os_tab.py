@@ -1442,6 +1442,145 @@ def test_life_os_scope_chip_narrows_the_search_and_widens_it(
         "journal-daily")
 
 
+def _mock_skill_launches(page: Page) -> list:
+    """Capture every skill launch POST as (skill id, payload); the response is
+    a detached session so no terminal opens against the fake sid."""
+    launches: list = []
+
+    def _launch(route):
+        skill = route.request.url.split("/api/life-os/skills/")[1].split("/")[0]
+        launches.append((skill, _json.loads(route.request.post_data)))
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"session": {"session_id": "x", "kind": "remote"}}))
+    page.route(re.compile(r".*/api/life-os/skills/[^/]+/launch$"), _launch)
+    return launches
+
+
+def test_life_os_search_start_new_in_the_scoped_skill(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588: narrowed to a skill, a search (hits or none) carries a Start new
+    that launches a fresh conversation in that skill through the kebab's path
+    — never a resume, whatever the Resume switch says, on the toolbar's model,
+    and without the search text. Only a search shows it, not the bare list."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(page)
+    seen: list = []
+    _mock_search(page, [], seen=seen)
+    launches = _mock_skill_launches(page)
+    _open_conversations(page, base_url)
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_hidden()   # the skill's own list, nothing typed
+
+    life_launch_switch(page, "#lifeOsDetached")
+    life_launch_switch(page, "#lifeOsResume")
+    _pick_life_model(page, "codex:gpt-6-astra")
+    page.locator("#lifeOsFilterInput").fill("no such thing")
+    wait_until(page, lambda: len(seen) == 1, "the scoped search")
+    expect(page.locator("#lifeOsConvoState")).to_contain_text("Nothing matched")
+    expect(start).to_be_visible()
+    expect(start).to_have_attribute("data-track", "life-search-start-new")
+    expect(start).to_have_accessible_name("Start a new conversation with journal-daily")
+
+    start.click()
+    wait_until(page, lambda: len(launches) == 1, "the fresh launch")
+    skill, payload = launches[0]
+    assert skill == "journal-daily"
+    assert payload == {"mode": "remote", "model": "codex:gpt-6-astra", "resume": False}, payload
+    expect(page.locator("#lifeOsStartPicker")).to_be_hidden()
+    assert "no such thing" not in _json.dumps(payload)
+
+    # Clearing the field ends the search, and the control with it.
+    page.locator("#lifeOsFilterInput").fill("")
+    expect(start).to_be_hidden(timeout=5_000)
+
+
+def test_life_os_search_start_new_across_every_skill_opens_the_picker(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588: spanning every skill, Start new opens the skill list instead and
+    the owner taps one; the sheet closes and that skill starts fresh. It is
+    there for a search with no hits, and ✕ leaves everything unlaunched."""
+    page = authed_page
+    _mock_skills(page)
+    seen: list = []
+    _mock_search(page, [], seen=seen)
+    launches = _mock_skill_launches(page)
+    _open_life(page, base_url)
+    life_launch_switch(page, "#lifeOsDetached")
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_hidden()
+
+    page.locator("#lifeOsFilterInput").fill("zzz")
+    wait_until(page, lambda: len(seen) == 1, "the search")
+    expect(page.locator("#lifeOsConvoState")).to_contain_text("Nothing matched")
+    expect(start).to_be_visible()
+    expect(start).to_have_accessible_name("Start a new conversation: choose a skill")
+
+    start.click()
+    picker = page.locator("#lifeOsStartPicker")
+    expect(picker).to_be_visible()
+    options = picker.locator(".lifeos-start-pick")
+    expect(options).to_have_count(2)
+    assert sorted(options.evaluate_all("els => els.map(e => e.dataset.id)")) == [
+        "journal-daily", "sparring-work"]
+    page.locator("#lifeOsStartPickerClose").click()
+    expect(picker).to_be_hidden()
+    flush_requests(page)
+    assert launches == []
+
+    start.click()
+    picker.locator(".lifeos-start-pick[data-id='sparring-work']").click()
+    expect(picker).to_be_hidden()
+    wait_until(page, lambda: len(launches) == 1, "the picked skill's launch")
+    skill, payload = launches[0]
+    assert skill == "sparring-work"
+    assert payload["resume"] is False and payload["mode"] == "remote", payload
+    assert "zzz" not in _json.dumps(payload)
+
+
+@pytest.mark.iphone
+def test_life_os_search_start_new_is_a_full_target_in_both_themes(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588: the control is a 44px tint button beside the group head that
+    never overflows the card, and the picker's rows are 44px targets, in both
+    themes."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_search(page, [])
+    _open_life(page, base_url)
+    page.locator("#lifeOsFilterInput").fill("zzz")
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_visible(timeout=5_000)
+    expect(start).to_have_class("button-tint lifeos-start-new")
+    for theme in ("light", "dark"):
+        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+        assert_min_target(start)
+        assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
+        # The heading keeps its words (a button stretched to the full row
+        # once squeezed it to nothing, which the overlap check alone passes).
+        head_w = stable_eval(page.locator("#lifeOsConvoHead"), "h => h.getBoundingClientRect().width")
+        assert head_w > 80, head_w
+        start_w = stable_eval(start, "b => b.getBoundingClientRect().width")
+        assert start_w < 200, start_w
+        fit = stable_eval(
+            page.locator("#lifeOsConvoGroup"),
+            "g => { const r = g.getBoundingClientRect(),"
+            " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
+            " return b.left >= r.left && b.right <= r.right; }")
+        assert fit, "Start new spills out of the Conversations group"
+    start.click()
+    picker = page.locator("#lifeOsStartPicker")
+    expect(picker).to_be_visible()
+    assert_min_target(page.locator("#lifeOsStartPickerClose"))
+    assert_min_target(page.locator("#lifeOsStartPickerDone"))
+    for i in range(2):
+        assert_min_target(picker.locator(".lifeos-start-pick").nth(i))
+    assert picker.evaluate("el => el.scrollWidth <= el.clientWidth")
+
+
 @pytest.mark.parametrize("failure", ["unavailable", "forbidden"])
 def test_life_os_search_failure_stays_in_its_group(
     authed_page: Page, base_url: str, failure: str

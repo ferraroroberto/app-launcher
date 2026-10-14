@@ -3947,6 +3947,30 @@ body.terminal-open {
   #lifeOsConvoList > .action-row { padding-inline: calc(4px + var(--gap)); }
 }
 .lifeos-group-count { font-weight: 400; }
+/* The Conversations head with the search's Start new (#1588) at its end. */
+.lifeos-group-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: 6px;
+}
+.lifeos-group-bar > .lifeos-group-head { margin: 0; min-width: 0; }
+/* .button-tint stretches to width:100% for its full-width uses; here it sits
+   beside the head, at its content's width. */
+.lifeos-start-new {
+  flex: none;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--row-sm);
+  padding-inline: 14px;
+}
+.lifeos-start-new[hidden] { display: none; }
+/* Every skill, so a long list scrolls inside the sheet and the Close stays. */
+#lifeOsStartPickerList { max-height: 55vh; overflow-y: auto; }
+.lifeos-start-pick .avatar { flex: none; }
 
 /* ---------- Life OS sheets (#1504) ---------- */
 /* The conversation sheet, the reader and Browse's two sheets are the
