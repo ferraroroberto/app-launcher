@@ -702,3 +702,93 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     )
     page.locator('#screenControl [data-control="touch"]').click()
     assert page.evaluate("localStorage.getItem('launcher.screenControlMode')") == "touch"
+
+
+def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboard(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1600. A quick two-finger tap in Touch right-clicks at the fingers'
+    midpoint, once and with no left click; a slow touch, a scroll and a pinch
+    do not. A quick three-finger tap toggles the keyboard in Control and does
+    nothing in View, and three fingers never click, drag or scroll. The real
+    timing is judged on a phone."""
+    seen, page = _live_view(authed_page, base_url)
+    keyboard = page.locator("#screenKeyboard")
+    keys = page.locator("#screenKeys")
+    p, q = _point(page, 0.4, 0.3), _point(page, 0.6, 0.3)
+    r = _point(page, 0.5, 0.7)
+
+    # View: neither gesture reaches the PC, and the keyboard is not there.
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2),
+                     ("pointerup", p, 1), ("pointerup", q, 2)])
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3),
+                     ("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)])
+    expect(keys).to_be_hidden()
+
+    _set_mode(page, "control")
+    expect(keys).to_be_hidden()
+
+    # A quick two-finger tap: one right click at the midpoint, nothing else.
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2),
+                     ("pointerup", p, 1), ("pointerup", q, 2)])
+    wait_until(page, lambda: len(seen["inputs"]) >= 1, "the two-finger right click")
+    click = seen["inputs"][0]
+    assert (click["type"], click["button"]) == ("click", "right"), seen["inputs"]
+    assert _near(click["x"], 0.5) and _near(click["y"], 0.3), click
+    # Socket messages arrive in order: the View-mode taps sent nothing, and
+    # this one sent exactly one message (no left click beside it).
+    assert len(seen["inputs"]) == 1, seen["inputs"]
+
+    # Two fingers resting as long as a long-press: not a tap.
+    count = len(seen["inputs"])
+    _pointer(page, "pointerdown", p, 1)
+    _pointer(page, "pointerdown", q, 2)
+    page.wait_for_timeout(700)
+    _pointer(page, "pointerup", p, 1)
+    _pointer(page, "pointerup", q, 2)
+
+    # A two-finger drag scrolls and never right-clicks.
+    steps = [("pointerdown", p, 1), ("pointerdown", q, 2)]
+    for i in (1, 2, 3, 4):
+        steps += [("pointermove", {"x": p["x"], "y": p["y"] + 12 * i}, 1),
+                  ("pointermove", {"x": q["x"], "y": q["y"] + 12 * i}, 2)]
+    steps += [("pointerup", {"x": p["x"], "y": p["y"] + 48}, 1),
+              ("pointerup", {"x": q["x"], "y": q["y"] + 48}, 2)]
+    _sequence(page, steps)
+    wait_until(page, lambda: any(m["type"] == "scroll" for m in seen["inputs"][count:]),
+               "the two-finger scroll")
+    assert all(m["type"] == "scroll" for m in seen["inputs"][count:]), seen["inputs"][count:]
+
+    # A quick three-finger tap raises the keyboard and keys bar; another
+    # lowers them. It sends nothing to the PC.
+    count = len(seen["inputs"])
+    tap3 = [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3),
+            ("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)]
+    _sequence(page, tap3)
+    expect(keys).to_be_visible()
+    expect(keyboard).to_have_attribute("aria-pressed", "true")
+    _sequence(page, tap3)
+    expect(keys).to_be_hidden()
+    expect(keyboard).to_have_attribute("aria-pressed", "false")
+
+    # Three fingers that rest, or that move, toggle nothing and send nothing.
+    _pointer(page, "pointerdown", p, 1)
+    _pointer(page, "pointerdown", q, 2)
+    _pointer(page, "pointerdown", r, 3)
+    page.wait_for_timeout(700)
+    for pid, pt in ((1, p), (2, q), (3, r)):
+        _pointer(page, "pointerup", pt, pid)
+    expect(keys).to_be_hidden()
+    steps = [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3)]
+    for i in (1, 2, 3):
+        steps += [("pointermove", {"x": pt["x"], "y": pt["y"] + 15 * i}, pid)
+                  for pid, pt in ((1, p), (2, q), (3, r))]
+    steps += [("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)]
+    _sequence(page, steps)
+    expect(keys).to_be_hidden()
+    _tap(page, 0.2, 0.2)   # a sentinel: it is the next message the PC gets
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the sentinel click")
+    assert seen["inputs"][count:] == [
+        {"type": "click", "button": "left", "x": seen["inputs"][count]["x"],
+         "y": seen["inputs"][count]["y"]}
+    ], seen["inputs"][count:]

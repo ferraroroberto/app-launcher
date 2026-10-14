@@ -463,6 +463,8 @@ A **View / Control** switch sits under the Screen bar. **View** is the default e
 - **Long-press** (half a second) right-clicks.
 - **Press and drag** drags with the left button held (move a window, select text).
 - **Two-finger drag** scrolls the wheel, in the phone's own direction (fingers down shows what is above). Sideways scrolls horizontally.
+- **Two-finger tap** (both fingers down and up together, under half a second, without moving) right-clicks at the point between the fingers, with no left click. Resting the two fingers longer, or moving them, is not a tap.
+- **Three-finger tap** (the same quick tap with three fingers) raises the keyboard and keys bar, or lowers them again. Three fingers never click, drag or scroll, and in View they do nothing.
 - **Pinch** still zooms, and moving the pinch pans, which is how you move around a zoomed picture in Control.
 - On a desktop browser the mouse works the same way. Right-click right-clicks, and the wheel scrolls the PC (ctrl+wheel or a trackpad pinch zooms).
 
@@ -472,7 +474,7 @@ The gestures follow the Windows remote desktop app's mouse-pointer mode. Touchin
 
 - **One-finger drag**, anywhere on the picture, moves the cursor by how far the finger travels, not to where it lands, and never clicks, however long the finger rested first. Slow is precise, a quick flick crosses the screen.
 - **Tap** (touch and lift without moving) clicks at the cursor. Two quick taps double-click there. A single tap's click waits a quarter second for a possible second tap.
-- **Long-press** without moving (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. A **two-finger tap** right-clicks too.
+- **Long-press** without moving (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. A **two-finger tap** right-clicks at the cursor too, and a **three-finger tap** raises or lowers the keyboard, as in Touch.
 - **Double-tap and hold, then drag**: a drag with the left button held (move a window, select text), released when you lift.
 - **Two-finger drag** scrolls at the cursor, and **pinch** zooms as in Touch. While zoomed in, the picture pans to keep the cursor in view.
 - The cursor starts on the PC's own, or mid-picture when the PC's is on another display. Move the real mouse and the next drag starts from there.

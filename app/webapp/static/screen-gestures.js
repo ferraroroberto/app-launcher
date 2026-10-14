@@ -12,6 +12,7 @@
  * picture. stagePoint goes the other way, for the PC's cursor. Trackpad
  * mode (#1599) moves its own cursor by how far the finger travels
  * (padStep), and pans a zoomed picture to keep it in view (followPan).
+ * Two- and three-finger taps (#1600) are decided by isMultiFingerTap.
  */
 
 export const GESTURE = {
@@ -26,6 +27,11 @@ export const GESTURE = {
   // the gesture a pinch; their midpoint moving this much first, a scroll.
   pinchSlop: 16,
   scrollSlop: 12,
+  // Two or three fingers that land and all lift again within this long (ms)
+  // without moving past their slop are a tap: two right-click, three raise
+  // the keyboard (#1600). The trackpad's two-finger tap had this window
+  // before (#1599); it is the long-press time, so a rest is not a tap.
+  multiTapMs: 500,
   // Wheel units per CSS px a two-finger drag travels (120 = one notch).
   wheelPerPx: 4,
   // Trackpad (#1599): the cursor moves this many CSS px of the picture per
@@ -124,6 +130,23 @@ export function classifyTwoFinger(start, now) {
   if (Math.abs(now.dist - start.dist) > GESTURE.pinchSlop) return 'pinch';
   if (distance(start.mid, now.mid) > GESTURE.scrollSlop) return 'scroll';
   return null;
+}
+
+/** Whether any finger has travelled past the tap slop since it landed.
+ * `starts` and `nows` are matching lists of {x, y}. */
+export function anyMovedPastTap(starts, nows) {
+  return starts.some(function (s, i) { return !!nows[i] && movedPastTap(s, nows[i]); });
+}
+
+/**
+ * Two or three fingers that were down for `heldMs`, having `moved` or not: a
+ * tap when they never moved past their slop and did not stay down as long
+ * as a long-press. One decision for the two-finger right-click in both
+ * Control styles and for the three-finger keyboard tap (#1600). For two
+ * fingers `moved` means "classified as a pinch or a scroll".
+ */
+export function isMultiFingerTap(moved, heldMs) {
+  return !moved && heldMs >= 0 && heldMs < GESTURE.multiTapMs;
 }
 
 /**
