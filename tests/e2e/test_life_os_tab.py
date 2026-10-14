@@ -1436,7 +1436,7 @@ def test_life_os_scope_chip_narrows_the_search_and_widens_it(
     assert "skill=" not in seen[1], seen
     expect(authed_page.locator("#lifeOsFilterInput")).to_be_focused()
     expect(authed_page.locator(".lifeos-list-card")).not_to_have_class(
-        re.compile(r"bis-convo-scopedb"))
+        re.compile(r"\bis-convo-scoped\b"))
     expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (0)")
     expect(_convo_rows(authed_page).first.locator(".action-row-meta")).to_contain_text(
         "journal-daily")
