@@ -198,9 +198,14 @@ export function controlStyle(stored) {
 
 /**
  * What a typed character becomes while sticky modifiers are held: a key
- * combo for a letter or digit (Ctrl + c), or null when it can only go out
- * as text.
+ * combo for a letter or digit (Ctrl + c), the space key for a space, or any
+ * other printable ASCII character as itself (Ctrl + /), which the PC resolves
+ * on its own keyboard layout; null when it can only go out as text (an
+ * accent, an emoji, anything longer than one character).
  */
 export function comboKey(ch) {
-  return /^[a-z0-9]$/i.test(ch) ? ch.toLowerCase() : null;
+  if (typeof ch !== 'string') return null;
+  if (/^[a-z0-9]$/i.test(ch)) return ch.toLowerCase();
+  if (ch === ' ') return 'space';
+  return /^[!-~]$/.test(ch) ? ch : null;
 }

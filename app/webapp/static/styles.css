@@ -5734,6 +5734,34 @@ span.chief-answer-ref { color: var(--muted); }
 }
 .screen-keys .key-btn .icon { width: var(--icon-title); height: var(--icon-title); }
 .screen-key-enter { grid-column: span 2; }
+/* Two pages of keys (#1602). A page is a display:contents wrapper, so its keys
+   lay out straight on the bar's grid and the hidden page takes no room. The
+   page toggle and Task Mgr close each page's last row; their spans are
+   variables so the landscape grid below can refill the row. */
+.screen-keys {
+  --keys-span-toggle: 3;
+  --keys-span-task-main: 4;
+  --keys-span-task-fn: 2;
+}
+.screen-keys-page { display: contents; }
+.screen-keys-page[hidden] { display: none; }
+.screen-keys .key-page-toggle { grid-column: span var(--keys-span-toggle); }
+.screen-keys-page[data-keys-page="main"] .key-task { grid-column: span var(--keys-span-task-main); }
+.screen-keys-page[data-keys-page="fn"] .key-task { grid-column: span var(--keys-span-task-fn); }
+/* The modifiers held while this page is up, on the way back to them. */
+.key-held { margin-right: 6px; color: var(--accent); font-weight: 600; }
+.key-held[hidden] { display: none; }
+/* A landscape phone has no height to spare above the keyboard, but width: the
+   same keys on one 14-column row pair instead of three rows. 14 keys at the
+   44px floor need 710px, so a narrower window keeps the portrait grid. */
+@media (orientation: landscape) and (min-width: 720px) {
+  .screen-keys {
+    grid-template-columns: repeat(14, minmax(0, 1fr));
+    --keys-span-toggle: 6;
+    --keys-span-task-main: 8;
+    --keys-span-task-fn: 6;
+  }
+}
 /* The phone keyboard's target: focusable and on screen (iOS raises the
    keyboard only for a visible field), but invisible and untouchable. 16px
    keeps iOS from zooming the page when it takes focus. */
