@@ -236,6 +236,35 @@ def stylesheet_report(page: Page) -> str:
     return ", ".join(sheets)
 
 
+def boot_retrying_static_failure(page: Page, boot: Callable[[], None]) -> None:
+    """Run ``boot`` (a navigation plus whatever it waits for), once more if a
+    ``/static/`` load failed during it, and name the files if it fails twice (#1610).
+
+    A script or stylesheet that fails to load under gate load leaves the page
+    half-built for its whole life: a failed module in the import graph means
+    ``main.js`` never runs and the server-filled parts keep their markup
+    defaults (the header's ``data-level="unknown"`` / ``–``), a failed sheet
+    leaves UA-default styles (#1609). No wait recovers either, so the first
+    failure gets one fresh boot. The watcher is installed here, ahead of
+    ``boot``'s ``goto()``, so the caller attaches none. The module graph and the
+    head's sheets have all settled by ``domcontentloaded``, so the list is
+    final once ``boot`` returns and the page's own requests have been flushed.
+    """
+    failures = watch_static_failures(page)
+    for attempt in (1, 2):
+        if attempt == 2:
+            # Leaving the broken page cancels whatever its import graph still
+            # had in flight, and those ``ERR_ABORTED`` reports are ours, not
+            # the new boot's: let them land before the list is cleared.
+            page.goto("about:blank")
+        failures.clear()
+        boot()
+        flush_requests(page)
+        if not failures:
+            return
+        assert attempt == 1, f"static assets failed to load twice: {failures}"
+
+
 def stable_read(read: Callable[[], object], attempts: int = 50,
                 interval_s: float = 0.1) -> object:
     """Retry a raw DOM measurement past a mid-render stale element handle.

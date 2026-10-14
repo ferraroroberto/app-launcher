@@ -20,7 +20,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import flush_requests, stable_eval
+from tests.e2e.conftest import boot_retrying_static_failure, flush_requests, stable_eval
 from tests.e2e.test_code_tab_glance import _STALLED, _WAITING
 from tests.e2e.test_code_tab_glance import _mock as _mock_sessions
 
@@ -64,6 +64,19 @@ def _route_load(page: Page, current: dict, calls: list) -> None:
     page.route(re.compile(r".*/api/system/load$"), handle)
 
 
+def _boot(page: Page, base_url: str) -> None:
+    """Open the page, and open it again if a ``/static/`` file failed (#1610).
+
+    The reading's markup default is ``–`` / ``data-level="unknown"``; only
+    ``system-load.js`` running ever changes it. A module that fails to load
+    under gate load stops ``main.js`` outright, so the header stays at its
+    default for the page's life and no wait recovers it.
+    """
+    boot_retrying_static_failure(
+        page, lambda: page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    )
+
+
 def _poll(page: Page) -> None:
     with page.expect_response(lambda r: r.url.endswith("/api/system/load")):
         _fake_clock.jump_interval(page, _POLL_MS, "fetchSystemLoad")
@@ -87,7 +100,7 @@ def test_every_header_shows_the_reading_and_its_four_states(
     calls: list = []
     _route_load(page, current, calls)
     _fake_clock.install(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _boot(page, base_url)
 
     # One reading per page header, Settings' included.
     expect(page.locator(".home-head .cpu-reading")).to_have_count(6)
@@ -156,7 +169,7 @@ def test_a_quiet_reading_yields_to_the_header_exceptions_a_hot_one_does_not(
     current = {"body": _reading("normal", 30.0)}
     _route_load(page, current, [])
     _mock_sessions(page, [_WAITING, _STALLED])
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _boot(page, base_url)
 
     status = page.locator("#homeHeadStatus")
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
@@ -177,7 +190,7 @@ def test_the_tap_sheet_lists_cpu_memory_and_the_top_three(
     page = authed_page
     current = {"body": _reading("danger", 93.0)}
     _route_load(page, current, [])
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _boot(page, base_url)
 
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
     expect(reading).to_have_text("93%")
@@ -201,7 +214,7 @@ def test_an_unreadable_sample_says_why_in_the_sheet(
 ) -> None:
     page = authed_page
     _route_load(page, {"body": _reading("unknown", None, reason="stale")}, [])
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _boot(page, base_url)
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
     expect(reading).to_have_text("–")
     reading.click()
@@ -217,7 +230,7 @@ def test_the_poll_stops_while_the_page_is_hidden(
     calls: list = []
     _route_load(page, {"body": _reading("normal", 20.0)}, calls)
     _fake_clock.install(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _boot(page, base_url)
     expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("20%")
     _poll(page)
     seen = len(calls)
@@ -239,3 +252,28 @@ def test_the_poll_stops_while_the_page_is_hidden(
     with page.expect_response(lambda r: r.url.endswith("/api/system/load")):
         _set_hidden(page, False)
     assert len(calls) == seen + 1
+
+
+def test_a_failed_script_load_gets_one_fresh_boot(authed_page: Page, base_url: str) -> None:
+    """#1610: the first load of ``system-load.js`` is cut. The page then boots
+    without ``main.js`` and the header keeps its markup default; the second
+    boot is the one the reading comes from."""
+    page = authed_page
+    _route_load(page, {"body": _reading("normal", 42.4)}, [])
+    navigations: list = []
+    cut: list = []
+    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
+
+    def handle(route):
+        # The page asks for the file more than once per load, so cut every ask
+        # of the first load, not just the first ask.
+        if len(navigations) <= 1:
+            cut.append(1)
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route(re.compile(r".*/static/system-load\.js"), handle)
+    _boot(page, base_url)
+    assert cut, "the script was never requested"
+    expect(page.locator("#paneClaude > .home-head .cpu-reading")).to_have_text("42%")

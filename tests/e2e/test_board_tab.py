@@ -31,8 +31,8 @@ from src import chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
-    _autoboot_enabled, assert_unpainted_at_rest, flush_requests, open_row_menu,
-    stable_eval, stable_read, stylesheet_report, wait_until, watch_static_failures,
+    _autoboot_enabled, assert_unpainted_at_rest, boot_retrying_static_failure, flush_requests,
+    open_row_menu, stable_eval, stable_read, stylesheet_report, wait_until,
 )
 
 pytestmark = pytest.mark.smoke
@@ -1203,18 +1203,15 @@ def test_backlog_issue_tile_keeps_a_long_title_on_one_line(
     # sheet that fails to load under gate load leaves the page built but
     # unstyled for good (`white-space: normal`), and no wait recovers it, so a
     # failed static load gets one fresh boot and a second one fails by name.
-    static_failures = watch_static_failures(authed_page)
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     title_el = tile.locator(".action-row-title")
-    for attempt in (1, 2):
-        static_failures.clear()
+
+    def boot() -> None:
         _open_board(authed_page, base_url)
         _unfold(authed_page, "boardColBacklog")
         expect(title_el).to_be_visible(timeout=15_000)
-        flush_requests(authed_page)
-        if not static_failures:
-            break
-        assert attempt == 1, f"static assets failed to load twice: {static_failures}"
+
+    boot_retrying_static_failure(authed_page, boot)
     expect(title_el).to_have_attribute("title", long_title)
     try:
         expect(title_el).to_have_css("white-space", "nowrap")
