@@ -503,7 +503,7 @@ function renderRecap() {
   const verb = document.createElement('button');
   verb.type = 'button';
   verb.id = 'lifeOsRecapLaunch';
-  verb.className = 'action-row-verb row-verb-plain lifeos-recap-launch';
+  verb.className = 'icon-button action-row-verb lifeos-recap-launch';
   verb.innerHTML = icon('play');
   verb.title = 'Review the weekly recap (/weekly-recap)';
   verb.setAttribute('aria-label', 'Launch weekly recap review');

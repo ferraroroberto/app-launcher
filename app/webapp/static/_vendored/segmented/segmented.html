@@ -3,8 +3,11 @@
      Exactly one carries aria-pressed="true"; the rest carry "false". Flipping
      it is the caller's job (see README). A segment that cannot apply now is
      `disabled` with a title saying why; it keeps its label colour.
-     Add `segmented--verbs` when the choice acts on the world (a mode, a
-     blind), so each segment is a real 44px row. -->
+     Add `segmented--verbs` when the choice acts on the world and has a
+     selected state (an alarm mode), so each segment is a real 44px row.
+     Verbs that only fire (Up / Stop / Down, Live / Wake) are NOT a segmented
+     control: use plain icon-buttons in an .icon-button-group, no track
+     (fleet-config#1420). -->
 <div class="segmented" role="group" aria-label="Period">
   <button type="button" class="segmented-item" aria-pressed="true" data-value="day">Day</button>
   <button type="button" class="segmented-item" aria-pressed="false" data-value="week">Week</button>

@@ -31,7 +31,8 @@ from src import chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e.conftest import (
-    _autoboot_enabled, flush_requests, open_row_menu, stable_eval, stable_read, wait_until,
+    _autoboot_enabled, assert_unpainted_at_rest, flush_requests, open_row_menu,
+    stable_eval, stable_read, wait_until,
 )
 
 pytestmark = pytest.mark.smoke
@@ -1026,10 +1027,12 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     start = tile.locator(".board-issue-start")
     expect(start).to_be_visible(timeout=15_000)
     expect(start).to_have_attribute("aria-label", "Start issue #301")
-    # The plain verb (#1501): a glyph on nothing, never the tint fill.
-    expect(start).to_have_class(re.compile(r"\brow-verb-plain\b"))
+    # The vendored plain verb (fleet-config#1420): a glyph on nothing, never
+    # the tint fill, in light and dark.
+    expect(start).to_have_class(re.compile(r"\bicon-button\b"))
+    expect(start).to_have_class(re.compile(r"\baction-row-verb\b"))
     expect(start).not_to_have_class(re.compile(r"\bbutton-tint\b"))
-    expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    assert_unpainted_at_rest(authed_page, start)
     expect(tile.locator(".board-issue-btn")).to_have_count(1)
     # No git tint on the meta any more (#1436): git lives on Code › Projects.
     expect(tile.locator(".action-row-meta")).not_to_have_class(

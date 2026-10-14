@@ -13,7 +13,9 @@
      and one trailing item in place of the kebab (here a switch; or a value,
      a stepper or a segmented verb cluster). The row tap opens the item's
      detail sheet. The third row leads with a check instead (one leading slot
-     per row) and trails a value. -->
+     per row) and trails a value. A cluster of verbs trails as a track-less
+     .icon-button-group with action-row-trail (Live, Wake); a mode with a
+     selected state trails as a segmented control instead. -->
 <div class="card action-list">
   <label class="action-row-filter">
     <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
@@ -32,8 +34,10 @@
       <button type="button" class="icon-button action-row-verb" aria-label="Run">
         <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg>
       </button>
-      <!-- A verb that stops or destroys (Stop, Delete, Remove) is outlined, never tinted:
-           <button type="button" class="icon-button action-row-verb action-row-verb--stop" aria-label="Stop">
+      <!-- Every row verb is this same plain icon-button; only the glyph and the label change
+           (fleet-config#1420): Live i-video, Wake i-power, Start/Run i-play, Stop i-square,
+           Find i-search. There is no outlined or tinted variant.
+           <button type="button" class="icon-button action-row-verb" aria-label="Stop">
              <svg class="icon" aria-hidden="true"><use href="#i-square"></use></svg>
            </button> -->
       <button type="button" class="icon-button action-row-kebab" aria-label="More actions"

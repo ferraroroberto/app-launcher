@@ -259,6 +259,26 @@ def stable_eval(locator: Locator, script: str, attempts: int = 50,
     return stable_read(lambda: locator.evaluate(guarded), attempts, interval_s)
 
 
+def assert_unpainted_at_rest(page: Page, verb: Locator) -> None:
+    """A row verb is a glyph on nothing, in both themes (fleet-config#1420).
+
+    No fill, no border and no shadow at rest: the owner decision that every
+    visible verb on a list row is a plain icon-button next to the kebab. Each
+    theme is applied the way the app boots it (``data-theme`` on the root,
+    plus the media query) and the check uses ``to_have_css``, which
+    re-resolves the locator on every retry, so a poll-driven re-render
+    between the two themes cannot hand it a detached node (#680).
+    """
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        page.evaluate(
+            "t => { document.documentElement.dataset.theme = t; }", theme)
+        expect(verb).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        expect(verb).to_have_css("border-top-width", "0px")
+        expect(verb).to_have_css("border-bottom-width", "0px")
+        expect(verb).to_have_css("box-shadow", "none")
+
+
 def _free_tcp_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
