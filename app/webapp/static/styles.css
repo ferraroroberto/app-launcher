@@ -3940,8 +3940,13 @@ body.terminal-open {
 .card.action-list.lifeos-list-card > .collapse-body > .lifeos-convo-group { margin-inline: 0; }
 .lifeos-convo-group { margin-top: 12px; }
 .lifeos-convo-group > :not(.action-rows) { margin-inline: 14px; }
-/* Three short labels: on a wide card the track keeps a phone's width. */
-.lifeos-convo-sort { max-width: 360px; margin-bottom: 8px; }
+/* Three short labels: on a wide card the track keeps a phone's width, but a
+   phone's own column (up to 520px, a 430px iPhone's is 378) runs full, equal
+   segments, like the search field above it (#1588). */
+.lifeos-convo-sort { margin-bottom: 8px; }
+@media (min-width: 521px) {
+  .lifeos-convo-sort { max-width: 360px; }
+}
 @media (max-width: 520px) {
   .lifeos-convo-group > :not(.action-rows) { margin-inline: calc(14px + var(--gap)); }
   #lifeOsConvoList > .action-row { padding-inline: calc(4px + var(--gap)); }
@@ -3956,16 +3961,12 @@ body.terminal-open {
   margin-bottom: 6px;
 }
 .lifeos-group-bar > .lifeos-group-head { margin: 0; min-width: 0; }
-/* .button-tint stretches to width:100% for its full-width uses; here it sits
-   beside the head, at its content's width. */
+/* A plain + at the head's trailing end (the vendored icon-button, fleet-config
+   #1420): the 44px row-sm box is the whole target, and the end margin pulls the
+   16px glyph to the content edge, as the rows' kebabs sit. */
 .lifeos-start-new {
-  flex: none;
-  width: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--row-sm);
-  padding-inline: 14px;
+  --icon-btn-box: var(--row-sm);
+  margin-inline-end: calc((var(--icon-inline) - var(--row-sm)) / 2);
 }
 .lifeos-start-new[hidden] { display: none; }
 /* Every skill, so a long list scrolls inside the sheet and the Close stays. */

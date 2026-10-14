@@ -1053,13 +1053,9 @@ function syncStartNew() {
   if (!btn) return;
   btn.hidden = convoMode !== 'search';
   if (btn.hidden) return;
-  if (convoScope) {
-    btn.setAttribute('aria-label', 'Start a new conversation with ' + convoScope.name);
-    btn.removeAttribute('aria-haspopup');
-  } else {
-    btn.setAttribute('aria-label', 'Start a new conversation: choose a skill');
-    btn.setAttribute('aria-haspopup', 'dialog');
-  }
+  // One name for both cases; the popup hint is the only thing that differs.
+  if (convoScope) btn.removeAttribute('aria-haspopup');
+  else btn.setAttribute('aria-haspopup', 'dialog');
 }
 
 // Start new through the kebab's path (launchSkill's opts.fresh), so the

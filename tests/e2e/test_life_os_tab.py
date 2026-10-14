@@ -1436,7 +1436,7 @@ def test_life_os_scope_chip_narrows_the_search_and_widens_it(
     assert "skill=" not in seen[1], seen
     expect(authed_page.locator("#lifeOsFilterInput")).to_be_focused()
     expect(authed_page.locator(".lifeos-list-card")).not_to_have_class(
-        re.compile(r"is-convo-scoped"))
+        re.compile(r"bis-convo-scopedb"))
     expect(authed_page.locator("#lifeOsSkillsHead")).to_have_text("Skills (0)")
     expect(_convo_rows(authed_page).first.locator(".action-row-meta")).to_contain_text(
         "journal-daily")
@@ -1481,7 +1481,8 @@ def test_life_os_search_start_new_in_the_scoped_skill(
     expect(page.locator("#lifeOsConvoState")).to_contain_text("Nothing matched")
     expect(start).to_be_visible()
     expect(start).to_have_attribute("data-track", "life-search-start-new")
-    expect(start).to_have_accessible_name("Start a new conversation with journal-daily")
+    expect(start).to_have_accessible_name("Start new conversation")
+    expect(start).to_have_attribute("title", "Start new conversation")
 
     start.click()
     wait_until(page, lambda: len(launches) == 1, "the fresh launch")
@@ -1516,7 +1517,8 @@ def test_life_os_search_start_new_across_every_skill_opens_the_picker(
     wait_until(page, lambda: len(seen) == 1, "the search")
     expect(page.locator("#lifeOsConvoState")).to_contain_text("Nothing matched")
     expect(start).to_be_visible()
-    expect(start).to_have_accessible_name("Start a new conversation: choose a skill")
+    expect(start).to_have_accessible_name("Start new conversation")
+    expect(start).to_have_attribute("aria-haspopup", "dialog")
 
     start.click()
     picker = page.locator("#lifeOsStartPicker")
@@ -1541,12 +1543,13 @@ def test_life_os_search_start_new_across_every_skill_opens_the_picker(
 
 
 @pytest.mark.iphone
-def test_life_os_search_start_new_is_a_full_target_in_both_themes(
+def test_life_os_search_start_new_is_a_plain_plus_and_the_sort_is_full_width(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1588: the control is a 44px tint button beside the group head that
-    never overflows the card, and the picker's rows are 44px targets, in both
-    themes."""
+    """#1588 round 2: Start new is an unpainted vendored icon-button (a `+`
+    glyph, no fill or border at rest, a 44px invisible target) at the trailing
+    end of the Conversations head, and the sort control spans the content
+    width like the search field, in both themes."""
     page = authed_page
     _mock_skills(page)
     _mock_search(page, [])
@@ -1554,23 +1557,45 @@ def test_life_os_search_start_new_is_a_full_target_in_both_themes(
     page.locator("#lifeOsFilterInput").fill("zzz")
     start = page.locator("#lifeOsConvoStartNew")
     expect(start).to_be_visible(timeout=5_000)
-    expect(start).to_have_class("button-tint lifeos-start-new")
+    expect(start).to_have_class(re.compile(r"(^|\s)icon-button(\s|$)"))
+    expect(start).not_to_have_class(re.compile(r"button-tint"))
+    expect(start.locator("svg use")).to_have_attribute("href", "#i-plus")
+    expect(start).to_have_text("")
     for theme in ("light", "dark"):
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
         assert_min_target(start)
         assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
-        # The heading keeps its words (a button stretched to the full row
-        # once squeezed it to nothing, which the overlap check alone passes).
+        # Unpainted at rest: transparent fill, no border, no shadow.
+        expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+        expect(start).to_have_css("border-top-width", "0px")
+        expect(start).to_have_css("box-shadow", "none")
         head_w = stable_eval(page.locator("#lifeOsConvoHead"), "h => h.getBoundingClientRect().width")
         assert head_w > 80, head_w
-        start_w = stable_eval(start, "b => b.getBoundingClientRect().width")
-        assert start_w < 200, start_w
         fit = stable_eval(
             page.locator("#lifeOsConvoGroup"),
             "g => { const r = g.getBoundingClientRect(),"
             " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
             " return b.left >= r.left && b.right <= r.right; }")
         assert fit, "Start new spills out of the Conversations group"
+        # The sort track runs the head's full width on a phone, three equal
+        # segments; a wide card keeps the track at a phone's width (360px).
+        for width in (390, 430, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            geo = stable_eval(
+                page.locator("#lifeOsConvoGroup"),
+                "g => { const q = s => g.querySelector(s).getBoundingClientRect(),"
+                " bar = q('.lifeos-group-bar'), sort = q('#lifeOsConvoSort'),"
+                " segs = [...g.querySelectorAll('#lifeOsConvoSort .segmented-item')]"
+                ".map(e => e.getBoundingClientRect().width);"
+                " return {sortL: sort.left, sortR: sort.right, barL: bar.left,"
+                " barR: bar.right, segs}; }")
+            assert abs(geo["sortL"] - geo["barL"]) <= 1, (width, geo)
+            if width <= 430:
+                assert abs(geo["sortR"] - geo["barR"]) <= 1, (width, geo)
+            else:
+                assert geo["sortR"] - geo["sortL"] <= 361, (width, geo)
+            assert max(geo["segs"]) - min(geo["segs"]) <= 1, (width, geo)
+    page.set_viewport_size({"width": 390, "height": 844})
     start.click()
     picker = page.locator("#lifeOsStartPicker")
     expect(picker).to_be_visible()

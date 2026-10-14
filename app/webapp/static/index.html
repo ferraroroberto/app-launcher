@@ -1064,11 +1064,11 @@
           <div class="lifeos-group-bar">
             <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
             <!-- #1588: while a search shows (hits or none), start a fresh
-                 conversation from here. Narrowed to a skill it starts that
-                 one; spanning every skill it opens the skill picker below. -->
-            <button type="button" id="lifeOsConvoStartNew" class="button-tint lifeos-start-new" data-track="life-search-start-new" hidden>
-              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
-              <span>Start new</span>
+                 conversation from here. A plain + (the fleet's icon-button,
+                 fleet-config#1420): narrowed to a skill it starts that one;
+                 spanning every skill it opens the skill picker below. -->
+            <button type="button" id="lifeOsConvoStartNew" class="icon-button lifeos-start-new" data-track="life-search-start-new" aria-label="Start new conversation" title="Start new conversation" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg>
             </button>
           </div>
           <div id="lifeOsConvoSort" class="segmented lifeos-convo-sort" role="group" aria-label="Sort conversations">
