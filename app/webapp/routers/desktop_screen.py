@@ -23,6 +23,12 @@ that receives them only starts after the gate above has passed, so input
 rides the same socket and the same gate as the picture; there is no other
 input path (``tests/test_desktop_input.py`` fails if one appears). When the
 socket goes away, every key and button the session still holds is released.
+
+Cursor (#1598): beside the frames, the server sends JSON ``cursor`` messages
+(position as 0-1 in the shown monitor, a shape name, visible or not) from
+:func:`src.desktop_cursor.stream_cursor`, whenever the cursor changed. It is
+not paced by the frame ack, starts only after the gate, and stops with the
+socket, like the frames.
 """
 
 from __future__ import annotations
@@ -31,12 +37,12 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from src import audit, desktop_capture, desktop_input
+from src import audit, desktop_capture, desktop_cursor, desktop_input
 from src.webapp_config import WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
@@ -125,6 +131,21 @@ async def _read_client(
         stopped.set()
 
 
+async def _stream_cursor(
+    read: Callable[[], desktop_cursor.CursorState],
+    send: Callable[[Dict[str, Any]], Awaitable[None]],
+    stopped: asyncio.Event,
+) -> None:
+    """The cursor loop; a send on a socket that just went away ends it, and
+    the reader stops everything else."""
+    try:
+        await desktop_cursor.stream_cursor(read, send, stopped)
+    except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+        logger.debug("Screen cursor loop ended while sending: %s", exc)
+    except Exception as exc:  # noqa: BLE001 - the picture keeps streaming
+        logger.warning("⚠️ Screen: cursor loop failed, cursor stays hidden: %s", exc)
+
+
 @router.websocket(WS_PATH)
 async def screen_ws(websocket: WebSocket) -> None:
     """Stream one monitor until the viewer goes away."""
@@ -158,16 +179,28 @@ async def screen_ws(websocket: WebSocket) -> None:
     # Counted here rather than taken from stream_frames' return value, so a
     # send that fails mid-stream still audits the frames that did go out.
     sent = {"frames": 0}
+    # Frames and cursor messages come from two loops; one message at a time
+    # goes out on the socket.
+    send_lock = asyncio.Lock()
 
     async def send_frame(data: bytes) -> None:
-        await websocket.send_bytes(data)
+        async with send_lock:
+            await websocket.send_bytes(data)
         sent["frames"] += 1
 
     async def send_status(state: str) -> None:
-        await websocket.send_text(json.dumps({"type": "status", "state": state}))
+        async with send_lock:
+            await websocket.send_text(json.dumps({"type": "status", "state": state}))
+
+    async def send_cursor(message: Dict[str, Any]) -> None:
+        async with send_lock:
+            await websocket.send_text(json.dumps(message))
 
     session = desktop_input.InputSession(desktop_input.get_injector(), monitor, monitors)
     reader = asyncio.create_task(_read_client(websocket, acked, stopped, session))
+    cursor = asyncio.create_task(
+        _stream_cursor(desktop_cursor.cursor_reader(monitor), send_cursor, stopped)
+    )
     try:
         await desktop_capture.stream_frames(
             lambda: desktop_capture.grab_monitor(monitor),
@@ -183,11 +216,12 @@ async def screen_ws(websocket: WebSocket) -> None:
             session.release_all()
         except Exception as exc:  # noqa: BLE001 - the close audit must still run
             logger.warning("⚠️ Screen: releasing held input failed: %s", exc)
-        reader.cancel()
-        try:
-            await reader
-        except (asyncio.CancelledError, Exception):  # noqa: BLE001
-            pass
+        for task in (reader, cursor):
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
         await audit_off_loop(
             audit.audit_event, "screen_close", client=client, monitor=monitor.id,
             duration_s=round(time.monotonic() - started, 1), frames=sent["frames"],

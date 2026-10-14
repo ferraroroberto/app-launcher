@@ -11,6 +11,11 @@ The loop tests drive :func:`src.desktop_capture.stream_frames` with fake
 grabbers: a static screen sends one frame and then nothing, the next frame
 waits for the client's ack, and an unreadable desktop is reported as its own
 state.
+
+The cursor (#1598): :mod:`src.desktop_cursor` maps the PC's cursor to a shape
+name and a 0-1 spot on the shown monitor, and its loop sends only changes,
+stops with the socket, and backs off while the cursor can't be read. Route
+tests read it through a fake reader, never the real cursor.
 """
 
 from __future__ import annotations
@@ -29,8 +34,9 @@ from PIL import Image
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from src import desktop_capture
+from src import desktop_capture, desktop_cursor
 from src.desktop_capture import CaptureUnavailable, Monitor
+from src.desktop_cursor import CursorState, CursorUnavailable
 from src.webauthn_gate import WebAuthnGate
 
 LOOPBACK = "127.0.0.1"
@@ -45,7 +51,27 @@ ABOVE = Monitor(id=1, left=0, top=-36, width=64, height=36, primary=False)
 
 
 @pytest.fixture
-def screen(webapp_client, monkeypatch, tmp_path: Path):
+def fake_cursor(monkeypatch) -> Dict:
+    """The route's cursor reader, faked: ``readers`` records the monitor each
+    socket built one for, ``reads`` counts reads, ``state`` is what they
+    return. No test reads the real cursor."""
+    cursor: Dict = {"readers": [], "reads": 0,
+                    "state": CursorState(visible=True, x=0.5, y=0.25, shape="text")}
+
+    def reader(monitor: Monitor):
+        cursor["readers"].append(monitor)
+
+        def read() -> CursorState:
+            cursor["reads"] += 1
+            return cursor["state"]
+        return read
+
+    monkeypatch.setattr(desktop_cursor, "cursor_reader", reader)
+    return cursor
+
+
+@pytest.fixture
+def screen(webapp_client, monkeypatch, tmp_path: Path, fake_cursor):
     """App with the bearer token and the passkey gate both live, two fake
     monitors, and a recording fake grabber. Yields ``(app, tt, grabs)``."""
     _client, app, _overrides = webapp_client
@@ -78,10 +104,32 @@ def _ws_url(token: str = "", tt: str = "", monitor: str = "") -> str:
     return "/api/screen/ws" + ("?" + "&".join(params) if params else "")
 
 
+def _next_frame(ws) -> bytes:
+    """The next binary frame, past any text (cursor, status) sent first."""
+    while True:
+        message = ws.receive()
+        if message["type"] == "websocket.close":
+            raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+        if message.get("bytes") is not None:
+            return message["bytes"]
+
+
+def _next_text(ws, kind: str) -> Dict:
+    """The next JSON text message of type ``kind``, past frames."""
+    while True:
+        message = ws.receive()
+        if message["type"] == "websocket.close":
+            raise WebSocketDisconnect(message.get("code", 1000), message.get("reason"))
+        if message.get("text") is not None:
+            body = json.loads(message["text"])
+            if body.get("type") == kind:
+                return body
+
+
 def _ws_close_code(client: TestClient, url: str, headers=None) -> int:
     with pytest.raises(WebSocketDisconnect) as excinfo:
         with client.websocket_connect(url, headers=headers or {}) as ws:
-            ws.receive_bytes()
+            _next_frame(ws)
     return excinfo.value.code
 
 
@@ -211,7 +259,7 @@ def test_ws_refused_with_a_forged_passkey_token(screen):
 def test_ws_streams_to_an_unlocked_tailnet_client(screen):
     app, tt, grabs = screen
     with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt)) as ws:
-        frame = ws.receive_bytes()
+        frame = _next_frame(ws)
     assert frame[:2] == b"\xff\xd8", "a JPEG frame"
     assert grabs and grabs[0] == PRIMARY, "no monitor asked for: the primary"
 
@@ -219,13 +267,13 @@ def test_ws_streams_to_an_unlocked_tailnet_client(screen):
 def test_ws_streams_to_the_pc_itself_without_credentials(screen):
     app, _, _ = screen
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        assert ws.receive_bytes()[:2] == b"\xff\xd8"
+        assert _next_frame(ws)[:2] == b"\xff\xd8"
 
 
 def test_ws_selects_the_monitor_above_the_primary(screen):
     app, _, grabs = screen
     with _as(app, LOOPBACK).websocket_connect(_ws_url(monitor="1")) as ws:
-        frame = ws.receive_bytes()
+        frame = _next_frame(ws)
     assert grabs[0] == ABOVE and grabs[0].top < 0
     with Image.open(io.BytesIO(frame)) as img:
         assert img.size == (ABOVE.width, ABOVE.height)
@@ -241,7 +289,7 @@ def test_ws_audits_connect_and_disconnect(screen, webapp_client):
     app, _, _ = screen
     audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         closed = _close_and_wait(ws, audit)
     events = [c.args[0] for c in audit.audit_event.call_args_list]
     assert events == ["screen_open", "screen_close"]
@@ -254,7 +302,7 @@ def test_capture_stops_when_the_viewer_disconnects(screen, webapp_client):
     app, _, grabs = screen
     audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         ws.send_text("ack")
         # Measure from the handler's own end (its close audit), not from the
         # client returning, which can come first.
@@ -263,6 +311,44 @@ def test_capture_stops_when_the_viewer_disconnects(screen, webapp_client):
     assert settled >= 1
     time.sleep(desktop_capture.FRAME_INTERVAL_S * 4)
     assert len(grabs) == settled, "a grab ran after the viewer left"
+
+
+def test_ws_sends_the_cursor_for_the_monitor_being_viewed(screen, fake_cursor):
+    """The cursor rides the picture's socket, behind its gate, for the
+    monitor on screen: a shape name and a spot, nothing else."""
+    app, tt, _ = screen
+    with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt, monitor="1")) as ws:
+        cursor = _next_text(ws, "cursor")
+    assert fake_cursor["readers"] == [ABOVE]
+    assert cursor == {"type": "cursor", "x": 0.5, "y": 0.25, "shape": "text", "visible": True}
+
+
+def test_ws_sends_a_cursor_move_with_no_frame(screen, fake_cursor):
+    """A still picture sends no frame, but the cursor moving on it is sent."""
+    app, _, grabs = screen
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        # The first frame and the first cursor message, in either order.
+        seen = set()
+        while seen != {"frame", "cursor"}:
+            message = ws.receive()
+            seen.add("frame" if message.get("bytes") is not None else "cursor")
+        frames_before = len(grabs)
+        fake_cursor["state"] = CursorState(visible=True, x=0.75, y=0.5, shape="hand")
+        moved = _next_text(ws, "cursor")
+    assert moved["x"] == 0.75 and moved["shape"] == "hand"
+    assert len(grabs) == frames_before, "no frame was acked, so none was grabbed"
+
+
+def test_the_cursor_loop_stops_when_the_viewer_disconnects(screen, fake_cursor, webapp_client):
+    app, _, _ = screen
+    audit = webapp_client[2]["audit"]
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        _next_text(ws, "cursor")
+        _close_and_wait(ws, audit)
+    settled = fake_cursor["reads"]
+    assert settled >= 1
+    time.sleep(desktop_cursor.CURSOR_INTERVAL_S * 6)
+    assert fake_cursor["reads"] == settled, "the cursor was read after the viewer left"
 
 
 class _ScriptedSocket:
@@ -307,7 +393,7 @@ def _ws_input_refused(client: TestClient, url: str, headers=None) -> int:
         with client.websocket_connect(url, headers=headers or {}) as ws:
             ws.send_text(_CLICK)
             ws.send_text(_DOWN)
-            ws.receive_bytes()
+            _next_frame(ws)
     return excinfo.value.code
 
 
@@ -322,13 +408,18 @@ def _ws_input_refused(client: TestClient, url: str, headers=None) -> int:
     ],
     ids=["cloudflare", "cloudflare-loopback", "off-tailnet", "no-bearer", "no-passkey"],
 )
-def test_a_refused_socket_injects_nothing(screen, fake_injector, host, token, with_tt, headers, code):
+def test_a_refused_socket_injects_nothing(
+    screen, fake_injector, fake_cursor, host, token, with_tt, headers, code
+):
     app, tt, grabs = screen
     url = _ws_url(token, tt if with_tt else "")
     assert _ws_input_refused(_as(app, host), url, headers) == code
     time.sleep(0.1)  # give a (wrongly) running reader every chance to act
     assert fake_injector.batches == [], "a refused socket's input reached the injector"
     assert grabs == []
+    assert fake_cursor["readers"] == [] and fake_cursor["reads"] == 0, (
+        "a refused socket read the cursor"
+    )
 
 
 def test_a_forged_passkey_token_injects_nothing(screen, fake_injector):
@@ -343,7 +434,7 @@ def test_an_unlocked_tailnet_client_clicks_where_it_taps(screen, fake_injector):
 
     app, tt, _ = screen
     with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt)) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         ws.send_text(_CLICK)
         _wait_for(lambda: fake_injector.batches, "the click")
     # The fixture's desktop: PRIMARY (64x36 at 0,0) under ABOVE (0,-36), so
@@ -358,7 +449,7 @@ def test_an_unlocked_tailnet_client_clicks_where_it_taps(screen, fake_injector):
 def test_input_maps_onto_the_monitor_being_viewed(screen, fake_injector):
     app, _, _ = screen
     with _as(app, LOOPBACK).websocket_connect(_ws_url(monitor="1")) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         ws.send_text(json.dumps({"type": "click", "x": 0, "y": 0}))
         _wait_for(lambda: fake_injector.batches, "the click")
     move = fake_injector.batches[0][0]
@@ -371,7 +462,7 @@ def test_disconnect_releases_a_held_button(screen, fake_injector, webapp_client)
     app, _, _ = screen
     audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         ws.send_text(_DOWN)
         _wait_for(lambda: fake_injector.batches, "the press")
     # The phone went away mid-drag. Leaving the block this way cancels the
@@ -389,7 +480,7 @@ def test_the_close_audit_counts_inputs_and_never_logs_what_was_typed(
     audit = webapp_client[2]["audit"]
     secret = "hunter2-ñ€"
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        ws.receive_bytes()
+        _next_frame(ws)
         ws.send_text(json.dumps({"type": "text", "text": secret}))
         ws.send_text(json.dumps({"type": "key", "key": "c", "mods": ["ctrl"]}))
         ws.send_text("not an input message")
@@ -504,6 +595,203 @@ def test_pick_monitor_defaults_to_the_primary():
     assert desktop_capture.pick_monitor([ABOVE, PRIMARY], 1) == ABOVE
     assert desktop_capture.pick_monitor([ABOVE, PRIMARY], 5) is None
     assert desktop_capture.pick_monitor([], None) is None
+
+
+# ------------------------------------------------------- cursor (#1598)
+
+
+def test_standard_cursors_map_to_shape_names_and_anything_else_is_an_arrow():
+    # A fake user32 whose shared cursor handle is the IDC id plus 1000.
+    fake = types.SimpleNamespace(LoadCursorW=lambda _inst, idc: idc.value + 1000)
+    table = desktop_cursor.standard_cursors(fake)
+    assert desktop_cursor.shape_for(32512 + 1000, table) == "arrow"
+    assert desktop_cursor.shape_for(32513 + 1000, table) == "text"
+    assert desktop_cursor.shape_for(32649 + 1000, table) == "hand"
+    assert desktop_cursor.shape_for(32514 + 1000, table) == "busy"
+    assert desktop_cursor.shape_for(32650 + 1000, table) == "busy", "app-starting reads as busy"
+    for idc, name in ((32645, "resize-ns"), (32644, "resize-ew"), (32642, "resize-nwse"),
+                      (32643, "resize-nesw"), (32646, "move"), (32648, "not-allowed")):
+        assert desktop_cursor.shape_for(idc + 1000, table) == name
+    # An app's own cursor, and no cursor handle at all.
+    assert desktop_cursor.shape_for(0xBEEF, table) == "arrow"
+    assert desktop_cursor.shape_for(None, table) == "arrow"
+    assert set(table.values()) == desktop_cursor.SHAPES
+
+
+def test_the_client_draws_every_shape_the_server_sends():
+    """screen-cursor.js has a drawing for each name; a missing one would
+    silently draw the arrow."""
+    js = (Path(__file__).resolve().parent.parent
+          / "app" / "webapp" / "static" / "screen-cursor.js").read_text(encoding="utf-8")
+    for name in desktop_cursor.SHAPES:
+        assert f"'{name}':" in js, name
+
+
+def test_cursor_fraction_is_the_pixel_centre_within_the_monitor():
+    wide = Monitor(id=0, left=0, top=0, width=1920, height=1080, primary=True)
+    # The centre of pixel (959, 539): an even width has no pixel at 0.5.
+    assert desktop_cursor.cursor_fraction(wide, 959, 539) == (0.4997, 0.4995)
+    assert desktop_cursor.cursor_fraction(wide, 0, 0) == (round(0.5 / 1920, 4), round(0.5 / 1080, 4))
+    last = desktop_cursor.cursor_fraction(wide, 1919, 1079)
+    assert last is not None and last[0] < 1 and last[1] < 1
+    # The next pixel is another monitor's.
+    assert desktop_cursor.cursor_fraction(wide, 1920, 10) is None
+    assert desktop_cursor.cursor_fraction(wide, -1, 10) is None
+    assert desktop_cursor.cursor_fraction(wide, 10, 1080) is None
+    # A monitor above the primary: a negative origin.
+    above = Monitor(id=1, left=0, top=-1080, width=1920, height=1080, primary=False)
+    assert desktop_cursor.cursor_fraction(above, 959, -541) == (0.4997, 0.4995)
+    assert desktop_cursor.cursor_fraction(above, 959, 0) is None
+
+
+@pytest.mark.parametrize("fx, fy", [(0.0, 0.0), (0.25, 0.75), (0.5, 0.5), (0.9999, 1.0), (1.0, 0.33)])
+def test_a_tapped_spot_comes_back_as_the_cursor_spot(fx, fy):
+    """A tap moves the real cursor to map_point's pixel; reading the cursor
+    there gives the tapped fraction back within one pixel, so the drawn
+    cursor lands where the tap did."""
+    from src import desktop_input
+
+    above = Monitor(id=1, left=-8, top=-1080, width=1920, height=1080, primary=False)
+    px = above.left + min(above.width - 1, int(fx * above.width))
+    py = above.top + min(above.height - 1, int(fy * above.height))
+    # The same pixel map_point aims at (its absolute units are a function of it).
+    desktop = desktop_input.virtual_desktop([above])
+    assert desktop_input.map_point(above, desktop, fx, fy) == (
+        round((px - desktop[0]) * 65535 / (desktop[2] - 1)),
+        round((py - desktop[1]) * 65535 / (desktop[3] - 1)),
+    )
+    back = desktop_cursor.cursor_fraction(above, px, py)
+    assert back is not None
+    assert abs(back[0] - fx) <= 1 / above.width and abs(back[1] - fy) <= 1 / above.height
+
+
+def test_a_hidden_cursor_sends_no_position_or_shape():
+    mon = Monitor(id=0, left=0, top=0, width=100, height=100, primary=True)
+    showing = desktop_cursor.cursor_state(mon, True, 7, 49, 49, {7: "hand"})
+    assert showing.to_message() == {
+        "type": "cursor", "x": 0.495, "y": 0.495, "shape": "hand", "visible": True,
+    }
+    not_showing = desktop_cursor.cursor_state(mon, False, 7, 49, 49, {7: "hand"})
+    off_monitor = desktop_cursor.cursor_state(mon, True, 7, 500, 49, {7: "hand"})
+    assert not_showing.to_message() == off_monitor.to_message() == {"type": "cursor", "visible": False}
+
+
+def _fake_cursor_win32(monkeypatch, readings):
+    """A stand-in user32 for :func:`desktop_cursor.cursor_reader`: each read
+    pops ``(ok, flags, handle, x, y)``."""
+    import ctypes
+    from ctypes import wintypes
+
+    class CURSORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("flags", wintypes.DWORD),
+                    ("hCursor", ctypes.c_void_p), ("ptScreenPos", wintypes.POINT)]
+
+    def get_cursor_info(ref):
+        ok, flags, handle, x, y = readings.pop(0)
+        info = ref._obj
+        assert info.cbSize == ctypes.sizeof(CURSORINFO)
+        info.flags, info.hCursor = flags, handle
+        info.ptScreenPos.x, info.ptScreenPos.y = x, y
+        return ok
+
+    user32 = types.SimpleNamespace(
+        GetCursorInfo=get_cursor_info, LoadCursorW=lambda _inst, idc: idc.value + 1000,
+    )
+    monkeypatch.setattr(desktop_cursor, "_user32", lambda: (user32, CURSORINFO))
+    monkeypatch.setattr(desktop_cursor.sys, "platform", "win32")
+    monkeypatch.setattr(desktop_capture, "ensure_dpi_awareness", lambda: None)
+
+
+def test_the_reader_reads_position_shape_and_showing_flag(monkeypatch):
+    _fake_cursor_win32(monkeypatch, [
+        (1, 1, 32513 + 1000, 959, 539),   # an I-beam, showing
+        (1, 0, 0, 959, 539),              # hidden
+        (1, 2, 32512 + 1000, 959, 539),   # suppressed (touch on the PC): hidden
+        (0, 0, 0, 0, 0),                  # the secure desktop
+    ])
+    read = desktop_cursor.cursor_reader(
+        Monitor(id=0, left=0, top=0, width=1920, height=1080, primary=True)
+    )
+    assert read() == CursorState(visible=True, x=0.4997, y=0.4995, shape="text")
+    assert read() == desktop_cursor.HIDDEN
+    assert read() == desktop_cursor.HIDDEN
+    with pytest.raises(CursorUnavailable):
+        read()
+
+
+async def _drive_cursor(read, *, run_for: float, interval=0.001, retry=0.001):
+    stopped = asyncio.Event()
+    sent: List[Dict] = []
+
+    async def send(message: Dict) -> None:
+        sent.append(message)
+
+    task = asyncio.create_task(
+        desktop_cursor.stream_cursor(read, send, stopped, interval=interval, retry=retry)
+    )
+    await asyncio.sleep(run_for)
+    stopped.set()
+    returned = await asyncio.wait_for(task, timeout=2)
+    assert returned == len(sent)
+    return sent
+
+
+def test_a_still_cursor_is_sent_once_and_a_move_is_sent():
+    reads = {"n": 0}
+
+    def read() -> CursorState:
+        reads["n"] += 1
+        x = 0.25 if reads["n"] < 4 else 0.75
+        return CursorState(visible=True, x=x, y=0.5)
+
+    sent = _run(_drive_cursor(read, run_for=0.3))
+    assert reads["n"] > 6, "the loop kept looking"
+    assert [m["x"] for m in sent] == [0.25, 0.75]
+
+
+def test_an_unreadable_cursor_is_hidden_once_logged_once_and_not_polled_fast(caplog):
+    reads = {"n": 0}
+
+    def read() -> CursorState:
+        reads["n"] += 1
+        raise CursorUnavailable("secure desktop")
+
+    with caplog.at_level("INFO", logger="src.desktop_cursor"):
+        sent = _run(_drive_cursor(read, run_for=0.3, interval=0.001, retry=0.1))
+    assert sent == [{"type": "cursor", "visible": False}]
+    assert reads["n"] <= 4, "an unreadable cursor must back off to the retry pace"
+    assert len([r for r in caplog.records if "cursor unreadable" in r.getMessage()]) == 1
+
+
+def test_the_cursor_comes_back_after_it_was_unreadable():
+    reads = {"n": 0}
+
+    def read() -> CursorState:
+        reads["n"] += 1
+        if reads["n"] <= 3:
+            raise CursorUnavailable("locked")
+        return CursorState(visible=True, x=0.5, y=0.5)
+
+    sent = _run(_drive_cursor(read, run_for=0.2))
+    assert sent == [
+        {"type": "cursor", "visible": False},
+        {"type": "cursor", "x": 0.5, "y": 0.5, "shape": "arrow", "visible": True},
+    ]
+
+
+def test_the_cursor_loop_ends_when_stopped():
+    async def go():
+        stopped = asyncio.Event()
+        stopped.set()
+
+        async def send(_message):
+            raise AssertionError("nothing may be sent once stopped")
+
+        return await desktop_cursor.stream_cursor(
+            lambda: CursorState(visible=True, x=0.1, y=0.1), send, stopped
+        )
+
+    assert _run(go()) == 0
 
 
 # ------------------------------------------------- the Win32 edge, faked

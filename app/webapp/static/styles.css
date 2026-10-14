@@ -5634,6 +5634,24 @@ span.chief-answer-ref { color: var(--muted); }
   pointer-events: none;
 }
 .screen-image[hidden] { display: none; }
+/* The PC's mouse cursor (#1598). A 0x0 anchor moved to the cursor's spot by
+   transform, outside the picture's own zoom transform, so it keeps its size
+   when zoomed; the SVG inside sits so its hotspot is on the anchor
+   (screen-cursor.js). It never takes a touch. A light body with a dark
+   edge, like Windows' own cursor, in both themes, since it is drawn over
+   the PC's desktop, not over the app. */
+.screen-cursor {
+  --screen-cursor-fill: var(--accent-fg);
+  --screen-cursor-edge: rgb(0 0 0 / 0.85);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.screen-cursor[hidden] { display: none; }
+.screen-cursor svg { position: absolute; overflow: visible; }
 /* The state block floats centred over the stage as a card, so it reads over
    the last frame as well as over an empty canvas. */
 .screen-state {

@@ -366,3 +366,140 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     toggle.click()
     expect(keys).to_be_hidden()
     expect(toggle).to_have_attribute("aria-pressed", "false")
+
+
+# -------------------------------------------------------------- cursor (#1598)
+#
+# The stub socket plays the server's cursor messages. Where the cursor should
+# sit is worked out from the rendered picture (its transformed box and the
+# frame's natural size), independently of the app's own stagePoint maths.
+# The overlay is a 0x0 anchor, which Playwright never calls visible, so its
+# shown / hidden state is read from its own ``hidden`` property.
+
+_ZOOMED_POINT_JS = """([fx, fy]) => {
+  const img = document.getElementById('screenImage');
+  const r = img.getBoundingClientRect();
+  const s = r.width / img.clientWidth;
+  const fit = Math.min(img.clientWidth / img.naturalWidth, img.clientHeight / img.naturalHeight);
+  const w = img.naturalWidth * fit, h = img.naturalHeight * fit;
+  return { x: r.left + ((img.clientWidth - w) / 2 + fx * w) * s,
+           y: r.top + ((img.clientHeight - h) / 2 + fy * h) * s };
+}"""
+
+_CURSOR_JS = """() => {
+  const el = document.getElementById('screenCursor');
+  const a = el.getBoundingClientRect();
+  const svg = el.querySelector('svg');
+  const b = svg ? svg.getBoundingClientRect() : { width: 0, height: 0 };
+  const hit = document.elementFromPoint(a.left, a.top);
+  return { x: a.left, y: a.top, w: b.width, h: b.height, hidden: el.hidden,
+           hitsCursor: !!hit && el.contains(hit),
+           hitsStage: !!hit && document.getElementById('screenStage').contains(hit) };
+}"""
+
+
+def _send_cursor(ws: WebSocketRoute, **fields) -> None:
+    ws.send(json.dumps({"type": "cursor", **fields}))
+
+
+def _cursor_on(page: Page, fx: float, fy: float, what: str) -> Dict:
+    """Wait for the drawn cursor's hotspot to sit on frame point (fx, fy)."""
+    state: Dict = {}
+
+    def there() -> bool:
+        want = page.evaluate(_ZOOMED_POINT_JS, [fx, fy])
+        state.update(page.evaluate(_CURSOR_JS))
+        return (not state["hidden"] and abs(state["x"] - want["x"]) <= 1
+                and abs(state["y"] - want["y"]) <= 1)
+
+    wait_until(page, there, what)
+    return state
+
+
+def test_the_pc_cursor_follows_its_messages_and_never_takes_a_touch(
+    authed_page: Page, base_url: str
+) -> None:
+    sockets: List[WebSocketRoute] = []
+
+    def on_connect(ws: WebSocketRoute) -> None:
+        sockets.append(ws)
+        ws.send(_frame())
+
+    seen = _stub_screen(authed_page.context, on_connect)
+    page = _open_from_sheet(authed_page, base_url)
+    image = page.locator("#screenImage")
+    expect(image).to_be_visible()
+    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    cursor = page.locator("#screenCursor")
+    expect(cursor).to_have_js_property("hidden", True)  # no cursor message yet
+    expect(cursor).to_have_css("pointer-events", "none")
+
+    # A cursor message draws it on its spot, in its shape.
+    _send_cursor(sockets[-1], x=0.25, y=0.75, shape="text", visible=True)
+    expect(cursor).to_have_attribute("data-shape", "text")
+    first = _cursor_on(page, 0.25, 0.75, "the cursor on its spot")
+    assert first["w"] == 24 and first["h"] == 24, first
+    # It never takes a touch: what is under it is the stage.
+    assert first["hitsStage"] and not first["hitsCursor"], first
+
+    # It moves with no new frame, and an unknown shape is the arrow.
+    _send_cursor(sockets[-1], x=0.6, y=0.4, shape="some-app-cursor", visible=True)
+    expect(cursor).to_have_attribute("data-shape", "arrow")
+    _cursor_on(page, 0.6, 0.4, "the moved cursor")
+    assert len(seen["acks"]) == 1, "the cursor moved without a frame"
+
+    # Zoomed 3x: still on its spot of the zoomed picture, still 24px.
+    page.evaluate("""() => {
+      const s = document.getElementById('screenStage');
+      const r = s.getBoundingClientRect();
+      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const ev = (type, id, x) => s.dispatchEvent(new PointerEvent(type, {
+        pointerId: id, clientX: x, clientY: cy, bubbles: true, pointerType: 'touch' }));
+      ev('pointerdown', 1, cx - 20); ev('pointerdown', 2, cx + 20);
+      ev('pointermove', 1, cx - 60); ev('pointermove', 2, cx + 60);
+      ev('pointerup', 1, cx - 60); ev('pointerup', 2, cx + 60);
+    }""")
+    expect(image).to_have_css("transform", re.compile(r"matrix\(3, 0, 0, 3,"))
+    zoomed = _cursor_on(page, 0.6, 0.4, "the cursor on the zoomed picture")
+    assert zoomed["w"] == 24 and zoomed["h"] == 24, zoomed
+
+    # Panned off the stage by the zoom: not drawn.
+    _send_cursor(sockets[-1], x=0.02, y=0.5, shape="arrow", visible=True)
+    expect(cursor).to_have_js_property("hidden", True)
+
+    # Back on screen, then the PC hides it.
+    _send_cursor(sockets[-1], x=0.5, y=0.5, shape="hand", visible=True)
+    expect(cursor).to_have_attribute("data-shape", "hand")
+    expect(cursor).to_have_js_property("hidden", False)
+    # An unreadable desktop: no cursor over the stale frame, until the
+    # picture is live again.
+    sockets[-1].send(json.dumps({"type": "status", "state": "unavailable"}))
+    expect(cursor).to_have_js_property("hidden", True)
+    sockets[-1].send(_frame())
+    expect(cursor).to_have_js_property("hidden", False)
+    _send_cursor(sockets[-1], visible=False)
+    expect(cursor).to_have_js_property("hidden", True)
+
+
+def test_a_control_tap_on_the_cursor_still_clicks_the_pc(
+    authed_page: Page, base_url: str
+) -> None:
+    """The overlay sits on the tapped spot after a click; a real tap there
+    must still reach the stage and click."""
+    sockets: List[WebSocketRoute] = []
+
+    def on_connect(ws: WebSocketRoute) -> None:
+        sockets.append(ws)
+        ws.send(_frame())
+
+    seen = _stub_screen(authed_page.context, on_connect)
+    page = _open_from_sheet(authed_page, base_url)
+    expect(page.locator("#screenImage")).to_be_visible()
+    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    _set_mode(page, "control")
+    _send_cursor(sockets[-1], x=0.5, y=0.5, shape="arrow", visible=True)
+    at = _cursor_on(page, 0.5, 0.5, "the cursor in the middle")
+    page.mouse.click(at["x"] + 1, at["y"] + 1)
+    wait_until(page, lambda: len(seen["inputs"]) >= 1, "the click through the cursor")
+    click = seen["inputs"][0]
+    assert click["type"] == "click" and _near(click["x"], 0.5) and _near(click["y"], 0.5), click

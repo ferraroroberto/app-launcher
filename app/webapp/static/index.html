@@ -2523,6 +2523,9 @@
       </div>
       <div id="screenStage" class="screen-stage">
         <img id="screenImage" class="screen-image" alt="The PC's screen" draggable="false" hidden>
+        <!-- The PC's mouse cursor (#1598), drawn from the socket's cursor
+             messages: the picture itself never contains it. -->
+        <div id="screenCursor" class="screen-cursor" aria-hidden="true" hidden></div>
         <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
       </div>
       <!-- The keys the phone keyboard lacks (#1521). Ctrl / Alt / Shift / Win
