@@ -32,6 +32,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import (
     BUILD_READOUT_MS,
+    boot_retrying_static_failure,
     close_settings_sheets,
     open_settings,
     open_settings_sheet,
@@ -327,6 +328,19 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
 
 
+def _open_chief_sheet(page: Page, base_url: str) -> None:
+    """Boot the page and open Settings' Chief sheet (#1613).
+
+    ``tabs.js`` wires the header gear, so a load of it that fails under gate
+    load leaves a page whose gear taps do nothing for its whole life; no wait
+    recovers that, so the first failed ``/static/`` load gets one fresh boot.
+    """
+    boot_retrying_static_failure(
+        page, lambda: page.goto(base_url, wait_until="domcontentloaded")
+    )
+    open_settings_sheet(page, "chiefSheet")
+
+
 def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     authed_page: Page, base_url: str
 ) -> None:
@@ -342,8 +356,7 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
             if _is_config_post(req) else None)
 
     def open_sheet() -> None:
-        page.goto(base_url, wait_until="domcontentloaded")
-        open_settings_sheet(page, "chiefSheet")
+        _open_chief_sheet(page, base_url)
 
     def saving(act) -> None:
         """Run ``act`` and wait for its save's round-trip to land.
@@ -395,3 +408,28 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     expect(switch).to_have_attribute("aria-checked", "true")
     expect(field).to_be_enabled()
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
+
+
+def test_a_failed_tabs_script_load_gets_one_fresh_boot(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1613: the first load of ``tabs.js`` is cut, so the header gear has no
+    handler and Settings never opens; the second boot is the one it opens on."""
+    page = authed_page
+    navigations: list = []
+    cut: list = []
+    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
+
+    def handle(route) -> None:
+        # The page may ask for the file more than once per load, so cut every
+        # ask of the first load, not just the first ask.
+        if len(navigations) <= 1:
+            cut.append(1)
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route(re.compile(r".*/static/tabs\.js"), handle)
+    _open_chief_sheet(page, base_url)
+    assert cut, "the script was never requested"
+    expect(page.locator("#chiefAutoCompactThreshold")).to_be_visible()
