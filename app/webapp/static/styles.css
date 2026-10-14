@@ -5749,3 +5749,80 @@ span.chief-answer-ref { color: var(--muted); }
   font-size: 16px;
   pointer-events: none;
 }
+
+/* A phone held sideways (#1601). The bar and the tools row take a large share
+   of the little height there is, and the picture is the point, so there they
+   leave the flow behind a handle: a pill over the stage's top-left corner that
+   names the mode (a hidden switch hides no state). It opens the bar and tools
+   row as an overlay on top of the picture, so the picture neither jumps nor
+   re-fits. A desktop browser, the pop-out window (fine pointer, tall) and a
+   tablet keep the bars. screen-view.js asks the same question with
+   matchMedia (SCREEN_LANDSCAPE): keep the two queries identical. */
+.screen-chrome { display: contents; }
+.screen-handle { display: none; }
+.screen-handle-view,
+.screen-handle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.screen-handle-control { display: none; }
+.screen-view[data-mode="control"] .screen-handle-view { display: none; }
+.screen-view[data-mode="control"] .screen-handle-control { display: inline-flex; }
+.screen-handle .icon { width: var(--icon-inline); height: var(--icon-inline); }
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 500px) {
+  /* The picture clears a notch: the stage itself narrows by the side insets,
+     so its geometry (and everything screen-view.js derives from it) agrees. */
+  .screen-stage {
+    margin-left: env(safe-area-inset-left, 0px);
+    margin-right: env(safe-area-inset-right, 0px);
+  }
+  .screen-chrome { display: none; }
+  .screen-view.chrome-open .screen-chrome {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    box-shadow: var(--shadow);
+  }
+  /* The handle keeps its place, and its width, while the bar is up (View and
+     Control are the same width), so the bar's title makes room for it. */
+  .screen-view { --screen-handle-w: 7.5rem; }
+  .screen-view.chrome-open .screen-view-bar {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 2 * var(--gap) + var(--screen-handle-w));
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-view.chrome-open .screen-view-tools {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 14px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-handle {
+    position: absolute;
+    top: 8px;
+    left: calc(env(safe-area-inset-left, 0px) + var(--gap));
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--screen-handle-w);
+    min-height: var(--hit-min);
+    padding: 0 14px;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow);
+    font: inherit;
+    font-size: var(--font-label);
+    font-weight: 600;
+  }
+  .screen-handle[aria-expanded="true"] { color: var(--accent-text); }
+  /* The keys bar clears a notch too. */
+  .screen-keys {
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  }
+}
