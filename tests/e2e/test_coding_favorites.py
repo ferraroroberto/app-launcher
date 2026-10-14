@@ -149,7 +149,7 @@ def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) 
         ["Detached", "Resume"]
     )
     # The accessible name still carries the word the caption used to show.
-    expect(btn).to_have_attribute("aria-label", "Show only favorites")
+    expect(btn).to_have_attribute("aria-label", "Filter favorites")
     expect(btn).to_have_attribute("title", "Show only favorites")
 
     # Trailing, inside the field: the star's box sits within the field's and

@@ -432,7 +432,7 @@ function syncFavFilterBtn() {
   btn.classList.toggle('active', on);
   btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   // Icon only (#1194), the filter field's trailing star since #1434. The
-  // name lives on aria-label/title ("Show only favorites"), where a screen
+  // name lives on aria-label ("Filter favorites") and title, where a screen
   // reader reads it anyway.
   btn.innerHTML = icon('star');
 }

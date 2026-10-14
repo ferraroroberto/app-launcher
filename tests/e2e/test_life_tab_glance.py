@@ -321,7 +321,7 @@ def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
     # rest in light and dark.
     expect(verb).to_have_class(re.compile(r"\bicon-button\b"))
     assert_unpainted_at_rest(page, verb)
-    expect(verb).to_have_attribute("aria-label", "Launch weekly recap review")
+    expect(verb).to_have_attribute("aria-label", "Run weekly recap review")
     expect(row.locator(".action-row-kebab")).to_have_count(0)
 
 
