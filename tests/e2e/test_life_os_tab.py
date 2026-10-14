@@ -1462,7 +1462,7 @@ def test_life_os_search_start_new_in_the_scoped_skill(
     """#1588: narrowed to a skill, a search (hits or none) carries a Start new
     that launches a fresh conversation in that skill through the kebab's path
     — never a resume, whatever the Resume switch says, on the toolbar's model,
-    and without the search text. Only a search shows it, not the bare list."""
+    and without the search text."""
     page = authed_page
     _mock_skills(page)
     _mock_conversations(page)
@@ -1471,7 +1471,7 @@ def test_life_os_search_start_new_in_the_scoped_skill(
     launches = _mock_skill_launches(page)
     _open_conversations(page, base_url)
     start = page.locator("#lifeOsConvoStartNew")
-    expect(start).to_be_hidden()   # the skill's own list, nothing typed
+    expect(start).to_be_visible()   # the skill's own list: round 3 shows it too
 
     life_launch_switch(page, "#lifeOsDetached")
     life_launch_switch(page, "#lifeOsResume")
@@ -1492,9 +1492,56 @@ def test_life_os_search_start_new_in_the_scoped_skill(
     expect(page.locator("#lifeOsStartPicker")).to_be_hidden()
     assert "no such thing" not in _json.dumps(payload)
 
-    # Clearing the field ends the search, and the control with it.
+    # Clearing the field ends the search; the narrowed list (and the control)
+    # stay, since the group is still showing.
     page.locator("#lifeOsFilterInput").fill("")
-    expect(start).to_be_hidden(timeout=5_000)
+    expect(page.locator("#lifeOsConvoState")).not_to_contain_text("Nothing matched")
+    expect(start).to_be_visible()
+
+
+def test_life_os_browse_mode_start_new_starts_the_skill(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588 round 3: the + is there whenever the Conversations group is, so a
+    skill's own list (⋮ Conversations; nothing or one letter typed) starts that
+    skill fresh, on the toolbar's model, without sending anything typed. With
+    the group off (no skill narrowed, no search) there is no +."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(page)
+    seen: list = []
+    _mock_search(page, [], seen=seen)
+    launches = _mock_skill_launches(page)
+    _open_conversations(page, base_url)
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(page.locator("#lifeOsFilterInput")).to_have_value("")
+    expect(start).to_be_visible()
+    expect(start).to_have_attribute("data-track", "life-search-start-new")
+    expect(start).to_have_accessible_name("Start new conversation")
+    expect(start).to_have_attribute("title", "Start new conversation")
+    expect(start).not_to_have_attribute("aria-haspopup", re.compile(".*"))
+
+    # One letter is still browse mode: no search fired, the + stays.
+    page.locator("#lifeOsFilterInput").fill("f")
+    flush_requests(page)
+    assert seen == [], seen
+    expect(start).to_be_visible()
+
+    life_launch_switch(page, "#lifeOsDetached")
+    life_launch_switch(page, "#lifeOsResume")
+    _pick_life_model(page, "codex:gpt-6-astra")
+    start.click()
+    wait_until(page, lambda: len(launches) == 1, "the fresh launch")
+    skill, payload = launches[0]
+    assert skill == "journal-daily"
+    assert payload == {"mode": "remote", "model": "codex:gpt-6-astra", "resume": False}, payload
+    expect(page.locator("#lifeOsStartPicker")).to_be_hidden()
+
+    # Widening to every skill with nothing typed steps the group, and the +, aside.
+    page.locator("#lifeOsFilterInput").fill("")
+    page.locator("#lifeOsConvoScope").click()
+    expect(page.locator("#lifeOsConvoGroup")).to_be_hidden()
+    expect(start).to_be_hidden()
 
 
 def test_life_os_search_start_new_across_every_skill_opens_the_picker(
@@ -1604,6 +1651,35 @@ def test_life_os_search_start_new_is_a_plain_plus_and_the_sort_is_full_width(
     for i in range(2):
         assert_min_target(picker.locator(".lifeos-start-pick").nth(i))
     assert picker.evaluate("el => el.scrollWidth <= el.clientWidth")
+
+
+@pytest.mark.iphone
+def test_life_os_browse_mode_plus_keeps_its_geometry_in_both_themes(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588 round 3: in a skill's own list (no search) the + is the same plain
+    44px icon-button at the Conversations head's end, inside the group, at
+    phone and desktop widths, light and dark."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(page)
+    _open_conversations(page, base_url)
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_visible()
+    for theme in ("light", "dark"):
+        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+        for width in (390, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            assert_min_target(start)
+            assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
+            expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+            expect(start).to_have_css("border-top-width", "0px")
+            fit = stable_eval(
+                page.locator("#lifeOsConvoGroup"),
+                "g => { const r = g.getBoundingClientRect(),"
+                " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
+                " return b.left >= r.left && b.right <= r.right; }")
+            assert fit, (theme, width, "the + spills out of the Conversations group")
 
 
 @pytest.mark.parametrize("failure", ["unavailable", "forbidden"])
