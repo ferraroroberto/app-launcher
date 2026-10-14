@@ -1045,13 +1045,15 @@ function syncConvoGroup() {
   syncStartNew();
 }
 
-// The search's Start new (#1588) shows while a conversation search does, hits
-// or none: it is the way out of a search that found nothing. Narrowed to a
-// skill it names that skill; spanning every skill it opens the picker.
+// Start new (#1588) shows whenever the Conversations group does: browse mode
+// (a skill's own list, always narrowed) and search mode, hits or none. It is
+// the way out of a search that found nothing. Narrowed to a skill it names
+// that skill; spanning every skill (search only) it opens the picker. With the
+// group off, the skill row and its kebab already start a new conversation.
 function syncStartNew() {
   const btn = els.lifeOsConvoStartNew;
   if (!btn) return;
-  btn.hidden = convoMode !== 'search';
+  btn.hidden = convoMode === 'off';
   if (btn.hidden) return;
   // One name for both cases; the popup hint is the only thing that differs.
   if (convoScope) btn.removeAttribute('aria-haspopup');
