@@ -68,7 +68,7 @@ from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.webapp_config import WebappConfig
 
-from app.webapp.hot_poll import BuildSteps, hot_poll
+from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
 from app.webapp.routers import board_chief
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
@@ -381,11 +381,20 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
     the capture when the two name different conversations — and says
     ``unknown`` when it cannot settle the question rather than passing for
     agreement. See ``transcript_locate._disprove_by_live_title``.
+
+    Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
+    (#1605): past its deadline the answer is the last good one, with
+    ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    poll = session_poll(request.app.state, "GET exchange", sid)
+    return await poll.get(functools.partial(_build_exchange, cfg, sid))
+
+
+async def _build_exchange(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dict[str, Any]:
     (live, host_error), state = await asyncio.gather(
-        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
-        asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
+        steps.run("read_live_sessions", _read_live_sessions, cfg.session_host_port),
+        steps.run("read_sessions_state", board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     session = next(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
@@ -398,7 +407,8 @@ async def session_exchange(sid: str, request: Request) -> Dict[str, Any]:
         )
     row = board.state_row_for_session(live, state["rows"], sid)
     transcript = (row or {}).get("transcript_path")
-    result = await asyncio.to_thread(
+    result = await steps.run(
+        "resolve_exchange",
         resolve_exchange,
         session,
         transcript,

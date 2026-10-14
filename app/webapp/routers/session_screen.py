@@ -30,6 +30,7 @@ Same screen read as the plan picker, same reasons, its own guard row.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
@@ -44,6 +45,7 @@ from src.board_transcript import pending_decision_call
 from src.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
+from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 from app.webapp.routers.session_transcript import _resolve_source
@@ -212,13 +214,18 @@ def _no_picker(reason: str, resume_showing: bool = False) -> Dict[str, Any]:
 
 
 async def _read_screen(
-    cfg: WebappConfig, sid: str
+    cfg: WebappConfig, sid: str, steps: Optional[BuildSteps] = None
 ) -> Tuple[Optional[str], Optional[Dict[str, Any]], Optional[List[str]]]:
     """``(reason, session, lines)``: ``reason`` says why there is no screen
     to read (``session_not_found`` / ``session_host_unreachable`` (#1308) /
     ``unsupported_agent`` / ``detached`` / ``no_screen``); otherwise ``lines``
-    is the screen as the PTY shows it."""
-    live, host_error = await asyncio.to_thread(_read_live_sessions, cfg.session_host_port)
+    is the screen as the PTY shows it.
+
+    ``steps`` is a polled route's build (#1605): its reads then run on the
+    per-session pool, off the default executor. Without it they run on the
+    default executor, as the send-time re-reads always have."""
+    run = steps.run if steps is not None else run_on_default_executor
+    live, host_error = await run("read_live_sessions", _read_live_sessions, cfg.session_host_port)
     session = next((s for s in live if str(s.get("session_id")) == str(sid)), None)
     if session is None:
         return (SESSION_HOST_UNREACHABLE if host_error else "session_not_found"), None, None
@@ -235,7 +242,7 @@ async def _read_screen(
         cols = int(session.get("cols") or 120)
         return plan_picker.screen_lines(text, rows, cols)
 
-    lines = await asyncio.to_thread(read)
+    lines = await run("read_capture_tail", read)
     if lines is None:
         return "no_screen", session, None
     return None, session, lines
@@ -274,9 +281,18 @@ async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
     The same screen read also says whether the ``/resume`` picker is up
     (``resume_picker``, #1300), so the Chat pane needs no second poll to
     offer its resume card.
+
+    Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
+    (#1605): past its deadline the answer is the last good one, with
+    ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, _session, lines = await _read_screen(cfg, sid)
+    poll = session_poll(request.app.state, "GET plan-picker", sid)
+    return await poll.get(functools.partial(_build_plan_picker, cfg, sid))
+
+
+async def _build_plan_picker(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dict[str, Any]:
+    reason, _session, lines = await _read_screen(cfg, sid, steps)
     if reason is not None:
         if reason == "session_not_found":
             _PICKER_SEEN.pop(sid, None)
@@ -288,7 +304,7 @@ async def session_plan_picker(sid: str, request: Request) -> Dict[str, Any]:
         resume_showing = resume_picker.parse_resume_picker(lines)
         _log_picker(sid, "resume picker showing" if resume_showing else "not showing")
         return {**_no_picker("not_showing", resume_showing), "available": True}
-    plan = await asyncio.to_thread(plan_picker.read_plan_file, picker["plan_file"])
+    plan = await steps.run("read_plan_file", plan_picker.read_plan_file, picker["plan_file"])
     source = "file" if plan else ("screen" if picker["plan_excerpt"] else None)
     text, truncated = plan if plan else (picker["plan_excerpt"] or None, False)
     _log_picker(
@@ -605,9 +621,18 @@ async def session_context(sid: str, request: Request) -> Dict[str, Any]:
     statusline, or Claude Code's own null early on and right after
     ``/compact``). The overlay bar polls it and draws nothing without a
     number, so an unknown value is never shown as 0%.
+
+    Built through a per-session :class:`app.webapp.hot_poll.HotPoll`
+    (#1605): past its deadline the answer is the last good one, with
+    ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, _session, lines = await _read_screen(cfg, sid)
+    poll = session_poll(request.app.state, "GET context", sid)
+    return await poll.get(functools.partial(_build_context, cfg, sid))
+
+
+async def _build_context(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dict[str, Any]:
+    reason, _session, lines = await _read_screen(cfg, sid, steps)
     if reason is not None:
         if reason == "session_not_found":
             _CONTEXT_SEEN.pop(sid, None)

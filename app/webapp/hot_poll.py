@@ -28,6 +28,16 @@ So each endpoint builds its payload through a :class:`HotPoll`:
 Breadcrumbs go to ``webapp/slow-requests.log`` at INFO: a build step over
 :data:`SLOW_STEP_S` is named with its time, and the first stale answer of a
 build names the steps it is still in.
+
+The Chat pane's per-session polls (``/context``, ``/plan-picker``,
+``/transcript``, the Board drawer's ``/exchange``) read the same files, so
+they go through a :class:`HotPoll` too (#1605), one per session and request
+shape (:func:`session_poll`). Theirs build on a pool of their own,
+:data:`SESSION_READS_POOL`: a stalled transcript then holds that pool's
+threads, never the default executor every ``POST /input`` send waits on,
+nor the two polls above. A fresh answer from one of them is the route's
+payload as it always was; only a stale one gains ``stale: true`` and
+``age_seconds``.
 """
 
 from __future__ import annotations
@@ -52,14 +62,25 @@ SLOW_STEP_S = 2.0
 # endpoint, plus a stuck build's steps that are still running.
 _POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hot-poll")
 
+# The per-session polls' pool (#1605). A stalled build holds one thread per
+# poll key (single-flight), so this leaves room for a few stuck keys while
+# every other session's Chat still reads; a full pool queues here, never on
+# the default executor.
+SESSION_READS_POOL = ThreadPoolExecutor(max_workers=12, thread_name_prefix="session-reads")
+
+# Per-session polls kept at once. A transcript's forward cursor is part of the
+# key, so keys come and go with every tick; idle ones are dropped past this.
+SESSION_POLLS_MAX = 256
+
 Built = Tuple[float, Dict[str, Any]]
 
 
 class BuildSteps:
-    """One build's blocking steps: run on the hot-poll pool, timed by name."""
+    """One build's blocking steps: run on its poll's pool, timed by name."""
 
-    def __init__(self, label: str) -> None:
+    def __init__(self, label: str, pool: Optional[ThreadPoolExecutor] = None) -> None:
         self.label = label
+        self.pool = _POOL if pool is None else pool
         self.running: Dict[str, float] = {}
         self.reported_stale = False
 
@@ -78,7 +99,7 @@ class BuildSteps:
                 self.running.pop(name, None)
 
         try:
-            return await loop.run_in_executor(_POOL, call)
+            return await loop.run_in_executor(self.pool, call)
         finally:
             if started:
                 ran = time.monotonic() - started[0]
@@ -94,15 +115,34 @@ class BuildSteps:
         ) or "between steps"
 
 
+async def run_on_default_executor(
+    _name: str, fn: Callable[..., Any], *args: Any, **kwargs: Any
+) -> Any:
+    """:meth:`BuildSteps.run`'s shape on the loop's default executor, for a
+    shared reader called from a route that is not a poll (a send-time re-read)."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 Build = Callable[[BuildSteps], Awaitable[Dict[str, Any]]]
 
 
 class HotPoll:
     """Single-flight, deadline-bounded payload builds for one endpoint."""
 
-    def __init__(self, label: str, deadline_s: Optional[float] = None) -> None:
+    def __init__(
+        self,
+        label: str,
+        deadline_s: Optional[float] = None,
+        *,
+        pool: Optional[ThreadPoolExecutor] = None,
+        mark_fresh: bool = True,
+    ) -> None:
+        """``mark_fresh=False`` serves a fresh payload unchanged; ``stale``
+        and ``age_seconds`` then ride only an answer that is stale."""
         self.label = label
         self.deadline_s = DEADLINE_S if deadline_s is None else deadline_s
+        self.pool = pool
+        self.mark_fresh = mark_fresh
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._running: Optional["asyncio.Task[Built]"] = None
         self._running_steps: Optional[BuildSteps] = None
@@ -114,10 +154,10 @@ class HotPoll:
         """The payload, fresh when a build lands within the deadline, else the last good one."""
         target = self._fresh(build)
         if self._last is None:
-            return self._answer(await asyncio.shield(target), stale=False)
+            return self._fresh_answer(await asyncio.shield(target))
         try:
-            return self._answer(
-                await asyncio.wait_for(asyncio.shield(target), self.deadline_s), stale=False
+            return self._fresh_answer(
+                await asyncio.wait_for(asyncio.shield(target), self.deadline_s)
             )
         except TimeoutError:
             pass
@@ -131,6 +171,15 @@ class HotPoll:
                 self.label, now - self._last[0], self.deadline_s, steps.in_flight(now),
             )
         return self._answer(self._last, stale=True)
+
+    def idle(self) -> bool:
+        """No build running or queued: dropping this poll loses only its last payload."""
+        return (self._running is None or self._running.done()) and self._next is None
+
+    def _fresh_answer(self, built: Built) -> Dict[str, Any]:
+        if self.mark_fresh:
+            return self._answer(built, stale=False)
+        return dict(built[1])
 
     @staticmethod
     def _answer(built: Built, *, stale: bool) -> Dict[str, Any]:
@@ -152,7 +201,7 @@ class HotPoll:
         return self._next
 
     def _start(self, build: Build) -> "asyncio.Task[Built]":
-        steps = BuildSteps(self.label)
+        steps = BuildSteps(self.label, self.pool)
         task = asyncio.ensure_future(self._build(build, steps))
         self._running, self._running_steps = task, steps
         task.add_done_callback(self._finished)
@@ -202,3 +251,27 @@ def hot_poll(state: State, label: str) -> HotPoll:
     if label not in polls:
         polls[label] = HotPoll(label)
     return polls[label]
+
+
+def session_poll(state: State, label: str, sid: str, *shape: Any) -> HotPoll:
+    """The app's :class:`HotPoll` for one session's ``label`` poll (#1605).
+
+    ``shape`` is the rest of what makes two requests the same answer (a
+    transcript's cursor and page size), so only identical requests share a
+    build or a stale payload. Builds run on :data:`SESSION_READS_POOL`, and a
+    fresh answer is the payload unchanged. Past :data:`SESSION_POLLS_MAX`
+    keys, idle polls are dropped before a new one is made.
+    """
+    polls: Optional[Dict[Tuple[Any, ...], HotPoll]] = getattr(state, "session_polls", None)
+    if polls is None:
+        polls = {}
+        state.session_polls = polls
+    key = (label, sid, *shape)
+    poll = polls.get(key)
+    if poll is None:
+        if len(polls) >= SESSION_POLLS_MAX:
+            for idle_key in [k for k, p in polls.items() if p.idle()]:
+                del polls[idle_key]
+        poll = HotPoll(f"{label} {sid[:8]}", pool=SESSION_READS_POOL, mark_fresh=False)
+        polls[key] = poll
+    return poll

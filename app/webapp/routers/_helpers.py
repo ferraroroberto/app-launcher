@@ -211,9 +211,14 @@ _SESSION_LINK_SCAN_BYTES = 512 * 1024
 # Coding-tab poll and the Board poll both run on a 5s cadence and overlap
 # while the Board tab is up (main.js — fetchSessions is not tab-gated), which
 # without this would re-scan up to 1 MiB of every live transcript twice every
-# five seconds. Only a hit is cached — an empty result means the card has not
-# been printed *yet*, and must stay re-scannable on the next poll.
+# five seconds. An empty result means the card has not been printed *yet*, so
+# a miss is cached only against the transcript it was read from (#1605): its
+# size and mtime, from one stat. An unchanged transcript is not reopened on
+# the next poll (a long-lived session whose card scrolled out of both windows
+# re-read 1 MiB every tick, and each open is another chance at the
+# multi-second stall #1597 measured); one that has grown is scanned again.
 _PROVIDER_URL_CACHE: Dict[str, str] = {}
+_PROVIDER_URL_MISSES: Dict[str, Tuple[int, int]] = {}
 _PROVIDER_URL_CACHE_MAX = 512
 
 
@@ -265,17 +270,37 @@ def attach_provider_web_urls(sessions: List[Dict[str, Any]]) -> None:
         if cached:
             session["web_url"] = cached
             continue
-        url = provider_web_url(
-            str(session.get("agent") or ""), audit.transcript_path(sid)
-        )
+        agent = str(session.get("agent") or "")
+        transcript = audit.transcript_path(sid)
+        identity = _transcript_identity(transcript) if agent == "claude" and sid else None
+        if identity is not None and _PROVIDER_URL_MISSES.get(sid) == identity:
+            continue
+        url = provider_web_url(agent, transcript)
         session["web_url"] = url
         if url and sid:
-            if len(_PROVIDER_URL_CACHE) >= _PROVIDER_URL_CACHE_MAX:
-                # Dead session ids accumulate over a long-lived tray. Drop the
-                # lot rather than track recency: the cost of rebuilding is one
-                # extra scan per live session, once.
-                _PROVIDER_URL_CACHE.clear()
-            _PROVIDER_URL_CACHE[sid] = url
+            _remember(_PROVIDER_URL_CACHE, sid, url)
+            _PROVIDER_URL_MISSES.pop(sid, None)
+        elif identity is not None:
+            _remember(_PROVIDER_URL_MISSES, sid, identity)
+
+
+def _transcript_identity(transcript: Path) -> Optional[Tuple[int, int]]:
+    """``(size, mtime_ns)`` of a PTY transcript; ``None`` when it can't be
+    stat'ed, which caches nothing, so the next poll tries again."""
+    try:
+        st = transcript.stat()
+    except OSError:
+        return None
+    return st.st_size, st.st_mtime_ns
+
+
+def _remember(cache: Dict[str, Any], sid: str, value: Any) -> None:
+    if len(cache) >= _PROVIDER_URL_CACHE_MAX:
+        # Dead session ids accumulate over a long-lived tray. Drop the lot
+        # rather than track recency: the cost of rebuilding is one extra scan
+        # per live session, once.
+        cache.clear()
+    cache[sid] = value
 
 
 def client_ip(request: Request) -> str:

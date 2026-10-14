@@ -25,8 +25,10 @@ _LINK = "https://claude.ai/code/session_SYNTHETICLINKFIXTURE0879"
 def _clear_provider_url_cache():
     """The memo is module state — no test may inherit another's entries."""
     _helpers._PROVIDER_URL_CACHE.clear()
+    _helpers._PROVIDER_URL_MISSES.clear()
     yield
     _helpers._PROVIDER_URL_CACHE.clear()
+    _helpers._PROVIDER_URL_MISSES.clear()
 
 
 def test_claude_web_url_is_recovered_from_wrapped_terminal_output(tmp_path):
@@ -71,14 +73,16 @@ def test_attach_sets_web_url_on_every_row_and_scans_only_pty(monkeypatch, tmp_pa
     assert [r["web_url"] for r in rows] == [_LINK, "", ""]
 
 
-def test_a_captured_link_is_memoized_but_an_empty_one_is_rescanned(
+def test_a_captured_link_is_memoized_and_a_miss_waits_for_the_file_to_change(
     monkeypatch, tmp_path
 ):
     """The Coding and Board polls share a 5s cadence and overlap.
 
-    A hit must not be re-scanned; a miss must be, or a session whose
-    remote-control card has simply not printed yet would be pinned to '' for
-    the life of the process.
+    A hit must not be re-scanned. A miss is not re-scanned while the
+    transcript is unchanged (#1605: a long-lived session with no card in
+    either window re-opened its whole transcript every poll), but is once it
+    grows, or a session whose remote-control card has simply not printed yet
+    would be pinned to '' for the life of the process.
     """
     _stub_transcripts(
         monkeypatch, tmp_path, {"s-hit": _WRAPPED_CARD, "s-miss": "no card yet"}
@@ -103,10 +107,24 @@ def test_a_captured_link_is_memoized_but_an_empty_one_is_rescanned(
     second = [dict(r) for r in rows]
     attach_provider_web_urls(second)
     assert [r["web_url"] for r in second] == [_LINK, ""]
-    # s-hit served from the memo; s-miss scanned again.
-    assert scanned == [
-        "s-hit.transcript", "s-miss.transcript", "s-miss.transcript",
-    ]
+    # s-hit served from the memo; s-miss's transcript is unchanged, so not reopened.
+    assert scanned == ["s-hit.transcript", "s-miss.transcript"]
+
+    with (tmp_path / "s-miss.transcript").open("a", encoding="utf-8") as grown:
+        grown.write(_WRAPPED_CARD)
+    third = [dict(r) for r in rows]
+    attach_provider_web_urls(third)
+    assert [r["web_url"] for r in third] == [_LINK, _LINK]
+    assert scanned == ["s-hit.transcript", "s-miss.transcript", "s-miss.transcript"]
+
+
+def test_an_unreadable_transcript_caches_no_miss(monkeypatch, tmp_path):
+    """No stat, no identity: nothing is cached, so the next poll tries again."""
+    _stub_transcripts(monkeypatch, tmp_path, {})
+    rows = [{"session_id": "s-gone", "kind": "pty", "agent": "claude"}]
+    attach_provider_web_urls(rows)
+    assert rows[0]["web_url"] == ""
+    assert "s-gone" not in _helpers._PROVIDER_URL_MISSES
 
 
 async def test_board_cards_carry_the_same_provider_link_as_the_coding_tab(

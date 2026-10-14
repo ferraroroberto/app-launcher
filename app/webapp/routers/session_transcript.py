@@ -60,6 +60,7 @@ never logged.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,6 +92,7 @@ from src import session_outbox
 from src.session_changes import changed_files, file_steps
 from src.webapp_config import WebappConfig
 
+from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
 from app.webapp.routers._helpers import attach_provider_web_urls
 from app.webapp.routers import session_outbox_routes
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
@@ -184,7 +186,7 @@ def _resolve_path(
 
 
 async def _resolve_source(
-    sid: str, cfg: WebappConfig
+    sid: str, cfg: WebappConfig, steps: Optional[BuildSteps] = None
 ) -> Tuple[Optional[str], Optional[str], Optional[Path], str, str, Optional[Dict[str, Any]]]:
     """Session lookup + history-path resolution, shared by every route here.
 
@@ -196,10 +198,15 @@ async def _resolve_source(
     is the session-host's row, ``None`` only for ``session_not_found`` and
     ``session_host_unreachable`` (the list could not be read, #1308: not the
     same fact as "the session is not in it").
+
+    ``steps`` is the polled ``/transcript`` route's build (#1605): its reads
+    then run on the per-session pool, off the default executor. Without it
+    (an on-demand route) they run on the default executor.
     """
+    run = steps.run if steps is not None else run_on_default_executor
     (live, host_error), state = await asyncio.gather(
-        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
-        asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
+        run("read_live_sessions", _read_live_sessions, cfg.session_host_port),
+        run("read_sessions_state", board.read_sessions_state, Path(cfg.sessions_state_file)),
     )
     session = next(
         (item for item in live if str(item.get("session_id")) == str(sid)), None
@@ -221,10 +228,13 @@ async def _resolve_source(
     state_sid = (
         board.state_sid_for_session(live, state["rows"], sid) if flavor == "pi" else None
     )
-    path, why = await asyncio.to_thread(
-        _resolve_path, session, row, state_sid, flavor, live
-    )
-    if path is None or not path.is_file():
+    def resolve() -> Tuple[Optional[Path], str]:
+        # The existence check is a stat too, so it stays off the loop (#1605).
+        found, how = _resolve_path(session, row, state_sid, flavor, live)
+        return (found if found is not None and found.is_file() else None), how
+
+    path, why = await run("resolve_path", resolve)
+    if path is None:
         return "no_transcript", None, None, agent, why, session
     return None, flavor, path, agent, why, session
 
@@ -261,13 +271,34 @@ async def session_transcript(
     with a transcript carries ``outbox_rev``, and the session's sent files
     (``outbox``) only when that rev moved, so the chat sees a new file on
     its next tick without a poll of its own.
+
+    Built through a per-session :class:`app.webapp.hot_poll.HotPoll` keyed
+    on every query parameter (#1605), so only identical requests share a
+    build: past its deadline the answer is that request's last good one,
+    with ``stale: true`` and ``age_seconds``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     if before is not None and after is not None:
         raise HTTPException(
             status_code=400, detail="pass either before or after, not both"
         )
-    reason, flavor, path, agent, why, session = await _resolve_source(sid, cfg)
+    poll = session_poll(request.app.state, "GET transcript", sid, before, after, size, limit, ob)
+    return await poll.get(
+        functools.partial(_build_transcript, cfg, sid, before, after, size, limit, ob)
+    )
+
+
+async def _build_transcript(
+    cfg: WebappConfig,
+    sid: str,
+    before: Optional[int],
+    after: Optional[int],
+    size: Optional[int],
+    limit: int,
+    ob: Optional[int],
+    steps: BuildSteps,
+) -> Dict[str, Any]:
+    reason, flavor, path, agent, why, session = await _resolve_source(sid, cfg, steps)
     if reason is not None:
         # Neither of these is a source problem, and the live tick asks every
         # few seconds: the unreachable one is already latched by the list read.
@@ -278,13 +309,13 @@ async def session_transcript(
             )
         return _unavailable(sid, reason)
     if after is not None:
-        tail = await _tail_response(sid, agent, flavor, path, after, size, session)
+        tail = await _tail_response(sid, agent, flavor, path, after, size, session, steps)
         if tail.get("available"):
-            tail.update(await asyncio.to_thread(session_outbox_routes.outbox_fields, sid, ob))
+            tail.update(await steps.run("outbox_fields", session_outbox_routes.outbox_fields, sid, ob))
         return tail
     try:
-        page = await asyncio.to_thread(
-            transcript_page, path, before=before, limit=limit, flavor=flavor
+        page = await steps.run(
+            "transcript_page", transcript_page, path, before=before, limit=limit, flavor=flavor
         )
     except OSError as exc:
         logger.warning(
@@ -306,8 +337,8 @@ async def session_transcript(
     }
     if before is None:
         # The newest page is the chat's first read: its activity line starts here.
-        body["activity"] = await _activity(session, flavor, path)
-        body.update(await asyncio.to_thread(session_outbox_routes.outbox_fields, sid, ob))
+        body["activity"] = await _activity(session, flavor, path, steps)
+        body.update(await steps.run("outbox_fields", session_outbox_routes.outbox_fields, sid, ob))
     return body
 
 
@@ -319,6 +350,7 @@ async def _tail_response(
     after: int,
     size: Optional[int],
     session: Optional[Dict[str, Any]],
+    steps: BuildSteps,
 ) -> Dict[str, Any]:
     """The forward-cursor half of the route above (#1050).
 
@@ -328,8 +360,8 @@ async def _tail_response(
     failed read and a reset cursor are rare and diagnostic, so those do log.
     """
     try:
-        tail = await asyncio.to_thread(
-            transcript_tail, path, after=after, size=size, flavor=flavor
+        tail = await steps.run(
+            "transcript_tail", transcript_tail, path, after=after, size=size, flavor=flavor
         )
     except OSError as exc:
         logger.warning(
@@ -348,12 +380,12 @@ async def _tail_response(
         "reason": None,
         "session_id": sid,
         **tail,
-        "activity": await _activity(session, flavor, path),
+        "activity": await _activity(session, flavor, path, steps),
     }
 
 
 async def _activity(
-    session: Optional[Dict[str, Any]], flavor: str, path: Path
+    session: Optional[Dict[str, Any]], flavor: str, path: Path, steps: BuildSteps
 ) -> Optional[Dict[str, Any]]:
     """The chat strip's one-line summary of the turn in progress (#1387):
     ``since`` / ``actions`` / ``last`` / ``working``, or ``None`` when the
@@ -370,7 +402,7 @@ async def _activity(
         and _live_title_is_busy(session.get("live_title"))
         and _pty_output_is_fresh(session.get("last_output_at"), datetime.now(timezone.utc))
     )
-    return await asyncio.to_thread(transcript_activity, path, flavor=flavor, busy=busy)
+    return await steps.run("transcript_activity", transcript_activity, path, flavor=flavor, busy=busy)
 
 
 @router.get("/api/claude-code/sessions/{sid}/transcript/entry")
