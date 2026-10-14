@@ -205,6 +205,37 @@ def flush_requests(page: Page) -> None:
     page.evaluate("() => fetch('/__flush').then(() => undefined)")
 
 
+def watch_static_failures(page: Page) -> List[str]:
+    """Record every ``/static/`` load of ``page`` that fails or answers non-2xx (#1609).
+
+    A stylesheet that never arrives does not stop the page: the scripts still
+    run, the DOM still builds, and every CSS-dependent read quietly returns the
+    UA default for the page's whole life (``white-space: normal`` on a title
+    the vendored ``action-row.css`` would set to ``nowrap``). Auto-retrying an
+    ``expect`` against that never recovers, so a test asserting on computed
+    style needs to know whether the sheet loaded at all. Attach before
+    ``goto()``; the returned list fills in as loads fail.
+    """
+    failures: List[str] = []
+    page.on("requestfailed", lambda req: failures.append(
+        f"{req.url.split('/static/')[-1]} ({req.failure})"
+    ) if "/static/" in req.url else None)
+    page.on("response", lambda resp: failures.append(
+        f"{resp.url.split('/static/')[-1]} (HTTP {resp.status})"
+    ) if "/static/" in resp.url and resp.status >= 400 else None)
+    return failures
+
+
+def stylesheet_report(page: Page) -> str:
+    """One line per stylesheet naming whether its rules reached the page (#1609)."""
+    sheets = page.evaluate(
+        "() => [...document.styleSheets].map(s => {"
+        " let n; try { n = s.cssRules.length; } catch (e) { n = 'blocked'; }"
+        " return (s.href || 'inline').split('/static/').pop() + '=' + n; })"
+    )
+    return ", ".join(sheets)
+
+
 def stable_read(read: Callable[[], object], attempts: int = 50,
                 interval_s: float = 0.1) -> object:
     """Retry a raw DOM measurement past a mid-render stale element handle.
