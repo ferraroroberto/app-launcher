@@ -3,14 +3,15 @@
 // emulation only taps. The letterbox + zoom mapping, the tap / long-press /
 // double-tap / pinch / scroll thresholds and the wheel directions are pinned
 // here under plain Node, as are the PC cursor's placement (stagePoint, the
-// inverse of the frame mapping) and its shape fallback (#1598). Invoked by
+// inverse of the frame mapping) and its shape fallback (#1598), and the
+// trackpad's cursor step, zoom follow and remembered style (#1599). Invoked by
 // tests/test_screen_gestures.py.
 
 import assert from 'node:assert/strict';
 
 const {
   GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
-  wheelFromDrag, wheelFromWheelEvent, comboKey,
+  wheelFromDrag, wheelFromWheelEvent, comboKey, padGain, padStep, followPan, controlStyle,
 } = await import('../../app/webapp/static/screen-gestures.js');
 const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
   '../../app/webapp/static/screen-cursor.js');
@@ -115,6 +116,55 @@ assert.deepEqual(wheelFromDrag(10, 0), { dx: -40, dy: 0 });
 // A desktop wheel notch down (deltaY 100px) is one notch down (-120).
 assert.deepEqual(wheelFromWheelEvent(0, 100, 0), { dx: 0, dy: -120 });
 assert.deepEqual(wheelFromWheelEvent(0, 3, 1), { dx: 0, dy: -120 });
+
+// Trackpad (#1599). The gain ramps from slow to fast with finger speed and
+// stops there.
+assert.equal(padGain(0), GESTURE.padGainSlow);
+assert.equal(padGain(GESTURE.padFastSpeed), GESTURE.padGainFast);
+assert.equal(padGain(GESTURE.padFastSpeed * 10), GESTURE.padGainFast);
+assert.ok(close(padGain(GESTURE.padFastSpeed / 2),
+  (GESTURE.padGainSlow + GESTURE.padGainFast) / 2));
+assert.equal(padGain(NaN), GESTURE.padGainSlow);
+
+// A slow 10px finger move over 100ms on the 390px-wide picture moves the
+// cursor 10 * gain px of it; the y axis maps against the drawn height.
+const mid = { x: 0.5, y: 0.5 };
+const slowGain = padGain(10 / 100);
+let c1 = padStep(mid, 10, 0, 100, W, drawnH, 1);
+assert.ok(Math.abs(c1.x - (0.5 + 10 * slowGain / W)) < 1e-4, JSON.stringify(c1));
+assert.equal(c1.y, 0.5);
+c1 = padStep(mid, 0, -10, 100, W, drawnH, 1);
+assert.ok(Math.abs(c1.y - (0.5 - 10 * slowGain / drawnH)) < 1e-4, JSON.stringify(c1));
+// Faster is further: the same 10px in 5ms (clamped to 8ms) travels more.
+assert.ok(padStep(mid, 10, 0, 5, W, drawnH, 1).x > padStep(mid, 10, 0, 100, W, drawnH, 1).x);
+// Zoomed 2x, the cursor moves half as far in the frame: the same on screen.
+const z1 = padStep(mid, 10, 0, 100, W, drawnH, 1).x - 0.5;
+const z2 = padStep(mid, 10, 0, 100, W, drawnH, 2).x - 0.5;
+assert.ok(Math.abs(z2 - z1 / 2) < 1e-4, `${z1} ${z2}`);
+// It stops at the frame's edges, and does nothing without a picture.
+assert.deepEqual(padStep({ x: 0.99, y: 0.01 }, 500, -500, 10, W, drawnH, 1), { x: 1, y: 0 });
+assert.deepEqual(padStep(mid, 10, 10, 10, 0, 0, 1), mid);
+
+// Follow-pan: zoomed 2x about the centre (Z2), a cursor near the stage's
+// middle needs no pan.
+assert.deepEqual(followPan(Z2, W / 2, H / 2, W, H, 48), { x: Z2.x, y: Z2.y });
+// The cursor's unzoomed point 300px across sits at 300 * 2 - 195 = 405, off
+// the 390px stage: pan left until it is 48px inside the right edge.
+let pan = followPan(Z2, 300, H / 2, W, H, 48);
+assert.ok(close(pan.x, W - 48 - 600) && close(pan.y, Z2.y), JSON.stringify(pan));
+// Past the left / top edges: pan the other way.
+pan = followPan(Z2, 50, 100, W, H, 48);
+assert.ok(close(pan.x, 48 - 100) && close(pan.y, 48 - 200), JSON.stringify(pan));
+// On a tiny stage the margin is at most a quarter of it.
+pan = followPan({ scale: 2, x: 0, y: 0 }, 90, 10, 100, 100, 48);
+assert.ok(close(pan.x, 75 - 180), JSON.stringify(pan));
+
+// The remembered Control style: trackpad only when stored as such; a
+// first use, a blocked storage or junk is direct touch.
+assert.equal(controlStyle('trackpad'), 'trackpad');
+assert.equal(controlStyle('touch'), 'touch');
+assert.equal(controlStyle(null), 'touch');
+assert.equal(controlStyle('Trackpad'), 'touch');
 
 // Sticky modifiers turn letters and digits into combos, nothing else.
 assert.equal(comboKey('c'), 'c');

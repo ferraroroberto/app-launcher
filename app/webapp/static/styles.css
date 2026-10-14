@@ -5652,6 +5652,20 @@ span.chief-answer-ref { color: var(--muted); }
 }
 .screen-cursor[hidden] { display: none; }
 .screen-cursor svg { position: absolute; overflow: visible; }
+/* Trackpad (#1599): a long-press held, so the next move drags with the
+   button down, or a lift right-clicks. A ring round the hotspot says so. */
+.screen-cursor.held::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 3px solid var(--screen-cursor-fill);
+  box-shadow: 0 0 0 1.5px var(--screen-cursor-edge), inset 0 0 0 1.5px var(--screen-cursor-edge);
+}
 /* The state block floats centred over the stage as a card, so it reads over
    the last frame as well as over an empty canvas. */
 .screen-state {
@@ -5686,13 +5700,17 @@ span.chief-answer-ref { color: var(--muted); }
   border-bottom: 1px solid var(--line);
 }
 .screen-mode { flex: 0 1 240px; min-width: 0; margin: 0; }
+/* Control's style (#1599), Touch / Trackpad, beside it while Control is on;
+   the two share the row evenly. */
+.screen-control { flex: 0 1 240px; min-width: 0; margin: 0; }
+.screen-control[hidden] { display: none; }
 .screen-keyboard { margin-left: auto; --icon-btn-box: var(--control-h); }
 .screen-keyboard[hidden] { display: none; }
 .screen-keyboard .icon { width: var(--icon-title); height: var(--icon-title); }
 /* No long-press callout or text selection over the frame: a long-press is a
    right click here. */
 .screen-stage { -webkit-touch-callout: none; }
-.screen-view[data-mode="control"] .screen-stage { cursor: crosshair; }
+.screen-view[data-mode="control"][data-control="touch"] .screen-stage { cursor: crosshair; }
 .screen-view.keys-open .screen-stage { padding-bottom: 0; }
 /* The keys bar: two rows of real 44px keys on a 7-column grid, Enter two
    wide, over the bottom safe area. Same key-btn look as the terminal's keys

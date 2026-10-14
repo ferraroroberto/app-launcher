@@ -2511,11 +2511,17 @@
       </div>
       <!-- Control (#1521): View only pans and zooms (the default, so a stray
            tap never clicks); Control turns touches into clicks, drags and
-           scrolls on the PC, and shows the keyboard toggle. -->
+           scrolls on the PC, and shows the keyboard toggle. Its style (#1599)
+           is Touch (the tap point is the click point) or Trackpad (the finger
+           moves a cursor, a tap clicks at it), remembered per device. -->
       <div class="screen-view-tools">
         <div id="screenMode" class="segmented screen-mode" role="group" aria-label="Mode">
           <button type="button" class="segmented-item" data-mode="view" aria-pressed="true">View</button>
           <button type="button" class="segmented-item" data-mode="control" aria-pressed="false">Control</button>
+        </div>
+        <div id="screenControl" class="segmented screen-control" role="group" aria-label="Control style" hidden>
+          <button type="button" class="segmented-item" data-control="touch" aria-pressed="true">Touch</button>
+          <button type="button" class="segmented-item" data-control="trackpad" aria-pressed="false">Trackpad</button>
         </div>
         <button type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
