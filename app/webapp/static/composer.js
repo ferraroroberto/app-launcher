@@ -130,6 +130,7 @@ const _COMPOSE_MAX_ROWS = 8;
 
 const _TITLE_MIC = 'Dictate (voice to text)';
 const _TITLE_MIC_OFF = 'Dictation unavailable — voice-transcriber not configured';
+const _LABEL_MIC = 'Dictate';
 const _TITLE_KEYS = 'Keyboard keys';
 const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
 const _TITLE_ATTACH = 'Attach';
@@ -221,10 +222,12 @@ function carriesFiles(dt) {
   return !!dt && Array.prototype.indexOf.call(dt.types || [], 'Files') !== -1;
 }
 
-function setButtonState(btn, enabled, titleOn, titleOff) {
+// `label` pins the accessible name when the tooltip carries state the name
+// must not (the mic stays "Dictate" while unavailable, #1617).
+function setButtonState(btn, enabled, titleOn, titleOff, label) {
   btn.disabled = !enabled;
   btn.title = enabled ? titleOn : titleOff;
-  btn.setAttribute('aria-label', btn.title);
+  btn.setAttribute('aria-label', label || btn.title);
 }
 
 export function mountComposer(host, opts) {
@@ -669,7 +672,7 @@ export function mountComposer(host, opts) {
   // ---- availability --------------------------------------------------------
   function setAvailability(a) {
     if (a && 'dictate' in a) {
-      setButtonState(el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF);
+      setButtonState(el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF, _LABEL_MIC);
     }
     if (a && 'ocr' in a) ocrOffered = !!a.ocr;
   }
