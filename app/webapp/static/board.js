@@ -620,7 +620,7 @@ function renderIssueCard(card) {
   if (startable && !isInProgress) {
     start = document.createElement('button');
     start.type = 'button';
-    start.className = 'row-verb-plain board-issue-btn board-issue-start';
+    start.className = 'icon-button action-row-verb board-issue-btn board-issue-start';
     start.innerHTML = icon('play');
     start.title = '/issue-start ' + card.number + ' in ' + card.repo;
     start.setAttribute('aria-label', 'Start issue #' + card.number);

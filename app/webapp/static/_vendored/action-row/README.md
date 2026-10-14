@@ -2,6 +2,8 @@
 
 The fleet's canonical **action-row** (`~/.claude/design.md` → "Component contracts" → action-row, `ferraroroberto/fleet-config#965`): a flat list row whose **tap performs its primary action** (launch, run, open), with every other action behind **one trailing 44px kebab**. A row may add **at most one leading toggle** (favorite) and **at most one other visible action**, and only when that action is the row's dominant verb (Run on a job row). Title: `body` at 600, one line, ellipsized. Context: at most one `body-sm` line in muted. No vertical rules between controls. A list that can exceed ~12 rows gets a filter field above it.
 
+**Row verbs are plain icon-buttons.** Every visible verb on a row (Live, Wake, Start, Stop, Find, Run) is an unpainted [`icon-button`](../icon-button/) at the 44px row box, next to the kebab: no fill and no border at rest, and the glyph colour is the only state (muted at rest, ink on hover). A cluster of verbs is an [`.icon-button-group`](../icon-button/), with no track. The glyph and the `aria-label` say which verb it is; the glyph map is below. Owner decision `ferraroroberto/fleet-config#1420`, built in `project-scaffolding#386`. The tinted Run and the outlined Stop (`fleet-config#1386`) are retired.
+
 Normalized from app-launcher's session rows (`app-launcher#1025`: one row button plus a kebab in its own slot) and the rendered UX audit's proposed row (`fleet-config#962`), to stop a fifth hand-built row shape (`project-scaffolding#268`). The optional leading avatar, leading check and trailing item (a switch, value, stepper or segmented verb in place of the kebab) were added in `project-scaffolding#341`, normalized from home-automation's shared row (`row.js`, home-automation#880). They are opt-in classes, so a row without them renders exactly as before. See [Extensions](#extensions-leading-avatar-or-check-trailing-item).
 
 ## Files
@@ -11,7 +13,7 @@ Normalized from app-launcher's session rows (`app-launcher#1025`: one row button
 | `action-row.css` | Visual contract: the full-bleed list card, the row and its `rows` heights, the stretched main button, title/meta truncation, the 44px accessories, the filter field. References design tokens only. |
 | `action-row.html` | Markup skeleton to copy and adapt. |
 
-It also needs two glyphs from the vendored `icons/` sprite: `i-ellipsis-vertical` (the kebab) and, for a favorite toggle, `i-star` + `i-star-fill`. `i-search` and `i-play` are used by the skeleton's filter and verb. A check lead needs `i-circle` + `i-circle-check`. A trailing switch links [`switch/`](../switch/), and a segmented verb cluster links [`segmented/`](../segmented/).
+It also needs two glyphs from the vendored `icons/` sprite: `i-ellipsis-vertical` (the kebab) and, for a favorite toggle, `i-star` + `i-star-fill`. `i-search` and `i-play` are used by the skeleton's filter and verb. The verb glyph map is in [Verb glyphs](#verb-glyphs). A check lead needs `i-circle` + `i-circle-check`. A trailing switch links [`switch/`](../switch/), and a segmented verb cluster links [`segmented/`](../segmented/).
 
 ## How to vendor
 
@@ -41,7 +43,7 @@ It also needs two glyphs from the vendored `icons/` sprite: `i-ellipsis-vertical
         <span class="action-row-title">journal-daily</span>
         <span class="action-row-meta">Last run yesterday</span>  <!-- optional -->
       </button>
-      <button type="button" class="icon-button action-row-verb" aria-label="Run">…</button>  <!-- optional, dominant verb only; add action-row-verb--stop when it stops or destroys -->
+      <button type="button" class="icon-button action-row-verb" aria-label="Run">…</button>  <!-- optional, dominant verb only; a plain icon-button, whatever it does -->
       <button type="button" class="icon-button action-row-kebab" aria-label="More actions"
               aria-haspopup="menu" aria-expanded="false">
         <svg class="icon" aria-hidden="true"><use href="#i-ellipsis-vertical"></use></svg>
@@ -57,8 +59,8 @@ It also needs two glyphs from the vendored `icons/` sprite: `i-ellipsis-vertical
 - **`.action-row-title` / `.action-row-meta`** are one line each, ellipsized. Put one context line at most; a row that needs more is a detail view.
 - **The accessories are `.icon-button`s.** `.action-row-fav`, `.action-row-verb` and `.action-row-kebab` each carry `icon-button` as well (`class="icon-button action-row-kebab"`): [`icon-button/`](../icon-button/) owns the unpainted box, the glyph colour states and the target, and `action-row.css` sets their box to the 44px `--row-sm` (`--icon-btn-box`), so no expansion is needed. Only the rules below are the row's own.
 - **`.action-row-fav`** is the one leading toggle. The caller flips `aria-pressed` only; CSS swaps the outline star for the filled one and colors it `--attention`. The fill is what reads without hue.
-- **`.action-row-verb`** is the one extra visible action, the tint recipe at 44px. Use it only for the row's dominant verb (Run on a job row); everything else goes in the menu.
-- **`.action-row-verb--stop`** (added next to `action-row-verb`) is that same verb when it **stops or destroys something**: Stop, Delete, Remove. Such a verb is never the tinted one, even when it is the row's only visible verb. It takes the outlined recipe (transparent on a `--control-border` hairline, `--ink` glyph) at the same 44px, so the most prominent control on a list of running things is never the one that ends them (`fleet-config#1386`, `project-scaffolding#361`). Run stays tinted, Stop is outlined. Keep it named (`aria-label="Stop"`).
+- **`.action-row-verb`** is the one extra visible action: a plain `icon-button` at 44px, with no fill and no border at rest, whatever it does (Run, Stop, Live, Wake). Use it only for the row's dominant verb; everything else goes in the menu. Keep it named (`aria-label="Stop"`), since the glyph is the only other cue. `action-row.css` ships no paint for it: the glyph colours come from `icon-button.css`, so link that file.
+- **`.action-row-verb--stop`** is a **deprecated alias** that renders identically to `.action-row-verb` (the outlined Stop of `fleet-config#1386` and `project-scaffolding#361` is retired). `action-row.css` declares no rule for it, so markup that still emits it keeps working when an app re-vendors. Four fleet apps still carry it, one in live markup, so the alias stays; new markup omits it, and it goes when no app emits it.
 - **`.action-row-kebab`** opens the row menu. Keep `aria-expanded` in step with the menu; the kebab takes `--accent` while it is open.
 - **`.action-row-filter`** is a 44px field with a `--control-border` boundary on `--card`. Filtering is the caller's job (set `hidden` on the `<li>`s that don't match).
 
@@ -99,10 +101,23 @@ A row has **exactly one leading slot** and, in place of the kebab, may have **ex
 - **A switch:** the vendored `.toggle` (44×26 with a vertical band to 44px), `class="toggle action-row-trail"`.
 - **A value:** `<span class="action-row-trail action-row-value">`, one tabular figure in `fg` at 600 (a reading, a price, a count). It is not a control.
 - **A stepper:** your app's stepper element with `action-row-trail` on its outer box. Each of its buttons is a real 44px target.
-- **A segmented verb cluster** (Up · Stop · Down on a blind, an AC mode): `class="segmented segmented--verbs action-row-trail"` from [`segmented/`](../segmented/). Here each segment is 44px wide on the 44px verbs track, so every glyph segment is a real 44×44 target and the cluster is one control with one track.
+- **A verb cluster** (Live · Wake, Up · Stop · Down on a blind): `<span class="icon-button-group action-row-trail" role="group" aria-label="…">` holding plain `.icon-button`s, with no track. The row sets the group's box to 44px, so the gap is 0 and every verb is a real 44×44 target that touches its neighbour and never overlaps it.
+- **A segmented mode selector** (an AC mode: Cool · Fan · Heat, where one segment is the selected state): `class="segmented segmented--verbs action-row-trail"` from [`segmented/`](../segmented/). It is a choice with a selected state, so it keeps its track; each segment is 44px wide on the 44px verbs track. Verbs that only fire (no selected state) are the icon-button cluster above, never a segmented control.
 - **A verb or a kebab** stays as above (`.action-row-verb`, `.action-row-kebab`). A row whose tap opens a detail sheet usually needs neither.
 
 Height still comes from the `rows` scale (a 36px avatar fits the 52px row), and the trailing item is centred in it.
+
+## Verb glyphs
+
+One glyph per verb, from the vendored [`icons/`](../icons/) sprite, so the same verb looks the same in every app:
+
+| Verb | Glyph |
+| --- | --- |
+| Live | `i-video` |
+| Wake | `i-power` |
+| Start / Run | `i-play` |
+| Stop | `i-square` |
+| Find | `i-search` |
 
 ## The row menu stays app-side (for now)
 
@@ -116,20 +131,19 @@ This component ships the **anchor**, not the floating menu. The reference implem
 | `--row-md` | `52px` | one-line row height |
 | `--row-lg` | `60px` | row height with a context line |
 | `--line-muted` | `#d8dee4` | hairline between rows (`border-muted`) |
-| `--ink` | `#1f2328` | title text, stop-verb glyph |
+| `--ink` | `#1f2328` | title text (the verb glyph on hover comes from `icon-button/`) |
 | `--muted` | `#656d76` | context line, filter glyph (resting accessory glyphs come from `icon-button/`) |
 | `--font-body` | `1rem` | title, filter input |
 | `--font-body-sm` | `0.875rem` | context line (`typography.body-sm`) |
 | `--icon-inline` | `16px` | filter glyph (the accessory glyphs take it through `icon-button/`; `icons.size.inline`) |
-| `--radius-md` | `12px` | verb, filter, main-button press shape |
+| `--radius-md` | `12px` | filter, main-button press shape |
 | `--space-sm` | `8px` | filter glyph ↔ input |
 | `--gap` | `12px` | filter margin |
 | `--accent` | `#0969da` | open kebab, filter focus ring |
-| `--accent-soft` | `color-mix(…16%…)` | verb fill, row press feedback |
-| `--accent-border-soft` | `color-mix(…24%…)` | verb border |
-| `--accent-text` | `#0550ae` | verb glyph (accent on a tint) |
+| `--accent-soft` | `color-mix(…16%…)` | row press feedback |
+| `--accent-text` | `#0550ae` | pressed check glyph |
 | `--attention` | `#9a6700` | pressed favorite |
-| `--control-border` | `#818b98` | filter boundary, stop-verb outline |
+| `--control-border` | `#818b98` | filter boundary |
 | `--card` | `#ffffff` | filter fill, avatar badge ring |
 | `--neutral-soft` | `color-mix(in srgb, var(--muted) 16%, transparent)` | avatar fill (only with an avatar) |
 | `--success` | `#1a7f37` | avatar badge `up` (only with an avatar) |

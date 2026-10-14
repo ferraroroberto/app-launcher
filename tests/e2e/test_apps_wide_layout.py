@@ -23,7 +23,9 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import flush_requests, stable_eval, wait_until
+from tests.e2e.conftest import (
+    assert_unpainted_at_rest, flush_requests, stable_eval, wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -131,6 +133,10 @@ def test_wide_apps_is_two_columns_list_then_pane(
         "Stop Beta Web with a rather long name for its row",
     ], m["verbs"]
     assert all(v[1] >= 44 and v[2] >= 44 for v in m["verbs"]), m["verbs"]
+    # Plain verbs (fleet-config#1420): Stop is no longer outlined, and none of
+    # the three is painted at rest, in light or dark.
+    for verb in page.locator("#runningAppsList .running-app-actions button").all():
+        assert_unpainted_at_rest(page, verb)
     # The sheet's drill row gives way to the inline card; the phone's empty
     # block and idle line stay away while something runs.
     expect(page.locator("#otherPortsRow")).to_be_hidden()

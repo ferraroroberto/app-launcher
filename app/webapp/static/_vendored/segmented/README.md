@@ -45,14 +45,15 @@ It replaces [`range-tab/`](../range-tab/), the older row of separate ghost pills
   ```
   When the choice writes to a server, flip it after the write lands, or roll it back on failure, so the raised segment never lies about the state.
 - **Labels** are one word, or one glyph plus an accessible name (`<svg class="icon">` + `aria-label` on the button). Glyphs are `--icon-title` (18px). Labels never wrap.
-- **`.segmented--verbs`** is for a choice that acts on the world (an alarm mode, a blind's Up · Stop · Down). Its segments are a real 44px row. A plain picker keeps the 36px control height.
+- **`.segmented--verbs`** is for a choice that acts on the world **and has a selected state** (an alarm mode, an AC mode). Its segments are a real 44px row. A plain picker keeps the 36px control height.
+- **Not for row verbs.** Verbs that only fire, with no selected state (a blind's Up · Stop · Down, a camera's Live · Wake), are not a choice among peers: they are plain icon-buttons in an [`.icon-button-group`](../icon-button/) with no track (`fleet-config#1420`, `project-scaffolding#386`). `segmented--verbs` is superseded by that for row verbs; the track stays for real mode selectors, unchanged.
 - **Unavailable segments** carry `disabled` and a `title` saying why. They keep the `fg` label: `fg-muted` on the track falls under 4.5:1 (4.3:1 light, 3.8:1 dark). The cursor and the title say it is unavailable. Never use opacity.
 - **Never red for a normal mode.** An armed alarm or a heating AC is the selected segment, not a `danger` fill. `danger` is for the emergency (design.md "Modes are not alarms").
 - **At most five options.** More than five, or options that are not peers, become a `select-native` (`_vendored/select-native/`) in a settings row.
 
 ### As a row's trailing item
 
-A segmented verb cluster can be an [`action-row`](../action-row/)'s one trailing item (design.md action-row). In that case it sits in the row's trailing slot, outside the row's tap target, at 44px per segment:
+A segmented **mode selector** can be an [`action-row`](../action-row/)'s one trailing item (design.md action-row). In that case it sits in the row's trailing slot, outside the row's tap target, at 44px per segment. A cluster of verbs with no selected state is not this: it is an icon-button group (see above):
 
 ```html
 <div class="segmented segmented--verbs action-row-trail" role="group" aria-label="Mode">…</div>

@@ -12,20 +12,22 @@
  * Every other action sits behind ONE trailing 44px kebab, a sibling of the
  * main button so taps never nest. A row may add at most one leading toggle
  * (.action-row-fav) and at most one other visible action (.action-row-verb),
- * only when it is the row's dominant verb. That verb is tinted unless it stops
- * or destroys something: Stop, Delete and Remove take the outlined recipe
- * (.action-row-verb--stop), never the tint (fleet-config#1386, #361). Title:
- * body at 600, one line, ellipsized, never broken mid-word; context: at most
- * one body-sm line in muted. No vertical rules between controls. Other
- * destructive actions live in the row menu, never on the row (the menu is
- * app-side, see README).
+ * only when it is the row's dominant verb. Every visible verb on a row is a
+ * plain, unpainted icon-button next to the kebab: no fill and no border at
+ * rest, the glyph colour is the only state (project-scaffolding#386, owner
+ * decision fleet-config#1420). Run, Live, Wake, Start, Stop, Find all look the
+ * same; the glyph and the aria-label say which. The tint and the outlined
+ * Stop of #1386 are retired. Title: body at 600, one line, ellipsized, never
+ * broken mid-word; context: at most one body-sm line in muted. No vertical
+ * rules between controls. Other destructive actions live in the row menu,
+ * never on the row (the menu is app-side, see README).
  *
  * The accessories are `.icon-button`s (icon-button/, fleet-config#1259): the
  * markup carries both classes and icon-button.css, linked alongside, owns the
  * unpainted box, the glyph states and the target. Here each takes the 44px
  * row box (--icon-btn-box: --row-sm, so the target needs no expansion) and
- * only the row-specific rules below remain: the favorite's glyph swap, the
- * verb's tint (or its outlined stop variant) and the open kebab's accent.
+ * only the row-specific rules below remain: the favorite's glyph swap and the
+ * open kebab's accent. The verb needs none: it is an icon-button at the row box.
  *
  * Geometry: the accessories are real 44x44 boxes sitting side by side with no
  * gap, so their hit rectangles touch but never overlap (design.md "Touch
@@ -194,36 +196,13 @@
 .action-row-fav[aria-pressed="true"] .action-row-fav-off { display: none; }
 .action-row-fav[aria-pressed="true"] .action-row-fav-on { display: inline-block; }
 
-/* The one visible dominant verb (Run on a job row): the tint recipe at the
- * 44px square — the one accessory that is painted, so it overrides
- * icon-button's border, fill, radius and hover glyph colour. */
-.action-row .action-row-verb,
-.action-row .action-row-verb:not(:disabled):hover {
-  color: var(--accent-text);
-}
-.action-row .action-row-verb {
-  margin-right: 4px;
-  border: 1px solid var(--accent-border-soft);
-  border-radius: var(--radius-md);
-  background: var(--accent-soft);
-}
-
-/* The same verb when it stops or destroys something (Stop, Delete, Remove;
- * fleet-config#1386): never the tinted one, even as the row's only visible
- * verb, so the most prominent control on a list of running things is not the
- * one that ends them. The outlined recipe (button-ghost: transparent on a
- * hairline) at the same 44px, radius and margin. The boundary is
- * --control-border so the box still reads at 3:1; the glyph is --ink. It
- * restates the colour under hover and sits after the tint, so it wins at
- * equal specificity. */
-.action-row .action-row-verb--stop,
-.action-row .action-row-verb--stop:not(:disabled):hover {
-  color: var(--ink);
-}
-.action-row .action-row-verb--stop {
-  border-color: var(--control-border);
-  background: transparent;
-}
+/* The one visible dominant verb (Run on a job row) is a plain icon-button at
+ * the 44px square and needs no rule of its own: no fill, no border, glyph
+ * colour from icon-button.css (muted at rest, ink on hover). It sits against
+ * the kebab with no gap, as the touching targets of an icon-button cluster do.
+ * `.action-row-verb--stop` is the retired outlined Stop (fleet-config#1386),
+ * kept as an alias that renders identically so an app that still emits it
+ * does not break on re-vendoring; new markup omits it. */
 
 .action-row .action-row-kebab[aria-expanded="true"],
 .action-row .action-row-kebab[aria-expanded="true"]:not(:disabled):hover {
@@ -247,9 +226,14 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-/* A segmented verb cluster (segmented/ with `segmented--verbs`): 44px per
- * segment, so each glyph segment is a real 44x44 target; the cluster sizes to
- * its segments instead of stretching across the row. */
+/* A verb cluster (Up · Stop · Down, Live · Wake): `.icon-button-group` with no
+ * track, each verb a plain icon-button at the 44px row box, so the gap is 0 and
+ * the targets touch (project-scaffolding#386, fleet-config#1420). */
+.action-row-trail.icon-button-group { --icon-btn-box: var(--row-sm); }
+/* A segmented mode selector (segmented/ with `segmented--verbs`): the choice
+ * has a selected state, so it keeps its track. 44px per segment, so each glyph
+ * segment is a real 44x44 target; the cluster sizes to its segments instead of
+ * stretching across the row. */
 .action-row-trail.segmented { grid-auto-columns: var(--row-sm); }
 
 /* Filter field above a list that can exceed ~12 rows: 44px, a control-border

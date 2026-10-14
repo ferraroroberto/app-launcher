@@ -25,6 +25,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e._geometry import assert_no_overlap
 from tests.e2e.conftest import (
     OVERLAY_OPEN_MS,
+    assert_unpainted_at_rest,
     flush_requests,
     open_row_menu,
     open_session_row,
@@ -225,6 +226,12 @@ def test_coding_tab_offers_manual_start_when_chief_down(
     resume_btn = authed_page.locator("#codingChiefResume")
     expect(start_btn).to_be_visible()
     expect(resume_btn).to_be_visible()
+    # Plain icon-button verbs (fleet-config#1420): named, not painted.
+    expect(start_btn).to_have_attribute("aria-label", "Start chief")
+    expect(resume_btn).to_have_attribute("aria-label", "Resume chief")
+    for verb in (start_btn, resume_btn):
+        expect(verb).to_have_class(re.compile(r"\bicon-button\b"))
+        assert_unpainted_at_rest(authed_page, verb)
     # Start's target and the worker's row below never share a pixel
     # (TOUCH-02, #1238).
     expect(authed_page.locator("#sessionsList .session-open")).to_have_count(1)

@@ -164,11 +164,11 @@ function chiefMenuItems(kebab, alive) {
 }
 
 // The chief's row while no chief runs (#1434, replacing #547's separate
-// "chief: not running" line): the crown avatar, and Start and Resume as tint
-// verbs on the row itself. Start uses the same ensure endpoint as the
-// Board's chat mode; Resume (#633) reattaches the most recent chief
-// conversation, falling back server-side to a fresh spawn when nothing is
-// resumable. restart=true (#1351): if a chief came up meanwhile, it is still
+// "chief: not running" line): the crown avatar, and Start and Resume as plain
+// icon-button verbs on the row itself (fleet-config#1420). Start uses the same
+// ensure endpoint as the Board's chat mode; Resume (#633) reattaches the most
+// recent chief conversation, falling back server-side to a fresh spawn when
+// nothing is resumable. restart=true (#1351): if a chief came up meanwhile, it is still
 // stopped and resumed, as on the Board.
 function stoppedChiefRow() {
   const li = document.createElement('li');
@@ -188,16 +188,16 @@ function stoppedChiefRow() {
   const actions = document.createElement('div');
   actions.className = 'row-actions session-actions';
   [
-    { id: 'codingChiefStart', text: 'Start', resume: false, restart: false,
-      title: 'Start the fleet chief' },
-    { id: 'codingChiefResume', text: 'Resume', resume: true, restart: true,
-      title: 'Reattach the most recent chief conversation' },
+    { id: 'codingChiefStart', text: 'Start', glyph: 'play', resume: false,
+      restart: false, title: 'Start the fleet chief' },
+    { id: 'codingChiefResume', text: 'Resume', glyph: 'rotate-ccw', resume: true,
+      restart: true, title: 'Reattach the most recent chief conversation' },
   ].forEach(function (verb) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = verb.id;
-    btn.className = 'button-tint chief-verb';
-    btn.textContent = verb.text;
+    btn.className = 'icon-button action-row-verb chief-verb';
+    btn.innerHTML = icon(verb.glyph);
     btn.title = verb.title;
     btn.setAttribute('aria-label', verb.text + ' chief');
     btn.addEventListener('click', function () {
