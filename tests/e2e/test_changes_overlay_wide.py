@@ -22,7 +22,9 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import OVERLAY_OPEN_MS, open_row_menu, stable_eval
+from tests.e2e.conftest import (
+    OVERLAY_OPEN_MS, boot_retrying_static_failure, open_row_menu, stable_eval,
+)
 from tests.e2e.test_coding_changes_overlay import AGENTS, CHANGES, _app
 from tests.e2e.test_session_mode_toggle import (
     _mock_git_status,
@@ -66,6 +68,19 @@ _TOPMOST = """
 """
 
 
+def _boot(page: Page, base_url: str) -> None:
+    """Open the page, and open it again if a ``/static/`` file failed (#1611).
+
+    A module that fails to load under gate load stops ``main.js`` or the
+    Coding list's own module, and the page keeps its markup defaults for its
+    whole life: no project row, no session row. No wait recovers that, so the
+    first failure gets one fresh boot.
+    """
+    boot_retrying_static_failure(
+        page, lambda: page.goto(base_url, wait_until="domcontentloaded")
+    )
+
+
 def _open_session_changes(page: Page, base_url: str) -> None:
     _mock_git_status(page)
     _mock_sessions_list(page, [_session_row(_SID, kind="remote", agent="claude", title="Wide changes")])
@@ -79,7 +94,7 @@ def _open_session_changes(page: Page, base_url: str) -> None:
         lambda route: route.fulfill(status=200, content_type="application/json",
                                     body=_json.dumps(_SESSION_FILES)),
     )
-    page.goto(base_url, wait_until="domcontentloaded")
+    _boot(page, base_url)
     _row(page, _SID).locator(".session-open").click()
     expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
     page.locator("#terminalMenu").click()
@@ -117,7 +132,7 @@ def _open_project_changes(page: Page, base_url: str) -> None:
         lambda route: route.fulfill(status=200, content_type="application/json",
                                     body=_json.dumps(CHANGES)),
     )
-    page.goto(base_url, wait_until="domcontentloaded")
+    _boot(page, base_url)
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
     expect(anchor).to_be_enabled(timeout=5_000)
@@ -144,3 +159,32 @@ def test_changes_panel_covers_the_coding_tab_on_a_wide_window(
     assert probes, "the panel has no layout box"
     covered = [p for p in probes if not p["onTop"]]
     assert not covered, f"Coding-tab layers paint over the Changed files panel: {covered}"
+
+
+def test_a_failed_script_load_gets_one_fresh_boot(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    """#1611: the first load of ``apps-coding.js`` is cut. The Coding list's
+    module never runs, so the page has no project row for its whole life; the
+    second boot is the one the row comes from."""
+    if browser_name != "chromium":
+        pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
+    page = authed_page
+    page.set_viewport_size({"width": 1900, "height": 900})
+    navigations: list = []
+    cut: list = []
+    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
+
+    def handle(route):
+        # The page asks for the file more than once per load, so cut every ask
+        # of the first load, not just the first ask.
+        if len(navigations) <= 1:
+            cut.append(1)
+            route.abort()
+        else:
+            route.continue_()
+
+    page.route(re.compile(r".*/static/apps-coding\.js"), handle)
+    _open_project_changes(page, base_url)
+    assert cut, "the script was never requested"
+    expect(page.locator("#changesOverlay")).to_be_visible()
