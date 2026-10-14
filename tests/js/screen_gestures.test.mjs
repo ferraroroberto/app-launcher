@@ -2,14 +2,18 @@
 // keeps the decisions as plain functions, because Playwright's touch
 // emulation only taps. The letterbox + zoom mapping, the tap / long-press /
 // double-tap / pinch / scroll thresholds and the wheel directions are pinned
-// here under plain Node. Invoked by tests/test_screen_gestures.py.
+// here under plain Node, as are the PC cursor's placement (stagePoint, the
+// inverse of the frame mapping) and its shape fallback (#1598). Invoked by
+// tests/test_screen_gestures.py.
 
 import assert from 'node:assert/strict';
 
 const {
-  GESTURE, frameFraction, movedPastTap, isDoubleTap, classifyTwoFinger,
+  GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
   wheelFromDrag, wheelFromWheelEvent, comboKey,
 } = await import('../../app/webapp/static/screen-gestures.js');
+const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
+  '../../app/webapp/static/screen-cursor.js');
 
 const NO_ZOOM = { scale: 1, x: 0, y: 0 };
 
@@ -44,6 +48,44 @@ assert.deepEqual(frameFraction(0, H / 2, Z2, W, H, NW, NH), { x: 0.25, y: 0.5 })
 // No frame drawn yet: nothing to map.
 assert.equal(frameFraction(10, 10, NO_ZOOM, W, H, 0, 0), null);
 assert.equal(frameFraction(10, 10, NO_ZOOM, 0, H, NW, NH), null);
+
+// The cursor's spot (#1598): stagePoint is frameFraction's inverse, with
+// and without zoom, letterbox included.
+const close = (a, b) => Math.abs(a - b) < 1e-6;
+const P = stagePoint(0.25, 0.75, NO_ZOOM, W, H, NW, NH);
+assert.ok(close(P.x, W / 4) && close(P.y, top + drawnH * 0.75), JSON.stringify(P));
+assert.deepEqual(frameFraction(P.x, P.y, NO_ZOOM, W, H, NW, NH), { x: 0.25, y: 0.75 });
+const Pz = stagePoint(0.4, 0.6, Z2, W, H, NW, NH);
+assert.deepEqual(frameFraction(Pz.x, Pz.y, Z2, W, H, NW, NH), { x: 0.4, y: 0.6 });
+// Zoomed 2x about the centre: the frame's centre stays put, so the cursor
+// moves twice as far from it as the picture point it marks would unzoomed.
+const C = stagePoint(0.5, 0.5, Z2, W, H, NW, NH);
+assert.ok(close(C.x, W / 2) && close(C.y, H / 2), JSON.stringify(C));
+// Pillarboxed: the frame's left edge is past the bar, not at the stage's.
+assert.deepEqual(stagePoint(0, 0.5, NO_ZOOM, 1000, 100, 160, 90),
+  { x: (1000 - 160 * 100 / 90) / 2, y: 50 });
+// Panned off the stage while zoomed: not drawn.
+assert.equal(stagePoint(0.1, 0.5, Z2, W, H, NW, NH), null);
+// Off the frame, garbage, or no frame yet: not drawn.
+assert.equal(stagePoint(1.2, 0.5, NO_ZOOM, W, H, NW, NH), null);
+assert.equal(stagePoint(-0.01, 0.5, NO_ZOOM, W, H, NW, NH), null);
+assert.equal(stagePoint(NaN, 0.5, NO_ZOOM, W, H, NW, NH), null);
+assert.equal(stagePoint(undefined, 0.5, NO_ZOOM, W, H, NW, NH), null);
+assert.equal(stagePoint(0.5, 0.5, NO_ZOOM, W, H, 0, 0), null);
+
+// Every shape the server sends has a drawing; anything else is the arrow.
+for (const name of ['arrow', 'text', 'hand', 'busy', 'resize-ns', 'resize-ew',
+  'resize-nwse', 'resize-nesw', 'move', 'not-allowed']) {
+  assert.equal(cursorShape(name), name);
+  assert.ok(CURSOR_SHAPES[name].hot.length === 2, name);
+}
+assert.equal(cursorShape('crosshair'), 'arrow');
+assert.equal(cursorShape('__proto__'), 'arrow');
+assert.equal(cursorShape(undefined), 'arrow');
+assert.equal(cursorSvg('nope'), cursorSvg('arrow'));
+// The hotspot lands on the anchor: the arrow's tip, the I-beam's middle.
+assert.match(cursorSvg('arrow'), /left:-5px;top:-3px/);
+assert.match(cursorSvg('text'), /left:-12px;top:-12px/);
 
 // Tap slop.
 assert.equal(GESTURE.tapSlop, 10);

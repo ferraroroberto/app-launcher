@@ -9,7 +9,7 @@
  * monitor being shown). The frame is drawn `object-fit: contain` inside the
  * stage, then the view's own zoom (translate x/y, then scale) moves it, so a
  * stage point is un-zoomed first and then read against the letterboxed
- * picture.
+ * picture. stagePoint goes the other way, for the PC's cursor.
  */
 
 export const GESTURE = {
@@ -60,6 +60,25 @@ export function frameFraction(qx, qy, zoom, stageW, stageH, natW, natH, clamp) {
     return null;
   }
   return { x: round4(x), y: round4(y) };
+}
+
+/**
+ * The inverse of frameFraction: where the 0-1 frame point (fx, fy) sits on
+ * the stage, as {x, y} in stage-local CSS px, or null when it can't be drawn
+ * (no frame yet, a point off the frame, or zoomed and panned off the stage).
+ * The PC's cursor (#1598) is drawn here, outside the zoom transform, so it
+ * keeps its size while the picture zooms.
+ */
+export function stagePoint(fx, fy, zoom, stageW, stageH, natW, natH) {
+  if (!(stageW > 0 && stageH > 0 && natW > 0 && natH > 0)) return null;
+  if (!(fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1)) return null;
+  const fit = Math.min(stageW / natW, stageH / natH);
+  const drawnW = natW * fit;
+  const drawnH = natH * fit;
+  const x = ((stageW - drawnW) / 2 + fx * drawnW) * zoom.scale + zoom.x;
+  const y = ((stageH - drawnH) / 2 + fy * drawnH) * zoom.scale + zoom.y;
+  if (x < 0 || x > stageW || y < 0 || y > stageH) return null;
+  return { x: x, y: y };
 }
 
 function round4(v) { return Math.round(v * 10000) / 10000; }

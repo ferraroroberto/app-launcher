@@ -114,6 +114,7 @@ life-os.js, life-os-viewer.js, voice.js"]
     JOBSSNAPSHOT["jobs_snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
     DESKCAP["desktop_capture.py\nScreen view: per-monitor BitBlt + JPEG,\nack-paced, only while a viewer is connected (#1520)"]
     DESKIN["desktop_input.py\nScreen control: 0-1 to virtual-desktop mapping,\nthe one SendInput seam, held input released on close (#1521)"]
+    DESKCUR["desktop_cursor.py\nScreen cursor: GetCursorInfo to 0-1 + shape name,\nsent on change, never a bitmap (#1598)"]
     SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
     JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs_preflight.py"]
@@ -183,6 +184,7 @@ life-os.js, life-os-viewer.js, voice.js"]
   R_MISC --> SYSLOAD
   R_DESKTOP -->|"capture only inside a connected WS"| DESKCAP
   R_DESKTOP -->|"input only on the gated WS"| DESKIN
+  R_DESKTOP -->|"cursor only on the gated WS"| DESKCUR
   BOARD --> JOBSSNAPSHOT
   JOBSSNAPSHOT --> JOBSFACADE
   JOBSHISTORY -->|"run.json written here: mark dirty"| JOBSSNAPSHOT

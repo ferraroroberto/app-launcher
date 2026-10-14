@@ -29,6 +29,14 @@
  * is not live: input aimed at a stale frame would land somewhere else.
  * Coordinates are 0-1 within the frame (screen-gestures.js maps them); the
  * server turns them into PC pixels.
+ *
+ * Cursor (#1598). The picture never contains the PC's mouse cursor, so the
+ * server sends it as its own `cursor` messages (0-1 in the frame, a shape
+ * name, visible or not) whenever it moves, frame or no frame. placeCursor()
+ * draws it over the picture with stagePoint(), outside the zoom transform,
+ * so it keeps its size when zoomed; it never takes a touch, and it hides
+ * off the picture, off the stage, while the picture is not live, and when
+ * the PC hides it.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
@@ -36,8 +44,9 @@ import { clearTerminalToken, ensureTerminalToken, terminalJsonApi } from './weba
 import { setAsyncState, staleMessage } from './async-state.js';
 import {
   GESTURE, classifyTwoFinger, comboKey, distance, frameFraction, isDoubleTap,
-  movedPastTap, wheelFromDrag, wheelFromWheelEvent,
+  movedPastTap, stagePoint, wheelFromDrag, wheelFromWheelEvent,
 } from './screen-gestures.js';
+import { cursorShape, cursorSvg } from './screen-cursor.js';
 
 const MAX_ZOOM = 5;
 // The widest frame worth asking for: the phone's long side in device pixels,
@@ -58,6 +67,7 @@ const view = {
   mode: 'view',        // 'view' | 'control'
   live: false,         // a frame is drawn and the desktop is readable
   mods: new Set(),     // sticky modifiers for the next key
+  cursor: null,        // the last cursor message: {x, y, shape, visible}
 };
 
 // The sentinel the hidden input holds, so Backspace on an "empty" field
@@ -225,7 +235,7 @@ async function connect() {
   ws.onmessage = function (event) {
     if (ws !== view.ws) return;
     if (typeof event.data === 'string') {
-      onStatus(event.data);
+      onText(event.data);
       return;
     }
     drawFrame(ws, event.data);
@@ -237,10 +247,15 @@ async function connect() {
   };
 }
 
-function onStatus(text) {
+function onText(text) {
   let msg = null;
   try { msg = JSON.parse(text); } catch (_) { return; }
-  if (!msg || msg.type !== 'status') return;
+  if (!msg) return;
+  if (msg.type === 'status') onStatus(msg);
+  else if (msg.type === 'cursor') onCursor(msg);
+}
+
+function onStatus(msg) {
   if (msg.state === 'unavailable') {
     setLive(false);
     if (view.frameUrl) {
@@ -299,6 +314,8 @@ function onClose(event) {
 function closeSocket() {
   const ws = view.ws;
   view.ws = null;
+  // Where the cursor was is not where it is: draw none until told again.
+  view.cursor = null;
   setLive(false);
   if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
 }
@@ -312,6 +329,7 @@ function clearFrame() {
   if (view.frameUrl) URL.revokeObjectURL(view.frameUrl);
   view.frameUrl = '';
   view.lastFrameAt = 0;
+  placeCursor();
 }
 
 function hideView() {
@@ -347,6 +365,7 @@ function applyZoom() {
   z.y = Math.min(0, Math.max(h - h * z.scale, z.y));
   img.style.transform = z.scale === 1 ? '' :
     'translate(' + z.x + 'px, ' + z.y + 'px) scale(' + z.scale + ')';
+  placeCursor();
 }
 
 // Zoom to `scale` keeping the stage point (qx, qy) where it is.
@@ -357,6 +376,39 @@ function zoomAt(scale, qx, qy) {
   z.y = qy - (qy - z.y) * (next / z.scale);
   z.scale = next;
   applyZoom();
+}
+
+// ----------------------------------------------------------------- cursor
+
+function onCursor(msg) {
+  view.cursor = msg;
+  placeCursor();
+}
+
+// Draw the last cursor message over the picture, or hide the cursor when
+// there is none, it is hidden, its spot is not on screen, or the picture is
+// not live (a locked PC's cursor is not drawn over its last frame).
+function placeCursor() {
+  const el = $('screenCursor');
+  if (!el) return;
+  const img = $('screenImage');
+  const stage = $('screenStage');
+  const c = view.cursor;
+  const at = c && c.visible && view.live && img && stage && !img.hidden
+    ? stagePoint(c.x, c.y, view.zoom, stage.clientWidth, stage.clientHeight,
+      img.naturalWidth, img.naturalHeight)
+    : null;
+  if (!at) {
+    el.hidden = true;
+    return;
+  }
+  const shape = cursorShape(c.shape);
+  if (el.dataset.shape !== shape) {
+    el.innerHTML = cursorSvg(shape);
+    el.dataset.shape = shape;
+  }
+  el.style.transform = 'translate(' + at.x + 'px, ' + at.y + 'px)';
+  el.hidden = false;
 }
 
 // ---------------------------------------------------------------- control
@@ -378,6 +430,7 @@ function setLive(live) {
   if (keys) {
     keys.querySelectorAll('.key-btn').forEach(function (btn) { btn.disabled = !live; });
   }
+  placeCursor();
 }
 
 function setMode(mode) {
