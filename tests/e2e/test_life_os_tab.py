@@ -1653,6 +1653,35 @@ def test_life_os_search_start_new_is_a_plain_plus_and_the_sort_is_full_width(
     assert picker.evaluate("el => el.scrollWidth <= el.clientWidth")
 
 
+@pytest.mark.iphone
+def test_life_os_browse_mode_plus_keeps_its_geometry_in_both_themes(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1588 round 3: in a skill's own list (no search) the + is the same plain
+    44px icon-button at the Conversations head's end, inside the group, at
+    phone and desktop widths, light and dark."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(page)
+    _open_conversations(page, base_url)
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_visible()
+    for theme in ("light", "dark"):
+        page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
+        for width in (390, 1280):
+            page.set_viewport_size({"width": width, "height": 844})
+            assert_min_target(start)
+            assert_no_overlap([page.locator("#lifeOsConvoHead"), start])
+            expect(start).to_have_css("background-color", "rgba(0, 0, 0, 0)")
+            expect(start).to_have_css("border-top-width", "0px")
+            fit = stable_eval(
+                page.locator("#lifeOsConvoGroup"),
+                "g => { const r = g.getBoundingClientRect(),"
+                " b = g.querySelector('#lifeOsConvoStartNew').getBoundingClientRect();"
+                " return b.left >= r.left && b.right <= r.right; }")
+            assert fit, (theme, width, "the + spills out of the Conversations group")
+
+
 @pytest.mark.parametrize("failure", ["unavailable", "forbidden"])
 def test_life_os_search_failure_stays_in_its_group(
     authed_page: Page, base_url: str, failure: str
