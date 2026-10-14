@@ -1061,7 +1061,16 @@
              control; Relevance (the server's rank) shows only while
              searching. -->
         <section id="lifeOsConvoGroup" class="lifeos-convo-group" aria-labelledby="lifeOsConvoHead" hidden>
-          <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
+          <div class="lifeos-group-bar">
+            <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
+            <!-- #1588: while a search shows (hits or none), start a fresh
+                 conversation from here. Narrowed to a skill it starts that
+                 one; spanning every skill it opens the skill picker below. -->
+            <button type="button" id="lifeOsConvoStartNew" class="button-tint lifeos-start-new" data-track="life-search-start-new" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
+              <span>Start new</span>
+            </button>
+          </div>
           <div id="lifeOsConvoSort" class="segmented lifeos-convo-sort" role="group" aria-label="Sort conversations">
             <button type="button" class="segmented-item" data-sort="relevance" data-track="life-sort.relevance" aria-pressed="false">Relevance</button>
             <button type="button" class="segmented-item" data-sort="interaction" data-track="life-sort.interaction" aria-pressed="false">Recent</button>
@@ -1904,6 +1913,25 @@
         </div>
         <div class="detail-actions">
           <button type="button" id="lifeOsConvoSheetResume" class="button-primary detail-save-btn">Resume</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The skill picker behind the search's Start new (#1588), shown when the
+         search spans every skill: a tap on a skill starts a fresh conversation
+         in it (the kebab's path) and closes the sheet. Vendored modal: header
+         ✕, one full-width primary. life-os.js fills the list. -->
+    <dialog id="lifeOsStartPicker" class="detail-dialog lifeos-start-picker" aria-labelledby="lifeOsStartPickerTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsStartPickerTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Start new in…</h2>
+          <button type="button" id="lifeOsStartPickerClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="lifeOsStartPickerList" class="settings-group settings-group--nested lifeos-sheet-links"></div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsStartPickerDone" class="button-primary detail-save-btn">Close</button>
         </div>
       </div>
     </dialog>

@@ -1042,6 +1042,63 @@ function syncConvoGroup() {
   }
   syncSkillsHead();
   syncConvoSort();
+  syncStartNew();
+}
+
+// The search's Start new (#1588) shows while a conversation search does, hits
+// or none: it is the way out of a search that found nothing. Narrowed to a
+// skill it names that skill; spanning every skill it opens the picker.
+function syncStartNew() {
+  const btn = els.lifeOsConvoStartNew;
+  if (!btn) return;
+  btn.hidden = convoMode !== 'search';
+  if (btn.hidden) return;
+  if (convoScope) {
+    btn.setAttribute('aria-label', 'Start a new conversation with ' + convoScope.name);
+    btn.removeAttribute('aria-haspopup');
+  } else {
+    btn.setAttribute('aria-label', 'Start a new conversation: choose a skill');
+    btn.setAttribute('aria-haspopup', 'dialog');
+  }
+}
+
+// Start new through the kebab's path (launchSkill's opts.fresh), so the
+// toolbar's model, Detached and the terminal size apply exactly as there. The
+// search text is not sent: it only narrows what the owner is looking for.
+function startNewFromSearch() {
+  if (convoScope) {
+    const skill = (state.lifeOsSkills || []).find(function (s) {
+      return s.id === convoScope.id;
+    }) || { id: convoScope.id, name: convoScope.name };
+    launchSkill(skill, { fresh: true });
+    return;
+  }
+  openStartPicker();
+}
+
+function openStartPicker() {
+  const d = els.lifeOsStartPicker;
+  if (!d || !d.showModal) return;
+  const list = els.lifeOsStartPickerList;
+  list.replaceChildren.apply(list, state.lifeOsSkills.slice().sort(compareSkills).map(
+    function (s) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'settings-row lifeos-start-pick';
+      row.dataset.id = s.id;
+      row.setAttribute('aria-label', 'Start a new conversation with ' + s.name);
+      const label = document.createElement('span');
+      label.className = 'settings-row-label';
+      label.textContent = s.name;
+      row.appendChild(skillAvatar(s, false));
+      row.appendChild(label);
+      row.addEventListener('click', function () {
+        d.close();
+        launchSkill(s, { fresh: true });
+      });
+      return row;
+    }));
+  if (!d.open) d.showModal();
 }
 
 // "Skills (n)" heads the skill rows only while the Conversations group shows
@@ -1657,6 +1714,11 @@ export function wireLifeOs() {
       if (tab) setConvoSort(tab.dataset.sort);
     });
   }
+  if (els.lifeOsConvoStartNew) {
+    els.lifeOsConvoStartNew.addEventListener('click', startNewFromSearch);
+  }
+  wireSheet(els.lifeOsStartPicker,
+    [els.lifeOsStartPickerClose, els.lifeOsStartPickerDone]);
   wireConvoSheet();
   wireConvoViewer();
   // Detached/Resume are the launch toolbar's own switches (issue #355: no
