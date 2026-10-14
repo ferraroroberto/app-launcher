@@ -43,6 +43,7 @@ the uuid-named path rides the prompt as ``--brief <path>``.
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,6 +68,7 @@ from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.webapp_config import WebappConfig
 
+from app.webapp.hot_poll import BuildSteps, hot_poll
 from app.webapp.routers import board_chief
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
@@ -197,17 +199,26 @@ def _mark_active_backlog(
 
 @router.get("/api/board")
 async def get_board(request: Request) -> Dict[str, Any]:
-    """The five columns + source health, cheap enough for the 5s poll."""
-    cfg: WebappConfig = request.app.state.webapp_config
+    """The five columns + source health, cheap enough for the 5s poll.
 
+    Built through :class:`app.webapp.hot_poll.HotPoll` (#1597): ``stale``
+    is ``true`` when the build ran past its deadline and this is the last
+    good board, ``age_seconds`` old (``generated_at`` says when it was built).
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    poll = hot_poll(request.app.state, "GET /api/board")
+    return await poll.get(functools.partial(_build_board_payload, cfg))
+
+
+async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str, Any]:
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
     # No quota here (#1433): both tabs' usage meters read ``/api/rate-limits``,
     # one endpoint, so the two can never show different readings.
     live_read, state, active_issues, job_cards = await asyncio.gather(
-        asyncio.to_thread(_read_live_sessions, cfg.session_host_port),
-        asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file)),
-        asyncio.to_thread(board.read_active_issues, active_issues_file),
-        asyncio.to_thread(board.jobs_attention),
+        steps.run("read_live_sessions", _read_live_sessions, cfg.session_host_port),
+        steps.run("read_sessions_state", board.read_sessions_state, Path(cfg.sessions_state_file)),
+        steps.run("read_active_issues", board.read_active_issues, active_issues_file),
+        steps.run("jobs_attention", board.jobs_attention),
     )
     github = github_client.snapshot()
     live, live_error = live_read
@@ -215,7 +226,8 @@ async def get_board(request: Request) -> Dict[str, Any]:
     live = board_chief._reconcile_chief_labels(live, state["rows"])
     # Claim owner liveness (#948): an unreadable session list is None, so the
     # contract answers unknown rather than calling every owner dead.
-    claim_states = await asyncio.to_thread(
+    claim_states = await steps.run(
+        "classify_claims",
         active_issue_claims.classify_claims,
         active_issues["rows"],
         live_session_ids=(
@@ -226,7 +238,8 @@ async def get_board(request: Request) -> Dict[str, Any]:
     # Per-card transcript reads — unbounded in session count and re-run every
     # 5s while the Board is open, so it goes off the loop like the five
     # inputs above (#881).
-    session_cards = await asyncio.to_thread(
+    session_cards = await steps.run(
+        "merge_sessions",
         board.merge_sessions,
         live, state["rows"],
         active_issue_repos=board.active_issue_repos(active_issues["rows"], claim_states),
@@ -236,7 +249,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
     # for a live Claude PTY session the Coding tab linked fine (#1096). Same
     # bounded transcript scan, off the loop and memoized in _helpers, so the
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
-    await asyncio.to_thread(attach_provider_web_urls, session_cards)
+    await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
 

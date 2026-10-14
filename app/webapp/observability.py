@@ -61,7 +61,7 @@ def ensure_slow_log_handler() -> None:
     """Attach the slow-requests.log file handler exactly once. Idempotent —
     safe to call from ``create_app()`` on every boot. Without a file handler
     the breadcrumbs would vanish into the tray's DEVNULL exactly when they
-    matter."""
+    matter. INFO, so the hot polls' step timings (#1597) land here too."""
     if any(
         isinstance(h, logging.FileHandler)
         and Path(h.baseFilename).resolve() == _SLOW_LOG_PATH.resolve()
@@ -71,12 +71,12 @@ def ensure_slow_log_handler() -> None:
     try:
         _SLOW_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         fh = logging.FileHandler(_SLOW_LOG_PATH, encoding="utf-8")
-        fh.setLevel(logging.WARNING)
+        fh.setLevel(logging.INFO)
         fh.setFormatter(
             logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
         )
         slow_logger.addHandler(fh)
-        slow_logger.setLevel(logging.WARNING)
+        slow_logger.setLevel(logging.INFO)
     except OSError as exc:
         logger.warning(f"⚠️  Could not open {_SLOW_LOG_PATH}: {exc}")
 

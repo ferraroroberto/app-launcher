@@ -15,6 +15,7 @@ for its own webhook/run-store split.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import os
@@ -42,6 +43,7 @@ from src.session_model import attach_models
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 from src.webauthn_gate import WebAuthnGate
 
+from app.webapp.hot_poll import BuildSteps, hot_poll
 from app.webapp.middleware import (
     LOOPBACK_HOSTS,
     client_in_tailnet,
@@ -130,22 +132,31 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     device has answered yet, fleet-wide, so the Board tab's badge counts them
     from every tab; ``None`` when the plan can't be read. It is computed from
     the same plan reader and answered marks as ``/api/board/chief-plan``.
+
+    Built through :class:`app.webapp.hot_poll.HotPoll` (#1597): ``stale``
+    is ``true`` when the build ran past its deadline and this is the last
+    good list, ``age_seconds`` old.
     """
     cfg: WebappConfig = request.app.state.webapp_config
+    poll = hot_poll(request.app.state, "GET /api/claude-code/sessions")
+    return await poll.get(functools.partial(_build_sessions_payload, cfg))
+
+
+async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str, Any]:
     try:
-        sessions = await asyncio.to_thread(
-            session_client.list_sessions, cfg.session_host_port
+        sessions = await steps.run(
+            "list_sessions", session_client.list_sessions, cfg.session_host_port
         )
     except session_client.SessionHostError as exc:
         logger.debug(f"session list failed: {exc}")
         sessions = []
     if sessions:
-        await asyncio.to_thread(attach_provider_web_urls, sessions)
-        state = await asyncio.to_thread(
-            board.read_sessions_state, Path(cfg.sessions_state_file)
+        await steps.run("attach_provider_web_urls", attach_provider_web_urls, sessions)
+        state = await steps.run(
+            "read_sessions_state", board.read_sessions_state, Path(cfg.sessions_state_file)
         )
-        columns = await asyncio.to_thread(
-            _session_board_columns, cfg, sessions, state["rows"]
+        columns = await steps.run(
+            "session_board_columns", _session_board_columns, cfg, sessions, state["rows"]
         )
         sessions = board.attach_shared_names(sessions, state["rows"])
         # The model's display name (#1383), for the chat header's pill.
@@ -155,7 +166,7 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
             sess["board_column"] = placed["column"] if placed else None
             sess["board_status"] = placed["status"] if placed else None
             sess["board_age_seconds"] = placed.get("age_seconds") if placed else None
-    questions = await asyncio.to_thread(_chief_questions, cfg)
+    questions = await steps.run("chief_questions", _chief_questions, cfg)
     return {"sessions": sessions, "chief_questions": questions}
 
 
