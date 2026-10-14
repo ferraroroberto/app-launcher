@@ -9,7 +9,9 @@
  * monitor being shown). The frame is drawn `object-fit: contain` inside the
  * stage, then the view's own zoom (translate x/y, then scale) moves it, so a
  * stage point is un-zoomed first and then read against the letterboxed
- * picture. stagePoint goes the other way, for the PC's cursor.
+ * picture. stagePoint goes the other way, for the PC's cursor. Trackpad
+ * mode (#1599) moves its own cursor by how far the finger travels
+ * (padStep), and pans a zoomed picture to keep it in view (followPan).
  */
 
 export const GESTURE = {
@@ -26,6 +28,19 @@ export const GESTURE = {
   scrollSlop: 12,
   // Wheel units per CSS px a two-finger drag travels (120 = one notch).
   wheelPerPx: 4,
+  // Trackpad (#1599): the cursor moves this many CSS px of the picture per
+  // px the finger travels, from padGainSlow for a finger at rest up to
+  // padGainFast at padFastSpeed (px/ms) and beyond: slow is precise, a
+  // flick crosses the screen.
+  padGainSlow: 0.8,
+  padGainFast: 2.5,
+  padFastSpeed: 1.5,
+  // Zoomed in, the cursor stays at least this far (CSS px) inside the stage.
+  padFollowMargin: 48,
+  // After the last input sent, the server's cursor messages still describe
+  // the cursor on its way there for about this long (ms): the locally moved
+  // cursor is drawn until then.
+  padLeadMs: 400,
 };
 
 /**
@@ -126,6 +141,56 @@ export function wheelFromWheelEvent(deltaX, deltaY, deltaMode) {
   // Pixels: a mouse notch is ~100px; lines: ~3 per notch; pages: a lot.
   const unit = deltaMode === 1 ? 40 : deltaMode === 2 ? 1200 : 1.2;
   return { dx: Math.round(deltaX * unit) || 0, dy: Math.round(-deltaY * unit) || 0 };
+}
+
+/** Trackpad: the gain for a finger moving at `speed` CSS px/ms. */
+export function padGain(speed) {
+  const t = Math.min(1, Math.max(0, speed / GESTURE.padFastSpeed)) || 0;
+  return GESTURE.padGainSlow + (GESTURE.padGainFast - GESTURE.padGainSlow) * t;
+}
+
+/**
+ * Trackpad (#1599): the cursor, 0-1 in the frame, after the finger moved
+ * (dx, dy) CSS px in `dtMs`. The step is in px of the picture as drawn
+ * (drawnW x drawnH unzoomed), divided by the zoom, so the cursor crosses
+ * the stage at the same speed zoomed or not. It stops at the frame's edge.
+ */
+export function padStep(cursor, dx, dy, dtMs, drawnW, drawnH, scale) {
+  if (!(drawnW > 0 && drawnH > 0)) return cursor;
+  // Coalesced pointer events can arrive a few ms apart: no speed spikes.
+  const speed = Math.hypot(dx, dy) / Math.max(dtMs || 0, 8);
+  const gain = padGain(speed) / (scale > 0 ? scale : 1);
+  return {
+    x: round4(Math.min(1, Math.max(0, cursor.x + dx * gain / drawnW))),
+    y: round4(Math.min(1, Math.max(0, cursor.y + dy * gain / drawnH))),
+  };
+}
+
+/**
+ * Zoomed in, the pan that keeps the trackpad cursor in view: given the
+ * cursor's unzoomed stage point (bx, by), the zoom's x/y moved just enough
+ * that it sits `margin` px (at most a quarter of the stage) inside the
+ * stage, or unchanged when it already does. The caller then clamps the pan
+ * so the picture still covers the stage, which lets the cursor reach the
+ * stage's edge at the picture's own edge.
+ */
+export function followPan(zoom, bx, by, stageW, stageH, margin) {
+  const axis = function (base, offset, size) {
+    const m = Math.min(margin, size / 4);
+    const at = base * zoom.scale + offset;
+    if (at < m) return m - base * zoom.scale;
+    if (at > size - m) return size - m - base * zoom.scale;
+    return offset;
+  };
+  return { x: axis(bx, zoom.x, stageW), y: axis(by, zoom.y, stageH) };
+}
+
+/**
+ * The Control style a device remembers (#1599): what the storage key held,
+ * or direct touch for a first use, a blocked storage (null) or junk.
+ */
+export function controlStyle(stored) {
+  return stored === 'trackpad' ? 'trackpad' : 'touch';
 }
 
 /**

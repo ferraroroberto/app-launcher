@@ -37,14 +37,26 @@
  * so it keeps its size when zoomed; it never takes a touch, and it hides
  * off the picture, off the stage, while the picture is not live, and when
  * the PC hides it.
+ *
+ * Trackpad (#1599). Control has two styles, picked by the Touch / Trackpad
+ * switch beside it: Touch is the above, Trackpad works like a laptop's. One
+ * finger moves the cursor (view.pad, 0-1 in the frame) by how far it
+ * travels, wherever it lands; a tap clicks at the cursor, two taps
+ * double-click there, a long-press lifted right-clicks there and a
+ * long-press then a move drags with the left button held. Two fingers
+ * scroll at the cursor or pinch, and a zoomed picture pans to keep the
+ * cursor in view. The style is remembered per device and applies when
+ * Control is picked; the view still opens in View. The overlay draws the
+ * server's cursor, except while the finger is moving it and its messages
+ * lag behind: then the locally moved one, which is where it is going.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
 import { clearTerminalToken, ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { setAsyncState, staleMessage } from './async-state.js';
 import {
-  GESTURE, classifyTwoFinger, comboKey, distance, frameFraction, isDoubleTap,
-  movedPastTap, stagePoint, wheelFromDrag, wheelFromWheelEvent,
+  GESTURE, classifyTwoFinger, comboKey, controlStyle, distance, followPan, frameFraction,
+  isDoubleTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
 } from './screen-gestures.js';
 import { cursorShape, cursorSvg } from './screen-cursor.js';
 
@@ -54,6 +66,8 @@ const MAX_ZOOM = 5;
 const MAX_FRAME_WIDTH = 1920;
 const POPUP_NAME = 'launcher-screen';
 const POPUP_FEATURES = 'popup,width=1280,height=760';
+// The last Control style used on this device (#1599).
+const CONTROL_KEY = 'launcher.screenControlMode';
 
 const view = {
   open: false,
@@ -65,9 +79,12 @@ const view = {
   lastFrameAt: 0,
   zoom: { scale: 1, x: 0, y: 0 },
   mode: 'view',        // 'view' | 'control'
+  control: 'touch',    // Control's style: 'touch' | 'trackpad'
   live: false,         // a frame is drawn and the desktop is readable
   mods: new Set(),     // sticky modifiers for the next key
   cursor: null,        // the last cursor message: {x, y, shape, visible}
+  pad: null,           // the trackpad's cursor, {x, y} 0-1 in the frame
+  padSentAt: 0,        // when input that moves the PC's cursor last went out
 };
 
 // The sentinel the hidden input holds, so Backspace on an "empty" field
@@ -335,6 +352,7 @@ function clearFrame() {
 function hideView() {
   view.open = false;
   setMode('view');
+  view.pad = null;
   closeSocket();
   clearFrame();
   const dialog = $('screenView');
@@ -382,18 +400,46 @@ function zoomAt(scale, qx, qy) {
 
 function onCursor(msg) {
   view.cursor = msg;
+  syncPad();
   placeCursor();
 }
 
-// Draw the last cursor message over the picture, or hide the cursor when
-// there is none, it is hidden, its spot is not on screen, or the picture is
-// not live (a locked PC's cursor is not drawn over its last frame).
+function isPad() {
+  return view.mode === 'control' && view.control === 'trackpad';
+}
+
+// The trackpad's cursor leads while a finger moves it and until the
+// server's messages have caught up with the last input sent.
+function padLeads() {
+  return (!!gesture && gesture.kind.startsWith('pad')) ||
+    Date.now() - view.padSentAt < GESTURE.padLeadMs;
+}
+
+// Take the server's cursor as the trackpad's whenever it is not leading,
+// so a move of the PC's own mouse is where the next drag starts.
+function syncPad() {
+  const c = view.cursor;
+  if (!isPad() || padLeads() || !c || !c.visible) return;
+  if (c.x >= 0 && c.x <= 1 && c.y >= 0 && c.y <= 1) view.pad = { x: c.x, y: c.y };
+}
+
+// The cursor to draw: the server's, or in trackpad mode the local one while
+// it leads or the server has none to show (it must always be visible there).
+function drawnCursor() {
+  const c = view.cursor && view.cursor.visible ? view.cursor : null;
+  if (!isPad() || !view.pad || (c && !padLeads())) return c;
+  return { x: view.pad.x, y: view.pad.y, shape: c ? c.shape : 'arrow', visible: true };
+}
+
+// Draw the cursor over the picture, or hide it when there is none, it is
+// hidden, its spot is not on screen, or the picture is not live (a locked
+// PC's cursor is not drawn over its last frame).
 function placeCursor() {
   const el = $('screenCursor');
   if (!el) return;
   const img = $('screenImage');
   const stage = $('screenStage');
-  const c = view.cursor;
+  const c = drawnCursor();
   const at = c && c.visible && view.live && img && stage && !img.hidden
     ? stagePoint(c.x, c.y, view.zoom, stage.clientWidth, stage.clientHeight,
       img.naturalWidth, img.naturalHeight)
@@ -421,7 +467,21 @@ function sendInput(msg) {
     return false;
   }
   ws.send(JSON.stringify(msg));
+  if ('x' in msg) notePadSent();
   return true;
+}
+
+// Input that moves the PC's cursor just went out: the trackpad's cursor
+// leads for a while, then the server's takes over again.
+let padSettle = null;
+function notePadSent() {
+  view.padSentAt = Date.now();
+  if (padSettle) clearTimeout(padSettle);
+  padSettle = setTimeout(function () {
+    padSettle = null;
+    syncPad();
+    placeCursor();
+  }, GESTURE.padLeadMs);
 }
 
 function setLive(live) {
@@ -438,6 +498,11 @@ function setMode(mode) {
     // Lift a drag in progress while input can still go out.
     cancelGesture();
     setKeysOpen(false);
+  } else if (view.mode !== 'control') {
+    // Into Control: the style last used on this device.
+    let stored = null;
+    try { stored = localStorage.getItem(CONTROL_KEY); } catch (_) { /* storage blocked */ }
+    view.control = controlStyle(stored);
   }
   view.mode = mode;
   const dialog = $('screenView');
@@ -451,6 +516,36 @@ function setMode(mode) {
   }
   const kb = $('screenKeyboard');
   if (kb) kb.hidden = mode !== 'control';
+  renderControl();
+}
+
+// Touch or Trackpad, picked on the switch: remembered for the next time
+// Control is picked on this device.
+function setControl(style) {
+  if (style === view.control) return;
+  cancelGesture();
+  view.control = controlStyle(style);
+  try { localStorage.setItem(CONTROL_KEY, view.control); } catch (_) { /* storage blocked */ }
+  renderControl();
+}
+
+function renderControl() {
+  const dialog = $('screenView');
+  if (dialog) dialog.dataset.control = view.control;
+  const picker = $('screenControl');
+  if (picker) {
+    picker.hidden = view.mode !== 'control';
+    picker.querySelectorAll('.segmented-item').forEach(function (btn) {
+      const active = btn.dataset.control === view.control;
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+  if (isPad()) {
+    // The trackpad's cursor starts on the PC's, or mid-picture.
+    if (!view.pad) view.pad = { x: 0.5, y: 0.5 };
+    syncPad();
+  }
+  placeCursor();
 }
 
 // Where a stage point lands on the frame, 0-1, or null off the picture.
@@ -497,8 +592,12 @@ function cancelGesture() {
     flushMove();
     const at = framePoint(gesture.last, true);
     if (at) sendInput({ type: 'up', button: 'left', x: at.x, y: at.y });
+  } else if (gesture.kind === 'pad-drag' && view.pad) {
+    flushMove();
+    sendInput({ type: 'up', button: 'left', x: view.pad.x, y: view.pad.y });
   }
   gesture = null;
+  showHeld(false);
 }
 
 function controlDown(pointers, e, pt) {
@@ -542,20 +641,26 @@ function controlMove(pointers, pt) {
     if (at) queueMove({ type: 'move', x: at.x, y: at.y });
     return;
   }
-  if (gesture.kind === 'two' && pointers.size === 2) {
-    const now = twoFingerState(pointers);
-    if (!gesture.cls) gesture.cls = classifyTwoFinger(gesture.start, now);
-    if (gesture.cls === 'pinch') {
-      pinchTo(gesture.scale0, gesture.start, now, gesture.lastMid);
-    } else if (gesture.cls === 'scroll') {
-      const at = framePoint(now.mid, true);
-      const wheel = wheelFromDrag(now.mid.x - gesture.lastMid.x, now.mid.y - gesture.lastMid.y);
-      if (at && (wheel.dx || wheel.dy)) {
-        queueMove({ type: 'scroll', x: at.x, y: at.y, dx: wheel.dx, dy: wheel.dy });
-      }
+  twoFingerMove(pointers);
+}
+
+// Two fingers, in either Control style: a pinch zooms and pans locally, a
+// drag scrolls the PC's wheel under the fingers (Touch) or at the cursor
+// (Trackpad).
+function twoFingerMove(pointers) {
+  if (gesture.kind !== 'two' || pointers.size !== 2) return;
+  const now = twoFingerState(pointers);
+  if (!gesture.cls) gesture.cls = classifyTwoFinger(gesture.start, now);
+  if (gesture.cls === 'pinch') {
+    pinchTo(gesture.scale0, gesture.start, now, gesture.lastMid);
+  } else if (gesture.cls === 'scroll') {
+    const at = isPad() ? view.pad : framePoint(now.mid, true);
+    const wheel = wheelFromDrag(now.mid.x - gesture.lastMid.x, now.mid.y - gesture.lastMid.y);
+    if (at && (wheel.dx || wheel.dy)) {
+      queueMove({ type: 'scroll', x: at.x, y: at.y, dx: wheel.dx, dy: wheel.dy });
     }
-    gesture.lastMid = now.mid;
   }
+  gesture.lastMid = now.mid;
 }
 
 function controlUp(pointers, pt) {
@@ -578,6 +683,146 @@ function controlUp(pointers, pt) {
   } else if (gesture.kind === 'two') {
     // One finger lifting ends the two-finger gesture; the other must not
     // start a drag.
+    gesture = { kind: 'spent' };
+  }
+  if (pointers.size === 0) gesture = null;
+}
+
+// ---------------------------------------------------------------- trackpad
+
+function showHeld(held) {
+  const el = $('screenCursor');
+  if (el) el.classList.toggle('held', held);
+}
+
+// The picture's drawn size, unzoomed (object-fit: contain), or null.
+function drawnSize() {
+  const img = $('screenImage');
+  const stage = $('screenStage');
+  if (!img || !stage || img.hidden || !(img.naturalWidth > 0 && img.naturalHeight > 0)) return null;
+  const fit = Math.min(stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight);
+  return { w: img.naturalWidth * fit, h: img.naturalHeight * fit };
+}
+
+// Put the trackpad's cursor at `pad`, draw it, and pan a zoomed picture so
+// it stays in view.
+function setPad(pad) {
+  view.pad = pad;
+  const stage = $('screenStage');
+  const img = $('screenImage');
+  if (view.zoom.scale > 1 && stage && img) {
+    const base = stagePoint(pad.x, pad.y, { scale: 1, x: 0, y: 0 }, stage.clientWidth,
+      stage.clientHeight, img.naturalWidth, img.naturalHeight);
+    if (base) {
+      const pan = followPan(view.zoom, base.x, base.y, stage.clientWidth, stage.clientHeight,
+        GESTURE.padFollowMargin);
+      view.zoom.x = pan.x;
+      view.zoom.y = pan.y;
+      applyZoom();   // clamps the pan, and draws the cursor
+      return;
+    }
+  }
+  placeCursor();
+}
+
+// The finger moved from `from` to `to`: move the cursor by as much, scaled,
+// and the PC's with it. Nothing moves at a stale picture.
+function movePad(from, to) {
+  const size = drawnSize();
+  if (!view.live || !view.pad || !size) return;
+  setPad(padStep(view.pad, to.x - from.x, to.y - from.y, to.t - from.t,
+    size.w, size.h, view.zoom.scale));
+  queueMove({ type: 'move', x: view.pad.x, y: view.pad.y });
+}
+
+// The gesture in flight in Trackpad (besides 'two' and 'spent' above):
+//   {kind: 'pad', start, last, from, timer, held}  one finger, a tap or
+//       long-press so far; `from` is the cursor where it began, and `held`
+//       is set once the long-press time passes without moving off
+//   {kind: 'pad-move', last}   moving the cursor, no button
+//   {kind: 'pad-drag', last}   the left button is down at the cursor
+function padDown(pointers, e, pt) {
+  if (pointers.size === 1) {
+    if (!view.pad) view.pad = { x: 0.5, y: 0.5 };
+    if (e.pointerType === 'mouse' && e.button === 2) {
+      sendInput({ type: 'click', button: 'right', x: view.pad.x, y: view.pad.y });
+      gesture = { kind: 'spent' };
+      return;
+    }
+    gesture = {
+      kind: 'pad',
+      start: pt,
+      last: pt,
+      from: view.pad,
+      held: false,
+      timer: setTimeout(function () {
+        if (!gesture || gesture.kind !== 'pad') return;
+        // A finger resting is not a move: back to where the press began.
+        gesture.held = true;
+        gesture.timer = null;
+        setPad(gesture.from);
+        queueMove({ type: 'move', x: gesture.from.x, y: gesture.from.y });
+        showHeld(true);
+      }, GESTURE.longPressMs),
+    };
+  } else if (pointers.size === 2) {
+    // The first finger's few px before the second landed were not a move.
+    if (gesture && gesture.kind === 'pad') setPad(gesture.from);
+    cancelGesture();
+    const p = twoFingerState(pointers);
+    gesture = { kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null };
+  }
+}
+
+function padMove(pointers, pt) {
+  if (!gesture) return;
+  if (gesture.kind === 'pad') {
+    if (movedPastTap(gesture.start, pt)) {
+      if (gesture.timer) clearTimeout(gesture.timer);
+      if (gesture.held) {
+        showHeld(false);
+        flushMove();
+        if (!view.pad || !sendInput({ type: 'down', button: 'left', x: view.pad.x, y: view.pad.y })) {
+          gesture = { kind: 'spent' };
+          return;
+        }
+        gesture = { kind: 'pad-drag', last: gesture.last };
+      } else {
+        gesture = { kind: 'pad-move', last: gesture.last };
+      }
+    } else if (gesture.held) {
+      // Held: the cursor stays put until the finger moves off.
+      gesture.last = pt;
+      return;
+    }
+  }
+  if (gesture.kind === 'pad' || gesture.kind === 'pad-move' || gesture.kind === 'pad-drag') {
+    // The cursor follows from the first pixel; a tap puts it back.
+    movePad(gesture.last, pt);
+    gesture.last = pt;
+    return;
+  }
+  twoFingerMove(pointers);
+}
+
+function padUp(pointers) {
+  if (!gesture) return;
+  if (gesture.kind === 'pad') {
+    if (gesture.timer) clearTimeout(gesture.timer);
+    // A tap clicks where the cursor was when it began, so a second tap soon
+    // after lands on the same pixel: a double click. A held one right-clicks.
+    const at = gesture.from;
+    const button = gesture.held ? 'right' : 'left';
+    gesture = null;
+    showHeld(false);
+    setPad(at);
+    flushMove();   // a jitter's move goes before the click, never after
+    sendInput({ type: 'click', button: button, x: at.x, y: at.y });
+  } else if (gesture.kind === 'pad-drag') {
+    cancelGesture();
+  } else if (gesture.kind === 'pad-move') {
+    gesture = null;
+  } else if (gesture.kind === 'two') {
     gesture = { kind: 'spent' };
   }
   if (pointers.size === 0) gesture = null;
@@ -763,7 +1008,7 @@ function wireStage(stage) {
 
   function local(e) {
     const r = stage.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: e.clientX - r.left, y: e.clientY - r.top, t: e.timeStamp };
   }
 
   stage.addEventListener('pointerdown', function (e) {
@@ -772,7 +1017,7 @@ function wireStage(stage) {
     const pt = local(e);
     pointers.set(e.pointerId, pt);
     if (view.mode === 'control') {
-      controlDown(pointers, e, pt);
+      if (isPad()) padDown(pointers, e, pt); else controlDown(pointers, e, pt);
       return;
     }
     if (pointers.size === 2) {
@@ -786,7 +1031,7 @@ function wireStage(stage) {
     const now = local(e);
     pointers.set(e.pointerId, now);
     if (view.mode === 'control') {
-      controlMove(pointers, now);
+      if (isPad()) padMove(pointers, now); else controlMove(pointers, now);
       return;
     }
     if (pointers.size === 2 && pinch) {
@@ -805,6 +1050,7 @@ function wireStage(stage) {
     if (pointers.size < 2) pinch = null;
     if (view.mode === 'control') {
       if (e.type === 'pointercancel') cancelGesture();
+      else if (isPad()) padUp(pointers);
       else controlUp(pointers, pt);
     }
   };
@@ -815,7 +1061,7 @@ function wireStage(stage) {
     const q = local(e);
     // A trackpad pinch arrives as a ctrl+wheel: always a local zoom.
     if (view.mode === 'control' && !e.ctrlKey) {
-      const at = framePoint(q, true);
+      const at = isPad() ? view.pad : framePoint(q, true);
       const wheel = wheelFromWheelEvent(e.deltaX, e.deltaY, e.deltaMode);
       if (at && (wheel.dx || wheel.dy)) {
         queueMove({ type: 'scroll', x: at.x, y: at.y, dx: wheel.dx, dy: wheel.dy });
@@ -849,6 +1095,13 @@ export function wireScreenView() {
     modePicker.addEventListener('click', function (e) {
       const btn = e.target.closest('.segmented-item');
       if (btn && btn.dataset.mode && btn.dataset.mode !== view.mode) setMode(btn.dataset.mode);
+    });
+  }
+  const controlPicker = $('screenControl');
+  if (controlPicker) {
+    controlPicker.addEventListener('click', function (e) {
+      const btn = e.target.closest('.segmented-item');
+      if (btn && btn.dataset.control) setControl(btn.dataset.control);
     });
   }
   wireKeyboard();

@@ -14,6 +14,9 @@ Control (#1521): in Control mode a tap, double-tap, long-press and drag send
 the input messages the stub records, with the tapped spot as 0-1 in the
 frame; View mode sends nothing; the keyboard types text and sticky-modifier
 combos. No input reaches a PC: the stub socket is the only receiver.
+
+Trackpad (#1599): the finger moves a cursor by how far it travels, taps
+click at the cursor, and the Control style is remembered per device.
 """
 from __future__ import annotations
 
@@ -503,3 +506,152 @@ def test_a_control_tap_on_the_cursor_still_clicks_the_pc(
     wait_until(page, lambda: len(seen["inputs"]) >= 1, "the click through the cursor")
     click = seen["inputs"][0]
     assert click["type"] == "click" and _near(click["x"], 0.5) and _near(click["y"], 0.5), click
+
+
+# ------------------------------------------------------------ trackpad (#1599)
+#
+# Trackpad moves the cursor by how far the finger travels, wherever it lands,
+# and clicks at the cursor. Where the cursor is, is read back from the move
+# messages the stub records, and the drawn overlay is checked against them.
+
+
+def _drag(page: Page, start: Dict[str, float], dx: float, steps: int = 3) -> None:
+    _pointer(page, "pointerdown", start)
+    for i in range(1, steps + 1):
+        _pointer(page, "pointermove", {"x": start["x"] + dx * i / steps, "y": start["y"]})
+    _pointer(page, "pointerup", {"x": start["x"] + dx, "y": start["y"]})
+
+
+def _settled(page: Page, seen: Dict[str, List], what: str) -> None:
+    """Moves coalesce per animation frame: wait until the newest one the PC
+    got is where the cursor is drawn (it is drawn at once, so the two agree
+    only once the drag's last move is in)."""
+    def there() -> bool:
+        moves = [m for m in seen["inputs"] if m["type"] == "move"]
+        if not moves:
+            return False
+        want = page.evaluate(_ZOOMED_POINT_JS, [moves[-1]["x"], moves[-1]["y"]])
+        got = page.evaluate(_CURSOR_JS)
+        return (not got["hidden"] and abs(got["x"] - want["x"]) <= 1
+                and abs(got["y"] - want["y"]) <= 1)
+
+    wait_until(page, there, what)
+
+
+def _held(page: Page) -> None:
+    wait_until(
+        page,
+        lambda: page.evaluate("document.getElementById('screenCursor').classList.contains('held')"),
+        "the long-press to hold",
+    )
+
+
+def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
+    authed_page: Page, base_url: str
+) -> None:
+    sockets: List[WebSocketRoute] = []
+
+    def on_connect(ws: WebSocketRoute) -> None:
+        sockets.append(ws)
+        ws.send(_frame())
+
+    seen = _stub_screen(authed_page.context, on_connect)
+    page = _open_from_sheet(authed_page, base_url)
+    expect(page.locator("#screenImage")).to_be_visible()
+    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    style = page.locator("#screenControl")
+    touch = style.locator('[data-control="touch"]')
+    trackpad = style.locator('[data-control="trackpad"]')
+
+    # The style switch is Control's: hidden in View, and a first use on this
+    # device is direct touch.
+    expect(style).to_be_hidden()
+    _set_mode(page, "control")
+    expect(style).to_be_visible()
+    expect(touch).to_have_attribute("aria-pressed", "true")
+    # Both switches and the keyboard button share the row, every label whole.
+    fit = page.locator(".screen-view-tools").evaluate("""(row) => ({
+      row: row.scrollWidth <= row.clientWidth,
+      labels: Array.from(row.querySelectorAll('.segmented-item')).every(
+        (b) => b.scrollWidth <= b.clientWidth),
+    })""")
+    assert fit == {"row": True, "labels": True}, fit
+
+    # Trackpad: the cursor shows mid-picture before the PC has said where its
+    # own is, and the keyboard is still offered.
+    trackpad.click()
+    expect(trackpad).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#screenKeyboard")).to_be_visible()
+    _cursor_on(page, 0.5, 0.5, "the trackpad cursor mid-picture")
+
+    # A drag that starts far off, low on the left, moves the cursor right
+    # from where it was, not to the finger.
+    _drag(page, _point(page, 0.1, 0.9), 30)
+    _settled(page, seen, "the cursor where it moved")
+    moves = [m for m in seen["inputs"] if m["type"] == "move"]
+    assert all(m["y"] == 0.5 for m in moves), moves
+    assert 0.5 < moves[0]["x"] <= moves[-1]["x"] < 0.95, moves
+    assert all(m["type"] == "move" for m in seen["inputs"]), "a move clicks nothing"
+    x1 = moves[-1]["x"]
+
+    # A tap anywhere clicks at the cursor; a second one at once is a double
+    # click on the same spot.
+    count = len(seen["inputs"])
+    _tap(page, 0.9, 0.1)
+    _tap(page, 0.2, 0.3)
+    wait_until(page, lambda: len(seen["inputs"]) >= count + 2, "the two clicks")
+    clicks = seen["inputs"][count:]
+    assert clicks == [{"type": "click", "button": "left", "x": x1, "y": 0.5}] * 2, clicks
+
+    # A long-press lifted where it rests right-clicks at the cursor.
+    count = len(seen["inputs"])
+    rest = _point(page, 0.3, 0.3)
+    _pointer(page, "pointerdown", rest)
+    _held(page)
+    _pointer(page, "pointerup", rest)
+    wait_until(page, lambda: seen["inputs"][-1]["type"] == "click", "the right click")
+    assert seen["inputs"][-1] == {"type": "click", "button": "right", "x": x1, "y": 0.5}
+
+    # A long-press then a move drags: the button goes down at the cursor and
+    # comes up where the drag ends.
+    count = len(seen["inputs"])
+    start = _point(page, 0.6, 0.6)
+    _pointer(page, "pointerdown", start)
+    _held(page)
+    for i in (1, 2, 3):
+        _pointer(page, "pointermove", {"x": start["x"] + 10 * i, "y": start["y"]})
+    _pointer(page, "pointerup", {"x": start["x"] + 30, "y": start["y"]})
+    wait_until(page, lambda: seen["inputs"][-1]["type"] == "up", "the drag's up")
+    drag = [m for m in seen["inputs"][count:] if m["type"] != "move" or m["x"] != x1]
+    assert drag[0] == {"type": "down", "button": "left", "x": x1, "y": 0.5}, drag
+    assert drag[-1]["type"] == "up" and drag[-1]["x"] > x1 and drag[-1]["y"] == 0.5, drag
+
+    # The PC's own cursor moved: the next drag starts from there.
+    _send_cursor(sockets[-1], x=0.25, y=0.25, shape="arrow", visible=True)
+    _cursor_on(page, 0.25, 0.25, "the trackpad cursor taking the PC's")
+    count = len(seen["inputs"])
+    _drag(page, _point(page, 0.8, 0.8), 30)
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the moves from the PC's cursor")
+    moved = [m for m in seen["inputs"][count:] if m["type"] == "move"]
+    assert moved and 0.25 < moved[-1]["x"] < 0.6 and moved[-1]["y"] == 0.25, moved
+
+    # Remembered for this device: back from View, and across a reload, the
+    # next Control is Trackpad again. The view itself still opens in View.
+    _set_mode(page, "view")
+    expect(style).to_be_hidden()
+    _set_mode(page, "control")
+    expect(trackpad).to_have_attribute("aria-pressed", "true")
+    if page is not authed_page:
+        with page.expect_event("close"):
+            page.locator("#screenViewClose").click()
+    page = _open_from_sheet(authed_page, base_url)
+    expect(page.locator('#screenMode .segmented-item[data-mode="view"]')).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    expect(page.locator("#screenControl")).to_be_hidden()
+    _set_mode(page, "control")
+    expect(page.locator('#screenControl [data-control="trackpad"]')).to_have_attribute(
+        "aria-pressed", "true"
+    )
+    page.locator('#screenControl [data-control="touch"]').click()
+    assert page.evaluate("localStorage.getItem('launcher.screenControlMode')") == "touch"

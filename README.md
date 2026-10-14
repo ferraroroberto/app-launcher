@@ -466,7 +466,17 @@ A **View / Control** switch sits under the Screen bar. **View** is the default e
 - **Pinch** still zooms, and moving the pinch pans, which is how you move around a zoomed picture in Control.
 - On a desktop browser the mouse works the same way. Right-click right-clicks, and the wheel scrolls the PC (ctrl+wheel or a trackpad pinch zooms).
 
-**Keyboard.** In Control, the keyboard button raises the phone keyboard and shows a keys bar. Whatever you type goes to the PC verbatim, accents and symbols included (`ñ€` arrive as typed, sent as Unicode). Backspace and Return work from the phone keyboard. The bar adds what a phone keyboard lacks: Esc, Tab, Del, the arrows, Backspace and Enter, plus **Ctrl, Alt, Shift and Win**. The modifiers are sticky for one key: tap Ctrl, then `c`, for Ctrl+C. Several can be held together (Ctrl, Shift, then Esc). A held modifier lights up and lets go after the next key, so a forgotten Ctrl never turns later typing into shortcuts. Combos go out as real key presses, so apps see Ctrl+C as a shortcut, not as a typed character. A modifier applies to letters, digits and the bar's keys; any other character is typed as is.
+**Touch or Trackpad.** Once Control is on, a second switch beside it picks how one finger drives the PC. **Touch** is the list above: the tap point is the click point, which is quick for big targets. **Trackpad** works like a laptop's trackpad, so your finger never covers what it aims at:
+
+- **One-finger drag**, anywhere on the picture, moves the cursor by how far the finger travels, not to where it lands. Slow is precise, a quick flick crosses the screen.
+- **Tap** clicks at the cursor. Two quick taps double-click there.
+- **Long-press** (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. Long-press, then move: a drag with the left button held, released when you lift.
+- **Two-finger drag** scrolls at the cursor, and **pinch** zooms as in Touch. While zoomed in, the picture pans to keep the cursor in view.
+- The cursor starts on the PC's own, or mid-picture when the PC's is on another display. Move the real mouse and the next drag starts from there.
+
+The style is **remembered per device**: picking Control uses whichever you used last on this phone or browser, Touch the first time (or when the browser blocks storage). The view itself still opens in View every time.
+
+**Keyboard.** In Control, either style, the keyboard button raises the phone keyboard and shows a keys bar. Whatever you type goes to the PC verbatim, accents and symbols included (`ñ€` arrive as typed, sent as Unicode). Backspace and Return work from the phone keyboard. The bar adds what a phone keyboard lacks: Esc, Tab, Del, the arrows, Backspace and Enter, plus **Ctrl, Alt, Shift and Win**. The modifiers are sticky for one key: tap Ctrl, then `c`, for Ctrl+C. Several can be held together (Ctrl, Shift, then Esc). A held modifier lights up and lets go after the next key, so a forgotten Ctrl never turns later typing into shortcuts. Combos go out as real key presses, so apps see Ctrl+C as a shortcut, not as a typed character. A modifier applies to letters, digits and the bar's keys; any other character is typed as is.
 
 **Input is never sent at a stale picture.** While the screen can't be read (locked, asleep, disconnected) the view sends nothing, since a tap would land on whatever is really there now.
 
