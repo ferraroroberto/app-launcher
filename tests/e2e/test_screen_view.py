@@ -133,6 +133,11 @@ def test_the_sheet_opens_a_live_view_of_the_chosen_display(
     assert abs(geo["w"] - geo["vw"]) <= 1 and abs(geo["h"] - geo["vh"]) <= 1, geo
     assert geo["closeW"] >= 34 and geo["closeH"] >= 34, geo
     assert geo["navSpotInView"], "the nav must not sit over the view"
+    # Upright on a phone, and in the desktop pop-out: the bars stay in the
+    # flow, with no landscape handle (#1601).
+    expect(view_page.locator("#screenHandle")).to_be_hidden()
+    expect(view_page.locator(".screen-view-bar")).to_be_visible()
+    expect(view_page.locator(".screen-view-tools")).to_be_visible()
 
     # Both displays as a picker; the one above the primary reconnects.
     picker = view_page.locator("#screenPicker .segmented-item")

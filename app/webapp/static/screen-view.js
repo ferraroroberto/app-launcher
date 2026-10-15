@@ -1146,6 +1146,56 @@ function wireStage(stage) {
   stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 }
 
+// ------------------------------------------------- landscape handle (#1601)
+
+// A phone held sideways hides the bar and the tools row behind the handle
+// (styles.css). The CSS owns the layout, so this only tracks whether the bars
+// are up: a class on the dialog. Keep the query identical to the stylesheet's.
+const SCREEN_LANDSCAPE = '(orientation: landscape) and (pointer: coarse) and (max-height: 500px)';
+
+function chromeOpen() {
+  const dialog = $('screenView');
+  return !!dialog && dialog.classList.contains('chrome-open');
+}
+
+function setChrome(open) {
+  const dialog = $('screenView');
+  if (dialog) dialog.classList.toggle('chrome-open', open);
+  const handle = $('screenHandle');
+  if (handle) handle.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+
+function wireChrome(dialog, stage) {
+  const handle = $('screenHandle');
+  if (!handle) return;
+  handle.addEventListener('click', function () { setChrome(!chromeOpen()); });
+  // A touch on the picture while the bars are up puts them away and is only
+  // that: it never also zooms, clicks or moves anything on the PC. Capture
+  // phase, registered ahead of the stage's own listeners, so it runs first.
+  if (stage) {
+    stage.addEventListener('pointerdown', function (e) {
+      if (!chromeOpen() || e.target.closest('button')) return;
+      e.stopImmediatePropagation();
+      setChrome(false);
+    }, true);
+  }
+  // Picking a display, or raising the keyboard, finishes what the bars were
+  // opened for. The mode and style switches stay up: the next tap is often
+  // the keyboard or the style that a mode change just revealed.
+  const picker = $('screenPicker');
+  if (picker) {
+    picker.addEventListener('click', function (e) {
+      if (e.target.closest('.segmented-item')) setChrome(false);
+    });
+  }
+  const keyboard = $('screenKeyboard');
+  if (keyboard) keyboard.addEventListener('click', function () { setChrome(false); });
+  // Closed with the view, and on a turn of the phone: the bars come back in
+  // the flow (portrait) or start hidden (landscape), never half-open.
+  dialog.addEventListener('close', function () { setChrome(false); });
+  window.matchMedia(SCREEN_LANDSCAPE).addEventListener('change', function () { setChrome(false); });
+}
+
 // ----------------------------------------------------------------- wiring
 
 export function wireScreenView() {
@@ -1158,6 +1208,7 @@ export function wireScreenView() {
     if (view.open) closeView();
   });
   const stage = $('screenStage');
+  wireChrome(dialog, stage);
   if (stage) wireStage(stage);
   const modePicker = $('screenMode');
   if (modePicker) {

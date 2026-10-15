@@ -483,6 +483,9 @@
     <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
     <circle cx="12" cy="12" r="3" />
   </symbol>
+  <symbol id="i-mouse-pointer-2" viewBox="0 0 24 24" fill="none">
+    <path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" />
+  </symbol>
   <symbol id="i-chevrons-down-up" viewBox="0 0 24 24" fill="none">
     <path d="m7 20 5-5 5 5" />
     <path d="m7 4 5 5 5-5" />
@@ -2502,6 +2505,10 @@
          from the PC load sheet's Screen row; on a desktop browser the same
          view runs in its own pop-out window. screen-view.js drives it. -->
     <dialog id="screenView" class="screen-view" aria-labelledby="screenViewTitle">
+      <!-- The bar and the tools row, as one block (#1601): in the flow as ever,
+           except on a phone held sideways, where the handle below brings them
+           up as an overlay (screen-view.js, styles.css). -->
+      <div id="screenChrome" class="screen-chrome">
       <div class="screen-view-bar">
         <h2 id="screenViewTitle" class="screen-view-title" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Screen</h2>
         <div id="screenPicker" class="segmented screen-picker" role="group" aria-label="Display" hidden></div>
@@ -2527,6 +2534,7 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
         </button>
       </div>
+      </div>
       <div id="screenStage" class="screen-stage">
         <img id="screenImage" class="screen-image" alt="The PC's screen" draggable="false" hidden>
         <!-- The PC's mouse cursor (#1598), drawn from the socket's cursor
@@ -2534,6 +2542,13 @@
         <div id="screenCursor" class="screen-cursor" aria-hidden="true" hidden></div>
         <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
       </div>
+      <!-- The handle (#1601): shown only on a phone in landscape, where the bar
+           and the tools row are hidden. It names the mode (View / Control) so a
+           hidden switch hides no state, and toggles the bar and tools row. -->
+      <button type="button" id="screenHandle" class="screen-handle" aria-expanded="false" aria-controls="screenChrome" title="Screen controls">
+        <span class="screen-handle-view"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-eye"></use></svg>View</span>
+        <span class="screen-handle-control"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mouse-pointer-2"></use></svg>Control</span>
+      </button>
       <!-- The keys the phone keyboard lacks (#1521). Ctrl / Alt / Shift / Win
            are sticky for one key: tap Ctrl, then c, for Ctrl+C. The hidden
            input raises the phone keyboard; what it types goes to the PC. -->
