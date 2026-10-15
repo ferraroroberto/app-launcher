@@ -163,6 +163,27 @@ def test_skills_lead_the_tab_and_no_telegram_card_is_left(life) -> None:
 
 
 @pytest.mark.iphone
+def test_channels_skill_chip_is_the_code_inline_chip(life) -> None:
+    """#1624 (COMP-17): a skill folder name is code, so the `code-inline` chip --
+    mono at 0.875em of the line around it (14px in the 16px body), never
+    caption's 12px -- in both themes."""
+    page = life()
+    open_settings_sheet(page, "channelsSheet")
+    chip = page.locator("#channelSkills .channel-skill-chip").first
+    expect(chip).to_have_text("garden-notes")
+    for theme in ("light", "dark"):
+        page.emulate_media(color_scheme=theme)
+        page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+        expect(chip).to_have_css("font-size", "14px")
+        expect(chip).to_have_css("font-family", re.compile(r"monospace"))
+        expect(chip).to_have_css("border-radius", "6px")
+        expect(chip).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    parent_px = page.locator("#channelSkills").evaluate(
+        "el => parseFloat(getComputedStyle(el).fontSize)")
+    assert parent_px == 16, f"the chips' line is {parent_px}px, not the 16px body"
+
+
+@pytest.mark.iphone
 def test_a_linked_skill_says_telegram_and_its_avatar_wears_the_badge(life) -> None:
     """The bot is a plain fact in the meta, never a chip; the avatar's green
     badge only while that bot runs. Every row is a two-line row (rows.lg),

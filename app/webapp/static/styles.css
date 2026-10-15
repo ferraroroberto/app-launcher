@@ -2686,7 +2686,7 @@ textarea.input-native { height: auto; }
 /* The transcript's preformatted surface for a tool result (`.tr-pre`). A
    chat fence shared this rule until #1474 gave it the `.md-block` frame
    (above); it keeps the wrap-not-scroll choice below.
-   Wrap, not scroll, and deliberately: at `--font-caption` on a 390px phone
+   Wrap, not scroll, and deliberately: at 12px on a 390px phone
    about 40 monospace characters fit, so almost every real code line would be
    pannable, and a pan here persists -- `applyLive` appends settled turns
    instead of rebuilding them, so nothing resets `scrollLeft` for the life of
@@ -2699,10 +2699,16 @@ textarea.input-native { height: auto; }
 .tr-pre {
   margin: 0 0 8px;
   padding: 8px 10px;
-  background: var(--card-off);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
-  line-height: 1.4;
+  /* The code-listing frame (#1624, COMP-17), as `.md-block` and `.chg-diff`
+     have it: 13px mono on the card surface and a hairline, never
+     `--card-off`, which is true black inside a dark card. */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -4709,12 +4715,16 @@ span.chief-answer-ref { color: var(--muted); }
   gap: var(--space-sm);
   margin: 0;
 }
+/* A skill folder name is code, so the `code-inline` chip (#1624, COMP-17):
+   mono at 0.875em of the line around it, never caption-sized -- the same
+   chip as inline code in a reply (`.tr-md code`). */
 .channel-skill-chip {
-  padding: 2px var(--space-sm);
-  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+  border-radius: 6px;
   background: var(--neutral-soft);
   color: var(--fg);
-  font-size: var(--font-caption);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 .channel-steps {
   margin: 0 0 var(--space-md);
