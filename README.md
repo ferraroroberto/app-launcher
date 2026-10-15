@@ -438,6 +438,7 @@ A live view of what is on the PC's screen (issue #1520) that you can also click,
 
 - **Displays.** With more than one monitor, a picker in the bar names them by where they sit: **Main** for the primary, then **Above**, **Below**, **Left** or **Right**. It opens on the primary. Monitors use virtual-desktop coordinates, so one above or left of the primary (a negative origin) works like any other.
 - **Zoom.** Pinch to zoom (up to 5×) and drag to pan. On a desktop, scroll the wheel to zoom and double-click to reset. The zoom is local to the view, since the page itself stays zoom-locked.
+- **Landscape (issue #1601).** On a phone held sideways (a touch screen in a window under 500 px tall) the title bar and the View / Control row leave the layout and the picture takes their height. A pill at the top left corner of the picture names the current mode, **View** or **Control**, so the hidden switch hides no state. Tap it and the bar and the switches come down over the picture, which does not move or re-fit; tap it again, tap the picture (that tap only closes the bars, it never clicks the PC), pick a display, or raise the keyboard, and they go away. The mode and style switches stay up, so you can change mode and then reach what it reveals. Turning the phone upright puts the bars back in place, and the desktop pop-out window and tablets never hide them. The picture and the keys bar clear a notch by the left and right safe-area insets.
 - **Cursor.** The PC's mouse cursor is drawn over the picture (issue #1598), in its current shape: arrow, text caret, hand, busy, the four resize arrows, move and not-allowed; any other cursor draws as the arrow. It follows the real mouse even when nothing else on screen changes, stays on its spot and keeps its size while you zoom and pan, and hides when it is on another monitor, panned out of view, or hidden on the PC. It never takes a touch, so the view's gestures work as before. In Control, a tap moves the real cursor there, so the drawn cursor jumping to your finger confirms where the click landed.
 - **States.** A locked or asleep PC can't be read from a user-session process (the lock screen is Windows' secure desktop). The view says so: the last frame stays under a "Last updated … · live data unavailable" line, or, with no frame yet, a message that the screen may be locked or asleep. It picks up again by itself when the desktop comes back. A refusal names its cause (Tailscale-only, passkey), and a dropped connection offers one Retry.
 
@@ -463,6 +464,8 @@ A **View / Control** switch sits under the Screen bar. **View** is the default e
 - **Long-press** (half a second) right-clicks.
 - **Press and drag** drags with the left button held (move a window, select text).
 - **Two-finger drag** scrolls the wheel, in the phone's own direction (fingers down shows what is above). Sideways scrolls horizontally.
+- **Two-finger tap** (both fingers down and up together, under half a second, without moving) right-clicks at the point between the fingers, with no left click. Resting the two fingers longer, or moving them, is not a tap.
+- **Three-finger tap** (the same quick tap with three fingers) raises the keyboard and keys bar, or lowers them again. Three fingers never click, drag or scroll, and in View they do nothing.
 - **Pinch** still zooms, and moving the pinch pans, which is how you move around a zoomed picture in Control.
 - On a desktop browser the mouse works the same way. Right-click right-clicks, and the wheel scrolls the PC (ctrl+wheel or a trackpad pinch zooms).
 
@@ -472,7 +475,7 @@ The gestures follow the Windows remote desktop app's mouse-pointer mode. Touchin
 
 - **One-finger drag**, anywhere on the picture, moves the cursor by how far the finger travels, not to where it lands, and never clicks, however long the finger rested first. Slow is precise, a quick flick crosses the screen.
 - **Tap** (touch and lift without moving) clicks at the cursor. Two quick taps double-click there. A single tap's click waits a quarter second for a possible second tap.
-- **Long-press** without moving (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. A **two-finger tap** right-clicks too.
+- **Long-press** without moving (half a second, a ring appears round the cursor), then lift: a right-click at the cursor. A **two-finger tap** right-clicks at the cursor too, and a **three-finger tap** raises or lowers the keyboard, as in Touch.
 - **Double-tap and hold, then drag**: a drag with the left button held (move a window, select text), released when you lift.
 - **Two-finger drag** scrolls at the cursor, and **pinch** zooms as in Touch. While zoomed in, the picture pans to keep the cursor in view.
 - The cursor starts on the PC's own, or mid-picture when the PC's is on another display. Move the real mouse and the next drag starts from there.

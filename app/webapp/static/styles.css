@@ -2686,7 +2686,7 @@ textarea.input-native { height: auto; }
 /* The transcript's preformatted surface for a tool result (`.tr-pre`). A
    chat fence shared this rule until #1474 gave it the `.md-block` frame
    (above); it keeps the wrap-not-scroll choice below.
-   Wrap, not scroll, and deliberately: at `--font-caption` on a 390px phone
+   Wrap, not scroll, and deliberately: at 12px on a 390px phone
    about 40 monospace characters fit, so almost every real code line would be
    pannable, and a pan here persists -- `applyLive` appends settled turns
    instead of rebuilding them, so nothing resets `scrollLeft` for the life of
@@ -2699,10 +2699,16 @@ textarea.input-native { height: auto; }
 .tr-pre {
   margin: 0 0 8px;
   padding: 8px 10px;
-  background: var(--card-off);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-caption);
-  line-height: 1.4;
+  /* The code-listing frame (#1624, COMP-17), as `.md-block` and `.chg-diff`
+     have it: 13px mono on the card surface and a hairline, never
+     `--card-off`, which is true black inside a dark card. */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -4472,7 +4478,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-plan-line { margin: 0 0 6px; }
 .board-plan-heading {
   margin: 12px 0 2px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body);
   font-weight: 600;
   color: var(--muted);
 }
@@ -4485,13 +4491,16 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-plan-row .action-row-meta .chip { margin-left: auto; }
 .board-plan-section-note { margin: 0 0 4px; }
 /* Parked folds (#1578): its heading is the <details> summary, with the
-   section's own chevron instead of the browser marker. */
+   section's own chevron instead of the browser marker. The summary is a
+   control, not a heading element, so it keeps the caption size the shared
+   `.board-plan-heading` rule no longer gives it (#1623). */
 .board-plan-parked-summary {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: var(--row-sm);
   margin: 0;
+  font-size: var(--font-caption);
   cursor: pointer;
   list-style: none;
 }
@@ -4706,12 +4715,16 @@ span.chief-answer-ref { color: var(--muted); }
   gap: var(--space-sm);
   margin: 0;
 }
+/* A skill folder name is code, so the `code-inline` chip (#1624, COMP-17):
+   mono at 0.875em of the line around it, never caption-sized -- the same
+   chip as inline code in a reply (`.tr-md code`). */
 .channel-skill-chip {
-  padding: 2px var(--space-sm);
-  border-radius: var(--radius-pill);
+  padding: 1px 6px;
+  border-radius: 6px;
   background: var(--neutral-soft);
   color: var(--fg);
-  font-size: var(--font-caption);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 .channel-steps {
   margin: 0 0 var(--space-md);
@@ -4984,8 +4997,8 @@ span.chief-answer-ref { color: var(--muted); }
    (#1586), the same one as the Coding-options permission rows. */
 .context-filter-subhead {
   margin: 16px 0 6px;
-  font-size: var(--font-caption);
-  font-weight: 700;
+  font-size: var(--font-body);
+  font-weight: 600;
   color: var(--muted);
 }
 .context-filter-harness-list .context-filter-harness {
@@ -5776,4 +5789,81 @@ span.chief-answer-ref { color: var(--muted); }
   opacity: 0;
   font-size: 16px;
   pointer-events: none;
+}
+
+/* A phone held sideways (#1601). The bar and the tools row take a large share
+   of the little height there is, and the picture is the point, so there they
+   leave the flow behind a handle: a pill over the stage's top-left corner that
+   names the mode (a hidden switch hides no state). It opens the bar and tools
+   row as an overlay on top of the picture, so the picture neither jumps nor
+   re-fits. A desktop browser, the pop-out window (fine pointer, tall) and a
+   tablet keep the bars. screen-view.js asks the same question with
+   matchMedia (SCREEN_LANDSCAPE): keep the two queries identical. */
+.screen-chrome { display: contents; }
+.screen-handle { display: none; }
+.screen-handle-view,
+.screen-handle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.screen-handle-control { display: none; }
+.screen-view[data-mode="control"] .screen-handle-view { display: none; }
+.screen-view[data-mode="control"] .screen-handle-control { display: inline-flex; }
+.screen-handle .icon { width: var(--icon-inline); height: var(--icon-inline); }
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 500px) {
+  /* The picture clears a notch: the stage itself narrows by the side insets,
+     so its geometry (and everything screen-view.js derives from it) agrees. */
+  .screen-stage {
+    margin-left: env(safe-area-inset-left, 0px);
+    margin-right: env(safe-area-inset-right, 0px);
+  }
+  .screen-chrome { display: none; }
+  .screen-view.chrome-open .screen-chrome {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    box-shadow: var(--shadow);
+  }
+  /* The handle keeps its place, and its width, while the bar is up (View and
+     Control are the same width), so the bar's title makes room for it. */
+  .screen-view { --screen-handle-w: 7.5rem; }
+  .screen-view.chrome-open .screen-view-bar {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 2 * var(--gap) + var(--screen-handle-w));
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-view.chrome-open .screen-view-tools {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 14px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-handle {
+    position: absolute;
+    top: 8px;
+    left: calc(env(safe-area-inset-left, 0px) + var(--gap));
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--screen-handle-w);
+    min-height: var(--hit-min);
+    padding: 0 14px;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow);
+    font: inherit;
+    font-size: var(--font-label);
+    font-weight: 600;
+  }
+  .screen-handle[aria-expanded="true"] { color: var(--accent-text); }
+  /* The keys bar clears a notch too. */
+  .screen-keys {
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  }
 }

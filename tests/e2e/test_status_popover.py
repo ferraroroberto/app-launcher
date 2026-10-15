@@ -40,7 +40,7 @@ def test_git_refresh_button_rechecks_without_a_popover(
     authed_page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     refresh = authed_page.locator(".projects-toolbar #gitRefreshBtn")
     expect(refresh).to_be_visible()
-    expect(refresh).to_have_attribute("aria-label", "Check git status of all projects")
+    expect(refresh).to_have_attribute("aria-label", "Refresh git status")
     expect(authed_page.locator("#gitStatusBtn")).to_have_count(0)
     expect(authed_page.locator("#gitStatusSummary")).to_have_count(0)
 

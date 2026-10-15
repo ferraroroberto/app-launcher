@@ -190,6 +190,11 @@ def test_compose_send_forwards_text_to_pty(
         "els => els.map(e => e.className.split(' ').find(c => c.startsWith('composer-')))",
     )
     assert order == ["composer-mic", "composer-keys", "composer-image", "composer-send"], order
+    # #1617 (COMP-09): the mic keeps the verb as its accessible name whether or
+    # not dictation is available; the unavailable state rides on `disabled`
+    # and the tooltip, never on the name.
+    expect(authed_page.locator(f"{COMPOSER} .composer-mic")).to_have_attribute(
+        "aria-label", "Dictate")
     for gone in ("#terminalCompose", "#terminalPaste", "#terminalImage", "#terminalKeys",
                  "#terminalScreenshot", "#terminalComposeAttach"):
         assert authed_page.locator(gone).count() == 0, f"{gone} should be gone (#980)"

@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 const {
   GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
   wheelFromDrag, wheelFromWheelEvent, comboKey, padGain, padStep, followPan, controlStyle,
+  anyMovedPastTap, isMultiFingerTap,
 } = await import('../../app/webapp/static/screen-gestures.js');
 const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
   '../../app/webapp/static/screen-cursor.js');
@@ -158,6 +159,29 @@ assert.ok(close(pan.x, 48 - 100) && close(pan.y, 48 - 200), JSON.stringify(pan))
 // On a tiny stage the margin is at most a quarter of it.
 pan = followPan({ scale: 2, x: 0, y: 0 }, 90, 10, 100, 100, 48);
 assert.ok(close(pan.x, 75 - 180), JSON.stringify(pan));
+
+// Two- and three-finger taps (#1600): never moved and lifted before a
+// long-press would have fired. Any movement past the slop, or a rest as long
+// as a long-press, is not a tap.
+assert.equal(GESTURE.multiTapMs, GESTURE.longPressMs);
+assert.equal(isMultiFingerTap(false, 0), true);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs - 1), true);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs), false);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs + 400), false);
+assert.equal(isMultiFingerTap(true, 50), false);
+assert.equal(isMultiFingerTap(false, -1), false);
+// Two fingers: classifyTwoFinger's null (undecided) is what "never moved" is.
+const twoStart = { dist: 100, mid: { x: 100, y: 100 } };
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 104, mid: { x: 103, y: 102 } }), 120), true);
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 100, mid: { x: 100, y: 130 } }), 120), false);
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 140, mid: { x: 100, y: 100 } }), 120), false);
+// Three fingers: any one past the tap slop spoils it; a wobble inside does not.
+const three = [{ x: 50, y: 50 }, { x: 100, y: 50 }, { x: 150, y: 50 }];
+assert.equal(anyMovedPastTap(three, three.map((p) => ({ x: p.x + 3, y: p.y - 4 }))), false);
+assert.equal(anyMovedPastTap(three, three.map((p) => ({ x: p.x + GESTURE.tapSlop, y: p.y }))), false);
+assert.equal(anyMovedPastTap(three, [three[0], three[1], { x: 150, y: 50 + GESTURE.tapSlop + 1 }]), true);
+// A finger that has gone from the list is not a move.
+assert.equal(anyMovedPastTap(three, [three[0], three[1]]), false);
 
 // The remembered Control style: trackpad only when stored as such; a
 // first use, a blocked storage or junk is direct touch.
