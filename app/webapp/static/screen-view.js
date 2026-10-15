@@ -51,6 +51,15 @@
  * Control is picked; the view still opens in View. The overlay draws the
  * server's cursor, except while the finger is moving it and its messages
  * lag behind: then the locally moved one, which is where it is going.
+ *
+ * Reconnect (#1603). A dropped socket is retried on its own, after 1 s, 2 s,
+ * 4 s, 8 s and 15 s steps (screen-reconnect.js), with "Reconnecting…" over
+ * the last frame; a drawn frame resets the count, and a spent budget falls
+ * back to the Retry card. A refusal (4401, 4403, 4404) is never retried, and
+ * neither is a hidden page or a closed view. Each attempt goes through
+ * connect() like the first, so the passkey token, the Tailscale gate and the
+ * tunnel refusal apply every time. The monitor picked is remembered per
+ * device and reopened by its rectangle, then its id, then the primary.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
@@ -61,6 +70,9 @@ import {
   frameFraction, isDoubleTap, isMultiFingerTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
 } from './screen-gestures.js';
 import { cursorShape, cursorSvg } from './screen-cursor.js';
+import {
+  MONITOR_KEY, chooseMonitor, monitorChoice, parseMonitorChoice, reconnectDelay,
+} from './screen-reconnect.js';
 
 const MAX_ZOOM = 5;
 // The widest frame worth asking for: the phone's long side in device pixels,
@@ -77,6 +89,9 @@ const view = {
   monitors: [],
   monitorId: null,
   ws: null,
+  connectGen: 0,       // bumped by every socket teardown: a connect() older than it is stale
+  attempt: 0,          // automatic reconnects tried since the last drawn frame
+  retryTimer: null,    // the pending automatic reconnect
   frameUrl: '',
   lastFrameAt: 0,
   zoom: { scale: 1, x: 0, y: 0 },
@@ -133,6 +148,7 @@ async function openScreenView() {
 }
 
 async function start() {
+  resetReconnect();
   closeSocket();
   setState('loading', { message: 'Connecting to the screen…' });
   let body;
@@ -156,8 +172,7 @@ async function start() {
     return;
   }
   if (!view.monitors.some(function (m) { return m.id === view.monitorId; })) {
-    const primary = view.monitors.find(function (m) { return m.primary; });
-    view.monitorId = (primary || view.monitors[0]).id;
+    view.monitorId = chooseMonitor(view.monitors, readStoredMonitor()).id;
   }
   renderPicker();
   await connect();
@@ -165,6 +180,19 @@ async function start() {
 
 function showRefusal(message, glyph) {
   setState('error', { message: message, glyph: glyph || 'lock', retry: start });
+}
+
+// The monitor last picked on this device (#1603), or null.
+function readStoredMonitor() {
+  try { return parseMonitorChoice(localStorage.getItem(MONITOR_KEY)); } catch (_) { return null; }
+}
+
+function storeMonitor(monitor) {
+  try { localStorage.setItem(MONITOR_KEY, JSON.stringify(monitorChoice(monitor))); } catch (_) { /* storage blocked */ }
+}
+
+function forgetMonitor() {
+  try { localStorage.removeItem(MONITOR_KEY); } catch (_) { /* storage blocked */ }
 }
 
 // --------------------------------------------------------------- picker
@@ -209,6 +237,8 @@ function renderPicker() {
     btn.addEventListener('click', function () {
       if (m.id === view.monitorId) return;
       view.monitorId = m.id;
+      storeMonitor(m);
+      resetReconnect();
       renderPicker();
       clearFrame();
       resetZoom();
@@ -240,14 +270,17 @@ function socketUrl(terminalToken) {
 
 async function connect() {
   closeSocket();
+  // A newer connect() or a teardown while the token is awaited makes this
+  // one stale: two sockets must never be open at once.
+  const gen = view.connectGen;
   let tt;
   try {
     tt = await ensureTerminalToken();
   } catch (exc) {
-    showRefusal('Passkey unlock failed.');
+    if (gen === view.connectGen && view.open) showRefusal('Passkey unlock failed.');
     return;
   }
-  if (!view.open) return;
+  if (gen !== view.connectGen || !view.open) return;
   const ws = new WebSocket(socketUrl(tt));
   ws.binaryType = 'blob';
   view.ws = ws;
@@ -297,11 +330,18 @@ function drawFrame(ws, blob) {
     if (ws === view.ws && ws.readyState === WebSocket.OPEN) ws.send('ack');
   };
   img.onload = function () {
+    // Decoded after its socket went away: it must not undo the Reconnecting
+    // line or a refusal, nor mark a dead connection live.
+    if (ws !== view.ws) {
+      URL.revokeObjectURL(url);
+      return;
+    }
     const previous = view.frameUrl;
     view.frameUrl = url;
     view.lastFrameAt = Date.now();
     if (previous) URL.revokeObjectURL(previous);
     img.hidden = false;
+    view.attempt = 0;
     setState('ready');
     setLive(true);
     ack();
@@ -315,6 +355,8 @@ function drawFrame(ws, blob) {
 
 function onClose(event) {
   setLive(false);
+  // A drag in flight must not release into the next connection.
+  dropGesture();
   if (!view.open) return;
   const reason = event && event.reason ? event.reason : '';
   if (event.code === 4403) {
@@ -323,16 +365,53 @@ function onClose(event) {
     if (/passkey/i.test(reason)) clearTerminalToken();
     showRefusal(/passkey/i.test(reason) ? 'Passkey unlock required.' : 'Sign in again to view the screen.');
   } else if (event.code === 4404) {
+    forgetMonitor();
     showRefusal('That display is gone. Retry to pick again.', 'monitor');
   } else {
+    reconnectLater();
+  }
+}
+
+function clearRetryTimer() {
+  if (view.retryTimer) clearTimeout(view.retryTimer);
+  view.retryTimer = null;
+}
+
+function resetReconnect() {
+  clearRetryTimer();
+  view.attempt = 0;
+}
+
+// A drop that is not a refusal: try again after the next backoff step, with
+// the last frame left under a quiet "Reconnecting…". A page that is hidden
+// waits (coming back reconnects); a spent budget falls back to Retry.
+function reconnectLater() {
+  const delay = reconnectDelay(view.attempt);
+  if (delay === null) {
     // The last frame stays behind the message, so it is still readable.
     setState('error', { message: 'Disconnected from the screen.', glyph: 'monitor', retry: start });
+    return;
   }
+  // Frame left: over it, quietly; none yet (the first connect failed): the
+  // loading block.
+  setState(view.frameUrl ? 'stale' : 'loading', { message: 'Reconnecting…' });
+  if (document.hidden) return;
+  view.attempt += 1;
+  console.info('Screen: reconnect attempt ' + view.attempt + ' in ' + delay + ' ms');
+  clearRetryTimer();
+  view.retryTimer = setTimeout(function () {
+    view.retryTimer = null;
+    if (!view.open || document.hidden || view.ws) return;
+    connect();
+  }, delay);
 }
 
 function closeSocket() {
   const ws = view.ws;
   view.ws = null;
+  view.connectGen += 1;
+  clearRetryTimer();
+  dropGesture();
   // Where the cursor was is not where it is: draw none until told again.
   view.cursor = null;
   setLive(false);
@@ -586,6 +665,19 @@ function queueMove(msg) {
   }
   pendingMove = msg;
   if (!scheduled) requestAnimationFrame(flushMove);
+}
+
+// The connection is going: forget the gesture in flight without sending
+// anything. The host lifts a held button itself when the socket closes, and an
+// `up` sent after a reconnect would land on a picture the finger never pressed.
+function dropGesture() {
+  if (gesture && gesture.timer) clearTimeout(gesture.timer);
+  gesture = null;
+  lastTap = null;
+  pendingMove = null;
+  if (padTap) clearTimeout(padTap.timer);
+  padTap = null;
+  showHeld(false);
 }
 
 function cancelGesture() {
@@ -1283,7 +1375,10 @@ export function wireScreenView() {
   document.addEventListener('visibilitychange', function () {
     if (!view.open) return;
     if (document.hidden) closeSocket();
-    else if (!view.ws && view.monitorId !== null) connect();
+    else if (!view.ws && view.monitorId !== null) {
+      view.attempt = 0;
+      connect();
+    }
   });
   const row = $('cpuSheetScreen');
   if (row) {
