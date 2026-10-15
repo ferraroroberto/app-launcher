@@ -190,12 +190,30 @@ assert.equal(controlStyle('touch'), 'touch');
 assert.equal(controlStyle(null), 'touch');
 assert.equal(controlStyle('Trackpad'), 'touch');
 
-// Sticky modifiers turn letters and digits into combos, nothing else.
+// Sticky modifiers turn letters, digits and every printable ASCII character
+// into a combo (#1602); the PC resolves the character on its own layout.
 assert.equal(comboKey('c'), 'c');
 assert.equal(comboKey('A'), 'a');
 assert.equal(comboKey('7'), '7');
+for (const ch of ['/', ',', ';', '.', '-', '=', '[', ']', '\\', "'", '`', '?', '!', '@', '~', '|', '"']) {
+  assert.equal(comboKey(ch), ch, ch);
+}
+assert.equal(comboKey(' '), 'space');
+let printable = 0;
+for (let code = 0x21; code <= 0x7e; code++) {
+  assert.notEqual(comboKey(String.fromCharCode(code)), null, String.fromCharCode(code));
+  printable++;
+}
+assert.equal(printable, 94);
+// Only text can carry these.
 assert.equal(comboKey('ñ'), null);
-assert.equal(comboKey(' '), null);
+assert.equal(comboKey('€'), null);
+assert.equal(comboKey('😀'), null);
 assert.equal(comboKey('ab'), null);
+assert.equal(comboKey(String.fromCharCode(10)), null);
+assert.equal(comboKey(String.fromCharCode(9)), null);
+assert.equal(comboKey(String.fromCharCode(0x7f)), null);
+assert.equal(comboKey(''), null);
+assert.equal(comboKey(undefined), null);
 
 console.log('OK');

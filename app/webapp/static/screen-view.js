@@ -24,7 +24,8 @@
  * drag, two-finger drag = scroll wheel; a two-finger pinch still zooms (and
  * pans) locally. The keyboard toggle raises the phone keyboard through a
  * hidden input and shows the keys bar (Esc, Tab, arrows, Backspace, Del,
- * Enter, and Ctrl / Alt / Shift / Win, sticky for one key). sendInput() is
+ * Enter, and Ctrl / Alt / Shift / Win, sticky for one key; a second page
+ * holds F1-F12 and Home / End / PgUp / PgDn, #1602). sendInput() is
  * the one way out, and it sends nothing in View mode or while the picture
  * is not live: input aimed at a stale frame would land somewhere else.
  * Coordinates are 0-1 within the frame (screen-gestures.js maps them); the
@@ -938,7 +939,10 @@ function setKeysOpen(open) {
       input.blur();
     }
   }
-  if (!open) clearMods();
+  if (!open) {
+    clearMods();
+    setKeysPage('main');
+  }
   fitToKeyboard();
   applyZoom();
 }
@@ -963,6 +967,41 @@ function renderMods() {
     btn.classList.toggle('active', held);
     btn.setAttribute('aria-pressed', held ? 'true' : 'false');
   });
+  // The F-keys page has no modifier keys of its own: its way back names
+  // the ones still held, so Ctrl + F5 can be checked before the F5.
+  const names = MOD_ORDER.filter(function (m) { return view.mods.has(m); })
+    .map(function (m) { return MOD_LABEL[m]; });
+  keys.querySelectorAll('[data-held]').forEach(function (el) {
+    el.textContent = names.join('+');
+    el.hidden = !names.length;
+  });
+}
+
+// Which page of keys is up (#1602): 'main', the original keys, or 'fn', the
+// F-keys and the navigation cluster. view.mods is not touched, so a modifier
+// tapped on one page is still held on the other.
+function setKeysPage(page) {
+  const keys = $('screenKeys');
+  if (!keys) return;
+  keys.querySelectorAll('[data-keys-page]').forEach(function (el) {
+    el.hidden = el.dataset.keysPage !== page;
+  });
+}
+
+// Client-side macros: one key message, no server change. Task Manager is
+// Ctrl+Shift+Esc; Ctrl+Alt+Del is the secure attention sequence and cannot be
+// sent by an app. A macro sends exactly its own modifiers, so held sticky ones
+// are not mixed in; they let go with it, as they do after any key.
+const MACROS = {
+  taskmgr: { key: 'esc', mods: ['ctrl', 'shift'] },
+};
+const MOD_ORDER = ['ctrl', 'alt', 'shift', 'win'];
+const MOD_LABEL = { ctrl: 'Ctrl', alt: 'Alt', shift: 'Shift', win: 'Win' };
+
+function sendMacro(name) {
+  const macro = MACROS[name];
+  if (!macro) return;
+  if (sendInput({ type: 'key', key: macro.key, mods: macro.mods.slice() }) && view.mods.size) clearMods();
 }
 
 // A key with the sticky modifiers, which then let go: one key each.
@@ -1005,6 +1044,14 @@ function wireKeyboard() {
         const mod = btn.dataset.mod;
         if (view.mods.has(mod)) view.mods.delete(mod); else view.mods.add(mod);
         renderMods();
+        return;
+      }
+      if (btn.dataset.pageTo) {
+        setKeysPage(btn.dataset.pageTo);
+        return;
+      }
+      if (btn.dataset.macro) {
+        sendMacro(btn.dataset.macro);
         return;
       }
       if (btn.dataset.key) sendKey(btn.dataset.key);
