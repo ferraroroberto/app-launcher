@@ -138,7 +138,7 @@ def test_toolbar_toggles_carry_a_visible_word() -> None:
     # #1176): icon only, with its name kept on aria-label/title.
     fav = _by_id(tree, "favFilterBtn")
     assert not fav["text"].strip(), f"#favFilterBtn shows {fav['text'].strip()!r}"
-    assert fav["attrs"].get("aria-label") == "Show only favorites"
+    assert fav["attrs"].get("aria-label") == "Filter favorites"
     assert fav["attrs"].get("title") == "Show only favorites"
 
 
@@ -149,7 +149,7 @@ def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
     that dialog already carries — one add flow, not a second one."""
     tree = _tree()
     refresh = _by_id(tree, "gitRefreshBtn")
-    assert refresh["attrs"].get("aria-label") == "Check git status of all projects"
+    assert refresh["attrs"].get("aria-label") == "Refresh git status"
 
     badge = _STATIC.joinpath("context-filter.js").read_text(encoding="utf-8")
     assert not re.search(r"\btok\b|\(7d\)", badge), "badge abbreviates"
