@@ -652,13 +652,16 @@ click = "#jobsSearchInput"
 # the live list with `.board-drawer-action` narrowed to Rename, so the drawer's
 # Chat and Terminal open on the stub session while Stop, Issue and Rename stay
 # vetoed; `.session-open` stays vetoed because a desktop row tap mirrors the
-# session into a window on the PC.
+# session into a window on the PC. `.action-row-main` is vetoed except on a Board
+# session card, whose main tap only toggles the drawer (#1433, #1502): with the
+# whole class vetoed the Chat and Terminal steps were refused NO_GO and COMP-18
+# read unmeasured (#1633).
 [design.review.synthetic]
 command = ["scripts/design_review_synthetic.py"]
 startup_timeout_s = 180
 no_go = [
     ".row-menu-danger",
-    ".action-row-main",
+    ".action-row-main:not(.board-card-session)",
     ".session-open",
     ".job-run-btn",
     ".board-rename-btn",
