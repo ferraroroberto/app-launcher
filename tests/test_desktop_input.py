@@ -18,7 +18,9 @@ else) fails one of those tests.
 from __future__ import annotations
 
 import ast
+import json
 import math
+import sys
 from pathlib import Path
 from typing import List
 
@@ -198,6 +200,185 @@ def test_arrows_delete_and_win_are_extended_keys():
     assert win_down.vk == di.VK_LWIN and win_down.flags & di.KEYEVENTF_EXTENDEDKEY
     enter_down = di.combo_events("enter", [])[0]
     assert not enter_down.flags & di.KEYEVENTF_EXTENDEDKEY
+
+
+# ------------------------------------------------- F-keys and any-key (#1602)
+
+
+def test_f1_to_f12_are_the_contiguous_virtual_keys_and_not_extended():
+    for n in range(1, 13):
+        down, up = di.combo_events(f"f{n}", [])
+        assert (down.vk, down.up, up.up) == (0x6F + n, False, True), n
+        assert not down.flags & di.KEYEVENTF_EXTENDEDKEY, n
+    assert di.combo_events("f1", [])[0].vk == 0x70
+    assert di.combo_events("f12", [])[0].vk == 0x7B
+
+
+def test_ctrl_f5_and_alt_f4_are_one_batch_that_lets_go():
+    events = di.combo_events("f4", ["alt"])
+    assert [(e.vk, e.up) for e in events] == [
+        (di.VK_MENU, False), (0x73, False), (0x73, True), (di.VK_MENU, True),
+    ]
+    events = di.combo_events("f5", ["ctrl"])
+    assert [(e.vk, e.up) for e in events] == [
+        (di.VK_CONTROL, False), (0x74, False), (0x74, True), (di.VK_CONTROL, True),
+    ]
+
+
+def test_the_navigation_cluster_stays_extended():
+    for key, vk in (("home", di.VK_HOME), ("end", di.VK_END),
+                    ("pageup", di.VK_PRIOR), ("pagedown", di.VK_NEXT)):
+        down, _up = di.combo_events(key, [])
+        assert down.vk == vk and down.flags & di.KEYEVENTF_EXTENDEDKEY, key
+
+
+def test_task_manager_is_ctrl_shift_esc_as_one_combo():
+    events = di.combo_events("esc", ["ctrl", "shift"])
+    assert [(e.vk, e.up) for e in events] == [
+        (di.VK_CONTROL, False), (di.VK_SHIFT, False),
+        (di.VK_ESCAPE, False), (di.VK_ESCAPE, True),
+        (di.VK_SHIFT, True), (di.VK_CONTROL, True),
+    ]
+
+
+@pytest.fixture
+def us_layout(monkeypatch):
+    """The layout the gate's fake input and these tests resolve on, whatever
+    the box's own keyboard is."""
+    monkeypatch.setenv(di.FAKE_INPUT_ENV, "1")
+
+
+def _combo(key, mods):
+    return [(e.vk, e.up) for e in di.combo_events(key, mods)]
+
+
+def test_ctrl_slash_is_a_key_combo_for_the_layout_not_text(us_layout):
+    assert _combo("/", ["ctrl"]) == [
+        (di.VK_CONTROL, False), (0xBF, False), (0xBF, True), (di.VK_CONTROL, True),
+    ]
+    assert not any(e.flags & di.KEYEVENTF_UNICODE for e in di.combo_events("/", ["ctrl"]))
+    # The other punctuation keys the issue names.
+    assert di.combo_events(",", ["ctrl"])[1].vk == 0xBC
+    assert di.combo_events(";", ["alt"])[1].vk == 0xBA
+
+
+def test_a_character_that_needs_shift_gets_it_and_lets_go(us_layout):
+    # "?" is Shift + "/" here: asking for Ctrl + "?" must not lose the Shift.
+    assert _combo("?", ["ctrl"]) == [
+        (di.VK_CONTROL, False), (di.VK_SHIFT, False),
+        (0xBF, False), (0xBF, True),
+        (di.VK_SHIFT, True), (di.VK_CONTROL, True),
+    ]
+    assert _combo("!", []) == [
+        (di.VK_SHIFT, False), (ord("1"), False), (ord("1"), True), (di.VK_SHIFT, True),
+    ]
+
+
+def test_shift_already_held_is_not_doubled(us_layout):
+    events = _combo("?", ["shift", "ctrl"])
+    assert events.count((di.VK_SHIFT, False)) == 1
+    assert events.count((di.VK_SHIFT, True)) == 1
+
+
+def test_a_character_that_needs_no_shift_does_not_gain_one(us_layout):
+    assert (di.VK_SHIFT, False) not in _combo("/", ["ctrl"])
+    assert (di.VK_SHIFT, False) not in _combo("-", ["alt"])
+    # A Shift the user asked for is still theirs.
+    assert (di.VK_SHIFT, False) in _combo("/", ["shift"])
+
+
+def test_every_printable_ascii_character_resolves_or_is_rejected(us_layout):
+    for code in range(0x21, 0x7F):
+        ch = chr(code)
+        events = di.combo_events(ch, [])
+        assert events and not any(e.flags & di.KEYEVENTF_UNICODE for e in events), ch
+
+
+@pytest.mark.parametrize("key", [" ", "ñ", "€", "\n", "\t", "\x7f", "ab", "", "f13", "f0", "F5"])
+def test_a_key_that_is_not_one_key_is_rejected(us_layout, key):
+    with pytest.raises(di.InputRejected):
+        di.combo_events(key, ["ctrl"])
+
+
+def test_a_character_the_layout_cannot_resolve_is_rejected(monkeypatch):
+    monkeypatch.setattr(di, "resolve_char", lambda ch: None)
+    with pytest.raises(di.InputRejected):
+        di.combo_events("/", ["ctrl"])
+    # ...while letters, digits and named keys never ask the layout.
+    assert di.combo_events("c", ["ctrl"]) and di.combo_events("f5", [])
+
+
+def test_the_layout_decides_where_the_shift_is(monkeypatch):
+    """A layout where "/" is Shift + 7 and "?" is Shift + "ß": the same
+    request gives a different, still exact, combo."""
+    layout = {"/": (ord("7"), True), "?": (0xDB, True), "-": (0xBD, False)}
+    monkeypatch.setattr(di, "resolve_char", layout.get)
+    assert _combo("/", ["ctrl"]) == [
+        (di.VK_CONTROL, False), (di.VK_SHIFT, False),
+        (ord("7"), False), (ord("7"), True),
+        (di.VK_SHIFT, True), (di.VK_CONTROL, True),
+    ]
+    assert (di.VK_SHIFT, False) not in _combo("-", ["ctrl"])
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="asks the Windows layout")
+def test_the_windows_resolver_refuses_what_needs_altgr_or_ctrl(monkeypatch):
+    """VkKeyScanExW's state byte: bit 0 Shift is fine, any other bit (Ctrl,
+    Alt, AltGr) means the character is not a key of its own."""
+    import ctypes
+
+    monkeypatch.delenv(di.FAKE_INPUT_ENV, raising=False)
+    answers = iter([0x01BF, 0x06BF, 0x04BF, -1, 0x00FF])
+
+    class _User32:
+        def __getattr__(self, name):
+            return _Fn(name)
+
+    class _Fn:
+        def __init__(self, name):
+            self.name = name
+            self.argtypes = self.restype = None
+
+        def __call__(self, *args):
+            if self.name == "VkKeyScanExW":
+                return next(answers)
+            return 0
+
+    class _Win:
+        user32 = _User32()
+
+    monkeypatch.setattr(ctypes, "windll", _Win(), raising=False)
+    assert di.resolve_char("?") == (0xBF, True)
+    assert di.resolve_char("?") is None
+    assert di.resolve_char("?") is None
+    assert di.resolve_char("?") is None
+    assert di.resolve_char("?") is None
+
+
+def test_the_key_message_resolves_through_the_session_and_logs_nothing(us_layout, caplog):
+    rec = di.RecordingInjector()
+    with caplog.at_level("DEBUG", logger=di.logger.name):
+        assert _session(rec).handle({"type": "key", "key": "/", "mods": ["ctrl"]})
+        assert not _session(rec).handle_text(json.dumps({"type": "key", "key": "ñ", "mods": []}))
+    assert [(e.vk, e.up) for e in rec.batches[0]][1] == (0xBF, False)
+    assert "/" not in caplog.text and "ñ" not in caplog.text
+
+
+def test_a_cut_short_any_key_combo_is_lifted_on_release(us_layout):
+    """Held keys are tracked from what Windows accepted: only the Ctrl and
+    Shift went down before it refused the rest."""
+
+    class _Short(di.RecordingInjector):
+        def send(self, events):
+            super().send(events)
+            return 2
+
+    session = _session(_Short())
+    session.handle({"type": "key", "key": "?", "mods": ["ctrl"]})
+    _buttons, keys = session.held
+    assert {k.vk for k in keys} == {di.VK_CONTROL, di.VK_SHIFT}
+    assert session.release_all() == 2
+    assert session.held == (set(), set())
 
 
 @pytest.mark.parametrize(

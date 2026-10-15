@@ -105,6 +105,8 @@ NAMED_KEYS: Dict[str, Tuple[int, bool]] = {
     "end": (VK_END, True),
     "pageup": (VK_PRIOR, True),
     "pagedown": (VK_NEXT, True),
+    # F1-F12 are the contiguous virtual keys 0x70-0x7B, not extended (#1602).
+    **{f"f{n}": (0x6F + n, False) for n in range(1, 13)},
 }
 
 # Modifier -> (virtual key, extended), in the order they go down.
@@ -240,22 +242,87 @@ def text_events(text: str) -> List[KeyEvent]:
     return events
 
 
-def combo_events(key: str, mods: Sequence[str]) -> List[KeyEvent]:
-    """A named key or a single letter/digit, with modifiers held around it.
+def resolve_char(ch: str) -> Optional[Tuple[int, bool]]:
+    """``(virtual key, needs Shift)`` for a printable ASCII character on the
+    PC's current keyboard layout, or None when no key types it by itself.
 
-    Modifiers go out as virtual keys, never Unicode, so an app sees Ctrl+C
-    as a shortcut. The whole combo is one batch: nothing is left held.
+    On Windows this asks the layout of the foreground window's thread (the one
+    the keystroke will reach), so ``?`` is Shift + ``/`` on a US layout and
+    its own key elsewhere. Anywhere else, and under ``FAKE_INPUT_ENV`` (the
+    gate and the tests, which must not depend on the box's layout), it is the
+    US layout.
     """
+    if sys.platform == "win32" and os.environ.get(FAKE_INPUT_ENV, "") != "1":
+        return _windows_layout_vk(ch)
+    return _US_LAYOUT.get(ch)
+
+
+def _windows_layout_vk(ch: str) -> Optional[Tuple[int, bool]]:
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.c_void_p]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetKeyboardLayout.argtypes = [wintypes.DWORD]
+    user32.GetKeyboardLayout.restype = ctypes.c_void_p
+    user32.VkKeyScanExW.argtypes = [ctypes.c_wchar, ctypes.c_void_p]
+    user32.VkKeyScanExW.restype = ctypes.c_short
+    thread = user32.GetWindowThreadProcessId(user32.GetForegroundWindow(), None)
+    scan = user32.VkKeyScanExW(ch, user32.GetKeyboardLayout(thread))
+    if scan == -1:
+        return None
+    vk, state = scan & 0xFF, (scan >> 8) & 0xFF
+    # Bit 0 is Shift. Ctrl / Alt / AltGr in the state mean the character is
+    # not a key of its own here, and a combo built on it would be wrong.
+    if vk == 0xFF or state & ~1:
+        return None
+    return vk, bool(state & 1)
+
+
+def _us_layout() -> Dict[str, Tuple[int, bool]]:
+    table: Dict[str, Tuple[int, bool]] = {}
+    for ch, vk in zip("`-=[]\\;',./", (0xC0, 0xBD, 0xBB, 0xDB, 0xDD, 0xDC, 0xBA, 0xDE, 0xBC, 0xBE, 0xBF)):
+        table[ch] = (vk, False)
+    for ch, vk in zip('~_+{}|:"<>?', (0xC0, 0xBD, 0xBB, 0xDB, 0xDD, 0xDC, 0xBA, 0xDE, 0xBC, 0xBE, 0xBF)):
+        table[ch] = (vk, True)
+    for ch, digit in zip("!@#$%^&*()", "1234567890"):
+        table[ch] = (ord(digit), True)
+    return table
+
+
+_US_LAYOUT = _us_layout()
+
+
+def combo_events(key: str, mods: Sequence[str]) -> List[KeyEvent]:
+    """A named key or a single printable ASCII character, with modifiers held
+    around it.
+
+    Letters and digits are their own virtual keys. Any other character is
+    resolved on the PC's keyboard layout (:func:`resolve_char`); one that
+    needs Shift there gets it added, and one that does not resolve is
+    rejected. Modifiers go out as virtual keys, never Unicode, so an app sees
+    Ctrl+C as a shortcut. The whole combo is one batch: nothing is left held.
+    """
+    unknown = [m for m in mods if m not in MODIFIERS]
+    if unknown:
+        raise InputRejected("unknown modifier")
+    wanted = set(mods)
     if key in NAMED_KEYS:
         vk, extended = NAMED_KEYS[key]
     elif len(key) == 1 and key.isascii() and key.isalnum():
         vk, extended = ord(key.upper()), False
+    elif len(key) == 1 and key.isascii() and key.isprintable() and key != " ":
+        resolved = resolve_char(key)
+        if resolved is None:
+            raise InputRejected("unknown key")
+        vk, needs_shift = resolved
+        extended = False
+        if needs_shift:
+            wanted.add("shift")
     else:
         raise InputRejected("unknown key")
-    unknown = [m for m in mods if m not in MODIFIERS]
-    if unknown:
-        raise InputRejected("unknown modifier")
-    held = [MODIFIERS[m] for m in MODIFIERS if m in mods]
+    held = [MODIFIERS[m] for m in MODIFIERS if m in wanted]
     downs = [key_events(mvk, mext)[0] for mvk, mext in held]
     key_down, key_up = key_events(vk, extended)
     return downs + [key_down, key_up] + [d.released() for d in reversed(downs)]

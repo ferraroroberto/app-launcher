@@ -133,6 +133,11 @@ def test_the_sheet_opens_a_live_view_of_the_chosen_display(
     assert abs(geo["w"] - geo["vw"]) <= 1 and abs(geo["h"] - geo["vh"]) <= 1, geo
     assert geo["closeW"] >= 34 and geo["closeH"] >= 34, geo
     assert geo["navSpotInView"], "the nav must not sit over the view"
+    # Upright on a phone, and in the desktop pop-out: the bars stay in the
+    # flow, with no landscape handle (#1601).
+    expect(view_page.locator("#screenHandle")).to_be_hidden()
+    expect(view_page.locator(".screen-view-bar")).to_be_visible()
+    expect(view_page.locator(".screen-view-tools")).to_be_visible()
 
     # Both displays as a picker; the one above the primary reconnects.
     picker = view_page.locator("#screenPicker .segmented-item")
@@ -326,11 +331,12 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     expect(keys).to_be_visible()
     expect(page.locator("#screenKeyInput")).to_be_focused()
 
-    # Every key in the bar stays at the 44px floor.
-    sizes = page.locator("#screenKeys .key-btn").evaluate_all(
+    # Every key of the first page stays at the 44px floor: the original 13,
+    # then the page toggle and Task Mgr (#1602).
+    sizes = page.locator("#screenKeys .key-btn:visible").evaluate_all(
         "els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; })"
     )
-    assert len(sizes) == 13
+    assert len(sizes) == 15
     assert all(w >= 40 and h >= 44 for w, h in sizes), sizes
 
     # Typed text goes out verbatim, Unicode included.
@@ -369,6 +375,157 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     toggle.click()
     expect(keys).to_be_hidden()
     expect(toggle).to_have_attribute("aria-pressed", "false")
+
+
+# ------------------------------------------------- the second page (#1602)
+
+_KEY_BOXES_JS = """els => els.map(e => {
+  const r = e.getBoundingClientRect();
+  return { w: r.width, h: r.height, l: r.left, r: r.right, t: r.top, b: r.bottom,
+           label: e.dataset.key || e.dataset.mod || e.dataset.macro || e.dataset.pageTo };
+})"""
+
+
+def _open_keys(authed_page: Page, base_url: str):
+    seen, page = _live_view(authed_page, base_url)
+    _set_mode(page, "control")
+    page.locator("#screenKeyboard").click()
+    expect(page.locator("#screenKeys")).to_be_visible()
+    return seen, page
+
+
+def _last(seen) -> dict:
+    return seen["inputs"][-1]
+
+
+def _visible_boxes(page: Page) -> list:
+    return page.locator("#screenKeys .key-btn:visible").evaluate_all(_KEY_BOXES_JS)
+
+
+def test_the_second_page_sends_f_keys_navigation_keys_and_task_manager(
+    authed_page: Page, base_url: str
+) -> None:
+    seen, page = _open_keys(authed_page, base_url)
+    keys = page.locator("#screenKeys")
+    main = keys.locator('[data-keys-page="main"]')
+    fn = keys.locator('[data-keys-page="fn"]')
+
+    # The first page is the default, and the second is not on screen.
+    expect(main).not_to_be_hidden()
+    expect(fn).to_be_hidden()
+    expect(keys.locator('[data-key="f5"]')).to_be_hidden()
+
+    # Task Mgr is on the first page: one combo, no server change.
+    keys.locator('[data-macro="taskmgr"]:visible').click()
+    wait_until(page, lambda: seen["inputs"] and _last(seen).get("key") == "esc", "Task Mgr")
+    assert _last(seen) == {"type": "key", "key": "esc", "mods": ["ctrl", "shift"]}
+
+    # A modifier tapped on the first page is still held on the second, and
+    # the way back names it.
+    keys.locator('[data-mod="ctrl"]').click()
+    keys.locator('[data-page-to="fn"]').click()
+    expect(main).to_be_hidden()
+    expect(fn).not_to_be_hidden()
+    held = keys.locator("[data-held]")
+    expect(held).to_have_text("Ctrl")
+    keys.locator('[data-key="f5"]').click()
+    wait_until(page, lambda: _last(seen).get("key") == "f5", "Ctrl+F5")
+    assert _last(seen) == {"type": "key", "key": "f5", "mods": ["ctrl"]}
+    # ...and lets go after that one key, as on the first page.
+    expect(held).to_be_hidden()
+    keys.locator('[data-key="f12"]').click()
+    wait_until(page, lambda: _last(seen).get("key") == "f12", "F12")
+    assert _last(seen)["mods"] == []
+
+    # Alt + F4, with two modifiers going back and forth across the pages.
+    keys.locator('[data-page-to="main"]').click()
+    keys.locator('[data-mod="alt"]').click()
+    keys.locator('[data-mod="shift"]').click()
+    keys.locator('[data-page-to="fn"]').click()
+    expect(held).to_have_text("Alt+Shift")
+    keys.locator('[data-key="f4"]').click()
+    wait_until(page, lambda: _last(seen).get("key") == "f4", "Alt+Shift+F4")
+    assert _last(seen)["mods"] == ["alt", "shift"]
+
+    # The navigation cluster.
+    for key in ("home", "end", "pageup", "pagedown"):
+        keys.locator(f'[data-key="{key}"]').click()
+        wait_until(page, lambda k=key: _last(seen).get("key") == k, key)
+        assert _last(seen) == {"type": "key", "key": key, "mods": []}
+
+    # Task Mgr is here too, with the same combo.
+    keys.locator('[data-macro="taskmgr"]:visible').click()
+    wait_until(page, lambda: _last(seen).get("key") == "esc", "Task Mgr again")
+    assert _last(seen) == {"type": "key", "key": "esc", "mods": ["ctrl", "shift"]}
+
+    # Closing the keyboard puts the first page back, for the next time.
+    page.locator("#screenKeyboard").click()
+    page.locator("#screenKeyboard").click()
+    expect(main).not_to_be_hidden()
+    expect(fn).to_be_hidden()
+
+
+def test_a_modifier_and_punctuation_goes_out_as_a_key_combo(
+    authed_page: Page, base_url: str
+) -> None:
+    seen, page = _open_keys(authed_page, base_url)
+    keys = page.locator("#screenKeys")
+
+    keys.locator('[data-mod="ctrl"]').click()
+    page.keyboard.type("/")
+    wait_until(page, lambda: seen["inputs"] and _last(seen).get("key") == "/", "Ctrl+/")
+    assert _last(seen) == {"type": "key", "key": "/", "mods": ["ctrl"]}
+
+    # A character that needs Shift on the PC's layout is sent as the
+    # character: the server decides where the Shift goes.
+    keys.locator('[data-mod="alt"]').click()
+    page.keyboard.type("?")
+    wait_until(page, lambda: _last(seen).get("key") == "?", "Alt+?")
+    assert _last(seen) == {"type": "key", "key": "?", "mods": ["alt"]}
+
+    # Without a modifier, punctuation is still text; so is an accent with one.
+    page.keyboard.type(";")
+    wait_until(page, lambda: _last(seen).get("text") == ";", "plain ;")
+    keys.locator('[data-mod="ctrl"]').click()
+    page.keyboard.type("ñ")
+    wait_until(page, lambda: _last(seen).get("text") == "ñ", "Ctrl + ñ stays text")
+    assert _last(seen)["type"] == "text"
+
+
+def test_both_pages_fit_a_narrow_phone_in_portrait_and_landscape(
+    authed_page: Page, base_url: str
+) -> None:
+    _seen, page = _open_keys(authed_page, base_url)
+    keys = page.locator("#screenKeys")
+
+    for width, height, rows in ((360, 740, 3), (844, 390, 2)):
+        page.set_viewport_size({"width": width, "height": height})
+        for target, expected in (("fn", 18), ("main", 15)):
+            keys.locator(f'[data-page-to="{target}"]').click()
+            expect(keys.locator(f'[data-keys-page="{target}"]')).not_to_be_hidden()
+            boxes = stable_boxes(page, expected)
+            assert len(boxes) == expected, (width, target, boxes)
+            assert all(b["h"] >= 44 and b["w"] >= 43.5 for b in boxes), (width, target, boxes)
+            assert all(b["l"] >= -0.5 and b["r"] <= width + 0.5 for b in boxes), (width, target, boxes)
+            assert len({round(b["t"]) for b in boxes}) == rows, (width, target, rows, boxes)
+            assert page.evaluate(
+                "() => document.getElementById('screenKeys').scrollWidth"
+                " <= document.getElementById('screenKeys').clientWidth + 1"
+            ), (width, target)
+
+
+def stable_boxes(page: Page, expected: int) -> list:
+    """The visible keys' boxes once the count settles (a page flip and a
+    resize each re-lay the bar out before they read)."""
+    boxes: list = []
+
+    def settled() -> bool:
+        nonlocal boxes
+        boxes = _visible_boxes(page)
+        return len(boxes) == expected
+
+    wait_until(page, settled, f"{expected} visible keys")
+    return boxes
 
 
 # -------------------------------------------------------------- cursor (#1598)
@@ -702,3 +859,93 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     )
     page.locator('#screenControl [data-control="touch"]').click()
     assert page.evaluate("localStorage.getItem('launcher.screenControlMode')") == "touch"
+
+
+def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboard(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1600. A quick two-finger tap in Touch right-clicks at the fingers'
+    midpoint, once and with no left click; a slow touch, a scroll and a pinch
+    do not. A quick three-finger tap toggles the keyboard in Control and does
+    nothing in View, and three fingers never click, drag or scroll. The real
+    timing is judged on a phone."""
+    seen, page = _live_view(authed_page, base_url)
+    keyboard = page.locator("#screenKeyboard")
+    keys = page.locator("#screenKeys")
+    p, q = _point(page, 0.4, 0.3), _point(page, 0.6, 0.3)
+    r = _point(page, 0.5, 0.7)
+
+    # View: neither gesture reaches the PC, and the keyboard is not there.
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2),
+                     ("pointerup", p, 1), ("pointerup", q, 2)])
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3),
+                     ("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)])
+    expect(keys).to_be_hidden()
+
+    _set_mode(page, "control")
+    expect(keys).to_be_hidden()
+
+    # A quick two-finger tap: one right click at the midpoint, nothing else.
+    _sequence(page, [("pointerdown", p, 1), ("pointerdown", q, 2),
+                     ("pointerup", p, 1), ("pointerup", q, 2)])
+    wait_until(page, lambda: len(seen["inputs"]) >= 1, "the two-finger right click")
+    click = seen["inputs"][0]
+    assert (click["type"], click["button"]) == ("click", "right"), seen["inputs"]
+    assert _near(click["x"], 0.5) and _near(click["y"], 0.3), click
+    # Socket messages arrive in order: the View-mode taps sent nothing, and
+    # this one sent exactly one message (no left click beside it).
+    assert len(seen["inputs"]) == 1, seen["inputs"]
+
+    # Two fingers resting as long as a long-press: not a tap.
+    count = len(seen["inputs"])
+    _pointer(page, "pointerdown", p, 1)
+    _pointer(page, "pointerdown", q, 2)
+    page.wait_for_timeout(700)
+    _pointer(page, "pointerup", p, 1)
+    _pointer(page, "pointerup", q, 2)
+
+    # A two-finger drag scrolls and never right-clicks.
+    steps = [("pointerdown", p, 1), ("pointerdown", q, 2)]
+    for i in (1, 2, 3, 4):
+        steps += [("pointermove", {"x": p["x"], "y": p["y"] + 12 * i}, 1),
+                  ("pointermove", {"x": q["x"], "y": q["y"] + 12 * i}, 2)]
+    steps += [("pointerup", {"x": p["x"], "y": p["y"] + 48}, 1),
+              ("pointerup", {"x": q["x"], "y": q["y"] + 48}, 2)]
+    _sequence(page, steps)
+    wait_until(page, lambda: any(m["type"] == "scroll" for m in seen["inputs"][count:]),
+               "the two-finger scroll")
+    assert all(m["type"] == "scroll" for m in seen["inputs"][count:]), seen["inputs"][count:]
+
+    # A quick three-finger tap raises the keyboard and keys bar; another
+    # lowers them. It sends nothing to the PC.
+    count = len(seen["inputs"])
+    tap3 = [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3),
+            ("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)]
+    _sequence(page, tap3)
+    expect(keys).to_be_visible()
+    expect(keyboard).to_have_attribute("aria-pressed", "true")
+    _sequence(page, tap3)
+    expect(keys).to_be_hidden()
+    expect(keyboard).to_have_attribute("aria-pressed", "false")
+
+    # Three fingers that rest, or that move, toggle nothing and send nothing.
+    _pointer(page, "pointerdown", p, 1)
+    _pointer(page, "pointerdown", q, 2)
+    _pointer(page, "pointerdown", r, 3)
+    page.wait_for_timeout(700)
+    for pid, pt in ((1, p), (2, q), (3, r)):
+        _pointer(page, "pointerup", pt, pid)
+    expect(keys).to_be_hidden()
+    steps = [("pointerdown", p, 1), ("pointerdown", q, 2), ("pointerdown", r, 3)]
+    for i in (1, 2, 3):
+        steps += [("pointermove", {"x": pt["x"], "y": pt["y"] + 15 * i}, pid)
+                  for pid, pt in ((1, p), (2, q), (3, r))]
+    steps += [("pointerup", p, 1), ("pointerup", q, 2), ("pointerup", r, 3)]
+    _sequence(page, steps)
+    expect(keys).to_be_hidden()
+    _tap(page, 0.2, 0.2)   # a sentinel: it is the next message the PC gets
+    wait_until(page, lambda: len(seen["inputs"]) > count, "the sentinel click")
+    assert seen["inputs"][count:] == [
+        {"type": "click", "button": "left", "x": seen["inputs"][count]["x"],
+         "y": seen["inputs"][count]["y"]}
+    ], seen["inputs"][count:]

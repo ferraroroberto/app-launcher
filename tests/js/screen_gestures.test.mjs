@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 const {
   GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
   wheelFromDrag, wheelFromWheelEvent, comboKey, padGain, padStep, followPan, controlStyle,
+  anyMovedPastTap, isMultiFingerTap,
 } = await import('../../app/webapp/static/screen-gestures.js');
 const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
   '../../app/webapp/static/screen-cursor.js');
@@ -159,6 +160,29 @@ assert.ok(close(pan.x, 48 - 100) && close(pan.y, 48 - 200), JSON.stringify(pan))
 pan = followPan({ scale: 2, x: 0, y: 0 }, 90, 10, 100, 100, 48);
 assert.ok(close(pan.x, 75 - 180), JSON.stringify(pan));
 
+// Two- and three-finger taps (#1600): never moved and lifted before a
+// long-press would have fired. Any movement past the slop, or a rest as long
+// as a long-press, is not a tap.
+assert.equal(GESTURE.multiTapMs, GESTURE.longPressMs);
+assert.equal(isMultiFingerTap(false, 0), true);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs - 1), true);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs), false);
+assert.equal(isMultiFingerTap(false, GESTURE.multiTapMs + 400), false);
+assert.equal(isMultiFingerTap(true, 50), false);
+assert.equal(isMultiFingerTap(false, -1), false);
+// Two fingers: classifyTwoFinger's null (undecided) is what "never moved" is.
+const twoStart = { dist: 100, mid: { x: 100, y: 100 } };
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 104, mid: { x: 103, y: 102 } }), 120), true);
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 100, mid: { x: 100, y: 130 } }), 120), false);
+assert.equal(isMultiFingerTap(!!classifyTwoFinger(twoStart, { dist: 140, mid: { x: 100, y: 100 } }), 120), false);
+// Three fingers: any one past the tap slop spoils it; a wobble inside does not.
+const three = [{ x: 50, y: 50 }, { x: 100, y: 50 }, { x: 150, y: 50 }];
+assert.equal(anyMovedPastTap(three, three.map((p) => ({ x: p.x + 3, y: p.y - 4 }))), false);
+assert.equal(anyMovedPastTap(three, three.map((p) => ({ x: p.x + GESTURE.tapSlop, y: p.y }))), false);
+assert.equal(anyMovedPastTap(three, [three[0], three[1], { x: 150, y: 50 + GESTURE.tapSlop + 1 }]), true);
+// A finger that has gone from the list is not a move.
+assert.equal(anyMovedPastTap(three, [three[0], three[1]]), false);
+
 // The remembered Control style: trackpad only when stored as such; a
 // first use, a blocked storage or junk is direct touch.
 assert.equal(controlStyle('trackpad'), 'trackpad');
@@ -166,12 +190,30 @@ assert.equal(controlStyle('touch'), 'touch');
 assert.equal(controlStyle(null), 'touch');
 assert.equal(controlStyle('Trackpad'), 'touch');
 
-// Sticky modifiers turn letters and digits into combos, nothing else.
+// Sticky modifiers turn letters, digits and every printable ASCII character
+// into a combo (#1602); the PC resolves the character on its own layout.
 assert.equal(comboKey('c'), 'c');
 assert.equal(comboKey('A'), 'a');
 assert.equal(comboKey('7'), '7');
+for (const ch of ['/', ',', ';', '.', '-', '=', '[', ']', '\\', "'", '`', '?', '!', '@', '~', '|', '"']) {
+  assert.equal(comboKey(ch), ch, ch);
+}
+assert.equal(comboKey(' '), 'space');
+let printable = 0;
+for (let code = 0x21; code <= 0x7e; code++) {
+  assert.notEqual(comboKey(String.fromCharCode(code)), null, String.fromCharCode(code));
+  printable++;
+}
+assert.equal(printable, 94);
+// Only text can carry these.
 assert.equal(comboKey('ñ'), null);
-assert.equal(comboKey(' '), null);
+assert.equal(comboKey('€'), null);
+assert.equal(comboKey('😀'), null);
 assert.equal(comboKey('ab'), null);
+assert.equal(comboKey(String.fromCharCode(10)), null);
+assert.equal(comboKey(String.fromCharCode(9)), null);
+assert.equal(comboKey(String.fromCharCode(0x7f)), null);
+assert.equal(comboKey(''), null);
+assert.equal(comboKey(undefined), null);
 
 console.log('OK');

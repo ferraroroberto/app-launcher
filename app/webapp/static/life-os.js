@@ -506,7 +506,7 @@ function renderRecap() {
   verb.className = 'icon-button action-row-verb lifeos-recap-launch';
   verb.innerHTML = icon('play');
   verb.title = 'Review the weekly recap (/weekly-recap)';
-  verb.setAttribute('aria-label', 'Launch weekly recap review');
+  verb.setAttribute('aria-label', 'Run weekly recap review');
   verb.addEventListener('click', launchRecap);
   row.li.appendChild(verb);
   list.replaceChildren(row.li);
