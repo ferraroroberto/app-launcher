@@ -91,6 +91,28 @@ def test_state_row_joins_the_stub_session_exactly(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="the stub session's claude shim is a .cmd")
+def test_synthetic_no_go_lets_the_walk_open_a_board_session_card() -> None:
+    """#1633: a Board session card is an ``.action-row-main`` whose tap only toggles the drawer.
+
+    A bare ``.action-row-main`` in the synthetic ``no_go`` refuses the Chat and
+    Terminal steps' first click (``NO_GO``), so COMP-18 reads unmeasured: the
+    walk never reaches a rendered transcript. The veto must spare the session
+    card's own class, and the card must still carry that class.
+    """
+    import tomllib
+
+    fleet = tomllib.loads((REPO_ROOT / ".fleet.toml").read_text(encoding="utf-8"))
+    review = fleet["design"]["review"]
+    no_go = review["synthetic"]["no_go"]
+    assert ".action-row-main" not in no_go
+    assert ".action-row-main:not(.board-card-session)" in no_go
+    # The live list keeps the bare veto: a live walk never opens a session's drawer.
+    assert ".action-row-main" in review["no_go"]
+    chat = next(s for s in review["extra_steps"] if s["id"] == "session-chat")
+    assert chat["synthetic"] is True and chat["clicks"][0] == ".board-item[data-session-id] .board-card"
+    assert "'board-card', 'board-card-session'" in (REPO_ROOT / "app/webapp/static/board.js").read_text(encoding="utf-8")
+
+
 def test_launcher_contract_end_to_end() -> None:
     proc = subprocess.Popen([sys.executable, "scripts/design_review_synthetic.py"], cwd=REPO_ROOT,
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
