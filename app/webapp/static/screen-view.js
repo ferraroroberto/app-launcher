@@ -56,8 +56,8 @@ import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
 import { clearTerminalToken, ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { setAsyncState, staleMessage } from './async-state.js';
 import {
-  GESTURE, classifyTwoFinger, comboKey, controlStyle, distance, followPan, frameFraction,
-  isDoubleTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
+  GESTURE, anyMovedPastTap, classifyTwoFinger, comboKey, controlStyle, distance, followPan,
+  frameFraction, isDoubleTap, isMultiFingerTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
 } from './screen-gestures.js';
 import { cursorShape, cursorSvg } from './screen-cursor.js';
 
@@ -561,7 +561,8 @@ function framePoint(pt, clamp) {
 // The gesture in flight in Control mode (null when none):
 //   {kind: 'press', start, timer}        one finger, still a tap/long-press
 //   {kind: 'drag', last}                 the left button is down on the PC
-//   {kind: 'two', start, lastMid, scale0, cls}  two fingers
+//   {kind: 'two', start, lastMid, scale0, cls, t0}  two fingers
+//   {kind: 'three', starts, moved, t0}   three fingers: only a tap does anything
 //   {kind: 'spent'}                      done; wait for every finger to lift
 let gesture = null;
 let lastTap = null;
@@ -625,11 +626,40 @@ function controlDown(pointers, e, pt) {
         gesture = { kind: 'spent' };
       }, GESTURE.longPressMs),
     };
-  } else if (pointers.size === 2) {
-    cancelGesture();
-    const p = twoFingerState(pointers);
-    gesture = { kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null };
+  } else if (pointers.size === 2 || pointers.size === 3) {
+    startMultiFinger(pointers);
   }
+}
+
+// A second finger lands: whatever one finger was doing is over, and two
+// fingers pinch, scroll or (lifted quickly) right-click. A third finger
+// ends that too and only a quick tap of all three does anything: raise the
+// keyboard (#1600). Both Control styles share this.
+function startMultiFinger(pointers) {
+  cancelGesture();
+  const t0 = Date.now();
+  if (pointers.size === 3) {
+    gesture = { kind: 'three', starts: Array.from(pointers.values()), moved: false, t0: t0 };
+    return;
+  }
+  const p = twoFingerState(pointers);
+  gesture = { kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null, t0: t0 };
+}
+
+// The first of two or three fingers lifts. A quick tap that never moved is
+// a two-finger right-click (where the fingers were in Touch, at the cursor
+// in Trackpad) or a three-finger keyboard toggle; anything else sends
+// nothing, and the fingers still down must not start a drag.
+function endMultiFinger() {
+  const g = gesture;
+  gesture = { kind: 'spent' };
+  if (!isMultiFingerTap(g.kind === 'three' ? g.moved : !!g.cls, Date.now() - g.t0)) return;
+  if (g.kind === 'three') {
+    toggleKeys();
+    return;
+  }
+  const at = isPad() ? view.pad : framePoint(g.lastMid);
+  if (at) sendInput({ type: 'click', button: 'right', x: at.x, y: at.y });
 }
 
 function controlMove(pointers, pt) {
@@ -655,6 +685,12 @@ function controlMove(pointers, pt) {
 // drag scrolls the PC's wheel under the fingers (Touch) or at the cursor
 // (Trackpad).
 function twoFingerMove(pointers) {
+  if (gesture.kind === 'three') {
+    // Three fingers never scroll, drag or click: moving just stops it
+    // being a tap.
+    gesture.moved = gesture.moved || anyMovedPastTap(gesture.starts, Array.from(pointers.values()));
+    return;
+  }
   if (gesture.kind !== 'two' || pointers.size !== 2) return;
   const now = twoFingerState(pointers);
   if (!gesture.cls) gesture.cls = classifyTwoFinger(gesture.start, now);
@@ -687,10 +723,8 @@ function controlUp(pointers, pt) {
   } else if (gesture.kind === 'drag') {
     gesture.last = pt;
     cancelGesture();
-  } else if (gesture.kind === 'two') {
-    // One finger lifting ends the two-finger gesture; the other must not
-    // start a drag.
-    gesture = { kind: 'spent' };
+  } else if (gesture.kind === 'two' || gesture.kind === 'three') {
+    endMultiFinger();
   }
   if (pointers.size === 0) gesture = null;
 }
@@ -799,12 +833,8 @@ function padDown(pointers, e, pt) {
         showHeld(true);
       }, GESTURE.longPressMs),
     };
-  } else if (pointers.size === 2) {
-    cancelGesture();
-    const p = twoFingerState(pointers);
-    gesture = {
-      kind: 'two', start: p, lastMid: p.mid, scale0: view.zoom.scale, cls: null, t0: Date.now(),
-    };
+  } else if (pointers.size === 2 || pointers.size === 3) {
+    startMultiFinger(pointers);
   }
 }
 
@@ -857,12 +887,8 @@ function padUp(pointers) {
     cancelGesture();
   } else if (gesture.kind === 'pad-move') {
     gesture = null;
-  } else if (gesture.kind === 'two') {
-    // Two fingers down and up without scrolling or pinching: a right click.
-    if (!gesture.cls && Date.now() - gesture.t0 < GESTURE.longPressMs && view.pad) {
-      padClick('right', view.pad);
-    }
-    gesture = { kind: 'spent' };
+  } else if (gesture.kind === 'two' || gesture.kind === 'three') {
+    endMultiFinger();
   }
   if (pointers.size === 0) gesture = null;
 }
@@ -887,6 +913,12 @@ function pinchTo(scale0, start, now, lastMid) {
 }
 
 // ---------------------------------------------------------------- keyboard
+
+// The keyboard button's own toggle, which a three-finger tap shares.
+function toggleKeys() {
+  const keys = $('screenKeys');
+  setKeysOpen(!keys || keys.hidden);
+}
 
 function setKeysOpen(open) {
   const keys = $('screenKeys');
@@ -954,9 +986,7 @@ function wireKeyboard() {
   const keys = $('screenKeys');
   const input = $('screenKeyInput');
   if (kb) {
-    kb.addEventListener('click', function () {
-      setKeysOpen(!keys || keys.hidden);
-    });
+    kb.addEventListener('click', toggleKeys);
   }
   if (keys) {
     // Keep the phone keyboard up: a key tap must not take focus off the
