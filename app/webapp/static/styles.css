@@ -4472,7 +4472,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-plan-line { margin: 0 0 6px; }
 .board-plan-heading {
   margin: 12px 0 2px;
-  font-size: var(--font-caption);
+  font-size: var(--font-body);
   font-weight: 600;
   color: var(--muted);
 }
@@ -4485,13 +4485,16 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-plan-row .action-row-meta .chip { margin-left: auto; }
 .board-plan-section-note { margin: 0 0 4px; }
 /* Parked folds (#1578): its heading is the <details> summary, with the
-   section's own chevron instead of the browser marker. */
+   section's own chevron instead of the browser marker. The summary is a
+   control, not a heading element, so it keeps the caption size the shared
+   `.board-plan-heading` rule no longer gives it (#1623). */
 .board-plan-parked-summary {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: var(--row-sm);
   margin: 0;
+  font-size: var(--font-caption);
   cursor: pointer;
   list-style: none;
 }
@@ -4984,8 +4987,8 @@ span.chief-answer-ref { color: var(--muted); }
    (#1586), the same one as the Coding-options permission rows. */
 .context-filter-subhead {
   margin: 16px 0 6px;
-  font-size: var(--font-caption);
-  font-weight: 700;
+  font-size: var(--font-body);
+  font-weight: 600;
   color: var(--muted);
 }
 .context-filter-harness-list .context-filter-harness {
