@@ -184,10 +184,14 @@ def test_the_keyboard_toggle_through_the_handle_raises_the_keys_bar(
     keys_box = keys.bounding_box()
     assert keys_box["y"] + keys_box["height"] <= geo["vh"] + 1, keys_box
     assert geo["stage"]["h"] > 100, geo["stage"]
-    sizes = page.locator("#screenKeys .key-btn").evaluate_all(
+    # The keys on the page that is showing: the other page (#1602) is hidden
+    # and has no box, so it is not a key the thumb can miss.
+    sizes = page.locator(
+        "#screenKeys .screen-keys-page:not([hidden]) .key-btn"
+    ).evaluate_all(
         "els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; })"
     )
-    assert all(w >= 40 and h >= 44 for w, h in sizes), sizes
+    assert sizes and all(w >= 40 and h >= 44 for w, h in sizes), sizes
 
     # And off again the same way.
     handle.click()
