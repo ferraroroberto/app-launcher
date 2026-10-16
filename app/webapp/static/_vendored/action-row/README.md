@@ -1,6 +1,6 @@
 # `action-row` — a list row that does something
 
-The fleet's canonical **action-row** (`~/.claude/design.md` → "Component contracts" → action-row, `ferraroroberto/fleet-config#965`): a flat list row whose **tap performs its primary action** (launch, run, open), with every other action behind **one trailing 44px kebab**. A row may add **at most one leading toggle** (favorite) and **at most one other visible action**, and only when that action is the row's dominant verb (Run on a job row). Title: `body` at 600, one line, ellipsized. Context: at most one `body-sm` line in muted. No vertical rules between controls. A list that can exceed ~12 rows gets a filter field above it.
+The fleet's canonical **action-row** (`~/.claude/design.md` → "Component contracts" → action-row, `ferraroroberto/fleet-config#965`): a flat list row whose **tap performs its primary action** (launch, run, open), with every other action behind **one trailing 44px kebab**. A row may add **at most one leading toggle** (favorite) and **at most one other visible action**, and only when that action is the row's dominant verb (Run on a job row). Title: `body` at 600, one line, ellipsized. Context: one `body-sm` muted status line that wraps to at most two lines, so its trailing times and counts stay readable. No vertical rules between controls. A list that can exceed ~12 rows gets a filter field above it.
 
 **Row verbs are plain icon-buttons.** Every visible verb on a row (Live, Wake, Start, Stop, Find, Run) is an unpainted [`icon-button`](../icon-button/) at the 44px row box, next to the kebab: no fill and no border at rest, and the glyph colour is the only state (muted at rest, ink on hover). A cluster of verbs is an [`.icon-button-group`](../icon-button/), with no track. The glyph and the `aria-label` say which verb it is; the glyph map is below. Owner decision `ferraroroberto/fleet-config#1420`, built in `project-scaffolding#386`. The tinted Run and the outlined Stop (`fleet-config#1386`) are retired.
 
@@ -56,7 +56,8 @@ It also needs two glyphs from the vendored `icons/` sprite: `i-ellipsis-vertical
 - **`.card action-list`** is a `.card` modifier that zeroes the card's padding: the rows are full-bleed, on a `--line-muted` hairline between rows (`.action-row + .action-row`), never nested cards. Rows placed in another host (a disclosure body) need that host's horizontal padding at zero too.
 - **`.action-row-main`** is the primary action: a `<button>`, or an `<a>` when the row only navigates. It stretches to the row's full height, so the tap target is the row, not the words. The kebab (and the favorite, and the verb) are **siblings** of it, never children, so a tap on one never also fires the row.
 - **Height** comes from the `rows` scale: a title-only row is `--row-md` (52px), a row with an `.action-row-meta` line is `--row-lg` (60px). Never a literal.
-- **`.action-row-title` / `.action-row-meta`** are one line each, ellipsized. Put one context line at most; a row that needs more is a detail view.
+- **`.action-row-title`** is one line, ellipsized.
+- **`.action-row-meta`** is the row's status line (`<state> · <time> · <count>`): it **wraps to at most two lines** (`white-space: normal` plus a two-line `-webkit-line-clamp` as the safety net) so the times and counts at its tail stay readable at a 390px phone width, where a one-line ellipsis cut exactly those figures (`project-scaffolding#396`, design-review rule `LAYOUT-09`). The row grows only when the meta really wraps; a one-line meta keeps the `--row-lg` height. Put one status line at most; a row that needs more is a detail view. Keep the figures the reader needs at the tail of the line, and put the words first. The alternative considered, a truncating label plus non-shrinking trailing figure items, would have changed every adopter's markup; this one keeps existing markup valid.
 - **The accessories are `.icon-button`s.** `.action-row-fav`, `.action-row-verb` and `.action-row-kebab` each carry `icon-button` as well (`class="icon-button action-row-kebab"`): [`icon-button/`](../icon-button/) owns the unpainted box, the glyph colour states and the target, and `action-row.css` sets their box to the 44px `--row-sm` (`--icon-btn-box`), so no expansion is needed. Only the rules below are the row's own.
 - **`.action-row-fav`** is the one leading toggle. The caller flips `aria-pressed` only; CSS swaps the outline star for the filled one and colors it `--attention`. The fill is what reads without hue.
 - **`.action-row-verb`** is the one extra visible action: a plain `icon-button` at 44px, with no fill and no border at rest, whatever it does (Run, Stop, Live, Wake). Use it only for the row's dominant verb; everything else goes in the menu. Keep it named (`aria-label="Stop"`), since the glyph is the only other cue. `action-row.css` ships no paint for it: the glyph colours come from `icon-button.css`, so link that file.
@@ -118,6 +119,8 @@ One glyph per verb, from the vendored [`icons/`](../icons/) sprite, so the same 
 | Start / Run | `i-play` |
 | Stop | `i-square` |
 | Find | `i-search` |
+| Open | `i-external-link` |
+| About | `i-info` |
 
 ## The row menu stays app-side (for now)
 

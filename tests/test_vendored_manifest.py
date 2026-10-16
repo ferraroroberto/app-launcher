@@ -7,9 +7,10 @@ invisible to that pass — which is how six of seven ended up unmanaged.
 
 The reverse error is worse. An entry asserts byte-for-byte provenance, so
 declaring a component we have *locally modified* would let a re-vendor
-overwrite the local work. `icons` is exactly that case and is excluded on
-purpose; this test pins the exclusion so it stays a decision rather than
-drifting back into an oversight.
+overwrite the local work. A component like that goes in `_EXCLUDED` on purpose;
+this test pins the exclusion so it stays a decision rather than drifting back
+into an oversight. `_EXCLUDED` is empty since `icons` was upstreamed to the
+scaffold and declared (project-scaffolding#390, #391).
 """
 
 from __future__ import annotations
@@ -22,9 +23,7 @@ _VENDORED_DIR = _REPO_ROOT / "app" / "webapp" / "static" / "_vendored"
 
 # Components deliberately left out of [vendored], with the reason they are
 # not byte-identical to the scaffold. Adding to this list is a decision.
-_EXCLUDED = {
-    "icons": "local sprite carries app-launcher-only symbols (#1004)",
-}
+_EXCLUDED: dict[str, str] = {}
 
 
 def _declared_sources() -> set[str]:

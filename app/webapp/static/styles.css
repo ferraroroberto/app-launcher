@@ -5500,6 +5500,16 @@ span.chief-answer-ref { color: var(--muted); }
 .action-row--small .action-row-title { flex: 0 1 auto; min-width: 0; }
 .action-row--one-line .action-row-meta,
 .action-row--small .action-row-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; }
+/* The scaffold's meta wraps to two lines (project-scaffolding#396); these
+   densities are single-line by contract, so they put the one-line ellipsis
+   back (the same scoped override the scaffold's day-row uses). */
+.action-row--one-line .action-row-meta:not(.has-chips),
+.action-row--small .action-row-meta:not(.has-chips) {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  white-space: nowrap;
+}
 .action-row-main.is-inert { cursor: default; }
 .action-row-main.is-inert:active { background: transparent; }
 .action-row > .action-row-trailing { flex: none; }

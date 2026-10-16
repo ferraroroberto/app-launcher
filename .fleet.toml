@@ -29,6 +29,7 @@ description = "<b>Where I live</b> — phone-first hub: Coding · Apps · Jobs �
 extra_junctions = ["webapp/certificates"]
 
 [vendored]
+icons = { src = "app/webapp/static/_vendored/icons", sha = "7d9b824bfc2dd4f3ec8a9d7424208bb36d42c556", dest = "app/webapp/static/_vendored/icons" }
 switch = { src = "app/webapp/static/_vendored/switch", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/switch" }
 button = { src = "app/webapp/static/_vendored/button", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/button" }
 card = { src = "app/webapp/static/_vendored/card", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/card" }
@@ -41,16 +42,12 @@ modal = { src = "app/webapp/static/_vendored/modal", sha = "4c699636afecd5cae5e9
 text-size = { src = "app/webapp/static/_vendored/text-size", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/text-size" }
 segmented = { src = "app/webapp/static/_vendored/segmented", sha = "f52eb75625cbfd8dcef8a71731390a47b795508d", dest = "app/webapp/static/_vendored/segmented" }
 base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
-action-row = { src = "app/webapp/static/_vendored/action-row", sha = "f52eb75625cbfd8dcef8a71731390a47b795508d", dest = "app/webapp/static/_vendored/action-row" }
-row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "63dd40986faf7eafb030ee28f9726c6a584eef21", dest = "app/webapp/static/_vendored/row-menu" }
-# icons is deliberately NOT declared (#1004): our icons-sprite.html is the
-# scaffold's symbols (i-star-fill merged in from 6204cbc, #1156) plus 9
-# app-launcher-only additions (i-bell, i-chevron-right, i-copy, i-eye-off, i-gauge,
-# i-git-pull-request, i-info, i-messages-square, i-power; i-ellipsis-vertical has
-# since joined the scaffold). A [vendored] entry asserts byte-for-byte provenance, so declaring
-# it would let /propagate-vendored overwrite the sprite and delete them. Every
-# other component above is byte-identical to the scaffold and declared;
-# tests/test_vendored_manifest.py pins that.
+action-row = { src = "app/webapp/static/_vendored/action-row", sha = "59ae763c4dea588aef07a66c236ee3e57c8459ac", dest = "app/webapp/static/_vendored/action-row" }
+row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "bf56553ff4fd32ac2c652adde25c079cbbb00786", dest = "app/webapp/static/_vendored/row-menu" }
+# Every vendored web component above is byte-identical to the scaffold and declared;
+# tests/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
+# decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
+# in project-scaffolding#391 and the sprite is now the scaffold's copy, byte for byte.
 # src/build_info.py and app/tray/watchdog.py are likewise NOT declared (#1586):
 # they are app-side forks, not the scaffold's verbatim carriers (build_info
 # runs git through src/git_utils.run_git for the #1111 spawn gate, and sits in
