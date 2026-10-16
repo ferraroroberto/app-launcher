@@ -2,7 +2,9 @@
 
 When the Board or the Code tab feels slow, the header's reading answers "is
 the box loaded?" and its sheet answers "by what?": total CPU, memory, and
-the top three processes by cores used over the last sample window.
+the top three groups of processes by cores used over the last sample window
+(processes sharing a display name are summed, with a count), and an
+"everything else" remainder so the rows add up to the CPU line (#1646).
 
 **One shared sampler, never a per-request scan.** A background tick
 (:func:`tick_forever`, started from the webapp lifespan) samples every
@@ -14,8 +16,9 @@ only reads the cached sample (:func:`read`).
 a process on Windows (measured: ~600 ms of CPU for ~560 processes, about 12%
 of a core every 5 s). One ``NtQuerySystemInformation(SystemProcessInformation)``
 call returns every process's name and CPU times at once, in a few
-milliseconds, so the Windows sampler uses that. Command lines are read for
-the top three only, and only to name an interpreter's script.
+milliseconds, so the Windows sampler uses that. Command lines are read only
+for the interpreters inside the shown groups (capped per group), to name a
+script and the repo folder it runs in.
 
 **Unknown is its own state.** No sample yet (``warming``), a sample older
 than :data:`MAX_AGE_SECONDS` (``stale``: the tick died or stalled) or a
@@ -56,6 +59,13 @@ SUSTAIN_SECONDS = 30.0
 ATTENTION_PERCENT = 70.0
 DANGER_PERCENT = 90.0
 TOP_N = 3
+# Command lines are read for at most this many processes of one shown group
+# (largest first), so a 200-worker pytest tree cannot make a sample slow. The
+# rest keep the bare image name, which merges into the same row when the
+# group was one script anyway.
+CMDLINE_READ_CAP = 24
+# How far up from a script or working directory to look for a repo's ``.git``.
+OWNER_WALK_LEVELS = 8
 # A sample slower than this leaves a breadcrumb: sampling must stay cheap.
 SLOW_SAMPLE_SECONDS = 0.25
 
@@ -73,8 +83,14 @@ LEVEL_UNKNOWN = "unknown"
 
 @dataclass(frozen=True)
 class ProcLoad:
+    """One row: every busy process sharing a display name, summed (#1646)."""
+
     name: str
     cores: float
+    count: int = 1
+    # The repo or worktree folder the whole group runs in; None when unknown
+    # or when the group spans several. A folder name, never a path.
+    owner: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -86,6 +102,9 @@ class Sample:
     mem_total: int
     cores: Optional[int]  # logical CPUs, so "3.1 cores" reads against the box
     top: Tuple[ProcLoad, ...]
+    # CPU in cores that the rows do not explain (small processes, kernel and
+    # interrupt time), so rows + this equal the CPU line. None without a core count.
+    other_cores: Optional[float] = None
 
 
 @dataclass
@@ -196,6 +215,13 @@ def _cmdline(pid: int) -> List[str]:
         return []
 
 
+def _cwd(pid: int) -> str:
+    try:
+        return psutil.Process(pid).cwd()
+    except (psutil.Error, OSError):
+        return ""
+
+
 # --------------------------------------------------------------- pure rules
 
 
@@ -205,28 +231,68 @@ def display_name(image: str, cmdline: Iterable[str]) -> str:
     ``python.exe -m pytest ...`` reads ``python (pytest)``; a script reads its
     file stem (``python (launcher)``); anything else is its bare image name.
     """
-    base = os.path.basename(image or "")
-    stem = base[:-4] if base.lower().endswith(".exe") else base
+    stem = _image_stem(image)
     if stem.lower() not in _INTERPRETERS:
         return stem or "?"
+    kind, target = _interpreter_target(cmdline)
+    if kind == "module":
+        hint = target.split(".")[0]
+    elif kind == "script":
+        hint = os.path.splitext(os.path.basename(target.replace("\\", "/")))[0]
+    else:
+        hint = ""
+    return f"{stem} ({hint})" if hint else stem
+
+
+def _image_stem(image: str) -> str:
+    base = os.path.basename(image or "")
+    return base[:-4] if base.lower().endswith(".exe") else base
+
+
+def _interpreter_target(cmdline: Iterable[str]) -> Tuple[str, str]:
+    """What an interpreter was asked to run: ``("module", name)``,
+    ``("script", path)`` or ``("", "")`` for ``-c`` or nothing."""
     args = list(cmdline)[1:]
-    hint = ""
     skip_value = False
     for i, arg in enumerate(args):
         if skip_value:
             skip_value = False
             continue
         if arg == "-m" and i + 1 < len(args):
-            hint = args[i + 1].split(".")[0]
-            break
+            return "module", args[i + 1]
         if arg == "-c":
             break
         if arg.startswith("-"):
             skip_value = arg in _VALUE_OPTIONS
             continue
-        hint = os.path.splitext(os.path.basename(arg.replace("\\", "/")))[0]
-        break
-    return f"{stem} ({hint})" if hint else stem
+        return "script", arg
+    return "", ""
+
+
+def _repo_folder(path: str) -> Optional[str]:
+    """The name of the nearest folder at or above ``path`` holding a ``.git``
+    (a directory in a repo, a file in a worktree), or None. A folder name only."""
+    if not path:
+        return None
+    here = os.path.abspath(path)
+    for _ in range(OWNER_WALK_LEVELS):
+        if os.path.exists(os.path.join(here, ".git")):
+            return os.path.basename(here) or None
+        parent = os.path.dirname(here)
+        if parent == here:
+            break
+        here = parent
+    return None
+
+
+def _owner_of(pid: int, cmdline: List[str]) -> Optional[str]:
+    """The repo or worktree folder this process works in: its script's, else its cwd's."""
+    kind, target = _interpreter_target(cmdline)
+    if kind == "script":
+        found = _repo_folder(os.path.dirname(target))
+        if found:
+            return found
+    return _repo_folder(_cwd(pid))
 
 
 def level_for(samples: Iterable[Sample]) -> str:
@@ -252,16 +318,44 @@ def level_for(samples: Iterable[Sample]) -> str:
     return LEVEL_NORMAL
 
 
-def _top(before: ProcTimes, after: ProcTimes, elapsed: float) -> List[Tuple[int, str, float]]:
-    rows = []
-    for key, (name, seconds) in after.items():
+def _top(before: ProcTimes, after: ProcTimes, elapsed: float) -> List[ProcLoad]:
+    """The busiest groups of processes over the window (#1646).
+
+    Load spread over many processes (a CPU burn, pytest workers, a browser
+    tree) never shows as one process, so processes are summed by display name
+    first. The image name is free, so groups are first ranked by that and the
+    top :data:`TOP_N` kept; only an interpreter's group needs command lines to
+    tell scripts apart, and only those are read, capped per group.
+    """
+    by_image: Dict[str, List[Tuple[int, str, float]]] = {}
+    for key, (image, seconds) in after.items():
         # A process born inside the window spent all its CPU time inside it,
         # so it counts from zero: a short pytest worker must not hide.
         prev = before.get(key)
         cores = (seconds - (prev[1] if prev else 0.0)) / elapsed
         if cores > 0:
-            rows.append((key[0], name, cores))
-    rows.sort(key=lambda r: r[2], reverse=True)
+            by_image.setdefault(_image_stem(image).lower(), []).append((key[0], image, cores))
+    ranked = sorted(by_image.values(), key=lambda members: sum(m[2] for m in members), reverse=True)
+    rows: List[ProcLoad] = []
+    for members in ranked[:TOP_N]:
+        members.sort(key=lambda m: m[2], reverse=True)
+        if _image_stem(members[0][1]).lower() not in _INTERPRETERS:
+            rows.append(ProcLoad(display_name(members[0][1], []), sum(m[2] for m in members), len(members)))
+            continue
+        groups: Dict[str, List[float]] = {}
+        owners: Dict[str, set] = {}
+        for i, (pid, image, cores) in enumerate(members):
+            cmdline = _cmdline(pid) if i < CMDLINE_READ_CAP else []
+            name = display_name(image, cmdline)
+            groups.setdefault(name, []).append(cores)
+            if i < CMDLINE_READ_CAP:
+                owner = _owner_of(pid, cmdline)
+                if owner:
+                    owners.setdefault(name, set()).add(owner)
+        for name, parts in groups.items():
+            found = owners.get(name, set())
+            rows.append(ProcLoad(name, sum(parts), len(parts), next(iter(found)) if len(found) == 1 else None))
+    rows.sort(key=lambda r: r.cores, reverse=True)
     return rows[:TOP_N]
 
 
@@ -297,13 +391,12 @@ def tick_once(now: Optional[float] = None) -> Optional[Sample]:
     elapsed = now - baseline.at
     total_delta = total - baseline.total
     cpu = 100.0 * (busy - baseline.busy) / total_delta if total_delta > 0 else 0.0
-    top = tuple(
-        ProcLoad(display_name(name, _cmdline(pid)), round(cores, 2))
-        for pid, name, cores in _top(baseline.procs, procs, elapsed)
-    )
-    sample = Sample(
-        now, elapsed, max(0.0, min(100.0, cpu)), used, mem_total, psutil.cpu_count() or None, top
-    )
+    rows = _top(baseline.procs, procs, elapsed)
+    cpu = max(0.0, min(100.0, cpu))
+    logical = psutil.cpu_count() or None
+    other = None if logical is None else round(max(0.0, cpu / 100.0 * logical - sum(r.cores for r in rows)), 2)
+    top = tuple(ProcLoad(r.name, round(r.cores, 2), r.count, r.owner) for r in rows)
+    sample = Sample(now, elapsed, cpu, used, mem_total, logical, top, other)
     took = time.perf_counter() - started
     with _lock:
         _baseline = _Baseline(now, busy, total, procs)
@@ -363,6 +456,7 @@ def read(now: Optional[float] = None) -> Dict[str, Any]:
             "cpu_percent": None,
             "memory": None,
             "top": [],
+            "other_cores": None,
             "cores": None,
             "age_seconds": None if latest is None else round(now - latest.at, 1),
         }
@@ -375,7 +469,10 @@ def read(now: Optional[float] = None) -> Dict[str, Any]:
             "total_bytes": latest.mem_total,
             "percent": round(100.0 * latest.mem_used / latest.mem_total, 1) if latest.mem_total else None,
         },
-        "top": [{"name": p.name, "cores": p.cores} for p in latest.top],
+        "top": [
+            {"name": p.name, "cores": p.cores, "count": p.count, "owner": p.owner} for p in latest.top
+        ],
+        "other_cores": latest.other_cores,
         "cores": latest.cores,
         "age_seconds": round(now - latest.at, 1),
     }

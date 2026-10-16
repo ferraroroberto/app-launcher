@@ -31,6 +31,7 @@ class _Box:
         self.total = 0.0
         self.procs: dict = {}
         self.cmdlines: dict = {}
+        self.cwds: dict = {}
 
     def run(self, seconds: float, cpu_percent: float, cores: int = 16, procs=None) -> None:
         self.total += seconds * cores
@@ -47,6 +48,7 @@ def box(monkeypatch):
     monkeypatch.setattr(sl, "_process_times", lambda: dict(fake.procs))
     monkeypatch.setattr(sl, "_memory", lambda: (48 * 1024**3, 64 * 1024**3))
     monkeypatch.setattr(sl, "_cmdline", lambda pid: fake.cmdlines.get(pid, []))
+    monkeypatch.setattr(sl, "_cwd", lambda pid: fake.cwds.get(pid, ""))
     monkeypatch.setattr(sl.psutil, "cpu_count", lambda *a, **k: 16)
     return fake
 
@@ -162,6 +164,123 @@ def test_a_reused_pid_is_a_new_process_not_a_delta(box):
     box.procs = {(7, 2): ("new.exe", 1.0)}
     sample = sl.tick_once(102.0)
     assert [(p.name, p.cores) for p in sample.top] == [("new", 0.5)]
+
+
+def _burn(box: _Box, pids, per_proc: float, cmdline, image: str = "python.exe") -> dict:
+    """Invented processes: ``per_proc`` cores each, all running ``cmdline``."""
+    procs = {}
+    for pid in pids:
+        procs[(pid, 1)] = (image, per_proc)
+        box.cmdlines[pid] = cmdline
+    return procs
+
+
+def _sample_after(box: _Box, procs: dict, cpu_percent: float):
+    sl.tick_once(100.0)
+    box.run(2.0, cpu_percent, procs=procs)
+    return sl.tick_once(102.0)
+
+
+def test_sixteen_burners_are_one_row_with_their_count_and_summed_cores(box):
+    burners = _burn(box, range(100, 116), 0.7, ["python.exe", "-c", "while 1: pass", "60"])
+    other = {(1, 1): ("pythonw.exe", 1.9), (2, 1): ("vmmemWSL", 1.6), (3, 1): ("MsMpEng.exe", 0.9)}
+    box.cmdlines[1] = ["pythonw.exe", "D:\\x\\launcher.py"]
+    sample = _sample_after(box, {**burners, **other}, 100.0)
+    first = sample.top[0]
+    assert (first.name, first.count, first.cores) == ("python", 16, 11.2)
+    assert [p.name for p in sample.top[1:]] == ["pythonw (launcher)", "vmmemWSL"]
+
+
+def test_a_lone_busy_process_is_a_count_of_one(box):
+    sample = _sample_after(box, {(5, 1): ("builder.exe", 2.0)}, 20.0)
+    assert [(p.name, p.count, p.cores) for p in sample.top] == [("builder", 1, 2.0)]
+
+
+def test_same_image_splits_by_script_so_two_lanes_stay_two_rows(box):
+    procs = _burn(box, range(10, 14), 0.5, ["python.exe", "-m", "pytest", "-q"])
+    procs.update(_burn(box, [20], 1.0, ["python.exe", "D:\\a\\launcher.py"]))
+    sample = _sample_after(box, procs, 50.0)
+    assert [(p.name, p.count, p.cores) for p in sample.top] == [
+        ("python (pytest)", 4, 2.0), ("python (launcher)", 1, 1.0),
+    ]
+
+
+def test_the_rows_plus_everything_else_equal_the_cpu_line(box):
+    procs = _burn(box, range(100, 116), 0.25, ["python.exe", "-c", "x"])
+    sample = _sample_after(box, procs, 60.0)  # 60% of 16 cores = 9.6 cores
+    assert sum(p.cores for p in sample.top) == 4.0
+    assert sample.other_cores == pytest.approx(9.6 - 4.0, abs=0.01)
+    body = sl.read(now=102.0)
+    listed = sum(p["cores"] for p in body["top"])
+    assert listed + body["other_cores"] == pytest.approx(body["cpu_percent"] / 100 * body["cores"], abs=0.05)
+
+
+def test_everything_else_never_goes_negative(box):
+    # A process total can exceed the CPU line (different accounting): clamp.
+    sample = _sample_after(box, {(5, 1): ("builder.exe", 4.0)}, 10.0)
+    assert sample.other_cores == 0.0
+
+
+def test_an_unknown_reading_has_no_remainder_either():
+    out = sl.read(now=10.0)
+    assert out["reason"] == "warming"
+    assert out["top"] == [] and out["other_cores"] is None
+
+
+def test_command_lines_are_read_only_for_interpreters_in_the_shown_groups(box, monkeypatch):
+    asked: list = []
+    monkeypatch.setattr(sl, "_cmdline", lambda pid: asked.append(pid) or [])
+    procs = _burn(box, range(100, 104), 3.0, [])  # python: the top group
+    procs.update({(200 + i, 1): ("chrome.exe", 2.5) for i in range(3)})  # not an interpreter
+    procs[(400, 1)] = ("msedge.exe", 1.0)
+    procs.update({(300 + i, 1): ("node.exe", 0.001) for i in range(50)})  # a fourth group: not shown
+    _sample_after(box, procs, 100.0)
+    assert sorted(asked) == [100, 101, 102, 103]
+
+
+def test_command_line_reads_are_capped_per_group(box, monkeypatch):
+    asked: list = []
+    monkeypatch.setattr(sl, "_cmdline", lambda pid: asked.append(pid) or [])
+    procs = _burn(box, range(1000, 1000 + 3 * sl.CMDLINE_READ_CAP), 0.1, [])
+    sample = _sample_after(box, procs, 100.0)
+    assert len(asked) == sl.CMDLINE_READ_CAP
+    assert (sample.top[0].name, sample.top[0].count) == ("python", 3 * sl.CMDLINE_READ_CAP)
+
+
+def test_a_group_names_the_one_repo_folder_it_runs_in(box, tmp_path):
+    repo = tmp_path / "fleet-config-wt-1440"
+    (repo / "tests").mkdir(parents=True)
+    (repo / ".git").write_text("gitdir: elsewhere")
+    procs = _burn(box, range(10, 14), 0.5, [])
+    for pid in range(10, 14):
+        box.cwds[pid] = str(repo / "tests")
+    sample = _sample_after(box, procs, 50.0)
+    assert sample.top[0].owner == "fleet-config-wt-1440"
+    assert str(tmp_path) not in repr(sl.read(now=102.0))  # a folder name, never a path
+
+
+def test_a_script_path_names_its_repo_before_the_cwd_does(box, tmp_path):
+    repo = tmp_path / "app-launcher"
+    (repo / "app").mkdir(parents=True)
+    (repo / ".git").mkdir()
+    procs = _burn(box, [7], 1.0, ["python.exe", str(repo / "app" / "run.py")])
+    box.cwds[7] = str(tmp_path)  # not a repo
+    sample = _sample_after(box, procs, 10.0)
+    assert (sample.top[0].name, sample.top[0].owner) == ("python (run)", "app-launcher")
+
+
+def test_a_group_spread_over_two_repos_names_neither(box, tmp_path):
+    for name, pid in (("one", 10), ("two", 11)):
+        (tmp_path / name / ".git").mkdir(parents=True)
+        box.cwds[pid] = str(tmp_path / name)
+    sample = _sample_after(box, _burn(box, [10, 11], 0.5, []), 20.0)
+    assert (sample.top[0].count, sample.top[0].owner) == (2, None)
+
+
+def test_a_cwd_outside_any_repo_names_nothing(box, tmp_path):
+    box.cwds[10] = str(tmp_path)
+    sample = _sample_after(box, _burn(box, [10], 1.0, []), 20.0)
+    assert sample.top[0].owner is None
 
 
 @pytest.mark.parametrize(
