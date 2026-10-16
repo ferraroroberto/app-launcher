@@ -517,6 +517,11 @@ function formatRunParams(params) {
 function writeOutput(jobId, runId, text, status, extras) {
   const panel = panelEl(jobId);
   if (!panel) return;
+  // Out-of-order replies (#1630): tapping run A then run B fires two fetches
+  // and A's slower reply can land second. Only the selected run may paint, so
+  // the pane never shows a log under another run's highlight.
+  if (!state.selectedRun || state.selectedRun.jobId !== jobId
+      || state.selectedRun.runId !== runId) return;
   const label = panel.querySelector('[data-role="output-label"]');
   const tail = panel.querySelector('[data-role="output-tail"]');
   if (!tail) return;
