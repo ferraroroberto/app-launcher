@@ -462,7 +462,10 @@ export function renderRunningApps() {
   host.innerHTML = '';
   const none = state.runningApps.length === 0;
   els.runningAppsEmpty.hidden = !none || !runningReadAt;
-  els.runningAppsNote.hidden = !none || !runningReadAt;
+  // The note is on from first paint and leaves only once a read finds rows:
+  // it is the one line the empty answer adds under the block that stood in
+  // for it (#1641), so the card keeps its height when the answer lands.
+  els.runningAppsNote.hidden = !!runningReadAt && !none;
   renderIdleLine();
   renderOtherPortsRow();
   const ids = Array.from(runningIds()).sort().join('\n');

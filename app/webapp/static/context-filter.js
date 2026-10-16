@@ -154,6 +154,9 @@ export async function fetchContextFilter() {
     setUsageFilterStats(body.stats);
   } catch (exc) {
     console.warn('context-filter fetch failed', exc);
+    // The footer's dash holds its line until the first read (#1641); a read
+    // that never lands has nothing to say there.
+    if (!state.contextFilter && els.codingUsageFooter) els.codingUsageFooter.hidden = true;
   }
 }
 

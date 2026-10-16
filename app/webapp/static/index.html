@@ -686,7 +686,7 @@
         <div id="codingUsage" class="usage-meter-slot"></div>
         <!-- context-filter.js fills it from the filter's existing stats;
              hidden when there is nothing saved to report (#713). -->
-        <p id="codingUsageFooter" class="usage-card-footer" hidden></p>
+        <p id="codingUsageFooter" class="usage-card-footer">–</p>
       </section>
 
       <!-- Sessions (#1434): "what is running?". The chief's row first, then
@@ -830,7 +830,7 @@
         <!-- Wide layout only (#1505): with nothing running, one plain line
              with the app count in place of the empty-state block. -->
         <p id="appsIdleLine" class="apps-idle-line" hidden></p>
-        <p id="runningAppsNote" class="group-footer running-apps-note" hidden>Only apps launched from here appear.</p>
+        <p id="runningAppsNote" class="group-footer running-apps-note">Only apps launched from here appear.</p>
         </div>
       </details>
       <!-- Wide layout only (#1505): Other ports inline under Running. The
@@ -950,10 +950,7 @@
           </button>
         </h3>
         <ul id="jobsNextUpList" class="card-list action-rows" aria-label="Next fires"></ul>
-        <div id="jobsNextUpState" class="empty-state">
-          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
-          <p class="empty-state-message">Reading the schedule…</p>
-        </div>
+        <div id="jobsNextUpState" class="empty-state" hidden></div>
       </section>
 
       <details class="card card--collapsible action-list jobs-card" open>
