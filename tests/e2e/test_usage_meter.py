@@ -517,7 +517,8 @@ def test_board_does_not_jump_when_the_usage_meter_lands(
     top = "el => el.isConnected ? Math.round(el.getBoundingClientRect().top) : null"
 
     before = stable_eval(columns, top)
-    expect(authed_page.locator("#codingUsage .usage-meter")).to_have_count(0)
+    # No reading yet: the slot holds the dash placeholder (#1641), not a meter.
+    expect(authed_page.locator("#codingUsage .usage-meter:not([data-pending])")).to_have_count(0)
 
     authed_page.evaluate("window.__releaseRateLimits()")
     # The reading has landed and rendered (on the Code tab's card).

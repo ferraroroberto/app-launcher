@@ -111,8 +111,9 @@ function setNextUpState(name, glyph, message) {
   if (card) card.dataset.state = name;
   const box = els.jobsNextUpState;
   if (!box) return;
-  box.hidden = name === 'ready';
-  if (name === 'ready') return;
+  // Loading draws its rows instead (renderNextUp), not a block.
+  box.hidden = name === 'ready' || name === 'loading';
+  if (box.hidden) return;
   box.innerHTML = icon(glyph, 'empty-state-icon');
   const p = document.createElement('p');
   p.className = 'empty-state-message';
@@ -140,13 +141,38 @@ function nextUpRows(occurrences) {
   return rows;
 }
 
+// While the schedule is being read the card already holds NEXT_UP_COUNT rows
+// of the final height, each a dash (#1641): the answer fills them in place,
+// so the content under the card does not move when it lands. They are inert
+// and hidden from a reader; the list says it is busy instead.
+function pendingRow() {
+  const time = document.createElement('span');
+  time.className = 'jobs-fire-time';
+  time.textContent = '–';
+  const row = actionRow({
+    className: 'jobs-fire-row is-pending',
+    title: '–',
+    meta: '–',
+    avatar: time,
+    inert: true,
+  });
+  row.li.setAttribute('aria-hidden', 'true');
+  return row.li;
+}
+
 function renderNextUp() {
   const host = els.jobsNextUpList;
   if (!host) return;
   host.replaceChildren();
+  host.removeAttribute('aria-busy');
   if (!agenda) {
-    if (agendaFailed) setNextUpState('error', 'triangle-alert', 'Could not load the schedule.');
-    else setNextUpState('loading', 'hourglass', 'Reading the schedule…');
+    if (agendaFailed) {
+      setNextUpState('error', 'triangle-alert', 'Could not load the schedule.');
+    } else {
+      for (let i = 0; i < NEXT_UP_COUNT; i += 1) host.appendChild(pendingRow());
+      host.setAttribute('aria-busy', 'true');
+      setNextUpState('loading');
+    }
     return;
   }
   const rows = nextUpRows(agenda.occurrences);
@@ -254,6 +280,7 @@ function onJobsVisit() {
 
 export function wireJobsAgenda() {
   if (!els.jobsNextUpList) return;
+  renderNextUp();
   renderWeekPane();
   document.addEventListener('launcher:tab', function (ev) {
     if (ev.detail && ev.detail.tab === 'jobs') onJobsVisit();
