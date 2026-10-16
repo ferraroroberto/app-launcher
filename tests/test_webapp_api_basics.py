@@ -1,4 +1,4 @@
-"""Basic webapp routes: /healthz, /, /api/status, /api/claude-code/flags."""
+"""Basic webapp routes: /healthz, /, /api/status."""
 
 from __future__ import annotations
 
@@ -254,29 +254,6 @@ class TestAgents:
             assert set(a) == {"id", "label", "available", "fullscreen", "console_input"}
             assert isinstance(a["available"], bool)
             assert isinstance(a["fullscreen"], bool)
-
-
-class TestClaudeFlags:
-    def test_flags_returns_defaults(self, webapp_client):
-        client, _, _ = webapp_client
-        resp = client.get("/api/claude-code/flags")
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body["model"] == "opus"
-        assert body["effort"] == "high"
-        assert body["verbose"] is True
-        assert body["debug"] is False
-        assert body["permission_mode"] == "auto"
-        # The always-on flags are surface-area for the SPA's badge; if the
-        # tuple ever changes, this test catches it loudly.
-        assert "--remote-control" in body["always_on_flags"]
-        # The permission flag is user-selectable now — not always-on.
-        assert "--dangerously-skip-permissions" not in body["always_on_flags"]
-        # Computed flags are a string; sanity-check that the model/effort
-        # and the default (auto) permission mode round-trip through the formatter.
-        assert "--model opus" in body["computed_flags"]
-        assert "--effort high" in body["computed_flags"]
-        assert "--permission-mode auto" in body["computed_flags"]
 
 
 class TestTerminalThemes:

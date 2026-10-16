@@ -7,14 +7,8 @@ Scheduler folder. ``daily_times`` jobs fan out into
 wake-ups becomes three Task Scheduler entries pointing at the same
 executor.
 
-Also owns the deterministic "next fire" arithmetic: the schtasks "Next Run
-Time" string is a locale-formatted, lexically-sorted best-effort value —
-fine to *display*, useless to *sort by* or turn into a countdown. The
-schedule definition is a small deterministic set, so :func:`next_fire` /
-:func:`upcoming_fires` compute the next wall-clock fire ourselves — this is
-the field the UI sorts on and renders "in 3h" from. Both concerns answer
-"when does this job run" (one via schtasks, one via pure computation), which
-is why they share this module.
+The deterministic "next fire" arithmetic (:func:`next_fire` /
+:func:`upcoming_fires`) lives in :mod:`src.jobs_next_fire`.
 
 The single executor that ever runs a job is
 :class:`~app.cli.commands.run_job_cmd.RunJobCommand`. Task Scheduler

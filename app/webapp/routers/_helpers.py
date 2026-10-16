@@ -35,8 +35,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
-    """The claude-code flags subtree shared by ``/api/config``'s embedded
-    ``"claude"`` section and ``/api/claude-code/flags``'s own response.
+    """The claude-code flags subtree embedded as ``/api/config``'s ``"claude"`` section.
     """
     return {
         "model": cfg.claude_model,

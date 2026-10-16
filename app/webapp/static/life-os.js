@@ -723,10 +723,6 @@ function renderFileList(files) {
   });
 }
 
-function closeBrowser() {
-  if (els.lifeOsBrowser && els.lifeOsBrowser.open) els.lifeOsBrowser.close();
-}
-
 async function deleteFile(f) {
   const ok = await confirmDialog({
     title: 'Delete this conversation log?',
