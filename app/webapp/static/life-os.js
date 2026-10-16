@@ -654,7 +654,7 @@ let openDocFile = null;
 
 async function openBrowser(s) {
   const d = els.lifeOsBrowser;
-  if (!d || !d.showModal) return;
+  if (!d) return;
   state.lifeOsBrowser = { skillId: s.id, name: s.name, files: [] };
   els.lifeOsBrowserTitle.textContent = s.name;
   if (!d.open) d.showModal();
@@ -799,7 +799,7 @@ const RENAME_TITLE_SHEET = {
 
 function askName(current, sheet) {
   const d = els.lifeOsRenameDialog;
-  if (!d || !d.showModal) return Promise.resolve(null);
+  if (!d) return Promise.resolve(null);
   if (renameSettle) finishRename(null);
   const input = els.lifeOsRenameInput;
   els.lifeOsRenameHeading.textContent = sheet.heading;
@@ -894,7 +894,7 @@ async function renameConversationTitle(r) {
 
 async function loadFile(f) {
   const d = els.lifeOsDoc;
-  if (!d || !d.showModal) return;
+  if (!d) return;
   openDocFile = f;
   els.lifeOsDocTitle.textContent = f.name || 'File';
   // Rename and Delete only for a conversation log — disposable run
@@ -1072,7 +1072,7 @@ function startNewFromSearch() {
 
 function openStartPicker() {
   const d = els.lifeOsStartPicker;
-  if (!d || !d.showModal) return;
+  if (!d) return;
   const list = els.lifeOsStartPickerList;
   list.replaceChildren.apply(list, state.lifeOsSkills.slice().sort(compareSkills).map(
     function (s) {
@@ -1479,7 +1479,7 @@ function fillConvoSheet() {
 
 function openConvoSheet(r) {
   const d = els.lifeOsConvoSheet;
-  if (!d || !d.showModal) return;
+  if (!d) return;
   sheetRow = r;
   fillConvoSheet();
   if (!d.open) d.showModal();

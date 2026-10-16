@@ -66,7 +66,7 @@ const ACTION_CLASS = {
 
 function open(opts, field) {
   const d = dialogEl();
-  if (!d || !d.showModal) return Promise.resolve(false);
+  if (!d) return Promise.resolve(false);
   wire(d);
   if (settle) finish(false);
   d.querySelector('#confirmDialogTitle').textContent = opts.title;

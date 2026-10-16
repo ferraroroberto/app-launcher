@@ -18,12 +18,12 @@ let renameTargetId = null;
 export function openRename(a) {
   renameTargetId = a.id;
   els.renameInput.value = a.name;
-  if (els.renameDialog.showModal) els.renameDialog.showModal();
+  els.renameDialog.showModal();
 }
 
 export function wireRenameDialog() {
   els.renameCancel.addEventListener('click', function () {
-    if (els.renameDialog.close) els.renameDialog.close();
+    els.renameDialog.close();
   });
   els.renameForm.addEventListener('submit', async function (ev) {
     ev.preventDefault();
@@ -35,7 +35,7 @@ export function wireRenameDialog() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name }),
       });
-      if (els.renameDialog.close) els.renameDialog.close();
+      els.renameDialog.close();
       await fetchApps();
     } catch (exc) {
       apiFailToast('Rename failed', exc);
@@ -49,8 +49,7 @@ async function runScan() {
     const body = await jsonApi('/api/apps/scan', { method: 'POST' });
     state.pendingScan = body.new || [];
     renderScanResults();
-    if (els.scanDialog.showModal) els.scanDialog.showModal();
-    else els.scanDialog.hidden = false;
+    els.scanDialog.showModal();
   } catch (exc) {
     apiFailToast('Scan failed', exc);
   }
@@ -108,7 +107,7 @@ export function wireScanDialog() {
     if (btn) btn.addEventListener('click', runScan);
   });
   els.scanCancel.addEventListener('click', function () {
-    if (els.scanDialog.close) els.scanDialog.close();
+    els.scanDialog.close();
   });
   els.scanSave.addEventListener('click', async function () {
     const checked = Array.from(
@@ -126,7 +125,7 @@ export function wireScanDialog() {
         body: JSON.stringify({ ids }),
       });
       toast('Added ' + (body.added || []).length + ' entry(ies).', 'good');
-      if (els.scanDialog.close) els.scanDialog.close();
+      els.scanDialog.close();
       await fetchApps();
     } catch (exc) {
       apiFailToast('Save failed', exc);

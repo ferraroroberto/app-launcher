@@ -595,7 +595,7 @@ def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
     return cfg
 
 
-def _load_secrets(raw: dict, default: Any) -> Dict[str, str]:
+def _load_secrets(raw: dict) -> Dict[str, str]:
     """``secrets``, honouring the legacy ``webhook_secrets`` key.
 
     The block shipped under ``webhook_secrets`` before #72 generalized it
@@ -610,7 +610,7 @@ def _load_secrets(raw: dict, default: Any) -> Dict[str, str]:
     }
 
 
-def _load_api_tokens(raw: dict, default: Any) -> list:
+def _load_api_tokens(raw: dict) -> list:
     """``api_tokens`` — a list of *records*, not of strings, and a malformed
     entry is dropped rather than stringified: a half-written token record can
     only ever fail closed."""
@@ -621,7 +621,7 @@ def _load_api_tokens(raw: dict, default: Any) -> list:
     ]
 
 
-def _load_pi_model(raw: dict, default: Any) -> str:
+def _load_pi_model(raw: dict) -> str:
     """Migrate the three pre-#845 pinned ids to their current successors."""
     value = str(raw.get("pi_model") or DEFAULT_PI_MODEL)
     return {
@@ -631,7 +631,7 @@ def _load_pi_model(raw: dict, default: Any) -> str:
     }.get(value, value)
 
 
-def _load_codex_model_efforts(raw: dict, default: Any) -> Dict[str, str]:
+def _load_codex_model_efforts(raw: dict) -> Dict[str, str]:
     """Load only supported model/effort pairs and seed newly added models."""
     result = dict(DEFAULT_CODEX_MODEL_EFFORTS)
     authored = raw.get("codex_model_efforts") or {}
@@ -645,7 +645,7 @@ def _load_codex_model_efforts(raw: dict, default: Any) -> Dict[str, str]:
     return result
 
 
-def _load_codex_effort(raw: dict, default: Any) -> str:
+def _load_codex_effort(raw: dict) -> str:
     """Do not reinterpret the old global High default as Luna's preference."""
     if "codex_model" not in raw and "codex_model_efforts" not in raw:
         return DEFAULT_CODEX_EFFORT
@@ -656,7 +656,7 @@ def _load_codex_effort(raw: dict, default: Any) -> str:
 #: Everything else is handled by the generic loop in
 #: :func:`load_webapp_config`, so a new setting is declared once — on
 #: :class:`WebappConfig` — and both directions follow it.
-_CUSTOM_LOADERS: Dict[str, Callable[[dict, Any], Any]] = {
+_CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "secrets": _load_secrets,
     "api_tokens": _load_api_tokens,
     "pi_model": _load_pi_model,
@@ -718,7 +718,7 @@ def _load_field(spec, raw: dict) -> Any:
     """
     custom = _CUSTOM_LOADERS.get(spec.name)
     if custom is not None:
-        return custom(raw, None)
+        return custom(raw)
     if spec.default_factory is not MISSING:  # type: ignore[misc]
         default = spec.default_factory()
         value = raw.get(spec.name)
@@ -881,25 +881,22 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 #: Enum-valued settings validated by plain membership (issue #831) — a new
 #: enum field is one row here instead of a hand-written ``not in`` check, the
 #: same declarative-table shape ``_CUSTOM_LOADERS`` above and
-#: ``middleware._TERMINAL_GUARD_RULES`` already use. ``allow_empty=True``
-#: is for a field whose empty string is a valid "unset" sentinel rather
-#: than an invalid choice; no field needs it today (``copilot_model`` was
-#: its last user, removed in issue #1017).
-_ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...], bool], ...] = (
-    ("coding_model_choice", VALID_CODING_MODEL_CHOICES, False),
-    ("claude_model", VALID_CLAUDE_MODELS, False),
-    ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES, False),
-    ("claude_effort", VALID_CLAUDE_EFFORTS, False),
-    ("codex_model", VALID_CODEX_MODELS, False),
-    ("codex_effort", VALID_CODEX_EFFORTS, False),
-    ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES, False),
-    ("grok_effort", VALID_GROK_EFFORTS, False),
-    ("grok_permission_mode", VALID_GROK_PERMISSION_MODES, False),
-    ("pi_model", VALID_PI_MODELS, False),
-    ("pi_effort", VALID_PI_EFFORTS, False),
-    ("pi_trust_mode", VALID_PI_TRUST_MODES, False),
-    ("chief_model", VALID_CHIEF_MODELS, False),
-    ("usage_shows", VALID_USAGE_SHOWS, False),
+#: ``middleware._TERMINAL_GUARD_RULES`` already use.
+_ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
+    ("coding_model_choice", VALID_CODING_MODEL_CHOICES),
+    ("claude_model", VALID_CLAUDE_MODELS),
+    ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES),
+    ("claude_effort", VALID_CLAUDE_EFFORTS),
+    ("codex_model", VALID_CODEX_MODELS),
+    ("codex_effort", VALID_CODEX_EFFORTS),
+    ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES),
+    ("grok_effort", VALID_GROK_EFFORTS),
+    ("grok_permission_mode", VALID_GROK_PERMISSION_MODES),
+    ("pi_model", VALID_PI_MODELS),
+    ("pi_effort", VALID_PI_EFFORTS),
+    ("pi_trust_mode", VALID_PI_TRUST_MODES),
+    ("chief_model", VALID_CHIEF_MODELS),
+    ("usage_shows", VALID_USAGE_SHOWS),
 )
 
 
@@ -922,14 +919,11 @@ def _validate(cfg: WebappConfig) -> None:
             f"large_upload_max_mb must be between {MIN_LARGE_UPLOAD_MAX_MB} "
             f"and {MAX_LARGE_UPLOAD_MAX_MB}; got {cfg.large_upload_max_mb}"
         )
-    for field_name, allowed, allow_empty in _ENUM_VALIDATIONS:
+    for field_name, allowed in _ENUM_VALIDATIONS:
         value = getattr(cfg, field_name)
-        if allow_empty and not value:
-            continue
         if value not in allowed:
-            qualifier = "empty or one of" if allow_empty else "one of"
             raise ValueError(
-                f"{field_name} must be {qualifier} {allowed}; got {value!r}"
+                f"{field_name} must be one of {allowed}; got {value!r}"
             )
     if not isinstance(cfg.codex_model_efforts, dict):
         raise ValueError("codex_model_efforts must be an object")

@@ -555,7 +555,7 @@ export function openSessionRename(s, onDone) {
   );
   window.clearTimeout(sessionLinkFeedbackTimer);
   els.sessionLinkCopy.classList.remove('is-copied');
-  if (els.sessionRenameDialog.showModal) els.sessionRenameDialog.showModal();
+  els.sessionRenameDialog.showModal();
 }
 
 // Send from a session's Chat mode (issue #967 → #983). The chat pane's
@@ -633,7 +633,7 @@ export function sendOutcome(verdict) {
 
 function wireSessionRenameDialog() {
   els.sessionRenameCancel.addEventListener('click', function () {
-    if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
+    els.sessionRenameDialog.close();
   });
   els.sessionLinkCopy.addEventListener('click', async function () {
     try {
@@ -662,7 +662,7 @@ function wireSessionRenameDialog() {
           body: JSON.stringify({ title }),
         }
       );
-      if (els.sessionRenameDialog.close) els.sessionRenameDialog.close();
+      els.sessionRenameDialog.close();
       if (renameSessionOnDone) {
         renameSessionOnDone(title);
       } else {

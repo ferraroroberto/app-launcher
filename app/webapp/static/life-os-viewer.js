@@ -103,7 +103,7 @@ async function load() {
 // its capture raw in the document sheet, the fallback when it can't be read.
 export function openConvoViewer(row, openRaw) {
   const d = els.lifeOsConvoViewer;
-  if (!d || !d.showModal) return;
+  if (!d) return;
   viewer = { row: row, openRaw: openRaw };
   els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'Conversation';
   if (!d.open) d.showModal();

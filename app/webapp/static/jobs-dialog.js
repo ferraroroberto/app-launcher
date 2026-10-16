@@ -314,7 +314,7 @@ export function openRunDialog(job, prefill, staleKeys) {
   });
 
   if (els.jobRunDialogDryRun) setSwitch(els.jobRunDialogDryRun, false);
-  if (els.jobRunDialog.showModal) els.jobRunDialog.showModal();
+  els.jobRunDialog.showModal();
 }
 
 function renderRunDialogField(param, prefill) {
@@ -399,7 +399,7 @@ async function submitRunDialog(ev) {
   }
   const job = runDialogJob;
   const dry = !!(els.jobRunDialogDryRun && els.jobRunDialogDryRun.getAttribute('aria-checked') === 'true');
-  if (els.jobRunDialog.close) els.jobRunDialog.close();
+  els.jobRunDialog.close();
   runDialogJob = null;
   await runJobNow(job, {
     params: values,
@@ -522,7 +522,7 @@ export function openJobDialog(job) {
   syncWebhookFields();
 
   clearPreflightProblems();
-  if (els.jobDialog.showModal) els.jobDialog.showModal();
+  els.jobDialog.showModal();
 }
 
 function syncScheduleFields() {
@@ -732,7 +732,7 @@ async function postJobPayload(payload) {
       if (els.jobSaveBtn) els.jobSaveBtn.hidden = true;
       return;
     }
-    if (els.jobDialog.close) els.jobDialog.close();
+    els.jobDialog.close();
     clearPreflightProblems();
     const warned = res && Array.isArray(res.warnings) && res.warnings.length;
     toast(
@@ -790,7 +790,7 @@ export function wireJobDialogs() {
   }
   if (els.jobCancel) {
     els.jobCancel.addEventListener('click', function () {
-      if (els.jobDialog.close) els.jobDialog.close();
+      els.jobDialog.close();
     });
   }
   if (els.jobScheduleType) {
@@ -821,7 +821,7 @@ export function wireJobDialogs() {
   }
   if (els.jobRunCancel) {
     els.jobRunCancel.addEventListener('click', function () {
-      if (els.jobRunDialog && els.jobRunDialog.close) els.jobRunDialog.close();
+      if (els.jobRunDialog) els.jobRunDialog.close();
       runDialogJob = null;
     });
   }
