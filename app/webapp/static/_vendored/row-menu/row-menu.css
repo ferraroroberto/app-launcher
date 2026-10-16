@@ -76,8 +76,12 @@
 }
 .row-menu-item[aria-disabled="true"] .row-menu-brand { filter: grayscale(1); }
 
-/* The optional header line: a muted, non-interactive fact above the items. It
- * wraps rather than widening the menu (`width: 0` + `min-width: 100%`). */
+/* The optional header line: a non-interactive fact above the items. It reads
+ * as the quieter line by weight (400 against the items' 500) and the hairline
+ * under it, not by a muted colour: `--muted` on the dark menu surface is 4.08:1,
+ * under the 4.5:1 floor, so the text takes `--ink` like the labelled
+ * button-surface does (#398, fleet-config#1375). It wraps rather than widening
+ * the menu (`width: 0` + `min-width: 100%`). */
 .row-menu-head {
   width: 0;
   min-width: 100%;
@@ -85,8 +89,9 @@
   padding: 8px 12px 6px;
   margin-bottom: 2px;
   border-bottom: 1px solid var(--line);
-  color: var(--muted);
+  color: var(--ink);
   font-size: var(--font-body-sm);
+  font-weight: 400;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }

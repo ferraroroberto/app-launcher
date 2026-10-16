@@ -381,7 +381,7 @@ export function createRowMenu(opts) {
      * @param {HTMLElement} anchor  the kebab button.
      * @param {RowMenuItem[]} rowItems  the actions, in order.
      * @param {{header?: string|function(): string}} [attachOpts]  `header`: one
-     *        muted, non-interactive line above the items (a fact worth a glance,
+     *        quiet, non-interactive line above the items (a fact worth a glance,
      *        not worth the row's width), re-evaluated on every open like an
      *        item property; empty or absent, no line.
      * @returns {HTMLElement} the menu element (mounted only while open).
