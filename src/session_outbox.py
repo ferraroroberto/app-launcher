@@ -52,6 +52,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from src._json_io import atomic_write_json
 from src.audit import AUDIT_DIR_ENV, PROJECT_ROOT
+from src.image_sniff import IMAGE_MAGIC, sniff_image
 
 logger = logging.getLogger(__name__)
 
@@ -73,15 +74,11 @@ ALLOWED_TYPES: Dict[str, str] = {
 TEXT_MEDIA = "text/plain; charset=utf-8"
 PDF_MEDIA = "application/pdf"
 
-_IMAGE_MAGIC = (
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-)
-# Every media type a sent file is ever served as.
+# Every media type a sent file is ever served as. The image types come from
+# session_transcript.IMAGE_MAGIC — one magic-byte table for both the
+# transcript's inline images and this outbox (#1627).
 SERVED_MEDIA = frozenset(
-    [media for _, media in _IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA]
+    [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA]
 )
 # A session-host id or an entry id: both launcher-made. Anything else never
 # becomes a directory or file name here.
@@ -144,12 +141,7 @@ def _inside(path: Path, root: Path) -> bool:
 def sniff_media(kind: str, data: bytes) -> Optional[str]:
     """The media type ``data`` proves for ``kind``, or None when it doesn't."""
     if kind == "image":
-        for magic, media in _IMAGE_MAGIC:
-            if data.startswith(magic):
-                return media
-        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-            return "image/webp"
-        return None
+        return sniff_image(data)
     if kind == "pdf":
         return PDF_MEDIA if data.startswith(b"%PDF-") else None
     if kind in ("text", "markdown"):

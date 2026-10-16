@@ -16,25 +16,15 @@
 
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
 import { jsonApi, logPollFailure } from './api.js';
+import { el, pctText, sheetRow } from './dom-utils.js';
 
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".
 let reading = { level: 'unknown', reason: 'warming' };
 let retryTimer = null;
 
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
-}
-
 function readingKnown(r) {
   return !!(r && r.level !== 'unknown' && typeof r.cpu_percent === 'number');
-}
-
-function pctText(n) {
-  return Math.round(n) + '%';
 }
 
 // Why a reading is unknown, in words: each condition its own message.
@@ -68,14 +58,6 @@ function renderReadings() {
     btn.dataset.level = level;
     btn.setAttribute('aria-label', label);
   });
-}
-
-function sheetRow(label, value, key) {
-  const row = el('div', 'row usage-sheet-row');
-  if (key) row.dataset.row = key;
-  row.appendChild(el('span', null, label));
-  row.appendChild(el('strong', 'usage-sheet-value', value));
-  return row;
 }
 
 function renderSheet() {

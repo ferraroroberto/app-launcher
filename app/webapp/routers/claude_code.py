@@ -10,6 +10,7 @@ spawn or track a PTY session.
 from __future__ import annotations
 
 import asyncio
+import functools
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Tuple
@@ -25,6 +26,7 @@ from src.vscode_workspace import (
 )
 from src.webapp_config import WebappConfig, update_webapp_config
 
+from app.webapp.hot_poll import start_or_join
 from app.webapp.routers._helpers import claude_flags_payload, maybe_json
 
 router = APIRouter()
@@ -174,38 +176,11 @@ _GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-sta
 # that window shares, so each caller sees git state from at or after its own
 # arrival. At most two scans per key exist: the running one and one queued.
 # (Joining the running scan instead served a scan begun before the caller's
-# change: a repo dirtied just before a page load read as clean.)
+# change: a repo dirtied just before a page load read as clean.) The
+# start/settle mechanics behind this are shared with hot_poll.HotPoll's own
+# single-flight queuing — see hot_poll.start_or_join, the one copy (#1627).
 _GIT_STATUS_RUNNING: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
 _GIT_STATUS_NEXT: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
-
-
-def _start_scan(key: Tuple[str, Tuple[str, ...]]) -> "asyncio.Future[Dict[str, Any]]":
-    """Start the scan for ``key`` now; when it ends, start the queued one, if any."""
-    scan = asyncio.ensure_future(_scan_git_status(*key))
-    _GIT_STATUS_RUNNING[key] = scan
-
-    def _done(finished: "asyncio.Future[Dict[str, Any]]") -> None:
-        if _GIT_STATUS_RUNNING.get(key) is not finished:
-            return
-        del _GIT_STATUS_RUNNING[key]
-        queued = _GIT_STATUS_NEXT.pop(key, None)
-        if queued is not None and not queued.done():
-            follow_up = _start_scan(key)
-            follow_up.add_done_callback(lambda f: _settle(queued, f))
-
-    scan.add_done_callback(_done)
-    return scan
-
-
-def _settle(target: "asyncio.Future[Dict[str, Any]]", source: "asyncio.Future[Dict[str, Any]]") -> None:
-    if target.done():
-        return
-    if source.cancelled():
-        target.cancel()
-    elif source.exception() is not None:
-        target.set_exception(source.exception())
-    else:
-        target.set_result(source.result())
 
 
 async def _scan_git_status(projects_dir: str, ignore: Tuple[str, ...]) -> Dict[str, Any]:
@@ -238,12 +213,8 @@ async def claude_git_status(request: Request) -> Dict[str, Any]:
     """
     cfg: WebappConfig = request.app.state.webapp_config
     key = (str(cfg.projects_dir), tuple(cfg.projects_ignore))
-    loop = asyncio.get_running_loop()
-    running = _GIT_STATUS_RUNNING.get(key)
-    if running is None or running.done() or running.get_loop() is not loop:
-        return await asyncio.shield(_start_scan(key))
-    queued = _GIT_STATUS_NEXT.get(key)
-    if queued is None or queued.done() or queued.get_loop() is not loop:
-        queued = loop.create_future()
-        _GIT_STATUS_NEXT[key] = queued
-    return await asyncio.shield(queued)
+    future = start_or_join(
+        key, _GIT_STATUS_RUNNING, _GIT_STATUS_NEXT,
+        functools.partial(_scan_git_status, *key),
+    )
+    return await asyncio.shield(future)

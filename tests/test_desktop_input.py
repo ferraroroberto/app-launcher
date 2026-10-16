@@ -594,7 +594,7 @@ def test_the_input_session_is_built_once_inside_the_gated_socket():
     gate_at = session_at = None
     for i, stmt in enumerate(body):
         text = ast.unparse(stmt)
-        if gate_at is None and "_gate_refusal(" in text:
+        if gate_at is None and "ws_terminal_gate(" in text:
             gate_at = i
         if "desktop_input.InputSession(" in text:
             session_at = i

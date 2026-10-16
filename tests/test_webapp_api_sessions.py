@@ -485,12 +485,18 @@ class TestProxySessionWS:
     def _patch_loopback(self, sessions_router, monkeypatch):
         """TestClient connects as host 'testclient'; treat it as loopback
         so the Tailscale/passkey gate is skipped and the proxy reaches
-        the upstream ``ws_connect`` call under test."""
-        monkeypatch.setattr(
-            sessions_router,
-            "LOOPBACK_HOSTS",
-            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
-        )
+        the upstream ``ws_connect`` call under test.
+
+        The gate is ``middleware.ws_terminal_gate`` (#1627, shared with
+        ``desktop_screen.screen_ws``), so ``LOOPBACK_HOSTS`` must be patched
+        there — patching the ``sessions`` module's own binding no longer
+        reaches ``is_pc_itself``.
+        """
+        from app.webapp import middleware
+
+        hosts = frozenset({"testclient", "127.0.0.1", "::1", "localhost"})
+        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", hosts)
+        monkeypatch.setattr(sessions_router, "LOOPBACK_HOSTS", hosts)
 
     def test_upstream_handshake_rejection_closes_4502(
         self, webapp_client, monkeypatch

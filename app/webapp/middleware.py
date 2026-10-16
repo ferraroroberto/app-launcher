@@ -5,8 +5,9 @@ surface. Loopback callers (PC itself) bypass the token; non-loopback
 callers must present it, and terminal endpoints additionally require
 Tailscale (+ a passkey terminal token for interactive ones).
 
-WebSocket auth is re-applied inline in the session router because Starlette
-middleware doesn't see WebSocket handshakes.
+WebSocket auth is re-applied by each terminal-grade router (``sessions``'s
+proxy, ``desktop_screen``'s stream — both via :func:`ws_terminal_gate` below)
+because Starlette middleware doesn't see WebSocket handshakes.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import ipaddress
 import logging
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
-from fastapi import Request
+from fastapi import Request, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
@@ -79,7 +80,8 @@ def credential_accepted(cfg: Any, presented: str, method: str, path: str) -> boo
     """Does ``presented`` satisfy either credential class *for this request*?
 
     The yes/no form of the gate, for callers that only need the verdict —
-    today the WebSocket handshakes in ``app.webapp.routers.sessions`` and
+    today :func:`ws_terminal_gate` (shared by the ``sessions`` and
+    ``desktop_screen`` WebSocket routes) and the WebSocket handshake in
     ``app.webapp.routers.jobs_run_store_routes``, which can do nothing with a
     reason but close the socket.
     :meth:`BearerTokenMiddleware.dispatch` deliberately keeps its own
@@ -414,6 +416,44 @@ def terminal_http_gate(
                 status_code=401,
                 content={"detail": "passkey unlock required"},
             )
+    return None
+
+
+def ws_terminal_gate(
+    websocket: WebSocket, *, label: str = "terminal",
+) -> Optional[Tuple[int, str]]:
+    """``(code, reason)`` to close a terminal-grade WebSocket with, or
+    ``None`` when it may stream.
+
+    The one gate for every WebSocket this strict — today
+    ``sessions.proxy_session_ws`` and ``desktop_screen.screen_ws`` — in the
+    same order as :func:`terminal_http_gate`'s HTTP siblings: the PC itself
+    (loopback with no edge header) bypasses; anything else must not have
+    come over the public edge, must be on the tailnet, must present a
+    credential when one is configured, and must hold a passkey terminal
+    token when the passkey gate is configured. WebSocket handshakes
+    re-apply this inline because Starlette middleware never sees them.
+
+    ``label`` names the service in the closed-socket reason text
+    (``"terminal"`` / ``"screen"``); the legs and close codes are shared.
+    """
+    cfg: Any = websocket.app.state.webapp_config
+    client_host = websocket.client.host if websocket.client else ""
+    if is_pc_itself(client_host, websocket.headers):
+        return None
+    if via_cloudflare(websocket.headers):
+        return 4403, f"{label} is Tailscale-only — blocked on the public tunnel"
+    if not client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
+        return 4403, f"{label} is Tailscale-only"
+    if credential_required(cfg):
+        presented = websocket.query_params.get("token", "").strip()
+        if not credential_accepted(cfg, presented, "GET", websocket.url.path):
+            return 4401, "missing or invalid bearer token"
+    if WebAuthnGate.configured(cfg):
+        gate: WebAuthnGate = websocket.app.state.webauthn_gate
+        tt = websocket.query_params.get("tt", "").strip()
+        if not gate.valid_terminal_token(tt):
+            return 4401, "passkey unlock required"
     return None
 
 

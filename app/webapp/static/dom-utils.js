@@ -1,5 +1,26 @@
 /* Small, dependency-free DOM helpers shared across modules. */
 
+// A plain element with a class and text content — the one element builder
+// this shape (#1627), was copied verbatim into board-answers.js,
+// chat-resume.js, launch-toolbar.js, system-load.js and usage-meter.js.
+export function el(tag, cls, text) {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text != null) node.textContent = text;
+  return node;
+}
+
+// A settings-sheet row: a label on the left, a value (optionally toned via
+// the caller setting `.lastChild.dataset.tone`) on the right. Shared by the
+// usage sheet and the CPU/system-load sheet (#1627).
+export function sheetRow(label, value, key) {
+  const row = el('div', 'row usage-sheet-row');
+  if (key) row.dataset.row = key;
+  row.appendChild(el('span', null, label));
+  row.appendChild(el('strong', 'usage-sheet-value', value));
+  return row;
+}
+
 // Covers both positions a caller can land escaped text in: element content
 // (`&`/`<`/`>`) and an attribute value (`"`/`'`). Most callers here build a
 // text node's innerHTML, where the quote pair is a no-op — a `&quot;` renders
@@ -433,6 +454,12 @@ export const CHIEF_RESTART_CONFIRM = {
     'conversation (falling back to a fresh one only if nothing is resumable).',
   action: 'Restart',
 };
+
+// A share as a whole-percent string — shared by the usage sheet and the
+// CPU/system-load sheet (#1627).
+export function pctText(pct) {
+  return Math.round(pct) + '%';
+}
 
 // Color tier for a usage percentage — same 60/80 thresholds as fleet-config's
 // statusline-command.ps1, so every surface agrees on what counts as "close".

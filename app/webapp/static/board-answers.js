@@ -35,6 +35,7 @@ import { apiFailToast, toast } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { askOption } from './ask-option.js';
 import { icon } from './_vendored/icons/icons.js';
+import { el } from './dom-utils.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { growTextarea, mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
@@ -153,13 +154,6 @@ function answeredCount() {
 }
 
 // --------------------------------------------------------------- render
-
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
-}
 
 function paintItem(block, draft) {
   block.querySelectorAll('.tr-ask-opt').forEach(function (b) {

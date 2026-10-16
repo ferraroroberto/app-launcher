@@ -1,8 +1,9 @@
 """Live PTY sessions — list, stop, upload image, WebSocket proxy.
 
-The WS proxy is the only endpoint where auth is re-applied inline:
+The WS proxy re-applies auth inline via ``middleware.ws_terminal_gate``:
 Starlette middleware doesn't see WebSocket handshakes, so the Tailscale
-+ bearer + passkey checks live here.
++ bearer + passkey checks live there too (shared with
+``desktop_screen.screen_ws``, the other terminal-grade WebSocket).
 
 Split off a single-file god-router (``/codebase-audit``): the
 voice-dictation, screenshot-OCR, and hub read-aloud proxy endpoints live
@@ -41,16 +42,9 @@ from src import audit, board, chief_answers, launcher, session_client
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
-from src.webauthn_gate import WebAuthnGate
 
 from app.webapp.hot_poll import BuildSteps, hot_poll
-from app.webapp.middleware import (
-    LOOPBACK_HOSTS,
-    client_in_tailnet,
-    credential_accepted,
-    credential_required,
-    via_cloudflare,
-)
+from app.webapp.middleware import LOOPBACK_HOSTS, ws_terminal_gate
 from app.webapp.routers import voice_ocr_tts
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
@@ -558,7 +552,6 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     Tailscale + bearer + passkey checks are re-applied here.
     """
     cfg: WebappConfig = websocket.app.state.webapp_config
-    gate: WebAuthnGate = websocket.app.state.webauthn_gate
     client_host = websocket.client.host if websocket.client else ""
 
     # Accept first, *then* gate — so the browser receives the close
@@ -566,46 +559,10 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     # "Disconnected" (closing before accept just fails the handshake).
     await websocket.accept()
 
-    # The edge's own headers override a loopback-looking client address:
-    # cloudflared dials this webapp over loopback, so "not loopback" is only
-    # true once uvicorn rewrites the address from X-Forwarded-For. See
-    # middleware.is_pc_itself for why that rewrite is not something to lean on.
-    if client_host not in LOOPBACK_HOSTS or via_cloudflare(websocket.headers):
-        if via_cloudflare(websocket.headers):
-            await websocket.close(
-                code=4403,
-                reason="terminal is Tailscale-only — blocked on the public tunnel",
-            )
-            return
-        if not client_in_tailnet(
-            client_host, getattr(cfg, "tailnet_allowlist", [])
-        ):
-            await websocket.close(
-                code=4403, reason="terminal is Tailscale-only"
-            )
-            return
-        # Both credential classes, via the same helper the HTTP middleware
-        # uses — a minted full-scope token is documented to behave like the
-        # legacy one, and a config carrying only minted tokens must not
-        # leave this socket open (see middleware.credential_required).
-        if credential_required(cfg):
-            presented = websocket.query_params.get("token", "").strip()
-            # Scope is re-checked against this path, so a job-scoped Stream
-            # Deck token is refused here exactly as it is on HTTP.
-            if not credential_accepted(
-                cfg, presented, "GET", websocket.url.path
-            ):
-                await websocket.close(
-                    code=4401, reason="missing or invalid bearer token"
-                )
-                return
-        if WebAuthnGate.configured(cfg):
-            tt = websocket.query_params.get("tt", "").strip()
-            if not gate.valid_terminal_token(tt):
-                await websocket.close(
-                    code=4401, reason="passkey unlock required"
-                )
-                return
+    refusal = ws_terminal_gate(websocket, label="terminal")
+    if refusal is not None:
+        await websocket.close(code=refusal[0], reason=refusal[1])
+        return
 
     # The phone drives the PTY size; the loopback PC mirror window
     # connects as role=pc and never resizes it (see session-host).
