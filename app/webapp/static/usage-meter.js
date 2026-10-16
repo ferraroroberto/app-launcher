@@ -44,6 +44,7 @@ const STATE_COPY = {
 // the server does not know reads as the default.
 export const USAGE_SHOWS_DEFAULT = 'both';
 const USAGE_SHOWS_VALUES = ['claude', 'codex', 'both', 'none'];
+const USAGE_SHOWS_KEY = 'app-launcher.usageshows';
 
 export function usageProviders(mode) {
   const m = USAGE_SHOWS_VALUES.indexOf(mode) === -1 ? USAGE_SHOWS_DEFAULT : mode;
@@ -315,58 +316,6 @@ function renderCardMeta(reading) {
   meta.dataset.tone = summary.tone;
 }
 
-// The meter before the first poll has landed (#1641): the rows a reading
-// fills, each a dash, so the card is already its final height and the numbers
-// arrive in place instead of pushing the page down. It is the settled meter's
-// own structure (the same classes, the same rows), with empty bars.
-function pendingWindow(label) {
-  const row = el('span', 'um-row');
-  row.dataset.tone = 'none';
-  row.appendChild(el('span', 'um-label', label));
-  row.appendChild(el('span', 'um-bar'));
-  row.appendChild(el('span', 'um-pct', '–'));
-  row.appendChild(el('span', 'um-reset'));
-  return row;
-}
-
-function renderPendingFull(show) {
-  const both = show.claude && show.codex;
-  const leadHarness = show.claude ? 'claude' : 'codex';
-  const btn = el('button', 'usage-meter usage-meter-full');
-  btn.type = 'button';
-  btn.dataset.tone = 'none';
-  btn.dataset.pending = 'true';
-  btn.setAttribute('aria-label', 'Usage: reading the quota. Open usage details');
-  if (both) {
-    const head = el('span', 'um-head');
-    head.appendChild(mark(leadHarness));
-    head.appendChild(el('span', 'um-name', leadHarness === 'codex' ? 'Codex' : 'Claude Code'));
-    btn.appendChild(head);
-  }
-  const windows = el('span', 'um-windows');
-  windows.appendChild(pendingWindow('5h'));
-  windows.appendChild(pendingWindow('Week'));
-  btn.appendChild(windows);
-  if (both) {
-    const codexRow = el('span', 'um-codex');
-    codexRow.appendChild(mark('codex'));
-    codexRow.appendChild(el('span', 'um-name', 'Codex'));
-    const value = el('span', 'um-codex-value', '–');
-    value.dataset.tone = 'none';
-    codexRow.appendChild(value);
-    btn.appendChild(codexRow);
-  }
-  return btn;
-}
-
-function renderPending() {
-  const show = usageProviders(usageShows);
-  const any = show.claude || show.codex;
-  const card = document.getElementById('codingUsageCard');
-  if (card) card.hidden = !any;
-  place(document.getElementById('codingUsage'), any ? renderPendingFull(show) : null);
-}
-
 // The meter from the poll of /api/rate-limits (sessions.js), drawn for the
 // providers "Usage shows" (#1451) names. With none, the Code tab's Usage card
 // is hidden.
@@ -392,8 +341,11 @@ export function setUsageShows(value) {
   const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
   if (next === usageShows) return;
   usageShows = next;
+  // The pre-paint choice (index.html, #1657): the next load draws this row
+  // set from its first paint, and the placeholder follows it until a poll lands.
+  document.documentElement.dataset.usageShows = next;
+  try { localStorage.setItem(USAGE_SHOWS_KEY, next); } catch (_) { /* storage blocked */ }
   if (polled) renderUsage(lastLines);
-  else renderPending();
 }
 
 // The context filter's stats (context-filter.js, GET /api/context-filter),
@@ -495,7 +447,6 @@ function closeUsageSheet() {
 // its header and footer are part of the one tap). The listener sits on the
 // stable card: the button inside is rebuilt whenever its reading changes.
 export function wireUsageMeter() {
-  if (!polled) renderPending();
   const card = document.getElementById('codingUsageCard');
   if (card) card.addEventListener('click', openUsageSheet);
   const close = document.getElementById('usageSheetClose');

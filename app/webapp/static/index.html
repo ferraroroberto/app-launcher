@@ -31,6 +31,17 @@
       root.dataset.textsize = size === 'small' || size === 'large' ? size : 'default';
     })();
   </script>
+  <!-- Pre-paint usage choice (#1657): the last "Usage shows" value this device
+       saw, stamped on <html> so the Usage card's static placeholder draws the
+       settled row set from the first paint. usage-meter.js keeps it current. -->
+  <script>
+    (function () {
+      var shows = 'both';
+      try { shows = localStorage.getItem('app-launcher.usageshows') || shows; } catch (e) {}
+      document.documentElement.dataset.usageShows =
+        shows === 'claude' || shows === 'codex' || shows === 'none' ? shows : 'both';
+    })();
+  </script>
   <!-- base.css first: form controls inherit the page font (its README's
        load-order contract, project-scaffolding#266). -->
   <link rel="stylesheet" href="/static/_vendored/base/base.css">
@@ -683,7 +694,27 @@
           </h3>
           <span id="codingUsageMeta" class="card-head-meta usage-card-meta"></span>
         </div>
-        <div id="codingUsage" class="usage-meter-slot"></div>
+        <!-- The placeholder is the meter's own structure with dashes (#1657), so
+             the card is its final height before usage-meter.js runs; the first
+             poll replaces it in place. CSS shows the head and Codex rows only
+             for "both" (html[data-usage-shows]). -->
+        <div id="codingUsage" class="usage-meter-slot">
+          <button type="button" class="usage-meter usage-meter-full" data-tone="none" data-pending="true" aria-label="Usage: reading the quota. Open usage details">
+            <span class="um-head">
+              <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-claude"></use></svg>
+              <span class="um-name">Claude Code</span>
+            </span>
+            <span class="um-windows">
+              <span class="um-row" data-tone="none"><span class="um-label">5h</span><span class="um-bar"></span><span class="um-pct">–</span><span class="um-reset"></span></span>
+              <span class="um-row" data-tone="none"><span class="um-label">Week</span><span class="um-bar"></span><span class="um-pct">–</span><span class="um-reset"></span></span>
+            </span>
+            <span class="um-codex">
+              <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-codex"></use></svg>
+              <span class="um-name">Codex</span>
+              <span class="um-codex-value" data-tone="none">–</span>
+            </span>
+          </button>
+        </div>
         <!-- context-filter.js fills it from the filter's existing stats;
              hidden when there is nothing saved to report (#713). -->
         <p id="codingUsageFooter" class="usage-card-footer">–</p>
