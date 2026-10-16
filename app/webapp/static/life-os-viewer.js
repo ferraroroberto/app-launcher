@@ -7,7 +7,8 @@
  * The capture is parsed server-side (`/api/life-os/file/transcript`,
  * src/life_os_capture.py) into the entry shape the session overlay's Chat
  * pane already renders, and it is rendered by that pane's own renderer
- * (session-transcript.js): one transcript surface, two mounts (#979). There
+ * (transcript-render.js, #1629): one transcript surface, two mounts (#979),
+ * and no dependency on the Chat pane's state. There
  * is no composer: this is a finished conversation, reopened through Resume if
  * it is to continue. The capture reader keeps speaker turns only, so there
  * are no tool-call groups to show, and the old "Show tool calls" toggle is
@@ -16,7 +17,7 @@
 
 import { els } from './state.js';
 import { jsonApi } from './api.js';
-import { openLinksOnThePc, renderEntries } from './session-transcript.js';
+import { openLinksOnThePc, renderEntries } from './transcript-render.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 

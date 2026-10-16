@@ -9,7 +9,7 @@ the renderer (Chat pane, plan cards, Life OS viewers) gets a working button
 without each wiring its own.
 
 The clipboard write happens synchronously inside the tap, the same iOS rule
-`session-transcript.js`'s card copy follows: an `await` ahead of it loses the
+`transcript-render.js`'s turn copy follows: an `await` ahead of it loses the
 gesture and the copy fails silently on the phone.
 */
 
