@@ -480,18 +480,21 @@ def _skill(skill_id: str, **fields) -> dict:
     return row
 
 
-_USED = {
-    "available": True,
-    "life_os_dir": "E:/synthetic/life-os",
-    "skills": [
-        _skill("bird-count", last_used=_ago(90), has_conversations=True),
-        _skill("garden-notes", icon="sprout", last_used=_ago(0), has_conversations=True),
-        _skill("pottery", icon="no-such-glyph", last_used=_ago(3), has_conversations=True),
-        _skill("reading-list", last_used=_ago(40), has_conversations=True, is_favorite=True),
-        _skill("trip-planner", last_used=_ago(1), has_conversations=True),
-        _skill("yoga-log"),
-    ],
-}
+def _used() -> dict:
+    """Built per test: the page diffs ``last_used`` against its own clock, so a
+    payload frozen at import time is a day off once a run crosses midnight (#1656)."""
+    return {
+        "available": True,
+        "life_os_dir": "E:/synthetic/life-os",
+        "skills": [
+            _skill("bird-count", last_used=_ago(90), has_conversations=True),
+            _skill("garden-notes", icon="sprout", last_used=_ago(0), has_conversations=True),
+            _skill("pottery", icon="no-such-glyph", last_used=_ago(3), has_conversations=True),
+            _skill("reading-list", last_used=_ago(40), has_conversations=True, is_favorite=True),
+            _skill("trip-planner", last_used=_ago(1), has_conversations=True),
+            _skill("yoga-log"),
+        ],
+    }
 
 
 def _visible_order(page: Page) -> list:
@@ -501,7 +504,7 @@ def _visible_order(page: Page) -> list:
 
 
 def test_pinned_then_recent_then_the_rest_fold(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     # Pinned (even if old), then newest used, then the fold.
     expect(page.locator("#lifeOsList li.lifeos-item").first).to_have_attribute(
@@ -544,13 +547,13 @@ def test_with_nothing_in_use_every_skill_shows(life) -> None:
     ("yoga-log", "no conversations yet"),
 ])
 def test_the_meta_says_when_it_was_last_used(authed_page: Page, life, skill_id, meta) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
 
 
 def test_the_avatar_is_the_skill_glyph_or_a_monogram(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     glyph = _row(page, "garden-notes").locator(".avatar use")
     expect(glyph).to_have_attribute("href", "#i-sprout")
@@ -574,7 +577,7 @@ def _resume_latest_route(page: Page, reply: dict) -> list:
 def test_the_kebab_resumes_the_last_conversation_on_its_own_model(
     authed_page: Page, life
 ) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     posted = _resume_latest_route(page, {
         "conversation_action": "resume", "model": "claude-opus-5-5", "model_kept": True,
@@ -592,7 +595,7 @@ def test_the_kebab_resumes_the_last_conversation_on_its_own_model(
 
 
 def test_resume_last_is_disabled_with_no_conversation_yet(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     page.locator("#lifeOsList .lifeos-fold-btn").click()
     yoga = _row(page, "yoga-log")
@@ -603,7 +606,7 @@ def test_resume_last_is_disabled_with_no_conversation_yet(authed_page: Page, lif
 
 
 def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     posted: list = []
 
@@ -623,7 +626,7 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
 
 
 def test_pin_to_top_posts_the_pin_and_unpin_is_offered_back(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     posted: list = []
 
@@ -697,7 +700,7 @@ def _launch_route(page: Page) -> list:
 def test_swipe_right_resumes_and_a_partial_swipe_left_rests_on_new(
     authed_page: Page, life
 ) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _used())
     _phone(authed_page)
     page = life()
     resumed = _resume_latest_route(page, {
@@ -745,7 +748,7 @@ def test_swipe_right_resumes_and_a_partial_swipe_left_rests_on_new(
 def test_a_swipe_never_starts_from_a_scroll_a_mouse_or_the_edge(
     authed_page: Page, life
 ) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _USED)
+    _json_route(authed_page, r".*/api/life-os/skills(\\?.*)?$", _used())
     _phone(authed_page)
     page = life()
     resumed = _resume_latest_route(page, {"conversation_action": "resume", "session": None})
