@@ -36,8 +36,7 @@ full per-family surface.  Top-level families:
                  POST /api/transcribe/sessions/{id}/finish
                  GET  /api/ocr                            → screenshot OCR
 
-    claude_code  GET  /api/claude-code/flags              → persisted per-agent flags
-                 GET  /api/claude-code/git-status         → per-project branch+dirty
+    claude_code  GET  /api/claude-code/git-status         → per-project branch+dirty
                  POST /api/claude-code/vscode/{id}        → open in VS Code (#802)
                  GET  /api/claude-code/changes/{id}       → working-tree file list (#977)
                  GET  /api/claude-code/changes/{id}/diff  → one file's unified diff

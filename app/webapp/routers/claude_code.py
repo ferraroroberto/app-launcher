@@ -27,7 +27,7 @@ from src.vscode_workspace import (
 from src.webapp_config import WebappConfig, update_webapp_config
 
 from app.webapp.hot_poll import start_or_join
-from app.webapp.routers._helpers import claude_flags_payload, maybe_json
+from app.webapp.routers._helpers import maybe_json
 
 router = APIRouter()
 
@@ -156,12 +156,6 @@ async def open_project_folder(project_id: str, request: Request) -> Dict[str, An
     except OSError as exc:
         raise HTTPException(status_code=503, detail=f"could not open folder: {exc}") from exc
     return {"ok": True, "path": str(project.project_dir), "pid": pid}
-
-
-@router.get("/api/claude-code/flags")
-async def claude_flags(request: Request) -> Dict[str, Any]:
-    cfg: WebappConfig = request.app.state.webapp_config
-    return claude_flags_payload(cfg)
 
 
 # The git-status fan-out's own threads (#1264). One git_status per repo on the

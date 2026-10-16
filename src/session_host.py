@@ -747,11 +747,11 @@ class PtySession(InputProtocol):
             "prompt_title": self.prompt_title,
             "manual_title": self.manual_title,
             "output_chars": output_chars,
-            # Raw PTY-activity timestamp (issue #627 remainder): exposed so a
-            # future check can tell "still genuinely producing output" apart
-            # from "live_title frozen on a busy glyph because the PTY wedged"
-            # — not consumed anywhere yet, see board_transcript.py's
-            # _live_title_is_busy docstring for why that's still open.
+            # Raw PTY-activity timestamp (issues #627, #636): lets a reader tell
+            # "still genuinely producing output" apart from "live_title frozen
+            # on a busy glyph because the PTY wedged". Consumed by
+            # board_transcript's _pty_output_is_fresh (via board_sessions and
+            # the session_transcript router).
             "last_output_at": self._last_output_at,
             # The most recent server-initiated write's verdict (issue #760),
             # or None if nothing has been sent through /input yet. This is
