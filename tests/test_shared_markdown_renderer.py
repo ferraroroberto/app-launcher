@@ -1,7 +1,8 @@
 """The markdown renderer is shared, and verified against both consumers (#1006).
 
 `renderMarkdown` used to live in `app/webapp/static/life-os.js` while the
-Coding tab's Chat pane (`session-transcript.js`) imported it from there.
+Coding tab's Chat pane (`session-transcript.js`, whose renderer is
+`transcript-render.js` since #1629) imported it from there.
 That was not only a naming problem. `.fleet.toml`'s `lifeos` e2e surface
 narrows a `life-os.js`-only diff to the Life OS tests, and those do **not**
 include `tests/e2e/test_session_transcript.py` — so a change to the shared
@@ -43,7 +44,7 @@ def test_the_feature_module_no_longer_defines_it():
 
 
 def test_both_tabs_import_it_from_the_shared_module():
-    for name in ("life-os.js", "session-transcript.js"):
+    for name in ("life-os.js", "transcript-render.js"):
         source = _read(name)
         assert "from './markdown.js'" in source, f"{name} must import the shared renderer"
         assert "renderMarkdown } from './life-os.js'" not in source, (

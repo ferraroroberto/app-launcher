@@ -5,10 +5,10 @@
  * AskUserQuestion card (#1149) and the ExitPlanMode card (#1151) — plus the
  * plan panel that answers a waiting plan from the terminal's own screen
  * (src/plan_picker.py), rather than from the transcript. session-transcript.js
- * owns paging, live refresh and the turn/run rendering these cards sit
- * beside; this module owns everything about the cards themselves and their
- * entry points are what session-transcript.js's renderEntries/appendSettled/
- * live-tick code calls back into.
+ * owns paging and live refresh, and transcript-render.js the turn/run
+ * rendering these cards sit beside (#1629); this module owns everything about
+ * the cards themselves and their entry points are what transcript-render.js's
+ * appendEntries and session-transcript.js's live-tick code call back into.
  *
  * `view` (the Chat pane's one open-session state, exported live from
  * session-transcript.js) is read and mutated here exactly as it always was —
@@ -27,15 +27,11 @@ import { syncResumePicker } from './chat-resume.js';
 import {
   SENT_REFRESH_MS,
   atBottom,
-  linkify,
   liveAllowed,
-  meta,
-  pre,
   scheduleLive,
-  tagKey,
-  toolOutcomeNote,
   view,
 } from './session-transcript.js';
+import { linkify, meta, pre, tagKey, toolOutcomeNote } from './transcript-render.js';
 
 // --- AskUserQuestion card (#1149) -----------------------------------------
 //

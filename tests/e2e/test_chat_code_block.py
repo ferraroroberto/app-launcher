@@ -35,7 +35,7 @@ The copy click is pinned in ``test_session_transcript.py``.
 
 The Life OS file viewer renders the same ``pre.md-code`` and is not asserted
 here, deliberately: the shared rule is scoped to ``.tr-md`` / ``.tr-pre``, and
-``session-transcript.js:396`` is the only writer of ``.tr-md``, so the file
+``transcript-render.js``'s ``renderReply`` is the only writer of ``.tr-md``, so the file
 viewer's own rule is out of reach. Its own module covers that consumer, and
 the fenced block there keeps its existing scroll route.
 
