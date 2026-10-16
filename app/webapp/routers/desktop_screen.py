@@ -7,10 +7,9 @@ and runs only inside a connected socket.
 A picture of the desktop shows whatever is on it, so this is terminal-grade
 content (#1036): the HTTP route carries a ``passkey`` row in
 ``middleware._TERMINAL_GUARD_RULES``, and the WebSocket, which the HTTP
-middleware never sees, re-applies the same legs inline before a single grab:
-refused over the Cloudflare edge, Tailscale-only, bearer token, passkey. The
-order and close codes are ``sessions.proxy_session_ws``'s, so the client
-reads them the same way.
+middleware never sees, re-applies the same gate before a single grab via
+``middleware.ws_terminal_gate`` — the same helper ``sessions.proxy_session_ws``
+calls, so the legs, order and close codes read the same way on both.
 
 Protocol: the server sends binary JPEG frames and JSON text status messages
 (``{"type": "status", "state": "unavailable" | "live"}``); the client sends
@@ -37,22 +36,14 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from src import audit, desktop_capture, desktop_cursor, desktop_input
-from src.webapp_config import WebappConfig
-from src.webauthn_gate import WebAuthnGate
 
-from app.webapp.middleware import (
-    LOOPBACK_HOSTS,
-    client_in_tailnet,
-    credential_accepted,
-    credential_required,
-    via_cloudflare,
-)
+from app.webapp.middleware import ws_terminal_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip_ws
 
 logger = logging.getLogger(__name__)
@@ -67,35 +58,6 @@ async def screen_monitors() -> Dict[str, Any]:
     """The displays the Screen view can show; no capture happens here."""
     monitors = await asyncio.to_thread(desktop_capture.list_monitors)
     return {"monitors": [m.to_dict() for m in monitors]}
-
-
-async def _gate_refusal(websocket: WebSocket) -> Optional[Tuple[int, str]]:
-    """``(code, reason)`` to close with, or ``None`` when the socket may stream.
-
-    The same legs, in the same order, as ``sessions.proxy_session_ws``: the
-    PC itself (loopback with no edge header) bypasses; anything else must not
-    have come over the public edge, must be on the tailnet, must present a
-    credential when one is configured, and must hold a passkey terminal token
-    when the passkey gate is configured.
-    """
-    cfg: WebappConfig = websocket.app.state.webapp_config
-    client_host = websocket.client.host if websocket.client else ""
-    if client_host in LOOPBACK_HOSTS and not via_cloudflare(websocket.headers):
-        return None
-    if via_cloudflare(websocket.headers):
-        return 4403, "screen is Tailscale-only, blocked on the public tunnel"
-    if not client_in_tailnet(client_host, getattr(cfg, "tailnet_allowlist", [])):
-        return 4403, "screen is Tailscale-only"
-    if credential_required(cfg):
-        presented = websocket.query_params.get("token", "").strip()
-        if not credential_accepted(cfg, presented, "GET", websocket.url.path):
-            return 4401, "missing or invalid bearer token"
-    if WebAuthnGate.configured(cfg):
-        gate: WebAuthnGate = websocket.app.state.webauthn_gate
-        tt = websocket.query_params.get("tt", "").strip()
-        if not gate.valid_terminal_token(tt):
-            return 4401, "passkey unlock required"
-    return None
 
 
 def _int_param(websocket: WebSocket, name: str) -> Optional[int]:
@@ -151,7 +113,7 @@ async def screen_ws(websocket: WebSocket) -> None:
     """Stream one monitor until the viewer goes away."""
     # Accept first, then gate, so the browser gets the close code and reason.
     await websocket.accept()
-    refusal = await _gate_refusal(websocket)
+    refusal = ws_terminal_gate(websocket, label="screen")
     if refusal is not None:
         await websocket.close(code=refusal[0], reason=refusal[1])
         return

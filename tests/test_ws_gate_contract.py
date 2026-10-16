@@ -39,14 +39,20 @@ def minted_only_config(webapp_client):
 
 
 def _force_remote_tailnet(monkeypatch):
-    """Make the TestClient look like a tailnet device, not the PC."""
-    from app.webapp.routers import sessions as sessions_router
+    """Make the TestClient look like a tailnet device, not the PC.
+
+    The sessions socket's gate is ``middleware.ws_terminal_gate`` (#1627,
+    shared with ``desktop_screen.screen_ws``), so that is where
+    ``is_pc_itself``/``client_in_tailnet`` actually resolve — patching the
+    ``sessions`` module's own (now unused) names would silently do nothing.
+    """
+    from app.webapp import middleware
 
     monkeypatch.setattr(
-        sessions_router, "LOOPBACK_HOSTS", frozenset({"127.0.0.1", "::1"})
+        middleware, "LOOPBACK_HOSTS", frozenset({"127.0.0.1", "::1"})
     )
     monkeypatch.setattr(
-        sessions_router, "client_in_tailnet", lambda host, allow: True
+        middleware, "client_in_tailnet", lambda host, allow: True
     )
 
 

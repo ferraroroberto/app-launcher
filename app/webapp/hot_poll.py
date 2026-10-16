@@ -230,7 +230,7 @@ class HotPoll:
             self._start(build).add_done_callback(functools.partial(_settle, queued))
 
 
-def _settle(target: "asyncio.Future[Built]", source: "asyncio.Future[Built]") -> None:
+def _settle(target: "asyncio.Future[Any]", source: "asyncio.Future[Any]") -> None:
     if target.done():
         return
     if source.cancelled():
@@ -239,6 +239,59 @@ def _settle(target: "asyncio.Future[Built]", source: "asyncio.Future[Built]") ->
         target.set_exception(source.exception())
     else:
         target.set_result(source.result())
+
+
+def start_or_join(
+    key: Any,
+    running: Dict[Any, "asyncio.Future[Any]"],
+    queued: Dict[Any, "asyncio.Future[Any]"],
+    build: Callable[[], Awaitable[Any]],
+) -> "asyncio.Future[Any]":
+    """The future a caller arriving now should await for ``key`` — the build
+    already running, the one already queued behind it, or a newly started
+    one — never a stale result (the git-status rule, #1268): a call that
+    arrives while a build runs waits for the *next* build, shared with every
+    other call from that window, so each caller sees state from at or after
+    its own arrival.
+
+    ``running``/``queued`` are the caller's own per-key maps, so each
+    single-flight domain (git-status's repo scan, a :class:`HotPoll`
+    label) keeps its own cardinality; this function owns only the
+    start/settle mechanics, shared via :func:`_settle` so every domain
+    agrees on how a queued caller inherits the next build's outcome.
+    """
+    loop = asyncio.get_running_loop()
+    current = running.get(key)
+    if current is None or current.done() or current.get_loop() is not loop:
+        return _start_or_join(key, running, queued, build)
+    next_future = queued.get(key)
+    if next_future is None or next_future.done() or next_future.get_loop() is not loop:
+        next_future = loop.create_future()
+        queued[key] = next_future
+    return next_future
+
+
+def _start_or_join(
+    key: Any,
+    running: Dict[Any, "asyncio.Future[Any]"],
+    queued: Dict[Any, "asyncio.Future[Any]"],
+    build: Callable[[], Awaitable[Any]],
+) -> "asyncio.Future[Any]":
+    """Start ``build()`` for ``key`` now; when it ends, start the queued one, if any."""
+    task = asyncio.ensure_future(build())
+    running[key] = task
+
+    def _done(finished: "asyncio.Future[Any]") -> None:
+        if running.get(key) is not finished:
+            return
+        del running[key]
+        next_future = queued.pop(key, None)
+        if next_future is not None and not next_future.done():
+            follow_up = _start_or_join(key, running, queued, build)
+            follow_up.add_done_callback(functools.partial(_settle, next_future))
+
+    task.add_done_callback(_done)
+    return task
 
 
 def hot_poll(state: State, label: str) -> HotPoll:

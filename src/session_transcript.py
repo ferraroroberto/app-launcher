@@ -45,6 +45,7 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from src.image_sniff import sniff_image
 from src.transcript_flavors._shared import (
     Entry, EntryBuilder, Line, _loads, _line_image_blocks, _image_data, cap_diff,
 )
@@ -739,22 +740,6 @@ def transcript_activity(
 IMAGE_LINE_CAP = 32 * 1024 * 1024      # a raw line holding an image, base64 and all
 IMAGE_BYTE_CAP = 16 * 1024 * 1024      # one decoded image
 _IMAGE_FLAVORS = frozenset({"claude", "pi"})
-_IMAGE_MAGIC = (
-    (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"\xff\xd8\xff", "image/jpeg"),
-    (b"GIF87a", "image/gif"),
-    (b"GIF89a", "image/gif"),
-)
-
-
-def _sniff_image(data: bytes) -> Optional[str]:
-    """The media type of an allowlisted image format, from its own bytes."""
-    for magic, media in _IMAGE_MAGIC:
-        if data.startswith(magic):
-            return media
-    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
-        return "image/webp"
-    return None
 
 
 def _line_at(path: Path, offset: int, cap: int) -> Optional[str]:
@@ -801,7 +786,7 @@ def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[T
         decoded = base64.b64decode(data, validate=False)
     except (binascii.Error, ValueError):
         return None
-    media = _sniff_image(decoded)
+    media = sniff_image(decoded)
     return (decoded, media) if media and len(decoded) <= IMAGE_BYTE_CAP else None
 
 

@@ -32,6 +32,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
+from src._tunnel_config import read_tunnel_hostname
 from src.git_utils import resolve_default_ref, run_git
 
 logger = logging.getLogger(__name__)
@@ -561,19 +562,7 @@ def tunnel_url_for(bat_path: Path) -> Optional[str]:
             return text
     except (OSError, UnicodeDecodeError):
         pass
-    return _tunnel_url_from_cloudflared_yml(webapp_dir / "cloudflared.yml")
-
-
-def _tunnel_url_from_cloudflared_yml(config_path: Path) -> Optional[str]:
-    """First ``ingress[].hostname`` in a cloudflared config → ``https://<host>``."""
-    if not config_path.is_file():
-        return None
-    try:
-        data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
-        logger.debug(f"cloudflared.yml parse failed for {config_path}: {exc}")
-        return None
-    for entry in data.get("ingress") or []:
-        if isinstance(entry, dict) and entry.get("hostname"):
-            return f"https://{str(entry['hostname']).strip()}"
-    return None
+    # Same cloudflared-config reader the tray uses (#1003, #1627) — one
+    # ``yaml.safe_load`` + ``ingress[].hostname`` walk, not a second copy.
+    host = read_tunnel_hostname(webapp_dir / "cloudflared.yml")
+    return f"https://{host}" if host else None

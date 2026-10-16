@@ -23,7 +23,9 @@
  */
 
 import { icon } from './_vendored/icons/icons.js';
-import { brandIconEl, fmtResetClock, fmtResetDay, nameLabel, quotaPace } from './dom-utils.js';
+import {
+  brandIconEl, el, fmtResetClock, fmtResetDay, nameLabel, pctText, quotaPace, sheetRow,
+} from './dom-utils.js';
 import { chip } from './glance.js';
 
 export const DANGER_PCT = 90;
@@ -154,19 +156,8 @@ function byHarness(list, harness) {
   return list.find(function (r) { return r.harness === harness; }) || null;
 }
 
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
-}
-
 function mark(harness) {
   return brandIconEl(harness === 'codex' ? 'codex' : 'claude', 'um-mark');
-}
-
-function pctText(p) {
-  return Math.round(p) + '%';
 }
 
 // A bar: the track, its fill at the used share, and (the week only) the
@@ -388,14 +379,6 @@ function fmtTokens(n) {
   if (v >= 1e6) return (v / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
   if (v >= 1e3) return (v / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
   return String(Math.round(v));
-}
-
-function sheetRow(label, value, key) {
-  const row = el('div', 'row usage-sheet-row');
-  if (key) row.dataset.row = key;
-  row.appendChild(el('span', null, label));
-  row.appendChild(el('strong', 'usage-sheet-value', value));
-  return row;
 }
 
 function windowValue(win, format) {

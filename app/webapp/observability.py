@@ -57,47 +57,26 @@ _INFLIGHT_LOG_INTERVAL_S = 30.0
 HOT_PATH_BUDGET_S = {"/": 0.25, "/api/jobs": 0.25, "/api/board": 0.5}
 
 
-def ensure_slow_log_handler() -> None:
-    """Attach the slow-requests.log file handler exactly once. Idempotent —
-    safe to call from ``create_app()`` on every boot. Without a file handler
-    the breadcrumbs would vanish into the tray's DEVNULL exactly when they
-    matter. INFO, so the hot polls' step timings (#1597) land here too."""
-    if any(
-        isinstance(h, logging.FileHandler)
-        and Path(h.baseFilename).resolve() == _SLOW_LOG_PATH.resolve()
-        for h in slow_logger.handlers
-    ):
-        return
-    try:
-        _SLOW_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(_SLOW_LOG_PATH, encoding="utf-8")
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        )
-        slow_logger.addHandler(fh)
-        slow_logger.setLevel(logging.INFO)
-    except OSError as exc:
-        logger.warning(f"⚠️  Could not open {_SLOW_LOG_PATH}: {exc}")
-
-
-def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
-    """Send the Telegram autostart breadcrumbs (#1542) to
-    ``webapp/channel-autostart.log`` at INFO (#1546). Idempotent per logger —
-    safe to call from ``create_app()`` on every boot. Under the tray's
-    ``pythonw`` there is no stderr and these loggers have no file handler, so
-    the "autostart is off" / per-profile started-or-skipped lines (and the
-    unreachable-session-host warning, which falls to ``logging.lastResort``
-    and its ``None`` stderr) would otherwise vanish. Pass the autostart
-    loggers only, never the root: other modules' INFO stays out."""
-    path = _AUTOSTART_LOG_PATH.resolve()
+def ensure_file_log_handler(
+    path: Path,
+    *loggers: logging.Logger,
+    fmt: str = "%(asctime)s [%(levelname)s] %(message)s",
+) -> None:
+    """Attach an INFO ``FileHandler`` at ``path`` to every logger in
+    ``loggers``, exactly once each. Idempotent per logger — safe to call
+    from ``create_app()`` on every boot. Under the tray's ``pythonw`` there
+    is no stderr, so a logger with no file handler of its own simply has no
+    evidence trail; this is the one place that attaches one (#1627, folding
+    together the three near-identical copies this used to be: auth.log,
+    slow-requests.log, channel-autostart.log)."""
+    resolved = path.resolve()
     pending = [
-        t
-        for t in targets
+        lg
+        for lg in loggers
         if not any(
             isinstance(h, logging.FileHandler)
-            and Path(h.baseFilename).resolve() == path
-            for h in t.handlers
+            and Path(h.baseFilename).resolve() == resolved
+            for h in lg.handlers
         )
     ]
     if not pending:
@@ -109,12 +88,33 @@ def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
         logger.warning(f"⚠️  Could not open {path}: {exc}")
         return
     fh.setLevel(logging.INFO)
-    fh.setFormatter(
-        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    fh.setFormatter(logging.Formatter(fmt))
+    for lg in pending:
+        lg.addHandler(fh)
+        lg.setLevel(logging.INFO)
+
+
+def ensure_slow_log_handler() -> None:
+    """Attach the slow-requests.log file handler exactly once. Idempotent —
+    safe to call from ``create_app()`` on every boot. Without a file handler
+    the breadcrumbs would vanish into the tray's DEVNULL exactly when they
+    matter. INFO, so the hot polls' step timings (#1597) land here too."""
+    ensure_file_log_handler(_SLOW_LOG_PATH, slow_logger)
+
+
+def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
+    """Send the Telegram autostart breadcrumbs (#1542) to
+    ``webapp/channel-autostart.log`` at INFO (#1546). Idempotent per logger —
+    safe to call from ``create_app()`` on every boot. Under the tray's
+    ``pythonw`` there is no stderr and these loggers have no file handler, so
+    the "autostart is off" / per-profile started-or-skipped lines (and the
+    unreachable-session-host warning, which falls to ``logging.lastResort``
+    and its ``None`` stderr) would otherwise vanish. Pass the autostart
+    loggers only, never the root: other modules' INFO stays out."""
+    ensure_file_log_handler(
+        _AUTOSTART_LOG_PATH, *targets,
+        fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    for target in pending:
-        target.addHandler(fh)
-        target.setLevel(logging.INFO)
 
 
 class SlowRequestLogMiddleware:

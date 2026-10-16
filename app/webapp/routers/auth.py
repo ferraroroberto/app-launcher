@@ -10,13 +10,13 @@ from __future__ import annotations
 
 import hmac
 import logging
-from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
 from src.webapp_config import WebappConfig
 
+from app.webapp.observability import ensure_file_log_handler
 from app.webapp.routers._helpers import PROJECT_ROOT, maybe_json
 
 logger = logging.getLogger(__name__)
@@ -27,23 +27,7 @@ _AUTH_LOG_PATH = PROJECT_ROOT / "webapp" / "auth.log"
 def ensure_log_handler() -> None:
     """Attach the auth.log file handler exactly once. Idempotent — safe to
     call from `create_app()` on every boot."""
-    if any(
-        isinstance(h, logging.FileHandler)
-        and Path(h.baseFilename).resolve() == _AUTH_LOG_PATH.resolve()
-        for h in auth_logger.handlers
-    ):
-        return
-    try:
-        _AUTH_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(_AUTH_LOG_PATH, encoding="utf-8")
-        fh.setLevel(logging.INFO)
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-        )
-        auth_logger.addHandler(fh)
-        auth_logger.setLevel(logging.INFO)
-    except OSError as exc:
-        logger.warning(f"⚠️  Could not open {_AUTH_LOG_PATH}: {exc}")
+    ensure_file_log_handler(_AUTH_LOG_PATH, auth_logger)
 
 
 router = APIRouter()

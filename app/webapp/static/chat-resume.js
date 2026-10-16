@@ -28,6 +28,7 @@ import { fmtAgo } from './sessions.js';
 import { terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { askOption } from './ask-option.js';
+import { el } from './dom-utils.js';
 
 let hooks = null;
 // The open card: { sid, via: 'picker' | 'composer', sessions, busy,
@@ -99,13 +100,6 @@ export async function openResumeCard(via) {
   }
   mine.sessions = body.sessions || [];
   render();
-}
-
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
 }
 
 function ago(iso) {

@@ -32,13 +32,7 @@
  */
 
 import { setSwitch, switchEl } from './_vendored/switch/switch.js';
-
-function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text != null) node.textContent = text;
-  return node;
-}
+import { el } from './dom-utils.js';
 
 // One labelled switch: the visible word and the vendored track in one
 // <label>, so the word is part of the tap target.

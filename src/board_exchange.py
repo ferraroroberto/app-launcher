@@ -31,6 +31,7 @@ import pyte
 
 from src import plan_picker, transcript_locate
 from src.board_transcript import _read_tail_bytes, _tail_lines, last_exchange
+from src.session_host_scan import _cook_input_line
 from src.transcript_flavors.codex import codex_entries
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,6 @@ _SPINNER_RE = re.compile(
 )
 _TIP_RE = re.compile(r"^\s*[⎿└╰⤷↳]\s*Tip\b", re.IGNORECASE)
 _INPUT_RE = re.compile(r"\[input\]\s+(.*)$")
-_CSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 
 def unavailable(reason: str) -> Dict[str, Any]:
@@ -463,12 +463,22 @@ def _is_rule_line(line: str) -> bool:
 
 
 def _last_submitted_input(path: Optional[Path]) -> str:
+    """The last line the user actually submitted (CR/LF-terminated) to the
+    logged input stream at ``path``.
+
+    Raw input, lines kept raw until a submit so a sequence split across two
+    logged chunks still cooks correctly; each completed line runs through
+    :func:`_cook_input_line` — the same keystroke cooker
+    ``session_host.PtySession._maybe_capture_prompt`` uses for the first-
+    prompt title — so the drawer prompt and the session title agree on one
+    rule (#1627) instead of carrying their own, divergent copies.
+    """
     if path is None:
         return ""
     lines, truncated = _tail_lines(path, _INPUT_TAIL_BYTES)
     if truncated and lines:
         lines = lines[1:]  # likely torn by the seek
-    buffer = ""
+    raw = ""
     submitted: List[str] = []
     for line in lines:
         match = _INPUT_RE.search(line)
@@ -480,16 +490,20 @@ def _last_submitted_input(path: Optional[Path]) -> str:
             continue
         if not isinstance(chunk, str):
             continue
-        chunk = chunk.replace("\x1b[200~", "").replace("\x1b[201~", "")
-        chunk = _CSI_RE.sub("", chunk)
-        for char in chunk:
-            if char in ("\x7f", "\b"):
-                buffer = buffer[:-1]
-            elif char in ("\r", "\n"):
-                text = buffer.strip()
-                if text:
-                    submitted.append(text)
-                buffer = ""
-            elif char == "\t" or ord(char) >= 32:
-                buffer += char
+        raw += chunk
+        while True:
+            cr = raw.find("\r")
+            lf = raw.find("\n")
+            ends = [i for i in (cr, lf) if i != -1]
+            if not ends:
+                break
+            end = min(ends)
+            text = _cook_input_line(raw[:end]).strip()
+            if text:
+                submitted.append(text)
+            # Skip the terminator, collapsing a paired CR+LF.
+            nxt = end + 1
+            if raw[end] == "\r" and nxt < len(raw) and raw[nxt] == "\n":
+                nxt += 1
+            raw = raw[nxt:]
     return submitted[-1] if submitted else ""
