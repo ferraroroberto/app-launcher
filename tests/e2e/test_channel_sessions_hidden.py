@@ -49,6 +49,7 @@ def _session(sid: str, label: str, name: str, **extra) -> dict:
         "name": name, "project_dir": f"E:/automation/{name}", "alive": True,
         "started_at": "2026-10-03T08:00:00Z", "live_title": "", "prompt_title": "",
         "manual_title": "", "flags": "", "last_output_at": time.time() - 300,
+        "last_turn_at": time.time() - 300,
         "shared_name": None, "shared_name_source": None,
     }
     base.update(extra)
@@ -57,7 +58,10 @@ def _session(sid: str, label: str, name: str, **extra) -> dict:
 
 _WORKER = _session("s-work", "", "life-os", live_title="weekly recap")
 _HEALTH = _session("s-tg-health", "telegram:health", "life-os")
-_FAMILY = _session("s-tg-family", "telegram:family-chat", "life-os")
+# Its PTY repainted a second ago (#1647) but no turn can be read: the sheet
+# says "—", not "just now".
+_FAMILY = _session("s-tg-family", "telegram:family-chat", "life-os",
+                   last_output_at=time.time() - 1, last_turn_at=None)
 _SESSIONS = [_WORKER, _HEALTH, _FAMILY]
 
 
@@ -226,6 +230,9 @@ def test_summary_opens_a_read_only_list_and_polls_context_fast_only_while_open(
     # last_output_at is five minutes old when the mock is built; the page
     # clock is jumped before this, so assert the shape, not the minute.
     expect(health).to_contain_text(re.compile(r"\d+m ago"))
+    # A repainted PTY with no readable turn is unknown, never "just now" (#1647).
+    expect(dialog.locator('li[data-session-id="s-tg-family"] .channel-list-last')
+           ).to_have_text("—")
     wait_until(authed_page, lambda: "s-tg-health" in knobs["context_hits"],
                "the open list's first context read")
     expect(health.locator(".channel-list-context")).to_have_text("42%")

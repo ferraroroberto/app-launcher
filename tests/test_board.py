@@ -563,6 +563,65 @@ def test_attach_shared_names_does_not_mutate_input():
     assert "shared_name" not in live[0]
 
 
+# --------------------------------------------------- attach_last_turn (#1647)
+
+
+def test_attach_last_turn_ignores_a_recent_pty_repaint(tmp_path: Path):
+    """The shared-repaint bug: every channel session's PTY repainted a minute
+    ago (Claude Code's footer refresh), but the last real turn was hours old.
+    ``last_turn_at`` is the turn; ``last_output_at`` rides along untouched."""
+    turn = NOW - timedelta(hours=4)
+    row = _state_row("E:/x/y")
+    row["transcript_path"] = _transcript_file(tmp_path, turn)
+    repainted = (NOW - timedelta(minutes=1)).timestamp()
+    live = [_live("aaa", "E:/x/y", 300, last_output_at=repainted)]
+    joined = board.attach_last_turn(live, {"t": row})
+    assert joined[0]["last_turn_at"] == turn.timestamp()
+    assert joined[0]["last_output_at"] == repainted
+
+
+def test_attach_last_turn_is_per_session(tmp_path: Path):
+    """One used session and one idle one read their own turns, not a shared time."""
+    used = _state_row("E:/x/used", transcript_path=_transcript_file(tmp_path, NOW - timedelta(minutes=2)))
+    idle_dir = tmp_path / "idle"
+    idle_dir.mkdir()
+    idle = _state_row("E:/x/idle", transcript_path=_transcript_file(idle_dir, NOW - timedelta(hours=5)))
+    live = [_live("u", "E:/x/used", 60), _live("i", "E:/x/idle", 30)]
+    by_id = {s["session_id"]: s for s in board.attach_last_turn(live, {"u": used, "i": idle})}
+    assert by_id["u"]["last_turn_at"] == (NOW - timedelta(minutes=2)).timestamp()
+    assert by_id["i"]["last_turn_at"] == (NOW - timedelta(hours=5)).timestamp()
+
+
+def test_attach_last_turn_unreadable_transcript_is_unknown(tmp_path: Path):
+    """No row, no path, a missing file and a file with no conversation line
+    are all ``None``: unknown, never a stand-in time."""
+    no_path = _state_row("E:/x/nopath")
+    gone = _state_row("E:/x/gone", transcript_path=str(tmp_path / "missing.jsonl"))
+    metadata_dir = tmp_path / "meta"
+    metadata_dir.mkdir()
+    metadata_only = _state_row(
+        "E:/x/meta",
+        transcript_path=_transcript_file(
+            metadata_dir, NOW, content=json.dumps({"type": "system", "timestamp": _iso(NOW)}) + "\n"
+        ),
+    )
+    live = [
+        _live("nr", "E:/x/norow", 40, last_output_at=NOW.timestamp()),
+        _live("np", "E:/x/nopath", 30, last_output_at=NOW.timestamp()),
+        _live("gn", "E:/x/gone", 20, last_output_at=NOW.timestamp()),
+        _live("mo", "E:/x/meta", 10, last_output_at=NOW.timestamp()),
+    ]
+    rows = {"np": no_path, "gn": gone, "mo": metadata_only}
+    for sess in board.attach_last_turn(live, rows):
+        assert sess["last_turn_at"] is None, sess["session_id"]
+
+
+def test_attach_last_turn_does_not_mutate_input():
+    live = [_live("aaa", "E:/x/y", 30)]
+    board.attach_last_turn(live, {})
+    assert "last_turn_at" not in live[0]
+
+
 def test_attach_shared_names_agrees_with_merge_sessions():
     """The Coding tab and Board tab must resolve the same live session to the
     same title source — same cwd claim walk, same result (#396 acceptance)."""

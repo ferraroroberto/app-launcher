@@ -180,7 +180,10 @@ function renderRows() {
       ? textEl(note.text, 'channel-list-status channel-list-note' + (note.kind ? ' is-' + note.kind : ''))
       : textEl(running ? 'Running' : 'Stopped',
         'channel-list-status ' + (running ? 'is-up' : 'is-down')));
-    const last = fmtDuration(s.last_output_at, { fromEpoch: true });
+    // The newest real turn from the transcript (#1647), never the PTY's last
+    // paint: Claude Code's own footer refresh repaints every session at once.
+    // An unreadable transcript is null here, which reads "—", not "just now".
+    const last = fmtDuration(s.last_turn_at, { fromEpoch: true });
     open.appendChild(meta('Last activity', textEl(last ? (last === 'now' ? 'just now' : last + ' ago') : '—', 'channel-list-last')));
     const ctx = textEl(contextText(s.session_id), 'channel-list-context');
     const pct = contextBySid.get(s.session_id);
