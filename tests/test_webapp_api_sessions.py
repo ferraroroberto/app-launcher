@@ -186,6 +186,41 @@ class TestBoardPlacement:
             assert sess["board_age_seconds"] is None
 
 
+class TestLastTurn:
+    """#1647: ``last_turn_at`` is the transcript's newest real turn, so a PTY
+    that repainted a moment ago (``last_output_at``) does not read as active."""
+
+    def test_sessions_carry_the_transcript_turn_not_the_pty_paint(
+        self, webapp_client, monkeypatch, tmp_path
+    ):
+        import json
+        import time
+
+        from src import board
+
+        client, _, overrides = webapp_client
+        turn = time.time() - 4 * 3600
+        transcript = tmp_path / "t.jsonl"
+        transcript.write_text(json.dumps({
+            "type": "assistant",
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(turn)),
+            "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
+        }) + "\n", encoding="utf-8")
+        overrides["session"].list_sessions.return_value = [
+            {"session_id": "a", "kind": "pty", "agent": "claude", "name": "p",
+             "project_dir": "C:/a", "last_output_at": time.time() - 5},
+            {"session_id": "b", "kind": "pty", "agent": "claude", "name": "q",
+             "project_dir": "C:/b", "last_output_at": time.time() - 5},
+        ]
+        monkeypatch.setattr(board, "read_sessions_state", lambda _p: {"rows": {
+            "ra": {"cwd": "C:/a", "project": "a", "status": "idle", "transcript_path": str(transcript)},
+        }})
+        monkeypatch.setattr(board, "session_board_columns", lambda *a, **k: {})
+        by_id = {s["session_id"]: s for s in client.get("/api/claude-code/sessions").json()["sessions"]}
+        assert abs(by_id["a"]["last_turn_at"] - turn) < 2
+        assert by_id["b"]["last_turn_at"] is None
+
+
 class TestStopSession:
     def test_kill_mode_forwarded_to_session_client(self, webapp_client):
         client, _, overrides = webapp_client

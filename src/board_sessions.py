@@ -33,6 +33,7 @@ from src.session_model import session_model_label
 from src.board_transcript import (
     _ExchangeTail,
     _external_row_liveness,
+    _last_activity,
     _refine_waiting_status,
     _transcript_overlay,
 )
@@ -372,6 +373,35 @@ def attach_shared_names(
         }
         for sess, row, _sid in pairs
     ]
+
+
+def attach_last_turn(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Each live session plus ``last_turn_at`` (#1647): epoch seconds of the
+    newest real conversation line (``user``/``assistant``) in its transcript,
+    or ``None`` when that cannot be read.
+
+    This is what "Last activity" means for a session nobody is typing into.
+    The session-host's ``last_output_at`` is the PTY's last *paint*, so a
+    footer refresh, a resize redraw or Claude Code's own periodic update
+    check moves it for every session at once; it stays the host's measure for
+    its steer and quiet-wait logic and is never a stand-in here. ``None`` is
+    unknown, never "now": no state row, no transcript path, an unreadable
+    file or no conversation line in the tail all land there.
+
+    Same agent-aware claim walk as :func:`attach_shared_names`, so a session
+    resolves to the same state row on every tab. Returns new dicts; the
+    input is never mutated. Blocking file IO (one bounded tail read per
+    session) - callers wrap in ``asyncio.to_thread``.
+    """
+    pairs, _ = _claim_walk(live, state_rows)
+    out: List[Dict[str, Any]] = []
+    for sess, row, _sid in pairs:
+        transcript = (row or {}).get("transcript_path")
+        stamp = _last_activity(transcript) if transcript else None
+        out.append({**sess, "last_turn_at": stamp.timestamp() if stamp else None})
+    return out
 
 
 def merge_sessions(

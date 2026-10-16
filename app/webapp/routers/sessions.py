@@ -122,6 +122,11 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     ``None`` when the Board placement could not be worked out: unknown, never
     "normal".
 
+    ``last_turn_at`` (#1647) is the epoch second of the session's newest
+    real conversation line, read from its transcript, or ``None`` when that
+    can't be read. The Telegram sheet's "Last activity" shows it;
+    ``last_output_at`` is the PTY's last paint and stays the host's own.
+
     ``chief_questions`` (#1502) is how many of the chief's questions no
     device has answered yet, fleet-wide, so the Board tab's badge counts them
     from every tab; ``None`` when the plan can't be read. It is computed from
@@ -153,6 +158,9 @@ async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[
             "session_board_columns", _session_board_columns, cfg, sessions, state["rows"]
         )
         sessions = board.attach_shared_names(sessions, state["rows"])
+        sessions = await steps.run(
+            "attach_last_turn", board.attach_last_turn, sessions, state["rows"]
+        )
         # The model's display name (#1383), for the chat header's pill.
         sessions = attach_models(sessions)
         for sess in sessions:
