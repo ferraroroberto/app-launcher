@@ -209,6 +209,47 @@ def test_the_tap_sheet_lists_cpu_memory_and_the_top_three(
     expect(sheet).to_be_hidden()
 
 
+def test_the_sheet_groups_a_burn_and_shows_what_the_rows_leave_out(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1646: 16 burners are one row with their count, a lone process keeps a
+    plain row (never "×1"), and "Everything else" closes the gap to the CPU
+    line. A remainder that rounds to nothing draws no row."""
+    page = authed_page
+    body_json = _reading("danger", 100.0)
+    body_json["top"] = [
+        {"name": "python", "cores": 11.2, "count": 16, "owner": "fleet-config-wt-1440"},
+        {"name": "vmmemWSL", "cores": 1.6, "count": 1, "owner": None},
+        {"name": "MsMpEng", "cores": 0.9, "count": 1, "owner": None},
+    ]
+    body_json["other_cores"] = 2.3  # 16.0 - 13.7
+    current = {"body": body_json}
+    _route_load(page, current, [])
+    _fake_clock.install(page)
+    _boot(page, base_url)
+
+    page.locator("#paneClaude > .home-head .cpu-reading").click()
+    body = page.locator("#cpuSheetBody")
+    first = body.locator("[data-row='top-0']")
+    expect(first).to_contain_text("python ×16 · fleet-config-wt-1440")
+    expect(first).to_contain_text("11.2 cores")
+    for lone in ("top-1", "top-2"):
+        expect(body.locator(f"[data-row='{lone}']")).not_to_contain_text("×")
+    other = body.locator("[data-row='other']")
+    expect(other).to_have_text(re.compile(r"Everything else\s*2\.3 cores"))
+    expect(other).to_have_class(re.compile(r"usage-sheet-row"))  # the sheet's own row style
+    # The remainder is the last row, after the processes it completes.
+    expect(body.locator("[data-row]").last).to_have_attribute("data-row", "other")
+
+    # Nothing left over: no row, rather than "0 cores".
+    current["body"] = {**body_json, "other_cores": 0.0}
+    page.locator("#cpuSheetDone").click()
+    _poll(page)
+    page.locator("#paneClaude > .home-head .cpu-reading").click()
+    expect(page.locator("#cpuSheetBody [data-row='top-0']")).to_be_visible()
+    expect(page.locator("#cpuSheetBody [data-row='other']")).to_have_count(0)
+
+
 def test_an_unreadable_sample_says_why_in_the_sheet(
     authed_page: Page, base_url: str
 ) -> None:

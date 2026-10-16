@@ -87,8 +87,19 @@ function renderSheet() {
     return;
   }
   r.top.forEach(function (p, i) {
-    body.appendChild(sheetRow(p.name, coresText(p.cores), 'top-' + i));
+    body.appendChild(sheetRow(groupLabel(p), coresText(p.cores), 'top-' + i));
   });
+  // What the rows above do not explain, so they add up to the CPU line.
+  // Hidden when it rounds to nothing.
+  if (typeof r.other_cores === 'number' && Math.round(r.other_cores * 10) > 0) {
+    body.appendChild(sheetRow('Everything else', coresText(r.other_cores), 'other'));
+  }
+}
+
+// "python ×16 · fleet-config-wt-1440": a count only for a real group (never
+// "×1"), and the repo or worktree folder when the server resolved one.
+function groupLabel(p) {
+  return p.name + (p.count > 1 ? ' ×' + p.count : '') + (p.owner ? ' · ' + p.owner : '');
 }
 
 function sheet() {
