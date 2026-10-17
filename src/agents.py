@@ -94,6 +94,15 @@ class Agent:
     session-host's deferred submit presses Enter at once for such an agent
     instead of waiting for the turn to go quiet. ``False`` means *not
     probed*, and keeps the wait-for-quiet watcher.
+
+    ``composer_tracked`` records whether the agent's composer was probed for
+    the keys :mod:`src.session_host_composer` reads (issue #1643: typed text,
+    Backspace, Ctrl-U, Ctrl-C and Enter, idle and mid-turn, on Claude Code,
+    Codex and Pi on 2026-10-17). Only those sessions report
+    ``composer_dirty`` as ``True``/``False``; ``False`` here means *not
+    probed*, and the session reports ``None``. ``backslash_newline`` is the
+    one difference the probe found: a backslash right before Enter inserts a
+    newline (Claude Code, Pi) instead of being submitted (Codex).
     """
 
     id: str
@@ -106,6 +115,8 @@ class Agent:
     per_launch_model: bool = False
     console_input: bool = False
     type_ahead: bool = False
+    composer_tracked: bool = False
+    backslash_newline: bool = False
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -115,12 +126,12 @@ AGENTS: Dict[str, Agent] = {
         id="claude", label="Claude Code", command="claude",
         quit_command="/quit", fullscreen=False, resume_token="--resume",
         native_name_flag="--name", per_launch_model=True, console_input=True,
-        type_ahead=True,
+        type_ahead=True, composer_tracked=True, backslash_newline=True,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
         quit_command="/quit", fullscreen=True, resume_token="resume",
-        per_launch_model=True, console_input=True,
+        per_launch_model=True, console_input=True, composer_tracked=True,
     ),
     "antigravity": Agent(
         id="antigravity", label="Antigravity CLI", command="agy",
@@ -146,7 +157,8 @@ AGENTS: Dict[str, Agent] = {
     "pi": Agent(
         id="pi", label="Pi", command="pi",
         quit_command="/quit", fullscreen=True, resume_token="-r",
-        native_name_flag="--name", console_input=True,
+        native_name_flag="--name", console_input=True, composer_tracked=True,
+        backslash_newline=True,
     ),
     # Grok Build (issue #626). fullscreen=True is empirical, not assumed: a
     # ConPTY probe of grok 0.2.112 showed an alt-screen enter (CSI ?1049h)

@@ -39,6 +39,7 @@ from src.agents import (
 from src.audit import transcript_path
 from src.diagnostics import is_pid_alive
 from src.env_path import effective_path
+from src.session_host_composer import ComposerTracker, composer_tracker_for
 from src.session_host_input import (
     DELIVERED_UNCONFIRMED,
     INPUT_CONSOLE_FAILED,
@@ -372,6 +373,13 @@ class PtySession(InputProtocol):
     _bg_waiting: bool = False
     _main_turn_at: int = 0
     _main_turn_seen_at: float = 0.0
+    # Whether the composer holds typed-but-unsent text (issue #1643), fed by
+    # every write in ``_write_locked``. None for an agent whose composer was
+    # never probed, which reports ``composer_dirty: None``.
+    _composer: Optional[ComposerTracker] = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        self._composer = composer_tracker_for(self.agent)
 
     # ------------------------------------------------------------ lifecycle
     def start_reader(self) -> None:
@@ -568,27 +576,33 @@ class PtySession(InputProtocol):
         try:
             if len(data) <= _WRITE_CHUNK_THRESHOLD:
                 self._pty.write(data)
-                return True
-            # Long write (paste / large input): pace it in ~512 B chunks so
-            # the burst doesn't overrun the console input queue a busy TUI
-            # drains slowly (#64). pywinpty's return value is deliberately
-            # ignored — interpreting it as a bytes-accepted count amplified a
-            # single keystroke into thousands (#13 revert).
-            logger.debug(
-                f"PTY {self.session_id[:8]} chunked write "
-                f"({len(data)} chars / "
-                f"{(len(data) + _WRITE_CHUNK_SIZE - 1) // _WRITE_CHUNK_SIZE} chunks)"
-            )
-            first = True
-            for i in range(0, len(data), _WRITE_CHUNK_SIZE):
-                if not first:
-                    time.sleep(_WRITE_CHUNK_PAUSE)
-                self._pty.write(data[i : i + _WRITE_CHUNK_SIZE])
-                first = False
-            return True
+            else:
+                # Long write (paste / large input): pace it in ~512 B chunks
+                # so the burst doesn't overrun the console input queue a busy
+                # TUI drains slowly (#64). pywinpty's return value is
+                # deliberately ignored — interpreting it as a bytes-accepted
+                # count amplified a single keystroke into thousands (#13
+                # revert).
+                logger.debug(
+                    f"PTY {self.session_id[:8]} chunked write "
+                    f"({len(data)} chars / "
+                    f"{(len(data) + _WRITE_CHUNK_SIZE - 1) // _WRITE_CHUNK_SIZE} chunks)"
+                )
+                first = True
+                for i in range(0, len(data), _WRITE_CHUNK_SIZE):
+                    if not first:
+                        time.sleep(_WRITE_CHUNK_PAUSE)
+                    self._pty.write(data[i : i + _WRITE_CHUNK_SIZE])
+                    first = False
         except Exception as exc:  # noqa: BLE001
             logger.debug(f"PTY {self.session_id[:8]} write failed: {exc}")
+            if self._composer is not None:
+                # Some of the bytes may have landed before the raise.
+                self._composer.mark_unknown()
             return False
+        if self._composer is not None:
+            self._composer.feed(data)
+        return True
 
     def resize(self, rows: int, cols: int) -> None:
         rows = max(PTY_MIN_ROWS, min(rows, 1000))
@@ -656,6 +670,10 @@ class PtySession(InputProtocol):
         # would be answering a terminal state it never verified.
         self._defer_seq += 1
         if mode == STOP_INTERRUPT:
+            if self._composer is not None:
+                # An interrupt never went through write(), and an interrupted
+                # turn can put its prompt back in the composer (#1643).
+                self._composer.mark_unknown()
             try:
                 self._pty.sendintr()
             except Exception as exc:  # noqa: BLE001
@@ -731,6 +749,9 @@ class PtySession(InputProtocol):
         # yet" — a monotonic counter would be overkill.
         with self._ring_lock:
             output_chars = len(self._ring)
+        composer_dirty, composer_dirty_since = (
+            self._composer.state() if self._composer is not None else (None, None)
+        )
         return {
             "session_id": self.session_id,
             "kind": self.kind,
@@ -759,6 +780,12 @@ class PtySession(InputProtocol):
             # state rather than something only a human with a keyboard can
             # tell apart from a busy agent.
             "last_input": self.last_input,
+            # Typed-but-unsent text in the composer (issue #1643): True,
+            # False, or None when it can't be established — see
+            # src/session_host_composer.py. A typer holds off on True and
+            # None alike.
+            "composer_dirty": composer_dirty,
+            "composer_dirty_since": composer_dirty_since,
         }
 
 
@@ -1014,6 +1041,9 @@ class RemoteSession:
             "live_title": "",
             "manual_title": self.manual_title,
             "last_input": self.last_input,
+            # No PTY to read keystrokes from (#1643): always unknown.
+            "composer_dirty": None,
+            "composer_dirty_since": None,
         }
 
 
