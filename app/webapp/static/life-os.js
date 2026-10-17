@@ -872,8 +872,9 @@ async function renameConversationTitle(r) {
   if (typed === null) return;               // cancelled
   const title = typed.trim().replace(/\s+/g, ' ');
   if (title === current) return;
+  let reply;
   try {
-    await jsonApi(
+    reply = await jsonApi(
       '/api/life-os/skills/' + encodeURIComponent(r.skill) +
         '/conversations?path=' + encodeURIComponent(r.path),
       {
@@ -886,7 +887,14 @@ async function renameConversationTitle(r) {
     apiFailToast('Rename failed', exc);
     return;
   }
-  toast(title ? 'Renamed to ' + title : 'Name cleared', 'good', { icon: 'pencil' });
+  // The rename stands; an open session of this conversation that could not be
+  // renamed with it says so rather than quietly keeping the old name (#1637).
+  const sync = reply && reply.session_sync;
+  if (sync && sync.status === 'failed') {
+    toast(sync.error, 'error', { icon: 'pencil' });
+  } else {
+    toast(title ? 'Renamed to ' + title : 'Name cleared', 'good', { icon: 'pencil' });
+  }
   r.title = title;
   if (sheetRow === r) fillConvoSheet();
   await refreshAfterLogChange();

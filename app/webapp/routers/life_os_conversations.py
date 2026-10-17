@@ -54,7 +54,7 @@ from src.life_os_history import MAX_HANDOFF_CHARS, read_captures, write_handoff
 from src.life_os_transcript import claude_projects_dir, remove_claude_transcript
 from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
-from src.scanner import Skill, skills_dir_for
+from src.scanner import Skill, scan_skills, skills_dir_for
 from src.subprocess_flags import NO_WINDOW
 from src.transcript_locate import claude_resume_id
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
@@ -320,9 +320,41 @@ async def _launch_conversation(
     logger.info("Life OS history launch action=%s source=%s target=%s keep_model=%s model=%s",
                 action, source.get("agent") or "unknown", agent,
                 keep_model, model or "unknown")
-    return {"launched": skill.id, **result, "conversation_action": action,
-            "model_kept": model_kept,
-            "handoff_truncated": action == "handoff" and len(source["body"]) > MAX_HANDOFF_CHARS}
+    reply = {"launched": skill.id, **result, "conversation_action": action,
+             "model_kept": model_kept,
+             "handoff_truncated": action == "handoff" and len(source["body"]) > MAX_HANDOFF_CHARS}
+    if action == "resume":
+        title_sync = await _name_resumed_session(cfg, skill, path, result.get("session"))
+        if title_sync:
+            reply["title_sync"] = title_sync
+    return reply
+
+
+async def _name_resumed_session(
+    cfg: WebappConfig, skill: Skill, path: Path, session: Any,
+) -> Optional[Dict[str, Any]]:
+    """Open a resumed conversation's session under its Life OS title (#1637).
+
+    The session starts under the skill's name, which is also what every other
+    session of that skill is called; the owner's title is the durable name, and
+    the session's own (in-memory) one is lost with the host. ``None`` when the
+    conversation has no title. A session that refuses the name does not undo the
+    launch: it is logged and returned.
+    """
+    index = _safe_conversation_index(Path(cfg.life_os_dir), skill)
+    rows = (_read_conversation_index(index) if index else None) or []
+    title = next((str(r.get("title") or "") for r in rows if r.get("file") == path.name), "")
+    session_id = str((session or {}).get("session_id") or "")
+    if not title or not session_id:
+        return None
+    try:
+        await asyncio.to_thread(
+            session_client.rename, cfg.session_host_port, session_id, session_name_for(title))
+    except session_client.SessionHostError as exc:
+        logger.warning("⚠️ Life OS resume: the resumed session was not named after its "
+                       "conversation title (%s)", exc)
+        return {"status": "failed", "error": "Resumed, but the session couldn't be given the conversation's name."}
+    return {"status": "synced"}
 
 
 async def _kept_model(cfg: WebappConfig, agent: str, sid: str) -> tuple[str, bool]:
@@ -403,8 +435,8 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
     }
 
 
-async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
-    """Claude conversation ids a running launcher session is attached to, each to its session.
+async def _conversation_sessions(cfg: WebappConfig) -> Dict[str, List[Dict[str, Any]]]:
+    """Claude conversation ids a running launcher session is attached to, each to its sessions.
 
     Two independent signals, either of which makes a conversation live: the
     id a session was *launched* to resume (``--resume <id>`` in its flags, what
@@ -415,17 +447,29 @@ async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
     "nothing is running".
     """
     sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+    return await _group_by_conversation(cfg, sessions)
+
+
+async def _group_by_conversation(
+    cfg: WebappConfig, sessions: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """:func:`_conversation_sessions` over a session list the caller already has."""
     alive = [s for s in sessions if s.get("alive", True)]
     state = await asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file))
-    live: Dict[str, Dict[str, Any]] = {}
+    live: Dict[str, List[Dict[str, Any]]] = {}
     for sess in alive:
-        resumed = claude_resume_id(sess)
-        if resumed:
-            live[resumed.lower()] = sess
         claimed = board.state_sid_for_session(alive, state["rows"], str(sess.get("session_id")))
-        if claimed:
-            live[str(claimed).lower()] = sess
+        for conversation in (claude_resume_id(sess), claimed):
+            if conversation:
+                owners = live.setdefault(str(conversation).lower(), [])
+                if sess not in owners:
+                    owners.append(sess)
     return live
+
+
+async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
+    """:func:`_conversation_sessions` with one session per conversation (the last seen)."""
+    return {sid: owners[-1] for sid, owners in (await _conversation_sessions(cfg)).items()}
 
 
 # ------------------------------------------- resume the latest (#1503)
@@ -724,7 +768,173 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         audit.audit_event, "lifeos_conversation_rename", skill=skill.id, path=rel,
         cleared=not stored, client=client_ip(request),
     )
-    return {"skill": skill.id, "path": rel, "file": path.name, "title": stored}
+    # The capture's own header says which session it is (#1637); a cleared title
+    # has nothing to mirror, so the capture is not even read for it.
+    capture = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0] if stored else {}
+    reply = {"skill": skill.id, "path": rel, "file": path.name, "title": stored}
+    session_sync = await sync_title_to_sessions(cfg, capture, stored)
+    if session_sync:
+        reply["session_sync"] = session_sync
+    return reply
+
+
+# ------------------------------- a conversation's name follows its session (#1637)
+# A Life OS conversation and the live session that has it open are named in two
+# stores with two owners: the title beside the capture (durable, fleet-config's
+# writer) and the session's in-memory ``manual_title`` (session host). A rename on
+# either side mirrors onto the other here in the webapp layer, so the session
+# host never needs a restart. The mirror is best-effort by decision: it never
+# fails or undoes the rename the owner made, and a miss is logged with its own
+# message and returned in the reply (``session_sync`` / ``life_os_sync``).
+# Clearing is not mirrored either way: a cleared Life OS title falls back to the
+# digest topic, which is no name to hand a session, and a cleared session name
+# only reverts that session to its automatic title.
+
+# The session host's own cap (``src.session_host._MANUAL_TITLE_MAX_CHARS``); that
+# module hosts the PTY stack, so the value is pinned by a test, not imported.
+_SESSION_NAME_MAX_CHARS = 60
+
+
+def session_name_for(title: str) -> str:
+    """A Life OS title as a session name: whole when it fits, else cut with an ellipsis."""
+    name = " ".join(title.split())
+    if len(name) <= _SESSION_NAME_MAX_CHARS:
+        return name
+    return name[:_SESSION_NAME_MAX_CHARS - 1].rstrip() + "…"
+
+
+async def sync_title_to_sessions(
+    cfg: WebappConfig, source: Dict[str, Any], title: str,
+) -> Optional[Dict[str, Any]]:
+    """Name every live session on a just-renamed conversation after its new title.
+
+    ``source`` is the capture as :func:`read_captures` returned it. ``None``
+    when there is nothing to mirror: a cleared title, or no live session on the
+    conversation. Never raises; otherwise ``status`` is ``synced`` or ``failed``
+    (with an ``error`` for the phone).
+    """
+    verdict: Dict[str, Any] = {"status": "none", "renamed": 0, "failed": 0}
+    if not title:
+        return None
+    if "sid" not in source:
+        logger.warning("⚠️ Life OS rename: live sessions not renamed, the capture's session id "
+                       "is unreadable (%s)", source.get("reason") or "no reason given")
+        return {**verdict, "status": "failed",
+                "error": "Renamed, but the open session wasn't: the conversation's session id is unreadable."}
+    conversation = str(source["sid"]).lower()
+    if not conversation:
+        return None
+    try:
+        owners = (await _conversation_sessions(cfg)).get(conversation, [])
+    except (session_client.SessionHostError, OSError) as exc:
+        logger.warning("⚠️ Life OS rename: the session host could not be asked which sessions "
+                       "have this conversation open (%s)", exc)
+        return {**verdict, "status": "failed",
+                "error": "Renamed, but the session host can't be reached, so an open session keeps its old name."}
+    name = session_name_for(title)
+    for sess in owners:
+        try:
+            await asyncio.to_thread(
+                session_client.rename, cfg.session_host_port, str(sess.get("session_id")), name)
+            verdict["renamed"] += 1
+        except session_client.SessionHostError as exc:
+            verdict["failed"] += 1
+            logger.warning("⚠️ Life OS rename: a live session was not renamed (%s)", exc)
+    if verdict["failed"]:
+        verdict.update(status="failed",
+                       error="Renamed, but an open session of this conversation kept its old name.")
+    elif verdict["renamed"]:
+        verdict["status"] = "synced"
+    else:
+        return None
+    return verdict
+
+
+def _captures_with_sessions(
+    cfg: WebappConfig, conversations: set[str],
+) -> List[tuple[Skill, Path]]:
+    """Captures, across every skill, whose header names one of ``conversations``.
+
+    A cheap read of each capture's head narrows the field (``parent_sid="…"``
+    also matches, which is why it is only a filter), then the shared parser
+    confirms the header's own ``sid`` exactly, the same identity rule Delete and
+    Resume use.
+    """
+    root = Path(cfg.life_os_dir)
+    candidates: List[tuple[Skill, Path]] = []
+    for skill in scan_skills(root):
+        index = _safe_conversation_index(root, skill)
+        for row in (_read_conversation_index(index) if index else None) or []:
+            filename = str(row.get("file") or "")
+            if Path(filename).name != filename:
+                continue
+            path = _conversation_path(
+                root, skill, str((skill.skill_dir / _CONVERSATIONS_DIR / filename).relative_to(root)))
+            if path is None or path.name != filename:
+                continue
+            try:
+                with path.open("rb") as handle:
+                    head = handle.read(2048).decode("utf-8", "replace").lower()
+            except OSError:
+                continue
+            if any(f'sid="{sid}"' in head for sid in conversations):
+                candidates.append((skill, path))
+    sources = read_captures(Path(cfg.fleet_config_dir), [path for _, path in candidates])
+    return [pair for pair, source in zip(candidates, sources)
+            if str(source.get("sid", "")).lower() in conversations]
+
+
+async def sync_session_title(
+    cfg: WebappConfig, sessions: List[Dict[str, Any]], session_id: str, title: str, client: str,
+) -> Optional[Dict[str, Any]]:
+    """Title the Life OS conversation a just-renamed session has open (#1637).
+
+    ``sessions`` is the host's list as the caller already fetched it. ``None``
+    when the session is not on a Life OS conversation, or the name was cleared
+    (the conversation keeps its title): the rename then behaves as it always
+    did. Never raises; otherwise ``status`` is ``synced`` (with the number of
+    ``conversations`` titled) or ``failed`` (with an ``error`` for the phone).
+    """
+    title = " ".join(title.split())
+    if not title or not cfg.life_os_dir:
+        return None
+    try:
+        groups = await _group_by_conversation(cfg, sessions)
+        mine = {sid for sid, owners in groups.items()
+                if any(str(o.get("session_id")) == session_id for o in owners)}
+        if not mine:
+            return None
+        found = await asyncio.to_thread(_captures_with_sessions, cfg, mine)
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        logger.warning("⚠️ Session rename: could not tell which Life OS conversation the session "
+                       "has open, its title was not updated (%s)", exc)
+        return {"status": "failed", "conversations": 0,
+                "error": "Renamed, but the Life OS conversation couldn't be looked up."}
+    if not found:
+        return None
+    titled, error = 0, ""
+    for skill, path in found:
+        try:
+            proc = await asyncio.to_thread(_run_title_cli, cfg, skill.id, path.name, title)
+        except (OSError, subprocess.SubprocessError) as exc:
+            proc, reason = None, str(exc)
+        else:
+            reason = f"exit {proc.returncode}: {(proc.stderr or '').strip()[:300]}"
+        if proc is not None and proc.returncode == 0:
+            titled += 1
+            await audit_off_loop(
+                audit.audit_event, "lifeos_conversation_rename", skill=skill.id,
+                path=_capture_rel(Path(cfg.life_os_dir), path), cleared=False, via="session",
+                client=client,
+            )
+            continue
+        error = "Renamed, but the Life OS conversation title couldn't be saved."
+        logger.warning("⚠️ Session rename: the Life OS conversation title was not updated "
+                       "(skill=%s file=%s, %s)", skill.id, path.name, reason)
+    if error:
+        return {"status": "failed", "conversations": titled, "error": error}
+    logger.info("ℹ️ Session rename: Life OS conversation title set from the session (%d)", titled)
+    return {"status": "synced", "conversations": titled}
 
 
 def _search_unavailable(reason: str) -> Dict[str, Any]:
