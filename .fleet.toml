@@ -708,3 +708,21 @@ record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecommen
 rule   = "LAYOUT-05"
 reason = "the Chat turn header's copy button stops propagation, and moving it into the body would force opening a turn to copy it"
 record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecomment-5837905876"
+
+# design-lint contract findings (/design-sync, #1634) examined and accepted: neither
+# dialog is an editor modal, and the look stays as it is. The lint matches on the exact
+# detail string, line number included, so an edit to index.html above either dialog
+# shifts it: re-run `design_lint contracts` and update `detail` when it does.
+[[design.accepted]]
+check  = "modal-footer"
+target = "app/webapp/static/index.html"
+detail = "editor-modal footer contract violated (design.md modal wants exactly one full-width solid-accent primary): app/webapp/static/index.html:2386 primary not the solid-accent primary recipe"
+reason = "#confirmDialog is the Stop/Remove confirm, a destructive action: its sole action deliberately uses the danger tint, not the solid-accent primary"
+record = "https://github.com/ferraroroberto/app-launcher/issues/1634"
+
+[[design.accepted]]
+check  = "modal-top-anchor"
+target = "app/webapp/static/index.html"
+detail = "editor-modal(s) with no max-height + internal scroll — a tall form jumps as conditional rows toggle (design.md modal: top-anchored on mobile): app/webapp/static/index.html:2535"
+reason = "#screenView is the full-viewport Screen viewer (inset 0, 100dvh), not an editor modal: its one field is the hidden key-capture input, so no conditional rows can make it jump"
+record = "https://github.com/ferraroroberto/app-launcher/issues/1634"
