@@ -127,6 +127,10 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     can't be read. The Telegram sheet's "Last activity" shows it;
     ``last_output_at`` is the PTY's last paint and stays the host's own.
 
+    ``composer_dirty`` / ``composer_dirty_since`` (#1643) are the
+    session-host's own, passed through; a session-host too old to send them
+    reads as ``None`` (unknown).
+
     ``chief_questions`` (#1502) is how many of the chief's questions no
     device has answered yet, fleet-wide, so the Board tab's badge counts them
     from every tab; ``None`` when the plan can't be read. It is computed from
@@ -164,6 +168,10 @@ async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[
         # The model's display name (#1383), for the chat header's pill.
         sessions = attach_models(sessions)
         for sess in sessions:
+            # A session-host older than #1643 sends no composer fields: that
+            # is unknown, never "nothing typed".
+            sess.setdefault("composer_dirty", None)
+            sess.setdefault("composer_dirty_since", None)
             placed = (columns or {}).get(str(sess.get("session_id")))
             sess["board_column"] = placed["column"] if placed else None
             sess["board_status"] = placed["status"] if placed else None

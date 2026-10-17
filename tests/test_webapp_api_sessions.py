@@ -186,6 +186,39 @@ class TestBoardPlacement:
             assert sess["board_age_seconds"] is None
 
 
+class TestComposerDirty:
+    """#1643: the session-host's ``composer_dirty`` passes through as-is, and
+    a session-host older than #1643 (no such field) reads as unknown."""
+
+    def test_new_host_values_pass_through(self, webapp_client):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {"session_id": "a", "kind": "pty", "name": "p", "project_dir": "C:\\a",
+             "composer_dirty": True, "composer_dirty_since": 1700000000.5},
+            {"session_id": "b", "kind": "pty", "name": "q", "project_dir": "C:\\b",
+             "composer_dirty": False, "composer_dirty_since": None},
+        ]
+        by_id = {
+            s["session_id"]: s
+            for s in client.get("/api/claude-code/sessions").json()["sessions"]
+        }
+        assert by_id["a"]["composer_dirty"] is True
+        assert by_id["a"]["composer_dirty_since"] == 1700000000.5
+        assert by_id["b"]["composer_dirty"] is False
+        assert by_id["b"]["composer_dirty_since"] is None
+
+    def test_old_host_without_the_field_reads_as_unknown(self, webapp_client):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = [
+            {"session_id": "a", "kind": "pty", "name": "p", "project_dir": "C:\\a"},
+        ]
+        resp = client.get("/api/claude-code/sessions")
+        assert resp.status_code == 200
+        (sess,) = resp.json()["sessions"]
+        assert sess["composer_dirty"] is None
+        assert sess["composer_dirty_since"] is None
+
+
 class TestLastTurn:
     """#1647: ``last_turn_at`` is the transcript's newest real turn, so a PTY
     that repainted a moment ago (``last_output_at``) does not read as active."""
