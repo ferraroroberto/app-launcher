@@ -239,7 +239,8 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
 # and shared paths that must keep the whole suite.
 _BOARD_TARGETS = (
     "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py "
-    "tests/e2e/test_board_nav_badge.py tests/e2e/test_page_headers.py "
+    "tests/e2e/test_board_nav_badge.py tests/e2e/test_board_job_dismiss.py "
+    "tests/e2e/test_page_headers.py "
     "tests/e2e/test_header_cpu_reading.py "
     "tests/e2e/test_text_size.py "
     "tests/e2e/test_wide_layout.py "
