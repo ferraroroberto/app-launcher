@@ -2550,8 +2550,255 @@ class TestRenameConversation:
         assert rows[0]["title"] == "Ferry" and rows[0]["topic"] == "booking the ferry"
 
 
+# ----------------------- a conversation's name follows its session (#1637)
+class TestConversationNameSync:
+    """Life OS title <-> live session name, both ways, and on resume.
+
+    The session host is faked at ``session_client`` (list + rename); the title
+    writer is the same stub the rename tests use. Titles are synthetic.
+    """
+
+    ENDPOINT = TestRenameConversation.ENDPOINT
+    CAPTURE = TestRenameConversation.CAPTURE
+    REL = TestRenameConversation.REL
+    LIVE = "s-live"
+
+    @pytest.fixture(autouse=True)
+    def _isolated(self, life_os_client, tmp_path, monkeypatch):
+        import sys
+
+        from app.webapp import middleware
+        from app.webapp.routers import life_os_conversations as router
+        from app.webapp.routers import life_os_spawn
+        from src import session_client
+
+        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        script = tmp_path / "conversation_title_stub.py"
+        script.write_text(_TITLE_STUB, encoding="utf-8")
+        self.calls: list = []
+        real_run = subprocess.run
+
+        def recording_run(argv, **kwargs):
+            self.calls.append(list(argv))
+            return real_run(argv, **kwargs)
+        monkeypatch.setattr(router.subprocess, "run", recording_run)
+        monkeypatch.setattr(router, "title_cli", lambda cfg: [sys.executable, str(script)])
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+
+        self.sessions = [
+            {"session_id": self.LIVE, "alive": True, "flags": f"--model sonnet --resume {RESUMABLE_SID}"},
+            {"session_id": "s-other", "alive": True, "flags": "--model sonnet"},
+        ]
+        self.renamed: list = []
+        self.rename_fails = False
+        self.host_down = False
+
+        def list_sessions(port):
+            if self.host_down:
+                raise session_client.SessionHostError("down", status=502)
+            return self.sessions
+
+        def rename(port, session_id, title):
+            if self.rename_fails:
+                raise session_client.SessionHostError("rename refused", status=500)
+            self.renamed.append((session_id, title))
+            return {"session_id": session_id, "manual_title": title}
+        monkeypatch.setattr(session_client, "list_sessions", list_sessions)
+        monkeypatch.setattr(session_client, "rename", rename)
+        # The sessions router holds the conftest's MagicMock of the same module.
+        from app.webapp.routers import sessions as sessions_router
+        monkeypatch.setattr(sessions_router.session_client, "rename", rename)
+        monkeypatch.setattr(sessions_router.session_client, "list_sessions", list_sessions)
+        self.spawned: dict = {}
+
+        def fake_spawn(project_dir, name, flags, port, kind, agent,
+                       rows=40, cols=120, history_lines=None):
+            self.spawned.update(flags=flags)
+            return {"session_id": "s-new", "kind": kind}
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
+        self.router = router
+        self.monkeypatch = monkeypatch
+        self.client, _, overrides = life_os_client
+        self.audit = overrides["audit"]
+        self.tmp_path = tmp_path
+
+    def _rename_conversation(self, title):
+        return self.client.patch(self.ENDPOINT, params={"path": self.REL}, json={"title": title})
+
+    def _rename_session(self, session_id, title):
+        return self.client.post(f"/api/claude-code/sessions/{session_id}/rename", json={"title": title})
+
+    def _conversation_title(self):
+        rows = self.client.get(self.ENDPOINT).json()["conversations"]
+        return next(r for r in rows if r["file"] == self.CAPTURE)["title"]
+
+    def _resume(self):
+        row = next(r for r in self.client.get(self.ENDPOINT).json()["conversations"]
+                   if r["file"] == self.CAPTURE)
+        return self.client.post(self.ENDPOINT + "/launch", json={
+            "action": "resume", "model": "claude:sonnet", "capture": {
+                key: row[key] for key in ("path", "revision", "agent", "sid")}})
+
+    # ---- Life OS -> session
+    def test_life_os_rename_renames_the_live_session(self):
+        resp = self._rename_conversation("Ferry to the island")
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == [(self.LIVE, "Ferry to the island")]
+        assert resp.json()["session_sync"] == {"status": "synced", "renamed": 1, "failed": 0}
+
+    def test_every_live_session_of_the_conversation_is_renamed(self):
+        self.sessions.append({"session_id": "s-twin", "alive": True,
+                              "flags": f"--resume {RESUMABLE_SID.upper()}"})
+        assert self._rename_conversation("Ferry").status_code == 200
+        assert sorted(self.renamed) == [(self.LIVE, "Ferry"), ("s-twin", "Ferry")]
+
+    def test_a_conversation_with_no_live_session_syncs_nothing(self):
+        self.sessions[:] = [self.sessions[1]]
+        resp = self._rename_conversation("Ferry")
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == []
+        assert "session_sync" not in resp.json()
+
+    def test_a_long_title_is_truncated_into_the_session_with_an_ellipsis(self):
+        title = "Ferry " + "x" * 94
+        resp = self._rename_conversation(title)
+        assert resp.status_code == 200, resp.text
+        [(_, name)] = self.renamed
+        assert len(name) == 60 and name.endswith("…") and title.startswith(name[:-1])
+        assert self._conversation_title() == title, "the conversation keeps the full title"
+
+    def test_the_session_cap_matches_the_session_host(self):
+        from src import session_host
+        assert self.router._SESSION_NAME_MAX_CHARS == session_host._MANUAL_TITLE_MAX_CHARS
+
+    @pytest.mark.parametrize("cleared", ["", "   ", None])
+    def test_clearing_the_title_leaves_the_session_name_alone(self, cleared):
+        assert self._rename_conversation("Ferry").status_code == 200
+        self.renamed.clear()
+        resp = self._rename_conversation(cleared)
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == []
+        assert "session_sync" not in resp.json()
+
+    def test_a_session_that_refuses_the_rename_never_fails_the_conversation_rename(self, caplog):
+        self.rename_fails = True
+        with caplog.at_level("WARNING"):
+            resp = self._rename_conversation("Ferry")
+        assert resp.status_code == 200, resp.text
+        assert self._conversation_title() == "Ferry"
+        sync = resp.json()["session_sync"]
+        assert sync["status"] == "failed" and sync["failed"] == 1 and sync["error"]
+        assert any("live session was not renamed" in r.getMessage() for r in caplog.records)
+
+    def test_an_unreachable_session_host_never_fails_the_conversation_rename(self, caplog):
+        self.host_down = True
+        with caplog.at_level("WARNING"):
+            resp = self._rename_conversation("Ferry")
+        assert resp.status_code == 200, resp.text
+        assert self._conversation_title() == "Ferry"
+        assert resp.json()["session_sync"]["status"] == "failed"
+        assert any("could not be asked which sessions" in r.getMessage() for r in caplog.records)
+
+    def test_a_refused_conversation_rename_touches_no_session(self):
+        self.monkeypatch.setenv("STUB_EXIT", "4")
+        assert self._rename_conversation("Ferry").status_code == 500
+        assert self.renamed == []
+
+    # ---- session -> Life OS
+    def test_session_rename_sets_the_linked_conversation_title(self):
+        resp = self._rename_session(self.LIVE, "Ankle pain assessment")
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == [(self.LIVE, "Ankle pain assessment")]
+        assert self._conversation_title() == "Ankle pain assessment"
+        assert resp.json()["life_os_sync"] == {"status": "synced", "conversations": 1}
+        assert "Ankle" not in str(self.audit.audit_event.call_args_list)
+
+    def test_session_rename_follows_the_board_claim_too(self):
+        from src import board
+        self.sessions[0]["flags"] = "--model sonnet"
+        self.monkeypatch.setattr(
+            board, "state_sid_for_session", lambda live, rows, sid: RESUMABLE_SID)
+        assert self._rename_session(self.LIVE, "Moved here").status_code == 200
+        assert self._conversation_title() == "Moved here"
+
+    def test_an_unlinked_session_renames_exactly_as_before(self):
+        resp = self._rename_session("s-other", "Just a session")
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == [("s-other", "Just a session")]
+        assert "life_os_sync" not in resp.json()
+        assert self.calls == [], "the title writer never ran"
+
+    def test_a_linked_session_to_no_capture_is_unlinked(self):
+        self.sessions[0]["flags"] = "--resume 11111111-2222-4333-8444-555555555555"
+        resp = self._rename_session(self.LIVE, "Orphan")
+        assert resp.status_code == 200, resp.text
+        assert "life_os_sync" not in resp.json() and self.calls == []
+
+    def test_clearing_the_session_name_leaves_the_conversation_title(self):
+        assert self._rename_conversation("Kept").status_code == 200
+        self.calls.clear()
+        resp = self._rename_session(self.LIVE, "")
+        assert resp.status_code == 200, resp.text
+        assert self._conversation_title() == "Kept"
+        assert self.calls == []
+
+    def test_a_title_writer_failure_never_fails_the_session_rename(self, caplog):
+        self.monkeypatch.setenv("STUB_EXIT", "4")
+        with caplog.at_level("WARNING"):
+            resp = self._rename_session(self.LIVE, "Ankle")
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == [(self.LIVE, "Ankle")]
+        assert resp.json()["life_os_sync"]["status"] == "failed"
+        assert resp.json()["life_os_sync"]["error"]
+        assert any("conversation title was not updated" in r.getMessage() for r in caplog.records)
+
+    def test_a_refused_session_rename_leaves_the_conversation_alone(self):
+        self.rename_fails = True
+        assert self._rename_session(self.LIVE, "Ankle").status_code == 500
+        assert self._conversation_title() == "" and self.calls == []
+
+    def test_the_two_directions_do_not_loop(self):
+        assert self._rename_session(self.LIVE, "Once").status_code == 200
+        assert self.renamed == [(self.LIVE, "Once")]
+        assert len(self.calls) == 1
+
+    # ---- resume
+    def test_resume_opens_the_session_under_the_life_os_title(self):
+        assert self._rename_conversation("Ferry to the island").status_code == 200
+        self.renamed.clear()
+        resp = self._resume()
+        assert resp.status_code == 200, resp.text
+        assert f"--resume {RESUMABLE_SID}" in self.spawned["flags"]
+        assert self.renamed == [("s-new", "Ferry to the island")]
+        assert resp.json()["title_sync"] == {"status": "synced"}
+
+    def test_resume_truncates_a_long_title_like_the_live_rename(self):
+        title = "y" * 100
+        assert self._rename_conversation(title).status_code == 200
+        self.renamed.clear()
+        assert self._resume().status_code == 200
+        [(_, name)] = self.renamed
+        assert len(name) == 60 and name.endswith("…")
+
+    def test_resume_of_an_untitled_conversation_names_nothing(self):
+        resp = self._resume()
+        assert resp.status_code == 200, resp.text
+        assert self.renamed == []
+        assert "title_sync" not in resp.json()
+
+    def test_resume_survives_a_session_that_refuses_the_name(self, caplog):
+        assert self._rename_conversation("Ferry").status_code == 200
+        self.rename_fails = True
+        with caplog.at_level("WARNING"):
+            resp = self._resume()
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["title_sync"]["status"] == "failed"
+        assert any("resumed session was not named" in r.getMessage() for r in caplog.records)
+
+
 # ------------------------------- last used + resume the latest (#1503)
-OTHER_SID = "4c2f8a10-6b3e-4d71-9a05-7e81c3d2b9f4"
+OTHER_SID ="4c2f8a10-6b3e-4d71-9a05-7e81c3d2b9f4"
 CODEX_SID = "01a13256-a07b-7281-9683-11ee6a98a3be"
 SKILL_CONVOS = ".claude/skills/journal-daily/conversations"
 

@@ -45,7 +45,7 @@ from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, hot_poll
 from app.webapp.middleware import LOOPBACK_HOSTS, ws_terminal_gate
-from app.webapp.routers import voice_ocr_tts
+from app.webapp.routers import life_os_conversations, voice_ocr_tts
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
     attach_provider_web_urls,
@@ -238,6 +238,20 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     await audit_off_loop(
         audit.audit_event, "session_rename", session=sid, client=client_ip(request)
     )
+    # A session that has a Life OS conversation open gives it the same name
+    # (#1637). The rename above already happened and stands whatever this finds;
+    # the reply says only when there was a conversation to name.
+    if title:
+        try:
+            sessions = await asyncio.to_thread(session_client.list_sessions, cfg.session_host_port)
+        except session_client.SessionHostError as exc:
+            logger.warning("⚠️ Session rename: the session list was unavailable, so the Life OS "
+                           "conversation title was not updated (%s)", exc)
+        else:
+            life_os_sync = await life_os_conversations.sync_session_title(
+                cfg, sessions, sid, title, client_ip(request))
+            if life_os_sync:
+                result = {**result, "life_os_sync": life_os_sync}
     return result
 
 

@@ -653,7 +653,7 @@ function wireSessionRenameDialog() {
     if (!renameSessionTarget) return;
     const title = els.sessionRenameInput.value.trim();
     try {
-      await jsonApi(
+      const reply = await jsonApi(
         '/api/claude-code/sessions/' +
           encodeURIComponent(renameSessionTarget.session_id) + '/rename',
         {
@@ -663,6 +663,10 @@ function wireSessionRenameDialog() {
         }
       );
       els.sessionRenameDialog.close();
+      // The session is renamed; its Life OS conversation not following says so (#1637).
+      if (reply && reply.life_os_sync && reply.life_os_sync.status === 'failed') {
+        toast(reply.life_os_sync.error, 'error');
+      }
       if (renameSessionOnDone) {
         renameSessionOnDone(title);
       } else {
