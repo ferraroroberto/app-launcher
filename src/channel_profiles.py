@@ -18,14 +18,29 @@ the launch passes it with ``--settings`` (see
 :func:`src.launch_flags.build_claude_flags`). Claude applies a settings ``env``
 block to its own process, and the plugin's server is that process's child. No
 session-host change is involved.
+
+**Relay (#1639), opt-in per profile.** A profile with ``"relay": true`` lets its
+bot find, resume and steer the skill's *other* conversations through the
+launcher's relay routes (:mod:`app.webapp.routers.life_os_relay`) and read the
+reply back, while the bot stays the only Telegram reader. Its settings file then
+also carries a fresh random relay token (the routes map the token to this
+profile: identity never comes from a caller-supplied skill name), the relay's
+loopback URL and command, and a ``permissions.allow`` rule for exactly that
+command. The same file turns the fleet context filter off for that one session:
+its PreToolUse rewrite re-encodes every Bash command, so the allow rule never
+matches and the auto-mode classifier decides instead (the read-back refusal
+#1639's Probe 2 hit). Without the flag the file is exactly as before.
 """
 
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 import re
+import secrets
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
@@ -55,6 +70,7 @@ class ChannelProfile:
     label: str
     skill: str
     state_dir: str
+    relay: bool = False
 
 
 def profile_session_label(profile_id: str) -> str:
@@ -132,6 +148,8 @@ def load_channel_profiles(
                 label=_text(row.get("label")) or pid.replace("-", " ").title(),
                 skill=skill,
                 state_dir=state_dir,
+                # Only a JSON true switches it on: "yes" or 1 is not consent.
+                relay=row.get("relay") is True,
             )
         )
     return profiles, problems
@@ -141,17 +159,63 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def write_channel_settings(profile: ChannelProfile) -> str:
-    """Write the profile's per-session settings file; return its flag-safe path.
+# The relay's per-session environment (#1639). The CLI reads the first three;
+# the token never rides a command line, so the permission rule holds no secret.
+RELAY_TOKEN_ENV = "LAUNCHER_RELAY_TOKEN"
+RELAY_URL_ENV = "LAUNCHER_RELAY_URL"
+RELAY_PROFILE_ENV = "LAUNCHER_RELAY_PROFILE"
+RELAY_COMMAND_ENV = "LAUNCHER_RELAY_COMMAND"
+RELAY_SCRIPT = PROJECT_ROOT / "scripts" / "telegram_relay.py"
 
-    The file holds only the state directory's path (a settings ``env`` block),
-    never a token. It lives under the app's runtime-data directory and is
-    rewritten on every launch, so a profile edit takes effect on the next start.
-    """
+
+def _settings_dir() -> Path:
     directory = runtime_data_dir("app-launcher", create=True) / "channel-settings"
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / f"{profile.id}.json"
-    payload = {"env": {"TELEGRAM_STATE_DIR": Path(profile.state_dir).as_posix()}}
+    return directory
+
+
+def relay_command() -> str:
+    """The literal command a relay-enabled bot runs, before its subcommand.
+
+    The repo's own venv interpreter when it exists (the webapp itself may run
+    under ``pythonw``), then the relay script, both as forward-slash paths:
+    the permission rule matches this exact text.
+    """
+    venv = PROJECT_ROOT / ".venv" / "Scripts" / "python.exe"
+    interpreter = venv if venv.is_file() else Path(sys.executable)
+    return f"{interpreter.as_posix()} {RELAY_SCRIPT.as_posix()}"
+
+
+def write_channel_settings(profile: ChannelProfile, relay_url: str = "") -> str:
+    """Write the profile's per-session settings file; return its flag-safe path.
+
+    Without relay the file holds only the state directory's path (a settings
+    ``env`` block), never a token. With relay it also holds a new relay token,
+    minted on every launch so a relaunch retires the previous one, the relay's
+    URL and command, and the allow rule for that command. It lives under the
+    app's runtime-data directory and is rewritten on every launch, so a profile
+    edit takes effect on the next start.
+    """
+    target = _settings_dir() / f"{profile.id}.json"
+    env = {"TELEGRAM_STATE_DIR": Path(profile.state_dir).as_posix()}
+    payload: dict[str, Any] = {"env": env}
+    if profile.relay:
+        command = relay_command()
+        if command.count(" ") != 1:
+            # A path with a space would need quoting the bot would have to
+            # reproduce exactly for the allow rule to match.
+            raise ValueError(
+                "the relay command's path has a space in it; move the "
+                "app-launcher checkout to a plain path or turn relay off"
+            )
+        env.update({
+            RELAY_TOKEN_ENV: secrets.token_urlsafe(32),
+            RELAY_URL_ENV: relay_url,
+            RELAY_PROFILE_ENV: profile.id,
+            RELAY_COMMAND_ENV: command,
+            "FLEET_CONTEXT_FILTER_MODE": "off",
+        })
+        payload["permissions"] = {"allow": [f"Bash({command}:*)"]}
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     flag_path = target.resolve().as_posix()
     if not _SETTINGS_PATH_RE.match(flag_path):
@@ -161,6 +225,25 @@ def write_channel_settings(profile: ChannelProfile) -> str:
             "APP_LAUNCHER_DATA_DIR at a plain path"
         )
     return flag_path
+
+
+def relay_token_matches(profile: ChannelProfile, presented: str) -> bool:
+    """Whether ``presented`` is the relay token of the profile's last launch.
+
+    The settings file that launch wrote is the source of truth, so the check
+    survives a webapp restart while the bot's session lives on. ``False`` for
+    a profile without relay, an empty token, and a missing or unreadable file.
+    """
+    if not profile.relay or not presented:
+        return False
+    try:
+        data = json.loads((_settings_dir() / f"{profile.id}.json").read_text(encoding="utf-8"))
+        expected = data["env"][RELAY_TOKEN_ENV]
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    if not isinstance(expected, str) or not expected:
+        return False
+    return hmac.compare_digest(expected.encode("utf-8"), presented.encode("utf-8"))
 
 
 # ------------------------------------------------------------ setup checks

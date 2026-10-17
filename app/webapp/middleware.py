@@ -326,6 +326,14 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "secret and stays token-gated.",
     ),
     (
+        lambda p: p.startswith("/api/life-os/channels/") and "/relay/" in p,
+        "passkey",
+        "Life OS Telegram relay (#1639): finds, resumes and steers a skill's "
+        "conversations and reads their replies — terminal-grade. The routes "
+        "also refuse every caller but the PC itself and demand the profile's "
+        "relay token, so this row is the off-box backstop, not the gate.",
+    ),
+    (
         lambda p: p.startswith("/api/life-os/skills/") and p.endswith("/files"),
         "passkey",
         "Life OS per-skill file tree (#102) — same sensitivity as the file endpoint above.",
