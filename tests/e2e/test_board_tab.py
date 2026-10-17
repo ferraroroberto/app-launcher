@@ -1004,7 +1004,7 @@ def test_backlog_issue_tile_is_flat_row_with_one_verb_and_yolo_in_kebab(
     tile = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first
     expect(tile).to_be_visible(timeout=15_000)
     expect(tile).to_have_class(re.compile(r"\bboard-item-issue\b"))
-    expect(tile.locator(".action-row-meta")).to_have_text("app-launcher #301")
+    expect(tile.locator(".action-row-meta")).to_have_text(re.compile(r"^app-launcher #301 · \S"))
     expect(tile.locator(".action-row-title")).to_have_text(
         "Board tab 2/3: drill-down + reply"
     )
@@ -1936,6 +1936,101 @@ def test_the_disposable_webapp_refreshes_github_from_the_synthetic_gh(
         if card.get("kind") != "job"
     }
     assert repos == {synthetic_gh.REPO}, sorted(repos)
+
+def _local_stamp(dt: datetime, today: bool) -> str:
+    """What the viewer sees for ``dt``: the clock today, ``14 Oct`` otherwise.
+    The browser and this test share the machine's time zone."""
+    local = dt.astimezone()
+    return local.strftime("%H:%M") if today else f"{local.day} {local.strftime('%b')}"
+
+
+@pytest.mark.iphone
+def test_board_cards_carry_their_date_and_it_is_never_cut(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1638: a Done card reads ``<repo> #<n> · closed · <close time>``; a
+    Backlog issue and a PR card show their last-updated time. Today is a clock
+    time, an earlier day a short date, both in the viewer's local time. At 390px
+    the date must stay whole (LAYOUT-09: an ellipsis cut it) and the repo name
+    must stay first. Done is listed newest close first, even when the older
+    close has the later ``updated_at`` (a comment)."""
+    now = datetime.now(timezone.utc)
+    earlier = now - timedelta(days=3)
+    closed_old = now - timedelta(minutes=50)
+    closed_new = now - timedelta(minutes=5)
+    payload = _board_payload()
+    cols = payload["columns"]
+    cols["backlog"][0]["updated_at"] = _iso_utc(earlier)
+    cols["other"][0]["updated_at"] = _iso_utc(now)
+    cols["done"] = [
+        {"kind": "issue", "repo": "voice-transcriber", "number": 87, "title": "newer close",
+         "url": "u87", "updated_at": _iso_utc(closed_new), "closed_at": _iso_utc(closed_new),
+         "state": "closed", "labels": []},
+        {"kind": "issue", "repo": "voice-transcriber", "number": 86, "title": "older close, later comment",
+         "url": "u86", "updated_at": _iso_utc(now), "closed_at": _iso_utc(closed_old),
+         "state": "closed", "labels": []},
+    ]
+    _mock_board(authed_page, payload)
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    _open_board(authed_page, base_url)
+    _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
+
+    def meta_of(col: str, index: int = 0):
+        return authed_page.locator(
+            f'.board-list[data-col="{col}"] li.board-item'
+        ).nth(index).locator(".action-row-meta")
+
+    expect(meta_of("backlog")).to_have_text(
+        f"app-launcher #301 · {_local_stamp(earlier, today=False)}")
+    expect(meta_of("other")).to_have_text(
+        f"app-launcher PR #158 · {_local_stamp(now, today=True)}")
+    expect(meta_of("done", 0)).to_have_text(
+        f"voice-transcriber #87 · closed · {_local_stamp(closed_new, today=True)}")
+    expect(meta_of("done", 1)).to_have_text(
+        f"voice-transcriber #86 · closed · {_local_stamp(closed_old, today=True)}")
+
+    # Whole, not clipped: the meta shows every line it has, and the stamp is
+    # the tail of its text (so the repo name leads and nothing pushes it out).
+    for col, index in (("backlog", 0), ("other", 0), ("done", 0), ("done", 1)):
+        clipped = stable_eval(
+            meta_of(col, index), "el => el.scrollHeight - el.clientHeight")
+        assert clipped <= 1, f"{col}[{index}] meta is cut by {clipped}px"
+        text = stable_eval(meta_of(col, index), "el => el.textContent")
+        assert "…" not in text
+
+
+@pytest.mark.iphone
+def test_in_progress_backlog_card_keeps_its_date_whole_beside_a_long_repo(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1638: a claim chip makes the meta a one-line ellipsizing text, so the
+    date is its own non-shrinking item: a long repo name is what gets cut."""
+    when = datetime.now(timezone.utc) - timedelta(days=2)
+    payload = copy.deepcopy(_FAKE_BOARD)
+    payload["columns"]["backlog"] = [{
+        "kind": "issue", "repo": "a-repository-name-" + "far-too-long-" * 12 + "for-any-meta-line",
+        "number": 999, "title": "t", "url": "u999",
+        "updated_at": _iso_utc(when), "labels": [], "in_progress": True,
+    }]
+    _mock_board(authed_page, payload)
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    _open_board(authed_page, base_url)
+    _unfold(authed_page, "boardColBacklog")
+    meta = authed_page.locator('.board-list[data-col="backlog"] li.board-item').first.locator(
+        ".action-row-meta")
+    stamp = meta.locator(".board-card-stamp")
+    expect(stamp).to_have_text(f"· {_local_stamp(when, today=False)}")
+    m = stable_eval(meta, """el => {
+        const s = el.querySelector('.board-card-stamp');
+        const t = el.querySelector('.action-row-meta-text');
+        return { stampWhole: s.scrollWidth <= s.clientWidth,
+                 stampRight: s.getBoundingClientRect().right,
+                 metaRight: el.getBoundingClientRect().right,
+                 textClipped: t.scrollWidth > t.clientWidth };
+    }""")
+    assert m["stampWhole"] and m["stampRight"] <= m["metaRight"] + 1, m
+    assert m["textClipped"], f"the long repo should be the part that ellipsizes: {m}"
+
 
 def test_desktop_empty_lane_is_a_one_line_strip(
     authed_page: Page, base_url: str, browser_name: str

@@ -113,6 +113,8 @@ def _norm_issue(row: Dict[str, Any]) -> Dict[str, Any]:
         "title": row.get("title"),
         "url": row.get("url"),
         "updated_at": row.get("updatedAt"),
+        # Only the done search asks for ``closedAt`` (#1638); None elsewhere.
+        "closed_at": row.get("closedAt"),
         "labels": [
             lab.get("name")
             for lab in (row.get("labels") or [])
@@ -175,7 +177,7 @@ def search_open_prs(owner: str) -> List[Dict[str, Any]]:
 
 
 def search_done_today(owner: str) -> List[Dict[str, Any]]:
-    """Closed issues since local midnight, newest first (#399).
+    """Closed issues since local midnight, latest close first (#399, #1638).
 
     Merged PRs no longer get their own Done card — a PR that closed an issue
     is already reflected by that issue showing closed, so this is just the
@@ -189,7 +191,7 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         "--closed", f">={since}",
         "--sort", "updated",
         "--limit", str(_ISSUE_LIMIT),
-        "--json", _SEARCH_FIELDS + ",labels",
+        "--json", _SEARCH_FIELDS + ",closedAt,labels",
     ])
     done: List[Dict[str, Any]] = []
     for row in closed:
@@ -197,7 +199,12 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         if not _is_actionable(issue["labels"]):
             continue
         done.append({**issue, "state": "closed", "labels": []})
-    done.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    # By close time (#1638): a comment after the close bumps ``updatedAt``, so
+    # ``updated_at`` only stands in for a row that has no close time.
+    done.sort(
+        key=lambda item: str(item.get("closed_at") or item.get("updated_at") or ""),
+        reverse=True,
+    )
     return done
 
 

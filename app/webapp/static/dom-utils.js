@@ -500,6 +500,23 @@ export function fmtResetDay(value) {
   return new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' }).format(date);
 }
 
+// The date on a Board card's second line (#1638): the clock for a stamp from
+// today ("15:29"), day + short month for any other day ("14 Oct"), in the
+// viewer's local time. GitHub stamps are UTC; the conversion is the browser's,
+// never a server offset. '' for a value that can't be read, so the caller drops
+// the part. `now` is injectable for the unit pin.
+export function fmtCardStamp(value, now) {
+  if (value == null || value === '') return '';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  const ref = now || new Date();
+  const sameDay = date.getFullYear() === ref.getFullYear() &&
+    date.getMonth() === ref.getMonth() && date.getDate() === ref.getDate();
+  return sameDay
+    ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+    : new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(date);
+}
+
 export function nameLabel(value) {
   return String(value || '').replace(/[-_]+/g, ' ').replace(/^./, function (c) {
     return c.toUpperCase();

@@ -2359,6 +2359,69 @@ def test_done_today_is_closed_issues_only(monkeypatch):
     assert [(d["kind"], d["repo"], d["number"]) for d in done] == [("issue", "app-launcher", 305)]
 
 
+def _closed_row(number, updated_at, closed_at=None):
+    row = {
+        "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
+        "number": number, "title": f"closed {number}", "url": f"u{number}",
+        "updatedAt": updated_at, "labels": [{"name": "bug"}],
+    }
+    if closed_at is not None:
+        row["closedAt"] = closed_at
+    return row
+
+
+def test_done_today_asks_for_closed_at_and_sorts_by_it(monkeypatch):
+    """#1638: an issue closed earlier but commented on later keeps its place
+    below the one that closed after it; ``closedAt`` is requested and rides
+    out as ``closed_at``."""
+    seen = {}
+    rows = [
+        # Closed 13:40, commented on at 15:36 (updatedAt is the later one).
+        _closed_row(1, "2026-10-15T15:36:00Z", "2026-10-15T13:40:00Z"),
+        _closed_row(2, "2026-10-15T15:29:00Z", "2026-10-15T15:29:00Z"),
+        _closed_row(3, "2026-10-15T09:00:00Z", "2026-10-15T09:00:00Z"),
+    ]
+
+    def fake_run(argv, **kwargs):
+        seen["argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    done = github_client.search_done_today("ferraroroberto")
+    fields = seen["argv"][seen["argv"].index("--json") + 1].split(",")
+    assert "closedAt" in fields
+    assert [d["number"] for d in done] == [2, 1, 3]
+    assert done[1]["closed_at"] == "2026-10-15T13:40:00Z"
+
+
+def test_done_today_falls_back_to_updated_at_without_a_close_time(monkeypatch):
+    rows = [
+        _closed_row(1, "2026-10-15T10:00:00Z", "2026-10-15T08:00:00Z"),
+        _closed_row(2, "2026-10-15T12:00:00Z"),          # no closedAt
+        _closed_row(3, "2026-10-15T11:00:00Z"),
+    ]
+    rows[2]["closedAt"] = None                            # null, same as missing
+
+    def fake_run(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    done = github_client.search_done_today("ferraroroberto")
+    assert [d["number"] for d in done] == [2, 3, 1]
+    assert done[0]["closed_at"] is None
+
+
+def test_synthetic_gh_closed_rows_carry_closed_at():
+    """#1638: the synthetic gh must emit ``closedAt`` or the new field reads
+    as missing in every gate and design-review run."""
+    from scripts import synthetic_gh
+
+    rows = synthetic_gh.answer(["search", "issues", "--state", "closed"])
+    assert rows and all(r.get("closedAt") for r in rows)
+    open_rows = synthetic_gh.answer(["search", "issues", "--state", "open"])
+    assert all("closedAt" not in r for r in open_rows)
+
+
 def test_github_refresh_failure_keeps_old_data(monkeypatch):
     fake = _FakeGh()
     monkeypatch.setattr(github_client.subprocess, "run", fake)
