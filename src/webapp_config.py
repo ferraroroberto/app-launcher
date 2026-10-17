@@ -277,6 +277,16 @@ def _default_chief_plan_file() -> str:
     return str(Path.home() / ".claude" / "hooks" / "state" / "chief-plan.json")
 
 
+def _default_chief_managed_file() -> str:
+    """Where fleet-config's ``chief_managed.py`` records chief-dispatched sessions (#1644)."""
+    return str(Path.home() / ".claude" / "hooks" / "state" / "chief-managed.json")
+
+
+def _default_chief_inbox_dir() -> str:
+    """The chief's mailbox directory (fleet-config ``docs/chief-mailbox.md``, #1644)."""
+    return str(Path.home() / ".claude" / "hooks" / "state" / "chief-inbox")
+
+
 def _default_rate_limits_file() -> str:
     """Where fleet-config's statusline writer caches 5h/7d usage % (issue #326)."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
@@ -361,6 +371,12 @@ class WebappConfig:
     # Read defensively like sessions_state_file: absent/corrupt/unsupported
     # leaves the Board's "Chief's plan" card blank, never an error.
     chief_plan_file: str = field(default_factory=_default_chief_plan_file)
+    # The session-host's reaper publishes a chief ``session-end`` event for a
+    # chief-managed worker that died without running a hook (#1644): the
+    # registry fleet-config's ``chief_managed.py`` writes, and the mailbox
+    # directory the event goes into. Read by the session-host process only.
+    chief_managed_file: str = field(default_factory=_default_chief_managed_file)
+    chief_inbox_dir: str = field(default_factory=_default_chief_inbox_dir)
     # --- Context filter (issue #713, fleet-config#392/#541/#544) ---------
     # The machine-wide mode switch (off/shadow/rewrite) and telemetry log the
     # fleet's PreToolUse context-filter hook reads/writes. The mode itself is

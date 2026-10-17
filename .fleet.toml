@@ -320,6 +320,10 @@ path = "src/build_info.py"
 label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"
+path = "src/chief_session_end.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
 path = "src/diagnostics.py"
 label = "session-host/launcher"
 [[e2e.rule]]
