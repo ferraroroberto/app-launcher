@@ -704,14 +704,59 @@ function jobFailing(card) {
   return card.kind === 'job' && (card.state === 'failed' || card.state === 'stuck');
 }
 
+// A failed or unconfirmed run is a past event, so it can be dismissed once
+// dealt with (#1669). Stuck and unreadable describe a live problem: no verb.
+function jobDismissible(card) {
+  return card.kind === 'job' && !!card.run_id &&
+    (card.state === 'failed' || card.state === 'unconfirmed');
+}
+
+// Drop the card at once rather than wait out the 5 s poll. Bumping the edit
+// seq discards a Board read already in flight, which would put it back.
+async function dismissJob(card, btn) {
+  btn.disabled = true;
+  try {
+    await jsonApi('/api/jobs/' + encodeURIComponent(card.job_id) + '/runs/' +
+      encodeURIComponent(card.run_id) + '/dismiss', { method: 'POST' });
+    boardEditSeq += 1;
+    const other = state.board && state.board.columns && state.board.columns.other;
+    if (other) {
+      state.board.columns.other = other.filter(function (c) {
+        return !(c.kind === 'job' && c.job_id === card.job_id && c.run_id === card.run_id);
+      });
+      renderBoard();
+    }
+    fetchBoard().catch(function () {});
+  } catch (exc) {
+    apiFailToast('Could not dismiss the alert', exc);
+    btn.disabled = false;
+  }
+}
+
 function renderJobCard(card) {
   const c = JOB_CHIPS[card.state] || [String(card.state || 'failed'), 'danger'];
   const meta = ['job', card.age_seconds != null ? fmtDuration(card.age_seconds) : '']
     .filter(Boolean).join(' · ');
   const name = card.job_name || card.job_id || 'job';
-  const row = laneRow('board-item-job is-' + card.state, name, meta,
-    [chip(c[0], c[1], 'board-job-chip')], 'Open ' + name + ' in Jobs',
-    function () { setTab('jobs'); });
+  let dismiss = null;
+  if (jobDismissible(card)) {
+    dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'icon-button action-row-verb board-job-dismiss';
+    dismiss.innerHTML = icon('circle-check');
+    dismiss.title = 'Dismiss this alert';
+    dismiss.setAttribute('aria-label', 'Dismiss the ' + name + ' alert');
+    dismiss.addEventListener('click', function () { dismissJob(card, dismiss); });
+  }
+  const row = actionRow({
+    className: 'board-item board-item-job is-' + card.state,
+    title: name,
+    meta: meta,
+    chips: [chip(c[0], c[1], 'board-job-chip')],
+    label: 'Open ' + name + ' in Jobs',
+    onMain: function () { setTab('jobs'); },
+    trailing: dismiss,
+  });
   if (card.error) row.main.title = card.error;
   return row.li;
 }

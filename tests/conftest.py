@@ -275,9 +275,14 @@ def _isolated_jobs_registry(request, tmp_path, monkeypatch):
     if request.node.get_closest_marker("smoke"):
         return
     from src import jobs_config as jobs_cfg_mod
+    from src import jobs_dismissed as jobs_dismissed_mod
 
     monkeypatch.setattr(
         jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_path / "isolated-jobs.json"
+    )
+    # Nor the dismissed-alert marks (#1669): the Board's job cards read them.
+    monkeypatch.setattr(
+        jobs_dismissed_mod, "JOBS_DISMISSED_FILE", tmp_path / "isolated-jobs-dismissed.json"
     )
 
 
