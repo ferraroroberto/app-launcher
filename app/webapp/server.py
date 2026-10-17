@@ -78,10 +78,12 @@ from src.usage_log import usage_router
 from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.webauthn_gate import WebAuthnGate
 
+from app.webapp import chief_doorbell
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
     ensure_autostart_log_handler,
+    ensure_doorbell_log_handler,
     ensure_slow_log_handler,
 )
 from app.webapp.routers import (
@@ -400,6 +402,9 @@ async def _lifespan(app: FastAPI):
             tasks.append(asyncio.create_task(_coverage_tick(app)))
         if _session_retention_days(cfg) > 0:
             tasks.append(asyncio.create_task(_session_retention_tick(app)))
+        # Always started: it re-reads the chief_doorbell toggle every tick and
+        # does nothing while it is off, so a Settings save arms it live (#1645).
+        tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
         else:
@@ -416,10 +421,10 @@ async def _lifespan(app: FastAPI):
             else (_autostart_log.warning, "⚠️")
         )
         emit(
-            "%s jobs coverage + session retention ticks and Telegram "
-            "autostart skipped — non-canonical instance (%s, root=%s); only "
-            "the canonical checkout may alert, reap or launch (#736, #902, "
-            "#1542)",
+            "%s jobs coverage + session retention ticks, the chief doorbell "
+            "and Telegram autostart skipped — non-canonical instance (%s, "
+            "root=%s); only the canonical checkout may alert, reap, ring or "
+            "launch (#736, #902, #1542, #1645)",
             mark,
             role_reason,
             instance_role.PROJECT_ROOT,
@@ -442,6 +447,7 @@ def create_app() -> FastAPI:
     auth.ensure_log_handler()
     ensure_slow_log_handler()
     ensure_autostart_log_handler(_autostart_log, life_os_channels.logger)
+    ensure_doorbell_log_handler(chief_doorbell.logger)
 
     app = FastAPI(
         title="Launcher",

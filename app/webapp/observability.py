@@ -42,6 +42,10 @@ _AUTOSTART_LOG_PATH = (
     / "channel-autostart.log"
 )
 
+_DOORBELL_LOG_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "webapp" / "chief-doorbell.log"
+)
+
 DEFAULT_SLOW_REQUEST_S = 3.0
 # The SPA's boot legitimately fans out ~9 parallel fetches (observed in the
 # e2e gate), so the floor sits well above that — a breadcrumb here must mean
@@ -115,6 +119,13 @@ def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
         _AUTOSTART_LOG_PATH, *targets,
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+
+
+def ensure_doorbell_log_handler(target: logging.Logger) -> None:
+    """Send the chief doorbell's rings and skip reasons (#1645) to
+    ``webapp/chief-doorbell.log`` at INFO, for the same reason as the
+    autostart log: under the tray's ``pythonw`` they would otherwise vanish."""
+    ensure_file_log_handler(_DOORBELL_LOG_PATH, target)
 
 
 class SlowRequestLogMiddleware:

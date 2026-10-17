@@ -442,6 +442,11 @@ class WebappConfig:
     # Auto-compact threshold in percent, 0 = off (#1298). Set in Settings'
     # Chief card; served to the chief by GET /api/board/chief-settings.
     chief_auto_compact_threshold: int = DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD
+    # The chief doorbell (#1645): type one fixed line into an idle chief whose
+    # mailbox holds pending events. Off by default: it types into a live
+    # session, and the chief only understands the line once fleet-config#1457
+    # ships its side, which is what turns this on.
+    chief_doorbell: bool = False
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
