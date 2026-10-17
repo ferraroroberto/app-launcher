@@ -93,6 +93,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
+        # The chief doorbell (#1645), off by default; fleet-config#1457 turns
+        # it on. No Settings switch yet: set it here.
+        "chief_doorbell": cfg.chief_doorbell,
         # The chief's model and worker cap (#1435), read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -178,6 +181,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "large_upload_max_mb",
         "usage_shows",
         "chief_auto_compact_threshold",
+        "chief_doorbell",
         "claude_model",
         "claude_effort",
         "claude_verbose",
@@ -227,10 +231,10 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail="large_upload_max_mb must be a whole number of MB"
             )
-    # The switches (#1384, #1542): anything but a real boolean is a client
-    # bug, and a truthy string must never flip one ("false" is truthy in
-    # Python).
-    for key in ("hide_channel_sessions", "autostart_channel_sessions"):
+    # The switches (#1384, #1542, #1645): anything but a real boolean is a
+    # client bug, and a truthy string must never flip one ("false" is truthy
+    # in Python).
+    for key in ("hide_channel_sessions", "autostart_channel_sessions", "chief_doorbell"):
         if key in patch and not isinstance(patch[key], bool):
             raise HTTPException(
                 status_code=400, detail=f"{key} must be true or false"

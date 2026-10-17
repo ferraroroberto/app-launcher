@@ -392,6 +392,32 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.autostart_channel_sessions is False
 
+    def test_chief_doorbell_defaults_off_and_round_trips(self, webapp_client):
+        """chief_doorbell (#1645): types into the live chief, so default OFF.
+        The save swaps app.state.webapp_config, which the tick re-reads every
+        cycle, and reaches disk so it survives a restart."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["chief_doorbell"] is False
+
+        resp = client.post("/api/config", json={"chief_doorbell": True})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.chief_doorbell is True
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).chief_doorbell is True
+
+        resp = client.post("/api/config", json={"chief_doorbell": False})
+        assert resp.status_code == 200
+        assert load_webapp_config(cfg_path).chief_doorbell is False
+
+    @pytest.mark.parametrize("junk", ["true", "yes", 0, 1, None, []])
+    def test_chief_doorbell_rejects_non_booleans(self, webapp_client, junk):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"chief_doorbell": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.chief_doorbell is False
+
     def test_usage_shows_defaults_to_both_and_round_trips(self, webapp_client):
         """usage_shows (#1451): which providers the usage meter draws. Default
         "both" (today's behaviour); each choice must reach disk so it applies

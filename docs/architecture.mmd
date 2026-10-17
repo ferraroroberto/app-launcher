@@ -42,6 +42,7 @@ flowchart TB
     WSERVER["server.py\nlifespan, static mount, asset hashing"]
     MW["middleware.py\nBearerTokenMiddleware"]
     MGR["manager.py\nWebappManager (start/stop/status)"]
+    DOORBELL["chief_doorbell.py\nrings an idle chief with pending mail (#1645)"]
     subgraph routers["routers/"]
       R_MISC["misc.py — /, /healthz, /api/version, /api/system/load"]
       R_AUTH["auth.py — /api/login"]
@@ -190,6 +191,9 @@ life-os.js, life-os-viewer.js, voice.js"]
   JOBSSNAPSHOT --> JOBSFACADE
   JOBSHISTORY -->|"run.json written here: mark dirty"| JOBSSNAPSHOT
   WSERVER -->|"lifespan daily retention tick (#902)"| SESSRETENTION
+  WSERVER -->|"lifespan 3 s doorbell tick, canonical only,\nno-op while chief_doorbell is off (#1645)"| DOORBELL
+  DOORBELL -->|"chief status, Board's own overlay"| BOARD
+  DOORBELL -->|"fixed line via /input"| SESSCLIENT
   SESSRETENTION --> AUDIT
   SESSRETENTION -->|"live session list"| SESSCLIENT
   JOBSFACADE --> JOBSCFG

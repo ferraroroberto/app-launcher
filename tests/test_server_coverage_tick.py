@@ -156,19 +156,23 @@ class TestLifespanGate:
             task = real_create_task(coro, *a, **k)
             # The jobs snapshot tick (#1324) and the header's load sampler
             # (#1522) start on every instance; they are pinned by the
-            # *_runs_on_every_instance tests below. Both are named
+            # *_runs_on_every_instance tests below. The chief doorbell (#1645)
+            # is canonical-only, pinned in test_chief_doorbell. All are named
             # tick_forever, so their module tells them apart.
             module = coro.cr_frame.f_globals.get("__name__") if coro.cr_frame else ""
             if coro.__qualname__ == "tick_forever" and module == "src.jobs_snapshot":
                 self.snapshot_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module == "src.system_load":
                 self.load_ticks.append(task)
+            elif coro.__qualname__ == "tick_forever" and module == "app.webapp.chief_doorbell":
+                self.doorbell_ticks.append(task)
             else:
                 created.append(task)
             return task
 
         self.snapshot_ticks = []
         self.load_ticks = []
+        self.doorbell_ticks = []
         monkeypatch.setattr(server.asyncio, "create_task", _spy)
         # Never let the real tick body run — it would sleep two minutes and
         # then shell out to schtasks.
