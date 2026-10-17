@@ -54,6 +54,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
+from src.chief_session_end import publish_session_ends, resolve_paths
 from src.session_host import _EOF, PTY_MIN_COLS, SessionManager
 from src.session_host_input import (
     INPUT_CONSOLE_FAILED,
@@ -160,6 +161,7 @@ async def _reap_loop() -> None:
             if reaped:
                 logger.info(f"🧹 Reaped {len(reaped)} dead PTY session(s)")
                 await asyncio.to_thread(_cleanup_ended_sessions, reaped)
+                await asyncio.to_thread(_publish_chief_session_ends, reaped)
     except asyncio.CancelledError:  # pragma: no cover
         pass
 
@@ -725,6 +727,15 @@ def _cleanup_ended_sessions(sessions: Iterable[Any]) -> None:
         projects.add(project_dir)
     for project_dir in projects:
         _prune_uploads(project_dir)
+
+
+def _publish_chief_session_ends(sessions: Iterable[Any]) -> None:
+    """Tell the chief about reaped chief-managed sessions (#1644). Never raises."""
+    try:
+        registry, inbox = resolve_paths()
+        publish_session_ends(sessions, registry=registry, inbox=inbox)
+    except Exception as exc:  # noqa: BLE001 -- the reaper must keep running
+        logger.warning(f"❌ chief session-end publish failed: {exc}")
 
 
 def run_session_host(host: str = DEFAULT_HOST, port: int = DEFAULT_PORT) -> int:
