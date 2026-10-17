@@ -34,10 +34,12 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import jobs as jobs_mod
+from src import jobs_dismissed
 from src import jobs_index
 from src import jobs_snapshot
 from src.diagnostics import kill_process_tree
 from src.jobs_argv import compose_argv
+from src.jobs_outcome import OUTCOME_DEFERRED
 from src.jobs_preflight import has_errors, preflight
 from src.jobs_config import (
     Job,
@@ -631,6 +633,35 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
 
 
 # ----------------------------------------------------------- run history
+
+
+@router.post("/api/jobs/{job_id}/runs/{run_id}/dismiss")
+async def dismiss_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
+    """Mark a failed or unconfirmed run as dealt with (#1669).
+
+    Drops its card (and the header's failing count) from the Board; the run
+    record is untouched, so the Jobs tab still shows it. Only a finished,
+    non-deferred failure is dismissible: a running, stuck or succeeded run
+    describes a live problem or none, so it answers 409.
+    """
+    cfg = load_jobs()
+    if get_by_id(cfg, job_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
+    run_dir = jobs_mod.runs_dir(job_id) / run_id
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
+    record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
+    if record.get("status") != "failed" or record.get("outcome") == OUTCOME_DEFERRED:
+        raise HTTPException(
+            status_code=409,
+            detail=f"run is {record.get('outcome') or record.get('status')!r}, not dismissible",
+        )
+    try:
+        await asyncio.to_thread(jobs_dismissed.dismiss, job_id, run_id)
+    except OSError as exc:
+        logger.warning("⚠️ job alert dismissal not written: %s", exc)
+        raise HTTPException(status_code=500, detail="dismissal not written")
+    return {"dismissed": True, "job_id": job_id, "run_id": run_id}
 
 
 @router.get("/api/jobs/runs/search")

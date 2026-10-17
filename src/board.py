@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src import active_issue_claims
+from src import active_issue_claims, jobs_dismissed
 
 from src.board_state import (  # noqa: F401 — re-exported for board.<name> callers
     RATE_LIMITS_STALE_AFTER,
@@ -96,6 +96,9 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
     one-liner when it has one, so the card can say *why* without a log dive.
     A run whose job declares its exit code ``deferred`` (#1316) gets no card.
+    A failed or unconfirmed run the owner dismissed (#1669) gets none either;
+    ``stuck`` and ``unreadable`` cards describe a live problem and cannot be
+    dismissed.
 
     Reads the jobs' in-memory runtime snapshot (#1324), shared with
     ``/api/jobs``, instead of walking every job's history per poll. Still
@@ -117,6 +120,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
     jobs = load_jobs().jobs
     snap = jobs_snapshot.current(jobs)
+    dismissed = jobs_dismissed.read_dismissed()
     for job in jobs:
         # The snapshot's walk reaps a run stranded "running" by a dead
         # executor (issue #591), so the Board doesn't keep rendering a
@@ -166,7 +170,13 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
             and latest.get("outcome") != OUTCOME_DEFERRED
         ):
             finished = _parse_iso(latest.get("finished_at"))
-            if finished is not None and finished.astimezone().date() == today:
+            if (
+                finished is not None
+                and finished.astimezone().date() == today
+                and not jobs_dismissed.is_dismissed(
+                    dismissed, job.id, latest.get("run_id")
+                )
+            ):
                 # A run whose delivery the adapter could not establish still
                 # wants a human's eye, so it keeps its card — but it is not a
                 # failure and must not be drawn as one (#916). ``outcome`` is
