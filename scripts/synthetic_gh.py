@@ -42,7 +42,12 @@ OPEN_ISSUES = [
     _row(14, "A synthetic decision", "issues", ["chore"]),
 ]
 OPEN_PRS = [_row(15, "Synthetic pull request", "pull", ["enhancement"], isDraft=False)]
-CLOSED_TODAY = [_row(11, "Synthetic item finished today", "issues", ["bug"])]
+# ``closedAt`` is what the done search asks for (#1638); a row without it reads
+# as "no close time" and falls back to ``updatedAt``.
+CLOSED_TODAY = [
+    _row(11, "Synthetic item finished today", "issues", ["bug"],
+         closedAt=datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")),
+]
 
 
 def answer(args: List[str]) -> List[Dict[str, object]]:

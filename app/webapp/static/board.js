@@ -61,7 +61,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isHiddenChannel } from './channel-sessions.js';
 import {
-  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtDuration,
+  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtCardStamp, fmtDuration,
   isChannelSession,
 } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
@@ -601,6 +601,13 @@ async function copyLink(url) {
 // (decision 3 of #1432: YOLO takes two taps now). Git state is no longer
 // drawn here; it lives on Code › Projects. A tap on the row opens the issue
 // on GitHub.
+function stampEl(text) {
+  const el = document.createElement('span');
+  el.className = 'board-card-stamp';
+  el.textContent = '· ' + text;
+  return el;
+}
+
 function renderIssueCard(card) {
   // Claim owner liveness (#948): 'dead' is a provably gone lane — not in
   // progress, startable again; 'unknown' keeps the in-progress lock but says
@@ -612,6 +619,10 @@ function renderIssueCard(card) {
   if (claimUnverified) chips.push(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
   else if (isInProgress) chips.push(chip('in progress', 'accent', 'board-claim-chip'));
   else if (claimStale) chips.push(chip('stale claim', 'neutral', 'board-claim-chip'));
+
+  // The last-updated date (#1638): the tail of the meta text, or, beside a
+  // claim chip (where the text ellipsizes), its own item that never shrinks.
+  const stamp = fmtCardStamp(card.updated_at);
 
   // One-tap start (#301) — only for repos the Coding tab could launch in.
   // While a lane holds the issue the verb steps aside: the chip says why.
@@ -629,8 +640,8 @@ function renderIssueCard(card) {
   const row = actionRow({
     className: 'board-item board-item-issue' + (isInProgress ? ' is-in-progress' : ''),
     title: card.title || '',
-    meta: [card.repo, '#' + card.number].filter(Boolean).join(' '),
-    chips: chips,
+    meta: [card.repo, '#' + card.number].filter(Boolean).join(' ') + (stamp && !chips.length ? ' · ' + stamp : ''),
+    chips: stamp && chips.length ? [stampEl(stamp)].concat(chips) : chips,
     label: 'Open issue #' + card.number + ' on GitHub',
     onMain: openUrl(card.url),
     inert: !card.url,
@@ -670,7 +681,8 @@ function renderIssueCard(card) {
 function renderPrCard(card) {
   const draft = card.is_draft ? ' · draft' : '';
   return laneRow('board-item-pr', card.title || '',
-    [card.repo, 'PR #' + card.number].join(' ') + draft, [],
+    [[card.repo, 'PR #' + card.number].join(' ') + draft, fmtCardStamp(card.updated_at)]
+      .filter(Boolean).join(' · '), [],
     'Open PR #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 
@@ -709,7 +721,8 @@ function renderDoneCard(card) {
   // already reflected here by the issue itself, so there's no PR/pairing
   // branch to render.
   return laneRow('board-item-done', card.title || '',
-    [card.repo, '#' + card.number].join(' ') + ' · ' + card.state, [],
+    [[card.repo, '#' + card.number].join(' '), card.state,
+      fmtCardStamp(card.closed_at || card.updated_at)].filter(Boolean).join(' · '), [],
     'Open issue #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 

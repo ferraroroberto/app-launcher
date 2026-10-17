@@ -4611,6 +4611,10 @@ span.chief-answer-ref { color: var(--muted); }
   flex-wrap: wrap;
 }
 .board-list .action-row.board-item > .board-drawer { flex: 0 0 100%; }
+/* A Backlog card's date (#1638). With a claim chip the meta is one line whose
+   text ellipsizes; the date is its own item beside the chip so it is never the
+   part that gets cut (LAYOUT-09) while a long repo name still ellipsizes. */
+.board-card-stamp { flex: none; white-space: nowrap; }
 .board-agent-icon { width: 16px; height: 16px; }
 .board-empty { margin: 0; }
 
