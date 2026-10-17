@@ -72,3 +72,6 @@ pytest-xdist>=3.6
 # Chromium catches markup/JS regressions; WebKit projects the suite onto an
 # iPhone 15 Pro Max viewport so iOS-engine bugs get caught on Windows (#31).
 pytest-playwright>=0.5
+# 1.60 and older ship WebKit build 2287, whose network process sticks mid-exit
+# when a test closes its context and cannot be killed until reboot (#1671).
+playwright>=1.61
