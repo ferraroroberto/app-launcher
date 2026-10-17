@@ -54,7 +54,7 @@ from src.launch_flags import build_claude_flags
 from src.scanner import scan_skills
 from src.webapp_config import WebappConfig
 
-from app.webapp.routers._helpers import maybe_json
+from app.webapp.routers._helpers import cert_present, maybe_json
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
     _resolve_skill,
@@ -73,6 +73,15 @@ def _profiles(request: Request) -> tuple[List[ChannelProfile], List[str]]:
     return load_channel_profiles(
         getattr(request.app.state, "channel_profiles_path", None)
     )
+
+
+def relay_base_url(cfg: WebappConfig) -> str:
+    """The loopback URL a relay-enabled bot calls this webapp on (#1639).
+
+    Loopback, so the request is the PC itself; the relay routes still demand
+    the profile's token on top of that.
+    """
+    return f"{'https' if cert_present() else 'http'}://127.0.0.1:{cfg.port}"
 
 
 async def _live_profile_sessions(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
@@ -120,6 +129,7 @@ async def list_channels(request: Request) -> Dict[str, Any]:
             "label": profile.label,
             "skill": profile.skill,
             "skill_found": profile.skill in skill_ids,
+            "relay": profile.relay,
             "env_present": env_file_present(profile),
             "running": None if live is None else bool(sess),
             "session_id": str((sess or {}).get("session_id") or ""),
@@ -230,7 +240,7 @@ async def start_channel_session(
                 ),
             )
         try:
-            settings_path = write_channel_settings(profile)
+            settings_path = write_channel_settings(profile, relay_url=relay_base_url(cfg))
         except (OSError, ValueError) as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         base = build_claude_flags(

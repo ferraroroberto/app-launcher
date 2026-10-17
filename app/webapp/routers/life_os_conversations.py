@@ -224,6 +224,7 @@ async def launch_conversation(skill_id: str, request: Request) -> Dict[str, Any]
 
 async def _launch_conversation(
     skill: Skill, request: Request, body: Dict[str, Any], *, legacy: bool = False,
+    mirror: bool = True,
 ) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     root = Path(cfg.life_os_dir)
@@ -308,7 +309,7 @@ async def _launch_conversation(
         result = await _spawn_skill_session(
             cfg, request, root, flags=flags, name=skill.name, kind=kind,
             agent=agent, model=model, resume=action == "resume", audit_skill=skill.id,
-            body=body, resume_sid=resume_sid,
+            body=body, resume_sid=resume_sid, mirror=mirror,
         )
     except Exception:
         if handoff_path:
@@ -501,31 +502,56 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
     host can't be asked, that is not known, and nothing is launched (503).
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    root = Path(cfg.life_os_dir)
     skill = _resolve_skill(cfg, skill_id)
     body = await maybe_json(request)
-    index = _safe_conversation_index(root, skill)
-    rows = _read_conversation_index(index) if index else None
-    if not rows:
+    candidates = await skill_conversations(cfg, skill)
+    if not candidates:
         raise HTTPException(409, "No conversation with this skill yet.")
-    candidates = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
     resumable = [r for r in candidates if r["resumable"] and r["path"]]
     if not resumable:
         raise HTTPException(409, "None of this skill's conversations can be resumed; "
                                  "open Conversations to read them.")
-    latest = max(resumable, key=lambda r: _capture_mtime(root, r["path"]))
+    return await resume_or_open(skill, request, body, resumable[0])
+
+
+async def skill_conversations(cfg: WebappConfig, skill: Skill) -> List[Dict[str, Any]]:
+    """One skill's conversation rows, the most recently touched first (by
+    capture mtime: life-os rewrites a capture when a resumed session adds
+    turns). ``[]`` with no usable index. Shared with the relay (#1639)."""
+    root = Path(cfg.life_os_dir)
+    index = _safe_conversation_index(root, skill)
+    rows = _read_conversation_index(index) if index else None
+    if not rows:
+        return []
+    candidates = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
+    return sorted(candidates, key=lambda r: _capture_mtime(root, r["path"]) if r["path"] else 0.0,
+                  reverse=True)
+
+
+async def resume_or_open(
+    skill: Skill, request: Request, body: Dict[str, Any], row: Dict[str, Any],
+    *, mirror: bool = True,
+) -> Dict[str, Any]:
+    """Resume one resumable conversation row on its own model, or return the
+    session that already has it open (``conversation_action: "open"``).
+
+    Shared by resume-latest and the Telegram relay (#1639). 503 when the
+    session host can't be asked, since then it isn't known whether the
+    conversation is open, and nothing is launched.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
     try:
         live = await _live_conversations(cfg)
     except session_client.SessionHostError as exc:
-        logger.warning("⚠️ Life OS resume-latest: session host unavailable (%s)", exc)
+        logger.warning("⚠️ Life OS resume: session host unavailable (%s)", exc)
         raise HTTPException(503, "Not resumed: the session host can't be reached, so it isn't "
                                  "known whether this conversation is already open.")
-    running = live.get(str(latest["sid"]).lower())
+    running = live.get(str(row["sid"]).lower())
     if running:
-        logger.info("ℹ️ Life OS resume-latest: skill=%s already open in a running session", skill.id)
+        logger.info("ℹ️ Life OS resume: skill=%s already open in a running session", skill.id)
         return {
             "launched": skill.id, "conversation_action": "open", "name": skill.name,
-            "agent": latest["agent"], "model": "", "model_kept": None,
+            "agent": row["agent"], "model": "", "model_kept": None,
             "session": {
                 "session_id": running.get("session_id"),
                 "kind": running.get("kind") or "pty",
@@ -534,8 +560,8 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
         }
     launch = {key: value for key, value in body.items() if key != "model"}
     launch.update(action="resume", keep_model=True, capture={
-        key: latest[key] for key in ("path", "revision", "agent", "sid")})
-    return await _launch_conversation(skill, request, launch)
+        key: row[key] for key in ("path", "revision", "agent", "sid")})
+    return await _launch_conversation(skill, request, launch, mirror=mirror)
 
 
 # ------------------------------------------- a skill's last use (#1503)
@@ -975,8 +1001,6 @@ async def search_conversations(request: Request) -> Dict[str, Any]:
     detail to the phone; the detail goes to the log.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    life_os_dir = Path(cfg.life_os_dir)
-
     query = (request.query_params.get("q") or "").strip()
     skill = (request.query_params.get("skill") or "").strip()
     limit = _search_limit(request.query_params.get("limit"))
@@ -986,7 +1010,27 @@ async def search_conversations(request: Request) -> Dict[str, Any]:
         return {"available": True, "query": "", "skill": skill, "results": []}
     if len(query) > _MAX_QUERY_CHARS:
         raise HTTPException(status_code=400, detail="query too long")
+    reply = await run_conversation_search(cfg, query, skill, limit)
+    if not reply["available"]:
+        return reply
+    # Audited like every other private-content read, but the query text is
+    # deliberately not recorded: it is the user's own words about their own
+    # life, and the hit count is all an audit trail needs to be useful here.
+    await audit_off_loop(
+        audit.audit_event,
+        "lifeos_search", skill=skill, hits=len(reply["results"]), client=client_ip(request)
+    )
+    return reply
 
+
+async def run_conversation_search(
+    cfg: WebappConfig, query: str, skill: str, limit: int,
+) -> Dict[str, Any]:
+    """Run the search CLI for a non-empty, length-checked ``query``; the route's
+    reply shape, unaudited. ``skill`` (may be ``""``) narrows to one skill's
+    hits. Shared with the Telegram relay's find (#1639), which audits itself.
+    """
+    life_os_dir = Path(cfg.life_os_dir)
     cli = search_cli(cfg)
     if cli is None:
         return _search_unavailable("conversation search is not installed")
@@ -1028,13 +1072,6 @@ async def search_conversations(request: Request) -> Dict[str, Any]:
     results = await asyncio.to_thread(
         _conversation_rows, cfg,
         [row for row in rows if isinstance(row, dict) and (not skill or row.get("skill") == skill)],
-    )
-    # Audited like every other private-content read, but the query text is
-    # deliberately not recorded: it is the user's own words about their own
-    # life, and the hit count is all an audit trail needs to be useful here.
-    await audit_off_loop(
-        audit.audit_event,
-        "lifeos_search", skill=skill, hits=len(results), client=client_ip(request)
     )
     return {
         "available": True,
