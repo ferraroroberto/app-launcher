@@ -710,9 +710,9 @@ reason = "the Chat turn header's copy button stops propagation, and moving it in
 record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecomment-5837905876"
 
 # design-lint contract findings (/design-sync, #1634) examined and accepted: neither
-# dialog is an editor modal, and the look stays as it is. The lint matches on the exact
-# detail string, line number included, so an edit to index.html above either dialog
-# shifts it: re-run `design_lint contracts` and update `detail` when it does.
+# dialog is an editor modal, and the look stays as it is. The lint ignores the line
+# number after the target path when it matches an entry (fleet-config#1475), so an edit
+# to index.html above either dialog does not break the match.
 [[design.accepted]]
 check  = "modal-footer"
 target = "app/webapp/static/index.html"
