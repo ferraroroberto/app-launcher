@@ -347,6 +347,15 @@ function launchMenuItems(s) {
       onTap: function () { launchSkill(s); },
     },
     {
+      // Claude's own session picker (#1695), the one route to it since #1691
+      // made the row's tap open Conversations: any older session, not only
+      // this skill's captured ones.
+      dataset: { item: 'lifeos-pick-session-btn' }, glyph: 'clipboard-list',
+      label: 'Pick a session…',
+      ariaLabel: 'Open Claude’s session picker for ' + s.name,
+      onTap: function () { launchSkill(s, { picker: true }); },
+    },
+    {
       dataset: { item: 'lifeos-pin-btn' }, glyph: 'pin',
       label: s.is_favorite ? 'Unpin' : 'Pin to top',
       ariaLabel: (s.is_favorite ? 'Unpin ' : 'Pin ') + s.name,
@@ -616,13 +625,17 @@ async function launchRecap() {
 
 // A new conversation with the skill (#1503): the kebab's "Start new
 // conversation", the swipe's New and the Conversations list's Start new. It
-// ignores the Resume switch, and since #1691 nothing else launches a skill:
-// the row's tap opens its Conversations list, so Claude's own session picker
-// is no longer reachable from a skill row (a Telegram bot still honours it).
-async function launchSkill(s) {
+// ignores the Resume switch. opts.picker (#1695) is the kebab's "Pick a
+// session…": it posts resume: true so Claude opens its own session picker
+// (dropping the /<skill> prompt), whatever the switch says. Detached applies
+// to both, as in the Coding tab: the picker renders in the detached console,
+// or streams to the phone over a PTY. Nothing else launches a skill since
+// #1691 (a Telegram bot still honours the Resume switch).
+async function launchSkill(s, opts) {
+  const picker = !!(opts && opts.picker);
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
-  const payload = { mode: mode, model: model, resume: false };
+  const payload = { mode: mode, model: model, resume: picker };
   // Same size contract as launchRecap (issue #374, #126, #241). Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
@@ -633,10 +646,11 @@ async function launchSkill(s) {
       { method: 'POST', body: payload }
     );
     toast(
-      'Launched ' + s.name + modelTag(model) +
+      (picker ? 'Opening Claude’s session picker for ' + s.name
+        : 'Launched ' + s.name + modelTag(model)) +
         (mode === 'remote' ? ' (detached)' : ''),
       'good',
-      { icon: 'sprout' }
+      { icon: picker ? 'clipboard-list' : 'sprout' }
     );
     // Full-control sessions drop straight into the terminal; detached
     // ones only appear in the Coding tab's running-sessions list. A

@@ -228,11 +228,11 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     garden.locator(".action-row-kebab").click()
     items = open_row_menu(page).locator(".row-menu-item")
     expect(items).to_have_text([
-        "Resume last conversation", "Start new conversation", "Pin to top",
+        "Resume last conversation", "Start new conversation", "Pick a session…", "Pin to top",
         "Start on Telegram", "Read", "Conversations",
     ])
-    expect(items.nth(3)).to_have_attribute("data-item", "lifeos-channel-start-btn")
-    items.nth(3).click()
+    expect(items.nth(4)).to_have_attribute("data-item", "lifeos-channel-start-btn")
+    items.nth(4).click()
     wait_until(page, lambda: len(launches) == 1, "the channel launch POST")
     assert launches[0]["url"].endswith("/api/life-os/channels/allotment/launch")
     assert launches[0]["body"]["mode"] == "pty"
@@ -260,7 +260,7 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     # A running bot: "Open Telegram session", and no launch.
     reading = _row(page, "reading-list")
     reading.locator(".action-row-kebab").click()
-    open_btn = open_row_menu(page).locator(".row-menu-item").nth(3)
+    open_btn = open_row_menu(page).locator(".row-menu-item").nth(4)
     expect(open_btn).to_have_attribute("data-item", "lifeos-channel-open-btn")
     expect(open_btn).to_contain_text("Open Telegram session")
     open_btn.click()
@@ -296,12 +296,12 @@ def test_a_running_bot_restarts_from_the_kebab_after_a_confirm(life) -> None:
     reading.locator(".action-row-kebab").click()
     items = open_row_menu(page).locator(".row-menu-item")
     expect(items).to_have_text([
-        "Resume last conversation", "Start new conversation", "Pin to top",
+        "Resume last conversation", "Start new conversation", "Pick a session…", "Pin to top",
         "Open Telegram session", "Restart Telegram session", "Read",
         "Conversations",
     ])
-    expect(items.nth(4)).to_have_attribute("data-item", "lifeos-channel-restart-btn")
-    items.nth(4).click()
+    expect(items.nth(5)).to_have_attribute("data-item", "lifeos-channel-restart-btn")
+    items.nth(5).click()
     confirm = page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
     expect(confirm.locator("#confirmDialogTitle")).to_have_text(
@@ -709,6 +709,45 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
     open_row_menu(page).locator("[data-item=lifeos-start-new-btn]").click()
     wait_until(page, lambda: len(posted) == 1, "the launch POST")
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("detached", [True, False])
+def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
+    authed_page: Page, life, detached: bool
+) -> None:
+    """#1695: the kebab's "Pick a session…" posts resume: true with the Resume
+    switch OFF, honours Detached either way, and its toast names the picker."""
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
+    page = life()
+    posted = _launch_route(page)
+    if detached:
+        life_launch_switch(page, "#lifeOsDetached")
+    garden = _row(page, "garden-notes")
+    garden.locator(".action-row-kebab").click()
+    item = open_row_menu(page).locator("[data-item=lifeos-pick-session-btn]")
+    expect(item).to_have_text("Pick a session…")
+    expect(item).to_have_attribute("aria-label", "Open Claude’s session picker for garden-notes")
+    item.click()
+    wait_until(page, lambda: len(posted) == 1, "the launch POST")
+    assert posted[0]["resume"] is True, posted
+    assert posted[0]["mode"] == ("remote" if detached else "pty"), posted
+    assert posted[0]["model"] == "claude:sonnet", posted
+    expect(page.locator("#toast")).to_contain_text(
+        "Opening Claude’s session picker for garden-notes"
+        + (" (detached)" if detached else ""))
+
+
+@pytest.mark.iphone
+def test_the_kebab_lists_pick_a_session_after_start_new(authed_page: Page, life) -> None:
+    """The item sits right after Start new conversation, and Start new still
+    posts resume: false (the existing #1503 contract is untouched)."""
+    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
+    page = life()
+    page.locator("#lifeOsList .lifeos-item").first.locator(".action-row-kebab").click()
+    items = open_row_menu(page).locator("[data-item]")
+    keys = [items.nth(i).get_attribute("data-item") for i in range(3)]
+    assert keys == ["lifeos-resume-last-btn", "lifeos-start-new-btn", "lifeos-pick-session-btn"], keys
 
 
 def test_pin_to_top_posts_the_pin_and_unpin_is_offered_back(authed_page: Page, life) -> None:
