@@ -41,9 +41,9 @@ from tests.e2e.conftest import (
 pytestmark = pytest.mark.smoke
 
 _SHEETS = [
-    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
-    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
-    "terminalSheet",
+    "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
+    "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
+    "passkeysSheet", "terminalSheet",
 ]
 _AGENTS = ["claude", "codex", "antigravity", "copilot", "pi", "grok"]
 

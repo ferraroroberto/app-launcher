@@ -30,9 +30,9 @@ _TABS = ["#tabClaude", "#tabBoard", "#tabLifeOS", "#tabApps", "#tabJobs"]
 # Settings sheets (#1435) are dialogs outside the pane, so the clip scan
 # reads each while it is open; a light pass over all of them at Large/320px.
 _SHEETS = [
-    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
-    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
-    "terminalSheet",
+    "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
+    "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
+    "passkeysSheet", "terminalSheet",
 ]
 
 # Records, on the first data-textsize stamp, how many stylesheets the parser

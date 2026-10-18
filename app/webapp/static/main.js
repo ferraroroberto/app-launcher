@@ -26,6 +26,7 @@ import { wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen-view.js';
 import { wireTokens } from './tokens.js';
 import { wireSettingsSheets } from './settings-sheets.js';
+import { wireScreenTime } from './screen-time.js';
 import { openTerminal, wireTerminal } from './terminal.js';
 import { wireChatPane } from './session-transcript.js';
 import { wireQuoteCopy } from './quote-copy.js';
@@ -72,6 +73,7 @@ function wireSettings() {
   }
   // Every other Settings field saves as it changes (#1435): settings-sheets.js.
   wireSettingsSheets();
+  wireScreenTime();
 }
 
 // Telegram channel sessions (#1384): the switch saves at once like every other

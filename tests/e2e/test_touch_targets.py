@@ -93,9 +93,9 @@ _TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", _SETTI
 # defaults (#1435). A sheet's data-rendered control, where it has one, is
 # waited for before its sweep.
 _SHEETS = (
-    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
-    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
-    "terminalSheet",
+    "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
+    "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
+    "passkeysSheet", "terminalSheet",
 )
 _AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 _SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}
