@@ -97,6 +97,7 @@ from app.webapp.routers import (
     jobs,
     life_os,
     misc,
+    screen_time,
     session_screen,
     session_transcript,
     sessions,
@@ -505,6 +506,9 @@ def create_app() -> FastAPI:
     app.include_router(usage_router(
         runtime_db_path("app-launcher", "usage.sqlite3", create=True),
     ))
+    # The Screen time sheet's Send to task-os (#1678): drives the same
+    # src/usage_export.py the usage-export CLI and the nightly Job run.
+    app.include_router(screen_time.router)
 
     return app
 

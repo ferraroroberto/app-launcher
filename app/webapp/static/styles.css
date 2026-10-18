@@ -682,6 +682,8 @@ button.settings-row:active { background: var(--card-2); }
   text-align: right;
 }
 .settings-sheet .screen-time-note { margin: 16px 0 10px; }
+/* The last send to task-os (#1678 step 2/2), just above Send. */
+.settings-sheet .screen-time-sent { margin: 0 0 4px; color: var(--fg); }
 
 /* ---------- collapsible cards (vendored disclosure) ---------- */
 /* Structure and closed-box geometry come from _vendored/disclosure — the

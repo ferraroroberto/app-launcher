@@ -1104,14 +1104,17 @@ def open_agent_sheet(page: Page, agent_id: str) -> None:
 
 
 def close_settings_sheets(page: Page) -> None:
-    """Close whichever Settings sheet is open with its Done (#1435).
+    """Close whichever Settings sheet is open with its Done (#1435), or its
+    header ✕ when the primary has a job of its own (Screen time's Send to
+    task-os, #1678).
 
     An open modal sheet makes the rest of the page inert, the nav included,
     so a test that taps a tab or a row after a sheet must close it first.
     """
     sheet = page.locator("dialog.settings-sheet[open]")
     if sheet.count():
-        sheet.locator(".detail-actions [data-sheet-close]").click()
+        done = sheet.locator(".detail-actions [data-sheet-close]")
+        (done if done.count() else sheet.locator(".detail-header .detail-close")).click()
     expect(page.locator("dialog.settings-sheet[open]")).to_have_count(0)
 
 

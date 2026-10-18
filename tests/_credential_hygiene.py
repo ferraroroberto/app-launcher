@@ -147,6 +147,9 @@ def disposable_webapp_config(real_path: Path, token: str) -> dict:
         kept = {k: v for k, v in loaded.items() if k not in CREDENTIAL_KEYS}
         raw = _mask(kept, credential_values(loaded))
     raw["auth_token"] = token
+    # A disposable webapp must never write to the live task-os (#1678): with
+    # no URL, its Screen time Send answers "not set up" instead.
+    raw["task_os_url"] = ""
     return raw
 
 

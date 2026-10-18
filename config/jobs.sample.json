@@ -77,6 +77,15 @@
       "cooldown_seconds": 3600
     },
     {
+      "id": "screen-time-export",
+      "name": "Screen time to task-os (nightly)",
+      "script_path": "E:\\automation\\app-launcher\\launcher.py",
+      "args": "usage-export",
+      "schedule": { "type": "daily", "at": "03:30" },
+      "visible": true,
+      "alert_on_failure": true
+    },
+    {
       "id": "hwinfo-refresh",
       "name": "HWiNFO refresh (sample, powershell kind)",
       "script_path": "E:\\automation\\automation\\system\\hwinfo_refresh.ps1",

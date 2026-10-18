@@ -13,9 +13,14 @@
  *
  * The sheet asks twice per period, by=device and by=view: the route keeps one
  * breakdown per answer. No poll: it reads on open and on a period change.
+ *
+ * Step 2/2: the sheet's primary, Send to task-os, sends the last 7 completed
+ * days now (POST /api/screen-time/export, the same code as the nightly
+ * usage-export Job), and the line above it says when that last worked, or
+ * why the newest try failed (GET /api/screen-time/export, read on open).
  */
 
-import { jsonApi, logPollFailure } from './api.js';
+import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
 import { state } from './state.js';
 import { setAsyncState } from './async-state.js';
 import { renderSettingsValues } from './settings-sheets.js';
@@ -240,6 +245,67 @@ async function loadSheet() {
   renderReport(n, answers[0], answers[1]);
 }
 
+// "today 03:10", "yesterday 03:10", "Mon 12 Oct 03:10".
+function whenText(iso) {
+  const at = new Date(iso);
+  const clock = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const ago = Math.round((today - day) / 86400000);
+  if (ago === 0) return 'today ' + clock;
+  if (ago === 1) return 'yesterday ' + clock;
+  return at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + clock;
+}
+
+// The line above Send: not set up, the newest failure (only when it is newer
+// than the last success), the last success, or never sent.
+function sentText(status) {
+  if (!status.configured) return 'Not set up: fill the task-os keys in webapp_config.json.';
+  const ok = status.last_ok;
+  const err = status.last_error;
+  if (err && (!ok || err.at > ok.at)) return 'Last send failed ' + whenText(err.at) + ': ' + err.message;
+  if (ok) return 'Last sent to task-os ' + whenText(ok.at) + '.';
+  return 'Not sent to task-os yet.';
+}
+
+// Send stays enabled when the export is not set up: a tap toasts the
+// server's reason, and this line already says what is missing.
+function renderSent(status) {
+  const line = document.getElementById('screenTimeSent');
+  line.textContent = sentText(status);
+  line.hidden = false;
+}
+
+async function loadSent() {
+  try {
+    renderSent(await jsonApi('/api/screen-time/export'));
+  } catch (exc) {
+    logPollFailure('screen time export status', exc);
+    document.getElementById('screenTimeSent').hidden = true;
+  }
+}
+
+async function sendNow() {
+  const button = document.getElementById('screenTimeSend');
+  button.setAttribute('aria-busy', 'true');
+  button.disabled = true;
+  button.textContent = 'Sending…';
+  try {
+    const answer = await jsonApi('/api/screen-time/export', { method: 'POST' });
+    const r = answer.result;
+    toast('Sent ' + r.days + ' days to task-os', 'ok');
+    renderSent(answer);
+  } catch (exc) {
+    apiFailToast('Send failed', exc);
+    await loadSent();
+  } finally {
+    button.removeAttribute('aria-busy');
+    button.disabled = false;
+    button.textContent = 'Send to task-os';
+  }
+}
+
 function selectDays(n) {
   days = n;
   document.querySelectorAll('#screenTimeRange [data-days]').forEach(function (btn) {
@@ -250,7 +316,11 @@ function selectDays(n) {
 
 export function wireScreenTime() {
   const row = document.querySelector('#paneSettings [data-sheet="screenTimeSheet"]');
-  if (row) row.addEventListener('click', loadSheet);
+  if (row) {
+    row.addEventListener('click', loadSheet);
+    row.addEventListener('click', loadSent);
+  }
+  document.getElementById('screenTimeSend').addEventListener('click', sendNow);
   document.querySelectorAll('#screenTimeRange [data-days]').forEach(function (btn) {
     btn.addEventListener('click', function () { selectDays(Number(btn.dataset.days)); });
   });
