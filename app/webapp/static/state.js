@@ -138,6 +138,9 @@ export const state = {
   // How many API tokens exist (#1435, Settings › API tokens' value); null
   // until Settings first loads the list.
   apiTokenCount: null,
+  // Today's minutes on screen (#1678, Settings › Screen time's value); null
+  // until read, or when the read failed.
+  screenTimeToday: null,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },

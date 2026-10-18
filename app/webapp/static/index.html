@@ -1313,6 +1313,19 @@
            this section). settings-sheets.js owns the rows, the sheets and
            their save-as-you-change fields. Text size (#1134) and Start at
            log on are inline. -->
+      <!-- Activity (#1678): time spent in the launcher, the phone's Screen
+           Time for this app. The row reads today's total; screen-time.js
+           owns its sheet. Not "Usage": that word is the quota meter's. -->
+      <h2 class="settings-overline">Activity</h2>
+      <div class="card settings-group">
+        <button type="button" class="settings-row" data-sheet="screenTimeSheet" data-track="settings.screen-time" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+          <span class="settings-row-label">Screen time</span>
+          <span class="settings-row-value" data-settings-value="screen-time"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </div>
+
       <h2 class="settings-overline">Appearance</h2>
       <div class="card settings-group">
         <!-- Text size (#1134): the escape from the viewport zoom lock (WCAG
@@ -1407,6 +1420,43 @@
     <!-- Settings sheets (#1435): one per Settings row, on the vendored modal
          shell (header back + ✕, one full-width Done). Fields save as they
          change; settings-sheets.js opens, stacks and closes them. -->
+    <!-- Screen time (#1678): read-only, so its one primary is Done. The
+         period picks the window; screen-time.js draws the total, the daily
+         bars by device and the list by section from GET /api/usage/time. -->
+    <dialog id="screenTimeSheet" class="detail-dialog settings-sheet" aria-labelledby="screenTimeSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="screenTimeSheetTitle" tabindex="-1" autofocus>Screen time</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body screen-time">
+          <div id="screenTimeRange" class="segmented" role="group" aria-label="Period">
+            <button type="button" class="segmented-item" data-days="1" data-track="screen-time.today" aria-pressed="true">Today</button>
+            <button type="button" class="segmented-item" data-days="7" data-track="screen-time.week" aria-pressed="false">7 days</button>
+            <button type="button" class="segmented-item" data-days="30" data-track="screen-time.month" aria-pressed="false">30 days</button>
+          </div>
+          <div id="screenTimeState" class="screen-time-state" role="status" aria-live="polite" hidden></div>
+          <div id="screenTimeReport" class="screen-time-report" hidden>
+            <p class="screen-time-total">
+              <span id="screenTimeTotal" class="screen-time-total-value"></span>
+              <span id="screenTimeCaption" class="screen-time-caption"></span>
+            </p>
+            <div id="screenTimeChart" class="screen-time-chart" hidden></div>
+            <ul id="screenTimeDevices" class="screen-time-devices" aria-label="By device"></ul>
+            <h3 class="opt-group-title">By section</h3>
+            <ul id="screenTimeSections" class="screen-time-sections" aria-label="By section"></ul>
+          </div>
+          <p class="field-help screen-time-note">Counted while the launcher is on screen. On a PC, a stretch of more than 15 minutes with no taps or page changes counts as 15 minutes, so long typing in a terminal counts short. A minute on two devices at once counts once in the total and once on each device.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">

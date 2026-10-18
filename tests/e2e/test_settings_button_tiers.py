@@ -29,9 +29,9 @@ from tests.e2e.conftest import close_settings_sheets, open_settings, open_settin
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _SHEETS = [
-    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
-    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
-    "terminalSheet",
+    "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
+    "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
+    "passkeysSheet", "terminalSheet",
 ]
 
 # WCAG relative luminance / contrast, computed on the composited colours.

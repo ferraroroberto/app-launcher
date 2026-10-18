@@ -1,8 +1,9 @@
 """Settings as inset groups (#1435, step 3 of #1432).
 
-Settings is four groups of rows (Appearance, Agents, Connections, This PC).
-Each row shows its current value and a chevron and opens a sheet on the
-vendored modal shell: a header back + ✕ and one full-width Done. Contract:
+Settings is five groups of rows (Activity, Appearance, Agents, Connections,
+This PC). Each row shows its current value and a chevron and opens a sheet
+on the vendored modal shell: a header back + ✕ and one full-width Done.
+Contract:
 
   * the groups and rows render, and the values match the saved config
     (Launch defaults, Chief and Context filter at least);
@@ -32,11 +33,11 @@ from tests.e2e.conftest import (
 
 pytestmark = pytest.mark.smoke
 
-_GROUPS = ["Appearance", "Agents", "Connections", "This PC"]
+_GROUPS = ["Activity", "Appearance", "Agents", "Connections", "This PC"]
 _SHEETS = [
-    "usageShowsSheet", "launchDefaultsSheet", "chiefSheet", "channelsSheet",
-    "contextFilterSheet", "tokensSheet", "foldersSheet", "passkeysSheet",
-    "terminalSheet",
+    "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
+    "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
+    "passkeysSheet", "terminalSheet",
 ]
 _AGENT_LABELS = {
     "claude": "Claude Code", "codex": "Codex", "antigravity": "Antigravity",

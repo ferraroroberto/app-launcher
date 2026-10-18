@@ -11,7 +11,8 @@
  *   Done close them all, Escape goes back. Only the top sheet is shown;
  *   its parent reopens on Back.
  * - the rows' values, recomputed from state whenever the data behind them
- *   lands (config, passkeys, Telegram, tokens) and whenever a sheet closes.
+ *   lands (config, passkeys, Telegram, tokens, screen time) and whenever a
+ *   sheet closes.
  * - the fields that used to wait for a Save button: every one saves as it
  *   changes (a text or number field on blur), with a toast, and an inline
  *   error under the field when it is out of range or the server refuses it.
@@ -29,6 +30,7 @@ import { terminalJsonApi } from './webauthn.js';
 import { fetchApps } from './apps.js';
 import { fetchSkills } from './life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
+import { formatMinutes } from './screen-time.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -218,6 +220,7 @@ function contextFilterValue() {
 
 export function renderSettingsValues() {
   const cfg = state.config;
+  setValue('screen-time', state.screenTimeToday == null ? '' : formatMinutes(state.screenTimeToday));
   renderTelegramValue();
   setValue('context-filter', contextFilterValue());
   setValue('tokens', tokensValue());
