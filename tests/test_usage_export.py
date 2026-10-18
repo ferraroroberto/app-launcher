@@ -326,9 +326,18 @@ def _route_client(cfg: WebappConfig) -> TestClient:
     return TestClient(app)
 
 
-def test_route_status_and_send(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_route_without_a_usage_log_says_so(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(usage_export, "default_status_path", lambda: tmp_path / "status.json")
+    monkeypatch.setattr(usage_export, "default_db_path", lambda: tmp_path / "absent.sqlite3")
+    answer = _route_client(_cfg("https://127.0.0.1:1")).post("/api/screen-time/export")
+    assert answer.status_code == 409
+    assert "no usage log yet" in answer.json()["detail"]
+
+
+def test_route_status_and_send(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, usage_db: Path) -> None:
     status_path = tmp_path / "status.json"
     monkeypatch.setattr(usage_export, "default_status_path", lambda: status_path)
+    monkeypatch.setattr(usage_export, "default_db_path", lambda: usage_db)
     client = _route_client(WebappConfig())
     assert client.get("/api/screen-time/export").json() == {
         "configured": False, "last_ok": None, "last_error": None,
