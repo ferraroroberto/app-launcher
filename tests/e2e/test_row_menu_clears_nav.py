@@ -42,6 +42,17 @@ def _jobs() -> list:
     ]
 
 
+def _agenda() -> dict:
+    """Three fires, so the Next up card is `ready` at the height it holds
+    while `loading` (#1641) and nothing above the list moves when it lands."""
+    now = int(time.time())
+    return {"days": 7, "generated_epoch": now, "frequent": [], "occurrences": [
+        {"job_id": "job%02d" % i, "name": "Sample job %d" % i,
+         "fire_epoch": now + (i + 1) * 3600, "cadence": "daily 03:00"}
+        for i in range(3)
+    ]}
+
+
 def _open_jobs(page: Page, base_url: str, browser_name: str) -> None:
     if browser_name == "chromium":
         cdp = page.context.new_cdp_session(page)
@@ -51,10 +62,21 @@ def _open_jobs(page: Page, base_url: str, browser_name: str) -> None:
         re.compile(r".*/api/jobs(\?.*)?$"),
         lambda route: route.fulfill(status=200, content_type="application/json", body=body),
     )
+    # The Next up card above the list reads its own endpoint. Unmocked, the
+    # real answer is an empty week, which collapses the card by ~94px after
+    # the test has scrolled and picked a row: the page scrolls out from under
+    # the click and the menu opens on a different row than the one measured
+    # (#1699).
+    agenda = _json.dumps(_agenda())
+    page.route(
+        re.compile(r".*/api/jobs/agenda(\?.*)?$"),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=agenda),
+    )
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
     expect(page.locator("#jobsList li.job-row")).to_have_count(_COUNT)
+    expect(page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "ready")
     assert page.evaluate(
         "() => getComputedStyle(document.querySelector('nav.tabs')).position"
     ) == "fixed", "the floating nav pill did not render; this test would prove nothing"
