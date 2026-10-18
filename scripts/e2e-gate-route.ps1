@@ -179,3 +179,22 @@ function Get-UnitWorkerArgs {
     }
     return [pscustomobject]@{ Workers = $workers; Args = @("-n", [string]$workers) }
 }
+
+# Waits on the machine-wide e2e gate mutex (issue #1682). A holder that exits
+# without ReleaseMutex() makes the *next* waiter's WaitOne() throw
+# AbandonedMutexException -- but that exception means the caller now OWNS the
+# mutex, so it counts as acquired, not as an error. Reports which it was so the
+# gate can log the abandoned holder distinctly. A timeout is Acquired = $false.
+function Wait-E2EGateMutex {
+    param(
+        [Parameter(Mandatory = $true)][System.Threading.Mutex]$Mutex,
+        [Parameter(Mandatory = $true)][TimeSpan]$Timeout
+    )
+
+    try {
+        return [pscustomobject]@{ Acquired = $Mutex.WaitOne($Timeout); Abandoned = $false }
+    }
+    catch [System.Threading.AbandonedMutexException] {
+        return [pscustomobject]@{ Acquired = $true; Abandoned = $true }
+    }
+}
