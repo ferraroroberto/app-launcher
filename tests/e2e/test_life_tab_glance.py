@@ -323,6 +323,35 @@ def test_a_running_bot_restarts_from_the_kebab_after_a_confirm(life) -> None:
     expect(page.locator("#toast")).to_contain_text("Restarted Book club on Telegram")
 
 
+def test_a_bot_whose_skill_changed_says_restart_due(authed_page: Page, life) -> None:
+    """``restart_due`` (#1675) shows in the row meta, on the Restart item and
+    in Settings › Telegram; an unknown (``null``) shows nothing."""
+    channels = _json.loads(_json.dumps(_CHANNELS))
+    rows = {p["id"]: p for p in channels["profiles"]}
+    rows["bookclub"]["restart_due"] = True
+    rows["allotment"]["restart_due"] = None
+    # Registered after the fixture's route, so it answers first.
+    _json_route(authed_page, r".*/api/life-os/channels$", channels)
+    page = life()
+    expect(_row(page, "reading-list").locator(".action-row-meta")).to_have_text(
+        "no conversations yet · Telegram · restart due"
+    )
+    expect(_row(page, "garden-notes").locator(".action-row-meta")).to_have_text(
+        "no conversations yet · Telegram"
+    )
+    _row(page, "reading-list").locator(".action-row-kebab").click()
+    expect(open_row_menu(page).locator("[data-item=lifeos-channel-restart-btn]")).to_have_text(
+        "Restart Telegram session (skill changed)"
+    )
+    page.keyboard.press("Escape")
+
+    open_settings_sheet(page, "channelsSheet")
+    book = page.locator("#channelProfileChecks .channel-check", has_text="Book club")
+    expect(book).to_contain_text("skill changed since start")
+    allot = page.locator("#channelProfileChecks .channel-check", has_text="Allotment")
+    expect(allot).not_to_contain_text("skill changed")
+
+
 def test_the_skills_filter_narrows_and_persists(life) -> None:
     page = life()
     flt = page.locator("#lifeOsFilterInput")

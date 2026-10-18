@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -185,7 +187,7 @@ def channels(_bypass_gate, life_os_client, tmp_path, monkeypatch):  # noqa: F811
                                        label=label))
         sid = f"sid-{len(spawned)}"
         live.append({"session_id": sid, "label": label, "name": name,
-                     "alive": True})
+                     "alive": True, "started_at": time.time()})
         return {"session_id": sid, "kind": kind}
 
     live: list = []
@@ -455,6 +457,21 @@ class TestChannelRestart:
         assert [e for e in host.events if e[0] == "stop"] == []
         assert len(host.channels.spawned) == 1
 
+    def test_a_restart_clears_the_restart_due_hint(self, host):
+        life_os = Path(host.channels.app.state.webapp_config.life_os_dir)
+        skill_md = life_os / ".claude" / "skills" / "journal-daily" / "SKILL.md"
+        now = time.time()
+        _touch(skill_md, now - 10)
+        host.channels.live[0]["started_at"] = now - 100
+
+        def due():
+            rows = host.channels.client.get("/api/life-os/channels").json()["profiles"]
+            return next(p for p in rows if p["id"] == "health")["restart_due"]
+
+        assert due() is True
+        assert self._restart(host).status_code == 200
+        assert due() is False
+
     def test_unknown_profile_is_a_404(self, host):
         resp = host.channels.client.post(
             "/api/life-os/channels/nope/restart", json={}
@@ -509,6 +526,85 @@ class TestChannelRestart:
         assert restart.status_code == 200, restart.text
         assert launch.status_code == 409, launch.text
         assert len(host.channels.spawned) == 1
+
+
+def _touch(path: Path, mtime: float) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("{}", encoding="utf-8")
+    os.utime(path, (mtime, mtime))
+
+
+class TestRestartDue:
+    """``restart_due`` (#1675): the skill or project settings changed after
+    the running bot's session started. Only the yes/no answer leaves."""
+
+    START = 1_800_000_000.0
+
+    @pytest.fixture
+    def due(self, channels):
+        life_os = Path(channels.app.state.webapp_config.life_os_dir)
+        skill_md = life_os / ".claude" / "skills" / "journal-daily" / "SKILL.md"
+        _touch(skill_md, self.START - 100)
+        channels.live.append({"session_id": "s-health", "label": "telegram:health",
+                              "name": "journal-daily", "alive": True,
+                              "started_at": self.START})
+
+        def rows():
+            body = channels.client.get("/api/life-os/channels").json()
+            return {p["id"]: p for p in body["profiles"]}
+
+        return SimpleNamespace(channels=channels, life_os=life_os,
+                               skill_md=skill_md, rows=rows)
+
+    def test_nothing_changed_since_start_is_false(self, due):
+        assert due.rows()["health"]["restart_due"] is False
+
+    def test_a_newer_skill_md_is_true(self, due):
+        _touch(due.skill_md, self.START + 5)
+        assert due.rows()["health"]["restart_due"] is True
+
+    @pytest.mark.parametrize("name", ["settings.json", "settings.local.json"])
+    def test_newer_project_settings_are_true(self, due, name):
+        _touch(due.life_os / ".claude" / name, self.START + 5)
+        assert due.rows()["health"]["restart_due"] is True
+
+    def test_older_project_settings_are_false(self, due):
+        _touch(due.life_os / ".claude" / "settings.json", self.START - 5)
+        _touch(due.life_os / ".claude" / "settings.local.json", self.START - 5)
+        assert due.rows()["health"]["restart_due"] is False
+
+    def test_a_stopped_bot_is_unknown(self, due):
+        assert due.rows()["school"]["restart_due"] is None
+
+    def test_no_start_time_is_unknown(self, due):
+        due.channels.live[0].pop("started_at")
+        _touch(due.skill_md, self.START + 5)
+        assert due.rows()["health"]["restart_due"] is None
+
+    def test_host_down_is_unknown(self, due):
+        from app.webapp.routers import life_os_channels
+        err = life_os_channels.session_client.SessionHostError
+        life_os_channels.session_client.list_sessions.side_effect = err("down")
+        assert all(p["restart_due"] is None for p in due.rows().values())
+
+    def test_an_unreadable_settings_file_is_unknown(self, due, monkeypatch):
+        settings = due.life_os / ".claude" / "settings.json"
+        _touch(settings, self.START - 5)
+        real_stat = Path.stat
+
+        def stat(self, *args, **kwargs):
+            if self == settings:
+                raise PermissionError("denied")
+            return real_stat(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "stat", stat)
+        assert due.rows()["health"]["restart_due"] is None
+
+    def test_no_path_leaves_the_payload(self, due):
+        _touch(due.skill_md, self.START + 5)
+        body = json.dumps(due.channels.client.get("/api/life-os/channels").json())
+        assert "SKILL.md" not in body and "settings" not in body
 
 
 # ------------------------------------------------------------- setup checks
