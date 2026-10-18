@@ -750,6 +750,7 @@ UI prefs + secrets, authored from the web UI:
 | `chief_worker_cap` | `3` | Max concurrent worker sessions the `/chief` skill may keep running (1-10, issue #245; ceiling raised 8→10 in #547). Read by the skill over loopback via `GET /api/board/chief/settings` — its dispatch rail, phone-tunable from Settings › Chief. |
 | `chief_auto_compact_threshold` | `30` | The context-use percent at which the fleet chief compacts itself (issue #1298, fleet-config#1052): `0` is off, otherwise 10-90. Set from Settings › **Chief** (its switch turns it off) through `POST /api/config`; the chief reads it from `GET /api/board/chief-settings` → `{"auto_compact_threshold": <int>}` (board token, the default when nothing is stored). The app only stores the number and never compacts anything itself. |
 | `claude_model` | `"opus"` | Default `--model` for `claude` (Claude Code button only) |
+| `channel_model` | `"sonnet"` | Model Telegram channel sessions start on (#1673): the boot-time autostart, and a channel launch whose request names no model. An explicit model in the request wins. A running channel session keeps its model until it is restarted. Set it through `POST /api/config` (no Settings control). |
 | `claude_effort` | `"high"` | Default `--effort` (use `"off"` to omit the flag) |
 | `claude_verbose` | `true` | Pass `--verbose` |
 | `claude_debug` | `false` | Pass `--debug` |

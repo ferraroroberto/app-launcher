@@ -193,8 +193,8 @@ class TestChannelRoutes:
         life_os_channels.session_client.list_sessions.side_effect = (
             lambda port: list(live)
         )
-        return SimpleNamespace(client=client, spawned=spawned, live=live,
-                               health=health, school=school)
+        return SimpleNamespace(client=client, app=app, spawned=spawned,
+                               live=live, health=health, school=school)
 
     def test_launch_starts_skill_with_channel_flags_and_label(self, channels):
         resp = channels.client.post(
@@ -211,6 +211,29 @@ class TestChannelRoutes:
         assert json.loads(Path(settings).read_text(encoding="utf-8")) == {
             "env": {"TELEGRAM_STATE_DIR": channels.health}
         }
+
+    def test_launch_with_no_model_uses_the_channel_model(self, channels):
+        channels.app.state.webapp_config.claude_model = "opus"
+        resp = channels.client.post("/api/life-os/channels/health/launch", json={})
+        assert resp.status_code == 200, resp.text
+        (spawn,) = channels.spawned
+        assert "--model sonnet" in spawn.flags
+        assert "--model opus" not in spawn.flags
+
+    def test_launch_with_no_model_follows_a_configured_channel_model(self, channels):
+        channels.app.state.webapp_config.channel_model = "opus"
+        resp = channels.client.post("/api/life-os/channels/health/launch", json={})
+        assert resp.status_code == 200, resp.text
+        (spawn,) = channels.spawned
+        assert "--model opus" in spawn.flags
+
+    def test_launch_with_an_explicit_model_uses_it(self, channels):
+        resp = channels.client.post(
+            "/api/life-os/channels/health/launch", json={"model": "opus"}
+        )
+        assert resp.status_code == 200, resp.text
+        (spawn,) = channels.spawned
+        assert "--model opus" in spawn.flags
 
     def test_resume_keeps_channel_flag_and_state_dir(self, channels):
         resp = channels.client.post(

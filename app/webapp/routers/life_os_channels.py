@@ -174,6 +174,10 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=400,
             detail="Telegram channel sessions run in a terminal, not detached",
         )
+    # No model named (and no legacy ``opus`` flag): the channel default, not
+    # the global Claude model (#1673). An explicit model still wins.
+    if body.get("model") is None and "opus" not in body:
+        body = {**body, "model": cfg.channel_model}
     agent, model = _resolve_launch_choice(body)
     if agent != "claude":
         raise HTTPException(
@@ -361,7 +365,7 @@ async def autostart_channel_sessions(
     for profile in ready:
         try:
             result = await start_channel_session(
-                cfg, profile, model=cfg.claude_model, resume=False, body={},
+                cfg, profile, model=cfg.channel_model, resume=False, body={},
                 request=None,
             )
         except HTTPException as exc:

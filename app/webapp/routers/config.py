@@ -76,6 +76,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "hide_channel_sessions": cfg.hide_channel_sessions,
         # ...and start by themselves when the webapp starts (#1542).
         "autostart_channel_sessions": cfg.autostart_channel_sessions,
+        "channel_model": cfg.channel_model,
         "apps_scan_root": cfg.apps_scan_root,
         "life_os_dir": cfg.life_os_dir,
         "fleet_config_dir": cfg.fleet_config_dir,
@@ -174,6 +175,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "coding_model_choice",
         "hide_channel_sessions",
         "autostart_channel_sessions",
+        "channel_model",
         "apps_scan_root",
         "life_os_dir",
         "fleet_config_dir",

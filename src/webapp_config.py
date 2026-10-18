@@ -146,6 +146,9 @@ LEGACY_CLAUDE_MODELS = ("haiku",)
 VALID_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS) + LEGACY_CLAUDE_MODELS
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high", "xhigh", "max")
 DEFAULT_CLAUDE_MODEL = "opus"
+# Telegram channel sessions answer short household requests: Sonnet by default,
+# not the global Claude model (#1673).
+DEFAULT_CHANNEL_MODEL = "sonnet"
 DEFAULT_CLAUDE_EFFORT = "high"
 
 # Claude Code permission mode for the launch command. "auto" maps to
@@ -480,6 +483,9 @@ class WebappConfig:
     # (#1542), so the bots answer again after a reboot. Off by default: it
     # launches real sessions, so an absent setting must never arm it.
     autostart_channel_sessions: bool = False
+    # Model a Telegram channel session starts on when its launch names none,
+    # and the one the boot-time autostart uses (#1673).
+    channel_model: str = DEFAULT_CHANNEL_MODEL
     # Where a link tapped in Chat or a transcript opens when the page runs on
     # the PC itself (#1274): "chrome" (found through the registry's App
     # Paths, falling back to the default when absent) or "system" (the
@@ -906,6 +912,7 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
 _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("coding_model_choice", VALID_CODING_MODEL_CHOICES),
     ("claude_model", VALID_CLAUDE_MODELS),
+    ("channel_model", VALID_CLAUDE_MODELS),
     ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES),
     ("claude_effort", VALID_CLAUDE_EFFORTS),
     ("codex_model", VALID_CODEX_MODELS),
