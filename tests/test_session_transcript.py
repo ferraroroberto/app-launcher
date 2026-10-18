@@ -202,6 +202,54 @@ def test_claude_entries_caps_long_bodies(tmp_path: Path, monkeypatch):
     assert entries[1]["result"] == "01234" and entries[1]["result_truncated"] is True
 
 
+def _queue_op(operation: str, text: str) -> Dict[str, Any]:
+    return {"type": "queue-operation", "operation": operation, "content": text,
+            "timestamp": "2026-09-14T10:00:02Z"}
+
+
+def _queued_command(prompt: Any, **attachment: Any) -> Dict[str, Any]:
+    """The line Claude writes when a mid-turn message is delivered (#1674)."""
+    body = {"type": "queued_command", "prompt": prompt, "commandMode": "prompt",
+            "origin": {"kind": "human"}}
+    body.update(attachment)
+    return {"type": "attachment", "timestamp": "2026-09-14T10:00:03Z", "attachment": body}
+
+
+def test_mid_turn_message_renders_once_as_a_user_entry_in_place(tmp_path: Path):
+    """#1674: a message typed while Claude is mid-turn is recorded as
+    queue-operation enqueue/remove lines plus a ``queued_command`` attachment,
+    never a ``user`` line — the attachment is the delivery moment and the one
+    line the Chat view draws."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _user("start the work"),
+        _assistant([_tool_use("Read", {"file_path": "a.py"}, "t1")], "m1"),
+        _queue_op("enqueue", "also check b.py"),
+        _queued_command("also check b.py"),
+        _queue_op("remove", "also check b.py"),
+        _user([_tool_result("t1", [{"type": "text", "text": "ok"}])]),
+        _assistant([{"type": "text", "text": "done"}], "m2"),
+    ])
+    entries = _parse_whole(path)
+    assert _kinds(entries) == ["user", "tool_call", "user", "assistant"]
+    queued = entries[2]
+    assert queued["text"] == "also check b.py"
+    assert queued["timestamp"] == "2026-09-14T10:00:03Z"
+    assert [e["text"] for e in entries if e["kind"] == "user"].count("also check b.py") == 1
+
+
+def test_queued_command_block_prompt_and_non_human_deliveries(tmp_path: Path):
+    """A block-list prompt joins its text; a background-task notification, a
+    coordinator/meta delivery and an empty prompt are not typed messages."""
+    path = _write_jsonl(tmp_path / "t.jsonl", [
+        _queued_command([{"type": "text", "text": "first"}, {"type": "text", "text": "second"}]),
+        _queued_command("<task-notification>done</task-notification>", commandMode="task-notification"),
+        _queued_command("coordinator note", isMeta=True, origin={"kind": "coordinator"}),
+        _queued_command("   "),
+    ])
+    entries = _parse_whole(path)
+    assert [(e["kind"], e["text"]) for e in entries] == [("user", "first\n\nsecond")]
+
+
 def test_claude_error_result_is_marked_and_a_clean_one_is_not(tmp_path: Path):
     """Claude states the outcome outright, so both polarities are pinned
     (#1020). The flag is written **only** when true: its absence has to keep

@@ -115,7 +115,8 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     sidechain (a sub-agent's traffic) keep their kind but carry
     ``sidechain: True`` so the client folds them and pagination doesn't count
     them as turns. Metadata rows (``mode``, ``ai-title``, ``attachment``, …)
-    carry no conversation text and are dropped.
+    carry no conversation text and are dropped; the exception is an
+    ``attachment`` of type ``queued_command`` (a mid-turn message, #1674).
 
     ``uncapped`` (#985) drops the ``assistant``/``user`` display caps for
     :func:`session_transcript.entry_full_text` — the folded kinds keep their
@@ -276,6 +277,23 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 if refs:
                     user["images"] = refs
                 entries.append(user)
+            continue
+
+        if kind == "attachment":
+            # A message typed while Claude was mid-turn (#1674): the transcript
+            # holds no ``user`` line for it, only ``queue-operation``
+            # enqueue/remove rows (dropped, or it would show twice) and this
+            # ``queued_command`` attachment, written when the text is actually
+            # delivered into the running turn. Its text is ``prompt`` (a string
+            # or a block list). Only a human prompt draws: background-task
+            # notifications and ``isMeta`` coordinator deliveries are harness
+            # traffic, the same classification a ``user`` line gets.
+            attachment = obj.get("attachment") if isinstance(obj.get("attachment"), dict) else {}
+            if attachment.get("type") != "queued_command" or attachment.get("commandMode", "prompt") != "prompt":
+                continue
+            text = _blocks_text(attachment.get("prompt")).strip()
+            if text and _typed_user_kind(attachment, text) == "typed":
+                entries.append(_text_entry("user", offset, ts, text, user_cap, sidechain=sidechain))
             continue
 
         if kind == "system":
