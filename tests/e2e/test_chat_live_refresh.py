@@ -933,6 +933,21 @@ def _since(page: Page, seconds: int) -> str:
     return page.evaluate("(s) => new Date(Date.now() - s * 1000).toISOString()", seconds)
 
 
+def _line_shown_with_status(page: Page, message: str | None) -> bool:
+    """Put ``message`` in the connection status (None clears it) and say
+    whether the strip's live line has a box, read in the same task."""
+    return page.evaluate(
+        """(m) => {
+          const s = document.getElementById('terminalStatus');
+          s.textContent = m || '';
+          s.hidden = !m;
+          const r = document.getElementById('terminalActivity').getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        }""",
+        message,
+    )
+
+
 @pytest.mark.iphone
 def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     authed_page: Page, base_url: str
@@ -965,12 +980,14 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     assert line.text_content() != shown
 
     # Connection status wins the row while it shows, and the line returns.
-    page.evaluate("() => { const s = document.getElementById('terminalStatus');"
-                  "s.textContent = 'Reconnecting…'; s.hidden = false; }")
-    expect(line).to_be_hidden()
-    page.evaluate("() => { const s = document.getElementById('terminalStatus');"
-                  "s.hidden = true; s.textContent = ''; }")
-    expect(line).to_be_visible()
+    # The stub session has no PTY behind it, so on WebKit the page's own
+    # reconnect loop rewrites #terminalStatus about once a second and leaves
+    # it clear for a few ms (#1700): a clear followed by an auto-retrying
+    # expect() loses to the loop's next "Reconnecting…" about one run in eight.
+    # Set the status and read the line's box in one evaluate, so nothing runs
+    # between the write and the read.
+    assert _line_shown_with_status(page, "Reconnecting…") is False
+    assert _line_shown_with_status(page, None) is True
 
     # A harness with no tool data gives the time alone — never "0 actions".
     tr.activity = {"since": tr.activity["since"], "actions": None, "last": "Thinking", "working": True}
@@ -978,9 +995,11 @@ def test_the_strip_shows_the_turn_in_progress_and_gives_way_to_status(
     expect(line).to_have_text(re.compile(r"\d+:\d\d · Thinking$"))
 
     # The turn ends: the line goes, and its timer with it.
+    # `hidden` is the line's own word, apart from the status rule above, which
+    # may be hiding it again by now.
     tr.activity = {**tr.activity, "working": False}
     _tick(page, tr)
-    expect(line).to_be_hidden()
+    expect(line).to_have_attribute("hidden", "")
 
 
 # The line's own box and its strip, in one evaluate so a re-render between two
