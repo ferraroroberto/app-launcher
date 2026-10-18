@@ -1122,8 +1122,15 @@ def life_launch_switch(page: Page, switch_id: str) -> None:
     """Flip one of Life's launch switches (``#lifeOsDetached`` /
     ``#lifeOsResume``), which live in the model combo's menu since #1503:
     open the menu, tap the switch (the menu stays open), close it again with
-    the trigger."""
+    the trigger.
+
+    Waits for the boot ``/api/config`` read to have landed first (#1702): it
+    rebuilds the model list through ``setOptions``, which closes an open menu,
+    so a menu opened before it lands is closed under the click on the switch
+    ("element is not stable", then "not visible"). The launch toolbar mounts
+    with one placeholder option; the catalog's second one is the signal."""
     menu = page.locator("#lifeOsModelMenu")
+    expect(menu.locator("[role=option]").nth(1)).to_be_attached()
     page.locator("#lifeOsModelBtn").click()
     expect(menu).to_be_visible()
     page.locator(switch_id).click()
