@@ -164,14 +164,16 @@ function skillProfiles(s) {
   });
 }
 
-// The kebab's Telegram items, first in the menu: open a running bot, start a
-// stopped one. With two bots on one skill each item names its profile.
+// The kebab's Telegram items, after the launch items: open a running bot and
+// restart it (#1675), start a stopped one. With two bots on one skill each
+// item names its profile.
 function channelMenuItems(profiles) {
   const named = profiles.length > 1;
-  return profiles.map(function (p) {
+  const items = [];
+  profiles.forEach(function (p) {
     const running = p.running === true;
     const suffix = named ? ' · ' + p.label : '';
-    return {
+    items.push({
       dataset: {
         item: running ? 'lifeos-channel-open-btn' : 'lifeos-channel-start-btn',
         profile: p.id,
@@ -182,8 +184,17 @@ function channelMenuItems(profiles) {
       onTap: function () {
         if (running) openChannelSession(p); else launchChannel(p);
       },
-    };
+    });
+    if (!running) return;
+    items.push({
+      dataset: { item: 'lifeos-channel-restart-btn', profile: p.id },
+      glyph: 'refresh-cw',
+      label: 'Restart Telegram session' + suffix,
+      ariaLabel: 'Restart the ' + p.label + ' Telegram session',
+      onTap: function () { restartChannel(p); },
+    });
   });
+  return items;
 }
 
 function openChannelSession(p) {
@@ -217,6 +228,38 @@ async function launchChannel(p) {
     handleLaunchResponse(body.session);
   } catch (exc) {
     apiFailToast('Telegram launch failed', exc);
+    fetchChannels().catch(function () {});
+  }
+}
+
+// Restart a running bot (#1675): the server quits it, confirms it is gone and
+// starts it fresh, so it picks up the current skill, settings and model. A
+// stray tap would cost the bot's turn in progress, hence the confirm. On an
+// error the server has started nothing.
+async function restartChannel(p) {
+  const ok = await confirmDialog({
+    title: 'Restart the ' + p.label + ' Telegram session?',
+    message: 'It quits the running session and starts a fresh one with the ' +
+      'current skill and settings. The chat context is not kept.',
+    action: 'Restart',
+  });
+  if (!ok) return;
+  const payload = {};
+  applyLaunchSizePayload(payload);
+  try {
+    const body = await terminalJsonApi(
+      '/api/life-os/channels/' + encodeURIComponent(p.id) + '/restart',
+      { method: 'POST', body: payload }
+    );
+    toast(
+      (body.restarted ? 'Restarted ' : 'Started ') + p.label + ' on Telegram',
+      'good',
+      { icon: 'refresh-cw' }
+    );
+    fetchChannels().catch(function () {});
+    handleLaunchResponse(body.session);
+  } catch (exc) {
+    apiFailToast('Telegram restart failed', exc);
     fetchChannels().catch(function () {});
   }
 }

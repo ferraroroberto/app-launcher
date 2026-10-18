@@ -266,6 +266,61 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     assert len(launches) == 2, launches
 
 
+def test_a_running_bot_restarts_from_the_kebab_after_a_confirm(life) -> None:
+    """Restart (#1675) sits under Open, for a running bot only; it asks
+    first, and only the confirmed tap posts to /restart."""
+    page = life()
+    restarts: list = []
+
+    def _restart(route):
+        restarts.append({
+            "url": route.request.url,
+            "body": _json.loads(route.request.post_data or "{}"),
+        })
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"restarted": True,
+                              "session": {"session_id": "s-new", "kind": "remote"}}),
+        )
+
+    page.route(re.compile(r".*/api/life-os/channels/[^/]+/restart$"), _restart)
+
+    # A stopped bot has no Restart.
+    _row(page, "garden-notes").locator(".action-row-kebab").click()
+    expect(open_row_menu(page).locator("[data-item=lifeos-channel-restart-btn]")).to_have_count(0)
+    page.keyboard.press("Escape")
+
+    reading = _row(page, "reading-list")
+    reading.locator(".action-row-kebab").click()
+    items = open_row_menu(page).locator(".row-menu-item")
+    expect(items).to_have_text([
+        "Resume last conversation", "Start new conversation", "Pin to top",
+        "Open Telegram session", "Restart Telegram session", "Read",
+        "Conversations",
+    ])
+    expect(items.nth(4)).to_have_attribute("data-item", "lifeos-channel-restart-btn")
+    items.nth(4).click()
+    confirm = page.locator("#confirmDialog")
+    expect(confirm).to_be_visible()
+    expect(confirm.locator("#confirmDialogTitle")).to_have_text(
+        "Restart the Book club Telegram session?"
+    )
+    expect(confirm.locator("#confirmDialogOk")).to_have_text("Restart")
+    # Escape is a "no".
+    page.keyboard.press("Escape")
+    expect(confirm).to_be_hidden()
+    flush_requests(page)
+    assert restarts == [], restarts
+
+    reading.locator(".action-row-kebab").click()
+    open_row_menu(page).locator("[data-item=lifeos-channel-restart-btn]").click()
+    confirm.locator("#confirmDialogOk").click()
+    wait_until(page, lambda: len(restarts) == 1, "the channel restart POST")
+    assert restarts[0]["url"].endswith("/api/life-os/channels/bookclub/restart")
+    assert "model" not in restarts[0]["body"]
+    expect(page.locator("#toast")).to_contain_text("Restarted Book club on Telegram")
+
+
 def test_the_skills_filter_narrows_and_persists(life) -> None:
     page = life()
     flt = page.locator("#lifeOsFilterInput")

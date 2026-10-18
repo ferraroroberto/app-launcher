@@ -101,7 +101,8 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "Telegram channel profile *list* (#1366) — profile ids, labels, skill "
         "names and whether each is running. No state-directory path, token or "
         "chat content; the Life OS tab renders it off-tailnet like the skills "
-        "list. The launch beside it (/channels/{id}/launch) is passkey-gated."
+        "list. The launch and restart beside it (/channels/{id}/launch, "
+        "/channels/{id}/restart) are passkey-gated."
     ),
     "/api/life-os/skills": (
         "Skill list — folder ids and public SKILL.md titles. The private "

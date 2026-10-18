@@ -10,6 +10,9 @@ Split off ``life_os.py`` the way ``life_os_conversations.py`` and
                                                      Claude session with the
                                                      Telegram channel attached
                                                      (Tailscale + passkey)
+    POST /api/life-os/channels/{id}/restart       → quit the running session,
+                                                     confirm it is gone, start
+                                                     it fresh (#1675)
 
 A profile (:mod:`src.channel_profiles`) binds one life-os skill to one Telegram
 bot. The launch opens that skill exactly as the skill tile does, plus
@@ -23,6 +26,11 @@ so a second session on the same profile would fight the first with a 409. The
 guard looks the profile's label up in the session-host's live list, under a
 per-profile lock so two quick taps cannot both pass it.
 
+**Restart (#1675).** A running bot keeps the skill text, settings, hooks and
+model it started with. Restart quits it and starts a fresh session under the
+same lock, so a Launch can't slip in between; when the quit can't be
+confirmed it starts nothing and answers 502.
+
 **Boot-time autostart (#1542).** With ``autostart_channel_sessions`` on, the
 webapp's lifespan calls :func:`autostart_channel_sessions`, which starts each
 ready profile through :func:`start_channel_session` — the launch route's own
@@ -33,12 +41,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import session_client
+from src import audit, session_client
 from src.channel_profiles import (
     ChannelProfile,
     bun_available,
@@ -51,10 +60,16 @@ from src.channel_profiles import (
     write_channel_settings,
 )
 from src.launch_flags import build_claude_flags
-from src.scanner import scan_skills
+from src.launcher import close_mirror_window
+from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
 
-from app.webapp.routers._helpers import cert_present, maybe_json
+from app.webapp.routers._helpers import (
+    audit_off_loop,
+    cert_present,
+    client_ip,
+    maybe_json,
+)
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
     _resolve_skill,
@@ -65,6 +80,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _launch_locks: Dict[str, asyncio.Lock] = {}
+
+# Restart (#1675): how long a quit gets to end the old session before the
+# kill, how long the kill gets, and the poll between looks.
+RESTART_QUIT_WAIT_SECONDS = 15.0
+RESTART_KILL_WAIT_SECONDS = 5.0
+RESTART_POLL_SECONDS = 0.5
 
 
 def _profiles(request: Request) -> tuple[List[ChannelProfile], List[str]]:
@@ -208,59 +229,239 @@ async def start_channel_session(
     chief's unwatched dispatch, #1283). Refusals raise ``HTTPException``
     with the same status and detail the route returns.
     """
+    life_os_dir, skill = _profile_skill(cfg, profile)
+    async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
+        _refuse_if_running(profile, await _live_or_503(cfg, profile))
+        result = await _spawn_channel(
+            cfg, profile, skill, life_os_dir,
+            model=model, resume=resume, body=body, request=request,
+        )
+    logger.info(
+        f"✅ channel profile {profile.id} launched ({'resume' if resume else 'skill'})"
+    )
+    return {"launched": skill.id, "profile": profile.id, **result}
+
+
+def _profile_skill(cfg: WebappConfig, profile: ChannelProfile) -> tuple[Path, Skill]:
+    """The life-os folder and the profile's skill, or the 400/404 refusal."""
     life_os_dir = Path(cfg.life_os_dir)
     if not life_os_dir.is_dir():
         raise HTTPException(
             status_code=400,
             detail=f"life_os_dir does not exist: {cfg.life_os_dir}",
         )
-    skill = _resolve_skill(cfg, profile.skill)
+    return life_os_dir, _resolve_skill(cfg, profile.skill)
 
-    lock = _launch_locks.setdefault(profile.id, asyncio.Lock())
-    async with lock:
-        try:
-            live = await _live_profile_sessions(cfg)
-        except session_client.SessionHostError as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    f"Can't check whether {profile.label} is already running: "
-                    f"the session-host is unreachable ({exc})"
-                ),
-            )
-        running = live.get(profile.id)
-        if running:
-            name = running.get("name") or "session"
-            logger.info(
-                f"ℹ️ channel profile {profile.id} launch refused: already "
-                f"running in session {str(running.get('session_id'))[:8]}"
-            )
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"{profile.label} is already running in session "
-                    f"“{name}” ({str(running.get('session_id') or '')[:8]}). "
-                    "One Telegram bot can only be attached to one session."
-                ),
-            )
-        try:
-            settings_path = write_channel_settings(profile, relay_url=relay_base_url(cfg))
-        except (OSError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        base = build_claude_flags(
-            cfg, model_override=model, channel_settings=settings_path
+
+async def _live_or_503(
+    cfg: WebappConfig, profile: ChannelProfile
+) -> Dict[str, Dict[str, Any]]:
+    """The live channel sessions, or a 503: an unreachable host is never read
+    as "nothing running"."""
+    try:
+        return await _live_profile_sessions(cfg)
+    except session_client.SessionHostError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"Can't check whether {profile.label} is already running: "
+                f"the session-host is unreachable ({exc})"
+            ),
         )
-        flags = f"{base} /resume" if resume else f"{base} /{skill.command}"
-        result = await _spawn_skill_session(
-            cfg, request, life_os_dir,
-            flags=flags, name=skill.name, kind="pty", agent="claude",
-            model=model, resume=resume, audit_skill=skill.id, body=body,
-            label=profile_session_label(profile.id), mirror=request is not None,
-        )
+
+
+def _refuse_if_running(
+    profile: ChannelProfile, live: Dict[str, Dict[str, Any]]
+) -> None:
+    """The 409 for a profile that already has a live session."""
+    running = live.get(profile.id)
+    if not running:
+        return
+    name = running.get("name") or "session"
     logger.info(
-        f"✅ channel profile {profile.id} launched ({'resume' if resume else 'skill'})"
+        f"ℹ️ channel profile {profile.id} launch refused: already "
+        f"running in session {str(running.get('session_id'))[:8]}"
     )
-    return {"launched": skill.id, "profile": profile.id, **result}
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"{profile.label} is already running in session "
+            f"“{name}” ({str(running.get('session_id') or '')[:8]}). "
+            "One Telegram bot can only be attached to one session."
+        ),
+    )
+
+
+async def _spawn_channel(
+    cfg: WebappConfig,
+    profile: ChannelProfile,
+    skill: Skill,
+    life_os_dir: Path,
+    *,
+    model: str,
+    resume: bool,
+    body: Dict[str, Any],
+    request: Optional[Request],
+) -> Dict[str, Any]:
+    """Write the profile's settings file and spawn its session. The caller
+    holds the profile's lock and has confirmed nothing is running."""
+    try:
+        settings_path = write_channel_settings(profile, relay_url=relay_base_url(cfg))
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    base = build_claude_flags(
+        cfg, model_override=model, channel_settings=settings_path
+    )
+    flags = f"{base} /resume" if resume else f"{base} /{skill.command}"
+    return await _spawn_skill_session(
+        cfg, request, life_os_dir,
+        flags=flags, name=skill.name, kind="pty", agent="claude",
+        model=model, resume=resume, audit_skill=skill.id, body=body,
+        label=profile_session_label(profile.id), mirror=request is not None,
+    )
+
+
+# --- restart (#1675) -------------------------------------------------------
+@router.post("/api/life-os/channels/{profile_id}/restart")
+async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
+    """Quit a profile's running session and start it fresh with its skill, so
+    it picks up the current SKILL.md, settings, hooks and model.
+
+    Body: ``{"rows": int, "cols": int}``. No model: a restart always uses
+    ``channel_model`` (#1673). A stopped profile is simply started
+    (``restarted: false``). The quit, the confirmation that the old session
+    is gone and the new start all run under the profile's launch lock, so a
+    Launch arriving meanwhile waits and then gets the usual 409. When the old
+    session can't be confirmed gone (still alive after the kill, or the host
+    stopped answering), this answers 502 and starts nothing: never two
+    sessions on one bot.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    profiles, _problems = _profiles(request)
+    profile = next((p for p in profiles if p.id == profile_id), None)
+    if profile is None:
+        raise HTTPException(
+            status_code=404, detail=f"unknown channel profile: {profile_id}"
+        )
+    body = await maybe_json(request)
+    _agent, model = _resolve_launch_choice({"model": cfg.channel_model})
+    life_os_dir, skill = _profile_skill(cfg, profile)
+    async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
+        running = (await _live_or_503(cfg, profile)).get(profile.id)
+        old_sid = str((running or {}).get("session_id") or "")
+        if old_sid:
+            await _quit_and_confirm_gone(cfg, profile, old_sid)
+            # The old session is gone; anything still live on this profile
+            # is another session, and a start would make two.
+            _refuse_if_running(profile, await _live_or_503(cfg, profile))
+        logger.info(f"ℹ️ channel profile {profile.id} restart: starting fresh")
+        result = await _spawn_channel(
+            cfg, profile, skill, life_os_dir,
+            model=model, resume=False, body=body, request=request,
+        )
+    new_sid = str((result.get("session") or {}).get("session_id") or "")
+    await audit_off_loop(
+        audit.audit_event, "channel_restart",
+        profile=profile.id, old_session=old_sid, session=new_sid,
+        client=client_ip(request),
+    )
+    logger.info(
+        f"✅ channel profile {profile.id} "
+        f"{'restarted' if old_sid else 'started (was not running)'} "
+        f"in session {new_sid[:8]}"
+    )
+    return {
+        "launched": skill.id, "profile": profile.id,
+        "restarted": bool(old_sid), **result,
+    }
+
+
+async def _wait_until_gone(port: int, sid: str, wait_s: float) -> bool:
+    """Poll the session until it is gone or no longer alive, at most
+    ``wait_s``. ``False`` means still alive at the deadline; an unreachable
+    host raises ``SessionHostError`` (a 404 is the session gone)."""
+    deadline = time.monotonic() + wait_s
+    while True:
+        try:
+            info = await asyncio.to_thread(session_client.get_session, port, sid)
+        except session_client.SessionHostError as exc:
+            if exc.status == 404:
+                return True
+            raise
+        if not info.get("alive", True):
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(RESTART_POLL_SECONDS)
+
+
+async def _quit_and_confirm_gone(
+    cfg: WebappConfig, profile: ChannelProfile, sid: str
+) -> None:
+    """Quit the session, escalating to one kill; return only once it is
+    confirmed gone, else raise the 502 that keeps a restart from starting."""
+    port = cfg.session_host_port
+    # The PC mirror window, as the Coding stop route closes it. Best effort.
+    try:
+        await asyncio.to_thread(close_mirror_window, sid)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(f"⚠️ mirror window close raised for {sid[:8]}: {exc}")
+    started = time.monotonic()
+    failed = (
+        f"Couldn't confirm {profile.label} stopped; it was not started again."
+    )
+    for mode, wait_s in (
+        ("quit", RESTART_QUIT_WAIT_SECONDS), ("kill", RESTART_KILL_WAIT_SECONDS),
+    ):
+        try:
+            await asyncio.to_thread(session_client.stop, port, sid, mode)
+        except session_client.SessionHostError as exc:
+            if exc.status == 404:
+                logger.info(
+                    f"ℹ️ channel profile {profile.id} restart: session "
+                    f"{sid[:8]} already gone at {mode}"
+                )
+                return
+            # The poll below decides: a stop that timed out may still land.
+            logger.info(
+                f"ℹ️ channel profile {profile.id} restart: {mode} of "
+                f"{sid[:8]} answered {exc.status} ({exc}); checking"
+            )
+        else:
+            logger.info(
+                f"ℹ️ channel profile {profile.id} restart: {mode} sent to "
+                f"{sid[:8]}"
+            )
+        try:
+            gone = await _wait_until_gone(port, sid, wait_s)
+        except session_client.SessionHostError as exc:
+            logger.warning(
+                f"⚠️ channel profile {profile.id} restart: session-host "
+                f"stopped answering while {sid[:8]} was stopping ({exc}); "
+                "not starting"
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"{failed} The session-host stopped answering ({exc}).",
+            )
+        if gone:
+            logger.info(
+                f"ℹ️ channel profile {profile.id} restart: {sid[:8]} confirmed "
+                f"gone after {time.monotonic() - started:.1f}s"
+            )
+            return
+        if mode == "quit":
+            logger.info(
+                f"ℹ️ channel profile {profile.id} restart: {sid[:8]} still "
+                f"alive after {wait_s:.0f}s; kill escalated"
+            )
+    logger.warning(
+        f"⚠️ channel profile {profile.id} restart: {sid[:8]} still alive "
+        "after the kill; not starting"
+    )
+    raise HTTPException(
+        status_code=502, detail=f"{failed} It is still running after a kill."
+    )
 
 
 # --- boot-time autostart (#1542) -----------------------------------------

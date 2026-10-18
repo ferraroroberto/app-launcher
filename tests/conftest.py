@@ -553,6 +553,8 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     monkeypatch.setattr(life_os_files_router, "audit", audit_mock)
     monkeypatch.setattr(board_router, "audit", audit_mock)
     monkeypatch.setattr(board_chief_router, "audit", audit_mock)
+    # The Telegram restart's channel_restart line (#1675).
+    monkeypatch.setattr(life_os_channels_router, "audit", audit_mock)
     # The Screen view's connect/disconnect lines (#1520).
     from app.webapp.routers import desktop_screen as desktop_screen_router
     monkeypatch.setattr(desktop_screen_router, "audit", audit_mock)
