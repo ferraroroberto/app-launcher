@@ -289,12 +289,138 @@ def test_ws_audits_connect_and_disconnect(screen, webapp_client):
     app, _, _ = screen
     audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
-        _next_frame(ws)
+        frame = _next_frame(ws)
         closed = _close_and_wait(ws, audit)
     events = [c.args[0] for c in audit.audit_event.call_args_list]
     assert events == ["screen_open", "screen_close"]
     assert closed["client"] == LOOPBACK and closed["monitor"] == 0
     assert closed["frames"] == 1 and closed["duration_s"] >= 0
+    assert closed["bytes"] == len(frame), "the close line carries the traffic sent"
+    assert closed["unavailable"] == 0
+
+
+def test_ws_a_blocked_capture_says_so_and_is_audited(screen, webapp_client, monkeypatch):
+    """A desktop that can't be read (locked, or capture blocked by endpoint
+    security) is a status message to the viewer and a count on the close
+    line: the durable trace, since the tray discards the webapp's own log
+    (#1688)."""
+    app, _, _ = screen
+    audit = webapp_client[2]["audit"]
+
+    def blocked(_monitor):
+        raise CaptureUnavailable("BitBlt failed")
+
+    monkeypatch.setattr(desktop_capture, "grab_monitor", blocked)
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        assert _next_text(ws, "status") == {"type": "status", "state": "unavailable"}
+        closed = _close_and_wait(ws, audit)
+    assert closed["frames"] == 0 and closed["bytes"] == 0
+    assert closed["unavailable"] == 1
+
+
+class _SilentSocket:
+    """A socket that accepts everything and never sends a client message."""
+
+    query_params: Dict[str, str] = {}
+
+    async def accept(self) -> None:
+        pass
+
+    async def close(self, code: int = 1000, reason: str = "") -> None:
+        pass
+
+    async def send_bytes(self, data: bytes) -> None:
+        pass
+
+    async def send_text(self, text: str) -> None:
+        pass
+
+    async def receive_text(self) -> str:
+        await asyncio.Event().wait()
+        raise AssertionError("unreachable")
+
+
+@pytest.fixture
+def direct_screen_ws(monkeypatch, fake_cursor):
+    """``screen_ws`` driven on a bare event loop with a scripted capture loop,
+    for the tests that need to cancel the handler at an exact await. Yields
+    ``(run, audited)``: ``run(script, on_close)`` plays one session where
+    ``script(send_frame, send_status)`` stands in for the capture loop and
+    ``on_close`` is awaited when the close line is written; ``audited`` is the
+    list of ``(event, fields)`` that finished writing."""
+    from app.webapp.routers import desktop_screen
+
+    audited: List = []
+
+    async def fake_audit(write, event, **fields):
+        if event == "screen_close":
+            await run_state["on_close"]()
+        audited.append((event, fields))
+
+    run_state: Dict = {}
+
+    async def fake_stream_frames(_grab, send_frame, send_status, _acked, _stopped, *, width):
+        await run_state["script"](send_frame, send_status)
+
+    monkeypatch.setattr(desktop_screen, "audit_off_loop", fake_audit)
+    monkeypatch.setattr(desktop_screen, "ws_terminal_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(desktop_screen, "client_ip_ws", lambda _ws: LOOPBACK)
+    monkeypatch.setattr(desktop_capture, "list_monitors", lambda: [PRIMARY])
+    monkeypatch.setattr(desktop_capture, "stream_frames", fake_stream_frames)
+
+    def run(script, on_close):
+        run_state["script"] = script
+        run_state["on_close"] = on_close
+        return desktop_screen.screen_ws(_SilentSocket())
+
+    return run, audited
+
+
+def test_the_close_line_counts_bytes_and_unavailable(direct_screen_ws):
+    run, audited = direct_screen_ws
+
+    async def script(send_frame, send_status):
+        await send_frame(b"x" * 10)
+        await send_status("unavailable")
+        await send_status("live")
+        await send_frame(b"y" * 5)
+        await send_status("unavailable")
+
+    async def on_close():
+        pass
+
+    _run(run(script, on_close))
+    (event, closed) = audited[-1]
+    assert event == "screen_close"
+    assert closed["frames"] == 2 and closed["bytes"] == 15
+    assert closed["unavailable"] == 2
+
+
+def test_the_close_line_survives_a_cancelled_handler(direct_screen_ws):
+    """A handler cancelled while it writes the close line (server shutdown, or
+    the test client's cancel scope) must still finish writing it (#1688)."""
+    run, audited = direct_screen_ws
+
+    async def go():
+        entered = asyncio.Event()
+
+        async def script(send_frame, _send_status):
+            await send_frame(b"x" * 7)
+
+        async def on_close():
+            entered.set()
+            await asyncio.sleep(0.05)
+
+        handler = asyncio.create_task(run(script, on_close))
+        await entered.wait()
+        handler.cancel()
+        await asyncio.gather(handler, return_exceptions=True)
+        await asyncio.sleep(0.2)  # the shielded write finishes on its own
+
+    _run(go())
+    closed = [fields for event, fields in audited if event == "screen_close"]
+    assert len(closed) == 1, "the close line was lost with the cancelled handler"
+    assert closed[0]["bytes"] == 7
 
 
 def test_capture_stops_when_the_viewer_disconnects(screen, webapp_client):

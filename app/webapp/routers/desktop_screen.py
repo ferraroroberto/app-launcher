@@ -139,8 +139,12 @@ async def screen_ws(websocket: WebSocket) -> None:
     stopped = asyncio.Event()
 
     # Counted here rather than taken from stream_frames' return value, so a
-    # send that fails mid-stream still audits the frames that did go out.
-    sent = {"frames": 0}
+    # send that fails mid-stream still audits what did go out. The byte total
+    # is the session's real traffic on the link, and ``unavailable`` counts the
+    # times the desktop stopped being readable: the one durable trace of a
+    # blocked capture, since the tray discards the webapp's own log output
+    # (#1688).
+    sent = {"frames": 0, "bytes": 0, "unavailable": 0}
     # Frames and cursor messages come from two loops; one message at a time
     # goes out on the socket.
     send_lock = asyncio.Lock()
@@ -149,8 +153,11 @@ async def screen_ws(websocket: WebSocket) -> None:
         async with send_lock:
             await websocket.send_bytes(data)
         sent["frames"] += 1
+        sent["bytes"] += len(data)
 
     async def send_status(state: str) -> None:
+        if state == "unavailable":
+            sent["unavailable"] += 1
         async with send_lock:
             await websocket.send_text(json.dumps({"type": "status", "state": state}))
 
@@ -184,8 +191,12 @@ async def screen_ws(websocket: WebSocket) -> None:
                 await task
             except (asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
-        await audit_off_loop(
+        # Shielded: a handler cancelled mid-teardown (server shutdown, or a
+        # test client's cancel scope, which re-cancels at every await) must
+        # still write the close line, since it carries the session's traffic.
+        await asyncio.shield(audit_off_loop(
             audit.audit_event, "screen_close", client=client, monitor=monitor.id,
             duration_s=round(time.monotonic() - started, 1), frames=sent["frames"],
+            bytes=sent["bytes"], unavailable=sent["unavailable"],
             inputs=session.count,
-        )
+        ))

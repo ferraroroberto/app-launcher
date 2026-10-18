@@ -461,7 +461,7 @@ A live view of what is on the PC's screen (issue #1520) that you can also click,
 - **Capture runs only while a viewer is connected.** There is no background task. Closing the view, or hiding the page, closes the socket, and the loop stops with it.
 - **The cursor has its own messages** (`src/desktop_cursor.py`). The capture never contains the cursor, and a cursor-only move changes no frame, so a second loop on the same socket polls `GetCursorInfo` about 30 times a second and sends `{"type": "cursor", "x", "y", "shape", "visible"}` (position as 0-1 in the shown monitor) only when it changed. It is not paced by the frame ack, and it stops with the socket like the frames. Only a shape name goes out, matched against Windows' standard cursors, never the cursor's image, since an app's cursor can carry its content. While the cursor can't be read (the lock screen), it is sent hidden once, logged once, and retried once a second. Cursor messages are not logged.
 
-Every connect and disconnect writes one line to `webapp/terminal_audit.log` (`[screen_open]` / `[screen_close]`, with client IP, monitor, duration, frames sent and, on close, the number of input messages acted on). What was typed is never logged.
+Every connect and disconnect writes one line to `webapp/terminal_audit.log` (`[screen_open]` / `[screen_close]`, with client IP, monitor, duration, frames sent and, on close, the bytes sent, how many times the desktop stopped being readable as `unavailable` (the one lasting trace of a blocked capture), and the number of input messages acted on). The close line is written even when the handler is cancelled mid-teardown (#1688). What was typed is never logged.
 
 ### Controlling the PC
 
