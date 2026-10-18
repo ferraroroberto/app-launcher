@@ -533,6 +533,18 @@ class WebappConfig:
     # path (🔊 falls back to the on-device Web Speech voice). Plain HTTP — the
     # hub binds loopback only and serves no TLS, unlike the sibling apps above.
     llm_hub_url: str = "http://127.0.0.1:8000"
+    # --- Screen time export to task-os (issue #1678) ---------------------
+    # Where `launcher.py usage-export` and the Screen time sheet's Send to
+    # task-os put each completed day's minutes (src/usage_export.py): the
+    # sibling task-os's loopback URL, the task-os person id the entries
+    # belong to, and the target category as area/category slugs, resolved
+    # through task-os's GET /api/time/meta on every send. The person has no
+    # default, so the export stays off until it is set; the category must
+    # already exist in task-os (it is never created from here).
+    task_os_url: str = "https://127.0.0.1:8448"
+    task_os_person: str = ""
+    task_os_area: str = "work"
+    task_os_category: str = "launcher"
     # --- Jobs-tab failure notifications (issue #66) ---------------------
     # Pushover credentials — both empty means no-op notifier (executor
     # still finalises runs identically). The master switch

@@ -2,8 +2,8 @@
 
 Settings is five groups of rows (Activity, Appearance, Agents, Connections,
 This PC). Each row shows its current value and a chevron and opens a sheet
-on the vendored modal shell: a header back + ✕ and one full-width Done.
-Contract:
+on the vendored modal shell: a header back + ✕ and one full-width primary,
+Done, except Screen time's Send to task-os (#1678). Contract:
 
   * the groups and rows render, and the values match the saved config
     (Launch defaults, Chief and Context filter at least);
@@ -39,6 +39,8 @@ _SHEETS = [
     "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
     "passkeysSheet", "terminalSheet",
 ]
+# A sheet's one primary: Done, unless it has a job of its own.
+_PRIMARY = {"screenTimeSheet": "Send to task-os"}
 _AGENT_LABELS = {
     "claude": "Claude Code", "codex": "Codex", "antigravity": "Antigravity",
     "copilot": "GitHub Copilot", "pi": "Pi", "grok": "Grok Build",
@@ -115,7 +117,8 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
         sheet = authed_page.locator(f"#{sheet_id}")
         # Modal contract (#545): a header ✕ and one full-width primary.
         expect(sheet.locator(".detail-actions button")).to_have_count(1)
-        expect(sheet.locator(".detail-actions .button-primary.detail-save-btn")).to_have_text("Done")
+        expect(sheet.locator(".detail-actions .button-primary.detail-save-btn")).to_have_text(
+            _PRIMARY.get(sheet_id, "Done"))
         open_settings_sheet(authed_page, sheet_id)
         sheet.locator("[data-sheet-back]").click()
         expect(sheet).to_be_hidden()

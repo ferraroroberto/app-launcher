@@ -77,7 +77,18 @@ def test_disposable_config_drops_every_credential(tmp_path: Path) -> None:
 
 def test_disposable_config_without_a_real_file_is_just_the_token(tmp_path: Path) -> None:
     cfg = hygiene.disposable_webapp_config(tmp_path / "absent.json", "tok-12345678")
-    assert cfg == {"auth_token": "tok-12345678"}
+    assert cfg == {"auth_token": "tok-12345678", "task_os_url": ""}
+
+
+def test_disposable_config_cannot_reach_the_live_task_os(tmp_path: Path) -> None:
+    """#1678: the real config's task-os target never reaches a disposable
+    webapp, so a test that taps Send to task-os can't write real entries."""
+    real = tmp_path / "webapp_config.json"
+    real.write_text(json.dumps({
+        "task_os_url": "https://127.0.0.1:8448", "task_os_person": "someone",
+    }), encoding="utf-8")
+    cfg = hygiene.disposable_webapp_config(real, "tok-12345678")
+    assert cfg["task_os_url"] == ""
 
 
 def test_leak_check_counts_a_credential_the_builder_let_through(tmp_path: Path) -> None:
