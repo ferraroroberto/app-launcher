@@ -186,10 +186,13 @@ function channelMenuItems(profiles) {
       },
     });
     if (!running) return;
+    // The skill or project settings changed since the bot started: a
+    // restart would pick them up (restart_due, true only when known).
+    const due = p.restart_due === true ? ' (skill changed)' : '';
     items.push({
       dataset: { item: 'lifeos-channel-restart-btn', profile: p.id },
       glyph: 'refresh-cw',
-      label: 'Restart Telegram session' + suffix,
+      label: 'Restart Telegram session' + due + suffix,
       ariaLabel: 'Restart the ' + p.label + ' Telegram session',
       onTap: function () { restartChannel(p); },
     });
@@ -384,11 +387,13 @@ export function renderSkills() {
     // is its green badge); everything else is in the one trailing kebab.
     const profiles = skillProfiles(s);
     const alive = profiles.some(function (p) { return p.running === true; });
+    const due = profiles.some(function (p) { return p.restart_due === true; });
     const row = actionRow({
       id: s.id,
       className: 'lifeos-item' + (isFolded ? ' is-folded' : ''),
       title: s.name,
-      meta: lastUsedMeta(s) + (profiles.length ? ' · Telegram' : ''),
+      meta: lastUsedMeta(s) + (profiles.length ? ' · Telegram' : '') +
+        (due ? ' · restart due' : ''),
       avatar: skillAvatar(s, alive),
       label: 'Launch ' + s.name,
       onMain: function () { launchSkill(s); },

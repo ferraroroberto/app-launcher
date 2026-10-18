@@ -110,7 +110,8 @@ function renderProfiles(profiles, problems) {
     if (!p.env_present) missing.push('no .env with the bot token in its folder');
     const ready = !profileNeedsSetup(p);
     const detail = ready
-      ? 'skill ' + p.skill + ' · token file present' + (p.running ? ' · running' : '')
+      ? 'skill ' + p.skill + ' · token file present' + (p.running ? ' · running' : '') +
+        (p.restart_due === true ? ' · skill changed since start' : '')
       : missing.join(' · ');
     host.appendChild(checkRow(p.label, detail, ready ? 'ok' : 'missing', 'Ready', 'Needs setup'));
   });

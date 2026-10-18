@@ -127,15 +127,16 @@ async def list_channels(request: Request) -> Dict[str, Any]:
     ``running`` is ``None`` (not ``False``) for every profile when the
     session-host cannot be reached: an unknown is not "nothing running". The
     same rule holds for ``setup.plugin`` (``None`` = Claude's install record
-    could not be read). Only booleans and names leave here: no state
-    directory, no path, no file content — ``env_present`` is a stat of the
-    token file, which is never opened.
+    could not be read) and for ``restart_due`` (:func:`_restart_due`). Only
+    booleans and names leave here: no state directory, no path, no file
+    content — ``env_present`` is a stat of the token file, which is never
+    opened.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     profiles, problems = _profiles(request)
     life_os_dir = Path(cfg.life_os_dir)
     skills = scan_skills(life_os_dir) if life_os_dir.is_dir() else []
-    skill_ids = {s.id for s in skills}
+    skills_by_id = {s.id: s for s in skills}
     live: Optional[Dict[str, Dict[str, Any]]] = None
     if profiles:
         try:
@@ -149,11 +150,14 @@ async def list_channels(request: Request) -> Dict[str, Any]:
             "id": profile.id,
             "label": profile.label,
             "skill": profile.skill,
-            "skill_found": profile.skill in skill_ids,
+            "skill_found": profile.skill in skills_by_id,
             "relay": profile.relay,
             "env_present": env_file_present(profile),
             "running": None if live is None else bool(sess),
             "session_id": str((sess or {}).get("session_id") or ""),
+            "restart_due": _restart_due(
+                life_os_dir, skills_by_id.get(profile.skill), sess
+            ),
         })
     return {
         "profiles": rows,
@@ -171,6 +175,48 @@ async def list_channels(request: Request) -> Dict[str, Any]:
             "skills": [{"id": s.id, "name": s.name} for s in skills],
         },
     }
+
+
+def _restart_due(
+    life_os_dir: Path, skill: Optional[Skill], sess: Optional[Dict[str, Any]]
+) -> Optional[bool]:
+    """Whether a running bot's skill or project settings changed after its
+    session started (#1675), so a Restart would pick up something new.
+
+    The files that count are the ones a session reads only at its start: the
+    skill's ``SKILL.md`` and life-os's ``.claude/settings.json`` /
+    ``settings.local.json`` (a missing settings file is skipped). The global
+    ``~/.claude/settings.json`` doesn't count: it changes often across the
+    fleet, so every bot would always look due. ``started_at`` is the
+    session-host's epoch on this same machine, so it compares directly with
+    the files' times, and a restart's new start clears the hint by itself.
+
+    ``None`` when it can't be told: the bot isn't running (or the host is
+    down), the skill isn't found, the session has no start time, or a file
+    can't be read.
+    """
+    if not sess or skill is None:
+        return None
+    started = sess.get("started_at")
+    if isinstance(started, bool) or not isinstance(started, (int, float)) or started <= 0:
+        return None
+    settings_dir = life_os_dir / ".claude"
+    files = [
+        (skill.skill_dir / "SKILL.md", True),
+        (settings_dir / "settings.json", False),
+        (settings_dir / "settings.local.json", False),
+    ]
+    newest = 0.0
+    for path, required in files:
+        try:
+            newest = max(newest, path.stat().st_mtime)
+        except FileNotFoundError:
+            if required:
+                return None
+        except OSError as exc:
+            logger.debug(f"restart_due: can't stat {path.name}: {exc}")
+            return None
+    return newest > float(started)
 
 
 @router.post("/api/life-os/channels/{profile_id}/launch")
