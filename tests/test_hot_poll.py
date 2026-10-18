@@ -5,6 +5,12 @@ A file-system call on a live PTY transcript stalled for 17.9 s, and every
 the pool filled: both endpoints answered in 29-57 s. Each test here hangs one
 build step (a fake slow dependency) and asserts the endpoint still answers in
 under 2 s, from the last good payload, marked stale.
+
+"Under 2 s" is the constant ``hot_poll.DEADLINE_S`` (pinned below), not a stopwatch
+reading: a wall-clock bound on top of the 1.5 s deadline leaves 0.5 s of margin, and
+a process the OS preempts for that long went red with the code unchanged (#1707).
+The tests assert the condition instead: the answer came back while the hung step
+was still hung, so it cannot have waited for it.
 """
 
 from __future__ import annotations
@@ -20,8 +26,10 @@ import pytest
 
 from app.webapp import hot_poll
 
-_BOUND_S = 2.0
-_HANG_S = 6.0
+_PHONE_HUNG_S = 2.0
+# Far longer than any run of these tests: a hung step must still be hung when the
+# answer arrives, however loaded the box. Every test releases it in a ``finally``.
+_HANG_S = 60.0
 _SLOW_LOGGER = "launcher.slowreq"
 
 _LIVE = [{
@@ -30,28 +38,38 @@ _LIVE = [{
 }]
 
 
-def _hang_second_call(release: threading.Event):
-    """A step that answers at once the first time and hangs from then on."""
+def test_the_stale_deadline_is_under_the_phones_hung_threshold():
+    assert hot_poll.DEADLINE_S < _PHONE_HUNG_S
+
+
+def _hang_second_call(release: threading.Event, returned: threading.Event):
+    """A step that answers at once the first time and hangs from then on.
+
+    ``returned`` is set when the hung call finally gives up waiting.
+    """
     calls = {"n": 0}
 
     def step(*_args, **_kwargs):
         calls["n"] += 1
         if calls["n"] > 1:
             release.wait(_HANG_S)
+            returned.set()
         return None
 
     return step
 
 
-async def _get_twice(app, path: str, release: threading.Event):
+async def _get_twice(app, path: str, release: threading.Event, returned: threading.Event):
+    """Both answers, and whether the second came back with the step still hung."""
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-        first = (await client.get(path)).json()
-        started = time.perf_counter()
-        second = (await client.get(path)).json()
-        elapsed = time.perf_counter() - started
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            first = (await client.get(path)).json()
+            second = (await client.get(path)).json()
+            still_hung = not returned.is_set()
+            return first, second, still_hung
+    finally:
         release.set()
-        return first, second, elapsed
 
 
 def test_sessions_poll_answers_stale_within_bound_while_a_step_hangs(
@@ -61,17 +79,17 @@ def test_sessions_poll_answers_stale_within_bound_while_a_step_hangs(
 
     _, app, overrides = webapp_client
     overrides["session"].list_sessions.return_value = _LIVE
-    release = threading.Event()
+    release, returned = threading.Event(), threading.Event()
     monkeypatch.setattr(
-        sessions_router, "attach_provider_web_urls", _hang_second_call(release)
+        sessions_router, "attach_provider_web_urls", _hang_second_call(release, returned)
     )
 
     with caplog.at_level(logging.INFO, logger=_SLOW_LOGGER):
-        first, second, elapsed = asyncio.run(
-            _get_twice(app, "/api/claude-code/sessions", release)
+        first, second, still_hung = asyncio.run(
+            _get_twice(app, "/api/claude-code/sessions", release, returned)
         )
 
-    assert elapsed < _BOUND_S, f"sessions poll took {elapsed:.1f}s behind a hung step"
+    assert still_hung, "the sessions poll waited for the hung step to give up"
     assert first["stale"] is False
     assert second["stale"] is True
     assert [s["session_id"] for s in second["sessions"]] == ["abc-123"]
@@ -86,15 +104,17 @@ def test_board_poll_answers_stale_within_bound_while_a_step_hangs(
 
     _, app, overrides = webapp_client
     overrides["session"].list_sessions.return_value = _LIVE
-    release = threading.Event()
+    release, returned = threading.Event(), threading.Event()
     monkeypatch.setattr(
-        board_router, "attach_provider_web_urls", _hang_second_call(release)
+        board_router, "attach_provider_web_urls", _hang_second_call(release, returned)
     )
 
     with caplog.at_level(logging.INFO, logger=_SLOW_LOGGER):
-        first, second, elapsed = asyncio.run(_get_twice(app, "/api/board", release))
+        first, second, still_hung = asyncio.run(
+            _get_twice(app, "/api/board", release, returned)
+        )
 
-    assert elapsed < _BOUND_S, f"board poll took {elapsed:.1f}s behind a hung step"
+    assert still_hung, "the board poll waited for the hung step to give up"
     assert first["stale"] is False
     assert second["stale"] is True
     assert second["generated_at"] == first["generated_at"]
@@ -113,17 +133,18 @@ def test_sessions_poll_is_not_starved_by_a_full_default_executor(webapp_client):
         loop = asyncio.get_running_loop()
         loop.set_default_executor(ThreadPoolExecutor(max_workers=2))
         hogs = [loop.run_in_executor(None, release.wait, _HANG_S) for _ in range(4)]
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
-            started = time.perf_counter()
-            body = (await client.get("/api/claude-code/sessions")).json()
-            elapsed = time.perf_counter() - started
-        release.set()
-        await asyncio.gather(*hogs)
-        return body, elapsed
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+                body = (await client.get("/api/claude-code/sessions")).json()
+            hogs_still_busy = not any(hog.done() for hog in hogs)
+        finally:
+            release.set()
+            await asyncio.gather(*hogs)
+        return body, hogs_still_busy
 
-    body, elapsed = asyncio.run(run())
-    assert elapsed < _BOUND_S, f"sessions poll waited {elapsed:.1f}s for a default-executor thread"
+    body, hogs_still_busy = asyncio.run(run())
+    assert hogs_still_busy, "the sessions poll waited for a default-executor thread"
     assert body["stale"] is False
 
 
