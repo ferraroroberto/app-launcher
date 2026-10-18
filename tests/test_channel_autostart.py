@@ -118,7 +118,7 @@ class TestAutostart:
             assert spawn.agent == "claude" and spawn.kind == "pty"
             # A fresh launch into the skill, never the /resume picker.
             assert spawn.flags.split()[-1] == "/journal-daily"
-            assert f"--model {boot.cfg.claude_model}" in spawn.flags
+            assert f"--model {boot.cfg.channel_model}" in spawn.flags
         # Nobody asked from a browser: no PC mirror window, audited as such.
         assert boot.mirrored == []
         clients = {
@@ -129,6 +129,20 @@ class TestAutostart:
         log = _messages(caplog)
         assert "profile garden started in session sid-1" in log
         assert "profile kitchen started in session sid-2" in log
+
+    def test_starts_on_the_channel_model_not_the_global_one(self, boot):
+        boot.cfg.claude_model = "opus"
+        assert boot.run() == ["garden", "kitchen"]
+        for spawn in boot.spawned:
+            assert "--model sonnet" in spawn.flags
+            assert "--model opus" not in spawn.flags
+
+    def test_a_configured_channel_model_is_used(self, boot):
+        boot.cfg.channel_model = "opus"
+        boot.cfg.claude_model = "sonnet"
+        assert boot.run() == ["garden", "kitchen"]
+        for spawn in boot.spawned:
+            assert "--model opus" in spawn.flags
 
     def test_a_running_profile_is_left_alone(self, boot, caplog):
         boot.live.append({"session_id": "already-1", "label": "telegram:garden",

@@ -42,6 +42,7 @@
   "context_filter_mode_file": "",
   "context_filter_log_file": "",
   "claude_model": "opus",
+  "channel_model": "sonnet",
   "claude_effort": "high",
   "claude_verbose": true,
   "claude_debug": false,
