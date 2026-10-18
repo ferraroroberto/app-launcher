@@ -153,49 +153,51 @@ class TestSettingsFile:
 
 
 # ------------------------------------------------------------------ routes
+@pytest.fixture
+def _bypass_gate(monkeypatch):
+    from app.webapp import middleware
+    monkeypatch.setattr(
+        middleware,
+        "LOOPBACK_HOSTS",
+        frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
+    )
+
+
+@pytest.fixture
+def channels(_bypass_gate, life_os_client, tmp_path, monkeypatch):  # noqa: F811
+    """A client with two profiles (one skill exists) and a recording spawn."""
+    client, app, _ = life_os_client
+    monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", (tmp_path / "data").as_posix())
+    health = _state_dir(tmp_path, "tg-health")
+    school = _state_dir(tmp_path, "tg-school")
+    app.state.channel_profiles_path = _write_profiles(tmp_path / "p.json", [
+        {"id": "health", "label": "Health", "skill": "journal-daily",
+         "state_dir": health},
+        {"id": "school", "label": "School", "skill": "journal-daily",
+         "state_dir": school},
+    ])
+    from app.webapp.routers import life_os_channels, life_os_spawn
+    spawned: list = []
+
+    def fake_spawn(project_dir, name, flags, port, kind, agent,
+                   rows=40, cols=120, history_lines=None, label=""):
+        spawned.append(SimpleNamespace(flags=flags, kind=kind, agent=agent,
+                                       label=label))
+        sid = f"sid-{len(spawned)}"
+        live.append({"session_id": sid, "label": label, "name": name,
+                     "alive": True})
+        return {"session_id": sid, "kind": kind}
+
+    live: list = []
+    monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
+    life_os_channels.session_client.list_sessions.side_effect = (
+        lambda port: list(live)
+    )
+    return SimpleNamespace(client=client, app=app, spawned=spawned,
+                           live=live, health=health, school=school)
+
+
 class TestChannelRoutes:
-    @pytest.fixture(autouse=True)
-    def _bypass_gate(self, monkeypatch):
-        from app.webapp import middleware
-        monkeypatch.setattr(
-            middleware,
-            "LOOPBACK_HOSTS",
-            frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
-        )
-
-    @pytest.fixture
-    def channels(self, life_os_client, tmp_path, monkeypatch):  # noqa: F811
-        """A client with two profiles (one skill exists) and a recording spawn."""
-        client, app, _ = life_os_client
-        monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", (tmp_path / "data").as_posix())
-        health = _state_dir(tmp_path, "tg-health")
-        school = _state_dir(tmp_path, "tg-school")
-        app.state.channel_profiles_path = _write_profiles(tmp_path / "p.json", [
-            {"id": "health", "label": "Health", "skill": "journal-daily",
-             "state_dir": health},
-            {"id": "school", "label": "School", "skill": "journal-daily",
-             "state_dir": school},
-        ])
-        from app.webapp.routers import life_os_channels, life_os_spawn
-        spawned: list = []
-
-        def fake_spawn(project_dir, name, flags, port, kind, agent,
-                       rows=40, cols=120, history_lines=None, label=""):
-            spawned.append(SimpleNamespace(flags=flags, kind=kind, agent=agent,
-                                           label=label))
-            sid = f"sid-{len(spawned)}"
-            live.append({"session_id": sid, "label": label, "name": name,
-                         "alive": True})
-            return {"session_id": sid, "kind": kind}
-
-        live: list = []
-        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
-        life_os_channels.session_client.list_sessions.side_effect = (
-            lambda port: list(live)
-        )
-        return SimpleNamespace(client=client, app=app, spawned=spawned,
-                               live=live, health=health, school=school)
-
     def test_launch_starts_skill_with_channel_flags_and_label(self, channels):
         resp = channels.client.post(
             "/api/life-os/channels/health/launch", json={"model": "sonnet"}
@@ -308,6 +310,205 @@ class TestChannelRoutes:
         life_os_channels.session_client.list_sessions.side_effect = err("down")
         rows = channels.client.get("/api/life-os/channels").json()["profiles"]
         assert all(p["running"] is None for p in rows)
+
+
+class TestChannelRestart:
+    """Restart (#1675): quit, confirmed gone, one fresh start, under the
+    profile's lock. A fake session-host only: no real session is touched."""
+
+    @pytest.fixture
+    def host(self, channels, monkeypatch):
+        """The fake host's stop/get on ``channels.live``, one running session
+        on ``health``, and every call recorded in order."""
+        from app.webapp.routers import life_os_channels, life_os_spawn
+        client_mod = life_os_channels.session_client
+        monkeypatch.setattr(life_os_channels, "_launch_locks", {})
+        monkeypatch.setattr(life_os_channels, "RESTART_QUIT_WAIT_SECONDS", 0.2)
+        monkeypatch.setattr(life_os_channels, "RESTART_KILL_WAIT_SECONDS", 0.2)
+        monkeypatch.setattr(life_os_channels, "RESTART_POLL_SECONDS", 0.01)
+        events: list = []
+        state = SimpleNamespace(events=events, dies_on={"quit"}, get_error=None)
+        monkeypatch.setattr(
+            life_os_channels, "close_mirror_window",
+            lambda sid: events.append(("mirror-close", sid)) or True,
+        )
+
+        def find(sid):
+            return next((s for s in channels.live if s["session_id"] == sid), None)
+
+        def stop(port, sid, mode="quit"):
+            events.append(("stop", mode, sid))
+            if mode in state.dies_on and find(sid):
+                find(sid)["alive"] = False
+            return {"stopped": True}
+
+        def get_session(port, sid):
+            events.append(("get", sid))
+            if state.get_error is not None:
+                raise state.get_error
+            sess = find(sid)
+            if sess is None:
+                raise client_mod.SessionHostError("unknown session", status=404)
+            return dict(sess)
+
+        client_mod.stop.side_effect = stop
+        client_mod.get_session.side_effect = get_session
+        spawn = life_os_spawn.spawn_claude_session
+
+        def recording_spawn(*args, **kwargs):
+            events.append(("spawn",))
+            return spawn(*args, **kwargs)
+
+        monkeypatch.setattr(life_os_spawn, "spawn_claude_session", recording_spawn)
+        channels.live.append({"session_id": "old-1", "label": "telegram:health",
+                              "name": "journal-daily", "alive": True})
+        state.channels = channels
+        state.lock = lambda: life_os_channels._launch_locks.get("health")
+        return state
+
+    def _restart(self, host):
+        return host.channels.client.post(
+            "/api/life-os/channels/health/restart", json={}
+        )
+
+    def test_quit_then_confirmed_gone_then_one_start(self, host):
+        resp = self._restart(host)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["restarted"] is True
+        kinds = [e[0] for e in host.events]
+        assert kinds[:2] == ["mirror-close", "stop"]
+        assert host.events[1] == ("stop", "quit", "old-1")
+        assert kinds.index("get") < kinds.index("spawn")
+        assert kinds.count("spawn") == 1 and kinds[-1] == "spawn"
+        (spawn,) = host.channels.spawned
+        assert spawn.label == "telegram:health"
+        from app.webapp.routers import life_os_channels
+        (call,) = [c for c in life_os_channels.audit.audit_event.call_args_list
+                   if c.args[:1] == ("channel_restart",)]
+        assert call.kwargs["old_session"] == "old-1"
+        assert call.kwargs["session"] == "sid-1"
+
+    def test_restart_uses_the_channel_model_whatever_the_body_says(self, host):
+        host.channels.app.state.webapp_config.claude_model = "opus"
+        resp = host.channels.client.post(
+            "/api/life-os/channels/health/restart", json={"model": "opus"}
+        )
+        assert resp.status_code == 200, resp.text
+        (spawn,) = host.channels.spawned
+        assert "--model sonnet" in spawn.flags
+
+    def test_a_rewritten_skill_is_read_fresh_not_resumed(self, host):
+        """The acceptance check: after a SKILL.md change, Restart's launch is
+        ``/<command>`` with no resume, so Claude reads the current file."""
+        life_os = Path(host.channels.app.state.webapp_config.life_os_dir)
+        skill_md = life_os / ".claude" / "skills" / "journal-daily" / "SKILL.md"
+        skill_md.write_text(
+            skill_md.read_text(encoding="utf-8") + "\nA new step.\n",
+            encoding="utf-8",
+        )
+        assert self._restart(host).status_code == 200
+        (spawn,) = host.channels.spawned
+        assert spawn.flags.split()[-1] == "/journal-daily"
+        assert "--resume" not in spawn.flags and "/resume" not in spawn.flags
+
+    def test_a_quit_that_does_not_land_escalates_to_one_kill(self, host):
+        host.dies_on = {"kill"}
+        resp = self._restart(host)
+        assert resp.status_code == 200, resp.text
+        stops = [e[1] for e in host.events if e[0] == "stop"]
+        assert stops == ["quit", "kill"]
+        assert len(host.channels.spawned) == 1
+
+    def test_still_alive_after_the_kill_is_a_502_and_nothing_starts(self, host):
+        host.dies_on = set()
+        resp = self._restart(host)
+        assert resp.status_code == 502
+        assert "not started again" in resp.json()["detail"]
+        assert host.channels.spawned == []
+        assert [e[1] for e in host.events if e[0] == "stop"] == ["quit", "kill"]
+
+    def test_host_unreachable_at_the_check_is_a_503_and_nothing_stops(self, host):
+        from app.webapp.routers import life_os_channels
+        err = life_os_channels.session_client.SessionHostError
+        life_os_channels.session_client.list_sessions.side_effect = err("down")
+        resp = self._restart(host)
+        assert resp.status_code == 503
+        assert host.events == []
+        assert host.channels.spawned == []
+
+    def test_host_lost_while_polling_is_a_502_and_nothing_starts(self, host):
+        from app.webapp.routers import life_os_channels
+        host.dies_on = set()
+        host.get_error = life_os_channels.session_client.SessionHostError(
+            "session-host unreachable", status=503
+        )
+        resp = self._restart(host)
+        assert resp.status_code == 502
+        assert "stopped answering" in resp.json()["detail"]
+        assert host.channels.spawned == []
+
+    def test_restarting_a_stopped_profile_starts_it_once(self, host):
+        host.channels.live.clear()
+        resp = self._restart(host)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["restarted"] is False
+        assert [e for e in host.events if e[0] == "stop"] == []
+        assert len(host.channels.spawned) == 1
+
+    def test_unknown_profile_is_a_404(self, host):
+        resp = host.channels.client.post(
+            "/api/life-os/channels/nope/restart", json={}
+        )
+        assert resp.status_code == 404
+        assert host.events == []
+
+    def test_a_launch_during_a_restart_waits_then_gets_409(self, host):
+        """The Launch arrives while the quit is in flight: it waits on the
+        profile's lock, then sees the fresh session and is refused."""
+        import asyncio
+        import threading
+        import time as _time
+
+        import httpx
+
+        waited = threading.Event()
+        from app.webapp.routers import life_os_channels
+        fake_stop = life_os_channels.session_client.stop.side_effect
+
+        def slow_stop(port, sid, mode="quit"):
+            # Hold the quit until the Launch is queued on the lock.
+            deadline = _time.monotonic() + 5
+            while _time.monotonic() < deadline:
+                lock = host.lock()
+                if lock is not None and getattr(lock, "_waiters", None):
+                    waited.set()
+                    break
+                _time.sleep(0.01)
+            return fake_stop(port, sid, mode)
+
+        life_os_channels.session_client.stop.side_effect = slow_stop
+
+        async def go():
+            transport = httpx.ASGITransport(app=host.channels.app)
+            async with httpx.AsyncClient(
+                transport=transport, base_url="http://test"
+            ) as c:
+                restart = asyncio.create_task(
+                    c.post("/api/life-os/channels/health/restart", json={})
+                )
+                # The Restart holds the lock once its quit is in flight.
+                while not any(e[0] == "mirror-close" for e in host.events):
+                    await asyncio.sleep(0.01)
+                launch = asyncio.create_task(
+                    c.post("/api/life-os/channels/health/launch", json={})
+                )
+                return await restart, await launch
+
+        restart, launch = asyncio.run(go())
+        assert waited.is_set(), "the Launch never queued on the profile's lock"
+        assert restart.status_code == 200, restart.text
+        assert launch.status_code == 409, launch.text
+        assert len(host.channels.spawned) == 1
 
 
 # ------------------------------------------------------------- setup checks

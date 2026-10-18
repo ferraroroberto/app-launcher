@@ -317,11 +317,13 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
     ),
     (
         lambda p: (
-            p.startswith("/api/life-os/channels/") and p.endswith("/launch")
+            p.startswith("/api/life-os/channels/")
+            and (p.endswith("/launch") or p.endswith("/restart"))
         ),
         "passkey",
-        "Life OS Telegram channel launch (#1366): spawns a coding session with "
-        "a chat bot attached, so it is terminal-grade like the skill launch "
+        "Life OS Telegram channel launch (#1366) and restart (#1675): each "
+        "spawns a coding session with a chat bot attached (a restart stops the "
+        "old one first), so they are terminal-grade like the skill launch "
         "above. The profile list (GET /api/life-os/channels) carries no path or "
         "secret and stays token-gated.",
     ),
