@@ -435,9 +435,12 @@ export function wireSettingsSheets() {
     // Closed some other way (a browser forcing a repeated Escape through):
     // nothing is left open, so forget the path. The event is queued, so by
     // the time it runs after this module's own close the path has moved on
-    // and its top is another sheet, or nothing.
+    // and its top is another sheet, or nothing. It can also be stale for the
+    // top sheet itself: Back reopens the parent, and the parent's earlier
+    // close event may land after that. An open dialog was not closed (#1677),
+    // or the path would be wiped under a sheet that is still showing.
     d.addEventListener('close', function () {
-      if (stack[stack.length - 1] !== d.id) return;
+      if (d.open || stack[stack.length - 1] !== d.id) return;
       stack.length = 0;
       renderSettingsValues();
     });
