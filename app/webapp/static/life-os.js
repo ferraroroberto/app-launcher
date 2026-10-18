@@ -201,9 +201,11 @@ function openChannelSession(p) {
   handleLaunchResponse({ session_id: p.session_id, kind: 'pty', name: p.label });
 }
 
-// Start a stopped bot. The toolbar applies as to any skill launch: its model,
-// and Resume reopens the session picker. A Telegram session is a terminal on
-// the phone, so there is no detached form (the server refuses it): say so
+// Start a stopped bot. It sends no model, so the server's channel_model
+// applies (#1673): a bot runs for days, and a toolbar left on another model
+// from an interactive run would quietly become the bot's. The toolbar's
+// Resume still reopens the session picker. A Telegram session is a terminal
+// on the phone, so there is no detached form (the server refuses it): say so
 // instead of silently ignoring the switch.
 async function launchChannel(p) {
   if (launchDetached()) {
@@ -211,8 +213,7 @@ async function launchChannel(p) {
     return;
   }
   const resume = launchResume();
-  const model = lifeOsModel();
-  const payload = { mode: 'pty', model: model, resume: resume };
+  const payload = { mode: 'pty', resume: resume };
   applyLaunchSizePayload(payload);
   try {
     const body = await terminalJsonApi(
@@ -220,7 +221,7 @@ async function launchChannel(p) {
       { method: 'POST', body: payload }
     );
     toast(
-      (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram' + modelTag(model),
+      (resume ? 'Resumed ' : 'Launched ') + p.label + ' on Telegram',
       'good',
       { icon: resume ? 'rotate-ccw' : 'send-horizontal' }
     );
