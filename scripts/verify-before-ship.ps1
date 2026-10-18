@@ -179,17 +179,26 @@ try {
         $e2eMutexAcquired = $false
         if ($route.Serialize) {
             $e2eMutex = New-Object System.Threading.Mutex($false, $e2eMutexName)
-            $e2eMutexAcquired = $e2eMutex.WaitOne(0)
+            # A holder that died without releasing hands the mutex to the next
+            # waiter as AbandonedMutexException; Wait-E2EGateMutex turns that
+            # into "acquired" (#1682) so it is logged, not an aborted gate.
+            $e2eWait = Wait-E2EGateMutex -Mutex $e2eMutex -Timeout ([TimeSpan]::Zero)
+            $e2eMutexAcquired = $e2eWait.Acquired
             if (-not $e2eMutexAcquired) {
                 Phase "e2e gate: queued behind another dual-projection gate run (waiting on $e2eMutexName)..."
                 Log-Progress "e2e gate: queued -- another verify-before-ship dual-projection e2e run holds $e2eMutexName"
-                $e2eMutexAcquired = $e2eMutex.WaitOne([TimeSpan]::FromMinutes(30))
+                $e2eWait = Wait-E2EGateMutex -Mutex $e2eMutex -Timeout ([TimeSpan]::FromMinutes(30))
+                $e2eMutexAcquired = $e2eWait.Acquired
                 if (-not $e2eMutexAcquired) {
                     $e2eMutex.Dispose()
                     Fail ("Timed out after 30 min waiting for another dual-projection e2e gate run to release " +
                           "$e2eMutexName -- check for a stuck/hung gate elsewhere on this machine (issue #685).")
                 }
-                Log-Progress "e2e gate: acquired $e2eMutexName after queueing"
+                if (-not $e2eWait.Abandoned) { Log-Progress "e2e gate: acquired $e2eMutexName after queueing" }
+            }
+            if ($e2eWait.Abandoned) {
+                Phase "e2e gate: the previous holder of $e2eMutexName ended without releasing it; taking over (#1682)."
+                Log-Progress "e2e gate: abandoned mutex -- previous holder of $e2eMutexName exited without releasing it; acquired it"
             }
         }
 
