@@ -60,6 +60,7 @@ from tests._credential_hygiene import (
     disposable_webapp_config,
     register_secret,
 )
+from tests.e2e._autoboot_env import runtime_data_env
 from tests.e2e._browser_sweep import sweep_browser_helpers
 # Tree-aware stop of the disposable servers + the stub-child reap (#1335).
 from tests.e2e._process_teardown import reap_stub_children
@@ -628,6 +629,15 @@ def _autoboot_server(
     # asserts nothing marked as ours reached the real directory.
     uploads_root = tmp_path_factory.mktemp("upload-root")
 
+    # Runtime-data isolation (issue #1685): the webapp mounts the usage log on
+    # `runtime_db_path("app-launcher", ...)`, which with no override resolves
+    # the real runtime-data folder, so every gate run wrote its browser
+    # traffic (both projections, in bursts) into the file the owner's own
+    # visits land in. A per-run temp folder keeps it, and every other runtime
+    # file under that app directory, out of the real store. Webapp only: the
+    # session-host's import closure never reads runtime data.
+    runtime_data_dir = tmp_path_factory.mktemp("runtime-data")
+
     # Lightweight-child shim (issue #534): only the DISPOSABLE session-host
     # gets the shim on PATH — the pytest process and the live tray keep the
     # real resolution, so `shutil.which("claude")` in the fixtures below
@@ -695,6 +705,7 @@ def _autoboot_server(
                     _WEBAPP_CONFIG_PATH_ENV: str(cfg_copy),
                     _STARTUP_DIR_ENV: str(startup_dir),
                     _AUDIT_DIR_ENV: str(audit_dir),
+                    **runtime_data_env(runtime_data_dir),
                     GH_CMD_ENV: _SYNTHETIC_GH_CMD,
                     # The Screen view's input is recorded, never sent: the
                     # gate runs on the owner's desktop (#1521).
