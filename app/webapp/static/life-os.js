@@ -344,7 +344,7 @@ function launchMenuItems(s) {
       dataset: { item: 'lifeos-start-new-btn' }, glyph: 'circle-plus',
       label: 'Start new conversation',
       ariaLabel: 'Start a new conversation with ' + s.name,
-      onTap: function () { launchSkill(s, { fresh: true }); },
+      onTap: function () { launchSkill(s); },
     },
     {
       dataset: { item: 'lifeos-pin-btn' }, glyph: 'pin',
@@ -381,10 +381,11 @@ export function renderSkills() {
   host.classList.toggle('is-unfolded', skillsUnfolded);
 
   function addRow(s, isFolded) {
-    // Tapping the row launches the skill (#1128, the action-row contract):
-    // a fresh conversation that auto-invokes /<skill>, or the session picker
-    // with the toolbar's Resume on. The avatar leads (a running Telegram bot
-    // is its green badge); everything else is in the one trailing kebab.
+    // Tapping the row opens the skill's Conversations list (#1691): most taps
+    // want an older conversation, and a tap that started a session left an
+    // empty one to close. Start new sits in that list; the swipe's New and the
+    // kebab's first items still start one in a gesture. The avatar leads (a
+    // running Telegram bot is its green badge); the rest is in the kebab.
     const profiles = skillProfiles(s);
     const alive = profiles.some(function (p) { return p.running === true; });
     const due = profiles.some(function (p) { return p.restart_due === true; });
@@ -395,8 +396,8 @@ export function renderSkills() {
       meta: lastUsedMeta(s) + (profiles.length ? ' · Telegram' : '') +
         (due ? ' · restart due' : ''),
       avatar: skillAvatar(s, alive),
-      label: 'Launch ' + s.name,
-      onMain: function () { launchSkill(s); },
+      label: 'Conversations with ' + s.name,
+      onMain: function () { openConvos(s); },
       kebabClass: 'lifeos-menu-anchor',
       kebabLabel: 'Skill actions',
       // Swipe right resumes the newest conversation (the frequent one, so
@@ -411,7 +412,7 @@ export function renderSkills() {
         },
         trailing: {
           label: 'New', glyph: 'circle-plus', tone: 'neutral',
-          onCommit: function () { launchSkill(s, { fresh: true }); },
+          onCommit: function () { launchSkill(s); },
         },
       },
     });
@@ -613,18 +614,15 @@ async function launchRecap() {
   }
 }
 
-// opts.fresh (#1503): a new conversation whatever the Resume switch says —
-// the kebab's "Start new conversation" and the swipe's New are explicit.
-async function launchSkill(s, opts) {
-  // Resume (issue #151) reopens Claude's session picker, dropping the
-  // /<skill> prompt. Detached and Resume are orthogonal (issue #157,
-  // matching the Coding tab): Detached → 'remote' independent of Resume, so
-  // a Detached+Resume launch renders the picker in the detached console
-  // while Resume alone streams it to the phone over a PTY.
-  const resume = !(opts && opts.fresh) && launchResume();
+// A new conversation with the skill (#1503): the kebab's "Start new
+// conversation", the swipe's New and the Conversations list's Start new. It
+// ignores the Resume switch, and since #1691 nothing else launches a skill:
+// the row's tap opens its Conversations list, so Claude's own session picker
+// is no longer reachable from a skill row (a Telegram bot still honours it).
+async function launchSkill(s) {
   const mode = launchDetached() ? 'remote' : 'pty';
   const model = lifeOsModel();
-  const payload = { mode: mode, model: model, resume: resume };
+  const payload = { mode: mode, model: model, resume: false };
   // Same size contract as launchRecap (issue #374, #126, #241). Remote
   // launches have no terminal/mirror, so it only matters for pty.
   if (mode !== 'remote') applyLaunchSizePayload(payload);
@@ -635,10 +633,10 @@ async function launchSkill(s, opts) {
       { method: 'POST', body: payload }
     );
     toast(
-      (resume ? 'Resumed ' : 'Launched ') + s.name +
-        modelTag(model) + (mode === 'remote' ? ' (detached)' : ''),
+      'Launched ' + s.name + modelTag(model) +
+        (mode === 'remote' ? ' (detached)' : ''),
       'good',
-      { icon: resume ? 'rotate-ccw' : 'sprout' }
+      { icon: 'sprout' }
     );
     // Full-control sessions drop straight into the terminal; detached
     // ones only appear in the Coding tab's running-sessions list. A
@@ -1113,7 +1111,7 @@ function syncStartNew() {
   else btn.setAttribute('aria-haspopup', 'dialog');
 }
 
-// Start new through the kebab's path (launchSkill's opts.fresh), so the
+// Start new through the kebab's path (launchSkill), so the
 // toolbar's model, Detached and the terminal size apply exactly as there. The
 // search text is not sent: it only narrows what the owner is looking for.
 function startNewFromSearch() {
@@ -1121,7 +1119,7 @@ function startNewFromSearch() {
     const skill = (state.lifeOsSkills || []).find(function (s) {
       return s.id === convoScope.id;
     }) || { id: convoScope.id, name: convoScope.name };
-    launchSkill(skill, { fresh: true });
+    launchSkill(skill);
     return;
   }
   openStartPicker();
@@ -1145,7 +1143,7 @@ function openStartPicker() {
       row.appendChild(label);
       row.addEventListener('click', function () {
         d.close();
-        launchSkill(s, { fresh: true });
+        launchSkill(s);
       });
       return row;
     }));

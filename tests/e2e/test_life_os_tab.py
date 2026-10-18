@@ -2,7 +2,7 @@
 
 Browser-side coverage: the tab renders skill tiles from
 ``/api/life-os/skills``, the model combo + ``☁️ Detached`` toggle are wired,
-and tapping launch POSTs ``/api/life-os/skills/<id>/launch`` with the
+and a kebab Start new conversation POSTs ``/api/life-os/skills/<id>/launch`` with the
 combo/toggle state — proving the bare ``/skill`` launch path is reached with
 the right model/mode. Hermetic via route-mocks, like the Jobs e2e tests.
 
@@ -180,10 +180,11 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
 
 def _launch_journal_daily(
     page: Page, base_url: str, *, model: str | None = None,
-    detached: bool = False, resume: bool = False,
+    detached: bool = False,
 ) -> dict:
-    """Open the Life OS tab, set the model/Detached/Resume controls, tap the
-    journal-daily tile's launch, and return the POSTed launch payload. The
+    """Open the Life OS tab, set the model/Detached controls, tap the
+    journal-daily kebab's Start new conversation (a row tap opens the
+    Conversations list since #1691), and return the POSTed launch payload. The
     mocked response is ``kind=remote`` so the client never opens a terminal
     overlay against the fake sid — ``launchSkill`` reads only ``body.session``,
     so the request payload is the whole observable."""
@@ -217,11 +218,8 @@ def _launch_journal_daily(
         page.locator(f"#lifeOsModelMenu button[data-value='{model}']").click()
     if detached:
         life_launch_switch(page, "#lifeOsDetached")
-    if resume:
-        life_launch_switch(page, "#lifeOsResume")
 
-    tile = page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily']")
-    tile.locator(".action-row-main").click()
+    _skill_menu_item(page, "journal-daily", "[data-item=lifeos-start-new-btn]").click()
 
     # Wait for the launch route to capture the POST body.
     wait_until(page, lambda: "body" in captured, "the launch POST")
@@ -262,18 +260,65 @@ def test_life_os_pty_launch_carries_terminal_size(
         assert payload.get("rows", 0) >= 10 and payload.get("cols", 0) >= 20
 
 
-def test_life_os_detached_resume_posts_remote_console(
+@pytest.mark.iphone
+def test_life_os_row_tap_opens_conversations_and_starts_nothing(
     authed_page: Page, base_url: str
 ) -> None:
-    """Regression for #239: Detached and Resume are orthogonal on the Life OS
-    tab (matching the Coding tab, #157). Flipping both must POST
-    ``mode: remote`` AND ``resume: true`` — the picker renders in the detached
-    console — rather than Resume silently forcing a streamed PTY."""
-    payload = _launch_journal_daily(
-        authed_page, base_url, detached=True, resume=True,
-    )
-    assert payload.get("mode") == "remote", payload
-    assert payload.get("resume") is True, payload
+    """#1691: a skill row's tap opens that skill's Conversations list and
+    starts no session (no /launch request, whatever the Resume switch says);
+    the list's Start new then starts a fresh one."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(page)
+    launches = _mock_skill_launches(page)
+    _open_life(page, base_url)
+    life_launch_switch(page, "#lifeOsDetached")
+    life_launch_switch(page, "#lifeOsResume")
+
+    row = page.locator("#lifeOsList li.lifeos-item[data-id='journal-daily']")
+    expect(row.locator(".action-row-main")).to_have_attribute(
+        "aria-label", "Conversations with journal-daily")
+    row.locator(".action-row-main").click()
+
+    expect(page.locator("#lifeOsConvoGroup")).to_be_visible(timeout=5_000)
+    expect(_convo_rows(page).first).to_be_visible()
+    expect(page.locator("#lifeOsConvoScope")).to_contain_text("journal-daily")
+    flush_requests(page)
+    assert launches == [], launches
+
+    page.locator("#lifeOsConvoStartNew").click()
+    wait_until(page, lambda: len(launches) == 1, "the Start new launch")
+    assert launches[0] == (
+        "journal-daily", {"mode": "remote", "model": "claude:sonnet", "resume": False}
+    ), launches
+
+
+@pytest.mark.iphone
+def test_life_os_row_tap_on_a_skill_with_no_conversations_offers_start_new(
+    authed_page: Page, base_url: str
+) -> None:
+    """#1691: a skill with no conversations yet opens the same list, empty,
+    with Start new as the way to the first one."""
+    page = authed_page
+    _mock_skills(page)
+    _mock_conversations(
+        page, {"skill": "journal-daily", "available": True, "conversations": []})
+    launches = _mock_skill_launches(page)
+    _open_life(page, base_url)
+
+    page.locator(
+        "#lifeOsList li.lifeos-item[data-id='journal-daily'] .action-row-main"
+    ).click()
+
+    expect(page.locator("#lifeOsConvoGroup")).to_be_visible(timeout=5_000)
+    expect(_convo_rows(page)).to_have_count(0)
+    start = page.locator("#lifeOsConvoStartNew")
+    expect(start).to_be_visible()
+    assert launches == [], launches
+    life_launch_switch(page, "#lifeOsDetached")
+    start.click()
+    wait_until(page, lambda: len(launches) == 1, "the Start new launch")
+    assert launches[0][0] == "journal-daily", launches
 
 
 @pytest.mark.iphone
@@ -2179,8 +2224,8 @@ def test_life_os_launch_sends_terminal_token(
     # Detached → remote, so the mocked response opens no terminal overlay.
     life_launch_switch(authed_page, "#lifeOsDetached")
     if target == "skill":
-        authed_page.locator(
-            "#lifeOsList li.lifeos-item[data-id='journal-daily'] .action-row-main"
+        _skill_menu_item(
+            authed_page, "journal-daily", "[data-item=lifeos-start-new-btn]"
         ).click()
     else:
         expect(authed_page.locator("#lifeOsRecap")).to_be_visible()
