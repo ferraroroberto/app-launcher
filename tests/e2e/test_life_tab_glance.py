@@ -237,7 +237,9 @@ def test_the_kebab_starts_or_opens_the_linked_bot(life) -> None:
     assert launches[0]["url"].endswith("/api/life-os/channels/allotment/launch")
     assert launches[0]["body"]["mode"] == "pty"
     assert launches[0]["body"]["resume"] is False
-    assert launches[0]["body"]["model"] == "claude:sonnet"
+    # No model: the server's channel_model applies, whatever the toolbar
+    # says (#1673, #1675).
+    assert "model" not in launches[0]["body"]
 
     # Detached on: refused, as before (a Telegram session is a terminal).
     life_launch_switch(page, "#lifeOsDetached")
