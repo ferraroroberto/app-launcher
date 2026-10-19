@@ -137,6 +137,10 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     # "<day> · <Cadence>" (the cadence's first letter lifted). Since #1505 they
     # are three distinct jobs: Alpha's 18:00 folds into its row as "also
     # 18:00", and its fire the next day is not a row of its own.
+    # While the schedule loads the card already holds three id-less
+    # placeholder rows (#1641), so the count alone is met before the real rows
+    # exist: wait for the card to settle, then read them (#1727).
+    expect(authed_page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "ready")
     nxt = authed_page.locator("#jobsNextUpList li.jobs-fire-row")
     expect(nxt).to_have_count(3)
     assert nxt.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta", "kappa"]
@@ -220,10 +224,12 @@ def test_agenda_day_labels_hold_across_local_midnight(
     _wire(authed_page, agenda=agenda, now=late)
     _open_agenda(authed_page, base_url)
 
-    assert _day_headers(authed_page) == ["Today", "Tomorrow"]
+    expect(authed_page.locator("#jobsAgendaBody .jobs-agenda-day")).to_have_text(
+        ["Today", "Tomorrow"])
 
-    ids = authed_page.eval_on_selector_all(
-        "#jobsAgendaBody .jobs-fire-row", "els => els.map(e => e.dataset.jobId)")
+    rows = authed_page.locator("#jobsAgendaBody .jobs-fire-row")
+    expect(rows).to_have_count(2)
+    ids = rows.evaluate_all("els => els.map(e => e.dataset.jobId)")
     assert ids == ["alpha", "zeta"]
     # Next up draws its day from the same clock (the meta line's first word).
     expect(authed_page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
