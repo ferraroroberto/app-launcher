@@ -30,6 +30,14 @@ the server answers with one JSON ``clipboard`` message that says whether it
 worked, never what was copied. The close audit line counts transfers by
 direction and records nothing of their content.
 
+Quality (#1721): the connect query's ``preset`` (sharp, balanced or saver;
+anything else is balanced) picks the JPEG quality, the pause between frames
+and a width cap from one table in :mod:`src.desktop_capture`. The client can
+switch a readout on with ``{"type": "readout", "on": true}``, a control
+message that is not input; while it is on, the server sends one JSON ``stats``
+message about once a second with the mean time of each capture stage
+(grab, digest, resize, encode, in ms), and nothing at all while it is off.
+
 Cursor (#1598): beside the frames, the server sends JSON ``cursor`` messages
 (position as 0-1 in the shown monitor, a shape name, visible or not) from
 :func:`src.desktop_cursor.stream_cursor`, whenever the cursor changed. It is
@@ -67,6 +75,10 @@ async def screen_monitors() -> Dict[str, Any]:
     return {"monitors": [m.to_dict() for m in monitors]}
 
 
+def _str_param(websocket: WebSocket, name: str) -> str:
+    return websocket.query_params.get(name, "").strip()
+
+
 def _int_param(websocket: WebSocket, name: str) -> Optional[int]:
     raw = websocket.query_params.get(name, "").strip()
     try:
@@ -81,10 +93,12 @@ async def _read_client(
     stopped: asyncio.Event,
     session: Optional[desktop_input.InputSession] = None,
     send: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
+    readout: Optional[asyncio.Event] = None,
 ) -> None:
-    """Turn the client's ``ack`` messages into ``acked`` and hand every other
-    text frame to ``session`` as input, in order; what handling it queues for
-    the phone (a clipboard transfer's outcome) goes out through ``send``. A
+    """Turn the client's ``ack`` messages into ``acked``, its readout switch
+    into ``readout`` (set while the readout is on), and hand every other text
+    frame to ``session`` as input, in order; what handling it queues for the
+    phone (a clipboard transfer's outcome) goes out through ``send``. A
     disconnect stops.
 
     Input runs off the loop: ``SendInput`` is quick, but a slow low-level
@@ -95,6 +109,13 @@ async def _read_client(
             text = await websocket.receive_text()
             if text == "ack":
                 acked.set()
+                continue
+            switch = desktop_capture.parse_readout(text)
+            if switch is not None:
+                if readout is not None and switch:
+                    readout.set()
+                elif readout is not None:
+                    readout.clear()
             elif session is not None:
                 await asyncio.to_thread(session.handle_text, text)
                 for reply in session.take_replies():
@@ -121,6 +142,28 @@ async def _stream_cursor(
         logger.warning("⚠️ Screen: cursor loop failed, cursor stays hidden: %s", exc)
 
 
+async def _stream_stats(
+    stats: desktop_capture.StageStats,
+    readout: asyncio.Event,
+    send: Callable[[Dict[str, Any]], Awaitable[None]],
+    stopped: asyncio.Event,
+) -> None:
+    """Once a second, send the capture stages' mean times, only while the
+    readout is on. The period is taken (and so reset) either way, so the first
+    message after a switch-on covers the last second, not the whole session."""
+    try:
+        while not stopped.is_set():
+            try:
+                await asyncio.wait_for(stopped.wait(), timeout=desktop_capture.STATS_INTERVAL_S)
+            except asyncio.TimeoutError:
+                pass
+            message = stats.take()
+            if message is not None and readout.is_set() and not stopped.is_set():
+                await send(message)
+    except (WebSocketDisconnect, RuntimeError, OSError) as exc:
+        logger.debug("Screen stats loop ended while sending: %s", exc)
+
+
 @router.websocket(WS_PATH)
 async def screen_ws(websocket: WebSocket) -> None:
     """Stream one monitor until the viewer goes away."""
@@ -136,20 +179,21 @@ async def screen_ws(websocket: WebSocket) -> None:
     if monitor is None:
         await websocket.close(code=4404, reason="no such monitor")
         return
-    width = min(
-        desktop_capture.clamp_width(_int_param(websocket, "width")), monitor.width
-    )
+    preset = desktop_capture.pick_preset(_str_param(websocket, "preset"))
+    width = desktop_capture.frame_width(_int_param(websocket, "width"), monitor.width, preset)
 
     client = client_ip_ws(websocket)
     started = time.monotonic()
     await audit_off_loop(
         audit.audit_event, "screen_open", client=client, monitor=monitor.id,
-        rect=list(monitor.rect), width=width,
+        rect=list(monitor.rect), width=width, preset=preset.name,
     )
 
     acked = asyncio.Event()
     acked.set()
     stopped = asyncio.Event()
+    readout = asyncio.Event()
+    stats = desktop_capture.StageStats()
 
     # Counted here rather than taken from stream_frames' return value, so a
     # send that fails mid-stream still audits what did go out. The byte total
@@ -179,7 +223,10 @@ async def screen_ws(websocket: WebSocket) -> None:
             await websocket.send_text(json.dumps(message))
 
     session = desktop_input.InputSession(desktop_input.get_injector(), monitor, monitors)
-    reader = asyncio.create_task(_read_client(websocket, acked, stopped, session, send_json))
+    reader = asyncio.create_task(
+        _read_client(websocket, acked, stopped, session, send_json, readout)
+    )
+    stats_task = asyncio.create_task(_stream_stats(stats, readout, send_json, stopped))
     cursor = asyncio.create_task(
         _stream_cursor(desktop_cursor.cursor_reader(monitor), send_json, stopped)
     )
@@ -187,6 +234,7 @@ async def screen_ws(websocket: WebSocket) -> None:
         await desktop_capture.stream_frames(
             lambda: desktop_capture.grab_monitor(monitor),
             send_frame, send_status, acked, stopped, width=width,
+            interval=preset.interval, quality=preset.quality, stats=stats,
         )
     except (WebSocketDisconnect, RuntimeError, OSError) as exc:
         logger.debug("Screen socket ended while sending: %s", exc)
@@ -198,7 +246,7 @@ async def screen_ws(websocket: WebSocket) -> None:
             session.release_all()
         except Exception as exc:  # noqa: BLE001 - the close audit must still run
             logger.warning("⚠️ Screen: releasing held input failed: %s", exc)
-        for task in (reader, cursor):
+        for task in (reader, cursor, stats_task):
             task.cancel()
             try:
                 await task

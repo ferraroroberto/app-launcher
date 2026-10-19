@@ -35,9 +35,11 @@ import asyncio
 import ctypes
 import hashlib
 import io
+import json
 import logging
 import sys
 import threading
+import time
 from dataclasses import asdict, dataclass
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -59,6 +61,16 @@ JPEG_QUALITY = 70
 # Thumbnail for change detection: a 4x box reduction keeps a one-character
 # change (a clock tick) visible in the digest at a fraction of the bytes.
 THUMB_REDUCE = 4
+# Quality presets (#1721). The connect query's ``preset=`` is validated against
+# PRESETS: JPEG quality, the pause between frames, and a cap on the frame width
+# on top of what the phone asks for (None = no extra cap). Balanced is built
+# from the constants above, so it can never drift from "today".
+DEFAULT_PRESET = "balanced"
+SAVER_WIDTH = 960
+# How often the per-stage times go out while the readout is on.
+STATS_INTERVAL_S = 1.0
+# The client's readout switch, the one non-input control message on the socket.
+READOUT_MESSAGE = "readout"
 
 # DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 is the pseudo-handle -4.
 _PER_MONITOR_AWARE_V2 = -4
@@ -89,6 +101,84 @@ class Monitor:
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
+
+
+@dataclass(frozen=True)
+class Preset:
+    """One quality preset: what the encoder and the pacing use."""
+
+    name: str
+    quality: int
+    interval: float
+    max_width: Optional[int]
+
+
+PRESETS: Dict[str, Preset] = {
+    "sharp": Preset("sharp", 85, FRAME_INTERVAL_S, None),
+    DEFAULT_PRESET: Preset(DEFAULT_PRESET, JPEG_QUALITY, FRAME_INTERVAL_S, None),
+    "saver": Preset("saver", 50, 0.3, SAVER_WIDTH),
+}
+
+
+def pick_preset(name: Optional[str]) -> Preset:
+    """The preset called ``name``; anything unknown is Balanced."""
+    return PRESETS.get((name or "").strip().lower(), PRESETS[DEFAULT_PRESET])
+
+
+class StageStats:
+    """How long each stage of the capture loop took, averaged between two
+    ``take()`` calls: grab, digest, resize, encode.
+
+    ``take`` returns the period's means in milliseconds as a ``stats`` message
+    (None for a stage that did not run in the period, e.g. encode on a still
+    screen) and starts a new period. ``record`` runs on the capture loop's
+    worker threads and ``take`` on the event loop, with no lock: a ``take``
+    racing a ``record`` can drop one sample, which a mean over a second
+    absorbs.
+    """
+
+    STAGES = ("grab", "digest", "resize", "encode")
+
+    def __init__(self) -> None:
+        self._sums: Dict[str, float] = {stage: 0.0 for stage in self.STAGES}
+        self._counts: Dict[str, int] = {stage: 0 for stage in self.STAGES}
+
+    def record(self, stage: str, seconds: float) -> None:
+        self._sums[stage] += seconds
+        self._counts[stage] += 1
+
+    def take(self) -> Optional[Dict[str, Any]]:
+        """The period's means, or None when no stage ran."""
+        sums, counts = self._sums, self._counts
+        self._sums = {stage: 0.0 for stage in self.STAGES}
+        self._counts = {stage: 0 for stage in self.STAGES}
+        if not any(counts.values()):
+            return None
+        message: Dict[str, Any] = {"type": "stats"}
+        for stage in self.STAGES:
+            message[stage] = (
+                round(sums[stage] / counts[stage] * 1000, 1) if counts[stage] else None
+            )
+        message["frames"] = counts["encode"]
+        return message
+
+
+def parse_readout(text: str) -> Optional[bool]:
+    """The readout switch in a client text frame, or None if it is not one.
+
+    ``{"type": "readout", "on": true}``: only a literal ``true`` turns the
+    readout on. Kept out of the input path on purpose: it is not input and is
+    not counted as input.
+    """
+    if len(text) > 64 or READOUT_MESSAGE not in text:
+        return None
+    try:
+        message = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(message, dict) or message.get("type") != READOUT_MESSAGE:
+        return None
+    return message.get("on") is True
 
 
 def ensure_dpi_awareness() -> None:
@@ -222,19 +312,35 @@ def clamp_width(requested: Optional[int]) -> int:
     return max(MIN_WIDTH, min(MAX_WIDTH, int(requested)))
 
 
+def frame_width(requested: Optional[int], monitor_width: int, preset: Preset) -> int:
+    """The width frames go out at: what the phone asked for (clamped), never
+    past the monitor's own width, and never past the preset's cap."""
+    width = min(clamp_width(requested), monitor_width)
+    return min(width, preset.max_width) if preset.max_width else width
+
+
 def thumbnail_digest(image: Image.Image) -> bytes:
     """A cheap fingerprint of what is on screen, for skipping unchanged frames."""
     return hashlib.blake2b(image.reduce(THUMB_REDUCE).tobytes(), digest_size=16).digest()
 
 
-def encode_jpeg(image: Image.Image, width: int) -> bytes:
-    """Downscale to ``width`` (never up) and JPEG-encode."""
+def resize_to_width(image: Image.Image, width: int) -> Image.Image:
+    """Downscale to ``width`` (never up)."""
     if image.width > width:
         height = max(1, round(image.height * width / image.width))
-        image = image.resize((width, height), Image.BILINEAR)
+        return image.resize((width, height), Image.BILINEAR)
+    return image
+
+
+def jpeg_bytes(image: Image.Image, quality: int) -> bytes:
     buf = io.BytesIO()
-    image.save(buf, "JPEG", quality=JPEG_QUALITY)
+    image.save(buf, "JPEG", quality=quality)
     return buf.getvalue()
+
+
+def encode_jpeg(image: Image.Image, width: int, quality: int = JPEG_QUALITY) -> bytes:
+    """Downscale to ``width`` (never up) and JPEG-encode at ``quality``."""
+    return jpeg_bytes(resize_to_width(image, width), quality)
 
 
 async def _wait_or_stop(event: asyncio.Event, stopped: asyncio.Event) -> bool:
@@ -267,6 +373,8 @@ async def stream_frames(
     width: int,
     interval: float = FRAME_INTERVAL_S,
     retry: float = UNAVAILABLE_RETRY_S,
+    quality: int = JPEG_QUALITY,
+    stats: Optional[StageStats] = None,
 ) -> int:
     """Grab, compare and send frames until ``stopped`` is set; return frames sent.
 
@@ -274,12 +382,30 @@ async def stream_frames(
     front, so the first frame goes at once). A frame is grabbed only while it
     is set, so at most one frame is ever in flight. ``send_status`` reports
     ``"unavailable"`` once when the desktop stops being readable and
-    ``"live"`` once when it comes back.
+    ``"live"`` once when it comes back. ``quality`` and ``interval`` come from
+    the viewer's preset (#1721); ``stats``, when given, collects how long each
+    stage took (grab, digest, resize, encode) for the readout.
     """
 
     def grab_and_digest() -> Tuple[Image.Image, bytes]:
+        began = time.perf_counter()
         image = grab()
-        return image, thumbnail_digest(image)
+        grabbed = time.perf_counter()
+        digest = thumbnail_digest(image)
+        if stats is not None:
+            stats.record("grab", grabbed - began)
+            stats.record("digest", time.perf_counter() - grabbed)
+        return image, digest
+
+    def resize_and_encode(image: Image.Image) -> bytes:
+        began = time.perf_counter()
+        resized = resize_to_width(image, width)
+        resized_at = time.perf_counter()
+        data = jpeg_bytes(resized, quality)
+        if stats is not None:
+            stats.record("resize", resized_at - began)
+            stats.record("encode", time.perf_counter() - resized_at)
+        return data
 
     frames = 0
     last_digest: Optional[bytes] = None
@@ -301,7 +427,7 @@ async def stream_frames(
             last_digest = None
             await send_status("live")
         if digest != last_digest:
-            data = await asyncio.to_thread(encode_jpeg, image, width)
+            data = await asyncio.to_thread(resize_and_encode, image)
             if stopped.is_set():
                 break
             acked.clear()

@@ -359,7 +359,7 @@ def direct_screen_ws(monkeypatch, fake_cursor):
 
     run_state: Dict = {}
 
-    async def fake_stream_frames(_grab, send_frame, send_status, _acked, _stopped, *, width):
+    async def fake_stream_frames(_grab, send_frame, send_status, _acked, _stopped, **_kwargs):
         await run_state["script"](send_frame, send_status)
 
     monkeypatch.setattr(desktop_screen, "audit_off_loop", fake_audit)

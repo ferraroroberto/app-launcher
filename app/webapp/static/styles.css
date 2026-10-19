@@ -5931,6 +5931,37 @@ html[data-usage-shows="none"] .usage-card { display: none; }
 .screen-keyboard { margin-left: auto; --icon-btn-box: var(--control-h); }
 .screen-keyboard[hidden] { display: none; }
 .screen-keyboard .icon { width: var(--icon-title); height: var(--icon-title); }
+/* Quality and readout (#1721): the last button in the row, a real 44px target.
+   Its vertical margins take back the 8px it is taller than the row's content,
+   so the row (and the picture under it) stays where it was. It takes the free
+   space itself in View, where the keyboard button is hidden; beside it, it
+   just follows. */
+.screen-quality { margin: -4px 0 -4px auto; --icon-btn-box: var(--hit-min); }
+.screen-keyboard:not([hidden]) + .screen-quality { margin-left: 0; }
+.screen-quality .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-preset { margin: 0 0 8px; }
+/* The live readout: a frosted chip over the top-left of the picture, the
+   notice's recipe, small and tabular so the digits do not jitter. It never
+   takes a touch. */
+.screen-readout {
+  position: absolute;
+  top: var(--gap);
+  left: var(--gap);
+  max-width: calc(100% - 2 * var(--gap));
+  padding: 6px 10px;
+  background: var(--tabbar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid var(--tabbar-border);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.screen-readout[hidden] { display: none; }
 /* No long-press callout or text selection over the frame: a long-press is a
    right click here. */
 .screen-stage { -webkit-touch-callout: none; }

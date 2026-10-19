@@ -2610,6 +2610,11 @@
         <button type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
         </button>
+        <!-- Quality and the readout (#1721): opens the sheet below. Always
+             shown, View included. -->
+        <button type="button" id="screenQuality" class="icon-button screen-quality" aria-label="Quality and readout" title="Quality and readout" aria-haspopup="dialog">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
+        </button>
       </div>
       </div>
       <div id="screenStage" class="screen-stage">
@@ -2622,6 +2627,10 @@
              dialog's top layer, so the view says "Sent to the PC clipboard"
              itself. -->
         <div id="screenNotice" class="screen-notice" role="status" aria-live="polite" hidden></div>
+        <!-- The live readout (#1721): fps, kB/s, frame size and ack-to-frame
+             time from the client, the PC's stage times from the server.
+             screen-view.js fills it; it never takes a touch. -->
+        <div id="screenReadout" class="screen-readout" aria-hidden="true" hidden></div>
       </div>
       <!-- The handle (#1601): shown only on a phone in landscape, where the bar
            and the tools row are hidden. It names the mode (View / Control) so a
@@ -2702,6 +2711,30 @@
           <button type="submit" id="screenPasteSend" class="button-primary detail-save-btn">Send to PC</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Quality and readout (#1721): three presets, remembered per device (a
+         pick reconnects), and the readout switch. Header close plus one
+         full-width Done (modal contract, #545). screen-view.js drives it. -->
+    <dialog id="screenQualitySheet" class="detail-dialog" aria-labelledby="screenQualityTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="screenQualityTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg> Quality</h2>
+          <button type="button" id="screenQualityClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="screenPreset" class="segmented screen-preset" role="group" aria-label="Quality preset"></div>
+        <p id="screenPresetNote" class="settings-footnote" aria-live="polite"></p>
+        <div class="switch-row settings-switch-row">
+          <span>Readout</span>
+          <button type="button" id="screenReadoutToggle" class="toggle" role="switch" aria-checked="false" aria-label="Readout" aria-describedby="screenReadoutHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+        <p id="screenReadoutHelp" class="field-help">Shows frames a second, data a second, the average frame size and the time from confirming a frame to the next one arriving, plus how long the PC takes to grab, compare, resize and encode.</p>
+        <div class="detail-actions">
+          <button type="button" id="screenQualityDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
     </dialog>
 
     <dialog id="sessionRenameDialog" class="detail-dialog">
