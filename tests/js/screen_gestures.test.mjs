@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 const {
   GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
   wheelFromDrag, wheelFromWheelEvent, comboKey, padGain, padStep, followPan, controlStyle,
-  anyMovedPastTap, isMultiFingerTap,
+  anyMovedPastTap, isMultiFingerTap, LOUPE, loupeLayout,
 } = await import('../../app/webapp/static/screen-gestures.js');
 const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
   '../../app/webapp/static/screen-cursor.js');
@@ -276,6 +276,59 @@ assert.equal(comboKey(undefined), null);
   assert.ok(allowKeyRepeat(1, KEY_REPEAT.minGapMs));
   assert.ok(allowKeyRepeat(KEY_REPEAT.maxRepeats, 100));
   assert.ok(!allowKeyRepeat(KEY_REPEAT.maxRepeats + 1, 100));
+}
+
+// Magnifier loupe (#1725): where it sits and what it draws.
+{
+  const near = (a, b) => Math.abs(a - b) < 0.5;   // frameFraction rounds to 4 places
+  const S = LOUPE.size;
+  // The frame point under the finger lands at the loupe's centre: the
+  // background offset is the centre minus the finger's offset into the
+  // magnified picture, whatever the zoom, pan or letterbox.
+  const centred = (pt, zoom, sw, sh, nw, nh) => {
+    const l = loupeLayout(pt, zoom, sw, sh, nw, nh);
+    const f = frameFraction(pt.x, pt.y, zoom, sw, sh, nw, nh, true);
+    assert.ok(near(l.bgX + f.x * l.bgW, l.size / 2) || f.x === 0 || f.x === 1, 'x centred');
+    assert.ok(near(l.bgY + f.y * l.bgH, l.size / 2) || f.y === 0 || f.y === 1, 'y centred');
+    return l;
+  };
+
+  // 2.5x of what the stage draws; the picture is the 16:9 frame letterboxed.
+  const mid = { x: W / 2, y: H / 2 };
+  const l = centred(mid, NO_ZOOM, W, H, NW, NH);
+  assert.ok(near(l.bgW, W * LOUPE.zoom) && near(l.bgH, drawnH * LOUPE.zoom));
+  assert.equal(l.size, S);
+  // Above the finger, centred on it, clear of the fingertip.
+  assert.ok(near(l.x + S / 2, mid.x));
+  assert.ok(l.y + S <= mid.y - LOUPE.gap + 1e-6 && !l.flipped);
+
+  // Zoomed and panned: magnified from the drawn (zoomed) size.
+  const z = { scale: 3, x: -400, y: -300 };
+  const lz = centred({ x: 200, y: 400 }, z, W, H, NW, NH);
+  assert.ok(near(lz.bgW, W * 3 * LOUPE.zoom));
+
+  // Near the top edge it flips under the finger, still inside the stage.
+  const lt = loupeLayout({ x: W / 2, y: 20 }, NO_ZOOM, W, H, NW, NH);
+  assert.ok(lt.flipped && near(lt.y, 20 + LOUPE.gap));
+  // Near the bottom edge below-flipped is pinned inside the stage.
+  const lb = loupeLayout({ x: W / 2, y: H - 2 }, NO_ZOOM, W, H, NW, NH);
+  assert.ok(!lb.flipped && lb.y + S <= H - LOUPE.margin + 1e-6);
+
+  // Side edges clamp, so it is fully visible on every side.
+  for (const pt of [{ x: 0, y: H / 2 }, { x: W, y: H / 2 }, { x: 0, y: 0 }, { x: W, y: H }, { x: 5, y: 5 }]) {
+    const e = loupeLayout(pt, NO_ZOOM, W, H, NW, NH);
+    assert.ok(e.x >= LOUPE.margin - 1e-6 && e.x + S <= W - LOUPE.margin + 1e-6, 'x inside ' + JSON.stringify(pt));
+    assert.ok(e.y >= LOUPE.margin - 1e-6 && e.y + S <= H - LOUPE.margin + 1e-6, 'y inside ' + JSON.stringify(pt));
+  }
+  assert.ok(near(loupeLayout({ x: 0, y: H / 2 }, NO_ZOOM, W, H, NW, NH).x, LOUPE.margin));
+  assert.ok(near(loupeLayout({ x: W, y: H / 2 }, NO_ZOOM, W, H, NW, NH).x, W - S - LOUPE.margin));
+
+  // A stage smaller than the loupe shrinks it to fit; no stage or frame: none.
+  const tiny = loupeLayout({ x: 30, y: 30 }, NO_ZOOM, 80, 80, NW, NH);
+  assert.ok(tiny.size <= 80 - 2 * LOUPE.margin && tiny.x >= LOUPE.margin && tiny.y >= LOUPE.margin);
+  assert.equal(loupeLayout(mid, NO_ZOOM, 0, H, NW, NH), null);
+  assert.equal(loupeLayout(mid, NO_ZOOM, W, H, 0, NH), null);
+  assert.equal(loupeLayout(mid, NO_ZOOM, 8, 8, NW, NH), null);
 }
 
 console.log('OK');

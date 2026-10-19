@@ -5859,6 +5859,37 @@ html[data-usage-shows="none"] .usage-card { display: none; }
   border: 3px solid var(--screen-cursor-fill);
   box-shadow: 0 0 0 1.5px var(--screen-cursor-edge), inset 0 0 0 1.5px var(--screen-cursor-edge);
 }
+/* The magnifier loupe (#1725): a round window on the frame under a finger held
+   down in Touch control. screen-view.js sets its size, its transform and the
+   frame it magnifies; it sits above the finger (data-side="below" when it had
+   to flip under it) and never takes a touch. A card-coloured ring and a
+   hairline keep its edge visible over any desktop, light or dark, and a
+   crosshair marks the exact point. It never animates, so there is nothing for
+   prefers-reduced-motion to reduce. */
+.screen-loupe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--card);
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 4px var(--line), var(--shadow);
+  pointer-events: none;
+}
+.screen-loupe[hidden] { display: none; }
+.screen-loupe::before,
+.screen-loupe::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--card);
+  transform: translate(-50%, -50%);
+}
+.screen-loupe::before { width: 14px; height: 2px; }
+.screen-loupe::after { width: 2px; height: 14px; }
 /* The state block floats centred over the stage as a card, so it reads over
    the last frame as well as over an empty canvas. */
 .screen-state {

@@ -471,6 +471,7 @@ A **View / Control** switch sits under the Screen bar. **View** is the default e
 - **Tap** clicks there. Two quick taps double-click, on the first tap's spot.
 - **Long-press** (half a second) right-clicks.
 - **Press and drag** drags with the left button held (move a window, select text).
+- **Magnifier loupe** (issue #1725): while one finger is down in Touch, after a moment, a round loupe above it shows the picture under the finger at 2.5x, so you can aim at a small target the finger covers. It follows the finger as it drags and goes on lift, in View, in Trackpad, with two fingers down and while the picture is not live. It only draws what the phone already has and never takes a touch: the click, long-press and drag points are the same with or without it.
 - **Two-finger drag** scrolls the wheel, in the phone's own direction (fingers down shows what is above). Sideways scrolls horizontally.
 - **Two-finger tap** (both fingers down and up together, under half a second, without moving) right-clicks at the point between the fingers, with no left click. Resting the two fingers longer, or moving them, is not a tap.
 - **Three-finger tap** (the same quick tap with three fingers) raises the keyboard and keys bar, or lowers them again. Three fingers never click, drag or scroll, and in View they do nothing.
