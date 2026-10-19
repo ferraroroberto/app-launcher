@@ -21,6 +21,7 @@ import time
 import pytest
 from playwright.sync_api import Page, WebSocketRoute, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import flush_requests, open_row_menu, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
@@ -152,6 +153,7 @@ def test_header_next_up_and_the_agenda_sheet(authed_page: Page, base_url: str) -
     expect(fires.first.locator(".action-row-title")).to_have_text("Ledger reconciliation")
     expect(fires.first.locator(".action-row-meta")).to_have_text(
         re.compile(r"^(today|tomorrow) · Daily 03:00$"))
+    surface(page, "jobs.tab")
 
     # The header's chevron opens the 7-day agenda: day groups, all fires, the
     # frequent footer.
@@ -162,12 +164,14 @@ def test_header_next_up_and_the_agenda_sheet(authed_page: Page, base_url: str) -
     expect(sheet.locator(".jobs-agenda-day").first).to_be_visible()
     expect(sheet.locator(".jobs-agenda-frequent")).to_have_text(
         "Also frequent: Mailbox sweep (every 15 min)")
+    surface(page, "jobs.agenda-sheet")
 
     # A fire opens that job's sheet, in place of the agenda.
     sheet.locator('li.jobs-fire-row[data-job-id="planner"] .action-row-main').click()
     expect(sheet).to_be_hidden()
     expect(page.locator("#jobSheet")).to_be_visible()
     expect(page.locator("#jobSheetTitle")).to_have_text("Planner sync")
+    surface(page, "jobs.job-sheet")
 
 
 def test_avatar_glyph_names_the_job_kind(authed_page: Page, base_url: str) -> None:
@@ -208,6 +212,7 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
 
     # A running job cannot be run again from its kebab.
     expect(_menu(page, "archive").locator("[data-item=job-run-item]")).to_be_disabled()
+    surface(page, "jobs.job-menu")
     page.keyboard.press("Escape")
 
     # A confirm job asks through the vendored dialog first.
@@ -215,6 +220,7 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
     confirm = page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
     expect(page.locator("#confirmDialogTitle")).to_have_text("Run Guarded export?")
+    surface(page, "jobs.confirm-run")
     page.locator("#confirmDialogOk").click()
     wait_until(page, lambda: len(seen["fired"]) == 2, "the confirmed run POST")
     assert "confirmed=1" in seen["fired"][1]
@@ -222,6 +228,7 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
     # A job with params opens its run dialog instead of firing.
     _menu(page, "shaped").locator("[data-item=job-run-item]").click()
     expect(page.locator("#jobRunDialog")).to_be_visible()
+    surface(page, "jobs.run-dialog")
     page.locator("#jobRunCancel").click()
     flush_requests(page)
     assert len(seen["fired"]) == 2

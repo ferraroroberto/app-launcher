@@ -17,6 +17,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import flush_requests, open_row_menu, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
@@ -119,12 +120,14 @@ def test_running_card_badges_header_and_other_ports(authed_page: Page, base_url:
 
     # Other ports counts the top-level listeners the launcher did not start.
     expect(page.locator("#otherPortsMeta")).to_have_text("2 listeners not started here")
+    surface(page, "apps.tab")
     page.locator("#otherPortsRow").click()
     sheet = page.locator("#otherPortsSheet")
     expect(sheet).to_be_visible()
     # The full grouped list: three top-level rows, the helper folded away.
     expect(sheet.locator("#listenersList .listener-row:not(.child)")).to_have_count(3)
     expect(sheet.locator("#listenersList .listener-row.expandable")).to_have_count(1)
+    surface(page, "apps.other-ports-sheet")
     # Same kebab as before, Stop process last.
     row = sheet.locator("#listenersList .listener-row").first
     row.locator(".action-row-kebab").click()

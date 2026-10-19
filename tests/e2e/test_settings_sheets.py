@@ -22,6 +22,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._contrast import contrast_ratio
+from tests.e2e._surface import surface
 from tests.e2e.conftest import (
     _auth_headers,
     _loopback,
@@ -39,6 +40,14 @@ _SHEETS = [
     "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
     "passkeysSheet", "terminalSheet",
 ]
+# The design inventory's name for each sheet (surface() wants lowercase).
+_SURFACE_NAMES = {
+    "screenTimeSheet": "screen-time", "usageShowsSheet": "usage-shows",
+    "launchDefaultsSheet": "launch-defaults", "chiefSheet": "chief",
+    "channelsSheet": "channels", "contextFilterSheet": "context-filter",
+    "tokensSheet": "tokens", "foldersSheet": "folders",
+    "passkeysSheet": "passkeys", "terminalSheet": "terminal",
+}
 # A sheet's one primary: Done, unless it has a job of its own.
 _PRIMARY = {"screenTimeSheet": "Send to task-os"}
 _AGENT_LABELS = {
@@ -107,6 +116,7 @@ def test_groups_render_with_values_matching_the_saved_config(
     toggle = authed_page.locator("#paneSettings .settings-row--inline #bootAutostartToggle")
     expect(toggle).to_have_attribute("role", "switch")
     expect(toggle).to_have_class("toggle" if toggle.get_attribute("aria-checked") != "true" else "toggle on")
+    surface(authed_page, "settings.pane")
 
 
 @pytest.mark.iphone
@@ -120,6 +130,7 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
         expect(sheet.locator(".detail-actions .button-primary.detail-save-btn")).to_have_text(
             _PRIMARY.get(sheet_id, "Done"))
         open_settings_sheet(authed_page, sheet_id)
+        surface(authed_page, f"settings.{_SURFACE_NAMES[sheet_id]}")
         sheet.locator("[data-sheet-back]").click()
         expect(sheet).to_be_hidden()
         open_settings_sheet(authed_page, sheet_id)
@@ -134,6 +145,7 @@ def test_every_sheet_opens_and_closes(authed_page: Page, base_url: str) -> None:
         expect(authed_page.locator("#agentSheetTitle")).to_have_text(label)
         expect(authed_page.locator("#agentSheet [data-agent-group]:visible")).to_have_count(1)
         expect(authed_page.locator("#launchDefaultsSheet")).to_be_hidden()
+        surface(authed_page, f"settings.agent-{agent_id}")
         authed_page.locator("#agentSheet [data-sheet-back]").click()
         expect(authed_page.locator("#launchDefaultsSheet")).to_be_visible()
         close_settings_sheets(authed_page)

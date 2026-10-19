@@ -21,6 +21,7 @@ import pytest
 from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
+from tests.e2e._surface import surface
 from tests.e2e.conftest import (
     flush_requests,
     life_launch_switch,
@@ -129,6 +130,7 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
         )
     ).to_be_enabled()
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
+    surface(authed_page, "lifeos.tab")
 
 
 def test_life_os_toggles_live_in_skills_summary_without_options_card(
@@ -166,6 +168,8 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     # Opening + picking in the model dropdown likewise must not collapse the
     # panel (#540 — its trigger/options are click targets inside the summary).
     authed_page.locator("#lifeOsModelBtn").click()
+    expect(authed_page.locator("#lifeOsModelMenu")).to_be_visible()
+    surface(authed_page, "lifeos.model-menu")
     authed_page.locator(
         "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
     ).click()
@@ -434,6 +438,7 @@ def test_life_os_browser_sheet_opens_a_file_over_the_list(
     expect(authed_page.locator("#lifeOsBrowserTitle")).to_have_text("journal-daily")
     expect(authed_page.locator(".lifeos-file-btn").first).to_be_visible(timeout=5_000)
     expect(doc).to_be_hidden()
+    surface(authed_page, "lifeos.browser")
 
     authed_page.locator(".lifeos-file-btn").first.click()
     expect(doc).to_be_visible()
@@ -441,6 +446,7 @@ def test_life_os_browser_sheet_opens_a_file_over_the_list(
     expect(authed_page.locator("#lifeOsDocTitle")).to_have_text("SKILL.md")
     # Not a conversation log: nothing to rename or delete.
     expect(authed_page.locator("#lifeOsDocLinks")).to_be_hidden()
+    surface(authed_page, "lifeos.doc")
 
     authed_page.locator("#lifeOsDocClose").click()
     expect(doc).to_be_hidden()
@@ -1030,11 +1036,13 @@ def test_life_os_convo_link_opens_the_sheet_and_the_reader(
     expect(authed_page.locator("#lifeOsViewerTitle")).to_have_text("booking the ferry")
     expect(authed_page.locator("#tabLifeOS")).to_have_attribute("aria-selected", "true")
     assert "convo=" not in authed_page.url
+    surface(authed_page, "lifeos.convo-viewer")
     # ✕ comes back to the sheet the link opened under it.
     authed_page.locator("#lifeOsViewerClose").click()
     expect(viewer).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     expect(authed_page.locator("#lifeOsConvoSheet")).to_be_visible()
+    surface(authed_page, "lifeos.convo-sheet")
 
     authed_page.goto(f"{base_url}/?convo=journal-daily/2026-01-01-gone.md",
                      wait_until="domcontentloaded")

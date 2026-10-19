@@ -14,6 +14,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import open_agent_sheet, open_row_menu
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -209,6 +210,7 @@ def test_pty_session_renders_with_both_stop_buttons(
             pytest.fail(f"row {i}: unrecognised session kind {kind!r}")
 
     assert saw_pty, "launched PTY session did not surface as a full-control row"
+    surface(authed_page, "code.tab")
 
     launched = authed_page.locator(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'

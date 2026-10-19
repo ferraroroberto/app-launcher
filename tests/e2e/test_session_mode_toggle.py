@@ -42,6 +42,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
@@ -221,6 +222,7 @@ def test_toggle_keeps_terminal_scrollback_and_socket(
     expect(authed_page.locator("#terminalHost")).to_be_hidden()
     expect(authed_page.locator("#terminalLatest")).to_be_hidden()
     expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("toggle test prompt")
+    surface(authed_page, "chat.overlay")
     # A viewport event while the terminal host is display:none must not reach
     # the PTY as a resize (the applySize guard, #930's class of bug).
     authed_page.evaluate("() => window.dispatchEvent(new Event('resize'))")

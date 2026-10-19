@@ -25,6 +25,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -53,6 +54,7 @@ def test_keys_popover_sends_escape_sequences(
     # Toggle the popover open, tap ↓ — it must stay open for chained nav.
     authed_page.locator("#terminalComposeBar .composer-keys").click()
     expect(popover).to_be_visible()
+    surface(authed_page, "terminal.keys-popover")
     authed_page.locator('#terminalComposeBar .keys-popover .key-btn[data-key="down"]').click()
     expect(popover).to_be_visible()
     assert wait_for_session_log(authed_page, sid, "\\x1b[B"), (

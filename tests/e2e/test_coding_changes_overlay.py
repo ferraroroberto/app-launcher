@@ -20,6 +20,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import open_row_menu
 
 pytestmark = pytest.mark.smoke
@@ -193,6 +194,7 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     expect(pre).to_have_css("font-size", "13px")
     expect(pre.locator(".d-add")).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
     expect(pre.locator(".d-del")).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
+    surface(authed_page, "code.changes-overlay")
 
     # Re-opening the same row doesn't refetch.
     first.locator("summary").click()
@@ -220,3 +222,4 @@ def test_clean_tree_shows_the_empty_state(authed_page: Page, base_url: str) -> N
     expect(authed_page.locator("#changesOverlay")).to_be_visible()
     expect(authed_page.locator("#changesState")).to_contain_text("Working tree clean")
     expect(authed_page.locator("#changesList .chg-file")).to_have_count(0)
+    surface(authed_page, "code.changes-empty")
