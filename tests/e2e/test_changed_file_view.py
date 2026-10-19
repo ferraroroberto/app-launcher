@@ -30,6 +30,8 @@ from tests.e2e.conftest import stable_eval
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
 from tests.e2e.test_session_changed_files import _SID, _menu, _mock, _open_session
 
+pytestmark = pytest.mark.smoke
+
 _NOTES = "# Notes\n\nOne **bold** line.\n\n<script>window.__ran = true</script>\n"
 _CODE = "def f():\n    return 1\n\n\nprint(f())\n"
 
