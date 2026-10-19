@@ -87,14 +87,32 @@ def open_workspace(workspace_path: Path) -> int:
     bat. ``NO_WINDOW`` keeps that shim's console off screen: the tray parent
     is windowless, so without it every tap would flash a CMD window on the PC.
     """
+    pid = _spawn_code(workspace_path)
+    logger.info(f"🚀 opened VS Code: {workspace_path} (pid {pid})")
+    return pid
+
+
+def open_file(file_path: Path) -> int:
+    """Spawn ``code <file_path>`` and return the spawned PID (#1689).
+
+    The Changed files panel's Open on PC: the file opens as a tab in the
+    editor's last active window, the same ``code`` shim as
+    :func:`open_workspace`. The editor, never the OS default handler, so a
+    changed ``.bat`` or ``.ps1`` opens as text instead of running.
+    """
+    pid = _spawn_code(file_path)
+    logger.info(f"🚀 opened a file in VS Code (pid {pid})")
+    return pid
+
+
+def _spawn_code(target: Path) -> int:
     resolved = shutil.which(VSCODE_COMMAND, path=effective_path())
     if resolved is None:
         raise OSError(f"{VSCODE_COMMAND!r} CLI not found on PATH")
     proc = subprocess.Popen(
-        [resolved, str(workspace_path)],
+        [resolved, str(target)],
         shell=False,
         creationflags=NO_WINDOW,
         close_fds=True,
     )
-    logger.info(f"🚀 opened VS Code: {workspace_path} (pid {proc.pid})")
     return proc.pid

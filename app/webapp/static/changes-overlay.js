@@ -17,14 +17,22 @@
  * panel can open from that card: focused on one file, with a "This turn ·
  * Whole session" pair that starts on the turn. The turn's scope is drawn from
  * the steps the Chat page already holds, so it costs no request.
+ *
+ * Since #1689 an opened session file has a Diff | File switch: File is the
+ * file as it is on disk now, drawn for its type by file-view.js, read through
+ * a route that serves only files the session edited. Beside it, Copy path,
+ * and on the PC itself Open on PC (VS Code, else Explorer). Still read-only:
+ * nothing edits, stages or discards.
  */
 
 import { els } from './state.js';
-import { escapeHtml, jsonApi } from './api.js';
+import { apiFailToast, escapeHtml, jsonApi, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderHunks } from './diff-view.js';
 import { terminalJsonApi } from './webauthn.js';
 import { fileBadge, fileCounts, fileKey, fileName } from './edited-card.js';
+import { renderFileView, windowsPath } from './file-view.js';
+import { onThePc } from './transcript-render.js';
 
 // Why a session's Changed files could not be read, in the panel's words.
 const SESSION_REASON = {
@@ -34,8 +42,16 @@ const SESSION_REASON = {
   session_host_unreachable: 'The session host is unreachable',
 };
 
+// Why the File view can't show a file (#1689), one sentence per reason.
+const FILE_REASON = {
+  file_not_found: 'This session didn’t edit this file',
+  deleted: 'This file is no longer on disk',
+  not_text: 'Not a text file',
+  read_failed: 'Couldn’t read this file',
+};
+
 // null while closed, else what is shown: a project ({kind: 'project', id,
-// name}) or a session ({kind: 'session', sid, name}). `seq` guards a slow
+// name}) or a session ({kind: 'session', sid, name, project}). `seq` guards a slow
 // response from an earlier open landing in a newer view. A session opened
 // from an Edited card also carries `turn` (its files and how to draw a step),
 // `scope` ('turn' | 'session') and `focus` (the recorded path to open).
@@ -64,8 +80,8 @@ function note(text) {
 
 // The session routes are terminal-grade (passkey); the project ones ride
 // the bearer token like the rest of the Coding tab.
-async function sessionApi(path) {
-  return terminalJsonApi('/api/claude-code/sessions/' + encodeURIComponent(view.sid) + path);
+async function sessionApi(path, opts) {
+  return terminalJsonApi('/api/claude-code/sessions/' + encodeURIComponent(view.sid) + path, opts);
 }
 
 // `diff --git` and `index` headers repeat what the row already says; every
@@ -181,6 +197,145 @@ function renderTurnDiff(file, body) {
   });
 }
 
+// --- a session file's tools: Diff | File, Copy path, Open on PC (#1689) -----
+
+// The path the session's routes know a file by: a turn row's recorded path,
+// else the list's key (the recorded path, made absolute by the fold).
+function requestPath(file) {
+  return file.edits ? file.path : (file.key || file.path);
+}
+
+function tooLarge(size) {
+  const kb = Math.ceil((size || 0) / 1024);
+  return 'Too large to show here' + (kb ? ' (' + kb + ' KB)' : '') + '. The limit is 256 KB';
+}
+
+async function loadFileView(file, box) {
+  const seq = view.seq;
+  box.innerHTML = note('Loading…');
+  let res;
+  try {
+    res = await sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)));
+  } catch (exc) {
+    res = null;
+  }
+  if (!view || view.seq !== seq) return;
+  if (!res || !res.available) {
+    const why = res && res.reason;
+    box.innerHTML = note(why === 'too_large' ? tooLarge(res.size)
+      : FILE_REASON[why] || SESSION_REASON[why] || 'Couldn’t read this file');
+    return;
+  }
+  box.innerHTML = res.text ? renderFileView(file.path, res.text) : note('Empty file');
+}
+
+// iOS allows a clipboard write only inside the tap: writeText is called
+// synchronously from the click, never after an await.
+function copyPath(path) {
+  try {
+    navigator.clipboard.writeText(path).then(
+      function () { toast('Path copied', 'good', { icon: 'clipboard' }); },
+      function (exc) { apiFailToast('Couldn’t copy the path', exc); }
+    );
+  } catch (exc) {
+    apiFailToast('Couldn’t copy the path', exc);
+  }
+}
+
+async function openOnPc(file) {
+  let res;
+  try {
+    res = await sessionApi('/changed-files/open', { method: 'POST', body: { path: requestPath(file) } });
+  } catch (exc) {
+    apiFailToast('Couldn’t open it on the PC', exc);
+    return;
+  }
+  if (res && res.opened) {
+    toast(res.with === 'explorer' ? 'Shown in Explorer' : 'Opened in VS Code', 'good', { icon: 'monitor' });
+    return;
+  }
+  const why = res && res.reason;
+  if (why) toast(FILE_REASON[why] || SESSION_REASON[why] || 'Couldn’t open it on the PC', 'error');
+  else toast('Not opened: this is a test instance');
+}
+
+function toolButton(cls, glyph, label, onTap) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'icon-button ' + cls;
+  btn.setAttribute('aria-label', label);
+  btn.title = label;
+  btn.innerHTML = icon(glyph);
+  btn.addEventListener('click', onTap);
+  return btn;
+}
+
+// An opened session file: the tool row, the file's absolute path as text you
+// can select, then the Diff (the default) or the File, each loaded the first
+// time it is shown and kept, so switching back costs nothing.
+function sessionFileBody(file, body) {
+  const full = windowsPath(requestPath(file), view.project);
+  const tools = document.createElement('div');
+  tools.className = 'chg-tools';
+  const sw = document.createElement('div');
+  sw.className = 'segmented chg-view';
+  sw.setAttribute('role', 'group');
+  sw.setAttribute('aria-label', 'Show the diff or the file');
+  const panes = {};
+  [['diff', 'Diff'], ['file', 'File']].forEach(function (opt) {
+    const seg = document.createElement('button');
+    seg.type = 'button';
+    seg.className = 'segmented-item';
+    seg.dataset.view = opt[0];
+    seg.setAttribute('aria-pressed', opt[0] === 'diff' ? 'true' : 'false');
+    seg.textContent = opt[1];
+    sw.appendChild(seg);
+    const pane = document.createElement('div');
+    pane.className = 'chg-pane chg-pane-' + opt[0];
+    pane.hidden = opt[0] !== 'diff';
+    panes[opt[0]] = pane;
+  });
+  sw.addEventListener('click', function (ev) {
+    const seg = ev.target.closest('.segmented-item');
+    if (!seg || !view) return;
+    const which = seg.dataset.view;
+    sw.querySelectorAll('.segmented-item').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b === seg));
+    });
+    Object.keys(panes).forEach(function (k) { panes[k].hidden = k !== which; });
+    if (which === 'file' && !panes.file.dataset.loaded) {
+      panes.file.dataset.loaded = '1';
+      loadFileView(file, panes.file);
+    }
+  });
+  tools.appendChild(sw);
+  const acts = document.createElement('span');
+  acts.className = 'icon-button-group chg-acts';
+  if (full) {
+    acts.appendChild(toolButton('chg-copy', 'clipboard', 'Copy path', function () { copyPath(full); }));
+  }
+  // Only where the PC is the screen in front of you: from the phone the
+  // editor would open in front of nobody (the route refuses it too).
+  if (onThePc()) {
+    acts.appendChild(toolButton('chg-open', 'monitor', 'Open on PC', function () { openOnPc(file); }));
+  }
+  tools.appendChild(acts);
+  body.appendChild(tools);
+  if (full) {
+    const where = document.createElement('div');
+    where.className = 'chg-fullpath';
+    where.textContent = full;
+    body.appendChild(where);
+  }
+  body.append(panes.diff, panes.file);
+  if (file.edits) {
+    renderTurnDiff(file, panes.diff);
+    return;
+  }
+  panes.diff.innerHTML = note('Loading…');
+  loadSessionDiff(file, panes.diff);
+}
+
 // "dir/name" → {dir, base}.
 function splitPath(path) {
   const slash = path.lastIndexOf('/');
@@ -213,12 +368,12 @@ function fileRow(file) {
   det.addEventListener('toggle', function () {
     if (det.open && !loaded && view) {
       loaded = true;
-      if (file.edits) {
-        renderTurnDiff(file, body);
+      if (view.kind === 'session') {
+        sessionFileBody(file, body);
         return;
       }
       body.innerHTML = note('Loading…');
-      (view.kind === 'session' ? loadSessionDiff : loadProjectDiff)(file, body);
+      loadProjectDiff(file, body);
     }
   });
   return det;
@@ -422,7 +577,7 @@ export function openChanges(a) {
   open({ kind: 'project', id: a.id, name: a.name, seq: 0 }, 'Re-read the working tree');
 }
 
-// `s` is a session as the list knows it ({session_id, name, …}); `title`
+// `s` is a session as the list knows it ({session_id, name, project_dir, …}); `title`
 // is what the session bar shows for it. `opts` (an Edited card's tap, #1477):
 // `turn` — {files, partial, renderStep(entry)} — starts the panel on that
 // turn with the scope pair; `focus` is the recorded path to open.
@@ -431,6 +586,7 @@ export function openSessionChanges(s, title, opts) {
   open(
     {
       kind: 'session', sid: s.session_id, name: 'Changed files · ' + (title || s.name || 'session'), seq: 0,
+      project: s.project_dir || null,
       turn: o.turn || null, scope: o.turn ? 'turn' : 'session', focus: o.focus || null,
     },
     'Re-read the transcript'

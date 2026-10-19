@@ -62,8 +62,9 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import os
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
@@ -89,11 +90,20 @@ from src.session_transcript import (
     transcript_tail,
 )
 from src import session_outbox
-from src.session_changes import changed_files, file_steps
-from src.webapp_config import WebappConfig
+from src.git_changes import select_in_explorer
+from src.session_changes import (
+    FileRefusal,
+    changed_file_path,
+    changed_files,
+    file_steps,
+    read_text_file,
+)
+from src.vscode_workspace import is_vscode_installed, open_file
+from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
-from app.webapp.routers._helpers import attach_provider_web_urls
+from app.webapp.middleware import is_pc_itself
+from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
 from app.webapp.routers import session_outbox_routes
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 
@@ -548,6 +558,114 @@ async def session_changed_file_diff(
         sid[:8], agent, len(found["steps"]), found["truncated"],
     )
     return {"available": True, "reason": None, "session_id": sid, **found}
+
+
+async def _changed_file_target(
+    sid: str, request: Request, requested: str, what: str,
+) -> Tuple[Optional[str], Optional[Dict[str, Any]], str]:
+    """``(target, refusal, agent)`` for a file the panel names: the absolute
+    path when this session's edits touched it, else the unavailable body to
+    answer with. The file-system jail of #1689's two routes below."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, flavor, source, agent, _why, session = await _resolve_source(sid, cfg)
+    if reason is not None:
+        logger.info("ℹ️ changed file %s %s (%s) unavailable: %s", what, sid[:8], agent, reason)
+        return None, _unavailable(sid, reason), agent
+    project_dir = str((session or {}).get("project_dir") or "") or None
+    try:
+        target = await asyncio.to_thread(
+            changed_file_path, source, requested, flavor=flavor, project_dir=project_dir
+        )
+    except OSError as exc:
+        logger.warning(
+            "⚠️ changed file %s %s (%s) transcript read failed: %s",
+            what, sid[:8], agent, exc.__class__.__name__,
+        )
+        return None, _unavailable(sid, "read_failed"), agent
+    if target is None:
+        logger.info("ℹ️ changed file %s %s (%s): file_not_found", what, sid[:8], agent)
+        return None, _unavailable(sid, "file_not_found"), agent
+    return target, None, agent
+
+
+@router.get("/api/claude-code/sessions/{sid}/changed-files/content")
+async def session_changed_file_content(
+    sid: str, request: Request, path: str = Query(min_length=1),
+) -> Dict[str, Any]:
+    """One changed file as it is on disk now, for the panel's File view
+    (Tailscale + passkey, #1689).
+
+    Only a file this session's edits touched is read: ``path`` is looked up
+    in the transcript's fold, never joined and opened, so any other path is
+    ``file_not_found``. Then each reason it can't be shown is its own:
+    ``deleted``, ``too_large`` (over 256 KB, with ``size``), ``not_text``
+    and ``read_failed``. The text is never logged, nor the path.
+    """
+    target, refusal, agent = await _changed_file_target(sid, request, path, "content")
+    if refusal is not None:
+        return refusal
+    try:
+        text = await asyncio.to_thread(read_text_file, target)
+    except FileRefusal as exc:
+        logger.info("ℹ️ changed file content %s (%s): %s", sid[:8], agent, exc.reason)
+        body = _unavailable(sid, exc.reason)
+        if exc.size is not None:
+            body["size"] = exc.size
+        return body
+    except OSError as exc:
+        logger.warning(
+            "⚠️ changed file content %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
+        )
+        return _unavailable(sid, "read_failed")
+    logger.info("ℹ️ changed file content %s (%s): %d chars", sid[:8], agent, len(text))
+    return {
+        "available": True, "reason": None, "session_id": sid,
+        "path": str(PureWindowsPath(target)), "text": text,
+    }
+
+
+@router.post("/api/claude-code/sessions/{sid}/changed-files/open")
+async def session_changed_file_open(sid: str, request: Request) -> Dict[str, Any]:
+    """Open one changed file on the PC (#1689): in VS Code, else selected in
+    Explorer — never the OS default handler, which would run a script.
+
+    Only the PC itself may ask, like ``/api/open-url``: from the phone the
+    editor would open in front of nobody. Same jail as the content route; a
+    file gone from disk is ``deleted``. A disposable e2e / verify instance
+    launches nothing and answers ``opened: false`` (#278, #938).
+    """
+    host = request.client.host if request.client else ""
+    if not is_pc_itself(host, request.headers):
+        raise HTTPException(status_code=403, detail="files open on the PC only for the PC itself")
+    body = await maybe_json(request)
+    requested = str((body or {}).get("path") or "").strip()
+    if not requested:
+        raise HTTPException(status_code=400, detail="missing path")
+    target, refusal, agent = await _changed_file_target(sid, request, requested, "open")
+    if refusal is not None:
+        return {**refusal, "opened": False}
+    if not await asyncio.to_thread(os.path.isfile, target):
+        logger.info("ℹ️ changed file open %s (%s): deleted", sid[:8], agent)
+        return {**_unavailable(sid, "deleted"), "opened": False}
+    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+        logger.info("ℹ️ changed file open %s (%s): disposable instance, not opening", sid[:8], agent)
+        return {"available": True, "reason": None, "session_id": sid, "opened": False, "with": "none"}
+    opener = "vscode"
+    try:
+        if not is_vscode_installed():
+            raise OSError("the 'code' CLI is not on PATH")
+        await asyncio.to_thread(open_file, Path(target))
+    except OSError as exc:
+        logger.info("ℹ️ changed file open %s (%s): VS Code unavailable (%s), Explorer instead",
+                    sid[:8], agent, exc)
+        opener = "explorer"
+        try:
+            await asyncio.to_thread(select_in_explorer, Path(target))
+        except OSError as exc2:
+            logger.warning("⚠️ changed file open %s (%s) failed: %s", sid[:8], agent, exc2)
+            raise HTTPException(status_code=503, detail="could not open the file on the PC") from exc2
+    logger.info("ℹ️ changed file open %s (%s): opened with %s", sid[:8], agent, opener)
+    return {"available": True, "reason": None, "session_id": sid, "opened": True, "with": opener}
 
 
 @router.get("/api/claude-code/sessions/{sid}/transcript/image")

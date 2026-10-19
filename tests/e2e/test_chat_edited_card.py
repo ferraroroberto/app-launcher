@@ -17,8 +17,8 @@ synthetic):
   the loaded steps with no request; "Whole session" reads the session's list
   and opens the same file there;
 * the rows meet rows.md and nothing scrolls sideways at 390px, light and dark;
-* each row's "Ask to undo" (#1479) appends an undo request for that file and
-  that turn to the composer, once, and sends nothing;
+* a row is one button across the card's full width: no per-row side control
+  (#1689 removed #1479's per-row undo prompt);
 * the Life OS conversation viewer, which shares the renderer, has no card.
 
 Geometry goes through ``stable_eval`` (#680/#1346): Chat re-renders on its
@@ -289,58 +289,35 @@ def test_a_row_opens_changed_files_on_this_turn_then_the_whole_session(
     expect(page.locator("#terminalOverlay")).to_be_visible()
 
 
-_UNDO_FIT = """
+_ROW_FIT = """
 (card) => {
   const box = document.getElementById('transcriptBody');
-  const line = card.querySelector('.tr-edited-line').getBoundingClientRect();
-  const btn = card.querySelector('.tr-edited-undo').getBoundingClientRect();
-  return {w: btn.width, h: btn.height, line: line.height, inside: btn.right <= line.right + 0.5,
-          card: card.scrollWidth - card.clientWidth, body: box.scrollWidth - box.clientWidth};
+  const c = card.getBoundingClientRect();
+  return [...card.querySelectorAll('.tr-edited-line')].map((line) => {
+    const r = line.querySelector('.tr-edited-row').getBoundingClientRect();
+    return {left: r.left - c.left, right: c.right - r.right, h: r.height, kids: line.children.length,
+            card: card.scrollWidth - card.clientWidth, body: box.scrollWidth - box.clientWidth};
+  });
 }
 """
 
 
 @pytest.mark.iphone
-def test_ask_to_undo_fills_the_composer_and_sends_nothing(authed_page: Page, base_url: str) -> None:
+def test_a_row_is_one_full_width_button(authed_page: Page, base_url: str) -> None:
+    """#1689: the per-row undo prompt is gone, so each row is the whole line, edge to
+    edge inside the card's 1px border, in both themes."""
     page = authed_page
     _boot(page, base_url)
-    sent: list[str] = []
-    page.on("request", lambda r: sent.append(r.url) if r.method == "POST" and "/input" in r.url else None)
     card = _card(page)
-    undo = card.locator(".tr-edited-undo")
-    expect(undo).to_have_count(3)
-    expect(undo.first).to_have_attribute("aria-label", "Ask to undo queue.ts")
-
+    expect(card.locator(".tr-edited-row")).to_have_count(3)
     for theme in ("light", "dark"):
         page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
-        fit = stable_eval(card, _UNDO_FIT)
-        # The full row's height, less the line's 1px hairline on top.
-        assert fit["w"] >= 44 and fit["h"] >= 52 and fit["line"] - fit["h"] <= 1, f"undo target ({theme}): {fit}"
-        assert fit["inside"] and fit["card"] <= 0 and fit["body"] <= 0, f"sideways scroll ({theme}): {fit}"
+        rows = stable_eval(card, _ROW_FIT)
+        for fit in rows:
+            assert fit["kids"] == 1 and fit["h"] >= 52, f"row ({theme}): {fit}"
+            assert fit["left"] <= 1.5 and fit["right"] <= 1.5, f"row not full width ({theme}): {fit}"
+            assert fit["card"] <= 0 and fit["body"] <= 0, f"sideways scroll ({theme}): {fit}"
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
-
-    # The turn's prompt is on the older page, so the request names its time.
-    # It lands after the draft as its own paragraph, and a second tap adds
-    # nothing.
-    field = page.locator("#chatComposeBar .composer-input")
-    field.fill("check this first")
-    undo.first.click()
-    expect(field).to_have_value(re.compile(
-        r"^check this first\n\nUndo your edits to `src/net/queue\.ts` from your turn at \S.*\. "
-        r"Keep any later changes to it\.$"))
-    expect(field).to_be_focused()
-    undo.first.click()
-    expect(field).to_have_value(re.compile(r"^check this first\n\nUndo your edits[^\n]*$"))
-
-    # With the prompt loaded, its first line names the turn.
-    card.locator(".tr-edited-older").click()
-    expect(card.locator(".tr-edited-partial")).to_have_count(0)
-    field.fill("")
-    card.locator('.tr-edited-row[data-path$="README.md"] + .tr-edited-undo').click()
-    expect(field).to_have_value(
-        "Undo your edits to `README.md` from the turn where I asked “rework the queue”. "
-        "Keep any later changes to it.")
-    assert sent == [], f"Ask to undo sent something: {sent}"
 
 
 @pytest.mark.iphone
@@ -371,10 +348,6 @@ def test_the_newest_turn_gets_its_card_when_the_agent_stops(authed_page: Page, b
                         " return {gap: b.scrollHeight - b.clientHeight - b.scrollTop, over: b.scrollHeight - b.clientHeight}; }")
     assert gap["over"] > 0, f"the list does not scroll, so this pins nothing: {gap}"
     assert gap["gap"] <= 2, f"the card landed below a reader who was at the bottom: {gap}"
-    # The newest turn is "your last turn" (#1479).
-    _card(page).locator(".tr-edited-undo").click()
-    expect(page.locator("#chatComposeBar .composer-input")).to_have_value(
-        "Undo your edits to `src/ui/a.ts` from your last turn.")
 
 
 def test_the_life_os_viewer_has_no_edited_card(authed_page: Page, base_url: str) -> None:
