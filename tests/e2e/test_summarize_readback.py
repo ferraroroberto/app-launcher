@@ -18,6 +18,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
@@ -208,6 +209,7 @@ def test_summary_modal_tap_dismisses(
     _load_readback(authed_page, base_url)
     authed_page.evaluate("() => { document.getElementById('summaryModal').hidden = false; }")
     expect(authed_page.locator("#summaryModal")).to_be_visible()
+    surface(authed_page, "readback.summary-modal")
     authed_page.locator("#summaryModal").click()
     expect(authed_page.locator("#summaryModal")).to_be_hidden()
 

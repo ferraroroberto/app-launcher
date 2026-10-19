@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 COMPOSER = "#terminalComposeBar"
@@ -98,6 +99,7 @@ def test_attach_button_menu_reaches_all_four_options(
     image.click()
     for option in (PHOTO_OPTION, OCR_OPTION, ATTACH_OPTION, LARGE_OPTION):
         expect(authed_page.locator(option)).to_be_visible()
+    surface(authed_page, "terminal.attach-menu")
     image.click()  # the anchor toggles its menu shut
     expect(authed_page.locator(MENU)).to_be_hidden()
 

@@ -32,6 +32,7 @@ from playwright.sync_api import Page, expect
 
 from src import chief_answers, chief_plan
 from tests.e2e import _fake_clock
+from tests.e2e._surface import surface
 from tests.e2e.conftest import (
     HeldUploads, _seed_token_init_script, flush_requests, open_row_menu, open_settings_sheet,
     stable_eval, stable_read, wait_until,
@@ -753,6 +754,7 @@ def test_answer_sheet_renders_questions_and_done_sends_one_message(
     expect(dialog).to_be_visible()
     blocks = dialog.locator(".chief-answer")
     expect(blocks).to_have_count(3)
+    surface(authed_page, "board.answer-sheet")
 
     first = blocks.nth(0)
     expect(first.locator(".chief-answer-repo")).to_have_text("fleet-config")

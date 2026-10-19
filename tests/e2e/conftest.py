@@ -65,6 +65,9 @@ from tests.e2e._browser_sweep import sweep_browser_helpers
 # Tree-aware stop of the disposable servers + the stub-child reap (#1335).
 from tests.e2e._process_teardown import reap_stub_children
 from tests.e2e._process_teardown import terminate_tree as _terminate
+# Design-inventory capture (#1698): the vendored surface() hook's collection
+# filter, aliased because this file already defines its own hook below.
+from tests.e2e._surface import pytest_collection_modifyitems as _surface_collection_filter
 # The stub child + claude shim live in a plain module the synthetic design-review
 # instance shares (app-launcher#1227); the private names stay for this file's callers.
 from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER
@@ -928,6 +931,9 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
     if dropped:
         config.hook.pytest_deselected(items=dropped)
         items[:] = kept
+    # Inert unless DESIGN_SURFACE_CAPTURE is set; then it keeps only the tests
+    # that call surface(). Must follow the projection filter above.
+    _surface_collection_filter(config, items)
 
 
 # Bound the default Playwright action + navigation timeout (issue #186).

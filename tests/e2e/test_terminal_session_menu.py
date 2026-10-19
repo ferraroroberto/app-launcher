@@ -31,6 +31,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
@@ -153,6 +154,7 @@ def test_menu_copy_link_and_rename_update_the_bar(
     authed_page.add_init_script(_CLIPBOARD_MOCK)
     _inject_web_url(authed_page, sid, _CLAUDE_WEB_URL)
     _open_overlay(authed_page, base_url, sid)
+    surface(authed_page, "terminal.overlay")
 
     # A Claude full-control session with its card captured: the provider link
     # wins, and the toast says so rather than folding the two outcomes.
@@ -167,8 +169,11 @@ def test_menu_copy_link_and_rename_update_the_bar(
     )
 
     authed_page.locator("#terminalMenu").click()
+    expect(authed_page.locator(".terminal-menu")).to_be_visible()
+    surface(authed_page, "terminal.session-menu")
     authed_page.get_by_role("menuitem", name="Rename session").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
+    surface(authed_page, "terminal.rename-dialog")
     authed_page.locator("#sessionRenameInput").fill("Menu rename 981")
     authed_page.locator("#sessionRenameForm button[type='submit']").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_hidden()

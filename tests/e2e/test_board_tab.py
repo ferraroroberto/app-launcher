@@ -30,6 +30,7 @@ from scripts import synthetic_gh
 from src import chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
+from tests.e2e._surface import surface
 from tests.e2e.conftest import (
     _autoboot_enabled, assert_unpainted_at_rest, boot_retrying_static_failure, flush_requests,
     open_row_menu, stable_eval, stable_read, stylesheet_report, wait_until,
@@ -432,6 +433,7 @@ def test_board_renders_columns_counts_and_cards(
     expect(done.first).to_contain_text("closed")
     expect(done.first).to_have_class(re.compile(r"\baction-row\b"))
     expect(done.first.locator(".action-row-title")).to_have_css("white-space", "nowrap")
+    surface(authed_page, "board.tab")
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
     # (the fold that must survive a poll; last: it changes section state) --
@@ -801,6 +803,7 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     expect(drawer.locator(".board-exchange")).to_have_attribute(
         "data-state", "ready"
     )
+    surface(authed_page, "board.drawer")
     # The user's side of the exchange reads at 4.5:1 in both themes (#1238,
     # COLOR-02: muted text measured 4.08:1 on the dark card).
     for theme in ("light", "dark"):

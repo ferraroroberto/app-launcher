@@ -61,6 +61,7 @@ icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "f52eb756
 notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "src/notify" }
 usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "a457e41cd3004d8b9493408498eb9e3d51cdc9c3", dest = "app/webapp/static/_vendored/usage-log" }
 usage_log = { src = "src/usage_log.py", sha = "a457e41cd3004d8b9493408498eb9e3d51cdc9c3", dest = "src/usage_log.py" }
+surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
@@ -681,6 +682,13 @@ no_go = [
     "#lifeOsResume",
     ".lifeos-channel-btn",
 ]
+
+# `measure --e2e` runs the e2e suite with the surface() hook armed (#1698). A bare
+# run would meet the live-tray guard (it refuses while :8445 is occupied), so
+# autoboot is explicit; the suite then boots its own disposable webapp + session-host.
+[design.review.e2e]
+command = ["-m", "pytest", "tests/e2e", "--e2e-autoboot", "-q"]
+timeout_s = 1500
 
 [[design.review.extra_steps]]
 tab = "board"
