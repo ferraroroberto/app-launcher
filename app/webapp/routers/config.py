@@ -257,6 +257,19 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["claude_model"] = choice.split(":", 1)[1]
     elif choice.startswith("codex:"):
         patch["codex_model"] = choice.split(":", 1)[1]
+    # A `claude_effort` POST is the override for the model it lands on (the
+    # co-patched `claude_model`, else the selected one), never a global value;
+    # an empty one clears it so the model falls back to its catalog default
+    # (#1711).
+    if "claude_effort" in patch:
+        model = str(patch.get("claude_model") or cfg.claude_model)
+        overrides = dict(cfg.claude_model_efforts)
+        effort = patch.pop("claude_effort")
+        if effort in (None, ""):
+            overrides.pop(model, None)
+        else:
+            overrides[model] = str(effort)
+        patch["claude_model_efforts"] = overrides
     if "codex_model" in patch or "codex_effort" in patch:
         model = str(patch.get("codex_model") or cfg.codex_model)
         efforts = dict(cfg.codex_model_efforts)

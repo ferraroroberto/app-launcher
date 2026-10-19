@@ -236,11 +236,19 @@ function renderClaudeSubsection() {
   if (codingModelCombo && state.config.coding_model_choice) {
     codingModelCombo.setValue(state.config.coding_model_choice);
   }
+  // The Effort row follows the Model combo above it (#1711): it shows and
+  // edits the selected model's override. The empty first choice clears it, so
+  // the model runs at its catalog default, named in the label. "Don't send"
+  // (off) goes last: it omits --effort rather than naming a level.
+  const claudeEfforts = (c.efforts_available || []).filter(function (e) { return e !== 'off'; });
   renderEffortSelect(
     els.claudeEffort,
-    c.efforts_available,
-    c.effort,
-    function (e) { return e === 'off' ? 'Default' : effortLabel(e); },
+    [''].concat(claudeEfforts, (c.efforts_available || []).includes('off') ? ['off'] : []),
+    (c.model_efforts || {})[c.model] || '',
+    function (e) {
+      if (e === '') return 'Model default (' + effortLabel(c.default_effort || 'high') + ')';
+      return e === 'off' ? 'Don’t send' : effortLabel(e);
+    },
     function (e) { patchConfig({ claude_effort: e }); }
   );
   renderSegmented(

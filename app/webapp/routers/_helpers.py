@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from fastapi import HTTPException, Request, WebSocket
 
 from src import audit
-from src.launch_flags import build_claude_flags
+from src.launch_flags import build_claude_flags, default_effort, effective_effort
 from src.session_client import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
@@ -39,7 +39,11 @@ def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
     """
     return {
         "model": cfg.claude_model,
-        "effort": cfg.claude_effort,
+        # What the selected model launches at, and the two parts it is made of:
+        # the owner's overrides and the selected model's catalog default (#1711).
+        "effort": effective_effort("claude", cfg.claude_model, cfg),
+        "model_efforts": cfg.claude_model_efforts,
+        "default_effort": default_effort("claude", cfg.claude_model),
         "verbose": cfg.claude_verbose,
         "debug": cfg.claude_debug,
         "permission_mode": cfg.claude_permission_mode,

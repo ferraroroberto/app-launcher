@@ -149,7 +149,19 @@ DEFAULT_CLAUDE_MODEL = "opus"
 # Telegram channel sessions answer short household requests: Sonnet by default,
 # not the global Claude model (#1673).
 DEFAULT_CHANNEL_MODEL = "sonnet"
+# The effort of last resort (#1711): what a model with no override and no
+# catalog default resolves to. ``launch_flags.effective_effort`` owns the rule.
 DEFAULT_CLAUDE_EFFORT = "high"
+
+
+def valid_claude_efforts_for(model: str) -> Tuple[str, ...]:
+    """Efforts a Claude override may hold for ``model``: its catalog list, plus
+    ``off`` ("send no ``--effort``"). A legacy model (haiku) has no catalog row,
+    so it takes the whole enum."""
+    spec = CLAUDE_MODEL_SPECS.get(model)
+    if spec is None:
+        return VALID_CLAUDE_EFFORTS if model in LEGACY_CLAUDE_MODELS else ()
+    return ("off",) + tuple(spec["efforts"])
 
 # Claude Code permission mode for the launch command. "auto" maps to
 # `--permission-mode auto` (no prompts, but a classifier blocks dangerous
@@ -394,15 +406,19 @@ class WebappConfig:
     github_owner: str = "ferraroroberto"
     # Persisted Claude Code launch flag defaults.
     claude_model: str = DEFAULT_CLAUDE_MODEL
-    claude_effort: str = DEFAULT_CLAUDE_EFFORT
+    # Overrides only (#1711): ``{model: effort}`` for a model whose effort the
+    # owner changed. A model with no entry runs at its catalog default. The old
+    # global ``claude_effort`` key is a legacy read, see _migrate_legacy_keys.
+    claude_model_efforts: dict = field(default_factory=dict)
     claude_verbose: bool = True
     claude_debug: bool = False
     # Permission mode for the `claude` launch — "auto" or "skip"
     # (see VALID_CLAUDE_PERMISSION_MODES).
     claude_permission_mode: str = DEFAULT_CLAUDE_PERMISSION_MODE
-    # Antigravity CLI launch toggles (issue #45 follow-up). The Antigravity
-    # CLI exposes no model / effort / verbose flags — its model is chosen
-    # with `/model` in-session — so these two switches are the whole story.
+    # Antigravity CLI launch toggles (issue #45 follow-up). The CLI has
+    # `--model` and `--effort`, but its model is chosen with `/model`
+    # in-session, so the launcher has no model to key an effort on (#1711):
+    # these two switches are the whole story.
     antigravity_skip_permissions: bool = False
     antigravity_sandbox: bool = False
     # Codex CLI launch settings (#120/#845). Effort is remembered per model;
@@ -671,7 +687,13 @@ def _load_pi_model(raw: dict) -> str:
 
 
 def _load_codex_model_efforts(raw: dict) -> Dict[str, str]:
-    """Load only supported model/effort pairs and seed newly added models."""
+    """Load only supported model/effort pairs and seed newly added models.
+
+    ``codex_effort`` mirrors the selected model's entry, and a hand-edited file
+    can make them disagree. The selected model's own ``codex_effort`` has always
+    been the one launched, so it wins here, and ``effective_effort`` reads the
+    dict alone.
+    """
     result = dict(DEFAULT_CODEX_MODEL_EFFORTS)
     authored = raw.get("codex_model_efforts") or {}
     if isinstance(authored, dict):
@@ -681,7 +703,27 @@ def _load_codex_model_efforts(raw: dict) -> Dict[str, str]:
                 and effort in CODEX_MODEL_SPECS[model]["efforts"]
             ):
                 result[str(model)] = str(effort)
+    selected = raw.get("codex_model") or DEFAULT_CODEX_MODEL
+    mirrored = _load_codex_effort(raw)
+    if (
+        ("codex_model" in raw or "codex_model_efforts" in raw)
+        and selected in VALID_CODEX_MODELS
+        and mirrored in CODEX_MODEL_SPECS[selected]["efforts"]
+    ):
+        result[str(selected)] = mirrored
     return result
+
+
+def _load_claude_model_efforts(raw: dict) -> Dict[str, str]:
+    """Load the Claude overrides: only a known model with an effort it supports."""
+    authored = raw.get("claude_model_efforts") or {}
+    if not isinstance(authored, dict):
+        return {}
+    return {
+        str(model): str(effort)
+        for model, effort in authored.items()
+        if effort in valid_claude_efforts_for(str(model))
+    }
 
 
 def _load_codex_effort(raw: dict) -> str:
@@ -701,6 +743,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "pi_model": _load_pi_model,
     "codex_effort": _load_codex_effort,
     "codex_model_efforts": _load_codex_model_efforts,
+    "claude_model_efforts": _load_claude_model_efforts,
 }
 
 
@@ -810,6 +853,41 @@ def _migrate_legacy_keys(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
                 f"ℹ️  {source.name}: key '{old}' is now '{new}'; read it under "
                 f"the new name (the file is rewritten on the next save)"
             )
+    return _migrate_global_claude_effort(migrated, source)
+
+
+def _migrate_global_claude_effort(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
+    """Turn the pre-#1711 global ``claude_effort`` into per-model overrides.
+
+    One global value was sent to every Claude model, so ``high`` (the old
+    default) cannot be told from "never chose" and is dropped: copying it to
+    every model would keep Opus one level above its own default, which is the
+    bug. Any other value was a deliberate choice and is carried to every model
+    so nothing changes silently. An existing ``claude_model_efforts`` wins.
+    In memory only, like the key renames above: the next save writes the new
+    shape and drops the old key.
+    """
+    if "claude_effort" not in raw:
+        return raw
+    migrated = dict(raw)
+    legacy = migrated.pop("claude_effort")
+    if "claude_model_efforts" in migrated:
+        return migrated
+    if legacy in (None, "", DEFAULT_CLAUDE_EFFORT):
+        logger.info(
+            f"ℹ️  {source.name}: legacy claude_effort {legacy!r} dropped; every "
+            f"Claude model runs at its own default effort"
+        )
+        return migrated
+    migrated["claude_model_efforts"] = {
+        model: legacy
+        for model in VALID_CLAUDE_MODELS
+        if legacy in valid_claude_efforts_for(model)
+    }
+    logger.info(
+        f"ℹ️  {source.name}: legacy claude_effort {legacy!r} carried to every "
+        f"Claude model as a per-model override"
+    )
     return migrated
 
 
@@ -926,7 +1004,6 @@ _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("claude_model", VALID_CLAUDE_MODELS),
     ("channel_model", VALID_CLAUDE_MODELS),
     ("claude_permission_mode", VALID_CLAUDE_PERMISSION_MODES),
-    ("claude_effort", VALID_CLAUDE_EFFORTS),
     ("codex_model", VALID_CODEX_MODELS),
     ("codex_effort", VALID_CODEX_EFFORTS),
     ("codex_permission_mode", VALID_CODEX_PERMISSION_MODES),
@@ -964,6 +1041,16 @@ def _validate(cfg: WebappConfig) -> None:
         if value not in allowed:
             raise ValueError(
                 f"{field_name} must be one of {allowed}; got {value!r}"
+            )
+    if not isinstance(cfg.claude_model_efforts, dict):
+        raise ValueError("claude_model_efforts must be an object")
+    for model, effort in cfg.claude_model_efforts.items():
+        if model not in VALID_CLAUDE_MODELS:
+            raise ValueError(f"unknown Claude model in claude_model_efforts: {model!r}")
+        supported = valid_claude_efforts_for(model)
+        if effort not in supported:
+            raise ValueError(
+                f"Claude effort {effort!r} is not supported by {model}; expected one of {supported}"
             )
     if not isinstance(cfg.codex_model_efforts, dict):
         raise ValueError("codex_model_efforts must be an object")

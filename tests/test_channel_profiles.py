@@ -41,7 +41,7 @@ class TestChannelFlags:
         assert build_claude_flags(cfg) == (
             "--remote-control --permission-mode auto --model "
             f"{cfg.claude_model}"
-            + (f" --effort {cfg.claude_effort}" if cfg.claude_effort != "off" else "")
+            + " --effort medium"  # Opus's own default (#1711)
             + (" --verbose" if cfg.claude_verbose else "")
             + (" --debug" if cfg.claude_debug else "")
         )

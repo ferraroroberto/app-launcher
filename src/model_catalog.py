@@ -10,11 +10,30 @@ from __future__ import annotations
 from typing import Any, Dict, Tuple
 
 
+# ``default_effort`` is the model's own documented default (Anthropic's effort
+# page: "Claude Opus 5.5 and Claude Haiku 5.5 default to medium", every other
+# model to high), so sending it is the same as sending nothing. The ``opus``
+# alias is Opus 5.5 today; ``tests/test_effort_resolver.py`` pins the value, so
+# an alias that moves to another Opus forces a deliberate edit here.
 CLAUDE_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
-    "sonnet": {"label": "Sonnet", "efforts": ("low", "medium", "high", "xhigh", "max"), "available": True},
-    "opus": {"label": "Opus", "efforts": ("low", "medium", "high", "xhigh", "max"), "available": True},
-    "fable": {"label": "Fable", "efforts": ("low", "medium", "high", "xhigh", "max"), "available": True},
+    "sonnet": {
+        "label": "Sonnet", "efforts": ("low", "medium", "high", "xhigh", "max"),
+        "default_effort": "high", "available": True,
+    },
+    "opus": {
+        "label": "Opus", "efforts": ("low", "medium", "high", "xhigh", "max"),
+        "default_effort": "medium", "available": True,
+    },
+    "fable": {
+        "label": "Fable", "efforts": ("low", "medium", "high", "xhigh", "max"),
+        "default_effort": "high", "available": True,
+    },
 }
+
+# Models accepted for old configs and direct launches but not offered by the
+# selectors, so they have no ``CLAUDE_MODEL_SPECS`` row: haiku's default beside
+# the legacy tuple it belongs to (``webapp_config.LEGACY_CLAUDE_MODELS``).
+LEGACY_CLAUDE_DEFAULT_EFFORTS: Dict[str, str] = {"haiku": "medium"}
 
 CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     "gpt-5.6-luna": {
@@ -90,6 +109,7 @@ def catalog_payload(specs: Dict[str, Dict[str, Any]]) -> list[Dict[str, Any]]:
             "label": spec["label"],
             "available": bool(spec.get("available")),
             "efforts": list(spec.get("efforts", ())),
+            **({"default_effort": spec["default_effort"]} if spec.get("default_effort") else {}),
             **({"unavailable_reason": spec["unavailable_reason"]} if spec.get("unavailable_reason") else {}),
         }
         for value, spec in specs.items()
