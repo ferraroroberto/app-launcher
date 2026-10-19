@@ -445,12 +445,14 @@ class WebappConfig:
     # Pi coding agent launch settings (issues #273/#288/#845). `pi_model` uses
     # the curated subscription-safe catalog — never
     # empty; `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown
-    # value so the launch can't slip onto a billing path. `pi_effort` maps to
-    # `--thinking` (default high); `pi_trust_mode` maps to `--approve` /
+    # value so the launch can't slip onto a billing path. `pi_model_efforts`
+    # maps to `--thinking` (default high); `pi_trust_mode` maps to `--approve` /
     # `--no-approve` (project trust, not a tool-permission gate — see
     # VALID_PI_TRUST_MODES).
     pi_model: str = DEFAULT_PI_MODEL
-    pi_effort: str = DEFAULT_PI_EFFORT
+    # Overrides only (#1713), like ``claude_model_efforts``: ``{model: effort}``
+    # sent as ``--thinking``; a model with no entry runs at its catalog default.
+    pi_model_efforts: dict = field(default_factory=dict)
     pi_trust_mode: str = DEFAULT_PI_TRUST_MODE
     # --- Fleet chief (issue #245) ----------------------------------------
     # Settings for the standing conversational orchestrator (Board chat
@@ -726,6 +728,18 @@ def _load_claude_model_efforts(raw: dict) -> Dict[str, str]:
     }
 
 
+def _load_pi_model_efforts(raw: dict) -> Dict[str, str]:
+    """Load the Pi overrides: only a known model with a ``--thinking`` level."""
+    authored = raw.get("pi_model_efforts") or {}
+    if not isinstance(authored, dict):
+        return {}
+    return {
+        str(model): str(effort)
+        for model, effort in authored.items()
+        if str(model) in VALID_PI_MODELS and effort in VALID_PI_EFFORTS
+    }
+
+
 def _load_codex_effort(raw: dict) -> str:
     """Do not reinterpret the old global High default as Luna's preference."""
     if "codex_model" not in raw and "codex_model_efforts" not in raw:
@@ -744,6 +758,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "codex_effort": _load_codex_effort,
     "codex_model_efforts": _load_codex_model_efforts,
     "claude_model_efforts": _load_claude_model_efforts,
+    "pi_model_efforts": _load_pi_model_efforts,
 }
 
 
@@ -853,40 +868,56 @@ def _migrate_legacy_keys(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
                 f"ℹ️  {source.name}: key '{old}' is now '{new}'; read it under "
                 f"the new name (the file is rewritten on the next save)"
             )
-    return _migrate_global_claude_effort(migrated, source)
+    migrated = _migrate_global_effort(
+        migrated, source, legacy_key="claude_effort", dict_key="claude_model_efforts",
+        default=DEFAULT_CLAUDE_EFFORT, models=VALID_CLAUDE_MODELS,
+        allowed_for=valid_claude_efforts_for,
+    )
+    return _migrate_global_effort(
+        migrated, source, legacy_key="pi_effort", dict_key="pi_model_efforts",
+        default=DEFAULT_PI_EFFORT, models=VALID_PI_MODELS,
+        allowed_for=lambda model: VALID_PI_EFFORTS,
+    )
 
 
-def _migrate_global_claude_effort(raw: Dict[str, Any], source: Path) -> Dict[str, Any]:
-    """Turn the pre-#1711 global ``claude_effort`` into per-model overrides.
+def _migrate_global_effort(
+    raw: Dict[str, Any],
+    source: Path,
+    *,
+    legacy_key: str,
+    dict_key: str,
+    default: str,
+    models: Tuple[str, ...],
+    allowed_for: Callable[[str], Tuple[str, ...]],
+) -> Dict[str, Any]:
+    """Turn a pre-#1711 global effort key into per-model overrides.
 
-    One global value was sent to every Claude model, so ``high`` (the old
-    default) cannot be told from "never chose" and is dropped: copying it to
-    every model would keep Opus one level above its own default, which is the
-    bug. Any other value was a deliberate choice and is carried to every model
-    so nothing changes silently. An existing ``claude_model_efforts`` wins.
-    In memory only, like the key renames above: the next save writes the new
-    shape and drops the old key.
+    One global value was sent to every model of the agent, so ``default`` (the
+    old default, ``high``) cannot be told from "never chose" and is dropped:
+    copying it to every model would keep Opus one level above its own default,
+    which is the bug. Any other value was a deliberate choice and is carried to
+    every model that supports it, so nothing changes silently (the live Pi
+    ``medium`` stays ``medium``). An existing ``dict_key`` wins. In memory only,
+    like the key renames above: the next save writes the new shape and drops the
+    old key. Claude was Step 1 (#1712), Pi Step 2 (#1713).
     """
-    if "claude_effort" not in raw:
+    if legacy_key not in raw:
         return raw
     migrated = dict(raw)
-    legacy = migrated.pop("claude_effort")
-    if "claude_model_efforts" in migrated:
+    legacy = migrated.pop(legacy_key)
+    if dict_key in migrated:
         return migrated
-    if legacy in (None, "", DEFAULT_CLAUDE_EFFORT):
+    carried = {model: legacy for model in models if legacy in allowed_for(model)}
+    if legacy in (None, "", default) or not carried:
         logger.info(
-            f"ℹ️  {source.name}: legacy claude_effort {legacy!r} dropped; every "
-            f"Claude model runs at its own default effort"
+            f"ℹ️  {source.name}: legacy {legacy_key} {legacy!r} dropped; every "
+            f"model runs at its own default effort"
         )
         return migrated
-    migrated["claude_model_efforts"] = {
-        model: legacy
-        for model in VALID_CLAUDE_MODELS
-        if legacy in valid_claude_efforts_for(model)
-    }
+    migrated[dict_key] = carried
     logger.info(
-        f"ℹ️  {source.name}: legacy claude_effort {legacy!r} carried to every "
-        f"Claude model as a per-model override"
+        f"ℹ️  {source.name}: legacy {legacy_key} {legacy!r} carried to every "
+        f"model as a per-model override"
     )
     return migrated
 
@@ -1010,7 +1041,6 @@ _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("grok_effort", VALID_GROK_EFFORTS),
     ("grok_permission_mode", VALID_GROK_PERMISSION_MODES),
     ("pi_model", VALID_PI_MODELS),
-    ("pi_effort", VALID_PI_EFFORTS),
     ("pi_trust_mode", VALID_PI_TRUST_MODES),
     ("chief_model", VALID_CHIEF_MODELS),
     ("usage_shows", VALID_USAGE_SHOWS),
@@ -1051,6 +1081,15 @@ def _validate(cfg: WebappConfig) -> None:
         if effort not in supported:
             raise ValueError(
                 f"Claude effort {effort!r} is not supported by {model}; expected one of {supported}"
+            )
+    if not isinstance(cfg.pi_model_efforts, dict):
+        raise ValueError("pi_model_efforts must be an object")
+    for model, effort in cfg.pi_model_efforts.items():
+        if model not in VALID_PI_MODELS:
+            raise ValueError(f"unknown Pi model in pi_model_efforts: {model!r}")
+        if effort not in VALID_PI_EFFORTS:
+            raise ValueError(
+                f"Pi effort {effort!r} is not supported; expected one of {VALID_PI_EFFORTS}"
             )
     if not isinstance(cfg.codex_model_efforts, dict):
         raise ValueError("codex_model_efforts must be an object")

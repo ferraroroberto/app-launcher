@@ -1,10 +1,11 @@
-"""#1711 Step 1: every model launches at its own effort.
+"""#1711: every model launches at its own effort.
 
 One resolver, ``effective_effort(agent, model, cfg)``: the owner's override for
 that model, else the catalog ``default_effort``, else ``high``. These pin the
 rule itself, the argv every Claude model gets, the resume paths, the
 migration of the old global ``claude_effort``, and that Codex — moved onto the
-same resolver — still produces the argv it always did.
+same resolver — still produces the argv it always did. Step 2/2 (#1713) puts
+Pi on the same resolver: overrides only, the legacy ``pi_effort`` migrated.
 """
 
 from __future__ import annotations
@@ -14,17 +15,20 @@ from dataclasses import replace
 
 import pytest
 
+from src.agents import resume_command_for
 from src.launch_flags import (
     build_claude_flags,
     build_codex_flags,
+    build_pi_flags,
     build_resume_flags,
     claude_model_family,
     default_effort,
     effective_effort,
 )
-from src.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS
+from src.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
 from src.webapp_config import (
     VALID_CLAUDE_MODELS,
+    VALID_PI_MODELS,
     WebappConfig,
     load_webapp_config,
     save_webapp_config,
@@ -250,3 +254,143 @@ class TestMigration:
         written = json.loads(target.read_text(encoding="utf-8"))
         assert "claude_effort" not in written
         assert written["claude_model_efforts"]["opus"] == "low"
+
+
+def _thinking_arg(flags: str) -> str:
+    """The value after ``--thinking``, or ``""`` when the flag is absent."""
+    parts = flags.split()
+    return parts[parts.index("--thinking") + 1] if "--thinking" in parts else ""
+
+
+class TestPiResolver:
+    """#1713: Pi rides the same resolver; its catalog defaults are all ``high``."""
+
+    def test_every_pi_spec_defaults_to_high(self):
+        # Nothing is published for Pi's providers, and Pi pins Opus 5 (not 5.5),
+        # whose documented default is high.
+        assert set(PI_MODEL_SPECS) >= {"claude-opus-5", "gpt-5.6-sol", "gpt-6-astra"}
+        for model, spec in PI_MODEL_SPECS.items():
+            assert spec["default_effort"] == "high", model
+            assert default_effort("pi", model) == "high"
+
+    def test_no_overrides_means_high_for_every_model(self):
+        for model in PI_MODEL_SPECS:
+            assert effective_effort("pi", model, _cfg()) == "high"
+
+    def test_an_override_wins_for_its_model_only(self):
+        cfg = _cfg(pi_model_efforts={"gpt-5.6-sol": "low"})
+        assert effective_effort("pi", "gpt-5.6-sol", cfg) == "low"
+        assert effective_effort("pi", "claude-opus-5", cfg) == "high"
+
+    def test_off_is_a_valid_pi_override(self):
+        cfg = _cfg(pi_model_efforts={"claude-opus-5": "off"})
+        assert effective_effort("pi", "claude-opus-5", cfg) == "off"
+
+    def test_an_unsupported_override_is_ignored(self):
+        cfg = _cfg(pi_model_efforts={"claude-opus-5": "ultra"})
+        assert effective_effort("pi", "claude-opus-5", cfg) == "high"
+
+    def test_unknown_model_falls_back_to_high(self):
+        assert effective_effort("pi", "no-such-model", _cfg()) == "high"
+
+
+class TestPiArgv:
+    @pytest.mark.parametrize("model", sorted(VALID_PI_MODELS))
+    def test_each_model_launches_at_high_with_no_overrides(self, model):
+        flags = build_pi_flags(_cfg(pi_model=model))
+        assert _thinking_arg(flags) == "high"
+        assert f"--model {PI_MODEL_SPECS[model]['model_arg']}" in flags
+
+    def test_an_override_applies_to_the_selected_model_only(self):
+        cfg = _cfg(pi_model="gpt-5.6-sol", pi_model_efforts={"gpt-5.6-sol": "low"})
+        assert _thinking_arg(build_pi_flags(cfg)) == "low"
+        other = replace(cfg, pi_model="claude-sonnet-5")
+        assert _thinking_arg(build_pi_flags(other)) == "high"
+
+    def test_the_effort_comes_before_the_trust_flag_as_it_always_did(self):
+        flags = build_pi_flags(_cfg(pi_model_efforts={"claude-opus-5": "medium"}))
+        assert flags == (
+            "--provider claude-agent-sdk --model claude-agent-sdk/claude-opus-5 "
+            "--thinking medium --approve"
+        )
+
+    def test_an_unknown_pi_model_falls_back_to_the_default_models_effort(self):
+        cfg = _cfg(pi_model="not-a-model", pi_model_efforts={"claude-opus-5": "low"})
+        assert _thinking_arg(build_pi_flags(cfg)) == "low"
+
+    def test_resume_uses_the_resolver(self):
+        cfg = _cfg(pi_model="gpt-5.6-terra", pi_model_efforts={"gpt-5.6-terra": "xhigh"})
+        flags = build_resume_flags(cfg, "pi")
+        assert flags.startswith(resume_command_for("pi"))
+        assert _thinking_arg(flags) == "xhigh"
+        assert _thinking_arg(build_resume_flags(replace(cfg, pi_model="claude-opus-5"), "pi")) == "high"
+
+
+class TestPiConfigRoundTrip:
+    def test_overrides_save_and_reload(self, tmp_path):
+        target = tmp_path / "webapp_config.json"
+        save_webapp_config(_cfg(pi_model_efforts={"claude-opus-5": "low", "gpt-5.6-sol": "off"}), target)
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert written["pi_model_efforts"] == {"claude-opus-5": "low", "gpt-5.6-sol": "off"}
+        assert "pi_effort" not in written
+        reloaded = load_webapp_config(target, apply_env_override=False)
+        assert reloaded.pi_model_efforts == {"claude-opus-5": "low", "gpt-5.6-sol": "off"}
+
+    def test_invalid_entries_are_dropped_on_load(self, tmp_path):
+        target = tmp_path / "webapp_config.json"
+        target.write_text(json.dumps({"pi_model_efforts": {
+            "claude-opus-5": "max", "ghost": "low", "gpt-5.6-sol": "ultra", "claude-sonnet-5": 3,
+        }}), encoding="utf-8")
+        cfg = load_webapp_config(target, apply_env_override=False)
+        assert cfg.pi_model_efforts == {"claude-opus-5": "max"}
+
+    def test_a_non_object_value_loads_as_no_overrides(self, tmp_path):
+        target = tmp_path / "webapp_config.json"
+        target.write_text(json.dumps({"pi_model_efforts": ["claude-opus-5"]}), encoding="utf-8")
+        assert load_webapp_config(target, apply_env_override=False).pi_model_efforts == {}
+
+
+class TestPiMigration:
+    def _load(self, tmp_path, payload):
+        target = tmp_path / "webapp_config.json"
+        target.write_text(json.dumps(payload), encoding="utf-8")
+        return load_webapp_config(target, apply_env_override=False)
+
+    def test_a_legacy_medium_is_carried_to_every_pi_model(self, tmp_path):
+        # The live value: Pi behaviour must not change for an existing config.
+        cfg = self._load(tmp_path, {"pi_model": "gpt-5.6-sol", "pi_effort": "medium"})
+        assert cfg.pi_model_efforts == {m: "medium" for m in VALID_PI_MODELS}
+        for model in VALID_PI_MODELS:
+            assert effective_effort("pi", model, cfg) == "medium"
+            assert _thinking_arg(build_pi_flags(replace(cfg, pi_model=model))) == "medium"
+
+    def test_a_legacy_high_is_dropped(self, tmp_path):
+        cfg = self._load(tmp_path, {"pi_effort": "high"})
+        assert cfg.pi_model_efforts == {}
+        assert _thinking_arg(build_pi_flags(cfg)) == "high"
+
+    def test_a_legacy_off_is_carried_so_pi_still_thinks_nothing(self, tmp_path):
+        cfg = self._load(tmp_path, {"pi_effort": "off"})
+        assert _thinking_arg(build_pi_flags(cfg)) == "off"
+
+    def test_an_unknown_legacy_value_is_dropped_not_carried(self, tmp_path):
+        assert self._load(tmp_path, {"pi_effort": "ultra"}).pi_model_efforts == {}
+
+    def test_an_existing_dict_wins_over_the_legacy_key(self, tmp_path):
+        cfg = self._load(tmp_path, {
+            "pi_effort": "medium", "pi_model_efforts": {"claude-opus-5": "low"},
+        })
+        assert cfg.pi_model_efforts == {"claude-opus-5": "low"}
+
+    def test_the_claude_and_pi_legacy_keys_migrate_independently(self, tmp_path):
+        cfg = self._load(tmp_path, {"claude_effort": "high", "pi_effort": "medium"})
+        assert cfg.claude_model_efforts == {}
+        assert cfg.pi_model_efforts == {m: "medium" for m in VALID_PI_MODELS}
+
+    def test_the_next_save_drops_the_legacy_key(self, tmp_path):
+        cfg = self._load(tmp_path, {"pi_effort": "low"})
+        target = tmp_path / "out.json"
+        save_webapp_config(cfg, target)
+        written = json.loads(target.read_text(encoding="utf-8"))
+        assert "pi_effort" not in written
+        assert written["pi_model_efforts"]["claude-opus-5"] == "low"

@@ -20,6 +20,8 @@ from src.launch_flags import (
     build_copilot_flags,
     build_grok_flags,
     build_pi_flags,
+    default_effort,
+    effective_effort,
 )
 from src.model_catalog import (
     CLAUDE_MODEL_SPECS,
@@ -129,7 +131,11 @@ async def get_config(request: Request) -> Dict[str, Any]:
         },
         "pi": {
             "model": cfg.pi_model,
-            "effort": cfg.pi_effort,
+            # What the selected model launches at, and the two parts it is made
+            # of: the owner's overrides and its catalog default (#1713).
+            "effort": effective_effort("pi", cfg.pi_model, cfg),
+            "model_efforts": cfg.pi_model_efforts,
+            "default_effort": default_effort("pi", cfg.pi_model),
             "trust_mode": cfg.pi_trust_mode,
             "models_available": [
                 {
@@ -161,6 +167,24 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # *is* the state, so a stale cached bool can never drift from it.
         "boot_autostart_enabled": boot_autostart.is_enabled(),
     }
+
+
+def _fold_effort_into_overrides(
+    patch: Dict[str, Any], agent: str, selected_model: str, current: Dict[str, str]
+) -> None:
+    """Rewrite ``patch["<agent>_effort"]`` into ``<agent>_model_efforts``: set
+    the override for the co-patched (else selected) model, or clear it on an
+    empty value. A no-op when the patch carries no such effort."""
+    if f"{agent}_effort" not in patch:
+        return
+    model = str(patch.get(f"{agent}_model") or selected_model)
+    overrides = dict(current)
+    effort = patch.pop(f"{agent}_effort")
+    if effort in (None, ""):
+        overrides.pop(model, None)
+    else:
+        overrides[model] = str(effort)
+    patch[f"{agent}_model_efforts"] = overrides
 
 
 @router.post("/api/config")
@@ -257,19 +281,12 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["claude_model"] = choice.split(":", 1)[1]
     elif choice.startswith("codex:"):
         patch["codex_model"] = choice.split(":", 1)[1]
-    # A `claude_effort` POST is the override for the model it lands on (the
-    # co-patched `claude_model`, else the selected one), never a global value;
-    # an empty one clears it so the model falls back to its catalog default
-    # (#1711).
-    if "claude_effort" in patch:
-        model = str(patch.get("claude_model") or cfg.claude_model)
-        overrides = dict(cfg.claude_model_efforts)
-        effort = patch.pop("claude_effort")
-        if effort in (None, ""):
-            overrides.pop(model, None)
-        else:
-            overrides[model] = str(effort)
-        patch["claude_model_efforts"] = overrides
+    # A `claude_effort` / `pi_effort` POST is the override for the model it
+    # lands on (the co-patched model, else the selected one), never a global
+    # value; an empty one clears it so the model falls back to its catalog
+    # default (#1711, #1713).
+    _fold_effort_into_overrides(patch, "claude", cfg.claude_model, cfg.claude_model_efforts)
+    _fold_effort_into_overrides(patch, "pi", cfg.pi_model, cfg.pi_model_efforts)
     if "codex_model" in patch or "codex_effort" in patch:
         model = str(patch.get("codex_model") or cfg.codex_model)
         efforts = dict(cfg.codex_model_efforts)

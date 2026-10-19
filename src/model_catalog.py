@@ -55,35 +55,46 @@ CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
 }
 
 # Pi is intentionally restricted to the two subscription-backed providers.
+# ``default_effort`` is ``high`` throughout (#1713): nothing is published for
+# Pi's providers, and Pi pins Opus 5 (not 5.5), whose documented default is high.
+# Pi's ``--thinking`` ladder is ``VALID_PI_EFFORTS``, so there is no per-spec
+# ``efforts`` list.
 # Never add the native ``anthropic`` provider here: it uses metered API credit.
 PI_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     "claude-opus-5": {
         "label": "Opus", "provider": "claude-agent-sdk",
-        "model_arg": "claude-agent-sdk/claude-opus-5", "available": True,
+        "model_arg": "claude-agent-sdk/claude-opus-5",
+        "default_effort": "high", "available": True,
     },
     "claude-sonnet-5": {
         "label": "Sonnet", "provider": "claude-agent-sdk",
-        "model_arg": "claude-agent-sdk/claude-sonnet-5", "available": True,
+        "model_arg": "claude-agent-sdk/claude-sonnet-5",
+        "default_effort": "high", "available": True,
     },
     "claude-fable-5": {
         "label": "Fable", "provider": "claude-agent-sdk",
-        "model_arg": "claude-agent-sdk/claude-fable-5", "available": True,
+        "model_arg": "claude-agent-sdk/claude-fable-5",
+        "default_effort": "high", "available": True,
     },
     "gpt-5.6-luna": {
         "label": "Luna", "provider": "openai-codex",
-        "model_arg": "openai-codex/gpt-5.6-luna", "available": True,
+        "model_arg": "openai-codex/gpt-5.6-luna",
+        "default_effort": "high", "available": True,
     },
     "gpt-5.6-terra": {
         "label": "Terra", "provider": "openai-codex",
-        "model_arg": "openai-codex/gpt-5.6-terra", "available": True,
+        "model_arg": "openai-codex/gpt-5.6-terra",
+        "default_effort": "high", "available": True,
     },
     "gpt-5.6-sol": {
         "label": "Sol", "provider": "openai-codex",
-        "model_arg": "openai-codex/gpt-5.6-sol", "available": True,
+        "model_arg": "openai-codex/gpt-5.6-sol",
+        "default_effort": "high", "available": True,
     },
     "gpt-6-astra": {
         "label": "Astra", "provider": "openai-codex",
-        "model_arg": "openai-codex/gpt-6-astra", "available": False,
+        "model_arg": "openai-codex/gpt-6-astra",
+        "default_effort": "high", "available": False,
         "unavailable_reason": "Not advertised by the installed Pi Codex provider yet",
     },
 }

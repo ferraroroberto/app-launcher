@@ -61,7 +61,7 @@
   "codex_permission_mode": "auto",
   "copilot_skip_permissions": false,
   "pi_model": "claude-opus-5",
-  "pi_effort": "high",
+  "pi_model_efforts": {},
   "pi_trust_mode": "trust",
   "grok_effort": "high",
   "grok_permission_mode": "auto",

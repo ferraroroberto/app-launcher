@@ -36,7 +36,6 @@ from src.webapp_config import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
     DEFAULT_CLAUDE_EFFORT,
-    DEFAULT_PI_EFFORT,
     DEFAULT_PI_MODEL,
     PI_MODEL_SPECS,
     VALID_CLAUDE_MODELS,
@@ -61,6 +60,8 @@ def default_effort(agent: str, model: str) -> str:
         default = spec.get("default_effort") or LEGACY_CLAUDE_DEFAULT_EFFORTS.get(model)
     elif agent == "codex":
         default = CODEX_MODEL_SPECS.get(model, {}).get("default_effort")
+    elif agent == "pi":
+        default = PI_MODEL_SPECS.get(model, {}).get("default_effort")
     else:
         raise ValueError(f"no per-model effort for agent {agent!r}")
     return default or DEFAULT_CLAUDE_EFFORT
@@ -74,13 +75,16 @@ def effective_effort(agent: str, model: str, cfg: WebappConfig) -> str:
     is actually launching, never the selected one. An override the model does
     not support is ignored rather than trusted, and an unknown model resolves
     to ``high``. For Claude the value may be ``off`` (an override meaning "send
-    no ``--effort``"); the builder, not this function, acts on it.
+    no ``--effort``"); the builder, not this function, acts on it. For Pi the
+    value is a ``--thinking`` level (``off`` included) sent as is (#1713).
     """
     if agent == "claude":
         overrides, allowed = cfg.claude_model_efforts, valid_claude_efforts_for(model)
     elif agent == "codex":
         overrides = cfg.codex_model_efforts
         allowed = CODEX_MODEL_SPECS.get(model, {}).get("efforts", ())
+    elif agent == "pi":
+        overrides, allowed = cfg.pi_model_efforts, VALID_PI_EFFORTS
     else:
         raise ValueError(f"no per-model effort for agent {agent!r}")
     override = overrides.get(model)
@@ -243,7 +247,8 @@ def build_pi_flags(cfg: WebappConfig) -> str:
       empty — an unknown value falls back to ``DEFAULT_PI_MODEL`` so the launch
       can't slip onto a billing path (pi's native ``anthropic`` provider is
       deliberately bypassed, and disconnected on this machine).
-    - **thinking** — ``--thinking <effort>`` from ``pi_effort`` (default high).
+    - **thinking** — ``--thinking <effort>``: the chosen model's own
+      (:func:`effective_effort`, #1713), its override else ``high``.
     - **trust** — ``--approve`` (trust mode) or ``--no-approve`` (ask mode).
       This is project *trust* (loading project-local ``.pi/`` resources), NOT
       a tool-permission gate: pi has no tool sandbox or per-action prompt.
@@ -255,8 +260,7 @@ def build_pi_flags(cfg: WebappConfig) -> str:
     spec = PI_MODEL_SPECS[model]
     provider, model_arg = spec["provider"], spec["model_arg"]
     parts = ["--provider", provider, "--model", model_arg]
-    effort = cfg.pi_effort if cfg.pi_effort in VALID_PI_EFFORTS else DEFAULT_PI_EFFORT
-    parts.extend(["--thinking", effort])
+    parts.extend(["--thinking", effective_effort("pi", model, cfg)])
     parts.append("--approve" if cfg.pi_trust_mode == "trust" else "--no-approve")
     return " ".join(parts)
 
