@@ -82,14 +82,22 @@
  * the server's `stats` message. Switching it on sends one small `readout`
  * control message (not input, so it works in View too); with it off the server
  * sends no `stats` at all. The ack protocol is untouched.
+ *
+ * Loupe (#1725). In Touch control the finger covers the spot it is about to
+ * click, so while one finger is down (after 150 ms) and while it drags, a round
+ * loupe above it shows the local frame under it at 2.5x. It is drawn from the
+ * frame already in hand (no network), sits in its own overlay like the cursor,
+ * and never takes a touch. Purely visual: no gesture, threshold or click point
+ * depends on it. Hidden in View, in Trackpad, with two fingers down and on lift.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
 import { clearTerminalToken, ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { setAsyncState, staleMessage } from './async-state.js';
 import {
-  GESTURE, allowKeyRepeat, anyMovedPastTap, classifyTwoFinger, comboKey, controlStyle, distance, followPan,
-  frameFraction, hardwareKey, isDoubleTap, isMultiFingerTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
+  GESTURE, LOUPE, allowKeyRepeat, anyMovedPastTap, classifyTwoFinger, comboKey, controlStyle, distance, followPan,
+  frameFraction, hardwareKey, isDoubleTap, isMultiFingerTap, loupeLayout, movedPastTap, padStep, stagePoint, wheelFromDrag,
+  wheelFromWheelEvent,
 } from './screen-gestures.js';
 import { cursorShape, cursorSvg } from './screen-cursor.js';
 import {
@@ -620,6 +628,7 @@ function setLive(live) {
     keys.querySelectorAll('.key-btn').forEach(function (btn) { btn.disabled = !live; });
   }
   placeCursor();
+  placeLoupe();
 }
 
 function setMode(mode) {
@@ -726,6 +735,7 @@ function dropGesture() {
   if (padTap) clearTimeout(padTap.timer);
   padTap = null;
   showHeld(false);
+  placeLoupe();
 }
 
 function cancelGesture() {
@@ -747,6 +757,7 @@ function cancelGesture() {
   }
   gesture = null;
   showHeld(false);
+  placeLoupe();
 }
 
 function controlDown(pointers, e, pt) {
@@ -765,8 +776,10 @@ function controlDown(pointers, e, pt) {
         const at = framePoint(gesture.start);
         if (at) sendInput({ type: 'click', button: 'right', x: at.x, y: at.y });
         gesture = { kind: 'spent' };
+        placeLoupe();
       }, GESTURE.longPressMs),
     };
+    armLoupe(e, pt);
   } else if (pointers.size === 2 || pointers.size === 3) {
     startMultiFinger(pointers);
   }
@@ -805,11 +818,12 @@ function endMultiFinger() {
 
 function controlMove(pointers, pt) {
   if (!gesture) return;
+  followLoupe(pt);
   if (gesture.kind === 'press') {
     if (!movedPastTap(gesture.start, pt)) return;
     clearTimeout(gesture.timer);
     const at = framePoint(gesture.start);
-    if (!at) { gesture = { kind: 'spent' }; return; }
+    if (!at) { gesture = { kind: 'spent' }; placeLoupe(); return; }
     sendInput({ type: 'down', button: 'left', x: at.x, y: at.y });
     gesture = { kind: 'drag', last: pt };
   }
@@ -868,6 +882,7 @@ function controlUp(pointers, pt) {
     endMultiFinger();
   }
   if (pointers.size === 0) gesture = null;
+  placeLoupe();
 }
 
 // ---------------------------------------------------------------- trackpad
@@ -1565,6 +1580,70 @@ function wireQuality() {
     });
   }
   renderQuality();
+}
+
+// ----------------------------------------------------------------- loupe
+
+// The loupe's state: the arming timer, whether the 150 ms have passed, and
+// the finger's latest point (stage-local). Whether it shows is derived from
+// the view and the gesture each time (placeLoupe), so a lift, a cancel, a
+// second finger or a mode change hides it without a hide call of its own.
+const loupe = { timer: null, shown: false, pt: null };
+
+// One finger landed in Touch control: show the loupe after LOUPE.delayMs. A
+// mouse pointer covers nothing, so it gets none.
+function armLoupe(e, pt) {
+  disarmLoupe();
+  if (e.pointerType === 'mouse') return;
+  loupe.pt = pt;
+  loupe.timer = setTimeout(function () {
+    loupe.timer = null;
+    loupe.shown = true;
+    placeLoupe();
+  }, LOUPE.delayMs);
+}
+
+function disarmLoupe() {
+  if (loupe.timer) clearTimeout(loupe.timer);
+  loupe.timer = null;
+  loupe.shown = false;
+}
+
+function followLoupe(pt) {
+  loupe.pt = pt;
+  placeLoupe();
+}
+
+// Draw the loupe over the finger, or hide it. It is up only while ONE finger
+// is down in Touch control (a press still deciding, or a drag) on a live
+// picture.
+function placeLoupe() {
+  const el = $('screenLoupe');
+  if (!el) return;
+  const one = !!gesture && (gesture.kind === 'press' || gesture.kind === 'drag');
+  if (!one) disarmLoupe();
+  const img = $('screenImage');
+  const stage = $('screenStage');
+  const at = one && loupe.shown && loupe.pt && view.mode === 'control' && view.control === 'touch' &&
+    view.live && view.frameUrl && img && stage && !img.hidden
+    ? loupeLayout(loupe.pt, view.zoom, stage.clientWidth, stage.clientHeight,
+      img.naturalWidth, img.naturalHeight)
+    : null;
+  if (!at) {
+    el.hidden = true;
+    return;
+  }
+  if (el.dataset.frame !== view.frameUrl) {
+    el.style.backgroundImage = 'url("' + view.frameUrl + '")';
+    el.dataset.frame = view.frameUrl;
+  }
+  el.style.width = at.size + 'px';
+  el.style.height = at.size + 'px';
+  el.style.backgroundSize = at.bgW + 'px ' + at.bgH + 'px';
+  el.style.backgroundPosition = at.bgX + 'px ' + at.bgY + 'px';
+  el.style.transform = 'translate(' + at.x + 'px, ' + at.y + 'px)';
+  el.dataset.side = at.flipped ? 'below' : 'above';
+  el.hidden = false;
 }
 
 // ----------------------------------------------------------- stage wiring

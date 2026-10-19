@@ -12,7 +12,8 @@
  * picture. stagePoint goes the other way, for the PC's cursor. Trackpad
  * mode (#1599) moves its own cursor by how far the finger travels
  * (padStep), and pans a zoomed picture to keep it in view (followPan).
- * Two- and three-finger taps (#1600) are decided by isMultiFingerTap.
+ * Two- and three-finger taps (#1600) are decided by isMultiFingerTap. The
+ * magnifier loupe's place and picture (#1725) are loupeLayout's.
  */
 
 export const GESTURE = {
@@ -209,6 +210,47 @@ export function followPan(zoom, bx, by, stageW, stageH, margin) {
     return offset;
   };
   return { x: axis(bx, zoom.x, stageW), y: axis(by, zoom.y, stageH) };
+}
+
+// Magnifier loupe (#1725): one finger down in Touch control shows the frame
+// under it, `zoom` times as large as the stage draws it, in a round window
+// `size` CSS px across, `gap` px above the finger's point and `margin` px from
+// every stage edge. It is shown `delayMs` after the finger lands.
+export const LOUPE = { delayMs: 150, size: 112, zoom: 2.5, gap: 44, margin: 6 };
+
+/**
+ * Where the loupe sits for a finger at the stage point `pt`, and what it
+ * draws: `{x, y, size, bgW, bgH, bgX, bgY, flipped}`, or null when the stage
+ * or frame has no size. `x`/`y` are the loupe's top-left on the stage; `bg*`
+ * are a CSS background's size and offset (relative to the loupe's own box)
+ * that put the frame point under `pt` at the loupe's centre, whatever the
+ * view's zoom and pan. The loupe is above the finger, below it when above
+ * would leave the stage, and is pinned inside the stage on every side, so it
+ * is always fully visible. Pure, so plain Node pins the geometry.
+ */
+export function loupeLayout(pt, zoom, stageW, stageH, natW, natH) {
+  if (!(stageW > 0 && stageH > 0 && natW > 0 && natH > 0)) return null;
+  const size = Math.min(LOUPE.size, stageW - 2 * LOUPE.margin, stageH - 2 * LOUPE.margin);
+  if (!(size > 0)) return null;
+  // The picture as drawn: object-fit: contain, then the view's zoom.
+  const fit = Math.min(stageW / natW, stageH / natH);
+  const offX = (stageW - natW * fit) / 2 * zoom.scale + zoom.x;
+  const offY = (stageH - natH * fit) / 2 * zoom.scale + zoom.y;
+  const pin = function (v, room) {
+    return Math.min(room - size - LOUPE.margin, Math.max(LOUPE.margin, v));
+  };
+  const above = pt.y - LOUPE.gap - size;
+  const flipped = above < LOUPE.margin;
+  return {
+    x: pin(pt.x - size / 2, stageW),
+    y: pin(flipped ? pt.y + LOUPE.gap : above, stageH),
+    size: size,
+    bgW: natW * fit * zoom.scale * LOUPE.zoom,
+    bgH: natH * fit * zoom.scale * LOUPE.zoom,
+    bgX: size / 2 - (pt.x - offX) * LOUPE.zoom,
+    bgY: size / 2 - (pt.y - offY) * LOUPE.zoom,
+    flipped: flipped,
+  };
 }
 
 /**

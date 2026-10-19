@@ -2622,6 +2622,9 @@
         <!-- The PC's mouse cursor (#1598), drawn from the socket's cursor
              messages: the picture itself never contains it. -->
         <div id="screenCursor" class="screen-cursor" aria-hidden="true" hidden></div>
+        <!-- The magnifier loupe (#1725): the frame under a finger held down in
+             Touch control, drawn by screen-view.js; it never takes a touch. -->
+        <div id="screenLoupe" class="screen-loupe" aria-hidden="true" hidden></div>
         <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
         <!-- A short result line (#1719): the app's toast sits under a modal
              dialog's top layer, so the view says "Sent to the PC clipboard"
