@@ -321,12 +321,17 @@ function renderPiSubsection() {
     piModelCombo.setOptions(modelOptions(p.models_available));
     piModelCombo.setValue(p.model);
   }
-  // Effort — mapped to `--thinking`, mirroring Claude.
+  // Effort — mapped to `--thinking`. Like Claude's (#1711) it follows the Model
+  // combo above it and edits that model's override (#1713); the empty first
+  // choice clears it, so the model runs at its catalog default, named in the
+  // label. `off` is a real `--thinking` level here, so it keeps its place.
   renderEffortSelect(
     els.piEffort,
-    p.efforts_available,
-    p.effort,
-    effortLabel,
+    [''].concat(p.efforts_available || []),
+    (p.model_efforts || {})[p.model] || '',
+    function (e) {
+      return e === '' ? 'Model default (' + effortLabel(p.default_effort || 'high') + ')' : effortLabel(e);
+    },
     function (e) { patchConfig({ pi_effort: e }); }
   );
   // Project trust — `--approve` (Trust) vs `--no-approve` (Ask). NOT a

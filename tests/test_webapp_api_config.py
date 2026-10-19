@@ -150,12 +150,15 @@ class TestGetConfig:
         assert set(pi) == {
             "model",
             "effort",
+            "model_efforts",
+            "default_effort",
             "trust_mode",
             "models_available",
             "efforts_available",
             "trust_modes_available",
             "computed_flags",
         }
+        assert (pi["effort"], pi["default_effort"], pi["model_efforts"]) == ("high", "high", {})
         # The catalog includes every current subscription-safe family and an
         # honestly disabled Astra rollout entry.
         assert isinstance(pi["models_available"], list) and pi["models_available"]
@@ -739,17 +742,55 @@ class TestPatchConfig:
         assert "claude-agent-sdk" not in flags
 
     def test_pi_effort_round_trips(self, webapp_client):
-        """pi_effort patches through and surfaces as --thinking; an invalid
-        tier is rejected with 400."""
+        """A pi_effort POST is the override for the selected Pi model (#1713),
+        surfaces as --thinking, and an invalid tier is rejected with 400."""
         client, app, _ = webapp_client
         resp = client.post("/api/config", json={"pi_effort": "low"})
         assert resp.status_code == 200
-        assert app.state.webapp_config.pi_effort == "low"
+        assert app.state.webapp_config.pi_model_efforts == {"claude-opus-5": "low"}
         pi = client.get("/api/config").json()["pi"]
-        assert pi["effort"] == "low"
+        assert pi["effort"] == "low" and pi["default_effort"] == "high"
+        assert pi["model_efforts"] == {"claude-opus-5": "low"}
         assert "--thinking low" in pi["computed_flags"]
         bad = client.post("/api/config", json={"pi_effort": "ultra"})
         assert bad.status_code == 400
+        assert app.state.webapp_config.pi_model_efforts == {"claude-opus-5": "low"}
+
+    def test_pi_effort_post_changes_the_selected_model_only(self, webapp_client):
+        client, app, _ = webapp_client
+        assert client.post("/api/config", json={"pi_effort": "medium"}).status_code == 200
+        assert client.post("/api/config", json={"pi_model": "gpt-5.6-sol"}).status_code == 200
+        # Sol never inherits Opus's override: it runs at its own default.
+        pi = client.get("/api/config").json()["pi"]
+        assert pi["effort"] == "high" and "--thinking high" in pi["computed_flags"]
+        assert pi["model_efforts"] == {"claude-opus-5": "medium"}
+
+    def test_pi_effort_empty_string_clears_the_override(self, webapp_client):
+        client, app, _ = webapp_client
+        client.post("/api/config", json={"pi_effort": "low"})
+        assert client.post("/api/config", json={"pi_effort": ""}).status_code == 200
+        assert app.state.webapp_config.pi_model_efforts == {}
+        pi = client.get("/api/config").json()["pi"]
+        assert pi["effort"] == "high" and "--thinking high" in pi["computed_flags"]
+
+    def test_pi_effort_applies_to_a_co_patched_model(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"pi_model": "gpt-5.6-terra", "pi_effort": "xhigh"}
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.pi_model_efforts == {"gpt-5.6-terra": "xhigh"}
+
+    def test_pi_effort_override_survives_a_reload_from_disk(self, webapp_client):
+        from src.webapp_config import load_webapp_config
+
+        client, _, overrides = webapp_client
+        client.post("/api/config", json={"pi_effort": "off"})
+        on_disk = json.loads(overrides["tmp_webapp_cfg_path"].read_text())
+        assert on_disk["pi_model_efforts"] == {"claude-opus-5": "off"}
+        assert "pi_effort" not in on_disk
+        reloaded = load_webapp_config(overrides["tmp_webapp_cfg_path"])
+        assert reloaded.pi_model_efforts == {"claude-opus-5": "off"}
 
     def test_pi_trust_mode_round_trips(self, webapp_client):
         """pi_trust_mode patches through: 'ask' swaps --approve for
