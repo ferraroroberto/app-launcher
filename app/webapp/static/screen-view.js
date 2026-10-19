@@ -25,7 +25,8 @@
  * pans) locally. The keyboard toggle raises the phone keyboard through a
  * hidden input and shows the keys bar (Esc, Tab, arrows, Backspace, Del,
  * Enter, and Ctrl / Alt / Shift / Win, sticky for one key; a second page
- * holds F1-F12 and Home / End / PgUp / PgDn, #1602). sendInput() is
+ * holds F1-F12 and Home / End / PgUp / PgDn, #1602). A hardware keyboard's
+ * non-text keys and Ctrl / Alt / Cmd shortcuts arrive on keydown (#1723). sendInput() is
  * the one way out, and it sends nothing in View mode or while the picture
  * is not live: input aimed at a stale frame would land somewhere else.
  * Coordinates are 0-1 within the frame (screen-gestures.js maps them); the
@@ -87,8 +88,8 @@ import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
 import { clearTerminalToken, ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { setAsyncState, staleMessage } from './async-state.js';
 import {
-  GESTURE, anyMovedPastTap, classifyTwoFinger, comboKey, controlStyle, distance, followPan,
-  frameFraction, isDoubleTap, isMultiFingerTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
+  GESTURE, allowKeyRepeat, anyMovedPastTap, classifyTwoFinger, comboKey, controlStyle, distance, followPan,
+  frameFraction, hardwareKey, isDoubleTap, isMultiFingerTap, movedPastTap, padStep, stagePoint, wheelFromDrag, wheelFromWheelEvent,
 } from './screen-gestures.js';
 import { cursorShape, cursorSvg } from './screen-cursor.js';
 import {
@@ -1201,7 +1202,7 @@ function wireKeyboard() {
     });
   }
   if (!input) return;
-  // beforeinput, not keydown: a phone keyboard's IME reports keyCode 229 for
+  // beforeinput, not keydown, for text: a phone keyboard's IME reports keyCode 229 for
   // every key, but names what it does here. Composed text (a dictation, a
   // CJK or swipe IME) can't be cancelled mid-flight; it goes out whole at
   // compositionend.
@@ -1240,6 +1241,50 @@ function wireKeyboard() {
     else if (value === '') sendKey('backspace');
     resetInput(input);
   });
+}
+
+// ------------------------------------------------------ hardware keyboard
+
+// A hardware keyboard (an iPad's, or the pop-out window's) presses keys the
+// hidden input's beforeinput never sees: arrows, Esc, Tab, F-keys, Ctrl
+// shortcuts (#1723). keydown carries them, where screen-gestures.js's
+// hardwareKey decides what each one is; a plain printable character is left
+// to beforeinput so nothing goes twice, and so is a phone IME's composition
+// (keyCode 229). Only a key that was sent is cancelled, so a View-mode Esc
+// still closes the dialog and an unsent F5 still reloads.
+const keyRepeat = { count: 0, at: 0 };
+
+function onHardwareKeydown(e) {
+  const hit = hardwareKey(e);
+  if (!hit || !canSend()) return;
+  const target = e.target;
+  const tag = target && target.tagName;
+  // A focused field or button keeps its own typing keys; Enter and Space on a
+  // button press it.
+  if ((tag === 'INPUT' && target.id !== 'screenKeyInput') || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (tag === 'BUTTON' && !hit.mods.length && (hit.key === 'enter' || hit.key === 'space')) return;
+  if (e.repeat) {
+    keyRepeat.count += 1;
+    const t = Date.now();
+    const allowed = allowKeyRepeat(keyRepeat.count, t - keyRepeat.at);
+    if (allowed) keyRepeat.at = t;
+    e.preventDefault();
+    if (!allowed) return;
+  } else {
+    keyRepeat.count = 0;
+    keyRepeat.at = Date.now();
+  }
+  // The bar's sticky modifiers combine with a hardware key, as with typing.
+  const mods = MOD_ORDER.filter(function (m) { return hit.mods.includes(m) || view.mods.has(m); });
+  if (sendInput({ type: 'key', key: hit.key, mods: mods })) {
+    e.preventDefault();
+    if (view.mods.size) clearMods();
+  }
+}
+
+function wireHardwareKeyboard() {
+  const dialog = $('screenView');
+  if (dialog) dialog.addEventListener('keydown', onHardwareKeydown);
 }
 
 // The phone keyboard covers the bottom of the screen without resizing the
@@ -1678,6 +1723,7 @@ export function wireScreenView() {
     });
   }
   wireKeyboard();
+  wireHardwareKeyboard();
   wirePasteSheet();
   wireQuality();
   window.addEventListener('resize', applyZoom);
