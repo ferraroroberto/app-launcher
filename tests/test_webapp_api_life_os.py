@@ -1889,7 +1889,7 @@ class TestSourceHistory:
         assert row["resumable"] is True
         captured = TestTargetedResume()._spawn_capture(monkeypatch)
         app.state.webapp_config.codex_model = "gpt-6-astra"
-        app.state.webapp_config.codex_effort = "high"
+        app.state.webapp_config.codex_model_efforts["gpt-6-astra"] = "high"
         response = self._launch(client, row, model=model, mode=mode)
         assert response.status_code == 200, response.text
         assert captured["agent"] == agent
@@ -3015,7 +3015,8 @@ class TestKeepModel:
         _, app, _ = webapp_client
         cfg = app.state.webapp_config
         kept = build_resume_flags(cfg, "claude", model_override="opus",
-                                  session_id=RESUMABLE_SID, keep_model=True)
+                                  session_id=RESUMABLE_SID, keep_model=True,
+                                  effort_model="claude-opus-5-5")
         chosen = build_resume_flags(cfg, "claude", model_override="opus", session_id=RESUMABLE_SID)
         assert "--model" not in kept and "--model opus" in chosen
         assert kept == chosen.replace(" --model opus", "")

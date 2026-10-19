@@ -182,8 +182,63 @@ class TestPatchConfig:
         )
         assert resp.status_code == 200
         assert "--effort low" in resp.json()["claude_flags"]
-        # And the in-memory cfg was swapped.
-        assert app.state.webapp_config.claude_effort == "low"
+        # And the in-memory cfg was swapped: the override is for the selected
+        # model only (#1711), not a global value.
+        assert app.state.webapp_config.claude_model_efforts == {"opus": "low"}
+
+    def test_claude_effort_post_changes_the_selected_model_only(self, webapp_client):
+        client, app, _ = webapp_client
+        assert client.post("/api/config", json={"claude_effort": "max"}).status_code == 200
+        sonnet = client.post("/api/config", json={"claude_model": "sonnet"})
+        assert sonnet.status_code == 200
+        # Sonnet never inherits Opus's override: it runs at its own default.
+        assert "--effort high" in sonnet.json()["claude_flags"]
+        claude = client.get("/api/config").json()["claude"]
+        assert claude["effort"] == "high" and claude["default_effort"] == "high"
+        assert claude["model_efforts"] == {"opus": "max"}
+        assert app.state.webapp_config.claude_model_efforts == {"opus": "max"}
+
+    def test_claude_effort_empty_string_clears_the_override(self, webapp_client):
+        client, app, _ = webapp_client
+        client.post("/api/config", json={"claude_effort": "low"})
+        cleared = client.post("/api/config", json={"claude_effort": ""})
+        assert cleared.status_code == 200
+        assert app.state.webapp_config.claude_model_efforts == {}
+        assert "--effort medium" in cleared.json()["claude_flags"]
+
+    def test_claude_effort_applies_to_a_co_patched_model(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post(
+            "/api/config", json={"claude_model": "fable", "claude_effort": "xhigh"}
+        )
+        assert resp.status_code == 200
+        assert app.state.webapp_config.claude_model_efforts == {"fable": "xhigh"}
+
+    def test_claude_effort_override_survives_a_reload_from_disk(self, webapp_client):
+        from src.webapp_config import load_webapp_config
+
+        client, _, overrides = webapp_client
+        client.post("/api/config", json={"claude_effort": "off"})
+        on_disk = json.loads(overrides["tmp_webapp_cfg_path"].read_text())
+        assert on_disk["claude_model_efforts"] == {"opus": "off"}
+        assert "claude_effort" not in on_disk
+        reloaded = load_webapp_config(overrides["tmp_webapp_cfg_path"])
+        assert reloaded.claude_model_efforts == {"opus": "off"}
+
+    def test_claude_effort_unsupported_value_is_a_400(self, webapp_client):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"claude_effort": "ultra"})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.claude_model_efforts == {}
+
+    def test_get_config_reports_the_effective_effort_per_model(self, webapp_client):
+        client, _, _ = webapp_client
+        claude = client.get("/api/config").json()["claude"]
+        assert (claude["model"], claude["effort"], claude["default_effort"]) == (
+            "opus", "medium", "medium",
+        )
+        assert claude["model_efforts"] == {}
+        assert "--effort medium" in claude["computed_flags"]
 
     def test_patches_claude_model_to_fable(self, webapp_client):
         client, app, _ = webapp_client

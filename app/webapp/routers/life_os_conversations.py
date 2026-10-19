@@ -281,7 +281,8 @@ async def _launch_conversation(
             model, model_kept = await _kept_model(cfg, agent, resume_sid)
             override = model if agent == "codex" else None
             flags = build_resume_flags(cfg, agent, model_override=override,
-                                       session_id=resume_sid, keep_model=True)
+                                       session_id=resume_sid, keep_model=True,
+                                       effort_model=model)
         else:
             flags = build_resume_flags(cfg, agent, model_override=model, session_id=resume_sid)
     else:

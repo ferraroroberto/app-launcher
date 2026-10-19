@@ -356,7 +356,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
                 "projects_dir": str(tmp_projects_dir),
                 "apps_scan_root": str(tmp_apps_root),
                 "claude_model": "opus",
-                "claude_effort": "high",
+                "claude_model_efforts": {},
                 "claude_verbose": True,
                 "claude_debug": False,
                 "auth_token": "",

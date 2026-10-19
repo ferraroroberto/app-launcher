@@ -30,20 +30,22 @@ from __future__ import annotations
 from typing import Optional
 
 from src.agents import resume_command_for
+from src.model_catalog import LEGACY_CLAUDE_DEFAULT_EFFORTS
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
+    CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
+    DEFAULT_CLAUDE_EFFORT,
     DEFAULT_PI_EFFORT,
     DEFAULT_PI_MODEL,
     PI_MODEL_SPECS,
-    VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
-    VALID_CODEX_EFFORTS,
     VALID_CODEX_MODELS,
     VALID_GROK_EFFORTS,
     VALID_PI_EFFORTS,
     VALID_PI_MODELS,
     WebappConfig,
+    valid_claude_efforts_for,
 )
 
 
@@ -52,20 +54,68 @@ from src.webapp_config import (
 CHANNEL_PLUGIN = "plugin:telegram@claude-plugins-official"
 
 
+def default_effort(agent: str, model: str) -> str:
+    """The catalog ``default_effort`` of ``model``, else ``high`` (#1711)."""
+    if agent == "claude":
+        spec = CLAUDE_MODEL_SPECS.get(model, {})
+        default = spec.get("default_effort") or LEGACY_CLAUDE_DEFAULT_EFFORTS.get(model)
+    elif agent == "codex":
+        default = CODEX_MODEL_SPECS.get(model, {}).get("default_effort")
+    else:
+        raise ValueError(f"no per-model effort for agent {agent!r}")
+    return default or DEFAULT_CLAUDE_EFFORT
+
+
+def effective_effort(agent: str, model: str, cfg: WebappConfig) -> str:
+    """The effort ``model`` launches at (#1711): the owner's override for that
+    model, else the catalog ``default_effort``, else ``high``.
+
+    The one copy of the precedence rule; every builder asks it for the model it
+    is actually launching, never the selected one. An override the model does
+    not support is ignored rather than trusted, and an unknown model resolves
+    to ``high``. For Claude the value may be ``off`` (an override meaning "send
+    no ``--effort``"); the builder, not this function, acts on it.
+    """
+    if agent == "claude":
+        overrides, allowed = cfg.claude_model_efforts, valid_claude_efforts_for(model)
+    elif agent == "codex":
+        overrides = cfg.codex_model_efforts
+        allowed = CODEX_MODEL_SPECS.get(model, {}).get("efforts", ())
+    else:
+        raise ValueError(f"no per-model effort for agent {agent!r}")
+    override = overrides.get(model)
+    return override if override in allowed else default_effort(agent, model)
+
+
+def claude_model_family(recorded: str) -> str:
+    """The Claude model a recorded id belongs to (``claude-opus-5-5`` → ``opus``),
+    or ``""`` when it names none of ours."""
+    lowered = (recorded or "").lower()
+    return next((m for m in VALID_CLAUDE_MODELS if m in lowered), "")
+
+
 def build_claude_flags(
     cfg: WebappConfig,
     model_override: Optional[str] = None,
     *,
     channel_settings: Optional[str] = None,
+    effort_model: Optional[str] = None,
 ) -> str:
     """Compose the `claude` CLI flags from the persisted defaults.
 
     ``model_override`` forces a specific ``--model`` regardless of the
     persisted ``claude_model`` — used by the Life OS tab (issue #102),
     whose ``opus`` toggle picks ``opus``/``sonnet`` per launch while the
-    rest of the flags (effort, permission, verbose, debug) still come
-    from the shared Coding options. Other callers pass nothing and keep
-    the persisted model.
+    rest of the flags (verbose, debug, permission) still come from the
+    shared Coding options. Other callers pass nothing and keep the persisted
+    model.
+
+    ``--effort`` is that model's own (:func:`effective_effort`, #1711): the
+    model actually launched, never the selected one. When no valid model is
+    sent (a keep-model resume leaves the model to the conversation), the
+    effort is resolved for ``effort_model`` — the conversation's recorded
+    model id — and omitted when that names none of ours, which leaves the
+    model at its own default.
 
     ``channel_settings`` — the path of a per-profile settings file — turns the
     session into a Telegram channel session (#1366): ``--channels`` starts the
@@ -83,8 +133,11 @@ def build_claude_flags(
     model = model_override if model_override is not None else cfg.claude_model
     if model in VALID_CLAUDE_MODELS:
         parts.extend(["--model", model])
-    if cfg.claude_effort in VALID_CLAUDE_EFFORTS and cfg.claude_effort != "off":
-        parts.extend(["--effort", cfg.claude_effort])
+    effort_target = model if model in VALID_CLAUDE_MODELS else claude_model_family(effort_model or "")
+    if effort_target:
+        effort = effective_effort("claude", effort_target, cfg)
+        if effort != "off":
+            parts.extend(["--effort", effort])
     if cfg.claude_verbose:
         parts.append("--verbose")
     if cfg.claude_debug:
@@ -97,9 +150,11 @@ def build_claude_flags(
 def build_antigravity_flags(cfg: WebappConfig) -> str:
     """Compose the `agy` CLI flags from the persisted Antigravity toggles.
 
-    The Antigravity CLI has no model / effort / verbose flags, so this is
-    just the two opt-in launch switches; an all-default config yields an
-    empty string (the CLI is launched bare).
+    The Antigravity CLI (`agy`) does have `--model` and `--effort`, but its
+    model is chosen in-session with `/model`, so the launcher has no model to
+    key an effort on and sends neither (#1711, skipped by decision). It has no
+    verbose flag. So this is just the two opt-in launch switches; an
+    all-default config yields an empty string (the CLI is launched bare).
     """
     parts: list[str] = []
     if cfg.antigravity_skip_permissions:
@@ -129,12 +184,8 @@ def build_codex_flags(
         parts.extend(
             ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
         )
-    effort = (
-        cfg.codex_effort
-        if model == cfg.codex_model
-        else cfg.codex_model_efforts.get(model, "")
-    )
-    if effort in VALID_CODEX_EFFORTS and effort in CODEX_MODEL_SPECS[model]["efforts"]:
+    if model in VALID_CODEX_MODELS:
+        effort = effective_effort("codex", model, cfg)
         parts.extend(["-c", f"model_reasoning_effort={effort}"])
     return " ".join(parts)
 
@@ -240,6 +291,7 @@ def build_grok_flags(cfg: WebappConfig) -> str:
 def build_resume_flags(
     cfg: WebappConfig, agent_id: str, model_override: Optional[str] = None,
     session_id: Optional[str] = None, *, keep_model: bool = False,
+    effort_model: Optional[str] = None,
 ) -> str:
     """Compose the full flags string for a *Resume* launch (issue #151).
 
@@ -274,6 +326,10 @@ def build_resume_flags(
     memory, so a Codex caller passes the recorded model as ``model_override``
     and ``keep_model`` changes nothing there. An absent model is never read as
     "keep": that means the persisted default, as it always has.
+
+    ``effort_model`` (Claude, with ``keep_model``) is the conversation's
+    recorded model id: no ``--model`` is sent, so the effort is resolved for
+    that model's family, and omitted when it is unknown (#1711).
     """
     token = resume_command_for(agent_id)
     if session_id:
@@ -285,16 +341,14 @@ def build_resume_flags(
         model = model_override if model_override is not None else cfg.codex_model
         if model in VALID_CODEX_MODELS:
             parts.extend(["--model", model])
-        effort = (
-            cfg.codex_effort
-            if model == cfg.codex_model
-            else cfg.codex_model_efforts.get(model, "")
-        )
-        if model in VALID_CODEX_MODELS and effort in CODEX_MODEL_SPECS[model]["efforts"]:
+        if model in VALID_CODEX_MODELS:
+            effort = effective_effort("codex", model, cfg)
             parts.extend(["-c", f"model_reasoning_effort={effort}"])
         return " ".join(parts).strip()
     if agent_id == "claude":
-        base = build_claude_flags(cfg, model_override=model_override)
+        base = build_claude_flags(
+            cfg, model_override=model_override, effort_model=effort_model
+        )
     elif agent_id == "antigravity":
         base = build_antigravity_flags(cfg)
     elif agent_id == "copilot":
