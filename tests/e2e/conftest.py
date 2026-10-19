@@ -588,7 +588,13 @@ def _autoboot_server(
     real_cfg_bytes = (
         _WEBAPP_CONFIG.read_bytes() if _WEBAPP_CONFIG.exists() else None
     )
-    disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token)
+    #
+    # Host-state isolation (issue #1717): the hook-state files the Board and
+    # usage meter read (rate limits, sessions, chief plan/inbox, context
+    # filter) are pinned into a per-run temp folder, so a capture shows
+    # synthetic usage rather than the machine's real percentages.
+    host_state_dir = tmp_path_factory.mktemp("host-state")
+    disposable_cfg = disposable_webapp_config(_WEBAPP_CONFIG, auth_token, host_state_dir)
     pin_launch_target(disposable_cfg, launch_target_dir() or _REPO_ROOT)
     pin_ui_prefs(disposable_cfg)
     if count_leaked_credentials(_WEBAPP_CONFIG, disposable_cfg):
