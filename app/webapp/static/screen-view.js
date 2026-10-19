@@ -70,6 +70,17 @@
  * takes the text by hand. The server answers each message with a `clipboard`
  * message (ok, or why not), shown as a short line over the picture. Nothing
  * here keeps, logs or counts what was copied.
+ *
+ * Quality (#1721). A button in the tools row opens a small sheet with three
+ * presets (Sharp, Balanced, Data saver) and a readout switch. The preset rides
+ * the connect query (`preset=`) and is remembered per device, so a pick
+ * reconnects through connect() like the first open; what each preset means is
+ * the server's table. The readout is an overlay with fps, kB/s, the average
+ * frame size and the time from ack to the next frame (screen-quality.js does
+ * the arithmetic over the frames received), plus the PC's per-stage times from
+ * the server's `stats` message. Switching it on sends one small `readout`
+ * control message (not input, so it works in View too); with it off the server
+ * sends no `stats` at all. The ack protocol is untouched.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
@@ -83,6 +94,9 @@ import { cursorShape, cursorSvg } from './screen-cursor.js';
 import {
   MONITOR_KEY, chooseMonitor, monitorChoice, parseMonitorChoice, reconnectDelay,
 } from './screen-reconnect.js';
+import {
+  PRESETS, PRESET_KEY, Readout, presetChoice, presetNote, readoutLines,
+} from './screen-quality.js';
 
 const MAX_ZOOM = 5;
 // The widest frame worth asking for: the phone's long side in device pixels,
@@ -112,6 +126,10 @@ const view = {
   cursor: null,        // the last cursor message: {x, y, shape, visible}
   pad: null,           // the trackpad's cursor, {x, y} 0-1 in the frame
   padSentAt: 0,        // when input that moves the PC's cursor last went out
+  preset: 'balanced',  // the quality preset on the connect query (#1721)
+  readoutOn: false,    // the readout overlay is up (and the server sends stats)
+  readout: null,       // the client's Readout while it is up
+  serverStats: null,   // the last `stats` message from the server
 };
 
 // The sentinel the hidden input holds, so Backspace on an "empty" field
@@ -152,6 +170,7 @@ async function openScreenView() {
   if (!dialog) return;
   if (!dialog.open) dialog.showModal();
   view.open = true;
+  loadPreset();
   setMode('view');
   resetZoom();
   await start();
@@ -272,6 +291,7 @@ function socketUrl(terminalToken) {
   const params = new URLSearchParams();
   params.set('monitor', String(view.monitorId));
   params.set('width', String(frameWidth()));
+  params.set('preset', view.preset);
   const bearer = readToken();
   if (bearer) params.set('token', bearer);
   if (terminalToken) params.set('tt', terminalToken);
@@ -294,6 +314,11 @@ async function connect() {
   const ws = new WebSocket(socketUrl(tt));
   ws.binaryType = 'blob';
   view.ws = ws;
+  view.serverStats = null;
+  ws.onopen = function () {
+    // A new socket starts with the readout off on the server: say so again.
+    if (ws === view.ws && view.readoutOn) sendReadoutSwitch(true);
+  };
   ws.onmessage = function (event) {
     if (ws !== view.ws) return;
     if (typeof event.data === 'string') {
@@ -316,6 +341,7 @@ function onText(text) {
   if (msg.type === 'status') onStatus(msg);
   else if (msg.type === 'cursor') onCursor(msg);
   else if (msg.type === 'clipboard') onClipboard(msg);
+  else if (msg.type === 'stats') onStats(msg);
 }
 
 function onStatus(msg) {
@@ -337,8 +363,12 @@ function onStatus(msg) {
 function drawFrame(ws, blob) {
   const img = $('screenImage');
   const url = URL.createObjectURL(blob);
+  noteReadoutFrame(blob.size);
   const ack = function () {
-    if (ws === view.ws && ws.readyState === WebSocket.OPEN) ws.send('ack');
+    if (ws === view.ws && ws.readyState === WebSocket.OPEN) {
+      ws.send('ack');
+      noteReadoutAck();
+    }
   };
   img.onload = function () {
     // Decoded after its socket went away: it must not undo the Reconnecting
@@ -448,6 +478,8 @@ function hideView() {
   view.pad = null;
   closeSocket();
   closePasteSheet();
+  closeQualitySheet();
+  setReadout(false);
   clearFrame();
   const dialog = $('screenView');
   if (dialog && dialog.open) dialog.close();
@@ -1353,6 +1385,143 @@ function wirePasteSheet() {
   });
 }
 
+// ------------------------------------------------------- quality (#1721)
+
+const READOUT_REFRESH_MS = 500;
+let readoutTimer = null;
+
+// The preset last picked on this device, or Balanced.
+function loadPreset() {
+  let stored = null;
+  try { stored = localStorage.getItem(PRESET_KEY); } catch (_) { /* storage blocked */ }
+  view.preset = presetChoice(stored);
+  renderQuality();
+}
+
+// A pick: remembered, then applied by reconnecting. The last frame stays
+// under a quiet line until the new connection's first one is drawn.
+function setPreset(id) {
+  const next = presetChoice(id);
+  if (next === view.preset) return;
+  view.preset = next;
+  try { localStorage.setItem(PRESET_KEY, next); } catch (_) { /* storage blocked */ }
+  renderQuality();
+  if (!view.open || view.monitorId === null) return;
+  resetReconnect();
+  setState(view.frameUrl ? 'stale' : 'loading', { message: 'Changing the quality…' });
+  connect();
+}
+
+function renderQuality() {
+  const group = $('screenPreset');
+  if (group) {
+    group.querySelectorAll('.segmented-item').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', btn.dataset.preset === view.preset ? 'true' : 'false');
+    });
+  }
+  const note = $('screenPresetNote');
+  if (note) note.textContent = presetNote(view.preset);
+  const toggle = $('screenReadoutToggle');
+  if (toggle) {
+    toggle.setAttribute('aria-checked', view.readoutOn ? 'true' : 'false');
+    const label = toggle.querySelector('.toggle-label');
+    if (label) label.textContent = view.readoutOn ? 'ON' : 'OFF';
+  }
+}
+
+// The one non-input message the client sends besides `ack`: it goes straight
+// to the socket, not through sendInput, so View mode and a dead picture do not
+// stop it, and the server does not count it as input.
+function sendReadoutSwitch(on) {
+  const ws = view.ws;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'readout', on: on }));
+  }
+}
+
+function setReadout(on) {
+  if (on === view.readoutOn) return;
+  view.readoutOn = on;
+  view.serverStats = null;
+  view.readout = on ? new Readout(performance.now()) : null;
+  if (readoutTimer) clearInterval(readoutTimer);
+  readoutTimer = on ? setInterval(renderReadout, READOUT_REFRESH_MS) : null;
+  sendReadoutSwitch(on);
+  renderQuality();
+  renderReadout();
+}
+
+function noteReadoutFrame(bytes) {
+  if (view.readout) view.readout.frame(bytes, performance.now());
+}
+
+function noteReadoutAck() {
+  if (view.readout) view.readout.acked(performance.now());
+}
+
+function onStats(msg) {
+  if (view.readoutOn) view.serverStats = msg;
+}
+
+function renderReadout() {
+  const el = $('screenReadout');
+  if (!el) return;
+  el.hidden = !view.readoutOn;
+  if (!view.readoutOn || !view.readout) return;
+  const lines = readoutLines(view.readout.snapshot(performance.now()), view.serverStats);
+  el.replaceChildren();
+  lines.forEach(function (line) {
+    const row = document.createElement('div');
+    row.textContent = line;
+    el.appendChild(row);
+  });
+}
+
+function openQualitySheet() {
+  const sheet = $('screenQualitySheet');
+  if (!sheet) return;
+  renderQuality();
+  if (!sheet.open) sheet.showModal();
+}
+
+function closeQualitySheet() {
+  const sheet = $('screenQualitySheet');
+  if (sheet && sheet.open) sheet.close();
+}
+
+function wireQuality() {
+  const button = $('screenQuality');
+  if (button) button.addEventListener('click', openQualitySheet);
+  const group = $('screenPreset');
+  if (group) {
+    group.replaceChildren();
+    PRESETS.forEach(function (preset) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'segmented-item';
+      btn.textContent = preset.label;
+      btn.dataset.preset = preset.id;
+      btn.setAttribute('aria-pressed', 'false');
+      btn.addEventListener('click', function () { setPreset(preset.id); });
+      group.appendChild(btn);
+    });
+  }
+  const toggle = $('screenReadoutToggle');
+  if (toggle) toggle.addEventListener('click', function () { setReadout(!view.readoutOn); });
+  const close = $('screenQualityClose');
+  if (close) close.addEventListener('click', closeQualitySheet);
+  const done = $('screenQualityDone');
+  if (done) done.addEventListener('click', closeQualitySheet);
+  const sheet = $('screenQualitySheet');
+  if (sheet) {
+    // A tap on the backdrop lands on the <dialog> itself, outside the card.
+    sheet.addEventListener('click', function (e) {
+      if (e.target === sheet) closeQualitySheet();
+    });
+  }
+  renderQuality();
+}
+
 // ----------------------------------------------------------- stage wiring
 
 function wireStage(stage) {
@@ -1510,6 +1679,7 @@ export function wireScreenView() {
   }
   wireKeyboard();
   wirePasteSheet();
+  wireQuality();
   window.addEventListener('resize', applyZoom);
   if (window.visualViewport) {
     const refit = function () { fitToKeyboard(); applyZoom(); };
