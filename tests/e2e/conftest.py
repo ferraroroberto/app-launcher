@@ -906,6 +906,25 @@ def browser_context_args(
     return args
 
 
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args: dict, browser_name: str) -> dict:
+    """Chromium: accept the loopback cert at the network layer (#1733).
+
+    The webapp serves the tailnet hostname's cert, so on 127.0.0.1 every TLS
+    handshake fails its name check. `ignore_https_errors` lets the request
+    through, but Chromium never pools a socket whose handshake failed: one page
+    boot opened 25 connections instead of 6 (net-log), every Chromium test, and
+    at 3 workers the closed sockets peaked at ~10,600 TIME_WAIT, enough to fail
+    unrelated navigations with ERR_ADDRESS_IN_USE / ERR_NO_BUFFER_SPACE. With
+    the switch the handshake passes and the sockets are reused. WebKit already
+    pools them (~6 per boot) and has no such switch.
+    """
+    if browser_name != "chromium":
+        return browser_type_launch_args
+    extra = list(browser_type_launch_args.get("args") or [])
+    return {**browser_type_launch_args, "args": extra + ["--ignore-certificate-errors"]}
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
     """Run the WebKit/iPhone projection only where engine or viewport matters.
 
@@ -1187,12 +1206,18 @@ def _seed_token_init_script(token: str) -> str:
     return f"window.localStorage.setItem({safe_key}, {safe});"
 
 
+# One pooled session per worker for the per-test loopback calls (#1733): a
+# bare requests.request opened and closed a connection each, two or three
+# per test, every one a TIME_WAIT socket.
+_LOOPBACK_SESSION = requests.Session()
+
+
 def _loopback(method: str, url: str, **kwargs: object) -> requests.Response:
     """One request to the disposable webapp's self-signed loopback cert,
     without the InsecureRequestWarning pytest re-arms for every test."""
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-        return requests.request(method, url, timeout=10, verify=False, **kwargs)
+        return _LOOPBACK_SESSION.request(method, url, timeout=10, verify=False, **kwargs)
 
 
 @pytest.fixture(autouse=True)
