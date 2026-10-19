@@ -61,7 +61,7 @@ def test_every_credential_shaped_field_is_listed() -> None:
 
 def test_disposable_config_drops_every_credential(tmp_path: Path) -> None:
     real = _write_real_config(tmp_path)
-    cfg = hygiene.disposable_webapp_config(real, "disposable-token-for-this-run")
+    cfg = hygiene.disposable_webapp_config(real, "disposable-token-for-this-run", tmp_path / "state")
 
     dumped = json.dumps(cfg)
     for key in CREDENTIAL_KEYS:
@@ -76,8 +76,10 @@ def test_disposable_config_drops_every_credential(tmp_path: Path) -> None:
 
 
 def test_disposable_config_without_a_real_file_is_just_the_token(tmp_path: Path) -> None:
-    cfg = hygiene.disposable_webapp_config(tmp_path / "absent.json", "tok-12345678")
-    assert cfg == {"auth_token": "tok-12345678", "task_os_url": ""}
+    cfg = hygiene.disposable_webapp_config(tmp_path / "absent.json", "tok-12345678", tmp_path / "state")
+    assert {k: v for k, v in cfg.items() if k not in hygiene.HOST_STATE_KEYS} == {
+        "auth_token": "tok-12345678", "task_os_url": "",
+    }
 
 
 def test_disposable_config_cannot_reach_the_live_task_os(tmp_path: Path) -> None:
@@ -87,13 +89,77 @@ def test_disposable_config_cannot_reach_the_live_task_os(tmp_path: Path) -> None
     real.write_text(json.dumps({
         "task_os_url": "https://127.0.0.1:8448", "task_os_person": "someone",
     }), encoding="utf-8")
-    cfg = hygiene.disposable_webapp_config(real, "tok-12345678")
+    cfg = hygiene.disposable_webapp_config(real, "tok-12345678", tmp_path / "state")
     assert cfg["task_os_url"] == ""
+
+
+def _host_home_fields() -> set:
+    """Every WebappConfig field whose default resolves inside the user's profile."""
+    home = Path.home().resolve()
+    found = set()
+    for f in fields(WebappConfig):
+        value = getattr(WebappConfig(), f.name)
+        if isinstance(value, str) and value and Path(value).is_absolute():
+            try:
+                Path(value).resolve().relative_to(home)
+            except ValueError:
+                continue
+            found.add(f.name)
+    return found
+
+
+def test_every_host_state_default_is_pinned() -> None:
+    """#1717: a new config key defaulting into the user's profile must join
+    HOST_STATE_KEYS, or the e2e autoboot would read it from the real host.
+
+    ``projects_dir`` and its siblings default next to the checkout, not into
+    the profile; a checkout that lives inside the profile is not host state.
+    """
+    in_profile = _host_home_fields() - {
+        "projects_dir", "apps_scan_root", "life_os_dir", "fleet_config_dir",
+    }
+    assert in_profile <= set(hygiene.HOST_STATE_KEYS), sorted(in_profile - set(hygiene.HOST_STATE_KEYS))
+
+
+def test_disposable_config_reads_nothing_from_the_host_state_dirs(tmp_path: Path) -> None:
+    """#1717: the autoboot webapp resolved rate_limits_file (and six sibling
+    hook-state paths) to the real files under the user profile. Every pinned
+    path now sits under the run's own state folder, even when the real config
+    names a host path explicitly."""
+    real = tmp_path / "webapp_config.json"
+    host = Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json"
+    real.write_text(json.dumps({"rate_limits_file": str(host)}), encoding="utf-8")
+    state = tmp_path / "state"
+
+    cfg = hygiene.disposable_webapp_config(real, "tok-12345678", state)
+
+    defaults = WebappConfig()
+    for key in hygiene.HOST_STATE_KEYS:
+        pinned = Path(cfg[key])
+        assert pinned.resolve().is_relative_to(state.resolve()), key
+        assert cfg[key] != getattr(defaults, key), key
+
+
+def test_disposable_usage_meter_is_a_fixed_synthetic_value(tmp_path: Path) -> None:
+    """#1717 acceptance: two runs show the same meter, and it is not stale."""
+    from src.board_state import read_rate_limits
+
+    readings = []
+    for run in ("a", "b"):
+        cfg = hygiene.disposable_webapp_config(
+            tmp_path / "absent.json", "tok-12345678", tmp_path / run
+        )
+        got = read_rate_limits(Path(cfg["rate_limits_file"]))
+        assert got["available"] is True and got["stale"] is False
+        readings.append(
+            (got["five_hour"]["used_percentage"], got["seven_day"]["used_percentage"])
+        )
+    assert readings[0] == readings[1] == (37, 12)
 
 
 def test_leak_check_counts_a_credential_the_builder_let_through(tmp_path: Path) -> None:
     real = _write_real_config(tmp_path)
-    assert hygiene.count_leaked_credentials(real, hygiene.disposable_webapp_config(real, "t" * 12)) == 0
+    assert hygiene.count_leaked_credentials(real, hygiene.disposable_webapp_config(real, "t" * 12, tmp_path / "state")) == 0
     # The verbatim copy #907 replaced: every credential leaks, including the
     # one hiding inside a URL.
     verbatim = json.loads(real.read_text(encoding="utf-8"))

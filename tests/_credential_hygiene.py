@@ -27,6 +27,7 @@ import copy
 import json
 import re
 import secrets
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Generator, Optional, Set
 
@@ -132,7 +133,50 @@ def _mask(node: Any, values: Set[str]) -> Any:
     return node
 
 
-def disposable_webapp_config(real_path: Path, token: str) -> dict:
+#: The config keys whose default (or real-config value) is a file or directory
+#: in the owner's profile: the fleet-config hook-state directory and the
+#: context filter's home folder (#1717). A disposable webapp gets each one
+#: under its own ``state_dir`` instead, so it reads (and the context-filter
+#: Settings panel writes) nothing real. Pinned by ``tests/test_credential_hygiene.py``.
+HOST_STATE_KEYS = {
+    "sessions_state_file": "hooks-state/sessions-state.json",
+    "rate_limits_file": "hooks-state/rate-limits.json",
+    "chief_plan_file": "hooks-state/chief-plan.json",
+    "chief_managed_file": "hooks-state/chief-managed.json",
+    "chief_inbox_dir": "hooks-state/chief-inbox",
+    "context_filter_mode_file": "context-filter/mode.json",
+    "context_filter_log_file": "context-filter/shadow.jsonl",
+}
+
+_SYNTHETIC_FIVE_HOUR_PCT = 37
+_SYNTHETIC_SEVEN_DAY_PCT = 12
+
+
+def _write_synthetic_rate_limits(path: Path) -> None:
+    """A fixed Claude usage payload, so the usage meter reads the same every run.
+
+    The percentages are constants. The stamp sits a day *ahead*: the reader
+    calls a file stale once its stamp is 10 minutes old, and a stamp of "now"
+    would turn the meter stale partway through a 10+ minute gate run, which
+    changes how it renders. Resets are relative to now so their text ("in 3h")
+    does not depend on when the run happens.
+    """
+    now = datetime.now(timezone.utc)
+    payload = {
+        "captured_at": (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "five_hour": {
+            "used_percentage": _SYNTHETIC_FIVE_HOUR_PCT,
+            "resets_at": int((now + timedelta(hours=3)).timestamp()),
+        },
+        "seven_day": {
+            "used_percentage": _SYNTHETIC_SEVEN_DAY_PCT,
+            "resets_at": int((now + timedelta(days=3)).timestamp()),
+        },
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def disposable_webapp_config(real_path: Path, token: str, state_dir: Path) -> dict:
     """The real config minus every credential, with ``token`` as its ``auth_token``.
 
     Non-credential values (projects_dir, agent settings, …) carry over so a
@@ -140,6 +184,11 @@ def disposable_webapp_config(real_path: Path, token: str) -> dict:
     value found embedded in one (a URL carrying ``?token=``) is masked too.
     A missing or unparseable real file yields just the token; the webapp
     overlays defaults either way.
+
+    Every :data:`HOST_STATE_KEYS` entry is pinned under ``state_dir`` whatever
+    the real config says (#1717): only the rate-limits file exists, holding a
+    fixed synthetic payload; the rest are absent, which the webapp reads as
+    "nothing there yet". ``state_dir`` must be a temp folder the caller owns.
     """
     loaded = _load_json(real_path)
     raw: dict = {}
@@ -150,6 +199,11 @@ def disposable_webapp_config(real_path: Path, token: str) -> dict:
     # A disposable webapp must never write to the live task-os (#1678): with
     # no URL, its Screen time Send answers "not set up" instead.
     raw["task_os_url"] = ""
+    for key, relative in HOST_STATE_KEYS.items():
+        raw[key] = str(state_dir / relative)
+    rate_limits = Path(raw["rate_limits_file"])
+    rate_limits.parent.mkdir(parents=True, exist_ok=True)
+    _write_synthetic_rate_limits(rate_limits)
     return raw
 
 
