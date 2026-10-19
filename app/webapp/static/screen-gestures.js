@@ -232,3 +232,52 @@ export function comboKey(ch) {
   if (ch === ' ') return 'space';
   return /^[!-~]$/.test(ch) ? ch : null;
 }
+
+// Hardware keyboard (#1723): event.key -> the server's named key.
+const HARDWARE_NAMED = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  Escape: 'esc', Tab: 'tab', Enter: 'enter', Backspace: 'backspace', Delete: 'delete',
+  Home: 'home', End: 'end', PageUp: 'pageup', PageDown: 'pagedown',
+};
+
+// A held key repeats at most this often (ms), and at most this many times per
+// hold, so a stuck key on the phone never floods the PC.
+export const KEY_REPEAT = { minGapMs: 30, maxRepeats: 200 };
+
+/** Whether the `count`-th repeat of a held key, `gapMs` after the last one sent, goes out. */
+export function allowKeyRepeat(count, gapMs) {
+  return count <= KEY_REPEAT.maxRepeats && gapMs >= KEY_REPEAT.minGapMs;
+}
+
+/**
+ * What a hardware key press becomes on the PC: `{key, mods}` for the existing
+ * `key` message, or null when the press stays with the hidden input's
+ * `beforeinput` (a plain printable character, Shift alone included, which
+ * would otherwise go twice), is a bare modifier, is part of an IME
+ * composition, or is AltGr text (Windows reports AltGr as Ctrl+Alt). Cmd
+ * (Meta) is sent as Ctrl, never as Win: Mac habits carry over and Windows has
+ * no Cmd. Takes the KeyboardEvent's fields, so plain Node can pin it.
+ */
+export function hardwareKey(e) {
+  if (!e || e.isComposing || e.keyCode === 229 || typeof e.key !== 'string') return null;
+  const altGr = typeof e.getModifierState === 'function' && !!e.getModifierState('AltGraph');
+  const ctrl = !altGr && !!(e.ctrlKey || e.metaKey);
+  const alt = !altGr && !!e.altKey;
+  let key = HARDWARE_NAMED[e.key] || (/^F([1-9]|1[0-2])$/.test(e.key) ? e.key.toLowerCase() : null);
+  if (!key) {
+    if (altGr || !(ctrl || alt)) return null;
+    key = comboKey(e.key);
+    // Alt on a Mac makes e.key a symbol (Alt+a -> å): the physical key says
+    // what was meant.
+    if (!key && typeof e.code === 'string') {
+      const m = /^(?:Key([A-Z])|Digit([0-9]))$/.exec(e.code);
+      if (m) key = (m[1] || m[2]).toLowerCase();
+    }
+    if (!key) return null;
+  }
+  const mods = [];
+  if (ctrl) mods.push('ctrl');
+  if (alt) mods.push('alt');
+  if (e.shiftKey) mods.push('shift');
+  return { key: key, mods: mods };
+}

@@ -216,4 +216,66 @@ assert.equal(comboKey(String.fromCharCode(0x7f)), null);
 assert.equal(comboKey(''), null);
 assert.equal(comboKey(undefined), null);
 
+
+// Hardware keyboard (#1723): which key presses become a `key` message.
+{
+  const { hardwareKey, allowKeyRepeat, KEY_REPEAT } = await import(
+    '../../app/webapp/static/screen-gestures.js');
+  const press = (key, extra) => hardwareKey({ key, ...(extra || {}) });
+
+  // Named keys, with and without a modifier.
+  for (const [key, named] of [
+    ['ArrowUp', 'up'], ['ArrowDown', 'down'], ['ArrowLeft', 'left'], ['ArrowRight', 'right'],
+    ['Escape', 'esc'], ['Tab', 'tab'], ['Enter', 'enter'], ['Backspace', 'backspace'],
+    ['Delete', 'delete'], ['Home', 'home'], ['End', 'end'], ['PageUp', 'pageup'],
+    ['PageDown', 'pagedown'], ['F1', 'f1'], ['F5', 'f5'], ['F12', 'f12'],
+  ]) {
+    assert.deepEqual(press(key), { key: named, mods: [] }, key);
+  }
+  assert.deepEqual(press('Tab', { shiftKey: true }), { key: 'tab', mods: ['shift'] });
+  assert.equal(press('F13'), null);
+
+  // A modifier combo: one key message, mods in the server's order.
+  assert.deepEqual(press('c', { ctrlKey: true }), { key: 'c', mods: ['ctrl'] });
+  assert.deepEqual(press('C', { ctrlKey: true, shiftKey: true }), { key: 'c', mods: ['ctrl', 'shift'] });
+  assert.deepEqual(press('4', { altKey: true }), { key: '4', mods: ['alt'] });
+  assert.deepEqual(press('/', { ctrlKey: true }), { key: '/', mods: ['ctrl'] });
+  assert.deepEqual(press(' ', { ctrlKey: true }), { key: 'space', mods: ['ctrl'] });
+  assert.deepEqual(press('ArrowLeft', { ctrlKey: true, altKey: true }), { key: 'left', mods: ['ctrl', 'alt'] });
+  // Alt on a Mac turns the character into a symbol: the physical key decides.
+  assert.deepEqual(press('å', { altKey: true, code: 'KeyA' }), { key: 'a', mods: ['alt'] });
+  assert.equal(press('å', { altKey: true }), null);
+
+  // Cmd is Ctrl, never Win, and Cmd with Ctrl is one Ctrl.
+  assert.deepEqual(press('c', { metaKey: true }), { key: 'c', mods: ['ctrl'] });
+  assert.deepEqual(press('v', { metaKey: true, ctrlKey: true }), { key: 'v', mods: ['ctrl'] });
+  assert.ok(!press('c', { metaKey: true }).mods.includes('win'));
+  assert.deepEqual(press('ArrowRight', { metaKey: true }), { key: 'right', mods: ['ctrl'] });
+
+  // Plain text stays with beforeinput, Shift included; a bare modifier is no key.
+  assert.equal(press('a'), null);
+  assert.equal(press('A', { shiftKey: true }), null);
+  assert.equal(press('ñ'), null);
+  assert.equal(press(' '), null);
+  assert.equal(press('Shift', { shiftKey: true }), null);
+  assert.equal(press('Control', { ctrlKey: true }), null);
+  assert.equal(press('Meta', { metaKey: true }), null);
+  assert.equal(press('Dead', { altKey: true }), null);
+
+  // An IME composition is never a key press.
+  assert.equal(press('Enter', { isComposing: true }), null);
+  assert.equal(press('a', { keyCode: 229, ctrlKey: true }), null);
+
+  // AltGr (Ctrl+Alt on Windows) types a character: it stays text, even with a named key's mods dropped.
+  const altGr = { ctrlKey: true, altKey: true, getModifierState: (m) => m === 'AltGraph' };
+  assert.equal(press('@', altGr), null);
+  assert.deepEqual(press('ArrowLeft', altGr), { key: 'left', mods: [] });
+
+  // Held keys: spaced out and bounded.
+  assert.ok(!allowKeyRepeat(1, KEY_REPEAT.minGapMs - 1));
+  assert.ok(allowKeyRepeat(1, KEY_REPEAT.minGapMs));
+  assert.ok(allowKeyRepeat(KEY_REPEAT.maxRepeats, 100));
+  assert.ok(!allowKeyRepeat(KEY_REPEAT.maxRepeats + 1, 100));
+}
+
 console.log('OK');
