@@ -24,6 +24,11 @@ the user's interactive session), so no admin rights and no extra tool.
   phone never leaves Ctrl or a mouse button stuck on the PC.
 * **Nothing typed is logged.** The session counts accepted messages for the
   audit line; it never logs their content.
+* **The clipboard rides the same socket (#1719).** A ``clipboard_set``
+  message puts its text on the PC's clipboard through
+  :mod:`src.desktop_clipboard`, its own seam; it has its own size cap and its
+  own reply (``{"type": "clipboard", ...}``, which says only whether it
+  worked), and the session counts transfers, never what they carried.
 
 A non-elevated process cannot inject into an elevated window (UIPI):
 ``SendInput`` reports success and nothing happens. The lock screen (the
@@ -42,7 +47,7 @@ import threading
 from dataclasses import dataclass
 from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Set, Tuple, Union
 
-from src import desktop_capture
+from src import desktop_capture, desktop_clipboard
 from src.desktop_capture import Monitor
 
 logger = logging.getLogger(__name__)
@@ -54,8 +59,15 @@ FAKE_INPUT_ENV = "LAUNCHER_SCREEN_FAKE_INPUT"
 # scroll moves at most this many wheel units per axis (120 = one notch).
 MAX_TEXT_CHARS = 1000
 MAX_SCROLL = 1200
-# A frame longer than this is not an input message (and is not parsed).
+# A frame longer than this is not an input message (and is not parsed), except
+# a clipboard_set frame (#1719), which has its own, larger cap: the text may be
+# up to desktop_clipboard.MAX_CLIPBOARD_BYTES, and JSON escaping can make a
+# character up to six characters long.
 MAX_MESSAGE_CHARS = 8192
+MAX_CLIPBOARD_FRAME_CHARS = 6 * desktop_clipboard.MAX_CLIPBOARD_BYTES + 256
+# How a clipboard_set frame starts (the phone's JSON.stringify of
+# {type, text}); only a frame that starts this way may be over MAX_MESSAGE_CHARS.
+CLIPBOARD_FRAME_PREFIX = '{"type":"clipboard_set"'
 
 MOUSEEVENTF_MOVE = 0x0001
 MOUSEEVENTF_LEFTDOWN = 0x0002
@@ -432,8 +444,18 @@ class InputSession:
     """One Screen socket's input: validates messages, sends them, and knows
     what is held down so :meth:`release_all` can lift it."""
 
-    def __init__(self, injector: Injector, monitor: Monitor, monitors: Sequence[Monitor]) -> None:
+    def __init__(
+        self,
+        injector: Injector,
+        monitor: Monitor,
+        monitors: Sequence[Monitor],
+        clipboard: Optional[desktop_clipboard.Clipboard] = None,
+    ) -> None:
         self._injector = injector
+        # None: the process's clipboard, asked for on the first transfer, so a
+        # session that never pastes never touches the clipboard seam.
+        self._clipboard = clipboard
+        self._replies: List[Dict[str, Any]] = []
         self._monitor = monitor
         self._desktop = virtual_desktop(monitors)
         self._lock = threading.Lock()
@@ -441,6 +463,7 @@ class InputSession:
         self._held_keys: Set[KeyEvent] = set()
         self._warned_short = False
         self.count = 0
+        self.clipboard_to_pc = 0
 
     @property
     def held(self) -> Tuple[Set[str], Set[KeyEvent]]:
@@ -449,7 +472,9 @@ class InputSession:
 
     def handle_text(self, text: str) -> bool:
         """A text frame from the socket; True when it was an accepted input."""
-        if len(text) > MAX_MESSAGE_CHARS:
+        if len(text) > MAX_MESSAGE_CHARS and not (
+            text.startswith(CLIPBOARD_FRAME_PREFIX) and len(text) <= MAX_CLIPBOARD_FRAME_CHARS
+        ):
             logger.debug("Screen: input frame over %d chars ignored", MAX_MESSAGE_CHARS)
             return False
         try:
@@ -468,6 +493,8 @@ class InputSession:
 
     def handle(self, msg: Mapping[str, Any]) -> bool:
         """Send one input message; raises :class:`InputRejected` when invalid."""
+        if msg.get("type") == "clipboard_set":
+            return self._clipboard_set(msg)
         with self._lock:
             events = self._events_for(msg)
             if not events:
@@ -475,6 +502,13 @@ class InputSession:
             self._send(events)
             self.count += 1
             return True
+
+    def take_replies(self) -> List[Dict[str, Any]]:
+        """The messages for the phone that handling input has queued, oldest
+        first (a clipboard transfer's outcome); the socket sends them."""
+        with self._lock:
+            replies, self._replies = self._replies, []
+            return replies
 
     def release_all(self) -> int:
         """Lift every key and button still down; return how many were held."""
@@ -493,6 +527,40 @@ class InputSession:
             self._held_keys.clear()
             self._held_buttons.clear()
             return len(events)
+
+    def _clipboard_set(self, msg: Mapping[str, Any]) -> bool:
+        """Put the message's text on the PC's clipboard and queue the reply.
+
+        Not under the input lock: a locked clipboard is retried for a moment,
+        and a click must not wait behind it. The reply carries a reason class
+        and nothing of the text, and neither does any log line here.
+        """
+        text = msg.get("text")
+        if not isinstance(text, str) or not text:
+            return self._clipboard_reply(False, "empty")
+        if len(text.encode("utf-8", "surrogatepass")) > desktop_clipboard.MAX_CLIPBOARD_BYTES:
+            return self._clipboard_reply(False, "too_large")
+        try:
+            if self._clipboard is None:
+                self._clipboard = desktop_clipboard.get_clipboard()
+            self._clipboard.set_text(text)
+        except desktop_clipboard.ClipboardBusy:
+            logger.info("ℹ️ Screen: the PC clipboard stayed locked, nothing was copied")
+            return self._clipboard_reply(False, "busy")
+        except desktop_clipboard.ClipboardError as exc:
+            logger.warning("⚠️ Screen: the PC clipboard could not be written: %s", exc)
+            return self._clipboard_reply(False, "error")
+        with self._lock:
+            self.clipboard_to_pc += 1
+        return self._clipboard_reply(True, None)
+
+    def _clipboard_reply(self, ok: bool, reason: Optional[str]) -> bool:
+        reply: Dict[str, Any] = {"type": "clipboard", "direction": "to_pc", "ok": ok}
+        if reason:
+            reply["reason"] = reason
+        with self._lock:
+            self._replies.append(reply)
+        return ok
 
     # -- internals (called under the lock)
 

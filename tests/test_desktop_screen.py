@@ -617,6 +617,83 @@ def test_the_close_audit_counts_inputs_and_never_logs_what_was_typed(
         assert secret not in repr(call), "typed text reached the audit log"
 
 
+# ------------------------------------------------------ clipboard (#1719)
+#
+# Every test here runs against tests/conftest.py's recording fake clipboard:
+# nothing reaches the real one.
+
+
+def _clipboard_frame(text: str) -> str:
+    return json.dumps({"type": "clipboard_set", "text": text}, separators=(",", ":"), ensure_ascii=False)
+
+
+def test_a_clipboard_set_on_the_gated_socket_lands_and_is_answered(screen, fake_clipboard):
+    app, tt, _ = screen
+    secret = "hunter2-ñ€ correct horse"
+    with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt)) as ws:
+        _next_frame(ws)
+        ws.send_text(_clipboard_frame(secret))
+        reply = _next_text(ws, "clipboard")
+    assert fake_clipboard.texts == [secret]
+    assert reply == {"type": "clipboard", "direction": "to_pc", "ok": True}
+    assert secret not in json.dumps(reply)
+
+
+def test_a_clipboard_set_over_the_cap_is_answered_and_copies_nothing(screen, fake_clipboard):
+    from src import desktop_clipboard
+
+    app, _, _ = screen
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        _next_frame(ws)
+        ws.send_text(_clipboard_frame("a" * (desktop_clipboard.MAX_CLIPBOARD_BYTES + 1)))
+        reply = _next_text(ws, "clipboard")
+    assert reply == {"type": "clipboard", "direction": "to_pc", "ok": False, "reason": "too_large"}
+    assert fake_clipboard.texts == []
+
+
+@pytest.mark.parametrize(
+    "host, token, with_tt, headers, code",
+    [
+        (TAILNET, TOKEN, True, {"cf-ray": "abc-AMS"}, 4403),   # the public edge
+        (LAN, TOKEN, True, None, 4403),                         # off the tailnet
+        (TAILNET, "", True, None, 4401),                        # no bearer
+        (TAILNET, TOKEN, False, None, 4401),                    # no passkey unlock
+    ],
+    ids=["cloudflare", "off-tailnet", "no-bearer", "no-passkey"],
+)
+def test_a_refused_socket_copies_nothing(screen, fake_clipboard, host, token, with_tt, headers, code):
+    app, tt, _ = screen
+    url = _ws_url(token, tt if with_tt else "")
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with _as(app, host).websocket_connect(url, headers=headers or {}) as ws:
+            ws.send_text(_clipboard_frame("never copied"))
+            _next_frame(ws)
+    assert excinfo.value.code == code
+    time.sleep(0.1)  # give a (wrongly) running reader every chance to act
+    assert fake_clipboard.texts == [], "a refused socket's clipboard text reached the clipboard"
+
+
+def test_the_close_audit_counts_clipboard_transfers_and_never_logs_what_was_copied(
+    screen, fake_clipboard, webapp_client
+):
+    app, _, _ = screen
+    audit = webapp_client[2]["audit"]
+    secret = "hunter2-ñ€ correct horse"
+    with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
+        _next_frame(ws)
+        ws.send_text(_clipboard_frame(secret))
+        _next_text(ws, "clipboard")
+        ws.send_text(_clipboard_frame(secret))
+        _next_text(ws, "clipboard")
+        closed = _close_and_wait(ws, audit)
+    assert closed["clipboard_to_pc"] == 2
+    assert closed["inputs"] == 0, "a clipboard transfer is not an input message"
+    for call in audit.audit_event.call_args_list:
+        assert secret not in repr(call), "copied text reached the audit log"
+    # Direction only: the transfers are a count, with no size field beside it.
+    assert not [k for k in closed if "size" in k or "len" in k or "chars" in k or "bytes_copied" in k]
+
+
 # ------------------------------------------------------------ capture loop
 
 

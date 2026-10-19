@@ -5879,6 +5879,37 @@ html[data-usage-shows="none"] .usage-card { display: none; }
   margin: 0;
   text-align: center;
 }
+/* A short result line (#1719), the app's frosted toast recipe inside the view:
+   a toast sits under a modal dialog's top layer, so it can't be seen here.
+   Over the bottom of the stage, never takes a touch. */
+.screen-notice {
+  position: absolute;
+  left: 50%;
+  bottom: var(--gap);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(calc(100% - 2 * var(--gap)), 360px);
+  padding: 10px 16px;
+  background: var(--tabbar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid var(--tabbar-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: var(--font-label);
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+}
+.screen-notice[hidden] { display: none; }
+.screen-notice.error {
+  background: color-mix(in srgb, var(--deficit) 75%, transparent);
+  border-color: var(--deficit);
+  color: var(--accent-fg);
+}
 
 /* Screen control (#1521). A toolbar row under the bar, on the same card
    surface: the View / Control segmented control, and the keyboard toggle (an
@@ -5933,14 +5964,24 @@ html[data-usage-shows="none"] .usage-card { display: none; }
    variables so the landscape grid below can refill the row. */
 .screen-keys {
   --keys-span-toggle: 3;
+  --keys-span-toggle-fn: 3;
   --keys-span-task-main: 4;
   --keys-span-task-fn: 2;
+  /* Paste to PC and Paste + Ctrl+V (#1719) end each page: a row of their own
+     on the portrait grid, in the last row beside the others in landscape. */
+  --keys-span-clip-set-main: 4;
+  --keys-span-clip-set-fn: 4;
+  --keys-span-clip-go: 3;
 }
 .screen-keys-page { display: contents; }
 .screen-keys-page[hidden] { display: none; }
 .screen-keys .key-page-toggle { grid-column: span var(--keys-span-toggle); }
+.screen-keys-page[data-keys-page="fn"] .key-page-toggle { grid-column: span var(--keys-span-toggle-fn); }
 .screen-keys-page[data-keys-page="main"] .key-task { grid-column: span var(--keys-span-task-main); }
 .screen-keys-page[data-keys-page="fn"] .key-task { grid-column: span var(--keys-span-task-fn); }
+.screen-keys-page[data-keys-page="main"] .key-clip-set { grid-column: span var(--keys-span-clip-set-main); }
+.screen-keys-page[data-keys-page="fn"] .key-clip-set { grid-column: span var(--keys-span-clip-set-fn); }
+.screen-keys .key-clip-go { grid-column: span var(--keys-span-clip-go); }
 /* The modifiers held while this page is up, on the way back to them. */
 .key-held { margin-right: 6px; color: var(--accent); font-weight: 600; }
 .key-held[hidden] { display: none; }
@@ -5950,9 +5991,14 @@ html[data-usage-shows="none"] .usage-card { display: none; }
 @media (orientation: landscape) and (min-width: 720px) {
   .screen-keys {
     grid-template-columns: repeat(14, minmax(0, 1fr));
-    --keys-span-toggle: 6;
-    --keys-span-task-main: 8;
-    --keys-span-task-fn: 6;
+    /* Row two is 14 columns: main = toggle 3 + Task Mgr 3 + paste 5 + 3;
+       F-keys = toggle 4 + PgUp, PgDn + Task Mgr 2 + paste 3 + 3. */
+    --keys-span-toggle: 3;
+    --keys-span-toggle-fn: 4;
+    --keys-span-task-main: 3;
+    --keys-span-task-fn: 2;
+    --keys-span-clip-set-main: 5;
+    --keys-span-clip-set-fn: 3;
   }
 }
 /* The phone keyboard's target: focusable and on screen (iOS raises the
