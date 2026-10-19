@@ -332,11 +332,11 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     expect(page.locator("#screenKeyInput")).to_be_focused()
 
     # Every key of the first page stays at the 44px floor: the original 13,
-    # then the page toggle and Task Mgr (#1602).
+    # then the page toggle and Task Mgr (#1602), then the two paste keys (#1719).
     sizes = page.locator("#screenKeys .key-btn:visible").evaluate_all(
         "els => els.map(e => { const r = e.getBoundingClientRect(); return [r.width, r.height]; })"
     )
-    assert len(sizes) == 15
+    assert len(sizes) == 17
     assert all(w >= 40 and h >= 44 for w, h in sizes), sizes
 
     # Typed text goes out verbatim, Unicode included.
@@ -498,9 +498,11 @@ def test_both_pages_fit_a_narrow_phone_in_portrait_and_landscape(
     _seen, page = _open_keys(authed_page, base_url)
     keys = page.locator("#screenKeys")
 
-    for width, height, rows in ((360, 740, 3), (844, 390, 2)):
+    # Four rows upright since the paste keys (#1719) took a row of their own;
+    # sideways they join the last of the two rows.
+    for width, height, rows in ((360, 740, 4), (844, 390, 2)):
         page.set_viewport_size({"width": width, "height": height})
-        for target, expected in (("fn", 18), ("main", 15)):
+        for target, expected in (("fn", 20), ("main", 17)):
             keys.locator(f'[data-page-to="{target}"]').click()
             expect(keys.locator(f'[data-keys-page="{target}"]')).not_to_be_hidden()
             boxes = stable_boxes(page, expected)

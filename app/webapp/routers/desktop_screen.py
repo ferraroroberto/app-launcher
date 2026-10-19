@@ -23,6 +23,13 @@ rides the same socket and the same gate as the picture; there is no other
 input path (``tests/test_desktop_input.py`` fails if one appears). When the
 socket goes away, every key and button the session still holds is released.
 
+Clipboard (#1719): a ``clipboard_set`` input message puts its text on the PC's
+clipboard (its own size cap, its own seam, reached through the input
+session like every other message);
+the server answers with one JSON ``clipboard`` message that says whether it
+worked, never what was copied. The close audit line counts transfers by
+direction and records nothing of their content.
+
 Cursor (#1598): beside the frames, the server sends JSON ``cursor`` messages
 (position as 0-1 in the shown monitor, a shape name, visible or not) from
 :func:`src.desktop_cursor.stream_cursor`, whenever the cursor changed. It is
@@ -73,9 +80,12 @@ async def _read_client(
     acked: asyncio.Event,
     stopped: asyncio.Event,
     session: Optional[desktop_input.InputSession] = None,
+    send: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
 ) -> None:
     """Turn the client's ``ack`` messages into ``acked`` and hand every other
-    text frame to ``session`` as input, in order; a disconnect stops.
+    text frame to ``session`` as input, in order; what handling it queues for
+    the phone (a clipboard transfer's outcome) goes out through ``send``. A
+    disconnect stops.
 
     Input runs off the loop: ``SendInput`` is quick, but a slow low-level
     hook elsewhere on the PC can hold it, and that must not stall the app.
@@ -87,6 +97,9 @@ async def _read_client(
                 acked.set()
             elif session is not None:
                 await asyncio.to_thread(session.handle_text, text)
+                for reply in session.take_replies():
+                    if send is not None:
+                        await send(reply)
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
@@ -161,14 +174,14 @@ async def screen_ws(websocket: WebSocket) -> None:
         async with send_lock:
             await websocket.send_text(json.dumps({"type": "status", "state": state}))
 
-    async def send_cursor(message: Dict[str, Any]) -> None:
+    async def send_json(message: Dict[str, Any]) -> None:
         async with send_lock:
             await websocket.send_text(json.dumps(message))
 
     session = desktop_input.InputSession(desktop_input.get_injector(), monitor, monitors)
-    reader = asyncio.create_task(_read_client(websocket, acked, stopped, session))
+    reader = asyncio.create_task(_read_client(websocket, acked, stopped, session, send_json))
     cursor = asyncio.create_task(
-        _stream_cursor(desktop_cursor.cursor_reader(monitor), send_cursor, stopped)
+        _stream_cursor(desktop_cursor.cursor_reader(monitor), send_json, stopped)
     )
     try:
         await desktop_capture.stream_frames(
@@ -198,5 +211,5 @@ async def screen_ws(websocket: WebSocket) -> None:
             audit.audit_event, "screen_close", client=client, monitor=monitor.id,
             duration_s=round(time.monotonic() - started, 1), frames=sent["frames"],
             bytes=sent["bytes"], unavailable=sent["unavailable"],
-            inputs=session.count,
+            inputs=session.count, clipboard_to_pc=session.clipboard_to_pc,
         ))

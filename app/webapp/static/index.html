@@ -2618,6 +2618,10 @@
              messages: the picture itself never contains it. -->
         <div id="screenCursor" class="screen-cursor" aria-hidden="true" hidden></div>
         <div id="screenState" class="screen-state" role="status" aria-live="polite" hidden></div>
+        <!-- A short result line (#1719): the app's toast sits under a modal
+             dialog's top layer, so the view says "Sent to the PC clipboard"
+             itself. -->
+        <div id="screenNotice" class="screen-notice" role="status" aria-live="polite" hidden></div>
       </div>
       <!-- The handle (#1601): shown only on a phone in landscape, where the bar
            and the tools row are hidden. It names the mode (View / Control) so a
@@ -2631,7 +2635,10 @@
            input raises the phone keyboard; what it types goes to the PC.
            Two pages (#1602): the first is the original keys, the second the
            F-keys and the navigation cluster; the sticky modifiers carry
-           across. Task Mgr is Ctrl+Shift+Esc (Ctrl+Alt+Del cannot be sent). -->
+           across. Task Mgr is Ctrl+Shift+Esc (Ctrl+Alt+Del cannot be sent).
+           The last row of each page (#1719) sends the phone's clipboard text
+           to the PC: Paste to PC sets the PC's clipboard, Paste + Ctrl+V sets
+           it and then presses Ctrl+V. -->
       <div id="screenKeys" class="screen-keys" role="group" aria-label="Keys" hidden>
         <div class="screen-keys-page" data-keys-page="main">
           <button type="button" class="key-btn" data-key="esc">Esc</button>
@@ -2649,6 +2656,8 @@
           <button type="button" class="key-btn screen-key-enter" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>
           <button type="button" class="key-btn key-page-toggle" data-page-to="fn" aria-label="Show F-keys and navigation keys">F-keys &#x203A;</button>
           <button type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
+          <button type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
+          <button type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
         </div>
         <div class="screen-keys-page" data-keys-page="fn" hidden>
           <button type="button" class="key-btn" data-key="f1">F1</button>
@@ -2669,9 +2678,30 @@
           <button type="button" class="key-btn" data-key="pageup">PgUp</button>
           <button type="button" class="key-btn" data-key="pagedown">PgDn</button>
           <button type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
+          <button type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
+          <button type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
         </div>
         <input id="screenKeyInput" class="screen-key-input" type="text" aria-label="Type on the PC" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       </div>
+    </dialog>
+
+    <!-- Paste to PC by hand (#1719): shown only when the phone refuses to let
+         the page read its clipboard. Header ✕ plus one full-width action (modal
+         contract, #545). Whatever is pasted here goes to the PC the same way. -->
+    <dialog id="screenPasteSheet" class="detail-dialog" aria-labelledby="screenPasteTitle">
+      <form id="screenPasteForm" class="detail-card">
+        <div class="detail-header">
+          <h2 id="screenPasteTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Paste to PC</h2>
+          <button type="button" id="screenPasteClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p class="settings-footnote">The phone didn't let the page read its clipboard. Paste the text here, then send it.</p>
+        <textarea id="screenPasteText" class="input-native" rows="6" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Text to send to the PC"></textarea>
+        <div class="detail-actions">
+          <button type="submit" id="screenPasteSend" class="button-primary detail-save-btn">Send to PC</button>
+        </div>
+      </form>
     </dialog>
 
     <dialog id="sessionRenameDialog" class="detail-dialog">

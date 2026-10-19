@@ -224,6 +224,25 @@ def fake_injector(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def fake_clipboard(monkeypatch):
+    """Never touch the real Windows clipboard from a test (#1719).
+
+    The Screen view's ``clipboard_set`` goes out through
+    ``desktop_clipboard.get_clipboard``; here it is a recorder for the whole
+    suite, so no test can overwrite what the owner just copied. A test that
+    asserts on what would have been copied asks for this fixture by name. The
+    e2e suite's disposable webapp gets the same through
+    ``LAUNCHER_SCREEN_FAKE_INPUT=1``.
+    """
+    from src import desktop_clipboard
+
+    recorder = desktop_clipboard.RecordingClipboard()
+    monkeypatch.setattr(desktop_clipboard, "get_clipboard", lambda: recorder)
+    monkeypatch.setattr(desktop_clipboard, "_clipboard", recorder)
+    return recorder
+
+
+@pytest.fixture(autouse=True)
 def _isolated_jobs_index(tmp_path, monkeypatch):
     """Give each test its own Jobs index.
 

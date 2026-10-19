@@ -60,6 +60,16 @@
  * connect() like the first, so the passkey token, the Tailscale gate and the
  * tunnel refusal apply every time. The monitor picked is remembered per
  * device and reopened by its rectangle, then its id, then the primary.
+ *
+ * Clipboard (#1719). Two keys on the keys bar send the phone's clipboard text
+ * to the PC: Paste to PC sets the PC's clipboard, Paste + Ctrl+V sets it and
+ * then presses Ctrl+V. The text is read inside the tap (iOS asks for its own
+ * Paste confirmation there) and goes out as one `clipboard_set` message
+ * through sendInput, so it is refused in View mode and while the picture is
+ * not live like any other input; if the phone refuses the read, a small sheet
+ * takes the text by hand. The server answers each message with a `clipboard`
+ * message (ok, or why not), shown as a short line over the picture. Nothing
+ * here keeps, logs or counts what was copied.
  */
 
 import { isDesktopClient, readToken, AuthRequiredError } from './api.js';
@@ -305,6 +315,7 @@ function onText(text) {
   if (!msg) return;
   if (msg.type === 'status') onStatus(msg);
   else if (msg.type === 'cursor') onCursor(msg);
+  else if (msg.type === 'clipboard') onClipboard(msg);
 }
 
 function onStatus(msg) {
@@ -414,6 +425,7 @@ function closeSocket() {
   dropGesture();
   // Where the cursor was is not where it is: draw none until told again.
   view.cursor = null;
+  resetClipboard();
   setLive(false);
   if (ws && ws.readyState <= WebSocket.OPEN) ws.close();
 }
@@ -435,6 +447,7 @@ function hideView() {
   setMode('view');
   view.pad = null;
   closeSocket();
+  closePasteSheet();
   clearFrame();
   const dialog = $('screenView');
   if (dialog && dialog.open) dialog.close();
@@ -542,12 +555,14 @@ function placeCursor() {
 
 // The one way input leaves the view: Control mode, an open socket, and a
 // live picture, or nothing is sent.
-function sendInput(msg) {
+function canSend() {
   const ws = view.ws;
-  if (view.mode !== 'control' || !view.live || !ws || ws.readyState !== WebSocket.OPEN) {
-    return false;
-  }
-  ws.send(JSON.stringify(msg));
+  return view.mode === 'control' && view.live && !!ws && ws.readyState === WebSocket.OPEN;
+}
+
+function sendInput(msg) {
+  if (!canSend()) return false;
+  view.ws.send(JSON.stringify(msg));
   if ('x' in msg) notePadSent();
   return true;
 }
@@ -1146,6 +1161,10 @@ function wireKeyboard() {
         sendMacro(btn.dataset.macro);
         return;
       }
+      if (btn.dataset.clip) {
+        pasteToPc(btn.dataset.clip === 'paste');
+        return;
+      }
       if (btn.dataset.key) sendKey(btn.dataset.key);
     });
   }
@@ -1206,6 +1225,132 @@ function fitToKeyboard() {
   }
   dialog.style.top = vv.offsetTop + 'px';
   dialog.style.height = vv.height + 'px';
+}
+
+// ----------------------------------------------------------- clipboard (#1719)
+
+// The most text one transfer carries, in UTF-8 bytes: the server's own cap
+// (src/desktop_clipboard.py MAX_CLIPBOARD_BYTES), checked here first so a
+// huge paste is never sent just to be refused.
+const CLIPBOARD_MAX_BYTES = 64 * 1024;
+const CLIPBOARD_FAILURES = {
+  busy: "The PC's clipboard is busy. Try again.",
+  too_large: 'That text is too long to send (64 KB at most).',
+  empty: 'There was no text to send.',
+  error: "The PC's clipboard refused the text.",
+};
+const clipQueue = [];     // one entry per clipboard_set in flight: press Ctrl+V once it lands?
+let noticeTimer = null;
+let pasteSheetThenPaste = false;
+
+// A short result line over the picture. The app's toast sits behind a modal
+// dialog's top layer, so the view carries its own.
+function showNotice(message, isError) {
+  const el = $('screenNotice');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.toggle('error', !!isError);
+  el.hidden = false;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(function () {
+    noticeTimer = null;
+    el.hidden = true;
+  }, isError ? 4500 : 2200);
+}
+
+// A new connection or a closed one owes no answers, and shows no old one.
+function resetClipboard() {
+  clipQueue.length = 0;
+  if (noticeTimer) clearTimeout(noticeTimer);
+  noticeTimer = null;
+  const el = $('screenNotice');
+  if (el) el.hidden = true;
+}
+
+// The key's tap. readText() is called straight from the tap, before anything
+// is awaited, so the phone treats it as the user's own action.
+function pasteToPc(thenPaste) {
+  if (!canSend()) return;
+  const clip = navigator.clipboard;
+  if (!clip || typeof clip.readText !== 'function') {
+    openPasteSheet(thenPaste);
+    return;
+  }
+  clip.readText().then(function (text) {
+    if (!text) {
+      showNotice("The phone's clipboard has no text");
+      return;
+    }
+    sendClipboard(text, thenPaste);
+  }, function () {
+    // Refused (permission denied, or the page was not trusted with it).
+    openPasteSheet(thenPaste);
+  });
+}
+
+function sendClipboard(text, thenPaste) {
+  if (new TextEncoder().encode(text).length > CLIPBOARD_MAX_BYTES) {
+    showNotice(CLIPBOARD_FAILURES.too_large, true);
+    return;
+  }
+  if (sendInput({ type: 'clipboard_set', text: text })) {
+    clipQueue.push(!!thenPaste);
+  } else {
+    showNotice('Wait for the picture to be live, in Control, to paste.', true);
+  }
+}
+
+// The server's answer to one clipboard_set, in the order they were sent.
+function onClipboard(msg) {
+  const thenPaste = clipQueue.shift() === true;
+  if (!msg.ok) {
+    showNotice(CLIPBOARD_FAILURES[msg.reason] || CLIPBOARD_FAILURES.error, true);
+    return;
+  }
+  // Ctrl+V only after the copy landed: a failed copy must never paste what
+  // the PC's clipboard held before. Exactly Ctrl, like a macro: held sticky
+  // modifiers let go with it.
+  if (thenPaste && sendInput({ type: 'key', key: 'v', mods: ['ctrl'] })) {
+    if (view.mods.size) clearMods();
+    showNotice('Pasted on the PC');
+    return;
+  }
+  showNotice('Sent to the PC clipboard');
+}
+
+function openPasteSheet(thenPaste) {
+  const sheet = $('screenPasteSheet');
+  if (!sheet) return;
+  pasteSheetThenPaste = !!thenPaste;
+  const field = $('screenPasteText');
+  if (field) field.value = '';
+  if (!sheet.open) sheet.showModal();
+}
+
+function closePasteSheet() {
+  const sheet = $('screenPasteSheet');
+  if (sheet && sheet.open) sheet.close();
+}
+
+function wirePasteSheet() {
+  const sheet = $('screenPasteSheet');
+  if (!sheet) return;
+  const close = $('screenPasteClose');
+  if (close) close.addEventListener('click', closePasteSheet);
+  const form = $('screenPasteForm');
+  if (form) {
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      const field = $('screenPasteText');
+      const text = field ? field.value : '';
+      closePasteSheet();
+      if (text) sendClipboard(text, pasteSheetThenPaste);
+    });
+  }
+  // A tap on the backdrop lands on the <dialog> itself, outside the card.
+  sheet.addEventListener('click', function (e) {
+    if (e.target === sheet) closePasteSheet();
+  });
 }
 
 // ----------------------------------------------------------- stage wiring
@@ -1364,6 +1509,7 @@ export function wireScreenView() {
     });
   }
   wireKeyboard();
+  wirePasteSheet();
   window.addEventListener('resize', applyZoom);
   if (window.visualViewport) {
     const refit = function () { fitToKeyboard(); applyZoom(); };
