@@ -245,6 +245,18 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "a distinct row, since it does not end with '/changed-files'.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/changed-files/content"),
+        "passkey",
+        "Changed files' File view (#1689): one changed file's text off the disk, "
+        "jailed to the session's own edited set: terminal-grade content.",
+    ),
+    (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/changed-files/open"),
+        "passkey",
+        "Changed files' Open on PC (#1689): opens a changed file in the PC's editor. "
+        "The route itself also refuses anyone but the PC (403).",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/transcript/image"),
         "passkey",
         "Chat transcript images (#1265): a pasted image or screenshot out of the "

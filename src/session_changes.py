@@ -25,6 +25,11 @@ bytes; the builder fold at most :data:`FLAVOR_SCAN_CEILING`, in windows of
 file and report ``partial`` when they cut. Measured on the dev box (#1356): the
 largest Codex rollout, 33.8 MB, builds whole in 0.22 s (~6.5 ms/MB), so the
 64 MiB ceiling is ~0.4 s at worst; no rollout there passes it.
+
+The panel's File view (#1689) is the one place this module touches a changed
+file itself: :func:`changed_file_path` finds a requested file in the fold
+(the jail), :func:`read_text_file` reads it, bounded, with a distinct refusal
+per reason it can't be shown.
 """
 
 from __future__ import annotations
@@ -297,3 +302,81 @@ def file_steps(path: Path, key: str, max_bytes: int = DIFF_FULL_BYTES,
     if not found:
         return None
     return {"steps": steps, "truncated": truncated, "partial": partial}
+
+
+# ------------------------------------------------------------- the file itself
+#
+# The panel's File view and Open on PC (#1689) act on the file as it is now on
+# disk, so they read the file system — but only at a path the session's own
+# edits name. That set is the jail: a request path is looked up in the fold,
+# never joined to anything and opened, so `..`, another absolute path or a
+# file the session only read is ``file_not_found`` before any disk access.
+
+VIEW_MAX_BYTES = 256 * 1024
+
+FILE_NOT_FOUND = "file_not_found"
+FILE_DELETED = "deleted"
+FILE_TOO_LARGE = "too_large"
+FILE_NOT_TEXT = "not_text"
+
+
+class FileRefusal(Exception):
+    """Why a changed file can't be shown, as its own ``reason``; ``size`` is
+    the file's size on disk for ``too_large``."""
+
+    def __init__(self, reason: str, size: Optional[int] = None) -> None:
+        super().__init__(reason)
+        self.reason = reason
+        self.size = size
+
+
+def changed_file_path(path: Path, requested: str, flavor: str = "claude",
+                      project_dir: Optional[str] = None) -> Optional[str]:
+    """The absolute path of the file ``requested`` names, when this session's
+    edits touched it; None otherwise.
+
+    ``requested`` is a ``key`` the list handed out, or a path a Chat step
+    recorded: relative paths resolve against the project folder exactly as the
+    fold resolves them (:func:`_resolved`), so both match the same row. A
+    recorded path that is still relative (no project folder to resolve it
+    against) names no file on disk, so it is None too.
+    """
+    target = _key(_resolved(requested, project_dir, flavor))
+    # No raw-line needle (unlike file_steps): a Chat step's spelling of the
+    # path may differ in case or slashes from the line, and a miss here would
+    # refuse a file the session did edit. The fold costs the same as the list.
+    edits, _partial = _edits(path, flavor, project_dir)
+    # The first spelling, as the list's ``key`` keeps it: a later step may
+    # record the same file in another case or with other slashes.
+    found = next((edit.path for edit in edits if _key(edit.path) == target), None)
+    if found is None or not _absolute(found):
+        return None
+    return found
+
+
+def read_text_file(target: str, max_bytes: int = VIEW_MAX_BYTES) -> str:
+    """The text of ``target``, at most ``max_bytes``, else :class:`FileRefusal`.
+
+    ``deleted`` when nothing is there, ``too_large`` past the cap (read never
+    starts), ``not_text`` for a NUL byte or bytes that aren't UTF-8 (a BOM is
+    dropped). Any other ``OSError`` propagates: the route's ``read_failed``.
+    """
+    file = Path(target)
+    try:
+        size = file.stat().st_size
+    except (FileNotFoundError, NotADirectoryError):
+        raise FileRefusal(FILE_DELETED) from None
+    if not file.is_file():
+        raise FileRefusal(FILE_NOT_TEXT)
+    if size > max_bytes:
+        raise FileRefusal(FILE_TOO_LARGE, size)
+    with file.open("rb") as fh:
+        data = fh.read(max_bytes + 1)
+    if len(data) > max_bytes:   # it grew between the stat and the read
+        raise FileRefusal(FILE_TOO_LARGE, len(data))
+    if b"\x00" in data:
+        raise FileRefusal(FILE_NOT_TEXT)
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise FileRefusal(FILE_NOT_TEXT) from None

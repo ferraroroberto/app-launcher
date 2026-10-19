@@ -237,3 +237,192 @@ class TestChangedFilesEndpoints:
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = []
         assert client.get("/api/claude-code/sessions/s1/changed-files/diff").status_code == 422
+
+
+# ------------------------------------------- the file itself (#1689)
+
+_CONTENT = "/api/claude-code/sessions/s1/changed-files/content"
+_OPEN = "/api/claude-code/sessions/s1/changed-files/open"
+
+
+def test_file_routes_classified_passkey():
+    """Each a row of its own: neither ends with '/changed-files' or '/diff'."""
+    from app.webapp.middleware import _terminal_guard_level
+    assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files/content") == "passkey"
+    assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files/open") == "passkey"
+
+
+def test_file_routes_refused_off_tailnet(webapp_client):
+    client, _, _ = webapp_client
+    assert client.get(_CONTENT + "?path=x").status_code == 403
+    assert client.post(_OPEN, json={"path": "x"}).status_code == 403
+
+
+def test_a_relative_recorded_path_resolves_against_the_project(tmp_path, monkeypatch):
+    """A Codex patch names files from its working folder; the fold resolves
+    them, and so does the lookup, so a Chat step's relative path and the
+    list's absolute key both find the file."""
+    project = tmp_path / "proj"
+    edit = session_changes.Edit("src/x.py", [{"lines": ["+a"]}], True, None, added=1)
+    absolute = str(project).replace("\\", "/") + "/src/x.py"
+    for requested in ("src/x.py", absolute, absolute.upper()):
+        monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor: (iter([edit]), False))
+        assert session_changes.changed_file_path(tmp_path / "t.jsonl", requested, "codex", str(project)) == absolute
+    # With no project folder the recorded path stays relative: no file on disk.
+    monkeypatch.setattr(session_changes, "_flavor_edits", lambda path, flavor: (iter([edit]), False))
+    assert session_changes.changed_file_path(tmp_path / "t.jsonl", "src/x.py", "codex", None) is None
+
+
+class TestChangedFileContent:
+
+    def _setup(self, webapp_client, monkeypatch, tmp_path):
+        client, _, overrides = webapp_client
+        project = tmp_path / "proj"
+        _serve(overrides, monkeypatch, _session(tmp_path, project), project)
+        return client, project
+
+    def test_a_changed_file_is_served_whole(self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        (project / "b.md").write_bytes("\ufeff# Title\n\nsecret-body-text\n".encode("utf-8"))
+        with caplog.at_level(logging.INFO):
+            body = client.get(_CONTENT, params={"path": str(project / "b.md")}).json()
+        assert body["available"] is True and body["reason"] is None
+        assert body["text"] == "# Title\n\nsecret-body-text\n"   # the BOM dropped
+        assert body["path"] == str(project / "b.md").replace("/", "\\")
+        mine = [r for r in caplog.records if "changed file" in r.getMessage()]
+        joined = "\n".join(r.getMessage() for r in mine)
+        assert "changed file content s1" in joined
+        assert "secret-body-text" not in joined and "b.md" not in joined
+        assert mine and all(r.levelno == logging.INFO for r in mine)
+
+    def test_the_path_may_differ_in_case_and_slashes(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        key = str(project / "src" / "a.py").replace("\\", "/").upper()
+        body = client.get(_CONTENT, params={"path": key}).json()
+        assert body["available"] is True and body["text"].splitlines() == ["x"]
+
+    @pytest.mark.parametrize("requested", [
+        "C:/Windows/win.ini",                 # anywhere else
+        "{project}/notes.txt",                # on disk, never edited
+        "{project}/src/../b.md",              # traversal onto an edited file
+        "b.md",                               # relative, for an agent that records absolute paths
+        "{transcript}",                       # the transcript itself
+    ])
+    def test_a_path_outside_the_edited_set_is_file_not_found(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, requested,
+    ):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        (project / "notes.txt").write_text("not edited\n", encoding="utf-8")
+        path = requested.format(project=str(project).replace("\\", "/"), transcript=str(tmp_path / "t.jsonl"))
+        body = client.get(_CONTENT, params={"path": path}).json()
+        assert body["available"] is False and body["reason"] == "file_not_found"
+        assert "text" not in body
+
+    def test_a_file_gone_from_disk_is_deleted(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        body = client.get(_CONTENT, params={"path": str(project / "old.txt")}).json()
+        assert body["available"] is False and body["reason"] == "deleted"
+
+    def test_an_oversize_file_is_too_large_with_its_size(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        big = "y" * (session_changes.VIEW_MAX_BYTES + 1)
+        (project / "b.md").write_text(big, encoding="utf-8")
+        body = client.get(_CONTENT, params={"path": str(project / "b.md")}).json()
+        assert body["available"] is False and body["reason"] == "too_large"
+        assert body["size"] == len(big) and "text" not in body
+        (project / "b.md").write_text(big[:-1], encoding="utf-8")   # exactly at the cap is served
+        assert client.get(_CONTENT, params={"path": str(project / "b.md")}).json()["available"] is True
+
+    @pytest.mark.parametrize("data", [b"PK\x03\x04\x00\x00binary", b"caf\xe9 latin-1\n"])
+    def test_a_binary_or_non_utf8_file_is_not_text(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, data,
+    ):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        (project / "b.md").write_bytes(data)
+        body = client.get(_CONTENT, params={"path": str(project / "b.md")}).json()
+        assert body["available"] is False and body["reason"] == "not_text"
+
+    def test_an_unreadable_file_is_read_failed(self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        from app.webapp.routers import session_transcript as routes
+
+        def _denied(target, *a, **kw):
+            raise PermissionError("denied")
+        monkeypatch.setattr(routes, "read_text_file", _denied)
+        with caplog.at_level(logging.INFO):
+            body = client.get(_CONTENT, params={"path": str(project / "b.md")}).json()
+        assert body["available"] is False and body["reason"] == "read_failed"
+        assert any(r.levelno == logging.WARNING and "read failed" in r.getMessage() for r in caplog.records)
+
+    def test_path_is_required(self, webapp_client, _bypass_gate):
+        client, _, overrides = webapp_client
+        overrides["session"].list_sessions.return_value = []
+        assert client.get(_CONTENT).status_code == 422
+
+
+class TestChangedFileOpen:
+
+    @pytest.fixture
+    def launches(self, monkeypatch):
+        from app.webapp.routers import session_transcript as routes
+        from src.webapp_config import SESSION_HOST_PORT_ENV
+        calls: List[tuple] = []
+        monkeypatch.setattr(routes, "is_vscode_installed", lambda: True)
+        monkeypatch.setattr(routes, "open_file", lambda p: calls.append(("vscode", str(p))) or 1)
+        monkeypatch.setattr(routes, "select_in_explorer", lambda p: calls.append(("explorer", str(p))) or 2)
+        monkeypatch.delenv(SESSION_HOST_PORT_ENV, raising=False)
+        return calls
+
+    def _setup(self, webapp_client, monkeypatch, tmp_path):
+        client, _, overrides = webapp_client
+        project = tmp_path / "proj"
+        _serve(overrides, monkeypatch, _session(tmp_path, project), project)
+        return client, project
+
+    def test_opens_a_changed_file_in_vscode(self, webapp_client, _bypass_gate, monkeypatch, tmp_path, launches):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        body = client.post(_OPEN, json={"path": str(project / "b.md")}).json()
+        assert body["opened"] is True and body["with"] == "vscode"
+        assert launches == [("vscode", str(project / "b.md"))]
+
+    def test_without_vscode_explorer_shows_it(self, webapp_client, _bypass_gate, monkeypatch, tmp_path, launches):
+        from app.webapp.routers import session_transcript as routes
+        monkeypatch.setattr(routes, "is_vscode_installed", lambda: False)
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        body = client.post(_OPEN, json={"path": str(project / "b.md")}).json()
+        assert body["opened"] is True and body["with"] == "explorer"
+        assert launches == [("explorer", str(project / "b.md"))]
+
+    def test_only_the_pc_itself_may_ask(self, webapp_client, _bypass_gate, monkeypatch, tmp_path, launches):
+        from app.webapp.routers import session_transcript as routes
+        monkeypatch.setattr(routes, "is_pc_itself", lambda host, headers: False)
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        assert client.post(_OPEN, json={"path": str(project / "b.md")}).status_code == 403
+        assert launches == []
+
+    def test_a_disposable_instance_launches_nothing(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, launches,
+    ):
+        from src.webapp_config import SESSION_HOST_PORT_ENV
+        monkeypatch.setenv(SESSION_HOST_PORT_ENV, "18446")
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        body = client.post(_OPEN, json={"path": str(project / "b.md")}).json()
+        assert body["opened"] is False and body["with"] == "none"
+        assert launches == []
+
+    @pytest.mark.parametrize("requested, reason", [
+        ("C:/Windows/System32/cmd.exe", "file_not_found"),
+        ("{project}/old.txt", "deleted"),
+    ])
+    def test_a_refused_file_launches_nothing(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, launches, requested, reason,
+    ):
+        client, project = self._setup(webapp_client, monkeypatch, tmp_path)
+        path = requested.format(project=str(project).replace("\\", "/"))
+        body = client.post(_OPEN, json={"path": path}).json()
+        assert body["opened"] is False and body["reason"] == reason
+        assert launches == []
+
+    def test_path_is_required(self, webapp_client, _bypass_gate, launches):
+        client, _, _ = webapp_client
+        assert client.post(_OPEN, json={}).status_code == 400

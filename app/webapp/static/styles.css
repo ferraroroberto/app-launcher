@@ -3169,6 +3169,74 @@ textarea.input-native { height: auto; }
    diff, and the panel scrolls as a whole rather than per diff. */
 .chg-body .tr-diff { max-height: none; }
 .chg-step { padding: 6px 0 4px; }
+/* A session file's tools (#1689): the vendored Diff | File segmented switch,
+   then Copy path and Open on PC as icon buttons on one quiet row, and the
+   file's absolute path under it as text you can select. The icon buttons'
+   44px targets reach 8px past their 28px boxes, so the group is inset by as
+   much and its last target stays inside the panel. */
+.chg-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--hit-min);
+  padding: 4px 0 0;
+}
+.chg-view { flex: 0 1 168px; }
+.chg-acts { padding: 0 8px; }
+.chg-fullpath {
+  padding: 4px 0 8px;
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* The File view (file-view.js): the code-listing frame (COMP-17) for code,
+   JSON and plain text, a CSS-counter gutter on each listing line so a long
+   line wraps right of its number and a copy takes the code alone. JSON is
+   tinted with the shell tint's pairs; code is not tinted. */
+.fv-listing,
+.fv-text {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fv-listing { padding: 6px 0; }
+.fv-text { padding: 8px 10px; }
+.fv-listing > code {
+  display: block;
+  padding: 0;
+  background: none;
+  font: inherit;
+  counter-reset: fv-line;
+}
+.fv-line {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  column-gap: 10px;
+  padding: 0 10px 0 6px;
+  counter-increment: fv-line;
+}
+.fv-line::before {
+  content: counter(fv-line);
+  color: var(--muted);
+  text-align: right;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.fv-key { color: var(--accent-text); }
+.fv-str { color: var(--success-text); }
+.fv-num,
+.fv-lit { color: var(--attention-text); }
+.fv-md { padding: 4px 2px 0; }
 .tr-diff-numbered > span {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -3198,8 +3266,8 @@ textarea.input-native { height: auto; }
 /* Closes a turn that edited files: the card contract on the canvas, a header
    (glyph, "Edited N files", total +N -M), then list-rows at rows.md -- the
    panel's own file row -- and a full-width "Show N more". Every row is a
-   button: a tap opens Changed files on that file. Beside it, past a hairline,
-   a 44px "Ask to undo" (#1479) fills the composer and sends nothing. */
+   button: a tap opens Changed files on that file, across the row's full
+   width. */
 .tr-edited {
   margin: 12px 0 0;
   border: 1px solid var(--line);
@@ -3229,32 +3297,15 @@ textarea.input-native { height: auto; }
 .tr-edited-more,
 .tr-edited-partial { border-top: 1px solid var(--line-muted); }
 .tr-edited-line { display: flex; align-items: stretch; }
-.tr-edited-line > .tr-edited-row { flex: 1; min-width: 0; width: auto; padding-right: 10px; }
-.tr-edited-undo {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--hit-min);
-  min-height: var(--hit-min);
-  padding: 0;
-  border: 0;
-  border-left: 1px solid var(--line-muted);
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.tr-edited-undo .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.tr-edited-line > .tr-edited-row { flex: 1; min-width: 0; width: auto; }
 .tr-edited-chev { flex: none; display: inline-flex; color: var(--muted); }
 .tr-edited-chev .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .tr-edited-head:active,
 .tr-edited-row:active,
-.tr-edited-undo:active,
 .tr-edited-more:active { background: var(--neutral-soft); }
 @media (hover: hover) {
   .tr-edited-head:hover,
   .tr-edited-row:hover,
-  .tr-edited-undo:hover,
   .tr-edited-more:hover { background: var(--neutral-soft); }
 }
 .tr-edited-more {

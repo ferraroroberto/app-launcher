@@ -636,7 +636,7 @@ function renderSentFiles(e, session) {
 // laptop or phone over the tailnet keeps the anchor: the PC's browser would
 // open in front of nobody. Any failure falls back to the anchor.
 
-function onThePc() {
+export function onThePc() {
   return !!state.isMirrorWindow ||
     !!(state.status && state.status.terminal && state.status.terminal.reason === 'loopback');
 }

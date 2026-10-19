@@ -58,8 +58,7 @@
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
  * attach menu, the composer's own paste and drop (#1206) and the terminal
- * host's paste and drop all use), `appendText(text)` (a prefill appended as
- * its own paragraph, never sent), `reset()` (leave-surface teardown), `closePopovers()`,
+ * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
  * stopped dictation is still finalizing — a field host's own send waits it
@@ -438,17 +437,6 @@ export function mountComposer(host, opts) {
     ta.focus();
   }
 
-  // A host's prefill (#1479's Ask to undo): appended as its own paragraph
-  // and never sent. A second tap with the same text already in the draft
-  // only focuses, so a double tap does not stack the request twice.
-  function appendText(text) {
-    if (el.textarea.value.indexOf(text) !== -1) {
-      el.textarea.focus();
-      return;
-    }
-    appendParagraph(text);
-  }
-
   function labelImage(text) {
     el.image.title = text;
     el.image.setAttribute('aria-label', text);
@@ -723,7 +711,6 @@ export function mountComposer(host, opts) {
     root: host,
     textarea: el.textarea,
     attachFiles: attachFiles,
-    appendText: appendText,
     reset: reset,
     closePopovers: closePopovers,
     setAvailability: setAvailability,

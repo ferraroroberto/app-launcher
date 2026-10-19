@@ -9,6 +9,8 @@ required for:
 * :func:`file_diff` — one file's unified diff, capped, for the phone-first
   accordion viewer.
 * :func:`open_folder` — the project directory in Windows Explorer on the PC.
+* :func:`select_in_explorer` — one file, selected in its Explorer folder
+  (Open on PC's fallback, #1689).
 
 Everything git goes through :func:`src.git_utils.run_git` (argv list,
 ``NO_WINDOW``, ``None`` on a non-zero exit). That last property is why an
@@ -382,4 +384,25 @@ def open_folder(project_dir: Path) -> int:
         close_fds=True,
     )
     logger.info(f"📂 opened folder in Explorer: {project_dir} (pid {proc.pid})")
+    return proc.pid
+
+
+def select_in_explorer(file_path: Path) -> int:
+    """Open Explorer on ``file_path``'s folder with the file selected (#1689).
+
+    Open on PC's fallback when VS Code is missing: it shows the file, it never
+    opens it, so nothing runs. ``/select,`` must be glued to a quoted path in
+    one argument, which an argv list would quote whole, so the command line
+    is passed as one string (a Windows path cannot hold a ``"``).
+    """
+    if os.name != "nt":
+        raise OSError("show in Explorer is Windows-only")
+    exe = shutil.which("explorer") or "explorer.exe"
+    proc = subprocess.Popen(
+        f'"{exe}" /select,"{file_path}"',
+        shell=False,
+        creationflags=NO_WINDOW,
+        close_fds=True,
+    )
+    logger.info(f"📂 showed a file in Explorer (pid {proc.pid})")
     return proc.pid
