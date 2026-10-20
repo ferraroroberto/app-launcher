@@ -1963,6 +1963,57 @@ class TestSourceHistory:
         assert not unavailable["handoff_available"]
         assert captured == {}
 
+    def _oversized(self, life_os_client):
+        from src.life_os_history import MAX_CAPTURE_BYTES
+        # Non-ASCII so the header prefix is cut inside a multi-byte character.
+        return self._capture(life_os_client, content="é" * (MAX_CAPTURE_BYTES // 2 + 500))
+
+    def test_oversized_capture_resumes_natively_from_its_header(self, life_os_client, monkeypatch):
+        import hashlib
+        from src.life_os_history import MAX_CAPTURE_BYTES
+        client, _, _ = life_os_client
+        path, row = self._oversized(life_os_client)
+        assert path.stat().st_size > MAX_CAPTURE_BYTES
+        assert row["resumable"] is True and row["resume_reason"] == ""
+        assert row["agent"] == "claude" and row["sid"] == RESUMABLE_SID
+        assert row["revision"] == hashlib.sha256(path.read_bytes()).hexdigest()
+        assert row["handoff_available"] is False
+        captured = TestTargetedResume()._spawn_capture(monkeypatch)
+        response = self._launch(client, row)
+        assert response.status_code == 200, response.text
+        assert f"--resume {RESUMABLE_SID}" in captured["flags"]
+
+    def test_oversized_capture_never_loads_its_body(self, life_os_client, monkeypatch):
+        from src import life_os_history
+        seen = []
+        real = life_os_history._parse_capture_texts
+        monkeypatch.setattr(life_os_history, "_parse_capture_texts",
+                            lambda fleet, texts: seen.extend(texts) or real(fleet, texts))
+        path, _ = self._oversized(life_os_client)
+        seen.clear()
+        (source,) = life_os_history.read_captures(path.parent, [path])
+        assert "body" not in source and source["oversized"] is True
+        assert len(seen) == 1
+        assert len(seen[0].encode("utf-8")) <= life_os_history.MAX_HEADER_BYTES
+
+    def test_oversized_capture_cannot_hand_off(self, life_os_client, monkeypatch, tmp_path):
+        client, _, _ = life_os_client
+        _, row = self._oversized(life_os_client)
+        captured = TestTargetedResume()._spawn_capture(monkeypatch)
+        response = self._launch(client, row, action="handoff", model="codex:gpt-6-astra", confirm_new=True)
+        assert response.status_code == 409, response.text
+        assert "handed off" in response.json()["detail"]
+        assert captured == {}
+        assert not (tmp_path / "life-os-handoffs").exists()
+
+    def test_oversized_capture_revision_follows_the_whole_file(self, life_os_client, monkeypatch):
+        client, _, _ = life_os_client
+        path, row = self._oversized(life_os_client)
+        path.write_bytes(path.read_bytes() + b"x")   # change only past the header prefix
+        captured = TestTargetedResume()._spawn_capture(monkeypatch)
+        assert self._launch(client, row).status_code == 409
+        assert captured == {}
+
     @pytest.mark.parametrize("agent,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:sonnet")])
     def test_handoff_is_new_bounded_scoped_and_quoted(self, life_os_client, monkeypatch, tmp_path, agent, target):
         client, _, _ = life_os_client

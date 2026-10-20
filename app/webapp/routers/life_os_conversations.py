@@ -50,7 +50,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src import audit, board, session_client
 from src.agents import is_installed
-from src.life_os_history import MAX_HANDOFF_CHARS, read_captures, write_handoff
+from src.life_os_history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
 from src.life_os_transcript import claude_projects_dir, remove_claude_transcript
 from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
@@ -254,7 +254,9 @@ async def _launch_conversation(
     rel = str(selection.get("path") or "")
     path = _conversation_path(root, skill, rel)
     source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
-    if "body" not in source:
+    # `revision` marks a capture whose header was verified; an oversized one has
+    # no `body` but still resumes (#1739).
+    if "revision" not in source:
         raise HTTPException(409, source["reason"])
     if any(selection.get(key) != source.get(key, "") for key in ("revision", "agent", "sid")):
         raise HTTPException(409, "Capture changed or source identity does not match; refresh history.")
@@ -277,6 +279,8 @@ async def _launch_conversation(
         if agent != source["agent"]:
             raise HTTPException(400, "Choose a model from the source harness to resume, or start a new conversation with a handoff.")
         resume_sid = source["sid"]
+        if source.get("oversized"):
+            logger.info("ℹ️ Life OS resume of an oversized capture through header-only identity (skill=%s)", skill.id)
         if keep_model:
             model, model_kept = await _kept_model(cfg, agent, resume_sid)
             override = model if agent == "codex" else None
@@ -290,6 +294,8 @@ async def _launch_conversation(
             raise HTTPException(400, "Explicitly confirm a new conversation; handoff cannot resume a native session.")
         if agent == source.get("agent"):
             raise HTTPException(400, "Select another harness for a new conversation handoff.")
+        if "body" not in source:
+            raise HTTPException(409, OVERSIZED_HANDOFF_REASON)
         try:
             handoff_path = await asyncio.to_thread(write_handoff, source, skill.id, rel)
         except OSError:
@@ -636,7 +642,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         raise HTTPException(404, "file not found")
 
     source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
-    if "body" not in source:
+    if "revision" not in source:
         raise HTTPException(409, "Nothing was deleted: can't tell which Claude transcript this "
                                  f"capture belongs to. {source['reason']}")
     agent, sid = str(source.get("agent", "")), str(source.get("sid", "")).lower()

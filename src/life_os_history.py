@@ -20,6 +20,11 @@ from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 MAX_CAPTURE_BYTES = 256 * 1024
+# The shared parser only honours a header in a capture's first few lines, so an
+# oversized capture is identified from this prefix and never read into memory.
+MAX_HEADER_BYTES = 8 * 1024
+_HASH_CHUNK_BYTES = 1024 * 1024
+OVERSIZED_HANDOFF_REASON = "Capture exceeds the launch size limit; it can be resumed but not handed off."
 MAX_HANDOFF_CHARS = 24_000
 HANDOFF_TTL_SECONDS = 24 * 3600
 # Only shared, versioned helpers interpret identity. Source text travels via
@@ -55,8 +60,21 @@ def _parse_capture_texts(fleet_dir: Path, texts: list[str]) -> list[dict[str, An
     return parsed
 
 
+def _stream_revision(handle: Any, head: bytes) -> str:
+    """sha256 of the whole file, ``head`` being what was already read from it."""
+    digest = hashlib.sha256(head)
+    while chunk := handle.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str, Any]]:
-    """Return bounded capture data and verified shared metadata, or a reason."""
+    """Return bounded capture data and verified shared metadata, or a reason.
+
+    A capture over :data:`MAX_CAPTURE_BYTES` gets header identity only (agent,
+    sid, provenance, a streamed ``revision``) and ``oversized: True``; it carries
+    no ``body``, so resume works while a handoff stays unavailable (#1739).
+    """
     results: list[dict[str, Any]] = []
     texts: list[str] = []
     positions: list[int] = []
@@ -68,6 +86,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
         try:
             with path.open("rb") as handle:
                 raw = handle.read(MAX_CAPTURE_BYTES + 1)
+                oversized = len(raw) > MAX_CAPTURE_BYTES
+                streamed = _stream_revision(handle, raw) if oversized else ""
         except FileNotFoundError:
             item["reason"] = "Capture is missing."
             continue
@@ -76,15 +96,15 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
             logger.info("Life OS capture read unavailable")
             continue
         item["readable"] = True
-        if len(raw) > MAX_CAPTURE_BYTES:
-            item["reason"] = "Capture exceeds the launch size limit; read it in the viewer."
-            continue
         try:
-            text = raw.decode("utf-8")
+            # A prefix can end mid-character; only the header is read from it.
+            text = (raw[:MAX_HEADER_BYTES].decode("utf-8", errors="ignore") if oversized
+                    else raw.decode("utf-8"))
         except UnicodeError:
             item["reason"] = "Capture encoding is unreadable."
             continue
-        item["revision"] = hashlib.sha256(raw).hexdigest()
+        item["revision"] = streamed if oversized else hashlib.sha256(raw).hexdigest()
+        item["oversized"] = oversized
         positions.append(len(results) - 1)
         texts.append(text)
     if not texts:
@@ -103,10 +123,12 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
                 reason = "Capture has no valid native session ID; readable only."
             results[index].update(
                 agent=agent, sid=sid, revision=results[index]["revision"],
-                body=data["body"], reason=reason, native=not bool(reason),
+                reason=reason, native=not bool(reason),
                 provenance={key: header[key] for key in
                             ("schema", "key", "parent_sid", "format", "version") if key in header},
             )
+            if not results[index]["oversized"]:
+                results[index]["body"] = data["body"]
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         logger.warning("Life OS shared capture reader unavailable")
         for index in positions:
