@@ -1,6 +1,7 @@
 """CLI subcommand registry."""
 
 from .base import BaseCommand
+from .life_os_zombie_cmd import LifeOsZombieCommand
 from .run_job_cmd import RunJobCommand
 from .scan_cmd import ScanCommand
 from .session_host_cmd import SessionHostCommand
@@ -15,6 +16,7 @@ COMMANDS = {
     "session-host": SessionHostCommand,
     "run-job": RunJobCommand,
     "usage-export": UsageExportCommand,
+    "life-os-zombie-cleanup": LifeOsZombieCommand,
 }
 
 

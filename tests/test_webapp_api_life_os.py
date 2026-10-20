@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers.life_os import _recap_staleness
+from src import life_os_title
 from src.life_os_index import search_cli
 from app.webapp.routers.life_os_files import resolve_within
 
@@ -2341,11 +2342,11 @@ class TestDeleteConversation:
         assert jsonl.exists() and (self.conversations / self.CAPTURE).exists()
 
     def test_transcript_failure_leaves_the_capture_intact(self, monkeypatch):
-        from app.webapp.routers import life_os_conversations as router
+        from src import life_os_delete
 
         def locked(*args, **kwargs):
             raise PermissionError("locked")
-        monkeypatch.setattr(router, "remove_claude_transcript", locked)
+        monkeypatch.setattr(life_os_delete, "remove_claude_transcript", locked)
         resp = self._delete()
         assert resp.status_code == 500, resp.text
         assert (self.conversations / self.CAPTURE).exists() and self.CAPTURE in self._index_files()
@@ -2436,7 +2437,7 @@ class TestRenameConversation:
             self.calls.append(list(argv))
             return real_run(argv, **kwargs)
         monkeypatch.setattr(router.subprocess, "run", recording_run)
-        monkeypatch.setattr(router, "title_cli", lambda cfg: [sys.executable, str(script)])
+        monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: [sys.executable, str(script)])
         monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
         self.log = tmp_path / "stub.log"
         monkeypatch.setenv("STUB_LOG", str(self.log))
@@ -2518,13 +2519,13 @@ class TestRenameConversation:
         assert len(seen) == 5
 
     def test_writer_not_installed_is_503(self):
-        self.monkeypatch.setattr(self.router, "title_cli", lambda cfg: None)
+        self.monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: None)
         resp = self._rename("Ferry")
         assert resp.status_code == 503, resp.text
         assert "isn't installed" in resp.json()["detail"]
 
     def test_writer_that_cannot_run_is_503(self):
-        self.monkeypatch.setattr(self.router, "title_cli", lambda cfg: ["no-such-binary-1495"])
+        self.monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: ["no-such-binary-1495"])
         assert self._rename("Ferry").status_code == 503
 
     @pytest.mark.parametrize("rel", [
@@ -2633,7 +2634,7 @@ class TestConversationNameSync:
             self.calls.append(list(argv))
             return real_run(argv, **kwargs)
         monkeypatch.setattr(router.subprocess, "run", recording_run)
-        monkeypatch.setattr(router, "title_cli", lambda cfg: [sys.executable, str(script)])
+        monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: [sys.executable, str(script)])
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
 
