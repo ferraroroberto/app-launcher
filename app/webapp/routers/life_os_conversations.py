@@ -41,27 +41,27 @@ import json
 import logging
 import re
 import subprocess
-import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, board, session_client
+from src import audit, session_client
 from src.agents import is_installed
 from src.life_os_history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
-from src.life_os_transcript import claude_projects_dir, remove_claude_transcript
+from src.life_os_delete import ConversationDeleteError, delete_conversation as delete_conversation_files
+from src.life_os_delete import group_by_conversation
+from src.life_os_title import run_title_cli as _run_title_cli
 from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.subprocess_flags import NO_WINDOW
-from src.transcript_locate import claude_resume_id
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
-from src.life_os_index import reconcile_delete, search_cli, title_cli
+from src.life_os_index import search_cli
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
     _resolve_launch_choice,
@@ -88,12 +88,9 @@ _SEARCH_LIMIT_MAX = 100
 
 # Owner titles (#1495). fleet-config's writer refuses over 120 characters
 # itself (exit 2); the router checks first so the phone gets a plain 400
-# without a subprocess. One title write at a time: the writer's contract is
-# that two concurrent writes to one folder can lose one, and a threading lock
-# (taken in the worker thread, not on the loop) also covers Delete's clear.
+# without a subprocess. The writer call itself, serialised, is
+# ``src.life_os_title.run_title_cli`` (shared with Delete and the zombie job).
 _MAX_TITLE_CHARS = 120
-_TITLE_TIMEOUT_S = 30
-_title_write_lock = threading.Lock()
 
 # A resumable session id, validated strictly because it reaches claude's
 # command line. Same by-construction stance as the skill slug: the value is
@@ -461,18 +458,13 @@ async def _conversation_sessions(cfg: WebappConfig) -> Dict[str, List[Dict[str, 
 async def _group_by_conversation(
     cfg: WebappConfig, sessions: List[Dict[str, Any]],
 ) -> Dict[str, List[Dict[str, Any]]]:
-    """:func:`_conversation_sessions` over a session list the caller already has."""
-    alive = [s for s in sessions if s.get("alive", True)]
-    state = await asyncio.to_thread(board.read_sessions_state, Path(cfg.sessions_state_file))
-    live: Dict[str, List[Dict[str, Any]]] = {}
-    for sess in alive:
-        claimed = board.state_sid_for_session(alive, state["rows"], str(sess.get("session_id")))
-        for conversation in (claude_resume_id(sess), claimed):
-            if conversation:
-                owners = live.setdefault(str(conversation).lower(), [])
-                if sess not in owners:
-                    owners.append(sess)
-    return live
+    """:func:`_conversation_sessions` over a session list the caller already has.
+
+    The grouping itself is ``src.life_os_delete.group_by_conversation`` (shared
+    with the zombie cleanup job, #1738); it reads the hook-state file, so it
+    runs off the loop.
+    """
+    return await asyncio.to_thread(group_by_conversation, cfg, sessions)
 
 
 async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
@@ -645,7 +637,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     if "revision" not in source:
         raise HTTPException(409, "Nothing was deleted: can't tell which Claude transcript this "
                                  f"capture belongs to. {source['reason']}")
-    agent, sid = str(source.get("agent", "")), str(source.get("sid", "")).lower()
+    sid = str(source.get("sid", "")).lower()
     try:
         live = await _live_conversations(cfg)
     except session_client.SessionHostError as exc:
@@ -657,27 +649,9 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
                                  "session. Stop that session first.")
 
     try:
-        transcript = await asyncio.to_thread(remove_claude_transcript, claude_projects_dir(), agent, sid)
-    except OSError as exc:
-        logger.warning("⚠️ Life OS delete: transcript removal failed: %s", exc)
-        raise HTTPException(500, "Nothing else was deleted: the Claude transcript could not be removed "
-                                 "(is it open in another program?).")
-    try:
-        path.unlink()
-    except OSError as exc:
-        logger.warning("⚠️ Life OS delete: capture removal failed after the transcript went: %s", exc)
-        raise HTTPException(500, "The Claude transcript was removed but the capture could not be: "
-                                 "try Delete again.")
-    # The title lives in a sidecar keyed by file name, so it would outlive the
-    # capture; drop it before the index reconcile so that ends on the rebuild.
-    title = await asyncio.to_thread(_clear_title_after_delete, cfg, skill.id, path.name)
-    indexes = await reconcile_delete(path, cfg)
-    removed = {
-        "capture": True, "title": title, "transcript": transcript["status"],
-        "transcript_files": transcript["files"], "transcript_folders": transcript["folders"],
-        **indexes,
-    }
-    logger.info("ℹ️ Life OS conversation deleted: skill=%s %s", skill.id, removed)
+        removed = await asyncio.to_thread(delete_conversation_files, cfg, skill.id, path, source)
+    except ConversationDeleteError as exc:
+        raise HTTPException(exc.status, exc.message)
     await audit_off_loop(
         audit.audit_event, "lifeos_conversation_delete", skill=skill.id, path=rel, sid=sid,
         transcript=removed["transcript"], files=removed["transcript_files"],
@@ -685,49 +659,6 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         index_md=removed["index_md"], client=client_ip(request),
     )
     return {"deleted": rel, "removed": removed}
-
-
-def _run_title_cli(
-    cfg: WebappConfig, skill_id: str, file: str, title: Optional[str],
-) -> subprocess.CompletedProcess:
-    """Run fleet-config's title writer for one capture; ``title`` empty/``None`` clears.
-
-    ``--title=<text>`` (one argv element), never ``--title <text>``: argparse
-    reads a title starting with ``-`` as a missing value. Serialised with
-    :data:`_title_write_lock`. Raises ``FileNotFoundError`` when the writer is
-    not installed, ``OSError`` / ``subprocess.SubprocessError`` when it did
-    not run; the caller owns what a non-zero exit means.
-    """
-    cli = title_cli(cfg)
-    if cli is None:
-        raise FileNotFoundError("conversation_title.py")
-    argv = [*cli, "--cwd", str(cfg.life_os_dir), "--skill", skill_id, "--file", file,
-            f"--title={title}" if title else "--clear"]
-    with _title_write_lock:
-        return subprocess.run(
-            argv, capture_output=True, text=True, encoding="utf-8", errors="replace",
-            timeout=_TITLE_TIMEOUT_S, creationflags=NO_WINDOW,
-        )
-
-
-def _clear_title_after_delete(cfg: WebappConfig, skill_id: str, file: str) -> str:
-    """Drop a deleted capture's title: ``cleared`` | ``unavailable``.
-
-    Best-effort like the other index reconciles - the capture is already gone,
-    so a writer that is missing or fails is logged, not an error to the phone.
-    A stale entry in the sidecar is inert (the writer only applies titles to
-    captures that exist).
-    """
-    try:
-        proc = _run_title_cli(cfg, skill_id, file, None)
-    except (OSError, subprocess.SubprocessError) as exc:
-        logger.warning("⚠️ Life OS delete: could not clear the title: %s", exc)
-        return "unavailable"
-    if proc.returncode != 0:
-        logger.warning("⚠️ Life OS delete: title clear exited %s: %s",
-                       proc.returncode, (proc.stderr or "").strip()[:300])
-        return "unavailable"
-    return "cleared"
 
 
 # One message per exit code of conversation_title.py, so the phone can tell

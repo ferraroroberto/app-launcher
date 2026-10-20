@@ -24,7 +24,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import subprocess
+import threading
 from pathlib import Path
 from typing import Any, Callable, List, Optional
 
@@ -50,6 +52,10 @@ _SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
 # fleet-config's conversation-title writer (fleet-config#1348, used by #1495).
 _TITLE_SCRIPT_REL = ("hooks", "conversation_title.py")
 _RESYNC_TIMEOUT_S = 30
+# The index rewrites are read-modify-write. The Delete route now runs them in a
+# worker thread (it shares :func:`delete_conversation` with the zombie job,
+# #1738), so two concurrent deletes in one process must not lose an update.
+_index_lock = threading.Lock()
 
 
 def _patch_conversation_index(
@@ -245,6 +251,14 @@ def _resync_search_index(cfg: WebappConfig) -> None:
         )
 
 
+def _prune_artefacts(resolved: Path) -> dict[str, bool]:
+    with _index_lock:
+        return {
+            "index_json": _prune_conversation_index(resolved),
+            "index_md": _prune_index_md(resolved),
+        }
+
+
 async def reconcile_delete(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
     """Bring the external artefacts in line with a deleted conversation.
 
@@ -256,12 +270,118 @@ async def reconcile_delete(resolved: Path, cfg: WebappConfig) -> dict[str, bool]
     or had no matching row is ``False``, not an error), so the caller can say
     what it removed rather than what it hoped to (#1410).
     """
-    removed = {
-        "index_json": _prune_conversation_index(resolved),
-        "index_md": _prune_index_md(resolved),
-    }
+    removed = _prune_artefacts(resolved)
     await asyncio.to_thread(_resync_search_index, cfg)
     return removed
+
+
+def reconcile_delete_sync(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
+    """:func:`reconcile_delete` for a caller already off the event loop (#1738)."""
+    removed = _prune_artefacts(resolved)
+    _resync_search_index(cfg)
+    return removed
+
+
+# ------------------------------------------------------ backup and restore (#1738)
+# The zombie cleanup's backup mode saves what a Delete is about to drop from the
+# two indexes, verbatim, so a restore puts back exactly that and derives nothing.
+_IDX_FILE_RE = re.compile(r'file="([^"]*)"')
+
+
+def read_index_entry(resolved: Path) -> dict[str, Any]:
+    """``{"index_json_row": dict | None, "index_md_block": str | None}`` for ``resolved``.
+
+    The row and the ``index.md`` block exactly as :func:`_prune_conversation_index`
+    / :func:`_prune_index_md` would remove them; ``None`` when absent or the
+    index cannot be read.
+    """
+    row: Optional[dict] = None
+    try:
+        rows = json.loads((resolved.parent / _CONVERSATIONS_INDEX).read_text(encoding="utf-8"))
+        if isinstance(rows, list):
+            row = next((r for r in rows if isinstance(r, dict) and r.get("file") == resolved.name), None)
+    except (OSError, ValueError):
+        pass
+    block: Optional[str] = None
+    try:
+        lines = (resolved.parent / _CONVERSATIONS_INDEX_MD).read_text(encoding="utf-8").split("\n")
+    except OSError:
+        lines = []
+    marker = f'file="{resolved.name}"'
+    start = next((i for i, ln in enumerate(lines) if ln.startswith("<!-- idx ") and marker in ln), None)
+    if start is not None:
+        end = start + 1
+        while (end < len(lines) and not lines[end].startswith("<!-- idx ")
+               and not lines[end].startswith(_INDEX_MD_DECAY_MARKER_PREFIX)):
+            end += 1
+        block = "\n".join(lines[start:end]).rstrip("\n")
+    return {"index_json_row": row, "index_md_block": block}
+
+
+def restore_index_entry(
+    resolved: Path, row: Optional[dict], block: Optional[str],
+) -> dict[str, bool]:
+    """Put a saved ``index.json`` row and ``index.md`` block back (#1738).
+
+    Both indexes list newest first, which their file names (a leading
+    date-time) sort by, so an entry goes before the first one that sorts lower.
+    Nothing is inserted twice: a row or block already present is left alone.
+    """
+    name = resolved.name
+    restored = {"index_json": False, "index_md": False}
+    if isinstance(row, dict) and row.get("file") == name:
+        def _insert(rows: List[Any]) -> Optional[List[Any]]:
+            if any(isinstance(r, dict) and r.get("file") == name for r in rows):
+                return None
+            at = next((i for i, r in enumerate(rows)
+                       if isinstance(r, dict) and str(r.get("file", "")) < name), len(rows))
+            return [*rows[:at], row, *rows[at:]]
+        with _index_lock:
+            restored["index_json"] = _patch_conversation_index(
+                resolved.parent / _CONVERSATIONS_INDEX, _insert)
+    if block:
+        with _index_lock:
+            restored["index_md"] = _insert_index_md_block(resolved, block)
+    return restored
+
+
+def _insert_index_md_block(resolved: Path, block: str) -> bool:
+    index_md = resolved.parent / _CONVERSATIONS_INDEX_MD
+    try:
+        lines = index_md.read_text(encoding="utf-8").split("\n")
+    except OSError:
+        return False
+    marker = f'file="{resolved.name}"'
+    if any(ln.startswith("<!-- idx ") and marker in ln for ln in lines):
+        return False
+    at: Optional[int] = None
+    for i, ln in enumerate(lines):
+        if ln.startswith("<!-- idx "):
+            found = _IDX_FILE_RE.search(ln)
+            if found and found.group(1) < resolved.name:
+                at = i
+                break
+        elif ln.startswith(_INDEX_MD_DECAY_MARKER_PREFIX):
+            at = i
+            break
+    entry = block.split("\n")
+    if at is None:
+        while lines and lines[-1] == "":
+            lines.pop()
+        merged = [*lines, "", *entry, ""]
+    else:
+        merged = [*lines[:at], *entry, "", *lines[at:]]
+    try:
+        index_md.write_text("\n".join(merged), encoding="utf-8")
+    except OSError as exc:
+        logger.warning("⚠️ could not update conversations index.md: %s", exc)
+        return False
+    return True
+
+
+def resync_search_index(cfg: WebappConfig) -> None:
+    """Public name for the best-effort search-db rebuild (#1738 restore)."""
+    _resync_search_index(cfg)
 
 
 async def reconcile_rename(resolved: Path, new_name: str, cfg: WebappConfig) -> None:
