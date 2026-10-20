@@ -1663,8 +1663,9 @@
     </dialog>
 
     <!-- The chief (#1435): model and worker cap from the Board's old
-         dialog (PUT /api/board/chief/settings, passkey-gated) and the
-         auto-compact threshold (#1298, POST /api/config). -->
+         dialog (PUT /api/board/chief/settings, passkey-gated), the
+         auto-compact threshold (#1298) and the doorbell switch
+         (fleet-config#1457, #1645's chief_doorbell), both POST /api/config. -->
     <dialog id="chiefSheet" class="detail-dialog settings-sheet" aria-labelledby="chiefSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
@@ -1702,6 +1703,11 @@
             <input id="chiefAutoCompactThreshold" type="number" class="input-native" inputmode="numeric" min="10" max="90" step="5" aria-describedby="chiefAutoCompactHelp">
           </label>
           <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
+          <div class="row">
+            <span>Doorbell</span>
+            <button type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief when its mailbox has worker news, by typing one fixed line into its terminal. Off, nothing is typed and the chief arms its own waiter at its next turn.</p>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

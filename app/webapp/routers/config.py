@@ -96,8 +96,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
-        # The chief doorbell (#1645), off by default; fleet-config#1457 turns
-        # it on. No Settings switch yet: set it here.
+        # The chief doorbell (#1645), off by default; Settings > Chief's
+        # Doorbell switch saves it here (fleet-config#1457).
         "chief_doorbell": cfg.chief_doorbell,
         # The chief's model and worker cap (#1435), read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
