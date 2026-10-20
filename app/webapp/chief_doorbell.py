@@ -21,8 +21,8 @@ waits :data:`BACKOFF_SECONDS`; a chief still idle with pending events after
 that never got the ring, so it rings again. Seeing the chief busy, or the
 mailbox empty, means the ring landed, and the back-off ends early.
 
-Off unless ``WebappConfig.chief_doorbell`` is on (default off; fleet-config#1457
-turns it on together with the chief skill change). The config is re-read every
+Off unless ``WebappConfig.chief_doorbell`` is on (default off; the owner turns
+it on from Settings > Chief > Doorbell, fleet-config#1457). The config is re-read every
 tick, so a Settings save takes effect without a restart. Canonical instance
 only, like the coverage tick: a disposable gate webapp must never type into a
 real session.

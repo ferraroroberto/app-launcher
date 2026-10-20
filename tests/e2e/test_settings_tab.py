@@ -410,6 +410,48 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
 
+def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
+    authed_page: Page, base_url: str
+) -> None:
+    """fleet-config#1457: Settings' Chief sheet shows the doorbell switch
+    (#1645's ``chief_doorbell``), off by default. It saves at once through
+    the ordinary /api/config POST, survives a reload, and turns back off the
+    same way, which is how it doubles as the phone kill switch. The gate's
+    disposable webapp is not canonical, so its doorbell never rings."""
+    page = authed_page
+    posts: list = []
+    page.on("request", lambda req: posts.append(req.post_data_json)
+            if _is_config_post(req) else None)
+
+    def saving(act) -> None:
+        with page.expect_response(
+            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
+        ):
+            act()
+
+    _open_chief_sheet(page, base_url)
+    switch = page.locator("#chiefDoorbellToggle")
+    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#chiefDoorbellHelp")).to_contain_text("mailbox")
+
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(page.locator("#toast")).to_contain_text("Chief doorbell on")
+    assert posts[-1] == {"chief_doorbell": True}, posts
+
+    _open_chief_sheet(page, base_url)
+    expect(switch).to_have_attribute("aria-checked", "true")
+
+    # Off again, so the shared webapp is left as found.
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#toast")).to_contain_text("Chief doorbell off")
+    assert posts[-1] == {"chief_doorbell": False}, posts
+
+    _open_chief_sheet(page, base_url)
+    expect(switch).to_have_attribute("aria-checked", "false")
+
+
 def test_a_failed_tabs_script_load_gets_one_fresh_boot(
     authed_page: Page, base_url: str
 ) -> None:

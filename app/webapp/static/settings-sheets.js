@@ -31,6 +31,7 @@ import { fetchApps } from './apps.js';
 import { fetchSkills } from './life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
 import { formatMinutes } from './screen-time.js';
+import { setSwitch } from './_vendored/switch/switch.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -393,6 +394,7 @@ function wireChief() {
       putChiefSettings({ worker_cap: value }, 'Worker cap saved.', els.chiefWorkerCap);
     });
   }
+  wireChiefDoorbell();
   const toggle = els.chiefAutoCompactToggle;
   const field = els.chiefAutoCompactThreshold;
   if (!toggle || !field) return;
@@ -412,6 +414,22 @@ function wireChief() {
     if (value === null) return;
     saveConfigField(field, { chief_auto_compact_threshold: value },
       'Chief auto-compact at ' + value + '%.');
+  });
+}
+
+// The chief doorbell (fleet-config#1457): saves at once, read by the server's
+// next 3 s tick, so off is also the phone's kill switch.
+function wireChiefDoorbell() {
+  const el = els.chiefDoorbellToggle;
+  if (!el) return;
+  el.addEventListener('click', async function () {
+    const next = el.getAttribute('aria-checked') !== 'true';
+    setSwitch(el, next);
+    if (await patchConfig({ chief_doorbell: next })) {
+      toast(next ? 'Chief doorbell on.' : 'Chief doorbell off.', 'good');
+    } else {
+      setSwitch(el, !next);   // patchConfig already fired the failure toast
+    }
   });
 }
 
