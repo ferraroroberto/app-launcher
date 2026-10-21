@@ -320,6 +320,8 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
     authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     card = authed_page.locator("#codingUsageCard")
     expect(card.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
+    # The static placeholder has both rows but an empty heading until the first poll.
+    expect(card.locator("#codingUsageMeta")).to_have_text(re.compile(r"\S"))
     expect(card.locator("#codingUsageFooter")).to_be_visible()
     m = stable_eval(card, """card => {
       if (!card.isConnected) return null;

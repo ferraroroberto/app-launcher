@@ -223,10 +223,11 @@ def test_life_launch_options_live_in_the_model_menu(
     trigger = authed_page.locator("#lifeOsModelBtn")
     menu = authed_page.locator("#lifeOsModelMenu")
     expect(trigger).to_have_attribute("aria-haspopup", "dialog")
+    options = menu.locator(".model-combo-list[role='listbox'] [role='option']")
+    expect(options.nth(1)).to_be_attached()  # boot config landed: it would close an open menu
     trigger.click()
     expect(menu).to_be_visible()
     expect(menu).to_have_attribute("role", "dialog")
-    options = menu.locator(".model-combo-list[role='listbox'] [role='option']")
     expect(options.first).to_be_visible()
     for sel, word in (("#lifeOsDetached", "Detached"), ("#lifeOsResume", "Resume")):
         sw = menu.locator(".launch-menu-options[role='group'] " + sel)
