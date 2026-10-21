@@ -31,7 +31,7 @@ import {
   scheduleLive,
   view,
 } from './session-transcript.js';
-import { linkify, meta, pre, tagKey, toolOutcomeNote } from './transcript-render.js';
+import { linkify, meta, pre, tagKey, toolOutcomeNote, truncControl } from './transcript-render.js';
 
 // --- AskUserQuestion card (#1149) -----------------------------------------
 //
@@ -517,12 +517,8 @@ export function renderPlan(e, toolErrors, answering) {
   body.innerHTML = renderMarkdown(e.plan || '');
   linkify(body);
   card.appendChild(body);
-  if (e.plan_truncated) {
-    const mark = document.createElement('div');
-    mark.className = 'tr-trunc';
-    mark.textContent = '(truncated — open the terminal for the rest)';
-    card.appendChild(mark);
-  }
+  // The route that serves a capped turn's rest cannot serve a plan: a plain note.
+  if (e.plan_truncated) card.appendChild(truncControl());
   const feedback = document.createElement('p');
   feedback.className = 'tr-ask-typed tr-plan-feedback';
   feedback.hidden = true;
@@ -679,12 +675,7 @@ function renderPicker(p) {
       body.classList.add('tr-plan-body');
       card.appendChild(body);
     }
-    if (p.plan_truncated) {
-      const mark = document.createElement('div');
-      mark.className = 'tr-trunc';
-      mark.textContent = '(truncated — open the terminal for the rest)';
-      card.appendChild(mark);
-    }
+    if (p.plan_truncated) card.appendChild(truncControl());
   }
   const list = document.createElement('div');
   list.className = 'tr-ask-options';

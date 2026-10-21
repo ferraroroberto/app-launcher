@@ -706,12 +706,7 @@ async function copyTurn(entries, kind, sid) {
   try {
     texts = await Promise.all(entries.map(async function (e) {
       if (!e.truncated) return e.text || '';
-      const body = await terminalJsonApi(
-        '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-          '/transcript/entry?offset=' + encodeURIComponent(e.offset)
-      );
-      if (!body || !body.available) throw new Error('entry unavailable');
-      return body.text;
+      return (await fetchEntryText(sid, e)).text;
     }));
   } catch (exc) {
     fail();
@@ -737,13 +732,108 @@ async function copyTurn(entries, kind, sid) {
 // (pre-wrap); a reply goes through the same escape-first markdown renderer
 // the Life OS doc browser uses — never raw HTML from a transcript.
 
-const TRUNC_COPY = '(truncated — open the terminal for the rest)';
+// --- the rest of a capped turn (#1745) ------------------------------------------
+//
+// A very long prompt or reply arrives capped. Where there is a way to ask for
+// the rest (a session, and the offset #985's ``/transcript/entry`` route
+// reads) the note is a "Show the rest" button that swaps the block's text for
+// the full one in place; otherwise it stays the plain note. One helper for
+// every capped block, so the prompt, the reply and the plan card (whose text
+// that route cannot serve) share their wording and their failure.
+//
+// What was fetched is remembered, keyed by session and offset, so the live
+// tick that rebuilds the provisional tail and a Reload transcript draw the
+// block expanded again. The capped text it replaced is kept alongside and must
+// still match: an offset is only an identity while the source file is not
+// rewritten, and a stale full text on a different entry would be worse than
+// the note.
 
-function truncMark() {
-  const mark = document.createElement('div');
-  mark.className = 'tr-trunc';
-  mark.textContent = TRUNC_COPY;
-  return mark;
+export const TRUNC_COPY = '(truncated — open the terminal for the rest)';
+const TRUNC_REST = 'Show the rest';
+const TRUNC_FAILED = 'Couldn’t load the rest — try again';
+const EXPANDED_MAX = 24;
+const expandedEntries = new Map();
+
+function expandedHit(e, sid) {
+  if (!sid || !e || e.offset == null) return null;
+  const hit = expandedEntries.get(sid + ':' + e.offset);
+  return hit && hit.capped === e.text ? hit : null;
+}
+
+// The text a block draws: the full text once fetched, else the entry's own.
+export function shownText(e, sid) {
+  const hit = expandedHit(e, sid);
+  return hit ? hit.full : e.text || '';
+}
+
+function rememberExpanded(e, sid, body) {
+  const key = sid + ':' + e.offset;
+  expandedEntries.delete(key);
+  expandedEntries.set(key, { capped: e.text, full: body.text || '', truncated: !!body.truncated });
+  if (expandedEntries.size > EXPANDED_MAX) expandedEntries.delete(expandedEntries.keys().next().value);
+}
+
+function plainTruncNote() {
+  const note = document.createElement('div');
+  note.className = 'tr-trunc';
+  note.textContent = TRUNC_COPY;
+  return note;
+}
+
+// The one-entry fetch behind both "Show the rest" and a capped copy. Throws
+// when the entry is unavailable (a rotated source, a bad offset).
+async function fetchEntryText(sid, e) {
+  const body = await terminalJsonApi(
+    '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+      '/transcript/entry?offset=' + encodeURIComponent(e.offset)
+  );
+  if (!body || !body.available) throw new Error('entry unavailable');
+  return body;
+}
+
+// The note under a capped block, or null when there is nothing to say (already
+// expanded in full). `opts` is `{ entry, sid, paint }`: `paint(fullText)`
+// redraws the block's text, and without it, a session or an offset the note
+// stays plain. No `opts` at all is the plain note.
+export function truncControl(opts) {
+  const { entry, sid, paint } = opts || {};
+  const hit = expandedHit(entry, sid);
+  if (hit) return hit.truncated ? plainTruncNote() : null;
+  if (!paint || !sid || !entry || entry.offset == null) return plainTruncNote();
+  const note = document.createElement('div');
+  note.className = 'tr-trunc';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'button-ghost tr-trunc-more';
+  btn.textContent = TRUNC_REST;
+  const status = document.createElement('div');
+  status.className = 'tr-trunc-status';
+  status.setAttribute('role', 'status');
+  btn.addEventListener('click', async function (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    btn.disabled = true;
+    btn.textContent = 'Loading…';
+    status.textContent = '';
+    let body = null;
+    try {
+      body = await fetchEntryText(sid, entry);
+    } catch (exc) {
+      body = null;
+    }
+    if (!body) {
+      btn.disabled = false;
+      btn.textContent = TRUNC_REST;
+      status.textContent = TRUNC_FAILED;
+      return;
+    }
+    rememberExpanded(entry, sid, body);
+    paint(body.text || '');
+    if (body.truncated) note.replaceWith(plainTruncNote());
+    else note.remove();
+  });
+  note.append(btn, status);
+  return note;
 }
 
 // The agent's short name and brand mark. Every agent with a transcript
@@ -813,14 +903,22 @@ function renderPrompt(e, session) {
   d.appendChild(s);
   const bubble = document.createElement('div');
   bubble.className = 'tr-bubble';
+  const sid = session ? session.session_id : null;
   const text = document.createElement('div');
   text.className = 'tr-text';
-  text.textContent = e.text || '';
+  text.textContent = shownText(e, sid);
   linkify(text);
   bubble.appendChild(text);
   const shots = thumbs(e.images, session);
   if (shots) bubble.appendChild(shots);
-  if (e.truncated) bubble.appendChild(truncMark());
+  const more = e.truncated ? truncControl({
+    entry: e, sid: sid,
+    paint: function (full) {
+      text.textContent = full;
+      linkify(text);
+    },
+  }) : null;
+  if (more) bubble.appendChild(more);
   d.appendChild(bubble);
   const foot = document.createElement('div');
   foot.className = 'tr-prompt-foot';
@@ -829,7 +927,7 @@ function renderPrompt(e, session) {
   when.textContent = fmtTime(e.timestamp);
   when.hidden = !when.textContent;
   foot.appendChild(when);
-  foot.appendChild(copyButton('user', function () { return [e]; }, session ? session.session_id : null));
+  foot.appendChild(copyButton('user', function () { return [e]; }, sid));
   const fold = document.createElement('button');
   fold.type = 'button';
   fold.className = 'icon-button tr-prompt-fold';
@@ -850,12 +948,22 @@ function renderReply(e, session) {
   li._trEntry = e;
   const body = document.createElement('div');
   body.className = 'tr-text tr-md';
-  body.innerHTML = renderMarkdown(e.text || '');
+  const sid = session ? session.session_id : null;
+  body.innerHTML = renderMarkdown(shownText(e, sid));
   linkify(body);
   li.appendChild(body);
   const shots = thumbs(e.images, session);
   if (shots) li.appendChild(shots);
-  if (e.truncated) li.appendChild(truncMark());
+  const more = e.truncated ? truncControl({
+    entry: e, sid: sid,
+    paint: function (full) {
+      body.innerHTML = renderMarkdown(full);
+      linkify(body);
+      // The file chips went with the old markup; the next tick draws them again.
+      body._trChipSig = null;
+    },
+  }) : null;
+  if (more) li.appendChild(more);
   return li;
 }
 
