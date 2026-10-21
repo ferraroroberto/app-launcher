@@ -128,6 +128,16 @@ try {
     if ($weightExit -eq 3) { Fail "suite weight ratchet NOT CONFIRMED (git was unusable or a file could not be read)." }
     if ($weightExit -ne 0) { Fail "suite weight ratchet failed (exit $weightExit): the test-to-code ratio is above .fleet.toml [test_weight] ratio_ceiling, or the table is malformed." }
 
+    # Static ratchet (scaffold docs/static-ratchet.md): duplicate blocks (jscpd
+    # via npx) and unused imports/variables (ruff) may not rise above
+    # .static-ratchet-baseline.json. Needs the whole tree, so it is never
+    # path-routed; exit 3 means a detector could not run, a failure and never a pass.
+    Phase "static ratchet..."
+    & $python scripts/static_ratchet.py
+    $staticExit = $LASTEXITCODE
+    if ($staticExit -eq 3) { Fail "static ratchet NOT CONFIRMED (a detector could not run: Node/npx or ruff missing, or output unparseable)." }
+    if ($staticExit -ne 0) { Fail "static ratchet failed (exit $staticExit): a new duplicate block or unused import/variable, or a baseline problem; see .static-ratchet-baseline.json." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
