@@ -4,7 +4,7 @@ An agent in a launcher session posts ``{path, caption}`` to its session's
 outbox (``POST /api/claude-code/sessions/{sid}/outbox``, loopback-only). The
 file is checked here, **copied** into the launcher's own runtime store, and
 listed for the Chat pane, which renders it inline (image, PDF, text) under
-its caption. Copying at post time means what the owner sees is what the
+its caption, or as a download-only card (zip, gz, tgz, 7z). Copying at post time means what the owner sees is what the
 agent sent, whatever happens to the source afterwards.
 
 Claude's own ``SendUserFile`` tool call reaches the same chat through the
@@ -70,15 +70,28 @@ ALLOWED_TYPES: Dict[str, str] = {
     ".pdf": "pdf",
     ".txt": "text", ".log": "text",
     ".md": "markdown", ".markdown": "markdown",
+    ".zip": "archive", ".gz": "archive", ".tgz": "archive", ".7z": "archive",
 }
 TEXT_MEDIA = "text/plain; charset=utf-8"
 PDF_MEDIA = "application/pdf"
+# An archive is download-only: never rendered, so it is served as opaque bytes.
+ARCHIVE_MEDIA = "application/octet-stream"
+# Extension -> the leading bytes its content must start with. Extension and
+# magic must agree; a type is one row here plus one in ALLOWED_TYPES. Bare
+# .tar (signature at byte 257), .rar and zip-in-disguise office/package types
+# are deliberately not in the set.
+ARCHIVE_MAGIC: Dict[str, bytes] = {
+    ".zip": b"PK\x03\x04",
+    ".gz": b"\x1f\x8b",
+    ".tgz": b"\x1f\x8b",
+    ".7z": b"7z\xbc\xaf\x27\x1c",
+}
 
 # Every media type a sent file is ever served as. The image types come from
 # session_transcript.IMAGE_MAGIC — one magic-byte table for both the
 # transcript's inline images and this outbox (#1627).
 SERVED_MEDIA = frozenset(
-    [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA]
+    [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA, ARCHIVE_MEDIA]
 )
 # A session-host id or an entry id: both launcher-made. Anything else never
 # becomes a directory or file name here.
@@ -191,8 +204,9 @@ def _inside(path: Path, root: Path) -> bool:
         return False
 
 
-def sniff_media(kind: str, data: bytes) -> Optional[str]:
-    """The media type ``data`` proves for ``kind``, or None when it doesn't."""
+def sniff_media(kind: str, data: bytes, suffix: str = "") -> Optional[str]:
+    """The media type ``data`` proves for ``kind``, or None when it doesn't.
+    ``suffix`` (the file's extension) picks an archive's own magic bytes."""
     if kind == "image":
         return sniff_image(data)
     if kind == "pdf":
@@ -205,6 +219,9 @@ def sniff_media(kind: str, data: bytes) -> Optional[str]:
         except UnicodeDecodeError:
             return None
         return TEXT_MEDIA
+    if kind == "archive":
+        magic = ARCHIVE_MAGIC.get(suffix.lower())
+        return ARCHIVE_MEDIA if magic and data.startswith(magic) else None
     return None
 
 
@@ -253,7 +270,7 @@ def read_source(
     if kind is None:
         raise OutboxRefusal(
             "type_not_allowed",
-            "only images (png, jpg, gif, webp), PDF, text and markdown files can be sent",
+            "only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent",
         )
     limit_mb = MAX_FILE_BYTES // (1024 * 1024)
     try:
@@ -265,7 +282,7 @@ def read_source(
         raise OutboxRefusal("not_found", "the file could not be read") from None
     if len(data) > MAX_FILE_BYTES:
         raise OutboxRefusal("too_large", f"the file is over the {limit_mb} MB limit")
-    media = sniff_media(kind, data)
+    media = sniff_media(kind, data, resolved.suffix)
     if media is None:
         raise OutboxRefusal("content_mismatch", f"the file's contents are not a valid {kind} file")
     return resolved, data, kind, media

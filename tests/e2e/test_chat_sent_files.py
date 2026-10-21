@@ -76,7 +76,7 @@ def _stub(page: Page, outbox_calls: list) -> None:
         else:
             route.fulfill(status=415, content_type="application/json", body=_json.dumps({"detail": {
                 "reason": "type_not_allowed",
-                "message": "only images (png, jpg, gif, webp), PDF, text and markdown files can be sent",
+                "message": "only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent",
             }}))
 
     base = r".*/api/claude-code/sessions/" + _SID
@@ -121,6 +121,80 @@ def test_outbox_and_send_user_file_render_in_the_chat(authed_page: Page, base_ur
     expect(sent.first.locator(".tr-file-image img")).to_have_attribute("src", re.compile(r"^blob:"))
     expect(sent.nth(1)).to_have_class(re.compile(r"\btr-file-failed\b"))
     expect(sent.nth(1).locator(".tr-file-note")).to_have_text(
-        "Not shown: only images (png, jpg, gif, webp), PDF, text and markdown files can be sent"
+        "Not shown: only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent"
     )
+    assert authed_page.evaluate("window.__pwned === undefined")
+
+
+_ZIP = b"PK\x03\x04" + b"synthetic archive bytes"
+_ZIP_ID = "b" * 32
+_HOSTILE_ZIP_ID = "c" * 32
+_HOSTILE_NAME = "<img src=x onerror=window.__pwned=1>.zip"
+
+
+@pytest.mark.iphone
+def test_an_archive_card_is_a_ready_download_link_with_no_preview(authed_page: Page, base_url: str) -> None:
+    """An archive is download-only: the card carries a Download link whose
+    blob: href is ready before the tap (iOS drops a download started after an
+    await), a `download` name set as text, and no element that renders the
+    bytes."""
+    page_body = dict(_PAGE)
+    page_body["entries"] = _PAGE["entries"][:2]
+    page_body["outbox"] = [
+        {"id": _ZIP_ID, "name": "backup.zip", "caption": "", "kind": "archive",
+         "media": "application/octet-stream", "size": len(_ZIP), "timestamp": "2026-10-12T10:00:05Z"},
+        {"id": _HOSTILE_ZIP_ID, "name": _HOSTILE_NAME, "caption": "", "kind": "archive",
+         "media": "application/octet-stream", "size": len(_ZIP), "timestamp": "2026-10-12T10:00:06Z"},
+    ]
+    fetched: list = []
+
+    def sessions(route):
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({"sessions": [{
+            "session_id": _SID, "kind": "pty", "agent": "codex",
+            "project_dir": "E:/invented/sentfiles", "name": "sentfiles", "alive": True,
+            "started_at": "2026-10-12T10:00:00Z", "live_title": "", "prompt_title": "",
+            "manual_title": "Sent files demo",
+        }]}))
+
+    def transcript(route):
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(page_body))
+
+    def outbox_file(route):
+        fetched.append(route.request.url)
+        route.fulfill(
+            status=200, content_type="application/octet-stream", body=_ZIP,
+            headers={"Content-Disposition": "attachment; filename*=UTF-8''backup.zip"},
+        )
+
+    base = r".*/api/claude-code/sessions/" + _SID
+    authed_page.route(re.compile(r".*/api/claude-code/sessions$"), sessions)
+    authed_page.route(re.compile(base + r"/transcript(\?.*)?$"), transcript)
+    authed_page.route(re.compile(base + r"/outbox/[a-f0-9]+$"), outbox_file)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    stub_session_mirror(authed_page)
+    open_session_row(authed_page, authed_page.locator(f'#sessionsList li[data-session-id="{_SID}"]'), mode="chat")
+
+    cards = authed_page.locator("#transcriptList .tr-file-card[data-kind='archive']")
+    expect(cards).to_have_count(2)
+    card = cards.first
+    expect(card.locator(".tr-file-name")).to_have_text("backup.zip")
+    expect(card.locator(".tr-file-size")).to_have_text(f"{len(_ZIP)} B")
+    link = card.locator("a.tr-file-open")
+    expect(link).to_have_text("Download")
+    expect(link).to_have_attribute("href", re.compile(r"^blob:"))
+    expect(link).to_have_attribute("download", "backup.zip")
+    # Prefetched: the bytes were already fetched, so the tap only follows a link.
+    assert any(url.endswith("/outbox/" + _ZIP_ID) for url in fetched)
+    # The blob a tap follows is opaque bytes, never a type a browser renders.
+    assert link.evaluate("a => fetch(a.href).then(r => r.blob()).then(b => b.type)") == "application/octet-stream"
+    # Never rendered: nothing in the card can show the bytes.
+    expect(card.locator("img, iframe, pre, button")).to_have_count(0)
+    box = link.bounding_box()
+    assert box is not None and box["height"] >= 44 and box["width"] >= 44
+
+    # A name that is markup stays text, in the head and in the download name.
+    hostile = cards.nth(1)
+    expect(hostile.locator(".tr-file-name")).to_have_text(_HOSTILE_NAME)
+    expect(hostile.locator(".tr-file-name img")).to_have_count(0)
+    expect(hostile.locator("a.tr-file-open")).to_have_attribute("download", _HOSTILE_NAME)
     assert authed_page.evaluate("window.__pwned === undefined")
