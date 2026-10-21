@@ -410,3 +410,89 @@ def test_file_view_lines_keep_one_row_per_line_with_a_hanging_gutter(
     assert got["tallest"] <= got["one"] * 1.1, f"a short line wrapped to several rows: {got}"
     assert got["padLeft"] > 40, f"the number has no room in the gutter: {got}"
     assert got["sweep"] <= 0, f"sideways scroll at 390px: {got}"
+
+
+_PY_DIFF = [
+    " def greet(name):",
+    '-    return "hi" + name  # old',
+    '+    """say hello',
+    '+    twice"""',
+    '+    return "hello" + name  # new',
+]
+
+
+def _steps_for(lines: list) -> dict:
+    return {
+        "available": True, "reason": None, "session_id": _SID, "truncated": False, "partial": False,
+        "steps": [{"timestamp": "2026-09-30T10:01:00Z", "created": False,
+                   "diff": {"hunks": [{"old_start": 2, "new_start": 2, "lines": lines}],
+                            "numbered": True, "truncated": False}}],
+    }
+
+
+# The diff's own colours per theme: plain code on a changed line, and the
+# +/- prefix (--code-fg, --diff-add-fg, --diff-del-fg).
+_DIFF_COLOURS = {
+    "light": {"code": "rgb(31, 35, 40)", "add": "rgb(26, 127, 55)", "del": "rgb(207, 34, 46)"},
+    "dark": {"code": "rgb(230, 237, 243)", "add": "rgb(63, 185, 80)", "del": "rgb(248, 81, 73)"},
+}
+
+
+@pytest.mark.iphone
+def test_diff_takes_token_colours_and_copy_diff_stays_the_patch(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _mock(page, files=_TINT_FILES, steps=_steps_for(_PY_DIFF))
+    _as_phone(page)
+    page.add_init_script(_CLIPBOARD_MOCK)
+    row = _open_file(page, base_url, 0)
+    diff = row.locator(".chg-pane-diff .chg-diff")
+
+    # Each line kind reads its own side of the hunk; the added docstring spans two lines.
+    expect(diff.locator(".d-ctx .d-txt .fv-kw")).to_have_text("def")
+    expect(diff.locator(".d-del .d-txt .fv-str")).to_have_text('"hi"')
+    expect(diff.locator(".d-del .d-txt .fv-cmt")).to_have_text("# old")
+    expect(diff.locator(".d-add .d-txt .fv-str")).to_have_text(['"""say hello', 'twice"""', '"hello"'])
+    expect(diff.locator(".d-add .d-txt .fv-cmt")).to_have_text("# new")
+    # Colour is markup inside .d-txt only: its text is still the patch line.
+    patch = ["@@ -2,2 +2,4 @@"] + _PY_DIFF
+    assert diff.locator(".d-txt").all_text_contents() == patch
+
+    for theme, c in _DIFF_COLOURS.items():
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        for kind in ("add", "del"):
+            line = diff.locator(f".d-{kind}").last
+            expect(line).to_have_css("color", c["code"])
+            expect(line.locator(".d-pfx")).to_have_css("color", c[kind])
+            expect(line.locator(".fv-kw")).to_have_css("color", _TINT_COLOURS[theme]["fv-kw"])
+        # A comment is italic: the code colour on a changed line in dark (--muted is under AA there).
+        cmt = diff.locator(".d-add .fv-cmt")
+        expect(cmt).to_have_css("font-style", "italic")
+        if theme == "dark":
+            expect(cmt).to_have_css("color", c["code"])
+        else:
+            expect(cmt).not_to_have_css("color", c["code"])
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+    # Copy diff puts exactly the patch text on the clipboard.
+    menu = _open_kebab(page, row)
+    menu.locator("[data-item='chg-copy-diff']").click()
+    expect(page.locator("#toast")).to_contain_text("Diff copied")
+    assert page.evaluate("() => window.__copied") == ["\n".join(patch)]
+
+
+@pytest.mark.parametrize("nth, lines, note", [
+    (0, ["+x = %d" % i for i in range(2100)], True),   # a .py diff over the cut-off
+    (1, ['+{"a": 1}'], False),                          # a .json file has no language
+])
+def test_diff_stays_plain_over_the_size_cut_off_and_for_an_unknown_language(
+    authed_page: Page, base_url: str, nth: int, lines: list, note: bool
+) -> None:
+    page = authed_page
+    _mock(page, files=_TINT_FILES, steps=_steps_for(lines))
+    _as_phone(page)
+    pane = _open_file(page, base_url, nth).locator(".chg-pane-diff")
+    expect(pane.locator(".d-add")).to_have_count(len(lines))
+    expect(pane.locator(".d-tint, [class^='fv-']:not(.fv-note)")).to_have_count(0)
+    expect(pane.locator(".fv-note")).to_have_count(int(note))

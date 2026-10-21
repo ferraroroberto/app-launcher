@@ -1226,8 +1226,8 @@ export function stepDiff(e, bare, session) {
     path.appendChild(base);
     wrap.appendChild(path);
   }
-  wrap.appendChild(renderHunks(a.diff));
-  if (a.diff.truncated) wrap.appendChild(fullDiffControl(wrap, a.diff, session ? session.session_id : null));
+  wrap.appendChild(renderHunks(a.diff, a.path));
+  if (a.diff.truncated) wrap.appendChild(fullDiffControl(wrap, a.diff, a.path, session ? session.session_id : null));
   return wrap;
 }
 
@@ -1241,7 +1241,7 @@ function truncNote(text) {
 
 // "Show full diff" in Chat; outside it (the Life OS viewer has no session
 // to ask) just the note that there is more.
-function fullDiffControl(wrap, diff, sid) {
+function fullDiffControl(wrap, diff, path, sid) {
   if (!sid || diff.offset == null) return truncNote('Diff truncated');
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -1265,7 +1265,7 @@ function fullDiffControl(wrap, diff, sid) {
       btn.replaceWith(truncNote('Couldn’t load the full diff — showing the first part'));
       return;
     }
-    wrap.querySelector('.tr-diff').replaceWith(renderHunks(body.diff));
+    wrap.querySelector('.tr-diff').replaceWith(renderHunks(body.diff, path));
     if (body.diff.truncated) btn.replaceWith(truncNote('Diff truncated at 200 KB'));
     else btn.remove();
   });

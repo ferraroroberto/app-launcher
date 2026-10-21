@@ -186,6 +186,13 @@ def test_overlay_lists_files_and_expands_a_tinted_diff(
     expect(pre.locator(".d-del")).to_have_text("-const B = 2;")
     expect(pre.locator(".d-add")).to_have_text("+const B = 3;")
     expect(pre.locator(".d-ctx")).to_have_count(2)
+    # A known language gets token colours on its changed lines; the prefix stays
+    # its own span, and with no .d-txt the Copy diff item stays off.
+    expect(pre.locator(".d-del .fv-kw")).to_have_text("const")
+    expect(pre.locator(".d-del .fv-num")).to_have_text("2")
+    expect(pre.locator(".d-add .fv-num")).to_have_text("3")
+    expect(pre.locator(".d-add .d-pfx")).to_have_text("+")
+    expect(pre.locator(".d-txt")).to_have_count(0)
     # Tinted, and block-level so a wrapped line keeps its tint (#680: assert
     # through the auto-retrying matcher, never a raw computed-style read).
     expect(pre.locator(".d-add")).to_have_css("display", "block")

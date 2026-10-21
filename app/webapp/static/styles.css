@@ -3193,6 +3193,17 @@ textarea.input-native { height: auto; }
   padding-bottom: 4px;
 }
 .chg-diff .d-meta { color: var(--muted); }
+/* Token colours on a diff line (the `.fv-*` rules below): plain code on an
+   added or removed line takes the code colour, since the line's own green or
+   red would flatten every token; the +/- prefix keeps it, and the tinted
+   background still says added or removed. A comment is `--muted` everywhere
+   but under the dark tints, where that is under AA, so it reads as the code
+   colour in italic there. */
+.chg-diff .d-add.d-tint,
+.chg-diff .d-del.d-tint { color: var(--code-fg); }
+.chg-diff .d-add.d-tint .d-pfx { color: var(--diff-add-fg); }
+.chg-diff .d-del.d-tint .d-pfx { color: var(--diff-del-fg); }
+[data-theme="dark"] .chg-diff :is(.d-add, .d-del) .fv-cmt { color: var(--code-fg); }
 /* Per-step diffs (#1349): the same diff inside a Chat step, plus a
    line-number gutter when the harness recorded real numbers. A numbered line
    is a two-track grid, so a wrapped long line stays right of its number and
