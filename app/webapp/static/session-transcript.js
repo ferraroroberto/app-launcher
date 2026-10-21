@@ -80,7 +80,10 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
-import { detachedSendRefused, sendOutcome, sendSessionMessage, sessionTitle } from './sessions.js';
+import {
+  NOT_PICKED_UP, detachedSendRefused, sendOutcome, sendSessionMessage, sessionTitle,
+} from './sessions.js';
+import { CONFIRM_WINDOW_MS, judgeWatch, startWatch } from './send-confirm.js';
 import { keyboardOverlayHeight } from './terminal.js';
 import { mountComposer } from './composer.js';
 import { uploadSessionFile } from './terminal-compose.js';
@@ -891,6 +894,7 @@ async function forwardRead(target, manual) {
     if (view.entries && view.entries.length) hideState();
     else showState('Nothing in the transcript yet');
   }
+  checkSendWatch(target);
   scheduleLive(LIVE_POLL_MS);
   return body.changed ? 'changed' : 'unchanged';
 }
@@ -1121,6 +1125,11 @@ async function sendFromChat(text) {
     return true;
   }
   const target = view;
+  // Counted before the request: an agent quick enough to log the turn while
+  // the answer is still on the wire must not be mistaken for an older one.
+  const watch = startWatch(
+    text, target.entries, target.activity && target.activity.working, Date.now()
+  );
   let verdict;
   try {
     verdict = await sendSessionMessage(target.session.session_id, text);
@@ -1128,9 +1137,10 @@ async function sendFromChat(text) {
     apiFailToast('Send failed', exc);
     return false;
   }
-  const outcome = sendOutcome(verdict);
+  const outcome = sendOutcome(verdict, { watch: hasTranscriptReader(target.session) });
   toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
   if (view !== target) return false;
+  if (outcome.watch) armSendWatch(target, watch);
   window.clearTimeout(target.refreshTimer);
   target.refreshTimer = window.setTimeout(function () {
     // One extra tick, not a reload: the sent turn arrives as an append like
@@ -1141,6 +1151,41 @@ async function sendFromChat(text) {
     if (view === target) scheduleLive(0);
   }, SENT_REFRESH_MS);
   return true;
+}
+
+// Look for evidence the agent took an unconfirmed send (#1744). The look is
+// the live tick's own read: `checkSendWatch` judges after each one, and a
+// timer at the deadline forces a read so a quiet session still gets its
+// verdict. A pane that cannot read then (Terminal showing, phone locked) keeps
+// the watch for the first read that can, which is judged against the full
+// window, not skipped.
+function armSendWatch(target, watch) {
+  window.clearTimeout(target.watchTimer);
+  watch.deadline = Date.now() + CONFIRM_WINDOW_MS;
+  target.sendWatch = watch;
+  target.watchTimer = window.setTimeout(function () { closeSendWatch(target); }, CONFIRM_WINDOW_MS);
+}
+
+async function closeSendWatch(target) {
+  if (view !== target || !target.sendWatch) return;
+  if (target.ticking && target.inflight) await target.inflight;
+  if (view !== target || !target.sendWatch || !liveAllowed()) return;
+  stopLiveTimer();
+  await forwardRead(target, false);
+}
+
+function checkSendWatch(target) {
+  const watch = target.sendWatch;
+  if (!watch) return;
+  const verdict = judgeWatch(
+    watch, target.entries || [], target.activity && target.activity.working, Date.now()
+  );
+  if (verdict === 'waiting') return;
+  target.sendWatch = null;
+  window.clearTimeout(target.watchTimer);
+  if (verdict !== 'not-picked-up') return;
+  toast(NOT_PICKED_UP.text, NOT_PICKED_UP.kind, { icon: 'send-horizontal' });
+  if (chatComposer) chatComposer.restoreDraft(watch.sent);
 }
 
 function uploadFromChat(file, signal, kind) {
@@ -1208,6 +1253,7 @@ export function openChatPane(s) {
   closeResumeCard();
   if (view) {
     window.clearTimeout(view.refreshTimer);
+    window.clearTimeout(view.watchTimer);
     stopLiveTimer();
   }
   resetBlobs(s.session_id);
