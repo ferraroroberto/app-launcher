@@ -27,6 +27,6 @@ def test_healthz_reports_build_identity():
     assert body["service"] == "session-host"
     assert isinstance(body["sessions"], int)
     assert body["git_sha"] == server._IDENTITY["git_sha"]
-    assert body["started_at"] == server._IDENTITY["captured_at"]
+    assert body["started_at"] == server._IDENTITY["built_at"]
     assert isinstance(body["git_sha"], str) and body["git_sha"]
     assert isinstance(body["started_at"], str) and body["started_at"]

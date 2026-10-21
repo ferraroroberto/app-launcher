@@ -19,9 +19,10 @@ from fastapi.responses import HTMLResponse, Response
 
 from src import session_client, system_load
 from src.agents import detect_agents
-from src.build_info import build_identity, resolve_deployed_sha, resolve_git_sha
+from src.build_info import build_identity, resolve_git_sha
 from src.desktop_browser import is_web_url, open_url
 from src.diagnostics import detect_local_scheme, find_pids_on_port, kill_pids, list_app_listeners
+from src.git_utils import resolve_deployed_sha
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
@@ -38,7 +39,7 @@ router = APIRouter()
 
 _IDENTITY = build_identity()
 _GIT_SHA = _IDENTITY["git_sha"]
-_BUILT_AT = _IDENTITY["captured_at"]
+_BUILT_AT = _IDENTITY["built_at"]
 _CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
 
 

@@ -176,7 +176,7 @@ def create_app() -> FastAPI:
             "service": "session-host",
             "sessions": len(manager.list()),
             "git_sha": _IDENTITY["git_sha"],
-            "started_at": _IDENTITY["captured_at"],
+            "started_at": _IDENTITY["built_at"],
             "features": list(_FEATURES),
         }
 

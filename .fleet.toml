@@ -48,11 +48,10 @@ row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "bf56553ff4fd32
 # tests/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
 # decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
 # in project-scaffolding#391 and the sprite is now the scaffold's copy, byte for byte.
-# src/build_info.py and app/tray/watchdog.py are likewise NOT declared (#1586):
-# they are app-side forks, not the scaffold's verbatim carriers (build_info
-# runs git through src/git_utils.run_git for the #1111 spawn gate, and sits in
-# the session-host import closure). Declaring them would let /propagate-vendored
-# overwrite those changes.
+# app/tray/watchdog.py is NOT declared (#1586): it is an app-side fork, not the
+# scaffold's verbatim carrier, and declaring it would let /propagate-vendored
+# overwrite those changes. src/build_info.py is declared below: it is the
+# scaffold's copy, and the app-side extras live in src/git_utils.py.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_browser_sweep.py" }
 geometry = { src = "tests/e2e/_geometry.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
@@ -64,6 +63,7 @@ usage_log = { src = "src/usage_log.py", sha = "a457e41cd3004d8b9493408498eb9e3d5
 surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
 comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "e56308e1c099712cf5a006557c94e3f9ae4fe8aa", dest = "scripts/comment_ratchet.py" }
 static_ratchet = { src = "scripts/static_ratchet.py", sha = "2f1e2f7c81b9a91a062271881fc87830104808ae", dest = "scripts/static_ratchet.py" }
+build_info = { src = "src/build_info.py", sha = "c9e54e917fd3cbc96011d6c09f9d363af460b205", dest = "src/build_info.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
