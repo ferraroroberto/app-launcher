@@ -26,6 +26,28 @@ def _isolate_boot_breadcrumb_log(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(rt_mod, "PROJECT_ROOT", tmp_path)
 
 
+def _stub_tray_registry(monkeypatch, tmp_path: Path, *ids: str, extra=()):
+    """Autostart tray rows ``ids`` (each with a real tray.bat under tmp_path),
+    plus any ``extra`` rows, served by a stubbed ``load_registry``. Returns
+    the bat paths in ``ids`` order."""
+    bats = []
+    for name in ids:
+        bat = tmp_path / f"repo-{name}" / "tray.bat"
+        bat.parent.mkdir(parents=True, exist_ok=True)
+        bat.write_text("@echo off\r\n", encoding="utf-8")
+        bats.append(bat)
+    registry = Registry(
+        scan_root=str(tmp_path),
+        apps=[
+            AppEntry(id=n, name=n.upper(), kind="tray", bat_path=str(b), autostart=True)
+            for n, b in zip(ids, bats)
+        ]
+        + list(extra),
+    )
+    monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
+    return bats
+
+
 def _write_fleet_toml(repo_dir: Path, port_line: str) -> None:
     repo_dir.mkdir(parents=True, exist_ok=True)
     (repo_dir / ".fleet.toml").write_text(
@@ -86,23 +108,15 @@ class TestLaunchRegisteredTrays:
     def test_launches_autostart_trays_in_registry_order(
         self, monkeypatch, tmp_path: Path
     ):
-        bat_a = tmp_path / "repo-a" / "tray.bat"
-        bat_b = tmp_path / "repo-b" / "tray.bat"
-        for b in (bat_a, bat_b):
-            b.parent.mkdir(parents=True, exist_ok=True)
-            b.write_text("@echo off\r\n", encoding="utf-8")
-        registry = Registry(
-            scan_root=str(tmp_path),
-            apps=[
-                AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True),
-                AppEntry(id="b", name="B", kind="tray", bat_path=str(bat_b), autostart=True),
+        bat_a, bat_b = _stub_tray_registry(
+            monkeypatch, tmp_path, "a", "b",
+            extra=[
                 AppEntry(
                     id="c", name="C", kind="streamlit",
                     bat_path=str(tmp_path / "repo-c" / "run.bat"), autostart=True,
-                ),
+                )
             ],
         )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
         spawned: list = []
         monkeypatch.setattr(
             rt_mod, "_spawn_tray_bat_detached",
@@ -120,19 +134,7 @@ class TestLaunchRegisteredTrays:
     def test_one_tray_failing_does_not_abort_the_rest(
         self, monkeypatch, tmp_path: Path
     ):
-        bat_a = tmp_path / "repo-a" / "tray.bat"
-        bat_b = tmp_path / "repo-b" / "tray.bat"
-        for b in (bat_a, bat_b):
-            b.parent.mkdir(parents=True, exist_ok=True)
-            b.write_text("@echo off\r\n", encoding="utf-8")
-        registry = Registry(
-            scan_root=str(tmp_path),
-            apps=[
-                AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True),
-                AppEntry(id="b", name="B", kind="tray", bat_path=str(bat_b), autostart=True),
-            ],
-        )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
+        bat_a, bat_b = _stub_tray_registry(monkeypatch, tmp_path, "a", "b")
 
         def _spawn(bat_path):
             if bat_path == bat_a:
@@ -197,42 +199,26 @@ class TestBootBreadcrumbLog:
     of what happened. Redirects PROJECT_ROOT so nothing is written under the
     real repo during tests."""
 
-    def test_logs_launch_and_ready_on_success(self, monkeypatch, tmp_path: Path):
-        bat_a = tmp_path / "repo-a" / "tray.bat"
-        bat_a.parent.mkdir(parents=True, exist_ok=True)
-        bat_a.write_text("@echo off\r\n", encoding="utf-8")
-        registry = Registry(
-            scan_root=str(tmp_path),
-            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
-        )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
+    @pytest.mark.parametrize(
+        ("ready", "expected"),
+        [
+            (True, ["launching 1 autostart entry", "A: launching", "A: ready"]),
+            (False, ["A: readiness unconfirmed"]),
+        ],
+        ids=["ready", "timeout"],
+    )
+    def test_logs_each_launch_outcome(self, monkeypatch, tmp_path: Path, ready, expected):
+        (bat_a,) = _stub_tray_registry(monkeypatch, tmp_path, "a")
         monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
-        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: True)
+        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: ready)
 
         rt_mod.launch_all()
 
         log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
-        assert "launching 1 autostart entry" in log_text
-        assert "A: launching" in log_text
-        assert str(bat_a) in log_text
-        assert "A: ready" in log_text
-
-    def test_logs_readiness_unconfirmed_on_timeout(self, monkeypatch, tmp_path: Path):
-        bat_a = tmp_path / "repo-a" / "tray.bat"
-        bat_a.parent.mkdir(parents=True, exist_ok=True)
-        bat_a.write_text("@echo off\r\n", encoding="utf-8")
-        registry = Registry(
-            scan_root=str(tmp_path),
-            apps=[AppEntry(id="a", name="A", kind="tray", bat_path=str(bat_a), autostart=True)],
-        )
-        monkeypatch.setattr(rt_mod, "load_registry", lambda strict=False: registry)
-        monkeypatch.setattr(rt_mod, "_spawn_tray_bat_detached", lambda bat_path: None)
-        monkeypatch.setattr(rt_mod, "_wait_for_tray_ready", lambda repo_dir: False)
-
-        rt_mod.launch_all()
-
-        log_text = (tmp_path / "webapp" / "registered_trays.log").read_text(encoding="utf-8")
-        assert "A: readiness unconfirmed" in log_text
+        for line in expected:
+            assert line in log_text
+        if ready:
+            assert str(bat_a) in log_text
 
     def test_logs_spawn_failure(self, monkeypatch, tmp_path: Path):
         bat_a = tmp_path / "repo-a" / "tray.bat"

@@ -24,6 +24,18 @@ from tests.e2e.conftest import close_settings_sheets, open_settings_sheet, stabl
 
 pytestmark = pytest.mark.smoke
 
+# The app's own rate-limits poll never answers, so only a test's own renders paint.
+_NEVER_ANSWER_RATE_LIMITS = """
+(() => {
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    const url = new URL(typeof input === 'string' ? input : input.url, location.href);
+    if (url.pathname === '/api/rate-limits') return new Promise(() => {});
+    return nativeFetch(input, init);
+  };
+})();
+"""
+
 # Claude: 5h 39% (no pace, accent), week 64% at 50% elapsed (ahead of pace,
 # attention). Codex: 5h 0%, week 36% (under pace, accent).
 _QUOTA_SHIM = """
@@ -165,16 +177,7 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     state word as text; 90%+ is danger; a reading that goes unknown keeps the
     last numbers, dimmed, chipped "unknown"."""
     # The app's own poll never answers, so only the renders below paint.
-    authed_page.add_init_script("""
-      (() => {
-        const nativeFetch = window.fetch.bind(window);
-        window.fetch = function (input, init) {
-          const url = new URL(typeof input === 'string' ? input : input.url, location.href);
-          if (url.pathname === '/api/rate-limits') return new Promise(() => {});
-          return nativeFetch(input, init);
-        };
-      })();
-    """)
+    authed_page.add_init_script(_NEVER_ANSWER_RATE_LIMITS)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(authed_page.locator("#codingUsage")).to_be_attached()
 
@@ -248,16 +251,7 @@ def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
 ) -> None:
     """#1510: with one harness shown the heading row is gone, but a chip on
     that reading (stale) is still visible, ahead of the windows."""
-    authed_page.add_init_script("""
-      (() => {
-        const nativeFetch = window.fetch.bind(window);
-        window.fetch = function (input, init) {
-          const url = new URL(typeof input === 'string' ? input : input.url, location.href);
-          if (url.pathname === '/api/rate-limits') return new Promise(() => {});
-          return nativeFetch(input, init);
-        };
-      })();
-    """)
+    authed_page.add_init_script(_NEVER_ANSWER_RATE_LIMITS)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(authed_page.locator("#codingUsage")).to_be_attached()
 

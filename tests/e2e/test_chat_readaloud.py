@@ -25,61 +25,13 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._audio_mock import AUDIO_MOCK
 from tests.e2e.conftest import open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
 _SID = "sid-chat-readaloud-988"
 _SPEAK_RE = re.compile(r".*/api/tts/speak$")
-
-# Stub Web Audio so prepareHub()/speakHubInto() can run without a real audio
-# pipeline (headless WebKit has none). Mirrors test_summarize_readback.py.
-_AUDIO_MOCK = """
-(() => {
-  window.__audioLog = { contexts: 0, resumed: 0, buffers: 0, started: 0 };
-  class FakeAudioBuffer {
-    constructor(ch, len, sr) {
-      this.length = len; this.sampleRate = sr;
-      this.duration = len / Math.max(1, sr);
-    }
-    copyToChannel() {}
-  }
-  class FakeNode {
-    constructor() { this.buffer = null; this.onended = null; }
-    connect() {}
-    start() { window.__audioLog.started += 1; window.__lastNode = this; }
-  }
-  // scheduleHubBuffer() (issue #599) routes every node through a GainNode for
-  // a click-avoiding fade; the fake just needs the shape (connect + a gain
-  // param with the AudioParam automation methods it calls).
-  class FakeGainNode {
-    constructor() {
-      this.gain = {
-        setValueAtTime() {}, linearRampToValueAtTime() {},
-      };
-    }
-    connect() {}
-  }
-  class FakeAudioContext {
-    constructor() {
-      this.currentTime = 0; this.destination = {};
-      window.__audioLog.contexts += 1;
-    }
-    resume() { window.__audioLog.resumed += 1; return Promise.resolve(); }
-    createBuffer(ch, len, sr) {
-      window.__audioLog.buffers += 1; return new FakeAudioBuffer(ch, len, sr);
-    }
-    createBufferSource() { return new FakeNode(); }
-    createGain() { return new FakeGainNode(); }
-    close() { return Promise.resolve(); }
-  }
-  for (const name of ['AudioContext', 'webkitAudioContext']) {
-    Object.defineProperty(window, name, {
-      configurable: true, writable: true, value: FakeAudioContext,
-    });
-  }
-})()
-"""
 
 
 def _mock_sessions_list(page: Page, *, kind: str = "pty", agent: str = "claude") -> None:
@@ -211,7 +163,7 @@ def test_detached_session_reveals_speak_button_and_reads_transcript(
         ],
     })
     _mock_tts(authed_page)
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)
@@ -239,7 +191,7 @@ def test_full_control_session_in_chat_mode_reads_transcript_not_terminal(
         ],
     })
     _mock_tts(authed_page)
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)
@@ -271,7 +223,7 @@ def test_truncated_entry_reads_the_uncapped_text(authed_page: Page, base_url: st
     })
     _mock_transcript_entry(authed_page, full_reply)
     _mock_tts_capturing(authed_page, captured)
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     row = _row(authed_page)

@@ -2564,7 +2564,17 @@ class TestTranscriptEndpoint:
         )
         assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "no_transcript"
 
-    def test_read_failure_is_distinct_from_missing(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+    @pytest.mark.parametrize(
+        ("failing_fn", "url"),
+        [
+            ("transcript_page", "/api/claude-code/sessions/s1/transcript"),
+            ("entry_full_text", "/api/claude-code/sessions/s1/transcript/entry?offset=0"),
+        ],
+        ids=["page", "entry"],
+    )
+    def test_read_failure_is_distinct_from_missing(
+        self, webapp_client, _bypass_gate, monkeypatch, tmp_path, failing_fn, url
+    ):
         from app.webapp.routers import session_transcript as router_mod
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.return_value = [_live()]
@@ -2574,8 +2584,9 @@ class TestTranscriptEndpoint:
         def boom(*args, **kwargs):
             raise PermissionError("locked")
 
-        monkeypatch.setattr(router_mod, "transcript_page", boom)
-        assert client.get("/api/claude-code/sessions/s1/transcript").json()["reason"] == "read_failed"
+        monkeypatch.setattr(router_mod, failing_fn, boom)
+        body = client.get(url).json()
+        assert body["available"] is False and body["reason"] == "read_failed"
 
     def test_happy_path_pages_and_never_logs_bodies(
         self, webapp_client, _bypass_gate, monkeypatch, tmp_path, caplog
@@ -2678,22 +2689,6 @@ class TestTranscriptEntryEndpoint:
         monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
         body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=9999").json()
         assert body["available"] is False and body["reason"] == "entry_not_found"
-
-    def test_read_failure_is_distinct_from_entry_not_found(
-        self, webapp_client, _bypass_gate, monkeypatch, tmp_path
-    ):
-        from app.webapp.routers import session_transcript as router_mod
-        client, _, overrides = webapp_client
-        overrides["session"].list_sessions.return_value = [_live()]
-        path = _write_jsonl(tmp_path / "t.jsonl", [_user("hi")])
-        monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
-
-        def boom(*args, **kwargs):
-            raise PermissionError("locked")
-
-        monkeypatch.setattr(router_mod, "entry_full_text", boom)
-        body = client.get("/api/claude-code/sessions/s1/transcript/entry?offset=0").json()
-        assert body["available"] is False and body["reason"] == "read_failed"
 
 
 # ------------------------------------------------- transcript_tail (#1050)

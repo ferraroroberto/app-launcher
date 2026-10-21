@@ -4,19 +4,7 @@
 // graph touches at load are stubbed first. Invoked by tests/test_send_confirm.py.
 
 import assert from 'node:assert/strict';
-
-const store = new Map();
-globalThis.localStorage = {
-  getItem: (k) => store.get(k) ?? null,
-  setItem: (k, v) => store.set(k, String(v)),
-  removeItem: (k) => store.delete(k),
-};
-const stub = () => new Proxy(function () {}, {
-  get: (t, p) => (p === Symbol.toPrimitive ? () => '' : stub()),
-  apply: () => stub(),
-});
-globalThis.document = stub();
-globalThis.window = stub();
+import './_browser_stubs.mjs';
 
 const { sendOutcome, NOT_PICKED_UP } = await import('../../app/webapp/static/sessions.js');
 const {

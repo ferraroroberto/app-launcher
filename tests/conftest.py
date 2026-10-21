@@ -242,6 +242,23 @@ def fake_clipboard(monkeypatch):
     return recorder
 
 
+@pytest.fixture
+def isolated_jobs(tmp_path, monkeypatch):
+    """Run history, the run queue and ``jobs.json`` all under ``tmp_path``.
+
+    ``JOBS_RUNS_DIR`` / ``JOBS_QUEUE_PATH`` are owned by ``src.jobs_history`` /
+    ``src.jobs_queue``, so they are patched there, not on the ``src.jobs`` facade.
+    """
+    from src import jobs_config as jc
+    from src import jobs_history as jobs_history_mod
+    from src import jobs_queue as jobs_queue_mod
+
+    monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
+    monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json")
+    monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
+    return tmp_path
+
+
 @pytest.fixture(autouse=True)
 def _isolated_jobs_index(tmp_path, monkeypatch):
     """Give each test its own Jobs index.

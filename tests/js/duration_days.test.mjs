@@ -6,19 +6,7 @@
 // tests/test_duration_days.py.
 
 import assert from 'node:assert/strict';
-
-const store = new Map();
-globalThis.localStorage = {
-  getItem: (k) => store.get(k) ?? null,
-  setItem: (k, v) => store.set(k, String(v)),
-  removeItem: (k) => store.delete(k),
-};
-const stub = () => new Proxy(function () {}, {
-  get: (t, p) => (p === Symbol.toPrimitive ? () => '' : stub()),
-  apply: () => stub(),
-});
-globalThis.document = stub();
-globalThis.window = stub();
+import './_browser_stubs.mjs';
 
 const { fmtDuration } = await import('../../app/webapp/static/dom-utils.js');
 const { formatDuration } = await import('../../app/webapp/static/jobs-row.js');

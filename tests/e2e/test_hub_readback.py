@@ -21,77 +21,9 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = pytest.mark.smoke
+from tests.e2e._audio_mock import AUDIO_MOCK
 
-# Stub the Web Audio API: record AudioContext lifecycle + every scheduled buffer
-# so the test can assert PCM was decoded and scheduled, without a real audio
-# pipeline (headless WebKit has none). Shadows both the standard and webkit
-# constructors so the SPA's `window.AudioContext || window.webkitAudioContext`
-# resolves to the fake.
-_AUDIO_MOCK = """
-(() => {
-  window.__audioLog = {
-    contexts: 0, resumed: 0, buffers: 0, started: 0, closed: 0, samples: 0,
-    startedAt: [], stopped: 0,
-  };
-  class FakeAudioBuffer {
-    constructor(ch, len, sr) {
-      this.length = len; this.sampleRate = sr;
-      this.duration = len / Math.max(1, sr);
-    }
-    copyToChannel() {}
-  }
-  class FakeNode {
-    constructor() { this.buffer = null; this.onended = null; }
-    connect() {}
-    start(t) {
-      window.__audioLog.started += 1;
-      window.__audioLog.startedAt.push(t);
-      window.__lastNode = this;
-    }
-    stop() { window.__audioLog.stopped += 1; }
-  }
-  // scheduleHubBuffer() (issue #599) routes every node through a GainNode for
-  // a click-avoiding fade; the fake just needs the shape (connect + a gain
-  // param with the AudioParam automation methods it calls).
-  class FakeGainNode {
-    constructor() {
-      this.gain = {
-        setValueAtTime() {}, linearRampToValueAtTime() {},
-      };
-    }
-    connect() {}
-  }
-  class FakeAudioContext {
-    constructor() {
-      this.currentTime = 0; this.destination = {};
-      window.__audioLog.contexts += 1;
-      window.__lastCtx = this;
-    }
-    resume() { window.__audioLog.resumed += 1; return Promise.resolve(); }
-    createBuffer(ch, len, sr) {
-      window.__audioLog.buffers += 1; window.__audioLog.samples += len;
-      return new FakeAudioBuffer(ch, len, sr);
-    }
-    createBufferSource() { return new FakeNode(); }
-    createGain() { return new FakeGainNode(); }
-    close() { window.__audioLog.closed += 1; return Promise.resolve(); }
-  }
-  for (const name of ['AudioContext', 'webkitAudioContext']) {
-    Object.defineProperty(window, name, {
-      configurable: true, writable: true, value: FakeAudioContext,
-    });
-  }
-  // Make document.visibilityState scriptable so a test can simulate a
-  // screen-lock (hidden) → unlock (visible) cycle and drive visibilitychange.
-  window.__setVisibility = (state) => {
-    Object.defineProperty(document, 'visibilityState', {
-      configurable: true, get: () => state,
-    });
-    document.dispatchEvent(new Event('visibilitychange'));
-  };
-})()
-"""
+pytestmark = pytest.mark.smoke
 
 # A few whole int16 samples of PCM16 — enough for the pump loop to decode and
 # schedule at least one buffer.
@@ -145,7 +77,7 @@ def test_speak_hub_plays_pcm_via_web_audio(
 ) -> None:
     """speakHub() creates + resumes an AudioContext, POSTs to /api/tts/speak,
     then decodes the PCM stream and schedules it on the Web Audio timeline."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
@@ -167,7 +99,7 @@ def test_speak_hub_finishes_on_last_buffer_end(
     not a timer computed from a possibly-drifted playHead — so a slower-than-
     realtime stream isn't cut off early (#206 follow-up). Firing the last node's
     onended resets the button to idle."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _load_readback(authed_page, base_url)
     pressed = authed_page.evaluate(
@@ -184,7 +116,7 @@ def test_speak_hub_failure_rejects_for_fallback(
 ) -> None:
     """A failed POST makes speakHub() reject, so the click handler can fall
     back to Web Speech."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True, speak_status=502)
     _load_readback(authed_page, base_url)
     rejected = authed_page.evaluate(
@@ -199,7 +131,7 @@ def test_cancel_hub_stops_audio(
 ) -> None:
     """cancelHub() closes the AudioContext (silencing scheduled audio) and
     resets the button to idle."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
@@ -224,7 +156,7 @@ def test_screen_lock_reschedules_pending_buffers(
     the lock as a `visibilitychange` hidden→visible cycle around a forced
     `currentTime` jump: every still-pending buffer must be re-scheduled from the
     new clock position (no buffer lost) and playback must not finish early."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
@@ -301,7 +233,7 @@ def test_long_reply_issues_multiple_bounded_requests(
     the input length instead of flatlining at the single-request cap. Before this
     fix the verbatim path issued exactly one POST and lost everything past ~49.6 s.
     """
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     captured: list[str] = []
 
     def _capture(route) -> None:  # type: ignore[no-untyped-def]

@@ -639,6 +639,25 @@ def test_copy_button_copies_turn_text_and_upgrades_a_truncated_reply(
         toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
 
 
+def _open_chat_on_reply(page: Page, base_url: str, reply: str) -> None:
+    """Open the chat on a transcript holding the one assistant ``reply``, with
+    the clipboard and toast mocked."""
+    _mock_sessions_list(page)
+    page_body = {
+        "available": True, "source": "native", "reason": None, "session_id": _SID,
+        "next_cursor": None,
+        "entries": [
+            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
+             "text": reply, "truncated": False, "sidechain": False},
+        ],
+    }
+    _mock_transcript(page, {None: page_body}, [])
+    page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
+
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(page, _row(page))
+
+
 @pytest.mark.iphone
 def test_blockquote_renders_as_a_quote_and_copies_clean_text(
     authed_page: Page, base_url: str
@@ -649,27 +668,13 @@ def test_blockquote_renders_as_a_quote_and_copies_clean_text(
     left rule, keeps its line breaks, and its own copy button puts the plain
     text on the clipboard without opening or closing the card. The parser's
     edge cases are pinned in ``tests/js/markdown.test.mjs``."""
-    calls: list = []
-    _mock_sessions_list(authed_page)
     reply = "\n".join([
         "Here is a draft:", "",
         "> Hello,", ">", "> The installation was finished in August.", ">",
         "> Best regards,", "> Name", "",
         "Send it when ready.",
     ])
-    page_body = {
-        "available": True, "source": "native", "reason": None, "session_id": _SID,
-        "next_cursor": None,
-        "entries": [
-            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
-             "text": reply, "truncated": False, "sidechain": False},
-        ],
-    }
-    _mock_transcript(authed_page, {None: page_body}, calls)
-    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page, _row(authed_page))
+    _open_chat_on_reply(authed_page, base_url, reply)
 
     turn = authed_page.locator("#transcriptList .tr-assistant").first
     quote = turn.locator("blockquote.md-quote")
@@ -699,25 +704,11 @@ def test_fenced_block_header_names_the_language_and_copies_the_listing(
     """#1474: a fence is a card-surface block with a header carrying the
     language and a copy button that puts the listing, exactly as fenced, on
     the clipboard. Reuses the blockquote copy path (``quote-copy.js``)."""
-    calls: list = []
-    _mock_sessions_list(authed_page)
     reply = "\n".join([
         "Run this:", "", "```bash", "git status", "echo \"<done>\"", "```", "",
         "Then check.",
     ])
-    page_body = {
-        "available": True, "source": "native", "reason": None, "session_id": _SID,
-        "next_cursor": None,
-        "entries": [
-            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
-             "text": reply, "truncated": False, "sidechain": False},
-        ],
-    }
-    _mock_transcript(authed_page, {None: page_body}, calls)
-    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page, _row(authed_page))
+    _open_chat_on_reply(authed_page, base_url, reply)
 
     turn = authed_page.locator("#transcriptList .tr-assistant").first
     block = turn.locator(".md-block")

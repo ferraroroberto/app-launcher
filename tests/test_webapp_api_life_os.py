@@ -2412,6 +2412,26 @@ print(json.dumps({"skill": args.skill, "file": args.file, "title": title}))
 '''
 
 
+def _stub_title_cli(tmp_path, monkeypatch, calls: list) -> None:
+    """Point the title CLI at ``_TITLE_STUB`` and record every subprocess argv
+    the conversations router runs into ``calls``."""
+    import sys
+
+    from app.webapp import middleware
+    from app.webapp.routers import life_os_conversations as router
+
+    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+    script = tmp_path / "conversation_title_stub.py"
+    script.write_text(_TITLE_STUB, encoding="utf-8")
+    real_run = subprocess.run
+
+    def recording_run(argv, **kwargs):
+        calls.append(list(argv))
+        return real_run(argv, **kwargs)
+    monkeypatch.setattr(router.subprocess, "run", recording_run)
+    monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: [sys.executable, str(script)])
+
+
 class TestRenameConversation:
     """PATCH /api/life-os/skills/{id}/conversations: set or clear a title."""
 
@@ -2421,23 +2441,11 @@ class TestRenameConversation:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
-        import sys
-
-        from app.webapp import middleware
         from app.webapp.routers import life_os_conversations as router
         from src import session_client
 
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
-        script = tmp_path / "conversation_title_stub.py"
-        script.write_text(_TITLE_STUB, encoding="utf-8")
         self.calls: list = []
-        real_run = subprocess.run
-
-        def recording_run(argv, **kwargs):
-            self.calls.append(list(argv))
-            return real_run(argv, **kwargs)
-        monkeypatch.setattr(router.subprocess, "run", recording_run)
-        monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: [sys.executable, str(script)])
+        _stub_title_cli(tmp_path, monkeypatch, self.calls)
         monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
         self.log = tmp_path / "stub.log"
         monkeypatch.setenv("STUB_LOG", str(self.log))
@@ -2617,24 +2625,12 @@ class TestConversationNameSync:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
-        import sys
-
-        from app.webapp import middleware
         from app.webapp.routers import life_os_conversations as router
         from app.webapp.routers import life_os_spawn
         from src import session_client
 
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
-        script = tmp_path / "conversation_title_stub.py"
-        script.write_text(_TITLE_STUB, encoding="utf-8")
         self.calls: list = []
-        real_run = subprocess.run
-
-        def recording_run(argv, **kwargs):
-            self.calls.append(list(argv))
-            return real_run(argv, **kwargs)
-        monkeypatch.setattr(router.subprocess, "run", recording_run)
-        monkeypatch.setattr(life_os_title, "title_cli", lambda cfg: [sys.executable, str(script)])
+        _stub_title_cli(tmp_path, monkeypatch, self.calls)
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
 

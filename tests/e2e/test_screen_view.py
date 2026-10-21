@@ -42,6 +42,19 @@ _MONITORS = {
 _FRAME_SIZE = (160, 90)
 
 
+# A two-finger pinch on the stage: 40px apart to 120px apart, which zooms 3x.
+_PINCH_JS = """() => {
+  const s = document.getElementById('screenStage');
+  const r = s.getBoundingClientRect();
+  const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+  const ev = (type, id, x) => s.dispatchEvent(new PointerEvent(type, {
+    pointerId: id, clientX: x, clientY: cy, bubbles: true, pointerType: 'touch' }));
+  ev('pointerdown', 1, cx - 20); ev('pointerdown', 2, cx + 20);
+  ev('pointermove', 1, cx - 60); ev('pointermove', 2, cx + 60);
+  ev('pointerup', 1, cx - 60); ev('pointerup', 2, cx + 60);
+}"""
+
+
 def _frame() -> bytes:
     img = Image.new("RGB", _FRAME_SIZE, (40, 90, 160))
     img.paste((240, 240, 240), (10, 10, 70, 40))
@@ -150,16 +163,7 @@ def test_the_sheet_opens_a_live_view_of_the_chosen_display(
     expect(image).to_be_visible()
 
     # Two-finger pinch zooms the frame locally.
-    view_page.evaluate("""() => {
-      const s = document.getElementById('screenStage');
-      const r = s.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      const ev = (type, id, x) => s.dispatchEvent(new PointerEvent(type, {
-        pointerId: id, clientX: x, clientY: cy, bubbles: true, pointerType: 'touch' }));
-      ev('pointerdown', 1, cx - 20); ev('pointerdown', 2, cx + 20);
-      ev('pointermove', 1, cx - 60); ev('pointermove', 2, cx + 60);
-      ev('pointerup', 1, cx - 60); ev('pointerup', 2, cx + 60);
-    }""")
+    view_page.evaluate(_PINCH_JS)
     expect(image).to_have_css("transform", re.compile(r"matrix\(3, 0, 0, 3,"))
 
     if popped_out:
@@ -611,16 +615,7 @@ def test_the_pc_cursor_follows_its_messages_and_never_takes_a_touch(
     assert len(seen["acks"]) == 1, "the cursor moved without a frame"
 
     # Zoomed 3x: still on its spot of the zoomed picture, still 24px.
-    page.evaluate("""() => {
-      const s = document.getElementById('screenStage');
-      const r = s.getBoundingClientRect();
-      const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      const ev = (type, id, x) => s.dispatchEvent(new PointerEvent(type, {
-        pointerId: id, clientX: x, clientY: cy, bubbles: true, pointerType: 'touch' }));
-      ev('pointerdown', 1, cx - 20); ev('pointerdown', 2, cx + 20);
-      ev('pointermove', 1, cx - 60); ev('pointermove', 2, cx + 60);
-      ev('pointerup', 1, cx - 60); ev('pointerup', 2, cx + 60);
-    }""")
+    page.evaluate(_PINCH_JS)
     expect(image).to_have_css("transform", re.compile(r"matrix\(3, 0, 0, 3,"))
     zoomed = _cursor_on(page, 0.6, 0.4, "the cursor on the zoomed picture")
     assert zoomed["w"] == 24 and zoomed["h"] == 24, zoomed
