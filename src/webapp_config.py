@@ -587,6 +587,11 @@ class WebappConfig:
     # here, so the shared Telegram chat isn't spammed by every failure.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
+    # Optional chat for routine log lines (issue #1742), e.g. the nightly
+    # zombie-cleanup summary — not alerts. Empty falls back to
+    # telegram_chat_id, so a single-chat setup is unchanged. Failure alerts
+    # never use it.
+    telegram_chat_log: str = ""
     # --- Jobs missed-fire coverage (issue #697) --------------------------
     # How often the webapp re-scans every scheduled job for coverage: a
     # missing/disabled Task Scheduler entry, or an elapsed slot with no run

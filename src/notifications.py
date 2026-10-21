@@ -28,6 +28,10 @@ Two independent channels share this one finalisation hook:
 
   * ``telegram_bot_token`` / ``telegram_chat_id`` — credentials.
     Missing creds → :class:`NoopNotifier`.
+  * ``telegram_chat_log`` (issue #1742) — optional second chat for routine
+    log lines (the nightly zombie-cleanup summary), mirroring the fleet's
+    ``attention`` / ``log`` split. Unset → the log category falls back to
+    ``telegram_chat_id``, so a single-chat setup is unchanged.
 
   Opt-in per job (default off) so the shared Telegram chat isn't
   spammed by every job's failures.
@@ -217,14 +221,28 @@ def build_notifier_from_config(cfg: Any) -> JobNotifier:
     return PushoverNotifier(api_token, user_key)
 
 
-def build_telegram_notifier_from_config(cfg: Any) -> JobNotifier:
+TELEGRAM_CATEGORY_LOG = "log"
+
+
+def build_telegram_notifier_from_config(
+    cfg: Any, *, category: Optional[str] = None
+) -> JobNotifier:
     """Construct a Telegram :class:`JobNotifier` from a :class:`WebappConfig`-shaped object.
 
     Returns :class:`NoopNotifier` when either credential is missing —
     every caller can unconditionally ``notifier.notify(...)``.
+
+    ``category`` (issue #1742) picks the chat the way fleet-config's
+    ``resolve_notify_target`` does: :data:`TELEGRAM_CATEGORY_LOG` tries
+    ``cfg.telegram_chat_log`` first and **falls back to** ``telegram_chat_id``
+    when it is unset. No category (failure alerts) always uses
+    ``telegram_chat_id`` — the alerts chat.
     """
     bot_token = getattr(cfg, "telegram_bot_token", "") or ""
-    chat_id = getattr(cfg, "telegram_chat_id", "") or ""
+    chat_id = ""
+    if category == TELEGRAM_CATEGORY_LOG:
+        chat_id = getattr(cfg, "telegram_chat_log", "") or ""
+    chat_id = chat_id or getattr(cfg, "telegram_chat_id", "") or ""
     if not (bot_token and chat_id):
         return NoopNotifier()
     return JobTelegramNotifier(bot_token, chat_id)
