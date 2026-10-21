@@ -67,6 +67,10 @@ pytest-timeout>=2.3
 # (#1231, #1220); the count is E2E_WORKERS, see scripts/e2e-gate-route.ps1.
 pytest-xdist>=3.6
 
+# Unused-import / unused-variable pass of the gate's static ratchet
+# (scripts/static_ratchet.py); the script selects F401,F841 itself.
+ruff>=0.15.21
+
 # End-to-end browser smoke tests (tests/e2e). After install:
 #   .venv\Scripts\python.exe -m playwright install chromium webkit
 # Chromium catches markup/JS regressions; WebKit projects the suite onto an
