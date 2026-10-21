@@ -23,7 +23,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, toast } from './api.js';
+import { apiFailToast, jsonApi, toast } from './api.js';
 import { revealInCard, wireModelCombo } from './dom-utils.js';
 import { fetchConfig, patchConfig, USAGE_SHOWS_LABELS } from './claude-options.js';
 import { terminalJsonApi } from './webauthn.js';
@@ -237,6 +237,7 @@ export function renderSettingsValues() {
   const folders = [cfg.projects_dir, cfg.apps_scan_root, cfg.life_os_dir, cfg.fleet_config_dir]
     .filter(function (v) { return v && String(v).trim(); }).length;
   setValue('folders', folders + ' set');
+  renderOutboxRoots(cfg.outbox_scratch_roots || []);
   setValue('terminal', joined([
     cfg.terminal_history_lines ? cfg.terminal_history_lines + ' lines' : '',
     cfg.large_upload_max_mb ? cfg.large_upload_max_mb + ' MB' : '',
@@ -298,6 +299,76 @@ async function saveConfigField(input, patch, message, after) {
   if (after) await after().catch(function () {});
 }
 
+// ---------------------------------------------------- chat file folders
+// The folders an agent may send Chat files from (#1748), one row each. Every
+// add or remove posts the whole new list and the rows are redrawn from the
+// server's answer (fetchConfig), so a refused entry never lingers on screen.
+// The last row cannot be removed: an empty list would read as unset on the
+// server and bring the default back, a state this editor must not offer.
+function renderOutboxRoots(roots) {
+  const list = els.outboxRootsList;
+  if (!list) return;
+  list.textContent = '';
+  roots.forEach(function (root) {
+    const li = document.createElement('li');
+    const path = document.createElement('span');
+    path.className = 'outbox-root-path';
+    path.textContent = root;
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'icon-button';
+    remove.setAttribute('aria-label', 'Remove ' + root);
+    remove.title = roots.length > 1 ? 'Remove' : 'Keep at least one folder';
+    remove.disabled = roots.length < 2;
+    remove.innerHTML = '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>';
+    remove.addEventListener('click', function () {
+      saveOutboxRoots(roots.filter(function (r) { return r !== root; }), 'Chat file folder removed.');
+    });
+    li.append(path, remove);
+    list.appendChild(li);
+  });
+}
+
+async function saveOutboxRoots(roots, message) {
+  const input = els.outboxRootInput;
+  setFieldError(input, '');
+  try {
+    await jsonApi('/api/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outbox_scratch_roots: roots }),
+    });
+  } catch (exc) {
+    // The server words each refusal (network path, drive root, missing,
+    // duplicate...): show it under the field as well as in the toast.
+    setFieldError(input, (exc && exc.message) || 'Not saved. Check the folder and try again.');
+    apiFailToast('Folder not saved', exc);
+    return;
+  }
+  input.value = '';
+  await fetchConfig().catch(function () {});
+  toast(message, 'good');
+}
+
+function wireOutboxRoots() {
+  const input = els.outboxRootInput;
+  const add = els.outboxRootAdd;
+  if (!input || !add) return;
+  function submit() {
+    const value = input.value.trim();
+    if (!value) {
+      setFieldError(input, 'Enter a folder path.');
+      return;
+    }
+    const current = (state.config && state.config.outbox_scratch_roots) || [];
+    saveOutboxRoots(current.concat(value), 'Chat file folder added.');
+  }
+  add.addEventListener('click', submit);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
+  });
+}
+
 // [field id, config key, name for the toast, refresh after a save]
 const TEXT_FIELDS = [
   ['projectsDir', 'projects_dir', 'Projects folder', function () { return fetchApps(); }],
@@ -339,6 +410,7 @@ function wireFields() {
       saveConfigField(input, { [f[1]]: value }, f[2] + ' saved.');
     });
   });
+  wireOutboxRoots();
 }
 
 // ------------------------------------------------------------------ chief

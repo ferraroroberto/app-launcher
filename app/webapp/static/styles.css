@@ -1423,6 +1423,29 @@ button.settings-row:active { background: var(--card-2); }
   color: var(--muted);
   line-height: 1.45;
 }
+/* Chat file folders (#1748, settings-sheets.js): flat full-bleed rows on a
+   hairline (design.md list-row), the path in mono, a 44px remove at the
+   trailing edge; the add field and its button sit under the list. */
+.outbox-roots > li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.outbox-roots > li:first-child { border-top: 1px solid var(--line); }
+.outbox-root-path {
+  flex: 1;
+  min-width: 0;
+  padding: 12px 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-body-sm);
+  overflow-wrap: anywhere;
+}
+.outbox-roots .icon-button { --icon-btn-box: var(--hit-min); flex: none; color: var(--danger-text); }
+.outbox-roots .icon-button:disabled { color: var(--muted); opacity: 0.5; }
+.outbox-root-add { margin: 10px 0; }
+.outbox-root-add .input-native { flex: 1; min-width: 0; }
+.outbox-root-add .button-ghost { flex: none; min-height: var(--hit-min); }
 .settings-footnote {
   font-size: var(--font-body-sm);
   color: var(--muted);

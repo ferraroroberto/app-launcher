@@ -311,3 +311,53 @@ def test_telegram_reads_plain_and_only_exceptions_wear_a_chip(
     close_settings_sheets(page)
     expect(value).to_have_text("1 needs setup")
     expect(value).to_have_attribute("data-tone", "attention")
+
+
+@pytest.mark.iphone
+def test_chat_file_folders_add_remove_and_refuse(
+    authed_page: Page, base_url: str, auth_token: str, tmp_path
+) -> None:
+    """Chat file folders (#1748): the Folders sheet lists the folders an agent
+    may send Chat files from, adds one (live on the next send, no restart),
+    removes it, says why a bad entry is refused and keeps the last row."""
+    page = authed_page
+    before = _config(base_url, auth_token)["outbox_scratch_roots"]
+    drop = tmp_path / "Drop"
+    drop.mkdir()
+    page.goto(base_url, wait_until="domcontentloaded")
+    open_settings_sheet(page, "foldersSheet")
+    rows = page.locator("#outboxRootsList li")
+    expect(rows).to_have_count(len(before))
+
+    field = page.locator("#outboxRootInput")
+    field.fill(str(drop))
+    page.locator("#outboxRootAdd").click()
+    expect(rows).to_have_count(len(before) + 1)
+    expect(rows.last.locator(".outbox-root-path")).to_have_text(str(drop))
+    expect(field).to_have_value("")
+    assert _config(base_url, auth_token)["outbox_scratch_roots"] == [*before, str(drop)]
+
+    # Every remove is a real 44px target; the path is mono.
+    remove = rows.last.locator(".icon-button")
+    box = remove.bounding_box()
+    assert box and box["width"] >= 44 - 0.5 and box["height"] >= 44 - 0.5, box
+
+    # A refusal reads in the server's own words and saves nothing.
+    field.fill(r"\\host\share")
+    page.locator("#outboxRootAdd").click()
+    expect(page.locator("#outboxRootInputError")).to_contain_text("network and device paths")
+    field.fill(str(tmp_path / "never-made"))
+    page.locator("#outboxRootAdd").click()
+    expect(page.locator("#outboxRootInputError")).to_contain_text("does not exist")
+    field.fill(str(drop))
+    page.locator("#outboxRootAdd").click()
+    expect(page.locator("#outboxRootInputError")).to_contain_text("already in the list")
+    expect(rows).to_have_count(len(before) + 1)
+
+    remove.click()
+    expect(rows).to_have_count(len(before))
+    assert _config(base_url, auth_token)["outbox_scratch_roots"] == before
+
+    if len(before) == 1:
+        # The last folder cannot be removed: an empty list reads as unset.
+        expect(rows.first.locator(".icon-button")).to_be_disabled()
