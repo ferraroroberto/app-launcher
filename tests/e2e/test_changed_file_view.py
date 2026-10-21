@@ -438,6 +438,7 @@ _DIFF_COLOURS = {
 }
 
 
+@pytest.mark.iphone
 def test_diff_takes_token_colours_and_copy_diff_stays_the_patch(
     authed_page: Page, base_url: str
 ) -> None:
