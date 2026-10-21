@@ -1,18 +1,23 @@
-"""#1689 — a changed file's File view, Copy path and Open on PC.
+"""#1689, #1749 — a changed file's File view, Download and ⋮ menu.
 
 In a session's Changed files panel, an opened file shows a Diff | File switch
-(Diff the default), its absolute path as selectable text, Copy path and, on
-the PC itself only, Open on PC. Pinned against stubbed routes (every path and
-line synthetic):
+(Diff the default), its absolute path as selectable text, a Download button
+and a ⋮ menu (Copy content in File view, Copy diff in Diff view, Copy path
+and, on the PC itself only, Open on PC). Pinned against stubbed routes (every
+path and line synthetic):
 
 * on the phone: File renders the file for its type (Markdown here) through a
-  content request made once, Diff comes back without a refetch, Copy path puts
-  the Windows path on the clipboard with a "Path copied" toast, and there is
-  no Open on PC; the tool row meets the 44px floor and nothing scrolls
-  sideways at 390px, light and dark;
-* on the PC (a loopback page): Open on PC posts the file's path and says what
-  happened; a code file gets a line-number gutter, and a file gone from disk
-  says so instead of an empty view.
+  content request made once, Diff comes back without a refetch, the menu opens
+  over the panel and its item set follows the view, Copy content / Copy diff
+  put exactly the raw file / the patch on the clipboard, Copy path puts the
+  Windows path there, and there is no Open on PC; the tool row meets the 44px
+  floor and nothing scrolls sideways at 390px, light and dark;
+* Download saves the file under its own name with its text, and a file the
+  File view can't read is refused with the File view's sentence, with no
+  second request for a file already shown;
+* on the PC (a loopback page): Open on PC, from the menu, posts the file's
+  path and says what happened; a code file gets a line-number gutter, and a
+  file gone from disk says so instead of an empty view.
 
 Geometry goes through ``stable_eval`` (#680/#1346): the session view
 re-renders on its own poll.
@@ -34,6 +39,35 @@ pytestmark = pytest.mark.smoke
 
 _NOTES = "# Notes\n\nOne **bold** line.\n\n<script>window.__ran = true</script>\n"
 _CODE = "def f():\n    return 1\n\n\nprint(f())\n"
+# iOS lets a page write the clipboard only inside the user's tap. Every click
+# listener runs inside a flag that is up only while its synchronous body runs,
+# so a writeText that follows any `await` in the handler (the continuation runs
+# after the listener returned) is recorded false.
+_TAP_SYNC_MOCK = """
+(() => {
+  window.__tapSync = [];
+  let inTap = false;
+  const wrapped = new WeakMap();
+  const add = EventTarget.prototype.addEventListener;
+  EventTarget.prototype.addEventListener = function (type, fn, opts) {
+    if (type === 'click' && typeof fn === 'function') {
+      if (!wrapped.has(fn)) {
+        wrapped.set(fn, function (ev) {
+          const was = inTap;
+          inTap = true;
+          try { return fn.call(this, ev); } finally { inTap = was; }
+        });
+      }
+      return add.call(this, type, wrapped.get(fn), opts);
+    }
+    return add.call(this, type, fn, opts);
+  };
+  const write = navigator.clipboard.writeText;
+  navigator.clipboard.writeText = (t) => { window.__tapSync.push(inTap); return write(t); };
+})()
+"""
+# What Copy diff puts on the clipboard for notes.md: both steps, as drawn.
+_NOTES_DIFF = "@@ -0,0 +1,3 @@\n+# Notes\n+one\n+two\n@@ -3,1 +3,3 @@\n two\n+three\n+four"
 
 
 def _mock_file_routes(page: Page) -> dict:
@@ -84,8 +118,8 @@ def _open_file(page: Page, base_url: str, nth: int):
 
 
 # The tool row's targets: each segment's band and each icon button's invisible
-# square reach 44px, probed with elementFromPoint just inside the floor, and
-# nothing scrolls sideways.
+# square (Download, ⋮) reach 44px, probed with elementFromPoint just inside the
+# floor, and nothing scrolls sideways.
 _TOOLS_FIT = """
 (row) => {
   const hit = (el, dx, dy) => {
@@ -95,11 +129,12 @@ _TOOLS_FIT = """
   };
   const body = document.getElementById('changesBody');
   const segs = [...row.querySelectorAll('.chg-view .segmented-item')];
-  const copy = row.querySelector('.chg-copy');
+  const btns = [...row.querySelectorAll('.chg-acts .icon-button')];
   return {
     segH: Math.min(...segs.map(s => s.getBoundingClientRect().height)),
     segBand: segs.every(s => hit(s, 0, 21) && hit(s, 0, -21)),
-    copyBand: hit(copy, 21, 0) && hit(copy, -21, 0) && hit(copy, 0, 21) && hit(copy, 0, -21),
+    btns: btns.length,
+    btnBand: btns.every(b => hit(b, 21, 0) && hit(b, -21, 0) && hit(b, 0, 21) && hit(b, 0, -21)),
     body: body.scrollWidth - body.clientWidth,
     doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   };
@@ -107,22 +142,67 @@ _TOOLS_FIT = """
 """
 
 
+def _open_kebab(page: Page, row):
+    """Open the file's ⋮ menu; return it."""
+    row.locator(".chg-kebab").click()
+    menu = page.locator(".row-menu.changes-menu")
+    expect(menu).to_be_visible()
+    return menu
+
+
+def _items(menu) -> list:
+    return menu.locator(".row-menu-item .row-menu-label").all_inner_texts()
+
+
+# The menu paints over the panel and its first item is what a tap reaches.
+_MENU_ON_TOP = """
+() => {
+  const menu = document.querySelector('.row-menu.changes-menu');
+  const items = [...menu.querySelectorAll('.row-menu-item')];
+  return items.map(it => {
+    const r = it.getBoundingClientRect();
+    const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return {h: r.height, reached: !!t && it.contains(t)};
+  });
+}
+"""
+
+
 @pytest.mark.iphone
-def test_file_view_and_copy_path_on_the_phone(authed_page: Page, base_url: str) -> None:
+def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: str) -> None:
     page = authed_page
     _mock(page)
     seen = _mock_file_routes(page)
     _as_phone(page)
     page.add_init_script(_CLIPBOARD_MOCK)
+    page.add_init_script(_TAP_SYNC_MOCK)
     row = _open_file(page, base_url, 0)
+
+    # The row holds the switch, Download and ⋮, and nothing else.
+    expect(row.locator(".chg-acts .icon-button")).to_have_count(2)
+    expect(row.locator(".chg-download")).to_have_attribute("aria-label", "Download")
+    expect(row.locator(".chg-kebab")).to_have_attribute("aria-label", "More actions")
 
     segs = row.locator(".chg-view .segmented-item")
     expect(segs).to_have_text(["Diff", "File"])
     expect(segs.first).to_have_attribute("aria-pressed", "true")
     expect(row.locator(".chg-pane-diff .chg-step")).to_have_count(2)
     expect(row.locator(".chg-fullpath")).to_have_text("E:\\work\\proj\\docs\\notes.md")
-    expect(row.locator(".chg-open")).to_have_count(0)
     assert seen["content"] == []
+
+    # Diff view: Copy diff and Copy path, no Copy content, no Open on PC (phone).
+    menu = _open_kebab(page, row)
+    assert _items(menu) == ["Copy diff", "Copy path"], _items(menu)
+    for theme in ("light", "dark"):
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        reach = page.evaluate(_MENU_ON_TOP)
+        assert reach and all(i["reached"] and i["h"] >= 44 for i in reach), \
+            f"a menu item is covered or under 44px ({theme}): {reach}"
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    menu.locator("[data-item='chg-copy-diff']").click()
+    expect(menu).to_have_count(0)
+    expect(page.locator("#toast")).to_contain_text("Diff copied")
+    assert page.evaluate("() => window.__copied") == [_NOTES_DIFF]
 
     segs.nth(1).click()
     expect(segs.nth(1)).to_have_attribute("aria-pressed", "true")
@@ -142,16 +222,54 @@ def test_file_view_and_copy_path_on_the_phone(authed_page: Page, base_url: str) 
     expect(md.locator("h1")).to_be_visible()
     assert len(seen["content"]) == 1, f"switching back refetched the file: {seen}"
 
-    row.locator(".chg-copy").click()
+    # File view: Copy content (the raw text, not the rendered HTML) and Copy path.
+    menu = _open_kebab(page, row)
+    assert _items(menu) == ["Copy content", "Copy path"], _items(menu)
+    menu.locator("[data-item='chg-copy-content']").click()
+    expect(page.locator("#toast")).to_contain_text("Content copied")
+    assert page.evaluate("() => window.__copied")[-1] == _NOTES
+
+    _open_kebab(page, row).locator("[data-item='chg-copy-path']").click()
     expect(page.locator("#toast")).to_contain_text("Path copied")
-    assert page.evaluate("() => window.__copied") == ["E:\\work\\proj\\docs\\notes.md"]
+    assert page.evaluate("() => window.__copied")[-1] == "E:\\work\\proj\\docs\\notes.md"
+    assert len(seen["content"]) == 1, f"Copy content refetched the file: {seen}"
+    # Every copy wrote the clipboard inside its tap, with no await before it.
+    assert page.evaluate("() => window.__tapSync") == [True, True, True]
 
     for theme in ("light", "dark"):
         page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
         fit = stable_eval(row, _TOOLS_FIT)
-        assert fit["segBand"] and fit["copyBand"], f"a tool target is under 44px ({theme}): {fit}"
+        assert fit["btns"] == 2 and fit["segBand"] and fit["btnBand"], \
+            f"a tool target is under 44px ({theme}): {fit}"
         assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px ({theme}): {fit}"
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+
+def test_download_saves_the_file_and_refuses_what_the_file_view_refuses(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _mock(page)
+    seen = _mock_file_routes(page)
+    row = _open_file(page, base_url, 1)
+
+    with page.expect_download() as got:
+        row.locator(".chg-download").click()
+    download = got.value
+    assert download.suggested_filename == "long.py"
+    with open(download.path(), encoding="utf-8") as fh:
+        assert fh.read() == _CODE
+    assert seen["content"] == ["E:/work/proj/src/pkg/long.py"], seen
+
+    # The File view shows the file already read: no second request.
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    expect(row.locator(".chg-pane-file .fv-line")).to_have_count(5)
+    assert len(seen["content"]) == 1, f"the File pane refetched a downloaded file: {seen}"
+
+    gone = page.locator("#changesList .chg-file").nth(2)
+    gone.locator("summary").click()
+    gone.locator(".chg-download").click()
+    expect(page.locator("#toast")).to_have_text("This file is no longer on disk")
 
 
 def test_open_on_pc_code_gutter_and_a_deleted_file_on_the_pc(authed_page: Page, base_url: str) -> None:
@@ -161,7 +279,9 @@ def test_open_on_pc_code_gutter_and_a_deleted_file_on_the_pc(authed_page: Page, 
     row = _open_file(page, base_url, 1)
 
     # This page talks to the webapp over loopback: it is the PC itself.
-    row.locator(".chg-open").click()
+    menu = _open_kebab(page, row)
+    assert "Open on PC" in _items(menu), _items(menu)
+    menu.locator("[data-item='chg-open-pc']").click()
     expect(page.locator("#toast")).to_contain_text("Opened in VS Code")
     assert seen["open"] == [{"path": "E:/work/proj/src/pkg/long.py"}], seen
 
