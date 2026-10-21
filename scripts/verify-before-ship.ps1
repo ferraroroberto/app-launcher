@@ -119,6 +119,15 @@ try {
     if ($ratchetExit -eq 3) { Fail "comment ratchet NOT CONFIRMED (a file could not be scanned or git was unusable)." }
     if ($ratchetExit -ne 0) { Fail "comment ratchet failed (exit $ratchetExit): a file has more #NNN comment references than .comment-ratchet-baseline.json." }
 
+    # Test-to-code ratchet: tests/ lines over src/ + app/ lines may not rise
+    # above .fleet.toml [test_weight] ratio_ceiling. Whole tree, never routed;
+    # exit 3 means a count could not be established, a failure and never a pass.
+    Phase "suite weight ratchet..."
+    & $python -m scripts.suite_weight_ratchet
+    $weightExit = $LASTEXITCODE
+    if ($weightExit -eq 3) { Fail "suite weight ratchet NOT CONFIRMED (git was unusable or a file could not be read)." }
+    if ($weightExit -ne 0) { Fail "suite weight ratchet failed (exit $weightExit): the test-to-code ratio is above .fleet.toml [test_weight] ratio_ceiling, or the table is malformed." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
