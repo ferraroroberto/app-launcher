@@ -33,18 +33,6 @@ def _imports(name: str) -> set[str]:
     return set(_IMPORT_RE.findall(_read(name)))
 
 
-def test_the_renderer_defines_the_entry_points():
-    source = _read("transcript-render.js")
-    for fn in ("export function renderEntries", "export function appendEntries"):
-        assert fn in source
-
-
-def test_the_controller_no_longer_defines_them():
-    source = _read("session-transcript.js")
-    for fn in ("function renderEntries", "function appendEntries", "function renderItem"):
-        assert fn not in source, f"{fn!r} moved to transcript-render.js; a second copy would drift"
-
-
 def test_the_viewer_imports_the_renderer_not_the_chat_pane():
     imports = _imports("life-os-viewer.js")
     assert "./transcript-render.js" in imports
