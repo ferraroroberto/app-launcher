@@ -188,8 +188,9 @@ The toast reports what actually happened rather than just "sent":
 
 | Toast | Meaning |
 |---|---|
-| *Sent* | The session-host confirmed the submit. |
-| *Sent, not confirmed* | Enter went in but nothing verified it. |
+| *Sent* | The session-host confirmed the submit, or Enter went in with nothing to verify it (a short message). For the second, Chat then looks for up to 15 s (#1744): a new turn carrying the text in the transcript, or the agent going busy. Finding either says nothing more. |
+| *Sent, but the agent hasn’t picked it up* (red) | That look found neither within the window. The text goes back into the box so it can be resent. |
+| *Sent, not confirmed: typed into the PC console* | A detached session: there is no transcript to look at, so it says what it can’t know. |
 | *Queued* | The agent was still busy; Enter goes in once it settles. |
 | *Not submitted* (red) | The text reached the agent but Enter never did. |
 | *Send failed* | The terminal never echoed it, the console did not take it, or the session exited. The text is kept to retry. |

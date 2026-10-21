@@ -604,7 +604,18 @@ export async function sendSessionMessage(sid, text) {
 // terminal never echoed (502 not_ingested), a console that did not take the
 // keystrokes (502 console_failed), an exited session (409) all throw, and
 // the caller toasts them as "Send failed" with the text kept.
-export function sendOutcome(verdict) {
+//
+// `opts.watch` (#1744): the caller will look for evidence the agent took an
+// unconfirmed send (Chat reads the transcript it already polls), so the
+// verdict says "Sent" and carries `watch: true`; the warning is that look's to
+// raise, as NOT_PICKED_UP. A caller that cannot look keeps the old wording,
+// because "Sent" with nothing behind it would pass an unchecked send silently.
+export const NOT_PICKED_UP = {
+  text: 'Sent, but the agent hasn’t picked it up. Your text is back in the box',
+  kind: 'error',
+};
+
+export function sendOutcome(verdict, opts) {
   const v = verdict || {};
   // Detached (#967): a console has no output stream, so this is the best a
   // successful send can ever be — not a failure.
@@ -616,6 +627,7 @@ export function sendOutcome(verdict) {
       return { text: 'Sent', kind: 'good' };
     case 'unconfirmed':
       // A short payload or a bare submit: Enter went in, nothing checked it.
+      if (opts && opts.watch) return { text: 'Sent', kind: '', watch: true };
       return { text: 'Sent, not confirmed: nothing verified the agent took it', kind: '' };
     case 'pending':
       // 202 (#763): in the agent's composer, Enter still with the watcher.

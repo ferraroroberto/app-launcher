@@ -58,7 +58,8 @@
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
  * attach menu, the composer's own paste and drop (#1206) and the terminal
- * host's paste and drop all use), `reset()` (leave-surface teardown), `closePopovers()`,
+ * host's paste and drop all use), `restoreDraft(text)` (hand back a cleared
+ * draft whose send went unanswered, #1744), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
  * stopped dictation is still finalizing — a field host's own send waits it
@@ -707,10 +708,19 @@ export function mountComposer(host, opts) {
   setKeys(keysOpts, opts.keysOffReason);
   setSendable(true);
 
+  // Give back a draft the surface cleared on a send it later found unanswered
+  // (#1744). Whatever was typed meanwhile stays, after the returned text.
+  function restoreDraft(text) {
+    const cur = el.textarea.value;
+    el.textarea.value = cur ? text + '\n' + cur : text;
+    el.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   return {
     root: host,
     textarea: el.textarea,
     attachFiles: attachFiles,
+    restoreDraft: restoreDraft,
     reset: reset,
     closePopovers: closePopovers,
     setAvailability: setAvailability,

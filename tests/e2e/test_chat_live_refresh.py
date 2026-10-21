@@ -1080,3 +1080,93 @@ def test_the_activity_line_is_an_icon_and_sits_in_the_middle_of_its_strip_at_pho
         assert abs(tall["spanMid"] - tall["stripMid"]) <= 1, (
             f"in a taller strip the line is {tall['spanMid'] - tall['stripMid']:+.1f}px off its centre: {tall}"
         )
+
+
+# --- #1744: say Sent, then confirm, and warn only when the look fails --------
+
+# send-confirm.js: CONFIRM_WINDOW_MS.
+_CONFIRM_WINDOW_MS = 15_000
+
+_UNCONFIRMED_SEND = {
+    "ok": True, "bytes": 8, "submit": True, "delivered": True, "reason": "unverified",
+    "ingested": True, "submitted": True, "submit_confirmed": None,
+    "submit_state": "unconfirmed", "waited_ms": 40, "deferred": False,
+}
+
+
+def _send_unconfirmed(page: Page, text: str) -> None:
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/input$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(_UNCONFIRMED_SEND)),
+    )
+    _open_chat(page)
+    composer = page.locator("#chatComposeBar")
+    composer.locator(".composer-input").fill(text)
+    composer.locator(".composer-send").click()
+    expect(composer.locator(".composer-input")).to_have_value("")
+    # Said at once, and never the old warning: nothing has looked yet.
+    expect(page.locator("#toast")).to_have_text(re.compile(r"^\W*Sent$"))
+
+
+@pytest.mark.iphone
+def test_an_unconfirmed_send_says_sent_and_stays_quiet_when_the_turn_shows_up(
+    authed_page: Page, base_url: str
+) -> None:
+    """The common case: the message reaches the agent, its turn lands in the
+    transcript within the window, and no warning is ever raised."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    _send_unconfirmed(page, "yes please")
+
+    tr.append(_turn("user", "yes please", 300))
+    _tick(page, tr)
+    expect(page.locator("#transcriptList .tr-user").last).to_contain_text("yes please")
+
+    # Well past the window, with the fake clock and a tick after it (the
+    # watch is judged on a read): still no warning, and the box stays empty.
+    _fake_clock.advance(page, _CONFIRM_WINDOW_MS + _POLL_MS)
+    _tick(page, tr)
+    expect(page.locator("#toast")).not_to_contain_text("picked it up")
+    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("")
+
+
+@pytest.mark.iphone
+def test_an_unconfirmed_send_is_confirmed_by_the_agent_going_busy(
+    authed_page: Page, base_url: str
+) -> None:
+    """No turn yet (the agent logs it late), but the session went busy: that
+    is evidence too, and the window closing later raises nothing."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    _send_unconfirmed(page, "go ahead")
+
+    tr.activity = {"since": _since(page, 5), "actions": None, "last": "Thinking", "working": True}
+    _tick(page, tr)
+
+    _fake_clock.advance(page, _CONFIRM_WINDOW_MS + _POLL_MS)
+    _tick(page, tr)
+    expect(page.locator("#toast")).not_to_contain_text("picked it up")
+    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("")
+
+
+@pytest.mark.iphone
+def test_an_unconfirmed_send_the_agent_never_takes_is_flagged_and_the_text_returned(
+    authed_page: Page, base_url: str
+) -> None:
+    """The case the old warning was for: nothing shows up. The window closes
+    on a distinct error state, and the text goes back to the box to resend."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    _send_unconfirmed(page, "did you get this")
+
+    # Still inside the window: quiet, however many ticks have found nothing.
+    _tick(page, tr)
+    _tick(page, tr)
+    expect(page.locator("#toast")).not_to_contain_text("picked it up")
+
+    _fake_clock.advance(page, _CONFIRM_WINDOW_MS)
+    toast = page.locator("#toast")
+    expect(toast).to_contain_text("hasn’t picked it up", timeout=OVERLAY_OPEN_MS)
+    expect(toast).to_have_class(re.compile(r"\berror\b"))
+    expect(page.locator("#chatComposeBar .composer-input")).to_have_value("did you get this")
