@@ -199,7 +199,7 @@ function Wait-E2EGateMutex {
     }
 }
 
-# The durable browser-run history (#1762). verify-before-ship.ps1 overwrites
+# The durable browser-run history. verify-before-ship.ps1 overwrites
 # webapp/verify-progress.log per checkout, and most gates run in a sibling
 # worktree that is deleted when its issue ships, so the newest browser run on
 # disk was weeks old and /e2e-audit's timing read `stale`. Each browser run is

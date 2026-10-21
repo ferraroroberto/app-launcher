@@ -66,7 +66,7 @@ _WORKER_CASES: dict[str, tuple[str, str]] = {
     "full-negative": ("full", "-2"),
 }
 
-# Durable run history (#1762): name -> (existing history, new run, runs to keep).
+# Durable run history: name -> (existing history, new run, runs to keep).
 _HDR = "verify-before-ship run started 2026-10-21 10:00:0"
 _HISTORY_CASES: dict[str, tuple[str, str, int]] = {
     "trims-to-newest": (f"{_HDR}1\nA\n{_HDR}2\nB\n", f"{_HDR}3\nC\n", 2),
@@ -280,7 +280,7 @@ def test_non_browser_phase_runs_on_six_workers_by_default(routes: dict) -> None:
 
 
 def test_the_durable_run_history_keeps_the_newest_runs_whole(routes: dict) -> None:
-    """#1762: the primary checkout's history is trimmed by run, never mid-run,
+    """The primary checkout's history is trimmed by run, never mid-run,
     and the new run lands last."""
     assert _HISTORY["trims-to-newest"] == f"{_HDR}2\nB\n{_HDR}3\nC\n"
     assert _HISTORY["keeps-all-under-cap"] == f"{_HDR}1\nA\n{_HDR}2\nB\n"

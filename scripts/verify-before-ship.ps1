@@ -85,7 +85,7 @@ function Log-Progress($message) {
     )
 }
 
-# Append this run to the durable history in the primary checkout (#1762). The
+# Append this run to the durable history in the primary checkout. The
 # caller holds the e2e gate mutex, which is what serialises two gates ending at
 # once in sibling worktrees. A history that could not be written is reported
 # loudly but never fails a gate whose tests passed.
