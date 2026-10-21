@@ -49,6 +49,10 @@ _VENDORED_VERBATIM_EXEMPT = {
         "The scaffold's e2e classifier (#955), hash-verified by fleet-config's "
         "e2e_route.py bootstrap; it spawns git with creationflags=_NO_WINDOW."
     ),
+    "scripts/comment_ratchet.py": (
+        "The scaffold's comment ratchet, vendored byte-for-byte and declared in "
+        ".fleet.toml [vendored]; it spawns git with creationflags=_NO_WINDOW."
+    ),
 }
 _VENDORED_NO_WINDOW = "_NO_WINDOW"
 

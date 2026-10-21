@@ -110,6 +110,15 @@ try {
     & $python -m compileall -q app src tests
     if ($LASTEXITCODE -ne 0) { Fail "byte-compile failed." }
 
+    # Comment ratchet (scaffold docs/comment-ratchet.md): the whole tree is
+    # counted, so it is never path-routed. Exit 3 means the count could not be
+    # established, which is its own failure and never a pass.
+    Phase "comment ratchet..."
+    & $python scripts/comment_ratchet.py
+    $ratchetExit = $LASTEXITCODE
+    if ($ratchetExit -eq 3) { Fail "comment ratchet NOT CONFIRMED (a file could not be scanned or git was unusable)." }
+    if ($ratchetExit -ne 0) { Fail "comment ratchet failed (exit $ratchetExit): a file has more #NNN comment references than .comment-ratchet-baseline.json." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
