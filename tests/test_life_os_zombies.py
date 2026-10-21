@@ -477,7 +477,8 @@ class TestCommand:
         monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", str(world.tmp / "runtime"))
         monkeypatch.setattr(life_os_zombie_cmd, "load_webapp_config", lambda: world.cfg)
         recorder = Recorder()
-        monkeypatch.setattr(life_os_zombie_cmd, "build_telegram_notifier_from_config", lambda cfg: recorder)
+        monkeypatch.setattr(life_os_zombie_cmd, "build_telegram_notifier_from_config",
+                            lambda cfg, category=None: recorder)
         world.recorder = recorder
         return world
 
@@ -519,7 +520,7 @@ class TestCommand:
         monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", str(world.tmp / "runtime"))
         monkeypatch.setattr(life_os_zombie_cmd, "load_webapp_config", lambda: world.cfg)
         monkeypatch.setattr(life_os_zombie_cmd, "build_telegram_notifier_from_config",
-                            lambda cfg: NoopNotifier())
+                            lambda cfg, category=None: NoopNotifier())
         _populate(world)
         assert self._run() == 0
 
@@ -551,3 +552,44 @@ def test_the_sample_job_is_declared_daily_in_backup_mode():
     assert job.args == "life-os-zombie-cleanup --mode backup"
     assert (job.schedule.type, job.schedule.at) == ("daily", "04:00")
     assert job.exit_outcomes == {4: "deferred"} and job.alert_on_failure
+
+
+class TestSummaryRoutesToTheLogChat:
+    """#1742: the summary asks for the log category; real chat routing is pinned
+    in tests/test_telegram_log_category.py."""
+
+    @pytest.fixture
+    def sent_to(self, world, monkeypatch):
+        from src import notifications as notif
+
+        class FakeTelegram:
+            sent: List[str] = []
+
+            def __init__(self, bot_token: str, chat_id: str) -> None:
+                self.chat_id = chat_id
+
+            def send_text(self, text: str) -> None:
+                FakeTelegram.sent.append(self.chat_id)
+
+        monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", str(world.tmp / "runtime"))
+        monkeypatch.setattr(life_os_zombie_cmd, "load_webapp_config", lambda: world.cfg)
+        monkeypatch.setattr(notif, "TelegramNotifier", FakeTelegram)
+        world.sent_chats = FakeTelegram.sent
+        return world
+
+    def _run(self, *argv: str) -> int:
+        return TestCommand._run(self, *argv)
+
+    def test_summary_goes_to_the_log_chat_when_one_is_configured(self, sent_to):
+        sent_to.cfg.telegram_bot_token, sent_to.cfg.telegram_chat_id = "tok", "alerts"
+        sent_to.cfg.telegram_chat_log = "log"
+        _populate(sent_to)
+        assert self._run() == 0
+        assert sent_to.sent_chats == ["log"]
+
+    def test_summary_falls_back_to_the_alerts_chat_without_a_log_chat(self, sent_to):
+        sent_to.cfg.telegram_bot_token, sent_to.cfg.telegram_chat_id = "tok", "alerts"
+        sent_to.cfg.telegram_chat_log = ""
+        _populate(sent_to)
+        assert self._run() == 0
+        assert sent_to.sent_chats == ["alerts"]

@@ -857,6 +857,7 @@ The channel is the fleet's vendored `src/notify/` Telegram primitive (byte-ident
 | Key | Default | Effect |
 | --- | --- | --- |
 | `telegram_bot_token` / `telegram_chat_id` | `""` | Both must be set for any alert to fire; otherwise the notifier short-circuits as a no-op |
+| `telegram_chat_log` | `""` | Optional log chat (issue #1742) for routine summaries such as the zombie cleanup; unset falls back to `telegram_chat_id`. Failure alerts never use it |
 | `Job.alert_on_failure` | `false` | Per-job opt-in — set from the editor's toggle, or `"alert_on_failure": true` in `config/jobs.json` |
 
 The message is short and job-scoped: `❌ <job name> failed` as the title, `<timestamp> — run=<rid> exit=<code>` as the body — no LLM summary, no streak logic (those are Pushover-specific enrichments on the global channel). A watchdog-killed run (issue #819) appends `(watchdog: <note>)` — e.g. `exit=15 (watchdog: max runtime 33min exceeded)` — instead of leaving a bare, otherwise-unproducible exit code; a reaped run appends `(reaped — end time not confirmed)`, and the two compose if a future caller ever has both. A run neither the watchdog nor the reaper touched renders exactly as before. Same swallow-on-error contract as Pushover: a misconfigured token or a Telegram-side failure is logged at `WARNING` and never blocks the executor's normal exit. A job with the toggle on shows a 🔔 bell icon next to its name in the Jobs tab list.

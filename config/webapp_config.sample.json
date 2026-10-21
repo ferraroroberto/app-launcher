@@ -90,6 +90,7 @@
   "notify_failure_summary": false,
   "telegram_bot_token": "",
   "telegram_chat_id": "",
+  "telegram_chat_log": "",
   "jobs_coverage_interval_minutes": 60,
   "session_retention_days": 365,
   "secrets": {},

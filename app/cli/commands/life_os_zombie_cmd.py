@@ -5,7 +5,7 @@ and index entries into a dated backup folder; ``--mode delete`` removes them
 through the Delete endpoint's own routine; ``--mode dry-run`` classifies and
 prints counts, touching nothing and sending nothing. ``--restore <date>[/<skill>[/<file>]]``
 lists what a backup holds, and puts it back with ``--yes``. Every non-dry run
-sends one Telegram summary (counts only) and purges backups past
+sends one Telegram summary (counts only, to the log chat) and purges backups past
 ``--retention-days``. Exit codes: 1 a capture failed, 2 bad arguments,
 3 breaker tripped (too many zombies; nothing touched), 4 session host unknown
 (nothing touched; declare it ``deferred`` in the job). The rules live in
@@ -36,7 +36,7 @@ from src.life_os_zombies import (
     run_sweep,
     summary_text,
 )
-from src.notifications import build_telegram_notifier_from_config
+from src.notifications import TELEGRAM_CATEGORY_LOG, build_telegram_notifier_from_config
 from src.webapp_config import WebappConfig, load_webapp_config
 
 from .base import BaseCommand
@@ -81,8 +81,9 @@ class LifeOsZombieCommand(BaseCommand):
             logger.info("ℹ️ dry-run: nothing touched, nothing sent.")
             return result.exit_code
         title, body = summary_text(result)
-        # Counts only: capture names embed the conversation's own words.
-        build_telegram_notifier_from_config(cfg).notify(
+        # Counts only: capture names embed the conversation's own words. A
+        # routine summary, so the log chat, not alerts (#1742).
+        build_telegram_notifier_from_config(cfg, category=TELEGRAM_CATEGORY_LOG).notify(
             title, body, "info" if result.exit_code == EXIT_OK else "warning")
         done = {EXIT_OK: "✅", EXIT_FAILED: "⚠️"}.get(result.exit_code, "❌")
         logger.info("%s %s: %s", done, title, body)
