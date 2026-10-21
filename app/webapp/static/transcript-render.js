@@ -471,6 +471,7 @@ function isSentFile(e) {
 function blobType(kind, served) {
   if (kind === 'image') return /^image\/(png|jpeg|gif|webp)$/.test(served) ? served : 'application/octet-stream';
   if (kind === 'pdf') return 'application/pdf';
+  if (kind === 'archive') return 'application/octet-stream';
   return 'text/plain;charset=utf-8';
 }
 
@@ -545,6 +546,9 @@ async function loadFileCard(card) {
       openImageLightbox(got.objectUrl, name);
     });
     card.appendChild(btn);
+  } else if (kind === 'archive') {
+    // Download-only: the bytes are never rendered. The head's Download link
+    // is the whole card, and it is ready before the tap (see fileCard).
   } else if (kind === 'pdf') {
     const frame = document.createElement('iframe');
     frame.className = 'tr-file-pdf';
@@ -564,7 +568,7 @@ async function loadFileCard(card) {
 }
 
 // One file's card: its name, size and an Open link (live once the bytes are
-// in), then the content. A null `kind` is a type the server will refuse; the
+// in; Download for an archive), then the content. A null `kind` is a type the server will refuse; the
 // card still asks, so it shows the server's own reason. No `url` (the Life OS
 // viewer, which has no session to ask) leaves the head alone. `sid` is the
 // session the url asks.
@@ -590,8 +594,16 @@ function fileCard(name, kind, size, url, sid) {
   }
   const open = document.createElement('a');
   open.className = 'tr-file-open';
-  open.textContent = 'Open';
-  open.target = '_blank';
+  if (kind === 'archive') {
+    // iOS drops a download started after an await, so the bytes are fetched
+    // ahead (the lazy loader, as the card scrolls near) and the tap only
+    // follows a ready blob: link. `download` is a property, never markup.
+    open.textContent = 'Download';
+    open.download = name;
+  } else {
+    open.textContent = 'Open';
+    open.target = '_blank';
+  }
   open.rel = 'noopener';
   open.hidden = true;
   head.appendChild(open);

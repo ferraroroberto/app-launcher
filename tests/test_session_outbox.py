@@ -9,8 +9,12 @@ admits ``..`` and a junction or symlink that points outside.
 
 from __future__ import annotations
 
+import gzip
+import hashlib
+import io
 import json
 import os
+import zipfile
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -176,7 +180,8 @@ def test_a_symlink_from_scratch_to_outside_is_out_of_root(tmp_path: Path, temp_b
     assert _refusal(link, proj, _default_roots(proj)) == "out_of_root"
 
 
-@pytest.mark.parametrize("name", ["page.html", "logo.svg", "tool.exe", "data.xlsx", "noext"])
+@pytest.mark.parametrize("name", ["page.html", "logo.svg", "tool.exe", "data.xlsx", "noext", "run.bat", "app.jar", "app.apk",
+                                  "doc.docx", "bare.tar", "pack.rar"])
 def test_types_off_the_allowlist_are_refused(proj: Path, name: str):
     (proj / name).write_bytes(b"<svg onload=alert(1)>")
     assert _refusal(proj / name, proj, _roots(proj)) == "type_not_allowed"
@@ -191,6 +196,57 @@ def test_types_off_the_allowlist_are_refused(proj: Path, name: str):
 def test_bytes_that_are_not_what_the_extension_claims_are_refused(proj: Path, name: str, data: bytes):
     (proj / name).write_bytes(data)
     assert _refusal(proj / name, proj, _roots(proj)) == "content_mismatch"
+
+
+def _zip_bytes() -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("hello.txt", "hello")
+    return buf.getvalue()
+
+
+SEVEN_Z = b"7z\xbc\xaf\x27\x1c\x00\x04" + b"\x00" * 24
+
+
+@pytest.mark.parametrize("name,data", [
+    ("pack.zip", _zip_bytes()),
+    ("log.gz", gzip.compress(b"hello")),
+    ("src.tgz", gzip.compress(b"tar-ish")),
+    ("pack.7z", SEVEN_Z),
+    ("LOUD.ZIP", _zip_bytes()),
+])
+def test_an_archive_is_read_as_opaque_download_only_bytes(proj: Path, name: str, data: bytes):
+    (proj / name).write_bytes(data)
+    _resolved, got, kind, media = session_outbox.read_source(name, str(proj), _roots(proj))
+    assert (got, kind, media) == (data, "archive", "application/octet-stream")
+    assert session_outbox.kind_of(name) == "archive"
+
+
+@pytest.mark.parametrize("name,data", [
+    ("fake.zip", b"just text, not a zip"),
+    ("empty.zip", b"PK\x05\x06" + b"\x00" * 18),  # a zero-entry zip is not what anyone sends
+    ("fake.gz", _zip_bytes()),
+    ("fake.7z", gzip.compress(b"x")),
+    ("page.zip", b"<html><script>alert(1)</script></html>"),
+])
+def test_an_archive_whose_bytes_disagree_with_its_extension_is_a_content_mismatch(
+    proj: Path, name: str, data: bytes
+):
+    (proj / name).write_bytes(data)
+    assert _refusal(proj / name, proj, _roots(proj)) == "content_mismatch"
+
+
+def test_an_archive_outside_every_root_is_out_of_root_not_type_not_allowed(tmp_path: Path, proj: Path):
+    (tmp_path / "out.zip").write_bytes(_zip_bytes())
+    assert _refusal(tmp_path / "out.zip", proj, _roots(proj)) == "out_of_root"
+
+
+def test_an_oversize_archive_is_too_large(proj: Path, monkeypatch):
+    monkeypatch.setattr(session_outbox, "MAX_FILE_BYTES", 16)
+    (proj / "big.zip").write_bytes(b"PK\x03\x04" + b"\x00" * 13)
+    (proj / "fits.zip").write_bytes(b"PK\x03\x04" + b"\x00" * 12)
+    assert _refusal(proj / "big.zip", proj, _roots(proj)) == "too_large"
+    assert session_outbox.read_source(str(proj / "fits.zip"), str(proj), _roots(proj))[3] == "application/octet-stream"
 
 
 def test_an_oversize_file_is_refused(proj: Path, monkeypatch):
@@ -450,6 +506,33 @@ def test_a_pdf_is_served_without_the_sandbox_its_viewer_cannot_run_under(
     assert "content-security-policy" not in got.headers
 
 
+def test_an_archive_is_served_as_an_attachment_byte_for_byte(webapp_client, _bypass_gate, proj: Path):
+    client, _, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = [_live(proj)]
+    data = _zip_bytes()
+    (proj / "pack.zip").write_bytes(data)
+    entry = client.post("/api/claude-code/sessions/s1/outbox", json={"path": "pack.zip"}).json()["entry"]
+    assert entry["kind"] == "archive" and entry["media"] == "application/octet-stream"
+    got = client.get(f"/api/claude-code/sessions/s1/outbox/{entry['id']}")
+    assert got.status_code == 200
+    assert hashlib.sha256(got.content).hexdigest() == hashlib.sha256(data).hexdigest()
+    assert got.headers["content-type"] == "application/octet-stream"
+    assert got.headers["content-disposition"] == "attachment; filename*=UTF-8''pack.zip"
+    assert got.headers["x-content-type-options"] == "nosniff"
+    assert got.headers["cache-control"] == "no-store"
+    assert got.headers["content-security-policy"].startswith("sandbox")
+
+
+def test_images_pdfs_and_text_keep_an_inline_disposition(webapp_client, _bypass_gate, proj: Path):
+    client, _, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = [_live(proj)]
+    for name, data in (("doc.pdf", PDF), ("shot.png", PNG), ("note.txt", b"hi")):
+        (proj / name).write_bytes(data)
+        entry = client.post("/api/claude-code/sessions/s1/outbox", json={"path": name}).json()["entry"]
+        got = client.get(f"/api/claude-code/sessions/s1/outbox/{entry['id']}")
+        assert got.headers["content-disposition"].startswith("inline;"), name
+
+
 def test_a_hostile_file_name_is_quoted_in_the_header(webapp_client, _bypass_gate, proj: Path):
     client, _, overrides = webapp_client
     overrides["session"].list_sessions.return_value = [_live(proj)]
@@ -467,6 +550,7 @@ def test_a_hostile_file_name_is_quoted_in_the_header(webapp_client, _bypass_gate
 @pytest.mark.parametrize("name,data,status,reason", [
     ("page.html", b"<b>x</b>", 415, "type_not_allowed"),
     ("fake.png", b"text", 415, "content_mismatch"),
+    ("fake.zip", b"text", 415, "content_mismatch"),
     ("big.txt", b"x" * 32, 413, "too_large"),
     ("missing.png", None, 404, "not_found"),
 ])

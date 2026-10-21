@@ -64,11 +64,13 @@ def file_headers(name: str, media: str) -> Dict[str, str]:
     """Headers for serving a sent file. Nothing stores it (a private
     capture), nothing sniffs it into another type, the name is a quoted
     ``filename*`` (never raw header text), and anything but a PDF — which
-    the browser's own viewer must be free to render — is sandboxed."""
+    the browser's own viewer must be free to render — is sandboxed. An
+    archive is opaque bytes, so it is an ``attachment``, never shown inline."""
+    disposition = "attachment" if media == session_outbox.ARCHIVE_MEDIA else "inline"
     headers = {
         "Cache-Control": "no-store",
         "X-Content-Type-Options": "nosniff",
-        "Content-Disposition": "inline; filename*=UTF-8''" + quote(name, safe=""),
+        "Content-Disposition": disposition + "; filename*=UTF-8''" + quote(name, safe=""),
     }
     if media != session_outbox.PDF_MEDIA:
         headers["Content-Security-Policy"] = "sandbox; default-src 'none'"
