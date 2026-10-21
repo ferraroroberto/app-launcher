@@ -552,205 +552,160 @@ def _recent_iso(**delta_kwargs) -> str:
     return stamp.isoformat().replace("+00:00", "Z")
 
 
-class TestFindResumableChiefSessionId:
-    """Unit coverage for ``_find_resumable_chief_session_id`` (#633): the
-    lookup that turns "the most recent chief conversation" into a concrete
-    session id ``claude --resume <id>`` can reattach to."""
-
-    def test_no_rows_returns_empty(self):
-        assert chief_router._find_resumable_chief_session_id({}) == ""
-
-    def test_picks_newest_matching_row(self):
-        rows = {
-            "old-uuid": _chief_state_row("old-sess", _recent_iso(hours=2)),
-            "new-uuid": _chief_state_row("new-sess", _recent_iso(hours=1)),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == "new-uuid"
-
-    def test_wrong_project_is_excluded(self):
-        rows = {
-            "uuid-1": _chief_state_row(
-                "s1", "2026-07-27T07:00:00Z",
-                cwd="E:/automation/app-launcher",
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == ""
-
-    def test_wrong_name_is_excluded(self):
-        rows = {
-            "uuid-1": _chief_state_row(
-                "s1", "2026-07-27T07:00:00Z", name="fleet-config",
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == ""
-
-    def test_name_match_is_case_insensitive(self):
-        rows = {
-            "uuid-1": _chief_state_row(
-                "s1", _recent_iso(hours=1), name="Chief",
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
-
-    def test_stale_row_past_24h_is_excluded(self):
-        rows = {"uuid-1": _chief_state_row("s1", "2026-07-26T00:00:00Z")}
-        now = chief_router.board._parse_iso("2026-07-27T07:00:00Z")
-        assert (
-            chief_router._find_resumable_chief_session_id(rows, now=now) == ""
-        )
-
-    def test_project_field_used_over_cwd_basename(self):
-        rows = {
-            "uuid-1": _chief_state_row(
-                "s1", _recent_iso(hours=1),
-                cwd="E:/automation/app-launcher-wt-42", project="fleet-config",
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
-
-    def test_non_dict_row_is_skipped(self):
-        rows = {"uuid-1": "not-a-row"}
-        assert chief_router._find_resumable_chief_session_id(rows) == ""
+def _chief(*, transcript=None, hours=0, minutes=0, **extra):
+    """One state-row spec for the ranker table: how old, and what its
+    transcript holds (``typed`` / ``blank`` / ``missing``, or none at all)."""
+    return {"age": {"hours": hours, "minutes": minutes}, "transcript": transcript, **extra}
 
 
-class TestResumeRanksBySubstance:
-    """#670: recency alone picks the wrong conversation after anything that
-    kills the chief's PTY. The real chief's row freezes at the moment of
-    death; the blank chief the fallback path spawns seconds later — renamed
-    ``"chief"`` by ``ensure_chief`` itself — is newer forever after. These
-    pin that substance decides first, and that "couldn't tell" never
-    masquerades as "confirmed empty"."""
+# Each case: state rows, an optional durable pointer ``(sid, transcript kind,
+# age)``, the live chief's ``preferred_sid``, and the conversation that must
+# be reattached ("" = fall back to a fresh spawn). Substance decides before
+# recency: a typed conversation beats a newer bootstrap-only one, "unknown"
+# ranks below "confirmed" but is never a negative, and the pointer joins the
+# ranking without jumping it.
+_RANKER_CASES = [
+    pytest.param({}, None, "", "", id="no-rows"),
+    pytest.param(
+        {"old": _chief(hours=2), "new": _chief(hours=1)},
+        None, "", "new", id="newest-of-two-unknown",
+    ),
+    pytest.param(
+        {"x": _chief(hours=1, cwd="E:/automation/app-launcher")},
+        None, "", "", id="wrong-project-excluded",
+    ),
+    pytest.param(
+        {"x": _chief(hours=1, name="fleet-config")},
+        None, "", "", id="wrong-name-excluded",
+    ),
+    pytest.param(
+        {"x": _chief(hours=1, name="Chief")},
+        None, "", "x", id="name-match-case-insensitive",
+    ),
+    pytest.param(
+        {"x": _chief(hours=30)}, None, "", "", id="row-past-24h-excluded",
+    ),
+    pytest.param(
+        {"x": _chief(hours=1, cwd="E:/automation/app-launcher-wt-42",
+                     project="fleet-config")},
+        None, "", "x", id="project-field-beats-cwd-basename",
+    ),
+    pytest.param({"x": "not-a-row"}, None, "", "", id="non-dict-row-skipped"),
+    pytest.param(
+        {"real": _chief(hours=3, transcript="typed"), "blank": _chief(minutes=1, transcript="blank")},
+        None, "", "real", id="bootstrap-only-newest-loses-to-substantive-older",
+    ),
+    pytest.param(
+        {"old": _chief(hours=3, transcript="typed"), "new": _chief(minutes=5, transcript="typed")},
+        None, "", "new", id="newest-wins-between-substantive",
+    ),
+    pytest.param(
+        {"known": _chief(hours=3, transcript="typed"),
+         "unknown": _chief(minutes=5, transcript="missing")},
+        None, "", "known", id="confirmed-outranks-unknown",
+    ),
+    pytest.param(
+        {"x": _chief(hours=1, transcript="missing")}, None, "", "x",
+        id="unknown-resumable-when-nothing-better",
+    ),
+    pytest.param(
+        {"blank": _chief(minutes=1, transcript="blank")}, None, "", "",
+        id="only-bootstrap-resumes-nothing",
+    ),
+    pytest.param(
+        {"hand": _chief(minutes=2, transcript="typed", name="fleet-config-79"),
+         "other": _chief(hours=1, transcript="typed")},
+        None, "hand", "hand", id="preferred-wins-with-project-derived-name",
+    ),
+    pytest.param(
+        {"blank": _chief(minutes=1, transcript="blank"), "real": _chief(hours=3, transcript="typed")},
+        None, "blank", "real", id="preferred-ignored-when-bootstrap-only",
+    ),
+    pytest.param(
+        {"x": _chief(minutes=1, transcript="typed", name="app-launcher-11",
+                     cwd="E:/automation/app-launcher")},
+        None, "x", "", id="preferred-outside-fleet-config-ignored",
+    ),
+    pytest.param(
+        {"real": _chief(hours=3, transcript="typed")}, None, "ghost", "real",
+        id="unknown-preferred-falls-through-to-scan",
+    ),
+    pytest.param(
+        {"hand": _chief(minutes=20, transcript="typed", name="fleet-config-79")},
+        ("hand", "row", None), "", "hand", id="pointer-finds-hand-started-chief",
+    ),
+    pytest.param(
+        {}, ("pruned", "typed", timedelta(days=3)), "", "pruned",
+        id="pointer-finds-conversation-past-24h-prune",
+    ),
+    pytest.param(
+        {"fresh": _chief(minutes=5, transcript="typed")},
+        ("pointed", "typed", timedelta(days=2)), "", "fresh",
+        id="newer-substantive-row-outranks-pointer",
+    ),
+    pytest.param(
+        {"hand": _chief(minutes=2, transcript="typed", name="fleet-config-79"),
+         "older": _chief(hours=6, transcript="typed")},
+        ("hand", "row", timedelta(days=3)), "", "hand",
+        id="pointer-ranked-by-its-row-when-row-exists",
+    ),
+    pytest.param(
+        {}, ("blank", "blank", None), "", "", id="bootstrap-only-pointer-never-resumed",
+    ),
+    pytest.param(
+        {"live": _chief(minutes=1, transcript="typed", name="fleet-config-79")},
+        ("pointed", "typed", None), "live", "live",
+        id="live-preferred-beats-pointer",
+    ),
+    pytest.param(
+        {}, ("old", "typed", timedelta(days=8)), "", "", id="expired-pointer-ignored",
+    ),
+    pytest.param(
+        {}, ("gone", "gone", None), "", "", id="pointer-at-deleted-transcript-ignored",
+    ),
+    pytest.param(
+        {"real": _chief(hours=2, transcript="typed")}, ("x", "corrupt", None), "", "real",
+        id="corrupt-pointer-degrades-to-scan",
+    ),
+    pytest.param(
+        {"same": _chief(minutes=5, transcript="typed")}, ("same", "row", None), "", "same",
+        id="pointer-naming-a-scanned-row-is-harmless",
+    ),
+]
 
-    def test_bootstrap_only_newest_loses_to_the_substantive_older_one(
-        self, tmp_path
-    ):
-        """The exact 2026-07-28 incident: a 10-minute-old ``/chief``-and-
-        handover conversation must not win over the three-day one it
-        displaced."""
-        rows = {
-            "real-uuid": _chief_state_row(
-                "real-sess", _recent_iso(hours=3),
-                transcript_path=_transcript(tmp_path, "real", typed=True),
-            ),
-            "blank-uuid": _chief_state_row(
-                "blank-sess", _recent_iso(minutes=1),
-                transcript_path=_transcript(tmp_path, "blank", typed=False),
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "real-uuid"
-        )
 
-    def test_newest_still_wins_between_two_substantive_conversations(
-        self, tmp_path
-    ):
-        rows = {
-            "old-uuid": _chief_state_row(
-                "old-sess", _recent_iso(hours=3),
-                transcript_path=_transcript(tmp_path, "old", typed=True),
-            ),
-            "new-uuid": _chief_state_row(
-                "new-sess", _recent_iso(minutes=5),
-                transcript_path=_transcript(tmp_path, "new", typed=True),
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "new-uuid"
-        )
-
-    def test_confirmed_substance_outranks_unknown_substance(self, tmp_path):
-        rows = {
-            "known-uuid": _chief_state_row(
-                "known-sess", _recent_iso(hours=3),
-                transcript_path=_transcript(tmp_path, "known", typed=True),
-            ),
-            "unknown-uuid": _chief_state_row(
-                "unknown-sess", _recent_iso(minutes=5),
-                transcript_path="C:/nope/missing.jsonl",
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "known-uuid"
-        )
-
-    def test_unknown_substance_is_still_resumable_when_nothing_better(self):
-        """Unknown is not a negative — an unreadable transcript still beats
-        throwing the conversation away for a fresh spawn."""
-        rows = {"uuid-1": _chief_state_row("s1", _recent_iso(hours=1))}
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "uuid-1"
-        )
-
-    def test_only_bootstrap_only_conversations_resumes_nothing(self, tmp_path):
-        rows = {
-            "blank-uuid": _chief_state_row(
-                "blank-sess", _recent_iso(minutes=1),
-                transcript_path=_transcript(tmp_path, "blank", typed=False),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(rows) == ""
-
-    def test_preferred_sid_wins_even_with_a_project_derived_name(
-        self, tmp_path
-    ):
-        """A chief the launcher never spawned (Roberto's own ``/resume``, or a
-        plain Coding session he typed ``/chief`` into) has a project-derived
-        row name, so the name scan can't see it at all — but its own PTY was
-        just stopped for this resume, so it is exactly what to reattach."""
-        rows = {
-            "hand-uuid": _chief_state_row(
-                "hand-sess", _recent_iso(minutes=2), name="fleet-config-79",
-                transcript_path=_transcript(tmp_path, "hand", typed=True),
-            ),
-            "other-uuid": _chief_state_row(
-                "other-sess", _recent_iso(hours=1),
-                transcript_path=_transcript(tmp_path, "other", typed=True),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(
-            rows, preferred_sid="hand-uuid"
-        ) == "hand-uuid"
-
-    def test_preferred_sid_is_ignored_when_bootstrap_only(self, tmp_path):
-        """The ratchet #670 filed over: stopping the live chief first (#640)
-        means the blank one is always the preferred candidate, so preference
-        must not survive a confirmed-empty transcript."""
-        rows = {
-            "blank-uuid": _chief_state_row(
-                "blank-sess", _recent_iso(minutes=1),
-                transcript_path=_transcript(tmp_path, "blank", typed=False),
-            ),
-            "real-uuid": _chief_state_row(
-                "real-sess", _recent_iso(hours=3),
-                transcript_path=_transcript(tmp_path, "real", typed=True),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(
-            rows, preferred_sid="blank-uuid"
-        ) == "real-uuid"
-
-    def test_preferred_sid_outside_fleet_config_is_ignored(self, tmp_path):
-        rows = {
-            "elsewhere-uuid": _chief_state_row(
-                "elsewhere-sess", _recent_iso(minutes=1),
-                cwd="E:/automation/app-launcher", name="app-launcher-11",
-                transcript_path=_transcript(tmp_path, "elsewhere", typed=True),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(
-            rows, preferred_sid="elsewhere-uuid"
-        ) == ""
-
-    def test_unknown_preferred_sid_falls_through_to_the_scan(self, tmp_path):
-        rows = {
-            "real-uuid": _chief_state_row(
-                "real-sess", _recent_iso(hours=3),
-                transcript_path=_transcript(tmp_path, "real", typed=True),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(
-            rows, preferred_sid="ghost-uuid"
-        ) == "real-uuid"
+@pytest.mark.parametrize(("specs", "pointer", "preferred", "expected"), _RANKER_CASES)
+def test_resume_reattaches_the_conversation_worth_resuming(
+    tmp_path, specs, pointer, preferred, expected
+):
+    rows = {}
+    for sid, spec in specs.items():
+        if not isinstance(spec, dict):
+            rows[sid] = spec
+            continue
+        extra = {k: v for k, v in spec.items() if k not in ("age", "transcript")}
+        kind = spec["transcript"]
+        if kind in ("typed", "blank"):
+            extra["transcript_path"] = _transcript(tmp_path, sid, typed=kind == "typed")
+        elif kind == "missing":
+            extra["transcript_path"] = "C:/nope/missing.jsonl"
+        rows[sid] = _chief_state_row(f"{sid}-sess", _recent_iso(**spec["age"]), **extra)
+    if pointer:
+        sid, kind, age = pointer
+        if kind == "corrupt":
+            chief_pointer.CHIEF_POINTER_FILE.write_text("{corrupt", encoding="utf-8")
+        else:
+            transcript = (
+                rows[sid]["transcript_path"] if kind == "row"
+                else _transcript(tmp_path, sid, typed=kind != "blank")
+            )
+            _write_pointer(sid, transcript, age=age)
+            if kind == "gone":
+                Path(transcript).unlink()
+    assert (
+        chief_router._find_resumable_chief_session_id(rows, preferred_sid=preferred)
+        == expected
+    )
 
 
 class TestEnsureResume:
@@ -989,149 +944,6 @@ def _write_pointer(session_id, transcript_path, *, age=None, source="live"):
         }),
         encoding="utf-8",
     )
-
-
-class TestResumeConsultsTheDurablePointer:
-    """#675: the row scan can only see what ``sessions-state.json`` still
-    holds. These pin the two conversations it structurally cannot answer for —
-    a chief the launcher never spawned once its PTY is gone, and one dead past
-    the hook writer's 24h prune — and pin that the pointer never wins where a
-    live answer is better."""
-
-    def test_hand_started_chief_is_resumable_after_its_pty_is_gone(
-        self, tmp_path
-    ):
-        """Shape 1: never renamed, so its row reads ``fleet-config-79`` and the
-        name scan skips it; no live PTY left to prefer either. The pointer
-        written while it was alive is the only thing that can still find it."""
-        transcript = _transcript(tmp_path, "hand", typed=True)
-        rows = {
-            "hand-conv": _chief_state_row(
-                "hand-sess", _recent_iso(minutes=20),
-                name="fleet-config-79", transcript_path=transcript,
-            ),
-        }
-        _write_pointer("hand-conv", transcript)
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "hand-conv"
-        )
-
-    def test_conversation_past_the_24h_row_prune_is_resumable(self, tmp_path):
-        """Shape 2: no row left at all — the hook writer pruned it on the same
-        24h horizon ``board.STATE_STALE_AFTER`` applies. The transcript is
-        intact, so ``claude --resume`` still works and so must the launcher."""
-        transcript = _transcript(tmp_path, "old", typed=True)
-        _write_pointer("pruned-conv", transcript, age=timedelta(days=3))
-        assert (
-            chief_router._find_resumable_chief_session_id({}) == "pruned-conv"
-        )
-
-    def test_newer_substantive_chief_row_outranks_the_pointer(self, tmp_path):
-        """The pointer joins the ranking, it doesn't jump it: a genuinely
-        fresher confirmed chief conversation is still the better answer."""
-        _write_pointer(
-            "pointed-conv", _transcript(tmp_path, "pointed", typed=True),
-            age=timedelta(days=2),
-        )
-        rows = {
-            "fresh-conv": _chief_state_row(
-                "fresh-sess", _recent_iso(minutes=5),
-                transcript_path=_transcript(tmp_path, "fresh", typed=True),
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "fresh-conv"
-        )
-
-    def test_pointer_is_ranked_by_its_row_when_the_row_still_exists(
-        self, tmp_path
-    ):
-        """A long-lived chief is pointed at once and never re-stamped, so its
-        ``seen_at`` can be days old while the conversation is minutes fresh.
-        Ranking it on the row it still has is what keeps an older
-        launcher-spawned conversation from outranking the real current one."""
-        transcript = _transcript(tmp_path, "hand", typed=True)
-        _write_pointer("hand-conv", transcript, age=timedelta(days=3))
-        rows = {
-            "hand-conv": _chief_state_row(
-                "hand-sess", _recent_iso(minutes=2),
-                name="fleet-config-79", transcript_path=transcript,
-            ),
-            "older-conv": _chief_state_row(
-                "older-sess", _recent_iso(hours=6),
-                transcript_path=_transcript(tmp_path, "older", typed=True),
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "hand-conv"
-        )
-
-    def test_bootstrap_only_pointer_is_never_resumed(self, tmp_path):
-        """#670's rule applies to the pointer too — reattaching a conversation
-        holding nothing but its own ``/chief`` is worth less than the fresh
-        spawn the caller falls back to."""
-        _write_pointer(
-            "blank-conv", _transcript(tmp_path, "blank", typed=False)
-        )
-        assert chief_router._find_resumable_chief_session_id({}) == ""
-
-    def test_live_preferred_sid_still_wins_over_the_pointer(self, tmp_path):
-        """Tier 1 is unchanged: the conversation behind the PTY this resume is
-        about to stop is the most direct evidence there is."""
-        _write_pointer(
-            "pointed-conv", _transcript(tmp_path, "pointed", typed=True)
-        )
-        rows = {
-            "live-conv": _chief_state_row(
-                "live-sess", _recent_iso(minutes=1),
-                name="fleet-config-79",
-                transcript_path=_transcript(tmp_path, "live", typed=True),
-            ),
-        }
-        assert chief_router._find_resumable_chief_session_id(
-            rows, preferred_sid="live-conv"
-        ) == "live-conv"
-
-    def test_expired_pointer_is_ignored(self, tmp_path):
-        _write_pointer(
-            "old-conv", _transcript(tmp_path, "old", typed=True),
-            age=timedelta(days=8),
-        )
-        assert chief_router._find_resumable_chief_session_id({}) == ""
-
-    def test_pointer_at_a_deleted_transcript_is_ignored(self, tmp_path):
-        transcript = Path(_transcript(tmp_path, "gone", typed=True))
-        _write_pointer("gone-conv", transcript)
-        transcript.unlink()
-        assert chief_router._find_resumable_chief_session_id({}) == ""
-
-    def test_missing_pointer_degrades_to_the_scan(self, tmp_path):
-        """AC: a missing/corrupt pointer is never an error — the lookup is
-        exactly what it was before #675."""
-        chief_pointer.CHIEF_POINTER_FILE.write_text("{corrupt", encoding="utf-8")
-        rows = {
-            "real-conv": _chief_state_row(
-                "real-sess", _recent_iso(hours=2),
-                transcript_path=_transcript(tmp_path, "real", typed=True),
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "real-conv"
-        )
-
-    def test_pointer_naming_a_row_already_in_the_scan_is_harmless(
-        self, tmp_path
-    ):
-        transcript = _transcript(tmp_path, "same", typed=True)
-        _write_pointer("same-conv", transcript)
-        rows = {
-            "same-conv": _chief_state_row(
-                "same-sess", _recent_iso(minutes=5), transcript_path=transcript,
-            ),
-        }
-        assert (
-            chief_router._find_resumable_chief_session_id(rows) == "same-conv"
-        )
 
 
 class TestNoteChiefConversation:
