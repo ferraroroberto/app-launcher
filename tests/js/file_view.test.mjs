@@ -32,13 +32,17 @@ const noRawTags = (html) => !/<script|<img|<b>/i.test(html);
 }
 
 // Code: one line span per line (the CSS counter's gutter), the final newline
-// adds no empty line, CRLF splits the same as LF, nothing tinted.
+// adds no empty line, CRLF splits the same as LF. A language with colours
+// (syntax-tint.js, #1749) is tinted; an extension without one stays plain.
 {
   const html = renderFileView('m.py', 'def f():\r\n    return 1\r\n');
-  assert.ok(html.startsWith('<pre class="fv-listing fv-code"><code>'), html);
+  assert.ok(html.startsWith('<pre class="fv-listing fv-code fv-tint"><code>'), html);
   assert.equal((html.match(/class="fv-line"/g) || []).length, 2, html);
-  assert.ok(html.includes('<span class="fv-line">    return 1</span>'), html);
-  assert.ok(!/fv-(key|str|num|lit)/.test(html), 'code must not be tinted: ' + html);
+  assert.ok(html.includes('<span class="fv-line">    <span class="fv-kw">return</span> <span class="fv-num">1</span></span>'), html);
+  const plain = renderFileView('Makefile', 'a = 1\r\nb = 2\r\n');
+  assert.ok(plain.startsWith('<pre class="fv-listing fv-code"><code>'), plain);
+  assert.ok(plain.includes('<span class="fv-line">b = 2</span>'), plain);
+  assert.ok(!/fv-(key|str|num|lit|kw|cmt|name)"/.test(plain), 'no colours without a language: ' + plain);
   // An empty line keeps its row, so the numbers stay true.
   assert.equal((renderFileView('m.py', 'a\n\nb').match(/class="fv-line"/g) || []).length, 3);
 }
