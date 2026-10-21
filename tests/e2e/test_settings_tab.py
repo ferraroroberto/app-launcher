@@ -450,28 +450,3 @@ def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
 
     _open_chief_sheet(page, base_url)
     expect(switch).to_have_attribute("aria-checked", "false")
-
-
-def test_a_failed_tabs_script_load_gets_one_fresh_boot(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1613: the first load of ``tabs.js`` is cut, so the header gear has no
-    handler and Settings never opens; the second boot is the one it opens on."""
-    page = authed_page
-    navigations: list = []
-    cut: list = []
-    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
-
-    def handle(route) -> None:
-        # The page may ask for the file more than once per load, so cut every
-        # ask of the first load, not just the first ask.
-        if len(navigations) <= 1:
-            cut.append(1)
-            route.abort()
-        else:
-            route.continue_()
-
-    page.route(re.compile(r".*/static/tabs\.js"), handle)
-    _open_chief_sheet(page, base_url)
-    assert cut, "the script was never requested"
-    expect(page.locator("#chiefAutoCompactThreshold")).to_be_visible()

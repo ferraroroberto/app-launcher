@@ -107,7 +107,7 @@ exclude  = ["**/_vendored/**"]
 # a trim; `--raise-ceiling` is the one way up, and a raise says in its PR what
 # the extra test weight is for.
 [test_weight]
-ratio_ceiling = "1.1323"
+ratio_ceiling = "1.1322"
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
@@ -124,10 +124,12 @@ ratio_ceiling = "1.1323"
 static_pytest_target = "tests/e2e/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
-# The gate's per-test START/DONE/FAILED log (gitignored; written by
-# scripts/verify-before-ship.ps1 via tests/_progress_log.py). /e2e-audit reads
-# it for the browser leg's time (fleet-config#1018).
-progress_log          = "webapp/verify-progress.log"
+# The gate's per-test START/DONE/FAILED history (gitignored): the last 20
+# browser runs, appended by scripts/verify-before-ship.ps1 into the PRIMARY
+# checkout from whichever checkout ran the gate, because a worktree's own
+# webapp/verify-progress.log is overwritten each run and dies with the worktree.
+# /e2e-audit reads it for the browser leg's time (fleet-config#1018).
+progress_log          = "webapp/verify-progress-history.log"
 # Budget for that browser leg, in seconds (#1255): the parallel plus serial
 # e2e passes of the latest quiet full-tier run in progress_log, not the whole
 # gate. 20 min against ~8.9 min measured 2026-10-03 (508 s parallel + 26 s
@@ -397,6 +399,24 @@ prefix     = "src/session_host"
 extensions = ["py"]
 label      = "session-host/launcher"
 
+# --- the CLI dispatcher and the dependency pins -> full ---------------------
+# The e2e session-host starts as `launcher.py session-host`, and the webapp's
+# jobs router imports app.cli.commands.run_job_cmd. Either import runs
+# app/cli/commands/__init__.py, which imports every command module, so a broken
+# one stops the disposable stack booting. A pin bump is installed into the venv
+# the browser run uses, so it is browser surface too. Both were "unclassified"
+# and already ran full; the rules name that.
+# Not session-host labels: the gate's session-host warning keys on those.
+[[e2e.rule]]
+tier       = "full"
+prefix     = "app/cli/"
+extensions = ["py"]
+label      = "cli-dispatcher"
+[[e2e.rule]]
+tier  = "full"
+path  = "requirements.txt"
+label = "dependencies"
+
 # --- the e2e suite itself, and the shared root conftest -> full -------------
 [[e2e.rule]]
 tier   = "full"
@@ -431,6 +451,17 @@ label = "e2e-test-support"
 tier  = "full"
 path  = "tests/__init__.py"
 label = "e2e-test-support"
+# The disposable webapp's GitHub refresh runs this script (LAUNCHER_GH_CMD in
+# tests/e2e/conftest.py) and test_board_tab imports it.
+[[e2e.rule]]
+tier  = "full"
+path  = "scripts/synthetic_gh.py"
+label = "e2e-test-support"
+# Deliberately NOT here: tests/_pty_frame_text.py, _pty_paint_child.py,
+# _pty_readback_child.py and _pty_wait.py. No e2e module or conftest imports
+# them (the real-PTY coverage is tests/test_session_host_pty_realpty.py, outside
+# the browser suite), and the root conftest only fingerprints their bytes, so
+# the `non-e2e-test` rule below is right and a diff to one runs no browser.
 
 [[e2e.rule]]
 tier       = "none"
