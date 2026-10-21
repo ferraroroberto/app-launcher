@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json as _json
 import re
-from urllib.parse import parse_qs, urlparse
 
 import pytest
 from playwright.sync_api import Page, expect

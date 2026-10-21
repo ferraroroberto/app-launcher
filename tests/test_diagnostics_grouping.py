@@ -7,7 +7,7 @@ deterministic and needs no real processes.
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 from src.diagnostics import PortOwner, _assign_parents
 

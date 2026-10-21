@@ -9,7 +9,6 @@ output.log) live in ``tests/test_run_job_kinds.py``.
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import pytest
 

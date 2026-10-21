@@ -21,11 +21,9 @@ from playwright.sync_api import Page, expect
 from tests.e2e.conftest import wait_until
 from tests.e2e.test_screen_view import (
     _live_view,
-    _open_from_sheet,
     _point,
     _pointer,
     _set_mode,
-    _stub_screen,
     _tap,
 )
 

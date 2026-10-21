@@ -8,7 +8,6 @@ endpoints depend on this never raising.
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 
 from src import build_info
 

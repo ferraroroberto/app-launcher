@@ -1329,11 +1329,9 @@ class TestBulkCacheNextRun:
         assert calls == first_window
 
     def test_invalidation_after_sync(self, monkeypatch):
-        from unittest.mock import MagicMock
 
         from src import jobs as jobs_mod
         from src import jobs_schtasks as jobs_schtasks_mod
-        from src.jobs_config import Job, Schedule
 
         # Set up a fake runner that records calls.
         calls = []

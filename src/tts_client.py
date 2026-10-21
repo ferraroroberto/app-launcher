@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-import requests
+import requests  # noqa: F401 -- tests reach requests.* through this module
 
 from src import _loopback_http
 

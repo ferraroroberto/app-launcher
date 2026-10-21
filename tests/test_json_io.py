@@ -18,7 +18,6 @@ from pathlib import Path
 
 import pytest
 
-from src import _json_io
 from src._json_io import atomic_write_json
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
