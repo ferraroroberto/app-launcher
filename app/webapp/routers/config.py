@@ -7,11 +7,11 @@ live terminal won't work on the current connection.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import boot_autostart
+from src import boot_autostart, session_outbox
 from src.agents import AGENTS, DEFAULT_AGENT
 from src.launch_flags import (
     build_antigravity_flags,
@@ -67,6 +67,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
+        # Folders, besides a session's own, an agent may send Chat files from
+        # (#1748): the text as typed, so Settings shows what the owner wrote.
+        "outbox_scratch_roots": cfg.outbox_scratch_roots,
         # Coding-row buttons the user hid (issue #666) — agent ids plus the
         # pseudo-id `github`. The SPA filters the row strip on this.
         "coding_hidden_agents": cfg.coding_hidden_agents,
@@ -187,6 +190,29 @@ def _fold_effort_into_overrides(
     patch[f"{agent}_model_efforts"] = overrides
 
 
+def _checked_outbox_roots(raw: Any, current: List[str]) -> List[str]:
+    """The trimmed send-folder list, or a 400 naming the first entry that
+    cannot be one. A stored entry (in ``current``) is forgiven a folder that
+    has since gone (the default, before Claude first creates it), so that
+    cannot block removing a different one; only a new entry must exist."""
+    if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
+        raise HTTPException(status_code=400, detail="outbox_scratch_roots must be a list of folders")
+    entries = [p.strip() for p in raw if p.strip()]
+    if not entries:
+        raise HTTPException(
+            status_code=400,
+            detail="Keep at least one folder: an empty list would bring the default back.",
+        )
+    for index, entry in enumerate(entries):
+        try:
+            session_outbox.check_root(
+                entry, entries[:index], forgive_missing=entry in current
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+    return entries
+
+
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
@@ -194,6 +220,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     allowed = {
         "projects_dir",
         "projects_ignore",
+        "outbox_scratch_roots",
         "coding_hidden_agents",
         "coding_favorite_agent",
         "coding_model_choice",
@@ -233,6 +260,15 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["projects_ignore"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
+    # The Chat send folders (#1748) are checked on write, here, and not in
+    # `_validate`: that also runs on load, where a folder deleted since it was
+    # saved must not take the whole file down (`allowed_roots` skips it). The
+    # text is stored as typed (`%VAR%`/`~` kept); an empty list would read as
+    # unset and bring the default back, so at least one folder is required.
+    if "outbox_scratch_roots" in patch:
+        patch["outbox_scratch_roots"] = _checked_outbox_roots(
+            patch["outbox_scratch_roots"], cfg.outbox_scratch_roots
+        )
     # Same coercion for the hidden-button list (issue #666) — a stray scalar
     # must never reach the config as anything but a clean string list.
     if "coding_hidden_agents" in patch:

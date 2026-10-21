@@ -556,3 +556,61 @@ def test_send_user_file_is_served_through_the_same_guards(
     assert huge.status_code == 422
     missing = client.get(f"/api/claude-code/sessions/s1/transcript/file?offset={refs[0]['offset']}&n=7")
     assert missing.status_code == 404 and missing.json()["detail"]["reason"] == "file_not_found"
+
+
+# ------------------------------------------------- send folders (#1748)
+
+
+def test_a_network_or_device_root_is_skipped_without_touching_the_filesystem(
+    proj: Path, monkeypatch
+):
+    def _boom(self, *args, **kwargs):  # pragma: no cover - failing is the point
+        raise AssertionError(f"resolve() reached for {self}")
+
+    unc = [r"\\host\share", "//host/share", r"\\?\C:\x", r"\\.\pipe\p"]
+    real = Path.resolve
+
+    def _guarded(self, *args, **kwargs):
+        if str(self).replace("/", "\\").startswith("\\\\"):
+            return _boom(self)
+        return real(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", _guarded)
+    assert session_outbox.allowed_roots(str(proj), unc) == [proj.resolve()]
+    for raw in unc:
+        with pytest.raises(OutboxRefusal) as info:
+            session_outbox.resolve_root(raw)
+        assert info.value.reason == "out_of_root"
+
+
+def test_a_file_in_an_added_folder_reads_and_one_outside_is_still_out_of_root(
+    tmp_path: Path, proj: Path
+):
+    drop = tmp_path / "drop"
+    drop.mkdir()
+    (drop / "note.md").write_text("# hi\n", encoding="utf-8")
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    (other / "note.md").write_text("# no\n", encoding="utf-8")
+    roots = session_outbox.allowed_roots(str(proj), [str(drop)])
+    _, _, kind, _ = session_outbox.read_source(str(drop / "note.md"), str(proj), roots)
+    assert kind == "markdown"
+    assert _refusal(other / "note.md", proj, roots) == "out_of_root"
+
+
+def test_a_sibling_sharing_a_prefix_is_not_inside_an_added_folder(tmp_path: Path, proj: Path):
+    drop = tmp_path / "drop"
+    evil = tmp_path / "drop-evil"
+    drop.mkdir()
+    evil.mkdir()
+    (evil / "x.txt").write_text("x", encoding="utf-8")
+    roots = session_outbox.allowed_roots(str(proj), [str(drop)])
+    assert _refusal(evil / "x.txt", proj, roots) == "out_of_root"
+
+
+def test_check_root_accepts_a_folder_and_expands_variables(tmp_path: Path, monkeypatch):
+    (tmp_path / "ok").mkdir()
+    monkeypatch.setenv("OUTBOX_TEST_BASE", str(tmp_path))
+    session_outbox.check_root("%OUTBOX_TEST_BASE%/ok")
+    with pytest.raises(ValueError, match="already in the list"):
+        session_outbox.check_root(str(tmp_path / "ok"), ["%OUTBOX_TEST_BASE%/ok"])

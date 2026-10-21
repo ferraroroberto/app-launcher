@@ -1889,6 +1889,15 @@
             <input id="fleetConfigDir" type="text" class="input-native" aria-describedby="fleetConfigDirHelp">
           </label>
           <p id="fleetConfigDirHelp" class="field-help">Your fleet-config copy. The Board, session state, Life OS conversations and the fleet chief read from it.</p>
+          <div class="stacked">
+            <span id="outboxRootsLabel">Chat file folders</span>
+            <ul id="outboxRootsList" class="card-list outbox-roots" aria-labelledby="outboxRootsLabel"></ul>
+          </div>
+          <div class="row outbox-root-add">
+            <input id="outboxRootInput" type="text" class="input-native" placeholder="C:\Drop or %USERPROFILE%\Drop" aria-label="Add a chat file folder" aria-describedby="outboxRootsHelp" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <button id="outboxRootAdd" type="button" class="button-ghost">Add</button>
+          </div>
+          <p id="outboxRootsHelp" class="field-help">The session's own folder is always allowed. These are extra folders an agent may send files from.</p>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

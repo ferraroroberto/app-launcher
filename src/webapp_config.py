@@ -486,6 +486,9 @@ class WebappConfig:
     # expand, so a temp-dir root needs no machine path. Defaults to Claude's
     # scratch base, where its SendUserFile files live; a configured non-empty
     # list replaces it (an empty one reads as unset, like every list setting).
+    # Settings > Folders > Chat file folders edits it (#1748), checking each
+    # folder on save; this file's load stays lenient about a folder that has
+    # since gone.
     outbox_scratch_roots: list = field(default_factory=lambda: ["%TEMP%/claude"])
     # When true, launching a session from the phone also opens an
     # interactive terminal window for it on the PC (over loopback, so it

@@ -110,19 +110,72 @@ OUTBOX_DIR = _resolve_outbox_dir()
 # ------------------------------------------------------------------ guards
 
 
+def _is_network_or_device(text: str) -> bool:
+    """A UNC or device path (``\\\\host\\share``, ``\\\\?\\``, ``\\\\.\\pipe``),
+    judged on the text alone."""
+    return text.replace("/", "\\").startswith("\\\\")
+
+
+def resolve_root(raw: str) -> Path:
+    """The fully resolved folder a declared root names (``%VAR%`` and ``~``
+    expanded). Raises :class:`OutboxRefusal` for a network or device path,
+    refused before any filesystem call (resolving one makes Windows open an
+    SMB connection), and for a path that does not resolve. The one place a
+    root becomes a path, so the Settings editor and the send guards cannot
+    disagree about what a root means."""
+    text = os.path.expanduser(os.path.expandvars(str(raw or "").strip()))
+    if not text:
+        raise OutboxRefusal("bad_request", "no folder given")
+    if _is_network_or_device(text):
+        raise OutboxRefusal("out_of_root", "network and device paths are not accepted")
+    try:
+        return Path(text).resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise OutboxRefusal("not_found", "the folder does not exist") from None
+
+
+def check_root(raw: str, others: Iterable[str] = (), *, forgive_missing: bool = False) -> None:
+    """Raises ``ValueError`` (one distinct message per condition) unless
+    ``raw`` is a folder worth saving as a send root: not a network or device
+    path, not a drive root, existing, a folder rather than a file, and not
+    the same folder as an entry of ``others``. ``forgive_missing`` lets an
+    entry that was already saved pass when its folder has since gone."""
+    label = str(raw or "").strip()
+    try:
+        resolved = resolve_root(raw)
+    except OutboxRefusal as exc:
+        if exc.reason == "bad_request":
+            raise ValueError("Enter a folder path.") from None
+        if exc.reason == "out_of_root":
+            raise ValueError(f"{label}: network and device paths are not accepted.") from None
+        if forgive_missing:
+            return
+        raise ValueError(f"{label}: that folder does not exist.") from None
+    if resolved == Path(resolved.anchor):
+        raise ValueError(f"{label}: a whole drive is too broad; pick a folder on it.")
+    if not resolved.is_dir():
+        raise ValueError(f"{label}: that is a file, not a folder.")
+    for other in others:
+        try:
+            twin = resolve_root(other)
+        except OutboxRefusal:
+            continue
+        if os.path.normcase(str(twin)) == os.path.normcase(str(resolved)):
+            raise ValueError(f"{label}: that folder is already in the list.")
+
+
 def allowed_roots(project_dir: Optional[str], scratch_roots: Iterable[str]) -> List[Path]:
     """The resolved folders a sent file may come from: the session's own
     folder, then each declared scratch root (``%VAR%`` and ``~`` expanded).
     A root that does not resolve is left out rather than guessed at."""
     roots: List[Path] = []
     for raw in [project_dir or "", *scratch_roots]:
-        text = os.path.expanduser(os.path.expandvars(str(raw or "").strip()))
-        if not text:
+        if not str(raw or "").strip():
             continue
         try:
-            roots.append(Path(text).resolve(strict=True))
-        except (OSError, RuntimeError):
-            logger.info("ℹ️ outbox root not usable, skipped: %s", Path(text).name)
+            roots.append(resolve_root(raw))
+        except OutboxRefusal as exc:
+            logger.info("ℹ️ outbox root not usable, skipped (%s): %s", exc.reason, Path(str(raw)).name)
     return roots
 
 
@@ -182,7 +235,7 @@ def read_source(
     # (`\\host\share`, `\\?\`, `\\.\pipe`) makes Windows open it, which for a
     # remote host means an SMB/WebDAV connection that hands it the user's
     # NTLM hash. A path from a transcript is model-written, so refuse lexically.
-    if str(candidate).replace("/", "\\").startswith("\\\\"):
+    if _is_network_or_device(str(candidate)):
         raise OutboxRefusal("out_of_root", "network and device paths are not accepted")
     try:
         resolved = candidate.resolve(strict=True)

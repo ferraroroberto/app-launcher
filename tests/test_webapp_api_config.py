@@ -859,3 +859,128 @@ class TestBootAutostart:
         )
         assert resp.status_code == 200
         assert resp.json() == {"ok": True, "boot_autostart_enabled": False}
+
+
+class TestOutboxScratchRoots:
+    """Settings' Chat file folders (#1748): POST /api/config checks each
+    folder on write; the loader stays lenient about one that has gone."""
+
+    def _post(self, client, roots):
+        return client.post("/api/config", json={"outbox_scratch_roots": roots})
+
+    def test_round_trips_as_typed_and_reaches_disk(self, webapp_client, tmp_path, monkeypatch):
+        from src.webapp_config import load_webapp_config
+
+        client, app, _ = webapp_client
+        drop = tmp_path / "Drop"
+        drop.mkdir()
+        monkeypatch.setenv("OUTBOX_TEST_BASE", str(tmp_path))
+        typed = ["  %OUTBOX_TEST_BASE%/Drop  ", str(drop / ".." / "Drop")]
+        # The two spellings are the same folder: a duplicate, refused.
+        assert self._post(client, typed).status_code == 400
+        resp = self._post(client, [typed[0], "  "])
+        assert resp.status_code == 200
+        # The typed text is stored (trimmed, %VAR% kept), never the resolved path.
+        assert app.state.webapp_config.outbox_scratch_roots == ["%OUTBOX_TEST_BASE%/Drop"]
+        assert client.get("/api/config").json()["outbox_scratch_roots"] == ["%OUTBOX_TEST_BASE%/Drop"]
+        assert load_webapp_config(apply_env_override=False).outbox_scratch_roots == [
+            "%OUTBOX_TEST_BASE%/Drop"
+        ]
+
+    def test_default_is_in_the_get_payload(self, webapp_client):
+        client, _, _ = webapp_client
+        assert client.get("/api/config").json()["outbox_scratch_roots"] == ["%TEMP%/claude"]
+
+    @pytest.mark.parametrize(
+        "bad, message",
+        [
+            (r"\\host\share", "network and device"),
+            ("//host/share", "network and device"),
+            (r"\\?\C:\x", "network and device"),
+            ("{drive_root}", "whole drive"),
+            ("{missing}", "does not exist"),
+            ("{a_file}", "file, not a folder"),
+        ],
+    )
+    def test_a_bad_entry_is_refused_in_its_own_words_and_saves_nothing(
+        self, webapp_client, tmp_path, bad, message
+    ):
+        client, app, _ = webapp_client
+        good = tmp_path / "good"
+        good.mkdir()
+        a_file = tmp_path / "plain.txt"
+        a_file.write_text("x", encoding="utf-8")
+        assert self._post(client, [str(good)]).status_code == 200
+        bad = bad.format(
+            drive_root=Path(tmp_path.anchor), missing=tmp_path / "gone", a_file=a_file
+        )
+        resp = self._post(client, [str(good), bad])
+        assert resp.status_code == 400
+        assert message in resp.json()["detail"]
+        assert app.state.webapp_config.outbox_scratch_roots == [str(good)]
+
+    def test_a_duplicate_is_refused_by_case_and_separator(self, webapp_client, tmp_path):
+        client, app, _ = webapp_client
+        folder = tmp_path / "Dup"
+        folder.mkdir()
+        resp = self._post(client, [str(folder), str(folder).upper().replace("\\", "/")])
+        assert resp.status_code == 400
+        assert "already in the list" in resp.json()["detail"]
+
+    def test_at_least_one_folder_must_stay(self, webapp_client, tmp_path):
+        client, app, _ = webapp_client
+        for empty in ([], ["", "   "]):
+            resp = self._post(client, empty)
+            assert resp.status_code == 400
+            assert "at least one folder" in resp.json()["detail"]
+        assert app.state.webapp_config.outbox_scratch_roots == ["%TEMP%/claude"]
+
+    @pytest.mark.parametrize("body", ["a-string", {"a": 1}, None, 5, [1, 2], [["x"]]])
+    def test_a_non_list_of_strings_never_reaches_the_config(self, webapp_client, body):
+        client, app, _ = webapp_client
+        assert self._post(client, body).status_code == 400
+        assert app.state.webapp_config.outbox_scratch_roots == ["%TEMP%/claude"]
+
+    def test_a_since_deleted_folder_still_loads_and_other_settings_still_save(
+        self, webapp_client, tmp_path
+    ):
+        import shutil
+
+        client, app, _ = webapp_client
+        folder = tmp_path / "soon-gone"
+        folder.mkdir()
+        assert self._post(client, [str(folder)]).status_code == 200
+        shutil.rmtree(folder)
+        # The write-time rules are the router's: load, and an unrelated save,
+        # must not trip over the missing folder.
+        resp = client.post("/api/config", json={"claude_verbose": False})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.outbox_scratch_roots == [str(folder)]
+
+    def test_a_stored_folder_that_has_gone_does_not_block_editing_the_others(
+        self, webapp_client, tmp_path
+    ):
+        import shutil
+
+        client, app, _ = webapp_client
+        a, b = tmp_path / "a", tmp_path / "b"
+        a.mkdir()
+        b.mkdir()
+        assert self._post(client, [str(a), str(b)]).status_code == 200
+        shutil.rmtree(a)
+        # Removing b keeps the gone a; only a NEW entry is checked.
+        assert self._post(client, [str(a)]).status_code == 200
+        fresh = tmp_path / "c"
+        fresh.mkdir()
+        assert self._post(client, [str(a), str(fresh)]).status_code == 200
+        assert self._post(client, [str(a), str(tmp_path / "never")]).status_code == 400
+
+    def test_adding_a_stored_folder_again_is_a_duplicate(self, webapp_client, tmp_path):
+        client, app, _ = webapp_client
+        folder = tmp_path / "once"
+        folder.mkdir()
+        assert self._post(client, [str(folder)]).status_code == 200
+        resp = self._post(client, [str(folder), str(folder)])
+        assert resp.status_code == 400
+        assert "already in the list" in resp.json()["detail"]
+        assert app.state.webapp_config.outbox_scratch_roots == [str(folder)]
