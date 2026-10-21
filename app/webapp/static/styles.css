@@ -3228,8 +3228,8 @@ textarea.input-native { height: auto; }
 }
 /* The File view (file-view.js): the code-listing frame (COMP-17) for code,
    JSON and plain text, a CSS-counter gutter on each listing line so a long
-   line wraps right of its number and a copy takes the code alone. JSON is
-   tinted with the shell tint's pairs; code is not tinted. */
+   line wraps right of its number and a copy takes the code alone. JSON and
+   the main code languages are tinted with the shell tint's pairs. */
 .fv-listing,
 .fv-text {
   margin: 0;
@@ -3252,24 +3252,45 @@ textarea.input-native { height: auto; }
   font: inherit;
   counter-reset: fv-line;
 }
+/* The number hangs in the left padding (not a grid column): a line holds
+   several token spans, and each would be a grid item of its own, one per
+   row. */
 .fv-line {
-  display: grid;
-  grid-template-columns: 4ch minmax(0, 1fr);
-  column-gap: 10px;
-  padding: 0 10px 0 6px;
+  display: block;
+  position: relative;
+  padding: 0 10px 0 calc(6px + 4ch + 10px);
   counter-increment: fv-line;
 }
 .fv-line::before {
   content: counter(fv-line);
+  position: absolute;
+  left: 6px;
+  width: 4ch;
   color: var(--muted);
   text-align: right;
   -webkit-user-select: none;
   user-select: none;
 }
-.fv-key { color: var(--accent-text); }
+/* Token colours (#1749), the fleet's existing text tokens in both themes:
+   keyword / tag / at-rule and the JSON key take the accent, a string the
+   success text, a number or literal the attention text, a comment the muted
+   grey in italic, and a function / attribute / property name the code colour
+   in bold (no hue of its own: the spec has no purple or red text token, and
+   danger-text reads as an error). */
+.fv-key,
+.fv-kw { color: var(--accent-text); }
 .fv-str { color: var(--success-text); }
 .fv-num,
 .fv-lit { color: var(--attention-text); }
+.fv-cmt {
+  color: var(--muted);
+  font-style: italic;
+}
+.fv-name {
+  color: var(--code-fg);
+  font-weight: 600;
+}
+.fv-note { padding: 0 0 6px; }
 .fv-md { padding: 4px 2px 0; }
 .tr-diff-numbered > span {
   display: grid;

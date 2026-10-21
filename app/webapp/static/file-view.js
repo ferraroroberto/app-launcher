@@ -3,8 +3,8 @@
  *
  * Markdown goes through the shared sanitising renderer (markdown.js), JSON is
  * pretty-printed and tinted, code is a monospace listing with a line-number
- * gutter (CSS counters, no tint: a highlighter needs a library), and
- * anything else is plain text. Every byte of the file is escaped before any
+ * gutter (CSS counters) and, for the main languages, token colours from
+ * syntax-tint.js (#1749), and anything else is plain text. Every byte of the file is escaped before any
  * markup is put around it, so a file holding HTML or a `<script>` reads as
  * exactly that text and never runs.
  *
@@ -15,6 +15,7 @@
 
 import { escapeHtml } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
+import { tintLanguage, tintLines, tintable } from './syntax-tint.js';
 
 const MARKDOWN = new Set(['md', 'markdown', 'mdx']);
 const JSON_EXT = new Set(['json', 'jsonc', 'json5', 'webmanifest', 'code-workspace']);
@@ -43,10 +44,14 @@ export function fileKind(name) {
   return 'text';
 }
 
-function lines(text) {
-  const all = String(text).split(/\r\n|\r|\n/);
-  if (all.length > 1 && all[all.length - 1] === '') all.pop();   // the final newline
+// Drop the empty line a final newline leaves behind.
+function trimFinal(all) {
+  if (all.length > 1 && all[all.length - 1] === '') all.pop();
   return all;
+}
+
+function lines(text) {
+  return trimFinal(String(text).split(/\r\n|\r|\n/));
 }
 
 // One <span> per line inside the listing; the gutter is a CSS counter on
@@ -95,13 +100,25 @@ function renderJson(text) {
   return listing('fv-code fv-json', lines(pretty).map(tintJson));
 }
 
+// Code: coloured when its language is known and the file small enough, else
+// the plain listing (a large file says why it has no colours).
+function renderCode(name, text) {
+  const lang = tintLanguage(extension(name));
+  if (!lang) return listing('fv-code', lines(text).map(escapeHtml));
+  if (!tintable(text)) {
+    return '<div class="fv-note muted small">Colours are off for large files</div>' +
+      listing('fv-code', lines(text).map(escapeHtml));
+  }
+  return listing('fv-code fv-tint', trimFinal(tintLines(text, lang)));
+}
+
 // The file's text as markup for `kind` (fileKind's answer, or forced).
 export function renderFileView(name, text, kind) {
   const k = kind || fileKind(name);
   const body = String(text == null ? '' : text);
   if (k === 'markdown') return '<div class="fv-md tr-md">' + renderMarkdown(body) + '</div>';
   if (k === 'json') return renderJson(body);
-  if (k === 'code') return listing('fv-code', lines(body).map(escapeHtml));
+  if (k === 'code') return renderCode(name, body);
   return '<pre class="fv-text">' + escapeHtml(body) + '</pre>';
 }
 

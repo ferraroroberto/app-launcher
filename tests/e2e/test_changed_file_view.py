@@ -15,6 +15,10 @@ path and line synthetic):
 * Download saves the file under its own name with its text, and a file the
   File view can't read is refused with the File view's sentence, with no
   second request for a file already shown;
+* the File view's token colours (#1749): a Python file's keyword, string,
+  number, comment and name take the fleet's text tokens in light and dark, its
+  gutter still counts one per line, and a JSON key sits on the same row as its
+  value (the gutter used to be a grid that put each span on its own row);
 * on the PC (a loopback page): Open on PC, from the menu, posts the file's
   path and says what happened; a code file gets a line-number gutter, and a
   file gone from disk says so instead of an empty view.
@@ -70,6 +74,20 @@ _TAP_SYNC_MOCK = """
 _NOTES_DIFF = "@@ -0,0 +1,3 @@\n+# Notes\n+one\n+two\n@@ -3,1 +3,3 @@\n two\n+three\n+four"
 
 
+_TINT_PY = '# say hi\ndef greet(name):\n    return "hi" + name  # tail\n'
+_TINT_JSON = '{"a": 1, "b": "x", "ok": true}'
+_TINT_FILES = {
+    "available": True, "reason": None, "session_id": _SID, "source": "transcript",
+    "partial": False, "project_exists": True, "counts": {"additions": 4, "deletions": 0},
+    "files": [
+        {"path": "tool.py", "key": "E:/work/proj/tool.py", "status": "M",
+         "additions": 3, "deletions": 0, "steps": 1},
+        {"path": "data.json", "key": "E:/work/proj/data.json", "status": "M",
+         "additions": 1, "deletions": 0, "steps": 1},
+    ],
+}
+
+
 def _mock_file_routes(page: Page) -> dict:
     seen: dict = {"content": [], "open": []}
 
@@ -80,6 +98,10 @@ def _mock_file_routes(page: Page) -> dict:
         if path.endswith("notes.md"):
             body = {**base, "available": True, "reason": None,
                     "path": path.replace("/", "\\"), "text": _NOTES}
+        elif path.endswith("tool.py") or path.endswith("data.json"):
+            text = _TINT_PY if path.endswith("tool.py") else _TINT_JSON
+            body = {**base, "available": True, "reason": None,
+                    "path": path.replace("/", "\\"), "text": text}
         elif path.endswith("long.py"):
             body = {**base, "available": True, "reason": None,
                     "path": path.replace("/", "\\"), "text": _CODE}
@@ -295,3 +317,95 @@ def test_open_on_pc_code_gutter_and_a_deleted_file_on_the_pc(authed_page: Page, 
     gone.locator("summary").click()
     gone.locator(".chg-view .segmented-item").nth(1).click()
     expect(gone.locator(".chg-pane-file")).to_have_text("This file is no longer on disk")
+
+
+def _tinted_file_view(page: Page, base_url: str, nth: int):
+    """Open the nth file of the tint fixture on its File view."""
+    _mock(page, files=_TINT_FILES)
+    _mock_file_routes(page)
+    row = _open_file(page, base_url, nth)
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    expect(row.locator(".chg-pane-file .fv-line").first).to_be_visible()
+    return row
+
+
+# What each class resolves to, per theme: the fleet's existing text tokens
+# (accent-text / success-text / attention-text / muted / code-fg).
+_TINT_COLOURS = {
+    "light": {"fv-kw": "rgb(5, 80, 174)", "fv-str": "rgb(17, 99, 41)", "fv-num": "rgb(125, 78, 0)"},
+    "dark": {"fv-kw": "rgb(88, 166, 255)", "fv-str": "rgb(86, 211, 100)", "fv-num": "rgb(227, 179, 65)"},
+}
+
+
+def test_code_file_takes_token_colours_in_both_themes(authed_page: Page, base_url: str) -> None:
+    page = authed_page
+    row = _tinted_file_view(page, base_url, 0)
+    pane = row.locator(".chg-pane-file")
+
+    expect(pane.locator(".fv-line")).to_have_count(3)
+    expect(pane.locator(".fv-cmt").first).to_have_text("# say hi")
+    expect(pane.locator(".fv-kw").first).to_have_text("def")
+    expect(pane.locator(".fv-name").first).to_have_text("greet")
+    expect(pane.locator(".fv-str")).to_have_text('"hi"')
+    expect(pane.locator(".fv-cmt").nth(1)).to_have_text("# tail")
+    # Only the colour classes carry markup: the listing's text is the source.
+    expect(pane.locator(".fv-listing")).to_have_text("# say hi" + "def greet(name):" + '    return "hi" + name  # tail')
+
+    for theme, colours in _TINT_COLOURS.items():
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        expect(pane.locator(".fv-kw").first).to_have_css("color", colours["fv-kw"])
+        expect(pane.locator(".fv-str").first).to_have_css("color", colours["fv-str"])
+        expect(pane.locator(".fv-cmt").first).to_have_css("font-style", "italic")
+        expect(pane.locator(".fv-name").first).to_have_css("font-weight", "600")
+        # A name has no hue of its own: it is the listing's own text colour.
+        expect(pane.locator(".fv-name").first).to_have_css(
+            "color", page.evaluate("() => getComputedStyle(document.querySelector('.fv-listing')).color"))
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+    # JSON keeps its tint; its number and literal take the attention colour.
+    row2 = page.locator("#changesList .chg-file").nth(1)
+    row2.locator("summary").click()
+    row2.locator(".chg-view .segmented-item").nth(1).click()
+    expect(row2.locator(".chg-pane-file .fv-num").first).to_have_text("1")
+    for theme, colours in _TINT_COLOURS.items():
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        expect(row2.locator(".chg-pane-file .fv-num").first).to_have_css("color", colours["fv-num"])
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+
+_ROWS = """
+(pane) => {
+  const lines = [...pane.querySelectorAll('.fv-line')];
+  const key = pane.querySelector('.fv-key');
+  const after = key && key.nextElementSibling;
+  const first = lines[0].getBoundingClientRect();
+  const one = parseFloat(getComputedStyle(lines[0]).lineHeight);
+  return {
+    n: lines.length,
+    tallest: Math.max(...lines.map(l => l.getBoundingClientRect().height)),
+    one: one,
+    sameRow: !!(key && after) && Math.abs(key.getBoundingClientRect().top - after.getBoundingClientRect().top) < 2,
+    padLeft: parseFloat(getComputedStyle(lines[0]).paddingLeft),
+    textLeft: lines[0].getBoundingClientRect().left,
+    sweep: document.getElementById('changesBody').scrollWidth - document.getElementById('changesBody').clientWidth,
+  };
+}
+"""
+
+
+@pytest.mark.iphone
+def test_file_view_lines_keep_one_row_per_line_with_a_hanging_gutter(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _tinted_file_view(page, base_url, 1)
+    pane = page.locator("#changesList .chg-file").nth(1).locator(".chg-pane-file")
+    # data.json pretty-printed is five short lines: each is one text row, a key
+    # and its value on the same row (the gutter was a two-column grid, so every
+    # token span became a grid item and wrapped onto its own row).
+    got = stable_eval(pane, _ROWS)
+    assert got["n"] == 5, got
+    assert got["sameRow"], f"a key and its value are on different rows: {got}"
+    assert got["tallest"] <= got["one"] * 1.1, f"a short line wrapped to several rows: {got}"
+    assert got["padLeft"] > 40, f"the number has no room in the gutter: {got}"
+    assert got["sweep"] <= 0, f"sideways scroll at 390px: {got}"
