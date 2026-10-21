@@ -2500,6 +2500,11 @@ textarea.input-native { height: auto; }
 .md-quote-body p:last-child { margin-bottom: 0; }
 .md-quote-copy { --icon-btn-box: 32px; }
 .tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
+/* "Show the rest" (#1745): the vendored ghost button at the 44px floor, sized
+   to its words rather than the row. The failure line sits under it. */
+.tr-trunc-more { width: auto; min-height: 44px; padding: 0 16px; }
+.tr-trunc-status { margin-top: 4px; color: var(--danger-text); }
+.tr-trunc-status:empty { display: none; }
 /* A run of folded entries is one quiet step line (#1476, Step 3/6 of #1472):
    no card, a flat 44px row on the canvas -- chevron, a plain-words label in
    body-sm muted (verbs muted, what they acted on in fg), then the parts an
