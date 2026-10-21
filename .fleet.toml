@@ -457,6 +457,17 @@ label = "e2e-test-support"
 tier  = "full"
 path  = "scripts/synthetic_gh.py"
 label = "e2e-test-support"
+# The routing table and its classifier decide which browser slice every diff
+# runs, so a diff to either must run the suite it reroutes. Both rules sit above
+# the `scripts/` and `repo-meta` rules, which would otherwise win first.
+[[e2e.rule]]
+tier  = "full"
+path  = ".fleet.toml"
+label = "routing-table"
+[[e2e.rule]]
+tier  = "full"
+path  = "scripts/classify_e2e.py"
+label = "routing-table"
 # Deliberately NOT here: tests/_pty_frame_text.py, _pty_paint_child.py,
 # _pty_readback_child.py and _pty_wait.py. No e2e module or conftest imports
 # them (the real-PTY coverage is tests/test_session_host_pty_realpty.py, outside
@@ -501,10 +512,6 @@ label  = "tooling/config"
 tier   = "none"
 prefix = ".github/"
 label  = "tooling/config"
-[[e2e.rule]]
-tier  = "none"
-path  = ".fleet.toml"
-label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
 path  = ".comment-ratchet-baseline.json"

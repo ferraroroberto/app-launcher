@@ -63,6 +63,8 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("launcher.py", Category.FULL),
         ("tests/e2e/test_board_tab.py", Category.FULL),
         ("tests/conftest.py", Category.FULL),
+        (".fleet.toml", Category.FULL),  # the routing table reroutes the suite it gates
+        ("scripts/classify_e2e.py", Category.FULL),  # ...and so does its classifier
         # no browser impact -> NONE
         ("src/board.py", Category.NONE),
         ("src/jobs.py", Category.NONE),
@@ -73,7 +75,6 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("scripts/verify-before-ship.ps1", Category.NONE),
         ("config/apps.sample.json", Category.NONE),
         (".github/workflows/e2e.yml", Category.NONE),
-        (".fleet.toml", Category.NONE),
         (".comment-ratchet-baseline.json", Category.NONE),
         (".static-ratchet-baseline.json", Category.NONE),
         ("tray.bat", Category.NONE),
@@ -361,11 +362,6 @@ def test_multi_surface_diff_keeps_the_whole_suite(cfg: E2EConfig) -> None:
 
 def test_unclassified_path_keeps_the_whole_suite(cfg: E2EConfig) -> None:
     assert _route(cfg, "app/webapp/static/board.js", "random/thing.xyz") == ("full", "tests/e2e")
-
-
-def test_editing_the_routing_map_keeps_the_whole_suite(cfg: E2EConfig) -> None:
-    """A diff that edits `.fleet.toml` (the surface map) is never judged by it."""
-    assert _route(cfg, "app/webapp/static/board.js", ".fleet.toml") == ("full", "tests/e2e")
 
 
 def test_every_test_exercising_a_surface_is_in_its_targets(cfg: E2EConfig) -> None:
