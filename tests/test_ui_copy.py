@@ -122,20 +122,11 @@ def test_dialog_and_settings_labels_hold_no_internal_names() -> None:
     assert not bad, "field labels with internal names: " + " | ".join(bad)
 
 
-def test_toolbar_toggles_carry_a_visible_word() -> None:
+def test_the_favourites_star_is_icon_only_with_its_name_on_aria_label() -> None:
+    # Icon only (#1194, the decision on #1176), its name kept on aria-label/
+    # title. The launch toolbar's Detached and Resume words are asserted as
+    # rendered text on both launch surfaces in tests/e2e/test_resume_toggle.py.
     tree = _tree()
-    # Both launch surfaces' pairs are the launch toolbar component (Code
-    # #1434, Life #1439), built in JS: each switch sits in a <label> whose
-    # visible word names it.
-    toolbar = _STATIC.joinpath("launch-toolbar.js").read_text(encoding="utf-8")
-    for word in ("Detached", "Resume"):
-        assert re.search(r"text: '" + word + "'", toolbar), f"launch toolbar lost the {word} word"
-    assert "el('label', 'launch-switch')" in toolbar, "the word must be the switch's label"
-    for module in ("apps-coding.js", "life-os.js"):
-        source = _STATIC.joinpath(module).read_text(encoding="utf-8")
-        assert "mountLaunchToolbar(" in source, f"{module} no longer mounts the launch toolbar"
-    # The favourites star is the exception (#1194, the decision on
-    # #1176): icon only, with its name kept on aria-label/title.
     fav = _by_id(tree, "favFilterBtn")
     assert not fav["text"].strip(), f"#favFilterBtn shows {fav['text'].strip()!r}"
     assert fav["attrs"].get("aria-label") == "Filter favorites"

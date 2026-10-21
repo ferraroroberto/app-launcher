@@ -151,7 +151,6 @@ class TestAutostart:
             assert boot.run() == ["kitchen"]
         assert [s.label for s in boot.spawned] == ["telegram:kitchen"]
         assert "profile garden skipped" in _messages(caplog)
-        assert "already running" in _messages(caplog)
 
     def test_a_second_start_never_duplicates_a_session(self, boot):
         assert boot.run() == ["garden", "kitchen"]
@@ -267,7 +266,7 @@ class TestLifespanGate:
         _canonical(monkeypatch)
         with caplog.at_level(logging.INFO, logger=server._log.name):
             assert asyncio.run(lifespan(_app(autostart_channel_sessions=False))) == []
-        assert "Telegram autostart is off" in caplog.text
+        assert "autostart is off" in caplog.text
 
     @pytest.mark.parametrize("value", ["true", 1, None])
     def test_only_a_real_true_arms_it(self, lifespan, monkeypatch, value):

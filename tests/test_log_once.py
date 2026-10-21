@@ -1,18 +1,13 @@
-"""``log_once`` and ``load_fleet_contract`` — the two shared leaf helpers (#1003).
-
-Three sites had hand-rolled the log-once mechanism and two had byte-identical
-fleet-config contract loaders. Neither mechanism had direct coverage: the
-only existing test (``test_board.py::test_unrecognized_title_glyph_logs_one_
-breadcrumb_per_glyph``) pins one caller's once-per-key behaviour and nothing
-pinned the caps, the overflow reset, or the loader at all.
-"""
+"""``log_once`` and ``load_fleet_contract``, the shared leaf helpers (#1003); the caps are pinned at the call sites."""
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from src import active_issue_claims, board, board_sessions, board_transcript
 from src._fleet_contract import load_fleet_contract
 from src._log_once import log_once
 
@@ -28,28 +23,6 @@ def test_logs_the_first_time_and_stays_quiet_after(caplog):
     assert lines == ["hello world"]
 
 
-def test_distinct_keys_each_get_one_line(caplog):
-    seen: set[str] = set()
-    with caplog.at_level(logging.INFO, logger=logger.name):
-        for key in ("a", "b", "a", "b", "c"):
-            log_once(seen, key, 8, logger.info, "key=%s", key)
-    assert [r.getMessage() for r in caplog.records] == ["key=a", "key=b", "key=c"]
-
-
-def test_overflow_clears_the_bucket_wholesale(caplog):
-    """The existing behaviour of both capped sites, kept deliberately: these
-    are breadcrumbs, not a cache, so a cleared set just means a condition may
-    be logged once more rather than growing without bound."""
-    seen: set[str] = set()
-    with caplog.at_level(logging.INFO, logger=logger.name):
-        log_once(seen, "a", 2, logger.info, "x")
-        log_once(seen, "b", 2, logger.info, "x")
-        assert len(seen) == 2
-        # At cap: the set resets, so this both logs and starts a fresh bucket.
-        assert log_once(seen, "c", 2, logger.info, "x") is True
-    assert seen == {"c"}
-
-
 def test_emit_receives_the_callers_own_logger(caplog):
     """``emit`` is a bound logger method, so the record is attributed to the
     caller's module, not this helper's."""
@@ -60,43 +33,56 @@ def test_emit_receives_the_callers_own_logger(caplog):
     assert [r.name for r in caplog.records] == ["tests.log_once.elsewhere"]
 
 
-def test_the_three_call_sites_keep_their_own_caps():
-    """#1003's finding proposed "one helper with a **shared** cap". The caps
-    bound different key spaces and must stay different:
+def _glyph_site(_tmp_path, i):
+    board_transcript._live_title_is_busy(f"{chr(0x4E00 + i)} chief")
 
-    * 64 glyphs — one per distinct leading glyph, stable for a session's life
-    * 512 suppressed rows — one per session id, on a five-second board poll
-    * 64 claim failures — previously **uncapped**, which was the real defect
 
-    Collapsing them to one number would be a behaviour change dressed as a
-    cleanup, so this fails if someone later "tidies" them into one constant.
-    """
-    from src.active_issue_claims import _FAILURE_LOG_CAP
-    from src.board_sessions import _SUPPRESSED_LOG_CAP
-    from src.board_transcript import _UNKNOWN_TITLE_GLYPH_LOG_CAP
+def _suppressed_row_site(_tmp_path, i):
+    stamp = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+    row = {"project": "x", "status": "working", "cwd": "E:/x/y", "updated_at": stamp}
+    board.merge_sessions([], {f"sid-{i:05d}": row})
 
-    assert _UNKNOWN_TITLE_GLYPH_LOG_CAP == 64
-    assert _SUPPRESSED_LOG_CAP == 512
-    assert _FAILURE_LOG_CAP == 64
-    assert _SUPPRESSED_LOG_CAP != _UNKNOWN_TITLE_GLYPH_LOG_CAP, (
-        "the board-rows bucket bounds a far larger, poll-driven key space "
-        "than the glyph bucket; one shared cap would shrink or bloat one of "
-        "them (#1003)"
+
+def _claim_failure_site(tmp_path, i):
+    active_issue_claims.classify_claims(
+        {"k": {}}, live_session_ids=set(), fleet_config_dir=tmp_path / f"fc{i}"
     )
 
 
-def test_claim_failure_warnings_are_now_bounded(caplog):
-    """``active_issue_claims._warn_once`` was the one site with no cap at
-    all, so a process seeing many distinct failure strings grew the set
-    without limit."""
-    from src import active_issue_claims as m
+# The caps bound different key spaces and must stay different (#1003): 64
+# glyphs, 512 suppressed session ids polled every five seconds, 64 failure
+# reasons. One shared number would shrink or bloat one of them.
+@pytest.mark.parametrize(
+    ("site", "cap", "needle"),
+    [
+        pytest.param(_glyph_site, 64, "unrecognized glyph", id="title-glyphs"),
+        pytest.param(_suppressed_row_site, 512, "suppressed unverifiable", id="suppressed-rows"),
+        pytest.param(_claim_failure_site, 64, "claims unverified", id="claim-failures"),
+    ],
+)
+def test_each_call_site_goes_quiet_for_its_own_cap(
+    caplog, monkeypatch, tmp_path, site, cap, needle
+):
+    for module, name in (
+        (board_transcript, "_LOGGED_UNKNOWN_TITLE_GLYPHS"),
+        (board_sessions, "_LOGGED_SUPPRESSED_ROWS"),
+        (active_issue_claims, "_logged_failures"),
+    ):
+        monkeypatch.setattr(module, name, set())
+    caplog.set_level(logging.INFO)
 
-    m._logged_failures.clear()
-    with caplog.at_level(logging.WARNING, logger="src.active_issue_claims"):
-        for i in range(m._FAILURE_LOG_CAP + 5):
-            m._warn_once(f"reason-{i}")
-    assert len(m._logged_failures) <= m._FAILURE_LOG_CAP
-    m._logged_failures.clear()
+    def lines() -> int:
+        return sum(needle in r.getMessage() for r in caplog.records)
+
+    for i in range(cap):
+        site(tmp_path, i)
+    assert lines() == cap  # every distinct key logs once
+    site(tmp_path, 0)
+    assert lines() == cap  # a repeat inside the cap is quiet
+    site(tmp_path, cap)
+    assert lines() == cap + 1  # one past the cap logs and resets the bucket
+    site(tmp_path, 1)
+    assert lines() == cap + 2  # so an early key is allowed to log again
 
 
 # ------------------------------------------------- load_fleet_contract

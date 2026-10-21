@@ -294,6 +294,10 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours.nth(0).locator(".board-card .action-row-text > :nth-child(2)")).to_have_class(
         re.compile(r"\bboard-card-meta\b")
     )
+    # The synthetic design-review veto (.fleet.toml no_go) spares this class.
+    expect(yours.nth(0).locator(".board-card")).to_have_class(
+        re.compile(r"\bboard-card-session\b")
+    )
 
     # -- was test_board_columns_layout_matches_projection (measured before any
     # section is unfolded, as that test did) --
