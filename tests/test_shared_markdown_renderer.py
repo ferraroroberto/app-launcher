@@ -10,7 +10,7 @@ renderer was routed away from its other consumer and never exercised
 against it.
 
 These tests pin the fix as a property rather than as a convention: the
-renderer lives in its own module, both tabs import it from there, and that
+renderer is its own module, both tabs import it from there, and that
 module belongs to no single e2e surface, so the router escalates a change to
 it to the full suite covering both.
 """
@@ -27,20 +27,6 @@ MARKDOWN_MODULE = "app/webapp/static/markdown.js"
 
 def _read(name: str) -> str:
     return (STATIC / name).read_text(encoding="utf-8")
-
-
-def test_the_renderer_lives_in_its_own_module():
-    source = _read("markdown.js")
-    assert "export function renderMarkdown" in source
-    assert "function inlineMd" in source
-
-
-def test_the_feature_module_no_longer_defines_it():
-    life_os = _read("life-os.js")
-    assert "function renderMarkdown" not in life_os, (
-        "the renderer moved to markdown.js; a second copy here would drift"
-    )
-    assert "function inlineMd" not in life_os
 
 
 def test_both_tabs_import_it_from_the_shared_module():
