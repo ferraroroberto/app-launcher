@@ -97,7 +97,8 @@ def test_synthetic_no_go_lets_the_walk_open_a_board_session_card() -> None:
     A bare ``.action-row-main`` in the synthetic ``no_go`` refuses the Chat and
     Terminal steps' first click (``NO_GO``), so COMP-18 reads unmeasured: the
     walk never reaches a rendered transcript. The veto must spare the session
-    card's own class, and the card must still carry that class.
+    card's own class; the rendered card carrying it is asserted in
+    tests/e2e/test_board_tab.py.
     """
     import tomllib
 
@@ -110,7 +111,6 @@ def test_synthetic_no_go_lets_the_walk_open_a_board_session_card() -> None:
     assert ".action-row-main" in review["no_go"]
     chat = next(s for s in review["extra_steps"] if s["id"] == "session-chat")
     assert chat["synthetic"] is True and chat["clicks"][0] == ".board-item[data-session-id] .board-card"
-    assert "'board-card', 'board-card-session'" in (REPO_ROOT / "app/webapp/static/board.js").read_text(encoding="utf-8")
 
 
 def test_launcher_contract_end_to_end() -> None:

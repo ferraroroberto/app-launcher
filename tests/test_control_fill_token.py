@@ -49,15 +49,24 @@ def test_control_paints_the_shared_fill(selector: str) -> None:
     assert _background_of(selector) == "var(--input-bg)"
 
 
-def test_dark_control_fill_is_not_true_black() -> None:
-    css = _css()
-    dark = re.search(r'\[data-theme="dark"\]\s*\{([^{}]*)\}', css)
+def _dark_token(name: str) -> str:
+    """``name`` in the dark block, followed through ``var()`` to its value."""
+    dark = re.search(r'\[data-theme="dark"\]\s*\{([^{}]*)\}', _css())
     assert dark, "dark token block not found"
-    m = re.search(r"--input-bg:\s*([^;]+);", dark.group(1))
-    assert m, "dark block does not override --input-bg"
-    assert m.group(1).strip() == "var(--line-muted)"
-    assert re.search(r"--line-muted:\s*#21262d;", dark.group(1)), "border-muted drifted"
-    assert re.search(r"--card-2:\s*#21262d;", dark.group(1))
+    tokens = dict(re.findall(r"(--[\w-]+):\s*([^;]+);", dark.group(1)))
+    value = tokens.get(name)
+    assert value, f"dark block does not define {name}"
+    while (ref := re.fullmatch(r"var\((--[\w-]+)\)", value.strip())):
+        assert ref.group(1) in tokens, f"{ref.group(1)} is not defined in the dark block"
+        value = tokens[ref.group(1)]
+    return value.strip().lower()
+
+
+def test_dark_control_fill_is_not_true_black() -> None:
+    # Resolved, not spelled: a palette change moves all of these together.
+    fill = _dark_token("--input-bg")
+    assert fill != _dark_token("--card-off"), "dark controls are back on the black well"
+    assert fill == _dark_token("--card-2"), "fields and the composer no longer share a fill"
 
 
 def test_light_control_fill_is_unchanged() -> None:
