@@ -199,9 +199,11 @@ def test_bytes_that_are_not_what_the_extension_claims_are_refused(proj: Path, na
 
 
 def _zip_bytes() -> bytes:
+    # A fixed member time: these bytes sit in parametrize ids, and xdist aborts
+    # when two workers collect different ids, as they do across a clock second.
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        zf.writestr("hello.txt", "hello")
+        zf.writestr(zipfile.ZipInfo("hello.txt", date_time=(2026, 1, 1, 0, 0, 0)), "hello")
     return buf.getvalue()
 
 
