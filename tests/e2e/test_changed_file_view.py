@@ -337,6 +337,7 @@ _TINT_COLOURS = {
 }
 
 
+@pytest.mark.iphone
 def test_code_file_takes_token_colours_in_both_themes(authed_page: Page, base_url: str) -> None:
     page = authed_page
     row = _tinted_file_view(page, base_url, 0)
