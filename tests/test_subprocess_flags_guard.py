@@ -58,6 +58,10 @@ _VENDORED_VERBATIM_EXEMPT = {
         ".fleet.toml [vendored]; it spawns npx and ruff with a locally derived "
         "_NO_WINDOW."
     ),
+    "src/build_info.py": (
+        "The scaffold's build identity, vendored byte-for-byte and declared in "
+        ".fleet.toml [vendored]; its git spawn uses a locally derived _NO_WINDOW."
+    ),
 }
 _VENDORED_NO_WINDOW = "_NO_WINDOW"
 
@@ -210,8 +214,11 @@ def test_vendored_verbatim_spawns_still_suppress_the_console():
     for label in _VENDORED_VERBATIM_EXEMPT:
         tree = ast.parse((_REPO_ROOT / label).read_text(encoding="utf-8"), filename=label)
         defines = any(
-            isinstance(node, ast.Assign)
-            and any(isinstance(t, ast.Name) and t.id == _VENDORED_NO_WINDOW for t in node.targets)
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(t, ast.Name) and t.id == _VENDORED_NO_WINDOW
+                for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+            )
             and isinstance(node.value, ast.IfExp)
             and isinstance(node.value.body, ast.Attribute)
             and node.value.body.attr == "CREATE_NO_WINDOW"

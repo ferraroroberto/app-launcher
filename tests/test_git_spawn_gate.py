@@ -30,6 +30,10 @@ Excluded on purpose:
   this repo's ``src/``, because it also runs in consumers' trees). Its own
   missing env is real but far narrower — single-repo, gate-time only — and it
   has to be fixed upstream and re-vendored, not patched here.
+* ``src/build_info.py`` — the same, for the same reason: it is the scaffold's
+  verbatim copy and its one spawn is a read-only ``rev-parse``, which never
+  takes the optional index lock. ``test_the_vendored_exemption_is_declared``
+  keeps the exemption honest.
 
 Deliberately literal-only: a spawn built from a variable argv can't be judged
 statically, and guessing would make the gate noisy rather than sound. Every
@@ -45,6 +49,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCAN_DIRS = ("src", "app")
 #: The one file that is *supposed* to spawn ``git``.
 WRAPPER_FILES = {"src/git_utils.py"}
+#: Scaffold copies that cannot route through the wrapper (see the module
+#: docstring); each must be declared in ``.fleet.toml`` ``[vendored]``.
+VENDORED_VERBATIM = {"src/build_info.py"}
 SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 
 
@@ -94,7 +101,7 @@ def test_no_hand_rolled_git_spawn_outside_the_wrapper():
     scanned = 0
     for py in _runtime_py_files():
         label = py.relative_to(PROJECT_ROOT).as_posix()
-        if label in WRAPPER_FILES:
+        if label in WRAPPER_FILES | VENDORED_VERBATIM:
             continue
         scanned += 1
         offenders.extend(_git_spawns_in(ast.parse(py.read_text(encoding="utf-8")), label))
@@ -139,6 +146,13 @@ def test_the_exempted_wrapper_still_passes_an_env_to_its_spawn():
             f"src/git_utils.py:{call.lineno} spawns without env= — GIT_OPTIONAL_LOCKS=0 "
             "would not reach git (#1111)"
         )
+
+
+def test_the_vendored_exemption_is_declared():
+    """An exempted file that is no longer a declared scaffold copy has been
+    forked again, and must go back through ``run_git``."""
+    manifest = (PROJECT_ROOT / ".fleet.toml").read_text(encoding="utf-8")
+    assert all(f'dest = "{r}"' in manifest for r in VENDORED_VERBATIM), "exemption not in [vendored]"
 
 
 def test_the_matcher_recognizes_the_shapes_it_must():

@@ -31,6 +31,7 @@ from src.subprocess_flags import NO_WINDOW
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_SECONDS = 5.0
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def git_env(base: Optional[dict] = None) -> dict:
@@ -137,7 +138,7 @@ def resolve_default_ref(
 
     Shared by :func:`src.scanner._default_branch` (local
     ``refs/heads/main`` / ``refs/heads/master``, which strips the result to
-    a bare branch name) and :func:`src.build_info._resolve_default_remote_ref`
+    a bare branch name) and :func:`resolve_deployed_sha`
     (remote-tracking ``origin/main`` / ``origin/master``, which returns the
     resolved ref as-is) — same ``origin/HEAD``-first resolution, different
     fallback ref sets and return shape, so each caller passes its own
@@ -154,3 +155,22 @@ def resolve_default_ref(
         if run_git(repo, ["rev-parse", "--verify", "--quiet", candidate], timeout=timeout) is not None:
             return candidate
     return None
+
+
+def resolve_deployed_sha(project_root: Union[str, Path] = _PROJECT_ROOT) -> str:
+    """Short git SHA of ``project_root``'s resolved default remote branch
+    (``origin/HEAD`` -> ``origin/main`` -> ``origin/master``) -- the ref that
+    reflects what's actually mergeable/deployed.
+
+    Unlike ``src.build_info.resolve_git_sha``, which reports the live
+    checkout's *current branch tip*, this is stable across whatever branch the
+    checkout transiently sits on (e.g. a worker occupying the primary tree
+    mid-issue). No fetch is performed: it reads the local ``origin/*``
+    remote-tracking ref as last synced. Falls back to ``"unknown"`` when no
+    candidate ref resolves, git isn't on PATH, or this isn't a repo.
+    """
+    ref = resolve_default_ref(project_root, fallback_refs=("origin/main", "origin/master"))
+    if ref is None:
+        return "unknown"
+    sha = run_git(project_root, ["rev-parse", "--short", ref], warn_on_failure=True)
+    return sha or "unknown"

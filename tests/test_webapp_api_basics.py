@@ -98,6 +98,8 @@ class TestStaticCaching:
 
 class TestVersion:
     def test_version_shape(self, webapp_client):
+        from app.webapp.routers import misc as misc_router
+
         client, _, _ = webapp_client
         resp = client.get("/api/version")
         assert resp.status_code == 200
@@ -106,7 +108,8 @@ class TestVersion:
             "git_sha", "built_at", "asset_hash", "head_sha", "session_host",
         }
         assert isinstance(body["git_sha"], str) and body["git_sha"]
-        assert isinstance(body["built_at"], str) and body["built_at"]
+        # The footer stamp is the identity this process captured at import, not a fresh read.
+        assert body["built_at"] == misc_router._IDENTITY["built_at"]
         assert isinstance(body["asset_hash"], str)
         assert isinstance(body["head_sha"], str) and body["head_sha"]
 
