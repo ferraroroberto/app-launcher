@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -842,34 +843,43 @@ def test_overlay_inside_stop_epsilon_keeps_needs_you(tmp_path: Path):
     assert cards[0]["status"] == "idle-finished"
 
 
-def test_live_title_is_busy_glyph_range():
-    from src.board_transcript import _live_title_is_busy
-
-    assert _live_title_is_busy("⠂ chief") is True  # a real observed spinner frame
-    assert _live_title_is_busy("⠐ Start work on issue 635") is True  # another frame
-    assert _live_title_is_busy("✳ Some Conversation Title") is False  # idle marker
-    assert _live_title_is_busy("") is False
-    assert _live_title_is_busy(None) is False
-    assert _live_title_is_busy("   ") is False
-    assert _live_title_is_busy("app-launcher | gpt-5.5") is False  # Codex folder-echo title
-    # The glyph must lead the title, not appear mid-string.
-    assert _live_title_is_busy("Some Title ⠂") is False
-
-
-def test_live_title_is_busy_matches_the_circle_quadrant_spinner():
-    """#815: the CLI moved its spinner from Braille Patterns to the
-    circle-quadrant rotation, which this check did not recognize — so every
-    live working session read as not-busy and the whole #631 override went
-    inert. Both observed frames, plus the two remaining frames of that
-    4-frame rotation carried as a deliberate superset."""
-    from src.board_transcript import _live_title_is_busy
-
-    assert _live_title_is_busy("\u25d0 Issue add") is True  # observed live
-    assert _live_title_is_busy("\u25d1 Issue add") is True  # observed live
-    assert _live_title_is_busy("\u25d2 x") is True
-    assert _live_title_is_busy("\u25d3 x") is True
-    # The idle marker sits between the two busy families and must stay out.
-    assert _live_title_is_busy("\u2733 chief") is False
+@pytest.mark.parametrize(
+    ("live_title", "working"),
+    [
+        ("⠂ chief", True),  # a real observed Braille spinner frame
+        ("⠐ Start work on issue 635", True),  # another Braille frame
+        # #815: the CLI moved to the circle-quadrant rotation; both frames seen
+        # live plus the two remaining frames of that 4-frame rotation.
+        ("◐ Issue add", True),
+        ("◑ Issue add", True),
+        ("◒ x", True),
+        ("◓ x", True),
+        ("✳ Some Conversation Title", False),  # idle marker, between both families
+        ("", False),
+        (None, False),
+        ("   ", False),
+        ("app-launcher | gpt-5.5", False),  # Codex folder-echo title
+        ("Some Title ⠂", False),  # the glyph must lead the title, not sit mid-string
+    ],
+)
+def test_live_title_busy_glyph_decides_working(tmp_path: Path, live_title, working):
+    """A needs-you row inside the resume epsilon reads idle-finished off its
+    transcript; only a title that *leads* with a spinner frame, on a PTY that
+    is still printing, flips the card to working (#631, #815)."""
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
+    )
+    cards = board.merge_sessions(
+        [_live(
+            "aaa", "E:/x/y", 30,
+            live_title=live_title,
+            last_output_at=(NOW - timedelta(seconds=1)).timestamp(),
+        )],
+        {"t": row},
+        now=NOW,
+    )
+    assert cards[0]["status"] == ("working" if working else "idle-finished")
 
 
 def test_unrecognized_title_glyph_logs_one_breadcrumb_per_glyph(caplog):
@@ -894,27 +904,6 @@ def test_unrecognized_title_glyph_logs_one_breadcrumb_per_glyph(caplog):
     assert len(breadcrumbs) == 1
     assert "U+2699" in breadcrumbs[0].getMessage()
     _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
-
-
-def test_overlay_circle_spinner_title_overrides_stale_needs_you(tmp_path: Path):
-    """#815 end-to-end: the exact production shape from #813 — a needs-you
-    row whose session is genuinely mid-turn, carrying today's circle-quadrant
-    spinner — must resolve to working off the PTY signal alone, without the
-    transcript deciding it. Same fixture as #631's Braille test."""
-    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
-    row["transcript_path"] = _transcript_file(
-        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
-    )
-    cards = board.merge_sessions(
-        [_live(
-            "aaa", "E:/x/y", 30,
-            live_title="\u25d0 Issue add",
-            last_output_at=(NOW - timedelta(seconds=1)).timestamp(),
-        )],
-        {"t": row},
-        now=NOW,
-    )
-    assert cards[0]["status"] == "working"
 
 
 def test_overlay_wedged_circle_spinner_title_does_not_force_working(tmp_path: Path):
@@ -957,22 +946,6 @@ def test_overlay_busy_live_title_overrides_stale_needs_you_inside_epsilon(tmp_pa
     )
     assert cards[0]["status"] == "working"
     assert cards[0]["age_seconds"] == 0
-
-
-def test_overlay_idle_live_title_does_not_force_a_false_override(tmp_path: Path):
-    """The idle marker ("*", U+2733) must not be mistaken for the busy
-    spinner range (U+2800-U+28FF) — same epsilon scenario as the busy-title
-    test above, but with the idle glyph, must keep the original outcome."""
-    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
-    row["transcript_path"] = _transcript_file(
-        tmp_path, NOW - timedelta(minutes=10) + timedelta(seconds=3)
-    )
-    cards = board.merge_sessions(
-        [_live("aaa", "E:/x/y", 30, live_title="\u2733 Some Conversation Title")],
-        {"t": row},
-        now=NOW,
-    )
-    assert cards[0]["status"] == "idle-finished"
 
 
 # ------------------------------------------- wedged-PTY freshness gate (#636)
@@ -1864,8 +1837,6 @@ def test_plan_picker_screen_is_rendered_only_when_the_capture_changes(
     """The render is the per-poll cost (#1203): an unchanged capture is
     answered from the cache, a changed one is read again, and a session that
     leaves the live list leaves the cache."""
-    from src import board_sessions
-
     show, renders = picker_screen
     show("aaa")
     row = _clean_stop_row(tmp_path)
@@ -1882,7 +1853,11 @@ def test_plan_picker_screen_is_rendered_only_when_the_capture_changes(
     assert cards[0]["status"] == "idle-finished"
     assert len(renders) == 2
     board.merge_sessions([], {"t": row}, now=NOW)
-    assert board_sessions._PICKER_SCREEN_CACHE == {}
+    # Back on the list with the same capture: a forgotten session is read
+    # afresh, so the answer cannot be a stale one left from its last stay.
+    cards = board.merge_sessions(live, {"t": row}, now=NOW)
+    assert cards[0]["status"] == "idle-finished"
+    assert len(renders) == 3
 
 
 def test_refine_resolved_ask_user_question_is_idle_finished(tmp_path: Path):
@@ -2780,29 +2755,24 @@ def test_api_rate_limits_never_follows_the_selected_model(webapp_client):
 def test_coding_and_board_codex_polls_coalesce_one_native_refresh(
     webapp_client, monkeypatch
 ):
-    """Overlapping quota polls share one in-flight native-process gate."""
-    _client, app, _overrides = webapp_client
+    """Repeated quota polls start one native-process run, not one per poll."""
+    client, _app, _overrides = webapp_client
     monkeypatch.setattr(board_router, "_quota_refresh_gate", quota_usage.RefreshGate())
-    monkeypatch.setattr(board_router, "_quota_refresh_task", None)
-    scheduled = []
+    started = threading.Event()
+    native_runs: list = []
 
-    class FakeTask:
-        def add_done_callback(self, callback):
-            self.callback = callback
+    def fake_native_refresh(fleet_config_dir, state_dir):
+        native_runs.append(state_dir)
+        started.set()
+        return "complete"
 
-    def fake_create_task(coroutine):
-        coroutine.close()
-        task = FakeTask()
-        scheduled.append(task)
-        return task
-
-    monkeypatch.setattr(board_router.asyncio, "create_task", fake_create_task)
-    unavailable = {
-        "harness": "codex", "provider": "openai", "state": "unknown",
-    }
-    board_router._maybe_refresh_codex(app.state.webapp_config, unavailable)
-    board_router._maybe_refresh_codex(app.state.webapp_config, unavailable)
-    assert len(scheduled) == 1
+    monkeypatch.setattr(quota_usage, "refresh_codex", fake_native_refresh)
+    for _ in range(3):
+        lines = client.get("/api/rate-limits").json()["quota_lines"]
+        assert [line["harness"] for line in lines] == ["claude", "codex"]
+        assert lines[1]["state"] == "unknown"
+        assert started.wait(timeout=5)
+    assert len(native_runs) == 1
 
 
 def test_api_board_merges_live_sessions_and_state(webapp_client):
