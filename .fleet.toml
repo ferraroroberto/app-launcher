@@ -65,6 +65,15 @@ surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028
 comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "e56308e1c099712cf5a006557c94e3f9ae4fe8aa", dest = "scripts/comment_ratchet.py" }
 
 # ---------------------------------------------------------------------------
+# [verify] -- the launch recipe the generated verify-app-launcher skill reads
+# (project-scaffolding docs/verify-skill.md). `boot` is the session fixture the
+# e2e suite boots a disposable webapp + session-host from; ready_path and
+# data_dir_env are the generator defaults (/healthz, APP_LAUNCHER_DATA_DIR).
+[verify]
+boot           = "tests/e2e/conftest.py::_autoboot_server"
+live_optin_env = "LAUNCHER_E2E_LIVE"
+
+# ---------------------------------------------------------------------------
 # [comment_ratchet] -- the scaffold's no-history-comments ratchet (#1751,
 # project-scaffolding#411). scripts/verify-before-ship.ps1 runs
 # scripts/comment_ratchet.py, which fails when a file's count of `#NNN` issue
