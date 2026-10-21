@@ -20,9 +20,10 @@
  *
  * Since #1689 an opened session file has a Diff | File switch: File is the
  * file as it is on disk now, drawn for its type by file-view.js, read through
- * a route that serves only files the session edited. Beside it, Copy path,
- * and on the PC itself Open on PC (VS Code, else Explorer). Still read-only:
- * nothing edits, stages or discards.
+ * a route that serves only files the session edited. Beside it, Download
+ * (#1749) and a ⋮ menu: Copy content in File view, Copy diff in Diff view,
+ * Copy path, and on the PC itself Open on PC (VS Code, else Explorer). Still
+ * read-only: nothing edits, stages or discards.
  */
 
 import { els } from './state.js';
@@ -30,6 +31,7 @@ import { apiFailToast, escapeHtml, jsonApi, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderHunks } from './diff-view.js';
 import { terminalJsonApi } from './webauthn.js';
+import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { fileBadge, fileCounts, fileKey, fileName } from './edited-card.js';
 import { renderFileView, windowsPath } from './file-view.js';
 import { onThePc } from './transcript-render.js';
@@ -210,20 +212,22 @@ function tooLarge(size) {
   return 'Too large to show here' + (kb ? ' (' + kb + ' KB)' : '') + '. The limit is 256 KB';
 }
 
-async function loadFileView(file, box) {
+// The sentence for a file the File view can't show; Download toasts the same.
+function fileReasonText(res) {
+  const why = res && res.reason;
+  return why === 'too_large' ? tooLarge(res.size)
+    : FILE_REASON[why] || SESSION_REASON[why] || 'Couldn’t read this file';
+}
+
+// `read` is the file's memoised read (sessionFileBody), so the File pane,
+// Download and Copy content share one request.
+async function loadFileView(file, box, read) {
   const seq = view.seq;
   box.innerHTML = note('Loading…');
-  let res;
-  try {
-    res = await sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)));
-  } catch (exc) {
-    res = null;
-  }
+  const res = await read();
   if (!view || view.seq !== seq) return;
   if (!res || !res.available) {
-    const why = res && res.reason;
-    box.innerHTML = note(why === 'too_large' ? tooLarge(res.size)
-      : FILE_REASON[why] || SESSION_REASON[why] || 'Couldn’t read this file');
+    box.innerHTML = note(fileReasonText(res));
     return;
   }
   box.innerHTML = res.text ? renderFileView(file.path, res.text) : note('Empty file');
@@ -231,15 +235,46 @@ async function loadFileView(file, box) {
 
 // iOS allows a clipboard write only inside the tap: writeText is called
 // synchronously from the click, never after an await.
-function copyPath(path) {
+function copyText(text, done, failed) {
   try {
-    navigator.clipboard.writeText(path).then(
-      function () { toast('Path copied', 'good', { icon: 'clipboard' }); },
-      function (exc) { apiFailToast('Couldn’t copy the path', exc); }
+    navigator.clipboard.writeText(text).then(
+      function () { toast(done, 'good', { icon: 'clipboard' }); },
+      function (exc) { apiFailToast(failed, exc); }
     );
   } catch (exc) {
-    apiFailToast('Couldn’t copy the path', exc);
+    apiFailToast(failed, exc);
   }
+}
+
+function copyPath(path) {
+  copyText(path, 'Path copied', 'Couldn’t copy the path');
+}
+
+// What the Diff pane shows, as the patch text: every diff line's own text,
+// prefix and hunk header included, without the gutter or an edit's step label.
+// The unnumbered ⋯ between hunks of a gutterless diff is a separator, not a line.
+function diffText(pane) {
+  const lines = [];
+  pane.querySelectorAll('.chg-diff > span').forEach(function (line) {
+    if (line.classList.contains('d-hunk') && !line.querySelector('.d-ln')) return;
+    const txt = line.querySelector('.d-txt');
+    if (txt) lines.push(txt.textContent);
+  });
+  return lines.join('\n');
+}
+
+// A file saved under its own name. octet-stream, so Safari saves the blob
+// instead of rendering a text blob inline.
+function saveAs(name, text) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.hidden = true;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
 }
 
 async function openOnPc(file) {
@@ -266,9 +301,28 @@ function toolButton(cls, glyph, label, onTap) {
   btn.setAttribute('aria-label', label);
   btn.title = label;
   btn.innerHTML = icon(glyph);
-  btn.addEventListener('click', onTap);
+  if (onTap) btn.addEventListener('click', onTap);
   return btn;
 }
+
+// Download: the file's text under its own name. The route and its refusals
+// are the File view's, so a file it can't show is refused with its sentence.
+async function downloadFile(file, read) {
+  const res = await read();
+  if (!res || !res.available) {
+    toast(fileReasonText(res), 'error');
+    return;
+  }
+  saveAs(requestPath(file).split(/[\\/]/).pop() || 'file', res.text || '');
+}
+
+// The ⋮ menu of an opened file's tool row (#1749), one controller for the
+// panel. It drops below the button group, right edges 4px in, as the Board
+// drawer's kebab does; `changes-menu` lifts it over the panel (styles.css).
+const fileMenu = createRowMenu({
+  className: 'changes-menu',
+  placement: { against: function (kebab) { return kebab.parentElement; }, offset: 2, inset: 4 },
+});
 
 // An opened session file: the tool row, the file's absolute path as text you
 // can select, then the Diff (the default) or the File, each loaded the first
@@ -282,6 +336,24 @@ function sessionFileBody(file, body) {
   sw.setAttribute('role', 'group');
   sw.setAttribute('aria-label', 'Show the diff or the file');
   const panes = {};
+  // Which pane shows, and the file's memoised read: one request serves the
+  // File pane, Download and Copy content. A refusal isn't kept, so a retry
+  // asks again.
+  let active = 'diff';
+  let pending = null;
+  let fileText = null;
+  function read() {
+    if (!pending) {
+      pending = sessionApi('/changed-files/content?path=' + encodeURIComponent(requestPath(file)))
+        .catch(function () { return null; })
+        .then(function (res) {
+          if (res && res.available) fileText = res.text || '';
+          else pending = null;
+          return res;
+        });
+    }
+    return pending;
+  }
   [['diff', 'Diff'], ['file', 'File']].forEach(function (opt) {
     const seg = document.createElement('button');
     seg.type = 'button';
@@ -299,26 +371,46 @@ function sessionFileBody(file, body) {
     const seg = ev.target.closest('.segmented-item');
     if (!seg || !view) return;
     const which = seg.dataset.view;
+    active = which;
     sw.querySelectorAll('.segmented-item').forEach(function (b) {
       b.setAttribute('aria-pressed', String(b === seg));
     });
     Object.keys(panes).forEach(function (k) { panes[k].hidden = k !== which; });
     if (which === 'file' && !panes.file.dataset.loaded) {
       panes.file.dataset.loaded = '1';
-      loadFileView(file, panes.file);
+      loadFileView(file, panes.file, read);
     }
   });
   tools.appendChild(sw);
   const acts = document.createElement('span');
   acts.className = 'icon-button-group chg-acts';
-  if (full) {
-    acts.appendChild(toolButton('chg-copy', 'clipboard', 'Copy path', function () { copyPath(full); }));
-  }
-  // Only where the PC is the screen in front of you: from the phone the
-  // editor would open in front of nobody (the route refuses it too).
-  if (onThePc()) {
-    acts.appendChild(toolButton('chg-open', 'monitor', 'Open on PC', function () { openOnPc(file); }));
-  }
+  acts.appendChild(toolButton('chg-download', 'download', 'Download', function () { downloadFile(file, read); }));
+  const kebab = toolButton('chg-kebab', 'ellipsis-vertical', 'More actions', null);
+  acts.appendChild(kebab);
+  fileMenu.attach(requestPath(file), kebab, [
+    {
+      dataset: { item: 'chg-copy-content' }, glyph: 'clipboard', label: 'Copy content',
+      hidden: function () { return active !== 'file' || !fileText; },
+      onTap: function () { copyText(fileText, 'Content copied', 'Couldn’t copy the content'); },
+    },
+    {
+      dataset: { item: 'chg-copy-diff' }, glyph: 'clipboard', label: 'Copy diff',
+      hidden: function () { return active !== 'diff' || !diffText(panes.diff); },
+      onTap: function () { copyText(diffText(panes.diff), 'Diff copied', 'Couldn’t copy the diff'); },
+    },
+    {
+      dataset: { item: 'chg-copy-path' }, glyph: 'copy', label: 'Copy path',
+      hidden: function () { return !full; },
+      onTap: function () { copyPath(full); },
+    },
+    // Only where the PC is the screen in front of you: from the phone the
+    // editor would open in front of nobody (the route refuses it too).
+    {
+      dataset: { item: 'chg-open-pc' }, glyph: 'monitor', label: 'Open on PC',
+      hidden: function () { return !onThePc(); },
+      onTap: function () { openOnPc(file); },
+    },
+  ]);
   tools.appendChild(acts);
   body.appendChild(tools);
   if (full) {
@@ -557,6 +649,7 @@ async function loadSession(seq) {
 function load() {
   if (!view) return;
   const seq = ++view.seq;
+  fileMenu.close();   // the rows are rebuilt below
   els.changesList.innerHTML = '';
   if (view.kind === 'session' && view.scope === 'turn') renderTurn();
   else if (view.kind === 'session') loadSession(seq);
@@ -596,6 +689,7 @@ export function openSessionChanges(s, title, opts) {
 export function closeChanges() {
   if (view) view.seq += 1;   // any in-flight response lands nowhere
   view = null;
+  fileMenu.close();
   if (!els.changesOverlay) return;
   els.changesOverlay.hidden = true;
   els.changesList.innerHTML = '';

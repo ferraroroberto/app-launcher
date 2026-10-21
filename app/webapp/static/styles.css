@@ -1991,6 +1991,12 @@ textarea.input-native { height: auto; }
 .row-menu.composer-menu {
   z-index: 315;
 }
+/* The Changed files panel's ⋮ menu (#1749) opens inside the Changes panel
+   (320), so it needs to sit over it: one step up, still under the lightbox
+   (350) and the toast (400). */
+.row-menu.changes-menu {
+  z-index: 330;
+}
 /* The open menu's anchor keeps the accent while hovered: the vendored
    icon-button's hover colour outranks the vendored `.row-menu-anchor`
    rule, so these restate it more specifically. */
@@ -3197,9 +3203,9 @@ textarea.input-native { height: auto; }
    diff, and the panel scrolls as a whole rather than per diff. */
 .chg-body .tr-diff { max-height: none; }
 .chg-step { padding: 6px 0 4px; }
-/* A session file's tools (#1689): the vendored Diff | File segmented switch,
-   then Copy path and Open on PC as icon buttons on one quiet row, and the
-   file's absolute path under it as text you can select. The icon buttons'
+/* A session file's tools (#1689, #1749): the vendored Diff | File segmented
+   switch, then Download and the ⋮ menu as icon buttons on one quiet row, and
+   the file's absolute path under it as text you can select. The icon buttons'
    44px targets reach 8px past their 28px boxes, so the group is inset by as
    much and its last target stays inside the panel. */
 .chg-tools {
