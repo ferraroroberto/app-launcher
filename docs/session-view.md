@@ -67,7 +67,7 @@ Switching modes never reconnects or reloads anything: the live terminal keeps it
 
 A segment the session can't offer is greyed, and a tap on it says why — *Detached session — no terminal* (also shown under a detached chat), or *No transcript reader for <agent>*.
 
-For the terminal itself — the socket, the key bar, the composer and the security model — see [Interactive terminal](../README.md#interactive-terminal-from-the-phone).
+For the terminal itself — the socket, the key bar, the composer and the security model — see [Interactive terminal](interactive-terminal.md).
 
 ## Chat mode: reading
 
