@@ -66,6 +66,17 @@ _WORKER_CASES: dict[str, tuple[str, str]] = {
     "full-negative": ("full", "-2"),
 }
 
+# Durable run history: name -> (existing history, new run, runs to keep).
+_HDR = "verify-before-ship run started 2026-10-21 10:00:0"
+_HISTORY_CASES: dict[str, tuple[str, str, int]] = {
+    "trims-to-newest": (f"{_HDR}1\nA\n{_HDR}2\nB\n", f"{_HDR}3\nC\n", 2),
+    "keeps-all-under-cap": (f"{_HDR}1\nA\n", f"{_HDR}2\nB\n", 20),
+    "first-run": ("", f"{_HDR}1\nA\n", 20),
+    "missing-newline": (f"{_HDR}1\nA", f"{_HDR}2\nB", 20),
+    "torn-preamble": (f"torn tail\n{_HDR}1\nA\n", f"{_HDR}2\nB\n", 20),
+    "no-header-in-run": ("", "no header here\n", 20),
+}
+
 # Non-browser phase plans (#1512): UNIT_WORKERS value -> Get-UnitWorkerArgs.
 _UNIT_CASES: dict[str, str] = {
     "unit-default": "",
@@ -109,6 +120,11 @@ foreach ($u in ($env:UNIT_WORKER_CASES | ConvertFrom-Json)) {
     }
 }
 $out['__units__'] = $units
+$history = @{}
+foreach ($h in ($env:HISTORY_CASES | ConvertFrom-Json)) {
+    $history[$h.name] = Merge-ProgressHistory -History $h.history -Run $h.run -Keep $h.keep
+}
+$out['__history__'] = $history
 $out | ConvertTo-Json -Depth 4 -Compress
 """
 
@@ -134,6 +150,9 @@ def routes() -> dict[str, dict]:
                  E2E_WORKER_CASES=json.dumps([
                      {"name": name, "lines": _CASES[route]["lines"], "setting": setting}
                      for name, (route, setting) in _WORKER_CASES.items()]),
+                 HISTORY_CASES=json.dumps([
+                     {"name": name, "history": h, "run": r, "keep": k}
+                     for name, (h, r, k) in _HISTORY_CASES.items()]),
                  UNIT_WORKER_CASES=json.dumps([
                      {"name": name, "setting": setting} for name, setting in _UNIT_CASES.items()])),
         stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=120,
@@ -142,6 +161,7 @@ def routes() -> dict[str, dict]:
     result = json.loads(out.stdout)
     _WORKER_PLANS.update(result.pop("__workers__"))
     _UNIT_PLANS.update(result.pop("__units__"))
+    _HISTORY.update(result.pop("__history__"))
     # ConvertTo-Json can flatten a one-element array in Windows PowerShell 5.1.
     for route in result.values():
         for key in ("Targets", "Browsers"):
@@ -155,6 +175,7 @@ def routes() -> dict[str, dict]:
 # Filled by the `routes` fixture from the same PowerShell run.
 _WORKER_PLANS: dict[str, dict] = {}
 _UNIT_PLANS: dict[str, dict] = {}
+_HISTORY: dict[str, str] = {}
 
 
 def _shape(route: dict) -> tuple:
@@ -256,6 +277,30 @@ def test_non_browser_phase_runs_on_six_workers_by_default(routes: dict) -> None:
     for case in ("unit-one", "unit-zero"):
         assert (_UNIT_PLANS[case]["Workers"], _UNIT_PLANS[case]["Args"]) == (1, ""), case
     assert "UNIT_WORKERS must be a whole number" in _UNIT_PLANS["unit-word"]["Error"]
+
+
+def test_the_durable_run_history_keeps_the_newest_runs_whole(routes: dict) -> None:
+    """The primary checkout's history is trimmed by run, never mid-run,
+    and the new run lands last."""
+    assert _HISTORY["trims-to-newest"] == f"{_HDR}2\nB\n{_HDR}3\nC\n"
+    assert _HISTORY["keeps-all-under-cap"] == f"{_HDR}1\nA\n{_HDR}2\nB\n"
+    assert _HISTORY["first-run"] == f"{_HDR}1\nA\n"
+
+
+def test_the_durable_run_history_survives_a_torn_write(routes: dict) -> None:
+    assert _HISTORY["missing-newline"] == f"{_HDR}1\nA\n{_HDR}2\nB\n"
+    assert _HISTORY["torn-preamble"] == f"{_HDR}1\nA\n{_HDR}2\nB\n"
+    assert _HISTORY["no-header-in-run"] == ""
+
+
+def test_gate_records_a_browser_run_under_the_mutex() -> None:
+    """The publish sits in the branch that holds the e2e mutex, so two gates
+    ending at once cannot lose each other's record, and the audit reads the
+    file the gate writes."""
+    gate = GATE_PS1.read_text(encoding="utf-8")
+    assert "if ($e2eMutexAcquired) {\n                    Log-Progress" in gate.replace("\r\n", "\n")
+    assert "Publish-ProgressHistory" in gate
+    assert "verify-progress-history.log" in (REPO_ROOT / ".fleet.toml").read_text(encoding="utf-8")
 
 
 def test_helper_is_ascii_for_windows_powershell_5_1() -> None:

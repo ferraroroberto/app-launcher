@@ -85,6 +85,26 @@ function Log-Progress($message) {
     )
 }
 
+# Append this run to the durable history in the primary checkout. The
+# caller holds the e2e gate mutex, which is what serialises two gates ending at
+# once in sibling worktrees. A history that could not be written is reported
+# loudly but never fails a gate whose tests passed.
+function Publish-ProgressHistory {
+    try {
+        $historyLog = Get-ProgressHistoryPath -RepoRoot $repoRoot
+        if (-not $historyLog) { throw "git could not name the primary checkout" }
+        $run = [System.IO.File]::ReadAllText($progressLog)
+        $old = if (Test-Path $historyLog) { [System.IO.File]::ReadAllText($historyLog) } else { "" }
+        [void][System.IO.Directory]::CreateDirectory((Split-Path -Parent $historyLog))
+        [System.IO.File]::WriteAllText($historyLog, (Merge-ProgressHistory -History $old -Run $run),
+                                       (New-Object System.Text.UTF8Encoding($false)))
+        Write-Host "    e2e run recorded in $historyLog" -ForegroundColor DarkGray
+    }
+    catch {
+        Write-Host ("[!] e2e run history NOT recorded: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+    }
+}
+
 function Phase($message) {
     Write-Host "==> $message" -ForegroundColor Cyan
     Log-Progress "==> phase: $message"
@@ -247,6 +267,7 @@ try {
             $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
             $workerLabel = if ($workerPlan.Workers -gt 1) { "$($workerPlan.Workers) workers" } else { "serial" }
             Phase "pytest e2e ($e2eTargetLabel, $projLabel, $workerLabel, auto-booted)..."
+            $e2eExit = $null
             $serialExit = $null
             try {
                 & $python -m pytest @e2eArgs
@@ -264,6 +285,14 @@ try {
             finally {
                 Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
                 if ($env:CI -eq "true") { Remove-Item Env:\PYTHONUNBUFFERED -ErrorAction SilentlyContinue }
+                # Only a run that took the mutex is recorded: the history is
+                # written under it, and the static smoke slice is not a timing
+                # source. Red and green alike, so /e2e-audit reads both.
+                if ($e2eMutexAcquired) {
+                    Log-Progress ("e2e browser phase ended: pytest exit {0}, serial pass exit {1}, checkout {2}" -f
+                        $e2eExit, $serialExit, (Split-Path -Leaf $repoRoot))
+                    Publish-ProgressHistory
+                }
             }
             if ($null -ne $serialExit) {
                 # Exit 5 is "no tests collected": a narrowed target can hold no

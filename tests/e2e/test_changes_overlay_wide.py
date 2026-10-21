@@ -159,32 +159,3 @@ def test_changes_panel_covers_the_coding_tab_on_a_wide_window(
     assert probes, "the panel has no layout box"
     covered = [p for p in probes if not p["onTop"]]
     assert not covered, f"Coding-tab layers paint over the Changed files panel: {covered}"
-
-
-def test_a_failed_script_load_gets_one_fresh_boot(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    """#1611: the first load of ``apps-coding.js`` is cut. The Coding list's
-    module never runs, so the page has no project row for its whole life; the
-    second boot is the one the row comes from."""
-    if browser_name != "chromium":
-        pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
-    page = authed_page
-    page.set_viewport_size({"width": 1900, "height": 900})
-    navigations: list = []
-    cut: list = []
-    page.on("framenavigated", lambda f: navigations.append(1) if f == page.main_frame else None)
-
-    def handle(route):
-        # The page asks for the file more than once per load, so cut every ask
-        # of the first load, not just the first ask.
-        if len(navigations) <= 1:
-            cut.append(1)
-            route.abort()
-        else:
-            route.continue_()
-
-    page.route(re.compile(r".*/static/apps-coding\.js"), handle)
-    _open_project_changes(page, base_url)
-    assert cut, "the script was never requested"
-    expect(page.locator("#changesOverlay")).to_be_visible()

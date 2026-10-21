@@ -257,7 +257,7 @@ def test_settings_header_names_a_problem_else_the_build(
     close_settings_sheets(page)
     expect(status).to_have_text("Build a1b2c3d")
     expect(status.locator(".head-exception")).to_have_count(0)
-    expect(page.locator("#paneSettings")).not_to_contain_text("This launcher, on this PC")
+    expect(page.locator("#paneSettings > .home-head .home-title")).to_have_text("Settings")
 
     # A profile that needs setup: the attention exception, on one line.
     channels["body"]["profiles"].append(_channel_profile("Beta", False))

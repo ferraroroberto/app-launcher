@@ -198,3 +198,45 @@ function Wait-E2EGateMutex {
         return [pscustomobject]@{ Acquired = $true; Abandoned = $true }
     }
 }
+
+# The durable browser-run history. verify-before-ship.ps1 overwrites
+# webapp/verify-progress.log per checkout, and most gates run in a sibling
+# worktree that is deleted when its issue ships, so the newest browser run on
+# disk was weeks old and /e2e-audit's timing read `stale`. Each browser run is
+# also appended to ONE log in the PRIMARY checkout, trimmed to the last
+# $ProgressHistoryRuns runs; .fleet.toml [e2e] progress_log declares it. The
+# run header is the line /e2e-audit splits runs on, so it must stay in step
+# with the one the gate writes.
+$ProgressHistoryRuns = 20
+$ProgressRunHeader = "verify-before-ship run started"
+
+# $History + $Run, cut into runs at the header and trimmed to the newest $Keep.
+# Text before the first header (a torn write, a BOM) belongs to no run and is
+# dropped; a missing final newline is restored so two runs never share a line.
+function Merge-ProgressHistory {
+    param(
+        [AllowEmptyString()][AllowNull()][string]$History,
+        [AllowEmptyString()][AllowNull()][string]$Run,
+        [int]$Keep = $ProgressHistoryRuns
+    )
+
+    $text = [string]$History
+    if ($text -and -not $text.EndsWith("`n")) { $text += "`n" }
+    $text += [string]$Run
+    $runs = @([regex]::Split($text, "(?m)^(?=$ProgressRunHeader )") |
+              Where-Object { $_.StartsWith($ProgressRunHeader) })
+    if ($runs.Count -eq 0) { return "" }
+    $kept = @($runs | Select-Object -Last $Keep)
+    return (($kept | ForEach-Object { if ($_.EndsWith("`n")) { $_ } else { $_ + "`n" } }) -join "")
+}
+
+# Where the history lives: the primary checkout's webapp\, found through git's
+# common dir so a worktree and the primary agree. Returns "" when git cannot
+# say, and the caller reports that rather than guessing a path.
+function Get-ProgressHistoryPath {
+    param([Parameter(Mandatory = $true)][string]$RepoRoot)
+
+    $commonDir = & git -C $RepoRoot rev-parse --path-format=absolute --git-common-dir 2>$null
+    if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return "" }
+    return Join-Path (Split-Path -Parent ([string]$commonDir)) "webapp\verify-progress-history.log"
+}
