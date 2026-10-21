@@ -76,6 +76,16 @@ enabled  = true
 baseline = ".comment-ratchet-baseline.json"
 
 # ---------------------------------------------------------------------------
+# [test_weight] -- test-to-code ratchet. scripts/verify-before-ship.ps1
+# runs scripts/suite_weight_ratchet.py, which fails when the ratio of code
+# lines under tests/ to code lines under src/ + app/ rises above this ceiling.
+# Shrink-only: `python -m scripts.suite_weight_ratchet --update` lowers it after
+# a trim; `--raise-ceiling` is the one way up, and a raise says in its PR what
+# the extra test weight is for.
+[test_weight]
+ratio_ceiling = "1.1396"
+
+# ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
 # browser phase (#568, migrated to the scaffold classifier in #955).
 # scripts/classify_e2e.py is project-scaffolding's classifier copied
