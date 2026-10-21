@@ -29,7 +29,8 @@
 import { els } from './state.js';
 import { apiFailToast, escapeHtml, jsonApi, toast } from './api.js';
 import { icon } from './_vendored/icons/icons.js';
-import { renderHunks } from './diff-view.js';
+import { diffTint, renderHunks } from './diff-view.js';
+import { tintDiffLines } from './syntax-tint.js';
 import { terminalJsonApi } from './webauthn.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { fileBadge, fileCounts, fileKey, fileName } from './edited-card.js';
@@ -80,6 +81,14 @@ function note(text) {
   return '<div class="chg-note muted small">' + escapeHtml(text) + '</div>';
 }
 
+// The File view's words for a file too big to colour, above a diff left plain.
+const LARGE_NOTE = '<div class="fv-note muted small">Colours are off for large files</div>';
+
+// Once above the diffs when any of them skipped colour for size.
+function noteLargeDiff(body) {
+  if (body.querySelector('.tr-diff[data-tint="off"]')) body.insertAdjacentHTML('afterbegin', LARGE_NOTE);
+}
+
 // The session routes are terminal-grade (passkey); the project ones ride
 // the bearer token like the rest of the Coding tab.
 async function sessionApi(path, opts) {
@@ -89,10 +98,18 @@ async function sessionApi(path, opts) {
 // `diff --git` and `index` headers repeat what the row already says; every
 // other line renders, tinted by its first character. Block-level spans so a
 // wrapped long line keeps its tint across the continuation.
-export function renderDiff(text) {
-  const out = [];
+//
+// `lang` (diffTint's answer, or null) picks token colours: the lines of each
+// @@ hunk are tinted together, as in diff-view.js, with the prefix in a
+// `.d-pfx` span. A tinted line carries no `.d-txt`, so Copy diff stays off for
+// this panel as before.
+export function renderDiff(text, lang) {
+  const rows = [];
+  const hunks = [];   // each @@ hunk's code rows, in order
+  let hunk = null;   // null until a file's first @@ (the header lines before it are not code)
   String(text || '').split('\n').forEach(function (line, i, all) {
     if (i === all.length - 1 && line === '') return;   // trailing newline
+    if (line.startsWith('diff --git')) hunk = null;
     if (line.startsWith('diff --git') || line.startsWith('index ')) return;
     let cls = 'd-ctx';
     if (line.startsWith('+++') || line.startsWith('---')) cls = 'd-meta';
@@ -101,9 +118,26 @@ export function renderDiff(text) {
     else if (line.startsWith('-')) cls = 'd-del';
     else if (line.startsWith('\\')) cls = 'd-meta';
     else if (/^(new file|deleted file|similarity|rename |old mode|new mode|Binary files)/.test(line)) cls = 'd-meta';
-    out.push('<span class="' + cls + '">' + (line === '' ? ' ' : escapeHtml(line)) + '</span>');
+    const entry = { cls: cls, line: line, code: null };
+    if (cls === 'd-hunk') {
+      hunk = [];
+      hunks.push(hunk);
+    } else if (hunk && (cls === 'd-add' || cls === 'd-del' || cls === 'd-ctx')) {
+      hunk.push(entry);
+    }
+    rows.push(entry);
   });
-  return out.join('');
+  hunks.forEach(function (h) {
+    const code = tintDiffLines(h.map(function (r) { return r.line; }), lang);
+    h.forEach(function (r, i) { r.code = code[i]; });
+  });
+  return rows.map(function (r) {
+    if (r.code !== null) {
+      return '<span class="' + r.cls + ' d-tint"><span class="d-pfx">' + escapeHtml(r.line.charAt(0)) +
+        '</span>' + r.code + '</span>';
+    }
+    return '<span class="' + r.cls + '">' + (r.line === '' ? ' ' : escapeHtml(r.line)) + '</span>';
+  }).join('');
 }
 
 async function loadProjectDiff(file, body) {
@@ -128,7 +162,8 @@ async function loadProjectDiff(file, body) {
     body.innerHTML = note('No textual changes');
     return;
   }
-  let html = '<pre class="chg-diff">' + renderDiff(res.diff) + '</pre>';
+  const tint = diffTint(res.diff.split('\n'), file.path);
+  let html = (tint.off ? LARGE_NOTE : '') + '<pre class="chg-diff">' + renderDiff(res.diff, tint.lang) + '</pre>';
   if (res.truncated) {
     html += note('Diff truncated at 200 KB — open in VS Code for the rest');
   }
@@ -169,8 +204,9 @@ async function loadSessionDiff(file, body) {
     label.textContent = (step.deleted ? 'Deleted' : step.created ? 'Created' : 'Edit ' + (i + 1) + ' of ' + file.steps) +
       (when ? ' · ' + when : '');
     body.appendChild(label);
-    if (!step.deleted) body.appendChild(renderHunks(step.diff));
+    if (!step.deleted) body.appendChild(renderHunks(step.diff, file.path));
   });
+  noteLargeDiff(body);
   // Most agents record only an edit's own text, so their diffs have no line
   // numbers (#1356); say so once rather than leaving a missing gutter unexplained.
   if (steps.some(function (s) { return !s.deleted && s.diff && s.diff.hunks.length && !s.diff.numbered; })) {
@@ -197,6 +233,7 @@ function renderTurnDiff(file, body) {
     if (diff) body.appendChild(diff);
     else body.insertAdjacentHTML('beforeend', note('No textual changes'));
   });
+  noteLargeDiff(body);
 }
 
 // --- a session file's tools: Diff | File, Copy path, Open on PC (#1689) -----

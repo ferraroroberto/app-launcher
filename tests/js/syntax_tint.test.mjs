@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 
 import {
-  TINT_MAX_CHARS, TINT_MAX_LINES, tintLanguage, tintLines, tintable,
+  TINT_MAX_CHARS, TINT_MAX_LINES, tintDiffLines, tintLanguage, tintLines, tintable,
 } from '../../app/webapp/static/syntax-tint.js';
 import { renderFileView } from '../../app/webapp/static/file-view.js';
 
@@ -140,6 +140,38 @@ assert.ok(!tintable('x'.repeat(TINT_MAX_CHARS + 1)));
   assert.equal((big.match(/class="fv-line"/g) || []).length, TINT_MAX_LINES + 5);
   // An empty line keeps its row and the final newline adds none.
   assert.equal((renderFileView('m.py', 'a = 1\n\nb = 2\n').match(/class="fv-line"/g) || []).length, 3);
+}
+
+// A diff hunk is tokenised as two sides: each changed line reads its own side,
+// and a token opened and closed inside the hunk colours across its lines.
+{
+  const hunk = [' def f():', '-    """old', '-    doc"""', '+    """new', '+    more"""',
+    '+    return "s<b>"  # c', '\\ No newline at end of file'];
+  const out = tintDiffLines(hunk, 'python');
+  assert.equal(out[0], span('fv-kw', 'def') + ' ' + span('fv-name', 'f') + '():');
+  assert.equal(out[2], span('fv-str', '    doc&quot;&quot;&quot;'));
+  assert.equal(out[4], span('fv-str', '    more&quot;&quot;&quot;'));
+  assert.ok(out[5].includes(span('fv-str', '&quot;s&lt;b&gt;&quot;')) && out[5].includes(span('fv-cmt', '# c')), out[5]);
+  assert.equal(out[6], null, 'the no-newline marker is left plain');
+  hunk.slice(0, 6).forEach((l, i) => assert.equal(strip(out[i]), l.slice(1), 'line ' + i));
+  // A removed block comment does not swallow the added line beside it.
+  assert.equal(tintDiffLines(['-/* a', '-b */', '+x = 1;'], 'c')[2], 'x = ' + span('fv-num', '1') + ';');
+}
+
+// Plain (null): no language, an empty line, a CR inside a line, a hunk over the
+// cut-off. A trailing CR (a CRLF file) is kept, and a one-sided hunk colours.
+{
+  assert.deepEqual(tintDiffLines(['+a = 1', ' b'], null), [null, null]);
+  assert.deepEqual(tintDiffLines(['+a = 1', ''], 'python').map((l) => l === null), [false, true]);
+  assert.deepEqual(tintDiffLines(['+a = 1', '+b\rc = 2'], 'python'), [null, null]);
+  assert.equal(tintDiffLines(['+a = 1\r'], 'python')[0], 'a = ' + span('fv-num', '1') + '\r');
+  assert.equal(tintDiffLines(['-a = 1', '-b = 2'], 'python')[1], 'b = ' + span('fv-num', '2'));
+  const lines = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? '-' : '+') + 'x = "q"  # 42');
+  assert.ok(tintDiffLines(lines(TINT_MAX_LINES + 2), 'python').every((l) => l === null), 'line cap');
+  assert.ok(tintDiffLines(['+' + 'x'.repeat(TINT_MAX_CHARS)], 'python').every((l) => l === null), 'size cap');
+  const t0 = performance.now();
+  assert.ok(tintDiffLines(lines(TINT_MAX_LINES), 'python').every((l) => l !== null));
+  assert.ok(performance.now() - t0 < 250, 'a 2,000-line hunk took ' + (performance.now() - t0) + 'ms');
 }
 
 // A pathological input stays linear: an unterminated triple quote, a long

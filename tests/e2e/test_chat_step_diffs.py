@@ -46,12 +46,12 @@ _LONG = "+" + "wrap_me_" * 40
 
 _EDIT_DIFF = {
     "hunks": [{"old_start": 40, "new_start": 40,
-               "lines": [" keep", "-old line", "+new line", "+added line", _LONG]}],
+               "lines": [" keep", "-old line", "+new line", '+x = "added"  # line', _LONG]}],
     "numbered": True, "truncated": True, "offset": 512, "n": 0,
 }
 _FULL_DIFF = {
     "hunks": [{"old_start": 40, "new_start": 40,
-               "lines": [" keep", "-old line", "+new line", "+added line", _LONG]
+               "lines": [" keep", "-old line", "+new line", '+x = "added"  # line', _LONG]
                + ["+more %d" % i for i in range(6)]}],
     "numbered": True, "truncated": False,
 }
@@ -188,6 +188,11 @@ def test_edit_step_opens_as_a_numbered_diff_with_full_fetch(
     expect(diff.locator(".d-del .d-ln")).to_have_text("41")
     expect(diff.locator(".d-add .d-ln").first).to_have_text("41")
     expect(diff.locator(".d-del .d-txt")).to_have_text("-old line")
+    # A .py file's added line carries token colours inside .d-txt, whose text is
+    # still the whole patch line.
+    expect(diff.locator(".d-add .d-txt .fv-str")).to_have_text('"added"')
+    expect(diff.locator(".d-add .d-txt .fv-cmt")).to_have_text("# line")
+    expect(diff.locator(".d-add .d-txt").nth(1)).to_have_text('+x = "added"  # line')
     # The diff is the whole body: the tool's "updated" line is gone.
     expect(edit.locator(".tr-item-body .tr-pre")).to_have_count(0)
     expect(edit.locator(".tr-item-body")).not_to_contain_text("updated successfully")
@@ -218,6 +223,7 @@ def test_edit_step_opens_as_a_numbered_diff_with_full_fetch(
     assert box["height"] >= 44, f"Show full diff under the 44px floor: {box}"
     more.click()
     expect(diff.locator(".d-add")).to_have_count(9)
+    expect(diff.locator(".d-add .d-txt .fv-str")).to_have_text('"added"')   # the swap keeps the colours
     expect(edit.locator(".tr-diff-more")).to_have_count(0)
     assert len(diff_calls) == 1 and "offset=512" in diff_calls[0] and "n=0" in diff_calls[0], diff_calls
 

@@ -270,3 +270,43 @@ export function tintLines(text, lang) {
   out.push(cur);
   return out;
 }
+
+// One diff hunk's lines (each with its ' ' / '+' / '-' prefix) as the escaped,
+// tinted HTML of its code part, one entry per line; null for a line left
+// plain. The new side (context + added) and the old side (context + removed)
+// are tokenised as two texts, so a docstring or block comment that opens and
+// closes inside the hunk colours across its lines, and each changed line reads
+// the side it belongs to. A line the tokenizer cannot keep one-to-one (an
+// embedded CR), an unknown language or a hunk over the size cut-off is all
+// null: the caller draws it as it always did.
+export function tintDiffLines(lines, lang) {
+  const out = lines.map(function () { return null; });
+  if (!lang || !tintable(lines.join('\n'))) return out;
+  const sides = { 'new': [], old: [] };
+  const trailingCr = [];
+  const row = [];   // each line's position in the side it is read from
+  for (let i = 0; i < lines.length; i += 1) {
+    const c = lines[i].charAt(0);
+    if (c === '\\') continue;   // "\ No newline at end of file"
+    let code = lines[i].slice(1);
+    trailingCr[i] = code.endsWith('\r');   // the tokenizer's line split would eat it
+    if (trailingCr[i]) code = code.slice(0, -1);
+    if (/\r/.test(code)) return out;
+    row[i] = (c === '-' ? sides.old : sides['new']).length;
+    if (c !== '-') sides['new'].push(code);
+    if (c !== '+') sides.old.push(code);
+  }
+  const tinted = {};
+  for (const key of ['new', 'old']) {
+    // An empty side (an all-added or all-removed hunk) has nothing to read:
+    // tintLines('') would still answer one empty line.
+    tinted[key] = sides[key].length ? tintLines(sides[key].join('\n'), lang) : [];
+    if (tinted[key].length !== sides[key].length) return out;
+  }
+  for (let i = 0; i < lines.length; i += 1) {
+    const c = lines[i].charAt(0);
+    if (lines[i] === '' || c === '\\') continue;   // drawn plain, as before
+    out[i] = tinted[c === '-' ? 'old' : 'new'][row[i]] + (trailingCr[i] ? '\r' : '');
+  }
+  return out;
+}

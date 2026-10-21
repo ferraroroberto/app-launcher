@@ -29,7 +29,7 @@ const CODE = new Set([
 
 // The file's extension, or its whole name for the extensionless kinds
 // (Dockerfile, Makefile), lowercased.
-function extension(name) {
+export function extension(name) {
   const base = String(name || '').split(/[\\/]/).pop().toLowerCase();
   const dot = base.lastIndexOf('.');
   return dot > 0 ? base.slice(dot + 1) : base;
