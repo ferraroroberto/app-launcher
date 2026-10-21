@@ -62,6 +62,18 @@ notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d",
 usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "a457e41cd3004d8b9493408498eb9e3d51cdc9c3", dest = "app/webapp/static/_vendored/usage-log" }
 usage_log = { src = "src/usage_log.py", sha = "a457e41cd3004d8b9493408498eb9e3d51cdc9c3", dest = "src/usage_log.py" }
 surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
+comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "e56308e1c099712cf5a006557c94e3f9ae4fe8aa", dest = "scripts/comment_ratchet.py" }
+
+# ---------------------------------------------------------------------------
+# [comment_ratchet] -- the scaffold's no-history-comments ratchet (#1751,
+# project-scaffolding#411). scripts/verify-before-ship.ps1 runs
+# scripts/comment_ratchet.py, which fails when a file's count of `#NNN` issue
+# references inside comments rises above .comment-ratchet-baseline.json.
+# Procedure + limits: project-scaffolding docs/comment-ratchet.md. Vendored
+# destinations above are excluded by the script itself; tests are built in.
+[comment_ratchet]
+enabled  = true
+baseline = ".comment-ratchet-baseline.json"
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
@@ -427,6 +439,10 @@ label  = "tooling/config"
 [[e2e.rule]]
 tier  = "none"
 path  = ".fleet.toml"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = ".comment-ratchet-baseline.json"
 label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"

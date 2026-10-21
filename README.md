@@ -1001,7 +1001,7 @@ fleet-config's `/design-review app-launcher --synthetic` measures the session ov
 pwsh -File scripts\verify-before-ship.ps1
 ```
 
-It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `tests`), the non-e2e pytest suite (on 6 `pytest-xdist` workers, `$UnitDefaultWorkers` in `scripts/e2e-gate-route.ps1`, overridable with `UNIT_WORKERS`; `1` = serial, issue #1512), then a **diff-proportionate slice** of the Playwright e2e suite (issue #568) — and **boots its own disposable webapp + session-host** on a free port, so it never silently skips:
+It runs the full pipeline as one pass/fail — byte-compile (`app`, `src`, `tests`), the comment ratchet (`scripts/comment_ratchet.py`, the scaffold's `#NNN`-in-comments count against `.comment-ratchet-baseline.json`; exit 3 = not confirmed = fail; issue #1751), the non-e2e pytest suite (on 6 `pytest-xdist` workers, `$UnitDefaultWorkers` in `scripts/e2e-gate-route.ps1`, overridable with `UNIT_WORKERS`; `1` = serial, issue #1512), then a **diff-proportionate slice** of the Playwright e2e suite (issue #568) — and **boots its own disposable webapp + session-host** on a free port, so it never silently skips:
 
 - A tray on `:8445` may be running or not. Autoboot picks a free port for its webapp and **always spawns its own disposable session-host** on a free port (never the live `:8446`, whose sessions include the user's real Claude PTYs — issue #260). The existing tray is left untouched.
 - The disposable instance serves HTTPS reusing `webapp/certificates/` (plain HTTP if no cert pair exists). Subprocess output is captured to `webapp/e2e-autoboot-*.log`.
