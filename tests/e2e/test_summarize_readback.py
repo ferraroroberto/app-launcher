@@ -18,59 +18,11 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._audio_mock import AUDIO_MOCK
 from tests.e2e._surface import surface
 from tests.e2e.conftest import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
-
-# Stub Web Audio so prepareHub()/speakHubInto() can run without a real audio
-# pipeline (headless WebKit has none). Mirrors test_hub_readback.py.
-_AUDIO_MOCK = """
-(() => {
-  window.__audioLog = { contexts: 0, resumed: 0, buffers: 0, started: 0 };
-  class FakeAudioBuffer {
-    constructor(ch, len, sr) {
-      this.length = len; this.sampleRate = sr;
-      this.duration = len / Math.max(1, sr);
-    }
-    copyToChannel() {}
-  }
-  class FakeNode {
-    constructor() { this.buffer = null; this.onended = null; }
-    connect() {}
-    start() { window.__audioLog.started += 1; window.__lastNode = this; }
-  }
-  // scheduleHubBuffer() (issue #599) routes every node through a GainNode for
-  // a click-avoiding fade; the fake just needs the shape (connect + a gain
-  // param with the AudioParam automation methods it calls).
-  class FakeGainNode {
-    constructor() {
-      this.gain = {
-        setValueAtTime() {}, linearRampToValueAtTime() {},
-      };
-    }
-    connect() {}
-  }
-  class FakeAudioContext {
-    constructor() {
-      this.currentTime = 0; this.destination = {};
-      window.__audioLog.contexts += 1;
-    }
-    resume() { window.__audioLog.resumed += 1; return Promise.resolve(); }
-    createBuffer(ch, len, sr) {
-      window.__audioLog.buffers += 1; return new FakeAudioBuffer(ch, len, sr);
-    }
-    createBufferSource() { return new FakeNode(); }
-    createGain() { return new FakeGainNode(); }
-    close() { return Promise.resolve(); }
-  }
-  for (const name of ['AudioContext', 'webkitAudioContext']) {
-    Object.defineProperty(window, name, {
-      configurable: true, writable: true, value: FakeAudioContext,
-    });
-  }
-})()
-"""
 
 _PCM = b"\xc2\xff\xc0\xff\xc5\xff\xca\xff"
 
@@ -149,7 +101,7 @@ def test_summarize_then_play_composes(
     """The summarize action's composition: arm the hub audio in the gesture
     (prepareHub), await the summary (summarizeReply), then read it into the
     armed context (speakHubInto) — the audio still plays after the round-trip."""
-    authed_page.add_init_script(_AUDIO_MOCK)
+    authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, summary="Shipped. Your call: deploy now?")
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(

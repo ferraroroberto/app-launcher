@@ -200,6 +200,24 @@ def _open_rename(page: Page, row) -> None:
     menu.locator('button[aria-label="Rename session"]').click()
 
 
+def _open_board_rename_dialog(page: Page):
+    """Board tab -> first card -> its drawer's kebab -> Rename. Returns the card."""
+    card = page.locator(
+        '.board-list[data-col="claude_turn"] li.board-item'
+    ).first.locator("button.board-card")
+    expect(card.locator(".board-card-title")).to_have_text(
+        "boardrenameproj", timeout=10_000
+    )
+    card.click()
+
+    drawer = page.locator(".board-drawer")
+    expect(drawer).to_be_visible()
+    # Rename lives in the drawer's kebab menu (#1502).
+    drawer.locator(".board-drawer-kebab").click()
+    open_row_menu(page).locator("[data-item=board-rename-btn]").click()
+    return card
+
+
 def test_coding_tab_rename_wins_over_launch_name(
     authed_page: Page, base_url: str
 ) -> None:
@@ -340,19 +358,7 @@ def test_board_drawer_rename_patches_card_in_place(
     authed_page.locator("#tabBoard").click()
     expect(authed_page.locator("#paneBoard")).to_be_visible()
 
-    card = authed_page.locator(
-        '.board-list[data-col="claude_turn"] li.board-item'
-    ).first.locator("button.board-card")
-    expect(card.locator(".board-card-title")).to_have_text(
-        "boardrenameproj", timeout=10_000
-    )
-    card.click()
-
-    drawer = authed_page.locator(".board-drawer")
-    expect(drawer).to_be_visible()
-    # Rename lives in the drawer's kebab menu (#1502).
-    drawer.locator(".board-drawer-kebab").click()
-    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
+    card = _open_board_rename_dialog(authed_page)
 
     dialog = authed_page.locator("#sessionRenameDialog")
     expect(dialog).to_be_visible()
@@ -410,16 +416,8 @@ def test_board_read_in_flight_across_a_rename_keeps_the_patch(
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabBoard").click()
-    card = authed_page.locator(
-        '.board-list[data-col="claude_turn"] li.board-item'
-    ).first.locator("button.board-card")
+    card = _open_board_rename_dialog(authed_page)
     title = card.locator(".board-card-title")
-    expect(title).to_have_text("boardrenameproj", timeout=10_000)
-    card.click()
-    drawer = authed_page.locator(".board-drawer")
-    expect(drawer).to_be_visible()
-    drawer.locator(".board-drawer-kebab").click()
-    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()
     authed_page.locator("#sessionRenameInput").fill("Board custom title")
 
@@ -518,17 +516,5 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     authed_page.locator("#tabBoard").click()
     expect(authed_page.locator("#paneBoard")).to_be_visible()
 
-    card = authed_page.locator(
-        '.board-list[data-col="claude_turn"] li.board-item'
-    ).first.locator("button.board-card")
-    expect(card.locator(".board-card-title")).to_have_text(
-        "boardrenameproj", timeout=10_000
-    )
-    card.click()
-
-    drawer = authed_page.locator(".board-drawer")
-    expect(drawer).to_be_visible()
-    # Rename lives in the drawer's kebab menu (#1502).
-    drawer.locator(".board-drawer-kebab").click()
-    open_row_menu(authed_page).locator("[data-item=board-rename-btn]").click()
+    _open_board_rename_dialog(authed_page)
     expect(authed_page.locator("#sessionRenameDialog")).to_be_visible()

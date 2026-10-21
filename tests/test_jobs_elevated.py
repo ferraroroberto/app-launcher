@@ -13,6 +13,8 @@ from __future__ import annotations
 import subprocess
 from typing import List
 
+import pytest
+
 from src import jobs as jobs_mod
 from src import jobs_config as jc
 from src.jobs_config import (
@@ -65,36 +67,20 @@ class TestSyncSchtasksSkipsElevated:
     by a prior non-elevated schedule, otherwise that old un-elevated task
     keeps firing on its old schedule indefinitely."""
 
-    def test_elevated_job_deletes_stale_entry_but_never_creates(self):
+    # pause() parks the schedule as "none" before calling sync_schtasks — the
+    # create-skip must win regardless of the schedule shape, and the stale-entry
+    # delete still runs either way.
+    @pytest.mark.parametrize(
+        "schedule",
+        [Schedule(type="hourly", every=8), Schedule(type="none")],
+        ids=["hourly", "paused"],
+    )
+    def test_elevated_job_deletes_stale_entry_but_never_creates(self, schedule):
         job = Job(
             id="hwinfo",
             name="HWiNFO restart",
             script_path="C:\\stub\\hwinfo_restart.py",
-            schedule=Schedule(type="hourly", every=8),
-            elevated=True,
-        )
-        calls: List[List[str]] = []
-
-        def runner(argv):
-            calls.append(argv)
-            if argv[:2] == ["schtasks", "/Query"]:
-                return _mk_completed(stdout="", rc=0)
-            return _mk_completed(rc=0)
-
-        created = jobs_mod.sync_schtasks(job, runner=runner)
-        assert created == []
-        assert calls  # delete_schtasks still runs (issue #409)
-        assert not any(c[:2] == ["schtasks", "/Create"] for c in calls)
-
-    def test_elevated_job_skipped_even_when_paused(self):
-        # pause() parks the schedule as "none" before calling sync_schtasks —
-        # the create-skip must win regardless of the schedule shape, but the
-        # stale-entry delete still runs either way (issue #409).
-        job = Job(
-            id="hwinfo",
-            name="HWiNFO restart",
-            script_path="C:\\stub\\hwinfo_restart.py",
-            schedule=Schedule(type="none"),
+            schedule=schedule,
             elevated=True,
         )
         calls: List[List[str]] = []

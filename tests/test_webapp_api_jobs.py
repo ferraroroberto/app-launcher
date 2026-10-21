@@ -1441,8 +1441,14 @@ class TestReapOnPoll:
     """A run stranded "running" by a dead executor self-heals on the very
     next GET /api/jobs poll — no human needs to notice and tap Kill."""
 
-    def test_get_jobs_reaps_a_stranded_run(
-        self, webapp_client, mocked_jobs_side_effects, monkeypatch
+    @pytest.mark.parametrize(
+        ("pid_alive", "running", "status"),
+        [(False, False, "failed"), (True, True, "running")],
+        ids=["stranded-run-reaped", "live-run-left-running"],
+    )
+    def test_get_jobs_reaps_only_a_stranded_run(
+        self, webapp_client, mocked_jobs_side_effects, monkeypatch,
+        pid_alive, running, status,
     ):
         client, _, _ = webapp_client
         created = _seed_one_job(client, name="Demo").json()["job"]
@@ -1457,17 +1463,17 @@ class TestReapOnPoll:
             started_at="2026-05-24T08:00:00",
             pid=4242,
         )
-        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: pid_alive)
 
         resp = client.get("/api/jobs")
         assert resp.status_code == 200
         job_payload = resp.json()["jobs"][0]
-        assert job_payload["running"] is False
-        assert job_payload["last_run"]["status"] == "failed"
+        assert job_payload["running"] is running
+        assert job_payload["last_run"]["status"] == status
 
         record = jobs_mod.read_run(run_dir)
-        assert record["status"] == "failed"
-        assert record["reaped"] is True
+        assert record["status"] == status
+        assert record.get("reaped", False) is (not pid_alive)
 
     def test_last_run_carries_the_unconfirmed_outcome(
         self, webapp_client, mocked_jobs_side_effects
@@ -1563,30 +1569,6 @@ class TestReapOnPoll:
             "20260524T080000": "failed",
             "20260524T090000": "unconfirmed",
         }
-
-    def test_get_jobs_leaves_a_live_run_running(
-        self, webapp_client, mocked_jobs_side_effects, monkeypatch
-    ):
-        client, _, _ = webapp_client
-        created = _seed_one_job(client, name="Demo").json()["job"]
-        from src import jobs as jobs_mod
-        from src import jobs_reap as jobs_reap_mod
-
-        run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
-        jobs_mod.write_run_json(
-            run_dir,
-            run_id=run_dir.name,
-            status="running",
-            started_at="2026-05-24T08:00:00",
-            pid=4242,
-        )
-        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: True)
-
-        resp = client.get("/api/jobs")
-        assert resp.status_code == 200
-        job_payload = resp.json()["jobs"][0]
-        assert job_payload["running"] is True
-        assert job_payload["last_run"]["status"] == "running"
 
 
 # ============================================================ pre-flight (#69)

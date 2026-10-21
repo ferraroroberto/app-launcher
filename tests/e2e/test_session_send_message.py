@@ -381,6 +381,35 @@ def test_chat_composer_sends_to_full_control_session_with_honest_wording(
     assert any("after=" in u for u in calls), f"no live tick after the send: {calls}"
 
 
+def _open_chat_with_send_refused(page: Page, base_url: str) -> list:
+    """Open the chat with the registry saying claude takes no console input.
+    Returns the list every POST to ``/input`` is appended to."""
+
+    def _agents(route):
+        resp = route.fetch()
+        data = resp.json()
+        for a in data.get("agents", []):
+            if a.get("id") == "claude":
+                a["console_input"] = False
+        route.fulfill(response=resp, json=data)
+
+    page.route(re.compile(r".*/api/agents$"), _agents)
+    posts: list = []
+    page.on(
+        "request",
+        lambda req: posts.append(req.url)
+        if req.method == "POST" and "/input" in req.url
+        else None,
+    )
+    _mock_sessions_list(page)
+    _mock_transcript(page, [])
+    # Open only once the registry answered, so the gate reads the flag.
+    with page.expect_response(re.compile(r".*/api/agents$")):
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(page)
+    return posts
+
+
 @pytest.mark.parametrize("registry", ["refused", "unknown"])
 def test_chat_send_gate_follows_the_console_input_flag(
     authed_page: Page, base_url: str, registry: str
@@ -440,29 +469,7 @@ def test_a_refused_send_answers_a_tap_instead_of_going_dead(
     # already state for an action a session can't take — so the tap lands
     # and says why. What this pins: the toast carries the reason, the draft
     # survives the tap, and nothing is POSTed to /input.
-    def _agents(route):
-        resp = route.fetch()
-        data = resp.json()
-        for a in data.get("agents", []):
-            if a.get("id") == "claude":
-                a["console_input"] = False
-        route.fulfill(response=resp, json=data)
-
-    authed_page.route(re.compile(r".*/api/agents$"), _agents)
-    posts: list = []
-    authed_page.on(
-        "request",
-        lambda req: posts.append(req.url)
-        if req.method == "POST" and "/input" in req.url
-        else None,
-    )
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    # Open only once the registry answered, so the gate reads the flag.
-    with authed_page.expect_response(re.compile(r".*/api/agents$")):
-        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page)
+    posts = _open_chat_with_send_refused(authed_page, base_url)
 
     send = authed_page.locator(SEND)
     field = authed_page.locator(INPUT)
@@ -632,29 +639,7 @@ def test_mod_enter_does_not_bypass_a_refused_send(
     # holds it exactly as it holds a tap: the reason is toasted, the draft
     # survives, and nothing reaches /input. A shortcut wired straight to the
     # send would have sailed past all three.
-    def _agents(route):
-        resp = route.fetch()
-        data = resp.json()
-        for a in data.get("agents", []):
-            if a.get("id") == "claude":
-                a["console_input"] = False
-        route.fulfill(response=resp, json=data)
-
-    authed_page.route(re.compile(r".*/api/agents$"), _agents)
-    posts: list = []
-    authed_page.on(
-        "request",
-        lambda req: posts.append(req.url)
-        if req.method == "POST" and "/input" in req.url
-        else None,
-    )
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    # Open only once the registry answered, so the gate reads the flag.
-    with authed_page.expect_response(re.compile(r".*/api/agents$")):
-        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page)
+    posts = _open_chat_with_send_refused(authed_page, base_url)
 
     field = authed_page.locator(INPUT)
     expect(authed_page.locator(SEND)).to_have_attribute("aria-disabled", "true")

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from src.registry import AppEntry, Registry, save_registry
 
 
@@ -14,6 +16,28 @@ def _seed_registry(tmp_registry_path, apps):
     save_registry(
         Registry(scan_root="C:\\stub", apps=apps), path=tmp_registry_path
     )
+
+
+@pytest.fixture
+def spawn_args(monkeypatch):
+    """Stands in for the launch route's ``spawn_claude_session``; the returned
+    dict holds the arguments of its last call."""
+    from app.webapp.routers import apps as apps_router
+
+    captured: dict = {}
+
+    def fake_spawn(
+        project_dir, name, flags, port, kind="pty", agent="claude",
+        rows=40, cols=120, history_lines=None,
+    ):
+        captured.update(
+            project_dir=str(project_dir), flags=flags, kind=kind, agent=agent,
+            rows=rows, cols=cols, history_lines=history_lines,
+        )
+        return {"session_id": "s1", "kind": kind, "agent": agent}
+
+    monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
+    return captured
 
 
 class TestGetApps:
@@ -103,72 +127,48 @@ class TestClaudeCodeDiscovery:
         assert cc_names == {"real-project"}
 
     def test_launch_resolves_live_claude_code_dir(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """A claude-code row isn't in the registry — launch must resolve
         it against the live projects_dir scan, by its slugified id."""
         client, _, overrides = webapp_client
-        from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["project_dir"] = str(project_dir)
-            captured["kind"] = kind
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         # slugify("live-proj") == "live-proj"; remote mode avoids the
         # PC mirror window.
         resp = client.post(
             "/api/apps/live-proj/launch", json={"mode": "remote"}
         )
         assert resp.status_code == 200
-        assert captured["project_dir"] == str(
+        assert spawn_args["project_dir"] == str(
             overrides["tmp_projects_dir"] / "live-proj"
         )
-        assert captured["kind"] == "remote"
+        assert spawn_args["kind"] == "remote"
         # No `agent` in the body → defaults to Claude Code.
-        assert captured["agent"] == "claude"
+        assert spawn_args["agent"] == "claude"
 
     def test_launch_pty_forwards_phone_dimensions(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """A streamed (pty) launch threads the phone's rows/cols through to
         spawn_claude_session so the PTY spawns at the right size (issue
         #126). Remote launches carry no PTY, so they stay on the default."""
         client, _, overrides = webapp_client
-        from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["kind"] = kind
-            captured["rows"] = rows
-            captured["cols"] = cols
-            captured["history_lines"] = history_lines
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch", json={"rows": 50, "cols": 42}
         )
         assert resp.status_code == 200
-        assert captured["kind"] == "pty"
-        assert captured["rows"] == 50
-        assert captured["cols"] == 42
+        assert spawn_args["kind"] == "pty"
+        assert spawn_args["rows"] == 50
+        assert spawn_args["cols"] == 42
         # The Settings-tab scrollback-depth config (issue #435 follow-up)
         # rides every PTY launch — the default conftest config's value,
         # not a hardcoded/omitted one.
-        assert captured["history_lines"] == 10_000
+        assert spawn_args["history_lines"] == 10_000
 
-    def test_launch_with_antigravity_agent(self, webapp_client, monkeypatch):
+    def test_launch_with_antigravity_agent(self, webapp_client, monkeypatch, spawn_args):
         """The Antigravity button posts agent=antigravity — it must be
         threaded to spawn_claude_session with empty (non-Claude) flags."""
         client, _, overrides = webapp_client
@@ -179,27 +179,19 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["flags"] = flags
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "antigravity"},
         )
         assert resp.status_code == 200
-        assert captured["agent"] == "antigravity"
+        assert spawn_args["agent"] == "antigravity"
         # All-default config → Antigravity launches bare.
-        assert captured["flags"] == ""
+        assert spawn_args["flags"] == ""
         assert resp.json()["agent"] == "antigravity"
 
     def test_launch_antigravity_honours_config_toggles(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """Antigravity launch flags come from the persisted Coding-options
         toggles — enabling sandbox surfaces --sandbox on the spawn."""
         client, _, overrides = webapp_client
@@ -210,21 +202,15 @@ class TestClaudeCodeDiscovery:
             apps_router.agents, "is_installed", lambda agent_id: True
         )
         client.post("/api/config", json={"antigravity_sandbox": True})
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["flags"] = flags
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "antigravity"},
         )
         assert resp.status_code == 200
-        assert "--sandbox" in captured["flags"]
+        assert "--sandbox" in spawn_args["flags"]
 
-    def test_launch_with_copilot_agent(self, webapp_client, monkeypatch):
+    def test_launch_with_copilot_agent(self, webapp_client, monkeypatch, spawn_args):
         """The GitHub Copilot button posts agent=copilot — threaded to
         spawn_claude_session, and its --allow-all toggle composes in."""
         client, _, overrides = webapp_client
@@ -235,22 +221,15 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["flags"] = flags
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         # All-default config → Copilot launches bare.
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "copilot"},
         )
         assert resp.status_code == 200
-        assert captured["agent"] == "copilot"
-        assert captured["flags"] == ""
+        assert spawn_args["agent"] == "copilot"
+        assert spawn_args["flags"] == ""
         assert resp.json()["agent"] == "copilot"
         # Enabling the toggle surfaces --allow-all on the next launch.
         client.post("/api/config", json={"copilot_skip_permissions": True})
@@ -258,9 +237,9 @@ class TestClaudeCodeDiscovery:
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "copilot"},
         )
-        assert captured["flags"] == "--allow-all"
+        assert spawn_args["flags"] == "--allow-all"
 
-    def test_launch_with_grok_agent(self, webapp_client, monkeypatch):
+    def test_launch_with_grok_agent(self, webapp_client, monkeypatch, spawn_args):
         """The Grok button posts agent=grok — threaded to
         spawn_claude_session with the composed permission + reasoning
         flags (#626 launched it bare; #667 gave it knobs)."""
@@ -272,22 +251,15 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["flags"] = flags
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "grok"},
         )
         assert resp.status_code == 200
-        assert captured["agent"] == "grok"
+        assert spawn_args["agent"] == "grok"
         # Default config → auto permission + high reasoning (#667).
-        assert captured["flags"] == "--permission-mode auto --reasoning-effort high"
+        assert spawn_args["flags"] == "--permission-mode auto --reasoning-effort high"
         assert resp.json()["agent"] == "grok"
         # Resume prepends grok's bare --resume (most-recent session, #626)
         # and keeps the knobs — build_resume_flags routes through the same
@@ -296,11 +268,11 @@ class TestClaudeCodeDiscovery:
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "grok", "resume": True},
         )
-        assert captured["flags"].startswith("--resume")
-        assert "--permission-mode auto" in captured["flags"]
-        assert "--reasoning-effort high" in captured["flags"]
+        assert spawn_args["flags"].startswith("--resume")
+        assert "--permission-mode auto" in spawn_args["flags"]
+        assert "--reasoning-effort high" in spawn_args["flags"]
 
-    def test_launch_with_codex_agent(self, webapp_client, monkeypatch):
+    def test_launch_with_codex_agent(self, webapp_client, monkeypatch, spawn_args):
         """The Codex button posts agent=codex — threaded to
         spawn_claude_session with the composed reasoning + permission
         flags, and the skip toggle swaps in the all-bypass switch."""
@@ -312,24 +284,17 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(project_dir, name, flags, port, kind="pty", agent="claude"):
-            captured["flags"] = flags
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         # All-default config → high reasoning + sandboxed auto.
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "codex"},
         )
         assert resp.status_code == 200
-        assert captured["agent"] == "codex"
-        assert "--ask-for-approval never --sandbox workspace-write" in captured["flags"]
-        assert "--model gpt-5.6-luna" in captured["flags"]
-        assert "model_reasoning_effort=xhigh" in captured["flags"]
+        assert spawn_args["agent"] == "codex"
+        assert "--ask-for-approval never --sandbox workspace-write" in spawn_args["flags"]
+        assert "--model gpt-5.6-luna" in spawn_args["flags"]
+        assert "model_reasoning_effort=xhigh" in spawn_args["flags"]
         assert resp.json()["agent"] == "codex"
         # Skip permissions swaps the sandboxed-auto pair for the bypass.
         client.post("/api/config", json={"codex_permission_mode": "skip"})
@@ -337,75 +302,48 @@ class TestClaudeCodeDiscovery:
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "agent": "codex"},
         )
-        assert "--dangerously-bypass-approvals-and-sandbox" in captured["flags"]
-        assert "--ask-for-approval" not in captured["flags"]
+        assert "--dangerously-bypass-approvals-and-sandbox" in spawn_args["flags"]
+        assert "--ask-for-approval" not in spawn_args["flags"]
 
     def test_launch_resume_only_streams_pty_with_token(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """Resume without Detached (issue #151) reopens the agent's picker in
         a streamed pty, and the spawn's flags begin with the agent's resume
         token (`--resume` for Claude)."""
         client, _, overrides = webapp_client
-        from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            captured["kind"] = kind
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch", json={"resume": True}
         )
         assert resp.status_code == 200
-        assert captured["kind"] == "pty"
-        assert captured["agent"] == "claude"
-        assert captured["flags"].startswith("--resume ")
+        assert spawn_args["kind"] == "pty"
+        assert spawn_args["agent"] == "claude"
+        assert spawn_args["flags"].startswith("--resume ")
         assert resp.json()["mode"] == "pty"
 
     def test_launch_resume_with_detached_opens_remote_console(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """Detached + Resume (issue #157) honours mode=remote: the picker
         renders in a detached console window rather than forcing a pty. The
         spawn is kind="remote" with the agent's resume token in its flags."""
         client, _, overrides = webapp_client
-        from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            captured["kind"] = kind
-            captured["agent"] = agent
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"mode": "remote", "resume": True},
         )
         assert resp.status_code == 200
-        assert captured["kind"] == "remote"
-        assert captured["agent"] == "claude"
-        assert captured["flags"].startswith("--resume ")
+        assert spawn_args["kind"] == "remote"
+        assert spawn_args["agent"] == "claude"
+        assert spawn_args["flags"].startswith("--resume ")
         assert resp.json()["mode"] == "remote"
 
     def test_launch_resume_codex_drops_incompatible_flags(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """`codex resume` rejects --ask-for-approval/--sandbox, so a Codex
         resume carries the subcommand, exact model, and reasoning override."""
         client, _, overrides = webapp_client
@@ -415,53 +353,33 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            captured["kind"] = kind
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"resume": True, "agent": "codex"},
         )
         assert resp.status_code == 200
-        assert captured["kind"] == "pty"
-        assert captured["flags"] == (
+        assert spawn_args["kind"] == "pty"
+        assert spawn_args["flags"] == (
             "resume --model gpt-5.6-luna -c model_reasoning_effort=xhigh"
         )
-        assert "--ask-for-approval" not in captured["flags"]
-        assert "--sandbox" not in captured["flags"]
+        assert "--ask-for-approval" not in spawn_args["flags"]
+        assert "--sandbox" not in spawn_args["flags"]
 
     def test_launch_codex_honours_explicit_matching_model(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         client, _, overrides = webapp_client
         from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
         monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"agent": "codex", "model": "codex:gpt-5.6-terra"},
         )
         assert resp.status_code == 200
-        assert "--model gpt-5.6-terra" in captured["flags"]
+        assert "--model gpt-5.6-terra" in spawn_args["flags"]
 
         bad = client.post(
             "/api/apps/live-proj/launch",
@@ -514,7 +432,7 @@ class TestClaudeCodeDiscovery:
         # A normal session carries no role label; only the chief does.
         assert captured["label"] == ""
 
-    def test_launch_rejects_out_of_catalog_model(self, webapp_client, monkeypatch):
+    def test_launch_rejects_out_of_catalog_model(self, webapp_client, monkeypatch, spawn_args):
         """#1007 — a model whose provider prefix matches but whose value is
         not in the catalog is a 400, not a silent fallback.
 
@@ -530,16 +448,7 @@ class TestClaudeCodeDiscovery:
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
         monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
 
         resp = client.post(
             "/api/apps/live-proj/launch",
@@ -548,7 +457,7 @@ class TestClaudeCodeDiscovery:
         assert resp.status_code == 400, resp.text
         assert "retired-alias" in resp.json()["detail"]
         # The launch was refused outright, not run on a fallback model.
-        assert "flags" not in captured, captured
+        assert "flags" not in spawn_args, spawn_args
 
         # Codex is guarded by the same catalog.
         bad_codex = client.post(
@@ -563,11 +472,10 @@ class TestClaudeCodeDiscovery:
             json={"agent": "claude", "model": "claude:sonnet"},
         )
         assert ok.status_code == 200, ok.text
-        assert "--model sonnet" in captured["flags"]
+        assert "--model sonnet" in spawn_args["flags"]
 
     def test_launch_rejects_a_model_the_agent_cannot_apply(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """#1044 — a model for an agent with no per-launch model flag is a
         400, not an accepted-and-dropped 200.
 
@@ -588,16 +496,7 @@ class TestClaudeCodeDiscovery:
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()
         monkeypatch.setattr(apps_router.agents, "is_installed", lambda _: True)
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
 
         cannot_apply = sorted(
             a for a, spec in agents_mod.AGENTS.items()
@@ -606,7 +505,7 @@ class TestClaudeCodeDiscovery:
         assert cannot_apply, "registry says every agent takes a per-launch model"
 
         for agent in cannot_apply:
-            captured.clear()
+            spawn_args.clear()
             resp = client.post(
                 "/api/apps/live-proj/launch",
                 json={"agent": agent, "model": f"{agent}:some-model"},
@@ -615,10 +514,10 @@ class TestClaudeCodeDiscovery:
             detail = resp.json()["detail"]
             assert "some-model" in detail, f"{agent}: {detail}"
             # Refused outright — never launched on a model nobody asked for.
-            assert "flags" not in captured, f"{agent}: {captured}"
+            assert "flags" not in spawn_args, f"{agent}: {spawn_args}"
 
             # Resume takes the same path, and used to drop it just as quietly.
-            captured.clear()
+            spawn_args.clear()
             resumed = client.post(
                 "/api/apps/live-proj/launch",
                 json={
@@ -627,21 +526,20 @@ class TestClaudeCodeDiscovery:
                 },
             )
             assert resumed.status_code == 400, f"{agent} resume: {resumed.text}"
-            assert "flags" not in captured, f"{agent} resume: {captured}"
+            assert "flags" not in spawn_args, f"{agent} resume: {spawn_args}"
 
             # Control: the same launch without a model is untouched. No
             # first-party bundle has ever sent one for these agents, so this
             # is the only shape the phone actually posts.
-            captured.clear()
+            spawn_args.clear()
             ok = client.post(
                 "/api/apps/live-proj/launch", json={"agent": agent},
             )
             assert ok.status_code == 200, f"{agent}: {ok.text}"
-            assert "flags" in captured, f"{agent}: launch did not spawn"
+            assert "flags" in spawn_args, f"{agent}: launch did not spawn"
 
     def test_launch_resume_antigravity_continues_most_recent(
-        self, webapp_client, monkeypatch
-    ):
+        self, webapp_client, monkeypatch, spawn_args):
         """agy has no picker flag, so its Resume maps to --continue
         (reopen the most recent conversation)."""
         client, _, overrides = webapp_client
@@ -651,22 +549,13 @@ class TestClaudeCodeDiscovery:
         monkeypatch.setattr(
             apps_router.agents, "is_installed", lambda agent_id: True
         )
-        captured: dict = {}
 
-        def fake_spawn(
-            project_dir, name, flags, port, kind="pty", agent="claude",
-            rows=40, cols=120, history_lines=None,
-        ):
-            captured["flags"] = flags
-            return {"session_id": "s1", "kind": kind, "agent": agent}
-
-        monkeypatch.setattr(apps_router, "spawn_claude_session", fake_spawn)
         resp = client.post(
             "/api/apps/live-proj/launch",
             json={"resume": True, "agent": "antigravity"},
         )
         assert resp.status_code == 200
-        assert captured["flags"].startswith("--continue")
+        assert spawn_args["flags"].startswith("--continue")
 
     def test_launch_codex_not_installed_rejected(
         self, webapp_client, monkeypatch

@@ -12,11 +12,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
 
 from app.cli.commands import run_job_cmd as rjc
-from src import jobs_history as jobs_history_mod
-from src import jobs_queue as jobs_queue_mod
 from src.app_config import AppConfig
 from src.jobs_config import (
     Job,
@@ -24,17 +21,6 @@ from src.jobs_config import (
     Schedule,
     save_jobs,
 )
-
-
-@pytest.fixture
-def isolated_jobs(tmp_path, monkeypatch):
-    # JOBS_RUNS_DIR / JOBS_QUEUE_PATH are owned by src.jobs_history /
-    # src.jobs_queue respectively (issue #315 split).
-    monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
-    monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json")
-    from src import jobs_config as jc
-    monkeypatch.setattr(jc, "DEFAULT_JOBS_PATH", tmp_path / "jobs.json")
-    return tmp_path
 
 
 def _silence_notifier(monkeypatch):

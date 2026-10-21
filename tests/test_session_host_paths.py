@@ -10,6 +10,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from src import session_host_paths
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -200,63 +202,35 @@ class TestPathsTouchedBetween:
         run("config", "user.name", "Test")
         return repo
 
-    def test_returns_true_when_declared_path_touched(self, tmp_path):
+    @pytest.mark.parametrize(
+        ("changed", "expected"),
+        [("src/session_host.py", True), ("other.py", False)],
+        ids=["declared-path", "unrelated-path"],
+    )
+    def test_reports_whether_a_declared_path_was_touched(self, tmp_path, changed, expected):
         repo = self._init_repo(tmp_path)
+
+        def commit(message: str) -> str:
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", message], cwd=repo, check=True, capture_output=True
+            )
+            return subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
+                capture_output=True, text=True,
+            ).stdout.strip()
+
         (repo / "src").mkdir()
         (repo / "src" / "session_host.py").write_text("v1", encoding="utf-8")
         (repo / "other.py").write_text("v1", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-q", "-m", "base"], cwd=repo, check=True, capture_output=True
-        )
-        base_sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-
-        (repo / "src" / "session_host.py").write_text("v2", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-q", "-m", "touch session_host"], cwd=repo,
-            check=True, capture_output=True,
-        )
-        head_sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
+        base_sha = commit("base")
+        (repo / changed).write_text("v2", encoding="utf-8")
+        head_sha = commit(f"touch {changed}")
 
         result = session_host_paths.paths_touched_between(
             repo, base_sha, head_sha, ["src/session_host.py", "app/session_host/"]
         )
-        assert result is True
-
-    def test_returns_false_when_only_unrelated_paths_touched(self, tmp_path):
-        repo = self._init_repo(tmp_path)
-        (repo / "other.py").write_text("v1", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-q", "-m", "base"], cwd=repo, check=True, capture_output=True
-        )
-        base_sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-
-        (repo / "other.py").write_text("v2", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
-        subprocess.run(
-            ["git", "commit", "-q", "-m", "touch other"], cwd=repo,
-            check=True, capture_output=True,
-        )
-        head_sha = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
-            capture_output=True, text=True,
-        ).stdout.strip()
-
-        result = session_host_paths.paths_touched_between(
-            repo, base_sha, head_sha, ["src/session_host.py", "app/session_host/"]
-        )
-        assert result is False
+        assert result is expected
 
     def test_returns_none_for_unresolvable_sha(self, tmp_path):
         repo = self._init_repo(tmp_path)
