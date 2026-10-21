@@ -107,7 +107,7 @@ exclude  = ["**/_vendored/**"]
 # a trim; `--raise-ceiling` is the one way up, and a raise says in its PR what
 # the extra test weight is for.
 [test_weight]
-ratio_ceiling = "1.1341"
+ratio_ceiling = "1.1324"
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's

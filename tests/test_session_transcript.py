@@ -1979,7 +1979,8 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     with the conversation's declared name still resolves, because on that
     route the scan has no competing source to outrank — refusing would
     turn a rough answer into no answer at all, and its ``source``
-    vocabulary would have to grow a case it never had.
+    vocabulary would have to grow a case it never had. The drawer's opted-in
+    refusal is pinned in ``test_board_drilldown``.
     """
     from src import transcript_locate
 
@@ -1995,13 +1996,6 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     assert transcript_locate.resolve_claude_transcript(
         session, [session]
     )[0] == folder / "conv.jsonl"
-
-    # The same inputs through the drawer's opted-in view do refuse.
-    path, verdict = transcript_locate._scan_claude_transcript(
-        session, [session], disprove=True
-    )
-    assert path is None
-    assert verdict == "disproved"
 
 
 def test_resolve_claude_transcript_needs_a_dir_a_start_and_a_folder(

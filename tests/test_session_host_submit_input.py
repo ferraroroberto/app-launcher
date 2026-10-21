@@ -14,6 +14,7 @@ fake clock, so a future refactor can't quietly reintroduce the swallow.
 from __future__ import annotations
 
 import time as real_time
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -96,6 +97,26 @@ def clock(monkeypatch):
     monkeypatch.setattr(session_host_module.time, "time", fake.time)
     monkeypatch.setattr(session_host_module.time, "sleep", fake.sleep)
     return fake
+
+
+@pytest.fixture
+def parked_watchers(monkeypatch):
+    """Park the deferred-submit watcher thread ``submit_input`` starts, so a
+    test decides when the agent settles; ``run()`` then runs it to its verdict."""
+    parked: list = []
+
+    class _Parked:
+        def __init__(self, target, args=(), kwargs=None, **_):
+            self._call = lambda: target(*args, **(kwargs or {}))
+
+        def start(self):
+            parked.append(self)
+
+        def run(self):
+            self._call()
+
+    monkeypatch.setattr(session_host_input, "threading", SimpleNamespace(Thread=_Parked))
+    return parked
 
 
 # --------------------------------------------------------------- framing
@@ -293,7 +314,7 @@ def test_bulk_payload_never_echoed_is_not_delivered_and_gets_no_cr(clock):
     assert total_waited_ms < _INGEST_CAP_MS + 200
 
 
-def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, monkeypatch):
+def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, parked_watchers):
     """The 2026-08-14 stall shape, and #763's fix.
 
     The agent is working, so its spinner repaints continuously and the stream
@@ -303,10 +324,6 @@ def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, monkey
     """
     session = _make_session()
     payload = "CHIEF - status check, please report. " * 20
-    armed: list = []
-    monkeypatch.setattr(
-        PtySession, "_arm_deferred_submit", lambda self, *a, **kw: armed.append((a, kw))
-    )
 
     def _on_sleep(c: _FakeClock) -> None:
         # Echo lands early (the composer shows the paste), then output keeps
@@ -330,8 +347,18 @@ def test_busy_agent_defers_the_submit_instead_of_firing_a_blind_cr(clock, monkey
     assert outcome.delivered is False
     assert outcome.submit_state == "pending"
     # The decisive assertion: no CR was written into the busy terminal.
-    assert "\r" not in [c.args[0] for c in session._pty.write.call_args_list]
-    assert len(armed) == 1
+    writes = [c.args[0] for c in session._pty.write.call_args_list]
+    assert "\r" not in writes
+
+    # The agent finishes: the watcher presses Enter once, never resending text.
+    clock.on_sleep(lambda c: None)
+    assert len(parked_watchers) == 1
+    parked_watchers[0].run()
+
+    writes = [c.args[0] for c in session._pty.write.call_args_list]
+    assert writes.count("\r") == 1 and writes[-1] == "\r"
+    assert "".join(writes[:-1]) == payload
+    assert session.to_api()["last_input"]["reason"] == INPUT_OK
 
 
 # ------------------------------------------------ deferred submit (#763)
@@ -557,20 +584,23 @@ def test_watcher_declines_a_paste_chip_that_is_not_ours(clock):
     session._pty.write.assert_not_called()
 
 
-def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(clock, monkeypatch):
+@pytest.mark.parametrize(
+    ("repainted_chip", "enter_pressed"), [(7, True), (9, False)], ids=["ours", "theirs"]
+)
+def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(
+    clock, parked_watchers, repainted_chip, enter_pressed
+):
     """The other half of #1075: pinning must not cost the chip-only case.
 
     A bulk paste Claude Code collapses is never echoed verbatim, so its chip
     is the only evidence there is. ``_submit_input_locked`` pins that chip's
     *number* while the window still unambiguously belongs to our own write,
-    and the watcher accepts it minutes later because the number matches.
+    and the watcher accepts it minutes later because the number matches. Once
+    a keystroke has touched the composer, only that number can vouch for it:
+    our chip on screen gets the Enter, somebody else's gets none.
     """
     session = _make_session()
     payload = "CHIEF - a long steer the composer collapses into a chip. " * 20
-    armed: list = []
-    monkeypatch.setattr(
-        PtySession, "_arm_deferred_submit", lambda self, *a, **kw: armed.append(a)
-    )
 
     def _on_sleep(c: _FakeClock) -> None:
         if not session._ring:
@@ -582,21 +612,29 @@ def test_our_own_paste_chip_is_pinned_at_ingest_and_still_submits(clock, monkeyp
     outcome = session.submit_input(payload, True)
 
     assert outcome.reason == INPUT_DEFERRED
-    seq, mark, needles, chip_id, _touches = armed[0]
-    assert chip_id == "[pastedtext#7"
-
-    # The agent finishes; the composer still shows our chip, and goes quiet.
-    clock.on_sleep(lambda c: None)
-    session._last_output_at = clock.now
+    session.write("\x1b[A")  # the human recalls history: the composer is touched
     session._pty.write.reset_mock()
 
-    settled = session._await_deferred_submit(seq, mark, needles, chip_id)
+    polls = {"n": 0}
 
-    assert settled is not None
-    assert settled.reason == INPUT_OK
-    assert settled.submitted is True
-    assert settled.delivered is True
-    session._pty.write.assert_called_once_with("\r")
+    def _agent_finishes(c: _FakeClock) -> None:
+        polls["n"] += 1
+        if polls["n"] <= 40:
+            # Busy long enough for the original echo to age out of the window.
+            _echo(session, ".")
+            session._last_output_at = c.now
+        elif polls["n"] == 41:
+            _echo(session, f"\x1b[2m> [Pasted text #{repainted_chip} +30 lines]\x1b[0m")
+            session._last_output_at = c.now
+
+    clock.on_sleep(_agent_finishes)
+    parked_watchers[0].run()
+
+    writes = [c.args[0] for c in session._pty.write.call_args_list]
+    assert writes == (["\r"] if enter_pressed else [])
+    assert session.to_api()["last_input"]["reason"] == (
+        INPUT_OK if enter_pressed else INPUT_DEFER_VANISHED
+    )
 
 
 def test_a_pinned_chip_number_is_not_matched_by_a_longer_one(clock):
