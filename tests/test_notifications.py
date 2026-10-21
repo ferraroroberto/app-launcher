@@ -12,7 +12,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
 
 from src import _loopback_http, notifications as notif
 

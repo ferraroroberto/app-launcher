@@ -10,7 +10,6 @@ the schema round-trip and the skip behaviour.
 
 from __future__ import annotations
 
-import logging
 import subprocess
 from typing import List
 

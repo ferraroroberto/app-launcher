@@ -28,7 +28,6 @@ from tests.e2e.conftest import (
     open_row_menu,
     open_settings_sheet,
     stable_eval,
-    stable_read,
     wait_until,
 )
 from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK

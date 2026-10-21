@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import sqlite3
 import subprocess
-from pathlib import Path
 from typing import List
 from unittest.mock import MagicMock
 
@@ -29,7 +28,6 @@ from src.jobs import resolve_venv_python
 from src.jobs_config import (
     Job,
     JobsConfig,
-    Param,
     Schedule,
     add_job,
     get_by_id,

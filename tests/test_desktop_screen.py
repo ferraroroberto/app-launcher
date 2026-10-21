@@ -586,7 +586,6 @@ def test_disconnect_releases_a_held_button(screen, fake_injector, webapp_client)
     from src import desktop_input as di
 
     app, _, _ = screen
-    audit = webapp_client[2]["audit"]
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
         _next_frame(ws)
         ws.send_text(_DOWN)

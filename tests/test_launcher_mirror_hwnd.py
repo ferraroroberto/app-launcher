@@ -16,7 +16,6 @@ under test, so we patch it via ``monkeypatch.setitem(sys.modules, …)``.
 from __future__ import annotations
 
 import sys
-import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
