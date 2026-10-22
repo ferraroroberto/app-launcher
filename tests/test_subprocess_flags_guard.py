@@ -58,6 +58,10 @@ _VENDORED_VERBATIM_EXEMPT = {
         ".fleet.toml [vendored]; it spawns npx and ruff with a locally derived "
         "_NO_WINDOW."
     ),
+    "scripts/docs_ratchet.py": (
+        "The scaffold's docs ratchet, vendored byte-for-byte and declared in "
+        ".fleet.toml [vendored]; it spawns git with creationflags=_NO_WINDOW."
+    ),
     "src/build_info.py": (
         "The scaffold's build identity, vendored byte-for-byte and declared in "
         ".fleet.toml [vendored]; its git spawn uses a locally derived _NO_WINDOW."
