@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "entries": [
+    {"key": "README.md", "markers": 9},
+    {"key": "docs/board.md", "markers": 200},
+    {"key": "docs/cache-hygiene-asset-hashing.md", "markers": 6},
+    {"key": "docs/ci-github-actions.md", "markers": 11},
+    {"key": "docs/config.md", "markers": 49},
+    {"key": "docs/detached-stop-decision.md", "markers": 2},
+    {"key": "docs/e2e-conventions.md", "markers": 16},
+    {"key": "docs/features.md", "markers": 149},
+    {"key": "docs/installing-agent-clis.md", "markers": 7},
+    {"key": "docs/interactive-terminal.md", "markers": 62},
+    {"key": "docs/iphone-debugging.md", "markers": 4},
+    {"key": "docs/jobs-tab.md", "markers": 81},
+    {"key": "docs/launcher-owned-pty.md", "markers": 12},
+    {"key": "docs/life-os-zombie-cleanup.md", "markers": 1},
+    {"key": "docs/pi-coding-agent.md", "markers": 25},
+    {"key": "docs/restart-and-liveness.md", "markers": 3},
+    {"key": "docs/run-troubleshooting.md", "markers": 14},
+    {"key": "docs/screen-view.md", "markers": 12},
+    {"key": "docs/session-view.md", "markers": 19},
+    {"key": "docs/verification.md", "markers": 51}
+  ]
+}

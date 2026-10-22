@@ -158,6 +158,17 @@ try {
     if ($staticExit -eq 3) { Fail "static ratchet NOT CONFIRMED (a detector could not run: Node/npx or ruff missing, or output unparseable)." }
     if ($staticExit -ne 0) { Fail "static ratchet failed (exit $staticExit): a new duplicate block or unused import/variable, or a baseline problem; see .static-ratchet-baseline.json." }
 
+    # Docs ratchet (scaffold docs/docs-ratchet.md): README size and history
+    # markers (issue references, dated and changelog headings) in README.md and
+    # docs/**/*.md may not rise above .docs-ratchet-baseline.json. Whole tree,
+    # never path-routed; exit 3 means a file could not be scanned or git was
+    # unusable, a failure and never a pass.
+    Phase "docs ratchet..."
+    & $python scripts/docs_ratchet.py
+    $docsExit = $LASTEXITCODE
+    if ($docsExit -eq 3) { Fail "docs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence/comment that never closes)." }
+    if ($docsExit -ne 0) { Fail "docs ratchet failed (exit $docsExit): README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .docs-ratchet-baseline.json." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
