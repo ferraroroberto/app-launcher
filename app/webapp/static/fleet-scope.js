@@ -75,6 +75,7 @@ function render(body) {
   list.innerHTML = '';
   repos.forEach(function (r) { list.appendChild(repoRow(r)); });
   els.fleetScopeFilterWrap.hidden = repos.length <= FILTER_ABOVE_ROWS;
+  els.fleetScopeFilterHelp.hidden = els.fleetScopeFilterWrap.hidden;
   els.fleetScopeCount.hidden = unavailable;
   els.fleetScopeCount.textContent = unavailable ? '' : summary(repos);
   els.fleetScopeUnavailable.hidden = !unavailable;

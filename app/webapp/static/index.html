@@ -1842,8 +1842,9 @@
           </div>
           <label id="fleetScopeFilterWrap" class="action-row-filter list-filter" hidden>
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
-            <input id="fleetScopeFilterInput" type="search" autocomplete="off" placeholder="Filter repos" aria-label="Filter repos">
+            <input id="fleetScopeFilterInput" type="search" autocomplete="off" placeholder="Filter repos" aria-label="Filter repos" aria-describedby="fleetScopeFilterHelp">
           </label>
+          <p id="fleetScopeFilterHelp" class="field-help" hidden>Type part of a repo name to narrow the list.</p>
           <ul id="fleetScopeList" class="card-list action-rows" aria-label="Fleet repos"></ul>
           <div id="fleetScopeFilterEmpty" class="empty-state" hidden>
             <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>

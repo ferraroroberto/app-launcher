@@ -437,6 +437,7 @@ export const els = {
   fleetScopeList: document.getElementById('fleetScopeList'),
   fleetScopeCount: document.getElementById('fleetScopeCount'),
   fleetScopeFilterWrap: document.getElementById('fleetScopeFilterWrap'),
+  fleetScopeFilterHelp: document.getElementById('fleetScopeFilterHelp'),
   fleetScopeFilterInput: document.getElementById('fleetScopeFilterInput'),
   fleetScopeFilterEmpty: document.getElementById('fleetScopeFilterEmpty'),
   fleetScopeUnavailable: document.getElementById('fleetScopeUnavailable'),
