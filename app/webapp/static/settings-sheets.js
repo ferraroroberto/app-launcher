@@ -489,20 +489,24 @@ function wireChief() {
   });
 }
 
-// The chief doorbell (fleet-config#1457): saves at once, read by the server's
-// next 3 s tick, so off is also the phone's kill switch.
-function wireChiefDoorbell() {
-  const el = els.chiefDoorbellToggle;
+// A chief switch saves at once and is re-read by the server on its next use,
+// so off is also the phone's kill switch: the doorbell (fleet-config#1457) by
+// its 3 s tick, the job-failure event by the next failed run.
+function wireChiefSwitch(el, key, label) {
   if (!el) return;
   el.addEventListener('click', async function () {
     const next = el.getAttribute('aria-checked') !== 'true';
     setSwitch(el, next);
-    if (await patchConfig({ chief_doorbell: next })) {
-      toast(next ? 'Chief doorbell on.' : 'Chief doorbell off.', 'good');
+    if (await patchConfig({ [key]: next })) {
+      toast(label + (next ? ' on.' : ' off.'), 'good');
     } else {
       setSwitch(el, !next);   // patchConfig already fired the failure toast
     }
   });
+}
+function wireChiefDoorbell() {
+  wireChiefSwitch(els.chiefDoorbellToggle, 'chief_doorbell', 'Chief doorbell');
+  wireChiefSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', 'Chief job failures');
 }
 
 // ------------------------------------------------------------------- wire

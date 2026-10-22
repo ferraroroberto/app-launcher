@@ -450,3 +450,36 @@ def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
 
     _open_chief_sheet(page, base_url)
     expect(switch).to_have_attribute("aria-checked", "false")
+
+
+def test_chief_job_failures_switch_defaults_on_saves_and_reloads(
+    authed_page: Page, base_url: str
+) -> None:
+    """The job-failure event switch sits beside Doorbell, on by default. It
+    saves at once through the ordinary /api/config POST and survives a reload."""
+    page = authed_page
+    posts: list = []
+    page.on("request", lambda req: posts.append(req.post_data_json)
+            if _is_config_post(req) else None)
+
+    def saving(act) -> None:
+        with page.expect_response(
+            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
+        ):
+            act()
+
+    _open_chief_sheet(page, base_url)
+    switch = page.locator("#chiefJobFailuresToggle")
+    expect(switch).to_have_attribute("aria-checked", "true")
+
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "false")
+    assert posts[-1] == {"chief_job_failures": False}, posts
+
+    _open_chief_sheet(page, base_url)
+    expect(switch).to_have_attribute("aria-checked", "false")
+
+    # Back on at the default, so the shared webapp is left as found.
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "true")
+    assert posts[-1] == {"chief_job_failures": True}, posts

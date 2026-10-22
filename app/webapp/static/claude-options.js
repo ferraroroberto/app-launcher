@@ -118,6 +118,9 @@ export async function fetchConfig(shouldApply) {
   if (els.chiefDoorbellToggle) {
     setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
   }
+  if (els.chiefJobFailuresToggle) {
+    setSwitch(els.chiefJobFailuresToggle, body.chief_job_failures !== false);
+  }
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);

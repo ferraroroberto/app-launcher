@@ -841,6 +841,10 @@ The push body always includes: optional LLM summary, the raw output tail (last 5
 
 The notifier path is wrapped in a single `try`/`except` — credentials misconfigured, Pushover 5xx, hub unreachable: none of those can block the executor's normal exit. Errors land in the launcher log at `WARNING`.
 
+### Chief mailbox event
+
+A third channel in the same hook, independent of both pushes: a failed run (exit code, watchdog kill or reap) also leaves one `job-failed` event in the fleet chief's mailbox, which the doorbell then rings for. It is gated by `chief_job_failures` (default on, Settings > Chief > Job failures), the canonical instance and a live chief; a `not confirmed` run is published as `outcome: "not-confirmed"` and a designed deferral is not published. Fields and the file contract: [`docs/config.md`](config.md) and fleet-config `docs/chief-mailbox.md`.
+
 ### Per-job Telegram alerts (issue #597)
 
 `notify_on_failure` above is global — every job, one shared Pushover channel. A job can additionally carry an `alert_on_failure: true` flag (the **🔔 Alert to Telegram if failed** toggle in the editor, sitting just above **Require confirmation before running**) that fires a Telegram message on *that job's* failed runs only, independent of the global switch — opt-in per job so a shared Telegram chat isn't spammed by every job's failures.
