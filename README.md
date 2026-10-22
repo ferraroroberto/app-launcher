@@ -280,6 +280,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/screen-view.md](docs/screen-view.md) | Viewing and controlling the PC screen |
 | [docs/jobs-tab.md](docs/jobs-tab.md) | Jobs: schedules, run history, health |
 | [docs/board.md](docs/board.md) | The Board kanban |
+| [docs/fleet-scope.md](docs/fleet-scope.md) | Settings › Fleet scope: which repos fleet-wide runs include |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |
 | [docs/restart-and-liveness.md](docs/restart-and-liveness.md) | Restarting and proving the new build is live |

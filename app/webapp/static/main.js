@@ -25,6 +25,7 @@ import { fetchBoard, openBoardCard, renderBoard, wireBoard } from './board.js';
 import { wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen-view.js';
 import { wireTokens } from './tokens.js';
+import { wireFleetScope } from './fleet-scope.js';
 import { wireSettingsSheets } from './settings-sheets.js';
 import { wireScreenTime } from './screen-time.js';
 import { openTerminal, wireTerminal } from './terminal.js';
@@ -406,6 +407,7 @@ wireChanges();
 wireWebauthn();
 wireSettings();
 wireTokens();
+wireFleetScope();
 wireTheme();
 // Settings → Text size (#1134): same localStorage prefix as the theme,
 // which the pre-paint boot script reads.
