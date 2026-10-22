@@ -357,6 +357,35 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
     return None
 
 
+def _last_assistant_model(transcript_path: Any) -> Optional[str]:
+    """The ``model`` of the newest assistant record in the transcript tail.
+
+    That record names the model that actually answered, so it follows a
+    resume and an in-session ``/model`` switch, which the spawn flags never
+    do. Claude Code's own local replies carry ``<synthetic>`` there; only a
+    ``claude-*`` id counts. Torn or unparseable lines are skipped; no
+    assistant record in the window, or an unreadable file, is ``None``.
+    """
+    lines, truncated = _tail_lines(transcript_path, _EXCHANGE_TAIL_BYTES)
+    if truncated and lines:
+        lines = lines[1:]
+    for raw in reversed(lines):
+        # Cheap pre-filter: most tail lines are tool results and user turns.
+        if '"assistant"' not in raw:
+            continue
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict) or obj.get("type") != "assistant":
+            continue
+        message = obj.get("message")
+        model = message.get("model") if isinstance(message, dict) else None
+        if isinstance(model, str) and model.startswith("claude-"):
+            return model
+    return None
+
+
 def _transcript_mtime(transcript_path: Any) -> Optional[datetime]:
     """The transcript file's mtime as a UTC datetime, or ``None`` on any
     OSError (missing file, permission, …). Shared by

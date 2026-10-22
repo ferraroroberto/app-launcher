@@ -1,13 +1,15 @@
 """The model a live session runs, as a short display name (#1383).
 
 Derived on the webapp side from fields the session-host already reports --
-the spawn ``flags`` and, for Codex, its OSC ``live_title`` -- never from a new
+the spawn ``flags`` and, for Codex, its OSC ``live_title`` -- plus, for Claude,
+the ``transcript_model`` the webapp reads from the session's transcript
+(:func:`src.board_sessions.attach_transcript_model`). Never from a new
 session-host field: a change to the session-host's import closure is not live
 until ``:8446`` restarts, and that restart kills every live session.
 
 Never guesses. A session launched on the agent's default model carries no
-``--model`` flag and no model in its title, so it gets ``None`` (no pill), not a
-plausible-looking wrong name.
+``--model`` flag and no model in its title, so until it has answered it gets
+``None`` (no pill), not a plausible-looking wrong name.
 """
 
 from __future__ import annotations
@@ -44,12 +46,27 @@ def _codex_title_label(live_title: str) -> Optional[str]:
     return _catalog_label(CODEX_MODEL_SPECS, tokens[0]) if tokens else None
 
 
+def _claude_id_label(model_id: str) -> Optional[str]:
+    """Display name for a full Claude model id (``claude-opus-5-5``): the
+    catalog family named as a whole hyphen-delimited segment, else ``None``."""
+    segments = model_id.strip().lower().split("-")
+    for family, spec in CLAUDE_MODEL_SPECS.items():
+        if family in segments:
+            return str(spec["label"])
+    return None
+
+
 def session_model_label(session: Mapping[str, Any]) -> Optional[str]:
     """Display name ("Opus", "Sol") of the session's model, or ``None``."""
     agent = str(session.get("agent") or "claude").lower()
     flags = str(session.get("flags") or "")
     value = _flag_value(flags, "--model")
     if agent == "claude":
+        answered = str(session.get("transcript_model") or "")
+        if answered:
+            # The model that last answered is the truth, so an id the catalog
+            # lacks is not covered for by the spawn flag, which may be stale.
+            return _claude_id_label(answered)
         return _catalog_label(CLAUDE_MODEL_SPECS, value) if value else None
     if agent == "codex":
         from_title = _codex_title_label(str(session.get("live_title") or ""))
