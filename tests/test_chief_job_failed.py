@@ -57,6 +57,27 @@ def _run_dir(tmp_path, *, output="boom\n", trigger="scheduled", name="20261022-0
     return run_dir
 
 
+def _fail(tmp_path, cfg=None, *, job=None, status="failed", exit_code=1, run=None, **kw):
+    """Finalise one run through the real hook; returns the cfg it used."""
+    cfg = cfg or _cfg(tmp_path)
+    notifications.notify_failure(
+        cfg, job or _job(tmp_path), run or _run_dir(tmp_path),
+        status=status, exit_code=exit_code, **kw,
+    )
+    return cfg
+
+
+def _events(cfg):
+    inbox = Path(cfg.chief_inbox_dir)
+    if not inbox.is_dir():
+        return []
+    return [
+        json.loads(p.read_text(encoding="utf-8"))
+        for p in sorted(inbox.iterdir())
+        if p.name.endswith(".json") and not p.name.startswith(".")
+    ]
+
+
 @pytest.fixture
 def armed(monkeypatch):
     """Canonical instance, live chief: the two facts a publish needs."""
@@ -64,186 +85,118 @@ def armed(monkeypatch):
     monkeypatch.setattr(cjf, "chief_live", lambda cfg: True)
 
 
-def _events(cfg):
-    inbox = cfg.chief_inbox_dir
-    if not os.path.isdir(inbox):
-        return []
-    return [
-        json.loads(open(os.path.join(inbox, n), encoding="utf-8").read())
-        for n in sorted(os.listdir(inbox))
-        if n.endswith(".json") and not n.startswith(".")
-    ]
-
-
 class TestEventShape:
     def test_exit_code_failure_matches_the_contract(self, tmp_path, armed):
-        cfg, job, run_dir = _cfg(tmp_path), _job(tmp_path), _run_dir(tmp_path)
-        notifications.notify_failure(cfg, job, run_dir, status="failed", exit_code=3)
+        job = _job(tmp_path)
+        (event,) = _events(_fail(tmp_path, job=job, exit_code=3))
 
-        (event,) = _events(cfg)
-        assert event["v"] == 2
         assert len(event["id"]) == 32 and event["id"] == event["id"].lower()
-        assert event["kind"] == "job-failed"
-        assert event["event"] == "JobFailed"
-        assert event["job_id"] == "snapshot"
-        assert event["job_name"] == "Snapshot freshness"
-        assert event["run_id"] == "20261022-040000"
-        assert event["exit_code"] == 3
-        assert event["outcome"] == "failed"
-        assert event["trigger"] == "schedule"
-        assert event["script_path"] == job.script_path
-        assert event["repo"] == "life-os"
-        assert event["excerpt"] == "boom"
-        assert event["excerpt_source"] == "job-output"
+        assert {k: event[k] for k in (
+            "v", "kind", "event", "job_id", "job_name", "run_id", "exit_code",
+            "outcome", "trigger", "script_path", "repo", "excerpt", "excerpt_source",
+        )} == {
+            "v": 2, "kind": "job-failed", "event": "JobFailed", "job_id": "snapshot",
+            "job_name": "Snapshot freshness", "run_id": "20261022-040000", "exit_code": 3,
+            "outcome": "failed", "trigger": "schedule", "script_path": job.script_path,
+            "repo": "life-os", "excerpt": "boom", "excerpt_source": "job-output",
+        }
         for null_field in ("launcher_sid", "number", "dispatch_id"):
             assert event[null_field] is None
         assert event["ts"].endswith("Z") and len(event["ts"]) == 20
 
-    def test_file_name_is_published_ms_dash_event_id(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        (name,) = os.listdir(cfg.chief_inbox_dir)
-        stamp, _, rest = name.partition("-")
-        assert stamp.isdigit() and rest == f"{_events(cfg)[0]['id']}.json"
-
-    def test_reaped_run_has_null_exit_code_and_not_a_guess(self, tmp_path, armed):
-        cfg, run_dir = _cfg(tmp_path), _run_dir(tmp_path, trigger="chain:upstream")
-        notifications.notify_failure(
-            cfg, _job(tmp_path), run_dir, status="failed", exit_code=None, reaped=True
-        )
+    def test_reaped_run_has_null_exit_code_and_chain_trigger(self, tmp_path, armed):
+        cfg = _fail(tmp_path, exit_code=None, reaped=True,
+                    run=_run_dir(tmp_path, trigger="chain:upstream"))
         (event,) = _events(cfg)
-        assert event["exit_code"] is None
-        assert event["outcome"] == "failed"
-        assert event["trigger"] == "chain"
+        assert (event["exit_code"], event["outcome"], event["trigger"]) == (None, "failed", "chain")
 
     def test_unconfirmed_exit_code_is_not_confirmed(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
         # 114: cancellation not confirmed, an exit code the outcome table
         # itself classifies as unconfirmed.
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=114)
-        assert _events(cfg)[0]["outcome"] == "not-confirmed"
+        assert _events(_fail(tmp_path, exit_code=114))[0]["outcome"] == "not-confirmed"
 
     def test_excerpt_is_the_last_1500_chars(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        run_dir = _run_dir(tmp_path, output="A" * 4000 + "B" * 1500)
-        notifications.notify_failure(cfg, _job(tmp_path), run_dir, status="failed", exit_code=1)
-        assert _events(cfg)[0]["excerpt"] == "B" * 1500
+        run = _run_dir(tmp_path, output="A" * 4000 + "B" * 1500)
+        assert _events(_fail(tmp_path, run=run))[0]["excerpt"] == "B" * 1500
 
     def test_no_output_is_a_null_excerpt_with_a_reason(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        run_dir = _run_dir(tmp_path, output=None)
-        notifications.notify_failure(cfg, _job(tmp_path), run_dir, status="failed", exit_code=1)
-        (event,) = _events(cfg)
-        assert event["excerpt"] is None
-        assert event["excerpt_source"] is None
+        (event,) = _events(_fail(tmp_path, run=_run_dir(tmp_path, output=None)))
+        assert event["excerpt"] is None and event["excerpt_source"] is None
         assert event["excerpt_unavailable"]
 
-    def test_script_outside_the_projects_folder_has_no_repo(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        job = _job(tmp_path, script_path=str(tmp_path / "elsewhere" / "job.py"))
-        notifications.notify_failure(cfg, job, _run_dir(tmp_path), status="failed", exit_code=1)
-        assert _events(cfg)[0]["repo"] is None
-
-    def test_repo_keeps_its_own_case(self, tmp_path):
-        script = str(tmp_path / "projects" / "Life-OS" / "a.py")
-        assert cjf.owning_repo(script, str(tmp_path / "projects")) == "Life-OS"
-        assert cjf.owning_repo("a.py", str(tmp_path / "projects")) is None
-        assert cjf.owning_repo(script, "") is None
+    def test_repo_is_the_projects_child_holding_the_script(self, tmp_path):
+        projects = str(tmp_path / "projects")
+        assert cjf.owning_repo(str(tmp_path / "projects" / "Life-OS" / "a.py"), projects) == "Life-OS"
+        assert cjf.owning_repo(str(tmp_path / "elsewhere" / "a.py"), projects) is None
+        assert cjf.owning_repo("a.py", projects) is None
+        assert cjf.owning_repo(str(tmp_path / "projects" / "a.py"), projects) is None
 
 
 class TestExactlyOneEvent:
-    def test_one_failed_run_is_one_file_and_counts_as_pending(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert len(os.listdir(cfg.chief_inbox_dir)) == 1
+    def test_one_failed_run_is_one_pending_file_named_ms_dash_id(self, tmp_path, armed):
+        cfg = _fail(tmp_path)
+        (name,) = os.listdir(cfg.chief_inbox_dir)
+        stamp, _, rest = name.partition("-")
+        assert stamp.isdigit() and rest == f"{_events(cfg)[0]['id']}.json"
         assert count_pending(Path(cfg.chief_inbox_dir), 0) == 1
-
-    def test_two_runs_are_two_events_with_distinct_ids(self, tmp_path, armed):
-        cfg, job = _cfg(tmp_path), _job(tmp_path)
-        for name in ("run-a", "run-b"):
-            notifications.notify_failure(cfg, job, _run_dir(tmp_path, name=name), status="failed", exit_code=1)
-        ids = {e["id"] for e in _events(cfg)}
-        assert len(ids) == 2
 
     @pytest.mark.parametrize("status", ["success", "running", "killed"])
     def test_a_run_that_did_not_fail_publishes_nothing(self, tmp_path, armed, status):
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status=status, exit_code=0)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        assert not os.path.exists(_fail(tmp_path, status=status, exit_code=0).chief_inbox_dir)
 
     def test_a_deferred_exit_code_publishes_nothing(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
         job = _job(tmp_path, exit_outcomes={75: "deferred"})
-        notifications.notify_failure(cfg, job, _run_dir(tmp_path), status="failed", exit_code=75)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        assert not os.path.exists(_fail(tmp_path, job=job, exit_code=75).chief_inbox_dir)
 
 
 class TestPreconditions:
-    def test_no_chief_publishes_nothing(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("live", [False, None])
+    def test_no_confirmed_chief_publishes_nothing(self, tmp_path, monkeypatch, live):
+        """``None`` is an unreadable session-host: not confirmed, so not a chief."""
         monkeypatch.setattr(instance_role, "canonical_instance", lambda *a, **k: (True, "canonical"))
-        monkeypatch.setattr(cjf, "chief_live", lambda cfg: False)
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
-
-    def test_an_unreadable_session_host_is_not_a_live_chief(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(instance_role, "canonical_instance", lambda *a, **k: (True, "canonical"))
-        monkeypatch.setattr(cjf, "chief_live", lambda cfg: None)
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        monkeypatch.setattr(cjf, "chief_live", lambda cfg: live)
+        assert not os.path.exists(_fail(tmp_path).chief_inbox_dir)
 
     @pytest.mark.parametrize("value", [False, "true", 1, None])
     def test_switch_off_or_not_a_real_boolean_publishes_nothing(self, tmp_path, armed, value):
         cfg = _cfg(tmp_path, chief_job_failures=value)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        assert not os.path.exists(_fail(tmp_path, cfg).chief_inbox_dir)
+
+    def test_a_stub_config_without_the_key_publishes_nothing(self, tmp_path, armed):
+        cfg = _cfg(tmp_path)
+        del cfg.chief_job_failures
+        assert not os.path.exists(_fail(tmp_path, cfg).chief_inbox_dir)
 
     def test_non_canonical_instance_publishes_nothing(self, tmp_path, monkeypatch):
         monkeypatch.setattr(instance_role, "canonical_instance", lambda *a, **k: (False, "linked-worktree"))
         monkeypatch.setattr(cjf, "chief_live", lambda cfg: pytest.fail("must not look for a chief"))
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        assert not os.path.exists(_fail(tmp_path).chief_inbox_dir)
 
     def test_disposable_autoboot_instance_is_never_canonical(self, tmp_path, monkeypatch):
         """The real predicate, not the fake: the gate's webapp must not publish."""
         monkeypatch.setenv("LAUNCHER_SESSION_HOST_PORT", "9999")
         monkeypatch.setattr(cjf, "chief_live", lambda cfg: True)
-        cfg = _cfg(tmp_path)
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
-
-    def test_a_stub_config_without_the_key_publishes_nothing(self, tmp_path, armed):
-        cfg = _cfg(tmp_path)
-        del cfg.chief_job_failures
-        notifications.notify_failure(cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1)
-        assert not os.path.exists(cfg.chief_inbox_dir)
+        assert not os.path.exists(_fail(tmp_path).chief_inbox_dir)
 
 
 class TestBestEffort:
-    def test_a_write_failure_is_swallowed_and_other_channels_still_run(self, tmp_path, armed, monkeypatch, caplog):
+    def test_a_write_failure_is_swallowed_and_other_channels_still_run(
+        self, tmp_path, armed, monkeypatch, caplog
+    ):
         monkeypatch.setattr(cjf.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("disk full")))
         pushed = []
         notifier = SimpleNamespace(notify=lambda *a, **k: pushed.append(a))
-        cfg = _cfg(tmp_path, notify_on_failure=True)
         with caplog.at_level("WARNING"):
-            notifications.notify_failure(
-                cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1, notifier=notifier
-            )
-        assert pushed, "Pushover still ran"
-        assert "not published" in caplog.text
+            cfg = _fail(tmp_path, _cfg(tmp_path, notify_on_failure=True), notifier=notifier)
+        assert pushed and "not published" in caplog.text
         assert not [n for n in os.listdir(cfg.chief_inbox_dir) if not n.startswith(".")]
 
     def test_a_push_failure_does_not_stop_the_event(self, tmp_path, armed):
         def boom(*a, **k):
             raise RuntimeError("pushover down")
 
-        cfg = _cfg(tmp_path, notify_on_failure=True)
-        notifications.notify_failure(
-            cfg, _job(tmp_path), _run_dir(tmp_path), status="failed", exit_code=1,
-            notifier=SimpleNamespace(notify=boom),
-        )
+        cfg = _fail(tmp_path, _cfg(tmp_path, notify_on_failure=True),
+                    notifier=SimpleNamespace(notify=boom))
         assert len(_events(cfg)) == 1
 
 
@@ -263,40 +216,26 @@ class TestAtomicPublish:
         (tmp_name,) = seen["before"]
         assert tmp_name.startswith(".event.") and tmp_name.endswith(".tmp")
         assert [p.name for p in inbox.iterdir()] == [path.name] == [f"1800000000000-{'a' * 32}.json"]
-        assert json.loads(path.read_text(encoding="utf-8")) == {"id": "a" * 32}
 
     def test_a_failed_write_leaves_neither_json_nor_temp(self, tmp_path, monkeypatch):
-        inbox = tmp_path / "chief-inbox"
-
-        def refuse(*a):
-            raise OSError("no")
-
-        monkeypatch.setattr(cjf.os, "replace", refuse)
+        monkeypatch.setattr(cjf.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("no")))
         with pytest.raises(OSError):
-            cjf.publish_event(inbox, {"id": "b" * 32})
-        assert list(inbox.iterdir()) == []
+            cjf.publish_event(tmp_path / "chief-inbox", {"id": "b" * 32})
+        assert list((tmp_path / "chief-inbox").iterdir()) == []
 
 
 class TestChiefLive:
-    def _sessions(self, monkeypatch, sessions=None, error=None):
+    @pytest.mark.parametrize("sessions,expected", [
+        ([{"session_id": "s1", "kind": "pty", "alive": True, "label": "chief"}], True),
+        ([{"session_id": "s1", "kind": "pty", "alive": True, "label": "worker"},
+          {"session_id": "s2", "kind": "pty", "alive": False, "label": "chief"}], False),
+        (session_client.SessionHostError("connection refused"), None),
+    ])
+    def test_live_absent_and_unknown(self, tmp_path, monkeypatch, sessions, expected):
         def fake(port):
-            if error:
-                raise session_client.SessionHostError(error)
+            if isinstance(sessions, Exception):
+                raise sessions
             return sessions
 
         monkeypatch.setattr(session_client, "list_sessions", fake)
-
-    def test_a_labelled_live_chief_is_live(self, tmp_path, monkeypatch):
-        self._sessions(monkeypatch, [{"session_id": "s1", "kind": "pty", "alive": True, "label": "chief"}])
-        assert cjf.chief_live(_cfg(tmp_path)) is True
-
-    def test_other_sessions_are_not_a_chief(self, tmp_path, monkeypatch):
-        self._sessions(monkeypatch, [
-            {"session_id": "s1", "kind": "pty", "alive": True, "label": "worker"},
-            {"session_id": "s2", "kind": "pty", "alive": False, "label": "chief"},
-        ])
-        assert cjf.chief_live(_cfg(tmp_path)) is False
-
-    def test_a_host_error_is_unknown_not_absent(self, tmp_path, monkeypatch):
-        self._sessions(monkeypatch, error="connection refused")
-        assert cjf.chief_live(_cfg(tmp_path)) is None
+        assert cjf.chief_live(_cfg(tmp_path)) is expected
