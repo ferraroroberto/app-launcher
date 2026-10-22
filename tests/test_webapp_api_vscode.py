@@ -146,3 +146,14 @@ class TestWorkspaceHelpers:
         path, created = vscode_workspace.ensure_workspace_file(tmp_path, "proj")
         assert created is False
         assert path.exists()
+
+
+@pytest.mark.parametrize("name", ["a&b.txt", "a|b.txt", "a^b.txt", "%PATH%.txt"])
+def test_code_shim_spawn_refuses_a_path_cmd_would_rewrite(monkeypatch, name):
+    spawned: list = []
+    monkeypatch.setattr(vscode_workspace.shutil, "which", lambda *_a, **_k: "code.cmd")
+    monkeypatch.setattr(vscode_workspace.subprocess, "Popen", lambda argv, **_k: spawned.append(argv))
+    for opener in (vscode_workspace.open_file, vscode_workspace.open_workspace):
+        with pytest.raises(OSError):
+            opener(Path(r"E:\proj") / name)
+    assert spawned == []
