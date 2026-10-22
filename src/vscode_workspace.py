@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Tuple
 
 from src.env_path import effective_path
+from src.jobs_argv import ArgvRejected, reject_cmd_unsafe
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
@@ -109,6 +110,13 @@ def _spawn_code(target: Path) -> int:
     resolved = shutil.which(VSCODE_COMMAND, path=effective_path())
     if resolved is None:
         raise OSError(f"{VSCODE_COMMAND!r} CLI not found on PATH")
+    # ``code`` is a ``.cmd`` shim, so cmd.exe re-reads this command line; a
+    # path it would rewrite is refused as an OSError, which sends Open on PC
+    # to its Explorer fallback.
+    try:
+        reject_cmd_unsafe([str(target)], "VS Code target path")
+    except ArgvRejected as exc:
+        raise OSError(str(exc)) from exc
     proc = subprocess.Popen(
         [resolved, str(target)],
         shell=False,

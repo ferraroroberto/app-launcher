@@ -146,3 +146,34 @@ class TestWorkspaceHelpers:
         path, created = vscode_workspace.ensure_workspace_file(tmp_path, "proj")
         assert created is False
         assert path.exists()
+
+
+class TestSpawnArguments:
+    """``code`` is a ``.cmd`` shim, so the target path must be one cmd.exe passes through unchanged."""
+
+    @pytest.fixture
+    def popen_calls(self, monkeypatch):
+        calls: list[list[str]] = []
+
+        class _Proc:
+            pid = 99
+
+        def _popen(argv, **_kwargs):
+            calls.append(argv)
+            return _Proc()
+
+        monkeypatch.setattr(vscode_workspace.shutil, "which", lambda *_a, **_k: r"C:\vscode\bin\code.cmd")
+        monkeypatch.setattr(vscode_workspace.subprocess, "Popen", _popen)
+        return calls
+
+    def test_plain_path_is_spawned(self, popen_calls):
+        assert vscode_workspace.open_file(Path(r"E:\proj\notes.txt")) == 99
+        assert popen_calls == [[r"C:\vscode\bin\code.cmd", r"E:\proj\notes.txt"]]
+
+    @pytest.mark.parametrize("name", ["a&b.txt", "a|b.txt", "a^b.txt", "a>b.txt", "%PATH%.txt"])
+    def test_path_the_shim_would_rewrite_is_refused(self, popen_calls, name):
+        with pytest.raises(OSError):
+            vscode_workspace.open_file(Path(r"E:\proj") / name)
+        with pytest.raises(OSError):
+            vscode_workspace.open_workspace(Path(r"E:\proj") / name)
+        assert popen_calls == []
