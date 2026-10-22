@@ -46,6 +46,7 @@ app-launcher/
 │   ├── _json_io.py             # shared JSON read/write helpers
 │   ├── instance_role.py        # primary-checkout vs worktree role detection
 │   ├── context_filter_state.py # Context-filter card's persisted UI state
+│   ├── fleet_scope.py          # Settings › Fleet scope: fleet-config's active/dormant switch, via its own writer
 │   ├── api_tokens.py           # job-scoped bearer tokens (Settings → API tokens)
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # provider package behind notifications.py (Telegram, …)

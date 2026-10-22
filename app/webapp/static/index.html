@@ -1376,6 +1376,12 @@
           <span class="settings-row-value" data-settings-value="context-filter"></span>
           <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
         </button>
+        <button type="button" class="settings-row" data-sheet="fleetScopeSheet" data-track="settings.fleet-scope" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+          <span class="settings-row-label">Fleet scope</span>
+          <span class="settings-row-value" data-settings-value="fleet-scope"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
         <button type="button" class="settings-row" data-sheet="tokensSheet" data-track="settings.tokens" aria-haspopup="dialog">
           <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
           <span class="settings-row-label">API tokens</span>
@@ -1808,6 +1814,42 @@
             <ul id="contextFilterPerAgent" class="context-filter-per-agent" aria-label="Savings by agent"></ul>
           </div>
           <p id="contextFilterStatsEmpty" class="empty muted small">No savings recorded yet.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Fleet scope: which repos the fleet-wide runs include. fleet-scope.js
+         draws the rows from GET /api/fleet/scope; fleet-config's own writer
+         does the edit. -->
+    <dialog id="fleetScopeSheet" class="detail-dialog settings-sheet" aria-labelledby="fleetScopeSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="fleetScopeSheetTitle" tabindex="-1" autofocus>Fleet scope</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <p class="muted small">A switch that is on keeps the repo in fleet-wide runs (audits, cleanups, sweeps). Off makes it dormant: those runs skip it. The change applies to this PC at once.</p>
+          <p id="fleetScopeCount" class="muted small" role="status" aria-live="polite"></p>
+          <div id="fleetScopeUnavailable" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+            <p id="fleetScopeReason" class="empty-state-message"></p>
+          </div>
+          <label id="fleetScopeFilterWrap" class="action-row-filter list-filter" hidden>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <input id="fleetScopeFilterInput" type="search" autocomplete="off" placeholder="Filter repos" aria-label="Filter repos">
+          </label>
+          <ul id="fleetScopeList" class="card-list action-rows" aria-label="Fleet repos"></ul>
+          <div id="fleetScopeFilterEmpty" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <p class="empty-state-message">No repos match the filter.</p>
+            <button type="button" class="empty-state-action">Clear filter</button>
+          </div>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
