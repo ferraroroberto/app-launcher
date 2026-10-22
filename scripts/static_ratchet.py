@@ -33,6 +33,10 @@ repo that has not opted in:
     min_tokens = 100                                 # default
     exclude    = ["**/_vendored/**"]                 # added to the built-in set
 
+Every `dest` in the repo's own `[vendored]` table is excluded as well: a
+vendor-verbatim copy is checked once, where it lives, and an adopter cannot edit
+it to pay the debt down.
+
 Exit codes (a state is never folded into a pass):
 
   0  pass, or the stage is not enabled (declared, not inferred)
@@ -62,7 +66,7 @@ import sys
 import tempfile
 import tomllib
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -158,6 +162,23 @@ def parse_config(toml_text: str) -> Config | None:
     return Config(baseline, ints["min_lines"], ints["min_tokens"], tuple(exclude))
 
 
+def vendored_globs(toml_text: str) -> tuple[str, ...]:
+    """Exclusion globs for every `dest` in the repo's own `[vendored]` table.
+
+    A dest may be a file or a folder, so each yields the path and everything under it.
+    """
+    table = tomllib.loads(toml_text).get("vendored")
+    if not isinstance(table, dict):
+        return ()
+    globs: list[str] = []
+    for entry in table.values():
+        dest = entry.get("dest") if isinstance(entry, dict) else None
+        clean = dest.replace("\\", "/").strip("/") if isinstance(dest, str) else ""
+        if clean:
+            globs += [clean, f"{clean}/**"]
+    return tuple(sorted(globs))
+
+
 def load_config(root: Path) -> Config | None:
     path = root / ".fleet.toml"
     try:
@@ -165,7 +186,8 @@ def load_config(root: Path) -> Config | None:
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
     try:
-        return parse_config(text)
+        cfg = parse_config(text)
+        return cfg if cfg is None else replace(cfg, exclude=cfg.exclude + vendored_globs(text))
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
 
