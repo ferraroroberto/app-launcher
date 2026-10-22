@@ -70,6 +70,7 @@ from src.board_sessions import (  # noqa: F401 — re-exported for board.<name> 
     active_issue_repos,
     attach_last_turn,
     attach_shared_names,
+    attach_transcript_model,
     merge_sessions,
     state_row_for_session,
     state_sid_for_session,

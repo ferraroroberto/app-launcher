@@ -34,6 +34,7 @@ from src.board_transcript import (
     _ExchangeTail,
     _external_row_liveness,
     _last_activity,
+    _last_assistant_model,
     _refine_waiting_status,
     _transcript_overlay,
 )
@@ -401,6 +402,31 @@ def attach_last_turn(
         transcript = (row or {}).get("transcript_path")
         stamp = _last_activity(transcript) if transcript else None
         out.append({**sess, "last_turn_at": stamp.timestamp() if stamp else None})
+    return out
+
+
+def attach_transcript_model(
+    live: List[Dict[str, Any]], state_rows: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Each live session plus ``transcript_model`` (the live source of the
+    chat header's model pill, which :func:`src.session_model.attach_models`
+    reads): the model its Claude transcript last answered on.
+
+    Same agent-aware claim walk as :func:`attach_shared_names`, so a session
+    resolves to the same state row on every tab. ``None`` when there is no
+    state row, no readable transcript or no assistant record yet. Returns new
+    dicts; the input is never mutated. Blocking file IO (one bounded tail read
+    per Claude session) - callers wrap in ``asyncio.to_thread``. The Board
+    cards keep the flag-only model: their lazy shared tail read is pinned to
+    one per card, and the pill is the chat header's.
+    """
+    pairs, _ = _claim_walk(live, state_rows)
+    out: List[Dict[str, Any]] = []
+    for sess, row, _sid in pairs:
+        transcript = (row or {}).get("transcript_path")
+        is_claude = str(sess.get("agent") or "claude").lower() == "claude"
+        model = _last_assistant_model(transcript) if is_claude and transcript else None
+        out.append({**sess, "transcript_model": model})
     return out
 
 

@@ -164,7 +164,11 @@ async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[
         sessions = await steps.run(
             "attach_last_turn", board.attach_last_turn, sessions, state["rows"]
         )
-        # The model's display name (#1383), for the chat header's pill.
+        # The model's display name (#1383), for the chat header's pill: the
+        # transcript's newest answer first, then the spawn flags.
+        sessions = await steps.run(
+            "attach_transcript_model", board.attach_transcript_model, sessions, state["rows"]
+        )
         sessions = attach_models(sessions)
         for sess in sessions:
             # A session-host older than #1643 sends no composer fields: that

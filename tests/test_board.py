@@ -2892,3 +2892,62 @@ def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
         "s-chief": {"column": "claude_turn", "status": "awaiting-input", "age_seconds": None},
     }
 
+
+
+# ---------------------------------------- attach_transcript_model (model pill)
+
+
+def _assistant_line(model: str) -> str:
+    return json.dumps({"type": "assistant", "message": {"model": model, "content": []}}) + "\n"
+
+
+def _model_transcript(folder: Path, *lines: str) -> str:
+    path = folder / "t.jsonl"
+    path.write_text("".join(lines), encoding="utf-8")
+    return str(path)
+
+
+def _transcript_model_of(tmp_path: Path, *lines: str, agent: str = "claude"):
+    row = _state_row("E:/x/y", transcript_path=_model_transcript(tmp_path, *lines))
+    out = board.attach_transcript_model([_live("aaa", "E:/x/y", 10, agent=agent)], {"t": row})
+    return out[0]["transcript_model"]
+
+
+def test_transcript_model_is_the_newest_assistant_record(tmp_path: Path):
+    """A resumed session, then an in-session /model switch: the last answer wins."""
+    assert _transcript_model_of(
+        tmp_path,
+        _assistant_line("claude-opus-5-5"),
+        json.dumps({"type": "user", "message": {"content": "hi"}}) + "\n",
+        _assistant_line("claude-sonnet-5-5"),
+        json.dumps({"type": "system", "timestamp": "x"}) + "\n",
+    ) == "claude-sonnet-5-5"
+
+
+def test_transcript_model_skips_synthetic_and_torn_lines(tmp_path: Path):
+    assert _transcript_model_of(
+        tmp_path,
+        _assistant_line("claude-opus-5-5"),
+        _assistant_line("<synthetic>"),
+        '{"type": "assistant", "message": {"model": "claude-fab',
+    ) == "claude-opus-5-5"
+
+
+def test_transcript_model_unknown_without_a_readable_answer(tmp_path: Path):
+    """No assistant record yet, an empty file, a missing file, no row: unknown."""
+    assert _transcript_model_of(tmp_path, json.dumps({"type": "user"}) + "\n") is None
+    assert _transcript_model_of(tmp_path, "") is None
+    gone = _state_row("E:/x/y", transcript_path=str(tmp_path / "missing.jsonl"))
+    live = [_live("aaa", "E:/x/y", 10), _live("bbb", "E:/x/norow", 5)]
+    for sess in board.attach_transcript_model(live, {"t": gone}):
+        assert sess["transcript_model"] is None, sess["session_id"]
+
+
+def test_transcript_model_reads_claude_only(tmp_path: Path):
+    assert _transcript_model_of(tmp_path, _assistant_line("claude-opus-5-5"), agent="codex") is None
+
+
+def test_attach_transcript_model_does_not_mutate_input():
+    live = [_live("aaa", "E:/x/y", 30)]
+    board.attach_transcript_model(live, {})
+    assert "transcript_model" not in live[0]
