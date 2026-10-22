@@ -6,7 +6,8 @@ the executor (:mod:`app.cli.commands.run_job_cmd`) calls
 on finalisation and pushes when the run failed (or, optionally, when an
 N-failure streak ticks over).
 
-Two independent channels share this one finalisation hook:
+Three independent channels share this one finalisation hook (the third, the
+chief mailbox event, lives in :mod:`src.chief_job_failed`):
 
 * **Pushover (global, issue #66)** — every job, gated by the master
   switch. Config keys live in :class:`src.webapp_config.WebappConfig`:
@@ -47,6 +48,7 @@ from typing import Any, List, Optional, Protocol
 import requests
 
 from src import llm_client
+from src.chief_job_failed import publish_job_failed
 from src.jobs_history import read_output_tail
 from src.jobs_outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
 from src.jobs_stats import consecutive_failed_runs
@@ -268,7 +270,11 @@ def notify_failure(
     fails because the launcher discovered a dead executor pages the same way
     a run that fails on its own exit code does.
 
-    Two independent channels, both no-op on success:
+    Three independent channels, all no-op on success:
+
+    * Chief mailbox — one ``job-failed`` event for the fleet chief,
+      gated by ``cfg.chief_job_failures``, a live chief and the canonical
+      instance (:func:`src.chief_job_failed.publish_job_failed`).
 
     * Pushover (global, issue #66) — gated by ``cfg.notify_on_failure``,
       fires for every job.
@@ -339,6 +345,15 @@ def notify_failure(
         verdict = "not confirmed" if unconfirmed else "failed"
         severity = "warning" if unconfirmed else "error"
         reason_note = f" — {outcome_reason}" if outcome_reason else ""
+
+        # Third channel, independent of the two below: its own switch and its
+        # own swallow, so neither a missing push credential nor a push error
+        # can keep the chief from hearing about the run.
+        publish_job_failed(
+            cfg, job, run_dir,
+            exit_code=exit_code,
+            outcome="not-confirmed" if unconfirmed else "failed",
+        )
 
         if cfg.notify_on_failure:
             notifier = notifier or build_notifier_from_config(cfg)

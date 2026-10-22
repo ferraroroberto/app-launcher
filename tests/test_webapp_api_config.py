@@ -469,6 +469,28 @@ class TestPatchConfig:
         assert resp.status_code == 200
         assert load_webapp_config(cfg_path).chief_doorbell is False
 
+    def test_chief_job_failures_defaults_on_and_round_trips(self, webapp_client):
+        """chief_job_failures (#1783): the swap on app.state is what the next
+        failed run reads, and the save reaches disk."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["chief_job_failures"] is True
+
+        resp = client.post("/api/config", json={"chief_job_failures": False})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.chief_job_failures is False
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).chief_job_failures is False
+        assert client.get("/api/config").json()["chief_job_failures"] is False
+
+    @pytest.mark.parametrize("junk", ["false", 0, None])
+    def test_chief_job_failures_rejects_non_booleans(self, webapp_client, junk):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"chief_job_failures": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.chief_job_failures is True
+
     @pytest.mark.parametrize("junk", ["true", "yes", 0, 1, None, []])
     def test_chief_doorbell_rejects_non_booleans(self, webapp_client, junk):
         client, app, _ = webapp_client

@@ -446,6 +446,7 @@ export const els = {
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   chiefDoorbellToggle: document.getElementById('chiefDoorbellToggle'),
+  chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),
   autostartChannelSessionsToggle: document.getElementById('autostartChannelSessionsToggle'),
   sessionsChannelSummary: document.getElementById('sessionsChannelSummary'),

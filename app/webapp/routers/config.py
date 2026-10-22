@@ -102,6 +102,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # The chief doorbell (#1645), off by default; Settings > Chief's
         # Doorbell switch saves it here (fleet-config#1457).
         "chief_doorbell": cfg.chief_doorbell,
+        # Failed Job runs published to the chief mailbox, on by
+        # default; the switch beside Doorbell saves it here.
+        "chief_job_failures": cfg.chief_job_failures,
         # The chief's model and worker cap (#1435), read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -235,6 +238,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "usage_shows",
         "chief_auto_compact_threshold",
         "chief_doorbell",
+        "chief_job_failures",
         "claude_model",
         "claude_effort",
         "claude_verbose",
@@ -296,7 +300,12 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     # The switches (#1384, #1542, #1645): anything but a real boolean is a
     # client bug, and a truthy string must never flip one ("false" is truthy
     # in Python).
-    for key in ("hide_channel_sessions", "autostart_channel_sessions", "chief_doorbell"):
+    for key in (
+        "hide_channel_sessions",
+        "autostart_channel_sessions",
+        "chief_doorbell",
+        "chief_job_failures",
+    ):
         if key in patch and not isinstance(patch[key], bool):
             raise HTTPException(
                 status_code=400, detail=f"{key} must be true or false"
