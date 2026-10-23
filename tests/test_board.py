@@ -15,14 +15,16 @@ Covers the three sources and their degradation contract:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
 import subprocess
-import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock
 
+import httpx
 import pytest
 
 from app.webapp.routers import board as board_router
@@ -2756,23 +2758,23 @@ def test_coding_and_board_codex_polls_coalesce_one_native_refresh(
     webapp_client, monkeypatch
 ):
     """Repeated quota polls start one native-process run, not one per poll."""
-    client, _app, _overrides = webapp_client
+    _client, app, _overrides = webapp_client
     monkeypatch.setattr(board_router, "_quota_refresh_gate", quota_usage.RefreshGate())
-    started = threading.Event()
-    native_runs: list = []
+    refresh = Mock(return_value="complete")
+    monkeypatch.setattr(quota_usage, "refresh_codex", refresh)
 
-    def fake_native_refresh(fleet_config_dir, state_dir):
-        native_runs.append(state_dir)
-        started.set()
-        return "complete"
-
-    monkeypatch.setattr(quota_usage, "refresh_codex", fake_native_refresh)
-    for _ in range(3):
-        lines = client.get("/api/rate-limits").json()["quota_lines"]
-        assert [line["harness"] for line in lines] == ["claude", "codex"]
-        assert lines[1]["state"] == "unknown"
-        assert started.wait(timeout=5)
-    assert len(native_runs) == 1
+    async def poll_three_times() -> None:
+        # One loop for all polls: TestClient tears its per-request loop down,
+        # cancelling a refresh task that has not reached its thread yet.
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+            for _ in range(3):
+                lines = (await http.get("/api/rate-limits")).json()["quota_lines"]
+                assert [line["harness"] for line in lines] == ["claude", "codex"]
+                assert lines[1]["state"] == "unknown"
+            await (board_router._quota_refresh_task or asyncio.sleep(0))
+    asyncio.run(poll_three_times())
+    assert refresh.call_count == 1
 
 
 def test_api_board_merges_live_sessions_and_state(webapp_client):
