@@ -1,6 +1,6 @@
 # Debugging real-iPhone Safari from the Windows PC
 
-**Issue:** [#34](https://github.com/ferraroroberto/app-launcher/issues/34) — Phone-validation 5/5.
+Phone-validation part 5 of 5.
 
 Parts 1–4 of the phone-validation pipeline (cache hygiene, the WebKit/iPhone Playwright projection, the regression net, the pre-ship gate) catch the large majority of iPhone regressions on Windows before they ship. This document covers the residual ~15% that genuinely need a real iPhone — and makes that manual loop fast by giving the PC **DevTools visibility** into the live phone.
 
@@ -16,7 +16,7 @@ Reach for a real iPhone only when the pre-ship gate (`scripts/verify-before-ship
 - **Real Safari Web Push, Trust Profile flows, Wi-Fi ↔ cellular switches.**
 - **Apple-silicon Safari rendering details** the Playwright WebKit build doesn't ship.
 
-If the bug also reproduces in the WebKit projection, it belongs in the regression net (issue #32 pattern), not here.
+If the bug also reproduces in the WebKit projection, it belongs in the regression net, not here.
 
 ## A. DevTools against the live iPhone — `ios-webkit-debug-proxy`
 
@@ -53,9 +53,9 @@ When a phone-only bug turns up — reported or self-spotted — work the loop:
 3. **Reproduce and capture:**
    - Console errors.
    - The Network waterfall.
-   - The JS files actually loaded — URL **and** the `?v=<hash>` content hash visible in the Network tab. A matching hash proves the phone is on the new build (the cache-busting from issue #30 worked); a stale hash means the cache bust is the bug, not the symptom you were chasing.
+   - The JS files actually loaded — URL **and** the `?v=<hash>` content hash visible in the Network tab. A matching hash proves the phone is on the new build (the cache-busting worked); a stale hash means the cache bust is the bug, not the symptom you were chasing.
 4. **If it only happens in the installed PWA**, debug the PWA target (Section A) — its container quirks won't show in a plain Safari tab.
-5. **File it.** If the bug *does* reproduce in the WebKit projection but isn't yet handled, add an `xfail` test under `tests/e2e/` citing the new issue number (the issue #32 pattern). If it is genuinely iOS-shell-only and can't be reproduced under Playwright at all, record it as a documented manual-only check in the issue — don't fake an automated test for it.
+5. **File it.** If the bug *does* reproduce in the WebKit projection but isn't yet handled, add an `xfail` test under `tests/e2e/` citing the new issue number, as the regression net does. If it is genuinely iOS-shell-only and can't be reproduced under Playwright at all, record it as a documented manual-only check in the issue — don't fake an automated test for it.
 
 ## C. Cloud real-device alternative (reference only — no purchase needed)
 

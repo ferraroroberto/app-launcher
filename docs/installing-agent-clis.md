@@ -28,8 +28,8 @@ suits you. Verify with `codex --version`.
 > Claude's: *Auto mode* runs with no prompts but keeps the sandbox; *Skip
 > permissions* is the all-bypass switch.
 >
-> Like `agy`, `codex` is resolved against the **effective** `PATH` (issue #668
-> — the inherited environment plus the machine and user registry values), so
+> Like `agy`, `codex` is resolved against the **effective** `PATH` (the inherited
+> environment plus the machine and user registry values), so
 > installing it enables the button on the next detection poll, no restart
 > required.
 
@@ -51,7 +51,7 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > *IDE* (a desktop app), not the `agy` terminal CLI.
 >
 > The launcher resolves `agy` against the **effective** `PATH` — the inherited
-> environment plus the machine and user registry values (issue #668) — so an
+> environment plus the machine and user registry values — so an
 > install lands on the next detection poll with **no restart at all**. A tray
 > restart is only needed when `src/agents.py` itself changes (a newly
 > *registered* agent, not a newly *installed* one). A bare `tray.bat` re-run is a no-op when a
@@ -59,7 +59,7 @@ self-updates in the background thereafter. Verify with `agy --version`.
 > its tree (webapp, session-host, cloudflared, **any full-control Coding
 > sessions**) and start a fresh one. **Detached (☁️) sessions survive** the
 > restart — they are deliberately orphaned out of the tray's process tree so
-> the `taskkill /T` teardown can't reach them (issue #130).
+> the `taskkill /T` teardown can't reach them.
 
 ## Installing the GitHub Copilot CLI
 
@@ -80,8 +80,8 @@ for the channel that suits you. Verify with `copilot --version`.
 > on-screen instructions; it needs an active GitHub Copilot subscription. The
 > launcher only resolves the `copilot` binary on `PATH` and spawns it.
 >
-> Like `agy`, `copilot` is resolved against the **effective** `PATH` (issue
-> #668 — inherited plus both registry values), so installing it enables the
+> Like `agy`, `copilot` is resolved against the **effective** `PATH` (inherited
+> plus both registry values), so installing it enables the
 > button on the next detection poll without restarting anything. Only a change
 > to `src/agents.py` itself needs a restart.
 
@@ -118,7 +118,7 @@ Verify with `pi --version`, `pi --list-models claude-agent-sdk`, and `pi --list-
 >
 > Two different things are needed for the Pi button to work, and only one of
 > them costs a restart. **Installing** the CLI is free: `pi` is resolved
-> against the effective `PATH` (issue #668), so a fresh install lands on the
+> against the effective `PATH`, so a fresh install lands on the
 > next detection poll. **Registering** the agent in `src/agents.py` is not:
 > the `:8446` session-host imports that module at *its* start, so upgrading
 > the launcher to a build that adds a new agent needs a session-host restart
@@ -146,7 +146,7 @@ self-updates thereafter. Verify with `grok --version`.
 > alternative). The launcher only resolves the `grok` binary on `PATH` and
 > spawns it.
 >
-> Settings › Launch defaults carries a **Grok Build** sheet (issue #667):
+> Settings › Launch defaults carries a **Grok Build** sheet:
 > **Reasoning** (`low`/`medium`/`high` → `--reasoning-effort`) and
 > **Permission** (Auto mode → `--permission-mode auto`; Skip permissions →
 > `--permission-mode bypassPermissions`). Both persist as `grok_effort` /
@@ -158,7 +158,7 @@ self-updates thereafter. Verify with `grok --version`.
 > Claude-style picker).
 >
 > Same split as Pi above: **installing** `grok` needs no restart — it resolves
-> against the effective `PATH` (issue #668) and appears on the next detection
+> against the effective `PATH` and appears on the next detection
 > poll — but **registering** the agent (`src/agents.py`, imported by the
 > `:8446` session-host at its own start) does, so upgrading to the build that
 > first added Grok needed a session-host restart before the button worked,

@@ -88,7 +88,7 @@ After that the launcher behaves like a native app — full-screen, no Safari chr
 
 ## HTTPS certificate (Tailscale)
 
-Fleet standard: `ferraroroberto/project-scaffolding#89`. Provision a **real Let's Encrypt cert** via `tailscale cert` — no self-signed CA, no per-device trust dance (the legacy self-signed generator and its `/install-ca` iOS-profile detour were removed in #383):
+Fleet standard (set in the `ferraroroberto/project-scaffolding` repo). Provision a **real Let's Encrypt cert** via `tailscale cert` — no self-signed CA, no per-device trust dance (the legacy self-signed generator and its `/install-ca` iOS-profile detour no longer exist):
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\gen_tailscale_cert.py
@@ -99,7 +99,7 @@ One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin c
 
 **Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
 
-> **Loopback and LAN URLs:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning by design — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically** (#356): with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with no Tailscale cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way. With no cert at all the server runs plain HTTP on loopback — fine for a fresh clone, but iOS Safari needs HTTPS for the PWA + mic features, so provision the Tailscale cert before phone use.
+> **Loopback and LAN URLs:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning by design — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically**: with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with no Tailscale cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way. With no cert at all the server runs plain HTTP on loopback — fine for a fresh clone, but iOS Safari needs HTTPS for the PWA + mic features, so provision the Tailscale cert before phone use.
 
 ---
 
@@ -130,10 +130,10 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 
 - The generated value is written to `config/webapp_config.json` and is **not** printed unless you pass `--show`. The tray bakes it into the URL it copies (`Tray → Copy Cloudflare URL`), so the normal flow never needs to read it off the console — and a run inside a launcher PTY session has its whole stdout captured to a transcript kept for `session_retention_days`.
 
-- Loopback callers still bypass — *unless* the request carries Cloudflare's own edge headers (#793). cloudflared runs on this PC and dials the webapp over loopback, so a tunnelled request only looks remote once uvicorn rewrites the client address from `X-Forwarded-For`; the edge headers are the signal that survives however that address resolves.
+- Loopback callers still bypass — *unless* the request carries Cloudflare's own edge headers. cloudflared runs on this PC and dials the webapp over loopback, so a tunnelled request only looks remote once uvicorn rewrites the client address from `X-Forwarded-For`; the edge headers are the signal that survives however that address resolves.
 - Remote (tailnet, Cloudflare) callers must present `Authorization: Bearer <token>` *or* `?token=…`. This includes the terminal WebSocket, which re-applies the same gate by hand (Starlette middleware never sees a WS handshake) — a full-scope minted token works there exactly as it does on HTTP, and a job-scoped one is refused there exactly as it is on HTTP.
 - The tray menu's **Copy …** items bake the token into the copied URL automatically. Paste once on the phone, the page stashes it in `localStorage`, strips it from the visible URL, you're in.
-- **Settings → API tokens** (issue #72) mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
+- **Settings → API tokens** mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
 
 ### Login password (`auth_password`)
 
@@ -226,15 +226,15 @@ Settings-tab toggle from using this mechanism itself.
 - The smart-kill endpoint accepts any port in range but only acts on PIDs LISTENing on that port — a port no one is using is a no-op.
 - Local TLS is the Tailscale LE cert, issued for the ts.net name only. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert doesn't cover the public hostname.
 
-## Usage log (#1524)
+## Usage log
 
 The app records which tabs and main controls you open, and on which device class, so a design review reads real frequency instead of asking. It is the vendored `usage-log` component (`src/usage_log.py` plus `app/webapp/static/_vendored/usage-log/`, both declared in `.fleet.toml`). Events land in `usage.sqlite3` under the app's runtime-data directory (`<runtime root>/app-launcher/`, `APP_LAUNCHER_DATA_DIR` overrides it), outside git, on this machine only; nothing is sent to any other origin.
 
 What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `session_end`), a view id (a tab name, or `settings`), a control id, a random per-visit session id, device class (phone / tablet / desktop), OS class, and a timestamp. Never message text, names, queries, form values, URLs with query strings, IP addresses or the raw user-agent; the server drops anything outside the bounded id pattern. Control ids are constants written as `data-track="…"` in `index.html`; no script builds one from element text. `GET /api/usage/summary?days=30` reads the counts back. The route sits behind the bearer token like every other `/api` route; `static/usage.js` hands the vendored client the bearer header through its `headers` option, a function so a rotated token is read on every send (without it a phone's events would 401 silently and only the PC would ever be logged); nothing wraps `window.fetch` or `navigator.sendBeacon`. Rows older than 365 days are pruned. The file needs the same backup treatment as other runtime SQLite state; losing it loses history, not function.
 
-## Screen time to task-os (#1678)
+## Screen time to task-os
 
-The Screen time numbers go to task-os's Time tracker as **one duration-only entry per completed local day**, all devices merged (a minute on the phone and the PC at once counts once), with the device split in the entry's note (`Launcher screen time: PC 2 h 50 m, Phone 1 h 10 m`). Each day is keyed `usage:app-launcher:<YYYY-MM-DD>` through task-os's idempotent `PUT /api/time/entries/by-source/{source_id}` (task-os#469), so a resend replaces the day instead of duplicating it; a day that now rounds to 0 minutes is a `DELETE` of its key. Today is never sent, since it is still running. The code is `src/usage_export.py`; nothing new is recorded.
+The Screen time numbers go to task-os's Time tracker as **one duration-only entry per completed local day**, all devices merged (a minute on the phone and the PC at once counts once), with the device split in the entry's note (`Launcher screen time: PC 2 h 50 m, Phone 1 h 10 m`). Each day is keyed `usage:app-launcher:<YYYY-MM-DD>` through task-os's idempotent `PUT /api/time/entries/by-source/{source_id}`, so a resend replaces the day instead of duplicating it; a day that now rounds to 0 minutes is a `DELETE` of its key. Today is never sent, since it is still running. The code is `src/usage_export.py`; nothing new is recorded.
 
 - **Command:** `launcher.py usage-export [--since YYYY-MM-DD] [--dry-run]`. Bare, it resends the last 7 completed days, which absorbs late events and rule changes; `--since` covers every day from that date to yesterday (the backfill); `--dry-run` prints the per-day minutes and sends nothing, needing no config. Exit codes name the failure: `2` not set up, `3` category missing, `4` task-os unreachable, `5` task-os refused the data, `6` no usage log yet.
 - **On demand:** the Screen time sheet's **Send to task-os** (`POST /api/screen-time/export`, the same code). `GET /api/screen-time/export` reads the last success and the last failure, kept in `screen-time-export.json` in the runtime-data folder (dates, counts and the error message only).
@@ -244,7 +244,7 @@ The Screen time numbers go to task-os's Time tracker as **one duration-only entr
 
 The pre-ship gate's disposable webapp gets an empty `task_os_url`, so no test can reach the live task-os.
 
-## Life OS zombie cleanup (#1738)
+## Life OS zombie cleanup
 
 A nightly Job finds Life OS skill sessions opened by mistake and removes them, so the history stops filling up with empty conversations: [docs/life-os-zombie-cleanup.md](docs/life-os-zombie-cleanup.md).
 

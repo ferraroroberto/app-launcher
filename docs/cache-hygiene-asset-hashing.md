@@ -1,6 +1,6 @@
 # Cache hygiene: content-hash asset stamping + /api/version
 
-**Issue:** [#30](https://github.com/ferraroroberto/app-launcher/issues/30) — Phone-validation 1/5.
+**Series:** part 1 of 5 of the phone-validation work.
 
 ## What changed
 
@@ -35,7 +35,7 @@ The hash *is* the content: it changes if and only if the bytes change. The only 
 
 ## Why this beats manual `?v=N`
 
-The pre-#30 scheme — hand-bumping `styles.css?v=18 → ?v=19` in `index.html` — was the source of most "shipped broken, had to revert" incidents. Content-hash stamping removes three distinct failure modes:
+The earlier scheme — hand-bumping `styles.css?v=18 → ?v=19` in `index.html` — was the source of most "shipped broken, had to revert" incidents. Content-hash stamping removes three distinct failure modes:
 
 | Manual `?v=N` | Content-hash stamping |
 |---|---|
@@ -43,10 +43,10 @@ The pre-#30 scheme — hand-bumping `styles.css?v=18 → ?v=19` in `index.html` 
 | **Only `styles.css` + `main.js` carried a `?v=`.** The other ES-module files (`terminal.js`, `state.js`, …) had none, so editing them shipped nothing to the phone. | Covers every `.js`/`.css`, including the `import` lines between modules. |
 | **`N` is arbitrary.** It records "I bumped it," not "the content changed" — a bump with no change still busts cache; a change with no bump does not. | The hash tracks content exactly: no false busts, no missed ones. |
 
-Consequence for later work: **do not reintroduce `?v=N` query strings in `index.html`.** They are redundant with the fleet hash and reintroduce the manual step this mechanism exists to kill. Issue #36's body asked to bump `?v=19`; that advice predated #30 and was correctly skipped — the #36/#37 static-file changes (May 2026) cache-busted automatically via the fleet hash with no version number touched anywhere.
+Consequence for later work: **do not reintroduce `?v=N` query strings in `index.html`.** They are redundant with the fleet hash and reintroduce the manual step this mechanism exists to kill. Advice to bump `?v=19` by hand is obsolete: the static-file changes of May 2026 cache-busted automatically via the fleet hash with no version number touched anywhere.
 
 ## Out of scope (deliberately)
 
 - Service-worker offline cache — separate, much larger change.
 - Build-time bundler (Vite / esbuild) — vanilla JS by design.
-- CI hooks for the validation pipeline — comes in Part 4 (#33).
+- CI hooks for the validation pipeline — comes in part 4 of the series.
