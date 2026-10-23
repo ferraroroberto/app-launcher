@@ -1,7 +1,6 @@
-/* Life OS conversation search and sheet (issue #1504, split out of
- * life-os.js by #1793).
+/* Life OS conversation search and sheet.
  *
- * The skills field searches conversations too (decision 9 of #1500): from
+ * The skills field searches conversations too: from
  * CONVO_MIN_QUERY characters, after the debounce, the matches show as a
  * second group under the skills. A skill's ⋮ Conversations narrows the group
  * to that skill's own list, newest first (the chip in the field); the chip's
@@ -118,7 +117,7 @@ function syncConvoGroup() {
   syncStartNew();
 }
 
-// Start new (#1588) shows whenever the Conversations group does: browse mode
+// Start new shows whenever the Conversations group does: browse mode
 // (a skill's own list, always narrowed) and search mode, hits or none. It is
 // the way out of a search that found nothing. Narrowed to a skill it names
 // that skill; spanning every skill (search only) it opens the picker. With the
@@ -191,7 +190,7 @@ function revealSkillsCard() {
   if (card && !card.open) card.open = true;
 }
 
-// The group's lifecycle states through the shared helper (#1501): a glyph,
+// The group's lifecycle states through the shared helper: a glyph,
 // one line, and at most one Retry, never a blank group and never a toast.
 const CONVO_STATE_GLYPH = {
   loading: 'hourglass',
@@ -306,15 +305,15 @@ function showConvoNotice(message) {
   showConvoState('error', message);
 }
 
-// ------------------------------------------------- sort (#886, #1074)
+// ------------------------------------------------- sort
 //
 // Orderings over rows already on the client, so a change costs no round
 // trip. The browse list and the search results land here with *different*
-// defaults (#1074): browsing defaults to a date sort, while a search
+// defaults: browsing defaults to a date sort, while a search
 // defaults to 'relevance' — the server's FTS5 rank order, which the client's
 // only job is not to destroy.
 //
-// 'interaction' (Recent) is the browse default and the point of #886:
+// 'interaction' (Recent) is the browse default, because
 // `last_interaction` is the capture file's mtime, which life-os moves
 // forward whenever a resumed session appends turns, so the conversation you
 // were last in floats to the top. 'created' is the date-stamped filename
@@ -372,7 +371,7 @@ function setConvoSort(mode) {
   if (CONVO_SORTS.indexOf(mode) === -1) return;
   if (convoMode === 'search') {
     // Search orderings are transient: the end of the search restores the
-    // browse default (#1074), so a date ordering of the hits never sticks.
+    // browse default, so a date ordering of the hits never sticks.
     convoSearchSort = mode;
   } else {
     if (mode === 'relevance') return;   // browsing has no rank to restore
@@ -399,7 +398,7 @@ function renderConvoRows(rows) {
   els.lifeOsConvoList.replaceChildren.apply(els.lifeOsConvoList, convoRows.map(convoRow));
 }
 
-// What a conversation is called: the owner's title (#1495) when set, else the
+// What a conversation is called: the owner's title when set, else the
 // digest topic, which keeps updating underneath it.
 function convoName(r) {
   return r.title || r.topic || r.slug || r.file || 'untitled';
@@ -422,7 +421,7 @@ function rowChevron(onTap) {
   return el;
 }
 
-// One conversation on the shared action-row (#1528, #1504): a tap opens its
+// One conversation on the shared action-row: a tap opens its
 // sheet, the title is what it is called (an owner's rename replaces the
 // topic outright), and the one context line is when it was last touched (or
 // created, under that sort), which skill it is from when the group spans
@@ -465,8 +464,8 @@ function convoWhen(iso) {
   return new Intl.DateTimeFormat('en-GB', format).format(day);
 }
 
-// The conversation's summary as one plain paragraph (#1528). A newer index
-// entry carries it whole (fleet-config#1373); an older one has decisions and
+// The conversation's summary as one plain paragraph. A newer index
+// entry carries it whole; an older one has decisions and
 // open loops, which read as consecutive sentences with their labels dropped.
 // The digest writes a literal "none" for an empty section: that is noise,
 // not a sentence.
@@ -485,8 +484,8 @@ function convoSummary(r) {
 // The conversation the sheet shows, or null while it is closed.
 let sheetRow = null;
 
-// Resume reattaches the stored session on the conversation's own model
-// (#1503), so the toolbar's provider does not have to match it: there is no
+// Resume reattaches the stored session on the conversation's own model,
+// so the toolbar's provider does not have to match it: there is no
 // "select a Claude model" lockout. The index carries no model, so the
 // button cannot name one ahead of time; the toast after it does.
 function canResume(r) {
@@ -573,7 +572,7 @@ export function closeConvoLayersForPath(path) {
   if (sheetRow && sheetRow.path === path) closeConvoLayers();
 }
 
-// The launcher link that reopens one capture (#1170): main.js boot reads
+// The launcher link that reopens one capture: main.js boot reads
 // ?convo=<skill>/<file> and hands it to openConvoByLink. The skill id and the
 // capture's filename, not its vault path — the server already resolves a
 // file inside that skill's conversations/ folder.
@@ -597,7 +596,7 @@ function copyConvoLink(r) {
   }
 }
 
-// Open one capture from a ?convo= link (#1170): the field narrowed to its
+// Open one capture from a ?convo= link: the field narrowed to its
 // skill, then the conversation sheet and the reader over it, the same
 // layering a tap builds. The sheet needs the full row, so the link resolves
 // through the skill's index; anything that doesn't resolve says so in the
@@ -623,7 +622,7 @@ export async function openConvoByLink(skillId, file) {
   if (row.path) openConvoViewer(row, openCapture);
 }
 
-// Rename one conversation as the owner sees it (#1495): a title kept beside the
+// Rename one conversation as the owner sees it: a title kept beside the
 // capture, shown in place of the digest topic. Empty clears it. The open
 // conversation sheet takes the new name in place.
 async function renameConversationTitle(r) {
@@ -650,7 +649,7 @@ async function renameConversationTitle(r) {
     return;
   }
   // The rename stands; an open session of this conversation that could not be
-  // renamed with it says so rather than quietly keeping the old name (#1637).
+  // renamed with it says so rather than quietly keeping the old name.
   const sync = reply && reply.session_sync;
   if (sync && sync.status === 'failed') {
     toast(sync.error, 'error', { icon: 'pencil' });
@@ -662,7 +661,7 @@ async function renameConversationTitle(r) {
   await refreshAfterLogChange();
 }
 
-// Delete one conversation everywhere it lives (#1410): the capture, the
+// Delete one conversation everywhere it lives: the capture, the
 // Claude Code transcript it was captured from, and the indexes. One confirm
 // that names the conversation and says what goes; a refusal (a conversation
 // open in a running session, an unreachable session host) toasts the
@@ -697,7 +696,7 @@ function openCapture(r) {
   loadFile({ path: r.path, name: r.file, category: 'conversations' });
 }
 
-// action 'resume' reattaches the stored session on its own model (#1503);
+// action 'resume' reattaches the stored session on its own model;
 // 'handoff' starts a new conversation in the toolbar's harness, seeded from
 // the capture, after a confirm.
 async function resumeConversation(r, action) {
@@ -707,7 +706,7 @@ async function resumeConversation(r, action) {
     mode: mode, model: model, action: action,
     capture: { path: r.path, revision: r.revision, agent: r.agent, sid: r.sid },
   };
-  // A resume comes back on the conversation's own model (#1503); the
+  // A resume comes back on the conversation's own model; the
   // toolbar's model applies only to the new conversation a handoff starts.
   if (action === 'resume') payload.keep_model = true;
   if (action === 'handoff') {

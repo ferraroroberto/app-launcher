@@ -1,5 +1,5 @@
-/* Life OS content browser (issue #102, split out of life-os.js by #1793): a
- * read-only sheet of one skill's files — public SKILL.md/description.md plus
+/* Life OS content browser: a read-only sheet of one skill's files —
+ * public SKILL.md/description.md plus
  * the private context/memory/examples/conversations — and the document
  * sheet that opens one. A conversation log (disposable, unlike every other
  * category) can be renamed or deleted from here; the shared Rename sheet it
@@ -139,7 +139,7 @@ function logSlug(name) {
     .replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, '');
 }
 
-// The rename sheet (#1439, in place of a native prompt()): resolves the name
+// The rename sheet, in place of a native prompt(), resolves the name
 // typed, or null when ✕, Escape or a backdrop tap cancels it.
 let renameSettle = null;
 
@@ -153,7 +153,7 @@ function finishRename(value) {
 
 // The one sheet serves both renames; each fills in its own wording. The log
 // rename (a file name, always required) is the original; the conversation
-// title (#1495, life-os-convos.js) may be left empty, which clears it.
+// title (set from life-os-convos.js) may be left empty, which clears it.
 const RENAME_LOG_SHEET = {
   heading: 'Rename log', action: 'Rename', placeholder: '', required: true,
   help: 'The date stays. Spaces become dashes, lower-cased.',
@@ -277,7 +277,7 @@ export function closeDoc() {
 }
 
 export function wireContentBrowser() {
-  // Browse and its document sheet (#1504): ✕ or Done closes each, back to
+  // Browse and its document sheet: ✕ or Done closes each, back to
   // the one under it.
   wireSheet(els.lifeOsBrowser, [els.lifeOsBrowserClose, els.lifeOsBrowserDone],
     function () { state.lifeOsBrowser = null; });
