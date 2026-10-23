@@ -202,9 +202,10 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
 
 # #608: the family of statuses that still mean "a human needs to look at
 # this" after board_transcript's needs-you split. ``idle-finished`` and
-# ``tool-pending`` (#813) are deliberately excluded — a clean-stopped session
-# with nothing pending, and one still mid-turn on an ordinary tool call,
-# aren't alerts; both are Claude quietly holding a workspace, same as ``idle``.
+# ``tool-pending`` (#813) and ``waiting-on-task`` are deliberately excluded — a
+# clean-stopped session with nothing pending, one still mid-turn on an ordinary
+# tool call, and one waiting on its own background task aren't alerts; all are
+# Claude quietly holding a workspace, same as ``idle``.
 _NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input"})
 
 
@@ -227,7 +228,7 @@ def build_board(
 
     Each column now holds one kind of card (#399): Backlog = open issues.
     Claude's turn = sessions working / unknown / idle / idle-finished /
-    tool-pending (idle and idle-finished are dimmed client-side, not hidden —
+    tool-pending / waiting-on-task (idle and idle-finished are dimmed client-side, not hidden —
     a session with nothing pending is still Claude holding a workspace, not
     an alert; tool-pending (#813) is a session still mid-turn on an ordinary,
     non-decision tool call — equally likely to be executing as
