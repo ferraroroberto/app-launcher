@@ -28,7 +28,7 @@ import re
 import subprocess
 import threading
 from pathlib import Path
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 from src._json_io import atomic_write_json
 from src.subprocess_flags import NO_WINDOW
@@ -145,32 +145,24 @@ def _rename_index_md(resolved: Path, new_name: str) -> None:
 _INDEX_MD_DECAY_MARKER_PREFIX = "<!-- decay-zone:"
 
 
-def _prune_index_md(resolved: Path) -> bool:
-    """Drop ``resolved``'s whole ``<!-- idx file="..." -->`` entry from index.md (#971).
+def _find_idx_block(lines: List[str], name: str) -> Optional[Tuple[int, int]]:
+    """``(start, end)`` line indices of ``name``'s ``<!-- idx ... -->`` block.
 
-    Deterministic line-based removal matching the exact block shape
+    ``end`` is exclusive: the next ``<!-- idx `` / decay-zone marker line, or
+    ``len(lines)``. The one definition of the block boundary
     ``conversation_index.py``'s own ``render_index()`` writes — one ``idx``
     comment line, one ``###`` heading line, the body lines, one blank
-    separator — found by the same exact-attribute marker ``_rename_index_md``
-    uses, and cut at the next entry / decay-zone marker / EOF, whichever
-    comes first. Never imports or shells into that pipeline: this is pure
-    text surgery, so pruning a stale entry can never trigger an LLM re-digest
-    of some unrelated capture in the same directory. A shape mismatch (no
-    match, custom edits) is a silent no-op, same stance as the rest of this
-    best-effort file.
+    separator — shared by the prune, read (#1738 backup) and insert
+    duplicate-guard call sites so it can't drift between them (#1791). ``None``
+    when ``name`` has no block in ``lines``.
     """
-    index_md = resolved.parent / _CONVERSATIONS_INDEX_MD
-    try:
-        lines = index_md.read_text(encoding="utf-8").split("\n")
-    except OSError:
-        return False
-    marker = f'file="{resolved.name}"'
+    marker = f'file="{name}"'
     start = next(
         (i for i, ln in enumerate(lines) if ln.startswith("<!-- idx ") and marker in ln),
         None,
     )
     if start is None:
-        return False
+        return None
     end = start + 1
     while (
         end < len(lines)
@@ -178,6 +170,29 @@ def _prune_index_md(resolved: Path) -> bool:
         and not lines[end].startswith(_INDEX_MD_DECAY_MARKER_PREFIX)
     ):
         end += 1
+    return start, end
+
+
+def _prune_index_md(resolved: Path) -> bool:
+    """Drop ``resolved``'s whole ``<!-- idx file="..." -->`` entry from index.md (#971).
+
+    Deterministic line-based removal matching the exact block shape
+    :func:`_find_idx_block` locates, cut at the next entry / decay-zone
+    marker / EOF, whichever comes first. Never imports or shells into that
+    pipeline: this is pure text surgery, so pruning a stale entry can never
+    trigger an LLM re-digest of some unrelated capture in the same
+    directory. A shape mismatch (no match, custom edits) is a silent no-op,
+    same stance as the rest of this best-effort file.
+    """
+    index_md = resolved.parent / _CONVERSATIONS_INDEX_MD
+    try:
+        lines = index_md.read_text(encoding="utf-8").split("\n")
+    except OSError:
+        return False
+    found = _find_idx_block(lines, resolved.name)
+    if found is None:
+        return False
+    start, end = found
     try:
         index_md.write_text("\n".join(lines[:start] + lines[end:]), encoding="utf-8")
     except OSError as exc:
@@ -292,8 +307,9 @@ def read_index_entry(resolved: Path) -> dict[str, Any]:
     """``{"index_json_row": dict | None, "index_md_block": str | None}`` for ``resolved``.
 
     The row and the ``index.md`` block exactly as :func:`_prune_conversation_index`
-    / :func:`_prune_index_md` would remove them; ``None`` when absent or the
-    index cannot be read.
+    / :func:`_prune_index_md` would remove them (the latter via the shared
+    :func:`_find_idx_block`); ``None`` when absent or the index cannot be
+    read.
     """
     row: Optional[dict] = None
     try:
@@ -307,13 +323,9 @@ def read_index_entry(resolved: Path) -> dict[str, Any]:
         lines = (resolved.parent / _CONVERSATIONS_INDEX_MD).read_text(encoding="utf-8").split("\n")
     except OSError:
         lines = []
-    marker = f'file="{resolved.name}"'
-    start = next((i for i, ln in enumerate(lines) if ln.startswith("<!-- idx ") and marker in ln), None)
-    if start is not None:
-        end = start + 1
-        while (end < len(lines) and not lines[end].startswith("<!-- idx ")
-               and not lines[end].startswith(_INDEX_MD_DECAY_MARKER_PREFIX)):
-            end += 1
+    found = _find_idx_block(lines, resolved.name)
+    if found is not None:
+        start, end = found
         block = "\n".join(lines[start:end]).rstrip("\n")
     return {"index_json_row": row, "index_md_block": block}
 
@@ -351,8 +363,7 @@ def _insert_index_md_block(resolved: Path, block: str) -> bool:
         lines = index_md.read_text(encoding="utf-8").split("\n")
     except OSError:
         return False
-    marker = f'file="{resolved.name}"'
-    if any(ln.startswith("<!-- idx ") and marker in ln for ln in lines):
+    if _find_idx_block(lines, resolved.name) is not None:
         return False
     at: Optional[int] = None
     for i, ln in enumerate(lines):

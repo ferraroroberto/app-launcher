@@ -387,6 +387,21 @@ export function wireModelCombo(root, onChange) {
 // `granular: true` also switches sub-minute output from "now" to "Ns" and
 // shows hours+minutes, rolling into "Nd Nh" past 24 h (#1523).
 
+// Whole local calendar days between `date` and today: positive when `date`
+// is in the past, negative when it is in the future, 0 for today. `date`'s
+// own year/month/day are read as given (in local time) — the caller owns
+// parsing an ISO string or epoch into that shape first. The one day-diff
+// scan shared by life-os.js's `daysSince`/`convoWhen`, screen-time.js's
+// `whenText` and jobs-agenda.js's `_dayOffset`, so none of them redoes this
+// `new Date(y, m, d)` + "today at midnight" + `Math.round(diff / 86400000)`
+// walk on its own.
+export function calendarDaysFromToday(date) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((today - day) / 86400000);
+}
+
 // Past 24 h a whole-hours count reads as "11d 4h", not "268h" (#1523); below
 // that it returns null so each caller keeps its own "Nh Nm" shape. Shared by
 // fmtDuration's granular mode and jobs-row.js's formatDuration.
@@ -482,22 +497,16 @@ export function contextAlert(pct) {
   return typeof pct === 'number' && pct >= CONTEXT_ALERT_PCT;
 }
 
-// Compact reset stamps for the usage meter's rows (#860, #1433). A full
-// "Sep 11, 14:20" on both windows is what pushes a row past a 390px
-// viewport, so the 5-hour window — which always resets today or tomorrow —
-// shows the clock only, and the weekly one shows the day only.
-export function fmtResetClock(value) {
+// A reset timestamp in an arbitrary `Intl.DateTimeFormat` shape (#860,
+// #1433): usage-meter.js's compact row stamps (clock only / day only — a
+// full "Sep 11, 14:20" on both windows pushes a row past a 390px viewport)
+// and its full sheet stamps are all this one formatter with a different
+// `format` object, not three separate near-identical copies.
+export function fmtResetFull(value, format) {
   if (value == null) return '';
   const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
   if (isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' }).format(date);
-}
-
-export function fmtResetDay(value) {
-  if (value == null) return '';
-  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' }).format(date);
+  return new Intl.DateTimeFormat([], format).format(date);
 }
 
 // The date on a Board card's second line (#1638): the clock for a stamp from

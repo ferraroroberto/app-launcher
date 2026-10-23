@@ -24,7 +24,7 @@
 
 import { icon } from './_vendored/icons/icons.js';
 import {
-  brandIconEl, el, fmtResetClock, fmtResetDay, nameLabel, pctText, quotaPace, sheetRow,
+  brandIconEl, el, fmtResetFull, nameLabel, pctText, quotaPace, sheetRow,
 } from './dom-utils.js';
 import { chip } from './glance.js';
 
@@ -177,13 +177,19 @@ function bar(win, tone) {
   return track;
 }
 
-function windowRow(win, tone, label, fmtReset) {
+// Compact reset stamps for these rows: the 5-hour window always resets
+// today or tomorrow, so the clock alone is enough; the weekly one needs
+// the day, not the time.
+const ROW_RESET_CLOCK = { hour: 'numeric', minute: '2-digit' };
+const ROW_RESET_DAY = { month: 'short', day: 'numeric' };
+
+function windowRow(win, tone, label, resetFormat) {
   const row = el('span', 'um-row');
   row.dataset.tone = tone;
   row.appendChild(el('span', 'um-label', label));
   row.appendChild(bar(win, tone));
   row.appendChild(el('span', 'um-pct', pctText(win.pct)));
-  const reset = win.resetsAt != null ? fmtReset(win.resetsAt) : '';
+  const reset = fmtResetFull(win.resetsAt, resetFormat);
   const resetEl = el('span', 'um-reset');
   if (reset) {
     resetEl.innerHTML = icon('refresh-cw');
@@ -264,8 +270,8 @@ function renderFull(claude, codex, show) {
     btn.appendChild(el('span', 'um-note', 'Quota ' + (r ? r.note : 'unknown')));
   } else {
     const windows = el('span', 'um-windows');
-    if (r.five) windows.appendChild(windowRow(r.five, r.fiveTone, '5h', fmtResetClock));
-    if (r.week) windows.appendChild(windowRow(r.week, r.weekTone, 'Week', fmtResetDay));
+    if (r.five) windows.appendChild(windowRow(r.five, r.fiveTone, '5h', ROW_RESET_CLOCK));
+    if (r.week) windows.appendChild(windowRow(r.week, r.weekTone, 'Week', ROW_RESET_DAY));
     btn.appendChild(windows);
   }
 
@@ -370,13 +376,6 @@ function sheetOpen() {
 // weekday is enough; the week's needs the date.
 const SHEET_RESET_5H = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
 const SHEET_RESET_WEEK = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
-
-function fmtResetFull(value, format) {
-  if (value == null) return '';
-  const date = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
-  if (isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat([], format).format(date);
-}
 
 // Compact k/M abbreviation for a token count — 12300 -> "12.3k".
 function fmtTokens(n) {

@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
@@ -15,25 +13,16 @@ from app.webapp.middleware import (
     credential_required,
     is_pc_itself,
 )
-from app.webapp.routers._helpers import maybe_json
+from app.webapp.routers._helpers import known_run_dir, maybe_json
 from src import jobs as jobs_mod
-from src.jobs_config import get_by_id, load_jobs
 
 router = APIRouter()
-
-
-def _known_run_dir(job_id: str, run_id: str) -> Optional[Path]:
-    """Return a registered job's existing run dir, else ``None``."""
-    if get_by_id(load_jobs(), job_id) is None:
-        return None
-    run_dir = jobs_mod.runs_dir(job_id) / run_id
-    return run_dir if run_dir.is_dir() else None
 
 
 @router.put("/api/jobs/{job_id}/runs/{run_id}")
 async def update_job_run(job_id: str, run_id: str, request: Request) -> dict:
     """Update the keep-forever flag on one canonical run record."""
-    run_dir = _known_run_dir(job_id, run_id)
+    run_dir = known_run_dir(job_id, run_id)
     if run_dir is None:
         raise HTTPException(status_code=404, detail="unknown job or run")
     body = await maybe_json(request)
@@ -48,7 +37,7 @@ async def update_job_run(job_id: str, run_id: str, request: Request) -> dict:
 @router.get("/api/jobs/{job_id}/runs/{run_id}/artifacts/{filename:path}")
 async def download_job_artifact(job_id: str, run_id: str, filename: str) -> FileResponse:
     """Serve one artifact while keeping resolution strictly inside its run."""
-    run_dir = _known_run_dir(job_id, run_id)
+    run_dir = known_run_dir(job_id, run_id)
     if run_dir is None:
         raise HTTPException(status_code=404, detail="unknown job or run")
     base = (run_dir / "artifacts").resolve()
@@ -92,7 +81,7 @@ async def stream_job_run(websocket: WebSocket, job_id: str, run_id: str) -> None
                     code=4401, reason="missing or invalid bearer token"
                 )
                 return
-    run_dir = _known_run_dir(job_id, run_id)
+    run_dir = known_run_dir(job_id, run_id)
     if run_dir is None:
         await websocket.close(code=4404, reason="unknown job or run")
         return

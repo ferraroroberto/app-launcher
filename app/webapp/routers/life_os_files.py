@@ -24,6 +24,7 @@ for an endpoint that reads arbitrary files under a root).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -31,7 +32,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, life_os_capture, life_os_index
+from src import audit, life_os_capture, life_os_delete, life_os_index, session_client
+from src.life_os_history import read_captures
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
 
@@ -166,6 +168,13 @@ async def delete_file(request: Request) -> Dict[str, Any]:
     ``life_os_dir`` first, then required to live under
     ``.claude/skills/<skill>/conversations/``. Used by the browser's
     edit-mode 🗑️ to declutter trial-run logs.
+
+    Shares :func:`src.life_os_delete.delete_conversation` with the
+    skill-scoped ``DELETE /api/life-os/skills/{id}/conversations`` (#1410) so
+    there is one routine for "delete a conversation everywhere it lives":
+    this route also drops the matching Claude Code transcript, title and
+    index rows instead of only unlinking the capture, and refuses a capture
+    that is attached to a running session.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     rel = request.query_params.get("path", "")
@@ -179,15 +188,41 @@ async def delete_file(request: Request) -> Dict[str, Any]:
             status_code=403,
             detail="only conversation logs can be deleted",
         )
+    skill_id = resolved.relative_to(skills_dir_for(Path(cfg.life_os_dir)).resolve()).parts[0]
+    source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [resolved]))[0]
+    if "revision" not in source:
+        raise HTTPException(
+            status_code=409,
+            detail="Nothing was deleted: can't tell which Claude transcript this "
+                   f"capture belongs to. {source['reason']}",
+        )
+    sid = str(source.get("sid", "")).lower()
+    if sid:
+        try:
+            live = await asyncio.to_thread(life_os_delete.live_conversations, cfg)
+        except session_client.SessionHostError as exc:
+            logger.warning("⚠️ Life OS delete: session host unavailable (%s)", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="Nothing was deleted: the session host can't be reached, so "
+                       "it isn't known whether this conversation is open in a running session.",
+            )
+        if sid in live:
+            raise HTTPException(
+                status_code=409,
+                detail="Nothing was deleted: this conversation is open in a running "
+                       "session. Stop that session first.",
+            )
     try:
-        resolved.unlink()
-    except OSError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    await life_os_index.reconcile_delete(resolved, cfg)
+        removed = await asyncio.to_thread(
+            life_os_delete.delete_conversation, cfg, skill_id, resolved, source
+        )
+    except life_os_delete.ConversationDeleteError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.message)
     await audit_off_loop(
         audit.audit_event, "lifeos_delete", path=rel, client=client_ip(request)
     )
-    return {"deleted": rel}
+    return {"deleted": rel, "removed": removed}
 
 
 # Date-stamped prefix (YYYY-MM-DD-HHMM-) a rename preserves — only the slug

@@ -22,6 +22,7 @@ import { cadenceText } from './jobs-row.js';
 import { openJobDialog } from './jobs-dialog.js';
 import { icon } from './_vendored/icons/icons.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
+import { calendarDaysFromToday } from './dom-utils.js';
 
 const NEXT_UP_COUNT = 3;
 const AGENDA_DAYS = 7;
@@ -40,11 +41,9 @@ function _dayKey(epoch) {
 }
 
 function _dayOffset(epoch) {
-  const d = new Date(epoch * 1000);
-  const now = new Date();
-  const a = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const b = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.round((b - a) / 86400000);
+  // calendarDaysFromToday counts "ago" (past positive); the agenda looks
+  // forward, so a day yet to come is a positive offset.
+  return -calendarDaysFromToday(new Date(epoch * 1000));
 }
 
 function _dayHeader(epoch) {

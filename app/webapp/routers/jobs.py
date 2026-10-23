@@ -58,7 +58,7 @@ from src.jobs_config import (
     validate_kind_shape,
 )
 
-from app.webapp.routers._helpers import maybe_json
+from app.webapp.routers._helpers import known_run_dir, maybe_json
 from app.webapp.routers.jobs_run import _admit_and_spawn, _dry_run_check, _dry_run_execute
 from app.webapp.routers import jobs_run_store_routes, jobs_webhook_routes
 
@@ -584,8 +584,8 @@ async def kill_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     job = get_by_id(cfg, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
-    run_dir = jobs_mod.runs_dir(job_id) / run_id
-    if not run_dir.is_dir():
+    run_dir = known_run_dir(job_id, run_id)
+    if run_dir is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
     record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
     status = record.get("status")
@@ -647,8 +647,8 @@ async def dismiss_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     cfg = load_jobs()
     if get_by_id(cfg, job_id) is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
-    run_dir = jobs_mod.runs_dir(job_id) / run_id
-    if not run_dir.is_dir():
+    run_dir = known_run_dir(job_id, run_id)
+    if run_dir is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
     record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
     if record.get("status") != "failed" or record.get("outcome") == OUTCOME_DEFERRED:
@@ -707,8 +707,8 @@ async def get_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
     cfg = load_jobs()
     if get_by_id(cfg, job_id) is None:
         raise HTTPException(status_code=404, detail=f"unknown job {job_id}")
-    run_dir = jobs_mod.runs_dir(job_id) / run_id
-    if not run_dir.is_dir():
+    run_dir = known_run_dir(job_id, run_id)
+    if run_dir is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id}")
     record = await asyncio.to_thread(jobs_mod.read_run, run_dir)
     record.setdefault("run_id", run_id)
