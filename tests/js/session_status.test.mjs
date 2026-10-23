@@ -16,6 +16,7 @@ const H = 3600;
 assert.deepEqual(sessionStatusBits('working', 9 * MIN), ['working', '9m']);
 assert.deepEqual(sessionStatusBits('idle-finished', 19 * H), ['finished', '19h']);
 assert.deepEqual(sessionStatusBits('tool-pending', 30), ['running', 'now']);
+assert.deepEqual(sessionStatusBits('waiting-on-task', 5 * MIN), ['waiting on task', '5m']);
 assert.deepEqual(sessionStatusBits('awaiting-input', 5 * MIN), ['needs you', '5m']);
 assert.deepEqual(sessionStatusBits('awaiting-decision', 5 * MIN), ['awaiting decision', '5m']);
 assert.deepEqual(sessionStatusBits('idle', 2 * 86400), ['idle', '2d']);

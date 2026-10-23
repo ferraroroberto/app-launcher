@@ -75,6 +75,7 @@ export function avatar(glyph, badge, extraClass) {
 const STATUS_META = {
   working: { text: 'working', cls: 'is-working' },
   'tool-pending': { text: 'running', cls: 'is-tool-pending' },
+  'waiting-on-task': { text: 'waiting on task', cls: 'is-waiting-on-task' },
   stalled: { text: 'stalled', cls: 'is-stalled' },
   'awaiting-decision': { text: 'awaiting decision', cls: 'is-awaiting-decision' },
   'awaiting-input': { text: 'needs you', cls: 'is-awaiting-input' },

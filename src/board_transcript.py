@@ -243,6 +243,11 @@ _STALLED_DISPATCH_AFTER = timedelta(minutes=30)
 # staleness.
 _UNKNOWN_LAUNCH_STAMP = datetime.min.replace(tzinfo=timezone.utc)
 
+# A session whose turn ended while its own background Bash, sub-agent or
+# ``Monitor`` is still running. Claude's turn, never Your turn: a harness
+# notification wakes it when the task finishes, so no human is being waited on.
+WAITING_ON_TASK = "waiting-on-task"
+
 
 def _read_tail_bytes(path: Any, n_bytes: int) -> bytes:
     """Read the last ``n_bytes`` of ``path`` as raw bytes.
@@ -468,7 +473,7 @@ def _transcript_overlay(
     transcript past the stamp until the background work's own completion
     notice lands. #608 refines this further: a dispatch outstanding past
     :data:`_STALLED_DISPATCH_AFTER` is no longer healthy waiting but a real
-    anomaly, so it renders ``stalled`` instead of ``working`` — but only when
+    anomaly, so it renders ``stalled`` instead of :data:`WAITING_ON_TASK` — but only when
     the launch line's own timestamp actually resolved
     (:data:`_UNKNOWN_LAUNCH_STAMP` means "genuinely outstanding, age
     unknown", not "very old"; guessing stalled from that sentinel would be
@@ -512,7 +517,7 @@ def _transcript_overlay(
             and now - pending_since > _STALLED_DISPATCH_AFTER
         ):
             return "stalled", anchor
-        return "working", anchor
+        return WAITING_ON_TASK, anchor
     return status, anchor
 
 
@@ -540,6 +545,15 @@ def _launched_background_ids(obj: Dict[str, Any]) -> List[str]:
     return ids
 
 
+def _notification_text(obj: Dict[str, Any]) -> str:
+    """The ``<task-notification>`` payload of a line, or ``""``."""
+    text = obj.get("content")
+    if not isinstance(text, str) or "<task-notification>" not in text:
+        attachment = obj.get("attachment")
+        text = attachment.get("prompt") if isinstance(attachment, dict) else None
+    return text if isinstance(text, str) and "<task-notification>" in text else ""
+
+
 def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
     """Background-dispatch ids a ``<task-notification>`` line marks complete.
 
@@ -550,13 +564,7 @@ def _notified_background_ids(obj: Dict[str, Any]) -> List[str]:
     confirmed against live transcripts, app-launcher#464). Either shape
     carries the same ``<task-id>ID</task-id>``.
     """
-    text = obj.get("content")
-    if not isinstance(text, str) or "<task-notification>" not in text:
-        attachment = obj.get("attachment")
-        text = attachment.get("prompt") if isinstance(attachment, dict) else None
-    if not isinstance(text, str) or "<task-notification>" not in text:
-        return []
-    return _TASK_ID_RE.findall(text)
+    return _TASK_ID_RE.findall(_notification_text(obj))
 
 
 _BACKGROUNDABLE_TOOL_NAMES = frozenset({"Bash", "PowerShell"})
@@ -623,13 +631,66 @@ _TOOL_USE_ID_RE = re.compile(r"<tool-use-id>([^<]+)</tool-use-id>")
 def _notified_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     """``tool_use`` ids a ``<task-notification>`` line's ``<tool-use-id>``
     tag proves resolved (#576)."""
-    text = obj.get("content")
-    if not isinstance(text, str) or "<task-notification>" not in text:
-        attachment = obj.get("attachment")
-        text = attachment.get("prompt") if isinstance(attachment, dict) else None
-    if not isinstance(text, str) or "<task-notification>" not in text:
+    return _TOOL_USE_ID_RE.findall(_notification_text(obj))
+
+
+# A ``Monitor`` is a third kind of background work. Its launch ack carries
+# ``toolUseResult.taskId``; the events it emits arrive as ``<task-notification>``
+# lines under that same id but with no ``<status>`` (a bare event leaves the
+# monitor running), while its end — stream ended, script failed, stopped — carries
+# one. A monitor that outlives its ``timeout_ms`` ends with a final event instead.
+_MONITOR_TIMEOUT_EVENT = "[Monitor timed out"
+_STATUS_TAG = "<status>"
+
+
+def _launched_monitor_use_ids(obj: Dict[str, Any]) -> List[str]:
+    """``tool_use`` ids of the ``Monitor`` calls an assistant line makes."""
+    if obj.get("type") != "assistant":
         return []
-    return _TOOL_USE_ID_RE.findall(text)
+    msg = obj.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        return []
+    return [
+        block["id"]
+        for block in content
+        if isinstance(block, dict)
+        and block.get("type") == "tool_use"
+        and block.get("name") == "Monitor"
+        and isinstance(block.get("id"), str)
+    ]
+
+
+def _monitor_ack(obj: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+    """``(tool_use_id, taskId)`` when a ``user`` line is a ``Monitor`` launch ack."""
+    result = obj.get("toolUseResult")
+    task_id = result.get("taskId") if isinstance(result, dict) else None
+    msg = obj.get("message")
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(task_id, str) or not task_id or not isinstance(content, list):
+        return None
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "tool_result":
+            use_id = block.get("tool_use_id")
+            if isinstance(use_id, str):
+                return use_id, task_id
+    return None
+
+
+def _monitor_notification(obj: Dict[str, Any]) -> Optional[Tuple[str, bool]]:
+    """``(task_id, ended)`` for a ``Monitor`` notification, else ``None``.
+
+    Told apart from a Bash or Agent completion by its summary, which always
+    opens ``Monitor``. A bare event is alive; the terminal shapes and the
+    timeout event are ended.
+    """
+    text = _notification_text(obj)
+    ids = _TASK_ID_RE.findall(text)
+    if not ids or "<summary>Monitor" not in text:
+        return None
+    if "<summary>Monitor event:" in text:
+        return ids[0], _MONITOR_TIMEOUT_EVENT in text
+    return ids[0], _STATUS_TAG in text
 
 
 def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[datetime]:
@@ -664,6 +725,11 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     are ordinary *synchronous* sub-agent calls, so a tool-call-id-keyed check
     would need to tell "still running async" apart from "finished, this is
     just the normal blocking reply" and risk misreading the common case.)
+
+    A ``Monitor`` is a third scheme, keyed on its own ``taskId``: pending from
+    its launch ack until a notification carrying ``<status>`` (or a timeout
+    event) ends it. A bare monitor event never ends it, and counts as proof it
+    is running when the launch line has left the tail window.
 
     Reads :data:`_EXCHANGE_TAIL_BYTES` rather than the smaller
     ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
@@ -713,7 +779,10 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     completed: set = set()
     bash_launched: Dict[str, Optional[datetime]] = {}
     bash_completed: set = set()
-    queued_notifications: List[Tuple[List[str], List[str]]] = []
+    monitor_use_stamps: Dict[str, Optional[datetime]] = {}
+    monitors: Dict[str, Optional[datetime]] = {}
+    monitors_ended: set = set()
+    queued_notifications: List[Tuple[List[str], List[str], List[str]]] = []
     last_turn_pending_agent_count: Optional[int] = None
     for obj in tail.objects():
         if obj.get("type") == "system" and obj.get("subtype") == "turn_duration":
@@ -725,23 +794,40 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
             launched.setdefault(tid, stamp)
         for tid in _launched_bash_dispatch_ids(obj):
             bash_launched.setdefault(tid, stamp)
+        for use_id in _launched_monitor_use_ids(obj):
+            monitor_use_stamps.setdefault(use_id, stamp)
+        ack = _monitor_ack(obj)
+        if ack is not None and ack[0] in monitor_use_stamps:
+            monitors.setdefault(ack[1], monitor_use_stamps[ack[0]] or stamp)
+        monitor_event = _monitor_notification(obj)
+        if monitor_event is not None and not monitor_event[1]:
+            # A live event proves its monitor is running even when the launch
+            # line scrolled out of the tail window.
+            monitors.setdefault(monitor_event[0], stamp)
+        ended_monitors = [monitor_event[0]] if monitor_event and monitor_event[1] else []
         if obj.get("type") == "queue-operation":
             operation = obj.get("operation")
             if operation == "enqueue":
-                queued_notifications.append(
-                    (_notified_background_ids(obj), _notified_bash_dispatch_ids(obj))
-                )
+                queued_notifications.append((
+                    _notified_background_ids(obj),
+                    _notified_bash_dispatch_ids(obj),
+                    ended_monitors,
+                ))
             elif operation in ("dequeue", "remove") and queued_notifications:
-                task_ids, tool_use_ids = queued_notifications.pop(0)
+                task_ids, tool_use_ids, monitor_ids = queued_notifications.pop(0)
                 completed.update(task_ids)
                 bash_completed.update(tool_use_ids)
+                monitors_ended.update(monitor_ids)
             continue
         completed.update(_notified_background_ids(obj))
         bash_completed.update(_notified_bash_dispatch_ids(obj))
+        monitors_ended.update(ended_monitors)
     outstanding_stamps = [
         stamp for tid, stamp in launched.items() if tid not in completed
     ] + [
         stamp for tid, stamp in bash_launched.items() if tid not in bash_completed
+    ] + [
+        stamp for tid, stamp in monitors.items() if tid not in monitors_ended
     ]
     if not outstanding_stamps:
         if last_turn_pending_agent_count:

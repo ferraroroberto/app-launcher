@@ -115,7 +115,7 @@ class TestDecide:
 
     @pytest.mark.parametrize(
         "status",
-        ["working", "tool-pending", "awaiting-decision", "stalled", "unknown"],
+        ["working", "tool-pending", "waiting-on-task", "awaiting-decision", "stalled", "unknown"],
     )
     def test_never_rings_a_chief_that_is_not_idle(self, status):
         """``tool-pending`` is a permission prompt and ``awaiting-decision`` a

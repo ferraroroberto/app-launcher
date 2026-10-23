@@ -3,7 +3,8 @@
  *
  * Five computed columns from GET /api/board, each single-purpose, drawn as
  * lanes in this order (#1436): Backlog (open issues), the chief's plan over
- * Claude's turn (sessions working/unknown/idle/idle-finished/tool-pending),
+ * Claude's turn (sessions working/unknown/idle/idle-finished/tool-pending/
+ * waiting-on-task),
  * Your turn (stalled/awaiting-decision/awaiting-input sessions only — #608's
  * split of the old undifferentiated needs-you, sharpened by #813's
  * tool-pending carve-out), PRs and jobs (open PRs + failed/unconfirmed/stuck

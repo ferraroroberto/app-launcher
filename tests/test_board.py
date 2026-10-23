@@ -1372,7 +1372,7 @@ def _task_notification_line(ts: datetime, task_id: str) -> str:
     return enqueue + "\n" + dequeue
 
 
-def test_overlay_pending_background_bash_keeps_working(tmp_path: Path):
+def test_overlay_pending_background_bash_is_waiting_on_task(tmp_path: Path):
     """A backgrounded Bash command Claude is still waiting on must not render
     as needs-you just because its own turn already ended — the parent
     transcript stays quiet the whole time it's running, so this must not
@@ -1384,10 +1384,10 @@ def test_overlay_pending_background_bash_keeps_working(tmp_path: Path):
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
-def test_overlay_pending_background_agent_keeps_working(tmp_path: Path):
+def test_overlay_pending_background_agent_is_waiting_on_task(tmp_path: Path):
     """Same as above for an async sub-agent (Agent/Task tool) dispatch."""
     stamp_time = NOW - timedelta(minutes=10)
     content = _tool_result_line(
@@ -1397,7 +1397,7 @@ def test_overlay_pending_background_agent_keeps_working(tmp_path: Path):
     row = _state_row("E:/x/y", status="idle", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_path: Path):
@@ -1415,7 +1415,7 @@ def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_pat
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, launch + filler)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def _turn_duration_line(ts: datetime, pending_agent_count: int) -> str:
@@ -1458,7 +1458,7 @@ def test_overlay_pending_dispatch_beyond_tail_window_uses_turn_duration_count(tm
         tmp_path, stamp_time, launch + filler + final_text + turn_duration
     )
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_overlay_turn_duration_zero_pending_does_not_block_idle_finished(tmp_path: Path):
@@ -1495,7 +1495,7 @@ def test_overlay_background_dispatch_notified_keeps_needs_you(tmp_path: Path):
     assert cards[0]["status"] == "idle-finished"
 
 
-def test_overlay_background_dispatch_enqueued_not_dequeued_keeps_working(tmp_path: Path):
+def test_overlay_background_dispatch_enqueued_not_dequeued_is_waiting_on_task(tmp_path: Path):
     """#601: a live transcript (app-launcher#601, home-automation issue #321)
     ended with the notification's ``enqueue`` line as the very last thing
     written — no ``dequeue``/``remove`` followed it anywhere in the tail, so
@@ -1521,7 +1521,7 @@ def test_overlay_background_dispatch_enqueued_not_dequeued_keeps_working(tmp_pat
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 # ------------------------ pending background dispatch, tool-use-id keyed (#576)
@@ -1571,7 +1571,7 @@ def _tool_use_notification_line(ts: datetime, task_id: str, tool_use_id: str) ->
     return enqueue + "\n" + dequeue
 
 
-def test_overlay_pending_bash_dispatch_without_background_task_id_keeps_working(tmp_path: Path):
+def test_overlay_pending_bash_dispatch_without_background_task_id_is_waiting_on_task(tmp_path: Path):
     """A backgrounded Bash dispatch whose synchronous ack carries no
     ``backgroundTaskId`` (the real-world drift #576 found) must still be
     caught via the tool_use's own id, not just the legacy toolUseResult key."""
@@ -1580,10 +1580,10 @@ def test_overlay_pending_bash_dispatch_without_background_task_id_keeps_working(
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
-def test_overlay_pending_powershell_dispatch_keeps_working(tmp_path: Path):
+def test_overlay_pending_powershell_dispatch_is_waiting_on_task(tmp_path: Path):
     """#594: this repo's own agents background long-running commands (e.g.
     the verify-before-ship gate) via the ``PowerShell`` tool, not ``Bash`` —
     the tool-call-id-keyed scheme must recognize it too, not just Bash."""
@@ -1592,7 +1592,7 @@ def test_overlay_pending_powershell_dispatch_keeps_working(tmp_path: Path):
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_overlay_bash_dispatch_ack_alone_does_not_resolve_it(tmp_path: Path):
@@ -1609,7 +1609,7 @@ def test_overlay_bash_dispatch_ack_alone_does_not_resolve_it(tmp_path: Path):
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_overlay_bash_dispatch_notified_by_tool_use_id_keeps_needs_you(tmp_path: Path):
@@ -1922,7 +1922,7 @@ def test_refine_only_applies_to_needs_you_not_idle(tmp_path: Path):
 # --------------------------------------------- stalled threshold (#608)
 
 
-def test_stalled_background_dispatch_under_threshold_stays_working(tmp_path: Path):
+def test_stalled_background_dispatch_under_threshold_stays_waiting_on_task(tmp_path: Path):
     """A background dispatch outstanding 10 minutes is healthy waiting, not
     a stall — mirrors the fleet chief's own observed ~9-minute e2e-gate wait
     that must never misread as stalled."""
@@ -1934,7 +1934,7 @@ def test_stalled_background_dispatch_under_threshold_stays_working(tmp_path: Pat
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=25)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 30)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_stalled_background_dispatch_over_threshold_is_stalled(tmp_path: Path):
@@ -1952,7 +1952,7 @@ def test_stalled_background_dispatch_over_threshold_is_stalled(tmp_path: Path):
     assert cards[0]["status"] == "stalled"
 
 
-def test_stalled_dispatch_with_unparseable_launch_stamp_stays_working(tmp_path: Path):
+def test_stalled_dispatch_with_unparseable_launch_stamp_stays_waiting_on_task(tmp_path: Path):
     """A dispatch with no parseable launch timestamp is genuinely
     outstanding but not age-able — per explicit direction, a low-confidence
     stalled call is worse than a late one, so this must not be guessed as
@@ -1970,7 +1970,7 @@ def test_stalled_dispatch_with_unparseable_launch_stamp_stays_working(tmp_path: 
     row = _state_row("E:/x/y", status="needs-you", updated_min_ago=40)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 45)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 def test_stalled_status_stays_stalled_for_idle_hook_status(tmp_path: Path):
@@ -1986,7 +1986,7 @@ def test_stalled_status_stays_stalled_for_idle_hook_status(tmp_path: Path):
     row = _state_row("E:/x/y", status="idle", updated_min_ago=40)
     row["transcript_path"] = _transcript_file(tmp_path, stamp_time, content)
     cards = board.merge_sessions([_live("aaa", "E:/x/y", 45)], {"t": row}, now=NOW)
-    assert cards[0]["status"] == "working"
+    assert cards[0]["status"] == "waiting-on-task"
 
 
 # ---------------------------------------------- build_board routing (#608)

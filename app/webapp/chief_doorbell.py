@@ -8,7 +8,8 @@ its terminal (:data:`DOORBELL_LINE`):
   same overlay ``GET /api/board`` uses (:func:`src.board.merge_sessions`), is
   ``idle-finished`` or ``awaiting-input``. ``tool-pending`` (a permission
   prompt) and ``awaiting-decision`` (a picker) are not idle: a typed line
-  would land in the dialog, not the composer;
+  would land in the dialog, not the composer. ``waiting-on-task`` (its own
+  background work, whose notification wakes it) is not idle either;
 * its composer is **clean**: the session-host's ``composer_dirty`` (#1643) is
   ``False``. ``None`` (unknown, or a session-host too old to send it) never
   rings;
