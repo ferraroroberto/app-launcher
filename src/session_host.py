@@ -195,6 +195,11 @@ _CONSOLE_INPUT_TIMEOUT_S = 20.0
 # (a 0-byte reparse point that fails when spawned non-interactively).
 _POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
+# Guess, not measured: PowerShell start-up + `Start-Process` handing back the
+# console PID should finish in well under this; a detached launch wedged past
+# it fails loudly rather than hanging the create_remote caller forever.
+_DETACHED_SPAWN_TIMEOUT_S = 30.0
+
 # The allowlist for the ``flags`` string SessionManager.create/create_remote
 # splice straight into ``cmd /c <exe> <flags>`` (create) or a PowerShell
 # ``Start-Process -ArgumentList`` (create_remote) — the boundary that
@@ -1276,7 +1281,7 @@ class SessionManager:
             capture_output=True,
             text=True,
             creationflags=NO_WINDOW,
-            timeout=30,
+            timeout=_DETACHED_SPAWN_TIMEOUT_S,
             env=agent_child_env(session_id, agent),
         )
         pid = _parse_started_pid(result.stdout)
