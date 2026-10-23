@@ -405,9 +405,6 @@ class TrayApp:
 
     # -- menu actions ----------------------------------------------------
 
-    def open_local(self, icon, item) -> None:  # noqa: ARG002
-        webbrowser.open(self.manager.base_url)
-
     def copy_local(self, icon, item) -> None:  # noqa: ARG002
         webapp_cfg = load_webapp_config()
         url = append_auth_token(self.manager.base_url, webapp_cfg.auth_token)
