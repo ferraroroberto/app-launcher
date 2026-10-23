@@ -24,6 +24,7 @@ import { apiFailToast, jsonApi, logPollFailure, toast } from './api.js';
 import { state } from './state.js';
 import { setAsyncState } from './async-state.js';
 import { renderSettingsValues } from './settings-sheets.js';
+import { calendarDaysFromToday } from './dom-utils.js';
 
 // Device classes in drawing order. Each fill differs by pattern as well as
 // tone (design.md Charts: a non-colour second channel); styles.css draws
@@ -249,10 +250,7 @@ async function loadSheet() {
 function whenText(iso) {
   const at = new Date(iso);
   const clock = at.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const ago = Math.round((today - day) / 86400000);
+  const ago = calendarDaysFromToday(at);
   if (ago === 0) return 'today ' + clock;
   if (ago === 1) return 'yesterday ' + clock;
   return at.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + clock;

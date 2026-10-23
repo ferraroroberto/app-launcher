@@ -15,6 +15,8 @@ from urllib.parse import urlencode
 from fastapi import HTTPException, Request, WebSocket
 
 from src import audit
+from src import jobs as jobs_mod
+from src.jobs_config import get_by_id, load_jobs
 from src.launch_flags import build_claude_flags, default_effort, effective_effort
 from src.session_client import SessionHostError
 from src.webapp_config import (
@@ -32,6 +34,21 @@ logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+
+
+def known_run_dir(job_id: str, run_id: str) -> Optional[Path]:
+    """A registered job's existing run dir, else ``None`` (#1791).
+
+    Shared by every Jobs route that resolves ``{job_id}/{run_id}`` into a
+    directory before doing anything else — the kill, dismiss and get-one-run
+    routes in ``jobs.py`` and the pin/artifact/live-output routes in
+    ``jobs_run_store_routes.py`` all used to repeat this job-exists → join
+    run dir → ``is_dir`` sequence inline.
+    """
+    if get_by_id(load_jobs(), job_id) is None:
+        return None
+    run_dir = jobs_mod.runs_dir(job_id) / run_id
+    return run_dir if run_dir.is_dir() else None
 
 
 def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:

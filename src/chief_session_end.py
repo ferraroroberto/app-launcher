@@ -129,11 +129,19 @@ def _event(sid: str, row: Dict[str, Any], agent: str, now: datetime) -> Dict[str
     }
 
 
-def _publish(inbox: Path, event: Dict[str, Any], now_ms: int) -> Path:
-    """Write ``event`` into ``inbox`` atomically; returns the published path."""
+def publish(inbox: Path, event: Dict[str, Any], now_ms: Optional[int] = None) -> Path:
+    """Write ``event`` into ``inbox`` atomically; returns the published path.
+
+    The one atomic writer for the chief-mailbox wire format (#1791):
+    ``src.chief_job_failed`` imports this instead of keeping its own copy.
+    ``now_ms`` defaults to the current time; a caller that already pins a
+    ``datetime`` (e.g. :func:`publish_session_ends`) passes it explicitly so
+    every event from one reaper pass shares a timestamp.
+    """
     inbox.mkdir(parents=True, exist_ok=True)
+    published_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
     tmp = inbox / f".event.{secrets.token_hex(8)}.tmp"
-    final = inbox / f"{now_ms}-{event['id']}.json"
+    final = inbox / f"{published_ms}-{event['id']}.json"
     try:
         tmp.write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, final)
@@ -181,7 +189,7 @@ def publish_session_ends(
             sid, row if isinstance(row, dict) else {}, getattr(session, "agent", ""), moment
         )
         try:
-            published.append(_publish(inbox, event, now_ms))
+            published.append(publish(inbox, event, now_ms))
         except OSError as exc:
             logger.warning(f"❌ chief session-end for {sid[:8]} not published: {exc}")
             continue

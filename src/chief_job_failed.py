@@ -22,23 +22,21 @@ Best-effort like the other channels: every failure is logged and swallowed.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src import board, instance_role, session_client
+from src.chief_session_end import EVENT_VERSION, publish as publish_event
 from src.jobs_history import read_output_tail, read_run
 
 logger = logging.getLogger(__name__)
 
 KIND = "job-failed"
 EVENT_NAME = "JobFailed"
-SCHEMA_VERSION = 2
 #: The contract's excerpt cap: the last 1,500 characters of the run's output.
 EXCERPT_CHARS = 1500
 #: Enough bytes that 1,500 characters are available even for multi-byte text.
@@ -123,7 +121,7 @@ def build_event(
 ) -> Dict[str, Any]:
     stamp = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
     event: Dict[str, Any] = {
-        "v": SCHEMA_VERSION,
+        "v": EVENT_VERSION,
         "id": event_id or uuid.uuid4().hex,
         "kind": KIND,
         "event": EVENT_NAME,
@@ -143,26 +141,6 @@ def build_event(
     }
     event.update(_excerpt(run_dir))
     return event
-
-
-def publish_event(inbox_dir: Path, event: Dict[str, Any], *, now_ms: Optional[int] = None) -> Path:
-    """Write ``event`` as ``<now_ms>-<id>.json``, atomically.
-
-    The JSON goes to a dot-prefixed ``.tmp`` file in the same directory first,
-    then ``os.replace`` makes it visible, so a reader never sees a partial
-    ``.json``. The temp file is removed if either step fails.
-    """
-    inbox_dir.mkdir(parents=True, exist_ok=True)
-    published_ms = int(time.time() * 1000) if now_ms is None else now_ms
-    final = inbox_dir / f"{published_ms}-{event['id']}.json"
-    tmp = inbox_dir / f".event.{uuid.uuid4().hex[:12]}.tmp"
-    try:
-        tmp.write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, final)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-    return final
 
 
 def publish_job_failed(

@@ -127,7 +127,20 @@ Build = Callable[[BuildSteps], Awaitable[Dict[str, Any]]]
 
 
 class HotPoll:
-    """Single-flight, deadline-bounded payload builds for one endpoint."""
+    """Single-flight, deadline-bounded payload builds for one endpoint.
+
+    Keeps its own ``_running``/``_next`` bookkeeping instead of calling
+    :func:`start_or_join` (#1791 audit): that function's contract is "wait
+    for the next build, however long it takes", with no deadline and no
+    last-good fallback. ``HotPoll.get`` needs both — a bounded wait that
+    falls back to :attr:`_last` and reports which named step is still
+    running — so building it on ``start_or_join`` would still need a second,
+    parallel structure for the active build's :class:`BuildSteps` and
+    staleness state; the one piece that *is* shared is the queued-caller
+    hand-off, via :func:`_settle` (both ``HotPoll._finished`` and
+    ``_start_or_join`` call it), which is where the real duplication risk
+    lived.
+    """
 
     def __init__(
         self,
@@ -255,10 +268,13 @@ def start_or_join(
     its own arrival.
 
     ``running``/``queued`` are the caller's own per-key maps, so each
-    single-flight domain (git-status's repo scan, a :class:`HotPoll`
-    label) keeps its own cardinality; this function owns only the
-    start/settle mechanics, shared via :func:`_settle` so every domain
-    agrees on how a queued caller inherits the next build's outcome.
+    single-flight domain (git-status's repo scan) keeps its own
+    cardinality; this function owns only the start/settle mechanics, shared
+    via :func:`_settle` so every domain agrees on how a queued caller
+    inherits the next build's outcome. :class:`HotPoll` is *not* one of
+    those callers — see its docstring for why it keeps its own
+    ``_running``/``_next`` bookkeeping instead — but shares the same
+    ``_settle`` hand-off.
     """
     loop = asyncio.get_running_loop()
     current = running.get(key)

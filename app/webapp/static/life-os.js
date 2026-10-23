@@ -26,7 +26,7 @@ import { renderHomeHead, renderSettingsHead } from './home-head.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
-import { nameLabel, wireModelCombo } from './dom-utils.js';
+import { calendarDaysFromToday, nameLabel, wireModelCombo } from './dom-utils.js';
 import { renderMarkdown } from './markdown.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
@@ -279,9 +279,7 @@ function daysSince(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
   if (!m) return null;
   const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.max(0, Math.round((today - day) / 86400000));
+  return Math.max(0, calendarDaysFromToday(day));
 }
 
 // The row's meta (#1503): when the skill was last used, in words. That is
@@ -1446,14 +1444,12 @@ function convoWhen(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''));
   if (!m) return '';
   const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((today - day) / 86400000);
+  const days = calendarDaysFromToday(day);
   if (days === 0) return 'Today';
   if (days === 1) return 'Yesterday';
   if (days > 1 && days < 7) return days + ' days ago';
   const format = { month: 'short', day: 'numeric' };
-  if (day.getFullYear() !== today.getFullYear()) format.year = 'numeric';
+  if (day.getFullYear() !== new Date().getFullYear()) format.year = 'numeric';
   return new Intl.DateTimeFormat('en-GB', format).format(day);
 }
 
