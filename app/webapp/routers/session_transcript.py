@@ -65,7 +65,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path, PureWindowsPath
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
@@ -133,6 +133,22 @@ def _unavailable(sid: str, reason: str) -> Dict[str, Any]:
         "available": False, "source": None, "reason": reason,
         "entries": [], "next_cursor": None, "session_id": sid,
     }
+
+
+async def _read_or_unavailable(
+    sid: str, agent: str, what: str, read: Awaitable[Any],
+) -> Tuple[Optional[Any], Optional[Dict[str, Any]]]:
+    """Await one on-demand transcript read, turning an ``OSError`` into the
+    shared refusal shape instead of leaking it to the caller. Returns
+    ``(value, refusal)`` — exactly one of the two is not ``None``. ``read``
+    is the already-built awaitable (a ``steps.run(...)`` or
+    ``asyncio.to_thread(...)`` call); each route still logs its own success
+    breadcrumb, since those fields differ per route."""
+    try:
+        return await read, None
+    except OSError as exc:
+        logger.warning("⚠️ %s %s (%s) read failed: %s", what, sid[:8], agent, exc.__class__.__name__)
+        return None, _unavailable(sid, "read_failed")
 
 
 def _resolve_path(
@@ -323,15 +339,12 @@ async def _build_transcript(
         if tail.get("available"):
             tail.update(await steps.run("outbox_fields", session_outbox_routes.outbox_fields, sid, ob))
         return tail
-    try:
-        page = await steps.run(
-            "transcript_page", transcript_page, path, before=before, limit=limit, flavor=flavor
-        )
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    page, refusal = await _read_or_unavailable(
+        sid, agent, "transcript",
+        steps.run("transcript_page", transcript_page, path, before=before, limit=limit, flavor=flavor),
+    )
+    if refusal is not None:
+        return refusal
     logger.info(
         "ℹ️ transcript %s (%s) page: %d entries, source=%s, more=%s",
         sid[:8], agent, len(page["entries"]), flavor, page["next_cursor"] is not None,
@@ -369,16 +382,12 @@ async def _tail_response(
     tick would bury the breadcrumbs that matter under its own traffic. A
     failed read and a reset cursor are rare and diagnostic, so those do log.
     """
-    try:
-        tail = await steps.run(
-            "transcript_tail", transcript_tail, path, after=after, size=size, flavor=flavor
-        )
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript tail %s (%s) read failed: %s",
-            sid[:8], agent, exc.__class__.__name__,
-        )
-        return _unavailable(sid, "read_failed")
+    tail, refusal = await _read_or_unavailable(
+        sid, agent, "transcript tail",
+        steps.run("transcript_tail", transcript_tail, path, after=after, size=size, flavor=flavor),
+    )
+    if refusal is not None:
+        return refusal
     if tail["reset"]:
         logger.info(
             "ℹ️ transcript tail %s (%s): cursor reset at %d (size %d)",
@@ -434,13 +443,11 @@ async def session_transcript_entry(
     reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
         return _unavailable(sid, reason)
-    try:
-        entry = await asyncio.to_thread(entry_full_text, path, offset, flavor)
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript entry %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    entry, refusal = await _read_or_unavailable(
+        sid, agent, "transcript entry", asyncio.to_thread(entry_full_text, path, offset, flavor),
+    )
+    if refusal is not None:
+        return refusal
     if entry is None:
         logger.info("ℹ️ transcript entry %s (%s) unavailable: entry_not_found", sid[:8], agent)
         return _unavailable(sid, "entry_not_found")
@@ -473,13 +480,11 @@ async def session_transcript_diff(
     reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
         return _unavailable(sid, reason)
-    try:
-        found = await asyncio.to_thread(entry_diff, path, offset, n, flavor)
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript diff %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "transcript diff", asyncio.to_thread(entry_diff, path, offset, n, flavor),
+    )
+    if refusal is not None:
+        return refusal
     if found is None:
         logger.info("ℹ️ transcript diff %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
         return _unavailable(sid, "diff_not_found")
@@ -510,13 +515,11 @@ async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
         logger.info("ℹ️ changed files %s (%s) unavailable: %s", sid[:8], agent, reason)
         return _unavailable(sid, reason)
     project_dir = str((session or {}).get("project_dir") or "") or None
-    try:
-        found = await asyncio.to_thread(changed_files, path, project_dir, flavor)
-    except OSError as exc:
-        logger.warning(
-            "⚠️ changed files %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "changed files", asyncio.to_thread(changed_files, path, project_dir, flavor),
+    )
+    if refusal is not None:
+        return refusal
     logger.info(
         "ℹ️ changed files %s (%s): %d files, +%d -%d, partial=%s, project_exists=%s",
         sid[:8], agent, len(found["files"]), found["counts"]["additions"],
@@ -541,15 +544,12 @@ async def session_changed_file_diff(
     if reason is not None:
         return _unavailable(sid, reason)
     project_dir = str((session or {}).get("project_dir") or "") or None
-    try:
-        found = await asyncio.to_thread(
-            file_steps, source, path, flavor=flavor, project_dir=project_dir
-        )
-    except OSError as exc:
-        logger.warning(
-            "⚠️ changed file diff %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "changed file diff",
+        asyncio.to_thread(file_steps, source, path, flavor=flavor, project_dir=project_dir),
+    )
+    if refusal is not None:
+        return refusal
     if found is None:
         logger.info("ℹ️ changed file diff %s (%s): file_not_found", sid[:8], agent)
         return _unavailable(sid, "file_not_found")
@@ -572,16 +572,12 @@ async def _changed_file_target(
         logger.info("ℹ️ changed file %s %s (%s) unavailable: %s", what, sid[:8], agent, reason)
         return None, _unavailable(sid, reason), agent
     project_dir = str((session or {}).get("project_dir") or "") or None
-    try:
-        target = await asyncio.to_thread(
-            changed_file_path, source, requested, flavor=flavor, project_dir=project_dir
-        )
-    except OSError as exc:
-        logger.warning(
-            "⚠️ changed file %s %s (%s) transcript read failed: %s",
-            what, sid[:8], agent, exc.__class__.__name__,
-        )
-        return None, _unavailable(sid, "read_failed"), agent
+    target, refusal = await _read_or_unavailable(
+        sid, agent, f"changed file {what}",
+        asyncio.to_thread(changed_file_path, source, requested, flavor=flavor, project_dir=project_dir),
+    )
+    if refusal is not None:
+        return None, refusal, agent
     if target is None:
         logger.info("ℹ️ changed file %s %s (%s): file_not_found", what, sid[:8], agent)
         return None, _unavailable(sid, "file_not_found"), agent
@@ -605,18 +601,17 @@ async def session_changed_file_content(
     if refusal is not None:
         return refusal
     try:
-        text = await asyncio.to_thread(read_text_file, target)
+        text, refusal = await _read_or_unavailable(
+            sid, agent, "changed file content", asyncio.to_thread(read_text_file, target),
+        )
     except FileRefusal as exc:
         logger.info("ℹ️ changed file content %s (%s): %s", sid[:8], agent, exc.reason)
         body = _unavailable(sid, exc.reason)
         if exc.size is not None:
             body["size"] = exc.size
         return body
-    except OSError as exc:
-        logger.warning(
-            "⚠️ changed file content %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        return _unavailable(sid, "read_failed")
+    if refusal is not None:
+        return refusal
     logger.info("ℹ️ changed file content %s (%s): %d chars", sid[:8], agent, len(text))
     return {
         "available": True, "reason": None, "session_id": sid,
@@ -692,13 +687,11 @@ async def session_transcript_image(
         raise HTTPException(status_code=503, detail=reason)
     if reason is not None:
         raise HTTPException(status_code=404, detail=reason)
-    try:
-        found = await asyncio.to_thread(transcript_image, path, offset, n, flavor)
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript image %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
-        raise HTTPException(status_code=404, detail="read_failed") from exc
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "transcript image", asyncio.to_thread(transcript_image, path, offset, n, flavor),
+    )
+    if refusal is not None:
+        raise HTTPException(status_code=404, detail="read_failed")
     if found is None:
         logger.info("ℹ️ transcript image %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
         raise HTTPException(status_code=404, detail="image_not_found")
@@ -733,15 +726,13 @@ async def session_transcript_file(
         )
     if reason is not None:
         raise HTTPException(status_code=404, detail={"reason": reason, "message": "no transcript to read"})
-    try:
-        found = await asyncio.to_thread(transcript_sent_file, path, offset, n, flavor)
-    except OSError as exc:
-        logger.warning(
-            "⚠️ transcript file %s (%s) read failed: %s", sid[:8], agent, exc.__class__.__name__
-        )
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "transcript file", asyncio.to_thread(transcript_sent_file, path, offset, n, flavor),
+    )
+    if refusal is not None:
         raise HTTPException(
             status_code=404, detail={"reason": "read_failed", "message": "the transcript could not be read"},
-        ) from exc
+        )
     if found is None:
         logger.info("ℹ️ transcript file %s (%s) unavailable at %d/%d", sid[:8], agent, offset, n)
         raise HTTPException(status_code=404, detail={"reason": "file_not_found", "message": "no sent file there"})

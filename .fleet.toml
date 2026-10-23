@@ -628,12 +628,15 @@ pytest_targets = [
     "tests/e2e/test_async_list_states.py",
 ]
 
-# The Life OS tab: skills list, conversations and the doc browser (life-os.js)
-# and their routers. test_markdown_link_rendering imports life-os.js directly.
+# The Life OS tab: skills list (life-os.js), conversations (life-os-convos.js)
+# and the doc browser (life-os-content.js), plus their routers.
+# test_markdown_link_rendering imports life-os.js directly.
 [[e2e.surface]]
 name     = "lifeos"
 paths    = [
     "app/webapp/static/life-os.js",
+    "app/webapp/static/life-os-content.js",
+    "app/webapp/static/life-os-convos.js",
     "app/webapp/static/telegram-setup.js",
     "app/webapp/routers/life_os.py",
     "app/webapp/routers/life_os_conversations.py",

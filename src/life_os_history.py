@@ -24,6 +24,10 @@ MAX_CAPTURE_BYTES = 256 * 1024
 # oversized capture is identified from this prefix and never read into memory.
 MAX_HEADER_BYTES = 8 * 1024
 _HASH_CHUNK_BYTES = 1024 * 1024
+# Guess, not measured against a real batch: a cold interpreter boot plus
+# parsing one nightly-zombie-cleanup batch of captures should finish well
+# inside this; raise it if the unattended sweep ever times out here.
+_PARSE_CAPTURES_TIMEOUT_S = 15
 OVERSIZED_HANDOFF_REASON = "Capture exceeds the launch size limit; it can be resumed but not handed off."
 MAX_HANDOFF_CHARS = 24_000
 HANDOFF_TTL_SECONDS = 24 * 3600
@@ -48,7 +52,7 @@ def _parse_capture_texts(fleet_dir: Path, texts: list[str]) -> list[dict[str, An
     proc = subprocess.run(
         [str(python), "-c", _CONTRACT_PROBE], cwd=fleet_dir / "hooks",
         input=json.dumps(texts), capture_output=True, encoding="utf-8",
-        timeout=15, creationflags=NO_WINDOW,
+        timeout=_PARSE_CAPTURES_TIMEOUT_S, creationflags=NO_WINDOW,
     )
     parsed = json.loads(proc.stdout) if proc.returncode == 0 else None
     if not isinstance(parsed, list) or len(parsed) != len(texts):
