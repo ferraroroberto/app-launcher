@@ -2,7 +2,6 @@
   "version": 1,
   "entries": [
     {"key": "README.md", "markers": 9},
-    {"key": "docs/board.md", "markers": 200},
     {"key": "docs/cache-hygiene-asset-hashing.md", "markers": 6},
     {"key": "docs/ci-github-actions.md", "markers": 11},
     {"key": "docs/config.md", "markers": 49},
