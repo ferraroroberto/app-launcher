@@ -20,14 +20,14 @@ This project already had a **local pre-ship gate**: `scripts/verify-before-ship.
 
 That gate is the **contract**: `CLAUDE.md` says it must pass before any change to the webapp/launcher/session-host is declared done.
 
-Issue #38 added a CI workflow that runs *that same gate* on GitHub, automatically, on:
+A CI workflow runs *that same gate* on GitHub, automatically, on:
 
 - every **push to `main`**, and
 - every **pull request into `main`**.
 
 Nothing about the gate script itself changed. CI just runs it for you, somewhere else, without you having to remember.
 
-### What CI runs, and what it deliberately does not (#1041)
+### What CI runs, and what it deliberately does not
 
 CI runs steps 1 and 2 above and stops. It does **not** run step 3, the Playwright browser suite. That is a decision, not an accident: `scripts/e2e-gate-route.ps1` routes any run that sets `CI=true` to tier `skip`, and `tests/test_verify_gate_route.py` pins it.
 
@@ -35,7 +35,7 @@ The reasoning is the whole of §4 below, read backwards. CI's unique value is th
 
 **What this costs, plainly.** Every browser-visible regression is now proven only by the local gate. If a lane forgets it, or routes it narrow and is wrong, nothing downstream catches it. Two smaller losses go with it: the e2e suite's own health on a clean machine (the §4 bug below — a hollow green from mass-skipping — would not be caught a second time by CI), and Playwright browser-install drift.
 
-**What it keeps, and what that is worth.** #1041 is the argument for the half that stayed. Two guard-coverage tests failed on CI and passed locally for two days, because `fastapi>=0.110` is a lower bound: this box had resolved it to 0.136 and the runner installed 0.141, and 0.141 changed how `include_router` exposes routes. No browser was involved. Only a machine that installs the dependencies from scratch could have surfaced it.
+**What it keeps, and what that is worth.** The dependency-drift failure described next is the argument for the half that stayed. Two guard-coverage tests failed on CI and passed locally for two days, because `fastapi>=0.110` is a lower bound: this box had resolved it to 0.136 and the runner installed 0.141, and 0.141 changed how `include_router` exposes routes. No browser was involved. Only a machine that installs the dependencies from scratch could have surfaced it.
 
 ### The workflow steps (`.github/workflows/e2e.yml`)
 
@@ -55,7 +55,7 @@ The reasoning is the whole of §4 below, read backwards. CI's unique value is th
 
 **It documents the truth.** A green check on a pull request is a shared, visible fact: "this branch passed the gate on a clean machine." A reviewer no longer has to take "I tested it" on faith.
 
-**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule (carried since issue #22): *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. This workflow has been established for months now; `CLAUDE.md`'s "CI expectations" block owns the current scope and advisory-not-required status; the named flaky legs moved with the browser suite to its "E2E browser suite — local gate only" block.
+**But CI is supplementary, not the contract.** The local gate stays authoritative. CI is the safety net, not the trapeze. There is a standing project rule: *a test that flakes on CI is worse than no test* — a red X people learn to ignore is actively harmful. This workflow has been established for months now; `CLAUDE.md`'s "CI expectations" block owns the current scope and advisory-not-required status; the named flaky legs moved with the browser suite to its "E2E browser suite — local gate only" block.
 
 ## 4. Local vs. GitHub — the difference that actually bites
 
@@ -85,20 +85,20 @@ This is the single most important lesson about CI: **a green check that skipped 
 
 The fix was one workflow step: seed the three config files from their committed `*.sample.json` templates before running the gate (loopback access bypasses the bearer-token middleware, so the sample tokens are sufficient — see `tests/e2e/conftest.py`). After the fix:
 
-The suite genuinely ran. Counts and timings are deliberately not quoted here — they move with every closed bite that adds a regression pin, and a frozen number in a second document is how this section went stale in the first place (#1008). **`CLAUDE.md`'s CI block is the canonical home** for what a typical green looks like and when to investigate.
+The suite genuinely ran. Counts and timings are deliberately not quoted here — they move with every closed bite that adds a regression pin, and a frozen number in a second document is how this section went stale in the first place. **`CLAUDE.md`'s CI block is the canonical home** for what a typical green looks like and when to investigate.
 
-What matters is *which* skips are honest ones. Since #534 the terminal-regression tests no longer need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python. The one fixture that still skips on a bare machine is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a fresh runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
+What matters is *which* skips are honest ones. The terminal-regression tests do not need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python. The one fixture that still skips on a bare machine is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a fresh runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
 
-Since #1041 those fixtures are local-gate concerns — CI runs no browser suite, so it can no longer hollow out in this particular way. Read the story as the lesson it is, not as a description of what CI does today: **the shape of the bug outlived the workflow step that caused it.** A check that cannot establish its fact must say so, instead of folding the unknown into the passing state. That is exactly what #1041 itself was — two guard-coverage tests that could not see the route table, one of which passed anyway because there was nothing left to check.
+Those fixtures are local-gate concerns — CI runs no browser suite, so it can no longer hollow out in this particular way. Read the story as the lesson it is, not as a description of what CI does today: **the shape of the bug outlived the workflow step that caused it.** A check that cannot establish its fact must say so, instead of folding the unknown into the passing state. That is exactly what the dependency-drift failure above was — two guard-coverage tests that could not see the route table, one of which passed anyway because there was nothing left to check.
 
 ### The takeaway
 
 | | Your machine | GitHub runner |
 |---|---|---|
 | Gitignored config files | Present (you made them) | **Absent** — seeded from samples by the workflow |
-| `claude` on PATH | Yes | No — matters only to the browser suite, which CI no longer runs (#1041) |
-| Pre-existing tray / session-host | Maybe | Never — and since #1041 CI boots neither |
-| Browser suite | **Runs — and is the contract** | Not run (#1041) |
+| `claude` on PATH | Yes | No — matters only to the browser suite, which CI does not run |
+| Pre-existing tray / session-host | Maybe | Never — CI boots neither |
+| Browser suite | **Runs — and is the contract** | Not run |
 | Dependency versions | Whatever you installed, whenever | Resolved fresh from `requirements.txt` every run |
 | Good for | Fast dev loop | Proving it works from *nothing* |
 

@@ -28,11 +28,11 @@ process is restarted.
    `asset_hash` should have changed — and report that build line.
 5. Don't hand off "done" with a stale process still serving.
 
-## A session-host change is not live until `:8446` itself restarts (#615)
+## A session-host change is not live until `:8446` itself restarts
 
 A diff touching `src/session_host.py` or `app/session_host/` can merge, pass a
 fully green gate, and go through a correct `tray.bat --restart` while the
-running session-host keeps executing days-old code, silently (#611).
+running session-host keeps executing days-old code, silently.
 
 **Before reporting a session-host-path change as shipped**, read
 `GET /api/version`'s `session_host` block —
@@ -43,7 +43,7 @@ running session-host keeps executing days-old code, silently (#611).
 - `stale` means it differs from the repo's resolved `origin/main` tip,
   re-resolved fresh on every call — **not** the primary checkout's current
   branch, which can transiently sit on an unrelated feature branch while a
-  worker occupies the tree, under-reporting `stale_relevant` as `false` (#641).
+  worker occupies the tree, under-reporting `stale_relevant` as `false`.
 - `stale_relevant` scopes that to whether a declared session-host path was
   actually touched between the loaded SHA and that resolved ref.
 - Both read `null` (never a confident false) when either SHA, or the diff

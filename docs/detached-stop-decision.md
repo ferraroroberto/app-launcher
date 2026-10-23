@@ -13,7 +13,7 @@ Because a detached session has no stdin/PTY the launcher can reach, the only sto
 
 ## The decision
 
-**Both session kinds expose a single ✕ Stop button that kills the session.** Detached sessions use `taskkill /PID <pid> /T /F` over the orphaned console (still reachable by its own PID). Attached sessions were unified to the same single-kill shape by issue #253 — the earlier dual-button UI (⏹️ graceful Stop + ⏏️ Stop & Close) was retired because the graceful-vs-kill distinction did not carry enough user-facing value to justify the asymmetry. `RemoteSession.stop()` accepts the `close_window`/`mode` parameters only for interface parity with `PtySession`; for a detached session they are inert — there is no PTY to send `/quit` to and nothing to keep open.
+**Both session kinds expose a single ✕ Stop button that kills the session.** Detached sessions use `taskkill /PID <pid> /T /F` over the orphaned console (still reachable by its own PID). Attached sessions use the same single-kill shape: a dual-button UI (⏹️ graceful Stop + ⏏️ Stop & Close) is not offered because the graceful-vs-kill distinction does not carry enough user-facing value to justify the asymmetry. `RemoteSession.stop()` accepts the `close_window`/`mode` parameters only for interface parity with `PtySession`; for a detached session they are inert — there is no PTY to send `/quit` to and nothing to keep open.
 
 The remaining design point specific to detached sessions is solely the technical reason why a graceful stop was never built for them in the first place (see next section).
 
@@ -26,4 +26,4 @@ Gracefully interrupting a detached console (so the window stays open at a fresh 
 3. **Stdin pipes don't survive a detached console.** Even passing `stdin=PIPE` at spawn doesn't help — the new console allocates its own standard handles and the pipe is orphaned. Sending `/quit` over stdin would require *not* detaching the console, which means no visible window — defeating the point of the mode.
 4. **`taskkill` without `/F` still tears down the tree.** It isn't a "soft interrupt," so it doesn't buy a graceful exit anyway.
 
-The `AttachConsole` route (#2) would buy only a marginal UX win — the window lingering at a prompt instead of closing — at the cost of ~30 lines of ctypes, a global lock, and a real risk of subtle console-handle bugs in a long-running uvicorn process. Not worth it. Revisit only if a concrete user-facing reason emerges.
+The `AttachConsole` route (item 2 above) would buy only a marginal UX win — the window lingering at a prompt instead of closing — at the cost of ~30 lines of ctypes, a global lock, and a real risk of subtle console-handle bugs in a long-running uvicorn process. Not worth it. Revisit only if a concrete user-facing reason emerges.

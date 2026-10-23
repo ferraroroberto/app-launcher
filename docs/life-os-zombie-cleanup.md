@@ -1,4 +1,4 @@
-# Life OS zombie cleanup (#1738)
+# Life OS zombie cleanup
 
 A Life OS skill session opened by mistake loads the skill's context and posts its greeting, and the capture pipeline then records it as a real conversation. A nightly Job finds those **zombies** and removes them, so the history stops filling up with empty conversations.
 
