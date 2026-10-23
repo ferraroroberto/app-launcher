@@ -35,6 +35,7 @@ from tests.test_desktop_screen import (  # noqa: F401
     _next_frame,
     _next_text,
     _wait_for,
+    encoded,
     fake_cursor,
     screen,
 )
@@ -96,8 +97,7 @@ def test_a_known_preset_is_found_whatever_its_case(asked, name):
 def test_the_presets_cut_the_frame_size_in_order():
     picture = _picture()
     sizes = {
-        name: len(desktop_capture.encode_jpeg(picture, desktop_capture.frame_width(1920, 1920, preset),
-                                              preset.quality))
+        name: len(encoded(picture, desktop_capture.frame_width(1920, 1920, preset), preset.quality))
         for name, preset in desktop_capture.PRESETS.items()
     }
     assert sizes["sharp"] > sizes["balanced"] > sizes["saver"], sizes
@@ -114,13 +114,13 @@ def test_the_width_cap_only_ever_lowers_the_width():
     assert desktop_capture.frame_width(None, 1920, saver) == 960
 
 
-def test_encode_jpeg_uses_the_quality_it_is_given():
+def test_a_frame_is_encoded_at_the_quality_it_is_given():
     picture = _picture(640, 360)
-    low = desktop_capture.encode_jpeg(picture, 640, 50)
-    high = desktop_capture.encode_jpeg(picture, 640, 85)
+    low = encoded(picture, 640, 50)
+    high = encoded(picture, 640, 85)
     assert len(high) > len(low)
     # No quality given is today's.
-    assert desktop_capture.encode_jpeg(picture, 640) == desktop_capture.encode_jpeg(picture, 640, 70)
+    assert encoded(picture, 640) == encoded(picture, 640, 70)
 
 
 # ------------------------------------------------------ the capture loop
@@ -154,7 +154,7 @@ def test_the_loop_encodes_every_frame_at_the_presets_quality(name):
     picture = _picture(640, 360)
     frames = asyncio.run(_stream(lambda: picture, quality=preset.quality))
     assert frames, "no frame was sent"
-    assert frames[0] == desktop_capture.encode_jpeg(picture, 640, preset.quality)
+    assert frames[0] == encoded(picture, 640, preset.quality)
 
 
 def test_the_loop_paces_frames_by_the_interval_it_is_given():
@@ -290,14 +290,14 @@ def test_the_route_sends_frames_at_the_presets_quality_and_width(big_screen, nam
     with _as(app, LOOPBACK).websocket_connect(_url(name)) as ws:
         frame = _next_frame(ws)
     width = desktop_capture.frame_width(1920, 1920, preset)
-    assert frame == desktop_capture.encode_jpeg(picture, width, preset.quality)
+    assert frame == encoded(picture, width, preset.quality)
     with Image.open(io.BytesIO(frame)) as img:
         assert img.width == (960 if name == "saver" else 1920)
 
 
 def test_no_preset_and_an_unknown_preset_both_get_balanced(big_screen):
     app, _, _, picture = big_screen
-    expected = desktop_capture.encode_jpeg(picture, 1920, 70)
+    expected = encoded(picture, 1920, 70)
     for url in (_url(), _url("bogus")):
         with _as(app, LOOPBACK).websocket_connect(url) as ws:
             assert _next_frame(ws) == expected

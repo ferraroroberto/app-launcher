@@ -44,6 +44,11 @@ TAILNET = "100.101.102.103"
 LAN = "192.168.1.20"
 TOKEN = "the-bearer-token"
 
+def encoded(image: Image.Image, width: int, quality: int = desktop_capture.JPEG_QUALITY) -> bytes:
+    """What ``stream_frames`` sends for ``image``: the same two stages it runs."""
+    return desktop_capture.jpeg_bytes(desktop_capture.resize_to_width(image, width), quality)
+
+
 PRIMARY = Monitor(id=0, left=0, top=0, width=64, height=36, primary=True)
 # The tower's layout in miniature: a second monitor above the primary, so its
 # origin is negative on the virtual desktop.
@@ -780,9 +785,9 @@ def test_an_unreadable_desktop_is_reported_once_then_recovers():
 
 def test_frames_are_downscaled_to_the_asked_width_never_up():
     big = Image.new("RGB", (400, 200), (5, 5, 5))
-    with Image.open(io.BytesIO(desktop_capture.encode_jpeg(big, 100))) as img:
+    with Image.open(io.BytesIO(encoded(big, 100))) as img:
         assert img.size == (100, 50)
-    with Image.open(io.BytesIO(desktop_capture.encode_jpeg(big, 800))) as img:
+    with Image.open(io.BytesIO(encoded(big, 800))) as img:
         assert img.size == (400, 200)
 
 

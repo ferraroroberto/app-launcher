@@ -338,11 +338,6 @@ def jpeg_bytes(image: Image.Image, quality: int) -> bytes:
     return buf.getvalue()
 
 
-def encode_jpeg(image: Image.Image, width: int, quality: int = JPEG_QUALITY) -> bytes:
-    """Downscale to ``width`` (never up) and JPEG-encode at ``quality``."""
-    return jpeg_bytes(resize_to_width(image, width), quality)
-
-
 async def _wait_or_stop(event: asyncio.Event, stopped: asyncio.Event) -> bool:
     """Wait for ``event`` or ``stopped``; True when ``event`` won."""
     if event.is_set():
