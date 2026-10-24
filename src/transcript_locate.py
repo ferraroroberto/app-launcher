@@ -29,7 +29,7 @@ from src.board_transcript import _read_tail_bytes, strip_status_glyph
 logger = logging.getLogger(__name__)
 
 # How far back to look for the naming records a scanned Claude conversation
-# declares about itself (#1034), read with the same bounded-tail discipline as
+# declares about itself, read with the same bounded-tail discipline as
 # every other reader here. Claude Code re-emits `ai-title`/`custom-title`
 # periodically rather than once, so the newest one sits near the end of the
 # file — measured across the 8 newest conversations in three project folders
@@ -113,7 +113,7 @@ _CLAUDE_SESSIONS_DIR = Path.home() / ".claude" / "sessions"
 _CLAUDE_SLUG_RE = re.compile(r"[^A-Za-z0-9]")
 # Same meaning as `_AGY_MTIME_SLOP_SECONDS`, for the same reason.
 _CLAUDE_MTIME_SLOP_SECONDS = 60
-# A Claude Resume launch that names its conversation (#633's chief Resume,
+# A Claude Resume launch that names its conversation (the chief Resume,
 # Life OS's conversation resume): `build_resume_flags` splices
 # `--resume <session id>` into the launch flags. Only a UUID counts, so a
 # bare `--resume` (the picker) followed by an ordinary flag never matches.
@@ -128,7 +128,7 @@ _CLAUDE_BRIDGE_URL_RE = re.compile(r"^https://claude\.ai/code/(session_[A-Za-z0-
 _CLAUDE_CONVERSATION_ID_RE = re.compile(
     r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$"
 )
-# Why the Claude filesystem fallback answered nothing (#1155), named in the
+# Why the Claude filesystem fallback answered nothing, named in the
 # `/transcript` route's `no_transcript` log line so the next report is
 # diagnosable from the log alone.
 _CLAUDE_REFUSED_UNCORRELATED = "no_dir_or_start"

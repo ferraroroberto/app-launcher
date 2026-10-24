@@ -88,7 +88,7 @@ def resolve_venv_python(script_path: Path) -> Optional[Path]:
 #: stdout at all*, so `_bulk_records` concluded "query failed" and every
 #: schtasks-backed feature degraded silently: blank ``next_run`` on all 20
 #: jobs and the structural half of missed-fire coverage stuck at ``unknown``
-#: fleet-wide, for weeks (issue #743). ``errors="replace"`` keeps one odd byte
+#: fleet-wide, for weeks. ``errors="replace"`` keeps one odd byte
 #: from costing the whole query — a mangled character in a task name is
 #: recoverable, a dead scheduler view is not.
 SCHTASKS_ENCODING = "oem"
@@ -262,7 +262,7 @@ def spawn_run_job_detached(
     # This argv is tokenized twice — once by us, once by the `cmd /c start`
     # hop below — and cmd does not honour Python's argv quoting, so a value
     # can land outside quoting where these characters are operators. Same
-    # contract `src.jobs_kinds.batch` enforces for `.bat` argv (issue #409),
+    # contract `src.jobs_kinds.batch` enforces for `.bat` argv,
     # applied here at the earlier hop and *before* the command line is
     # assembled, so a refused value never reaches a shell at all.
     #
@@ -357,7 +357,7 @@ def schedule_argv_parts(sched: Schedule) -> List[List[str]]:
     return []
 
 
-# ------------------------------------------ session-less registration (#757)
+# ------------------------------------------ session-less registration
 
 #: ``schtasks`` speaks three-letter days; ``New-ScheduledTaskTrigger`` wants
 #: the full ``DayOfWeek`` name. Same closed set as
@@ -506,7 +506,7 @@ def list_known_tasks(
     runner = runner or _run_schtasks
     proc = runner(["schtasks", "/Query", "/FO", "CSV", "/NH"])
     if proc.returncode != 0 or not proc.stdout:
-        # Silence here is what let #743 hide for weeks: every consumer
+        # Silence here is what let a dead query hide for weeks: every consumer
         # degrades politely to "unknown"/blank, so a dead query looks like a
         # quiet system. Say so once, with the two facts needed to diagnose it.
         logger.warning(
@@ -622,7 +622,7 @@ def sync_schtasks(
         return []
     if job.elevated:
         # Still delete any stale entry from a prior non-elevated schedule
-        # (issue #409) — otherwise it keeps firing un-elevated on its old
+        # — otherwise it keeps firing un-elevated on its old
         # schedule indefinitely. We just never *create* the elevated entry
         # ourselves (see docstring): that still needs an elevated shell.
         delete_schtasks(job.id, runner=runner)
@@ -678,7 +678,7 @@ _DISABLED_WORDS = {"DISABLED"}
 _ENABLED_WORDS = {"ENABLED", "READY", "RUNNING", "QUEUED"}
 
 # schtasks renders the principal's logon type as "Logon Mode": "Interactive
-# only" for the InteractiveToken default (session-bound — issue #757's whole
+# only" for the InteractiveToken default (session-bound — the whole
 # defect), and a value containing "Background" for the S4U / stored-password
 # principals that also run with no session. Matched by substring, and
 # anything else leaves the fact *unknown* rather than guessing — a localised
@@ -810,7 +810,7 @@ def _bulk_records(
         return _parse_bulk_records(scoped.stdout)
     proc = runner(["schtasks", "/Query", "/FO", "LIST", "/V"])
     if proc.returncode != 0 or not proc.stdout:
-        # Silence here is what let #743 hide for weeks: every consumer
+        # Silence here is what let a dead query hide for weeks: every consumer
         # degrades politely to "unknown"/blank, so a dead query looks like a
         # quiet system. Say so once, with the two facts needed to diagnose it.
         logger.warning(

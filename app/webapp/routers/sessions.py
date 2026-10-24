@@ -164,14 +164,14 @@ async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[
         sessions = await steps.run(
             "attach_last_turn", board.attach_last_turn, sessions, state["rows"]
         )
-        # The model's display name (#1383), for the chat header's pill: the
+        # The model's display name, for the chat header's pill: the
         # transcript's newest answer first, then the spawn flags.
         sessions = await steps.run(
             "attach_transcript_model", board.attach_transcript_model, sessions, state["rows"]
         )
         sessions = attach_models(sessions)
         for sess in sessions:
-            # A session-host older than #1643 sends no composer fields: that
+            # A session-host that predates the composer fields sends none: that
             # is unknown, never "nothing typed".
             sess.setdefault("composer_dirty", None)
             sess.setdefault("composer_dirty_since", None)
@@ -189,17 +189,17 @@ async def stop_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
     mode = str(body.get("mode") or "quit")
-    # Every stop now closes the window (issue #253 unified the button), so
-    # always Win32-close the PC mirror window (issue #20). close_mirror_window
+    # Every stop now closes the window, so
+    # always Win32-close the PC mirror window. close_mirror_window
     # first tries the HWND stashed at spawn time, then falls back to a fresh
-    # title-scan of live windows (issue #199) so it works even after a webapp
+    # title-scan of live windows so it works even after a webapp
     # restart wiped the in-memory registry. Best-effort: swallow any exception
     # so a busted HWND can't keep the session alive. The cooperative WS
     # shutdown the session-host fires is a further fallback for when no
     # matching window is on the desktop.
     #
     # Runs the Win32 EnumWindows/GetWindowText/PostMessage walk off the event
-    # loop (issue #755) — every other blocking Win32/session-host call in this
+    # loop — every other blocking Win32/session-host call in this
     # file (mirror_claude_session's own open_or_focus_mirror_window, the
     # session_client.stop below, .submit_input, .write) already is, and per
     # this file's own policy, stalling the loop here stalls every other live
@@ -249,8 +249,8 @@ async def rename_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     await audit_off_loop(
         audit.audit_event, "session_rename", session=sid, client=client_ip(request)
     )
-    # A session that has a Life OS conversation open gives it the same name
-    # (#1637). The rename above already happened and stands whatever this finds;
+    # A session that has a Life OS conversation open gives it the same name.
+    # The rename above already happened and stands whatever this finds;
     # the reply says only when there was a conversation to name.
     if title:
         try:
@@ -291,7 +291,7 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     # A disposable e2e / verify-before-ship instance (identified by the
     # session-host port override, set only by autoboot) must never spawn a real
     # Edge window or focus the canonical instance's desktop windows — the same
-    # rule the orphan-mirror sweep follows (issue #278). Report ``mirrored`` so
+    # rule the orphan-mirror sweep follows. Report ``mirrored`` so
     # the desktop client still skips the in-page terminal, but touch no window.
     if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
         return {"mirrored": True, "action": "skipped"}
@@ -374,7 +374,7 @@ async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(status_code=503, detail="session-host unreachable")
     if not supported:
         # The session-host is excluded from the webapp's restart, so it can
-        # run a build older than this route for days (#615).
+        # run a build older than this route for days.
         raise HTTPException(
             status_code=501,
             detail="session-host restart needed: the running build predates large-file upload",
@@ -397,7 +397,7 @@ async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
     except _LargeUploadTooBig:
         raise HTTPException(status_code=413, detail=f"over {_mb(limit)}, {too_big}")
     except ClientDisconnect:
-        # The phone cancelled (a tap on the busy 📎, #1413) or lost the link;
+        # The phone cancelled (a tap on the busy 📎) or lost the link;
         # the session-host has already dropped its partial file.
         logger.info(f"ℹ️ large upload to {sid[:8]} interrupted by the client after {received} B")
         raise HTTPException(status_code=400, detail="upload interrupted by the client")
@@ -412,8 +412,8 @@ async def session_large_file(sid: str, request: Request) -> Dict[str, Any]:
 
 
 # The squash-merge that gave the session-host its detached-session input path
-# (``RemoteSession.submit_input`` behind the kind-agnostic ``/input`` route,
-# #967 / PR #969). A session-host whose loaded ``git_sha`` does not contain it
+# (``RemoteSession.submit_input`` behind the kind-agnostic ``/input`` route). A session-host whose loaded
+# ``git_sha`` does not contain it
 # answers a detached Send with an unhandled ``AttributeError`` — a bare 500.
 _DETACHED_INPUT_COMMIT = "1cf17209c86885ff3a488bd2501e26e8a69c4580"
 
@@ -547,7 +547,7 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
                 _classify_input_500, cfg.session_host_port, sid, detail
             )
         # Includes the 502 the host raises for a payload it wrote but never
-        # saw echoed (#760) — audited too, since a *failed* steer is the
+        # saw echoed — audited too, since a *failed* steer is the
         # event worth finding in the log afterwards.
         await audit_off_loop(
             audit.session_log, sid, "input", bytes=len(text), submit=submit,
@@ -555,7 +555,7 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
         )
         raise HTTPException(status_code=status, detail=detail)
     verdict = result if isinstance(result, dict) else {}
-    # Audit the verdict, not just the byte count (#760): the three stalled
+    # Audit the verdict, not just the byte count: the three stalled
     # sessions' logs recorded `bytes=6637 submit=True` for steers that were
     # never submitted, which made the incident invisible in hindsight.
     await audit_off_loop(
@@ -565,7 +565,7 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
         preview=text[:120] or None,
     )
     if verdict.get("reason") == session_client.INPUT_DEFERRED:
-        # Mirror the session-host's 202 (#763): accepted, submit still in
+        # Mirror the session-host's 202: accepted, submit still in
         # flight with the watcher — not the completed delivery a 200 implies.
         response.status_code = 202
     return {
@@ -603,7 +603,7 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
     upstream_url = session_client.ws_url(cfg.session_host_port, sid, role)
     try:
         async with ws_connect(upstream_url) as upstream:
-            # Off the event loop via audit_off_loop (issue #610) — and gating first
+            # Off the event loop via audit_off_loop — and gating first
             # paint on THIS connection too, since the pump doesn't start
             # until these return.
             await audit_off_loop(
@@ -619,7 +619,7 @@ async def proxy_session_ws(websocket: WebSocket, sid: str) -> None:
         # HTTP layer — e.g. the session-host answering 403 for a reaped
         # or unknown session (InvalidStatus). Same "upstream not usable"
         # condition as OSError; map it to the clean 4502 close instead of
-        # letting it escape as an unhandled ASGI traceback (issue #61).
+        # letting it escape as an unhandled ASGI traceback.
         logger.debug(f"WS proxy {sid[:8]} ended: {exc}")
         try:
             await websocket.close(
@@ -645,7 +645,7 @@ async def _proxy_websocket(client: WebSocket, upstream, sid: str) -> None:
             try:
                 msg = json.loads(raw)
                 if isinstance(msg, dict) and msg.get("type") == "input":
-                    # Off the event loop via audit_off_loop (issue #610): fires on
+                    # Off the event loop via audit_off_loop: fires on
                     # every keystroke/paste frame for as long as the terminal
                     # stays open, sharing this one worker's loop with every
                     # other live session's pump — the highest-frequency

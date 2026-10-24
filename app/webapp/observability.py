@@ -54,7 +54,7 @@ DEFAULT_INFLIGHT_WARN = 16
 # Floor between two in-flight breadcrumbs, so a hammered server logs a
 # heartbeat, not a flood.
 _INFLIGHT_LOG_INTERVAL_S = 30.0
-# The phone's hot paths (#1324): what opening the app and its two busiest
+# The phone's hot paths: what opening the app and its two busiest
 # tabs hits. They answer from memory in tens of milliseconds, so going over
 # this is a regression worth a line long before it reaches the 3 s floor.
 # Written to the same file, since the webapp's own log is discarded.

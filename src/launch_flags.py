@@ -48,7 +48,7 @@ from src.webapp_config import (
 )
 
 
-# The Claude Code Telegram channel plugin (#1366). ``--channels`` makes Claude
+# The Claude Code Telegram channel plugin. ``--channels`` makes Claude
 # start that plugin's server and inject the chat's messages into the session.
 CHANNEL_PLUGIN = "plugin:telegram@claude-plugins-official"
 
@@ -357,9 +357,9 @@ def build_resume_flags(
         base = build_antigravity_flags(cfg)
     elif agent_id == "copilot":
         base = build_copilot_flags(cfg)
-    elif agent_id == "pi":  # keep the SDK provider/model on resume (issue #273)
+    elif agent_id == "pi":  # keep the SDK provider/model on resume
         base = build_pi_flags(cfg)
-    elif agent_id == "grok":  # no launch knobs — bare `--resume` (issue #626)
+    elif agent_id == "grok":  # no launch knobs — bare `--resume`
         base = build_grok_flags(cfg)
     else:
         base = ""

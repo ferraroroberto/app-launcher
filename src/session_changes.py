@@ -306,7 +306,7 @@ def file_steps(path: Path, key: str, max_bytes: int = DIFF_FULL_BYTES,
 
 # ------------------------------------------------------------- the file itself
 #
-# The panel's File view and Open on PC (#1689) act on the file as it is now on
+# The panel's File view and Open on PC act on the file as it is now on
 # disk, so they read the file system — but only at a path the session's own
 # edits name. That set is the jail: a request path is looked up in the fold,
 # never joined to anything and opened, so `..`, another absolute path or a

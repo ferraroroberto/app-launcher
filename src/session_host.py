@@ -74,7 +74,7 @@ logger = logging.getLogger(__name__)
 # How much terminal output to keep per session for scrollback-on-reconnect.
 _RING_MAX_CHARS = 256 * 1024
 # After a hard ring truncation, advance the head to the next newline within
-# this window so a replay never starts mid-escape-sequence (#444) — a cut
+# this window so a replay never starts mid-escape-sequence — a cut
 # inside a CSI/OSC renders its tail as literal garbage at the top of the
 # replayed scrollback. One rendered line (with its SGR decoration) is far
 # shorter than this; if no newline appears in the window, keep the raw cut
@@ -85,23 +85,23 @@ _READ_CHUNK = 4096
 # Sentinel pushed to subscribers when the session ends.
 _EOF = object()
 
-# Chunk-and-pace thresholds for writes into the ConPTY input pipe (#64).
+# Chunk-and-pace thresholds for writes into the ConPTY input pipe.
 # A real-PTY readback harness (test_session_host_pty_realpty.py) showed the
 # write boundary itself delivers multi-KB payloads losslessly — pywinpty's
 # write into the input pipe is effectively blocking and does NOT drop the
-# tail. So chunking is not a truncation fix (the original #64 framing was
+# tail. So chunking is not a truncation fix (the original framing was
 # wrong); it is pacing, which keeps a multi-KB burst from overrunning the
 # Windows console input queue that a busy TUI drains slowly. The agent-side
 # atomic-paste fix (bracketed-paste framing) lives client-side in
 # terminal.js (framePaste). We keep small writes one-shot and split larger
 # payloads into ~512 B chunks with a small pause; pywinpty's return value is
 # never interpreted as a bytes-accepted count — doing so amplified a single
-# keystroke into thousands (#13 revert).
+# keystroke into thousands.
 _WRITE_CHUNK_THRESHOLD = 512
 _WRITE_CHUNK_SIZE = 512
 _WRITE_CHUNK_PAUSE = 0.003
 
-# Smallest PTY size a resize may set (issue #930). Every resize SIGWINCHes an
+# Smallest PTY size a resize may set. Every resize SIGWINCHes an
 # inline agent (Claude Code) into a full-viewport repaint that leaves the
 # previous copy in the client's scrollback, and the iOS keyboard sweep samples
 # 1- and 6-row sizes mid-animation that are never a real viewport. The phone
@@ -112,13 +112,13 @@ PTY_MIN_COLS = 20
 
 # The server-initiated input-delivery protocol — bracketed-paste framing,
 # bulk settle-then-submit, ingest/echo verification, and the deferred-submit
-# watcher (issues #611/#760/#763) — lives in :mod:`src.session_host_input`
-# (issue #798). Only :class:`InputProtocol` is imported here (as
+# watcher — lives in :mod:`src.session_host_input`.
+# Only :class:`InputProtocol` is imported here (as
 # ``PtySession``'s base); callers/tests needing its constants or
 # :class:`InputOutcome` import them from :mod:`src.session_host_input`
 # directly.
 
-# First-prompt session title (issue #266): how much un-submitted input we
+# First-prompt session title: how much un-submitted input we
 # buffer while waiting for the first submit — a line the user never sends
 # must not grow unbounded. This is session *state* (the buffer lives on
 # ``PtySession``), unlike the deterministic derivation itself
@@ -126,7 +126,7 @@ PTY_MIN_COLS = 20
 # which is a pure function and lives in :mod:`src.session_host_scan`.
 _PROMPT_TITLE_BUF_MAX = 400
 
-# Manual title override (issue #458): a launcher-native rename that wins over
+# Manual title override: a launcher-native rename that wins over
 # every auto-derived title (live_title/prompt_title/shared_name — see
 # sessions.js::sessionTitle) and, unlike those, also reaches a detached
 # RemoteSession — the one rename channel that works identically across all
@@ -141,12 +141,12 @@ STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
 STOP_KILL = "kill"            # force-terminate the ConPTY
 
 # Graceful-stop grace window: how long STOP_QUIT waits for the agent to exit
-# on its own quit command before force-terminating as a fallback (issue #253).
+# on its own quit command before force-terminating as a fallback.
 # A clean /quit exits in ~0.7 s empirically; 5 s is generous headroom and
 # stays under the session-client stop timeout.
 _STOP_GRACE_SECONDS = 5.0
 
-# Beat between the three keystrokes STOP_QUIT types (issue #1016). The quit
+# Beat between the three keystrokes STOP_QUIT types. The quit
 # command is ESC, then "/quit", then the submitting CR — three separate
 # writes with this pause between them, never one burst. Two distinct races
 # make the burst wrong, and both were measured through the real launcher
@@ -164,7 +164,7 @@ _STOP_GRACE_SECONDS = 5.0
 #   2. The command and its CR in one write race the slash-command popup:
 #      Codex 0.154.0 leaves "/quit" sitting in an open popup and never acts
 #      on the CR, so *every* Codex stop fell through to the force-terminate
-#      below. This is the same lesson submit_input learned in #611/#760 —
+#      below. This is the same lesson submit_input learned —
 #      the submitting CR is always its own write.
 #
 # A fixed pause, not submit_input's quiet-window settle: ESC produces little
@@ -180,7 +180,7 @@ _STOP_KEY_SETTLE_SECONDS = 0.25
 KIND_PTY = "pty"
 KIND_REMOTE = "remote"
 
-# The console-input helper a RemoteSession shells out to (issue #967) —
+# The console-input helper a RemoteSession shells out to —
 # string-referenced on purpose, never imported: it must stay off the
 # session-host import closure (CLAUDE.md "## session-host") so a fix to it
 # goes live on the next send instead of needing the :8446 restart that kills
@@ -203,7 +203,7 @@ _DETACHED_SPAWN_TIMEOUT_S = 30.0
 # The allowlist for the ``flags`` string SessionManager.create/create_remote
 # splice straight into ``cmd /c <exe> <flags>`` (create) or a PowerShell
 # ``Start-Process -ArgumentList`` (create_remote) — the boundary that
-# actually owns the command line (issue #753). A superset of
+# actually owns the command line. A superset of
 # agents.native_session_name_flags_for's title allowlist: flags legitimately
 # carry a literal `"` (a quoted prompt token, e.g. board.py's
 # `"/issue-start 123"`), `=` (a config override like
@@ -281,17 +281,17 @@ class PtySession(InputProtocol):
     _loop: asyncio.AbstractEventLoop
     _pty: "PtyProcess"  # type: ignore[name-defined]
     agent: str = DEFAULT_AGENT
-    # Free-form role tag set at create time (e.g. "chief", #245) so callers
+    # Free-form role tag set at create time (e.g. "chief") so callers
     # can find a purpose-built session deterministically; "" for normal ones.
     label: str = ""
     rows: int = 40
     cols: int = 120
     _ring: str = ""
     _ring_lock: threading.Lock = field(default_factory=threading.Lock)
-    # Serializes the *input* side (issue #721). ``_ring_lock`` guards output
+    # Serializes the *input* side. ``_ring_lock`` guards output
     # only, and the manager's own lock guards the sessions registry — neither
     # covers the PTY write path, which has had two concurrent writers since
-    # #611 added the HTTP ``/sessions/{sid}/input`` route alongside the
+    # the HTTP ``/sessions/{sid}/input`` route was added alongside the
     # WebSocket pump. A PC mirror (``role=pc``) and a phone (``role=phone``)
     # attached to the same session is the intended shape, so two writers on
     # one PTY is normal, not exotic. Held across the whole chunk loop in
@@ -311,11 +311,11 @@ class PtySession(InputProtocol):
     _color_osc_carry: str = ""
     _prompt_raw: str = ""
     _prompt_captured: bool = False
-    # Headless VT mirror for full-screen (ratatui) agents only (issue #432)
+    # Headless VT mirror for full-screen (ratatui) agents only
     # — Claude's raw-ring replay path never needs one. None for a
     # non-fullscreen agent, or before SessionManager wires it in.
     _vt: Optional["VtSnapshot"] = None
-    # Settle-then-submit state for server-initiated writes (issue #611).
+    # Settle-then-submit state for server-initiated writes.
     # _bracketed_paste_mode mirrors xterm's term.modes.bracketedPasteMode,
     # tracked off the PTY's own DECSET 2004 output (default False — matches
     # the client-side gate's own default before any signal has been seen).
@@ -324,17 +324,17 @@ class PtySession(InputProtocol):
     _bracketed_paste_mode: bool = False
     _decset_carry: str = ""
     _last_output_at: float = 0.0
-    # Monotonic count of every character ever pumped out of this PTY (issue
-    # #760). Unlike to_api()'s output_chars — the ring's length, which
+    # Monotonic count of every character ever pumped out of this PTY. Unlike
+    # to_api()'s output_chars — the ring's length, which
     # saturates at _RING_MAX_CHARS — this keeps counting, so a write can mark
     # a position and later ask "what has the terminal painted since?" even on
     # a long-lived session whose ring has wrapped many times over.
     _output_total: int = 0
-    # The most recent server-initiated write's outcome (issue #760), surfaced
+    # The most recent server-initiated write's outcome, surfaced
     # in to_api() so a session that has gone deaf to API input is visible as
     # such instead of being indistinguishable from a busy agent.
     last_input: Optional[Dict[str, Any]] = None
-    # Deferred-submit generation counter (issue #763). Every new
+    # Deferred-submit generation counter. Every new
     # server-initiated write — and every stop — bumps it, which supersedes any
     # watcher still waiting to press Enter: its "my payload is the thing
     # sitting unsent in the composer" premise no longer holds once somebody
@@ -344,7 +344,7 @@ class PtySession(InputProtocol):
     # it — a PC mirror typing anywhere would otherwise cancel every steer, and
     # the pre-fire re-check already handles a composer the human has changed.
     # That re-check is what carries the weight now the watcher's window is long
-    # enough to outlast a gate run (#1075), so it identifies *which* payload is
+    # enough to outlast a gate run, so it identifies *which* payload is
     # sitting there rather than merely that one is — see
     # ``session_host_input._chip_visible``.
     _defer_seq: int = 0
@@ -352,11 +352,11 @@ class PtySession(InputProtocol):
     # (and cleared) by submit_input once the ``deferred`` verdict is recorded,
     # so the watcher can never record its own outcome first.
     # ``(seq, mark, needles, chip_id, touches)`` — chip_id is the paste or
-    # image chip pinned at ingest (#1075, #1212), or None when the composer
+    # image chip pinned at ingest, or None when the composer
     # echoed the payload verbatim instead of collapsing it into a chip;
-    # touches is ``_composer_touches`` at ingest (#1548).
+    # touches is ``_composer_touches`` at ingest.
     _defer_args: Optional[Tuple[int, int, List[str], Optional[str], int]] = None
-    # Keystrokes that can change what the composer holds (issue #1548):
+    # Keystrokes that can change what the composer holds:
     # ``write()`` — the keyboard path — bumps it for any write carrying a
     # control key (Enter, Backspace, Ctrl-C, Esc, arrows, a paste), while
     # plain typed text and the terminal's own query replies leave it alone.
@@ -366,19 +366,19 @@ class PtySession(InputProtocol):
     # show it. ``submit_input`` writes through ``_write_locked`` and is
     # counted by ``_defer_seq`` instead.
     _composer_touches: int = 0
-    # Turn state read off the agent's own screen (issue #1319), kept by the
+    # Turn state read off the agent's own screen, kept by the
     # reader thread (``InputProtocol._track_turn_state``). ``_bg_waiting`` is
     # True while the main agent sits idle at its prompt with background
     # agents running — the one state that is ready for a submit yet never
     # goes quiet. ``_main_turn_at`` is the ``_output_total`` reading at the
     # last main-turn spinner, which is how the deferred watcher confirms its
     # CR started a turn. ``_main_turn_seen_at`` is the wall time of that same
-    # spinner (#1548): a recent one means the main turn is running right now,
+    # spinner: a recent one means the main turn is running right now,
     # which is when a type-ahead agent queues an Enter.
     _bg_waiting: bool = False
     _main_turn_at: int = 0
     _main_turn_seen_at: float = 0.0
-    # Whether the composer holds typed-but-unsent text (issue #1643), fed by
+    # Whether the composer holds typed-but-unsent text, fed by
     # every write in ``_write_locked``. None for an agent whose composer was
     # never probed, which reports ``composer_dirty: None``.
     _composer: Optional[ComposerTracker] = field(default=None, init=False)
@@ -421,7 +421,7 @@ class PtySession(InputProtocol):
                     break
                 time.sleep(0.01)
                 continue
-            # Strip OSC 10/11/12 colour query/reply sequences (#270) at the
+            # Strip OSC 10/11/12 colour query/reply sequences at the
             # source — before scrollback + broadcast — so the leak never
             # reaches a fresh OR reconnecting client. Stateful: a sequence
             # split across two reads is held in _color_osc_carry.
@@ -433,7 +433,7 @@ class PtySession(InputProtocol):
             self._last_output_at = time.time()
             # Track DECSET 2004 (bracketed-paste mode) off the raw output —
             # BEFORE any stripping below, since this must see exactly what a
-            # real terminal client would (issue #611).
+            # real terminal client would.
             paste_mode, self._decset_carry = _scan_bracketed_paste_mode(
                 chunk, self._decset_carry
             )
@@ -584,10 +584,9 @@ class PtySession(InputProtocol):
             else:
                 # Long write (paste / large input): pace it in ~512 B chunks
                 # so the burst doesn't overrun the console input queue a busy
-                # TUI drains slowly (#64). pywinpty's return value is
+                # TUI drains slowly. pywinpty's return value is
                 # deliberately ignored — interpreting it as a bytes-accepted
-                # count amplified a single keystroke into thousands (#13
-                # revert).
+                # count amplified a single keystroke into thousands.
                 logger.debug(
                     f"PTY {self.session_id[:8]} chunked write "
                     f"({len(data)} chars / "
@@ -614,7 +613,7 @@ class PtySession(InputProtocol):
         cols = max(PTY_MIN_COLS, min(cols, 1000))
         if (rows, cols) == (self.rows, self.cols):
             # Nothing to change — a same-size setwinsize would only cost a
-            # round-trip, and must never be what repaints the agent (#930).
+            # round-trip, and must never be what repaints the agent.
             return
         logger.info(
             f"↔️ PTY {self.session_id[:8]} resize "
@@ -669,7 +668,7 @@ class PtySession(InputProtocol):
         Every *terminating* stop signals subscribers so the mirror page
         self-closes; an interrupt does not.
         """
-        # Cancel any deferred submit still waiting to press Enter (#763) —
+        # Cancel any deferred submit still waiting to press Enter —
         # every stop mode writes to or tears down this PTY, so a watcher's
         # CR landing in the middle of an interrupt or a "/quit" sequence
         # would be answering a terminal state it never verified.
@@ -677,7 +676,7 @@ class PtySession(InputProtocol):
         if mode == STOP_INTERRUPT:
             if self._composer is not None:
                 # An interrupt never went through write(), and an interrupted
-                # turn can put its prompt back in the composer (#1643).
+                # turn can put its prompt back in the composer.
                 self._composer.mark_unknown()
             try:
                 self._pty.sendintr()
@@ -689,8 +688,8 @@ class PtySession(InputProtocol):
             if mode == STOP_KILL:
                 self._pty.terminate(force=True)
             else:  # STOP_QUIT — graceful, agent-appropriate, with fallback.
-                # Three keystrokes, each its own write, with a beat between
-                # (issue #1016): ESC clears any partial input so the quit
+                # Three keystrokes, each its own write, with a beat between:
+                # ESC clears any partial input so the quit
                 # command lands on an empty prompt; the beat after it stops
                 # the leading "/" being read as part of a meta-key sequence;
                 # the beat before the CR lets the harness's slash-command
@@ -750,7 +749,7 @@ class PtySession(InputProtocol):
     def to_api(self) -> Dict[str, object]:
         # output_chars: cumulative-ish output signal (the scrollback ring's
         # length, so it saturates at _RING_MAX_CHARS). The board's dispatch
-        # readiness probe (#302) only needs "has the agent painted anything
+        # readiness probe only needs "has the agent painted anything
         # yet" — a monotonic counter would be overkill.
         with self._ring_lock:
             output_chars = len(self._ring)
@@ -773,19 +772,19 @@ class PtySession(InputProtocol):
             "prompt_title": self.prompt_title,
             "manual_title": self.manual_title,
             "output_chars": output_chars,
-            # Raw PTY-activity timestamp (issues #627, #636): lets a reader tell
+            # Raw PTY-activity timestamp: lets a reader tell
             # "still genuinely producing output" apart from "live_title frozen
             # on a busy glyph because the PTY wedged". Consumed by
             # board_transcript's _pty_output_is_fresh (via board_sessions and
             # the session_transcript router).
             "last_output_at": self._last_output_at,
-            # The most recent server-initiated write's verdict (issue #760),
+            # The most recent server-initiated write's verdict,
             # or None if nothing has been sent through /input yet. This is
             # what makes "this session has gone deaf to API input" a visible
             # state rather than something only a human with a keyboard can
             # tell apart from a busy agent.
             "last_input": self.last_input,
-            # Typed-but-unsent text in the composer (issue #1643): True,
+            # Typed-but-unsent text in the composer: True,
             # False, or None when it can't be established — see
             # src/session_host_composer.py. A typer holds off on True and
             # None alike.
@@ -887,11 +886,11 @@ class RemoteSession:
         self._pid = pid
         self.agent = agent
         self.manual_title = ""
-        # Most recent submit_input verdict (same role as PtySession.last_input,
-        # issue #760): a detached session that stopped taking console input
+        # Most recent submit_input verdict (same role as PtySession.last_input):
+        # a detached session that stopped taking console input
         # is a readable state, not a guess.
         self.last_input: Optional[Dict[str, Any]] = None
-        # Serializes sends (mirrors PtySession._write_lock, #721): two phones
+        # Serializes sends (mirrors PtySession._write_lock): two phones
         # steering the same detached console must not interleave key records.
         self._input_lock = threading.Lock()
 
@@ -1046,7 +1045,7 @@ class RemoteSession:
             "live_title": "",
             "manual_title": self.manual_title,
             "last_input": self.last_input,
-            # No PTY to read keystrokes from (#1643): always unknown.
+            # No PTY to read keystrokes from: always unknown.
             "composer_dirty": None,
             "composer_dirty_since": None,
         }
@@ -1180,11 +1179,11 @@ class SessionManager:
             raise OSError(f"Project directory not found: {project_dir}")
 
         # The same floors :meth:`PtySession.resize` applies, as the docstring
-        # above promises (#1007). `POST /sessions` forwards the request's rows
+        # above promises. `POST /sessions` forwards the request's rows
         # unfloored (`int(body.get("rows") or 40)` only catches a falsy value,
         # so a literal 1 survives), and a 1-row ConPTY's first real resize
         # fires exactly the full-viewport repaint PTY_MIN_ROWS exists to
-        # prevent (#930).
+        # prevent.
         rows = max(PTY_MIN_ROWS, min(int(rows), 1000))
         cols = max(PTY_MIN_COLS, min(int(cols), 1000))
         session_id = uuid.uuid4().hex
@@ -1194,7 +1193,7 @@ class SessionManager:
         #
         # APP_LAUNCHER_SESSION_ID/AGENT ride the child's environment
         # (``env=``), NOT a `set "VAR=val" && ...` chain baked into the
-        # command string (#537 root cause): PtyProcess.spawn() re-tokenizes a
+        # command string: PtyProcess.spawn() re-tokenizes a
         # str argv via shlex.split() then rebuilds it with
         # subprocess.list2cmdline(), which backslash-escapes the quotes
         # around "VAR=val" — cmd.exe's own SET parser doesn't strip that

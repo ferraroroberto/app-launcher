@@ -252,7 +252,7 @@ def _finalize_mutex_queue(
     # Queue half only: this process is already the executor that would run
     # the job inline, so spawn_when_free=False means "no collision → touch
     # nothing, tell the caller to proceed". Shares the queued-record shape
-    # with the route and the chain dispatcher (issue #794).
+    # with the route and the chain dispatcher.
     meta = admit_and_spawn(
         jobs,
         job,
@@ -378,7 +378,7 @@ def _spawn_and_wait(
     sampler: Optional[ResourceSampler] = None
     watchdog: Optional[RunWatchdog] = None
     # Resolved here, on the main thread: the watchdog thread must never
-    # read run history or config itself (issue #695).
+    # read run history or config itself.
     max_runtime_seconds, no_output_seconds = resolve_watchdog_limits(job)
     try:
         with output_log.open("wb") as fh:
@@ -403,7 +403,7 @@ def _spawn_and_wait(
             # src.app_runtime.record_spawn) lets a later reap check
             # (src.jobs_reap) tell "still this process" apart from "a
             # since-recycled pid" — Windows reuses pids, so a bare
-            # pid_exists() isn't enough (issue #591).
+            # pid_exists() isn't enough.
             # The child's pid dies the moment it exits, before this executor
             # has written the exit code; recording our own (same write, so a
             # reaper that sees the child's pid sees this too) lets it tell
@@ -573,7 +573,7 @@ def _cleanup_once_schedule(job: Job, args: argparse.Namespace) -> None:
         delete_schtasks(job.id)
         # Mutate the registry so the row stops showing "once …"
         # and surfaces as a plain manual job. Under the shared
-        # jobs_file_lock (issue #755) so this unlocked-until-now
+        # jobs_file_lock so this unlocked-until-now
         # load-mutate-save can't race the webapp's own PUT/POST
         # /api/jobs/* mutators (which take the same lock) and silently
         # clobber one writer's change with a stale os.replace.
@@ -690,7 +690,7 @@ class RunJobCommand(BaseCommand):
         if skip_exit_code is not None:
             return skip_exit_code
 
-        # Mutex-group admission for schtasks-fired runs (issue #696). Runs
+        # Mutex-group admission for schtasks-fired runs. Runs
         # after cooldown, matching the route's order: a cooled-down fire is
         # a no-op that shouldn't occupy a slot in the group's queue.
         queued_exit_code = _finalize_mutex_queue(job, cfg.jobs, args, values)
@@ -700,7 +700,7 @@ class RunJobCommand(BaseCommand):
         # Webapp-spawned runs pre-create the run dir so the API can
         # return the run id immediately. Scheduled runs (Task Scheduler)
         # arrive without --run-id and create a fresh one. This has to
-        # happen before build_invocation: the inline-shell kind (issue #70)
+        # happen before build_invocation: the inline-shell kind
         # writes its temp script into run_dir so it's preserved alongside
         # run.json / output.log.
         if args.run_id:
@@ -714,7 +714,7 @@ class RunJobCommand(BaseCommand):
             return 2
         argv, cwd, extra_env = invocation
 
-        # Per-job env overlay (issue #72) — resolved before the run flips
+        # Per-job env overlay — resolved before the run flips
         # to "running" so an unresolvable $secret: reference finalises as
         # a clean failed record, mirroring the invocation-error path.
         job_env = _resolve_job_env_or_record_failure(job, args, run_dir)
@@ -726,17 +726,17 @@ class RunJobCommand(BaseCommand):
         run_meta: Dict[str, Any] = seed_run_meta(
             job, args.trigger, started_at, run_id=run_dir.name, status="running"
         )
-        # Persist the typed-parameter payload (issue #67) so the history
+        # Persist the typed-parameter payload so the history
         # row can replay it and the meta line can show the values back.
         if values:
             run_meta["params"] = values
-        # Provenance (issue #72): a Task Scheduler fire reaches this
+        # Provenance: a Task Scheduler fire reaches this
         # executor directly, so it stamps its own source here; API fires
         # carry trigger_source="api" (+ip/ua/token id) pre-written by the
         # route into the run dir this executor merges into.
         if args.trigger == "scheduled":
             run_meta["trigger_source"] = "schtasks"
-        # Dry-run 'execute' mode (issue #69): the child still spawns, but
+        # Dry-run 'execute' mode: the child still spawns, but
         # JOB_DRY_RUN=1 lets an opted-in script no-op its side effects.
         # The flag is stamped so history shows the 🧪 chip.
         if dry_run:

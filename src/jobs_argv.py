@@ -50,10 +50,10 @@ _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # contain one (a URL query string, "R&D"): the command line splits mid-value
 # and the executor fails to parse its own arguments.
 #
-# Single source for both hops (issue #409 established it for ``.bat``).
+# Single source for both hops (established first for ``.bat``).
 CMD_UNSAFE_CHARS = frozenset('"&|^<>')
 
-# ``%`` is deliberately *not* in ``CMD_UNSAFE_CHARS`` (issue #810). cmd.exe
+# ``%`` is deliberately *not* in ``CMD_UNSAFE_CHARS``. cmd.exe
 # only substitutes a **paired** ``%name%`` reference (or ``%1``-``%9`` /
 # ``%*``) during its own re-tokenization of the command line — a lone ``%``
 # is inert. Blocking on the bare character would also refuse the common

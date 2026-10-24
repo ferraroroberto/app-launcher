@@ -62,7 +62,7 @@ SLOW_STEP_S = 2.0
 # endpoint, plus a stuck build's steps that are still running.
 _POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="hot-poll")
 
-# The per-session polls' pool (#1605). A stalled build holds one thread per
+# The per-session polls' pool. A stalled build holds one thread per
 # poll key (single-flight), so this leaves room for a few stuck keys while
 # every other session's Chat still reads; a full pool queues here, never on
 # the default executor.

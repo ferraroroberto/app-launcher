@@ -60,7 +60,7 @@ def cooldown_check(
         return None
     anchor: Optional[Dict[str, Any]] = None
     for run in list_runs(job.id):
-        # skipped (cooldown no-ops) and dry-run records (issue #69) are
+        # skipped (cooldown no-ops) and dry-run records are
         # not real fires — counting them as the anchor would let a dry
         # verification reset the cooldown window.
         if run.get("status") in (
@@ -121,7 +121,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
         outcome = r.get("outcome") or status
         started = _parse_iso(r.get("started_at"))
         if outcome == OUTCOME_DEFERRED:
-            # A deferred run (#1316) declined the work on purpose. It is
+            # A deferred run declined the work on purpose. It is
             # neither side of the success ratio, and its seconds-long
             # duration says nothing about how long the real work takes, so it
             # stays out of the p95 that sets the stuck and watchdog
@@ -132,7 +132,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
             if d is not None:
                 completed_durations.append(d)
             if started and started >= cutoff:
-                # An unconfirmed run (issue #916) leaves the ratio entirely
+                # An unconfirmed run leaves the ratio entirely
                 # rather than joining either side of it: counting it as a
                 # failure is the false alarm this issue is about, and counting
                 # it as a success is the worse half of the same mistake. It is
@@ -144,7 +144,7 @@ def _compute_stats(job_id: str, *, now: Optional[datetime] = None) -> Dict[str, 
                 else:
                     failed_recent += 1
     # last7 oldest-left so the sparkline reads left→right chronologically.
-    # Both keys ride: ``status`` for any consumer predating #916, ``outcome``
+    # Both keys ride: ``status`` for older consumers, ``outcome``
     # for the dot colour.
     last7 = [
         {
@@ -215,7 +215,7 @@ def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
             _stats_cache.clear()
         else:
             _stats_cache.pop(job_id, None)
-    # The polls' snapshot (#1324) holds these stats too. The run's own
+    # The polls' snapshot holds these stats too. The run's own
     # write_run_json marked it dirty a moment earlier, and a read in between
     # may have stored the old stats and consumed that mark, so mark it again.
     from src.jobs_snapshot import mark_dirty
@@ -224,7 +224,7 @@ def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
 
 
 # How many *completed* runs a job needs before its derived duration
-# threshold is trusted to auto-kill (issue #695). The same threshold has
+# threshold is trusted to auto-kill. The same threshold has
 # always been safe to *warn* on with zero history — a false ⚠️ costs a
 # glance — but killing a healthy run is not recoverable, so the executor's
 # watchdog refuses to derive a ceiling until the history can carry it. A

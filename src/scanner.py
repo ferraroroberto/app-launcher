@@ -159,7 +159,7 @@ _SKILL_SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$", re.IGNORECASE)
 # skills (`_template`, `_recap`); plus the usual VCS / cache noise.
 _SKILLS_SKIP_PREFIX = "_"
 
-# The optional frontmatter ``icon:`` (#1503): a glyph name from the launcher's
+# The optional frontmatter ``icon:``: a glyph name from the launcher's
 # icon sprite, shown in the skill row's avatar. Only the shape is checked
 # here; the page draws it only when its sprite has that glyph, and falls back
 # to a monogram otherwise. The launcher ships no per-skill glyphs: the owner
@@ -562,7 +562,7 @@ def tunnel_url_for(bat_path: Path) -> Optional[str]:
             return text
     except (OSError, UnicodeDecodeError):
         pass
-    # Same cloudflared-config reader the tray uses (#1003, #1627) — one
+    # Same cloudflared-config reader the tray uses — one
     # ``yaml.safe_load`` + ``ingress[].hostname`` walk, not a second copy.
     host = read_tunnel_hostname(webapp_dir / "cloudflared.yml")
     return f"https://{host}" if host else None

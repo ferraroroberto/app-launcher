@@ -102,7 +102,7 @@ ARCHIVE_MAGIC: Dict[str, bytes] = {
 
 # Every media type a sent file is ever served as. The image types come from
 # session_transcript.IMAGE_MAGIC — one magic-byte table for both the
-# transcript's inline images and this outbox (#1627).
+# transcript's inline images and this outbox.
 SERVED_MEDIA = frozenset(
     [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA, HTML_MEDIA, ARCHIVE_MEDIA]
 )
@@ -125,7 +125,7 @@ class OutboxRefusal(ValueError):
 
 
 def _resolve_outbox_dir() -> Path:
-    # Mirrors src.audit's resolution of the same variable (#913).
+    # Mirrors src.audit's resolution of the same variable.
     override = os.environ.get(AUDIT_DIR_ENV, "").strip()
     return (Path(override) if override else PROJECT_ROOT / "webapp") / "outbox"
 

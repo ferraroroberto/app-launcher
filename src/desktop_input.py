@@ -60,7 +60,7 @@ FAKE_INPUT_ENV = "LAUNCHER_SCREEN_FAKE_INPUT"
 MAX_TEXT_CHARS = 1000
 MAX_SCROLL = 1200
 # A frame longer than this is not an input message (and is not parsed), except
-# a clipboard_set frame (#1719), which has its own, larger cap: the text may be
+# a clipboard_set frame, which has its own, larger cap: the text may be
 # up to desktop_clipboard.MAX_CLIPBOARD_BYTES, and JSON escaping can make a
 # character up to six characters long.
 MAX_MESSAGE_CHARS = 8192
@@ -117,7 +117,7 @@ NAMED_KEYS: Dict[str, Tuple[int, bool]] = {
     "end": (VK_END, True),
     "pageup": (VK_PRIOR, True),
     "pagedown": (VK_NEXT, True),
-    # F1-F12 are the contiguous virtual keys 0x70-0x7B, not extended (#1602).
+    # F1-F12 are the contiguous virtual keys 0x70-0x7B, not extended.
     **{f"f{n}": (0x6F + n, False) for n in range(1, 13)},
 }
 

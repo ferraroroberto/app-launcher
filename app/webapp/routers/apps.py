@@ -77,7 +77,7 @@ router = APIRouter()
 # Claude and Codex are deliberately ABSENT. They are model-carrying and are
 # called directly with `model_override`, so an entry here would advertise a
 # dispatch path that cannot be reached - the table was carrying two such
-# entries (#1006). Module level so the coverage contract below it is a fact a
+# entries. Module level so the coverage contract below it is a fact a
 # test can check rather than a comment: `tests/test_apps_launch_dispatch.py`
 # fails when a newly added agent has no builder, which is otherwise a
 # KeyError on the first launch from the phone.
@@ -88,11 +88,11 @@ _NO_MODEL_FLAG_BUILDERS = {
     "grok": build_grok_flags,
 }
 
-# The per-launch model values each agent's flag builder actually honours
-# (#1007). Which agents belong here is NOT a judgement made at this line: it
+# The per-launch model values each agent's flag builder actually honours.
+# Which agents belong here is NOT a judgement made at this line: it
 # is `Agent.per_launch_model` in `src/agents.py`, the registry that already
 # owns every other per-agent capability, and `tests/test_apps_launch_dispatch`
-# fails when this table and that flag disagree in either direction (#1044).
+# fails when this table and that flag disagree in either direction.
 # So both keyed lookups below are direct indexing, not `.get()` - a drift is
 # caught by the test, never smuggled past the route as a skipped check.
 _LAUNCH_MODEL_CATALOG = {
@@ -131,7 +131,7 @@ async def get_apps(request: Request) -> Dict[str, Any]:
     for d in decorated:
         if d.get("kind") == KIND_TUNNEL:
             d["health"] = health.get(d.get("tunnel_url"))
-    # Mark which live coding rows the user has starred (issue #250). Bat-
+    # Mark which live coding rows the user has starred. Bat-
     # based kinds never carry the flag — favorites are a Coding-tab concept.
     favorites = set(cfg.coding_favorites)
     for d in decorated:
@@ -166,7 +166,7 @@ async def save_apps(request: Request) -> Dict[str, Any]:
 
     registry = load_registry()
     # Same apps_scan_root walk as scan_apps above — off the event loop for
-    # the same reason (issue #881).
+    # the same reason.
     candidates = await asyncio.to_thread(
         discover_new, scan_root=Path(cfg.apps_scan_root), existing=registry
     )
@@ -243,14 +243,14 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         body = await maybe_json(request)
         mode = str(body.get("mode") or "pty").strip().lower()
         agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
-        # Resume (issue #151): reopen the agent's own native session picker.
+        # Resume: reopen the agent's own native session picker.
         # It swaps the normal flags for the agent's resume invocation but
-        # honours the requested `mode` (issue #157): with Detached on, the
+        # honours the requested `mode`: with Detached on, the
         # picker renders in the detached console window; with Detached off it
         # streams to the phone over a PTY. Resume no longer forces a PTY.
         resume = bool(body.get("resume"))
         requested_model = str(body.get("model") or "").strip()
-        # Phone's real terminal size (issue #126): a pty session spawns at
+        # Phone's real terminal size: a pty session spawns at
         # these dimensions so a ratatui TUI's first frame isn't cut. Absent
         # (older client, or remote mode) → the legacy 40×120 default.
         rows = safe_int(body, "rows", 40)
@@ -260,7 +260,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                 status_code=400, detail=f"unknown agent: {agent}"
             )
         # Claude Code is the launcher's core agent — its launch path is
-        # unguarded, exactly as before issue #45. Other agents
+        # unguarded, exactly as before the other agents were gated. Other agents
         # (Antigravity, Copilot) are checked server-side too, as
         # defence-in-depth behind the Coding tab's already-disabled button.
         if agent != agents.DEFAULT_AGENT and not agents.is_installed(agent):
@@ -283,7 +283,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             # fell straight through to the cfg-only builder and returned 200
             # on a session running whatever the agent picked for itself,
             # which a caller cannot tell apart from having got what it asked
-            # for (#1044). Which agents those are is read off the registry
+            # for. Which agents those are is read off the registry
             # (`Agent.per_launch_model`), not re-listed here, so a seventh
             # agent inherits the guard. Refusing is safe: no first-party
             # bundle has ever sent one - the `startsWith(agent + ':')` guard
@@ -301,13 +301,13 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
                     ),
                 )
             # Second: for the two that do, an out-of-catalog *value* used to
-            # launch silently on the CLI's own default (#1007).
+            # launch silently on the CLI's own default.
             # build_claude_flags / build_codex_flags emit no --model at all
             # for a value they don't recognise *and* discard the persisted
             # model (model_override is not None), so a phone holding a
             # pre-rename cached bundle got a 200 and a session on the wrong
             # model with nothing said. Reject it instead, as the Life OS
-            # (#540) and Board (#505) launch routes already do. The
+            # and Board launch routes already do. The
             # accepted set is exactly what the builder would honour, so a
             # legacy-but-still-supported alias keeps working.
             if model_value not in _LAUNCH_MODEL_CATALOG[agent]:
@@ -320,7 +320,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         if resume:
             # Swap the normal flags for the agent's resume invocation; the
             # requested `mode` decides where its picker renders — a detached
-            # console (mode="remote") or a streamed PTY (issue #157).
+            # console (mode="remote") or a streamed PTY.
             flags = build_resume_flags(
                 cfg, agent, model_override=model_value or None
             )
@@ -380,9 +380,8 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
             "session": session,
         }
 
-    # everything else: a fresh CMD window running the bat. `stealth` (issue
-    # #790) picks the Apps tab's 🚫👁 button instead of its ⚡ one — same bat,
-    # same process shape, no console window on screen. Absent or false keeps
+    # everything else: a fresh CMD window running the bat. `stealth` picks the Apps tab's 🚫👁 button
+    # instead of its ⚡ one — same bat, same process shape, no console window on screen. Absent or false keeps
     # the visible window, so a phone still serving an older cached PWA bundle
     # (which posts no body at all) launches exactly as it always did.
     if not entry.bat_path:
@@ -403,7 +402,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # taps). Tracking it here would offer a port/URL that never resolves
     # and a Stop button that can't reach the real process either — so a
     # tray launch isn't tracked at all; Port listeners already resolves it
-    # correctly once it's actually up (issue #456 follow-up).
+    # correctly once it's actually up.
     if entry.kind != KIND_TRAY:
         app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
     return {

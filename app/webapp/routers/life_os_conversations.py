@@ -72,9 +72,9 @@ from app.webapp.routers.life_os_spawn import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# --- conversations (issue #727) ----------------------------------------
+# --- conversations ----------------------------------------
 # The machine-readable twin of `conversations/index.md`, written by
-# fleet-config's conversation_index hook (life-os#68): one digested entry per
+# fleet-config's conversation_index hook: one digested entry per
 # conversation, newest-first, carrying the full resumable session id.
 _CONVERSATIONS_DIR = "conversations"
 _CONVERSATIONS_INDEX = "index.json"
@@ -86,7 +86,7 @@ _MAX_QUERY_CHARS = 200
 _SEARCH_LIMIT_DEFAULT = 20
 _SEARCH_LIMIT_MAX = 100
 
-# Owner titles (#1495). fleet-config's writer refuses over 120 characters
+# Owner titles. fleet-config's writer refuses over 120 characters
 # itself (exit 2); the router checks first so the phone gets a plain 400
 # without a subprocess. The writer call itself, serialised, is
 # ``src.life_os_title.run_title_cli`` (shared with Delete and the zombie job).
@@ -101,7 +101,7 @@ _SESSION_ID_RE = re.compile(
 )
 
 
-# ------------------------------------------------- conversations (issue #727)
+# ------------------------------------------------- conversations
 
 
 def _capture_rel(life_os_dir: Path, capture: Path) -> str:
@@ -228,7 +228,7 @@ async def _launch_conversation(
     action = body.get("action", "resume")
     if action not in ("resume", "handoff"):
         raise HTTPException(400, "unknown conversation action")
-    # Resume on the conversation's own model (#1503): only an explicit
+    # Resume on the conversation's own model: only an explicit
     # `keep_model: true` asks for it. An absent `model` keeps meaning Sonnet,
     # which a cached older client still relies on.
     keep_model = body.get("keep_model") is True and action == "resume"
@@ -252,7 +252,7 @@ async def _launch_conversation(
     path = _conversation_path(root, skill, rel)
     source = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0]
     # `revision` marks a capture whose header was verified; an oversized one has
-    # no `body` but still resumes (#1739).
+    # no `body` but still resumes.
     if "revision" not in source:
         raise HTTPException(409, source["reason"])
     if any(selection.get(key) != source.get(key, "") for key in ("revision", "agent", "sid")):
@@ -472,7 +472,7 @@ async def _live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
     return {sid: owners[-1] for sid, owners in (await _conversation_sessions(cfg)).items()}
 
 
-# ------------------------------------------- resume the latest (#1503)
+# ------------------------------------------- resume the latest
 # Life OS's swipe-Resume and the kebab's "Resume last conversation": one
 # gesture back into a skill's newest conversation, on that conversation's own
 # model. Newest is by capture-file mtime, not the date in the file name: life-os
@@ -563,7 +563,7 @@ async def resume_or_open(
     return await _launch_conversation(skill, request, launch, mirror=mirror)
 
 
-# ------------------------------------------- a skill's last use (#1503)
+# ------------------------------------------- a skill's last use
 # The Life tab's "last used" meta and its fold read when a skill's newest
 # conversation was captured: the index, then one stat per listed capture, and
 # never a capture's contents or a subprocess. Cached per index by its mtime,
@@ -662,7 +662,7 @@ async def delete_conversation(skill_id: str, request: Request) -> Dict[str, Any]
 
 
 # One message per exit code of conversation_title.py, so the phone can tell
-# "not installed", "refused", "gone" and "could not write" apart (#1495).
+# "not installed", "refused", "gone" and "could not write" apart.
 _TITLE_EXIT_ERRORS = {
     1: (503, "Renaming is unavailable: the Life OS folder isn't set up for conversation capture."),
     2: (400, f"The name was refused (at most {_MAX_TITLE_CHARS} characters)."),
@@ -732,7 +732,7 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
         audit.audit_event, "lifeos_conversation_rename", skill=skill.id, path=rel,
         cleared=not stored, client=client_ip(request),
     )
-    # The capture's own header says which session it is (#1637); a cleared title
+    # The capture's own header says which session it is; a cleared title
     # has nothing to mirror, so the capture is not even read for it.
     capture = (await asyncio.to_thread(read_captures, Path(cfg.fleet_config_dir), [path]))[0] if stored else {}
     reply = {"skill": skill.id, "path": rel, "file": path.name, "title": stored}
@@ -742,7 +742,7 @@ async def rename_conversation(skill_id: str, request: Request) -> Dict[str, Any]
     return reply
 
 
-# ------------------------------- a conversation's name follows its session (#1637)
+# ------------------------------- a conversation's name follows its session
 # A Life OS conversation and the live session that has it open are named in two
 # stores with two owners: the title beside the capture (durable, fleet-config's
 # writer) and the session's in-memory ``manual_title`` (session host). A rename on

@@ -60,7 +60,7 @@ def _grok_timestamp(obj: Dict[str, Any], meta: Dict[str, Any]) -> Optional[str]:
     return stamp.isoformat().replace("+00:00", "Z")
 
 
-# The `tool_call_update` statuses that carry a *result* (#1020). `failed`
+# The `tool_call_update` statuses that carry a *result*. `failed`
 # was not in the on-disk corpus when the Grok reader was written — 19
 # records, every one `completed` — so it was excluded and a failed call's
 # result was dropped entirely, rendering as "no result on this page" rather

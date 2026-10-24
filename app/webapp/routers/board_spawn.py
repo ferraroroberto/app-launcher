@@ -43,13 +43,13 @@ logger = logging.getLogger(__name__)
 
 
 # The reason a per-session route reports when the session-host's list could
-# not be read (#1308): distinct from ``session_not_found``, which means the
+# not be read: distinct from ``session_not_found``, which means the
 # list *was* read and the session is not in it. Clients treat the first as
 # transient (keep polling, backed off) and the second as terminal.
 SESSION_HOST_UNREACHABLE = "session_host_unreachable"
 
 # Latched so a session-host that stays down leaves one warning, not one per
-# 5 s Board poll; the recovery gets its own breadcrumb (#915).
+# 5 s Board poll; the recovery gets its own breadcrumb.
 _session_host_down = False
 
 
@@ -99,7 +99,7 @@ def _resolve_repo_entry(cfg: WebappConfig, repo: str) -> AppEntry:
     return entry
 
 
-# Dispatch readiness (#302): how long to wait for the freshly spawned agent
+# Dispatch readiness: how long to wait for the freshly spawned agent
 # to paint its first output before typing into it, the settle after that
 # first paint, and the fixed grace for a session-host old enough to not
 # report ``output_chars`` yet. Module-level so tests can patch them tiny.
@@ -108,7 +108,7 @@ DISPATCH_SETTLE_S = 2.0
 DISPATCH_POLL_S = 0.25
 DISPATCH_LEGACY_GRACE_S = 5.0
 
-# PTY input-quiescence (#245 review, generalized #549): first-paint + a fixed
+# PTY input-quiescence: first-paint + a fixed
 # settle is NOT always "input ready" for a fresh --remote-control agent — a
 # CR typed while boot output (handshake, banner) is still growing gets
 # swallowed, leaving the typed text sitting unsubmitted (observed on-device
@@ -121,7 +121,7 @@ PTY_QUIESCENT_STABLE_S = 2.0
 PTY_QUIESCENT_CAP_S = 30.0
 PTY_QUIESCENT_POLL_S = 0.5
 
-# Provider-qualified choices come from the shared model catalog (#845).
+# Provider-qualified choices come from the shared model catalog.
 _DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 
 

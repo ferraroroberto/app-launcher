@@ -39,7 +39,7 @@ _LANE_FIELDS = ("repo", "session", "item", "status", "model")
 _QUEUE_FIELDS = ("repo", "ref", "title", "status", "note", "model")
 _WAITING_FIELDS = ("text", "ref", "repo", "detail", "recommendation")
 # Read only when the chief wrote a string: a number here is a wrong type, not
-# a label to show (#1352).
+# a label to show.
 _STRING_ONLY_FIELDS = frozenset({"model"})
 MAX_OPTIONS = 4
 _REF = re.compile(r"^([A-Za-z0-9._-]*)#(\d+)$")

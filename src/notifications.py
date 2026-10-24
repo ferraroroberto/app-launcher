@@ -62,7 +62,7 @@ PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 # Local LLM hub — see global CLAUDE.md "`local-llm-hub` local LLM hub".
 # The model id lives once on :mod:`src.llm_client`
 # (:data:`llm_client.DEFAULT_MODEL`) — both hub callers route through the
-# same client (issue #520).
+# same client.
 LOCAL_LLM_BASE_URL = "http://127.0.0.1:8000"
 LOCAL_LLM_TIMEOUT_SECONDS = 8.0
 SUMMARY_TAIL_CHARS = 500
@@ -322,7 +322,7 @@ def notify_failure(
         # A run this launcher itself ended or found dead is a failure whatever
         # exit code the torn-down tree reported; otherwise the scheduled-run
         # adapter's exit code decides whether this alert may use the word
-        # "failed" at all (issue #916). An unconfirmed run still pages —
+        # "failed" at all. An unconfirmed run still pages —
         # nobody established that it delivered — but calling it a failure is
         # exactly what made these alerts stop being read.
         outcome, outcome_reason = run_outcome({
@@ -332,7 +332,7 @@ def notify_failure(
             "watchdog": bool(watchdog_note),
         }, job.exit_outcomes)
         if outcome == OUTCOME_DEFERRED:
-            # The job declared this exit code a designed deferral (#1316): the
+            # The job declared this exit code a designed deferral: the
             # child chose not to do the work, and paging about it every night
             # is what trains a reader to ignore the real failures.
             logger.info(

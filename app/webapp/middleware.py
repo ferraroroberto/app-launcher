@@ -145,7 +145,7 @@ def client_in_tailnet(client_host: str, allowlist: List[str]) -> bool:
 # comments. Order matters only in that the first matching predicate wins;
 # in practice every predicate here targets a disjoint path shape.
 #
-# The rule a new route is measured against (#1036): anything that spawns a
+# The rule a new route is measured against: anything that spawns a
 # coding session, or reads or injects terminal-grade content, is passkey-gated.
 # Starting an app or a job (/api/apps, /api/jobs) is ordinary launcher work
 # and stays on the bearer token.

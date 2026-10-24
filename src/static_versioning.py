@@ -35,7 +35,7 @@ _HASH_LEN = 8
 # Files under static/ whose content feeds the fleet hash. .js/.css get
 # the hash stamped on their URLs server-side; .svg (the brand icons) is
 # stamped client-side via dom-utils.js iconUrl(), so an icon edit must
-# move the fleet hash too (issue #372 — stale icons survived a deploy
+# move the fleet hash too (stale icons survived a deploy
 # because SVG bytes never fed the hash). Everything else (manifest,
 # the xterm vendor bundle) is cached more conservatively by the
 # static-files mount itself.

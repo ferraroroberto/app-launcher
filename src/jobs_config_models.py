@@ -42,7 +42,7 @@ _ONCE_AT_RE = _re_compile(
     r"^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)$"
 )
 
-# Bounded set of typed-parameter kinds (issue #67). Anything else fails
+# Bounded set of typed-parameter kinds. Anything else fails
 # validation. Mirrors the same closed-set discipline as SCHEDULE_TYPES.
 PARAM_KINDS = frozenset({"string", "int", "enum", "bool", "date"})
 
@@ -56,7 +56,7 @@ _PARAM_DATE_RE = _re_compile(r"^\d{4}-\d{2}-\d{2}$")
 # stack would render it confusingly.
 MAX_COOLDOWN_SECONDS = 86_400
 
-# Upper bound on either watchdog ceiling (issue #695) — a full week. The
+# Upper bound on either watchdog ceiling — a full week. The
 # watchdog is a last-resort backstop, so the ceiling is deliberately loose;
 # anything past a week is a units typo, not an intent.
 MAX_WATCHDOG_SECONDS = 7 * 86_400
@@ -70,7 +70,7 @@ MAX_MUTEX_GROUP_LEN = 32
 _MUTEX_GROUP_RE = _re_compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 # Job id shape — lowercase alnum segments joined by single hyphens, exactly
-# what make_job_id()/slugify() produce (#832). Nothing downstream validated
+# what make_job_id()/slugify() produce. Nothing downstream validated
 # a caller-supplied id: it became a raw path join for the job's run
 # directory (src/jobs_history.py's ``runs_dir``, which prune_runs'
 # ``shutil.rmtree`` can walk outside ``webapp/jobs/`` given a `../` id) and
@@ -391,16 +391,16 @@ class Job:
     # When True, a manual fire must carry explicit confirmation
     # (``?confirmed=1`` on the run route / a confirm dialog in the UI)
     # so a fat-fingered tap or stray Stream Deck press can't execute a
-    # destructive job by accident (issue #69).
+    # destructive job by accident.
     confirm: bool = False
     # When True, a failed run pushes a Telegram alert via the vendored
     # notifier (``src.notify``), independent of the global Pushover
     # ``notify_on_failure`` switch in webapp_config.json. Opt-in per job
     # (default off) so the shared Telegram chat isn't spammed by every
-    # job's failures — issue #597.
+    # job's failures.
     alert_on_failure: bool = False
-    # What this job's *own* non-zero exit codes mean, e.g. ``{3: "deferred"}``
-    # (#1316): read at render time by ``src.jobs_outcome.run_outcome``, so a
+    # What this job's *own* non-zero exit codes mean, e.g. ``{3: "deferred"}``:
+    # read at render time by ``src.jobs_outcome.run_outcome``, so a
     # declared code re-labels a ``failed`` run on the card, in the stats and in
     # the alert path, while ``status`` on disk and chaining stay unchanged.
     exit_outcomes: Dict[int, str] = field(default_factory=dict)
@@ -421,11 +421,11 @@ class Job:
     # When True, this job's Task Scheduler entry is expected to carry an
     # **S4U** principal ("run whether the user is logged on or not") instead
     # of the ``InteractiveToken`` principal ``schtasks /Create`` defaults to,
-    # so it still fires while the machine sits logged out (issue #757).
+    # so it still fires while the machine sits logged out.
     #
     # Like ``elevated`` this makes the entry *externally managed*: registering
     # an S4U principal needs elevation, which this webapp process never has
-    # (proven non-elevated on #757 — every route to an S4U principal returns
+    # (proven non-elevated — every route to an S4U principal returns
     # ``Access is denied``, including the create-then-``Set-ScheduledTask``
     # patch that works for *Settings*). See
     # ``src.jobs_schtasks.registration_script`` for the command that registers
@@ -439,7 +439,7 @@ class Job:
     # and ``paused_schedule`` carries the *real* shape so resume can
     # restore it untouched. See pause_job/resume_job.
     paused_schedule: Optional[Schedule] = None
-    # Job-kind registry (issue #70). Empty ``kind`` is the back-compat
+    # Job-kind registry. Empty ``kind`` is the back-compat
     # default: dispatch infers the kind from ``script_path``'s suffix
     # (``.py``/``.bat``, exactly as before this field existed). An
     # explicit kind (``"powershell"``, ``"shell-wsl"``, ``"inline-shell"``,
@@ -451,19 +451,19 @@ class Job:
     # requires touching this dataclass again.
     kind: str = ""
     kind_config: Dict[str, Any] = field(default_factory=dict)
-    # Webhook trigger (issue #73): an external service (GitHub, Stripe, a
+    # Webhook trigger: an external service (GitHub, Stripe, a
     # generic POST) can fire this job over POST /api/jobs/<id>/hook, gated
     # by the provider signature instead of the bearer token. See
     # src.jobs_webhook for verification + payload-mapping.
     webhook: Optional[WebhookConfig] = None
-    # Per-job env-var overlay (issue #72): {NAME: value} merged into the
+    # Per-job env-var overlay: {NAME: value} merged into the
     # child's environment by the executor at fire time. Values are either
     # literal strings or "$secret:<key>" references resolved against
     # webapp_config.secrets (src.jobs_secrets) — so jobs.json carries only
     # opaque references, never a real credential. An unresolvable
     # reference finalises the run as failed with a clear note.
     env: Dict[str, str] = field(default_factory=dict)
-    # Executor watchdog ceilings (issue #695) — the last-resort backstop
+    # Executor watchdog ceilings — the last-resort backstop
     # that kills a wedged run no matter *why* it wedged. Both are
     # tri-state: ``None`` = "use the default" (a runtime ceiling derived
     # from this job's own duration history; the module no-output default

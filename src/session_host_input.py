@@ -29,15 +29,15 @@ from src.agents import supports_type_ahead
 
 logger = logging.getLogger(__name__)
 
-# Settle-then-submit for bulk input (issue #611) — ported from
-# app/webapp/static/terminal-compose.js's sendSubmit/bulkSettle (#166/#499),
+# Settle-then-submit for bulk input — ported from
+# app/webapp/static/terminal-compose.js's sendSubmit/bulkSettle,
 # the WS/compose-bar path's fix for the same race the HTTP /input endpoint
 # lacked: a bulk (dictation-sized) paste's bracketed-paste ingest can outrun
 # a fixed delay under machine load, so a CR arriving too soon lands mid-ingest
 # and becomes a literal newline into the still-settling composer instead of
 # Submit, leaving the message stranded as an unsent "[Pasted text #N]" chip.
 # These four values are copied verbatim from terminal-compose.js so the two
-# paths cannot drift and quietly diverge again — see that file's #499 comment
+# paths cannot drift and quietly diverge again — see that file's calibration comment
 # for the calibration data (echo-then-quiet was the only protocol that ran
 # clean 20/20 against a live ConPTY probe under synthetic load).
 _BULK_SUBMIT_THRESHOLD_CHARS = 500
@@ -48,8 +48,8 @@ _BULK_CAP_MS = 3000
 # 50ms setInterval terminal-compose.js polls at.
 _BULK_POLL_S = 0.05
 
-# Attachment settle (issue #1212) — the /input half of terminal-compose.js's
-# #1211 fix. Claude Code turns a pasted image path into an attachment
+# Attachment settle — the /input half of terminal-compose.js's
+# fix. Claude Code turns a pasted image path into an attachment
 # asynchronously: it paints "Pasting…" at once and the "[Image #N]" chip only
 # when done (~200 ms for 1.5 MB, ~400 ms for 11 MB on an idle box), and a CR
 # that arrives in between is absorbed, leaving the prompt unsent in its
@@ -63,7 +63,7 @@ _BULK_POLL_S = 0.05
 # the path as text and settles on the plain echo-then-quiet rule.
 _ATTACH_CAP_MS = 10000
 # A line that is nothing but an absolute path to an image file — how the
-# composer appends an attachment (its own paragraph, #366). The extensions
+# composer appends an attachment (its own paragraph). The extensions
 # are the ones Claude Code converts into an attachment.
 _IMAGE_PATH_RE = re.compile(
     r"^\s*[\"']?(?:[a-z]:[\\/]|[\\/])[^\n\"']*\.(?:png|jpe?g|gif|webp)[\"']?\s*$",
@@ -74,7 +74,7 @@ _IMAGE_PATH_RE = re.compile(
 _ATTACH_START_MARKER = "pasting…"
 _IMAGE_CHIP_MARKER = "[image#"
 
-# Ingest verification for a server-initiated bulk write (issue #760). The
+# Ingest verification for a server-initiated bulk write. The
 # settle protocol above answers "has the terminal gone quiet", which is not
 # the same question as "did my payload actually land": three workers went
 # deaf to API input on 2026-08-14 while `_pty.write` kept returning without
@@ -94,7 +94,7 @@ _IMAGE_CHIP_MARKER = "[image#"
 # option) and the caller is told so, loudly.
 #
 # _INGEST_CAP_MS extends only the no-evidence-yet wait (under load the echo
-# itself is deferred — see terminal-compose.js's #499 note), and stays well
+# itself is deferred — see terminal-compose.js's calibration note), and stays well
 # inside session_client's own input timeout so the caller sees this verdict
 # rather than a client-side read timeout.
 _INGEST_CAP_MS = 5000
@@ -109,20 +109,20 @@ _ECHO_SAMPLES = 4
 # Claude Code's collapsed-paste chip, normalized (see _normalize_echo) —
 # positive ingest evidence for a payload that is never echoed verbatim.
 _PASTE_CHIP_MARKER = "[pastedtext#"
-# The chip's *number*, which is what makes a chip ours rather than any chip
-# (#1075). Claude Code renders "[Pasted text #2 +53 lines]", which normalizes
-# to "[pastedtext#2+53lines]" — _normalize_echo strips whitespace and
+# The chip's *number*, which is what makes a chip ours rather than any chip.
+# Claude Code renders "[Pasted text #<n> +53 lines]", which normalizes
+# to "[pastedtext#<n>+53lines]" — _normalize_echo strips whitespace and
 # box-drawing but keeps brackets, "#" and digits, so the number is free to
 # read. Pastes are numbered monotonically within a session. An image chip
-# (#1212) is pinned the same way: "[Image #4]" normalizes to "[image#4]".
+# is pinned the same way: "[Image #<n>]" normalizes to "[image#<n>]".
 _CHIP_ID_RE = re.compile(r"(\[(?:pastedtext|image)#)(\d+)")
 
-# Deferred submit (issue #763, closing #760's third acceptance point: "if the
+# Deferred submit ("if the
 # terminal can take input, so can the API"). A *working* agent repaints its
 # spinner every few tens of ms, so the settle wait above can never see a quiet
 # window for as long as it works: it runs out to _BULK_CAP_MS with the payload
 # ingested but still sitting unsent in the composer. Firing the CR there —
-# what this module did before #763 — is the 2026-08-14 stall shape exactly:
+# what this module used to do — is the 2026-08-14 stall shape exactly:
 # mid-repaint, Claude Code absorbs a CR as a literal newline.
 #
 # A human at the keyboard does not hit this. They see the stranded
@@ -137,9 +137,9 @@ _CHIP_ID_RE = re.compile(r"(\[(?:pastedtext|image)#)(\d+)")
 # gaps of a working agent and actually mean "the turn is over".
 _DEFER_QUIET_MS = 1500
 # Bounded: past this the steer stays stranded and honestly reported, which is
-# the pre-#763 behaviour.
+# the earlier behaviour.
 #
-# Sized (#1075) against the thing actually being waited on rather than against
+# Sized against the thing actually being waited on rather than against
 # a guess at "a while". A lane running scripts/verify-before-ship.ps1 sits
 # inside *one* tool call for the gate's whole ~19 min (CLAUDE.md's re-baselined
 # full-tier runtime), repainting its spinner throughout, so the original
@@ -167,7 +167,7 @@ _DEFER_POLL_S = 0.25
 # _output_total on every poll and scanning from the oldest retained sample is
 # what turns "the payload was there once" into "it is there now".
 #
-# It is only positive evidence, never negative (#1548). The premise that the
+# It is only positive evidence, never negative. The premise that the
 # composer is repainted on essentially every frame is false for Claude Code's
 # differential renderer, which repaints only the cells that changed: an
 # unchanged composer under a ticking status row is never painted again, so a
@@ -187,7 +187,7 @@ _DEFER_FRAME_SAMPLES = max(2, int(_DEFER_FRAME_LOOKBACK_MS / 1000 / _DEFER_POLL_
 # stranded and honestly reported — never a CR into a dialog.
 _DEFER_DIALOG_MARKERS = ("doyouwanttoproceed", "❯1.", "❯2.")
 
-# Idle at the prompt while background agents run (issue #1319). When the main
+# Idle at the prompt while background agents run. When the main
 # agent ends its turn with background sub-agents still working, Claude Code
 # paints "✻ Waiting for N background agents to finish" once, then keeps a
 # live row per agent below the prompt whose timer and token counter tick
@@ -232,7 +232,7 @@ _OSC_TAIL_RE = re.compile(r"\x1b\][^\x07\x1b]*$")
 # 4.7 s after it. The wait runs on the watcher thread, never on a caller.
 _BG_SUBMIT_CONFIRM_MS = 15000
 
-# Type-ahead (issue #1548). #763 assumed a CR sent while the agent works is
+# Type-ahead. The deferral assumed a CR sent while the agent works is
 # absorbed as a literal newline, and so waited for the turn to go quiet. That
 # was never probed, and for Claude Code it is not what happens: a probe on
 # v2.1.296 (2026-10-12) pasted a 1,034-byte, six-paragraph steer into a
@@ -257,21 +257,21 @@ _TYPEAHEAD_LIVE_MS = 1000
 _QUEUED_MARKERS = ("queuedmessages", "tosendnow")
 _TYPEAHEAD_CONFIRM_MS = 10000
 
-# What released the deferred watcher's Enter: a quiet window (#763), the
-# idle-with-background-agents screen (#1319), or a running turn on a
-# type-ahead agent (#1548). The last two confirm their CR afterwards.
+# What released the deferred watcher's Enter: a quiet window, the
+# idle-with-background-agents screen, or a running turn on a
+# type-ahead agent. The last two confirm their CR afterwards.
 _DEFER_MODE_QUIET = "quiet"
 _DEFER_MODE_BG = "bg_waiting"
 _DEFER_MODE_TYPEAHEAD = "type_ahead"
 
 # What a keyboard write must carry to count as touching the composer
-# (``PtySession._composer_touches``, #1548): any control character, which is
+# (``PtySession._composer_touches``): any control character, which is
 # every key that can submit, clear, delete, recall history or paste. Before
 # the check, the replies a terminal emulator sends on its own are removed —
 # focus in/out, device attributes, cursor position, mode reports, OSC/DCS
 # strings — since an attached xterm sends those without anybody typing. An
 # unrecognised sequence counts as a touch: the watcher then falls back to
-# reading the screen, which is the pre-#1548 rule, never something riskier.
+# reading the screen, which is the earlier rule, never something riskier.
 _TERMINAL_REPLY_RE = re.compile(
     r"\x1b\[(?:[IO]|[?>][\d;]*[cu]|\?[\d;]*\$y|\d+;\d+R)"
     r"|\x1b[\]P][^\x07\x1b]*(?:\x07|\x1b\\)"
@@ -288,7 +288,7 @@ def touches_composer(data: str) -> bool:
     return _CONTROL_KEY_RE.search(_TERMINAL_REPLY_RE.sub("", data)) is not None
 
 
-# Outcome reasons for a server-initiated write (issue #760). Distinct
+# Outcome reasons for a server-initiated write. Distinct
 # conditions get distinct reasons — "couldn't establish delivery" is never
 # folded into the success state.
 INPUT_OK = "ok"                        # landed; submit (if asked) confirmed
@@ -296,7 +296,7 @@ INPUT_UNVERIFIED = "unverified"        # short payload: submitted un-verified
 INPUT_NOT_INGESTED = "not_ingested"    # written, never echoed → not delivered
 INPUT_DROPPED = "dropped"              # a write never reached the PTY
 INPUT_NOOP = "noop"                    # nothing was asked for
-# Deferred-submit reasons (issue #763). INPUT_DEFERRED is what the /input
+# Deferred-submit reasons. INPUT_DEFERRED is what the /input
 # call itself returns once the watcher is armed; the others are the
 # watcher's own terminal verdicts, recorded onto ``last_input`` when it
 # finishes. It replaces the former "settle_cap" reason, which reported a CR
@@ -305,22 +305,22 @@ INPUT_DEFERRED = "deferred"            # ingested; submit handed to the watcher
 INPUT_DEFER_TIMEOUT = "defer_timeout"  # never went quiet within _DEFER_CAP_MS
 INPUT_DEFER_VANISHED = "defer_vanished"  # composer touched, payload not on screen
 INPUT_DEFER_UNCLEAR = "defer_unclear"  # payload there, but a dialog too
-# The watcher itself failed before writing any CR (issue #1548). Recorded so
+# The watcher itself failed before writing any CR. Recorded so
 # a broken watcher ends on a verdict instead of leaving ``last_input`` at
 # ``pending`` for good.
 INPUT_DEFER_FAILED = "defer_failed"
-# Detached (console) targets only — RemoteSession.submit_input (issue #967):
+# Detached (console) targets only — RemoteSession.submit_input:
 # the console-input helper could not attach/type (a distinct 502 from
 # ``not_ingested``: nothing was written, the console may be gone).
 INPUT_CONSOLE_FAILED = "console_failed"
-# The ``delivered`` value a detached target reports (issue #967). A console
+# The ``delivered`` value a detached target reports. A console
 # has no output stream to verify a write against, so the answer is neither
 # True nor False — a third state, never folded into the passing one.
 DELIVERED_UNCONFIRMED = "unconfirmed"
 
 # What happened to the submit, as one field a caller can read without
-# re-deriving it from ``reason`` + ``submitted`` + ``submit_confirmed``
-# (issue #929). "Submitted but unconfirmed" and "never submitted" are
+# re-deriving it from ``reason`` + ``submitted`` + ``submit_confirmed``.
+# "Submitted but unconfirmed" and "never submitted" are
 # distinct states, and neither is folded into "confirmed".
 SUBMIT_CONFIRMED = "confirmed"          # CR sent after a verified settle
 SUBMIT_UNCONFIRMED = "unconfirmed"      # CR sent, nothing verified it landed
@@ -344,17 +344,17 @@ class InputOutcome:
     submitted: bool = False
     submit_confirmed: Optional[bool] = None
     waited_ms: int = 0
-    # Whether the deferred-submit watcher (issue #763) is involved: True on
+    # Whether the deferred-submit watcher is involved: True on
     # the ``deferred`` verdict the /input call returns once the watcher is
     # armed, and on every verdict the watcher itself later records. Lets a
     # reader tell "the submit is still coming" apart from a finished call.
     deferred: bool = False
-    # Whether the call asked for a submit at all (issue #929). Defaults to
+    # Whether the call asked for a submit at all. Defaults to
     # True so an outcome built without saying reads as a submit that did not
     # happen — never as a plain paste that needed none. ``submit_input``
     # stamps the real value from its own ``submit`` argument.
     submit_requested: bool = True
-    # The submit was taken into the agent's own queue (issue #1548): Enter
+    # The submit was taken into the agent's own queue: Enter
     # went in mid-turn and the agent showed the message queued for when the
     # turn yields. Only ever True next to a confirmed submit.
     queued: bool = False
@@ -709,7 +709,7 @@ class InputProtocol:
             "bytes": nbytes,
             "submit": submit,
         }
-        # Breadcrumbs for the next occurrence (#760): the whole defect was
+        # Breadcrumbs for the next occurrence: the whole defect was
         # invisible in the logs, so both an outright non-delivery and an
         # unconfirmed submit — the shape all three 2026-08-14 stalls took —
         # get an INFO line naming which condition it was.
@@ -727,8 +727,8 @@ class InputProtocol:
                 f"{outcome.waited_ms}ms ({nbytes} chars)"
             )
         elif outcome.deferred and outcome.submitted:
-            # The watcher's Enter went in, but nothing confirmed it was taken
-            # (#1319, #1548). Delivered-but-unconfirmed fell through every
+            # The watcher's Enter went in, but nothing confirmed it was taken.
+            # Delivered-but-unconfirmed fell through every
             # branch here before, so this verdict left no line at all.
             logger.info(
                 f"❔ PTY {sid} deferred submit sent, not confirmed "
@@ -736,7 +736,7 @@ class InputProtocol:
                 f"{outcome.waited_ms}ms)"
             )
         elif not outcome.delivered:
-            # Names the submit's fate too (#929): a paste stranded unsent in
+            # Names the submit's fate too: a paste stranded unsent in
             # the composer (ingested, not_submitted) reads differently from
             # one that never reached the terminal at all.
             logger.info(
@@ -749,7 +749,7 @@ class InputProtocol:
     def _submit_input_locked(self, data: str, submit: bool) -> "InputOutcome":
         """:meth:`submit_input`'s body, assuming ``_write_lock`` is held."""
         # Any new server-initiated write supersedes a watcher still waiting to
-        # press Enter for an earlier payload (#763): the composer no longer
+        # press Enter for an earlier payload: the composer no longer
         # holds only that payload, so the watcher's pre-fire re-check would be
         # reasoning about a terminal state that has already moved on.
         self._defer_seq += 1
@@ -812,7 +812,7 @@ class InputProtocol:
             if ingested and (settled or now >= settle_deadline):
                 break
             # Not ingested yet: keep looking past the settle cap — under load
-            # the echo itself is deferred (terminal-compose.js's #499 note) —
+            # the echo itself is deferred (terminal-compose.js's calibration note) —
             # but never past the ingest cap.
             if now >= ingest_deadline:
                 break
@@ -833,14 +833,14 @@ class InputProtocol:
             return InputOutcome(reason=INPUT_OK, ingested=True, waited_ms=waited_ms)
         if not settled:
             # Ingested, but the stream never went quiet: the agent is working
-            # and repainting. Before #763 the CR went out here anyway, into a
+            # and repainting. The CR used to go out here anyway, into a
             # terminal mid-repaint — exactly the window Claude Code absorbs a
             # CR as a literal newline in, which is how three steers ended up
             # stranded on 2026-08-14. Now nothing is written: the submit is
             # handed to a watcher that presses Enter when the agent actually
             # settles, the way a human at the keyboard would.
             #
-            # Pin the chip *here* rather than at fire time (#1075): this
+            # Pin the chip *here* rather than at fire time: this
             # window opens at our own write, so the newest chip in it is
             # unambiguously the one our paste created. Minutes later, when
             # the watcher looks again, a chip in the composer could be
@@ -870,7 +870,7 @@ class InputProtocol:
             waited_ms=waited_ms,
         )
 
-    # ------------------------------------------------- deferred submit (#763)
+    # ------------------------------------------------- deferred submit
     def _arm_deferred_submit(
         self,
         seq: int,
@@ -1078,7 +1078,7 @@ class InputProtocol:
                 )
             composer = "untouched" if untouched else "touched, payload on screen"
             if mode == _DEFER_MODE_BG:
-                # Breadcrumb for the next occurrence (#1319): the state is
+                # Breadcrumb for the next occurrence: the state is
                 # recognised from screen markers that drift across Claude
                 # Code versions, so say when it was the reason for a CR.
                 logger.info(

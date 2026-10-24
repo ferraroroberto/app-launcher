@@ -145,7 +145,7 @@ def spawn_claude_session(
     # explicitly wraps compose/paste payloads in DECSET 2004 bracketed-paste
     # markers and PtySession paces large writes.  Leaving Codex's heuristic on
     # makes it reclassify that already-framed bulk input as a synthetic burst
-    # and deliberately turn the first Enter into a newline (#436).  Disable
+    # and deliberately turn the first Enter into a newline.  Disable
     # only for streamed PTYs; a detached native console still owns its input
     # path and may need Codex's fallback detector.
     if (

@@ -185,7 +185,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
             text = _with_placeholders(text, missing)
             # Pi writes `isError` on every `toolResult`, both polarities
-            # (`tests/fixtures/pi_session.jsonl` carries one of each) — #1020.
+            # (`tests/fixtures/pi_session.jsonl` carries one of each).
             _attach_result(entries, open_calls, msg.get("toolCallId"), text,
                            offset, ts, False, error=bool(msg.get("isError")), images=refs)
             continue

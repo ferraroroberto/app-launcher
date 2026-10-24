@@ -36,8 +36,8 @@ from app.webapp.routers._helpers import (
 )
 
 # The launch choice comes from the same provider-qualified catalog used by
-# Coding and Board (#845). Legacy unqualified Claude values remain accepted so
-# a cached pre-#845 browser can still launch safely after the webapp restarts.
+# Coding and Board. Legacy unqualified Claude values remain accepted so
+# a cached older browser can still launch safely after the webapp restarts.
 _LAUNCH_MODELS = {
     "claude": available_values(CLAUDE_MODEL_SPECS),
     "codex": available_values(CODEX_MODEL_SPECS),
@@ -110,11 +110,11 @@ async def _spawn_skill_session(
     for every other launch. ``request`` is ``None`` (and ``mirror`` off) only
     for the Telegram boot-time autostart (#1542), which no client asked for.
     """
-    # The phone passes its real terminal size (issue #374): a skill streams
+    # The phone passes its real terminal size: a skill streams
     # output the moment the PTY spawns, so spawning at the legacy 40×120
     # poured 120-col text that re-wrapped into garble when the overlay's
     # first fit() shrank the PTY to phone width. Same contract as the
-    # Coding-tab launch route (issue #126); ignored for kind="remote".
+    # Coding-tab launch route; ignored for kind="remote".
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
     session, sid = await spawn_launcher_session(
@@ -122,7 +122,7 @@ async def _spawn_skill_session(
         project_dir=life_os_dir, name=name, flags=flags, agent=agent,
         rows=rows, cols=cols, kind=kind, label=label,
     )
-    # The shared audit+mirror tail (#1003). This used to be a second,
+    # The shared audit+mirror tail. This used to be a second,
     # parallel copy of _helpers.audit_session_start_and_maybe_mirror,
     # differing only in the remote-kind event name, the resume_sid field and
     # the PTY-only mirror guard — all three are parameters now, so one

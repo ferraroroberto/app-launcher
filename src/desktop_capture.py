@@ -61,7 +61,7 @@ JPEG_QUALITY = 70
 # Thumbnail for change detection: a 4x box reduction keeps a one-character
 # change (a clock tick) visible in the digest at a fraction of the bytes.
 THUMB_REDUCE = 4
-# Quality presets (#1721). The connect query's ``preset=`` is validated against
+# Quality presets. The connect query's ``preset=`` is validated against
 # PRESETS: JPEG quality, the pause between frames, and a cap on the frame width
 # on top of what the phone asks for (None = no extra cap). Balanced is built
 # from the constants above, so it can never drift from "today".

@@ -366,7 +366,7 @@ def _walk_files(
             parts = rel_name.parts
             if len(parts) > 1:
                 # Leading dir becomes the category — drop it from the label
-                # so the row doesn't echo its own section header (#118).
+                # so the row doesn't echo its own section header.
                 cat = parts[0]
                 name = str(Path(*parts[1:]))
             else:

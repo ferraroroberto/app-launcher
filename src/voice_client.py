@@ -90,7 +90,7 @@ def transcribe(
     )
 
 
-# --- streamed "never-lose-it" path (issue #168) -------------------------
+# --- streamed "never-lose-it" path -------------------------
 # The single-shot path above gives no feedback until /upload returns. For
 # live rolling partials the compose bar drives the chunked flow instead:
 # create → repeated chunk (1 s cadence) → SSE partials (proxied async in

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # a host with several TTS backends still routes here (the hub resolves the
 # model through its registry first, falling back to the role alias).
 DEFAULT_MODEL = "orpheus"
-# Orpheus ships eight voices; "tara" is the documented default (issue #203).
+# Orpheus ships eight voices; "tara" is the documented default.
 DEFAULT_VOICE = "tara"
 VALID_VOICES = ("tara", "leah", "jess", "leo", "dan", "mia", "zac", "zoe")
 

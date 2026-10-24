@@ -16,7 +16,7 @@ import re
 from typing import List, Optional, Tuple
 
 
-# Cap on the carried unterminated-OSC-title tail (issue #796): a sequence
+# Cap on the carried unterminated-OSC-title tail: a sequence
 # that never gets a BEL/ST terminator within this many chars isn't a real
 # title still in flight — flush it rather than carrying it forever, so a
 # stray/malformed ``ESC]`` can never wedge the read loop into unbounded
@@ -75,8 +75,8 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
             remaining = tail if len(tail) <= _OSC_TITLE_CARRY_MAX else ""
             break
 
-        # Parse: ESC ] <code> ; <text> <term>. Deliberately unguarded
-        # (#1009): every operation below is `str.find`, slicing, `ord` on a
+        # Parse: ESC ] <code> ; <text> <term>. Deliberately unguarded:
+        # every operation below is `str.find`, slicing, `ord` on a
         # one-character string, `join` and `strip`, none of which raise on
         # any input - slicing out of range yields an empty string rather
         # than an IndexError. The `except Exception: pass` that used to wrap
@@ -102,7 +102,7 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
     return remaining, extracted
 
 
-# OSC colour query/reply leak (#270). Codex emits OSC 10/11/12 *queries*
+# OSC colour query/reply leak. Codex emits OSC 10/11/12 *queries*
 # (``ESC]10;?``) at startup; something answers them and the reply
 # (``ESC]10;rgb:…``) leaks as visible text on a fresh/dirty xterm. We strip
 # both the query and reply forms of OSC 10/11/12 from the output stream at the
@@ -115,7 +115,7 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
 # capture of Codex startup): the ``rgb:``/``#`` *reply* always carries a BEL
 # (\x07) or ST (ESC \) terminator. The ``?`` *query*, however, is emitted by
 # Codex **unterminated and back-to-back** — ``ESC]10;?ESC]11;?`` — each query
-# implicitly ended by the next ESC, with no BEL/ST at all. The original #270
+# implicitly ended by the next ESC, with no BEL/ST at all. The original
 # pattern required a terminator on every form, so it silently MISSED these
 # bare queries: they reached xterm.js, which answered with ``ESC]10;rgb:…``,
 # and that reply leaked. So the terminator is OPTIONAL for the ``?`` query
@@ -180,7 +180,7 @@ def _strip_color_osc(chunk: str, carry: str) -> Tuple[str, str]:
     return _OSC_COLOR_RE.sub("", head), new_carry
 
 
-# Bracketed-paste mode tracking (DECSET 2004, issue #611). The client-side
+# Bracketed-paste mode tracking (DECSET 2004). The client-side
 # framePaste() in terminal-compose.js only wraps a WS-sent payload in
 # \x1b[200~ / \x1b[201~ when xterm's own term.modes.bracketedPasteMode is on
 # — sending the literal markers to an agent that never asked for them lands
@@ -262,7 +262,7 @@ def _cook_input_line(raw: str) -> str:
     return "".join(out)
 
 
-# First-prompt session title (issue #266). Only Claude Code emits a genuine
+# First-prompt session title. Only Claude Code emits a genuine
 # per-conversation OSC title; Antigravity/Copilot emit none and Codex/Pi emit
 # only the project folder, so for those agents we derive a human title from
 # the first submitted prompt. Cap how long / how many words the derived

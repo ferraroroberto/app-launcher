@@ -42,7 +42,7 @@ OPEN_ISSUES = [
     _row(14, "A synthetic decision", "issues", ["chore"]),
 ]
 OPEN_PRS = [_row(15, "Synthetic pull request", "pull", ["enhancement"], isDraft=False)]
-# ``closedAt`` is what the done search asks for (#1638); a row without it reads
+# ``closedAt`` is what the done search asks for; a row without it reads
 # as "no close time" and falls back to ``updatedAt``.
 CLOSED_TODAY = [
     _row(11, "Synthetic item finished today", "issues", ["bug"],

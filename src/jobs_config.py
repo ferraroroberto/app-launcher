@@ -176,7 +176,7 @@ def load_jobs(path: Optional[Path] = None) -> JobsConfig:
 
 # Every malformed row already warned about. The registry is re-read on every
 # Board and Jobs poll, so one bad row logged once per poll: 181 lines per job
-# in one e2e worker's log (#1516). A row that changes is a new message and
+# in one e2e worker's log. A row that changes is a new message and
 # warns again.
 _warned_malformed_rows: Set[str] = set()
 
@@ -339,7 +339,7 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
             return None
 
         # visible/session_less are validated as the *effective* post-edit
-        # pair (issue #757) — same discipline as the kind/script_path block
+        # pair — same discipline as the kind/script_path block
         # below, and checked before any mutation so a rejected edit leaves
         # the job untouched. An edit naming only one of the two is still
         # checked against the other's stored value.
@@ -360,7 +360,7 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
             setattr(job, attr, transform(raw))
 
         # kind / script_path / kind_config are validated together as the
-        # *effective* post-edit shape (issue #70) — an edit to any one of
+        # *effective* post-edit shape — an edit to any one of
         # the three must still describe a structurally valid job, and
         # validation runs before any of the three is mutated so a rejected
         # edit leaves the job untouched.

@@ -110,7 +110,7 @@ from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-# Files an agent sends to the chat (#1530): their own routes, mounted here
+# Files an agent sends to the chat: their own routes, mounted here
 # because the transcript responses below carry the outbox alongside.
 router.include_router(session_outbox_routes.router)
 
@@ -201,7 +201,7 @@ def _resolve_path(
         return path, why
     # Nothing cheaper named the file. The session-host's row carries no Remote
     # Control link (the Coding tab and the Board attach it from the PTY
-    # capture), so read it the same way and let its bridge id answer (#1399):
+    # capture), so read it the same way and let its bridge id answer:
     # only on a refusal, since the capture read is the dearer step. On a
     # copy, so the caller's row stays as the host reported it.
     linked = dict(session)
@@ -241,7 +241,7 @@ async def _resolve_source(
         reason = SESSION_HOST_UNREACHABLE if host_error else "session_not_found"
         return reason, None, None, "", "", None
     agent = str(session.get("agent") or "claude").lower()
-    # A detached row resolves exactly like a full-control one (#966): neither
+    # A detached row resolves exactly like a full-control one: neither
     # source reads the launcher's PTY capture.
     if agent not in _FLAVOR_BY_AGENT:
         return "unsupported_agent", None, None, agent, "", session
@@ -255,7 +255,7 @@ async def _resolve_source(
         board.state_sid_for_session(live, state["rows"], sid) if flavor == "pi" else None
     )
     def resolve() -> Tuple[Optional[Path], str]:
-        # The existence check is a stat too, so it stays off the loop (#1605).
+        # The existence check is a stat too, so it stays off the loop.
         found, how = _resolve_path(session, row, state_sid, flavor, live)
         return (found if found is not None and found.is_file() else None), how
 

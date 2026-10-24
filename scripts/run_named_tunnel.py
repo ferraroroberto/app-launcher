@@ -69,7 +69,7 @@ def _spawn_uvicorn(port: int) -> subprocess.Popen:
     handing lifecycle to the manager.
     """
     # Same Tailscale cert auto-renew the app runs before binding
-    # (project-scaffolding#89) — shared rather than re-spawned by hand.
+    # — shared rather than re-spawned by hand.
     check_tailscale_cert()
     cmd = WebappManager(
         WebappManagerConfig(host="127.0.0.1", port=port)

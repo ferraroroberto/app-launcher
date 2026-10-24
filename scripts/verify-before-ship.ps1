@@ -1,4 +1,4 @@
-# Pre-ship verification gate (issue #33, Phone-validation 4/5).
+# Pre-ship verification gate (Phone-validation 4/5).
 #
 # Runs the full validation pipeline locally before a change is declared
 # "done": byte-compile, the non-e2e pytest suite, then the Playwright e2e
@@ -11,10 +11,10 @@
 #
 # A tray on :8445 may be running or not -- autoboot always picks a free port
 # for its own webapp and spawns its own disposable session-host on a free
-# port, never adopting the tray's live :8446 (issue #260). Exits non-zero on
+# port, never adopting the tray's live :8446. Exits non-zero on
 # the first failure with the offending output left visible.
 #
-# Never pipe this script when its exit code matters (issue #1086) -- a
+# Never pipe this script when its exit code matters -- a
 # pipeline's status is its last command's, so `... | tail -40` reports 0 for a
 # failed gate. Redirect and read the file:
 #   pwsh -File scripts/verify-before-ship.ps1 > gate.log 2>&1; echo "exit=$?"
@@ -24,7 +24,7 @@
 $ErrorActionPreference = "Stop"
 
 # Machine-greppable verdict, emitted as the last line of every path this
-# script can still run code on (issue #1086). A pipeline's status is its
+# script can still run code on. A pipeline's status is its
 # *last* command's status, so `verify-before-ship.ps1 | tail -40` hands the
 # caller tail's 0 and the genuine failure disappears -- a verification gate
 # reporting green on a red run. A caller that cannot avoid a pipe asserts on
@@ -67,7 +67,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
-# Persistent progress log (issue #534): phase markers land here from this
+# Persistent progress log: phase markers land here from this
 # script, per-test START/DONE lines from the pytest hook in tests/_progress_log.py
 # (via LAUNCHER_VERIFY_PROGRESS_LOG). If an outer timeout kills the gate, the
 # last lines name the active phase + node id and the per-test timings survive.
@@ -228,8 +228,8 @@ try {
     if ($conventionsExit -eq 3) { Fail "conventions ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
     if ($conventionsExit -ne 0) { Fail "conventions ratchet failed (exit $conventionsExit): a file's count for a convention rule rose above .conventions-ratchet-baseline.json; see the named rule and lines above." }
 
-    # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
-    # #1512); a bad override fails here, before any phase runs.
+    # Worker counts for both pytest phases live in e2e-gate-route.ps1;
+    # a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
     try {
         $unitPlan = Get-UnitWorkerArgs -Setting $env:UNIT_WORKERS
@@ -242,7 +242,7 @@ try {
     & $python -m pytest -q --ignore=tests/e2e @($unitPlan.Args)
     if ($LASTEXITCODE -ne 0) { Fail "non-e2e pytest suite failed." }
 
-    # Diff-proportionate e2e routing (issues #568, #955). Classify the branch's
+    # Diff-proportionate e2e routing. Classify the branch's
     # changed files vs main and run an e2e slice proportionate to the diff:
     # static assets -> Chromium smoke only, real UI/behaviour -> the full
     # dual-projection suite, or only one declared surface's tests when every
@@ -251,7 +251,7 @@ try {
     # suite. The path->tier rules and surfaces live in .fleet.toml [e2e];
     # scripts/classify_e2e.py is the scaffold's mechanism, and
     # scripts/e2e-gate-route.ps1 turns its verdict into pytest arguments. On CI
-    # the browser suite is skipped entirely (#1041) -- that job runs the
+    # the browser suite is skipped entirely -- that job runs the
     # clean-machine half, and this gate, here, is the contract for the rest.
     $classifyOut = @()
     if ($env:CI -ne "true") {
@@ -269,7 +269,7 @@ try {
         Log-Progress "e2e routing: tier=skip reason=$routeReason"
         Write-Host "    shot baseline skipped too: no screen was recaptured or compared" -ForegroundColor DarkGray
     } else {
-        # Parallel workers for the dual-projection tiers (#1231): the one
+        # Parallel workers for the dual-projection tiers: the one
         # setting is $E2EDefaultWorkers in e2e-gate-route.ps1, overridable
         # with E2E_WORKERS. Resolved before the mutex so a bad value fails
         # fast instead of after queueing.
@@ -283,15 +283,15 @@ try {
         Log-Progress "e2e routing: tier=$tier target=$e2eTargetLabel browsers=$e2eBrowsers workers=$($workerPlan.Workers) reason=$routeReason"
 
         # Serialize dual-projection e2e legs across concurrent primary/worktree
-        # gate runs on this machine (issue #685). Two overlapping runs -- a
+        # gate runs on this machine. Two overlapping runs -- a
         # normal outcome of the fleet's own claim-or-worktree concurrency
         # model -- each spinning up hundreds of browser contexts is the
-        # ephemeral-port burst fleet-config#498 traced to this suite (Tcpip
+        # ephemeral-port burst fleet-config traced to this suite (Tcpip
         # 4231, TIME_WAIT 206->979). A kernel-managed named mutex, not a
         # lockfile: auto-released if a holder crashes, no stale-file cleanup
         # path. Scoped to only this e2e leg -- byte-compile and the non-e2e
         # pytest phase above never wait on it -- and taken by the "full" and
-        # "surface" tiers, which both run both projections (#955); "static"
+        # "surface" tiers, which both run both projections; "static"
         # (chromium-smoke-only) runs are cheap enough not to need it.
         $e2eMutexName = "Global\AppLauncherFullE2EGate"
         $e2eMutex = $null
@@ -300,7 +300,7 @@ try {
             $e2eMutex = New-Object System.Threading.Mutex($false, $e2eMutexName)
             # A holder that died without releasing hands the mutex to the next
             # waiter as AbandonedMutexException; Wait-E2EGateMutex turns that
-            # into "acquired" (#1682) so it is logged, not an aborted gate.
+            # into "acquired" so it is logged, not an aborted gate.
             $e2eWait = Wait-E2EGateMutex -Mutex $e2eMutex -Timeout ([TimeSpan]::Zero)
             $e2eMutexAcquired = $e2eWait.Acquired
             if (-not $e2eMutexAcquired) {
@@ -325,8 +325,7 @@ try {
             $env:LAUNCHER_E2E_AUTOBOOT = "1"
             # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts
             # the process via os._exit, skipping the summary) is named by the last
-            # nodeid logged at test start. Locally keep the compact dotted output
-            # (#184).
+            # nodeid logged at test start. Locally keep the compact dotted output.
             $verbosity = if ($env:CI -eq "true") { "-v" } else { "-q" }
             if ($env:CI -eq "true") { $env:PYTHONUNBUFFERED = "1" }
             $e2eBase = @($route.Targets) + @($verbosity)
@@ -345,8 +344,8 @@ try {
             try {
                 & $python -m pytest @e2eArgs
                 $e2eExit = $LASTEXITCODE
-                # The load-sensitive `serial` tests, once the workers are gone
-                # (#1231). Runs even after a red parallel pass, so one gate
+                # The load-sensitive `serial` tests, once the workers are gone.
+                # Runs even after a red parallel pass, so one gate
                 # run reports both.
                 if (@($workerPlan.SerialArgs).Count -gt 0) {
                     Phase "pytest e2e serial pass (tests marked serial, after the workers)..."
@@ -421,9 +420,9 @@ Write-Host ("[OK] Ready to ship -- all checks passed in {0:n1}s." -f $sw.Elapsed
 
 # A green gate + merge + tray.bat --restart still does not make a
 # session-host-path change live -- that process is deliberately excluded
-# from the reclaim sweep (project-scaffolding#35) and can run stale code for
-# days with nothing else surfacing that (issue #615, demonstrated live on
-# #611). Reuse classify_e2e.py's own path categorization (the "session-host"
+# from the reclaim sweep and can run stale code for
+# days with nothing else surfacing that (demonstrated live once). Reuse
+# classify_e2e.py's own path categorization (the "session-host"
 # / "session-host/launcher" label it already computes for e2e routing) so
 # this warning never drifts out of sync with that classifier's path list.
 if ($routeReason -match "session-host") {
