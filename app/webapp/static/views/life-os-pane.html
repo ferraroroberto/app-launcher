@@ -86,6 +86,17 @@
           </div>
           <div id="lifeOsConvoState" role="status" aria-live="polite" hidden></div>
           <ul id="lifeOsConvoList" class="card-list action-rows lifeos-convo-list" aria-label="Conversations"></ul>
+          <!-- What the zombie cleanup archived that the search (or the
+               skill's list) covers: never mixed into the list above,
+               collapsed until asked for, absent when there is none. A row
+               opens the reader with Restore as its one primary. -->
+          <details id="lifeOsArchived" class="lifeos-archived" hidden>
+            <summary class="lifeos-group-bar lifeos-archived-summary" data-track="life-archived-toggle">
+              <span class="lifeos-group-head">Archived <span id="lifeOsArchivedCount" class="lifeos-group-count"></span></span>
+              <span class="lifeos-archived-chevron" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></span>
+            </summary>
+            <ul id="lifeOsArchivedList" class="card-list action-rows lifeos-convo-list" aria-label="Archived conversations"></ul>
+          </details>
         </section>
         </div>
       </details>

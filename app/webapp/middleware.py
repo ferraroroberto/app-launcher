@@ -365,6 +365,13 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "to one, so it carries the same gate.",
     ),
     (
+        lambda p: p == "/api/life-os/archived" or p.startswith("/api/life-os/archived/"),
+        "passkey",
+        "Life OS archived conversations: the zombie cleanup's backup holds "
+        "captures, so listing, reading and restoring them is gated like the "
+        "captures themselves.",
+    ),
+    (
         lambda p: p == "/api/life-os/conversations/search",
         "passkey",
         "Life OS conversation search (#727): searches the full capture text, so "

@@ -11,7 +11,8 @@
  * from <harness>", the summary, then Resume as the one primary and every
  * other action as a link row, Delete last in danger. Opened from a row and
  * from a ?convo= link; the reader (life-os-viewer.js), a raw capture, the
- * rename and the confirms all stack over it.
+ * rename and the confirms all stack over it. What the zombie cleanup
+ * archived shows apart, under the list (life-os-archived.js).
  */
 
 import { els, state } from './state.js';
@@ -23,6 +24,7 @@ import { actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { setAsyncState } from './async-state.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
+import { hideArchived, loadArchived, wireArchived } from './life-os-archived.js';
 import {
   compareSkills, launchDetached, launchSkill, lifeOsModel,
   modelTag, resumedModelTag, refreshAfterLogChange, skillAvatar, skillsFilter, wireSheet,
@@ -85,6 +87,7 @@ function onFieldInput() {
 
 function setConvoMode(mode) {
   convoMode = mode;
+  if (mode !== 'browse' && mode !== 'search') hideArchived();
   if (mode === 'off') {
     convoSeq += 1;
     convoSourceRows = [];
@@ -218,6 +221,7 @@ async function loadConvos() {
   if (!scope) return null;
   const mine = ++convoSeq;
   setConvoMode('browse');
+  loadArchived('', scope.id);
   showConvoState('loading', 'Reading conversations…');
   try {
     const body = await jsonApi(
@@ -246,6 +250,7 @@ async function runConvoSearch(query) {
   const scope = convoScope;
   const mine = ++convoSeq;
   setConvoMode('search');
+  loadArchived(query, scope ? scope.id : '');
   showConvoState('loading', 'Searching conversations…');
   let url = '/api/life-os/conversations/search?q=' + encodeURIComponent(query);
   if (scope) url += '&skill=' + encodeURIComponent(scope.id);
@@ -795,4 +800,7 @@ export function wireConvoSearch() {
     [els.lifeOsStartPickerClose, els.lifeOsStartPickerDone]);
   wireConvoSheet();
   wireConvoViewer();
+  wireArchived({
+    avatar: convoAvatar, when: convoWhen, chevron: rowChevron, onRestored: refreshAfterLogChange,
+  });
 }

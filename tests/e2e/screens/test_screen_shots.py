@@ -1,5 +1,5 @@
-"""The screenshot baseline's capture: the five tabs, plus a sent HTML document's card and
-viewer, at phone and desktop, light and dark.
+"""The screenshot baseline's capture: the five tabs, a Life search with its Archived
+group, plus a sent HTML document's card and viewer, at phone and desktop, light and dark.
 
 `scripts/shot_baseline.py` compares what this writes under `tests/e2e/shots`
 with the committed PNGs, so a move-only refactor proves it changed no pixel.
@@ -193,3 +193,31 @@ def test_html_viewer_shots(browser: Browser, base_url: str) -> None:
             card.locator(".tr-file-html-open").click()
             expect(page.locator("#htmlViewer iframe").content_frame.locator("h1")).to_have_text("Garden plan")
             shot(page, SHOTS_DIR / f"html-viewer-{variant.slug}.png")
+
+
+_LIFE_HIT = {"skill": "garden-notes", "file": "2026-01-14-0900-seed-order.md",
+             "path": ".claude/skills/garden-notes/conversations/2026-01-14-0900-seed-order.md",
+             "date": "2026-01-14", "slug": "seed-order", "turns": 6, "sid": "", "agent": "claude",
+             "topic": "ordering seeds for spring", "summary": "Picked three bean varieties.",
+             "resumable": False}
+_ARCHIVED = {"archived": [
+    {"day": "2026-01-12", "skill": "garden-notes", "capture": "2026-01-11-2100-seed-greeting.md",
+     "title": "", "agent": "claude", "moved_at": "2026-01-12T04:00:00+01:00"}]}
+
+
+def test_life_archived_shots(browser: Browser, base_url: str) -> None:
+    """A Life search with the Archived group under its live hits, unfolded."""
+    for variant in variants():
+        with variant_page(browser, variant) as page:
+            page.add_init_script(f"localStorage.setItem('app-launcher.theme', '{variant.theme}');")
+            _mock_data(page)
+            page.route(re.compile(r".*/api/life-os/conversations/search(\?.*)?$"), _json_route(
+                {"available": True, "query": "seed", "skill": "", "results": [_LIFE_HIT]}))
+            page.route(re.compile(r".*/api/life-os/archived(\?.*)?$"), _json_route(_ARCHIVED))
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            page.locator("#tabLifeOS").click()
+            page.locator("#lifeOsFilterInput").fill("seed")
+            expect(page.locator("#lifeOsConvoList .lifeos-convo-row")).to_have_count(1)
+            page.locator(".lifeos-archived-summary").click()
+            expect(page.locator("#lifeOsArchivedList .lifeos-archived-row")).to_be_visible()
+            shot(page, SHOTS_DIR / f"life-archived-{variant.slug}.png")
