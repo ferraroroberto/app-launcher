@@ -28,8 +28,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src import board, board_exchange, transcript_locate
-from src.subprocess_flags import NO_WINDOW
+from src import board, board_exchange, subprocess_flags, transcript_locate
 
 
 def _iso(moment: datetime) -> str:
@@ -1020,8 +1019,7 @@ class TestSessionInputStaleHost:
         def show(rev: str) -> "str | None":
             out = subprocess.run(
                 ["git", "-C", str(repo), "show", f"{rev}:src/session_host.py"],
-                capture_output=True, text=True, encoding="utf-8",
-                creationflags=NO_WINDOW,
+                capture_output=True, text=True, encoding="utf-8", creationflags=subprocess_flags.NO_WINDOW,
             )
             return out.stdout if out.returncode == 0 else None
 
