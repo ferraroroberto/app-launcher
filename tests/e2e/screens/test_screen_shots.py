@@ -1,4 +1,5 @@
-"""The screenshot baseline's capture: the five tabs at phone and desktop, light and dark.
+"""The screenshot baseline's capture: the five tabs, plus a sent HTML document's card and
+viewer, at phone and desktop, light and dark.
 
 `scripts/shot_baseline.py` compares what this writes under `tests/e2e/shots`
 with the committed PNGs, so a move-only refactor proves it changed no pixel.
@@ -18,6 +19,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e._shot import PINNED_NOW, shot, variant_page, variants
+from tests.e2e.conftest import open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -143,3 +145,51 @@ def test_tab_shots(browser: Browser, base_url: str, name: str) -> None:
             page.locator(tab).click()
             expect(page.locator(ready).first).to_be_visible()
             shot(page, SHOTS_DIR / f"{name}-{variant.slug}.png")
+
+
+_REPORT_HTML = (
+    "<!doctype html><html><head><style>"
+    "body{font:15px/1.5 system-ui,sans-serif;margin:24px;color:#1f2328}"
+    "h1{font-size:22px;margin:0 0 8px}table{border-collapse:collapse;margin-top:12px}"
+    "td,th{border:1px solid #d1d9e0;padding:4px 10px;text-align:left}"
+    "</style></head><body><h1>Garden plan</h1>"
+    "<p>A fictional report: what grows where this season.</p>"
+    "<table><tr><th>Bed</th><th>Crop</th></tr><tr><td>North</td><td>Beans</td></tr>"
+    "<tr><td>South</td><td>Tomatoes</td></tr></table></body></html>"
+)
+_REPORT_ID = "0" * 31 + "1"
+_CHAT = {
+    "available": True, "source": "claude", "reason": None, "session_id": "s-alpha",
+    "next_cursor": None, "tail": None, "size": 10,
+    "entries": [
+        {"kind": "user", "timestamp": STAMP, "offset": 0, "text": "Send me the garden plan.",
+         "truncated": False, "sidechain": False},
+        {"kind": "assistant", "timestamp": "2026-01-15T08:50:20Z", "offset": 5, "text": "Here it is.",
+         "truncated": False, "sidechain": False},
+    ],
+    "outbox_rev": 1,
+    "outbox": [{"id": _REPORT_ID, "name": "garden-plan.html", "caption": "", "kind": "html",
+                "media": "text/html; charset=utf-8", "size": len(_REPORT_HTML),
+                "timestamp": "2026-01-15T08:50:10Z"}],
+}
+
+
+def test_html_viewer_shots(browser: Browser, base_url: str) -> None:
+    """A sent HTML document's card in the Chat pane, then its viewer open."""
+    for variant in variants():
+        with variant_page(browser, variant) as page:
+            page.add_init_script(f"localStorage.setItem('app-launcher.theme', '{variant.theme}');")
+            _mock_data(page)
+            base = r".*/api/claude-code/sessions/s-alpha"
+            page.route(re.compile(base + r"/transcript(\?.*)?$"), _json_route(_CHAT))
+            page.route(re.compile(base + r"/outbox/[0-9a-f]+$"), lambda route: route.fulfill(
+                status=200, content_type="text/html; charset=utf-8", body=_REPORT_HTML))
+            stub_session_mirror(page)
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            open_session_row(page, page.locator('#sessionsList li[data-session-id="s-alpha"]'), mode="chat")
+            card = page.locator("#transcriptList .tr-file-card[data-kind='html']")
+            expect(card.locator("iframe").content_frame.locator("h1")).to_have_text("Garden plan")
+            shot(page, SHOTS_DIR / f"chat-html-{variant.slug}.png")
+            card.locator(".tr-file-html-open").click()
+            expect(page.locator("#htmlViewer iframe").content_frame.locator("h1")).to_have_text("Garden plan")
+            shot(page, SHOTS_DIR / f"html-viewer-{variant.slug}.png")

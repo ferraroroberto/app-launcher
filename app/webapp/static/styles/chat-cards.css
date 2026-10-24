@@ -479,6 +479,8 @@
   text-decoration: none;
 }
 .tr-file-open[hidden] { display: none; }
+/* HTML's Open is a button (it opens the viewer), drawn as the same link. */
+button.tr-file-open { padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
 .tr-file-image {
   display: block;
   width: 100%;
@@ -518,3 +520,113 @@
 }
 .tr-file-failed { border-style: dashed; }
 
+/* A sent HTML document (lightbox.js): its first screen drawn at half scale
+   (the frame at 200% under scale(.5), so no script measures it), faded into
+   the card, under one transparent button that opens the viewer. Past the
+   preview cap it is a plain tile. A skeleton holds the place while the bytes
+   load. */
+.tr-file-html {
+  position: relative;
+  height: 180px;
+  overflow: hidden;
+  border-top: 1px solid var(--line-muted);
+  background: var(--doc-canvas);
+}
+.tr-file-html::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 48px;
+  background: linear-gradient(to bottom, transparent, var(--card));
+  pointer-events: none;
+}
+.tr-file-html-frame {
+  width: 200%;
+  height: 200%;
+  border: 0;
+  transform: scale(0.5);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.tr-file-html-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 120px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  background: var(--card-off);
+}
+.tr-file-html-tile::after { content: none; }
+.tr-file-html-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+.tr-file-card[data-kind="html"][data-sid]:not(.tr-file-loaded):not(.tr-file-failed)::after {
+  content: "";
+  display: block;
+  height: 180px;
+  border-top: 1px solid var(--line-muted);
+  background: var(--card-off);
+  animation: tr-file-skeleton 1.2s ease-in-out infinite alternate;
+}
+@keyframes tr-file-skeleton { to { opacity: 0.5; } }
+@media (prefers-reduced-motion: reduce) {
+  .tr-file-card[data-kind="html"]::after { animation: none; }
+}
+/* The viewer: a large centred dialog on desktop, a full-screen sheet on the
+   phone; the frame takes every pixel the header and footer leave. */
+.detail-dialog.html-viewer {
+  width: min(1100px, 92vw);
+  height: 88vh;
+  height: 88dvh;
+  max-height: none;
+  overflow: hidden;
+}
+.html-viewer .detail-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100%;
+}
+.html-viewer .detail-header h2 { min-width: 0; }
+.html-viewer .detail-header h2 .icon { flex: none; }
+.html-viewer-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.html-viewer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--doc-canvas);
+}
+.html-viewer-frame { display: block; width: 100%; height: 100%; border: 0; }
+.html-viewer-note { margin: 8px 0 0; color: var(--muted); font-size: var(--font-caption); }
+.html-viewer .detail-actions { position: static; }
+.html-viewer .detail-save-btn { text-decoration: none; }
+@media (pointer: coarse) and (max-width: 520px) {
+  .detail-dialog.html-viewer {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .html-viewer .detail-card {
+    border-radius: 0;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+  }
+  .html-viewer .detail-actions {
+    border-radius: 0;
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}

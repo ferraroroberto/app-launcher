@@ -22,7 +22,7 @@
 import { state } from './state.js';
 import { api, authHeaders, jsonApi, toast } from './api.js';
 import { renderMarkdown } from './markdown.js';
-import { openImageLightbox } from './lightbox.js';
+import { fillHtmlCard, openImageLightbox } from './lightbox.js';
 import { ensureTerminalToken, terminalJsonApi } from './webauthn.js';
 import { icon } from './_vendored/icons/icons.js';
 import { brandIcon } from './dom-utils.js';
@@ -464,14 +464,14 @@ function isSentFile(e) {
     (e.kind === 'tool_call' && !e.sidechain && Array.isArray(e.sent_files) && e.sent_files.length > 0);
 }
 
-// The type a card's object URL carries, from the kind the card was built for
-// rather than the response header: the Open link and the PDF frame are
-// same-origin blob URLs that keep none of the route's nosniff/sandbox
-// headers, so nothing the server sends may turn one into a page.
+// The type a card's object URL carries, from the card's kind, never the response
+// header: the Open link and the PDF frame are same-origin blob URLs without the
+// route's nosniff/sandbox headers, so nothing the server sends may make one a
+// page. HTML stays opaque bytes: it renders only in lightbox.js's sandboxed frames.
 function blobType(kind, served) {
   if (kind === 'image') return /^image\/(png|jpeg|gif|webp)$/.test(served) ? served : 'application/octet-stream';
   if (kind === 'pdf') return 'application/pdf';
-  if (kind === 'archive') return 'application/octet-stream';
+  if (kind === 'archive' || kind === 'html') return 'application/octet-stream';
   return 'text/plain;charset=utf-8';
 }
 
@@ -527,11 +527,12 @@ async function loadFileCard(card) {
     return;
   }
   if (!card.isConnected) return;
-  const open = card.querySelector('.tr-file-open');
-  open.href = got.objectUrl;
-  open.hidden = false;
   const kind = card.dataset.kind;
   const name = card._trName;
+  const open = card.querySelector('.tr-file-open');
+  if (kind !== 'html') open.href = got.objectUrl;
+  open.hidden = false;
+  // An archive is download-only: its head link, ready before the tap (fileCard), is the card.
   if (kind === 'image') {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -546,16 +547,15 @@ async function loadFileCard(card) {
       openImageLightbox(got.objectUrl, name);
     });
     card.appendChild(btn);
-  } else if (kind === 'archive') {
-    // Download-only: the bytes are never rendered. The head's Download link
-    // is the whole card, and it is ready before the tap (see fileCard).
+  } else if (kind === 'html') {
+    await fillHtmlCard(card, got, name);
   } else if (kind === 'pdf') {
     const frame = document.createElement('iframe');
     frame.className = 'tr-file-pdf';
     frame.title = name;
     frame.src = got.objectUrl;
     card.appendChild(frame);
-  } else {
+  } else if (kind !== 'archive') {
     const text = await got.blob.text();
     if (!card.isConnected) return;
     const cut = text.length > FILE_PREVIEW_CHARS;
@@ -568,10 +568,10 @@ async function loadFileCard(card) {
 }
 
 // One file's card: its name, size and an Open link (live once the bytes are
-// in; Download for an archive), then the content. A null `kind` is a type the server will refuse; the
-// card still asks, so it shows the server's own reason. No `url` (the Life OS
-// viewer, which has no session to ask) leaves the head alone. `sid` is the
-// session the url asks.
+// in; Download for an archive; a button opening the viewer for HTML), then the
+// content. A null `kind` is a type the server will refuse; the card still asks,
+// so it shows the server's own reason. No `url` (the Life OS viewer, which has
+// no session to ask) leaves the head alone. `sid` is the session the url asks.
 function fileCard(name, kind, size, url, sid) {
   const card = document.createElement('div');
   card.className = 'tr-file-card';
@@ -592,19 +592,19 @@ function fileCard(name, kind, size, url, sid) {
     sizeEl.textContent = sizeText;
     head.appendChild(sizeEl);
   }
-  const open = document.createElement('a');
+  const open = document.createElement(kind === 'html' ? 'button' : 'a');
   open.className = 'tr-file-open';
+  open.textContent = kind === 'archive' ? 'Download' : 'Open';
   if (kind === 'archive') {
-    // iOS drops a download started after an await, so the bytes are fetched
-    // ahead (the lazy loader, as the card scrolls near) and the tap only
-    // follows a ready blob: link. `download` is a property, never markup.
-    open.textContent = 'Download';
+    // iOS drops a download started after an await, so the lazy loader fetches the bytes
+    // ahead and the tap only follows a ready blob: link. `download` is a property, never markup.
     open.download = name;
+  } else if (kind === 'html') {
+    open.type = 'button';
   } else {
-    open.textContent = 'Open';
     open.target = '_blank';
+    open.rel = 'noopener';
   }
-  open.rel = 'noopener';
   open.hidden = true;
   head.appendChild(open);
   card.appendChild(head);

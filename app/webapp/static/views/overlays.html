@@ -140,3 +140,24 @@
     <button id="imageLightboxClose" type="button" class="image-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
     <img id="imageLightboxImage" class="image-lightbox-img" alt="">
   </div>
+
+  <!-- HTML viewer: a sent HTML document at full size, a sheet on the phone and
+       a large dialog on desktop. Header ✕ plus one full-width Download (modal
+       contract). lightbox.js puts a fresh frame in the body on each open (an
+       empty sandbox: an opaque origin, no script) and owns Esc, the backdrop
+       and the back gesture. -->
+  <dialog id="htmlViewer" class="detail-dialog html-viewer" aria-labelledby="htmlViewerTitle">
+    <div class="detail-card">
+      <div class="detail-header">
+        <h2 id="htmlViewerTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg> <span id="htmlViewerName" class="html-viewer-name"></span></h2>
+        <button type="button" id="htmlViewerClose" class="icon-button detail-close" aria-label="Close">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+        </button>
+      </div>
+      <div id="htmlViewerBody" class="html-viewer-body"></div>
+      <p class="html-viewer-note">Shown without scripts.</p>
+      <div class="detail-actions">
+        <a id="htmlViewerDownload" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"></use></svg> Download</a>
+      </div>
+    </div>
+  </dialog>
