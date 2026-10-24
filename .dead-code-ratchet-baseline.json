@@ -1,9 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {"key": "src/life_os_index.py", "names": ["reconcile_delete"]},
-    {"key": "tests/e2e/conftest.py", "names": ["session_menu_item"]},
-    {"key": "tests/e2e/test_session_transcript.py", "names": ["_row_menu_item"]},
-    {"key": "tests/test_jobs.py", "names": ["TestChainValidation._two_jobs"]}
-  ]
+  "entries": []
 }

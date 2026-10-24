@@ -69,7 +69,7 @@ Pi is added the same way as the other terminal agents — registry row + flag bu
 
    Detached/Resume use the existing global toggles.
 4. **Native spawn-time title** — Pi is one of the agents (with Claude Code and Copilot) whose documented `--name` flag receives a known Board issue title at spawn, syncing pi's own `-r` session picker without touching the live TUI (`README.md:317`). This is distinct from the launcher-side rename, which never forwards into any agent's CLI (forwarding it was unfixably racy).
-5. **Icon** — `app/webapp/static/icons/pi.svg` (the SPA loads `/static/icons/<agent-id>.svg`) — confirmed present.
+5. **Icon** — the `b-pi` symbol in the brand sprite of `app/webapp/static/index.html` (the SPA references `#b-<agent-id>`) — confirmed present.
 6. **Prereq (one-time, on the PC):** `pi install npm:claude-agent-sdk-pi`, logged into the Claude subscription (for Opus/Sonnet) and pi's `openai-codex` OAuth (for GPT), no `ANTHROPIC_API_KEY`. Pi's native `anthropic` OAuth is left **disconnected** (removed from `~/.pi/agent/auth.json`) so a launch can never slip onto the metered billing path — the SDK (Claude) and `openai-codex` (GPT) subscription paths are the only ones that remain. See README "Installing Pi".
 7. **Copilot kept** — Pi shipped as the 5th agent, not a Copilot replacement; that swap (a one-line registry change) was never revisited and isn't blocked on anything left in this doc.
 
@@ -88,7 +88,7 @@ The bench proved auth + CLI shape. Pi has since been live in the Coding tab for 
 - [x] **Stop + kill:** the unified graceful-then-force stop is a single generic code path keyed off each agent's `quit_command`/`fullscreen` registry fields, applied uniformly to every agent including Pi — not a Pi-specific mechanism, and no Pi-specific gap has surfaced.
 - [x] **Reconnect/repaint:** resolved by `fullscreen=True` (see "Fullscreen / repaint" above).
 - [ ] **Confirm interactive provider routing:** only the *headless* `-p --provider claude-agent-sdk` recipe (bench section above) is proven; whether an interactive phone launch actually lands on the SDK provider rather than silently falling back to the billing `anthropic` provider is still unconfirmed.
-- [x] **Icon:** `pi.svg` present at `app/webapp/static/icons/pi.svg` and loaded by the SPA's `/static/icons/<agent-id>.svg` convention.
+- [x] **Icon:** the `b-pi` symbol is in the brand sprite of `app/webapp/static/index.html`, loaded by the SPA's `#b-<agent-id>` convention.
 
 Three items remain genuinely open: model switch over PTY, resume over PTY, and interactive provider-routing confirmation. None have blocked Pi's adoption as a daily-use 5th agent, but none should be marked done without an actual observation the way the scroll-flood bug supplied one for reconnect/repaint.
 

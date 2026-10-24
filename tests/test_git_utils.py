@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 from src import build_info, git_utils
+from src.subprocess_flags import NO_WINDOW
 
 
 def _init_repo(tmp_path: Path) -> Path:
@@ -19,7 +20,8 @@ def _init_repo(tmp_path: Path) -> Path:
     no_hooks = tmp_path / "no-hooks"
     no_hooks.mkdir()
     run = lambda *args: subprocess.run(  # noqa: E731
-        ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+        ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+        creationflags=NO_WINDOW,
     )
     run("init", "-q", "-b", "main")
     run("config", "core.hooksPath", str(no_hooks))
@@ -67,10 +69,10 @@ class TestResolveDefaultRef:
     def test_resolves_origin_head_when_set(self, tmp_path):
         repo = _init_repo(tmp_path)
         remote = tmp_path / "remote.git"
-        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, capture_output=True)
-        subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, capture_output=True)
-        subprocess.run(["git", "push", "-q", "origin", "main"], cwd=repo, check=True, capture_output=True)
-        subprocess.run(["git", "remote", "set-head", "origin", "main"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, capture_output=True, creationflags=NO_WINDOW)
+        subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
+        subprocess.run(["git", "push", "-q", "origin", "main"], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
+        subprocess.run(["git", "remote", "set-head", "origin", "main"], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
 
         ref = git_utils.resolve_default_ref(repo, fallback_refs=("origin/main", "origin/master"))
         assert ref == "origin/main"
@@ -148,6 +150,7 @@ class TestGitEnvOptionalLocks:
         result = subprocess.run(
             ["git", "-C", str(repo), "add", "new.txt"],
             capture_output=True, text=True, env=git_utils.git_env(),
+            creationflags=NO_WINDOW,
         )
         assert result.returncode != 0
         assert "index.lock" in (result.stderr or "")
@@ -162,7 +165,8 @@ def _repo_with_origin(tmp_path):
 
     def run(*args):
         return subprocess.run(
-            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+            creationflags=NO_WINDOW,
         )
 
     run("init", "-q", "-b", "main")
@@ -174,7 +178,7 @@ def _repo_with_origin(tmp_path):
     run("commit", "-q", "-m", "base")
 
     remote = tmp_path / "remote.git"
-    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, capture_output=True)
+    subprocess.run(["git", "init", "-q", "--bare", str(remote)], check=True, capture_output=True, creationflags=NO_WINDOW)
     run("remote", "add", "origin", str(remote))
     run("push", "-q", "origin", "main")
     run("remote", "set-head", "origin", "main")

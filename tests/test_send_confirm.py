@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from src.subprocess_flags import NO_WINDOW
 
 pytestmark = pytest.mark.skipif(
     shutil.which("node") is None, reason="Node.js is required"
@@ -30,6 +31,7 @@ def test_send_outcome_mapping_and_evidence_judge():
         capture_output=True,
         text=True,
         timeout=30,
+        creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
         "the send outcome mapping or evidence judge failed its Node-side pin:\n"

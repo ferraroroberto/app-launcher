@@ -32,6 +32,7 @@ from playwright.sync_api import Page, expect
 
 from src import chief_answers, chief_plan
 from tests.e2e import _fake_clock
+from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e._surface import surface
 from tests.e2e.conftest import (
     HeldUploads, _seed_token_init_script, flush_requests, open_row_menu, open_settings_sheet,
@@ -1195,23 +1196,7 @@ _RECORDER_MOCK = """
 (() => {
   navigator.mediaDevices = navigator.mediaDevices || {};
   navigator.mediaDevices.getUserMedia = async () => ({ getTracks: () => [{ stop: () => {} }] });
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
-    start() { this.state = 'recording'; }
-    stop() {
-      this.state = 'inactive';
-      const da = this._listeners['dataavailable'];
-      if (da) da({ data: new Blob(['fake-audio'], { type: this.mimeType }) });
-      const st = this._listeners['stop'];
-      if (st) st();
-    }
-  }
-  FakeRecorder.isTypeSupported = () => true;
+""" + RECORDER_BASE_JS + """  FakeRecorder.isTypeSupported = () => true;
   window.MediaRecorder = FakeRecorder;
 })()
 """

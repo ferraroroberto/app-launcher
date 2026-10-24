@@ -26,6 +26,7 @@ import textwrap
 from types import SimpleNamespace
 
 from src import jobs_schtasks
+from src.subprocess_flags import NO_WINDOW
 
 # cp850 bytes that are NOT valid UTF-8 — 0xE9 is 'Ú' in cp850 and an illegal
 # lone continuation lead in UTF-8. This is the shape of a localised task name.
@@ -93,6 +94,7 @@ class TestDecodesUnderUtf8Mode:
             check=False,
             cwd=str(_repo_root()),
             env=env,
+            creationflags=NO_WINDOW,
         )
         assert result.returncode == 0, result.stderr
         assert int(result.stdout.strip()) > 0, (

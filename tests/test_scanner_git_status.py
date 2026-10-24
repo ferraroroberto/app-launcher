@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from src.scanner import GitStatus, git_status
+from src.subprocess_flags import NO_WINDOW
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None, reason="git not on PATH"
@@ -26,6 +27,7 @@ def _git(repo: Path, *args: str) -> None:
         check=True,
         capture_output=True,
         text=True,
+        creationflags=NO_WINDOW,
     )
 
 

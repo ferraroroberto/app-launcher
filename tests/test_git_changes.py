@@ -23,12 +23,14 @@ from src.git_changes import (
     open_folder,
     safe_relative_path,
 )
+from src.subprocess_flags import NO_WINDOW
 
 
 def _git(repo: Path, *args: str) -> str:
     return subprocess.run(
         ["git", "-C", str(repo), *args],
         check=True, capture_output=True, text=True, encoding="utf-8",
+        creationflags=NO_WINDOW,
     ).stdout
 
 

@@ -16,6 +16,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e.conftest import OVERLAY_OPEN_MS, flush_requests, wait_until
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -30,23 +31,7 @@ _MEDIA_MOCK = """
     if (!window.__holdGum) return Promise.resolve(stream);
     return new Promise((resolve) => { window.__releaseGum = () => resolve(stream); });
   };
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
-    start() { this.state = 'recording'; }
-    stop() {
-      this.state = 'inactive';
-      const da = this._listeners['dataavailable'];
-      if (da) da({ data: new Blob(['fake-audio'], { type: this.mimeType }) });
-      const st = this._listeners['stop'];
-      if (st) st();
-    }
-  }
-  FakeRecorder.isTypeSupported = () => true;
+""" + RECORDER_BASE_JS + """  FakeRecorder.isTypeSupported = () => true;
   window.MediaRecorder = FakeRecorder;
 })()
 """
