@@ -34,7 +34,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
 from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_eval
-from tests.e2e.test_life_os_tab import (
+from tests.e2e.life_os._support import (
     _FAKE_TRANSCRIPT,
     _mock_conversations,
     _mock_skills,

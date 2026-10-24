@@ -14,11 +14,7 @@ from types import SimpleNamespace
 import pytest
 
 from src import channel_profiles
-from tests.test_webapp_api_life_os import (  # noqa: F401  (fixture)
-    OTHER_SID,
-    RESUMABLE_SID,
-    life_os_client,
-)
+from tests.api._life_os_support import OTHER_SID, RESUMABLE_SID
 
 PREFIX = "/api/life-os/channels/health/relay"
 BOT = {"session_id": "bot-1", "alive": True, "kind": "pty", "label": "telegram:health",
@@ -45,7 +41,7 @@ def _add_skill(root: Path, skill: str, file: str, sid: str) -> None:
 
 
 @pytest.fixture
-def relay(life_os_client, tmp_path, monkeypatch):  # noqa: F811
+def relay(life_os_client, tmp_path, monkeypatch):
     """A relay-enabled ``health`` profile on journal-daily, its settings file
     written as a launch writes it, and the bot's session running."""
     from app.webapp import middleware

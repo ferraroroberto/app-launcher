@@ -28,7 +28,7 @@ from types import SimpleNamespace
 import pytest
 
 from src import board, jobs_history, jobs_reap, jobs_snapshot, jobs_stats
-from tests.test_board import _seed_job
+from tests.unit.board._support import _seed_job
 
 
 @pytest.fixture

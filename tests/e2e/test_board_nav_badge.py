@@ -26,7 +26,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
 from tests.e2e.test_board_chief import _plan_with
-from tests.e2e.test_board_tab import _FAKE_BOARD, _board_payload, _mock_board
+from tests.e2e.board._support import _FAKE_BOARD, _board_payload, _mock_board
 
 pytestmark = pytest.mark.smoke
 

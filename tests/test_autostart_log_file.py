@@ -16,7 +16,6 @@ import pytest
 
 from app.webapp import observability, server
 from app.webapp.routers import life_os_channels
-from tests.test_webapp_api_life_os import life_os_client  # noqa: F401  (fixture)
 
 
 def _file_handlers(target: logging.Logger, path: Path) -> list:
@@ -99,7 +98,7 @@ class TestHandler:
 
 class TestWiring:
     def test_create_app_attaches_the_handler_to_the_autostart_loggers_once(
-        self, life_os_client, log_path, monkeypatch  # noqa: F811
+        self, life_os_client, log_path, monkeypatch
     ):
         targets = [server._autostart_log, life_os_channels.logger]
         for lg in targets:

@@ -221,7 +221,7 @@ def test_real_classifier_surface_verdict_reaches_pytest_as_separate_targets(rout
     real = routes["real"]
     assert real["Tier"] == "surface"
     assert len(real["Targets"]) > 1
-    assert all(" " not in t and (REPO_ROOT / t).is_file() for t in real["Targets"])
+    assert all(" " not in t and (REPO_ROOT / t).exists() for t in real["Targets"])
     assert real["Serialize"] is True
 
 

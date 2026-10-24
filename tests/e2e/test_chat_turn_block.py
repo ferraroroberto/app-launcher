@@ -13,7 +13,7 @@ the whole turn, collapse folding the whole turn, a tool-call-only turn hiding
 with the tool calls, and the bubble's alignment and caps at 390px and 1440px
 in both themes. The live-refresh merge into the open turn is pinned in
 ``test_chat_live_refresh.py``; the Life OS viewer mount in
-``test_life_os_tab.py``.
+``life_os/test_life_os_viewer.py``.
 
 Geometry reads go through ``stable_read`` (#680): the pane re-renders its
 tail on its own poll.

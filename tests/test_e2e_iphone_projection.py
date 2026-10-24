@@ -96,10 +96,10 @@ def unmarked_signal_tests(path: Path) -> Dict[str, Set[str]]:
 
 
 def test_engine_or_viewport_tests_keep_the_iphone_projection() -> None:
-    modules = sorted(_E2E_DIR.glob("test_*.py"))
+    modules = sorted(_E2E_DIR.rglob("test_*.py"))
     assert modules, "no e2e test modules found -- wrong path?"
     problems = [
-        f"{path.name}::{name} ({', '.join(sorted(signals))})"
+        f"{path.relative_to(_E2E_DIR).as_posix()}::{name} ({', '.join(sorted(signals))})"
         for path in modules
         for name, signals in sorted(unmarked_signal_tests(path).items())
     ]
