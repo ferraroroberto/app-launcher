@@ -26,7 +26,7 @@ from src.git_utils import resolve_deployed_sha
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
-from src.shell_html import assemble_shell, shell_stat_key
+from app.webapp.shell_html import assemble_shell, shell_stat_key
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.vscode_workspace import is_vscode_installed
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig

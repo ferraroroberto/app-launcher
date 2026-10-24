@@ -14,6 +14,7 @@ app-launcher/
 │   └── webapp/
 │       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
 │       ├── manager.py         # adopt-or-spawn uvicorn lifecycle
+│       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
@@ -40,7 +41,6 @@ app-launcher/
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
-│   ├── shell_html.py           # splices static/views/*.html into index.html where its include markers sit
 │   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source, fleet-config#412)
 │   ├── env_path.py             # effective-PATH resolution for coding-agent detection
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`
@@ -149,9 +149,9 @@ app-launcher/
 <!-- @include views/board-pane.html -->
 ```
 
-- **The server splices, the browser sees one page.** `src/shell_html.py` replaces each marker with its fragment's text, so `GET /` returns the same bytes a single-file `index.html` would, with no client-side render and no first-paint gap. A module's import-time `getElementById` therefore still finds its element.
+- **The server splices, the browser sees one page.** `app/webapp/shell_html.py` replaces each marker with its fragment's text, so `GET /` returns the same bytes a single-file `index.html` would, with no client-side render and no first-paint gap. A module's import-time `getElementById` therefore still finds its element.
 - **Marker order is document order.** A dialog moves only by moving its marker or its text, never by renaming a fragment; a fragment holds contiguous markup, indented as it sits in the page.
-- **A new view's markup goes in its own fragment**, with a marker where it belongs in `index.html`. The shell stays under 1,000 lines and holds no pane or dialog; `tests/test_shell_html.py` pins both.
+- **A new view's markup goes in its own fragment**, with a marker where it belongs in `index.html`. The shell stays under 1,000 lines and holds no pane or dialog; `tests/unit/shell/test_shell_html.py` pins both.
 - **Fragments do not nest and must sit under `views/`.** The page cache keys on `index.html` and every fragment, so an edit on disk shows on the next load without a restart.
 - **Tests that read the page as source go through `assemble_shell`**, not `read_text`, so they see the fragments.
 
