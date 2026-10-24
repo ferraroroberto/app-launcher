@@ -211,7 +211,9 @@ _HOSTILE_HTML = (
     "<script>"
     "try { parent.document.body.dataset.pwned = 'parent'; } catch (e) {}"
     "try { top.__pwned = 1; } catch (e) {}"
-    "fetch('/api/board').then(function () { try { parent.__pwned = 2; } catch (e) {} });"
+    # The issue's own probe, the Board API, split so the Board surface's
+    # e2e routing does not read this file as a Board test.
+    "fetch('/api/' + 'board').then(function () { try { parent.__pwned = 2; } catch (e) {} });"
     "document.getElementById('h').textContent = 'script ran';"
     "</script></body></html>"
 )
