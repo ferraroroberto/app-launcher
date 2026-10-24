@@ -219,6 +219,7 @@ try {
         Phase "e2e routing: SKIP browser suite"
         Write-Host "    reason: $routeReason" -ForegroundColor DarkGray
         Log-Progress "e2e routing: tier=skip reason=$routeReason"
+        Write-Host "    shot baseline skipped too: no screen was recaptured or compared" -ForegroundColor DarkGray
     } else {
         # Parallel workers for the dual-projection tiers (#1231): the one
         # setting is $E2EDefaultWorkers in e2e-gate-route.ps1, overridable
@@ -286,6 +287,8 @@ try {
                 $browserArgs += @("--browser", $b)
             }
             $e2eArgs = $e2eBase + @($workerPlan.Args) + $browserArgs
+            # Taken before the run: a shot written after it was recaptured by it.
+            $shotSince = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() / 1000.0
             $projLabel = if ($e2eBrowsers) { $e2eBrowsers } else { "Chromium + WebKit/iPhone" }
             $workerLabel = if ($workerPlan.Workers -gt 1) { "$($workerPlan.Workers) workers" } else { "serial" }
             Phase "pytest e2e ($e2eTargetLabel, $projLabel, $workerLabel, auto-booted)..."
@@ -325,6 +328,30 @@ try {
                 if ($serialExit -ne 0) { Fail "Playwright e2e serial pass failed." }
             }
             if ($e2eExit -ne 0) { Fail "Playwright e2e suite failed." }
+
+            # Screenshot baseline (scaffold docs/playwright-ui-testing.md): the
+            # last stage. A slice that ran the whole suite or the capture test just
+            # recaptured the shots, so only compare; a narrower slice did not, so the stage
+            # captures them itself. Either way the tree is put back. Exit 3 is
+            # NOT CONFIRMED (no baseline, nothing recaptured, capture failed):
+            # a failure, never a pass.
+            $env:LAUNCHER_E2E_AUTOBOOT = "1"
+            try {
+                if (@($route.Targets | Where-Object { $_ -eq "tests/e2e" -or $_ -eq "tests/e2e/test_screen_shots.py" }).Count -gt 0) {
+                    $since = $shotSince.ToString([Globalization.CultureInfo]::InvariantCulture)
+                    Phase "shot baseline (compare)..."
+                    & $python scripts/shot_baseline.py --check-tree --since $since
+                } else {
+                    Phase "shot baseline (capture + compare)..."
+                    & $python scripts/shot_baseline.py --baseline
+                }
+                $shotExit = $LASTEXITCODE
+            }
+            finally {
+                Remove-Item Env:\LAUNCHER_E2E_AUTOBOOT -ErrorAction SilentlyContinue
+            }
+            if ($shotExit -eq 3) { Fail "shot baseline NOT CONFIRMED (no baseline, no shot recaptured, an unreadable image, or the capture failed)." }
+            if ($shotExit -ne 0) { Fail "shot baseline failed (exit $shotExit): a screen drifted from tests/e2e/shots. A deliberate UI change re-baselines (CLAUDE.md); anything else is unpinned content." }
         }
         finally {
             if ($e2eMutex) {

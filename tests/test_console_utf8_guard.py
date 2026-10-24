@@ -30,6 +30,10 @@ from pathlib import Path
 
 _SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 
+#: Vendored byte-for-byte, so they cannot take this repo's literal guard line; each
+#: reconfigures its own streams (shot_baseline.py does it in its `main`).
+_VENDORED_VERBATIM = {"shot_baseline.py"}
+
 
 def _prints_non_ascii(source: str) -> bool:
     """True when some ``print(...)`` call carries a non-ASCII character.
@@ -53,6 +57,8 @@ def test_scripts_printing_non_ascii_reconfigure_stdout():
     offenders = []
     checked = 0
     for path in sorted(_SCRIPTS.glob("*.py")):
+        if path.name in _VENDORED_VERBATIM:
+            continue
         source = path.read_text(encoding="utf-8")
         if not _prints_non_ascii(source):
             continue

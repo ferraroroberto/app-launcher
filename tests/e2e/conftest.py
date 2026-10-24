@@ -65,13 +65,13 @@ from tests.e2e._browser_sweep import sweep_browser_helpers
 # Tree-aware stop of the disposable servers + the stub-child reap (#1335).
 from tests.e2e._process_teardown import reap_stub_children
 from tests.e2e._process_teardown import terminate_tree as _terminate
+from tests.e2e._shot import CHROMIUM_CAPTURE_ARGS
 # Design-inventory capture (#1698): the vendored surface() hook's collection
 # filter, aliased because this file already defines its own hook below.
 from tests.e2e._surface import pytest_collection_modifyitems as _surface_collection_filter
 # The stub child + claude shim live in a plain module the synthetic design-review
 # instance shares (app-launcher#1227); the private names stay for this file's callers.
-from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER
-from tests.e2e.stub_session import STUB_FLAG as _STUB_FLAG
+from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER, STUB_FLAG as _STUB_FLAG
 from tests.e2e.stub_session import write_claude_shim as _write_claude_shim
 
 logger = logging.getLogger(__name__)
@@ -922,7 +922,7 @@ def browser_type_launch_args(browser_type_launch_args: dict, browser_name: str) 
     if browser_name != "chromium":
         return browser_type_launch_args
     extra = list(browser_type_launch_args.get("args") or [])
-    return {**browser_type_launch_args, "args": extra + ["--ignore-certificate-errors"]}
+    return {**browser_type_launch_args, "args": extra + ["--ignore-certificate-errors", *CHROMIUM_CAPTURE_ARGS]}
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list) -> None:
