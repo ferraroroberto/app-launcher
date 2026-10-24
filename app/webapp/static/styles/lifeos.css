@@ -1,0 +1,302 @@
+/* ---------- Life OS tab (issue #102) ---------- */
+/* The model combo + Detached/Resume controls live in the Skills card's
+   summary (#496 round 2 — no separate options card); the recap tile is the
+   only .card--row left on the tab. */
+/* Single-row (non-collapsible) cards inherit the disclosure closed-box:
+   zero vertical padding, a 52px .card-head (vendored card.css) owns the
+   height, so they sit pixel-identical beside collapsed disclosure cards. */
+.card--row { padding: 0 14px; }
+.card--row .card-head { min-height: 52px; }
+/* The weekly-recap glance row (#1439): the action-row with the notebook
+   avatar, glyph in the accent like the job avatars, and its ▶ verb. */
+.lifeos-recap-avatar .avatar-glyph { color: var(--accent); }
+/* A skill row's avatar (#1503): the skill's own glyph (its SKILL.md `icon:`)
+   or, without one, its name's first letter, in the accent like the recap's
+   and the job rows'. */
+.lifeos-avatar .avatar-glyph { color: var(--accent); }
+.lifeos-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1;
+}
+/* The fold (#1503): skills not used lately sit under one "N more skills"
+   row and show once it opens, or while a filter is typed (which searches
+   every skill, so the row itself steps aside). */
+#lifeOsList:not(.is-unfolded):not(.is-filtering) > .is-folded { display: none; }
+#lifeOsList.is-filtering > .lifeos-fold { display: none; }
+.lifeos-fold + .action-row { border-top: 1px solid var(--line-muted); }
+.lifeos-fold-avatar .avatar-glyph { color: var(--muted); }
+
+/* Swipe actions on a row (swipe-row.js, action-rows.js `swipe`, #1503).
+   The row's content is one opaque surface that slides over two panes; the
+   track clips both, so the row's own kebab menu is never clipped. The
+   surface takes the row's inline padding and lets vertical pans through
+   (touch-action: pan-y), so scrolling the list is never blocked. */
+.action-row.has-swipe { padding: 0; }
+.swipe-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  overflow: hidden;
+}
+.swipe-surface {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  background: var(--card);
+  touch-action: pan-y;
+  transition: transform 0.2s ease-out;
+}
+.action-row.is-dragging .swipe-surface { transition: none; }
+.swipe-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  visibility: hidden;
+}
+.swipe-pane--trailing { justify-content: flex-end; }
+.action-row[data-swipe="leading"] .swipe-pane--leading,
+.action-row[data-swipe="trailing"] .swipe-pane--trailing { visibility: visible; }
+.swipe-pane[data-tone="accent"] { background: var(--accent-fill); color: var(--accent-fg); }
+/* Mixed onto the card, not the translucent neutral-soft, which all but
+   vanishes against a dark row. */
+.swipe-pane[data-tone="neutral"] {
+  background: color-mix(in srgb, var(--muted) 32%, var(--card));
+  color: var(--fg);
+}
+.swipe-pane.is-disabled { background: var(--neutral-soft); color: var(--muted); }
+.swipe-pane-btn {
+  width: 88px;
+  min-height: var(--hit-min);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 6px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+.swipe-pane-btn:disabled { cursor: default; }
+.swipe-pane-btn .icon { width: 20px; height: 20px; transition: transform 0.15s ease-out; }
+/* Past the full-swipe line the pane arms: its glyph grows, so a release
+   there is seen to commit before it does. */
+.action-row.is-armed .swipe-pane-btn .icon { transform: scale(1.3); }
+@media (prefers-reduced-motion: reduce) {
+  .swipe-surface,
+  .swipe-pane-btn .icon { transition: none; }
+}
+
+/* Full-bleed Skills rows on the phone (#1503, an experiment the owner asked
+   for, one switch to revert on its own): the Skills card runs to the
+   screen's edges so a row and its swipe panes are edge to edge, with
+   hairlines between rows. Its header, toolbar, filter and the rows' text
+   keep the inset they had inside the card. The wide layout keeps the card. */
+@media (max-width: 520px) {
+  .lifeos-list-card {
+    margin-inline: calc(-1 * var(--gap));
+    border-inline-width: 0;
+    border-radius: 0;
+  }
+  .lifeos-list-card > .collapse-summary { padding-inline: calc(14px + var(--gap)); }
+  /* Beats `.card.action-list > .collapse-body > :not(.action-rows)`. */
+  .card.action-list.lifeos-list-card > .collapse-body > :not(.action-rows) {
+    margin-inline: calc(14px + var(--gap));
+  }
+  #lifeOsList > .action-row:not(.has-swipe),
+  #lifeOsList .swipe-surface { padding-inline: calc(4px + var(--gap)); }
+  #lifeOsList .drill-row { padding-left: calc(14px + var(--gap)); }
+}
+
+/* ---------- Life OS: one field for skills and conversations (#1504) ---------- */
+.lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
+/* The placeholder ellipsizes rather than clipping mid-word when the scope
+   chip takes its share of a 390px field. */
+.lifeos-search input { text-overflow: ellipsis; }
+/* The skill a skill's ⋮ Conversations narrows the group to: a chip inside the
+   field (design.md "Long lists"), its ✕ widening to every skill. The button
+   is the field's full 44px height, so its target is real geometry; the chip
+   is only its look. */
+.lifeos-convo-scope {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: var(--row-sm);
+  margin-right: -6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.lifeos-convo-scope .chip { gap: 4px; padding-inline: 8px 6px; }
+/* A long skill name ellipsizes inside the chip instead of squeezing the
+   search box to nothing. */
+#lifeOsConvoScopeName {
+  max-width: 9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Narrowed to one skill, the group is that skill's own list: the other
+   skills step aside. */
+.lifeos-list-card.is-convo-scoped #lifeOsList,
+.lifeos-list-card.is-convo-on #lifeOsFilterEmpty { display: none; }
+/* The two groups the field's results show as. The Conversations group runs
+   its rows to the card's edges like the skill rows above it; its head, sort
+   and state keep the card's text inset. */
+.card.action-list.lifeos-list-card > .collapse-body > .lifeos-convo-group { margin-inline: 0; }
+.lifeos-convo-group { margin-top: 12px; }
+.lifeos-convo-group > :not(.action-rows) { margin-inline: 14px; }
+/* Three short labels: on a wide card the track keeps a phone's width, but a
+   phone's own column (up to 520px, a 430px iPhone's is 378) runs full, equal
+   segments, like the search field above it (#1588). */
+.lifeos-convo-sort { margin-bottom: 8px; }
+@media (min-width: 521px) {
+  .lifeos-convo-sort { max-width: 360px; }
+}
+@media (max-width: 520px) {
+  .lifeos-convo-group > :not(.action-rows) { margin-inline: calc(14px + var(--gap)); }
+  #lifeOsConvoList > .action-row { padding-inline: calc(4px + var(--gap)); }
+}
+.lifeos-group-count { font-weight: 400; }
+/* The Conversations head with the search's Start new (#1588) at its end. */
+.lifeos-group-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  margin-bottom: 6px;
+}
+.lifeos-group-bar > .lifeos-group-head { margin: 0; min-width: 0; }
+/* A plain + at the head's trailing end (the vendored icon-button, fleet-config
+   #1420): the 44px row-sm box is the whole target, and the end margin pulls the
+   16px glyph to the content edge, as the rows' kebabs sit. */
+.lifeos-start-new {
+  --icon-btn-box: var(--row-sm);
+  margin-inline-end: calc((var(--icon-inline) - var(--row-sm)) / 2);
+}
+.lifeos-start-new[hidden] { display: none; }
+/* Every skill, so a long list scrolls inside the sheet and the Close stays. */
+#lifeOsStartPickerList { max-height: 55vh; overflow-y: auto; }
+.lifeos-start-pick .avatar { flex: none; }
+
+/* ---------- Life OS sheets (#1504) ---------- */
+/* The conversation sheet, the reader and Browse's two sheets are the
+   vendored modal. The title is one line, the full name in its title. A
+   block, not the header h2's flex row: text-overflow does not apply to a
+   flex container's text, which clipped mid-letter instead. */
+.detail-header .lifeos-sheet-title {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The conversation sheet's meta, summary and the reason Resume can't run are
+   secondary lines (body-sm, muted, the shade the owner kept in #1528). */
+.lifeos-sheet-line {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+/* Link rows (design.md: the settings row is the link row inside a detail
+   sheet), boxed; Delete sits alone in the last box, in danger. */
+.lifeos-sheet-links { margin-top: 12px; }
+.lifeos-sheet-danger,
+.lifeos-sheet-danger .settings-row-icon { color: var(--danger-text); }
+/* The reader and Browse's sheets are tall reading surfaces: the vendored
+   modal at full height, the card exactly that tall so the text scrolls
+   inside it and the Done footer stays at its foot. */
+.lifeos-reader-sheet {
+  width: min(560px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
+}
+.lifeos-reader-sheet .detail-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+}
+.lifeos-reader-sheet .detail-header,
+.lifeos-reader-sheet .detail-actions,
+#lifeOsDocLinks { flex: none; }
+/* The scroller clips at its own edge: room for a bubble's 1px border. */
+.lifeos-reader-sheet .transcript-body { padding-inline: 2px; }
+
+/* Browse's file list. */
+.lifeos-file-list {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.lifeos-file-cat {
+  font-size: var(--font-caption);
+  font-weight: 700;
+  color: var(--muted);
+  margin: 10px 4px 4px;
+}
+.lifeos-file-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin: 4px 0;
+}
+.lifeos-convo-list { margin: 0; }
+
+/* The Jobs sort-and-filter sheet (#1538): the tabs fill the row's value
+   side, and the footer is Clear beside Done (design.md "Long lists") — the
+   one place this app's stacked detail-actions runs as a row. Clear takes the
+   primary's 48px height and type so the pair reads as one footer. */
+.jobs-sort-sheet .segmented { flex: 1; }
+.jobs-sort-sheet .detail-actions { flex-direction: row; }
+.jobs-sort-sheet .detail-actions .button-primary { flex: 1; }
+.jobs-sort-sheet .detail-actions .button-ghost {
+  min-height: 48px;
+  padding-inline: 16px;
+  font-size: var(--font-body);
+}
+
+/* ---------- conversation viewer (#1119) ---------- */
+/* One capture, read-only, in the Chat pane's own cards, scrolling inside
+   the reader sheet. */
+#lifeOsViewerState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  align-self: start;
+}
+#lifeOsViewerState .icon { font-size: var(--icon-feature); }
+/* Adjacent-cluster rule doesn't apply (it stands alone), but it is still a
+   pointer target: real 44px geometry. */
+.lifeos-viewer-raw {
+  min-width: 96px;
+  min-height: var(--row-sm);
+  font: inherit;
+}
+.lifeos-viewer-trunc { padding: 0 14px; }
+

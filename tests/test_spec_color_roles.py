@@ -8,7 +8,7 @@ input boundary, 3:1 against the card) and ``neutral-soft`` (the chip fill), and
 these names, so a theme that doesn't define one hands those components an
 unset variable.
 
-This file pins three things in ``styles.css``:
+This file pins three things in the app's stylesheets:
 
 - each role is defined in both themes at the spec value;
 - no rule sets a base hue as text over that hue's own tint;
@@ -20,10 +20,9 @@ The spec values are copied here on purpose. CI runs on a machine without
 
 from __future__ import annotations
 
-import pathlib
 import re
 
-STYLES = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static" / "styles.css"
+from tests._css import stylesheet_text
 
 # design.md / design.dark.md colors (fleet-config#963) and typography.body-sm (#992).
 _LIGHT = {
@@ -49,13 +48,13 @@ _HUES = ("accent", "success", "danger", "attention")
 
 
 def _css() -> str:
-    return re.sub(r"/\*.*?\*/", "", STYLES.read_text(encoding="utf-8"), flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", stylesheet_text(), flags=re.S)
 
 
 def _block(selector: str) -> str:
     """The body of the first top-level rule whose selector is exactly ``selector``."""
     m = re.search(r"(?m)^" + re.escape(selector) + r"\s*\{([^{}]*)\}", _css())
-    assert m, f"no top-level {selector} rule in styles.css"
+    assert m, f"no top-level {selector} rule in the stylesheets"
     return m.group(1)
 
 

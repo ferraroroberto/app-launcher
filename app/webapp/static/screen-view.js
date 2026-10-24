@@ -1726,7 +1726,7 @@ function wireStage(stage) {
 // ------------------------------------------------- landscape handle (#1601)
 
 // A phone held sideways hides the bar and the tools row behind the handle
-// (styles.css). The CSS owns the layout, so this only tracks whether the bars
+// (styles/apps.css). The CSS owns the layout, so this only tracks whether the bars
 // are up: a class on the dialog. Keep the query identical to the stylesheet's.
 const SCREEN_LANDSCAPE = '(orientation: landscape) and (pointer: coarse) and (max-height: 500px)';
 

@@ -2,7 +2,7 @@
  *
  * A compact regex tokenizer, not a grammar: one alternation per language
  * family, five classes (keyword, string, number/literal, comment, name) that
- * map onto the fleet's existing text tokens in styles.css. It is less exact
+ * map onto the fleet's existing text tokens in styles/base.css. It is less exact
  * than a library (a JS regex literal, a nested f-string or a bash heredoc can
  * mis-tint); that costs a colour, never a character.
  *

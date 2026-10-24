@@ -62,7 +62,22 @@
   <link rel="stylesheet" href="/static/_vendored/row-menu/row-menu.css">
   <link rel="stylesheet" href="/static/_vendored/text-size/text-size.css">
   <link rel="stylesheet" href="/static/_vendored/empty-state/empty-state.css">
-  <link rel="stylesheet" href="/static/styles.css">
+  <!-- The app's own rules, in cascade order: one file per view, base first. -->
+  <link rel="stylesheet" href="/static/styles/base.css">
+  <link rel="stylesheet" href="/static/styles/settings.css">
+  <link rel="stylesheet" href="/static/styles/lists.css">
+  <link rel="stylesheet" href="/static/styles/jobs.css">
+  <link rel="stylesheet" href="/static/styles/shared.css">
+  <link rel="stylesheet" href="/static/styles/chat.css">
+  <link rel="stylesheet" href="/static/styles/chat-cards.css">
+  <link rel="stylesheet" href="/static/styles/overlays.css">
+  <link rel="stylesheet" href="/static/styles/terminal.css">
+  <link rel="stylesheet" href="/static/styles/lifeos.css">
+  <link rel="stylesheet" href="/static/styles/board.css">
+  <link rel="stylesheet" href="/static/styles/context-filter.css">
+  <link rel="stylesheet" href="/static/styles/wide.css">
+  <link rel="stylesheet" href="/static/styles/code.css">
+  <link rel="stylesheet" href="/static/styles/apps.css">
   <title>Launcher</title>
 </head>
 <body>
@@ -2429,7 +2444,7 @@
          Kill stuck run, recent runs with pin and re-run, the output (live
          while running), artifacts and the webhook payload. Run now is its
          one primary action. On the wide desktop layout it docks as the
-         detail pane beside the list instead (jobs.js, styles.css). -->
+         detail pane beside the list instead (jobs.js, styles/wide.css). -->
     <dialog id="jobSheet" class="detail-dialog job-sheet" aria-labelledby="jobSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
@@ -2647,7 +2662,7 @@
     <dialog id="screenView" class="screen-view" aria-labelledby="screenViewTitle">
       <!-- The bar and the tools row, as one block (#1601): in the flow as ever,
            except on a phone held sideways, where the handle below brings them
-           up as an overlay (screen-view.js, styles.css). -->
+           up as an overlay (screen-view.js, styles/apps.css). -->
       <div id="screenChrome" class="screen-chrome">
       <div class="screen-view-bar">
         <h2 id="screenViewTitle" class="screen-view-title" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Screen</h2>

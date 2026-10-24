@@ -1,0 +1,520 @@
+/* Blockquotes (#1326) -- unscoped like the tables, since every renderer
+   consumer emits them. An indent and a hairline left rule set the quote off
+   from the reply; `white-space: normal` because the renderer already turned
+   each kept line break into a `<br>`. The copy button is the chat card's
+   ghost icon button (.tr-turn-copy): transparent, muted, with .hit-target's
+   invisible 44px expansion. */
+.md-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 0 0 8px;
+  padding: 2px 0 2px 12px;
+  border-left: 3px solid var(--line);
+  white-space: normal;
+}
+.md-quote:last-child { margin-bottom: 0; }
+.md-quote-body { flex: 1 1 auto; min-width: 0; }
+.md-quote-body p { margin: 0 0 8px; }
+.md-quote-body p:last-child { margin-bottom: 0; }
+.md-quote-copy { --icon-btn-box: 32px; }
+.tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
+/* "Show the rest" (#1745): the vendored ghost button at the 44px floor, sized
+   to its words rather than the row. The failure line sits under it. */
+.tr-trunc-more { width: auto; min-height: 44px; padding: 0 16px; }
+.tr-trunc-status { margin-top: 4px; color: var(--danger-text); }
+.tr-trunc-status:empty { display: none; }
+/* A run of folded entries is one quiet step line (#1476, Step 3/6 of #1472):
+   no card, a flat 44px row on the canvas -- chevron, a plain-words label in
+   body-sm muted (verbs muted, what they acted on in fg), then the parts an
+   ellipsis must never cut: the edits' +N -M, "N failed", the duration. */
+/* The ⋮ "Hide steps" toggle: lines stay in the DOM (a tap brings them back
+   exactly where they were) but leave the flow entirely, gap included. */
+.transcript-list.tr-hide-groups .tr-run { display: none; }
+.tr-step-line {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 0 10px 0 6px;
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.tr-step-line::-webkit-details-marker { display: none; }
+@media (hover: hover) {
+  .tr-step-line:hover { background: var(--neutral-soft); }
+}
+.tr-step-chevron {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+.tr-step[open] > .tr-step-line .tr-step-chevron { transform: rotate(90deg); }
+/* The only part that gives way: a label wider than the phone ellipses, and
+   its full width is never the row's minimum (#1292's sideways scroll). */
+.tr-step-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-step-label b { color: var(--fg); font-weight: 600; }
+/* The newest step in plain words leads (#1532), in fg; the counts trail it,
+   all muted, as secondary text the ellipsis takes first. */
+.tr-step-now { color: var(--fg); }
+.tr-step-counts b { color: inherit; font-weight: inherit; }
+/* The step in progress counts up in the duration's place (#1532). */
+.tr-step-live {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tr-step-live-icon { width: 14px; height: 14px; flex: none; }
+.tr-step-delta,
+.tr-item-delta {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tr-step-dur {
+  flex: none;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Open, the items hang off a 2px rail under the chevron (its centre sits at
+   the line's 6px inset + 8px), each a flat list row on a hairline. */
+.tr-step-items {
+  margin: 0 0 4px 13px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line-muted);
+}
+.tr-item + .tr-item { border-top: 1px solid var(--line-muted); }
+.tr-item > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--row-sm);
+  padding: 10px 0;
+  cursor: pointer;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.tr-item > summary::-webkit-details-marker { display: none; }
+.tr-item > summary .icon { width: 16px; height: 16px; flex: none; }
+/* Name, then the hint (a file's folder, a call's summary) in whatever room
+   is left: the hint's zero basis means the name keeps its width until the
+   row runs out, and only then does the name ellipse too. */
+.tr-item-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-item-cmd {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-weight: 400;
+}
+.tr-item-hint {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tr-item-body { padding-bottom: 12px; }
+/* Open, the card under the row names the command or the file in full
+   (#1532), so the row's one-line hint would only say it twice. */
+.tr-item[open] > summary > .tr-item-hint { visibility: hidden; }
+/* A failed tool call (#1020). --danger is a state color, and a call that
+   errored is state — but it stays a row-level mark, never a banner: the
+   glyph turns red and one small tinted chip sits beside the name, which is
+   flex:none so it survives the hint's ellipsis at 390px. */
+.tr-item-failed > summary .icon { color: var(--danger); }
+.tr-fail-chip,
+.tr-fail-count {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: rgb(from var(--danger) r g b / 0.12);
+  color: var(--danger-text);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  line-height: 1.5;
+}
+/* The third state: the harness never recorded this call's outcome. Muted
+   body text, deliberately not a status color — "nobody can tell" is not a
+   failure, and dressing it as one would be the same lie in reverse. */
+.tr-outcome-unknown {
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+}
+/* AskUserQuestion card (#1149): the agent asking, so it sits in the list
+   like a turn (same card surface and 14px inset), never folded into a run.
+   Options are list rows on a hairline (design.md list-row), each a button:
+   number, bold label, muted description, a check once picked. Static cards
+   keep the same look; only a live one reacts to a tap. */
+.tr-ask-item { min-width: 0; }
+.tr-ask {
+  border-radius: var(--radius);
+  background: var(--card);
+  border: 1px solid var(--line);
+  padding: 10px 14px 14px;
+}
+.tr-ask-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  color: var(--muted);
+}
+.tr-ask-head .icon { width: 16px; height: 16px; flex: none; }
+.tr-ask-q { padding-top: 12px; }
+.tr-ask-q + .tr-ask-q { margin-top: 12px; border-top: 1px solid var(--line-muted); }
+.tr-ask-header {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-ask-question {
+  margin: 8px 0 0;
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.tr-ask-hint,
+.tr-ask-typed,
+.tr-ask-status {
+  margin: 4px 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  line-height: 1.45;
+}
+.tr-ask-typed { color: var(--fg); overflow-wrap: anywhere; }
+.tr-ask-status:empty { display: none; }
+.tr-ask-options { display: flex; flex-direction: column; margin-top: 8px; }
+.tr-ask-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--row-sm);
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-top-color: var(--line-muted);
+  border-radius: 0;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tr-ask-opt:disabled { cursor: default; color: var(--fg); }
+.tr-ask-opt:not(:disabled):active { background: var(--card-off); }
+.tr-ask-num {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 22px;
+  text-align: center;
+}
+.tr-ask-opt-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.tr-ask-label { font-size: var(--font-body); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.tr-ask-desc { font-size: var(--font-body-sm); color: var(--muted); line-height: 1.4; overflow-wrap: anywhere; }
+.tr-ask-mark { flex: none; visibility: hidden; color: var(--accent); }
+.tr-ask-mark .icon { width: 18px; height: 18px; }
+/* Selected (a live multi-part pick) and picked (the recorded answer) share
+   the accent tint the user's own turn wears — nothing new. */
+.tr-ask-opt[aria-pressed="true"],
+.tr-ask-opt--picked {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-soft);
+  border-radius: var(--radius-md);
+}
+.tr-ask-opt[aria-pressed="true"] .tr-ask-mark,
+.tr-ask-opt--picked .tr-ask-mark { visibility: visible; }
+.tr-ask-opt--picked .tr-ask-num,
+.tr-ask-opt[aria-pressed="true"] .tr-ask-num { background: var(--accent-fill); color: var(--accent-fg); }
+.tr-ask-other { display: flex; gap: 8px; margin-top: 8px; }
+.tr-ask-other[hidden] { display: none; }
+.tr-ask-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--font-body);
+}
+/* An Other field's dictation mic (#1450): the vendored icon-button at the 44px
+   floor beside the field, which keeps the rest of the row. */
+.tr-ask-mic { --icon-btn-box: var(--hit-min); flex: none; }
+/* Row-sized: .button-tint stretches to width:100% for its full-width uses,
+   which squeezed the text field beside it to a sliver. */
+.tr-ask-send { flex: none; width: auto; min-height: 44px; padding: 0 16px; }
+.tr-ask-submit { width: 100%; margin-top: 12px; }
+/* ExitPlanMode card (#1151): the question card's frame around the plan,
+   which is markdown like a reply (the shared `.tr-md` rules style it). */
+.tr-plan-body {
+  margin-top: 8px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.tr-plan > .tr-trunc { margin-top: 8px; }
+/* The plan panel (#1151): the plan card's frame below the transcript list,
+   at the list's own 12px rhythm, while the terminal shows the picker. The
+   feedback option is a list row like the others, its text field under it. */
+.tr-plan-live { margin-top: 12px; }
+.tr-plan-live[hidden] { display: none; }
+.tr-plan-live-card .tr-pre.tr-plan-body { margin-top: 8px; }
+.tr-plan-feedback-row > .tr-ask-opt { cursor: default; }
+/* The resume card (#1300, chat-resume.js): the AskUserQuestion card's parts,
+   a search field, and a list that scrolls inside the card past a screenful
+   so a project with many sessions never pushes the composer away. */
+.tr-resume-live { margin-top: 12px; }
+.tr-resume-live[hidden] { display: none; }
+/* The card takes the empty state's place while it is up: a `--resume` launch
+   has no transcript yet, and "No transcript found" under the very card that
+   resumes one reads as a failure. */
+.tr-resume-live:not([hidden]) + #transcriptState { display: none; }
+/* The card's ✕ is the vendored icon-button at the 44px floor. The negative
+   margin keeps the 44px box from growing the 24px head row. */
+.tr-resume-close { margin: -10px -8px -10px auto; --icon-btn-box: var(--hit-min); }
+.tr-resume-search { margin-top: 8px; }
+.tr-resume-list { max-height: 50vh; overflow-y: auto; }
+.tr-resume-opt[hidden] { display: none; }
+/* The transcript's preformatted surface for a tool result (`.tr-pre`). A
+   chat fence shared this rule until #1474 gave it the `.md-block` frame
+   (above); it keeps the wrap-not-scroll choice below.
+   Wrap, not scroll, and deliberately: at 12px on a 390px phone
+   about 40 monospace characters fit, so almost every real code line would be
+   pannable, and a pan here persists -- `applyLive` appends settled turns
+   instead of rebuilding them, so nothing resets `scrollLeft` for the life of
+   the open overlay. That is the reported bug, and a bounded scroll container
+   would only make it visible, not absent. The cost is that column alignment
+   can break mid-line; that is the right trade in Chat, whose job is reading,
+   because Terminal mode is one tap away and keeps full fidelity. It is also
+   what `.tr-pre` already chose for raw tool output, which is far more
+   column-shaped than a fence. */
+.tr-pre {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  /* The code-listing frame (#1624, COMP-17), as `.md-block` and `.chg-diff`
+     have it: 13px mono on the card surface and a hairline, never
+     `--card-off`, which is true black inside a dark card. */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* A tool result can be enormous, so it caps its height and scrolls
+   vertically. A chat fence does not: the whole turn is already collapsible,
+   and a nested scroller inside a scrolling transcript is a phone trap. */
+.tr-pre { max-height: 40vh; overflow-y: auto; }
+/* An opened step (#1532): the code-listing frame (`.md-block`'s card surface
+   on a hairline, never `--card-off`, the dark black hole), a small caption
+   header -- the tool, the file as "folder / name", a recorded exit status --
+   then the input and the output as two blocks split by a quiet hairline.
+   Both wrap rather than scroll (see `.tr-pre`); a command wraps at its own
+   spaces first and hangs its continuation lines past the `$ `. */
+.tr-cmd-card {
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+.tr-cmd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-cmd-tool { flex: none; color: var(--fg); }
+.tr-cmd-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-cmd-exit { flex: none; margin-left: auto; font-variant-numeric: tabular-nums; }
+.tr-cmd,
+.tr-out {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.tr-cmd { padding-left: calc(12px + 2ch); text-indent: -2ch; }
+.tr-cmd-plain { padding-left: 12px; text-indent: 0; }
+.tr-out { border-top: 1px solid var(--line-muted); max-height: 40vh; overflow-y: auto; }
+.tr-cmd-head + .tr-out { border-top: 0; }
+.tr-out-none { padding: 8px 12px; }
+.tr-cmd-prompt { color: var(--muted); -webkit-user-select: none; user-select: none; }
+/* Light shell highlighting, from colours the system already has: the command
+   word in fg bold, flags in the accent text, strings in success text,
+   variables in attention text, operators muted. */
+.sh-cmd { color: var(--fg); font-weight: 600; }
+.sh-flag { color: var(--accent-text); }
+.sh-str { color: var(--success-text); }
+.sh-var { color: var(--attention-text); }
+.sh-op { color: var(--muted); font-weight: 600; }
+/* Transcript images (#1265): small lazy thumbnails, a tap opens the full
+   size in the image overlay. The frame holds its size while the bytes load,
+   so the list doesn't jump. */
+.tr-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
+/* In the prompt bubble the row sits beside the text, not inside it, so it
+   takes the text's own inset, left and bottom (#1292), as .tr-trunc does; in
+   a reply it simply follows the text. */
+.tr-bubble > .tr-thumbs { margin: 0; padding: 0 14px 10px; }
+.tr-reply > .tr-thumbs { margin: 8px 0 0; }
+.tr-thumb {
+  width: 96px;
+  height: 96px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card-off);
+  overflow: hidden;
+  cursor: zoom-in;
+}
+.tr-thumb:disabled { cursor: default; }
+.tr-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.tr-thumb-failed { border-style: dashed; }
+/* Files the agent sent (#1530): the caption reads as reply text, then a card
+   per file in the step card's frame -- a caption-size header (name, size,
+   Open) over the content: an image or a PDF at the card's width, or a text
+   file's opening lines. Two sizes only: the body's and the caption's. */
+.tr-file-item { min-width: 0; margin: 0 0 8px; }
+.tr-file-caption {
+  margin: 0 0 8px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.tr-file-card {
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow: hidden;
+}
+.tr-file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+.tr-file-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fg);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tr-file-size { flex: none; font-variant-numeric: tabular-nums; }
+/* Real 44px geometry: it sits in a row beside the name, so no invisible
+   expansion (design.md Touch targets). */
+.tr-file-open {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: auto;
+  color: var(--accent-text);
+  text-decoration: none;
+}
+.tr-file-open[hidden] { display: none; }
+.tr-file-image {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  background: var(--card-off);
+  cursor: zoom-in;
+}
+.tr-file-image img { display: block; width: 100%; max-height: 50vh; object-fit: contain; }
+.tr-file-pdf {
+  display: block;
+  width: 100%;
+  height: 60vh;
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  background: var(--card-off);
+}
+.tr-file-preview {
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-caption);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.tr-file-note {
+  padding: 8px 12px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-caption);
+}
+.tr-file-failed { border-style: dashed; }
+

@@ -39,7 +39,7 @@ here, deliberately: the shared rule is scoped to ``.tr-md`` / ``.tr-pre``, and
 viewer's own rule is out of reach. Its own module covers that consumer, and
 the fenced block there keeps its existing scroll route.
 
-Its selector is spelled out in ``styles.css`` rather than here on purpose:
+Its selector is spelled out in ``styles/chat.css`` rather than here on purpose:
 ``tests/test_classify_e2e.py``'s surface-coverage invariant matches surface
 markers as *text* over every ``tests/e2e/test_*.py``, so naming that class in
 this docstring would file this module under a surface it does not exercise

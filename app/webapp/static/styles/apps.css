@@ -1,0 +1,627 @@
+/* ---------- Apps tab (#1437, step 5/7 of #1432) ---------- */
+/* An action-row that leads with an avatar (action-rows.js `avatar`): the
+   main button lays out as a row, the avatar then the title and meta
+   stacked, at the session row's 12px gap. */
+.action-row-main.has-avatar {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+.action-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* A drill-in row at the foot of a list (Other ports, Scan for new apps):
+   the action-row's geometry and hairline, the avatar in the leading slot,
+   a chevron in the kebab's 44px column, because it opens a sheet. */
+.drill-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 4px 4px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-top: 1px solid var(--line-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.drill-row:has(.srow-meta) { min-height: var(--row-lg); }
+.drill-row[hidden] { display: none; }
+.drill-row:active { background: var(--accent-soft); }
+.drill-row .avatar-glyph { color: var(--accent); }
+.drill-row-chevron {
+  flex: none;
+  width: var(--row-sm);
+  text-align: center;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+}
+/* Full-bleed like the rows above it: the card body's 14px inset is for
+   its other children (toolbar, filter, empty states). */
+.card.action-list > .collapse-body > .drill-row { margin-inline: 0; }
+/* With no row above it there is no hairline to draw. */
+.running-apps-card #runningAppsList:empty + .empty-state + .drill-row,
+.running-apps-card #runningAppsList:empty + .empty-state[hidden] + .drill-row { border-top: 0; }
+/* Footnotes under a card's rows (iOS inset-group footers, .group-footer). */
+.running-apps-note,
+.trays-footer { margin-top: 4px; }
+.running-apps-note[hidden] { display: none; }
+.listeners-footer { margin: 12px 0; }
+
+/* A list's stale line (async-state.js, #1501): the last good data stays
+   below it, and it says how old that data is. */
+.async-stale {
+  margin: 0 0 8px;
+  padding: 0 14px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+
+/* The confirm sheet (confirm-dialog.js): one muted line under the title. */
+.confirm-dialog-message {
+  margin: 0 0 16px;
+  font-size: var(--font-body);
+  color: var(--muted);
+}
+/* promptDialog's one field (#1501): the full width, above the action.
+   16px text so iOS doesn't zoom the page on focus. */
+.confirm-dialog-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 16px;
+  font-size: var(--font-body);
+}
+
+
+/* Projects: the uncommitted count in the summary, behind an attention dot. */
+.projects-summary-meta,
+.trays-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+}
+.projects-summary-meta[hidden],
+.trays-summary-meta[hidden] { display: none; }
+.tone-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+.tone-dot[data-tone="attention"] { background: var(--attention); }
+.tone-dot[data-tone="danger"] { background: var(--danger); }
+
+/* A row's context line with chips: the text ellipsizes, the chips never do. */
+.action-row-meta.has-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.action-row-meta.has-chips .action-row-meta-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.action-row-meta-text:empty { display: none; }
+
+/* actionRow's optional variants (#1501, action-rows.js), app-side so the
+   vendored action-row.css stays verbatim. One-line: the meta runs after the
+   title on the same line at rows.md, the title ellipsizing first; small is
+   the same at rows.sm. Inert: a row that reports and does nothing on tap,
+   so no pointer and no pressed fill. Trailing: the row's one other trailing
+   item keeps its own width. */
+.action-row.action-row--one-line,
+.action-row.action-row--one-line:has(.action-row-meta) { min-height: var(--row-md); }
+.action-row.action-row--small,
+.action-row.action-row--small:has(.action-row-meta) { min-height: var(--row-sm); }
+.action-row--one-line .action-row-main,
+.action-row--small .action-row-main {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+.action-row--small .action-row-main { padding-block: 2px; }
+.action-row--one-line .action-row-title,
+.action-row--small .action-row-title { flex: 0 1 auto; min-width: 0; }
+.action-row--one-line .action-row-meta,
+.action-row--small .action-row-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; }
+/* The scaffold's meta wraps to two lines (project-scaffolding#396); these
+   densities are single-line by contract, so they put the one-line ellipsis
+   back (the same scoped override the scaffold's day-row uses). */
+.action-row--one-line .action-row-meta:not(.has-chips),
+.action-row--small .action-row-meta:not(.has-chips) {
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
+  white-space: nowrap;
+}
+.action-row-main.is-inert { cursor: default; }
+.action-row-main.is-inert:active { background: transparent; }
+.action-row > .action-row-trailing { flex: none; }
+
+/* The Projects toolbar is the launch toolbar alone; the git refresh rides
+   its model row as the trailing control. */
+.projects-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
+.projects-toolbar .git-refresh-btn { --icon-btn-box: var(--control-h); }
+
+/* The launch toolbar (launch-toolbar.js): the model row (the combo, a
+   trailing control pinned right), then the switch pair, each switch with
+   its word. The word is the switch's <label>, so word + track is one 44px
+   tap target. */
+.launch-toolbar {
+  display: flex;
+  flex-direction: column;
+  /* 8px: the combo's -5 and a switch's -9 tap expansions (#1124) must not
+     meet across the two rows. */
+  gap: 8px;
+}
+.launch-toolbar-head,
+.launch-toolbar-switches {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.launch-toolbar-trailing { margin-left: auto; }
+.launch-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: var(--hit-min);
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  user-select: none;
+}
+/* The switches in the combo's menu (launch-toolbar.js `switchesInMenu`,
+   #1503): under the model list on a hairline, one 44px row each with the
+   word left and the track right, then a muted help line. */
+.launch-menu .model-combo-list {
+  display: flex;
+  flex-direction: column;
+}
+/* A phone thumb picks the model here too: every option at the 44px floor. */
+.launch-menu .model-combo-list [role="option"] { min-height: var(--hit-min); }
+/* `line`, not `line-muted`: in dark, line-muted is the menu's own fill. */
+.launch-menu-options {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+  padding: 4px 0;
+}
+.launch-menu-options .launch-switch {
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 14px;
+}
+/* body-sm in fg: helper copy, and muted on the menu's card-2 fill falls
+   under 4.5:1 in dark. */
+.launch-menu-hint {
+  max-width: 280px;
+  padding: 4px 14px 10px;
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+  color: var(--fg);
+  white-space: normal;
+}
+/* The closed combo names any switch that is on, after the model's name. */
+.model-combo-trigger[data-note]::after {
+  content: "· " attr(data-note);
+  margin-left: 0.3em;
+}
+
+/* The PC load sheet's Screen row (#1520): a link row that acts on tap, on
+   the sheet's own inset, divided from the readings above like a row. */
+.detail-card .cpu-sheet-screen {
+  padding-inline: 0;
+  border-top: 1px solid var(--line-muted);
+}
+
+/* The Screen view (#1520): the PC's desktop, full screen. A bar on the card
+   surface (title, the display picker when there is more than one, the
+   modal's x) over a stage the frame fills, letterboxed on the canvas. The
+   page is zoom-locked, so pinch and pan are the view's own (screen-view.js):
+   the stage takes every touch, and the frame moves by transform alone. */
+.screen-view {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  max-width: none;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+.screen-view[open] { display: flex; flex-direction: column; }
+.screen-view::backdrop { background: var(--bg); }
+.screen-view-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-height: var(--row-md);
+  padding: env(safe-area-inset-top, 0px) 14px 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.screen-view-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: var(--font-heading-lg);
+}
+.screen-view-title .icon { width: var(--icon-title); height: var(--icon-title); color: var(--muted); }
+.screen-picker { flex: 1 1 auto; min-width: 0; margin: 0; }
+.screen-picker[hidden] { display: none; }
+.screen-view-bar .detail-close { margin-left: auto; }
+.screen-view-bar .detail-close .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.screen-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+.screen-image[hidden] { display: none; }
+/* The PC's mouse cursor (#1598). A 0x0 anchor moved to the cursor's spot by
+   transform, outside the picture's own zoom transform, so it keeps its size
+   when zoomed; the SVG inside sits so its hotspot is on the anchor
+   (screen-cursor.js). It never takes a touch. A light body with a dark
+   edge, like Windows' own cursor, in both themes, since it is drawn over
+   the PC's desktop, not over the app. */
+.screen-cursor {
+  --screen-cursor-fill: var(--accent-fg);
+  --screen-cursor-edge: rgb(0 0 0 / 0.85);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.screen-cursor[hidden] { display: none; }
+.screen-cursor svg { position: absolute; overflow: visible; }
+/* Trackpad (#1599): a long-press held, so the next move drags with the
+   button down, or a lift right-clicks. A ring round the hotspot says so. */
+.screen-cursor.held::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: -14px;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 3px solid var(--screen-cursor-fill);
+  box-shadow: 0 0 0 1.5px var(--screen-cursor-edge), inset 0 0 0 1.5px var(--screen-cursor-edge);
+}
+/* The magnifier loupe (#1725): a round window on the frame under a finger held
+   down in Touch control. screen-view.js sets its size, its transform and the
+   frame it magnifies; it sits above the finger (data-side="below" when it had
+   to flip under it) and never takes a touch. A card-coloured ring and a
+   hairline keep its edge visible over any desktop, light or dark, and a
+   crosshair marks the exact point. It never animates, so there is nothing for
+   prefers-reduced-motion to reduce. */
+.screen-loupe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--card);
+  background-repeat: no-repeat;
+  box-shadow: 0 0 0 3px var(--card), 0 0 0 4px var(--line), var(--shadow);
+  pointer-events: none;
+}
+.screen-loupe[hidden] { display: none; }
+.screen-loupe::before,
+.screen-loupe::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--card);
+  transform: translate(-50%, -50%);
+}
+.screen-loupe::before { width: 14px; height: 2px; }
+.screen-loupe::after { width: 2px; height: 14px; }
+/* The state block floats centred over the stage as a card, so it reads over
+   the last frame as well as over an empty canvas. */
+.screen-state {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(320px, calc(100% - 2 * var(--gap)));
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.screen-state[hidden] { display: none; }
+.screen-state.async-stale {
+  top: var(--gap);
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  margin: 0;
+  text-align: center;
+}
+/* A short result line (#1719), the app's frosted toast recipe inside the view:
+   a toast sits under a modal dialog's top layer, so it can't be seen here.
+   Over the bottom of the stage, never takes a touch. */
+.screen-notice {
+  position: absolute;
+  left: 50%;
+  bottom: var(--gap);
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(calc(100% - 2 * var(--gap)), 560px);
+  padding: 12px 18px;
+  background: var(--tabbar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid var(--tabbar-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: var(--font-label);
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  text-wrap: balance;
+  pointer-events: none;
+}
+.screen-notice[hidden] { display: none; }
+.screen-notice.error {
+  background: color-mix(in srgb, var(--deficit) 75%, transparent);
+  border-color: var(--deficit);
+  color: var(--accent-fg);
+}
+
+/* Screen control (#1521). A toolbar row under the bar, on the same card
+   surface: the View / Control segmented control, and the keyboard toggle (an
+   icon button, pressed while the keys are up) once Control is on. */
+.screen-view-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 6px 14px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+.screen-mode { flex: 0 1 240px; min-width: 0; margin: 0; }
+/* Control's style (#1599), Touch / Trackpad, beside it while Control is on;
+   the two share the row evenly. */
+.screen-control { flex: 0 1 240px; min-width: 0; margin: 0; }
+.screen-control[hidden] { display: none; }
+.screen-keyboard { margin-left: auto; --icon-btn-box: var(--control-h); }
+.screen-keyboard[hidden] { display: none; }
+.screen-keyboard .icon { width: var(--icon-title); height: var(--icon-title); }
+/* Quality and readout (#1721): the last button in the row, a real 44px target.
+   Its vertical margins take back the 8px it is taller than the row's content,
+   so the row (and the picture under it) stays where it was. It takes the free
+   space itself in View, where the keyboard button is hidden; beside it, it
+   just follows. */
+.screen-quality { margin: -4px 0 -4px auto; --icon-btn-box: var(--hit-min); }
+.screen-keyboard:not([hidden]) + .screen-quality { margin-left: 0; }
+.screen-quality .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-preset { margin: 0 0 8px; }
+/* The live readout: a frosted chip over the top-left of the picture, the
+   notice's recipe, small and tabular so the digits do not jitter. It never
+   takes a touch. */
+.screen-readout {
+  position: absolute;
+  top: var(--gap);
+  left: var(--gap);
+  max-width: calc(100% - 2 * var(--gap));
+  padding: 6px 10px;
+  background: var(--tabbar-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(1.25);
+  backdrop-filter: blur(20px) saturate(1.25);
+  border: 1px solid var(--tabbar-border);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.45;
+  pointer-events: none;
+}
+.screen-readout[hidden] { display: none; }
+/* No long-press callout or text selection over the frame: a long-press is a
+   right click here. */
+.screen-stage { -webkit-touch-callout: none; }
+.screen-view[data-mode="control"][data-control="touch"] .screen-stage { cursor: crosshair; }
+.screen-view.keys-open .screen-stage { padding-bottom: 0; }
+/* The keys bar: two rows of real 44px keys on a 7-column grid, Enter two
+   wide, over the bottom safe area. Same key-btn look as the terminal's keys
+   popover; a held modifier takes its .active state. */
+.screen-keys {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+.screen-keys[hidden] { display: none; }
+.screen-keys .key-btn {
+  min-width: 0;
+  min-height: var(--hit-min, 44px);
+  padding: 0;
+  font-size: var(--font-body);
+}
+.screen-keys .key-btn .icon { width: var(--icon-title); height: var(--icon-title); }
+.screen-key-enter { grid-column: span 2; }
+/* Two pages of keys (#1602). A page is a display:contents wrapper, so its keys
+   lay out straight on the bar's grid and the hidden page takes no room. The
+   page toggle and Task Mgr close each page's last row; their spans are
+   variables so the landscape grid below can refill the row. */
+.screen-keys {
+  --keys-span-toggle: 3;
+  --keys-span-toggle-fn: 3;
+  --keys-span-task-main: 4;
+  --keys-span-task-fn: 2;
+  /* Paste to PC and Paste + Ctrl+V (#1719) end each page: a row of their own
+     on the portrait grid, in the last row beside the others in landscape. */
+  --keys-span-clip-set-main: 4;
+  --keys-span-clip-set-fn: 4;
+  --keys-span-clip-go: 3;
+}
+.screen-keys-page { display: contents; }
+.screen-keys-page[hidden] { display: none; }
+.screen-keys .key-page-toggle { grid-column: span var(--keys-span-toggle); }
+.screen-keys-page[data-keys-page="fn"] .key-page-toggle { grid-column: span var(--keys-span-toggle-fn); }
+.screen-keys-page[data-keys-page="main"] .key-task { grid-column: span var(--keys-span-task-main); }
+.screen-keys-page[data-keys-page="fn"] .key-task { grid-column: span var(--keys-span-task-fn); }
+.screen-keys-page[data-keys-page="main"] .key-clip-set { grid-column: span var(--keys-span-clip-set-main); }
+.screen-keys-page[data-keys-page="fn"] .key-clip-set { grid-column: span var(--keys-span-clip-set-fn); }
+.screen-keys .key-clip-go { grid-column: span var(--keys-span-clip-go); }
+/* The modifiers held while this page is up, on the way back to them. */
+.key-held { margin-right: 6px; color: var(--accent); font-weight: 600; }
+.key-held[hidden] { display: none; }
+/* A landscape phone has no height to spare above the keyboard, but width: the
+   same keys on one 14-column row pair instead of three rows. 14 keys at the
+   44px floor need 710px, so a narrower window keeps the portrait grid. */
+@media (orientation: landscape) and (min-width: 720px) {
+  .screen-keys {
+    grid-template-columns: repeat(14, minmax(0, 1fr));
+    /* Row two is 14 columns: main = toggle 3 + Task Mgr 3 + paste 5 + 3;
+       F-keys = toggle 4 + PgUp, PgDn + Task Mgr 2 + paste 3 + 3. */
+    --keys-span-toggle: 3;
+    --keys-span-toggle-fn: 4;
+    --keys-span-task-main: 3;
+    --keys-span-task-fn: 2;
+    --keys-span-clip-set-main: 5;
+    --keys-span-clip-set-fn: 3;
+  }
+}
+/* The phone keyboard's target: focusable and on screen (iOS raises the
+   keyboard only for a visible field), but invisible and untouchable. 16px
+   keeps iOS from zooming the page when it takes focus. */
+.screen-key-input {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  font-size: 16px;
+  pointer-events: none;
+}
+
+/* A phone held sideways (#1601). The bar and the tools row take a large share
+   of the little height there is, and the picture is the point, so there they
+   leave the flow behind a handle: a pill over the stage's top-left corner that
+   names the mode (a hidden switch hides no state). It opens the bar and tools
+   row as an overlay on top of the picture, so the picture neither jumps nor
+   re-fits. A desktop browser, the pop-out window (fine pointer, tall) and a
+   tablet keep the bars. screen-view.js asks the same question with
+   matchMedia (SCREEN_LANDSCAPE): keep the two queries identical. */
+.screen-chrome { display: contents; }
+.screen-handle { display: none; }
+.screen-handle-view,
+.screen-handle-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.screen-handle-control { display: none; }
+.screen-view[data-mode="control"] .screen-handle-view { display: none; }
+.screen-view[data-mode="control"] .screen-handle-control { display: inline-flex; }
+.screen-handle .icon { width: var(--icon-inline); height: var(--icon-inline); }
+@media (orientation: landscape) and (pointer: coarse) and (max-height: 500px) {
+  /* The picture clears a notch: the stage itself narrows by the side insets,
+     so its geometry (and everything screen-view.js derives from it) agrees. */
+  .screen-stage {
+    margin-left: env(safe-area-inset-left, 0px);
+    margin-right: env(safe-area-inset-right, 0px);
+  }
+  .screen-chrome { display: none; }
+  .screen-view.chrome-open .screen-chrome {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    box-shadow: var(--shadow);
+  }
+  /* The handle keeps its place, and its width, while the bar is up (View and
+     Control are the same width), so the bar's title makes room for it. */
+  .screen-view { --screen-handle-w: 7.5rem; }
+  .screen-view.chrome-open .screen-view-bar {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 2 * var(--gap) + var(--screen-handle-w));
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-view.chrome-open .screen-view-tools {
+    padding-left: calc(env(safe-area-inset-left, 0px) + 14px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 14px);
+  }
+  .screen-handle {
+    position: absolute;
+    top: 8px;
+    left: calc(env(safe-area-inset-left, 0px) + var(--gap));
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: var(--screen-handle-w);
+    min-height: var(--hit-min);
+    padding: 0 14px;
+    background: var(--card);
+    color: var(--fg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow);
+    font: inherit;
+    font-size: var(--font-label);
+    font-weight: 600;
+  }
+  .screen-handle[aria-expanded="true"] { color: var(--accent-text); }
+  /* The keys bar clears a notch too. */
+  .screen-keys {
+    padding-left: calc(8px + env(safe-area-inset-left, 0px));
+    padding-right: calc(8px + env(safe-area-inset-right, 0px));
+  }
+}

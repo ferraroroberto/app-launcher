@@ -1,0 +1,221 @@
+/* ---------- wide layout: the Board beside the rail (#1135) ---------- */
+/* design.md Layout, "Wide layout" (fleet-config#968): the 80px left rail
+   itself — placement, the content offset and top gap — comes from the
+   vendored nav (_vendored/nav/nav-tabs.css, project-scaffolding#281). What
+   stays here is the Board's full-width exception, which the scaffold leaves
+   app-side: its full-bleed breakout (#325) starts at the rail's edge, so the
+   Board, its header and the nav share one measure. Below 1100px, or on a
+   coarse pointer at any width, none of this applies. */
+@media (min-width: 1100px) and (pointer: fine) {
+  /* The Board spans the whole content box right of the rail: .app drops its
+     measure instead of the pane breaking out by 100vw, which counts the
+     scrollbar gutter and landed the pane 7.5px under the rail. */
+  .app:has(> #paneBoard:not([hidden])) {
+    max-width: none;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  #paneBoard {
+    width: auto;
+    left: auto;
+    right: auto;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 0 var(--gap);
+  }
+}
+
+/* ---------- wide layout: Code tab list-and-detail (#1135) ---------- */
+/* design.md Layout, "Master-detail": on the Code tab the session list and the
+   session view sit side by side, list : detail = 1 : 1.5 of the space right
+   of the rail, each scrolling on its own. The view is the same overlay the
+   phone opens full-screen, docked into the detail pane; with nothing open,
+   the pane says so. Leaving the tab closes the view (session-overlay.js).
+   Fixed-position lengths below are percentages of the viewport, so the list
+   and the detail meet on one edge. */
+.session-detail-empty { display: none; }
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(nav.tabs[data-active-tab="claude"]) .app {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: var(--layout-rail);
+    width: calc((100% - var(--layout-rail)) / 2.5);
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+    /* Fixed makes .app a stacking context, so the full-screen overlays
+       nested inside it (image lightbox, summary modal) stack within
+       it; the changes viewer is body-level since #1349. Lifting it over the docked view (300) keeps them on
+       top; the two panes never overlap, so nothing else changes order. */
+    z-index: 310;
+  }
+  /* The Changed files / Show changes panel (#1349, #977) is body-level and a
+     full-window layer, not a docked pane: at the shared 300 it sat under the
+     310 column above and the Coding tab's cards painted over its file list
+     (#1471). One step over that column, still under the lightbox / summary
+     modal (350) and the toast (400). */
+  #changesOverlay { z-index: 320; }
+  body:has(nav.tabs[data-active-tab="claude"]) #terminalOverlay,
+  body:has(nav.tabs[data-active-tab="claude"]):not(.terminal-open) .session-detail-empty {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: calc(var(--layout-rail) + (100% - var(--layout-rail)) / 2.5);
+    border-left: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  /* The phone's scroll lock is for a view that covers the page; here the
+     list beside it keeps scrolling (lockBodyScroll skips this query too). */
+  body.terminal-open {
+    overflow: visible;
+    height: auto;
+    touch-action: auto;
+  }
+  body:has(nav.tabs[data-active-tab="claude"]):not(.terminal-open) .session-detail-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    padding: var(--space-xl);
+    text-align: center;
+    color: var(--muted);
+  }
+  .session-detail-empty .icon {
+    width: var(--icon-feature);
+    height: var(--icon-feature);
+  }
+  .session-detail-empty-title {
+    margin: 0;
+    color: var(--fg);
+    font-weight: 600;
+  }
+  .session-detail-empty-hint {
+    margin: 0;
+    max-width: 36ch;
+    font-size: var(--font-body-sm);
+  }
+  /* The row whose session is in the view keeps the accent-soft tint. */
+  #sessionsList li.session-item[aria-current="true"] {
+    background: var(--accent-soft);
+    --muted: var(--accent-text);
+  }
+}
+
+/* ---------- wide layout: Jobs tab list-and-detail (#1438) ---------- */
+/* The same master-detail as the Code tab: the job sheet docks as the detail
+   pane (opened non-modal by jobs.js at this query), list : detail = 1 :
+   1.5 right of the rail. With no job open, the pane shows the week's
+   schedule (#1505), the Schedule sheet's content under "This week". */
+.job-detail-empty { display: none; }
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(nav.tabs[data-active-tab="jobs"]) .app {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: var(--layout-rail);
+    width: calc((100% - var(--layout-rail)) / 2.5);
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+  }
+  body:has(nav.tabs[data-active-tab="jobs"]) #jobSheet[open]:not(:modal),
+  body:has(nav.tabs[data-active-tab="jobs"]):not(:has(#jobSheet[open])) .job-detail-empty {
+    position: fixed;
+    inset: 0 0 0 calc(var(--layout-rail) + (100% - var(--layout-rail)) / 2.5);
+    width: auto;
+    height: auto;
+    max-width: none;
+    max-height: none;
+    margin: 0;
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    box-sizing: border-box;
+  }
+  #jobSheet[open]:not(:modal) .detail-card { border-radius: 0; }
+  body:has(nav.tabs[data-active-tab="jobs"]):not(:has(#jobSheet[open])) .job-detail-empty {
+    display: block;
+    padding: var(--space-lg) var(--space-lg) var(--space-xl);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .job-week-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: 0 0 var(--space-md);
+    font-size: var(--font-heading-lg);
+    line-height: 1.2;
+  }
+  .job-week-body { max-width: var(--layout-measure); }
+  /* The row whose job is in the pane keeps the accent-soft tint. */
+  #jobsList li.job-row[aria-current="true"] {
+    background: var(--accent-soft);
+    --muted: var(--accent-text);
+  }
+}
+
+/* ---------- wide layout: Apps tab in two columns (#1505) ---------- */
+/* Apps is a PC surface (step 5 of #1500), so at the wide query it uses the
+   room the way Code and Jobs do: two columns right of the rail, each
+   scrolling on its own, split 1 : 1.5 like theirs. The left is the page
+   (header, Apps, Trays: what can I start); the right is #appsNowCol (Running,
+   Other ports inline, and a plain line when nothing runs: what is up now),
+   which apps.js moves after Trays so the keyboard reaches the list first.
+   Below the query the column is the phone's Running card and nothing here
+   applies; the inline ports card, the idle line and the visible running
+   actions are wide-only. */
+.other-ports-card,
+.apps-idle-line,
+.running-app-actions { display: none; }
+/* Moved into the inline card, the sheet's list runs full-bleed like every
+   card's rows; only its footnote and states keep the body inset. */
+.card.action-list > .collapse-body > .listeners-body { margin-inline: 0; }
+.card.action-list > .collapse-body > .listeners-body > :not(.action-rows) { margin-inline: 14px; }
+@media (min-width: 1100px) and (pointer: fine) {
+  body:has(nav.tabs[data-active-tab="apps"]) .app {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: var(--layout-rail);
+    width: calc((100% - var(--layout-rail)) / 2.5);
+    max-width: none;
+    margin: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-sizing: border-box;
+  }
+  body:has(nav.tabs[data-active-tab="apps"]) .apps-now-col {
+    position: fixed;
+    inset: 0 0 0 calc(var(--layout-rail) + (100% - var(--layout-rail)) / 2.5);
+    padding: calc(env(safe-area-inset-top, 0px) + var(--gap) + var(--space-xs)) var(--gap) var(--space-xl);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-left: 1px solid var(--line);
+    box-sizing: border-box;
+  }
+  .other-ports-card { display: block; }
+  /* Inline, the sheet's drill row and the phone's empty-state block and
+     footnote give way to the card below and one plain line. */
+  .running-apps-card .other-ports-row,
+  .running-apps-card #runningAppsEmpty,
+  .running-apps-card .running-apps-note { display: none; }
+  /* The card body's 14px inset is its margin (the action-list rule). */
+  .apps-idle-line:not([hidden]) {
+    display: block;
+    margin-block: 0;
+    padding-block: var(--space-md);
+    color: var(--muted);
+  }
+  /* Open, Copy URL and Stop beside the kebab, each the 44px plain verb; the
+     group's box matches theirs so its gap is 0 and the targets touch. */
+  .running-app-actions { display: flex; --icon-btn-box: var(--row-sm); }
+}
+

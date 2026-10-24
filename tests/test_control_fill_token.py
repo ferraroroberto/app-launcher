@@ -10,12 +10,11 @@ or when dark's ``--input-bg`` drifts back to a true-black fill.
 
 from __future__ import annotations
 
-import pathlib
 import re
 
 import pytest
 
-STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
+from tests._css import stylesheet_text
 
 # Selectors whose background is the control fill. ``--card-off`` stays for
 # off-card wells (code blocks, the segmented track), so it is not listed.
@@ -31,8 +30,7 @@ _CONTROLS = [
 
 
 def _css() -> str:
-    css = (STATIC / "styles.css").read_text(encoding="utf-8").replace("\r\n", "\n")
-    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", stylesheet_text(), flags=re.S)
 
 
 def _background_of(selector: str) -> str:
@@ -41,7 +39,7 @@ def _background_of(selector: str) -> str:
             m = re.search(r"(?<![\w-])background:\s*([^;]+);", body)
             assert m, f"{selector} sets no background"
             return m.group(1).strip()
-    raise AssertionError(f"no rule for {selector!r} in styles.css")
+    raise AssertionError(f"no rule for {selector!r} in the stylesheets")
 
 
 @pytest.mark.parametrize("selector", _CONTROLS)

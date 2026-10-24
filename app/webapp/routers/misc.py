@@ -130,7 +130,7 @@ async def version(request: Request) -> Dict[str, Any]:
     return {
         "git_sha": _GIT_SHA,
         "built_at": _BUILT_AT,
-        "asset_hash": asset_hash_for(asset_hashes, "styles.css") or "",
+        "asset_hash": asset_hash_for(asset_hashes, "styles/base.css") or "",
         "head_sha": head_sha,
         "session_host": session_host,
     }

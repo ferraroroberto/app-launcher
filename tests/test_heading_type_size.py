@@ -9,17 +9,15 @@ is a control, not a heading, so it keeps the caption size.
 
 from __future__ import annotations
 
-import pathlib
 import re
 
 import pytest
 
-STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
+from tests._css import stylesheet_text
 
 
 def _css() -> str:
-    css = (STATIC / "styles.css").read_text(encoding="utf-8").replace("\r\n", "\n")
-    return re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    return re.sub(r"/\*.*?\*/", "", stylesheet_text(), flags=re.S)
 
 
 def _declaration(selector: str, prop: str) -> str:
@@ -28,7 +26,7 @@ def _declaration(selector: str, prop: str) -> str:
             m = re.search(rf"(?<![\w-]){prop}:\s*([^;]+);", body)
             assert m, f"{selector} sets no {prop}"
             return m.group(1).strip()
-    raise AssertionError(f"no rule for {selector!r} in styles.css")
+    raise AssertionError(f"no rule for {selector!r} in the stylesheets")
 
 
 @pytest.mark.parametrize("selector", [".board-plan-heading", ".context-filter-subhead"])

@@ -2,7 +2,7 @@
  *
  * At this query the nav is a left rail and the Code tab is list-and-detail:
  * the session view (#terminalOverlay) docks beside the session list instead
- * of covering it. CSS owns the placement (styles.css "wide layout"); this is
+ * of covering it. CSS owns the placement (styles/wide.css); this is
  * the one JS spelling of the same breakpoint, for the few behaviours that
  * change with it. Below it, or on a coarse pointer, nothing changes.
  */

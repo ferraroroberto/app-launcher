@@ -1,0 +1,361 @@
+/* ---------- collapsible cards (vendored disclosure) ---------- */
+/* Structure and closed-box geometry come from _vendored/disclosure — the
+   .card--collapsible modifier + .collapse-summary/.collapse-main/
+   .collapse-title/.collapse-chevron/.collapse-body classes. A <summary>
+   holds nothing but icon, title and chevron (#1132): a card's own controls
+   (git status, the launch toggles, Edit mode, sort/add) sit in a toolbar
+   row at the top of its body, where a near-miss can't fold the card. */
+.card-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  /* A wrapped line meets the one above across the row gap, where a combo
+     trigger's -5 and a toggle's -4 expansion need 9 (#1176). */
+  gap: var(--gap) 8px;
+  margin: 0 0 12px;
+}
+/* The vendored filter field above a long list (#1132): flush with the card
+   body's own padding rather than the component's gutter margin. */
+.action-row-filter.list-filter { margin: 0 0 12px; }
+/* Full-bleed action-row lists (#1128): Projects, Skills, Apps and Trays
+   carry the component contract's `.card.action-list`, so their rows run
+   edge to edge with the hairlines at the card's width. The rows sit in a
+   disclosure body, and the contract asks that host's side padding at zero
+   too; the body's other children (toolbar, filter, empty states) keep the
+   disclosure's 14px inset (disclosure.bodyPadding). */
+.card.action-list > .collapse-body { padding-inline: 0; }
+.card.action-list > .collapse-body > :not(.action-rows) { margin-inline: 14px; }
+/* Favorites filter: the star fills gold when the filter is active. */
+.fav-filter-btn.active .icon { fill: currentColor; }
+
+/* Image lightbox (#173, reused for transcript thumbnails by #1265): the
+   full-screen overlay for pan/zoom. */
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top, 8px) 8px env(safe-area-inset-bottom, 8px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  cursor: zoom-out;
+}
+.image-lightbox-img {
+  max-width: 100%;
+  height: auto;
+  /* Wider than the viewport when zoomed: let the overlay scroll to pan. */
+  border-radius: var(--radius-sm);
+}
+.image-lightbox-close {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 10px);
+  right: 14px;
+  z-index: 360;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(22, 27, 34, 0.9);
+  color: #fff;
+  font-size: var(--icon-title);
+  cursor: pointer;
+}
+/* Invisible hit-area expansion to the 44px effective floor (design.md Touch
+   targets); a co-applied .hit-target class can't be used here — it sets
+   position: relative, which would break this control's position: fixed. */
+.image-lightbox-close::before { content: ""; position: absolute; inset: -2px; }
+/* Tighter inter-tile gap on the Projects list — part of the vertical
+   compaction (issue #212); horizontal rhythm is left alone. */
+.opt-group {
+  padding: 6px 14px 14px;
+  border-top: 1px solid var(--line);
+}
+/* Agent group headers read in the app font, normal case — the uppercase
+   spaced-caption treatment looked like a different typeface next to the
+   mixed-case option rows (issue #383). */
+.opt-group-title {
+  font-size: var(--font-label);
+  font-weight: 600;
+  color: var(--muted);
+  margin: 12px 0 10px;
+}
+.opt-hint {
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  margin: 8px 2px;
+  line-height: 1.45;
+}
+.opt-hint code {
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--font-caption);
+}
+
+/* ---------- claude / antigravity option rows ---------- */
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.opt-row .select-native { flex: 1; }
+.opt-row .model-combo { flex: 1; min-width: 0; }
+.model-combo--settings .model-combo-trigger {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.opt-name {
+  font-size: var(--font-caption);
+  color: var(--muted);
+  width: 56px;
+  flex-shrink: 0;
+}
+/* The vendored segmented control (#1133, #1586) sits in an .opt-row beside its label:
+   it takes the row's remaining width, and the row owns the spacing. */
+.opt-row .segmented { flex: 1; min-width: 0; }
+/* A control stacked under its label keeps the 12px the retired range-tabs row
+   carried before the line of help below it. */
+.stacked > .segmented { margin-bottom: 12px; }
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-bottom: 10px;
+}
+/* App-level composition around the vendored track. The component owns the
+   button's geometry; callers own the adjacent human-readable label. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--row-sm);
+  font-size: var(--font-label);
+}
+.toggles .switch-row { flex: 1 1 180px; }
+/* The Visible agents list (issue #666) is a *list*, not a pair of related
+   switches like Verbose/Debug: one entry per line, name left and switch
+   pinned right, on the shared list-row divider. Wrapping three-to-a-line
+   (the default .toggles flow) made it ambiguous which switch belonged to
+   which agent, and the list grows with every new harness. */
+#agentVisibility.toggles { display: block; margin-bottom: 4px; }
+#agentVisibility .switch-row { display: flex; }
+#agentVisibility .switch-row + .switch-row { border-top: 1px solid var(--line-muted); }
+.flags-preview {
+  font-family: "SF Mono", "Fira Mono", monospace;
+  font-size: var(--font-caption);
+  color: var(--muted);
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+
+/* ---------- card list ---------- */
+.card-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+/* Repeated list rows render flat (issue #365, generalizing the Board
+   backlog's #337/#339 pattern app-wide): no per-row box — a hairline
+   separator between rows is the row boundary, GitHub-issue-list style.
+   The outer collapsible section containers (the vendored disclosure
+   component) keep their card look; only the rows inside them changed. */
+.app-item {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--line);
+}
+.app-item:last-child { border-bottom: none; }
+.app-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.launch-btn {
+  width: 100%;
+  padding: 16px 18px;
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  min-height: var(--row-lg);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.launch-btn:active { background: var(--card-2); }
+/* Apps + Trays rows are inert since #790 — launching moved to the per-row
+   ⚡/🚫👁 pair, so the body must not read or feel tappable. Keeps the
+   .launch-btn typography every other list row uses. */
+.launch-btn.inert {
+  cursor: default;
+}
+.launch-btn.inert:active { background: transparent; }
+.launch-btn .meta {
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+/* No uppercase transform (#1130): these chips carry *values* -- "py",
+   "daily 03:00", "p50 3m 33s" -- and uppercasing them made the units
+   ambiguous ("P50 3M 33S"). Section headings are sentence case too:
+   caps are the overline role's alone (design.md Typography, #1156). */
+.launch-btn .kind-pill {
+  display: inline-block;
+  font-size: var(--font-caption);
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  background: var(--neutral-soft);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  margin-right: 6px;
+}
+.app-item .row-actions {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  /* No border-left: the divider was part of the boxed-card look; flat
+     rows (issue #365) keep the action rail as plain glyphs. */
+}
+/* The rail's glyph buttons are the vendored icon-button at the 44px floor,
+   flush with the rail's right edge. */
+.app-item .row-actions {
+  --icon-btn-box: var(--hit-min);
+  align-items: flex-end;
+}
+/* The session and terminal menus' Stop row (data-item, sessions.js and
+   terminal-bar.js) tints on press. */
+.session-menu .row-menu-item[data-item="action-stop-close"]:active,
+.terminal-menu .row-menu-item[data-item="action-stop-close"]:active {
+  background: rgb(from var(--danger) r g b / 0.2);
+  color: var(--danger-text);
+}
+/* ---------- Jobs tab rows (#1438, step 6/7 of #1432) ---------- */
+/* A job row is the shared action-row with a job avatar: the name, one meta
+   line ("in 5m · Every 15 min") with chips for exceptions only, and the
+   seven-dot history as the trailing value inside the row's tap target,
+   before the one kebab. */
+/* The width budget at 390px: a name of about 24 characters must not be cut
+   (#1438's acceptance). The history is 6px dots on 2px gaps, 8px after the
+   text column, and the kebab's own box is the space on its right. */
+.job-row .action-row-main { padding-right: 0; }
+.job-row .job-sparkline { flex: none; margin-left: -4px; }
+.job-sparkline {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  line-height: 1;
+  white-space: nowrap;
+}
+/* A drawn dot, not a `●` glyph (#1127): the character sat on the text
+   baseline at a font-dependent size beside the Lucide icons. */
+.job-spark-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--muted);
+}
+/* The legend: muted success, red failed, amber not confirmed, a hollow ring
+   deferred, a short dash for no outcome. Healthy is quiet (#1505, decision 7
+   of #1500): a failure is the only colour in the strip, and each dot's title
+   still names its exact outcome. A run in progress takes the accent (work in
+   progress), never amber: the avatar's alive badge already says the job runs
+   (#1438). */
+.job-spark-dot.up { color: var(--muted); }
+.job-spark-dot.down { color: var(--danger); }
+.job-spark-dot.live { color: var(--accent); }
+.job-spark-dot.unconfirmed { color: var(--attention); }
+/* Deferred (#1316): a muted hollow ring, so it is not read as a run that
+   never happened. */
+.job-spark-dot.deferred {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px currentColor;
+}
+/* `unknown` is a run with no real outcome at all (skipped, dry run): a short
+   dash, so it never reads as the muted dot of a healthy run (#1505). An
+   unconfirmed one above did run and is worth a look, so it is not grey. */
+.job-spark-dot.unknown {
+  color: var(--muted);
+  height: 2px;
+  border-radius: 1px;
+}
+/* The avatar's glyph in the accent, like the drill rows': it is a job, not
+   a brand mark. */
+.job-avatar .avatar-glyph { color: var(--accent); }
+
+/* Kill stuck run, in the sheet above the runs: the danger tint at the 44px
+   floor, sized to its label. */
+.jobs-kill-btn {
+  width: auto;
+  min-height: var(--hit-min);
+  margin: 4px 0 12px;
+  padding: 0 14px;
+}
+
+/* ---------- Coding tab tiles (issue #45) ---------- */
+/* Bare folder name on the left, one icon button per coding agent on
+   the right — sat side by side, not stacked. */
+.agent-icon {
+  width: 24px;                    /* icons.size feature step (issue #355) */
+  height: 24px;
+  display: block;
+  pointer-events: none;   /* clicks land on the button, not the glyph */
+  /* No chip (#1070). #361 painted a theme-aware grey tile behind every mark
+     because a brand <img> is a separate document: its glyph fill could not
+     reach page CSS vars, so monochrome marks were baked to a fixed mid-tone
+     and needed a known surface to clear. The marks are inline sprite
+     symbols now (index.html's brand sprite), so a monochrome one inherits
+     currentColor from the button and is legible on the bare card in both
+     themes by construction — the chip has nothing left to do. */
+  flex-shrink: 0;
+}
+/* Favourites filter — icon-only at every width (#1070, kept by #1194), the
+   trailing star inside the Projects filter field since #1434: the vendored
+   icon-button at the 36px control box, pulled to the field's right edge.
+   The active filter takes the star's gold glyph (fill rule:
+   `.fav-filter-btn.active .icon`, near `.opt-group`); the accessible name
+   stays on aria-label/title. */
+.fav-filter-btn { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
+.fav-filter-btn.active { color: var(--star); }
+/* Shown in place of the list when the filter is on but nothing is starred. */
+.coding-fav-empty {
+  list-style: none;
+  padding: 10px 4px;
+  text-align: center;
+}
+.session-agent-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  /* Chip removed with the rest (#1070) — see .agent-icon above. */
+}
+
+/* ---------- running sessions ---------- */
+.sessions-card .card-list { margin-top: 4px; }
+

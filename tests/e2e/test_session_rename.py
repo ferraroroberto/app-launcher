@@ -501,7 +501,7 @@ def test_board_drawer_rename_btn_clickable_at_narrow_desktop_widths(
     authed_page: Page, base_url: str, width: int
 ) -> None:
     # Regression for #473: below ~1150px the desktop board grid
-    # (styles.css `@media (min-width: 700px) and (pointer: fine)`) let the
+    # (styles/board.css `@media (min-width: 700px) and (pointer: fine)`) let the
     # drawer-actions row overflow past its own column — the empty "Your
     # turn" column (stretched tall by CSS Grid's default row `align-items:
     # stretch` once the drawer expands its sibling) then won by paint order

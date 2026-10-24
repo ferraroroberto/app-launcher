@@ -1,7 +1,7 @@
 """Content-hash stamping for /static assets.
 
 The webapp ships ``index.html`` + a handful of ES-module ``.js`` files +
-``styles.css``. iOS Safari (and especially the standalone PWA) caches
+``styles/*.css``. iOS Safari (and especially the standalone PWA) caches
 those aggressively, so a deploy isn't really "live" until the cached
 copies are evicted. To make that deterministic we append ``?v=<hash>``
 to every asset URL. The hash is computed once at app startup from the

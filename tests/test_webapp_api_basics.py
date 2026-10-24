@@ -39,7 +39,7 @@ class TestIndex:
         client, _, _ = webapp_client
         resp = client.get("/")
         body = resp.text
-        assert "/static/styles.css?v=" in body
+        assert "/static/styles/base.css?v=" in body
         assert "/static/main.js?v=" in body
         # No literal ?v=18 left over from the manual era. Match the complete
         # legacy stamp (the closing quote) — a substring "?v=18" also matches

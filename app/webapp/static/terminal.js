@@ -773,7 +773,7 @@ let _savedScrollY = 0;
 // scroller and keeps the document 1px scrollable via body::after so iOS
 // holds the layout viewport expanded. Pinning body here would take that
 // spacer out of flow and strand the overlay above a dead band, so under
-// this query the pin is skipped — styles.css's matching block locks .app
+// this query the pin is skipped — styles/base.css's matching block locks .app
 // instead. Same query as the vendored shell, so the two never disagree.
 const STANDALONE_SHELL_MQ = window.matchMedia(
   '(pointer: coarse) and (max-width: 520px) and (display-mode: standalone)',
