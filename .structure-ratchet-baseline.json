@@ -31,8 +31,6 @@
     {"key": "fn:app/webapp/static/terminal.js:attachTerminalPane", "lines": 409},
     {"key": "fn:app/webapp/static/terminal.js:attachTerminalPane.applySize", "lines": 115},
     {"key": "fn:app/webapp/static/transcript-decisions.js:renderQuestion", "lines": 126},
-    {"key": "fn:app/webapp/static/voice.js:createDictation", "lines": 589},
-    {"key": "fn:app/webapp/static/voice.js:createDictation.startRecording", "lines": 155},
     {"key": "fn:src/board.py:jobs_attention", "lines": 109},
     {"key": "fn:src/board_exchange.py:resolve_exchange", "lines": 106},
     {"key": "fn:src/board_sessions.py:merge_sessions", "lines": 160},
