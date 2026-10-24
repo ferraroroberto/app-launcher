@@ -148,7 +148,7 @@ class TestMarkup:
         text = (_STATIC / "voice.js").read_text(encoding="utf-8")
         code = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
         sets = [ln for ln in code.splitlines() if "data-track" in ln]
-        assert sets == ["    if (button) button.setAttribute('data-track', _TAP_IDS[tapState()]);"], sets
+        assert sets == ["  if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);"], sets
         block = re.search(r"const _TAP_IDS = \{(.*?)\};", code, flags=re.S)
         assert block, "voice.js lost its _TAP_IDS map"
         ids = re.findall(r"^\s*\w+: '([^']*)',?$", block.group(1), flags=re.M)

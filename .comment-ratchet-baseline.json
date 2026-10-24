@@ -68,7 +68,7 @@
     {"key": "app/webapp/static/launch-toolbar.js", "count": 10},
     {"key": "app/webapp/static/layout.js", "count": 1},
     {"key": "app/webapp/static/life-os-viewer.js", "count": 6},
-    {"key": "app/webapp/static/life-os.js", "count": 90},
+    {"key": "app/webapp/static/life-os.js", "count": 75},
     {"key": "app/webapp/static/lightbox.js", "count": 1},
     {"key": "app/webapp/static/list-filter.js", "count": 3},
     {"key": "app/webapp/static/long-press-hint.js", "count": 1},
