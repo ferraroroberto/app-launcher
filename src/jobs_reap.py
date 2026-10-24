@@ -134,6 +134,20 @@ def _is_pidless_pending(record: Dict[str, Any]) -> bool:
     )
 
 
+def _executor_still_running(record: Dict[str, Any]) -> bool:
+    """True when the executor that owns ``record`` is provably still alive.
+
+    A short job's child exits long before the executor writes its exit code,
+    so a dead child alone does not make a run stranded. Records without an
+    ``executor_pid`` (written before the executor recorded one) keep the
+    child-only rule: with no executor to observe, there is nothing to defer to.
+    """
+    executor_pid = record.get("executor_pid")
+    if not isinstance(executor_pid, int) or executor_pid <= 0:
+        return False
+    return is_pid_alive(executor_pid, record.get("executor_create_time"))
+
+
 def _log_reap_skipped(job: Job, run_id: Any) -> None:
     logger.info(
         f"ℹ️ reap skipped for {job.id}/{run_id}: the executor finalised or "
@@ -214,7 +228,9 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     - the pid is alive, or looks alive and we have no ``pid_create_time`` to
       rule out reuse (a genuinely long-running job must never be reconciled
       out from under itself — Windows recycles pids, so a bare
-      ``pid_exists()`` isn't enough once we have a hint to check against).
+      ``pid_exists()`` isn't enough once we have a hint to check against),
+    - the child is dead but the executor that spawned it is still alive: it
+      is about to write the exit code (:func:`_executor_still_running`).
 
     On a confirmed-dead pid, writes terminal fields mirroring the kill
     route: ``status: "failed"``, ``finished_at``/``duration_seconds`` when
@@ -238,6 +254,13 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
     run_id = record.get("run_id")
     if not run_id:
+        return None
+    if _executor_still_running(record):
+        logger.info(
+            f"ℹ️ reap deferred for {job.id}/{run_id}: child pid={pid} has "
+            f"exited but its executor (pid={record.get('executor_pid')}) is "
+            f"still running and will finalise the run"
+        )
         return None
     run_dir = runs_dir(job.id) / str(run_id)
 

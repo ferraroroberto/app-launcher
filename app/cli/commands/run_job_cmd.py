@@ -344,6 +344,19 @@ def _resolve_job_env_or_record_failure(
         return None
 
 
+def _own_create_time() -> Optional[float]:
+    """This process's OS ``create_time()``, the liveness hint ``is_pid_alive``
+    compares against. It must be the OS value, not ``time.time()`` at the
+    write: a process up longer than the check's tolerance would otherwise look
+    like a different process that reused the pid."""
+    import psutil  # local — keeps psutil out of cold start
+
+    try:
+        return psutil.Process(os.getpid()).create_time()
+    except (psutil.Error, OSError):
+        return None
+
+
 def _spawn_and_wait(
     job: Job,
     argv: List[str],
@@ -391,7 +404,17 @@ def _spawn_and_wait(
             # (src.jobs_reap) tell "still this process" apart from "a
             # since-recycled pid" — Windows reuses pids, so a bare
             # pid_exists() isn't enough (issue #591).
-            write_run_json(run_dir, pid=proc.pid, pid_create_time=time.time())
+            # The child's pid dies the moment it exits, before this executor
+            # has written the exit code; recording our own (same write, so a
+            # reaper that sees the child's pid sees this too) lets it tell
+            # "still finalising" from "executor died".
+            write_run_json(
+                run_dir,
+                pid=proc.pid,
+                pid_create_time=time.time(),
+                executor_pid=os.getpid(),
+                executor_create_time=_own_create_time(),
+            )
             try:
                 sampler = ResourceSampler(proc.pid)
                 sampler.start()
