@@ -27,8 +27,6 @@
     {"key": "fn:app/webapp/static/swipe-row.js:attachSwipe", "lines": 129},
     {"key": "fn:app/webapp/static/terminal-bar.js:wireTerminalMenu", "lines": 122},
     {"key": "fn:app/webapp/static/terminal-connection.js:connectTerminalWs", "lines": 118},
-    {"key": "fn:app/webapp/static/terminal.js:attachTerminalPane", "lines": 409},
-    {"key": "fn:app/webapp/static/terminal.js:attachTerminalPane.applySize", "lines": 115},
     {"key": "fn:app/webapp/static/transcript-decisions.js:renderQuestion", "lines": 126},
     {"key": "fn:src/board.py:jobs_attention", "lines": 109},
     {"key": "fn:src/board_exchange.py:resolve_exchange", "lines": 106},
