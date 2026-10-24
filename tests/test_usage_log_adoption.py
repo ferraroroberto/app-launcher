@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from src.shell_html import assemble_shell
+from app.webapp.shell_html import assemble_shell
 from src.subprocess_flags import NO_WINDOW
 from src.usage_log import ID_PATTERN
 

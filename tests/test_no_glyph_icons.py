@@ -13,7 +13,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
-from src.shell_html import assemble_shell
+from app.webapp.shell_html import assemble_shell
 
 _INDEX = Path(__file__).resolve().parents[1] / "app" / "webapp" / "static" / "index.html"
 
