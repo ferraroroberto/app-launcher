@@ -26,6 +26,7 @@ from src.webapp_config import WebappConfig
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 PDF = b"%PDF-1.7\n%fake\n"
+HTML = "<!doctype html><title>r</title><script>fetch('/api/board')</script><p>café</p>"
 
 
 @pytest.fixture(autouse=True)
@@ -180,7 +181,7 @@ def test_a_symlink_from_scratch_to_outside_is_out_of_root(tmp_path: Path, temp_b
     assert _refusal(link, proj, _default_roots(proj)) == "out_of_root"
 
 
-@pytest.mark.parametrize("name", ["page.html", "logo.svg", "tool.exe", "data.xlsx", "noext", "run.bat", "app.jar", "app.apk",
+@pytest.mark.parametrize("name", ["page.xhtml", "logo.svg", "tool.exe", "data.xlsx", "noext", "run.bat", "app.jar", "app.apk",
                                   "doc.docx", "bare.tar", "pack.rar"])
 def test_types_off_the_allowlist_are_refused(proj: Path, name: str):
     (proj / name).write_bytes(b"<svg onload=alert(1)>")
@@ -196,6 +197,39 @@ def test_types_off_the_allowlist_are_refused(proj: Path, name: str):
 def test_bytes_that_are_not_what_the_extension_claims_are_refused(proj: Path, name: str, data: bytes):
     (proj / name).write_bytes(data)
     assert _refusal(proj / name, proj, _roots(proj)) == "content_mismatch"
+
+
+@pytest.mark.parametrize("name", ["report.html", "page.htm", "LOUD.HTML"])
+def test_an_html_document_is_read_as_html_when_its_bytes_are_utf8_text(proj: Path, name: str):
+    (proj / name).write_text(HTML, encoding="utf-8")
+    _resolved, data, kind, media = session_outbox.read_source(name, str(proj), _roots(proj))
+    assert (data, kind, media) == (HTML.encode("utf-8"), "html", "text/html; charset=utf-8")
+
+
+@pytest.mark.parametrize("data", [b"<p>a\x00b</p>", "<p>café</p>".encode("latin-1"), PNG])
+def test_an_html_file_that_is_not_utf8_text_is_a_content_mismatch(proj: Path, data: bytes):
+    (proj / "page.html").write_bytes(data)
+    assert _refusal(proj / "page.html", proj, _roots(proj)) == "content_mismatch"
+
+
+def test_html_has_its_own_larger_cap_and_every_other_kind_keeps_the_common_one(proj: Path, monkeypatch):
+    assert session_outbox.MAX_HTML_BYTES == 25 * 1024 * 1024
+    assert session_outbox.MAX_FILE_BYTES == 15 * 1024 * 1024
+    monkeypatch.setattr(session_outbox, "MAX_FILE_BYTES", 16)
+    monkeypatch.setattr(session_outbox, "MAX_HTML_BYTES", 32)
+    (proj / "mid.html").write_text("x" * 32, encoding="utf-8")
+    (proj / "mid.txt").write_text("x" * 32, encoding="utf-8")
+    (proj / "big.html").write_text("x" * 33, encoding="utf-8")
+    assert session_outbox.read_source(str(proj / "mid.html"), str(proj), _roots(proj))[2] == "html"
+    assert _refusal(proj / "mid.txt", proj, _roots(proj)) == "too_large"
+    assert _refusal(proj / "big.html", proj, _roots(proj)) == "too_large"
+
+
+def test_the_type_refusal_names_html_among_what_can_be_sent(proj: Path):
+    (proj / "logo.svg").write_text("<svg/>", encoding="utf-8")
+    with pytest.raises(OutboxRefusal) as info:
+        session_outbox.read_source(str(proj / "logo.svg"), str(proj), _roots(proj))
+    assert ", HTML and zip/gzip/7z archive files can be sent" in info.value.message
 
 
 def _zip_bytes() -> bytes:
@@ -262,11 +296,11 @@ def test_an_oversize_file_is_refused(proj: Path, monkeypatch):
 def test_the_three_main_refusals_name_three_different_reasons(tmp_path: Path, proj: Path, monkeypatch):
     monkeypatch.setattr(session_outbox, "MAX_FILE_BYTES", 16)
     (tmp_path / "out.png").write_bytes(PNG)
-    (proj / "page.html").write_text("<b>x</b>", encoding="utf-8")
+    (proj / "logo.svg").write_text("<svg/>", encoding="utf-8")
     (proj / "big.txt").write_text("x" * 32, encoding="utf-8")
     reasons = {
         _refusal(tmp_path / "out.png", proj, _roots(proj)),
-        _refusal(proj / "page.html", proj, _roots(proj)),
+        _refusal(proj / "logo.svg", proj, _roots(proj)),
         _refusal(proj / "big.txt", proj, _roots(proj)),
     }
     assert reasons == {"out_of_root", "type_not_allowed", "too_large"}
@@ -398,13 +432,13 @@ def test_send_user_file_becomes_refs_without_the_path(tmp_path: Path):
 
     path = _jsonl(tmp_path / "t.jsonl", [
         _prompt(),
-        _send_call(["C:/invented/place/chart.png", "notes.md", "page.html"], caption="before vs after"),
+        _send_call(["C:/invented/place/chart.png", "notes.md", "logo.svg"], caption="before vs after"),
     ])
     entries = st.transcript_page(path, flavor="claude")["entries"]
     call = next(e for e in entries if e["kind"] == "tool_call")
     offset = call["sent_files"][0]["offset"]
     assert [(f["n"], f["name"], f["kind"]) for f in call["sent_files"]] == [
-        (0, "chart.png", "image"), (1, "notes.md", "markdown"), (2, "page.html", None),
+        (0, "chart.png", "image"), (1, "notes.md", "markdown"), (2, "logo.svg", None),
     ]
     assert call["caption"] == "before vs after"
     assert "invented/place" not in json.dumps(call["sent_files"])
@@ -525,6 +559,29 @@ def test_an_archive_is_served_as_an_attachment_byte_for_byte(webapp_client, _byp
     assert got.headers["content-security-policy"].startswith("sandbox")
 
 
+_HTML_CSP = "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:"
+
+
+def _assert_sandboxed_html(got) -> None:
+    # Opened straight in a tab, the document gets an opaque origin, no script
+    # and no fetch from outside itself.
+    assert got.status_code == 200 and got.content == HTML.encode("utf-8")
+    assert got.headers["content-type"] == "text/html; charset=utf-8"
+    assert got.headers["content-security-policy"] == _HTML_CSP
+    assert got.headers["x-content-type-options"] == "nosniff"
+    assert got.headers["cache-control"] == "no-store"
+    assert got.headers["content-disposition"] == "inline; filename*=UTF-8''page.html"
+
+
+def test_an_html_document_is_served_under_the_full_csp_sandbox(webapp_client, _bypass_gate, proj: Path):
+    client, _, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = [_live(proj)]
+    (proj / "page.html").write_text(HTML, encoding="utf-8")
+    entry = client.post("/api/claude-code/sessions/s1/outbox", json={"path": "page.html"}).json()["entry"]
+    assert entry["kind"] == "html" and entry["media"] == "text/html; charset=utf-8"
+    _assert_sandboxed_html(client.get(f"/api/claude-code/sessions/s1/outbox/{entry['id']}"))
+
+
 def test_images_pdfs_and_text_keep_an_inline_disposition(webapp_client, _bypass_gate, proj: Path):
     client, _, overrides = webapp_client
     overrides["session"].list_sessions.return_value = [_live(proj)]
@@ -550,7 +607,7 @@ def test_a_hostile_file_name_is_quoted_in_the_header(webapp_client, _bypass_gate
 
 
 @pytest.mark.parametrize("name,data,status,reason", [
-    ("page.html", b"<b>x</b>", 415, "type_not_allowed"),
+    ("logo.svg", b"<svg/>", 415, "type_not_allowed"),
     ("fake.png", b"text", 415, "content_mismatch"),
     ("fake.zip", b"text", 415, "content_mismatch"),
     ("big.txt", b"x" * 32, 413, "too_large"),
@@ -617,11 +674,12 @@ def test_send_user_file_is_served_through_the_same_guards(
     client, _, overrides = webapp_client
     overrides["session"].list_sessions.return_value = [_live(proj)]
     (proj / "chart.png").write_bytes(PNG)
-    (proj / "page.html").write_text("<b>x</b>", encoding="utf-8")
+    (proj / "logo.svg").write_text("<svg/>", encoding="utf-8")
+    (proj / "page.html").write_text(HTML, encoding="utf-8")
     (tmp_path / "elsewhere.png").write_bytes(PNG)
     path = _jsonl(tmp_path / "t.jsonl", [
         _prompt(),
-        _send_call(["chart.png", str(tmp_path / "elsewhere.png"), "page.html"], cwd=str(proj)),
+        _send_call(["chart.png", str(tmp_path / "elsewhere.png"), "logo.svg", "page.html"], cwd=str(proj)),
     ])
     monkeypatch.setattr(board, "state_row_for_session", lambda live, rows, sid: {"transcript_path": str(path)})
     entries = client.get("/api/claude-code/sessions/s1/transcript").json()["entries"]
@@ -637,6 +695,7 @@ def test_send_user_file_is_served_through_the_same_guards(
     assert out.status_code == 403 and out.json()["detail"]["reason"] == "out_of_root"
     typed = fetch(refs[2])
     assert typed.status_code == 415 and typed.json()["detail"]["reason"] == "type_not_allowed"
+    _assert_sandboxed_html(fetch(refs[3]))
     # An offset past anything seek() takes is a validation error, not a 500.
     huge = client.get(f"/api/claude-code/sessions/s1/transcript/file?offset={2**63}&n=0")
     assert huge.status_code == 422

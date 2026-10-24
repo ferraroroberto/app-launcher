@@ -43,7 +43,7 @@ _PAGE = {
          "sidechain": False, "caption": "",
          "sent_files": [
              {"offset": 7, "n": 0, "name": "diagram.png", "kind": "image"},
-             {"offset": 7, "n": 1, "name": "page.html", "kind": None},
+             {"offset": 7, "n": 1, "name": "logo.svg", "kind": None},
          ]},
     ],
     "outbox_rev": 1,
@@ -76,7 +76,7 @@ def _stub(page: Page, outbox_calls: list) -> None:
         else:
             route.fulfill(status=415, content_type="application/json", body=_json.dumps({"detail": {
                 "reason": "type_not_allowed",
-                "message": "only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent",
+                "message": "only images (png, jpg, gif, webp), PDF, text, markdown, HTML and zip/gzip/7z archive files can be sent",
             }}))
 
     base = r".*/api/claude-code/sessions/" + _SID
@@ -121,7 +121,7 @@ def test_outbox_and_send_user_file_render_in_the_chat(authed_page: Page, base_ur
     expect(sent.first.locator(".tr-file-image img")).to_have_attribute("src", re.compile(r"^blob:"))
     expect(sent.nth(1)).to_have_class(re.compile(r"\btr-file-failed\b"))
     expect(sent.nth(1).locator(".tr-file-note")).to_have_text(
-        "Not shown: only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent"
+        "Not shown: only images (png, jpg, gif, webp), PDF, text, markdown, HTML and zip/gzip/7z archive files can be sent"
     )
     assert authed_page.evaluate("window.__pwned === undefined")
 
@@ -198,3 +198,160 @@ def test_an_archive_card_is_a_ready_download_link_with_no_preview(authed_page: P
     expect(hostile.locator(".tr-file-name img")).to_have_count(0)
     expect(hostile.locator("a.tr-file-open")).to_have_attribute("download", _HOSTILE_NAME)
     assert authed_page.evaluate("window.__pwned === undefined")
+
+
+# --------------------------------------------------------------- HTML documents
+
+_TRACKER = "https://tracker.example.invalid/"
+_HOSTILE_HTML = (
+    "<!doctype html><html><head>"
+    f'<link rel="stylesheet" href="{_TRACKER}sheet.css"></head><body>'
+    '<h1 id="h">Quarterly report</h1>'
+    f'<img id="pixel" src="{_TRACKER}pixel.png" alt="">'
+    "<script>"
+    "try { parent.document.body.dataset.pwned = 'parent'; } catch (e) {}"
+    "try { top.__pwned = 1; } catch (e) {}"
+    # The issue's own probe, the Board API, split so the Board surface's
+    # e2e routing does not read this file as a Board test.
+    "fetch('/api/' + 'board').then(function () { try { parent.__pwned = 2; } catch (e) {} });"
+    "document.getElementById('h').textContent = 'script ran';"
+    "</script></body></html>"
+)
+_HTML_ID = "d" * 32
+_MB5 = 5 * 1024 * 1024
+
+
+def _open_chat_with(page: Page, base_url: str, outbox: list, bodies: dict) -> list:
+    """Open the Chat of a session whose outbox holds ``outbox``; each entry's
+    bytes are ``bodies[id]``. Returns the URLs any frame but the app's own
+    loaded, plus every request that reached the tracker: an iframe that
+    fetches, loads or navigates shows up here. A request CSP blocks never
+    finishes, so it is not one."""
+    page_body = dict(_PAGE, entries=_PAGE["entries"][:2], outbox=outbox)
+    frame_requests: list = []
+    page.on("requestfinished", lambda req: frame_requests.append(req.url) if req.frame != page.main_frame else None)
+
+    def tracker(route):
+        frame_requests.append(route.request.url)
+        route.fulfill(status=200, body=_PNG)
+
+
+    def transcript(route):
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(page_body))
+
+    def outbox_file(route):
+        route.fulfill(status=200, content_type="text/html; charset=utf-8",
+                      body=bodies[route.request.url.rsplit("/", 1)[1]])
+
+    _stub(page, [])
+    base = r".*/api/claude-code/sessions/" + _SID
+    page.route(re.compile(base + r"/transcript(\?.*)?$"), transcript)
+    page.route(re.compile(base + r"/outbox/[a-f0-9]+$"), outbox_file)
+    page.route(re.compile(r"https://tracker\.example\.invalid/.*"), tracker)
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    stub_session_mirror(page)
+    open_session_row(page, page.locator(f'#sessionsList li[data-session-id="{_SID}"]'), mode="chat")
+    return frame_requests
+
+
+def _html_entry(entry_id: str, name: str, size: int) -> dict:
+    return {"id": entry_id, "name": name, "caption": "", "kind": "html",
+            "media": "text/html; charset=utf-8", "size": size, "timestamp": "2026-10-12T10:00:05Z"}
+
+
+def _assert_inert(page: Page, frame, frame_requests: list) -> None:
+    """The sandboxed document rendered, ran no script, reached nothing of the
+    app's and loaded nothing from outside itself."""
+    body = frame.content_frame
+    expect(body.locator("#h")).to_have_text("Quarterly report")
+    # A CSP-blocked image settles as broken; a loaded one would be a request.
+    pixel = body.locator("#pixel")
+    pixel.evaluate("img => img.complete || new Promise(r => img.onerror = img.onload = r)")
+    assert pixel.evaluate("img => img.naturalWidth") == 0
+    assert frame_requests == []
+    assert page.evaluate("document.body.dataset.pwned === undefined && window.__pwned === undefined")
+    assert frame.get_attribute("sandbox") == ""
+
+
+@pytest.mark.iphone
+def test_a_sent_html_document_runs_no_script_and_loads_nothing(authed_page: Page, base_url: str) -> None:
+    """A document that tries to read the app, call its API and phone home
+    does none of it, in the card or in the viewer."""
+    frame_requests = _open_chat_with(
+        authed_page, base_url, [_html_entry(_HTML_ID, "report.html", len(_HOSTILE_HTML))],
+        {_HTML_ID: _HOSTILE_HTML},
+    )
+    card = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
+    expect(card.locator(".tr-file-note")).to_have_text("Shown without scripts")
+    _assert_inert(authed_page, card.locator("iframe.tr-file-html-frame"), frame_requests)
+    # No same-origin page exists for it: the Download blob is opaque bytes.
+    card.locator(".tr-file-html-open").click()
+    viewer = authed_page.locator("#htmlViewer")
+    expect(viewer).to_be_visible()
+    download = viewer.locator("#htmlViewerDownload")
+    expect(download).to_have_attribute("download", "report.html")
+    assert download.evaluate("a => fetch(a.href).then(r => r.blob()).then(b => b.type)") == "application/octet-stream"
+    _assert_inert(authed_page, viewer.locator("iframe"), frame_requests)
+
+
+@pytest.mark.iphone
+def test_the_html_viewer_closes_on_esc_backdrop_and_back_and_returns_focus(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
+    doc = "<!doctype html><h1 id='h'>Quarterly report</h1>"
+    _open_chat_with(authed_page, base_url, [_html_entry(_HTML_ID, "report.html", len(doc))], {_HTML_ID: doc})
+    card = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
+    preview = card.locator(".tr-file-html-open")
+    expect(preview).to_have_attribute("aria-label", "Open report.html")
+    viewer = authed_page.locator("#htmlViewer")
+    vw = authed_page.viewport_size["width"]
+
+    def open_it(opener) -> None:
+        opener.click()
+        expect(viewer).to_be_visible()
+        expect(viewer.locator("#htmlViewerName")).to_have_text("report.html")
+        expect(viewer.locator("iframe").content_frame.locator("#h")).to_have_text("Quarterly report")
+
+    def closed() -> None:
+        expect(viewer).to_be_hidden()
+        expect(preview).to_be_focused()
+        expect(viewer.locator("iframe")).to_have_count(0)
+        expect(authed_page.locator("#terminalOverlay")).to_be_visible()
+
+    open_it(card.locator("button.tr-file-open"))
+    box = viewer.bounding_box()
+    if vw <= 520:  # the phone sheet fills the screen
+        assert box["x"] == 0 and box["width"] == vw
+    else:
+        assert box["width"] <= 1100 and box["x"] > 0
+    authed_page.keyboard.press("Escape")
+    closed()
+    open_it(preview)
+    authed_page.evaluate("history.back()")  # what the back gesture does
+    closed()
+    if vw > 520:  # only the desktop dialog leaves a backdrop to tap
+        open_it(preview)
+        authed_page.mouse.click(5, 5)
+        closed()
+    # Every close took its own history marker with it.
+    assert authed_page.evaluate("history.state === null || !history.state.htmlViewer")
+
+
+def test_a_document_past_5_mb_is_a_tile_in_the_card_and_renders_in_the_viewer(
+    authed_page: Page, base_url: str
+) -> None:
+    def doc(size: int) -> str:
+        head = "<!doctype html><h1 id='h'>Big report</h1>"
+        return head + " " * (size - len(head))
+
+    small, big = "e" * 32, "f" * 32
+    _open_chat_with(authed_page, base_url, [
+        _html_entry(small, "at-the-line.html", _MB5), _html_entry(big, "past-the-line.html", _MB5 + 1),
+    ], {small: doc(_MB5), big: doc(_MB5 + 1)})
+    cards = authed_page.locator("#transcriptList .tr-file-card[data-kind='html']")
+    expect(cards.first.locator("iframe.tr-file-html-frame")).to_have_count(1)
+    expect(cards.first.locator(".tr-file-html-tile")).to_have_count(0)
+    expect(cards.nth(1).locator(".tr-file-html-tile")).to_have_text("HTML document")
+    expect(cards.nth(1).locator("iframe")).to_have_count(0)
+    cards.nth(1).locator(".tr-file-html-open").click()
+    expect(authed_page.locator("#htmlViewer iframe").content_frame.locator("#h")).to_have_text("Big report")

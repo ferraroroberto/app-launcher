@@ -4,7 +4,8 @@ An agent in a launcher session posts ``{path, caption}`` to its session's
 outbox (``POST /api/claude-code/sessions/{sid}/outbox``, loopback-only). The
 file is checked here, **copied** into the launcher's own runtime store, and
 listed for the Chat pane, which renders it inline (image, PDF, text) under
-its caption, or as a download-only card (zip, gz, tgz, 7z). Copying at post time means what the owner sees is what the
+its caption, an HTML document in a sandbox that runs no script, or as a
+download-only card (zip, gz, tgz, 7z). Copying at post time means what the owner sees is what the
 agent sent, whatever happens to the source afterwards.
 
 Claude's own ``SendUserFile`` tool call reaches the same chat through the
@@ -18,7 +19,8 @@ transcript instead (``/transcript/file``); its listed paths go through
   scratch root (``outbox_scratch_roots``). Compared by path components, so
   ``proj-evil`` is not inside ``proj``.
 * ``not_found`` / ``not_a_file`` — nothing there, or a directory.
-* ``too_large`` — over :data:`MAX_FILE_BYTES`, checked on the stat *and* on
+* ``too_large`` — over the kind's cap (:data:`MAX_FILE_BYTES`, or
+  :data:`MAX_HTML_BYTES` for HTML), checked on the stat *and* on
   the bytes actually read, so a file growing under the read cannot slip past.
 * ``type_not_allowed`` — the extension is not on :data:`ALLOWED_TYPES`.
 * ``content_mismatch`` — the bytes are not what the extension claims (a
@@ -57,22 +59,33 @@ from src.image_sniff import IMAGE_MAGIC, sniff_image
 logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 15 * 1024 * 1024
+# A self-contained HTML report carries its images as base64 `data:` URIs,
+# about a third larger than the images themselves, so it gets more room.
+MAX_HTML_BYTES = 25 * 1024 * 1024
 MAX_CAPTION_CHARS = 500
 MAX_NAME_CHARS = 200
 MAX_ENTRIES_PER_SESSION = 50
 OUTBOX_TTL = 7 * 24 * 3600
 
-# Extension -> kind. Nothing that a browser would run (HTML, SVG) and nothing
-# it would sniff into something else: an image is served as the type its own
-# bytes prove, a PDF as a PDF, and every text kind as text/plain.
+# Extension -> kind. Nothing a browser would sniff into something else: an
+# image is served as the type its own bytes prove, a PDF as a PDF, every text
+# kind as text/plain, and HTML only under a CSP sandbox that runs no script
+# (HTML_CSP). SVG stays out: it is an image a browser would run.
 ALLOWED_TYPES: Dict[str, str] = {
     ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image", ".webp": "image",
     ".pdf": "pdf",
     ".txt": "text", ".log": "text",
     ".md": "markdown", ".markdown": "markdown",
+    ".html": "html", ".htm": "html",
     ".zip": "archive", ".gz": "archive", ".tgz": "archive", ".7z": "archive",
 }
 TEXT_MEDIA = "text/plain; charset=utf-8"
+HTML_MEDIA = "text/html; charset=utf-8"
+# What an HTML document may do wherever it opens: an opaque origin with no
+# script (`sandbox` with no allow-* token), and nothing fetched from outside
+# itself, so opening it cannot call the launcher's API or tell anyone it was
+# read. The Chat pane's viewer repeats it as a <meta> in the srcdoc.
+HTML_CSP = "sandbox; default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:"
 PDF_MEDIA = "application/pdf"
 # An archive is download-only: never rendered, so it is served as opaque bytes.
 ARCHIVE_MEDIA = "application/octet-stream"
@@ -91,7 +104,7 @@ ARCHIVE_MAGIC: Dict[str, bytes] = {
 # session_transcript.IMAGE_MAGIC — one magic-byte table for both the
 # transcript's inline images and this outbox (#1627).
 SERVED_MEDIA = frozenset(
-    [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA, ARCHIVE_MEDIA]
+    [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA, HTML_MEDIA, ARCHIVE_MEDIA]
 )
 # A session-host id or an entry id: both launcher-made. Anything else never
 # becomes a directory or file name here.
@@ -211,14 +224,14 @@ def sniff_media(kind: str, data: bytes, suffix: str = "") -> Optional[str]:
         return sniff_image(data)
     if kind == "pdf":
         return PDF_MEDIA if data.startswith(b"%PDF-") else None
-    if kind in ("text", "markdown"):
+    if kind in ("text", "markdown", "html"):
         if b"\x00" in data:
             return None
         try:
             data.decode("utf-8")
         except UnicodeDecodeError:
             return None
-        return TEXT_MEDIA
+        return HTML_MEDIA if kind == "html" else TEXT_MEDIA
     if kind == "archive":
         magic = ARCHIVE_MAGIC.get(suffix.lower())
         return ARCHIVE_MEDIA if magic and data.startswith(magic) else None
@@ -228,6 +241,11 @@ def sniff_media(kind: str, data: bytes, suffix: str = "") -> Optional[str]:
 def kind_of(name: str) -> Optional[str]:
     """The kind a file name's extension allows, else None."""
     return ALLOWED_TYPES.get(Path(name).suffix.lower())
+
+
+def max_bytes(kind: str) -> int:
+    """The size cap for a file of ``kind``."""
+    return MAX_HTML_BYTES if kind == "html" else MAX_FILE_BYTES
 
 
 def read_source(
@@ -270,17 +288,18 @@ def read_source(
     if kind is None:
         raise OutboxRefusal(
             "type_not_allowed",
-            "only images (png, jpg, gif, webp), PDF, text, markdown and zip/gzip/7z archive files can be sent",
+            "only images (png, jpg, gif, webp), PDF, text, markdown, HTML and zip/gzip/7z archive files can be sent",
         )
-    limit_mb = MAX_FILE_BYTES // (1024 * 1024)
+    limit = max_bytes(kind)
+    limit_mb = limit // (1024 * 1024)
     try:
-        if resolved.stat().st_size > MAX_FILE_BYTES:
+        if resolved.stat().st_size > limit:
             raise OutboxRefusal("too_large", f"the file is over the {limit_mb} MB limit")
         with resolved.open("rb") as fh:
-            data = fh.read(MAX_FILE_BYTES + 1)
+            data = fh.read(limit + 1)
     except OSError:
         raise OutboxRefusal("not_found", "the file could not be read") from None
-    if len(data) > MAX_FILE_BYTES:
+    if len(data) > limit:
         raise OutboxRefusal("too_large", f"the file is over the {limit_mb} MB limit")
     media = sniff_media(kind, data, resolved.suffix)
     if media is None:
