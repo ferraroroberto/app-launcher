@@ -4,7 +4,7 @@
  * Opened by the conversation sheet's "Read the conversation" (#1504), as a
  * tall sheet stacked over it: ✕, Escape and Done all come back to the sheet,
  * which holds every action (Resume, Rename, Copy link, Open raw, Delete).
- * An archived capture (life-os-archived.js) opens it straight from its row,
+ * An archived capture (life-os-convos.js) opens it straight from its row,
  * with Restore in Done's place.
  * The capture is parsed server-side (`/api/life-os/file/transcript`,
  * src/life_os_capture.py) into the entry shape the session overlay's Chat

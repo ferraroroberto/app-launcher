@@ -12,7 +12,7 @@
  * other action as a link row, Delete last in danger. Opened from a row and
  * from a ?convo= link; the reader (life-os-viewer.js), a raw capture, the
  * rename and the confirms all stack over it. What the zombie cleanup
- * archived shows apart, under the list (life-os-archived.js).
+ * archived shows apart, under the list (the archived section below).
  */
 
 import { els, state } from './state.js';
@@ -24,7 +24,6 @@ import { actionRow } from './action-rows.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { setAsyncState } from './async-state.js';
 import { closeConvoViewer, openConvoViewer, wireConvoViewer } from './life-os-viewer.js';
-import { hideArchived, loadArchived, wireArchived } from './life-os-archived.js';
 import {
   compareSkills, launchDetached, launchSkill, lifeOsModel,
   modelTag, resumedModelTag, refreshAfterLogChange, skillAvatar, skillsFilter, wireSheet,
@@ -774,6 +773,106 @@ function wireConvoSheet() {
   });
 }
 
+// ------------------------------------------------------------ archived
+// What the nightly zombie cleanup moved into its backup. Whenever the group
+// shows a search or a skill's list, the archived entries that search (or
+// skill) covers load beside it into a collapsed "Archived (n)" disclosure
+// under the list, absent when there are none, never mixed into the live list
+// or its count. A row opens the reader on the backup's copy with Restore as
+// its one primary; a refusal (a same-name capture or session id has appeared
+// since) shows the server's reason and changes nothing.
+
+// Bumped by every archived read and by hiding, so an answer that lands
+// after the field or scope moved on is dropped.
+let archivedSeq = 0;
+
+function entryUrl(r) {
+  return '/api/life-os/archived/' + [r.day, r.skill, r.capture].map(encodeURIComponent).join('/');
+}
+
+// The owner's title when the conversation had one, else the file name's
+// slug ("2026-09-13-0800-ferry-plans.md" reads "ferry plans").
+function archivedName(r) {
+  if (r.title) return r.title;
+  const slug = String(r.capture || '').replace(/\.md$/, '').replace(/^\d{4}-\d{2}-\d{2}-\d{4}-?/, '');
+  return slug.replace(/-/g, ' ') || r.capture || 'untitled';
+}
+
+function archivedWhen(r) {
+  const when = convoWhen(r.day);
+  if (!when) return '';
+  return 'Archived ' + (/^(Today|Yesterday)$/.test(when) ? when.toLowerCase() : when);
+}
+
+function archivedRow(r, scoped) {
+  const name = archivedName(r);
+  const open = function () { openArchived(r); };
+  return actionRow({
+    id: 'archived/' + r.day + '/' + r.skill + '/' + r.capture,
+    className: 'lifeos-convo-row lifeos-archived-row',
+    title: name,
+    meta: [archivedWhen(r), scoped ? '' : r.skill].filter(Boolean).join(' · '),
+    avatar: convoAvatar(r),
+    label: 'Read archived ' + name,
+    onMain: open,
+    trailing: rowChevron(open),
+  }).li;
+}
+
+function openArchived(r) {
+  openConvoViewer({ title: archivedName(r), agent: r.agent }, null, {
+    url: entryUrl(r) + '/transcript',
+    primary: { text: 'Restore', onTap: function (btn) { restore(r, btn); } },
+  });
+}
+
+async function restore(r, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Restoring…';
+  try {
+    await jsonApi(entryUrl(r) + '/restore', { method: 'POST' });
+  } catch (exc) {
+    btn.disabled = false;
+    btn.textContent = 'Restore';
+    apiFailToast('Not restored', exc);
+    return;
+  }
+  closeConvoViewer();
+  toast('Restored ' + archivedName(r), 'good', { icon: 'rotate-ccw' });
+  await refreshAfterLogChange();
+}
+
+function hideArchived() {
+  archivedSeq += 1;
+  if (!els.lifeOsArchived) return;
+  els.lifeOsArchived.hidden = true;
+  els.lifeOsArchived.open = false;
+  els.lifeOsArchivedList.replaceChildren();
+}
+
+// The archived entries a search (`query`) or a skill's list (`skillId`)
+// covers. Quiet on failure: the group is a side door, and the live list
+// beside it says what is wrong with the content endpoints.
+async function loadArchived(query, skillId) {
+  if (!els.lifeOsArchived || (!query && !skillId)) { hideArchived(); return; }
+  const mine = ++archivedSeq;
+  let url = '/api/life-os/archived?q=' + encodeURIComponent(query || '');
+  if (skillId) url += '&skill=' + encodeURIComponent(skillId);
+  let rows;
+  try {
+    rows = (await jsonApi(url)).archived || [];
+  } catch (exc) {
+    if (mine === archivedSeq) hideArchived();
+    return;
+  }
+  if (mine !== archivedSeq) return;
+  if (!rows.length) { hideArchived(); return; }
+  els.lifeOsArchivedCount.textContent = '(' + rows.length + ')';
+  els.lifeOsArchivedList.replaceChildren.apply(els.lifeOsArchivedList,
+    rows.map(function (r) { return archivedRow(r, !!skillId); }));
+  els.lifeOsArchived.hidden = false;
+}
+
 // Every DOM wire for the search field, its chip/sort/start-new controls, the
 // start picker and the conversation sheet + reader. life-os.js's wireLifeOs
 // calls this once, keeping itself the thin entry point.
@@ -800,7 +899,4 @@ export function wireConvoSearch() {
     [els.lifeOsStartPickerClose, els.lifeOsStartPickerDone]);
   wireConvoSheet();
   wireConvoViewer();
-  wireArchived({
-    avatar: convoAvatar, when: convoWhen, chevron: rowChevron, onRestored: refreshAfterLogChange,
-  });
 }
