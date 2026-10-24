@@ -180,6 +180,18 @@ try {
     if ($structureExit -eq 3) { Fail "structure ratchet NOT CONFIRMED (git was unusable, a file could not be read or parsed, or the declared shape is unknown)." }
     if ($structureExit -ne 0) { Fail "structure ratchet failed (exit $structureExit): a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .structure-ratchet-baseline.json." }
 
+    # Instruction ratchet (scaffold docs/instruction-ratchet.md): the prompt
+    # audit's lint rules over CLAUDE.md, AGENTS.md and every SKILL.md (plus the
+    # docs a skill links to) may not rise above .instruction-ratchet-baseline.json.
+    # Whole tree, never path-routed: AGENTS.md decides how CLAUDE.md is read; exit 3
+    # means git was unusable or an instruction file could not be read, a failure
+    # and never a pass.
+    Phase "instruction ratchet..."
+    & $python scripts/instruction_ratchet.py
+    $instructionExit = $LASTEXITCODE
+    if ($instructionExit -eq 3) { Fail "instruction ratchet NOT CONFIRMED (git was unusable, or an instruction file is not UTF-8, has a fence that never closes, or a skill description that cannot be read)." }
+    if ($instructionExit -ne 0) { Fail "instruction ratchet failed (exit $instructionExit): an instruction file gained a lint hit or passed its size cap beyond .instruction-ratchet-baseline.json; see the named rule and lines above." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")

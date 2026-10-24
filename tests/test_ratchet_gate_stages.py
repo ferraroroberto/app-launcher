@@ -1,4 +1,4 @@
-"""The gate's docs- and structure-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure- and instruction-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -37,6 +37,11 @@ def _stage(name: str) -> str:
      ["structure ratchet NOT CONFIRMED ("]),
     ("structure", {"src/big.py": "x = 1\n" * 1100}, 1, ["structure ratchet failed", "src/big.py: 1,100 lines"]),
     ("structure", {"src/a.py": "x = 1\n"}, 0, ["STAGE-PASSED"]),
+    ("instruction", {"CLAUDE.md": "# T\n\n```\nnever closed\n"}, 1,
+     ["instruction ratchet NOT CONFIRMED ("]),
+    ("instruction", {"CLAUDE.md": "# T\n\nAlways double-check your work.\n"}, 1,
+     ["instruction ratchet failed", "CLAUDE.md", "R-03"]),
+    ("instruction", {"CLAUDE.md": "# T\n\nPlain prose.\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
