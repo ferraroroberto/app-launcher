@@ -489,10 +489,11 @@ function wireChief() {
   });
 }
 
-// A chief switch saves at once and is re-read by the server on its next use,
+// A config switch saves at once and is re-read by the server on its next use,
 // so off is also the phone's kill switch: the doorbell (fleet-config#1457) by
-// its 3 s tick, the job-failure event by the next failed run.
-function wireChiefSwitch(el, key, label) {
+// its 3 s tick, the job-failure event by the next failed run, the Life OS
+// skill refresh by the next resume.
+function wireConfigSwitch(el, key, label) {
   if (!el) return;
   el.addEventListener('click', async function () {
     const next = el.getAttribute('aria-checked') !== 'true';
@@ -505,12 +506,14 @@ function wireChiefSwitch(el, key, label) {
   });
 }
 function wireChiefDoorbell() {
-  wireChiefSwitch(els.chiefDoorbellToggle, 'chief_doorbell', 'Chief doorbell');
-  wireChiefSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', 'Chief job failures');
+  wireConfigSwitch(els.chiefDoorbellToggle, 'chief_doorbell', 'Chief doorbell');
+  wireConfigSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', 'Chief job failures');
 }
 
 // ------------------------------------------------------------------- wire
 export function wireSettingsSheets() {
+  wireConfigSwitch(els.lifeOsRefreshSkillToggle, 'life_os_refresh_skill_instructions',
+    'Skill refresh on resume');
   document.querySelectorAll('#paneSettings [data-sheet]').forEach(function (btn) {
     btn.addEventListener('click', function () { showPath([btn.dataset.sheet]); });
   });

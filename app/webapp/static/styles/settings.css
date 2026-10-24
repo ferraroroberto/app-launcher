@@ -67,8 +67,10 @@ button.settings-row:active { background: var(--card-2); }
 .text-size-card .segmented { flex: 1; min-width: 0; }
 /* A row's value that is an exception (settings-sheets.js setValue). */
 .settings-row-value[data-tone="attention"] { color: var(--attention-text); }
-/* The note under This PC: it wraps, unlike a one-line group footer. */
+/* The note under a group (This PC, Life OS): it wraps, unlike a one-line group footer. */
 .settings-footnote { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
+/* A footnote mid-pane keeps the next group's overline off its last line. */
+.settings-footnote + .settings-overline { margin-top: 16px; }
 /* Launch defaults' per-agent rows: the same rows, boxed inside the sheet. */
 .settings-group--nested {
   border: 1px solid var(--line);

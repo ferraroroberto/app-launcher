@@ -484,6 +484,17 @@ class TestPatchConfig:
         assert load_webapp_config(cfg_path).chief_job_failures is False
         assert client.get("/api/config").json()["chief_job_failures"] is False
 
+    def test_life_os_skill_refresh_defaults_on_and_round_trips(self, webapp_client):
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        key = "life_os_refresh_skill_instructions"
+        assert client.get("/api/config").json()[key] is True
+        assert client.post("/api/config", json={key: False}).status_code == 200
+        assert getattr(app.state.webapp_config, key) is False
+        assert getattr(load_webapp_config(overrides["tmp_webapp_cfg_path"]), key) is False
+        assert client.post("/api/config", json={key: "false"}).status_code == 400
+
     @pytest.mark.parametrize("junk", ["false", 0, None])
     def test_chief_job_failures_rejects_non_booleans(self, webapp_client, junk):
         client, app, _ = webapp_client

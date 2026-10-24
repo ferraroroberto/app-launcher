@@ -357,17 +357,16 @@ class WebappConfig:
     coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
-    # Skill ids the user starred on the Life OS tab (issue #1070), the same
-    # shape and the same treatment `coding_favorites` gives Coding projects
-    # (#250): starred skills sort to the top of the list. A plain string
-    # list in this same config — no new file, no new store.
+    # Skill ids the user starred on the Life OS tab (issue #1070), treated as
+    # `coding_favorites` treats Coding projects (#250): sorted to the top.
     life_os_favorites: list = field(default_factory=list)
-    # Root of the life-os checkout the Life OS tab surfaces (issue #102).
-    # Skills live at `<life_os_dir>/.claude/skills`, identity at
-    # `<life_os_dir>/identity`. When the skills dir doesn't exist the tab
-    # shows disabled, the same way the Coding tab handles a missing
-    # `projects_dir`.
+    # Root of the life-os checkout the Life OS tab surfaces (issue #102):
+    # skills at `.claude/skills`, identity at `identity`. Without the skills
+    # dir the tab shows disabled, as Coding does without `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
+    # A resumed Life OS conversation re-reads its skill's instructions when
+    # they changed since it last loaded them (src/life_os_skill_refresh.py).
+    life_os_refresh_skill_instructions: bool = True
     # Root of the fleet-config checkout. The Board, sessions, Life OS
     # conversations and the fleet-chief ensure path read their hooks, state
     # and scripts from it.

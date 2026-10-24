@@ -50,9 +50,9 @@ from fastapi import APIRouter, HTTPException, Request
 from src import audit, session_client
 from src.agents import is_installed
 from src.life_os_history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
-from src.life_os_delete import ConversationDeleteError, delete_conversation as delete_conversation_files
-from src.life_os_delete import group_by_conversation
+from src.life_os_delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
 from src.life_os_title import run_title_cli as _run_title_cli
+from src.life_os_skill_refresh import plan_refresh, record_refresh
 from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for
@@ -280,12 +280,11 @@ async def _launch_conversation(
             logger.info("ℹ️ Life OS resume of an oversized capture through header-only identity (skill=%s)", skill.id)
         if keep_model:
             model, model_kept = await _kept_model(cfg, agent, resume_sid)
-            override = model if agent == "codex" else None
-            flags = build_resume_flags(cfg, agent, model_override=override,
-                                       session_id=resume_sid, keep_model=True,
-                                       effort_model=model)
-        else:
-            flags = build_resume_flags(cfg, agent, model_override=model, session_id=resume_sid)
+        override = (model if agent == "codex" else None) if keep_model else model
+        refresh = await asyncio.to_thread(plan_refresh, cfg, skill.id, resume_sid, path.name)
+        flags = build_resume_flags(cfg, agent, model_override=override, session_id=resume_sid,
+                                   keep_model=keep_model, effort_model=model if keep_model else None)
+        flags += refresh.suffix
     else:
         if body.get("confirm_new") is not True or body.get("resume") or body.get("resume_sid"):
             raise HTTPException(400, "Explicitly confirm a new conversation; handoff cannot resume a native session.")
@@ -329,6 +328,7 @@ async def _launch_conversation(
              "model_kept": model_kept,
              "handoff_truncated": action == "handoff" and len(source["body"]) > MAX_HANDOFF_CHARS}
     if action == "resume":
+        await asyncio.to_thread(record_refresh, refresh)
         title_sync = await _name_resumed_session(cfg, skill, path, result.get("session"))
         if title_sync:
             reply["title_sync"] = title_sync

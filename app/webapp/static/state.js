@@ -460,6 +460,7 @@ export const els = {
   largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
   usageShows: document.getElementById('usageShows'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
+  lifeOsRefreshSkillToggle: document.getElementById('lifeOsRefreshSkillToggle'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   chiefDoorbellToggle: document.getElementById('chiefDoorbellToggle'),
   chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),

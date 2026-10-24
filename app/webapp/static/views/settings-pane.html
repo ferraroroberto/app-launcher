@@ -74,6 +74,17 @@
         </button>
       </div>
 
+      <!-- Life OS: an inline switch, the same row shape as Start at log on. -->
+      <h2 class="settings-overline">Life OS</h2>
+      <div class="card settings-group">
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg>
+          <span class="settings-row-label">Refresh skills on resume</span>
+          <button type="button" id="lifeOsRefreshSkillToggle" data-track="settings.life-os-refresh-skill" class="toggle" role="switch" aria-checked="true" aria-label="Refresh skill instructions on resume" aria-describedby="lifeOsRefreshSkillHelp"><span class="knob"></span><span class="toggle-label">ON</span></button>
+        </div>
+      </div>
+      <p id="lifeOsRefreshSkillHelp" class="field-help settings-footnote">When a skill's instructions changed since a conversation last loaded them, resuming it first asks the agent to re-read them. Off, a resume reopens the conversation exactly as it was.</p>
+
       <h2 class="settings-overline">Connections</h2>
       <div class="card settings-group">
         <button type="button" class="settings-row" data-sheet="channelsSheet" data-track="settings.channels" aria-haspopup="dialog">
