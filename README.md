@@ -266,7 +266,7 @@ Before declaring a webapp, launcher or session-host change done, run the pre-shi
 pwsh -File scripts\verify-before-ship.ps1 > gate.log 2>&1; echo "exit=$?"
 ```
 
-The gate also runs a static ratchet (new duplicate blocks and unused imports fail against a committed baseline; it needs Node for `npx` and the `ruff` from `requirements.txt`). Read `gate.log`; it ends in `GATE-RESULT: PASS` or `GATE-RESULT: FAIL`, and a missing line is not a pass. Never pipe the gate: a pipeline reports its last command's exit code. The pytest API tests, the Playwright suite, the design review and what the gate does step by step: [docs/verification.md](docs/verification.md).
+The gate also runs a static ratchet (new duplicate blocks and unused imports fail against a committed baseline; it needs Node for `npx` and the `ruff` from `requirements.txt`). A structure ratchet keeps files, functions and directories from growing and the root folders on the declared shape ([docs/layout.md](docs/layout.md#structure-ratchet)). Read `gate.log`; it ends in `GATE-RESULT: PASS` or `GATE-RESULT: FAIL`, and a missing line is not a pass. Never pipe the gate: a pipeline reports its last command's exit code. The pytest API tests, the Playwright suite, the design review and what the gate does step by step: [docs/verification.md](docs/verification.md).
 
 ---
 

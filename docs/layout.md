@@ -98,6 +98,13 @@ app-launcher/
 │   ├── restart-session-host.ps1 # confirmation-gated `:8446` restart — see CLAUDE.md `## session-host`
 │   └── verify-before-ship.ps1  # the pre-ship gate — disposable webapp + session-host, no tray needed
 │
+├── tests/                      # pytest suite, one test_<module>.py per unit; a flat package by history (see below)
+│   ├── e2e/                    # Playwright browser suite (chromium + iPhone projections) and its helpers
+│   ├── js/                     # plain-Node tests for browser-side logic that a desktop engine cannot judge
+│   └── fixtures/               # recorded transcripts and sample files the tests read
+│
+├── docs/                       # durable reference, one topic per file; architecture.mmd is the structural diagram
+│
 ├── config/                     # *.sample.json committed, real files gitignored
 │   ├── config.sample.json
 │   ├── webapp_config.sample.json
@@ -129,3 +136,13 @@ app-launcher/
 - **A file that would pass 1,000 lines splits at a section comment**, never inside a block, and its link goes right after the file it was cut from.
 - **Cache-busting is automatic**: `src/static_versioning.py` stamps every `href="/static/styles/*.css"` with the fleet hash, so a new file needs only its `<link>`.
 - **Tests read the sheets through `tests/_css.py`**, which concatenates them in `index.html`'s link order.
+
+## Structure ratchet
+
+`scripts/structure_ratchet.py` (vendored byte-for-byte from project-scaffolding, recorded in `.fleet.toml` `[vendored]`) runs in the pre-ship gate. It fails a new file over 1,000 lines, a new function over 100 lines, a directory past 40 modules, a `src` file that imports `app`, and a root folder the declared shape does not list. A finding already in `.structure-ratchet-baseline.json` may not grow past its recorded size. Shrinking one means lowering the baseline with `--update-baseline`; raising or adding an entry needs `--allow-additions`, which shows in review.
+
+- **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests beside the existing ones under `tests/`. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
+- **Declared shape:** `webapp-tray`, with `webapp/` as the one extra root. It is the tray's runtime-state folder: only the two `*.sample.*` files in it are tracked, and the rest is gitignored. The preset itself lists `assets/` and `config/`.
+- **Flat directories, baselined:** `src/`, `tests/`, `tests/e2e/` and `app/webapp/static/` each hold more than 40 modules today. They take no new module until they are split.
+- **Layer import, known debt:** `src/chief_job_failed.py` imports `board_chief` from `app.webapp.routers` inside a function, which breaks the rule that `src` has no UI imports. The shared piece belongs in `src/`; until it moves, the baseline records the one import and a second one fails the gate.
+- **Oversized files and functions:** every one over the limits is in the baseline at its current size. Splitting them is separate work, and a split lowers its entry.
