@@ -204,6 +204,18 @@ try {
     if ($docRefsExit -eq 3) { Fail "doc refs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence or HTML comment that never closes)." }
     if ($docRefsExit -ne 0) { Fail "doc refs ratchet failed (exit $docRefsExit): a doc names a repo path, module, link or port that does not exist beyond .doc-refs-ratchet-baseline.json; see the named reference above." }
 
+    # Dead code ratchet (scaffold docs/dead-code-ratchet.md): a Python function,
+    # class or method that nothing in the repo refers to may not appear beyond
+    # .dead-code-ratchet-baseline.json. Whole tree, never path-routed: deleting the
+    # last caller in one file strands a definition in another; exit 3 means git was
+    # unusable or a tracked .py file could not be read or parsed, a failure and never
+    # a pass.
+    Phase "dead code ratchet..."
+    & $python scripts/dead_code_ratchet.py
+    $deadCodeExit = $LASTEXITCODE
+    if ($deadCodeExit -eq 3) { Fail "dead code ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
+    if ($deadCodeExit -ne 0) { Fail "dead code ratchet failed (exit $deadCodeExit): a function, class or method nothing refers to is not in .dead-code-ratchet-baseline.json; see the named definition above." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
