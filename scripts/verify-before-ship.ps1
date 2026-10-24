@@ -192,6 +192,18 @@ try {
     if ($instructionExit -eq 3) { Fail "instruction ratchet NOT CONFIRMED (git was unusable, or an instruction file is not UTF-8, has a fence that never closes, or a skill description that cannot be read)." }
     if ($instructionExit -ne 0) { Fail "instruction ratchet failed (exit $instructionExit): an instruction file gained a lint hit or passed its size cap beyond .instruction-ratchet-baseline.json; see the named rule and lines above." }
 
+    # Doc references ratchet (scaffold docs/doc-refs-ratchet.md): a repo path,
+    # `python -m` module, relative link or loopback port that README.md, CLAUDE.md or
+    # docs/**/*.md names and the tree does not have may not rise above
+    # .doc-refs-ratchet-baseline.json. Whole tree, never path-routed: a code change
+    # can strand a doc reference without touching the doc; exit 3 means git was
+    # unusable or a doc could not be read, a failure and never a pass.
+    Phase "doc refs ratchet..."
+    & $python scripts/doc_refs_ratchet.py
+    $docRefsExit = $LASTEXITCODE
+    if ($docRefsExit -eq 3) { Fail "doc refs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence or HTML comment that never closes)." }
+    if ($docRefsExit -ne 0) { Fail "doc refs ratchet failed (exit $docRefsExit): a doc names a repo path, module, link or port that does not exist beyond .doc-refs-ratchet-baseline.json; see the named reference above." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")

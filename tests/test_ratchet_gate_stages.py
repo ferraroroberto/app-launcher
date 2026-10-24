@@ -1,4 +1,4 @@
-"""The gate's docs-, structure- and instruction-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction- and doc-refs-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -23,9 +23,12 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the gate is a P
 
 
 def _stage(name: str) -> str:
+    phase = name.replace("_", " ")
+    head, *tail = name.split("_")
+    exit_var = head + "".join(word.capitalize() for word in tail) + "Exit"
     lines = GATE_PS1.read_text(encoding="utf-8").splitlines()
-    start = next(i for i, line in enumerate(lines) if f'Phase "{name} ratchet..."' in line)
-    end = max(i for i, line in enumerate(lines) if f"${name}Exit" in line)
+    start = next(i for i, line in enumerate(lines) if f'Phase "{phase} ratchet..."' in line)
+    end = max(i for i, line in enumerate(lines) if f"${exit_var}" in line)
     return "\n".join(lines[start:end + 1])
 
 
@@ -42,11 +45,15 @@ def _stage(name: str) -> str:
     ("instruction", {"CLAUDE.md": "# T\n\nAlways double-check your work.\n"}, 1,
      ["instruction ratchet failed", "CLAUDE.md", "R-03"]),
     ("instruction", {"CLAUDE.md": "# T\n\nPlain prose.\n"}, 0, ["STAGE-PASSED"]),
+    ("doc_refs", {"README.md": "# T\n\n```\nnever closed\n"}, 1, ["doc refs ratchet NOT CONFIRMED ("]),
+    ("doc_refs", {"README.md": "# T\n\nRun `scripts/missing.py` first.\n"}, 1,
+     ["doc refs ratchet failed", "README.md", "scripts/missing.py"]),
+    ("doc_refs", {"README.md": "# T\n\nPlain prose.\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
     shutil.copy2(REPO_ROOT / "scripts" / f"{name}_ratchet.py", tmp_path / "scripts")
-    files = {f".{name}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
+    files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
     files[".fleet.toml"] = files.get(".fleet.toml", "") + f"[{name}_ratchet]\nenabled = true\n"
     for path, text in files.items():
         (tmp_path / path).parent.mkdir(exist_ok=True)
