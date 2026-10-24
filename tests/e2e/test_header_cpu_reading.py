@@ -158,14 +158,16 @@ def test_every_header_shows_the_reading_and_its_four_states(
     expect(reading).to_have_attribute("data-level", "normal")
 
 
-def test_a_quiet_reading_yields_to_the_header_exceptions_a_hot_one_does_not(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize("width", [390, 1280])
+def test_a_quiet_reading_yields_to_the_header_exceptions_only_where_room_is_missing(
+    authed_page: Page, base_url: str, width: int
 ) -> None:
     """At 390px the header line's two exception parts need the reading's
     room, and no ellipsis may cut them (design.md page-header). A quiet
-    reading steps aside; a hot one is itself the exception and stays."""
+    reading steps aside there; a hot one is itself the exception and stays.
+    At 1280px both fit, so the quiet one stays (no flash-then-hide)."""
     page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
+    page.set_viewport_size({"width": width, "height": 844})
     current = {"body": _reading("normal", 30.0)}
     _route_load(page, current, [])
     _mock_sessions(page, [_WAITING, _STALLED])
@@ -175,7 +177,8 @@ def test_a_quiet_reading_yields_to_the_header_exceptions_a_hot_one_does_not(
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
     expect(status).to_have_text("1 stalled · 1 needs you")
     expect(reading).to_have_text("30%")
-    expect(reading).to_be_hidden()
+    (expect(reading).to_be_hidden if width < 500 else expect(reading).to_be_visible)()
+    assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0
 
     current["body"] = _reading("danger", 96.0)
     with page.expect_response(lambda r: r.url.endswith("/api/system/load")):

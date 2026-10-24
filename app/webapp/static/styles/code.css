@@ -27,12 +27,18 @@
 }
 .home-head .cpu-reading[data-level="attention"] { color: var(--attention-text); }
 .home-head .cpu-reading[data-level="danger"] { color: var(--danger-text); }
-/* A quiet reading yields to the header line's exceptions: at 390px the line's
-   two parts need the reading's 50px, and no ellipsis may cut the part that
-   matters (design.md page-header). A hot reading is itself the exception, so
-   it always shows. */
-.home-head:has(> .status[data-tone]) .cpu-reading:is([data-level="normal"], [data-level="unknown"]) {
-  display: none;
+/* A quiet reading yields to the header line's exceptions only where the room
+   is missing: when the header's content box is 380px or less (a phone, or the
+   wide layout's list pane) the line's two parts, about 154px, no longer fit
+   beside the reading's 50px, and no ellipsis may cut the part that matters
+   (design.md page-header). Wider, both fit. A hot reading is itself the
+   exception, so it always shows. The header is the container, so the width
+   asked is the header's own, not the window's. */
+.card.home-head { container-type: inline-size; }
+@container (max-width: 380px) {
+  .home-head:has(> .status[data-tone]) .cpu-reading:is([data-level="normal"], [data-level="unknown"]) {
+    display: none;
+  }
 }
 .cpu-sheet-body .usage-sheet-value[data-tone="attention"] { color: var(--attention-text); }
 .cpu-sheet-body .usage-sheet-value[data-tone="danger"] { color: var(--danger-text); }
