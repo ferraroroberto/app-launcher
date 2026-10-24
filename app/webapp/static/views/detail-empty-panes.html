@@ -1,0 +1,17 @@
+  <!-- Wide layout only (#1135): the Code tab's detail pane while no session
+       is open in it. CSS shows it at (min-width: 1100px) and (pointer: fine)
+       on the Code tab; everywhere else it is display: none. -->
+  <div id="sessionDetailEmpty" class="session-detail-empty">
+    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
+    <p class="session-detail-empty-title">No session open</p>
+    <p class="session-detail-empty-hint">A session's Chat opens here, beside the list. A full-control session's terminal opens in its own window.</p>
+  </div>
+
+  <!-- Wide layout only (#1438): the Jobs tab's detail pane while no job is
+       docked in it, showing the week's schedule (#1505, the same content
+       as the Schedule sheet, from the same agenda fetch). CSS shows it at
+       the wide query on the Jobs tab; everywhere else it is display: none. -->
+  <section id="jobDetailEmpty" class="job-detail-empty" aria-labelledby="jobWeekTitle">
+    <h2 id="jobWeekTitle" class="job-week-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg> This week</h2>
+    <div id="jobWeekBody" class="jobs-agenda-body job-week-body"></div>
+  </section>

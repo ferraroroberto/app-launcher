@@ -1,0 +1,144 @@
+    <section id="paneClaude" class="pane" role="tabpanel" aria-labelledby="tabClaude">
+      <!-- Vendored home-head summary card (#496): one-line dashboard row —
+           app title + live stats (sessions / running apps / git aggregate)
+           + the theme toggle pinned right (home-head.css contract). The
+           toggle keeps its #themeToggle id so main.js's wireTheme and the
+           CSS-keyed sun/moon swap carry over unchanged. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg>
+          Code
+        </span>
+        <span id="homeHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" id="themeToggle" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" id="settingsOpen" class="icon-button home-toggle hit-target settings-open-btn" data-track="settings-open"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+
+      <!-- Usage (#1434, the Code tab's glance card): "can I launch?". The
+           full usage meter (#1433), Claude Code's 5h and Week bars above a
+           Codex row (both unless "Usage shows" says otherwise, #1451), under a summary that names the pace
+           in its tone, with the context filter's savings as the footer.
+           usage-meter.js fills the meter and the meta; a tap anywhere on the
+           card opens the Usage sheet. -->
+      <section id="codingUsageCard" class="card usage-card" aria-labelledby="codingUsageTitle">
+        <div class="card-head usage-card-head">
+          <h3 id="codingUsageTitle" class="card-title">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
+            Usage
+          </h3>
+          <span id="codingUsageMeta" class="card-head-meta usage-card-meta"></span>
+        </div>
+        <!-- The placeholder is the meter's own structure with dashes (#1657), so
+             the card is its final height before usage-meter.js runs; the first
+             poll replaces it in place. CSS shows the head and Codex rows only
+             for "both" (html[data-usage-shows]). -->
+        <div id="codingUsage" class="usage-meter-slot">
+          <button type="button" class="usage-meter usage-meter-full" data-tone="none" data-pending="true" aria-label="Usage: reading the quota. Open usage details">
+            <span class="um-head">
+              <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-claude"></use></svg>
+              <span class="um-name">Claude Code</span>
+            </span>
+            <span class="um-windows">
+              <span class="um-row" data-tone="none"><span class="um-label">5h</span><span class="um-bar"></span><span class="um-pct">–</span><span class="um-reset"></span></span>
+              <span class="um-row" data-tone="none"><span class="um-label">Week</span><span class="um-bar"></span><span class="um-pct">–</span><span class="um-reset"></span></span>
+            </span>
+            <span class="um-codex">
+              <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-codex"></use></svg>
+              <span class="um-name">Codex</span>
+              <span class="um-codex-value" data-tone="none">–</span>
+            </span>
+          </button>
+        </div>
+        <!-- context-filter.js fills it from the filter's existing stats;
+             hidden when there is nothing saved to report (#713). -->
+        <p id="codingUsageFooter" class="usage-card-footer">–</p>
+      </section>
+
+      <!-- Sessions (#1434): "what is running?". The chief's row first, then
+           the shared session rows (#1433), then the Telegram row. Card
+           controls never sit in the <summary> (#1132). -->
+      <details class="card card--collapsible sessions-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
+            <h3 class="collapse-title">Sessions</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <ul id="sessionsList" class="card-list" aria-label="Running sessions"></ul>
+        <!-- Telegram channel sessions hidden from the list above (#1384): one
+             flat row that opens the read-only list. channel-sessions.js. -->
+        <button type="button" id="sessionsChannelSummary" data-track="channel-summary" class="channel-row" aria-haspopup="dialog" hidden>
+          <span class="avatar session-avatar channel-row-avatar" data-badge="none">
+            <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+          </span>
+          <span class="srow-text">
+            <span class="srow-title">Telegram</span>
+            <span class="srow-meta"><span class="srow-meta-text channel-summary-text"></span></span>
+          </span>
+          <span class="channel-summary-chevron" aria-hidden="true">›</span>
+        </button>
+        <div id="sessionsEmpty" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
+          <p class="empty-state-message">No sessions launched from here yet.</p>
+          <button type="button" id="sessionsEmptyAction" class="empty-state-action">Show projects</button>
+        </div>
+        </div>
+      </details>
+
+      <!-- Projects: launch from here. Git lives here since #1434: the
+           uncommitted count in the summary, branch and "uncommitted" on each
+           row, the refresh in the toolbar and when it last ran in the
+           footer. Collapsed by default (#383). -->
+      <details class="card card--collapsible action-list projects-card">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+            <h3 class="collapse-title">Projects</h3>
+            <span id="projectsSummaryMeta" class="collapse-count projects-summary-meta" hidden></span>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <div class="card-toolbar projects-toolbar">
+          <!-- The shared launch toolbar (launch-toolbar.js, #1434): the model
+               combo, then Detached and Resume as vendored switches. It
+               takes the git refresh below as its model row's trailing
+               control. -->
+          <div id="codingLaunchToolbar" class="launch-toolbar-slot"></div>
+          <button id="gitRefreshBtn" data-track="git-refresh" type="button" class="icon-button git-refresh-btn"
+                  title="Check each project's git branch and uncommitted changes"
+                  aria-label="Refresh git status"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
+        </div>
+        <label class="action-row-filter list-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="claudeFilterInput" type="search" autocomplete="off" placeholder="Filter projects" aria-label="Filter projects">
+          <button id="favFilterBtn" data-track="fav-filter" type="button" class="icon-button fav-filter-btn"
+                  aria-pressed="false" aria-label="Filter favorites"
+                  title="Show only favorites"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-star"></use></svg></button>
+        </label>
+        <ul id="claudeList" class="card-list action-rows" aria-label="Claude Code projects"></ul>
+        <div id="claudeFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No projects match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
+        </div>
+        <div id="claudeEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+          <p class="empty-state-message">No projects found — point <strong>Projects folder</strong> in Settings at a folder that has project subdirectories.</p>
+          <button type="button" id="claudeEmptyAction" class="empty-state-action">Open Settings</button>
+        </div>
+        <p id="gitCheckedFooter" class="group-footer git-checked-footer" hidden></p>
+        </div>
+      </details>
+    </section>

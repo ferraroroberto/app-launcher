@@ -12,6 +12,8 @@ from __future__ import annotations
 from html.parser import HTMLParser
 from pathlib import Path
 
+from src.shell_html import assemble_shell
+
 _INDEX = Path(__file__).resolve().parents[1] / "app" / "webapp" / "static" / "index.html"
 
 
@@ -45,7 +47,7 @@ class _SaveButtons(HTMLParser):
 
 def _buttons() -> list[dict]:
     parser = _SaveButtons()
-    parser.feed(_INDEX.read_text(encoding="utf-8"))
+    parser.feed(assemble_shell(_INDEX))
     return parser.buttons
 
 

@@ -1,0 +1,152 @@
+    <!-- Life OS sheets (#1504): the conversation sheet, the conversation
+         reader, and Browse's file list and document. All four are the
+         vendored modal (header ✕, one full-width primary); each opens over
+         the one that asked, in the top layer, so ✕ always comes back to it.
+         life-os.js and life-os-viewer.js fill them. -->
+
+    <!-- One conversation (#1504): what it is, its summary, Resume as the one
+         primary (on the conversation's own model, #1503), then the link rows
+         for everything else, Delete last in danger. A Resume that cannot run
+         stays, disabled, and the note under the summary says why. -->
+    <dialog id="lifeOsConvoSheet" class="detail-dialog lifeos-convo-sheet" aria-labelledby="lifeOsConvoSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsConvoSheetTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Conversation</h2>
+          <button type="button" id="lifeOsConvoSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p id="lifeOsConvoSheetMeta" class="lifeos-sheet-line"></p>
+        <p id="lifeOsConvoSheetSummary" class="lifeos-sheet-line lifeos-sheet-summary" hidden></p>
+        <p id="lifeOsConvoSheetNote" class="lifeos-sheet-line" hidden></p>
+        <div class="settings-group settings-group--nested lifeos-sheet-links">
+          <button type="button" class="settings-row lifeos-convo-read" aria-haspopup="dialog">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-book-open"></use></svg>
+            <span class="settings-row-label">Read the conversation</span>
+            <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+          </button>
+          <button type="button" class="settings-row lifeos-convo-rename">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
+            <span class="settings-row-label">Rename</span>
+          </button>
+          <button type="button" class="settings-row lifeos-convo-handoff" hidden>
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
+            <span class="settings-row-label">Start new</span>
+          </button>
+          <button type="button" class="settings-row lifeos-convo-copy-link">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
+            <span class="settings-row-label">Copy link</span>
+          </button>
+          <button type="button" class="settings-row lifeos-convo-open-raw" aria-haspopup="dialog">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
+            <span class="settings-row-label">Open raw</span>
+            <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+          </button>
+        </div>
+        <div class="settings-group settings-group--nested lifeos-sheet-links">
+          <button type="button" class="settings-row lifeos-sheet-danger lifeos-convo-delete">
+            <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>
+            <span class="settings-row-label">Delete</span>
+          </button>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsConvoSheetResume" class="button-primary detail-save-btn">Resume</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The skill picker behind the search's Start new (#1588), shown when the
+         search spans every skill: a tap on a skill starts a fresh conversation
+         in it (the kebab's path) and closes the sheet. Vendored modal: header
+         ✕, one full-width primary. life-os.js fills the list. -->
+    <dialog id="lifeOsStartPicker" class="detail-dialog lifeos-start-picker" aria-labelledby="lifeOsStartPickerTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsStartPickerTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Start new in…</h2>
+          <button type="button" id="lifeOsStartPickerClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="lifeOsStartPickerList" class="settings-group settings-group--nested lifeos-sheet-links"></div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsStartPickerDone" class="button-primary detail-save-btn">Close</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- One captured conversation, read-only (#1119): the same chat-style
+         cards the session overlay's Chat pane renders, over a capture parsed
+         server-side (/api/life-os/file/transcript): one transcript surface,
+         two mounts (#979). A tall sheet over the conversation sheet (#1504),
+         which holds every action; deliberately no composer. -->
+    <dialog id="lifeOsConvoViewer" class="detail-dialog lifeos-reader-sheet" aria-labelledby="lifeOsViewerTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsViewerTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Conversation</h2>
+          <button type="button" id="lifeOsViewerClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <!-- Anchors the shared ↓ Latest pill (#1140) to the scroller's
+             bottom edge, as in the Chat pane. -->
+        <div class="latest-frame">
+          <div id="lifeOsViewerBody" class="transcript-body">
+            <ol id="lifeOsViewerList" class="transcript-list tr-hide-groups" aria-label="Conversation transcript"></ol>
+            <div id="lifeOsViewerState" class="empty" role="status" aria-live="polite" hidden></div>
+          </div>
+          <button id="lifeOsViewerLatest" type="button" class="latest-pill" title="Jump to the end of the conversation" aria-label="Jump to the end of the conversation" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg> Latest</button>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsViewerDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Browse (#102): one skill's readable files, a tap opening the document
+         sheet over this one. -->
+    <dialog id="lifeOsBrowser" class="detail-dialog lifeos-reader-sheet" aria-labelledby="lifeOsBrowserTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsBrowserTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>Skill</h2>
+          <button type="button" id="lifeOsBrowserClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <ul id="lifeOsFileList" class="lifeos-file-list" aria-label="Skill files"></ul>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsBrowserDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- One file, read-only: a Browse file, or a capture opened raw from the
+         conversation sheet. A conversation log can be renamed or deleted here
+         (rows under the text); every other file only reads. -->
+    <dialog id="lifeOsDoc" class="detail-dialog lifeos-reader-sheet" aria-labelledby="lifeOsDocTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="lifeOsDocTitle" class="lifeos-sheet-title" tabindex="-1" autofocus>File</h2>
+          <button type="button" id="lifeOsDocClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="lifeOsFileContent" class="lifeos-file-content"></div>
+        <div id="lifeOsDocLinks" hidden>
+          <div class="settings-group settings-group--nested lifeos-sheet-links">
+            <button type="button" id="lifeOsDocRename" class="settings-row">
+              <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg>
+              <span class="settings-row-label">Rename log</span>
+            </button>
+          </div>
+          <div class="settings-group settings-group--nested lifeos-sheet-links">
+            <button type="button" id="lifeOsDocDelete" class="settings-row lifeos-sheet-danger">
+              <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-trash-2"></use></svg>
+              <span class="settings-row-label">Delete log</span>
+            </button>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="lifeOsDocDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>

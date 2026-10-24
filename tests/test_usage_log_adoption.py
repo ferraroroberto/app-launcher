@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from src.shell_html import assemble_shell
 from src.subprocess_flags import NO_WINDOW
 from src.usage_log import ID_PATTERN
 
@@ -114,7 +115,7 @@ class TestRouterInThisApp:
 
 class TestMarkup:
     def test_every_data_track_id_is_a_valid_constant(self):
-        html = (_STATIC / "index.html").read_text(encoding="utf-8")
+        html = assemble_shell(_STATIC / "index.html")
         ids = re.findall(r'data-track="([^"]*)"', html)
         assert ids, "no data-track controls found -- wrong file?"
         bad = [i for i in ids if not ID_PATTERN.fullmatch(i)]

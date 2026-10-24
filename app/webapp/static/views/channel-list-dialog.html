@@ -1,0 +1,21 @@
+    <!-- Telegram sessions, read-only (#1384): status, last activity and context
+         use per session. Header ✕ plus one full-width action (modal contract,
+         #545) — and no Stop or delete, by design. Built by channel-sessions.js
+         while open; the context figure is polled fast only while this is
+         showing (channel-sessions.js header). Each running row has a Compact
+         button (#1402). -->
+    <dialog id="channelListDialog" class="detail-dialog">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg> Telegram sessions</h2>
+          <button type="button" id="channelListClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <ul id="channelListRows" class="card-list channel-list" aria-label="Telegram sessions"></ul>
+        <p id="channelListEmpty" class="empty muted small" hidden>No Telegram sessions are running.</p>
+        <div class="detail-actions">
+          <button type="button" id="channelListDone" class="button-primary detail-save-btn">Close</button>
+        </div>
+      </div>
+    </dialog>

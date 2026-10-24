@@ -26,6 +26,7 @@ from src.git_utils import resolve_deployed_sha
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
+from src.shell_html import assemble_shell, shell_stat_key
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.vscode_workspace import is_vscode_installed
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
@@ -47,21 +48,23 @@ def _stamped_index(app: Any) -> Tuple[str, str]:
     """The hash-stamped index.html and its ETag, re-rendered only on change.
 
     Every page load used to re-read the 135 KB file and regex-rewrite its
-    asset hashes (#1324). The rendered body is cached on the app, keyed on
-    the file's mtime and size, so an edit on disk is still picked up on the
-    next load without a restart; the asset hashes are fixed per process.
+    asset_hashes (#1324). The rendered body is cached on the app, keyed on
+    the mtime and size of index.html and its view fragments, so an edit on
+    disk is still picked up on the next load without a restart; the asset
+    hashes are fixed per process.
     """
     index_path = STATIC_DIR / "index.html"
     try:
-        st = index_path.stat()
-    except OSError:
+        key = shell_stat_key(index_path)
+        cached = getattr(app.state, "index_cache", None)
+        if cached is not None and cached[0] == key:
+            return cached[1], cached[2]
+        shell = assemble_shell(index_path)
+    except (OSError, ValueError):
+        _log.exception("❌ could not assemble index.html")
         raise HTTPException(status_code=500, detail="index.html missing")
-    key = (st.st_mtime_ns, st.st_size)
-    cached = getattr(app.state, "index_cache", None)
-    if cached is not None and cached[0] == key:
-        return cached[1], cached[2]
     asset_hashes = getattr(app.state, "asset_hashes", {}) or {}
-    stamped = rewrite_index_html(index_path.read_text(encoding="utf-8"), asset_hashes)
+    stamped = rewrite_index_html(shell, asset_hashes)
     etag = '"' + hashlib.sha256(stamped.encode("utf-8")).hexdigest()[:20] + '"'
     app.state.index_cache = (key, stamped, etag)
     return stamped, etag

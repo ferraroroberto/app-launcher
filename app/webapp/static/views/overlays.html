@@ -1,0 +1,142 @@
+  <!-- The session overlay (#982, Step 3 of #979): one shell, two render
+       modes. `data-mode="terminal"` shows the live PTY (#terminalHost + the
+       docked composer); `data-mode="chat"` shows the transcript's chat-style
+       cards (#chatPane). The bar is shared: ‹ Back · title · context ring ·
+       Terminal⇄Chat · 🔊 · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
+       terminal.js, the chat pane in session-transcript.js. -->
+  <div id="terminalOverlay" class="terminal-overlay" hidden>
+    <div class="terminal-bar">
+      <button id="terminalBack" type="button" class="icon-button term-btn" title="Back to sessions" aria-label="Back to sessions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+      <span id="terminalTitle" class="terminal-title">session</span>
+      <div class="terminal-bar-actions">
+        <!-- Model pill (#1383): the session's model, left of the context ring.
+             Not a control (no tap target); hidden whenever the model isn't
+             known — never a guess. Set by terminal-mirror.js with the title. -->
+        <span id="terminalModel" class="terminal-model" hidden></span>
+        <!-- Context ring (#1223): how full the session's context window is,
+             read off the terminal's statusline by the server. Hidden, not
+             drawn at 0%, whenever the number isn't known; a tap toasts it.
+             Driven by context-ring.js. -->
+        <button id="contextRing" type="button" class="icon-button term-btn context-ring" title="Context used" aria-label="Context used" hidden><svg class="context-ring-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="context-ring-track" cx="12" cy="12" r="9"></circle><circle class="context-ring-fill" cx="12" cy="12" r="9" transform="rotate(-90 12 12)"></circle></svg></button>
+        <!-- Icon-only Terminal / Chat segmented toggle (#982). A segment the
+             session can't offer (a detached session has no terminal; an
+             agent without a transcript reader has no chat) is aria-disabled
+             and a tap on it toasts the reason — session-overlay.js. -->
+        <div id="sessionMode" class="session-mode" role="group" aria-label="View mode">
+          <button id="sessionModeTerminal" type="button" class="session-mode-btn" data-mode="terminal" title="Show the terminal" aria-label="Terminal" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg></button>
+          <button id="sessionModeChat" type="button" class="session-mode-btn" data-mode="chat" title="Show the chat" aria-label="Chat" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg></button>
+        </div>
+        <button id="terminalSpeak" type="button" class="icon-button term-btn" title="Read the last reply aloud" aria-label="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
+        <!-- ⋮ session menu (#981): Rename · Copy link · Stop and kill, built by
+             terminal-bar.js on the shared row-menu component. -->
+        <button id="terminalMenu" type="button" class="icon-button term-btn" title="Session actions" aria-label="Session actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
+      </div>
+      <div id="terminalSpeakPopover" class="speak-popover" hidden>
+        <button type="button" class="speak-action" data-action="read"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Read aloud</button>
+        <button type="button" class="speak-action" data-action="summarize" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summarize &amp; read</button>
+      </div>
+    </div>
+    <!-- Chat pane (#953 → #982): the session's whole conversation,
+         chat-style — prompts and replies expanded, tool calls / thinking /
+         harness plumbing folded per run (shown via the ⋮ menu). The shared
+         composer docks at the bottom for every session kind (#983).
+         Visible only while data-mode="chat" (CSS).
+         Driven by session-transcript.js. -->
+    <div id="chatPane" class="chat-pane">
+      <!-- The frame anchors the shared ↓ Latest pill (#1140, latest-pill.js)
+           to the scroller's visible bottom edge, above the note and the
+           composer, so it can never cover their buttons. -->
+      <div class="latest-frame">
+        <div id="transcriptBody" class="transcript-body">
+          <button id="transcriptOlder" type="button" class="transcript-older" hidden>Load older</button>
+          <ol id="transcriptList" class="transcript-list" aria-label="Session transcript"></ol>
+          <!-- The plan picker read off the terminal (#1151), answerable from
+               here while it is up. Driven by session-transcript.js. -->
+          <div id="transcriptPlanLive" class="tr-plan-live" hidden></div>
+          <!-- The resume card (#1300): the project's sessions, searchable,
+               while the terminal shows the /resume picker or after /resume
+               is typed here. Driven by chat-resume.js. -->
+          <div id="transcriptResumeLive" class="tr-resume-live" hidden></div>
+          <div id="transcriptState" class="empty" role="status" aria-live="polite" hidden></div>
+        </div>
+        <button id="chatLatest" type="button" class="latest-pill" title="Jump to the latest message" aria-label="Jump to the latest message" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg> Latest</button>
+      </div>
+      <!-- Why the Terminal segment is off, and what Send means, for a
+           detached session (mockup screen 6). -->
+      <div id="chatNote" class="chat-note" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-cloud"></use></svg> Detached session — no terminal. Delivery is typed into the PC console and not confirmed.</div>
+      <!-- The shared composer (#980), second mount (#983): every session
+           kind sends from Chat through the /input route. Rendered by
+           composer.js, bound in session-transcript.js. -->
+      <div id="chatComposeBar" class="composer"></div>
+    </div>
+    <div id="terminalHost" class="terminal-host">
+      <!-- Floating "Latest" pill (#981): shown only while scrolled more than a
+           screen above the tail (terminal-bar.js). Lucide arrow-down (#1127). -->
+      <button id="terminalLatest" type="button" class="latest-pill" title="Jump to latest output" aria-label="Jump to latest output" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg> Latest</button>
+    </div>
+    <!-- The shared composer (#980): always docked under the terminal on the
+         phone (hidden only in the PC mirror window, terminal.js). Markup is
+         rendered by composer.js, mounted from terminal-compose.js —
+         textarea + 2x2 grid (mic · keys / image · send), the image button's
+         attach / OCR options menu, the OCR staging tray, the keys D-pad. -->
+    <div id="terminalComposeBar" class="composer" hidden></div>
+    <!-- The bottom status strip (#1219): always laid out, in Terminal and
+         Chat mode alike, so the controls above it clear the phone's rounded
+         corners and never move when a message comes or goes. Blank when
+         idle; the one message (connection state, "Tap to reconnect") is
+         #terminalStatus inside it, centred, and only that child toggles
+         `hidden`. The live region is the strip, not the message, because a
+         region that appears together with its text is often not announced.
+         Chat mode's own line (#1387) is #terminalActivity beside it: the turn
+         in progress, or a forced read's "No new messages". Connection status
+         wins — the CSS hides it while #terminalStatus shows. -->
+    <div id="terminalStatusStrip" class="terminal-status-strip" role="status" aria-live="polite">
+      <div id="terminalStatus" class="terminal-status" hidden></div>
+      <div id="terminalActivity" class="terminal-activity" hidden></div>
+    </div>
+  </div>
+
+  <!-- Body-level, after #terminalOverlay (#1349): since a session's ⋮ →
+       Changed files opens this panel *over* the session view, it cannot
+       live inside <main class="app">: the standalone shell makes .app a
+       fixed stacking context, which traps any z-index inside it under the
+       body-level session overlay. Same z-index, later in the DOM: on top. -->
+  <!-- Show changes (#977): one Coding project's working tree, read-only —
+       files grouped Changes / Untracked, each row expanding to its unified
+       diff (GitHub "Files changed" shape, phone-first). Opened from the
+       row's ⋯ project menu or by tapping a red / yellow tile name. Same
+       overlay chrome as the transcript. Driven by changes-overlay.js. -->
+  <div id="changesOverlay" class="terminal-overlay changes-overlay" hidden>
+    <div class="terminal-bar">
+      <span id="changesTitle" class="terminal-title">changes</span>
+      <div class="terminal-bar-actions">
+        <button id="changesRefresh" type="button" class="icon-button term-btn" title="Re-read the working tree" aria-label="Refresh changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-rotate-ccw"></use></svg></button>
+        <!-- ✕ close is always the rightmost control (modal contract #545). -->
+        <button id="changesClose" type="button" class="icon-button term-btn" title="Close changes" aria-label="Close changes"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+      </div>
+    </div>
+    <div id="changesBody" class="changes-body">
+      <div id="changesState" class="chg-state" role="status" aria-live="polite" hidden></div>
+      <div id="changesList" class="chg-list"></div>
+    </div>
+  </div>
+
+  <!-- Read-aloud summary modal (issue #210): shows the hub summary text while
+       it's read aloud; auto-closes when the read finishes, or tap to dismiss. -->
+  <div id="summaryModal" class="summary-modal" hidden>
+    <div class="summary-card" role="dialog" aria-label="Reply summary">
+      <div class="summary-head">
+        <span class="summary-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summary</span>
+        <button id="summaryModalClose" type="button" class="icon-button summary-close" title="Close" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+      </div>
+      <p id="summaryModalText" class="summary-text"></p>
+      <div class="summary-foot muted small"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Reading aloud… tap anywhere to dismiss</div>
+    </div>
+  </div>
+
+  <!-- Image lightbox (#173, reused for #1265): a transcript thumbnail
+       opens full-screen for pan/zoom; tap anywhere (or ✕) to dismiss. -->
+  <div id="imageLightbox" class="image-lightbox" hidden>
+    <button id="imageLightboxClose" type="button" class="image-lightbox-close" title="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></button>
+    <img id="imageLightboxImage" class="image-lightbox-img" alt="">
+  </div>

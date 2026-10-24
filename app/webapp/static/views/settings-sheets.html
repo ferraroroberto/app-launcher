@@ -1,0 +1,587 @@
+    <!-- Settings sheets (#1435): one per Settings row, on the vendored modal
+         shell (header back + ✕, one full-width Done). Fields save as they
+         change; settings-sheets.js opens, stacks and closes them. -->
+    <!-- Screen time (#1678): read-only, so its one primary is Done. The
+         period picks the window; screen-time.js draws the total, the daily
+         bars by device and the list by section from GET /api/usage/time. -->
+    <dialog id="screenTimeSheet" class="detail-dialog settings-sheet" aria-labelledby="screenTimeSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="screenTimeSheetTitle" tabindex="-1" autofocus>Screen time</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body screen-time">
+          <div id="screenTimeRange" class="segmented" role="group" aria-label="Period">
+            <button type="button" class="segmented-item" data-days="1" data-track="screen-time.today" aria-pressed="true">Today</button>
+            <button type="button" class="segmented-item" data-days="7" data-track="screen-time.week" aria-pressed="false">7 days</button>
+            <button type="button" class="segmented-item" data-days="30" data-track="screen-time.month" aria-pressed="false">30 days</button>
+          </div>
+          <div id="screenTimeState" class="screen-time-state" role="status" aria-live="polite" hidden></div>
+          <div id="screenTimeReport" class="screen-time-report" hidden>
+            <p class="screen-time-total">
+              <span id="screenTimeTotal" class="screen-time-total-value"></span>
+              <span id="screenTimeCaption" class="screen-time-caption"></span>
+            </p>
+            <div id="screenTimeChart" class="screen-time-chart" hidden></div>
+            <ul id="screenTimeDevices" class="screen-time-devices" aria-label="By device"></ul>
+            <h3 class="opt-group-title">By section</h3>
+            <ul id="screenTimeSections" class="screen-time-sections" aria-label="By section"></ul>
+          </div>
+          <p class="field-help screen-time-note">Counted while the launcher is on screen. On a PC, a stretch of more than 15 minutes with no taps or page changes counts as 15 minutes, so long typing in a terminal counts short. A minute on two devices at once counts once in the total and once on each device.</p>
+          <!-- The last send to task-os (#1678 step 2/2): screen-time.js fills it
+               from GET /api/screen-time/export. -->
+          <p id="screenTimeSent" class="field-help screen-time-sent" role="status" aria-live="polite" hidden></p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="screenTimeSend" class="button-primary detail-save-btn" data-track="screen-time.send">Send to task-os</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="usageShowsSheetTitle" tabindex="-1" autofocus>Usage meter</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div class="stacked">
+            <span id="usageShowsLabel">Usage shows</span>
+            <div id="usageShows" class="segmented" role="group" aria-labelledby="usageShowsLabel" aria-describedby="usageShowsHelp"></div>
+          </div>
+          <p id="usageShowsHelp" class="field-help">Which providers the Usage card and the Board's usage line draw. None hides the card. It saves at once and applies on every device.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="launchDefaultsSheet" class="detail-dialog settings-sheet" aria-labelledby="launchDefaultsSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="launchDefaultsSheetTitle" tabindex="-1" autofocus>Launch defaults</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+        <div class="opt-group">
+          <h3 class="opt-group-title">Favorite agent</h3>
+          <p class="opt-hint">The one agent that keeps its own launch button on every project row. Every other visible agent moves into the row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu, one tap deeper.</p>
+          <div class="opt-row">
+            <span class="opt-name">Agent</span>
+            <select id="codingFavoriteAgent" class="select-native"
+                    aria-label="Favorite agent"></select>
+          </div>
+        </div>
+        <div class="opt-group">
+          <h3 class="opt-group-title">Visible agents</h3>
+          <p class="opt-hint">Which agents are offered in each project row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu. Hiding one only trims that menu — a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
+          <div id="agentVisibility" class="toggles"></div>
+        </div>
+        <div class="opt-group">
+          <h3 class="opt-group-title">Per agent</h3>
+          <div class="settings-group settings-group--nested">
+            <button type="button" class="settings-row" data-agent-sheet="claude" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-claude"></use></svg>
+              <span class="settings-row-label" data-agent-label="claude">Claude Code</span>
+              <span class="settings-row-value" data-settings-value="agent-claude"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button type="button" class="settings-row" data-agent-sheet="codex" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-codex"></use></svg>
+              <span class="settings-row-label" data-agent-label="codex">Codex</span>
+              <span class="settings-row-value" data-settings-value="agent-codex"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button type="button" class="settings-row" data-agent-sheet="antigravity" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-antigravity"></use></svg>
+              <span class="settings-row-label" data-agent-label="antigravity">Antigravity</span>
+              <span class="settings-row-value" data-settings-value="agent-antigravity"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button type="button" class="settings-row" data-agent-sheet="copilot" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-copilot"></use></svg>
+              <span class="settings-row-label" data-agent-label="copilot">GitHub Copilot</span>
+              <span class="settings-row-value" data-settings-value="agent-copilot"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button type="button" class="settings-row" data-agent-sheet="pi" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-pi"></use></svg>
+              <span class="settings-row-label" data-agent-label="pi">Pi</span>
+              <span class="settings-row-value" data-settings-value="agent-pi"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+            <button type="button" class="settings-row" data-agent-sheet="grok" aria-haspopup="dialog">
+              <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-grok"></use></svg>
+              <span class="settings-row-label" data-agent-label="grok">Grok Build</span>
+              <span class="settings-row-value" data-settings-value="agent-grok"></span>
+              <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+            </button>
+          </div>
+        </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- One agent's launch defaults (#1435): the Launch defaults sheet's
+         rows open it with only that agent's group shown. -->
+    <dialog id="agentSheet" class="detail-dialog settings-sheet" aria-labelledby="agentSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Launch defaults" title="Back to Launch defaults"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="agentSheetTitle" tabindex="-1" autofocus>Agent</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+        <div class="opt-group" data-agent-group="claude" hidden>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <span id="claudeModel" class="model-combo model-combo--settings" data-value="sonnet">
+              <button type="button" class="model-combo-trigger" aria-label="Claude model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="claudeModelMenu">Sonnet</button>
+              <span id="claudeModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Claude model" hidden></span>
+            </span>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Effort</span>
+            <select id="claudeEffort" class="select-native" aria-label="Effort"></select>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Permission</span>
+            <div id="claudePermission" class="segmented" role="group" aria-label="Permission mode"></div>
+          </div>
+          <div class="toggles">
+            <span class="switch-row"><span>Verbose</span><button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Debug</span><button type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false" aria-label="Debug output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+          </div>
+          <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
+        </div>
+        <div class="opt-group" data-agent-group="codex" hidden>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <span id="codexModel" class="model-combo model-combo--settings" data-value="gpt-5.6-luna">
+              <button type="button" class="model-combo-trigger" aria-label="Codex model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="codexModelMenu">Luna</button>
+              <span id="codexModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Codex model" hidden></span>
+            </span>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Reasoning</span>
+            <select id="codexEffort" class="select-native" aria-label="Codex reasoning"></select>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Permission</span>
+            <div id="codexPermission" class="segmented" role="group" aria-label="Codex permission mode"></div>
+          </div>
+          <p class="opt-hint">Runs on your ChatGPT-plan login (<code>codex login</code>). Model and compatible reasoning effort are passed explicitly; each model remembers its last effort. Luna defaults to Extra High.</p>
+          <div id="codexFlagsPreview" class="flags-preview">codex</div>
+        </div>
+        <div class="opt-group" data-agent-group="antigravity" hidden>
+          <div class="toggles">
+            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Antigravity permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Sandbox</span><button type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false" aria-label="Antigravity sandbox"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+          </div>
+          <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
+          <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
+        </div>
+        <div class="opt-group" data-agent-group="copilot" hidden>
+          <div class="toggles">
+            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+          </div>
+          <p class="opt-hint">Sign in with <code>/login</code> inside the session. Model is chosen with <code>/model</code> in-session (<code>/config model</code> sets the default) — the launcher sends no model flag, because Copilot decides per launch what your account may use and quietly falls back when it refuses.</p>
+          <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
+        </div>
+        <div class="opt-group" data-agent-group="pi" hidden>
+          <div class="opt-row">
+            <span class="opt-name">Model</span>
+            <span id="piModel" class="model-combo model-combo--settings" data-value="">
+              <button type="button" class="model-combo-trigger" aria-label="Pi model" aria-haspopup="listbox"
+                      aria-expanded="false" aria-controls="piModelMenu">Model</button>
+              <span id="piModelMenu" class="model-combo-menu" role="listbox"
+                    aria-label="Pi model" hidden></span>
+            </span>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Effort</span>
+            <select id="piEffort" class="select-native" aria-label="Pi reasoning"></select>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Project trust</span>
+            <div id="piTrust" class="segmented" role="group" aria-label="Pi project trust"></div>
+          </div>
+          <p class="opt-hint"><strong>Opus</strong>/<strong>Sonnet</strong>/<strong>Fable</strong> run on your <strong>Claude subscription</strong> (<code>claude-agent-sdk</code>); <strong>Luna</strong>/<strong>Terra</strong>/<strong>Sol</strong> run on your <strong>ChatGPT plan</strong> (<code>openai-codex</code>) — no API credits either way. Unavailable rollout models stay disabled. Effort is per model and maps to <code>--thinking</code>.</p>
+          <div id="piFlagsPreview" class="flags-preview">pi</div>
+        </div>
+        <div class="opt-group" data-agent-group="grok" hidden>
+          <div class="opt-row">
+            <span class="opt-name">Reasoning</span>
+            <select id="grokEffort" class="select-native" aria-label="Grok reasoning"></select>
+          </div>
+          <div class="opt-row">
+            <span class="opt-name">Permission</span>
+            <div id="grokPermission" class="segmented" role="group" aria-label="Grok permission mode"></div>
+          </div>
+          <p class="opt-hint">Runs on your <code>grok.com</code> login (<code>grok login</code>) — model stays the account default (<code>grok-4.5</code>, the only one <code>grok models</code> lists); the tiers map to <code>--reasoning-effort</code>.</p>
+          <div id="grokFlagsPreview" class="flags-preview">grok</div>
+        </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The chief (#1435): model and worker cap from the Board's old
+         dialog (PUT /api/board/chief/settings, passkey-gated), the
+         auto-compact threshold (#1298) and the doorbell switch
+         (fleet-config#1457, #1645's chief_doorbell), both POST /api/config. -->
+    <dialog id="chiefSheet" class="detail-dialog settings-sheet" aria-labelledby="chiefSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="chiefSheetTitle" tabindex="-1" autofocus>Chief</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div class="row">
+            <span>Model</span>
+            <span id="chiefModelSelect" class="model-combo model-combo--settings" data-value="fable">
+            <button type="button" class="model-combo-trigger" aria-label="Chief model"
+                    aria-haspopup="listbox" aria-expanded="false" aria-controls="chiefModelMenu">Fable</button>
+            <span id="chiefModelMenu" class="model-combo-menu" role="listbox"
+                  aria-label="Chief model" hidden>
+              <button type="button" role="option" data-value="sonnet" aria-selected="false">Sonnet</button>
+              <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
+              <button type="button" role="option" data-value="fable" aria-selected="true">Fable</button>
+            </span>
+          </span>
+          </div>
+          <label class="row">
+            <span>Worker cap</span>
+            <input id="chiefWorkerCap" type="number" class="input-native" inputmode="numeric" min="1" max="10" step="1" aria-describedby="chiefWorkerCapHelp">
+          </label>
+          <p id="chiefWorkerCapHelp" class="field-help">How many workers the chief runs at once, from 1 to 10.</p>
+          <div class="row">
+            <span>Auto-compact</span>
+            <button type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <label class="row">
+            <span>Compact at context use (%)</span>
+            <input id="chiefAutoCompactThreshold" type="number" class="input-native" inputmode="numeric" min="10" max="90" step="5" aria-describedby="chiefAutoCompactHelp">
+          </label>
+          <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
+          <div class="row">
+            <span>Doorbell</span>
+            <button type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief when its mailbox has worker news, by typing one fixed line into its terminal. Off, nothing is typed and the chief arms its own waiter at its next turn.</p>
+          <div class="row">
+            <span>Job failures</span>
+            <button type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Telegram channels (#1369): read-only status + setup guide for the
+         Telegram profiles (#1366), and since #1439 the one place a broken
+         profile or a profile problem is reported. telegram-setup.js renders
+         it from GET /api/life-os/channels; it only reports booleans and
+         names — never a path, a token or a file's content. -->
+    <dialog id="channelsSheet" class="detail-dialog settings-sheet" aria-labelledby="channelsSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="channelsSheetTitle" tabindex="-1" autofocus>Telegram</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div class="switch-row settings-switch-row">
+            <span>Hide Telegram sessions from the Board and session list</span>
+            <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="hideChannelSessionsHelp" class="field-help">A Telegram session serves someone through their own chat, and stopping it cuts that chat off. On, those sessions leave the Board and the session list; one line there says how many are running and opens a read-only list — no Stop, no delete. Off, they show and behave like any other session.</p>
+          <div class="switch-row settings-switch-row">
+            <span>Start Telegram sessions automatically</span>
+            <button type="button" id="autostartChannelSessionsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start Telegram sessions automatically" aria-describedby="autostartChannelSessionsHelp" title="Start Telegram sessions automatically"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="autostartChannelSessionsHelp" class="field-help">After a restart of the PC every Telegram session is gone, and its bot stays silent until someone starts it. On, the launcher starts each ready profile when it starts itself — a fresh session in the profile's skill, with the Claude model from Settings. A profile that is already running, or not ready, is left alone.</p>
+          <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; on the Life tab its skill then wears a send glyph, green while the bot runs, and the skill's menu starts or opens it. Nothing here edits files — it shows what is ready and what is missing.</p>
+          <h4 class="context-filter-subhead">Checks</h4>
+          <ul id="channelChecks" class="card-list channel-check-list" aria-label="Telegram setup checks"></ul>
+          <h4 class="context-filter-subhead">Profiles</h4>
+          <ul id="channelProfileChecks" class="card-list channel-check-list" aria-label="Telegram profiles"></ul>
+          <p id="channelProfilesEmpty" class="empty muted small">No profiles yet — step 4 below adds them.</p>
+          <p id="channelProfileProblems" class="field-help" role="status" hidden></p>
+          <h4 class="context-filter-subhead">Skills you can bind</h4>
+          <p class="muted small">A profile's <code>skill</code> is one of these life-os skill folders.</p>
+          <p id="channelSkills" class="channel-skill-chips"></p>
+          <h4 class="context-filter-subhead">Setup, in order</h4>
+          <ol class="channel-steps">
+            <li>In <strong>@BotFather</strong> send <code>/newbot</code> to create <strong>one bot per profile</strong> and copy each token (for a group chat also send <code>/setprivacy</code> and choose Disable). A bot token allows only one listener, so two sessions on one bot fight — never share one.</li>
+            <li>Install the plugin once in the life-os project: <code>/plugin install telegram@claude-plugins-official</code>. It needs <strong>Bun</strong> on your PATH (<code>bun --version</code> should print a number); the checks above show both.</li>
+            <li>Give each bot its own folder — <code>~/.claude/channels/telegram-&lt;id&gt;</code> — and put its token there yourself: create a file named exactly <code>.env</code> in it with one line, <code>TELEGRAM_BOT_TOKEN=&lt;token&gt;</code>. Edit it in an editor, not in a chat — the launcher never reads it. In Notepad pick <em>Save as type: All files</em>, or it saves <code>.env.txt</code> and the plugin never sees it.</li>
+            <li>Copy <code>config/channel_profiles.sample.json</code> to <code>config/channel_profiles.json</code> (machine-local, gitignored) and list each profile: <code>id</code> (a lowercase slug), <code>label</code>, <code>skill</code> (lowercase, exactly one of the chips above) and <code>state_dir</code> (the folder from step 3 as an absolute path that exists, with forward slashes; two profiles may not share one). It holds names and paths only, never a token. <strong>Re-check</strong> below says what each row still needs.</li>
+            <li>Make sure nothing else claims the token. <strong>An ambient <code>TELEGRAM_BOT_TOKEN</code> beats every profile's <code>.env</code></strong>: if one is set in Claude's <code>env</code> block (<code>~/.claude/settings.json</code>) or in the system environment, every profile listens on that one bot and yours never answers. Remove it there and keep it where its own tool reads it (fleet hooks read fleet-config's gitignored <code>.env</code>). Then give the plugin's default folder, <code>~/.claude/channels/telegram/.env</code>, a token of a bot no profile uses: an ordinary life-os session starts the plugin too, and a failed start is remembered for about 15 minutes, during which profile sessions skip the plugin.</li>
+            <li>Tap <strong>Re-check</strong> (every row should read Ready), then on the Life tab open the menu of the profile's skill and tap <strong>Start on Telegram</strong>. Then <strong>DM the bot itself</strong>, not a group: it replies with a 6-character code, good for 1 hour. In that profile's terminal run <code>/telegram:access pair &lt;code&gt;</code>; the bot answers “Paired!”. Pairing is per person, not per chat: each extra person (say, your wife) DMs the bot themselves and you pair their code in the same terminal. Everyone paired shares that one session and its context. The policy stays <code>pairing</code>, so a stranger only ever gets a code you can ignore; a group is ignored until you add it with <code>/telegram:access group add &lt;group id&gt;</code>.</li>
+          </ol>
+          <h4 class="context-filter-subhead">If the bot doesn't answer</h4>
+          <ul class="channel-steps">
+            <li><strong>No reply to <code>/start</code> or a message.</strong> The plugin isn't listening to this bot. In the profile's folder, no <code>bot.pid</code> means the plugin never started with it (see the next point); a <code>bot.pid</code> and still silence means another token overrides it (step 5).</li>
+            <li><strong>“failed to connect” or “Skipping connection (recent failure cached…)” at session start.</strong> Claude remembers a failed plugin start for about 15 minutes. Wait it out, then stop and start the profile; the default-folder token in step 5 stops it recurring.</li>
+            <li><strong>Paired, but no “Paired!” message.</strong> An <code>approved/&lt;your id&gt;</code> file left in the folder means the plugin server isn't running; fix the start above and the message goes out within seconds.</li>
+            <li><strong>No code arrives.</strong> You messaged a group instead of the bot's own chat, or it already sent the code twice (it then goes quiet; the code lasts an hour).</li>
+          </ul>
+          <div class="row settings-actions">
+            <button id="channelRecheck" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Re-check</button>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Context filter (issue #713) — the fleet's PreToolUse token-reduction
+         hook (fleet-config#392/#541/#544). context-filter.js owns this
+         sheet's contents; #1435 only moved them out of a card. -->
+    <dialog id="contextFilterSheet" class="detail-dialog settings-sheet" aria-labelledby="contextFilterSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="contextFilterSheetTitle" tabindex="-1" autofocus>Context filter</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <p class="muted small">Shortens long command output before coding agents read it, to save tokens. The mode applies right away to every coding-agent session on this PC. Measure only counts the savings without changing anything.</p>
+          <div id="contextFilterMode" class="segmented" role="group" aria-label="Context filter mode"></div>
+
+          <h4 class="context-filter-subhead">Coding agents it covers</h4>
+          <ul id="contextFilterHarnesses" class="card-list context-filter-harness-list" aria-label="Coding agents the filter reaches"></ul>
+
+          <h4 class="context-filter-subhead">Savings</h4>
+          <div id="contextFilterStats" class="context-filter-stats" hidden>
+            <span id="contextFilterSavedToday" class="context-filter-stat"></span>
+            <span id="contextFilterSavedWeek" class="context-filter-stat"></span>
+            <span id="contextFilterSavedTotal" class="context-filter-stat"></span>
+            <ul id="contextFilterPerAgent" class="context-filter-per-agent" aria-label="Savings by agent"></ul>
+          </div>
+          <p id="contextFilterStatsEmpty" class="empty muted small">No savings recorded yet.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- Fleet scope: which repos the fleet-wide runs include. fleet-scope.js
+         draws the rows from GET /api/fleet/scope; fleet-config's own writer
+         does the edit. -->
+    <dialog id="fleetScopeSheet" class="detail-dialog settings-sheet" aria-labelledby="fleetScopeSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="fleetScopeSheetTitle" tabindex="-1" autofocus>Fleet scope</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <p class="muted small">A switch that is on keeps the repo in fleet-wide runs (audits, cleanups, sweeps). Off makes it dormant: those runs skip it. The change applies to this PC at once.</p>
+          <p id="fleetScopeCount" class="muted small" role="status" aria-live="polite"></p>
+          <div id="fleetScopeUnavailable" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+            <p id="fleetScopeReason" class="empty-state-message"></p>
+          </div>
+          <label id="fleetScopeFilterWrap" class="action-row-filter list-filter" hidden>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <input id="fleetScopeFilterInput" type="search" autocomplete="off" placeholder="Filter repos" aria-label="Filter repos" aria-describedby="fleetScopeFilterHelp">
+          </label>
+          <p id="fleetScopeFilterHelp" class="field-help" hidden>Type part of a repo name to narrow the list.</p>
+          <ul id="fleetScopeList" class="card-list action-rows" aria-label="Fleet repos"></ul>
+          <div id="fleetScopeFilterEmpty" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <p class="empty-state-message">No repos match the filter.</p>
+            <button type="button" class="empty-state-action">Clear filter</button>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="tokensSheet" class="detail-dialog settings-sheet" aria-labelledby="tokensSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="tokensSheetTitle" tabindex="-1" autofocus>API tokens</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <p class="muted small">Tokens for running one job from a link, such as a Stream Deck button. A token can run only the job you pick, and revoking it never affects your main login.</p>
+          <ul id="tokensList" class="card-list"></ul>
+          <div id="tokensEmpty" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+            <p class="empty-state-message">No tokens yet.</p>
+            <button type="button" id="tokensEmptyAction" class="empty-state-action">Create a token</button>
+          </div>
+          <label class="stacked">
+            <span>Label</span>
+            <input id="tokenLabelInput" type="text" class="input-native" placeholder="Stream Deck — daily reporting">
+          </label>
+          <label class="stacked">
+            <span>Job it can run</span>
+            <select id="tokenJobSelect" class="select-native"></select>
+          </label>
+          <div class="row settings-actions">
+            <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Create token</button>
+          </div>
+          <div id="tokenMintResult" class="stacked" hidden>
+            <span class="muted small">Copy it now — it is shown only once.</span>
+            <div class="row">
+              <input id="tokenMintValue" type="text" class="input-native" readonly>
+              <button id="tokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+            </div>
+            <span id="tokenMintUrl" class="muted small"></span>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="foldersSheet" class="detail-dialog settings-sheet" aria-labelledby="foldersSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="foldersSheetTitle" tabindex="-1" autofocus>Folders</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <label class="stacked">
+            <span>Projects folder</span>
+            <input id="projectsDir" type="text" class="input-native" aria-describedby="projectsDirHelp">
+          </label>
+          <p id="projectsDirHelp" class="field-help">Where Code looks for projects: each folder inside it is one.</p>
+          <label class="stacked">
+            <span>Hidden projects</span>
+            <textarea id="projectsIgnore" class="input-native" aria-describedby="projectsIgnoreHelp" rows="3"
+                    placeholder="archive&#10;*-old&#10;scratch"></textarea>
+          </label>
+          <p id="projectsIgnoreHelp" class="field-help">Folders Code leaves out, one per line. A * matches anything, so *-old hides every name ending in -old.</p>
+          <label class="stacked">
+            <span>Apps folder</span>
+            <input id="appsScanRoot" type="text" class="input-native" aria-describedby="appsScanRootHelp">
+          </label>
+          <p id="appsScanRootHelp" class="field-help">Where the Apps tab's Scan for new apps looks for apps to add.</p>
+          <label class="stacked">
+            <span>Life OS folder</span>
+            <input id="lifeOsDir" type="text" class="input-native" aria-describedby="lifeOsDirHelp">
+          </label>
+          <p id="lifeOsDirHelp" class="field-help">Your life-os copy, which the Life OS tab reads.</p>
+          <label class="stacked">
+            <span>fleet-config folder</span>
+            <input id="fleetConfigDir" type="text" class="input-native" aria-describedby="fleetConfigDirHelp">
+          </label>
+          <p id="fleetConfigDirHelp" class="field-help">Your fleet-config copy. The Board, session state, Life OS conversations and the fleet chief read from it.</p>
+          <div class="stacked">
+            <span id="outboxRootsLabel">Chat file folders</span>
+            <ul id="outboxRootsList" class="card-list outbox-roots" aria-labelledby="outboxRootsLabel"></ul>
+          </div>
+          <div class="row outbox-root-add">
+            <input id="outboxRootInput" type="text" class="input-native" placeholder="C:\Drop or %USERPROFILE%\Drop" aria-label="Add a chat file folder" aria-describedby="outboxRootsHelp" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <button id="outboxRootAdd" type="button" class="button-ghost">Add</button>
+          </div>
+          <p id="outboxRootsHelp" class="field-help">The session's own folder is always allowed. These are extra folders an agent may send files from.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="passkeysSheet" class="detail-dialog settings-sheet" aria-labelledby="passkeysSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="passkeysSheetTitle" tabindex="-1" autofocus>Passkeys</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div class="webauthn-section">
+            <p id="webauthnStatus" class="muted small">Checking…</p>
+            <ul id="webauthnDevices" class="webauthn-devices"></ul>
+            <button id="enrollDeviceBtn" type="button" class="button-tint" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
+            <p class="muted small">
+              Open the enrollment window from the tray menu
+              (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
+            </p>
+          </div>
+          <p id="statusReadout" class="muted small settings-section"></p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="terminalSheet" class="detail-dialog settings-sheet" aria-labelledby="terminalSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="terminalSheetTitle" tabindex="-1" autofocus>Terminal</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <label class="stacked">
+            <span>Terminal history (lines)</span>
+            <input id="terminalHistoryLines" type="number" class="input-native" aria-describedby="terminalHistoryLinesHelp" step="100" inputmode="numeric">
+          </label>
+          <p id="terminalHistoryLinesHelp" class="field-help">How much a full-screen agent such as Codex keeps to redraw when you reconnect.</p>
+          <label class="stacked">
+            <span>Large file limit (MB)</span>
+            <input id="largeUploadMaxMb" type="number" class="input-native" aria-describedby="largeUploadMaxMbHelp" step="1" inputmode="numeric">
+          </label>
+          <p id="largeUploadMaxMbHelp" class="field-help">The biggest file Attach large file takes. It is stored on this PC for the agent to use by path, never read into its context.</p>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>

@@ -78,7 +78,6 @@
     {"key": "layer:src/chief_job_failed.py:app.webapp.routers", "imports": 1},
     {"key": "size:app/webapp/routers/life_os_conversations.py", "lines": 1019},
     {"key": "size:app/webapp/static/board.js", "lines": 1608},
-    {"key": "size:app/webapp/static/index.html", "lines": 3028},
     {"key": "size:app/webapp/static/jobs.js", "lines": 1034},
     {"key": "size:app/webapp/static/screen-view.js", "lines": 1832},
     {"key": "size:app/webapp/static/session-transcript.js", "lines": 1379},

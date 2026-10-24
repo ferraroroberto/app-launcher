@@ -1,0 +1,243 @@
+    <!-- Sort (#1538): the Jobs list's sort-and-filter sheet, the same shape as
+         the Conversations one (#1528) — the sort as range tabs, each applying
+         as it is tapped, Clear beside Done. Jobs has no filter of its own, so
+         the sheet carries the one Sort row. -->
+    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" aria-labelledby="jobsSortSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobsSortSheetTitle" tabindex="-1" autofocus>Sort and filter</h2>
+          <button type="button" id="jobsSortSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="row">
+          <span>Sort</span>
+          <div id="jobsSortTabs" class="segmented" role="group" aria-label="Sort jobs">
+            <button type="button" class="segmented-item" data-sort="next" aria-pressed="false">Next run</button>
+            <button type="button" class="segmented-item" data-sort="name" aria-pressed="false">A–Z</button>
+          </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" id="jobsSortSheetClear" class="button-ghost">Clear</button>
+          <button type="button" id="jobsSortSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The session transcript (#953) is no longer its own overlay: it is
+         the Chat pane of #terminalOverlay below (#982). -->
+
+    <dialog id="jobDialog" class="detail-dialog">
+      <form id="jobForm" class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobDialogTitle">Add job</h2>
+          <button type="button" id="jobCancel" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <input type="hidden" id="jobIdField">
+        <label class="row">
+          <span>Name</span>
+          <input id="jobNameInput" type="text" class="input-native" required>
+        </label>
+        <label class="row">
+          <span>Kind</span>
+          <select id="jobKindInput" class="select-native">
+            <option value="">Auto (from extension)</option>
+            <option value="python">Python (.py)</option>
+            <option value="batch">Batch (.bat)</option>
+            <option value="powershell">PowerShell (.ps1)</option>
+            <option value="shell-wsl">Shell — WSL (.sh)</option>
+            <option value="inline-shell">Inline shell (body below, no file)</option>
+            <option value="http-check">HTTP check (poll a URL)</option>
+          </select>
+        </label>
+        <label class="row" id="jobScriptRow">
+          <span>Script file</span>
+          <input id="jobScriptInput" type="text" class="input-native"
+                 placeholder="E:\automation\content-management\launch_reporting.bat">
+        </label>
+        <div class="job-kind-group" id="jobInlineShellFields" hidden>
+          <label class="row">
+            <span>Script type</span>
+            <select id="jobInlineExtInput" class="select-native">
+              <option value=".ps1">PowerShell (.ps1)</option>
+              <option value=".bat">Batch (.bat)</option>
+              <option value=".sh">Shell — WSL (.sh)</option>
+            </select>
+          </label>
+          <label class="row">
+            <span>Script body</span>
+            <textarea id="jobInlineBodyInput" class="input-native job-inline-body" rows="6"
+                      placeholder="Write-Host 'hi'"></textarea>
+          </label>
+        </div>
+        <div class="job-kind-group" id="jobHttpCheckFields" hidden>
+          <label class="row">
+            <span>URL</span>
+            <input id="jobHttpUrlInput" type="text" class="input-native"
+                   placeholder="https://example.com/health">
+          </label>
+          <label class="row">
+            <span>Method</span>
+            <select id="jobHttpMethodInput" class="select-native">
+              <option value="GET">GET</option>
+              <option value="HEAD">HEAD</option>
+              <option value="POST">POST</option>
+            </select>
+          </label>
+          <label class="row">
+            <span>Expected status</span>
+            <input id="jobHttpExpectStatusInput" type="number" class="input-native"
+                   min="100" max="599" placeholder="200">
+          </label>
+          <label class="row">
+            <span>Timeout (seconds)</span>
+            <input id="jobHttpTimeoutInput" type="number" class="input-native"
+                   min="1" max="120" placeholder="10">
+          </label>
+        </div>
+        <label class="row" id="jobArgsRow">
+          <span>Arguments (optional)</span>
+          <input id="jobArgsInput" type="text" class="input-native" placeholder="auto">
+        </label>
+        <label class="row">
+          <span>Schedule</span>
+          <select id="jobScheduleType" class="select-native">
+            <option value="none">None (manual only)</option>
+            <option value="minutes">Every N minutes</option>
+            <option value="hourly">Every N hours</option>
+            <option value="daily">Daily at HH:MM</option>
+            <option value="daily_times">Daily at multiple times</option>
+            <option value="weekly">Weekly</option>
+            <option value="once">Once (specific date + time)</option>
+          </select>
+        </label>
+        <label class="row" id="jobScheduleOnceRow" hidden>
+          <span>At (date + time, fires once)</span>
+          <input id="jobScheduleOnceAt" type="datetime-local" class="input-native">
+        </label>
+        <label class="row" id="jobScheduleEveryRow" hidden>
+          <span>Every</span>
+          <input id="jobScheduleEvery" type="number" class="input-native" min="1" value="1">
+        </label>
+        <label class="row" id="jobScheduleAtRow" hidden>
+          <span>At</span>
+          <input id="jobScheduleAt" type="text" class="input-native" placeholder="06:00" pattern="[0-2][0-9]:[0-5][0-9]">
+        </label>
+        <label class="row" id="jobScheduleTimesRow" hidden>
+          <span>Times, comma-separated</span>
+          <input id="jobScheduleTimes" type="text" class="input-native" placeholder="06:00, 12:00, 18:00">
+        </label>
+        <label class="row" id="jobScheduleDayRow" hidden>
+          <span>Day</span>
+          <select id="jobScheduleDay" class="select-native">
+            <option value="MON">Monday</option>
+            <option value="TUE">Tuesday</option>
+            <option value="WED">Wednesday</option>
+            <option value="THU">Thursday</option>
+            <option value="FRI">Friday</option>
+            <option value="SAT">Saturday</option>
+            <option value="SUN">Sunday</option>
+          </select>
+        </label>
+        <label class="row">
+          <span>Cooldown (seconds, optional)</span>
+          <input id="jobCooldownInput" type="number" class="input-native"
+                 min="0" max="86400" placeholder="0">
+        </label>
+        <label class="row">
+          <span>Exclusive group (optional)</span>
+          <input id="jobMutexGroupInput" type="text" class="input-native"
+                 title="Jobs that share a group never run at the same time; the later one waits."
+                 maxlength="32" placeholder="e.g. chrome-profile">
+        </label>
+        <div class="job-alert-row switch-row">
+          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg> Alert to Telegram if failed</span>
+          <button type="button" id="jobAlertOnFailureInput" class="toggle" role="switch" aria-checked="false" aria-label="Alert to Telegram if failed"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+        <div class="job-confirm-row switch-row">
+          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
+          <button type="button" id="jobConfirmInput" class="toggle" role="switch" aria-checked="false" aria-label="Require confirmation before running"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Run on success (chain)</h3>
+          <p class="dialog-section-hint">Pick jobs to fire after a successful run.</p>
+          <ul id="jobOnSuccessList" class="job-chain-list"></ul>
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Run on failure (chain)</h3>
+          <p class="dialog-section-hint">Pick jobs to fire after a failed run.</p>
+          <ul id="jobOnFailureList" class="job-chain-list"></ul>
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Parameters (optional)</h3>
+          <p class="dialog-section-hint">
+            Typed inputs collected on Run-now. Add a row per parameter;
+            leave it empty to run with one tap.
+          </p>
+          <ol id="jobParamsList" class="job-params-list"></ol>
+          <button type="button" id="jobParamsAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
+        </section>
+        <section class="dialog-section">
+          <h3 class="dialog-section-title">Webhook</h3>
+          <p class="dialog-section-hint">
+            Fire this job from an external service (GitHub, Stripe, or a
+            generic POST) instead of a phone tap — gated by its own
+            signature, never the app's bearer token.
+          </p>
+          <label class="row">
+            <span>Provider</span>
+            <select id="jobWebhookProvider" class="select-native">
+              <option value="">None (disabled)</option>
+              <option value="github">GitHub</option>
+              <option value="stripe">Stripe</option>
+              <option value="generic">Generic</option>
+            </select>
+          </label>
+          <label class="row" id="jobWebhookSecretRow" hidden>
+            <span>Secret</span>
+            <input id="jobWebhookSecretInput" type="text" class="input-native"
+                   placeholder="literal value or $secret:key">
+          </label>
+          <label class="row" id="jobWebhookEventsRow" hidden>
+            <span>Only these events (comma-separated; empty means all)</span>
+            <input id="jobWebhookEventsInput" type="text" class="input-native"
+                   placeholder="push, pull_request">
+          </label>
+          <div id="jobWebhookMappingSection" hidden>
+            <p class="dialog-section-hint">
+              Map payload fields (JSONPath, e.g. <code>$.repository.full_name</code>)
+              to this job's parameter names above.
+            </p>
+            <ol id="jobWebhookMappingList" class="job-params-list"></ol>
+            <button type="button" id="jobWebhookMappingAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
+          </div>
+        </section>
+        <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
+        <div class="detail-actions">
+          <button type="button" id="jobSaveAnyway" class="button-tint warn" hidden>Save anyway</button>
+          <button type="submit" id="jobSaveBtn" class="button-primary detail-save-btn">Add and verify</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="jobRunDialog" class="detail-dialog">
+      <form id="jobRunForm" class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobRunDialogTitle">Run job</h2>
+          <button type="button" id="jobRunCancel" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p id="jobRunDialogStaleNote" class="muted small" hidden></p>
+        <div id="jobRunDialogFields"></div>
+        <div class="job-run-dryrow switch-row">
+          <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry run — scripts that support it skip their side effects</span>
+          <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+        <div class="detail-actions">
+          <button type="submit" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run</button>
+        </div>
+      </form>
+    </dialog>

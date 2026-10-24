@@ -1,0 +1,33 @@
+    <!-- The confirm sheet (#1437): the vendored modal in place of native
+         confirm() before a Stop or a Remove. confirm-dialog.js fills the
+         title, the line and the action's text. -->
+    <dialog id="confirmDialog" class="detail-dialog confirm-dialog" aria-labelledby="confirmDialogTitle" aria-describedby="confirmDialogMessage">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="confirmDialogTitle" tabindex="-1" autofocus></h2>
+          <button type="button" id="confirmDialogClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p id="confirmDialogMessage" class="confirm-dialog-message"></p>
+        <input id="confirmDialogInput" type="text" class="input-native confirm-dialog-input" autocomplete="off" hidden>
+        <div class="detail-actions">
+          <button type="button" id="confirmDialogOk" class="button-tint danger detail-save-btn">Confirm</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="renameDialog" class="detail-dialog">
+      <form id="renameForm" class="detail-card">
+        <div class="detail-header">
+          <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> Rename</h2>
+          <button type="button" id="renameCancel" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <input id="renameInput" type="text" class="input-native" required>
+        <div class="detail-actions">
+          <button type="submit" class="button-primary detail-save-btn">Save</button>
+        </div>
+      </form>
+    </dialog>
