@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "entries": [
+    {"key": "tests/test_attach_batch.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_board_drilldown.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_card_stamp.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_chief_question_keys.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_context_alert.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_duration_days.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_file_view.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_git_changes.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_git_utils.py", "counts": {"no-window": 8}},
+    {"key": "tests/test_jobs_schtasks_encoding.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_markdown_tables.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_quota_pace.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_repaint_scrollback.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_scanner_git_status.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_send_confirm.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_session_host_paths.py", "counts": {"no-window": 9}},
+    {"key": "tests/test_session_status.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_suite_weight_ratchet.py", "counts": {"no-window": 2}},
+    {"key": "tests/test_syntax_tint.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_terminal_keys_bytes.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_usage_meter.py", "counts": {"no-window": 1}},
+    {"key": "tests/test_webapp_api_changes.py", "counts": {"no-window": 1}}
+  ]
+}
