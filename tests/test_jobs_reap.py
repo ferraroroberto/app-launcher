@@ -717,3 +717,55 @@ class TestReapStrandedRunsAll:
             jobs_reap_mod, "load_jobs", lambda: SimpleNamespace(jobs=jobs)
         )
         assert jobs_reap_mod.reap_stranded_runs_all() == {}
+
+
+# ------------------------------------------------- reap vs. executor race
+
+
+class TestReapRacesExecutorFinalise:
+    """The reaper decides from a record read earlier; the executor can write
+    in the window before the reaper's own write. Whatever the executor
+    recorded must survive, and no failure alert may fire for it."""
+
+    @pytest.mark.parametrize(
+        "seed, executor_write",
+        [
+            pytest.param(
+                {"status": "running", "pid": 4242},
+                {"status": "success", "exit_code": 0, "finished_at": "12:11:05"},
+                id="dead-pid-run-finalised-clean",
+            ),
+            pytest.param(
+                {"status": "pending", "stale": True},
+                {"status": "failed", "exit_code": -1},
+                id="pidless-pending-finalised-by-prespawn-failure",
+            ),
+            pytest.param(
+                {"status": "pending", "stale": True},
+                {"status": "running", "pid": 4242},
+                id="pidless-pending-got-its-pid",
+            ),
+        ],
+    )
+    def test_executor_write_between_read_and_reap_is_kept(
+        self, isolated_jobs, monkeypatch, caplog, seed, executor_write
+    ):
+        age = jobs_reap_mod._PENDING_NO_PID_GRACE_SECONDS + 5 if seed.pop("stale", False) else 300
+        started = (datetime.now() - timedelta(seconds=age)).isoformat(timespec="seconds")
+        rd = _seed_run(isolated_jobs, "solo", "20260101T000000", started_at=started, **seed)
+        monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", lambda *a, **k: False)
+        spy = MagicMock()
+        monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+        job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+        stale = jobs_mod.read_run(rd)
+        jobs_history_mod.write_run_json(rd, **executor_write)
+
+        with caplog.at_level("INFO", logger=jobs_reap_mod.logger.name):
+            assert jobs_reap_mod._reap_one(job, stale) is None
+
+        on_disk = jobs_mod.read_run(rd)
+        assert "reaped" not in on_disk
+        for key, value in executor_write.items():
+            assert on_disk[key] == value
+        spy.assert_not_called()
+        assert "reap skipped" in caplog.text
