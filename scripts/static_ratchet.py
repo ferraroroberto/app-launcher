@@ -5,7 +5,7 @@ re-finds them. This stage turns that into structure: it computes the current
 set of findings, compares it with a committed baseline, and fails only on a
 finding that is *new* -- so existing debt never blocks work but cannot grow.
 
-Two detectors, one key space:
+Three detectors, one key space:
 
   * **Duplicate blocks** (Python and JS together) -- `jscpd`, pinned to an exact
     version and run through `npx`. One tool covers both languages; a stdlib JS
@@ -14,12 +14,17 @@ Two detectors, one key space:
   * **Unused imports / variables** (Python only) -- `ruff --select F401,F841`,
     so the repo's own ruff config (excludes, per-file-ignores, `# noqa`) still
     applies. JS unused-code detection is deliberately out of scope.
+  * **Likely bugs and security patterns** (Python only) -- a curated set of
+    ruff `B` (flake8-bugbear) and `S` (flake8-bandit) codes, `DEFAULT_RULES`,
+    run in the same ruff call. Each code is one a reviewer fixes rather than
+    argues with; the codes left out, and why, are in docs/static-ratchet.md.
 
 Findings are reduced to line-number-free keys so the baseline survives edits
 above a finding: a duplicate is `dup:<sha1 of the whitespace-normalised
 fragment>:<file>|<file>` (strict: editing the cloned block reads as one hit
-gone plus one new), an unused name is `unused:<rule>:<file>:<symbol>`; repeats of
-one key in a file get a `#2`, `#3`... ordinal. jscpd reports a clone as an
+gone plus one new), an unused name is `unused:<rule>:<file>:<symbol>`, a bug or
+security finding is `lint:<rule>:<file>:<stripped source line>`; repeats of one
+key in a file get a `#2`, `#3`... ordinal. jscpd reports a clone as an
 ordered pair, and the fragment hashed is the first file's, so the key is stable
 for as long as that order is -- it is deterministic for an unchanged tree.
 
@@ -32,6 +37,7 @@ repo that has not opted in:
     min_lines  = 10                                  # default
     min_tokens = 100                                 # default
     exclude    = ["**/_vendored/**"]                 # added to the built-in set
+    ruff_rules = ["B006", "S113"]                    # replaces DEFAULT_RULES; [] = none
 
 Every `dest` in the repo's own `[vendored]` table is excluded as well: a
 vendor-verbatim copy is checked once, where it lives, and an adopter cannot edit
@@ -89,7 +95,50 @@ BUILTIN_EXCLUDES = (
     "**/*.min.js",
 )
 JSCPD_FORMATS = "python,javascript"
-RUFF_RULES = "F401,F841"
+#: Always selected: the unused-name detector, keyed `unused:`.
+UNUSED_RULES = ("F401", "F841")
+#: Bug (flake8-bugbear) and security (flake8-bandit) codes run unless the
+#: adopter's `ruff_rules` replaces them, keyed `lint:`.
+DEFAULT_RULES = (
+    "B002",  # `++n` is two unary pluses, not an increment
+    "B003",  # rebinding `os.environ` does not reach child processes
+    "B004",  # `hasattr(x, "__call__")` misses callables; `callable()` does not
+    "B005",  # `.strip("abc")` strips a character set, not a suffix
+    "B006",  # a mutable default argument is shared by every call
+    "B012",  # `return`/`break` in `finally` swallows the in-flight exception
+    "B015",  # a comparison whose result is discarded is a missing `assert`
+    "B016",  # raising a literal is a TypeError, not the intended error
+    "B017",  # `pytest.raises(Exception)` passes on any error at all
+    "B018",  # a statement with no effect is a typo or a missing call
+    "B020",  # a loop variable that rebinds its own iterable
+    "B021",  # an f-string docstring is not a docstring
+    "B022",  # `contextlib.suppress()` with no exceptions suppresses nothing
+    "B025",  # the second handler for the same exception is dead code
+    "B026",  # `*args` after a keyword argument binds positionally first
+    "B029",  # `except ():` catches nothing
+    "B030",  # `except` on a non-exception class raises TypeError when reached
+    "B031",  # a `groupby` group reused after the generator moved on is empty
+    "B032",  # `x[k]: 1` is an annotation, not the intended assignment
+    "B033",  # a set literal that repeats an item (often `0` and `False`)
+    "B034",  # `re.sub` count/flags passed positionally are easy to swap
+    "B035",  # a dict comprehension with a constant key keeps only the last item
+    "B039",  # a mutable `ContextVar` default is shared by every context
+    "S102",  # `exec` runs whatever string reaches it
+    "S103",  # a world-writable `chmod`
+    "S113",  # an HTTP call without a timeout hangs forever on a silent peer
+    "S201",  # Flask `debug=True` serves the Werkzeug remote-code console
+    "S307",  # `eval` of data is code execution; `ast.literal_eval` is not
+    "S506",  # `yaml.load` without a safe loader builds arbitrary objects
+    "S602",  # `shell=True` runs shell metacharacters inside an argument
+    "S604",  # the same, through a non-subprocess call taking `shell=True`
+    "S605",  # `os.system`/`os.popen` always go through a shell
+    "S701",  # Jinja2 with autoescape off renders HTML injection
+)
+#: In tests, running code or a shell command is the test's own job on fixture
+#: input, not an injection path, so these codes are not reported there.
+TEST_GLOBS = ("**/tests/**", "**/test_*.py", "**/*_test.py", "**/conftest.py")
+TEST_IGNORED_RULES = frozenset({"S102", "S307", "S602", "S604", "S605"})
+_RULE_CODE = re.compile(r"[A-Z]+[0-9]+\Z")
 TOOL_TIMEOUT_S = 600
 
 EXIT_PASS, EXIT_NEW, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
@@ -98,7 +147,7 @@ EXIT_PASS, EXIT_NEW, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
 # would not resolve in a consumer tree), the documented exception.
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
-_FLEET_KEYS = {"enabled", "baseline", "min_lines", "min_tokens", "exclude"}
+_FLEET_KEYS = {"enabled", "baseline", "min_lines", "min_tokens", "exclude", "ruff_rules"}
 
 
 class ConfigError(RuntimeError):
@@ -115,12 +164,13 @@ class Config:
     min_lines: int
     min_tokens: int
     exclude: tuple[str, ...]
+    ruff_rules: tuple[str, ...] = DEFAULT_RULES
 
 
 @dataclass(frozen=True)
 class Finding:
     key: str
-    kind: str  # "dup" | "unused"
+    kind: str  # "dup" | "unused" | "lint"
     files: tuple[str, ...]
     detail: str  # snippet or symbol, for the failure message only
 
@@ -159,7 +209,10 @@ def parse_config(toml_text: str) -> Config | None:
     exclude = table.get("exclude", [])
     if not isinstance(exclude, list) or not all(isinstance(g, str) and g for g in exclude):
         raise ConfigError("[static_ratchet] exclude must be a list of non-empty glob strings")
-    return Config(baseline, ints["min_lines"], ints["min_tokens"], tuple(exclude))
+    rules = table.get("ruff_rules", list(DEFAULT_RULES))
+    if not isinstance(rules, list) or not all(isinstance(r, str) and _RULE_CODE.match(r) for r in rules):
+        raise ConfigError('[static_ratchet] ruff_rules must be a list of ruff rule codes such as "S113"')
+    return Config(baseline, ints["min_lines"], ints["min_tokens"], tuple(exclude), tuple(rules))
 
 
 def vendored_globs(toml_text: str) -> tuple[str, ...]:
@@ -274,7 +327,7 @@ _SYMBOL = re.compile(r"`([^`]+)`")
 
 
 def parse_ruff(items: object, root: Path, excludes: tuple[str, ...]) -> list[Finding]:
-    """`ruff --output-format json` -> unused-import / unused-variable findings."""
+    """`ruff --output-format json` -> unused-name and bug/security findings."""
     if not isinstance(items, list):
         raise NotConfirmed("ruff output is not a JSON list")
     raw: list[tuple[str, int, Finding]] = []
@@ -287,6 +340,14 @@ def parse_ruff(items: object, root: Path, excludes: tuple[str, ...]) -> list[Fin
         except (KeyError, TypeError, ValueError) as exc:
             raise NotConfirmed(f"ruff output entry is malformed: {exc!r}") from exc
         if is_excluded(filename, excludes):
+            continue
+        if rule not in UNUSED_RULES:
+            if rule in TEST_IGNORED_RULES and is_excluded(filename, TEST_GLOBS):
+                continue
+            # The source line, not the message: one message repeats for every hit.
+            line = _source_line(root / filename, row) or message
+            key = f"lint:{rule}:{filename}:{line}"
+            raw.append((key, row, Finding(key, "lint", (filename,), f"{rule} {message}: {line}")))
             continue
         match = _SYMBOL.search(message)
         symbol = match.group(1) if match else _source_line(root / filename, row)
@@ -350,8 +411,9 @@ def run_jscpd(root: Path, cfg: Config) -> list[Finding]:
 
 
 def run_ruff(root: Path, cfg: Config) -> list[Finding]:
+    rules = ",".join(dict.fromkeys(UNUSED_RULES + cfg.ruff_rules))
     proc = _run(
-        [sys.executable, "-m", "ruff", "check", "--select", RUFF_RULES,
+        [sys.executable, "-m", "ruff", "check", "--select", rules,
          "--output-format", "json", "--no-cache", "."],
         root, "ruff",
     )
@@ -441,7 +503,7 @@ def _report_new(new: list[Finding]) -> None:
     print(f"static ratchet: {len(new)} NEW finding(s) not in the baseline:")
     for f in new:
         where = " <-> ".join(f.files)
-        label = "duplicate block" if f.kind == "dup" else "unused"
+        label = {"dup": "duplicate block", "unused": "unused", "lint": "bug/security"}[f.kind]
         print(f"  [{label}] {where}")
         print(f"      {f.detail}")
 
@@ -500,7 +562,7 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
 
     if new:
         _report_new(new)
-        print("  Remove the duplication / unused name, or (reviewed) re-baseline with "
+        print("  Remove the duplication / unused name / flagged pattern, or (reviewed) re-baseline with "
               "`--update-baseline --allow-additions`.")
         return EXIT_NEW
     print(f"static ratchet: PASS ({len(current)} baselined finding(s), none new)")
