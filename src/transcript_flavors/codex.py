@@ -35,7 +35,7 @@ _CODEX_SKIP_USER_PREFIXES = (
 )
 
 
-# ------------------------------------------------------- apply_patch (#1356)
+# ------------------------------------------------------- apply_patch
 #
 # Codex edits files through one tool, ``apply_patch``, whose input is a patch
 # text (``*** Begin Patch`` .. ``*** End Patch``) naming each file in an
@@ -206,7 +206,7 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     user_cap = NO_CAP if uncapped else _shared.USER_TEXT_CAP
     entries: List[Entry] = []
     open_calls: Dict[str, Entry] = {}
-    patch_steps: Dict[str, List[Entry]] = {}    # call id → the per-file steps of its patch (#1356)
+    patch_steps: Dict[str, List[Entry]] = {}    # call id → the per-file steps of its patch
     for offset, raw in lines:
         obj = _loads(raw)
         if obj is None or obj.get("type") != "response_item":
@@ -246,7 +246,7 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             if call_id:
                 open_calls[call_id] = e
             # A patch's file edits: one step each, after the call's own row,
-            # sharing its result (#1356).
+            # sharing its result.
             siblings = [
                 _with_action(_entry(
                     "tool_call", offset, ts, name="apply_patch", summary=str(a["path"]),
@@ -259,7 +259,7 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             if siblings and call_id:
                 patch_steps[call_id] = siblings
         elif pt in ("function_call_output", "custom_tool_call_output"):
-            # No structural `error=` here, deliberately (#1020): Codex records
+            # No structural `error=` here, deliberately: Codex records
             # **no** success/error field at any level. A failed call and a
             # working one are structurally identical — measured over the 30
             # newest rollouts (one key-set, `call_id,id,
@@ -270,7 +270,7 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             # would mean reading that prose, so the flavour is declared
             # `partial` in `FLAVORS`: the client says "can't tell" for an
             # unmarked call rather than showing a failure as a success.
-            # The one exception (#1356) is a patch: `apply_patch` states its
+            # The one exception is a patch: `apply_patch` states its
             # own rejection in a fixed tool message (28 of 710 direct calls
             # and 79 of ~1,100 `exec` ones on the dev box), and a rejected
             # patch changed nothing, so its steps must not count as edits.

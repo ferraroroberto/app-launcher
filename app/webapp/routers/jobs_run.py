@@ -59,8 +59,8 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
             build_invocation, job, raw_params, run_dir
         )
         if job.env:
-            # "Would this even start?" includes the env overlay (issue
-            # #72): an unresolvable $secret: reference must fail the
+            # "Would this even start?" includes the env overlay:
+            # an unresolvable $secret: reference must fail the
             # check, not wait for a real fire. Values are discarded —
             # only argv ever lands in the note.
             from src.jobs_secrets import resolve_env_overlay  # local: leaf util
@@ -123,7 +123,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
             status="failed",
             refused=refused,
         )
-        # A refused argv is a rejected request (issue #810), not a server
+        # A refused argv is a rejected request, not a server
         # fault — only a genuine spawn failure (OSError) is a 500.
         if refused:
             raise HTTPException(status_code=400, detail=f"refused: {exc}")
@@ -174,7 +174,7 @@ async def _admit_and_spawn(
         )
 
     # Mutex-group admission + spawn. Shared with the chain dispatcher and
-    # the executor's own scheduled-fire gate (issue #794) — see
+    # the executor's own scheduled-fire gate — see
     # src.jobs_queue.admit_and_spawn for the queued-vs-spawn contract. Runs
     # as one to_thread hop: every step in it is blocking file/subprocess
     # work, so there is nothing for the event loop to interleave.
@@ -203,7 +203,7 @@ async def _admit_and_spawn(
     if meta["status"] == "failed":
         # Spawn failed. admit_and_spawn already recorded the failure on the
         # run so the UI surfaces it instead of a stuck "pending". A refused
-        # argv (issue #810) is a rejected request, not a server fault —
+        # argv is a rejected request, not a server fault —
         # only a genuine spawn failure (OSError) answers 500.
         if meta.get("refused"):
             raise HTTPException(

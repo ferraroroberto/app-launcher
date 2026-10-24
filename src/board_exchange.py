@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 _CAPTURE_TAIL_BYTES = 512 * 1024
 # The launcher input log (``webapp/sessions/<sid>.log``) is appended one
 # ``[input]`` line per chunk for a session's whole life, with no rotation, and
-# the chief drawer re-polls it every 5s — so only its tail is read (#881), like
+# the chief drawer re-polls it every 5s — so only its tail is read, like
 # every other reader here. Sized by measurement against the 12 largest logs
 # on this box: some sessions log 100+ KB of non-submitting input (keys,
 # terminal escape traffic) after their last Enter, so 64 KB changed the shown
@@ -58,7 +58,7 @@ _SATURATED_NAMED = frozenset({
     "brightblack", "brightred", "brightgreen", "brightblue",
     "brightmagenta", "brightcyan",
 })
-# Rendered capture rows, keyed by capture path (#1494). The ``pyte`` replay of
+# Rendered capture rows, keyed by capture path. The ``pyte`` replay of
 # the 512 KB tail is ~0.5-1 s of pure-Python CPU (measured on the dev box's
 # largest captures) and the fleet chief reads every lane's exchange on every
 # wake, while an idle session writes nothing, so an unchanged capture is

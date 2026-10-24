@@ -154,8 +154,8 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
             continue
         if other.mutex_group != job.mutex_group:
             continue
-        # A stranded "running" record (executor died before finalising,
-        # issue #591) must not wedge the group forever — reconcile it
+        # A stranded "running" record (executor died before finalising)
+        # must not wedge the group forever — reconcile it
         # before treating it as a live collision.
         finalize_dead_runs(other)
         latest = latest_run(other.id)
@@ -300,7 +300,7 @@ def admit_and_spawn(
         spawn_run_job_detached(job.id, run_dir.name, trigger, params or None)
     except (OSError, ValueError) as exc:
         # Reflect the failure in the *returned* meta too, not just on disk
-        # (issue #794) — a caller reading the return value used to see a
+        # — a caller reading the return value used to see a
         # stale status="pending" even though run.json already said "failed".
         failure: Dict[str, Any] = {
             "finished_at": datetime.now().isoformat(timespec="seconds"),

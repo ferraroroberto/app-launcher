@@ -37,7 +37,7 @@ from src.transcript_flavors._shared import (
 )
 
 
-# Claude Code's own "put this file in front of the owner" tool (#1530). Its
+# Claude Code's own "put this file in front of the owner" tool. Its
 # input is ``{"files": [path, ...], "caption"?: str}``, paths absolute or
 # relative to the session's cwd; the Chat pane renders each one the way an
 # outbox file renders, through ``/transcript/file`` and the outbox's guards.
@@ -96,7 +96,7 @@ def _patch_from_result(call: Optional[Entry], tool_use_result: Any) -> None:
         return
     action["added"], action["removed"] = diff_counts(edit[1])
     action["diff"] = cap_diff(edit[1], DIFF_FULL_BYTES)
-    # A Write that made the file, so a turn's Edited card badges it A (#1477),
+    # A Write that made the file, so a turn's Edited card badges it A,
     # as the Changed files fold does; Codex's builder sets the same flag.
     if edit[2]:
         action["created"] = True
@@ -172,7 +172,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         result=None, result_truncated=False, sidechain=sidechain,
                     ), _tool_action(str(block.get("name") or ""), block.get("input")), _tool_description(block.get("input")))
                     if e["name"] == ASK_TOOL_NAME:
-                        # The Chat pane's question card (#1149): the one tool
+                        # The Chat pane's question card: the one tool
                         # whose structured input is forwarded, plus the id
                         # the answer route checks against. An input this
                         # reader doesn't recognise keeps the generic row.
@@ -195,7 +195,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                             caption = (block.get("input") or {}).get("caption")
                             e["caption"] = _cap(str(caption).strip(), SYSTEM_TEXT_CAP)[0] if isinstance(caption, str) else ""
                     elif e["name"] == PLAN_TOOL_NAME:
-                        # The plan card (#1151): the whole plan, not the
+                        # The plan card: the whole plan, not the
                         # summary's one truncated line of it.
                         plan = plan_from_input(block.get("input"))
                         if plan:
@@ -211,7 +211,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"]
                 if results:
                     tool_use_result = obj.get("toolUseResult")
-                    # Image numbering walks the whole line (#1265), so each
+                    # Image numbering walks the whole line, so each
                     # result's images start after the ones before it.
                     image_n = 0
                     for block in content:
@@ -228,8 +228,8 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                         image_n += len(result_images)
                         result_text = _with_placeholders(_blocks_text(block.get("content")), missing)
                         # A decision card's answer rides on the *line*
-                        # (`toolUseResult`) or in the rejection text — #1149's
-                        # picks, #1151's plan outcome; empty for other tools.
+                        # (`toolUseResult`) or in the rejection text — the picks
+                        # and the plan outcome; empty for other tools.
                         decision: Dict[str, Any] = {}
                         answers = answers_from_result(tool_use_result)
                         if answers:
@@ -244,7 +244,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                             # Claude states it outright: across the 40 newest
                             # transcripts on the dev box a `tool_result` block
                             # came in exactly two key-sets, one of them carrying
-                            # `is_error` beside the error text (#1020).
+                            # `is_error` beside the error text.
                             error=bool(block.get("is_error")),
                             decision=decision,
                             images=refs,
@@ -261,7 +261,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             stripped = text.strip()
             if not stripped and not refs:
                 continue
-            # `_typed_user_kind` (board_transcript.py, #1310) is the one
+            # `_typed_user_kind` (board_transcript.py) is the one
             # classification shared with `last_exchange`/`has_typed_user_prompt`
             # so the Board drawer's "typed prompt" reading never drifts from
             # this reader's own.
@@ -280,7 +280,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             continue
 
         if kind == "attachment":
-            # A message typed while Claude was mid-turn (#1674): the transcript
+            # A message typed while Claude was mid-turn: the transcript
             # holds no ``user`` line for it, only ``queue-operation``
             # enqueue/remove rows (dropped, or it would show twice) and this
             # ``queued_command`` attachment, written when the text is actually

@@ -26,7 +26,7 @@ TOOL_SUMMARY_CAP = 200
 TOOL_RESULT_CAP = 1_500
 SYSTEM_TEXT_CAP = 1_500
 
-# Effectively "no cap" for `entry_full_text` (#985): a turn's raw text never
+# Effectively "no cap" for `entry_full_text`: a turn's raw text never
 # approaches this, so `_cap` never reports it truncated.
 NO_CAP = 1 << 30
 
@@ -65,7 +65,7 @@ def _tool_summary(inputs: Any) -> str:
     return _cap(text, TOOL_SUMMARY_CAP)[0]
 
 
-# What a tool call did, in plain words for Chat's runs (#1266). The tool names
+# What a tool call did, in plain words for Chat's runs. The tool names
 # and argument keys were probed from real transcripts of every harness (key
 # names only); a tool not listed, or an input missing its key, gets no action
 # and renders exactly as before.
@@ -83,7 +83,7 @@ _READ_TOOLS = {
 # Each argument is a tuple of key names, the first one present wins: the same
 # tool name carries different keys per harness (Pi's ``write`` takes ``path``,
 # Grok's ``file_path``). Every key was read from a real call or the harness's
-# own tool schema (#1356), never guessed.
+# own tool schema, never guessed.
 _WRITE_TOOLS = {
     "Write": (("file_path",), ("content",)),
     "write": (("path", "file_path"), ("content",)),    # Pi / Grok
@@ -98,13 +98,13 @@ _EDIT_TOOLS = {
 }
 ACTION_COMMAND_CAP = 2_000
 
-# Per-step diffs (#1349). An edit/write action carries ``diff``: ``hunks``,
+# Per-step diffs. An edit/write action carries ``diff``: ``hunks``,
 # each ``{"old_start", "new_start", "lines"}`` with every line keeping its
 # unified-diff prefix (" ", "-", "+"), plus ``numbered`` and ``truncated``.
 # The starts are real file line numbers only where the harness recorded them
 # (Claude's ``structuredPatch``, or a Write that created the file); a diff
 # worked out from an edit's own old/new text has none, so they are ``None`` --
-# never invented. A builder caps at DIFF_FULL_BYTES (the #977 viewer's cap);
+# never invented. A builder caps at DIFF_FULL_BYTES (the viewer's cap);
 # a transcript page trims each step further, see
 # ``session_transcript._inline_diffs``.
 DIFF_FULL_BYTES = 200_000
@@ -316,7 +316,7 @@ def _with_action(entry: Entry, action: Optional[Dict[str, Any]], description: st
     return entry
 
 
-# ------------------------------------------------------ transcript images (#1265)
+# ------------------------------------------------------ transcript images
 #
 # An image block rides the transcript as base64. Only the flavour-agnostic
 # extraction lives here; the byte cap, media-type sniff and the on-demand
@@ -420,7 +420,7 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
         call["result_truncated"] = truncated
         if error:
             call["error"] = True
-            # A failed edit changed nothing (#1349): its row keeps today's
+            # A failed edit changed nothing: its row keeps today's
             # shape, never a diff of what it only attempted.
             action = call.get("action")
             if isinstance(action, dict):

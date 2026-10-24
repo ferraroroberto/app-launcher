@@ -28,7 +28,7 @@ _INDEX_LOCK = threading.RLock()
 
 # Where the index file lives. It used to sit inside the run-history root it
 # mirrors (``webapp/jobs/``), which put its writes on whichever drive this repo
-# was cloned onto — a spinning HDD here (project-scaffolding#243). It now
+# was cloned onto — a spinning HDD here. It now
 # resolves to the fleet runtime-data root instead.
 #
 # A module global rather than a call to ``runtime_data_dir()`` inside

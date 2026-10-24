@@ -36,17 +36,17 @@ from src.board_state import _now, _parse_iso
 
 logger = logging.getLogger(__name__)
 
-# Transcript-activity overlay (#305): a transcript appended this much later
+# Transcript-activity overlay: a transcript appended this much later
 # than the row's stamp means Claude resumed without any hook firing. The
 # margin absorbs the Stop hook and the final transcript write landing a
 # couple of seconds apart in either order.
 _RESUME_EPSILON = timedelta(seconds=10)
 
-# External-row liveness (#322, tightened by #455, narrowed by #613): a hook
+# External-row liveness: a hook
 # state is semantic evidence, not proof that its process still exists. Only
 # recent transcript activity lets an unmatched row render as an external
 # session. Missing cloud/bridge transcripts and quiet waiting rows otherwise
-# linger for 24 hours. Narrowed from 15 to 5 minutes by #613 — the observed
+# linger for 24 hours. Narrowed from 15 to 5 minutes — the observed
 # Codex ghost sat at 14.3 minutes, just inside the old window; this is still
 # an inherently imperfect fallback (a process that writes once and exits
 # within the window is indistinguishable from one still running), not a fix
@@ -55,23 +55,23 @@ _RESUME_EPSILON = timedelta(seconds=10)
 # transcript) are the real fix and run first.
 _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 
-# Live-title busy override (#631/#627): Claude Code prefixes its own OSC
+# Live-title busy override: Claude Code prefixes its own OSC
 # window title with a brand glyph that doubles as a busy/idle marker — an
 # animated spinner glyph while a turn is genuinely in progress, "*" (U+2733)
 # once it returns to an idle prompt. Verified live against real sessions on
 # this box: the glyph stays a spinner throughout text generation *and* tool
 # dispatch, only flipping to the idle marker once control returns to the
-# user — so it is immune to #631's race (the tail scan landing in the ~1.8s
+# user — so it is immune to the race where the tail scan landing in the ~1.8s
 # gap between a streamed text block and its own following tool_use block),
 # which is entirely a transcript-file phenomenon this field never touches.
 #
-# Two spinner families are recognized (#815). The CLI originally painted
-# Braille Patterns (U+2800-U+28FF), which is what #631 live-verified and all
+# Two spinner families are recognized. The CLI originally painted
+# Braille Patterns (U+2800-U+28FF), which is what was live-verified and all
 # this check matched for a year. It has since moved to the circle-quadrant
 # rotation "◐◓◑◒" (U+25D0-U+25D3), and because an unrecognized glyph is
 # designed to fall through silently, the whole override went inert with no
 # error and no failing test — every live working session read as not-busy
-# (#815; the Board misread a running tool call as needing the human, #813).
+# (the Board misread a running tool call as needing the human).
 # Re-measured against the running Board — 40 polls of /api/board at 150ms,
 # counting each card's leading live_title character — the only glyphs seen
 # were U+2733 "✳" (idle, x160) and U+25D0 "◐" / U+25D1 "◑" (busy, x101/x19),
@@ -83,7 +83,7 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 # still counts as busy ONLY on a recognized glyph; anything else (a future
 # CLI's different spinner, no title yet, a non-Claude agent, a "remote" kind
 # session with no PTY) falls through to the existing transcript-based checks
-# below, unchanged. What #815 adds is that the fall-through is no longer
+# below, unchanged. What the unrecognized-glyph note adds is that the fall-through is no longer
 # *silent*: :func:`_note_unrecognized_title_glyph` leaves one info-level
 # breadcrumb per distinct unrecognized glyph, so the next such drift is one
 # grep away instead of another live probe.
@@ -93,8 +93,8 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 # output at all) freezes on whatever glyph was last painted, which could be
 # this same spinner, so it cannot by itself distinguish "still legitimately
 # working" from "wedged mid-spinner". Closing that remaining gap needs a
-# freshness check against the session's own last PTY output — #627's named
-# remainder, closed by :data:`_WEDGED_PTY_AFTER` below (#636).
+# freshness check against the session's own last PTY output, closed by
+# :data:`_WEDGED_PTY_AFTER` below.
 _BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿◐-◓]")
 
 # The idle counterpart of the spinner above: control is back at the prompt.
@@ -102,7 +102,7 @@ _BUSY_LIVE_TITLE_RE = re.compile(r"^[⠀-⣿◐-◓]")
 # stay quiet about the one non-busy glyph that is already understood.
 _IDLE_LIVE_TITLE_GLYPH = "✳"  # U+2733
 
-# Drift breadcrumb bookkeeping (#815). The Board polls every 5s and a title
+# Drift breadcrumb bookkeeping. The Board polls every 5s and a title
 # glyph is stable for a session's whole life, so logging every rejection
 # would bury the one line that matters. One info line per distinct glyph,
 # capped and cleared wholesale on overflow — the same shape as
@@ -110,7 +110,7 @@ _IDLE_LIVE_TITLE_GLYPH = "✳"  # U+2733
 _LOGGED_UNKNOWN_TITLE_GLYPHS: "set[str]" = set()
 _UNKNOWN_TITLE_GLYPH_LOG_CAP = 64
 
-# Wedged-PTY staleness (#636): how old ``last_output_at`` (the PTY's raw-read
+# Wedged-PTY staleness: how old ``last_output_at`` (the PTY's raw-read
 # timestamp, session_host.py's ``PtySession._last_output_at``) can be before
 # a busy ``live_title`` is no longer trusted at face value. Live-probed
 # against two real, concurrently-busy production sessions on this box (a
@@ -125,7 +125,7 @@ _UNKNOWN_TITLE_GLYPH_LOG_CAP = 64
 # not a PTY-heartbeat one — the two measure different things at different
 # timescales). A ``last_output_at`` past this age means the PTY has gone
 # genuinely quiet, so the busy glyph is stale chrome, not proof of a live
-# turn — the override below falls through to the pre-#631 transcript-based
+# turn — the override below falls through to the earlier transcript-based
 # checks instead of trusting it.
 _WEDGED_PTY_AFTER = timedelta(seconds=10)
 
@@ -210,17 +210,17 @@ _ACTIVITY_TAIL_BYTES = 8 * 1024
 # exchange (or the launch line of a dispatch still in flight) always sits
 # within the final few hundred KB, even behind one large intervening tool
 # result (e.g. a file Read). Shared by :func:`last_exchange` and
-# :func:`_pending_background_dispatch_launched_at` (#594 widened the latter
+# :func:`_pending_background_dispatch_launched_at` (widened to the latter
 # from the much smaller ``_ACTIVITY_TAIL_BYTES`` after a live dispatch's
 # launch line — 11.8 KB back — was pushed out of an 8 KB window by one such
 # Read).
 _EXCHANGE_TAIL_BYTES = 256 * 1024
 
-# Pending-background-dispatch detection (#464): the id a completed dispatch
+# Pending-background-dispatch detection: the id a completed dispatch
 # is later referenced by, e.g. "<task-id>btvos2agp</task-id>".
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")
 
-# #608's ``stalled`` status: how long a pending background dispatch must sit
+# The ``stalled`` status: how long a pending background dispatch must sit
 # unresolved before a Stop-hook ``needs-you`` stamp is a real anomaly rather
 # than healthy waiting. Deliberately generous, per explicit direction: a
 # fleet chief was observed correctly *not* alerting through two ~9-minute e2e
@@ -617,7 +617,7 @@ def _launched_bash_dispatch_ids(obj: Dict[str, Any]) -> List[str]:
     ]
 
 
-# A completion notification's own correlation tag (#576) — carried alongside
+# A completion notification's own correlation tag — carried alongside
 # ``<task-id>`` in the real ``<task-notification>`` payload (confirmed
 # against a live transcript), so it resolves a dispatch even when nothing
 # ever surfaced the internal ``backgroundTaskId`` the legacy check keys on.
@@ -838,13 +838,13 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
         # Something is genuinely outstanding but its launch line carried no
         # parseable timestamp — real, just not age-able. Report the
         # earliest-possible bound (epoch) so a caller keying only on
-        # "is anything pending" still sees it, while #608's stalled check
+        # "is anything pending" still sees it, while the stalled check
         # (which needs a real age) treats this as unknown rather than old.
         return _UNKNOWN_LAUNCH_STAMP
     return min(resolved_stamps)
 
 
-# #608: the tool_use names that block on a human decision, not just an async
+# The tool_use names that block on a human decision, not just an async
 # result — a caller must be able to tell "blocked on a human" apart from
 # "finished, nothing wanted" without fetching the exchange.
 _PENDING_DECISION_TOOL_NAMES = frozenset({"AskUserQuestion", "ExitPlanMode"})

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # matches the writer's own prune horizon in fleet-config's session_state hook.
 STATE_STALE_AFTER = timedelta(hours=24)
 
-# The rate-limits cache (issue #326) is meant to read as near-real-time — the
+# The rate-limits cache is meant to read as near-real-time — the
 # statusline that writes it re-renders on every assistant message — so this
 # is far shorter than STATE_STALE_AFTER's 24h (that one tolerates a cold
 # session; a usage percentage sitting stale for hours would be misleading).

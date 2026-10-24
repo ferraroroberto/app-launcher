@@ -54,7 +54,7 @@ OUTCOME_FAILED = "failed"
 #: A run whose delivery nobody established — it may well have succeeded.
 OUTCOME_UNCONFIRMED = "unconfirmed"
 #: A run whose child declined the work on purpose, signalled by an exit code
-#: its job declared (#1316). Neither success nor failure.
+#: its job declared. Neither success nor failure.
 OUTCOME_DEFERRED = "deferred"
 
 #: The outcomes a job may declare for its own exit codes. ``success`` is left
@@ -75,7 +75,7 @@ _EXIT_CODES: Dict[int, Tuple[str, str]] = {
     115: (OUTCOME_FAILED, "required tools were unavailable"),
     116: (OUTCOME_FAILED, "the model was unavailable"),
     117: (OUTCOME_FAILED, "authentication was unavailable"),
-    # Unconfirmed, not failed (#959): the adapter prints `❓ not confirmed` for
+    # Unconfirmed, not failed: the adapter prints `❓ not confirmed` for
     # 118 because work outliving the provider says nothing about whether the
     # run delivered. The exit code alone cannot say which of its two causes
     # fired, so the reason points at the verdict line rather than guessing.
@@ -128,7 +128,7 @@ _EXIT_CODES: Dict[int, Tuple[str, str]] = {
 # what happened to it, and it is not success.
 # The record fields that mean "the launcher stopped this run", not "the
 # adapter failed". Public because src.jobs_index persists exactly these
-# as index columns so a search hit classifies the same way (#1007) —
+# as index columns so a search hit classifies the same way —
 # one source of truth rather than two tuples that can drift apart.
 LAUNCHER_TERMINATED_FIELDS = ("killed", "watchdog", "reaped")
 _LAUNCHER_TERMINATED_FIELDS = LAUNCHER_TERMINATED_FIELDS

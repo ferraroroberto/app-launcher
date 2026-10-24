@@ -83,7 +83,7 @@ router.include_router(life_os_conversations.router)
 router.include_router(life_os_files.router)
 router.include_router(life_os_relay.router)
 
-# --- weekly recap (issue #167) -----------------------------------------
+# --- weekly recap -----------------------------------------
 # The recap is the ``_recap`` infra skill; it is underscore-prefixed, so
 # ``scan_skills`` deliberately skips it and the normal skill-launch route
 # can't reach it. The Life OS tab surfaces it as a dedicated "Weekly recap"
@@ -145,11 +145,11 @@ def _skill_to_api(
         "name": skill.name,
         "command": skill.command,
         "description": skill.description,
-        # The avatar's glyph (#1503); "" draws the name's monogram.
+        # The avatar's glyph; "" draws the name's monogram.
         "icon": skill.icon,
         "skill_md": skill_md_rel,
-        # Starred by the user (#1070) — the Coding tab's `is_favorite`
-        # contract (#250), replicated here.
+        # Starred by the user — the Coding tab's `is_favorite`
+        # contract, replicated here.
         "is_favorite": skill.id in favorites,
     }
 
@@ -176,7 +176,7 @@ async def list_skills(request: Request) -> Dict[str, Any]:
     skills = []
     for s in (scan_skills(life_os_dir) if available else []):
         entry = _skill_to_api(s, life_os_root, favorites)
-        # When the skill was last used (#1503): the row's meta, its place in
+        # When the skill was last used: the row's meta, its place in
         # the order and the fold. From the conversation index, never a capture.
         last_used, has_conversations = skill_last_used(life_os_dir, s)
         entry.update(last_used=last_used, has_conversations=has_conversations)
@@ -347,7 +347,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         return await _launch_conversation(skill, request, body, legacy=True)
     resume = bool(body.get("resume", False))
 
-    # Model override is per-launch (the tab's model combo, #540); the rest of
+    # Model override is per-launch (the tab's model combo); the rest of
     # the flags (effort / permission / verbose / debug) come from the shared
     # Coding options. The bare /<skill> is appended as claude's positional
     # prompt — skill.command is a validated slug, so no shell-quoting is needed.
@@ -355,7 +355,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
     # the positional /resume command. Starting the interactive session through
     # build_claude_flags first is intentional: Claude Code can carry
     # `--resume --remote-control` in its process command without activating
-    # Remote Control for the selected conversation (issue #526).
+    # Remote Control for the selected conversation.
     if resume and agent == "claude":
         flags = f"{build_claude_flags(cfg, model_override=model)} /resume"
     elif resume:
@@ -371,7 +371,7 @@ async def launch_skill(skill_id: str, request: Request) -> Dict[str, Any]:
         flags = f"{build_codex_flags(cfg, model_override=model)} {prompt}"
     name = skill.name
 
-    # Detached and Resume are orthogonal (issue #157, matching the Coding
+    # Detached and Resume are orthogonal (matching the Coding
     # tab): the requested mode decides where the session renders — a detached
     # console (remote) or a streamed PTY — independent of resume.
     kind = "remote" if mode == "remote" else "pty"

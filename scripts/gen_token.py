@@ -53,7 +53,7 @@ from pathlib import Path
 # save_webapp_config has already written the token, leaving the operator
 # with a traceback and no confirmation while the config really did change.
 # Same five-line guard as scripts/set_password.py and
-# scripts/session_retention.py (#1005; global CLAUDE.md,
+# scripts/session_retention.py (global CLAUDE.md,
 # "Windows Python: UTF-8 stdout under capture").
 if hasattr(sys.stdout, "reconfigure"):
     try:

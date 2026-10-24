@@ -59,9 +59,9 @@ _stats_lock = Lock()
 
 # The harness applicability matrix — the Settings-tab panel's source of
 # truth for which coding agents the filter actually reaches, and why.
-# claude/codex are wired via fleet-config#544; the rest are tracked
+# claude/codex are wired in fleet-config; the rest are tracked
 # fleet-config follow-ups filed after this issue was scoped. Each `note` is
-# shown to the user, so it is plain words (#1238 J-07); the mechanism lives in
+# shown to the user, so it is plain words; the mechanism lives in
 # the comment above each entry.
 HARNESS_SUPPORT: List[Dict[str, str]] = [
     {
@@ -89,7 +89,7 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
         "id": "pi",
         "label": "Pi",
         "status": "active",
-        # tool_result extension middleware (fleet-config#545): compresses in
+        # tool_result extension middleware: compresses in
         # place, no re-execution.
         "note": "Shortens tool results in place.",
     },
@@ -97,7 +97,7 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
         "id": "copilot",
         "label": "GitHub Copilot CLI",
         "status": "active",
-        # preToolUse + modifiedArgs (fleet-config#547): verified non-interactive;
+        # preToolUse + modifiedArgs: verified non-interactive;
         # whether the TUI delivers the hook is unknown upstream.
         "note": "Works in one-shot runs; not yet confirmed in the interactive app.",
     },
@@ -105,7 +105,7 @@ HARNESS_SUPPORT: List[Dict[str, str]] = [
         "id": "antigravity",
         "label": "Antigravity CLI",
         "status": "active",
-        # agy plugin, PreToolUse overwrite (fleet-config#546).
+        # agy plugin, PreToolUse overwrite.
         "note": "Shortens command output through its plugin.",
     },
 ]

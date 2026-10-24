@@ -25,7 +25,7 @@ _BAT_VENV_RE = re.compile(
 # .bat execution always goes through cmd.exe, whose own quote-state
 # re-parsing doesn't honour Python subprocess's argv-quoting convention —
 # a tail value containing one of these can break out of its argv slot and
-# have cmd.exe run additional commands (issue #409). A webhook-triggered
+# have cmd.exe run additional commands. A webhook-triggered
 # job can map an unsanitized payload field straight into a string param
 # value (src.jobs_webhook.resolve_mapping), so this has to be enforced
 # here, not just at the UI layer.

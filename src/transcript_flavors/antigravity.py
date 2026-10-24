@@ -198,8 +198,8 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
 
         # Every remaining MODEL step is a tool result, for the oldest call
         # still waiting on one. `status: "ERROR"` is Antigravity's only
-        # structured failure signal and it covers *some* failures, not all
-        # (#1020): a `view_file` on a missing path writes it (measured), a
+        # structured failure signal and it covers *some* failures, not all:
+        # a `view_file` on a missing path writes it (measured), a
         # shell command exiting 1 writes `status: "DONE"` with the failure
         # only in English prose ("The command exited with code 1."). So the
         # flag is set from the status and the flavour stays `partial` —

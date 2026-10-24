@@ -158,21 +158,21 @@ async def open_project_folder(project_id: str, request: Request) -> Dict[str, An
     return {"ok": True, "path": str(project.project_dir), "pid": pid}
 
 
-# The git-status fan-out's own threads (#1264). One git_status per repo on the
+# The git-status fan-out's own threads. One git_status per repo on the
 # loop's default executor filled it, so every other to_thread caller
 # (/api/version, sessions, config writes) queued behind a fleet-wide scan.
 # Bounded: a large fleet takes a little longer, and nothing else waits on it.
 _GIT_STATUS_POOL = ThreadPoolExecutor(max_workers=8, thread_name_prefix="git-status")
 
 
-# Overlapping calls share scans (#1268), and never a stale one: a call that
+# Overlapping calls share scans, and never a stale one: a call that
 # arrives while a scan runs waits for the NEXT scan, which every call from
 # that window shares, so each caller sees git state from at or after its own
 # arrival. At most two scans per key exist: the running one and one queued.
 # (Joining the running scan instead served a scan begun before the caller's
 # change: a repo dirtied just before a page load read as clean.) The
 # start/settle mechanics behind this are shared with hot_poll.HotPoll's own
-# single-flight queuing — see hot_poll.start_or_join, the one copy (#1627).
+# single-flight queuing — see hot_poll.start_or_join, the one copy.
 _GIT_STATUS_RUNNING: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
 _GIT_STATUS_NEXT: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
 

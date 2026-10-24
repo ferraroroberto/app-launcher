@@ -148,7 +148,7 @@ def _merge_run_json(
         sync_run(run_dir, existing)
     except Exception as exc:  # noqa: BLE001 — derived mirror never blocks canonical I/O
         logger.warning("⚠️ Jobs index sync failed for %s: %s", run_dir, exc)
-    # The polls' in-memory snapshot (#1324) recomputes this job on its next
+    # The polls' in-memory snapshot recomputes this job on its next
     # read rather than waiting for a tick. Same local-import reason as above.
     from src.jobs_snapshot import mark_dirty
 

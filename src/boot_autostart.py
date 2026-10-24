@@ -50,7 +50,7 @@ STARTUP_BAT_NAME = "AppLauncher.bat"
 # temp directory instead of the real per-user Startup folder. Without this,
 # the e2e boot-autostart test could only pass on a host with no
 # AppLauncher.bat already installed there, which is false on any machine that
-# actually boots the launcher at log on (issue #698). Matches the
+# actually boots the launcher at log on. Matches the
 # SESSION_HOST_PORT_ENV / WEBAPP_CONFIG_PATH_ENV isolation pattern in
 # src/webapp_config.py. Not a user-facing knob; intentionally undocumented in
 # the config sample. Only consulted when a caller doesn't already pass an

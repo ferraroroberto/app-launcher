@@ -124,7 +124,7 @@ def next_fire(
 
 
 # Schedule types whose cadence is too dense to enumerate over an agenda
-# window (issue #230). The agenda summarises these as a single "frequent"
+# window. The agenda summarises these as a single "frequent"
 # row instead of one entry per fire. next_fire never returns None for
 # them, so upcoming_fires must short-circuit before the enumeration loop.
 FREQUENT_SCHEDULE_TYPES = frozenset({"minutes", "hourly"})

@@ -46,7 +46,7 @@ import sys
 
 logger = logging.getLogger(__name__)
 
-# GIL hand-off latency (issue #1492). The webapp renders terminals with pure-
+# GIL hand-off latency. The webapp renders terminals with pure-
 # Python ``pyte`` in worker threads (``board_exchange._terminal_rows`` is
 # ~0.85 s of CPU per call, ``plan_picker.screen_lines`` ~0.06 s), and each
 # such thread holds the GIL for as long as it runs. Every time the loop thread

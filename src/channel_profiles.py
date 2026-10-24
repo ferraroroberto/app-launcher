@@ -159,7 +159,7 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-# The relay's per-session environment (#1639). The CLI reads the first three;
+# The relay's per-session environment. The CLI reads the first three;
 # the token never rides a command line, so the permission rule holds no secret.
 RELAY_TOKEN_ENV = "LAUNCHER_RELAY_TOKEN"
 RELAY_URL_ENV = "LAUNCHER_RELAY_URL"

@@ -1,7 +1,7 @@
-# Manually restart the app-launcher session-host on :8446 (issue #615).
+# Manually restart the app-launcher session-host on :8446.
 #
 # tray.bat --restart deliberately EXCLUDES :8446 to protect live PTY
-# sessions (project-scaffolding#35) -- so a change under src/session_host.py
+# sessions -- so a change under src/session_host.py
 # or app/session_host/ is not live until this process restarts, and nothing
 # else restarts it automatically. This script is the one supported,
 # documented way to do that: an explicit, operator-initiated action, never
@@ -57,10 +57,10 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Restarting the tray (also spawns a fresh session-host since none is left to adopt)..." -ForegroundColor Cyan
 & $trayBat --restart
 
-# Bounded poll of the same /api/version freshness check #615 added, so this
+# Bounded poll of the same /api/version freshness check the webapp already makes, so this
 # script proves the restart actually worked instead of trusting silence.
 #
-# Gate on stale_relevant, NOT raw stale (issue #1007). docs/restart-and-
+# Gate on stale_relevant, NOT raw stale. docs/restart-and-
 # liveness.md is explicit that `stale` is true after any merge anywhere in
 # the repo, so a correct restart used to print a false "STILL STALE"
 # failure here. `stale_relevant` scopes it to whether a declared

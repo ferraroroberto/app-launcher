@@ -37,24 +37,24 @@ from src.webapp_config import WebappConfig
 logger = logging.getLogger(__name__)
 
 # Mirrors life_os_conversations._CONVERSATIONS_INDEX — the digested index a
-# conversation log's own directory carries alongside it (#906).
+# conversation log's own directory carries alongside it.
 _CONVERSATIONS_INDEX = "index.json"
 # fleet-config's conversation_index.py: INDEX_NAME — the human-readable
-# source of truth index.json is itself regenerated from (#971). Renaming a
+# source of truth index.json is itself regenerated from. Renaming a
 # capture without also updating this file's matching ``file="..."`` entry
 # means the external pipeline's next run can silently overwrite or orphan
 # the index.json patch below.
 _CONVERSATIONS_INDEX_MD = "index.md"
 # fleet-config's
 # cross-skill search CLI, resolved per call so a Settings change to
-# fleet_config_dir takes effect without a restart (#971).
+# fleet_config_dir takes effect without a restart.
 _SEARCH_SCRIPT_REL = ("hooks", "conversation_search.py")
-# fleet-config's conversation-title writer (fleet-config#1348, used by #1495).
+# fleet-config's conversation-title writer (fleet-config).
 _TITLE_SCRIPT_REL = ("hooks", "conversation_title.py")
 _RESYNC_TIMEOUT_S = 30
 # The index rewrites are read-modify-write. The Delete route now runs them in a
-# worker thread (it shares :func:`delete_conversation` with the zombie job,
-# #1738), so two concurrent deletes in one process must not lose an update.
+# worker thread (it shares :func:`delete_conversation` with the zombie job),
+# so two concurrent deletes in one process must not lose an update.
 _index_lock = threading.Lock()
 
 
@@ -290,7 +290,7 @@ def reconcile_delete_sync(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
     return removed
 
 
-# ------------------------------------------------------ backup and restore (#1738)
+# ------------------------------------------------------ backup and restore
 # The zombie cleanup's backup mode saves what a Delete is about to drop from the
 # two indexes, verbatim, so a restore puts back exactly that and derives nothing.
 _IDX_FILE_RE = re.compile(r'file="([^"]*)"')

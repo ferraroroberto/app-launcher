@@ -138,7 +138,7 @@ async def _mark_chief_managed(
         logger.debug("chief-managed mark: could not read live sessions: %s", exc)
         return False
     if host_error:
-        # Unknown, not "no chief": nothing is marked on a guess (#1308).
+        # Unknown, not "no chief": nothing is marked on a guess.
         logger.debug("chief-managed mark: live sessions unknown: %s", host_error)
         return False
     if not _find_chief(live):
@@ -325,7 +325,7 @@ def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 # The conversation id last persisted to the pointer sidecar. A module-level
-# memo so the steady-state 5s board poll does **zero** file IO (#675): a write
+# memo so the steady-state 5s board poll does **zero** file IO: a write
 # fires only when the chief's conversation actually changes — about once per
 # chief lifetime. Set optimistically, before the write lands: a failed write
 # costs one missed pointer refresh, never a write attempt every 5 seconds.
@@ -493,7 +493,7 @@ def _find_resumable_chief_session_id(
         nonlocal confirmed, unknown
         typed = board.has_typed_user_prompt(transcript)
         if typed is False:
-            # The #670 breadcrumb: this is the conversation the old
+            # Breadcrumb: this is the conversation the old
             # recency-only lookup would have handed back.
             logger.info(
                 "↩️ chief resume: skipping %s (%s) — bootstrap-only conversation",
@@ -699,7 +699,7 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     async with _CHIEF_ENSURE_LOCK:
         live, state, host_error = await _live_sessions_with_chief_label(cfg)
         if host_error:
-            # An unreadable list is not "no chief" (#1308): spawning on it
+            # An unreadable list is not "no chief": spawning on it
             # could double-spawn a chief that is alive behind a host that
             # timed out once, or stop-and-respawn one it never saw.
             logger.warning(
@@ -722,7 +722,7 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             # Resolve the conversation behind the PTY *before* stopping it —
             # the live list is the only place that join can be made, and a
             # chief the launcher never spawned is invisible to the name-based
-            # scan (#670).
+            # scan.
             preferred_sid = str(
                 board.state_sid_for_session(live, state["rows"], sid) or ""
             )
@@ -763,14 +763,14 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
                 _refresh_chief_pointer_after_resume,
                 state["rows"], resumed_session_id,
             )
-        # Order matters (#245 review): rename FIRST, then /chief. The rename
+        # Order matters: rename FIRST, then /chief. The rename
         # also forwards the agent-native /rename into the PTY, so it must
         # land after boot but before the skill invocation — typed the other
         # way round it interleaves with /chief's processing and the agent
         # rejects it ("Args from unknown skill: rename"). The ready-wait
         # here plus _type_into_session's own settle give the rename a clear
         # beat before /chief goes in. Best-effort — a rename failure never
-        # fails the spawn. A resumed conversation (#633) skips /chief below —
+        # fails the spawn. A resumed conversation skips /chief below —
         # it's already past that point — but still gets the same rename so
         # its title reads "chief" immediately rather than waiting on the
         # self-heal signals in _reconcile_chief_label.
@@ -811,7 +811,7 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             resume=bool(resumed_session_id),
             audit_mod=audit, mirror_fn=open_local_terminal_window,
         )
-        # The branch ensure took (#1351), paired with the "kept" line above:
+        # The branch ensure took, paired with the "kept" line above:
         # a chief that disappears and comes back is diagnosable from here.
         logger.info(
             "ℹ️ chief ensure: %s chief %s (replaced_live=%s, fresh=%s, resume=%s, restart=%s)",

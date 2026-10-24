@@ -38,7 +38,7 @@ from typing import Optional
 # raises UnicodeEncodeError and the caller logs "tailscale cert check failed
 # (ignored)" — blaming the check rather than an encoding bug, while the cert
 # silently does not get renewed. Same guard as gen_token.py / set_password.py
-# / session_retention.py (#1005; global CLAUDE.md, "Windows Python: UTF-8
+# / session_retention.py (global CLAUDE.md, "Windows Python: UTF-8
 # stdout under capture").
 if hasattr(sys.stdout, "reconfigure"):
     try:

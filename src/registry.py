@@ -71,7 +71,7 @@ class AppEntry:
     project_dir: Optional[str] = None
     repo_url: Optional[str] = None
     added_at: str = ""
-    # Registered Trays panel (issue #456 part 2/2) — whether the tray boots
+    # Registered Trays panel — whether the tray boots
     # this ``kind == "tray"`` row automatically. Meaningless on every other
     # kind; always serialized (like ``added_at``) rather than conditionally,
     # since it's a plain bool with a real default, not an optional field.

@@ -26,18 +26,18 @@ _TIMEOUT = 8.0
 # still in flight, prompting retries that stacked orphan sessions.
 _CREATE_TIMEOUT = 45.0
 # A bulk write waits for the paste's ingest to become visible before it will
-# submit (up to _INGEST_CAP_MS, issue #760) on top of write()'s own
+# submit (up to _INGEST_CAP_MS) on top of write()'s own
 # chunk-and-pace pauses, so the input call needs headroom over the 8 s
 # default — otherwise the client times out first and the caller sees
 # "session-host unreachable" instead of the host's actual delivery verdict,
-# which is the whole point of #760.
+# which is the whole point of the verdict.
 _INPUT_TIMEOUT = 15.0
 # A graceful stop polls for the agent to exit on its quit command (up to the
 # host's ~5 s grace window) before force-falling-back, so the stop call needs
-# more headroom than the 8 s default (issue #253).
+# more headroom than the 8 s default.
 _STOP_TIMEOUT = 10.0
 
-# The one delivery ``reason`` (issue #763) the webapp itself has to branch on,
+# The one delivery ``reason`` the webapp itself has to branch on,
 # to mirror the session-host's 202 for a submit that is still with its
 # background watcher. Restated here rather than imported because the webapp
 # process deliberately never imports ``src.session_host`` — that module owns
@@ -46,7 +46,7 @@ _STOP_TIMEOUT = 10.0
 # pins the two definitions equal so they cannot drift apart silently.
 INPUT_DEFERRED = "deferred"
 
-# A large-file upload (#1430) streams for as long as the phone takes to send
+# A large-file upload streams for as long as the phone takes to send
 # it, so it has no overall deadline: each connect, write and read waits at
 # most this long, and the read covers the host's final flush to disk.
 _LARGE_UPLOAD_TIMEOUT = httpx.Timeout(120.0, connect=5.0)
@@ -110,15 +110,15 @@ def create_session(
         "kind": kind,
         "agent": agent,
         # Phone's real terminal size, so the PTY's first frame is the
-        # right width for a ratatui TUI (issue #126).
+        # right width for a ratatui TUI.
         "rows": rows,
         "cols": cols,
     }
-    # User-configurable scrollback depth for full-screen agents (issue
-    # #435 follow-up). Omitted → the session-host's own default.
+    # User-configurable scrollback depth for full-screen agents.
+    # Omitted → the session-host's own default.
     if history_lines is not None:
         payload["history_lines"] = history_lines
-    # Role tag (#245, e.g. "chief"). Omitted when unset — a legacy host
+    # Role tag (e.g. "chief"). Omitted when unset — a legacy host
     # ignores unknown keys, so this stays backward compatible either way.
     if label:
         payload["label"] = label

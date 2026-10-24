@@ -1,4 +1,4 @@
-# Routing decision for verify-before-ship.ps1's e2e phase (issues #568, #955).
+# Routing decision for verify-before-ship.ps1's e2e phase.
 #
 # Turns scripts/classify_e2e.py's E2E_* lines into what the gate runs: the
 # tier, the pytest target arguments, the browsers, and whether the run must
@@ -31,7 +31,7 @@ function Get-E2ERoute {
         }
     }
 
-    # CI runs the clean-machine half of this gate and nothing else (#1041).
+    # CI runs the clean-machine half of this gate and nothing else.
     # The browser suite there was a second run of a gate that had already
     # passed locally before the PR was opened -- the same script, the same
     # tests -- and it needed three separate timeout widenings
@@ -69,7 +69,7 @@ function Get-E2ERoute {
     }
 
     $tier = [string]$kv["E2E_TIER"]
-    # A surface verdict (#955) names several targets, space-separated -- each
+    # A surface verdict names several targets, space-separated -- each
     # must reach pytest as its own argument ("a.py b.py" is one missing path).
     $targets = @(([string]$kv["E2E_PYTEST_TARGET"]) -split '\s+' | Where-Object { $_ })
     $browsers = @(([string]$kv["E2E_BROWSERS"]) -split ',' | Where-Object { $_ })
@@ -88,7 +88,7 @@ function Get-E2ERoute {
     }
 
     # full and surface are both dual-projection runs, so both queue behind the
-    # machine-wide mutex (#685); a Chromium-only static smoke run doesn't.
+    # machine-wide mutex; a Chromium-only static smoke run doesn't.
     return [pscustomobject]@{
         Tier      = $tier
         Targets   = $targets
@@ -98,27 +98,27 @@ function Get-E2ERoute {
     }
 }
 
-# Browser-suite parallelism (#1231, step 1 of #1220). THE one setting for how
+# Browser-suite parallelism. THE one setting for how
 # many pytest-xdist workers a dual-projection run (full / surface) uses:
 # $E2EDefaultWorkers, overridable per run with the E2E_WORKERS env var. 0 or 1
-# runs serially, exactly as before #1231. Parallelism changes when tests run,
+# runs serially, as it did before parallelism. Parallelism changes when tests run,
 # never which: every node still runs on both projections.
 #
 # The static tier (Chromium smoke, ~15 s) stays serial -- a worker boots its
 # own webapp + session-host (~4 s each), which would cost more than it saves.
 # --dist load spreads tests one at a time. Tests marked `serial`
 # (test_terminal_reconnect.py: the real-agent replay pin and the reconnect
-# pins, #678/#58) are excluded from that pass and run in a second, serial pass
+# pins) are excluded from that pass and run in a second, serial pass
 # once the workers are done: measured at n=4 they failed while the other
 # workers loaded the box (a real Claude cold boot overran its 90 s budget),
 # and keeping them on one worker did not help, because the load is the other
 # workers'. A narrowed target may hold no serial test, or only serial tests;
 # the gate treats "nothing collected" (pytest exit 5) in one pass as fine as
 # long as the other ran something. All of it runs inside the gate's one
-# machine-wide dual-projection mutex (#685), which serialises gates across
+# machine-wide dual-projection mutex, which serialises gates across
 # checkouts, not the workers within one.
 #
-# Why 3 (re-measured 2026-10-12, #1512): #1231 held this at 2 because the live
+# Why 3 (re-measured 2026-10-12): it was held at 2 because the live
 # webapp's /api/board slowed to ~10 s at 3 or 4 workers. That load turned out
 # to be the gate's own: every test's page boot ran `git status` across the
 # whole projects folder until tests/e2e/conftest.py::pin_launch_target scoped
@@ -162,7 +162,7 @@ function Get-E2EWorkerArgs {
     }
 }
 
-# The non-browser phase's xdist workers (#1512): $UnitDefaultWorkers,
+# The non-browser phase's xdist workers: $UnitDefaultWorkers,
 # overridable with UNIT_WORKERS (0 or 1 = serial). ~3,000 short tests, run
 # serially, took ~250 s of a gate run; on 6 workers they take ~50 s (4: ~65 s,
 # 8: ~43 s, 16: ~45 s, measured 2026-10-12). 6 keeps most of the gain and
@@ -180,7 +180,7 @@ function Get-UnitWorkerArgs {
     return [pscustomobject]@{ Workers = $workers; Args = @("-n", [string]$workers) }
 }
 
-# Waits on the machine-wide e2e gate mutex (issue #1682). A holder that exits
+# Waits on the machine-wide e2e gate mutex. A holder that exits
 # without ReleaseMutex() makes the *next* waiter's WaitOne() throw
 # AbandonedMutexException -- but that exception means the caller now OWNS the
 # mutex, so it counts as acquired, not as an error. Reports which it was so the

@@ -30,7 +30,7 @@ import httpx
 logger = logging.getLogger(__name__)
 
 ENDPOINTS = ("/api/jobs", "/api/board", "/")
-# The acceptance budgets (#1324), for the PASS/OVER column.
+# The acceptance budgets, for the PASS/OVER column.
 BUDGET_P95_MS = {"/api/jobs": 100.0, "/api/board": 100.0, "/": 50.0}
 
 

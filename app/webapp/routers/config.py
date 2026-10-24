@@ -67,19 +67,19 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "port": cfg.port,
         "projects_dir": cfg.projects_dir,
         "projects_ignore": cfg.projects_ignore,
-        # Folders, besides a session's own, an agent may send Chat files from
-        # (#1748): the text as typed, so Settings shows what the owner wrote.
+        # Folders, besides a session's own, an agent may send Chat files from:
+        # the text as typed, so Settings shows what the owner wrote.
         "outbox_scratch_roots": cfg.outbox_scratch_roots,
-        # Coding-row buttons the user hid (issue #666) — agent ids plus the
+        # Coding-row buttons the user hid — agent ids plus the
         # pseudo-id `github`. The SPA filters the row strip on this.
         "coding_hidden_agents": cfg.coding_hidden_agents,
-        # The agent whose launch button stays on a project row (#1070);
+        # The agent whose launch button stays on a project row;
         # every other visible one is a row in that row's ⋯ menu.
         "coding_favorite_agent": cfg.coding_favorite_agent,
         "coding_model_choice": cfg.coding_model_choice,
-        # Telegram channel sessions leave the Board and session list (#1384).
+        # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
-        # ...and start by themselves when the webapp starts (#1542).
+        # ...and start by themselves when the webapp starts.
         "autostart_channel_sessions": cfg.autostart_channel_sessions,
         "channel_model": cfg.channel_model,
         "apps_scan_root": cfg.apps_scan_root,
@@ -88,24 +88,24 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "terminal_history_lines": cfg.terminal_history_lines,
         "terminal_history_lines_min": MIN_TERMINAL_HISTORY_LINES,
         "terminal_history_lines_max": MAX_TERMINAL_HISTORY_LINES,
-        # The compose bar's large-file attach limit (#1430), in MB.
+        # The compose bar's large-file attach limit, in MB.
         "large_upload_max_mb": cfg.large_upload_max_mb,
         "large_upload_max_mb_min": MIN_LARGE_UPLOAD_MAX_MB,
         "large_upload_max_mb_max": MAX_LARGE_UPLOAD_MAX_MB,
-        # Which providers the usage meter shows (#1451).
+        # Which providers the usage meter shows.
         "usage_shows": cfg.usage_shows,
         "usage_shows_available": list(VALID_USAGE_SHOWS),
-        # The chief's auto-compact threshold (#1298): percent, 0 = off.
+        # The chief's auto-compact threshold: percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
         "chief_auto_compact_threshold_max": MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
-        # The chief doorbell (#1645), off by default; Settings > Chief's
-        # Doorbell switch saves it here (fleet-config#1457).
+        # The chief doorbell, off by default; Settings > Chief's
+        # Doorbell switch saves it here.
         "chief_doorbell": cfg.chief_doorbell,
         # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
-        # The chief's model and worker cap (#1435), read-only here so the
+        # The chief's model and worker cap, read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
         "chief_model": cfg.chief_model,
@@ -129,7 +129,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "computed_flags": build_antigravity_flags(cfg),
         },
         # No model/models_available: Copilot's model is not a launcher
-        # setting (issue #1017) — the CLI resolves it per launch against
+        # setting — the CLI resolves it per launch against
         # the account, so only `/model` can report it truthfully.
         "copilot": {
             "skip_permissions": cfg.copilot_skip_permissions,
@@ -138,7 +138,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "pi": {
             "model": cfg.pi_model,
             # What the selected model launches at, and the two parts it is made
-            # of: the owner's overrides and its catalog default (#1713).
+            # of: the owner's overrides and its catalog default.
             "effort": effective_effort("pi", cfg.pi_model, cfg),
             "model_efforts": cfg.pi_model_efforts,
             "default_effort": default_effort("pi", cfg.pi_model),
@@ -168,7 +168,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
             "codex": catalog_payload(CODEX_MODEL_SPECS),
         },
         "auth_password_set": bool(cfg.auth_password),
-        # Boot-autostart toggle (issue #456): live-queried, not stored in
+        # Boot-autostart toggle: live-queried, not stored in
         # webapp_config.json — the Startup-folder wrapper bat's presence
         # *is* the state, so a stale cached bool can never drift from it.
         "boot_autostart_enabled": boot_autostart.is_enabled(),
@@ -216,7 +216,7 @@ def _checked_outbox_roots(raw: Any, current: List[str]) -> List[str]:
     return entries
 
 
-# The Settings switches (#1384, #1542, #1645): a truthy string must never flip
+# The Settings switches: a truthy string must never flip
 # one ("false" is truthy in Python), so patch_config refuses anything but a bool.
 _SWITCH_KEYS = (
     "hide_channel_sessions",
@@ -276,7 +276,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["projects_ignore"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
-    # The Chat send folders (#1748) are checked on write, here, and not in
+    # The Chat send folders are checked on write, here, and not in
     # `_validate`: that also runs on load, where a folder deleted since it was
     # saved must not take the whole file down (`allowed_roots` skips it). The
     # text is stored as typed (`%VAR%`/`~` kept); an empty list would read as
@@ -285,14 +285,14 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["outbox_scratch_roots"] = _checked_outbox_roots(
             patch["outbox_scratch_roots"], cfg.outbox_scratch_roots
         )
-    # Same coercion for the hidden-button list (issue #666) — a stray scalar
+    # Same coercion for the hidden-button list — a stray scalar
     # must never reach the config as anything but a clean string list.
     if "coding_hidden_agents" in patch:
         raw = patch["coding_hidden_agents"]
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
-    # The threshold (#1298) is a whole percent. A bool is an int in Python
+    # The threshold is a whole percent. A bool is an int in Python
     # and a float would be silently truncated, so both are refused here;
     # the range itself is _validate's, which words the 400.
     if "chief_auto_compact_threshold" in patch:
@@ -302,7 +302,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
                 status_code=400,
                 detail="chief_auto_compact_threshold must be an integer percent",
             )
-    # The large-file limit (#1430) is whole MB, refused the same way.
+    # The large-file limit is whole MB, refused the same way.
     if "large_upload_max_mb" in patch:
         value = patch["large_upload_max_mb"]
         if isinstance(value, bool) or not isinstance(value, int):
@@ -315,7 +315,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail=f"{key} must be true or false"
             )
-    # The favourite agent (#1070) must name a registered agent. An unknown
+    # The favourite agent must name a registered agent. An unknown
     # id — a typo, a stale client, an agent dropped from the registry — is
     # coerced to DEFAULT_AGENT rather than stored, because the row renders
     # exactly one launch button and a dangling id would leave it with none.
@@ -334,7 +334,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
     # A `claude_effort` / `pi_effort` POST is the override for the model it
     # lands on (the co-patched model, else the selected one), never a global
     # value; an empty one clears it so the model falls back to its catalog
-    # default (#1711, #1713).
+    # default.
     _fold_effort_into_overrides(patch, "claude", cfg.claude_model, cfg.claude_model_efforts)
     _fold_effort_into_overrides(patch, "pi", cfg.pi_model, cfg.pi_model_efforts)
     if "codex_model" in patch or "codex_effort" in patch:
@@ -389,15 +389,15 @@ async def status(request: Request) -> Dict[str, Any]:
         "tls": cert_present(),
         "terminal": terminal_reachability(request),
         # Compose-bar voice dictation is available only when a
-        # voice-transcriber base URL is configured (issue #165). The SPA
+        # voice-transcriber base URL is configured. The SPA
         # hides the 🎤 record button otherwise.
         "voice_dictation": bool((cfg.voice_transcriber_url or "").strip()),
         # Compose-bar screenshot OCR is available only when a photo-ocr
-        # base URL is configured (issue #171). The SPA hides the 📷 OCR
+        # base URL is configured. The SPA hides the 📷 OCR
         # button otherwise — the pixel counterpart to voice_dictation.
         "screenshot_ocr": bool((cfg.photo_ocr_url or "").strip()),
         # Read-aloud hub TTS is available only when a local-llm-hub base URL
-        # is configured (issue #203). A cheap config-presence flag — the SPA
+        # is configured. A cheap config-presence flag — the SPA
         # gates the 🔊 button's hub path on it before doing a live
         # /api/tts/health probe to confirm the hub is actually answering.
         "tts": bool((cfg.llm_hub_url or "").strip()),

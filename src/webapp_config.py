@@ -57,19 +57,19 @@ DEFAULT_SESSION_HOST_PORT = 8446
 # autoboot so a disposable webapp can be pointed at a disposable, free-port
 # session-host instead of the live :8446 a running tray owns. This is what
 # stops the gate from reaching into — and killing — the user's real PTY
-# sessions (issue #260). Not a user-facing knob; intentionally undocumented
+# sessions. Not a user-facing knob; intentionally undocumented
 # in the config sample.
 SESSION_HOST_PORT_ENV = "LAUNCHER_SESSION_HOST_PORT"
 # Env override for the config file *path* itself. Set ONLY by the e2e
 # pre-ship gate's autoboot (tests/e2e/conftest.py) so the disposable webapp
 # reads AND writes its own temp config (derived from the real one, minus every
-# credential — issue #907) instead of the real, shared
+# credential) instead of the real, shared
 # config/webapp_config.json — a Settings-tab e2e test that clicks Save must
-# never mutate the user's real file (issue #441; the #438 port corruption
+# never mutate the user's real file (a port corruption
 # was this exact shared-file design biting). Not a user-facing knob;
 # intentionally undocumented in the config sample.
 WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
-# Every on-disk key that holds a credential (issue #907). Anything that derives
+# Every on-disk key that holds a credential. Anything that derives
 # a config for a test or disposable run from the real file must drop these —
 # the e2e autoboot does (tests/_credential_hygiene.py), and its failure-output
 # redaction scrubs their values. ``webhook_secrets`` is the legacy name
@@ -87,8 +87,8 @@ CREDENTIAL_KEYS: Tuple[str, ...] = (
     "api_tokens",
 )
 
-# Bounded scrollback for full-screen (ratatui) agent sessions (issue #435
-# follow-up) — how many lines of history the session-host retains and
+# Bounded scrollback for full-screen (ratatui) agent sessions —
+# how many lines of history the session-host retains and
 # replays on a (re)connect. 10,000 is evidence-based, not a guess: a real,
 # tool-heavy Codex exchange was observed producing 3371-4447 total scrolled
 # lines and rendering to only ~216-283 KB even at that size (see
@@ -100,45 +100,45 @@ DEFAULT_TERMINAL_HISTORY_LINES = 10_000
 MIN_TERMINAL_HISTORY_LINES = 200
 MAX_TERMINAL_HISTORY_LINES = 50_000
 
-# The compose bar's large-file attach (issue #1430): the most it will take,
+# The compose bar's large-file attach: the most it will take,
 # in MB. Separate from the ordinary attach's fixed 12 MB, because a large file
 # is stored for the agent to use by path and never read into its context.
 # 2 GB covers an archive of scanned documents with room to spare; the ceiling
 # keeps a typo from turning into an unbounded write to the project drive.
 DEFAULT_LARGE_UPLOAD_MAX_MB = 2048
 
-# Which providers the usage meter shows (#1451): the Code tab's Usage card and
+# Which providers the usage meter shows: the Code tab's Usage card and
 # the Board's compact line. "both" is today's behaviour; "none" hides the card.
 VALID_USAGE_SHOWS = ("claude", "codex", "both", "none")
 DEFAULT_USAGE_SHOWS = "both"
 MIN_LARGE_UPLOAD_MAX_MB = 1
 MAX_LARGE_UPLOAD_MAX_MB = 10240
 
-# --- Fleet chief (issue #245) ---------------------------------------
+# --- Fleet chief ---------------------------------------
 # The standing conversational orchestrator the Board's chat mode talks to.
 # `chief_model` must be a dispatchable Claude tier; the worker cap is read
 # by the /chief skill over loopback as its dispatch rail — it caps how many
-# worker sessions the chief may have running at once. #616 retired the
-# daily-respawn setting: fleet-config#442/#449 shipped compact-and-continue
+# worker sessions the chief may have running at once. The
+# daily-respawn setting is retired: fleet-config shipped compact-and-continue
 # (chief hands its own handover log back to itself on every session start),
 # so an unattended daily respawn would now discard a live batch's context
 # rather than protect it. A restart is still available, but only as an
-# explicit operator action (the Board's chief Restart button, #617) — never
+# explicit operator action (the Board's chief Restart button) — never
 # a schedule that fires unattended.
 VALID_CHIEF_MODELS = available_values(CLAUDE_MODEL_SPECS)
 DEFAULT_CHIEF_MODEL = "fable"
 DEFAULT_CHIEF_WORKER_CAP = 3
 MIN_CHIEF_WORKER_CAP = 1
 MAX_CHIEF_WORKER_CAP = 10
-# The context-use percent at which the chief compacts itself (#1298, read by
-# fleet-config#1052's `chief_ops.py self-compact` from
+# The context-use percent at which the chief compacts itself (read by
+# fleet-config's `chief_ops.py self-compact` from
 # GET /api/board/chief-settings). 0 turns it off; otherwise it must sit in
 # the range. The app only stores the number and never compacts anything.
 DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD = 30
 MIN_CHIEF_AUTO_COMPACT_THRESHOLD = 10
 MAX_CHIEF_AUTO_COMPACT_THRESHOLD = 90
 
-# Derived from the catalog like the Codex/Pi/chief sets (#883), so a model
+# Derived from the catalog like the Codex/Pi/chief sets, so a model
 # refresh makes a tier pickable, savable and launchable in one edit. Haiku
 # remains accepted for existing configs and direct launches, but it is not a
 # catalog tier, so the curated phone selectors never offer it.
@@ -147,9 +147,9 @@ VALID_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS) + LEGACY_CLAUDE_MODEL
 VALID_CLAUDE_EFFORTS = ("off", "low", "medium", "high", "xhigh", "max")
 DEFAULT_CLAUDE_MODEL = "opus"
 # Telegram channel sessions answer short household requests: Sonnet by default,
-# not the global Claude model (#1673).
+# not the global Claude model.
 DEFAULT_CHANNEL_MODEL = "sonnet"
-# The effort of last resort (#1711): what a model with no override and no
+# The effort of last resort: what a model with no override and no
 # catalog default resolves to. ``launch_flags.effective_effort`` owns the rule.
 DEFAULT_CLAUDE_EFFORT = "high"
 
@@ -170,7 +170,7 @@ def valid_claude_efforts_for(model: str) -> Tuple[str, ...]:
 VALID_CLAUDE_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
 
-# Codex model/effort pairs (#845). The CLI's per-model effort support is
+# Codex model/effort pairs. The CLI's per-model effort support is
 # encoded in the shared catalog; Luna intentionally defaults to Extra High.
 VALID_CODEX_MODELS = available_values(CODEX_MODEL_SPECS)
 VALID_CODEX_EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
@@ -195,7 +195,7 @@ DEFAULT_CODING_MODEL_CHOICE = f"claude:{DEFAULT_CLAUDE_MODEL}"
 VALID_CODEX_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_CODEX_PERMISSION_MODE = "auto"
 
-# GitHub Copilot deliberately has no model catalogue here (issue #1017).
+# GitHub Copilot deliberately has no model catalogue here.
 # The launcher used to mirror `copilot help config`'s list and send the
 # chosen id as `--model`, but that list says what the *CLI* accepts, not
 # what the *account* is entitled to — Copilot resolves entitlement per
@@ -204,7 +204,7 @@ DEFAULT_CODEX_PERMISSION_MODE = "auto"
 # sends no model flag; `/model` and `/config model` own the choice and
 # show live what the plan allows.
 
-# Pi coding-agent launch models (issues #273, #288). The Coding tab shows a
+# Pi coding-agent launch models. The Coding tab shows a
 # deliberately small, segmented model control — three options spanning two
 # subscription providers (the one cross-provider wrinkle in the launcher):
 #
@@ -230,8 +230,8 @@ DEFAULT_PI_MODEL = "claude-opus-5"
 VALID_PI_EFFORTS = ("off", "minimal", "low", "medium", "high", "xhigh", "max")
 DEFAULT_PI_EFFORT = "high"
 
-# Pi project-trust mode, mapped to pi's `--approve`/`--no-approve` flag
-# (issue #288). NOTE: this is NOT a tool-execution permission gate like
+# Pi project-trust mode, mapped to pi's `--approve`/`--no-approve` flag.
+# NOTE: this is NOT a tool-execution permission gate like
 # Claude's/Codex's auto/skip — pi has no tool sandbox or per-action prompt
 # (see pi's security.md). It governs project *trust*: whether pi loads
 # project-local `.pi/` settings/extensions/skills. "trust" → `--approve`
@@ -241,7 +241,7 @@ DEFAULT_PI_EFFORT = "high"
 VALID_PI_TRUST_MODES = ("trust", "ask")
 DEFAULT_PI_TRUST_MODE = "trust"
 
-# Grok Build launch knobs (issue #667, filling in #626's deliberate stub).
+# Grok Build launch knobs.
 # Reasoning tier for `--reasoning-effort` — the exact set the CLI accepts,
 # probed off the binary rather than the docs (`grok --reasoning-effort bogus`
 # answers "use one of: high, medium, low", verified on 0.2.114). No model
@@ -333,19 +333,19 @@ class WebappConfig:
     # globs honoured). VCS / build dirs are always skipped regardless.
     projects_ignore: list = field(default_factory=list)
     # Project ids (scanner slugs) the user starred as favorites in the
-    # Coding tab (issue #250). Favorites sort to the top of the project
+    # Coding tab. Favorites sort to the top of the project
     # list and can be filtered to on their own. Stored exactly like
     # `projects_ignore` — a plain string list in this same config — so the
     # feature needs no new file.
     coding_favorites: list = field(default_factory=list)
-    # Agent ids whose Coding-row launch button the user hid (issue #666),
+    # Agent ids whose Coding-row launch button the user hid,
     # plus the pseudo-id `github` for the repo-issues button. A *hidden*
     # list rather than a visible one so a newly registered agent shows up
     # by default and needs no config migration. Stored like
     # `coding_favorites` — a plain string list in this same config.
     coding_hidden_agents: list = field(default_factory=list)
-    # The one agent whose launch button stays on a Coding project row
-    # (issue #1070). Every other visible agent — and the GitHub-issues
+    # The one agent whose launch button stays on a Coding project row.
+    # Every other visible agent — and the GitHub-issues
     # button — moved into the row's ⋯ menu, so the row is three controls
     # wide on the phone instead of nine. Stored as a plain agent id;
     # `src.agents.DEFAULT_AGENT` is the default and also the fallback the
@@ -357,10 +357,10 @@ class WebappConfig:
     coding_model_choice: str = DEFAULT_CODING_MODEL_CHOICE
     # Where the Apps tab scans recursively for launcher `.bat` files.
     apps_scan_root: str = field(default_factory=_default_projects_dir)
-    # Skill ids the user starred on the Life OS tab (issue #1070), treated as
-    # `coding_favorites` treats Coding projects (#250): sorted to the top.
+    # Skill ids the user starred on the Life OS tab, treated as
+    # `coding_favorites` treats Coding projects: sorted to the top.
     life_os_favorites: list = field(default_factory=list)
-    # Root of the life-os checkout the Life OS tab surfaces (issue #102):
+    # Root of the life-os checkout the Life OS tab surfaces:
     # skills at `.claude/skills`, identity at `identity`. Without the skills
     # dir the tab shows disabled, as Coding does without `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
@@ -371,27 +371,27 @@ class WebappConfig:
     # conversations and the fleet-chief ensure path read their hooks, state
     # and scripts from it.
     fleet_config_dir: str = field(default_factory=_default_fleet_config_dir)
-    # --- Board tab (issue #300 / #164) -----------------------------------
-    # The sessions-state file written by fleet-config's session_state hook
-    # (fleet-config#91). The board reads it defensively — absent/corrupt/stale
+    # --- Board tab -----------------------------------
+    # The sessions-state file written by fleet-config's session_state hook.
+    # The board reads it defensively — absent/corrupt/stale
     # degrades to unknown session status, never an error.
     sessions_state_file: str = field(default_factory=_default_sessions_state_file)
     # The rate-limits cache a fleet-config statusline writer maintains
-    # (fleet-config#259 / issue #326) — 5h/7d Claude usage % + reset times.
+    # — 5h/7d Claude usage % + reset times.
     # Read defensively like sessions_state_file: absent/corrupt/stale hides
     # the Board's usage badges, never an error.
     rate_limits_file: str = field(default_factory=_default_rate_limits_file)
-    # The fleet chief's plan (#1279): lanes, queue, what waits on Roberto.
+    # The fleet chief's plan: lanes, queue, what waits on Roberto.
     # Read defensively like sessions_state_file: absent/corrupt/unsupported
     # leaves the Board's "Chief's plan" card blank, never an error.
     chief_plan_file: str = field(default_factory=_default_chief_plan_file)
     # The session-host's reaper publishes a chief ``session-end`` event for a
-    # chief-managed worker that died without running a hook (#1644): the
+    # chief-managed worker that died without running a hook: the
     # registry fleet-config's ``chief_managed.py`` writes, and the mailbox
     # directory the event goes into. Read by the session-host process only.
     chief_managed_file: str = field(default_factory=_default_chief_managed_file)
     chief_inbox_dir: str = field(default_factory=_default_chief_inbox_dir)
-    # --- Context filter (issue #713, fleet-config#392/#541/#544) ---------
+    # --- Context filter ---------
     # The machine-wide mode switch (off/shadow/rewrite) and telemetry log the
     # fleet's PreToolUse context-filter hook reads/writes. The mode itself is
     # NOT stored here — it lives only in mode.json, so this launcher process
@@ -405,7 +405,7 @@ class WebappConfig:
     github_owner: str = "ferraroroberto"
     # Persisted Claude Code launch flag defaults.
     claude_model: str = DEFAULT_CLAUDE_MODEL
-    # Overrides only (#1711): ``{model: effort}`` for a model whose effort the
+    # Overrides only: ``{model: effort}`` for a model whose effort the
     # owner changed. A model with no entry runs at its catalog default. The old
     # global ``claude_effort`` key is a legacy read, see _migrate_legacy_keys.
     claude_model_efforts: dict = field(default_factory=dict)
@@ -414,13 +414,13 @@ class WebappConfig:
     # Permission mode for the `claude` launch — "auto" or "skip"
     # (see VALID_CLAUDE_PERMISSION_MODES).
     claude_permission_mode: str = DEFAULT_CLAUDE_PERMISSION_MODE
-    # Antigravity CLI launch toggles (issue #45 follow-up). The CLI has
+    # Antigravity CLI launch toggles. The CLI has
     # `--model` and `--effort`, but its model is chosen with `/model`
-    # in-session, so the launcher has no model to key an effort on (#1711):
+    # in-session, so the launcher has no model to key an effort on:
     # these two switches are the whole story.
     antigravity_skip_permissions: bool = False
     antigravity_sandbox: bool = False
-    # Codex CLI launch settings (#120/#845). Effort is remembered per model;
+    # Codex CLI launch settings. Effort is remembered per model;
     # ``codex_effort`` mirrors the currently selected model for compatibility.
     codex_model: str = DEFAULT_CODEX_MODEL
     codex_effort: str = DEFAULT_CODEX_EFFORT
@@ -428,20 +428,20 @@ class WebappConfig:
         default_factory=lambda: dict(DEFAULT_CODEX_MODEL_EFFORTS)
     )
     codex_permission_mode: str = DEFAULT_CODEX_PERMISSION_MODE
-    # GitHub Copilot CLI launch settings (issue #48).
+    # GitHub Copilot CLI launch settings.
     # `copilot_skip_permissions` is the opt-in allow-all switch, and the
     # only one: there is deliberately no model setting, because Copilot
     # resolves `--model` against the account at launch and silently
-    # substitutes when it refuses (issue #1017 — see
+    # substitutes when it refuses (see
     # `launch_flags.build_copilot_flags`). Model choice belongs to the
     # CLI's own `/model` and `/config model`.
     copilot_skip_permissions: bool = False
-    # Grok Build launch settings (issue #667). `grok_effort` is the
+    # Grok Build launch settings. `grok_effort` is the
     # reasoning tier (low/medium/high); `grok_permission_mode` mirrors
     # Claude's and Codex's auto/skip. No model picker — see VALID_GROK_*.
     grok_effort: str = DEFAULT_GROK_EFFORT
     grok_permission_mode: str = DEFAULT_GROK_PERMISSION_MODE
-    # Pi coding agent launch settings (issues #273/#288/#845). `pi_model` uses
+    # Pi coding agent launch settings. `pi_model` uses
     # the curated subscription-safe catalog — never
     # empty; `build_pi_flags` falls back to DEFAULT_PI_MODEL for an unknown
     # value so the launch can't slip onto a billing path. `pi_model_efforts`
@@ -449,22 +449,22 @@ class WebappConfig:
     # `--no-approve` (project trust, not a tool-permission gate — see
     # VALID_PI_TRUST_MODES).
     pi_model: str = DEFAULT_PI_MODEL
-    # Overrides only (#1713), like ``claude_model_efforts``: ``{model: effort}``
+    # Overrides only, like ``claude_model_efforts``: ``{model: effort}``
     # sent as ``--thinking``; a model with no entry runs at its catalog default.
     pi_model_efforts: dict = field(default_factory=dict)
     pi_trust_mode: str = DEFAULT_PI_TRUST_MODE
-    # --- Fleet chief (issue #245) ----------------------------------------
+    # --- Fleet chief ----------------------------------------
     # Settings for the standing conversational orchestrator (Board chat
     # mode). Editable from the Board's chief-settings dialog; the worker
     # cap is also read by the /chief skill over loopback.
     chief_model: str = DEFAULT_CHIEF_MODEL
     chief_worker_cap: int = DEFAULT_CHIEF_WORKER_CAP
-    # Auto-compact threshold in percent, 0 = off (#1298). Set in Settings'
+    # Auto-compact threshold in percent, 0 = off. Set in Settings'
     # Chief card; served to the chief by GET /api/board/chief-settings.
     chief_auto_compact_threshold: int = DEFAULT_CHIEF_AUTO_COMPACT_THRESHOLD
-    # The chief doorbell (#1645): type one fixed line into an idle chief whose
+    # The chief doorbell: type one fixed line into an idle chief whose
     # mailbox holds pending events. Off by default: it types into a live
-    # session, and the chief only understands the line once fleet-config#1457
+    # session, and the chief only understands the line once fleet-config
     # ships its side, which is what turns this on.
     chief_doorbell: bool = False
     # Publish one job-failed event into the chief mailbox per failed Job run
@@ -478,18 +478,18 @@ class WebappConfig:
     # browser when the user types it correctly. Lets a fresh device
     # bootstrap without copy-pasting a tokenised URL.
     auth_password: str = ""
-    # --- interactive phone terminal (issue #1) ---------------------------
+    # --- interactive phone terminal ---------------------------
     # Loopback port the PTY session-host binds (never network-reachable).
     session_host_port: int = DEFAULT_SESSION_HOST_PORT
     # Extra IPs / CIDRs allowed to reach the terminal endpoints on top of
     # loopback + the Tailscale CGNAT range (100.64.0.0/10). Empty by default.
     tailnet_allowlist: list = field(default_factory=list)
     # Folders, besides a session's own, that an agent may send a file to the
-    # Chat pane from (#1530): its outbox and Claude's SendUserFile. %VAR% and ~
+    # Chat pane from: its outbox and Claude's SendUserFile. %VAR% and ~
     # expand, so a temp-dir root needs no machine path. Defaults to Claude's
     # scratch base, where its SendUserFile files live; a configured non-empty
     # list replaces it (an empty one reads as unset, like every list setting).
-    # Settings > Folders > Chat file folders edits it (#1748), checking each
+    # Settings > Folders > Chat file folders edits it, checking each
     # folder on save; this file's load stays lenient about a folder that has
     # since gone.
     outbox_scratch_roots: list = field(default_factory=lambda: ["%TEMP%/claude"])
@@ -497,33 +497,33 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
-    # Telegram channel sessions (#1384) are long-lived and serve a household
+    # Telegram channel sessions are long-lived and serve a household
     # member, so on by default they leave the Board and the Coding tab's
     # session list for one summary line (and a read-only list) — a mis-tap
     # on their Stop would cut off a person's channel. Off restores today's
     # behaviour exactly. UI-only: the sessions themselves are untouched.
     hide_channel_sessions: bool = True
-    # Start every ready Telegram channel profile when the webapp starts
-    # (#1542), so the bots answer again after a reboot. Off by default: it
+    # Start every ready Telegram channel profile when the webapp starts,
+    # so the bots answer again after a reboot. Off by default: it
     # launches real sessions, so an absent setting must never arm it.
     autostart_channel_sessions: bool = False
     # Model a Telegram channel session starts on when its launch names none,
-    # and the one the boot-time autostart uses (#1673).
+    # and the one the boot-time autostart uses.
     channel_model: str = DEFAULT_CHANNEL_MODEL
     # Where a link tapped in Chat or a transcript opens when the page runs on
-    # the PC itself (#1274): "chrome" (found through the registry's App
+    # the PC itself: "chrome" (found through the registry's App
     # Paths, falling back to the default when absent) or "system" (the
     # Windows default browser, which is how the links opened before).
     desktop_browser: str = "chrome"
-    # Bounded scrollback (issue #435 follow-up): how many lines of a
+    # Bounded scrollback: how many lines of a
     # full-screen (ratatui) agent's history the session-host retains and
     # replays on a (re)connect. See DEFAULT_TERMINAL_HISTORY_LINES for the
     # real-session evidence behind the default.
     terminal_history_lines: int = DEFAULT_TERMINAL_HISTORY_LINES
-    # Large-file attach limit in MB (issue #1430), Settings-tab configurable.
+    # Large-file attach limit in MB, Settings-tab configurable.
     # See DEFAULT_LARGE_UPLOAD_MAX_MB.
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
-    # Which providers the usage meter draws (#1451); see VALID_USAGE_SHOWS.
+    # Which providers the usage meter draws; see VALID_USAGE_SHOWS.
     usage_shows: str = DEFAULT_USAGE_SHOWS
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
@@ -531,7 +531,7 @@ class WebappConfig:
     webauthn_rp_id: str = ""
     webauthn_rp_name: str = "Launcher"
     webauthn_origin: str = ""
-    # --- voice dictation (issue #165) -----------------------------------
+    # --- voice dictation -----------------------------------
     # Base URL of the sibling voice-transcriber webapp, whose consumable
     # session API (POST /api/sessions → /upload) transcribes a recording
     # dictated from the Coding terminal's compose bar. The webapp proxies
@@ -540,7 +540,7 @@ class WebappConfig:
     # (the 🎤 record button hides). Defaults to the voice-transcriber's
     # loopback HTTPS port.
     voice_transcriber_url: str = "https://127.0.0.1:8443"
-    # --- screenshot OCR (issue #171) ------------------------------------
+    # --- screenshot OCR ------------------------------------
     # Base URL of the sibling photo-ocr webapp, whose consumable single-shot
     # API (POST /api/extract) returns clean text for a screenshot captured
     # from the Coding terminal's compose bar. The webapp proxies to it over
@@ -549,7 +549,7 @@ class WebappConfig:
     # Empty string disables the feature (the 📷 OCR button hides). Defaults
     # to the photo-ocr loopback HTTPS port.
     photo_ocr_url: str = "https://127.0.0.1:8444"
-    # --- read-aloud hub TTS (issue #203) --------------------------------
+    # --- read-aloud hub TTS --------------------------------
     # Base URL of the local-llm-hub, whose OpenAI-shape POST /v1/audio/speech
     # synthesizes the Coding terminal's 🔊 read-aloud with the high-quality
     # Orpheus voice (streamed WAV). The webapp proxies to it over loopback so
@@ -557,7 +557,7 @@ class WebappConfig:
     # path (🔊 falls back to the on-device Web Speech voice). Plain HTTP — the
     # hub binds loopback only and serves no TLS, unlike the sibling apps above.
     llm_hub_url: str = "http://127.0.0.1:8000"
-    # --- Screen time export to task-os (issue #1678) ---------------------
+    # --- Screen time export to task-os ---------------------
     # Where `launcher.py usage-export` and the Screen time sheet's Send to
     # task-os put each completed day's minutes (src/usage_export.py): the
     # sibling task-os's loopback URL, the task-os person id the entries
@@ -569,7 +569,7 @@ class WebappConfig:
     task_os_person: str = ""
     task_os_area: str = "work"
     task_os_category: str = "launcher"
-    # --- Jobs-tab failure notifications (issue #66) ---------------------
+    # --- Jobs-tab failure notifications ---------------------
     # Pushover credentials — both empty means no-op notifier (executor
     # still finalises runs identically). The master switch
     # `notify_on_failure` defaults off so the feature ships dormant.
@@ -585,7 +585,7 @@ class WebappConfig:
     # "what went wrong" summary prepended to the push body. Default off
     # so the issue lands without a hard dependency on the hub.
     notify_failure_summary: bool = False
-    # --- Per-job Telegram failure alerts (issue #597) --------------------
+    # --- Per-job Telegram failure alerts --------------------
     # Credentials for the vendored src/notify Telegram primitive. Both
     # empty means no-op — the executor still finalises runs identically.
     # Unlike notify_on_failure above (global, Pushover, every job), this
@@ -593,12 +593,12 @@ class WebappConfig:
     # here, so the shared Telegram chat isn't spammed by every failure.
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
-    # Optional chat for routine log lines (issue #1742), e.g. the nightly
+    # Optional chat for routine log lines, e.g. the nightly
     # zombie-cleanup summary — not alerts. Empty falls back to
     # telegram_chat_id, so a single-chat setup is unchanged. Failure alerts
     # never use it.
     telegram_chat_log: str = ""
-    # --- Jobs missed-fire coverage (issue #697) --------------------------
+    # --- Jobs missed-fire coverage --------------------------
     # How often the webapp re-scans every scheduled job for coverage: a
     # missing/disabled Task Scheduler entry, or an elapsed slot with no run
     # record. 0 disables the background tick entirely (the `/api/jobs` badge
@@ -606,25 +606,25 @@ class WebappConfig:
     # the notify_* switches above it pushes nothing on its own: alerts still
     # route through notify_on_failure / Job.alert_on_failure, both opt-in.
     jobs_coverage_interval_minutes: int = 60
-    # --- webapp/sessions retention (issue #902) --------------------------
+    # --- webapp/sessions retention --------------------------
     # THE retention window for the per-session audit trail: every
     # webapp/sessions/<id>.log and <id>.transcript whose mtime is older than
     # this many days is deleted by the webapp's daily sweep
     # (src/session_retention.py) — except files of a live session, which are
-    # never removed. 0 keeps everything forever (the pre-#902 behaviour).
+    # never removed. 0 keeps everything forever (the earlier behaviour).
     # Deliberately not patchable from the Settings API: a deleting setting is
     # edited here, by hand, or not at all.
     session_retention_days: int = 365
-    # --- Job secrets (issues #73, #72) ----------------------------------
+    # --- Job secrets ----------------------------------
     # One gitignored place for secret values, referenced from jobs.json by
     # opaque "$secret:<key>" strings resolved at fire time
-    # (src.jobs_secrets): a job's webhook.secret (issue #73) and every
-    # Job.env value (issue #72) both draw from this dict, so a rotated
+    # (src.jobs_secrets): a job's webhook.secret and every
+    # Job.env value both draw from this dict, so a rotated
     # credential lives here and never in jobs.json. Loaded from the
     # "secrets" key, falling back to the legacy "webhook_secrets" key this
-    # block shipped under before #72 generalized it. Empty by default.
+    # block shipped under before it was generalized. Empty by default.
     secrets: Dict[str, str] = field(default_factory=dict)
-    # --- Scoped API bearer tokens (issue #72) ---------------------------
+    # --- Scoped API bearer tokens ---------------------------
     # List of token records minted from the Settings tab (see
     # src.api_tokens): {id, label, salt, hash, scope, created_at,
     # last_used_at}. Only the salted SHA-256 hash is stored — the raw
@@ -790,7 +790,7 @@ def _coerce(value: Any, annotation: Any, default: Any) -> Any:
         # A hand-edited config's non-boolean value (e.g. the string
         # ``"false"``, truthy under `bool()`) or an unusable null (were it
         # ever to reach here) falls back to the declared default rather
-        # than being coerced by truthiness (issue #755) — matching the int
+        # than being coerced by truthiness — matching the int
         # branch's discipline just below.
         return value if isinstance(value, bool) else default
     if annotation in (int, "int"):
@@ -857,7 +857,7 @@ def _resolve_config_path(path: Optional[Path]) -> Path:
 # Keys renamed since a live ``config/webapp_config.json`` may have been written
 # (the file is gitignored, so a pull never rewrites it): old name -> new name.
 # ``claude_config_dir`` held the fleet-config checkout root all along, not
-# Claude's own config dir (#1424).
+# Claude's own config dir.
 _LEGACY_KEYS = {"claude_config_dir": "fleet_config_dir"}
 
 
@@ -973,7 +973,7 @@ def load_webapp_config(
 
     raw = _migrate_legacy_keys(raw, target)
 
-    # One generic pass over the dataclass's own field list (issue #722).
+    # One generic pass over the dataclass's own field list.
     # The ~55 settings used to be enumerated three times — once as fields,
     # once as a per-field ``raw.get`` block here, once as a payload dict in
     # ``save_webapp_config`` — which meant three edits per new setting and a
@@ -997,7 +997,7 @@ def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     target = _resolve_config_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
 
-    # Derived straight from the dataclass (issue #722) — the field list, in
+    # Derived straight from the dataclass — the field list, in
     # declaration order, IS the on-disk schema. asdict() also deep-copies the
     # list/dict fields, so the writer can never alias live config state.
     payload = asdict(cfg)
@@ -1037,7 +1037,7 @@ def append_auth_token(url: str, token: Optional[str]) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-#: Enum-valued settings validated by plain membership (issue #831) — a new
+#: Enum-valued settings validated by plain membership — a new
 #: enum field is one row here instead of a hand-written ``not in`` check, the
 #: same declarative-table shape ``_CUSTOM_LOADERS`` above and
 #: ``middleware._TERMINAL_GUARD_RULES`` already use.

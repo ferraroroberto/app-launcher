@@ -173,7 +173,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
 
     _write(p.transcript, "".join(json.dumps(line) + "\n" for line in _transcript_lines(p.project, now)))
     _json(p.state_file, {})
-    # A chief's plan (#1279), so the Board's card has rows to review. No chief runs here, so the card
+    # A chief's plan, so the Board's card has rows to review. No chief runs here, so the card
     # also shows its "chief not running" line.
     _json(data / "state" / "chief-plan.json", {
         "version": 1, "updated_at": _iso(now - _dt.timedelta(minutes=12)),
@@ -227,7 +227,7 @@ def isolated_env(p: Paths, session_host_port: int) -> Dict[str, str]:
         "LAUNCHER_SESSION_HOST_PORT": str(session_host_port), "LAUNCHER_WEBAPP_CONFIG": str(p.webapp_config),
         "LAUNCHER_AUDIT_DIR": str(p.root / "audit"), "LAUNCHER_UPLOAD_ROOT": str(p.root / "uploads"),
         "LAUNCHER_STARTUP_DIR": str(p.root / "startup"), "PYTHONUTF8": "1",
-        # The Board's GitHub refresh runs the fake gh, never the real one (#1286): the real CLI's login lives
+        # The Board's GitHub refresh runs the fake gh, never the real one: the real CLI's login lives
         # under %APPDATA%, which the HOME redirect above does not reach, so it read the real fleet's backlog.
         # GH_CONFIG_DIR is the second guard: a real gh reached any other way finds no login here.
         GH_CMD_ENV: json.dumps([sys.executable, str(p.app / "scripts" / "synthetic_gh.py")]),

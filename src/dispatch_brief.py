@@ -49,7 +49,7 @@ class BriefError(ValueError):
 
 def _resolve_briefs_dir() -> Path:
     # Mirrors src.audit's resolution of the same variable, so briefs follow
-    # the audit files wherever LAUNCHER_AUDIT_DIR sends them (#913).
+    # the audit files wherever LAUNCHER_AUDIT_DIR sends them.
     override = os.environ.get(AUDIT_DIR_ENV, "").strip()
     return (Path(override) if override else PROJECT_ROOT / "webapp") / "briefs"
 

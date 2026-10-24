@@ -85,7 +85,7 @@ logger = logging.getLogger(__name__)
 
 # Job ids whose run history is currently unreadable: one warning when a job
 # enters that state and one breadcrumb when it leaves, not one per 5 s Board
-# poll (#915). Bounded by the job registry, so no cap is needed.
+# poll. Bounded by the job registry, so no cap is needed.
 _UNREADABLE_JOBS: set[str] = set()
 
 
@@ -124,7 +124,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     dismissed = jobs_dismissed.read_dismissed()
     for job in jobs:
         # The snapshot's walk reaps a run stranded "running" by a dead
-        # executor (issue #591), so the Board doesn't keep rendering a
+        # executor, so the Board doesn't keep rendering a
         # "stuck" card for a run that nothing is actually executing.
         runtime = snap.jobs[job.id]  # current() covers every job it is given
         latest = runtime.latest
@@ -164,7 +164,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
                 "age_seconds": _age_seconds(started, now_local),
             })
             continue
-        # A deferral the job itself declared (#1316) is by design, so nothing
+        # A deferral the job itself declared is by design, so nothing
         # here needs a human. Its state is shown on the job card, not here.
         if (
             latest.get("status") == "failed"
@@ -180,7 +180,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
             ):
                 # A run whose delivery the adapter could not establish still
                 # wants a human's eye, so it keeps its card — but it is not a
-                # failure and must not be drawn as one (#916). ``outcome`` is
+                # failure and must not be drawn as one. ``outcome`` is
                 # decorated onto every record by ``jobs_history.read_run``.
                 outcome = latest.get("outcome") or "failed"
                 cards.append({
@@ -200,9 +200,9 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     return cards
 
 
-# #608: the family of statuses that still mean "a human needs to look at
+# The family of statuses that still mean "a human needs to look at
 # this" after board_transcript's needs-you split. ``idle-finished`` and
-# ``tool-pending`` (#813) and ``waiting-on-task`` are deliberately excluded — a
+# ``tool-pending`` and ``waiting-on-task`` are deliberately excluded — a
 # clean-stopped session with nothing pending, one still mid-turn on an ordinary
 # tool call, and one waiting on its own background task aren't alerts; all are
 # Claude quietly holding a workspace, same as ``idle``.

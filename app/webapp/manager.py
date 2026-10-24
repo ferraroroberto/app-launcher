@@ -232,7 +232,7 @@ class WebappManager:
             logger.info("ℹ️  Webapp is disabled in config (webapp.enabled=false)")
             return self.status()
 
-        # Race-safe adopt-or-spawn (project-scaffolding#39): serialize the
+        # Race-safe adopt-or-spawn: serialize the
         # status()-then-Popen critical section across processes so two trays
         # starting at once cannot both spawn uvicorn. The loser blocks, then
         # re-checks below and adopts the now-listening webapp. The lock is held

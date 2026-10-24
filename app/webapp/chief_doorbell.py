@@ -161,7 +161,7 @@ async def observe(cfg: Any) -> Observation:
     if not chief:
         return Observation(pending=pending, blocked="no live chief")
     sid = str(chief.get("session_id") or "")
-    # A session-host older than #1643 sends no composer field: unknown.
+    # A session-host that predates the composer field sends none: unknown.
     dirty = chief.get("composer_dirty")
     if not isinstance(dirty, bool):
         dirty = None

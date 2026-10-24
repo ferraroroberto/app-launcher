@@ -82,7 +82,7 @@ class LifeOsZombieCommand(BaseCommand):
             return result.exit_code
         title, body = summary_text(result)
         # Counts only: capture names embed the conversation's own words. A
-        # routine summary, so the log chat, not alerts (#1742).
+        # routine summary, so the log chat, not alerts.
         build_telegram_notifier_from_config(cfg, category=TELEGRAM_CATEGORY_LOG).notify(
             title, body, "info" if result.exit_code == EXIT_OK else "warning")
         done = {EXIT_OK: "✅", EXIT_FAILED: "⚠️"}.get(result.exit_code, "❌")

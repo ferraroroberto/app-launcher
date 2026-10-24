@@ -109,7 +109,7 @@ from app.webapp.routers import life_os_channels
 from app.webapp.routers._helpers import STATIC_DIR
 
 _log = logging.getLogger(__name__)
-# The lifespan's Telegram autostart lines (#1546): a child so the file handler
+# The lifespan's Telegram autostart lines: a child so the file handler
 # takes these and not every other INFO this module logs.
 _autostart_log = logging.getLogger(f"{__name__}.autostart")
 
@@ -120,9 +120,9 @@ _DAY_CACHE = "public, max-age=86400"
 _HASHED_SUFFIXES = {".js", ".css"}
 # Lightly cached (a day) — these change rarely but we don't want stale
 # icons surviving for a year if we ever do swap them. .svg (the brand
-# icons) is also ?v=-stamped client-side (issue #372), so the day cap
+# icons) is also ?v=-stamped client-side, so the day cap
 # only bounds an unstamped fetch; without it Safari's heuristic cache
-# held the pre-#361 icons past the deploy.
+# held the previous icons past the deploy.
 _DAY_CACHE_SUFFIXES = {".webmanifest", ".png", ".ico", ".svg"}
 
 
@@ -233,12 +233,12 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
         _log.info("🧹 reconciled %d orphaned mirror window(s) on startup", closed)
 
 
-# --- Jobs stranded-run reap + missed-fire coverage tick (#809, #697) -----
+# --- Jobs stranded-run reap + missed-fire coverage tick -----
 # First scan is delayed so it never competes with boot; then one scan per
 # interval. The whole point of this tick is that it does NOT depend on the
 # Jobs tab being open — the two real missed-fire incidents (`config-map` /
 # `sota-watch` registered no task at all) went unnoticed for weeks, and a
-# stranded run (#809) went unreaped for over two months, precisely because
+# stranded run went unreaped for over two months, precisely because
 # nothing looked when nobody was looking.
 _COVERAGE_FIRST_DELAY_SECONDS = 120.0
 
@@ -313,7 +313,7 @@ async def _coverage_tick(app: FastAPI) -> None:
         await asyncio.sleep(interval)
 
 
-# --- webapp/sessions retention sweep (issue #902) ------------------------
+# --- webapp/sessions retention sweep ------------------------
 # Once a day, off the event loop. The first sweep waits well past boot so it
 # never competes with the restart it follows.
 _RETENTION_FIRST_DELAY_SECONDS = 600.0
@@ -390,11 +390,11 @@ async def _channel_autostart(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
-    # The jobs runtime snapshot behind /api/jobs and /api/board (#1324). It
+    # The jobs runtime snapshot behind /api/jobs and /api/board. It
     # only walks while those polls are asking, so every instance runs it:
     # the reads it serves happen on every instance too.
     tasks = [asyncio.create_task(jobs_snapshot.tick_forever())]
-    # The header's CPU reading (#1522): one shared sampler, awake only while
+    # The header's CPU reading: one shared sampler, awake only while
     # a page polls /api/system/load.
     tasks.append(asyncio.create_task(system_load.tick_forever()))
     cfg = getattr(app.state, "webapp_config", None)
@@ -405,7 +405,7 @@ async def _lifespan(app: FastAPI):
         if _session_retention_days(cfg) > 0:
             tasks.append(asyncio.create_task(_session_retention_tick(app)))
         # Always started: it re-reads the chief_doorbell toggle every tick and
-        # does nothing while it is off, so a Settings save arms it live (#1645).
+        # does nothing while it is off, so a Settings save arms it live.
         tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
@@ -416,7 +416,7 @@ async def _lifespan(app: FastAPI):
     elif not canonical:
         # The autoboot case is expected on every gate run, so it stays quiet;
         # any *other* non-canonical instance is a surprise worth finding in
-        # the log after the phone buzzes (#736).
+        # the log after the phone buzzes.
         emit, mark = (
             (_autostart_log.debug, "ℹ️")
             if role_reason == instance_role.REASON_DISPOSABLE
@@ -462,7 +462,7 @@ def create_app() -> FastAPI:
         get_config=lambda: app.state.webapp_config,
     )
     # Added last → outermost, so the timing covers the whole stack including
-    # the auth middleware (issue #386).
+    # the auth middleware.
     app.add_middleware(SlowRequestLogMiddleware)
 
     app.state.app_config = app_config
@@ -502,13 +502,13 @@ def create_app() -> FastAPI:
     app.include_router(life_os.router)
     app.include_router(board.router)
     app.include_router(webauthn.router)
-    # Local-only view/tap log (#1524). Behind the bearer-token middleware like
+    # Local-only view/tap log. Behind the bearer-token middleware like
     # every /api route; static/usage.js hands the vendored client the bearer
     # header through its `headers` option.
     app.include_router(usage_router(
         runtime_db_path("app-launcher", "usage.sqlite3", create=True),
     ))
-    # The Screen time sheet's Send to task-os (#1678): drives the same
+    # The Screen time sheet's Send to task-os: drives the same
     # src/usage_export.py the usage-export CLI and the nightly Job run.
     app.include_router(screen_time.router)
 

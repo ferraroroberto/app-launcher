@@ -124,8 +124,8 @@ _coverage_lock = Lock()
 # weekend doesn't fire an alert every check cycle.
 COVERAGE_ALERT_REPEAT_SECONDS = 24 * 3600.0
 # Re-ping interval for a *conditional* structural risk — one where the job is
-# still firing today and the remediation needs a human at an elevated shell
-# (issue #778). The condition keeps being reported; it just doesn't earn a
+# still firing today and the remediation needs a human at an elevated shell.
+# The condition keeps being reported; it just doesn't earn a
 # daily high-priority ping, which is how a channel gets muted.
 COVERAGE_ALERT_REPEAT_SECONDS_LOW = 7 * 24 * 3600.0
 
@@ -142,7 +142,7 @@ STATE_EXEMPT = "exempt"
 PROBLEM_TASK_MISSING = "task_missing"
 PROBLEM_TASK_DISABLED = "task_disabled"
 PROBLEM_MISSED_FIRE = "missed_fire"
-#: A ``session_less`` job (issue #757) whose Task Scheduler entry is still
+#: A ``session_less`` job whose Task Scheduler entry is still
 #: registered ``Interactive only`` — it exists and looks healthy to every
 #: other check, and silently does nothing whenever the box sits logged out.
 #: Either it was never hand-registered from an elevated shell, or something
@@ -167,7 +167,7 @@ class Announcement(NamedTuple):
 #: Per-class alert vocabulary, ordered **most root-causal first**.
 #:
 #: Every class used to borrow one hardcoded title — "scheduled run never
-#: fired" — which is a plain lie for three of the four (issue #778): only
+#: fired" — which is a plain lie for three of the four: only
 #: :data:`PROBLEM_MISSED_FIRE` is a fact about a run that didn't happen. The
 #: other three are structural risks about whether the entry *could* fire, and
 #: ``principal_interactive`` in particular describes a *future* condition (the
@@ -415,7 +415,7 @@ def coverage_for(
             elif enabled is False:
                 disabled.append(name)
 
-    # Principal half (issue #757) — only meaningful for a job that declared
+    # Principal half — only meaningful for a job that declared
     # it must run session-less. A task already reported missing is skipped:
     # the structural half owns that, and "missing" plus "wrong principal"
     # for one entry is one problem told twice.

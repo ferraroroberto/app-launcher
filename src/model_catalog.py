@@ -55,7 +55,7 @@ CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
 }
 
 # Pi is intentionally restricted to the two subscription-backed providers.
-# ``default_effort`` is ``high`` throughout (#1713): nothing is published for
+# ``default_effort`` is ``high`` throughout: nothing is published for
 # Pi's providers, and Pi pins Opus 5 (not 5.5), whose documented default is high.
 # Pi's ``--thinking`` ladder is ``VALID_PI_EFFORTS``, so there is no per-spec
 # ``efforts`` list.
@@ -99,7 +99,7 @@ PI_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# GitHub Copilot has no entry here on purpose (issue #1017). Its model
+# GitHub Copilot has no entry here on purpose. Its model
 # list was removed rather than refreshed: `copilot help config` reports
 # what the CLI accepts, while what a *launch* gets is decided by the
 # account's entitlement, so a catalogue here could only ever produce a

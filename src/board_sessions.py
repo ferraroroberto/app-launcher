@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # Worktree sibling suffix (``skills/_lib/worktree_claim.py``'s ``<repo>-wt-<N>``)
 # stripped so a session built in an isolated worktree still resolves to its
-# primary repo's own active-issue marker (#627).
+# primary repo's own active-issue marker.
 _WORKTREE_SUFFIX_RE = re.compile(r"-wt-\d+$")
 
 
@@ -87,7 +87,7 @@ def active_issue_repos(
 
 # Statuses the hook writer emits; anything else renders as "unknown". This
 # gates the *raw* row status only — a card's final ``status`` can diverge
-# further downstream (the transcript overlay, and #608's needs-you split;
+# further downstream (the transcript overlay, and the needs-you split;
 # see :func:`merge_sessions`).
 _KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
 
@@ -100,9 +100,9 @@ _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 _LOGGED_SUPPRESSED_ROWS: set[str] = set()
 _SUPPRESSED_LOG_CAP = 512
 
-# Plan picker on screen (#1203). Claude Code can keep the pending
-# ``ExitPlanMode`` call off disk while its picker is up (#1151 measured 31 s;
-# the #1203 probe saw it still missing 90 s in), so the transcript tail reads
+# Plan picker on screen. Claude Code can keep the pending
+# ``ExitPlanMode`` call off disk while its picker is up (measured at 31 s;
+# a later probe saw it still missing 90 s in), so the transcript tail reads
 # as "nothing pending" and the card lands in ``idle-finished`` /
 # ``awaiting-input``. The hook side is reliable: in both a plan-mode and a
 # skip-permissions session the picker fires a ``permission_prompt``

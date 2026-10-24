@@ -212,7 +212,7 @@ async def get_board(request: Request) -> Dict[str, Any]:
 
 async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str, Any]:
     active_issues_file = Path(cfg.sessions_state_file).with_name("active-issues.json")
-    # No quota here (#1433): both tabs' usage meters read ``/api/rate-limits``,
+    # No quota here: both tabs' usage meters read ``/api/rate-limits``,
     # one endpoint, so the two can never show different readings.
     live_read, state, active_issues, job_cards = await asyncio.gather(
         steps.run("read_live_sessions", _read_live_sessions, cfg.session_host_port),
@@ -224,7 +224,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     live, live_error = live_read
 
     live = board_chief._reconcile_chief_labels(live, state["rows"])
-    # Claim owner liveness (#948): an unreadable session list is None, so the
+    # Claim owner liveness: an unreadable session list is None, so the
     # contract answers unknown rather than calling every owner dead.
     claim_states = await steps.run(
         "classify_claims",
@@ -237,7 +237,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     )
     # Per-card transcript reads — unbounded in session count and re-run every
     # 5s while the Board is open, so it goes off the loop like the five
-    # inputs above (#881).
+    # inputs above.
     session_cards = await steps.run(
         "merge_sessions",
         board.merge_sessions,
@@ -246,7 +246,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     )
     # The drawer's Rename opens the same Rename / link dialog as the Coding
     # tab, which reads ``web_url`` — without this it said "Not available yet"
-    # for a live Claude PTY session the Coding tab linked fine (#1096). Same
+    # for a live Claude PTY session the Coding tab linked fine. Same
     # bounded transcript scan, off the loop and memoized in _helpers, so the
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
     await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
@@ -260,7 +260,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         "columns": columns,
         "github": _github_section(github),
         # ``available: false`` means the session-host could not be read, so
-        # Claude's turn and Your turn are unknown, not empty (#915) — the
+        # Claude's turn and Your turn are unknown, not empty — the
         # same contract as ``github.available``.
         "live_sessions": {
             "available": live_error is None,
@@ -276,7 +276,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
             "updated_at": active_issues["updated_at"],
             "count": len(active_issues["rows"]),
         },
-        # Age of the jobs runtime snapshot the job cards came from (#1324),
+        # Age of the jobs runtime snapshot the job cards came from,
         # so a stale one can never pass for current.
         "jobs_snapshot": jobs_snapshot.latest_description(),
     }
@@ -400,7 +400,7 @@ async def _build_exchange(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dic
         (item for item in live if str(item.get("session_id")) == str(sid)), None
     )
     if session is None:
-        # An unreadable session list is not "the session ended" (#1308): the
+        # An unreadable session list is not "the session ended": the
         # session may be alive behind a session-host that timed out once.
         return unavailable(
             SESSION_HOST_UNREACHABLE if host_error else "session_not_found"
@@ -418,7 +418,7 @@ async def _build_exchange(cfg: WebappConfig, sid: str, steps: BuildSteps) -> Dic
     )
     if result.get("source") == "native_scan":
         # The row named no transcript and the conversation was correlated
-        # from the filesystem instead (#1027) — an inferred match, so it
+        # from the filesystem instead — an inferred match, so it
         # leaves its own breadcrumb rather than passing for an exact one.
         logger.info(
             "ℹ️ Board exchange %s (%s) used a scanned native transcript; "
@@ -561,19 +561,19 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         brief_chars=len(brief) if brief is not None else None,
         mirror=_opens_pc_window(chief_dispatch, body),
     )
-    # Auto-name the session after the issue title (#467): a Board-started
+    # Auto-name the session after the issue title: a Board-started
     # session is then recognizable in the Coding tab immediately, instead of
-    # inheriting the first-prompt/OSC-derived default. Reuses the #458 manual
+    # inheriting the first-prompt/OSC-derived default. Reuses the manual
     # override (a launcher-side ``manual_title`` set, wins over the agent's
     # later self-naming). Best-effort — a rename failure must never fail an
     # otherwise-successful launch. No readiness wait needed: the rename is a
     # pure in-memory attribute set on the session record, never typed into
-    # the PTY (the racy agent-native injection was removed in #555). Agents
+    # the PTY (the racy agent-native injection was since removed). Agents
     # with a verified spawn-time --name flag also receive the same safe title
-    # above, so their native resume picker is synchronized from birth (#556).
+    # above, so their native resume picker is synchronized from birth.
     # A chief dispatch types only the launch command, so the first-prompt
-    # capture (#266) would name the lane after that command and its brief path
-    # (#1579). It is named `<repo>#<N> <issue title>` instead, through the same
+    # capture would name the lane after that command and its brief path.
+    # It is named `<repo>#<N> <issue title>` instead, through the same
     # rename; the host keeps `manual_title` apart from the captured prompt
     # title, so the name survives the capture. Manual starts keep `title`.
     name = _dispatch_session_name(entry.name, number, title) if chief_dispatch else title

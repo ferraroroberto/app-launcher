@@ -199,8 +199,7 @@ async def screen_ws(websocket: WebSocket) -> None:
     # send that fails mid-stream still audits what did go out. The byte total
     # is the session's real traffic on the link, and ``unavailable`` counts the
     # times the desktop stopped being readable: the one durable trace of a
-    # blocked capture, since the tray discards the webapp's own log output
-    # (#1688).
+    # blocked capture, since the tray discards the webapp's own log output.
     sent = {"frames": 0, "bytes": 0, "unavailable": 0}
     # Frames and cursor messages come from two loops; one message at a time
     # goes out on the socket.

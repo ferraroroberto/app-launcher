@@ -42,7 +42,7 @@ _TRAY_READY_POLL_S = 0.5
 # gives it a head start before the next tray launches, without a real signal.
 _TRAY_FALLBACK_DELAY_S = 5.0
 
-# Issue #925: a genuine config/apps.json read failure (as opposed to "no
+# A genuine config/apps.json read failure (as opposed to "no
 # autostart trays configured") is retried a small, bounded number of times —
 # the suspected trigger is a transient early-boot I/O hiccup (this repo lives
 # on a second drive that may still be settling right at login on a full

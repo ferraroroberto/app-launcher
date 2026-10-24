@@ -112,7 +112,7 @@ def _evidence_finished_at(
 # transient pid and exits 0 whether or not the executor ever launched, so
 # nothing else notices either. A "pending" record still pid-less after
 # this many seconds is provably never going to get one — age it out
-# rather than leaving it to wedge its mutex group forever (issue #796).
+# rather than leaving it to wedge its mutex group forever.
 _PENDING_NO_PID_GRACE_SECONDS = 120.0
 
 

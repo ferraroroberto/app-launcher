@@ -102,7 +102,7 @@ def compute_job(job: Any) -> JobRuntime:
     # One job's unreadable history must not sink the whole snapshot (and with
     # it every other job on the Board), so any error is kept per job.
     try:
-        # A run stranded "running" by a dead executor (issue #591) is
+        # A run stranded "running" by a dead executor is
         # reconciled here, as both polls used to do on every request.
         jobs_mod.reap_stranded_runs(job)
         latest = jobs_mod.latest_run(job.id)

@@ -81,7 +81,7 @@ router = APIRouter()
 
 _launch_locks: Dict[str, asyncio.Lock] = {}
 
-# Restart (#1675): how long a quit gets to end the old session before the
+# Restart: how long a quit gets to end the old session before the
 # kill, how long the kill gets, and the poll between looks.
 RESTART_QUIT_WAIT_SECONDS = 15.0
 RESTART_KILL_WAIT_SECONDS = 5.0
@@ -242,7 +242,7 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             detail="Telegram channel sessions run in a terminal, not detached",
         )
     # No model named (and no legacy ``opus`` flag): the channel default, not
-    # the global Claude model (#1673). An explicit model still wins.
+    # the global Claude model. An explicit model still wins.
     if body.get("model") is None and "opus" not in body:
         body = {**body, "model": cfg.channel_model}
     agent, model = _resolve_launch_choice(body)
@@ -367,7 +367,7 @@ async def _spawn_channel(
     )
 
 
-# --- restart (#1675) -------------------------------------------------------
+# --- restart -------------------------------------------------------
 @router.post("/api/life-os/channels/{profile_id}/restart")
 async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
     """Quit a profile's running session and start it fresh with its skill, so
@@ -510,7 +510,7 @@ async def _quit_and_confirm_gone(
     )
 
 
-# --- boot-time autostart (#1542) -----------------------------------------
+# --- boot-time autostart -----------------------------------------
 # A reboot (a forced Windows update) kills every channel session, and the
 # launcher comes back at log-on without them. With the setting on, the
 # lifespan starts each ready profile once. The session-host may still be

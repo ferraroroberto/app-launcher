@@ -82,7 +82,7 @@ async def index(request: Request) -> Response:
     # Force Safari (iPhone PWA especially) to revalidate the HTML on every
     # load. Without this, a stale cached index.html keeps pointing at a
     # `?v=<old hash>` script that no longer exists after a refactor — the
-    # page renders the static skeleton but no JS runs. The ETag (#1324) makes
+    # page renders the static skeleton but no JS runs. The ETag makes
     # that revalidation a body-less 304 while the page hasn't changed.
     headers = {"Cache-Control": "no-cache, must-revalidate", "ETag": etag}
     if _etag_matches(request.headers.get("if-none-match", ""), etag):
@@ -246,7 +246,7 @@ async def system_load_reading() -> Dict[str, Any]:
     return system_load.read()
 
 
-# Each listener's scheme, keyed by (pid, port) (#1129). The TLS probe can
+# Each listener's scheme, keyed by (pid, port). The TLS probe can
 # take up to a second a port and the Apps tab polls this route, so a live
 # listener is probed once; entries for listeners that are gone are dropped
 # on every call.
@@ -285,7 +285,7 @@ async def open_link_on_pc(request: Request) -> Dict[str, Any]:
     if not is_web_url(url):
         raise HTTPException(status_code=400, detail="only http(s) links")
     # A disposable e2e / verify instance never opens anything on the desktop,
-    # the rule the mirror window follows (#278, #938).
+    # the rule the mirror window follows.
     if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
         _log.info("ℹ️ open-url: disposable instance, not opening a browser")
         return {"opened": False, "browser": "none"}
@@ -307,7 +307,7 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
     dir_names = _registered_dir_names()
     # psutil's socket + process scan takes ~1 s. On the event loop it stalled
     # every other request the webapp was serving, and the Apps tab polls
-    # this route every 5 s (#1262).
+    # this route every 5 s.
     owners = await asyncio.to_thread(list_app_listeners)
     pid_to_port = {o.pid: o.port for o in owners}
     tailnet_host = (request.app.state.app_config.tailnet_host or "").strip()
@@ -340,7 +340,7 @@ async def probe_ports(request: Request) -> Dict[str, Any]:
 async def kill_port(port: int) -> Dict[str, Any]:
     if port < 1 or port > 65535:
         raise HTTPException(status_code=400, detail="port out of range")
-    # The same psutil scan as the probe, plus the kills: off the loop (#1262).
+    # The same psutil scan as the probe, plus the kills: off the loop.
     pids = await asyncio.to_thread(find_pids_on_port, port)
     if not pids:
         return {"port": port, "killed": [], "detail": "nothing was listening"}

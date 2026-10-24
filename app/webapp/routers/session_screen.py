@@ -191,7 +191,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
     return {"ok": True, "delivered": "unconfirmed", "steps": len(keys), "kind": kind}
 
 
-# --- The terminal's screen: plan picker (#1151), context use (#1223) --------
+# --- The terminal's screen: plan picker, context use --------
 #
 # The transcript can't say "this plan is waiting" (the pending ExitPlanMode
 # call can stay off disk until it is answered) or how full the context
@@ -385,12 +385,12 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
     return {"ok": True, "delivered": "unconfirmed", "answer": kind}
 
 
-# --- Resuming a conversation from a Chat card (#1300) ------------------------
+# --- Resuming a conversation from a Chat card ------------------------
 #
 # Claude Code's /resume picker is a long scrolling TUI list; the Chat pane
 # offers the project's conversations as a searchable card instead
 # (src.resume_picker). With no picker on screen a pick is typed as
-# `/resume <id>` + Enter, which the probe on #1300 showed resumes exactly that
+# `/resume <id>` + Enter, which a live probe showed resumes exactly that
 # conversation. With the picker up it is never left with Escape, which exits
 # a `claude --resume` launch outright: the highlight is stepped down one row
 # at a time, re-read after each, and Enter goes in only once the highlighted

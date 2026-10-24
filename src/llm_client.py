@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Cheap, fast model for a short summary — the hub routes this to the local
 # Claude Code subscription (see the home-stack local-llm-hub). Must be the
-# hyphenated, versioned hub id (issue #409) — the hub does exact-match
+# hyphenated, versioned hub id — the hub does exact-match
 # routing, no alias table.
 DEFAULT_MODEL = "claude-haiku-4-5"
 

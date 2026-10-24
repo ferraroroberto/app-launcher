@@ -59,16 +59,16 @@ TUNNEL_CONFIG_PATH = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 # The tray runs windowless (pythonw) with no console to log to, so the
 # Tailscale lookup leaves a breadcrumb here when it can't resolve a host.
 TS_DEBUG_LOG = PROJECT_ROOT / "webapp" / "tailscale_debug.log"
-# Same reason: the health watchdog (issue #386) leaves its wedge/recovery
+# Same reason: the health watchdog leaves its wedge/recovery
 # breadcrumbs here — the only durable trail of *when* :8445 stopped answering.
 WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
-# Where the detached session-host's own stdout/stderr lands (#825). It is
+# Where the detached session-host's own stdout/stderr lands. It is
 # spawned re-parented out of this tray's subtree and has no console, so this
 # file is the only place its logging can go.
 SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
 
-# The loopback PTY session-host. It is a *linked-but-independent* child
-# (project-scaffolding#35): it hosts the user's Coding PTYs and MUST survive a
+# The loopback PTY session-host. It is a *linked-but-independent* child:
+# it hosts the user's Coding PTYs and MUST survive a
 # `tray.bat --restart`. So it is spawned detached (re-parented out of the tray
 # subtree) and adopted on start by its own port, and that port is excluded
 # from tray.bat's reclaim sweep. 8446 is only the *default* — the real,
@@ -77,7 +77,7 @@ SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
 # definition alongside ``src/webapp_config.py``'s ``DEFAULT_SESSION_HOST_PORT``
 # and ``app/session_host/server.py``'s ``DEFAULT_PORT``, so setting the knob
 # left the tray adopting/reclaiming the wrong port and silently spawning a
-# duplicate session-host on every start (issue #796). Always call
+# duplicate session-host on every start. Always call
 # :func:`_session_host_port` fresh rather than caching a module constant.
 
 
@@ -176,7 +176,7 @@ class TrayApp:
         self.tunnel_proc: Optional[subprocess.Popen] = None
         self.starter_exc: Optional[Exception] = None
 
-        # Health watchdog (issue #386): a wedged uvicorn still LISTENs, so
+        # Health watchdog: a wedged uvicorn still LISTENs, so
         # only a real /healthz round-trip can tell "up" from "hung".
         # Alerting only — recovery stays manual (tray.bat --restart) until
         # the failure mode is understood; no improvised process kills.
@@ -214,7 +214,7 @@ class TrayApp:
             "cmd", "/c", "start", "", "/b",
             sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host",
         ]
-        # Log to a file, not DEVNULL (#825). The CLI configures logging with a
+        # Log to a file, not DEVNULL. The CLI configures logging with a
         # bare `logging.basicConfig()` — default handler, stderr — so pointing
         # stderr at DEVNULL silently discarded every session-host log line,
         # including the WARNING `run_git` emits explaining exactly why a build
@@ -298,7 +298,7 @@ class TrayApp:
         # Registered Trays are independent services that do not need this
         # webapp to be ready: a failed ready-wait (a slow cold-boot uvicorn
         # import past startup_timeout_seconds) must not skip them, and must
-        # leave its reason in registered_trays.log (#1339).
+        # leave its reason in registered_trays.log.
         try:
             self.manager.start(wait=True)
             _notify("Launcher webapp ready", self.manager.base_url)
@@ -507,7 +507,7 @@ class TrayApp:
 
     def show_status(self, icon, item) -> None:  # noqa: ARG002
         s = self.manager.status()
-        # The one state that must not read as a quieter kind of "up" (#1005):
+        # The one state that must not read as a quieter kind of "up":
         # a wedged uvicorn still holds the port, so the Status item says so in
         # its own title rather than letting `detail` scroll past as normal.
         if s.health == HEALTH_BOUND_NOT_ANSWERING:
@@ -580,7 +580,7 @@ def run_tray(app_config: AppConfig) -> int:
         )
         return 1
 
-    # In-process single-instance guard (project-scaffolding#39): the tray.bat CIM
+    # In-process single-instance guard: the tray.bat CIM
     # pre-check can let two near-simultaneous launches through, so the guarantee
     # must live in the process. Held for the tray's lifetime; the OS frees the
     # named mutex on exit.

@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 
 # One ``/api/extract`` call is bounded by photo-ocr's own run budget, not by a
 # single hub round-trip: it reads photos in parallel with a retry and answers
-# within ``extract_run_budget_s`` (900 s by default, photo-ocr#166). Wait a
+# within ``extract_run_budget_s`` (900 s by default). Wait a
 # little longer than that so we never give up on a run photo-ocr is still
-# entitled to finish — a client-side timeout would discard text it then returns
-# (#1420). A usual 1-2 screenshot attach still answers in 10-15 s.
+# entitled to finish — a client-side timeout would discard text it then returns.
+# A usual 1-2 screenshot attach still answers in 10-15 s.
 _TIMEOUT = 960.0
 
 # photo-ocr serves a self-signed loopback cert, so every call sets verify=False

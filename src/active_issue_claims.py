@@ -31,7 +31,7 @@ _CLAIM_STATES = frozenset({CLAIM_LIVE, CLAIM_DEAD, CLAIM_UNKNOWN})
 
 # One warning per distinct contract failure per process: GET /api/board polls
 # every five seconds, and a missing fleet-config checkout is a steady state.
-# Bounded since #1003 — this was the one of the three log-once sites with no
+# Bounded: this was the one of the three log-once sites with no
 # cap at all, so a process seeing many distinct failure strings grew it
 # without limit. 64 matches the glyph bucket: the key is a failure reason,
 # a small and slow-growing set.

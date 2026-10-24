@@ -57,7 +57,7 @@ def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "model": cfg.claude_model,
         # What the selected model launches at, and the two parts it is made of:
-        # the owner's overrides and the selected model's catalog default (#1711).
+        # the owner's overrides and the selected model's catalog default.
         "effort": effective_effort("claude", cfg.claude_model, cfg),
         "model_efforts": cfg.claude_model_efforts,
         "default_effort": default_effort("claude", cfg.claude_model),
@@ -218,7 +218,7 @@ def mirror_url(request: Request, cfg: WebappConfig, sid: str) -> str:
 # ``?session=`` deep link, which is tailnet-gated by design. Both the Coding
 # tab (``/api/claude-code/sessions``) and the Board (``/api/board``) hand it
 # to the client as ``web_url``, so the resolution lives here rather than in
-# either router (#879 captured it, #1096 gave the Board the same field).
+# either router (the Coding tab captured it first, the Board shares the field).
 
 _CLAUDE_WEB_URL_RE = re.compile(
     r"https://claude\.ai/code/session_"
@@ -232,11 +232,11 @@ _SESSION_LINK_SCAN_BYTES = 512 * 1024
 # while the Board tab is up (main.js — fetchSessions is not tab-gated), which
 # without this would re-scan up to 1 MiB of every live transcript twice every
 # five seconds. An empty result means the card has not been printed *yet*, so
-# a miss is cached only against the transcript it was read from (#1605): its
+# a miss is cached only against the transcript it was read from: its
 # size and mtime, from one stat. An unchanged transcript is not reopened on
 # the next poll (a long-lived session whose card scrolled out of both windows
 # re-read 1 MiB every tick, and each open is another chance at the
-# multi-second stall #1597 measured); one that has grown is scanned again.
+# multi-second stall once measured); one that has grown is scanned again.
 _PROVIDER_URL_CACHE: Dict[str, str] = {}
 _PROVIDER_URL_MISSES: Dict[str, Tuple[int, int]] = {}
 _PROVIDER_URL_CACHE_MAX = 512
@@ -516,8 +516,8 @@ async def audit_session_start_and_maybe_mirror(
     real windows or writing real audit logs — still take effect when this
     helper runs on the caller's behalf.
     """
-    # Both writes go off the event loop (issue #721, the missed call site of
-    # the #610/#660/#661/#674 sweep): this is the shared tail every PTY spawn
+    # Both writes go off the event loop (the call site the earlier
+    # event-loop sweep missed): this is the shared tail every PTY spawn
     # runs — Coding tab, Board issue-start/dispatch, and the fleet chief — so
     # a slow audit write here freezes the single-worker loop on every launch.
     await audit_off_loop(
@@ -529,14 +529,14 @@ async def audit_session_start_and_maybe_mirror(
         name=name,
         project=project,
         resume=resume,
-        # Which conversation was reattached (#727) — "" for a fresh launch
+        # Which conversation was reattached — "" for a fresh launch
         # or the native picker, where no id was chosen up front. None for a
         # caller that has no such concept, and dropped from the line.
         resume_sid=resume_sid,
-        # A Board issue-start dispatch brief (#1114): its size only, never
+        # A Board issue-start dispatch brief: its size only, never
         # its content. None (no brief) is dropped from the line.
         brief_chars=brief_chars,
-        # No request: the Telegram boot-time autostart (#1542), which no
+        # No request: the Telegram boot-time autostart, which no
         # client asked for.
         client=client_ip(request) if request is not None else "startup",
     )
@@ -545,17 +545,17 @@ async def audit_session_start_and_maybe_mirror(
         sid, "start", agent=agent, skill=skill, name=name, project=project,
     )
     # Mirror the session into a dedicated interactive terminal window on the
-    # PC — the default for every caller (issue #241, widened by #609); only
+    # PC — the default for every caller; only
     # an explicit in-page loopback browser skips it (see should_mirror_to_pc),
     # and a caller passing ``mirror=False`` — the fleet chief's own Board
-    # dispatch (#1283), which runs unwatched until Roberto opens it.
+    # dispatch, which runs unwatched until Roberto opens it.
     # mirror_url picks loopback (auth-bypass) or the ts.net URL with explicit
-    # credentials, keyed on the active cert (#356).
+    # credentials, keyed on the active cert.
     if mirror and request is not None and kind == "pty" and should_mirror_to_pc(
         cfg.claude_show_local_window, request, body
     ):
         # Pass sid so launcher tracks the mirror window's HWND for Stop &
-        # Close to dismiss it later (issue #20).
+        # Close to dismiss it later.
         asyncio.create_task(
             asyncio.to_thread(mirror_fn, mirror_url(request, cfg, sid), sid)
         )

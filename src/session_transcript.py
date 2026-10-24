@@ -62,11 +62,11 @@ WINDOW_BYTES = 256 * 1024
 # Budget for one page, whatever the turn count: a long run of tool results
 # must not turn one request into a whole-file read. Hitting it returns a
 # short page with a cursor, not an error. A backwards page charges each line
-# at most LINE_CHARGE_CAP against it (#1120); forward reads and the
+# at most LINE_CHARGE_CAP against it; forward reads and the
 # copy-full-text read still count real bytes against it.
 REQUEST_BYTE_CAP = 2 * 1024 * 1024
 # A backwards page charges one line at most this much against
-# REQUEST_BYTE_CAP (#1120). Screenshot tool results are ~1 MB base64 lines,
+# REQUEST_BYTE_CAP. Screenshot tool results are ~1 MB base64 lines,
 # so charging them in full left a 2 MiB page holding two or three of them and
 # often no user or assistant turn at all. The charge cap lets a page reach
 # its `limit` turns past them instead.
@@ -256,7 +256,7 @@ def entry_full_text(path: Path, offset: int, flavor: str) -> Optional[Dict[str, 
     return None
 
 
-# ------------------------------------------------ per-step diffs (#1349)
+# ------------------------------------------------ per-step diffs
 #
 # A builder hands every edit/write action its diff capped at
 # ``_shared.DIFF_FULL_BYTES``; a page carries far less per step, since one
@@ -388,7 +388,7 @@ def _page(
             break
         # Next window ends where the oldest kept line begins (the lines
         # dropped above it get re-read whole). A span that had to widen keeps
-        # its width (#1120): huge lines come in runs (a screenshot per tool
+        # its width: huge lines come in runs (a screenshot per tool
         # call), and restarting each one at WINDOW_BYTES re-read ~3.75 MB to
         # land one 1 MB line, spending the read ceiling on re-reads.
         end = lines[0][0]
@@ -422,20 +422,20 @@ def _page(
     next_cursor: Optional[int] = collected[0][0] if collected else None
     if next_cursor == 0:
         next_cursor = None
-    # Where this page's provisional region begins (#1050) — the newest
+    # Where this page's provisional region begins — the newest
     # message, which the agent may still be appending to. No lines at all (an
     # empty file, or one holding only blanks) still needs a cursor a live
     # read can resume from, and that is the end of the file.
     idx = _pending_from(collected, build, line_key) if collected else None
     tail = collected[idx][0] if idx is not None else size
-    # A turn keeps its offset — the copy-full-text route (#985) needs it to
+    # A turn keeps its offset — the copy-full-text route needs it to
     # ask for the uncapped entry; the folded kinds have no such use and stay
-    # unexposed, same as before. The exception is the live tail (#1050): every
+    # unexposed, same as before. The exception is the live tail: every
     # entry from `tail` on carries one, folded kinds included, because that is
     # the region a live view re-renders and it needs a stable key per card to
     # carry an open disclosure across the rebuild. `entries` itself stays one
     # complete list — the page contract every other caller reads is unchanged.
-    # Diff refs (#1349) are taken first: they need every call's offset.
+    # Diff refs are taken first: they need every call's offset.
     _inline_diffs(entries)
     for e in entries:
         if not _is_turn(e) and not (at_eof and e.get("offset", -1) >= tail):
@@ -616,7 +616,7 @@ def _turns(entries: List[Entry]) -> int:
     return sum(1 for e in entries if _is_turn(e))
 
 
-# ------------------------------------------------ live activity line (#1387)
+# ------------------------------------------------ live activity line
 #
 # One line in the chat's bottom strip — "⏱ 15:02 · 10 actions · Running Bash"
 # — summarising the turn in progress. Everything is read off the
@@ -647,7 +647,7 @@ def _step_label(entry: Entry) -> str:
         return "Thinking"  # the call is done; the agent is reading what it returned
     label = entry.get("label")
     if label and label != entry.get("summary"):
-        return str(label)  # the call's own description (#1532)
+        return str(label)  # the call's own description
     name = str(entry.get("name") or "tool")
     action = entry.get("action")
     verb = action.get("verb") if isinstance(action, dict) else None
@@ -726,7 +726,7 @@ def transcript_activity(
     return out
 
 
-# ------------------------------------------------------ transcript images (#1265)
+# ------------------------------------------------------ transcript images
 #
 # An image block rides the transcript as base64. The page never carries the
 # bytes: an entry lists where its images are, ``{"offset": <line offset>,
@@ -790,7 +790,7 @@ def transcript_image(path: Path, offset: int, n: int, flavor: str) -> Optional[T
     return (decoded, media) if media and len(decoded) <= IMAGE_BYTE_CAP else None
 
 
-# ------------------------------------------------- sent files (#1530)
+# ------------------------------------------------- sent files
 #
 # A Claude ``SendUserFile`` call names files by path. The page carries refs
 # (``{"offset", "n", "name"}``), never the path or the bytes; the file route
@@ -813,8 +813,8 @@ def transcript_sent_file(
     return sent_file_at(raw, n) if raw is not None else None
 
 
-# How far a harness's own history can be trusted to mark a failed tool call
-# (#1020). Third element of every :data:`FLAVORS` row so it cannot drift
+# How far a harness's own history can be trusted to mark a failed tool call.
+# Third element of every :data:`FLAVORS` row so it cannot drift
 # from the parser that produces the flag:
 #
 # ``reported``  every failed call is recorded structurally, so an unmarked
@@ -826,7 +826,7 @@ def transcript_sent_file(
 # The client renders the difference: it marks what is known failed and says
 # "outcome not recorded" for the rest of a `partial`/`none` flavour, rather
 # than letting silence read as success. Each value below is a measurement,
-# recorded on #1020 — not a guess from the harness's documentation.
+# recorded from real transcripts — not a guess from the harness's documentation.
 TOOL_ERRORS_REPORTED = "reported"
 TOOL_ERRORS_PARTIAL = "partial"
 TOOL_ERRORS_NONE = "none"
@@ -840,7 +840,7 @@ FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey, str]] = {
     # `is_error` on every `tool_result` block.
     "claude": (claude_entries, _claude_line_key, TOOL_ERRORS_REPORTED),
     # No success/error field at any level — see the reader's own comment; a
-    # rejected `apply_patch` states so in its fixed tool message (#1356).
+    # rejected `apply_patch` states so in its fixed tool message.
     "codex": (codex_entries, _codex_line_key, TOOL_ERRORS_PARTIAL),
     # `status: "failed"` on the `tool_call_update` that carries the result.
     "grok": (grok_entries, _grok_line_key, TOOL_ERRORS_REPORTED),

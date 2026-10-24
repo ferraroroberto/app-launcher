@@ -231,8 +231,8 @@ def _view_from_snapshot(
 #
 # The selection-scoped view above answers "what does the harness I picked
 # have left". What the launcher shows is the opposite: both heavy agents at
-# once, so the number you need before choosing one is never the hidden one
-# (issue #860). Built on the same per-harness view, but off a single
+# once, so the number you need before choosing one is never the hidden one.
+# Built on the same per-harness view, but off a single
 # snapshot read — this runs on the tabs' 5s poll, so reading the shard
 # directory once per harness would double that cost for nothing.
 
@@ -266,7 +266,7 @@ def _worst_window(observations: list, minutes: int) -> Optional[Dict[str, Any]]:
                     "used_percentage": pct,
                     "resets_at": window.get("resets_at"),
                     # The window length, so the UI can place "now" inside it
-                    # (#1330 weekly pace) without hardcoding 7 days.
+                    # without hardcoding 7 days.
                     "duration_minutes": minutes,
                 }
     return best

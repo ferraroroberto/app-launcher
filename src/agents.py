@@ -143,16 +143,16 @@ AGENTS: Dict[str, Agent] = {
         quit_command="/exit", fullscreen=True, resume_token="--resume",
         native_name_flag="--name", console_input=True,
     ),
-    # Pi coding agent (issue #273), driven by the claude-agent-sdk provider —
+    # Pi coding agent, driven by the claude-agent-sdk provider —
     # the Claude **subscription** path (no API credits); see the launch flags
     # in `build_pi_flags` and docs/pi-coding-agent.md. `-r` renders pi's own
-    # session picker. fullscreen=True (issue #291): pi uses no alternate-screen
+    # session picker. fullscreen=True: pi uses no alternate-screen
     # buffer, but it is still a *differential* TUI — during a response it
     # repaints its bottom chrome (header/status/input box/separator) in place
     # via cursor-up + clear-line wrapped in synchronized output (DEC 2026),
     # ~4 redraw ops per line. That makes its raw scrollback ring replay-unsafe
     # (unlike Claude's inline-append output): replaying it into a fresh xterm
-    # scrolls through the whole redraw history and never settles (#291). So pi
+    # scrolls through the whole redraw history and never settles. So pi
     # takes Codex's skip-replay + forced-repaint path, not Claude's.
     "pi": Agent(
         id="pi", label="Pi", command="pi",
@@ -160,19 +160,19 @@ AGENTS: Dict[str, Agent] = {
         native_name_flag="--name", console_input=True, composer_tracked=True,
         backslash_newline=True,
     ),
-    # Grok Build (issue #626). fullscreen=True is empirical, not assumed: a
+    # Grok Build. fullscreen=True is empirical, not assumed: a
     # ConPTY probe of grok 0.2.112 showed an alt-screen enter (CSI ?1049h)
     # plus DEC 2026 synchronized-output writes on startup — a differential
     # TUI in the Codex bucket, so it takes the skip-replay + forced-repaint
-    # path (#128). The same probe saw an OSC title write traverse the ConPTY
+    # path. The same probe saw an OSC title write traverse the ConPTY
     # layer: Grok self-names per conversation like Claude (an LLM-generated
     # session title), so no spawn-time name flag is needed — and none
     # exists (`--session-id` takes only a UUID, not a label).
     # Bare `--resume` resumes the cwd's most recent session (Antigravity's
     # `--continue` shape, not a Claude-style picker). console_input=True is
-    # the #967 probe finally run for the one agent that matrix left at 0
+    # the console-input probe finally run for the one agent that matrix left at 0
     # tries — it was blocked on a device-code login screen, never on a
-    # failure, and the sign-in has since happened (#1069). Re-run on grok
+    # failure, and the sign-in has since happened. Re-run on grok
     # 1.0.34 under Windows Terminal, 4/4: the text reached the composer, the
     # settled Enter submitted it, and the agent answered — including a
     # two-line message (the embedded newline arrived as a soft break, not a
@@ -187,7 +187,7 @@ AGENTS: Dict[str, Agent] = {
 
 # The loopback session-host accepts the Coding-tab agents plus commands used
 # by trusted sibling services. SSH is intentionally absent from ``AGENTS``:
-# it is a service integration, not a sixth Coding-tab launch button (#558).
+# it is a service integration, not a sixth Coding-tab launch button.
 SESSION_HOST_AGENTS: Dict[str, Agent] = {
     **AGENTS,
     "ssh": Agent(
@@ -247,7 +247,7 @@ def resume_command_for(agent_id: str) -> str:
 # externally-influenced fragment that reaches that line — a title fed to
 # ``native_session_name_flags_for`` below, and the assembled ``flags`` string
 # validated inside ``SessionManager.create``/``create_remote``
-# (``src/session_host.py``, issue #753) — so a future caller inherits the
+# (``src/session_host.py``) — so a future caller inherits the
 # invariant by construction instead of re-deriving it at its own call site.
 # Callers pass their own ``extra_chars`` because the safe punctuation differs
 # by context: a title is about to be wrapped in a literal ``"..."`` by this
