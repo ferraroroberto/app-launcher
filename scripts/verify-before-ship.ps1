@@ -216,6 +216,18 @@ try {
     if ($deadCodeExit -eq 3) { Fail "dead code ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
     if ($deadCodeExit -ne 0) { Fail "dead code ratchet failed (exit $deadCodeExit): a function, class or method nothing refers to is not in .dead-code-ratchet-baseline.json; see the named definition above." }
 
+    # Conventions ratchet (scaffold docs/conventions-ratchet.md): a subprocess spawn
+    # without a console-window flag, a diagnostic print() in library code, a
+    # hardcoded drive path or a raw git spawn may not rise above
+    # .conventions-ratchet-baseline.json. Whole tree, never path-routed: a rule added
+    # to .fleet.toml must see every file; exit 3 means git was unusable or a tracked
+    # .py file could not be read or parsed, a failure and never a pass.
+    Phase "conventions ratchet..."
+    & $python scripts/conventions_ratchet.py
+    $conventionsExit = $LASTEXITCODE
+    if ($conventionsExit -eq 3) { Fail "conventions ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
+    if ($conventionsExit -ne 0) { Fail "conventions ratchet failed (exit $conventionsExit): a file's count for a convention rule rose above .conventions-ratchet-baseline.json; see the named rule and lines above." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")

@@ -81,6 +81,7 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         (".instruction-ratchet-baseline.json", Category.NONE),
         (".doc-refs-ratchet-baseline.json", Category.NONE),
         (".dead-code-ratchet-baseline.json", Category.NONE),
+        (".conventions-ratchet-baseline.json", Category.NONE),
         ("tray.bat", Category.NONE),
         # unrecognized -> fail-safe FULL
         ("some/weird/new_dir/thing.xyz", Category.FULL),

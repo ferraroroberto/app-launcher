@@ -14,8 +14,10 @@ confident empty answer (same convention `fleet-config` adopted for its own
 Being that one place is also why :func:`git_env`'s ``GIT_OPTIONAL_LOCKS=0``
 belongs here and nowhere else (#1111): a hand-rolled
 ``subprocess.run(["git", ...])`` opts back out of it invisibly, still
-exiting 0 with the right answer, so ``tests/test_git_spawn_gate.py`` fails
-the build on any ``git`` spawn under ``src/`` or ``app/`` outside this file.
+exiting 0 with the right answer, so the conventions ratchet's ``git-wrapper``
+rule fails the build on any ``git`` spawn under ``src/`` or ``app/`` outside
+this file, and ``tests/test_git_spawn_gate.py`` pins that this file's own
+spawns pass ``env=``.
 """
 
 from __future__ import annotations
