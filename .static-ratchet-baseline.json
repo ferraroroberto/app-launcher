@@ -1,13 +1,5 @@
 {
   "version": 1,
   "tools": {"jscpd": "5.4.0", "ruff": "0.17.1"},
-  "entries": [
-    {"key": "dup:16bc12d6e730:tests/e2e/test_chat_live_refresh.py|tests/e2e/test_chat_load_older.py", "files": ["tests/e2e/test_chat_live_refresh.py", "tests/e2e/test_chat_load_older.py"]},
-    {"key": "dup:788551f898da:tests/e2e/test_voice_dictation.py|tests/e2e/test_voice_dictation.py", "files": ["tests/e2e/test_voice_dictation.py", "tests/e2e/test_voice_dictation.py"]},
-    {"key": "dup:b02375302883:tests/e2e/test_board_chief.py|tests/e2e/test_mic_single_tap.py", "files": ["tests/e2e/test_board_chief.py", "tests/e2e/test_mic_single_tap.py"]},
-    {"key": "dup:f50c7a8a57d0:tests/e2e/test_board_nav_badge.py|tests/e2e/test_code_tab_glance.py", "files": ["tests/e2e/test_board_nav_badge.py", "tests/e2e/test_code_tab_glance.py"]},
-    {"key": "lint:S113:app/webapp/routers/voice_ocr_tts.py:async with httpx.AsyncClient(verify=False, timeout=None) as client:", "files": ["app/webapp/routers/voice_ocr_tts.py"]},
-    {"key": "lint:S113:app/webapp/routers/voice_ocr_tts.py:client = httpx.AsyncClient(timeout=None)", "files": ["app/webapp/routers/voice_ocr_tts.py"]},
-    {"key": "unused:F401:src/diagnostics.py:pathlib.Path", "files": ["src/diagnostics.py"]}
-  ]
+  "entries": []
 }

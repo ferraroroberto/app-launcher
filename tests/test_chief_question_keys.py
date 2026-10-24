@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from src import chief_answers
+from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _FIXTURE = _REPO_ROOT / "tests" / "fixtures" / "chief_question_keys.json"
@@ -45,6 +46,7 @@ def test_js_keys_and_counts_the_same_fixture():
         capture_output=True,
         text=True,
         timeout=30,
+        creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
         "chief-keys.js disagrees with the shared fixture:\n"

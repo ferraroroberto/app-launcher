@@ -1,7 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {"key": "docs/jobs-tab.md", "refs": ["scripts/probe-startwhenavailable-catchup.ps1"]},
-    {"key": "docs/pi-coding-agent.md", "refs": ["app/webapp/static/icons/pi.svg", "app/webapp/static/icons/pi.svg"]}
-  ]
+  "entries": []
 }

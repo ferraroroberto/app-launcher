@@ -18,10 +18,11 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import claude_code as cc_router
+from src.subprocess_flags import NO_WINDOW
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, creationflags=NO_WINDOW)
 
 
 def _make_project(app, name: str, *, git: bool = True) -> Path:

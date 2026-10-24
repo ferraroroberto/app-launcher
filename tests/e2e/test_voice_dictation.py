@@ -27,6 +27,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e.conftest import BUILD_READOUT_MS, OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -41,24 +42,7 @@ _MEDIA_MOCK = """
   navigator.mediaDevices.getUserMedia = async () => ({
     getTracks: () => [{ stop: () => {} }],
   });
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.stream = stream;
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
-    start(_timeslice) { this.state = 'recording'; }
-    stop() {
-      this.state = 'inactive';
-      const da = this._listeners['dataavailable'];
-      if (da) da({ data: new Blob(['fake-audio'], { type: this.mimeType }) });
-      const st = this._listeners['stop'];
-      if (st) st();
-    }
-  }
-  FakeRecorder.isTypeSupported = () => true;
+""" + RECORDER_BASE_JS + """  FakeRecorder.isTypeSupported = () => true;
   window.MediaRecorder = FakeRecorder;
 })()
 """
@@ -76,14 +60,7 @@ _STREAMING_MEDIA_MOCK = """
   navigator.mediaDevices.getUserMedia = async () => ({
     getTracks: () => [{ stop: () => {} }],
   });
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.stream = stream;
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+""" + RECORDER_BASE_JS + """  class StreamingRecorder extends FakeRecorder {
     _emit() {
       const n = window.__chunksEmitted++;
       const da = this._listeners['dataavailable'];
@@ -101,8 +78,8 @@ _STREAMING_MEDIA_MOCK = """
       if (st) st();
     }
   }
-  FakeRecorder.isTypeSupported = () => true;
-  window.MediaRecorder = FakeRecorder;
+  StreamingRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = StreamingRecorder;
   // Chunk labels travel as a header too: WebKit's Playwright does not expose
   // a Blob request body to the route handler.
   const realFetch = window.fetch.bind(window);
@@ -132,23 +109,15 @@ _LEAK_MEDIA_MOCK = """
   navigator.mediaDevices.getUserMedia = async () => ({
     getTracks: () => [{ stop: () => { window.__micTracksStopped++; } }],
   });
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.stream = stream;
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
-    start(_timeslice) { this.state = 'recording'; }
+""" + RECORDER_BASE_JS + """  class LeakRecorder extends FakeRecorder {
     stop() {
       this.state = 'inactive';
       const st = this._listeners['stop'];
       if (st) st();
     }
   }
-  FakeRecorder.isTypeSupported = () => true;
-  window.MediaRecorder = FakeRecorder;
+  LeakRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = LeakRecorder;
 })()
 """
 
@@ -177,14 +146,7 @@ _ARMING_MEDIA_MOCK = """
       };
     });
   };
-  class FakeRecorder {
-    constructor(stream, opts) {
-      this.stream = stream;
-      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
-      this.state = 'inactive';
-      this._listeners = {};
-    }
-    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+""" + RECORDER_BASE_JS + """  class ArmingRecorder extends FakeRecorder {
     start(_timeslice) { this.state = 'recording'; window.__recorderStarts++; }
     stop() {
       this.state = 'inactive';
@@ -192,8 +154,8 @@ _ARMING_MEDIA_MOCK = """
       if (st) st();
     }
   }
-  FakeRecorder.isTypeSupported = () => true;
-  window.MediaRecorder = FakeRecorder;
+  ArmingRecorder.isTypeSupported = () => true;
+  window.MediaRecorder = ArmingRecorder;
 })()
 """
 

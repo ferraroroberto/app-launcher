@@ -14,7 +14,7 @@ it (#906/#971). That single contract used to be restated in seven separate
 docstrings; it belongs to the module, which is the clearest argument for the
 module existing.
 
-The router calls one entry point per mutation - :func:`reconcile_delete`,
+The router calls one entry point per mutation - :func:`reconcile_delete_sync`,
 :func:`reconcile_rename` - and no longer has to know that there are three
 artefacts or in which order they must be touched.
 """
@@ -274,24 +274,17 @@ def _prune_artefacts(resolved: Path) -> dict[str, bool]:
         }
 
 
-async def reconcile_delete(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
+def reconcile_delete_sync(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
     """Bring the external artefacts in line with a deleted conversation.
 
-    The on-loop/off-thread split is deliberate and unchanged from when the
-    router did this inline: the two index patches are small local file
-    rewrites, while the search-db rebuild shells out and is given a thread.
+    For a caller already off the event loop: the two index patches are small
+    local file rewrites and the search-db rebuild shells out, so the caller
+    runs the whole thing in its worker thread.
 
     Answers which index files actually lost the row (a file that was absent
     or had no matching row is ``False``, not an error), so the caller can say
     what it removed rather than what it hoped to (#1410).
     """
-    removed = _prune_artefacts(resolved)
-    await asyncio.to_thread(_resync_search_index, cfg)
-    return removed
-
-
-def reconcile_delete_sync(resolved: Path, cfg: WebappConfig) -> dict[str, bool]:
-    """:func:`reconcile_delete` for a caller already off the event loop (#1738)."""
     removed = _prune_artefacts(resolved)
     _resync_search_index(cfg)
     return removed
