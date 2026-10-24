@@ -19,7 +19,7 @@ import shutil
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 from src._json_io import atomic_write_json, file_lock
 from src.jobs_config import exit_outcomes_for
@@ -97,6 +97,31 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
     ``killed=True``, a later natural finalise is not allowed to overwrite the
     terminal outcome (:data:`_KILL_OWNED_FIELDS`) back to success.
     """
+    _merge_run_json(run_dir, fields, only_if=None)
+
+
+def write_run_json_if(
+    run_dir: Path,
+    only_if: Callable[[Dict[str, Any]], bool],
+    **fields: Any,
+) -> bool:
+    """:func:`write_run_json`, applied only when ``only_if`` accepts the record
+    as it stands *under the run lock*.
+
+    A caller that decided from an earlier read (the stranded-run reaper) can
+    otherwise overwrite what another process wrote in the gap. Returns whether
+    the merge happened; a missing or unreadable record is passed to ``only_if``
+    as ``{}``.
+    """
+    return _merge_run_json(run_dir, fields, only_if=only_if)
+
+
+def _merge_run_json(
+    run_dir: Path,
+    fields: Dict[str, Any],
+    *,
+    only_if: Optional[Callable[[Dict[str, Any]], bool]],
+) -> bool:
     target = run_dir / "run.json"
     incoming = {k: v for k, v in fields.items() if v is not None}
     with _run_json_lock(run_dir):
@@ -106,6 +131,8 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
                 existing = json.loads(target.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 existing = {}
+        if only_if is not None and not only_if(existing):
+            return False
         # A write that is not itself (re)asserting the kill must not clobber a
         # kill already on record.
         if existing.get("killed") and not incoming.get("killed"):
@@ -126,6 +153,7 @@ def write_run_json(run_dir: Path, **fields: Any) -> None:
     from src.jobs_snapshot import mark_dirty
 
     mark_dirty(run_dir.parent.name)
+    return True
 
 
 # Header names safe to persist verbatim alongside a webhook run — never the

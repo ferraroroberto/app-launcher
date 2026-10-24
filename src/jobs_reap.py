@@ -60,7 +60,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.diagnostics import is_pid_alive
 from src.jobs_config import Job, load_jobs
-from src.jobs_history import list_runs, read_run, runs_dir, write_run_json
+from src.jobs_history import list_runs, read_run, runs_dir, write_run_json_if
 from src.jobs_stats import invalidate_stats_cache
 from src.notifications import notify_failure
 from src.webapp_config import load_webapp_config
@@ -116,6 +116,31 @@ def _evidence_finished_at(
 _PENDING_NO_PID_GRACE_SECONDS = 120.0
 
 
+def _is_unfinalised(record: Dict[str, Any]) -> bool:
+    """True while nothing has finalised ``record``: still ``running``/``pending``
+    and no ``exit_code`` yet. Evaluated under the run lock, against the record
+    on disk, so a finalise that landed after the reaper's read wins."""
+    return (
+        record.get("status") in ("running", "pending")
+        and record.get("exit_code") is None
+    )
+
+
+def _is_pidless_pending(record: Dict[str, Any]) -> bool:
+    return (
+        _is_unfinalised(record)
+        and record.get("status") == "pending"
+        and not isinstance(record.get("pid"), int)
+    )
+
+
+def _log_reap_skipped(job: Job, run_id: Any) -> None:
+    logger.info(
+        f"ℹ️ reap skipped for {job.id}/{run_id}: the executor finalised or "
+        f"advanced the run after the reaper read it"
+    )
+
+
 def _reap_pidless_pending(
     job: Job, record: Dict[str, Any]
 ) -> Optional[Dict[str, Any]]:
@@ -144,13 +169,16 @@ def _reap_pidless_pending(
         return None
     run_dir = runs_dir(job.id) / str(run_id)
 
-    write_run_json(
+    if not write_run_json_if(
         run_dir,
+        _is_pidless_pending,
         status="failed",
         reaped=True,
         never_started=True,
         end_time_unknown=True,
-    )
+    ):
+        _log_reap_skipped(job, run_id)
+        return None
     invalidate_stats_cache(job.id)
     logger.info(
         f"🧟 reaped stranded run {job.id}/{run_id} "
@@ -196,6 +224,11 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     the stats cache, and fires the same failure alert (issue #747) a normal
     finalise would, since nobody was told about this failure the moment it
     actually happened.
+
+    The write re-checks the record under the run lock and is skipped when the
+    executor finalised (or advanced) the run since ``record`` was read: a
+    short job's pid is dead because it *finished*, and the executor's own
+    exit code must not be overwritten with ``failed``.
     """
     pid = record.get("pid")
     if not isinstance(pid, int) or pid <= 0:
@@ -218,7 +251,9 @@ def _reap_one(job: Job, record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     else:
         fields["end_time_unknown"] = True
 
-    write_run_json(run_dir, **fields)
+    if not write_run_json_if(run_dir, _is_unfinalised, **fields):
+        _log_reap_skipped(job, run_id)
+        return None
     invalidate_stats_cache(job.id)
     logger.info(
         f"🧟 reaped stranded run {job.id}/{run_id} "
