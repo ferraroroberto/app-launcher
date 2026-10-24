@@ -1,0 +1,25 @@
+    <!-- The chief's answer sheet (#1295): one block per question waiting on
+         Roberto, built by board-answers.js when it opens; full-screen on
+         the phone, the centred modal on desktop. Done is its one primary
+         action. -->
+    <dialog id="chiefAnswersDialog" class="detail-dialog chief-answers-dialog" aria-labelledby="chiefAnswersTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="chiefAnswersTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg> Answer the chief</h2>
+          <button type="button" id="chiefAnswersClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="chiefAnswersList" class="chief-answers-list"></div>
+        <!-- Anything else is the shared composer (composer.js) as a field:
+             dictation and image paste as in Chat, Done its one send. -->
+        <div class="chief-answers-also">
+          <span>Anything else</span>
+          <div id="chiefAnswersAlso"></div>
+        </div>
+        <div class="detail-actions">
+          <p id="chiefAnswersNote" class="muted small chief-answers-note" role="status" hidden></p>
+          <button type="button" id="chiefAnswersDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>

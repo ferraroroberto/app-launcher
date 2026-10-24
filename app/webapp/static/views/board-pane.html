@@ -1,0 +1,163 @@
+    <section id="paneBoard" class="pane" role="tabpanel" aria-labelledby="tabBoard" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-square-kanban"></use></svg>
+          Board
+        </span>
+        <span id="boardHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="icon-button home-toggle hit-target settings-open-btn" data-track="settings-open"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+      <!-- The lane toolbar (#1436): the project filter that narrows every
+           lane (#337, #1332) and the GitHub refresh, next to the lanes they
+           act on. The Board has no chief card: the chief lives in its row
+           under Code › Sessions (#1436 decision log). -->
+      <div class="board-toolbar board-filter-row">
+        <div class="board-repo-combo">
+          <button type="button" id="boardDispatchRepoBtn" data-track="board-dispatch-repo" class="board-repo-input"
+                  aria-haspopup="listbox" aria-expanded="false"
+                  aria-controls="boardDispatchRepoList" aria-label="Project filter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg><span class="board-repo-label">All projects</span></button>
+          <input type="hidden" id="boardDispatchRepo">
+          <ul id="boardDispatchRepoList" class="board-repo-list" role="listbox" hidden></ul>
+        </div>
+        <button id="boardRefresh" data-track="board-refresh" type="button" class="icon-button board-refresh"
+                title="Refresh GitHub issues / PRs / done-today (runs gh)"
+                aria-label="Refresh GitHub data"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg></button>
+      </div>
+      <!-- One attention banner, only while a source is down or stale
+           (renderStatusLine). -->
+      <div id="boardStatus" class="board-status" role="status" hidden></div>
+      <!-- The Board's own read (async-state.js, #1501): loading, a failed
+           first read with Retry in place of the lanes, or a stale line over
+           the last good lanes. -->
+      <div id="boardFetchState" class="empty-state" role="status" hidden></div>
+      <!-- Each lane is a section card like every other tab's (#1198):
+           stacked on the phone, side by side in the desktop grid, in the
+           order Backlog, Chief's plan, Claude's turn, Your turn, PRs and
+           jobs, Done today (#1436). Static markup, so the 5 s poll re-renders the lists
+           inside without ever touching a section's open state. The live lanes
+           open by default; the GitHub-fed ones wait folded on the phone
+           (board.js opens them all on the desktop grid). The count, and a
+           folded lane's exception, are text, not controls, so they may sit
+           in the summary. -->
+      <div id="boardColumns" class="board-columns">
+        <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+              <h3 class="collapse-title">Backlog</h3>
+              <span class="collapse-count board-count" data-col="backlog">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <!-- "Start with" (#1436, moved from Dispatch): the model the
+                 rows' ▶ Start and the kebab's YOLO launch with (#505). A
+                 plain client-side control; the chief's own model is a chief
+                 setting. -->
+            <div class="board-lane-toolbar">
+              <span class="board-lane-toolbar-label" id="boardStartWithLabel">Start with</span>
+              <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
+                <button type="button" class="model-combo-trigger" aria-label="Start with model"
+                        aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
+                        title="Model for the Backlog rows' Start and YOLO (the chief's own model is in its settings)">Claude · Sonnet</button>
+                <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
+                      aria-label="Start with model" hidden>
+                  <button type="button" role="option" data-value="claude:sonnet"
+                          aria-selected="true">Claude · Sonnet</button>
+                </span>
+              </span>
+            </div>
+            <ul class="card-list board-list" data-col="backlog"></ul>
+            <div class="board-empty" data-col="backlog" hidden></div>
+            <p class="board-lane-foot" data-col="backlog" hidden></p>
+          </div>
+        </details>
+        <!-- The chief's plan and Claude's turn share one grid cell (#1279), the
+             plan first (#1436), so Claude's turn sits directly under it on the
+             desktop grid as it does in the phone's stack. -->
+        <div class="board-col-stack">
+          <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
+            <summary class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
+                <h3 class="collapse-title">Chief's plan</h3>
+                <span class="collapse-count board-lane-exception" hidden></span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="board-plan-body"></div>
+            </div>
+          </details>
+          <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
+            <summary class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+                <h3 class="collapse-title">Claude's turn</h3>
+                <span class="collapse-count board-count" data-col="claude_turn">0</span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <ul class="card-list board-list" data-col="claude_turn"></ul>
+              <div class="board-empty" data-col="claude_turn" hidden></div>
+            </div>
+          </details>
+        </div>
+        <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg>
+              <h3 class="collapse-title">Your turn</h3>
+              <span class="collapse-count board-count" data-col="your_turn">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="your_turn"></ul>
+            <div class="board-empty" data-col="your_turn" hidden></div>
+          </div>
+        </details>
+        <details id="boardColOther" class="card card--collapsible board-col" data-col="other">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-pull-request"></use></svg>
+              <h3 class="collapse-title">PRs and jobs</h3>
+              <span class="collapse-count board-count" data-col="other">0</span>
+              <span class="collapse-count board-lane-exception" hidden></span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="other"></ul>
+            <div class="board-empty" data-col="other" hidden></div>
+          </div>
+        </details>
+        <details id="boardColDone" class="card card--collapsible board-col" data-col="done">
+          <summary class="collapse-summary">
+            <span class="collapse-main">
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-check"></use></svg>
+              <h3 class="collapse-title">Done today</h3>
+              <span class="collapse-count board-count" data-col="done">0</span>
+            </span>
+            <span class="collapse-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="collapse-body">
+            <ul class="card-list board-list" data-col="done"></ul>
+            <div class="board-empty" data-col="done" hidden></div>
+          </div>
+        </details>
+      </div>
+    </section>

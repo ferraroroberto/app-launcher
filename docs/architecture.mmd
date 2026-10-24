@@ -139,6 +139,7 @@ reached through the input session, never logged (#1719)"]
     APPCFG["app_config.py\nconfig/config.json"]
     WEBAUTHNGATE["webauthn_gate.py"]
     STATICVER["static_versioning.py\nasset content-hash stamping"]
+    SHELLHTML["shell_html.py\nsplices static/views/*.html into index.html"]
     DIAG["diagnostics.py\nport/process introspection"]
     LLMCLIENT["llm_client.py"]
     TTSCLIENT["tts_client.py"]
@@ -232,6 +233,7 @@ reached through the input session, never logged (#1719)"]
   R_TOKENS --> WEBAPPCFG
   R_WEBAUTHN --> WEBAUTHNGATE
   WSERVER --> STATICVER
+  WSERVER --> SHELLHTML
   R_SESS --> OCRCLIENT
   R_SESS --> VOICECLIENT
   R_SESS --> LLMCLIENT

@@ -339,7 +339,8 @@ extensions = ["svg", "png", "jpg", "jpeg", "gif", "ico", "webp", "avif", "woff",
 label      = "static-asset"
 # A vendored HTML *fragment* (e.g. the icons sprite) is pure markup the smoke
 # suite loads, with no behaviour of its own. Non-vendored .html (index.html)
-# is a real app page and falls through to full below.
+# is a real app page, as is a view fragment under views/, and both fall through
+# to full below.
 [[e2e.rule]]
 tier       = "static"
 prefix     = "app/webapp/static/_vendored/"
@@ -862,17 +863,17 @@ record = "https://github.com/ferraroroberto/app-launcher/issues/1238#issuecommen
 # design-lint contract findings (/design-sync, #1634) examined and accepted: neither
 # dialog is an editor modal, and the look stays as it is. The lint ignores the line
 # number after the target path when it matches an entry (fleet-config#1475), so an edit
-# to index.html above either dialog does not break the match.
+# to the fragment above either dialog does not break the match.
 [[design.accepted]]
 check  = "modal-footer"
-target = "app/webapp/static/index.html"
-detail = "editor-modal footer contract violated (design.md modal wants exactly one full-width solid-accent primary): app/webapp/static/index.html:2386 primary not the solid-accent primary recipe"
+target = "app/webapp/static/views/shared-dialogs.html"
+detail = "editor-modal footer contract violated (design.md modal wants exactly one full-width solid-accent primary): app/webapp/static/views/shared-dialogs.html:15 primary not the solid-accent primary recipe"
 reason = "#confirmDialog is the Stop/Remove confirm, a destructive action: its sole action deliberately uses the danger tint, not the solid-accent primary"
 record = "https://github.com/ferraroroberto/app-launcher/issues/1634"
 
 [[design.accepted]]
 check  = "modal-top-anchor"
-target = "app/webapp/static/index.html"
-detail = "editor-modal(s) with no max-height + internal scroll — a tall form jumps as conditional rows toggle (design.md modal: top-anchored on mobile): app/webapp/static/index.html:2535"
+target = "app/webapp/static/views/coding-dialogs.html"
+detail = "editor-modal(s) with no max-height + internal scroll — a tall form jumps as conditional rows toggle (design.md modal: top-anchored on mobile): app/webapp/static/views/coding-dialogs.html:4"
 reason = "#screenView is the full-viewport Screen viewer (inset 0, 100dvh), not an editor modal: its one field is the hidden key-capture input, so no conditional rows can make it jump"
 record = "https://github.com/ferraroroberto/app-launcher/issues/1634"

@@ -13,6 +13,8 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+from src.shell_html import assemble_shell
+
 _INDEX = Path(__file__).resolve().parents[1] / "app" / "webapp" / "static" / "index.html"
 
 
@@ -43,7 +45,7 @@ class _Tree(HTMLParser):
 
 def _tree() -> _Tree:
     tree = _Tree()
-    tree.feed(_INDEX.read_text(encoding="utf-8"))
+    tree.feed(assemble_shell(_INDEX))
     return tree
 
 

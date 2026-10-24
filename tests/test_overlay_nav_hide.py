@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
+from src.shell_html import assemble_shell
 from tests._css import STATIC, stylesheet_text
 
 # The hand-rolled overlay classes: the session overlay's chrome, which every
@@ -44,7 +45,7 @@ class _OverlayIds(HTMLParser):
 
 def _overlay_ids() -> list:
     parser = _OverlayIds()
-    parser.feed((STATIC / "index.html").read_text(encoding="utf-8"))
+    parser.feed(assemble_shell(STATIC / "index.html"))
     return parser.ids
 
 

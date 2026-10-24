@@ -1,0 +1,132 @@
+    <!-- No tab since #1131: every page header's gear opens this pane. -->
+    <section id="paneSettings" class="pane" aria-label="Settings" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+          Settings
+        </span>
+        <span id="settingsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+      </div>
+      <!-- Inset groups (#1435): one row per setting, its current value in
+           muted text and a chevron that opens its sheet (the dialogs after
+           this section). settings-sheets.js owns the rows, the sheets and
+           their save-as-you-change fields. Text size (#1134) and Start at
+           log on are inline. -->
+      <!-- Activity (#1678): time spent in the launcher, the phone's Screen
+           Time for this app. The row reads today's total; screen-time.js
+           owns its sheet. Not "Usage": that word is the quota meter's. -->
+      <h2 class="settings-overline">Activity</h2>
+      <div class="card settings-group">
+        <button type="button" class="settings-row" data-sheet="screenTimeSheet" data-track="settings.screen-time" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+          <span class="settings-row-label">Screen time</span>
+          <span class="settings-row-value" data-settings-value="screen-time"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </div>
+
+      <h2 class="settings-overline">Appearance</h2>
+      <div class="card settings-group">
+        <!-- Text size (#1134): the escape from the viewport zoom lock (WCAG
+             1.4.4). Scales the root font-size, so rem type grows and px
+             geometry (nav, rows, hit targets) does not. One segmented track
+             since #1506; the data-textsize hooks stay the vendored
+             bindTextSize's. -->
+        <div class="settings-row settings-row--inline text-size-card">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg>
+          <span class="settings-row-label text-size-label">Text size</span>
+          <div class="segmented" id="textSizeControl" role="group" aria-label="Text size">
+            <button type="button" class="segmented-item" data-textsize="small" data-track="text-size.small" aria-pressed="false">Small</button>
+            <button type="button" class="segmented-item" data-textsize="default" data-track="text-size.default" aria-pressed="false">Default</button>
+            <button type="button" class="segmented-item" data-textsize="large" data-track="text-size.large" aria-pressed="false">Large</button>
+          </div>
+        </div>
+        <button type="button" class="settings-row" data-sheet="usageShowsSheet" data-track="settings.usage-shows" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
+          <span class="settings-row-label">Usage meter</span>
+          <span class="settings-row-value" data-settings-value="usage"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </div>
+
+      <h2 class="settings-overline">Agents</h2>
+      <div class="card settings-group">
+        <button type="button" class="settings-row" data-sheet="launchDefaultsSheet" data-track="settings.launch-defaults" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-rocket"></use></svg>
+          <span class="settings-row-label">Launch defaults</span>
+          <span class="settings-row-value" data-settings-value="launch"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="chiefSheet" data-track="settings.chief" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
+          <span class="settings-row-label">Chief</span>
+          <span class="settings-row-value" data-settings-value="chief"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </div>
+
+      <h2 class="settings-overline">Connections</h2>
+      <div class="card settings-group">
+        <button type="button" class="settings-row" data-sheet="channelsSheet" data-track="settings.channels" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-send-horizontal"></use></svg>
+          <span class="settings-row-label">Telegram</span>
+          <span class="settings-row-value" data-settings-value="telegram"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="contextFilterSheet" data-track="settings.context-filter" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
+          <span class="settings-row-label">Context filter</span>
+          <span class="settings-row-value" data-settings-value="context-filter"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="fleetScopeSheet" data-track="settings.fleet-scope" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
+          <span class="settings-row-label">Fleet scope</span>
+          <span class="settings-row-value" data-settings-value="fleet-scope"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="tokensSheet" data-track="settings.tokens" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
+          <span class="settings-row-label">API tokens</span>
+          <span class="settings-row-value" data-settings-value="tokens"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </div>
+
+      <h2 class="settings-overline">This PC</h2>
+      <div class="card settings-group">
+        <button type="button" class="settings-row" data-sheet="foldersSheet" data-track="settings.folders" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
+          <span class="settings-row-label">Folders</span>
+          <span class="settings-row-value" data-settings-value="folders"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="passkeysSheet" data-track="settings.passkeys" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
+          <span class="settings-row-label">Passkeys</span>
+          <span class="settings-row-value" data-settings-value="passkeys"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <button type="button" class="settings-row" data-sheet="terminalSheet" data-track="settings.terminal" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
+          <span class="settings-row-label">Terminal</span>
+          <span class="settings-row-value" data-settings-value="terminal"></span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-power"></use></svg>
+          <span class="settings-row-label">Start at log on</span>
+          <button type="button" id="bootAutostartToggle" data-track="settings.boot-autostart" class="toggle" role="switch" aria-checked="false" aria-label="Start app-launcher at log on" aria-describedby="bootAutostartHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+      </div>
+      <p id="bootAutostartHelp" class="field-help settings-footnote">Start at log on starts app-launcher when you sign in to Windows, from your Startup folder; no admin rights needed.</p>
+    </section>

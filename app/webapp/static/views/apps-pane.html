@@ -1,0 +1,145 @@
+    <section id="paneApps" class="pane" role="tabpanel" aria-labelledby="tabApps" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
+          Apps
+        </span>
+        <span id="appsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="icon-button home-toggle hit-target settings-open-btn" data-track="settings-open"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+      <!-- The "what is up now" column (#1505). On the phone it is just the
+           Running card, first in the tab. On the wide layout apps.js moves
+           it after the Trays card (keyboard order: list, then pane) and CSS
+           docks it as the right-hand column, with Other ports inline under
+           Running instead of behind the sheet. -->
+      <div id="appsNowCol" class="apps-now-col">
+      <!-- The Running card (#1437), the tab's glance card: apps launched from
+           here, each with its kind avatar and the alive badge, then "Other
+           ports", which opens the listener sheet (the Port listeners card
+           merged in). The note shows only when nothing is running. -->
+      <details class="card card--collapsible action-list running-apps-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
+            <h3 class="collapse-title">Running</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <!-- Loading, a failed first read with Retry, or a stale line over the
+             last good list (async-state.js, #1505). -->
+        <div id="runningAppsState" class="empty-state" role="status" hidden></div>
+        <ul id="runningAppsList" class="card-list action-rows" aria-label="Running apps"></ul>
+        <div id="runningAppsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
+          <p class="empty-state-message">Nothing launched from here is running.</p>
+        </div>
+        <button type="button" id="otherPortsRow" data-track="other-ports" class="drill-row other-ports-row" aria-haspopup="dialog">
+          <span class="avatar" data-badge="none">
+            <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
+          </span>
+          <span class="srow-text">
+            <span class="srow-title">Other ports</span>
+            <span class="srow-meta"><span id="otherPortsMeta" class="srow-meta-text">Checking…</span></span>
+          </span>
+          <span class="drill-row-chevron" aria-hidden="true">›</span>
+        </button>
+        <!-- Wide layout only (#1505): with nothing running, one plain line
+             with the app count in place of the empty-state block. -->
+        <p id="appsIdleLine" class="apps-idle-line" hidden></p>
+        <p id="runningAppsNote" class="group-footer running-apps-note">Only apps launched from here appear.</p>
+        </div>
+      </details>
+      <!-- Wide layout only (#1505): Other ports inline under Running. The
+           sheet's own list (#listenersBody) moves in here at that query and
+           back into the sheet below it, so both are the same rows and the
+           same confirmed stop. -->
+      <details id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
+            <h3 class="collapse-title">Other ports</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div id="otherPortsCardBody" class="collapse-body"></div>
+      </details>
+      </div>
+
+      <details class="card card--collapsible action-list apps-list-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+            <h3 class="collapse-title">Apps</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <label class="action-row-filter list-filter">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="appsFilterInput" type="search" autocomplete="off" placeholder="Filter apps" aria-label="Filter apps">
+        </label>
+        <!-- Loading, a failed first read with Retry, or a stale line over the
+             last good list (async-state.js, #1501). -->
+        <div id="appsState" class="empty-state" role="status" hidden></div>
+        <ul id="appsList" class="card-list action-rows" aria-label="Apps"></ul>
+        <div id="appsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No apps match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
+        </div>
+        <div id="appsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
+          <p class="empty-state-message">No apps registered yet.</p>
+          <button type="button" id="appsEmptyAction" class="empty-state-action">Scan for apps</button>
+        </div>
+        <!-- The card's last row (#1437, moved from Settings › Folders): the
+             same scan dialog. Hidden while the empty state offers it. -->
+        <button type="button" id="appsScanRow" data-track="apps-scan" class="drill-row apps-scan-row" aria-haspopup="dialog">
+          <span class="avatar" data-badge="none">
+            <svg class="icon avatar-glyph" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          </span>
+          <span class="srow-text">
+            <span class="srow-title">Scan for new apps</span>
+          </span>
+          <span class="drill-row-chevron" aria-hidden="true">›</span>
+        </button>
+        </div>
+      </details>
+
+      <!-- Collapsed by default — a setup-once panel, not the tab's working
+           set (issue #456 part 2/2). The summary says how many and how many
+           start at log on (#1437). -->
+      <details class="card card--collapsible action-list registered-trays-card">
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+            <h3 class="collapse-title">Trays</h3>
+            <span id="traysSummaryMeta" class="collapse-count trays-summary-meta" hidden></span>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <div id="traysState" class="empty-state" role="status" hidden></div>
+        <ul id="registeredTraysList" class="card-list action-rows" aria-label="Trays"></ul>
+        <div id="registeredTraysEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
+          <p class="empty-state-message">No sister trays found yet. Scan looks for <code>tray.bat</code> files.</p>
+          <button type="button" id="registeredTraysEmptyAction" class="empty-state-action">Scan for trays</button>
+        </div>
+        <p class="group-footer trays-footer">Trays switched on start with app-launcher.</p>
+        </div>
+      </details>
+    </section>

@@ -13,6 +13,8 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+from src.shell_html import assemble_shell
+
 _INDEX = Path(__file__).resolve().parents[1] / "app" / "webapp" / "static" / "index.html"
 
 # Mirrors design_review/measure.py's GLYPH_ICON_RE (fleet-config): arrows,
@@ -41,7 +43,7 @@ class _VisibleText(HTMLParser):
 
 def test_index_text_has_no_glyph_icons() -> None:
     parser = _VisibleText()
-    parser.feed(_INDEX.read_text(encoding="utf-8"))
+    parser.feed(assemble_shell(_INDEX))
     assert not parser.hits, (
         "glyph characters used as icons in page text; use the Lucide sprite "
         "(<svg class=\"icon\"><use href=\"#i-…\"></use></svg>) or words: "

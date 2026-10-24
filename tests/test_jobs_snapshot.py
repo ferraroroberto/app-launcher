@@ -253,7 +253,7 @@ def test_index_is_cached_with_an_etag_and_revalidates_304(webapp_client, monkeyp
     monkeypatch.setattr(misc.Path, "read_text", _counting_read_text)
     again = client.get("/")
     assert again.status_code == 200 and again.text == first.text
-    assert [p for p in reads if p.name == "index.html"] == [], "served from cache"
+    assert [p for p in reads if p.name == "index.html" or p.parent.name == "views"] == [], "served from cache"
 
     revalidated = client.get("/", headers={"If-None-Match": etag})
     assert revalidated.status_code == 304

@@ -1,0 +1,100 @@
+    <section id="paneLifeOS" class="pane" role="tabpanel" aria-labelledby="tabLifeOS" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-plus"></use></svg>
+          Life
+        </span>
+        <span id="lifeHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="icon-button home-toggle hit-target settings-open-btn" data-track="settings-open"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+      <!-- Skills leads the tab (#1439): the tab exists to start and resume
+           skill conversations. Telegram has no card here; a skill a bot is
+           linked to wears a send glyph and starts or opens that bot from its
+           kebab, and setup lives in Settings › Telegram. -->
+      <details class="card card--collapsible action-list lifeos-list-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-library-big"></use></svg>
+            <h3 class="collapse-title">Skills</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132).
+             The shared launch toolbar (launch-toolbar.js, #1434), the same
+             one Code › Projects mounts: the model combo, then Detached and
+             Resume as vendored switches. -->
+        <div class="card-toolbar lifeos-toolbar">
+          <div id="lifeOsLaunchToolbar" class="launch-toolbar-slot"></div>
+        </div>
+        <!-- One field for skills and conversations (#1504, decision 9 of
+             #1500): it filters the skill names as you type and, from two
+             characters, searches the conversations too, grouped below. A
+             skill's ⋮ Conversations narrows it to that skill, shown as the
+             chip inside the field; the chip's ✕ widens to every skill. -->
+        <label class="action-row-filter list-filter lifeos-search">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <input id="lifeOsFilterInput" type="search" autocomplete="off" autocapitalize="none" spellcheck="false"
+                 placeholder="Skills and conversations" aria-label="Search skills and conversations">
+          <button id="lifeOsConvoScope" type="button" class="lifeos-convo-scope" hidden><span class="chip"><span id="lifeOsConvoScopeName"></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></span></button>
+        </label>
+        <div id="lifeOsState" class="empty-state" role="status" hidden></div>
+        <h4 id="lifeOsSkillsHead" class="lifeos-group-head" hidden>Skills <span id="lifeOsSkillsCount" class="lifeos-group-count"></span></h4>
+        <ul id="lifeOsList" class="card-list action-rows" aria-label="Life OS skills"></ul>
+        <div id="lifeOsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No skills match the filter.</p>
+          <button type="button" class="empty-state-action">Clear filter</button>
+        </div>
+        <div id="lifeOsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
+          <p class="empty-state-message">No life-os skills found — point <strong>Life OS folder</strong> in Settings at a life-os checkout.</p>
+          <button type="button" id="lifeOsEmptyAction" class="empty-state-action">Open Settings</button>
+        </div>
+        <!-- The field's second group (#1504): the conversations a search
+             found, or one skill's own, newest first. A row opens the
+             conversation sheet below. Its sort is the labelled segmented
+             control; Relevance (the server's rank) shows only while
+             searching. -->
+        <section id="lifeOsConvoGroup" class="lifeos-convo-group" aria-labelledby="lifeOsConvoHead" hidden>
+          <div class="lifeos-group-bar">
+            <h4 id="lifeOsConvoHead" class="lifeos-group-head">Conversations <span id="lifeOsConvoCount" class="lifeos-group-count"></span></h4>
+            <!-- #1588: while the group shows (a skill's list, or a search
+                 with hits or none), start a fresh conversation from here. A plain + (the fleet's icon-button,
+                 fleet-config#1420): narrowed to a skill it starts that one;
+                 spanning every skill it opens the skill picker below. -->
+            <button type="button" id="lifeOsConvoStartNew" class="icon-button lifeos-start-new" data-track="life-search-start-new" aria-label="Start new conversation" title="Start new conversation" hidden>
+              <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg>
+            </button>
+          </div>
+          <div id="lifeOsConvoSort" class="segmented lifeos-convo-sort" role="group" aria-label="Sort conversations">
+            <button type="button" class="segmented-item" data-sort="relevance" data-track="life-sort.relevance" aria-pressed="false">Relevance</button>
+            <button type="button" class="segmented-item" data-sort="interaction" data-track="life-sort.interaction" aria-pressed="false">Recent</button>
+            <button type="button" class="segmented-item" data-sort="created" data-track="life-sort.created" aria-pressed="false">Created</button>
+          </div>
+          <div id="lifeOsConvoState" role="status" aria-live="polite" hidden></div>
+          <ul id="lifeOsConvoList" class="card-list action-rows lifeos-convo-list" aria-label="Conversations"></ul>
+        </section>
+        </div>
+      </details>
+
+      <!-- The weekly recap (#167) as one glance row (#1439): how long since
+           the last run, an exception chip when it is due or a draft is
+           ready, and ▶ to review it with the Skills toolbar's model and
+           Detached switch. Hidden while Life OS is unavailable. -->
+      <section id="lifeOsRecap" class="card action-list lifeos-recap-card" aria-label="Weekly recap" hidden>
+        <ul id="lifeOsRecapList" class="card-list action-rows" aria-label="Weekly recap"></ul>
+      </section>
+    </section>

@@ -1,0 +1,78 @@
+    <section id="paneJobs" class="pane" role="tabpanel" aria-labelledby="tabJobs" hidden>
+      <!-- Page header (#1131): every pane opens with the vendored home-head —
+           the tab's name, one context line, the theme toggle and the gear. -->
+      <div class="card home-head page-head">
+        <span class="home-title">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg>
+          Jobs
+        </span>
+        <span id="jobsHeadStatus" class="status"></span>
+        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+                title="CPU load" aria-label="CPU load unknown. Show details">–</button>
+        <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
+                title="Toggle theme" aria-label="Toggle dark mode">
+          <svg class="theme-toggle-icon theme-icon-moon hit-target" aria-hidden="true" focusable="false"><use href="#i-moon"></use></svg>
+          <svg class="theme-toggle-icon theme-icon-sun hit-target" aria-hidden="true" focusable="false"><use href="#i-sun"></use></svg>
+        </button>
+        <button type="button" class="icon-button home-toggle hit-target settings-open-btn" data-track="settings-open"
+                title="Settings" aria-label="Settings">
+          <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-settings"></use></svg>
+        </button>
+      </div>
+      <!-- Next up (#1438, the Jobs tab's glance card): the next three fires
+           without a tap, each opening its job's sheet. The header opens the
+           whole 7-day agenda in a sheet. jobs-agenda.js fetches it once per
+           visit to the tab. -->
+      <section id="jobsNextUpCard" class="card jobs-next-card" data-state="loading" aria-labelledby="jobsNextUpTitle">
+        <h3 id="jobsNextUpTitle" class="card-title jobs-next-title">
+          <button type="button" id="jobsAgendaOpen" data-track="jobs-agenda" class="jobs-next-head" aria-haspopup="dialog"
+                  aria-label="Next up, open the 7-day schedule">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
+            <span class="jobs-next-head-text">Next up</span>
+            <span class="drill-row-chevron" aria-hidden="true">›</span>
+          </button>
+        </h3>
+        <ul id="jobsNextUpList" class="card-list action-rows" aria-label="Next fires"></ul>
+        <div id="jobsNextUpState" class="empty-state" hidden></div>
+      </section>
+
+      <details class="card card--collapsible action-list jobs-card" open>
+        <summary class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
+            <h3 class="collapse-title">Jobs</h3>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <!-- Card controls live in the body, never in the <summary> (#1132).
+             The search runs on the server over names and run output; Add is
+             always here, with no Edit mode (#1438, decision 5 of #1432). -->
+        <div class="jobs-toolbar" role="search">
+          <label class="action-row-filter list-filter jobs-search">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+            <input id="jobsSearchInput" type="search" autocomplete="off"
+                   placeholder="Search jobs and runs" aria-label="Search jobs and run output">
+            <button id="jobsFilters" data-track="jobs-filters" type="button" class="icon-button jobs-filters"
+                    aria-haspopup="dialog" aria-controls="jobsSortSheet"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg></button>
+          </label>
+          <button id="jobsAddBtn" data-track="jobs-add" type="button" class="icon-button jobs-add-btn" aria-label="Add job" title="Add job"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg></button>
+        </div>
+        <ul id="jobsList" class="card-list action-rows" aria-label="Jobs"></ul>
+        <div id="jobsFilterEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
+          <p class="empty-state-message">No jobs or run output match the search.</p>
+          <button type="button" id="jobsFilterEmptyAction" class="empty-state-action">Clear search</button>
+        </div>
+        <div id="jobsLoading" class="empty-state">
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
+          <p class="empty-state-message">Loading jobs…</p>
+        </div>
+        <div id="jobsEmpty" class="empty-state" hidden>
+          <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
+          <p class="empty-state-message">No jobs registered yet.</p>
+          <button type="button" id="jobsEmptyAction" class="empty-state-action">Add job</button>
+        </div>
+        </div>
+      </details>
+    </section>

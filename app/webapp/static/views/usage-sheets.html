@@ -1,0 +1,43 @@
+    <!-- The Usage sheet (#1433), behind both usage meters: exact resets,
+         the week elapsed, Codex's state and the context filter's savings.
+         usage-meter.js fills the rows each time it opens (and on each poll
+         while it is open). -->
+    <dialog id="usageSheet" class="detail-dialog" aria-labelledby="usageSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="usageSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg> Usage</h2>
+          <button type="button" id="usageSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="usageSheetBody" class="usage-sheet-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="usageSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The CPU sheet (#1522), behind every page header's CPU reading: total
+         CPU, memory and the busiest processes (names only). system-load.js
+         fills it on open and on each poll while it is open. -->
+    <dialog id="cpuSheet" class="detail-dialog" aria-labelledby="cpuSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="cpuSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> PC load</h2>
+          <button type="button" id="cpuSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="cpuSheetBody" class="usage-sheet-body cpu-sheet-body"></div>
+        <!-- The Screen view's entry (#1520): a link row that acts on tap, so
+             no chevron. screen-view.js owns the tap (openScreen). -->
+        <button type="button" id="cpuSheetScreen" class="settings-row cpu-sheet-screen" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg>
+          <span class="settings-row-label">Screen</span>
+          <span class="settings-row-value">View live</span>
+        </button>
+        <div class="detail-actions">
+          <button type="button" id="cpuSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>

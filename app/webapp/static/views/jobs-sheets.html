@@ -1,0 +1,38 @@
+    <!-- The job sheet (#1438, decision 7 of #1432): tapping a job opens
+         what the inline accordion held, in the same order: details, flags,
+         Kill stuck run, recent runs with pin and re-run, the output (live
+         while running), artifacts and the webhook payload. Run now is its
+         one primary action. On the wide desktop layout it docks as the
+         detail pane beside the list instead (jobs.js, styles/wide.css). -->
+    <dialog id="jobSheet" class="detail-dialog job-sheet" aria-labelledby="jobSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobSheetTitle" class="job-sheet-title" tabindex="-1" autofocus></h2>
+          <button type="button" id="jobSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="jobSheetBody" class="job-sheet-body" data-role="history-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="jobSheetRun" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run now</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- The 7-day agenda (#230, a sheet since #1438): day groups of upcoming
+         fires, then the frequent jobs that would flood it. Opened from the
+         Next up card's header; a fire opens its job's sheet. -->
+    <dialog id="jobsAgendaSheet" class="detail-dialog jobs-agenda-sheet" aria-labelledby="jobsAgendaSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="jobsAgendaSheetTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg> Schedule</h2>
+          <button type="button" id="jobsAgendaSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="jobsAgendaBody" class="jobs-agenda-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="jobsAgendaSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
