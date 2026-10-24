@@ -52,7 +52,7 @@ from src.agents import is_installed
 from src.life_os_history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
 from src.life_os_delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
 from src.life_os_title import run_title_cli as _run_title_cli
-from src.life_os_skill_refresh import plan_refresh, record_refresh
+from src.life_os.skill_refresh import plan_refresh, record_refresh
 from src.conversation_model import recorded_model
 from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for

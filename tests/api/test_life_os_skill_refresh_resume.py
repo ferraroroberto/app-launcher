@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import life_os_skill_refresh as refresh
+from src.life_os import skill_refresh as refresh
 from tests.api._life_os_support import RESUMABLE_SID
 from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 
@@ -86,3 +86,15 @@ class TestResumeRefresh:
         flags = self._resume()
         assert flags.startswith(f"resume {RESUMABLE_SID} --model gpt-5.6-luna")
         assert flags.endswith(f'"{refresh.refresh_prompt("journal-daily")}"')
+
+
+def test_the_setting_defaults_on_and_round_trips(webapp_client):
+    from src.webapp_config import load_webapp_config
+
+    client, app, overrides = webapp_client
+    key = "life_os_refresh_skill_instructions"
+    assert client.get("/api/config").json()[key] is True
+    assert client.post("/api/config", json={key: False}).status_code == 200
+    assert getattr(app.state.webapp_config, key) is False
+    assert getattr(load_webapp_config(overrides["tmp_webapp_cfg_path"]), key) is False
+    assert client.post("/api/config", json={key: "false"}).status_code == 400

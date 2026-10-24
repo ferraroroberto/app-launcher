@@ -322,7 +322,7 @@ def _isolated_jobs_registry(request, tmp_path, monkeypatch):
         jobs_dismissed_mod, "JOBS_DISMISSED_FILE", tmp_path / "isolated-jobs-dismissed.json"
     )
     # Nor the skill fingerprints a Life OS resume records.
-    from src import life_os_skill_refresh as skill_refresh_mod
+    from src.life_os import skill_refresh as skill_refresh_mod
     monkeypatch.setattr(
         skill_refresh_mod, "SKILL_HASHES_FILE", tmp_path / "isolated-life-os-skill-hashes.json"
     )

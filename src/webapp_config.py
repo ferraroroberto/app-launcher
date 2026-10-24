@@ -365,7 +365,7 @@ class WebappConfig:
     # dir the tab shows disabled, as Coding does without `projects_dir`.
     life_os_dir: str = field(default_factory=_default_life_os_dir)
     # A resumed Life OS conversation re-reads its skill's instructions when
-    # they changed since it last loaded them (src/life_os_skill_refresh.py).
+    # they changed since it last loaded them (src/life_os/skill_refresh.py).
     life_os_refresh_skill_instructions: bool = True
     # Root of the fleet-config checkout. The Board, sessions, Life OS
     # conversations and the fleet-chief ensure path read their hooks, state

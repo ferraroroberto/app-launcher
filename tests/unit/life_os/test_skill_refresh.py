@@ -1,4 +1,4 @@
-"""``src/life_os_skill_refresh.py``: which files a skill's fingerprint covers,
+"""``src/life_os/skill_refresh.py``: which files a skill's fingerprint covers,
 the changed / unchanged / unknown decision, and the Settings toggle. Fictional
 skills only; git is stubbed, so nothing here reads a real checkout."""
 
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src import life_os_skill_refresh as refresh
+from src.life_os import skill_refresh as refresh
 from src.webapp_config import WebappConfig
 
 SID = "0f8fad5b-d9cb-469f-a165-70867728950e"

@@ -50,7 +50,7 @@ from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 # Module-level so tests redirect it at a tmp_path (tests/conftest.py).
 SKILL_HASHES_FILE = PROJECT_ROOT / "webapp" / "life-os-skill-hashes.json"
