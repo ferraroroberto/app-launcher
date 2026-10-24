@@ -121,6 +121,9 @@ export async function fetchConfig(shouldApply) {
   if (els.chiefJobFailuresToggle) {
     setSwitch(els.chiefJobFailuresToggle, body.chief_job_failures !== false);
   }
+  if (els.lifeOsRefreshSkillToggle) {
+    setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
+  }
   renderUsageShows(body);
   if (els.hideChannelSessionsToggle) {
     setSwitch(els.hideChannelSessionsToggle, body.hide_channel_sessions !== false);

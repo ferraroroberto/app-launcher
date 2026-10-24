@@ -102,9 +102,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # The chief doorbell (#1645), off by default; Settings > Chief's
         # Doorbell switch saves it here (fleet-config#1457).
         "chief_doorbell": cfg.chief_doorbell,
-        # Failed Job runs published to the chief mailbox, on by
-        # default; the switch beside Doorbell saves it here.
+        # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
+        "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
         # The chief's model and worker cap (#1435), read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
         # stay on the passkey-gated PUT /api/board/chief/settings.
@@ -216,6 +216,17 @@ def _checked_outbox_roots(raw: Any, current: List[str]) -> List[str]:
     return entries
 
 
+# The Settings switches (#1384, #1542, #1645): a truthy string must never flip
+# one ("false" is truthy in Python), so patch_config refuses anything but a bool.
+_SWITCH_KEYS = (
+    "hide_channel_sessions",
+    "autostart_channel_sessions",
+    "chief_doorbell",
+    "chief_job_failures",
+    "life_os_refresh_skill_instructions",
+)
+
+
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
@@ -239,6 +250,7 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         "chief_auto_compact_threshold",
         "chief_doorbell",
         "chief_job_failures",
+        "life_os_refresh_skill_instructions",
         "claude_model",
         "claude_effort",
         "claude_verbose",
@@ -297,15 +309,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail="large_upload_max_mb must be a whole number of MB"
             )
-    # The switches (#1384, #1542, #1645): anything but a real boolean is a
-    # client bug, and a truthy string must never flip one ("false" is truthy
-    # in Python).
-    for key in (
-        "hide_channel_sessions",
-        "autostart_channel_sessions",
-        "chief_doorbell",
-        "chief_job_failures",
-    ):
+    # The switches: anything but a real boolean is a client bug.
+    for key in _SWITCH_KEYS:
         if key in patch and not isinstance(patch[key], bool):
             raise HTTPException(
                 status_code=400, detail=f"{key} must be true or false"

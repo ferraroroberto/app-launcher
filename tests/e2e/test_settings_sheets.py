@@ -34,7 +34,7 @@ from tests.e2e.conftest import (
 
 pytestmark = pytest.mark.smoke
 
-_GROUPS = ["Activity", "Appearance", "Agents", "Connections", "This PC"]
+_GROUPS = ["Activity", "Appearance", "Agents", "Life OS", "Connections", "This PC"]
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "tokensSheet", "foldersSheet",

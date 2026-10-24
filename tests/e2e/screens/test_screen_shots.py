@@ -1,4 +1,4 @@
-"""The screenshot baseline's capture: the five tabs, a Life search with its Archived
+"""The screenshot baseline's capture: the five tabs, Settings, a Life search with its Archived
 group, plus a sent HTML document's card and viewer, at phone and desktop, light and dark.
 
 `scripts/shot_baseline.py` compares what this writes under `tests/e2e/shots`
@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e._shot import PINNED_NOW, shot, variant_page, variants
-from tests.e2e.conftest import open_session_row, stub_session_mirror
+from tests.e2e.conftest import open_session_row, open_settings, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -221,3 +221,27 @@ def test_life_archived_shots(browser: Browser, base_url: str) -> None:
             page.locator(".lifeos-archived-summary").click()
             expect(page.locator("#lifeOsArchivedList .lifeos-archived-row")).to_be_visible()
             shot(page, SHOTS_DIR / f"life-archived-{variant.slug}.png")
+
+
+_CONFIG = {"projects_dir": "C:/stub/projects", "projects_ignore": [], "apps_scan_root": "C:/stub",
+           "life_os_dir": "C:/stub/life", "fleet_config_dir": "C:/stub/fleet", "outbox_scratch_roots": [],
+           "coding_hidden_agents": [], "coding_favorite_agent": "claude", "usage_shows": "both",
+           "hide_channel_sessions": True, "life_os_refresh_skill_instructions": True}
+
+
+def test_settings_shots(browser: Browser, base_url: str) -> None:
+    """Settings scrolled to its Life OS group, the skill-refresh switch on."""
+    for variant in variants():
+        with variant_page(browser, variant) as page:
+            page.add_init_script(f"localStorage.setItem('app-launcher.theme', '{variant.theme}');")
+            _mock_data(page)
+            page.route(re.compile(r".*/api/config$"), _json_route(_CONFIG))
+            page.route(re.compile(r".*/api/fleet/scope$"), _json_route(
+                {"available": True, "reason": None, "repos": [{"name": "demo-project", "status": "active"}]}))
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            page.locator("#tabClaude").click()
+            open_settings(page)
+            toggle = page.locator("#lifeOsRefreshSkillToggle")
+            expect(toggle).to_have_attribute("aria-checked", "true")
+            toggle.scroll_into_view_if_needed()
+            shot(page, SHOTS_DIR / f"settings-{variant.slug}.png")
