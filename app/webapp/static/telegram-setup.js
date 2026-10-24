@@ -1,8 +1,8 @@
-/* Telegram channels — the Settings card (#1369).
+/* Telegram channels — the Settings card.
  *
- * Read-only status for the Telegram profiles (#1366): what is ready, what is
+ * Read-only status for the Telegram profiles: what is ready, what is
  * missing (a broken profile and the problems line live only here since the
- * Life tab's card went, #1439), which skills a profile can bind. It renders
+ * Life tab's card went), which skills a profile can bind. It renders
  * from the same GET /api/life-os/channels payload that marks the Life tab's
  * linked skills (state.lifeOsChannels, filled by life-os.js::fetchChannels),
  * so it owns no fetch of its own. The
@@ -16,7 +16,7 @@
 import { els, state } from './state.js';
 
 // A healthy check reads as a plain value in the row's text colour; only an
-// exception wears a chip, on the tone map (#1506): what needs you is
+// exception wears a chip, on the tone map: what needs you is
 // attention, an unknown is neutral. state → [chip class suffix, label].
 const CHIP = {
   missing: ['attention', 'Missing'],

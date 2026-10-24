@@ -4,7 +4,7 @@
  * and centred against the full row height, which opens the row's floating
  * action menu (Terminal · Chat · Rename · Stop).
  *
- * #1025 shipped twice. The first attempt removed the gear and kept the
+ * The kebab replaced the gear, not the action set. A first attempt removed the gear and kept the
  * disclosure chevron, which deleted the row's entire action set instead of
  * relocating it — the actions were reachable only by opening the overlay
  * first. The requirement was the other way round: the *chevron* goes, and
@@ -12,14 +12,14 @@
  * So the menu is back, unchanged in contents, order and behaviour; only the
  * anchor's glyph differs, and no chevron is rendered anywhere on the row.
  *
- * stopSession() below is still the one "Stop and kill" path (issue #253),
+ * stopSession() below is still the one "Stop and kill" path,
  * same for both kinds, called from this menu, the overlay's ⋮ menu and the
  * Board drawer. The session-host types the agent's own quit command (Claude's /quit,
  * Copilot's /exit, …), waits briefly for a clean exit so shutdown hooks
  * run, then force-terminates as a fallback — and the window always closes.
  * Detached (remote) rows have no PTY to type into, so the host force-kills
  * the console directly. One exception to the no-confirm design: the fleet
- * chief (#547) — see stopSession()'s isChiefSession() guard.
+ * chief — see stopSession()'s isChiefSession() guard.
  */
 
 import { els, state } from './state.js';
@@ -27,7 +27,7 @@ import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from '.
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
 import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
-// The session overlay's two modes (#982). Circular with this module by
+// The session overlay's two modes. Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
@@ -39,9 +39,8 @@ import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './session-transcript.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
-// (split off board.js in #691; the shared helper landed in #828), exported
-// for this cross-tab use (#547), as is the chief settings dialog (#1434,
-// until step 3 moves it to Settings); board.js already imports
+// (split off board.js), exported
+// for this cross-tab use, as is the chief settings dialog; board.js already imports
 // stopSession/sessionTitle/openSessionRename from this module, so this
 // mirrors the existing sessions.js<->terminal.js circular-import pattern
 // rather than introducing a new risk.
@@ -50,13 +49,13 @@ import { openSettingsAt } from './tabs.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in
-// dom-utils.js (#750) — same "3h 24m" elapsed-time granularity as before.
+// dom-utils.js — same "3h 24m" elapsed-time granularity as before.
 export function fmtAgo(epochSeconds) {
   return fmtDuration(epochSeconds, { fromEpoch: true, granular: true });
 }
 
 // Last path segment of a session's project dir — the project folder name
-// the row's context line shows in place of the full path (#1238 J-10).
+// the row's context line shows in place of the full path.
 function projectFolder(s) {
   const dir = String((s && s.project_dir) || '');
   const parts = dir.split(/[\\/]/).filter(Boolean);
@@ -68,16 +67,15 @@ function projectBasename(s) {
   return projectFolder(s).toLowerCase();
 }
 
-// Display title for a session, with smart precedence (issue #266, extended
-// #396, #458). The single source of truth both the Coding tab and the Board
+// Display title for a session, with smart precedence. The single source of truth both the Coding tab and the Board
 // tab call, so a live session shows an identical title on both — do not
 // re-derive a title in board.js or anywhere else.
 //
-//   0. ``manual_title`` (issue #458) — a launcher-native rename always wins.
+//   0. ``manual_title`` — a launcher-native rename always wins.
 //      It is the one title channel that works identically across every
 //      agent (including detached sessions) without depending on agent-native
 //      OSC support, so it overrides every auto-derived source below.
-//   1. ``shared_name`` (fleet-config#302, joined agent-aware server-side into
+//   1. ``shared_name`` (joined agent-aware server-side into
 //      every session dict as shared_name/shared_name_source) wins outright
 //      when it's a real Claude-assigned title (name_source !== 'derived') —
 //      the one cross-tab authoritative source: Claude's own /resume picker
@@ -122,13 +120,13 @@ export function sessionTitle(s) {
   return live || (s && s.name) || (s && s.project) || 'session';
 }
 
-// ------------------------------------------------- row action menu (#953)
+// ------------------------------------------------- row action menu
 //
 // One kebab per row opens a floating menu of the row's actions. The rail has
 // no room for four separate icons on the phone without crowding the title,
 // so they live behind one anchor. The menu machinery (open/close, outside
 // tap, Escape, surviving the 4s poll re-render) is the vendored row-menu
-// (#1565). It floats left of the row's button column, top-aligned and
+// It floats left of the row's button column, top-aligned and
 // overlapping it by 4px, so a long menu grows down over the rows below.
 const sessionMenu = createRowMenu({
   className: 'session-menu',
@@ -138,9 +136,9 @@ const sessionMenu = createRowMenu({
   },
 });
 
-// The chief's kebab items beyond a session's own (#1434): Restart, the same
+// The chief's kebab items beyond a session's own: Restart, the same
 // graceful stop-then-resume as the Board's Restart, and Chief settings,
-// which opens Settings › Chief (#1435). Restart only while it runs; settings
+// which opens Settings › Chief. Restart only while it runs; settings
 // either way.
 function chiefMenuItems(kebab, alive) {
   return [
@@ -163,12 +161,12 @@ function chiefMenuItems(kebab, alive) {
   ];
 }
 
-// The chief's row while no chief runs (#1434, replacing #547's separate
+// The chief's row while no chief runs (replacing a separate
 // "chief: not running" line): the crown avatar, and Start and Resume as plain
-// icon-button verbs on the row itself (fleet-config#1420). Start uses the same
-// ensure endpoint as the Board's chat mode; Resume (#633) reattaches the most
+// icon-button verbs on the row itself. Start uses the same
+// ensure endpoint as the Board's chat mode; Resume reattaches the most
 // recent chief conversation, falling back server-side to a fresh spawn when
-// nothing is resumable. restart=true (#1351): if a chief came up meanwhile, it is still
+// nothing is resumable. restart=true: if a chief came up meanwhile, it is still
 // stopped and resumed, as on the Board.
 function stoppedChiefRow() {
   const li = document.createElement('li');
@@ -223,13 +221,13 @@ function stoppedChiefRow() {
 export function renderSessions() {
   const host = els.sessionsList;
   host.innerHTML = '';
-  // Telegram channel sessions leave the list for one summary line (#1384).
+  // Telegram channel sessions leave the list for one summary line.
   const shown = state.sessions.filter(function (s) { return !isHiddenChannel(s); });
   els.sessionsEmpty.hidden = shown.length !== 0;
   renderHomeHead();
   renderChannelSummaries();
 
-  // The chief's row first (#1434), running or not: the standing
+  // The chief's row first, running or not: the standing
   // orchestrator is the one session that is always meant to be there.
   const chief = shown.find(isChiefSession);
   const ordered = chief
@@ -240,14 +238,14 @@ export function renderSessions() {
   ordered.forEach(function (s) {
     const li = document.createElement('li');
     li.className = 'app-item session-item';
-    // The crown avatar marks the chief (#1433); the class is the hook.
+    // The crown avatar marks the chief; the class is the hook.
     const isChief = isChiefSession(s);
     if (isChief) li.classList.add('session-item-chief');
     // Stable hook so a test (or any consumer) can target a specific
     // session's row by id rather than position — e.g. the kill regression
-    // must act on the session it launched, never ".first" (issue #260).
+    // must act on the session it launched, never ".first".
     li.dataset.sessionId = s.session_id;
-    // The session in the wide layout's docked view (#1135).
+    // The session in the wide layout's docked view.
     if (state.sessionView && state.sessionView.session.session_id === s.session_id) {
       li.setAttribute('aria-current', 'true');
     }
@@ -258,26 +256,26 @@ export function renderSessions() {
     const remote = s.kind === 'remote';
     const reader = hasTranscriptReader(s);
     // Every row opens the session overlay in the mode it was last viewed in
-    // (#982): a full-control row has a terminal, a detached row of an agent
+    // a full-control row has a terminal, a detached row of an agent
     // with a transcript reader opens in Chat. A detached row of an agent
     // with *no* reader is tappable too — it opens Chat showing the reader's
     // own reason line. That shape is reachable today (`ssh` is registered in
     // SESSION_HOST_AGENTS and will never have a harness history), so no row
-    // is inert and none is stranded. Kept deliberately from the first #1025
+    // is inert and none is stranded. Kept deliberately from the first
     // attempt: restoring the kebab must not restore the dead row.
     const open = document.createElement('button');
     open.className = 'launch-btn session-open';
     open.type = 'button';
 
-    // The shared session row (#1433): the agent's mark in an avatar whose
+    // The shared session row: the agent's mark in an avatar whose
     // badge says it is alive (the chief's says crown), a one-line title, and
-    // one meta line, "folder · status · age", then "up uptime" (#1580). Chips only for exceptions: a detached
+    // one meta line, "folder · status · age", then "up uptime". Chips only for exceptions: a detached
     // row says so; a full-control row is the normal case and says nothing.
     // The agent resolves against the registry (state.agents) so a new
     // agent's mark flows through untouched, falling back to Claude Code.
     const known = state.agents.find(function (a) { return a.id === s.agent; });
     const chips = [];
-    // What the Board says it needs from you (#1434): "needs you" or
+    // What the Board says it needs from you: "needs you" or
     // "stalled", from the Board's own routing on this poll. No chip when
     // the placement is unknown.
     const attention = attentionChip(s);
@@ -285,7 +283,7 @@ export function renderSessions() {
     if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
     if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
     const ago = fmtAgo(s.started_at);
-    // The Board's own "status · age" (#1580), from this poll's Board
+    // The Board's own "status · age", from this poll's Board
     // placement: the same formatter and words as the Board's row. The word
     // is dropped where the attention chip already says it; the age
     // stays. No placement (null) shows neither.
@@ -294,7 +292,7 @@ export function renderSessions() {
       hideStatus: !!attention,
     });
     // The folder name, not the full Windows path that wrapped to four lines
-    // on a phone (#1238 J-10). The full path is the row's hover hint and the
+    // on a phone. The full path is the row's hover hint and the
     // row menu's Copy path.
     const body = sessionRowBody({
       agentId: known ? known.id : 'claude',
@@ -318,29 +316,29 @@ export function renderSessions() {
     actions.className = 'row-actions session-actions';
 
     // One kebab, vertically centred against the full row height, opens the
-    // row's floating action menu (#953) — a vertical icon + label list
-    // (#967). It sits in its own rail *outside* the row button, so tapping
+    // row's floating action menu — a vertical icon + label list
+    // It sits in its own rail *outside* the row button, so tapping
     // it opens the menu and never the session, while the row's own 60px tap
     // target still opens the session. The menu holds, in order:
-    //   · Terminal (#982) — full-control rows only: the session overlay in
+    //   · Terminal — full-control rows only: the session overlay in
     //     Terminal mode (a desktop browser gets the PC mirror window, as a
     //     row tap does).
-    //   · Chat (#982) — every row whose agent has a transcript reader
-    //     (Claude and Codex, #966; hasTranscriptReader mirrors the
+    //   · Chat — every row whose agent has a transcript reader
+    //     (Claude and Codex; hasTranscriptReader mirrors the
     //     endpoint's flavour map): the same overlay in Chat mode. The reader
     //     uses the agent's native history, never the PTY capture a detached
     //     row lacks.
-    //   · Copy path (#1238 J-10) — the full project path the row's context
+    //   · Copy path — the full project path the row's context
     //     line now shortens to its folder name; the toast shows it on a phone.
-    //   · Rename (issue #458) — a launcher-native override that always wins
+    //   · Rename — a launcher-native override that always wins
     //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
     //     title clears it, reverting to the automatic precedence.
-    //   · Stop-and-kill (issue #253), both kinds: the session-host quits
+    //   · Stop-and-kill, both kinds: the session-host quits
     //     gracefully then force-falls-back; the window always closes. Keeps
     //     the `action-stop-close` hook (data-item; danger text, a danger
     //     tint on press).
     // The glyph is the kebab the Coding tile's project menu already uses;
-    // the contents are the gear's, unchanged (#1025, second attempt).
+    // the contents are the gear's, unchanged (second attempt).
     const kebab = document.createElement('button');
     kebab.type = 'button';
     kebab.className = 'icon-button session-kebab';
@@ -371,7 +369,7 @@ export function renderSessions() {
         onTap: function () { openSessionRename(s); },
       },
     ];
-    // The chief's own controls sit before Stop, which stays last (#1434).
+    // The chief's own controls sit before Stop, which stays last.
     if (isChief) Array.prototype.push.apply(items, chiefMenuItems(kebab, s.alive !== false));
     items.push({
       dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
@@ -403,10 +401,10 @@ async function copyProjectPath(path) {
 // Open a session when its row (or its kebab's Terminal / Chat item) is
 // tapped — the Board drawer's Chat / Terminal button calls this too.
 // `mode` forces 'terminal' or 'chat'; without it the session opens
-// in the mode it was last viewed in (#982, session-overlay.js), a detached
+// in the mode it was last viewed in (session-overlay.js), a detached
 // session always in Chat, and a first open on a desktop browser in Chat
-// (#1273). On a desktop browser a full-control session's terminal is a
-// dedicated PC Edge --app window (issue #282) — the same window a
+// On a desktop browser a full-control session's terminal is a
+// dedicated PC Edge --app window — the same window a
 // new-session launch opens — instead of rendering the terminal inside the
 // user's own browser, so it can be closed without fear while the session
 // keeps running headless. A second tap focuses that window rather than
@@ -440,10 +438,10 @@ export async function openSession(s, mode) {
 }
 
 export async function stopSession(s) {
-  // No confirm — one tap stops (issue #253 follow-up). The stop is graceful
+  // No confirm — one tap stops. The stop is graceful
   // (the agent's own quit, then force-fallback) and a mis-tap is resumable,
   // so a confirmation dialog is just friction. The one exception is the
-  // fleet chief (#547 — parity with the Board tab's own drawer guard, the
+  // fleet chief (parity with the Board tab's own drawer guard, the
   // isChiefCard() check on the drawer's stop button in board.js::buildDrawer):
   // the chief is the one session a mis-tap shouldn't take down, from either
   // the Coding tab's row or the terminal overlay's kill button (which calls
@@ -451,7 +449,7 @@ export async function stopSession(s) {
   // {session_id, name} object with no kind/label, so isChiefSession() is a
   // safe no-op there and it never double-confirms.
   if (isChiefSession(s) && !(await confirmDialog(CHIEF_KILL_CONFIRM))) return;
-  // While Telegram sessions are hidden (#1384) nothing may stop one: the Board
+  // While Telegram sessions are hidden nothing may stop one: the Board
   // drawer passes a stripped {session_id, name} with no label, so resolve the
   // full record first. The refusal names how to get the control back.
   const full = (state.sessions || []).find(function (x) { return x.session_id === s.session_id; });
@@ -471,7 +469,7 @@ export async function stopSession(s) {
       }
     );
     toast('Stopping ' + s.name + '…', 'good', { icon: 'octagon-x' });
-    // The overlay showing this session closes whichever pane is up (#982) —
+    // The overlay showing this session closes whichever pane is up —
     // a detached session viewed in Chat has no state.terminal to key on.
     if (state.sessionView &&
         state.sessionView.session.session_id === s.session_id) {
@@ -496,11 +494,11 @@ export async function fetchSessions() {
   }
 }
 
-// The usage meter's one endpoint (#1433): both tabs' meters render from
+// The usage meter's one endpoint: both tabs' meters render from
 // this poll, which runs whatever tab is up, so the Coding tab never depends
 // on the Board having been opened and the two can never disagree. Both
 // heavy agents are always listed, in the same order, whatever the model
-// picker says (#860), so there is no selection to race.
+// picker says, so there is no selection to race.
 const QUOTA_ERROR_LINES = [
   { harness: 'claude', label: 'Claude Code', state: 'error' },
   { harness: 'codex', label: 'Codex', state: 'error' },
@@ -516,7 +514,7 @@ export async function fetchRateLimits() {
   }
 }
 
-// --------------------------------------------------- rename dialog (#458)
+// --------------------------------------------------- rename dialog
 //
 // One dialog shared by the Coding tab's row rename button and the Board
 // tab's drawer rename button (board.js imports openSessionRename), the same
@@ -534,7 +532,7 @@ let sessionLinkFeedbackTimer = null;
 // whose remote-control card has not been printed/scanned yet. It is the one
 // link that opens from any browser on any network, so both copy affordances
 // — this dialog and the session bar's ⋮ Copy link — resolve through here so
-// they can never hand back two different strings for one session (#1096).
+// they can never hand back two different strings for one session.
 export function providerWebUrl(s) {
   return s && s.agent === 'claude' ? String(s.web_url || '') : '';
 }
@@ -558,15 +556,15 @@ export function openSessionRename(s, onDone) {
   els.sessionRenameDialog.showModal();
 }
 
-// Send from a session's Chat mode (issue #967 → #983). The chat pane's
-// composer and the Board drawer's (#984) post to the same kind-agnostic /input
+// Send from a session's Chat mode. The chat pane's
+// composer and the Board drawer's post to the same kind-agnostic /input
 // route: a PTY session submits with the host's framing, settle
-// and ingest verification (#611/#760/#763); a detached session is typed into
+// and ingest verification; a detached session is typed into
 // its PC console by PID and can only ever answer ``delivered: "unconfirmed"``.
-// The row's old Send message dialog is gone (#983) — the composer covers
+// The row's old Send message dialog is gone — the composer covers
 // both kinds — so the gate, the request and the outcome wording live here
 // once. The row menu that used to open that dialog still exists (it is the
-// kebab's menu since #1025), but it no longer carries a Send item.
+// kebab's menu), but it no longer carries a Send item.
 
 // A detached session whose agent the registry says was never probed for
 // console input (``console_input: false`` from /api/agents). Only an explicit
@@ -579,10 +577,10 @@ export function detachedSendRefused(s) {
   return !!known && known.console_input === false;
 }
 
-// Whether /compact applies (#1218): a Claude session (a missing agent reads as
+// Whether /compact applies: a Claude session (a missing agent reads as
 // Claude, as session-transcript.js's hasTranscriptReader does) whose input
 // route is open — a detached agent never probed for console input is not.
-// Shared by the terminal ⋮ menu and the Telegram sessions popup (#1402).
+// Shared by the terminal ⋮ menu and the Telegram sessions popup.
 export function canCompact(s) {
   return !!s && (s.agent || 'claude') === 'claude' && !detachedSendRefused(s);
 }
@@ -600,12 +598,12 @@ export async function sendSessionMessage(sid, text) {
 
 // The toast for one successful /input answer: `{ text, kind }`. Each verdict
 // gets its own words, because folding them into "sent" is exactly what
-// #760/#763/#929 were filed over. The failures never get here — a payload the
+// the delivery bugs came from. The failures never get here — a payload the
 // terminal never echoed (502 not_ingested), a console that did not take the
 // keystrokes (502 console_failed), an exited session (409) all throw, and
 // the caller toasts them as "Send failed" with the text kept.
 //
-// `opts.watch` (#1744): the caller will look for evidence the agent took an
+// `opts.watch`: the caller will look for evidence the agent took an
 // unconfirmed send (Chat reads the transcript it already polls), so the
 // verdict says "Sent" and carries `watch: true`; the warning is that look's to
 // raise, as NOT_PICKED_UP. A caller that cannot look keeps the old wording,
@@ -617,7 +615,7 @@ export const NOT_PICKED_UP = {
 
 export function sendOutcome(verdict, opts) {
   const v = verdict || {};
-  // Detached (#967): a console has no output stream, so this is the best a
+  // Detached: a console has no output stream, so this is the best a
   // successful send can ever be — not a failure.
   if (v.delivered === 'unconfirmed') {
     return { text: 'Sent, not confirmed: typed into the PC console', kind: '' };
@@ -630,14 +628,14 @@ export function sendOutcome(verdict, opts) {
       if (opts && opts.watch) return { text: 'Sent', kind: '', watch: true };
       return { text: 'Sent, not confirmed: nothing verified the agent took it', kind: '' };
     case 'pending':
-      // 202 (#763): in the agent's composer, Enter still with the watcher.
+      // 202: in the agent's composer, Enter still with the watcher.
       return { text: 'Queued: the agent is busy, Enter goes in once it settles', kind: '' };
     case 'not_submitted':
       return { text: 'Not submitted: the text reached the agent but Enter was never sent', kind: 'error' };
     default:
       break;
   }
-  // A session-host from before #929 carries no submit_state; only an
+  // An older session-host carries no submit_state; only an
   // explicit `delivered: true` reads as a landing.
   if (v.delivered === true) return { text: 'Sent', kind: 'good' };
   return { text: 'Sent, not confirmed', kind: '' };
@@ -675,7 +673,7 @@ function wireSessionRenameDialog() {
         }
       );
       els.sessionRenameDialog.close();
-      // The session is renamed; its Life OS conversation not following says so (#1637).
+      // The session is renamed; its Life OS conversation not following says so.
       if (reply && reply.life_os_sync && reply.life_os_sync.status === 'failed') {
         toast(reply.life_os_sync.error, 'error');
       }
@@ -691,7 +689,7 @@ function wireSessionRenameDialog() {
 }
 
 export function wireSessions() {
-  // No sessions yet: a session starts from a project (#1238 J-09).
+  // No sessions yet: a session starts from a project.
   const sessionsEmptyAction = document.getElementById('sessionsEmptyAction');
   if (sessionsEmptyAction) {
     sessionsEmptyAction.addEventListener('click', function () {

@@ -1,8 +1,8 @@
 /* ---------- jobs tab ---------- */
-/* The Jobs card's toolbar (#1438): the search field in the vendored filter
+/* The Jobs card's toolbar: the search field in the vendored filter
    look, then the sort and Add icon buttons at the 44px floor. The filter
    field's own 12px bottom margin would sit inside the centring box and
-   lift the field 6px above the icons (#1541), so the toolbar owns that
+   lift the field 6px above the icons, so the toolbar owns that
    gap instead. */
 .jobs-toolbar {
   display: flex;
@@ -12,9 +12,9 @@
 }
 .jobs-toolbar .jobs-search { flex: 1; min-width: 0; margin: 0; }
 .jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
-/* The sort sheet's trigger (#1538, as the Conversations field's, #1528)
+/* The sort sheet's trigger (as the Conversations field's)
    pulled to the right edge like the Projects filter's star. The field's
-   clear is the engine's own ✕, as on every other filter (#1554). */
+   clear is the engine's own ✕, as on every other filter. */
 .jobs-filters { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
 .jobs-search-empty {
   list-style: none;
@@ -38,7 +38,7 @@
 }
 /* An ellipsized title clips at its padding box, and the vendored disclosure
    sets line-height: 1, so the box was a font-size tall and cut the glyphs'
-   descenders ("g", "j") off, at every text size (#1134's no-clipped-rows
+   descenders ("g", "j") off, at every text size (the no-clipped-rows
    check). A little vertical padding widens the clip box and the equal
    negative margin gives the space back, so the summary's layout is
    unchanged. */
@@ -47,7 +47,7 @@
   margin-block: -0.2em;
 }
 
-/* Next up (#1438): the tab's glance card. Its header is one 52px button
+/* Next up: the tab's glance card. Its header is one 52px button
    (the card head's glyph and title, a chevron right) opening the agenda
    sheet; the fires run full-bleed under a hairline. */
 .jobs-next-card { padding: 0; }
@@ -86,7 +86,7 @@
   color: var(--fg);
 }
 
-/* The agenda sheet (#230, a sheet since #1438): day groups under the
+/* The agenda sheet (a sheet): day groups under the
    Settings overline headers' type (the one legal caps role), the frequent
    jobs in the footer. */
 .jobs-agenda-sheet { width: min(480px, calc(100vw - 24px)); }
@@ -94,9 +94,9 @@
 .jobs-agenda-day:first-child { margin-top: 0; }
 .jobs-agenda-frequent { margin: 12px 4px 0; }
 
-/* The sheet's detail block (#1130, in the sheet since #1438): label/value
+/* The sheet's detail block (in the sheet): label/value
    rows above the runs list, muted keys so the values read first. No rule
-   under it (#1348): the run tiles carry their own edges, so its bottom
+   under it: the run tiles carry their own edges, so its bottom
    padding alone sets them apart. */
 .job-details {
   display: flex;
@@ -130,7 +130,7 @@
   gap: 4px;
 }
 
-/* The job sheet (#1438): the vendored modal at full height; its sticky
+/* The job sheet: the vendored modal at full height; its sticky
    footer keeps Run now at the foot however long the log. */
 .job-sheet {
   width: min(480px, calc(100vw - 24px));
@@ -191,7 +191,7 @@
 }
 .jobs-run-btn .jobs-run-icon { font-size: var(--font-label); }
 /* The three terminal outcomes are told apart by glyph AND status colour
-   (#916): ✓ success, ✗ failed, ? not confirmed. The glyph alone carried it
+: ✓ success, ✗ failed, ? not confirmed. The glyph alone carried it
    before, which is thin on a phone at a glance — and `unconfirmed` has to be
    unmistakable from both neighbours, not merely different from one. */
 .jobs-run-btn .jobs-run-success { color: var(--success); }

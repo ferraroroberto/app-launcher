@@ -1,10 +1,10 @@
-/* Read-aloud voices for the Coding tab's 🔊 (issues #190, #203, #206),
- * split off `terminal-readback.js` (#884), which re-exports this module's
+/* Read-aloud voices for the Coding tab's 🔊,
+ * split off `terminal-readback.js`, which re-exports this module's
  * API and keeps the buffer → reply-block extraction that feeds it.
  *
  * Two voices share one button + one speaking-state machine (`setSpeaking` →
  * `onSpeakingChange`/`onSpeechEnd`):
- *  - **Hub TTS (issues #203, #206)** — the preferred path when the
+ *  - **Hub TTS** — the preferred path when the
  *    local-llm-hub is reachable: `speakHub()` POSTs the reply to
  *    `/api/tts/speak`, which streams **headerless PCM16** as the hub
  *    synthesizes, and plays it through the **Web Audio API** — first audio in
@@ -172,7 +172,7 @@ export function cancelSpeech() {
   setSpeaking(false);
 }
 
-// ── Hub TTS (issues #203, #206): high-quality Orpheus voice over local-llm-hub ─
+// ── Hub TTS: high-quality Orpheus voice over local-llm-hub ─
 // The hub streams *headerless PCM16* (`/api/tts/speak` → `audio/L16` +
 // `X-Sample-Rate`) and we play it through the **Web Audio API** — read the
 // streaming fetch with getReader(), convert each int16 chunk to float32, and
@@ -181,7 +181,7 @@ export function cancelSpeech() {
 //
 // Why not <audio src>: the hub's streaming WAV carries an open-ended RIFF
 // header (0xFFFFFFFF sizes) that an <audio> element can't play progressively —
-// it just buffers silently (#206). Web Audio sidesteps the container entirely.
+// it just buffers silently. Web Audio sidesteps the container entirely.
 // The AudioContext is created + resumed inside the click gesture (before the
 // first await) so iOS autoplay policy lets it make sound.
 
@@ -268,7 +268,7 @@ function finishHubNaturally() {
   if (_onEnd) { try { _onEnd(); } catch (_) { /* best effort */ } }
 }
 
-// Screen-lock / backgrounding robustness (issue #248). iOS leaves the
+// Screen-lock / backgrounding robustness. iOS leaves the
 // AudioContext `running` through a short lock — its `currentTime` clock keeps
 // advancing — but SUSPENDS actual output. Buffers scheduled on the absolute
 // `ctx.currentTime` timeline whose start elapsed during the lock are "started
@@ -338,7 +338,7 @@ function reanchorHubQueue() {
 // A silence↔audio discontinuity (real silence jumping straight to a
 // mid-amplitude sample, or playback running out mid-waveform) is an audible
 // click — and that's exactly what happens every time delivery falls behind and
-// guard 1 below snaps `playHead` forward to "now" (issue #599): the prior
+// guard 1 below snaps `playHead` forward to "now": the prior
 // buffer's tail played out, real silence followed, and the next buffer starts
 // at full amplitude with no ramp. The fade is applied ONLY at such
 // discontinuity edges (stream/segment start, a guard-1 snap, a post-lock
@@ -379,8 +379,7 @@ function scheduleHubBuffer(ctx, buf, start, fadeIn) {
 // playground.js speakStream.
 //
 // Orpheus can synthesize slower than realtime, so the stream may arrive slower
-// than it plays. Three guards keep playback smooth (issue #206 follow-up,
-// #599 follow-up):
+// than it plays. Three guards keep playback smooth:
 //  1. never schedule a buffer in the *past* — if delivery fell behind, resume
 //     `playHead` from "now", so it always tracks the true end of audio (a buffer
 //     started in the past would otherwise make playHead under-count the end and
@@ -394,7 +393,7 @@ function scheduleHubBuffer(ctx, buf, start, fadeIn) {
 //     contiguous buffers stay un-faded so their sample-continuous seams are
 //     untouched (per-buffer fades would flutter, see HUB_FADE_S above).
 //
-// `seg` carries a segment's position within a multi-request read (issue #254):
+// `seg` carries a segment's position within a multi-request read:
 // the hub caps each synthesis request at ~49.6 s of audio, so a long reply is
 // streamed as several back-to-back POSTs onto this *one* timeline. Only the
 // FIRST segment resets the playHead / queue (and installs the lock re-anchor);
@@ -406,12 +405,12 @@ async function pumpPcmStream(ctx, res, ac, seg) {
   const isLast = !seg || seg.isLast !== false;
   // Recover the context if iOS suspended/interrupted it during the await(s)
   // between the gesture and now — without this, a long gap (the summarize
-  // path waits on the LLM first) leaves the context silent (issue #210).
+  // path waits on the LLM first) leaves the context silent.
   try { ctx.resume(); } catch (_) { /* best effort */ }
   const sampleRate =
     parseInt(res.headers.get('X-Sample-Rate') || '24000', 10) || 24000;
   if (isFirst) {
-    // Lead-in cushion against underrun (issue #599: Orpheus can run well
+    // Lead-in cushion against underrun (Orpheus can run well
     // below realtime under GPU load, so a bigger cushion buys more time
     // before the first catch-up gap than the previous 0.15s did).
     hub.playHead = ctx.currentTime + 0.35;
@@ -455,7 +454,7 @@ async function pumpPcmStream(ctx, res, ac, seg) {
     }
     const node = scheduleHubBuffer(ctx, buf, hub.playHead, discontinuity);
     discontinuity = false;
-    // Track every scheduled buffer so a screen-lock suspension (#248) can
+    // Track every scheduled buffer so a screen-lock suspension can
     // re-anchor the un-played tail instead of losing it.
     hub.queue.push({ buf: buf, node: node, start: hub.playHead, dur: buf.duration });
     hub.playHead += buf.duration;
@@ -483,8 +482,8 @@ async function pumpPcmStream(ctx, res, ac, seg) {
 // The hub's Orpheus engine hard-caps each synthesis request at n_predict:4096
 // SNAC tokens ≈ 49.6 s of audio (local-llm-hub tts_engines.py); a longer reply
 // is silently truncated server-side on an HTTP-200 stream, so the verbatim
-// read-aloud of any non-trivial reply loses everything past ~49.6 s (issue
-// #254). Until the hub itself chunks (the primary fix — see the cross-linked
+// read-aloud of any non-trivial reply loses everything past ~49.6 s. Until the hub itself
+// chunks (the primary fix — see the cross-linked
 // local-llm-hub issue), the verbatim path defends in depth by splitting the
 // reply into segments that each synthesize well under the cap and streaming
 // them back-to-back on one Web Audio timeline. Budget: ~18 chars/s of speech
@@ -552,7 +551,7 @@ export async function speakHub(text, opts) {
  * AudioContext (iOS only lets audio sound when the context is unlocked inside a
  * user gesture), arms an AbortController, and flips the speaking state on so the
  * button shows ⏹ immediately. Returns a `{ ctx, ac }` handle for
- * `speakHubInto`. Split out (issue #210) so the "summarize & read" path can
+ * `speakHubInto`. Split out so the "summarize & read" path can
  * unlock audio in the gesture, then `await` the summary, then stream into this
  * context — keeping iOS autoplay happy across the network round-trip. Throws
  * when Web Audio is unavailable (the caller falls back to Web Speech).
@@ -568,7 +567,7 @@ export function prepareHub() {
   // is genuinely user-activated. iOS only "blesses" a context that produces
   // output within the gesture's activation window — the summarize path's real
   // audio arrives seconds later (after the LLM round-trip), too late to unlock
-  // on its own, so a context created-but-silent stays muted without this (#210).
+  // on its own, so a context created-but-silent stays muted without this.
   try {
     const silent = ctx.createBuffer(1, 1, ctx.sampleRate || 22050);
     const src = ctx.createBufferSource();
@@ -592,7 +591,7 @@ export function prepareHub() {
 export async function speakHubInto(handle, text, opts) {
   const { ctx, ac } = handle;
   // Split a long reply into sub-cap segments streamed back-to-back on the one
-  // timeline (issue #254). A short reply yields a single segment → one POST,
+  // timeline. A short reply yields a single segment → one POST,
   // identical to the previous behaviour.
   const segments = chunkForHub(text);
   if (!segments.length) { finishHubNaturally(); return true; }
@@ -613,7 +612,7 @@ export async function speakHubInto(handle, text, opts) {
       });
       if (!res.ok) {
         // .status lets a caller that imports api.js (e.g. terminal-readaloud.js)
-        // recognise a 401 and reopen the login overlay (issue #333) — this
+        // recognise a 401 and reopen the login overlay — this
         // module stays free of api.js imports itself (see authHeaders() above),
         // so it can only tag the Error, not call showLogin() directly.
         const err = new Error('hub tts HTTP ' + res.status);
@@ -645,7 +644,7 @@ export async function speakHubInto(handle, text, opts) {
 }
 
 /**
- * Ask the hub to summarize `text` for driving (issue #210): POST it to
+ * Ask the hub to summarize `text` for driving: POST it to
  * `/api/tts/summarize`, which routes to the hub's `claude-haiku-4-5`, and
  * resolve the short summary string. Rejects on any failure (hub unconfigured /
  * down / blocked POST / empty completion) so the caller can surface an error
@@ -663,7 +662,7 @@ export async function summarizeReply(text, opts) {
   });
   if (!res.ok) {
     // .status lets a caller that imports api.js recognise a 401 and reopen
-    // the login overlay (issue #333) — see the matching note in speakHubInto.
+    // the login overlay — see the matching note in speakHubInto.
     const err = new Error('hub summarize HTTP ' + res.status);
     err.status = res.status;
     throw err;

@@ -1,9 +1,9 @@
-/* The Chat pane's resume card (#1300).
+/* The Chat pane's resume card.
  *
  * Claude Code's /resume opens a long scrolling session picker in the
  * terminal, hard to read and drive on a phone. Chat offers the project's
  * conversations as a searchable card instead, in the AskUserQuestion card's
- * style (#1149, the same `.tr-ask-*` parts). It opens two ways:
+ * style (the same `.tr-ask-*` parts). It opens two ways:
  *
  *   - by itself, while the terminal shows the /resume picker (the plan
  *     picker's screen poll reports it, `resume_picker`), and closes when the
@@ -13,8 +13,8 @@
  *
  * A pick asks the server to resume that conversation (POST .../resume). The
  * server re-checks the list and the screen, leaves the picker, types
- * `/resume <id>`, and reads the result back off the terminal (the probe on
- * #1300 showed the id form resumes exactly that conversation). The list is
+ * `/resume <id>`, and reads the result back off the terminal (a probe showed the id form
+  * resumes exactly that conversation). The list is
  * titles and times only: no transcript text reaches the phone.
  *
  * session-transcript.js owns the pane and calls in through the exports; the

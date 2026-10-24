@@ -1,5 +1,5 @@
-/* The copy button on a rendered Markdown blockquote (#1326) or fenced code
-block (#1474).
+/* The copy button on a rendered Markdown blockquote or fenced code
+block.
 
 `markdown.js` emits the button with the quote's (or block's) plain text in
 `data-copy`,

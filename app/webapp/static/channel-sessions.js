@@ -1,13 +1,13 @@
-/* Telegram channel sessions — hidden from the lists, one line instead (#1384).
+/* Telegram channel sessions — hidden from the lists, one line instead.
  *
- * A Telegram channel session (label `telegram:<profile>`, #1366) is long-lived
+ * A Telegram channel session (label `telegram:<profile>`) is long-lived
  * and serves a household member through their own chat; nobody types into it
  * here, and its Stop is one mis-tap from cutting that chat off. With the
  * `hide_channel_sessions` setting on (the default) the Board's lanes and the
  * Coding tab's session list leave those sessions out, and the Coding tab shows
  * a single Telegram row in their place — "2 running" — that opens a read-only
  * list: status, last activity and context use per session, with no Stop and no
- * delete. The Board has no such row (#1436, decision 4 of #1432): Code and
+ * delete. The Board has no such row: Code and
  * Life cover it. Off, everything renders exactly as before.
  *
  * This is display filtering only. `state.sessions` and `state.board` still hold
@@ -16,7 +16,7 @@
  * kill path (`stopSession`) refuses a hidden channel session.
  *
  * The context figure is the existing per-session route the overlay's ring uses
- * (GET /api/claude-code/sessions/{sid}/context). Request cadence (#1402):
+ * (GET /api/claude-code/sessions/{sid}/context). Request cadence:
  *   - list closed, summary line showing: one read per running Claude session
  *     the moment the line first has it (and for any session that appears
  *     later), then every CONTEXT_SLOW_POLL_MS (60 s). That is the whole cost
@@ -28,7 +28,7 @@
  * highlighted.
  *
  * The popup stays read-only apart from Compact: a borderless icon-only button
- * at the right end of each running row (#1402) that sends /compact through the
+ * at the right end of each running row that sends /compact through the
  * same verified /input route as the terminal ⋮ menu (sessions.js::
  * sendSessionMessage) and reports the real outcome. There is still no Stop and
  * no delete here.
@@ -93,7 +93,7 @@ function contextAlertPct() {
   return worst;
 }
 
-// The Code tab's flat row (#1434): a send-glyph avatar, "Telegram", then
+// The Code tab's flat row: a send-glyph avatar, "Telegram", then
 // "N running" and an attention "context N%" chip only while a session is at
 // the alert threshold. The chip is rebuilt only when its text changes, so a
 // poll tick never replaces it for nothing.
@@ -180,7 +180,7 @@ function renderRows() {
       ? textEl(note.text, 'channel-list-status channel-list-note' + (note.kind ? ' is-' + note.kind : ''))
       : textEl(running ? 'Running' : 'Stopped',
         'channel-list-status ' + (running ? 'is-up' : 'is-down')));
-    // The newest real turn from the transcript (#1647), never the PTY's last
+    // The newest real turn from the transcript, never the PTY's last
     // paint: Claude Code's own footer refresh repaints every session at once.
     // An unreadable transcript is null here, which reads "—", not "just now".
     const last = fmtDuration(s.last_turn_at, { fromEpoch: true });
@@ -200,7 +200,7 @@ function renderRows() {
   });
 }
 
-// The row's one action (#1402): Compact, a borderless icon at the row's right
+// The row's one action: Compact, a borderless icon at the row's right
 // end after Running / Context. A sibling of the open button, never inside it —
 // a tap here acts and must not also open the look. The icon takes the attention
 // colour (data-high) at >= the alert threshold; there is no border and no text.
@@ -219,7 +219,7 @@ function compactButton(s, pct) {
 }
 
 // /compact through the verified /input route, the toast saying what actually
-// happened (the terminal ⋮ menu's Compact, #1218). A modal <dialog> paints over
+// happened (the terminal ⋮ menu's Compact). A modal <dialog> paints over
 // the toast, so the outcome's first clause also replaces the row's status word
 // for COMPACT_NOTE_MS — in the same cell, so the row never grows.
 function compactSession(s) {

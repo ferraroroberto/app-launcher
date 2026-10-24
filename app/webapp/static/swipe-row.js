@@ -1,4 +1,4 @@
-/* Swipe actions on a list row (#1503), iOS Mail style: drag a row sideways
+/* Swipe actions on a list row, iOS Mail style: drag a row sideways
  * to uncover one action on each edge. A partial swipe rests open on the
  * action's pane (a tap on it commits); a full swipe, or a fast flick, commits
  * the action as it is released. Life's skill rows are the one consumer:

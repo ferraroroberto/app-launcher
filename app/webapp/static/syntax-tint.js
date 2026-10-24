@@ -1,4 +1,4 @@
-/* Token colours for the Changed files panel's File view (#1749).
+/* Token colours for the Changed files panel's File view.
  *
  * A compact regex tokenizer, not a grammar: one alternation per language
  * family, five classes (keyword, string, number/literal, comment, name) that

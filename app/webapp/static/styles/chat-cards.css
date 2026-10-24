@@ -1,4 +1,4 @@
-/* Blockquotes (#1326) -- unscoped like the tables, since every renderer
+/* Blockquotes -- unscoped like the tables, since every renderer
    consumer emits them. An indent and a hairline left rule set the quote off
    from the reply; `white-space: normal` because the renderer already turned
    each kept line break into a `<br>`. The copy button is the chat card's
@@ -19,12 +19,12 @@
 .md-quote-body p:last-child { margin-bottom: 0; }
 .md-quote-copy { --icon-btn-box: 32px; }
 .tr-trunc { font-size: var(--font-body-sm); color: var(--muted); }
-/* "Show the rest" (#1745): the vendored ghost button at the 44px floor, sized
+/* "Show the rest": the vendored ghost button at the 44px floor, sized
    to its words rather than the row. The failure line sits under it. */
 .tr-trunc-more { width: auto; min-height: 44px; padding: 0 16px; }
 .tr-trunc-status { margin-top: 4px; color: var(--danger-text); }
 .tr-trunc-status:empty { display: none; }
-/* A run of folded entries is one quiet step line (#1476, Step 3/6 of #1472):
+/* A run of folded entries is one quiet step line:
    no card, a flat 44px row on the canvas -- chevron, a plain-words label in
    body-sm muted (verbs muted, what they acted on in fg), then the parts an
    ellipsis must never cut: the edits' +N -M, "N failed", the duration. */
@@ -56,7 +56,7 @@
 }
 .tr-step[open] > .tr-step-line .tr-step-chevron { transform: rotate(90deg); }
 /* The only part that gives way: a label wider than the phone ellipses, and
-   its full width is never the row's minimum (#1292's sideways scroll). */
+   its full width is never the row's minimum (it would scroll sideways). */
 .tr-step-label {
   flex: 1 1 auto;
   min-width: 0;
@@ -65,11 +65,11 @@
   text-overflow: ellipsis;
 }
 .tr-step-label b { color: var(--fg); font-weight: 600; }
-/* The newest step in plain words leads (#1532), in fg; the counts trail it,
+/* The newest step in plain words leads, in fg; the counts trail it,
    all muted, as secondary text the ellipsis takes first. */
 .tr-step-now { color: var(--fg); }
 .tr-step-counts b { color: inherit; font-weight: inherit; }
-/* The step in progress counts up in the duration's place (#1532). */
+/* The step in progress counts up in the duration's place. */
 .tr-step-live {
   flex: none;
   display: inline-flex;
@@ -141,9 +141,9 @@
 }
 .tr-item-body { padding-bottom: 12px; }
 /* Open, the card under the row names the command or the file in full
-   (#1532), so the row's one-line hint would only say it twice. */
+, so the row's one-line hint would only say it twice. */
 .tr-item[open] > summary > .tr-item-hint { visibility: hidden; }
-/* A failed tool call (#1020). --danger is a state color, and a call that
+/* A failed tool call. --danger is a state color, and a call that
    errored is state — but it stays a row-level mark, never a banner: the
    glyph turns red and one small tinted chip sits beside the name, which is
    flex:none so it survives the hint's ellipsis at 390px. */
@@ -167,7 +167,7 @@
   font-size: var(--font-body-sm);
   line-height: 1.4;
 }
-/* AskUserQuestion card (#1149): the agent asking, so it sits in the list
+/* AskUserQuestion card: the agent asking, so it sits in the list
    like a turn (same card surface and 14px inset), never folded into a run.
    Options are list rows on a hairline (design.md list-row), each a button:
    number, bold label, muted description, a check once picked. Static cards
@@ -277,14 +277,14 @@
   font: inherit;
   font-size: var(--font-body);
 }
-/* An Other field's dictation mic (#1450): the vendored icon-button at the 44px
+/* An Other field's dictation mic: the vendored icon-button at the 44px
    floor beside the field, which keeps the rest of the row. */
 .tr-ask-mic { --icon-btn-box: var(--hit-min); flex: none; }
 /* Row-sized: .button-tint stretches to width:100% for its full-width uses,
    which squeezed the text field beside it to a sliver. */
 .tr-ask-send { flex: none; width: auto; min-height: 44px; padding: 0 16px; }
 .tr-ask-submit { width: 100%; margin-top: 12px; }
-/* ExitPlanMode card (#1151): the question card's frame around the plan,
+/* ExitPlanMode card: the question card's frame around the plan,
    which is markdown like a reply (the shared `.tr-md` rules style it). */
 .tr-plan-body {
   margin-top: 8px;
@@ -293,14 +293,14 @@
   overflow-wrap: anywhere;
 }
 .tr-plan > .tr-trunc { margin-top: 8px; }
-/* The plan panel (#1151): the plan card's frame below the transcript list,
+/* The plan panel: the plan card's frame below the transcript list,
    at the list's own 12px rhythm, while the terminal shows the picker. The
    feedback option is a list row like the others, its text field under it. */
 .tr-plan-live { margin-top: 12px; }
 .tr-plan-live[hidden] { display: none; }
 .tr-plan-live-card .tr-pre.tr-plan-body { margin-top: 8px; }
 .tr-plan-feedback-row > .tr-ask-opt { cursor: default; }
-/* The resume card (#1300, chat-resume.js): the AskUserQuestion card's parts,
+/* The resume card (chat-resume.js): the AskUserQuestion card's parts,
    a search field, and a list that scrolls inside the card past a screenful
    so a project with many sessions never pushes the composer away. */
 .tr-resume-live { margin-top: 12px; }
@@ -316,7 +316,7 @@
 .tr-resume-list { max-height: 50vh; overflow-y: auto; }
 .tr-resume-opt[hidden] { display: none; }
 /* The transcript's preformatted surface for a tool result (`.tr-pre`). A
-   chat fence shared this rule until #1474 gave it the `.md-block` frame
+   chat fence has its own `.md-block` frame
    (above); it keeps the wrap-not-scroll choice below.
    Wrap, not scroll, and deliberately: at 12px on a 390px phone
    about 40 monospace characters fit, so almost every real code line would be
@@ -331,7 +331,7 @@
 .tr-pre {
   margin: 0 0 8px;
   padding: 8px 10px;
-  /* The code-listing frame (#1624, COMP-17), as `.md-block` and `.chg-diff`
+  /* The code-listing frame (COMP-17), as `.md-block` and `.chg-diff`
      have it: 13px mono on the card surface and a hairline, never
      `--card-off`, which is true black inside a dark card. */
   background: var(--card);
@@ -348,7 +348,7 @@
    vertically. A chat fence does not: the whole turn is already collapsible,
    and a nested scroller inside a scrolling transcript is a phone trap. */
 .tr-pre { max-height: 40vh; overflow-y: auto; }
-/* An opened step (#1532): the code-listing frame (`.md-block`'s card surface
+/* An opened step: the code-listing frame (`.md-block`'s card surface
    on a hairline, never `--card-off`, the dark black hole), a small caption
    header -- the tool, the file as "folder / name", a recorded exit status --
    then the input and the output as two blocks split by a quiet hairline.
@@ -406,12 +406,12 @@
 .sh-str { color: var(--success-text); }
 .sh-var { color: var(--attention-text); }
 .sh-op { color: var(--muted); font-weight: 600; }
-/* Transcript images (#1265): small lazy thumbnails, a tap opens the full
+/* Transcript images: small lazy thumbnails, a tap opens the full
    size in the image overlay. The frame holds its size while the bytes load,
    so the list doesn't jump. */
 .tr-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 /* In the prompt bubble the row sits beside the text, not inside it, so it
-   takes the text's own inset, left and bottom (#1292), as .tr-trunc does; in
+   takes the text's own inset, left and bottom, as .tr-trunc does; in
    a reply it simply follows the text. */
 .tr-bubble > .tr-thumbs { margin: 0; padding: 0 14px 10px; }
 .tr-reply > .tr-thumbs { margin: 8px 0 0; }
@@ -428,7 +428,7 @@
 .tr-thumb:disabled { cursor: default; }
 .tr-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .tr-thumb-failed { border-style: dashed; }
-/* Files the agent sent (#1530): the caption reads as reply text, then a card
+/* Files the agent sent: the caption reads as reply text, then a card
    per file in the step card's frame -- a caption-size header (name, size,
    Open) over the content: an image or a PDF at the card's width, or a text
    file's opening lines. Two sizes only: the body's and the caption's. */

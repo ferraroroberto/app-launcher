@@ -1,4 +1,4 @@
-/* One list row on the vendored action-row (#1128, _vendored/action-row/).
+/* One list row on the vendored action-row (_vendored/action-row/).
  *
  * The row's text column is its primary action: one `.action-row-main`
  * button the full height of the row. Beside it sit at most a leading
@@ -19,13 +19,13 @@ import { attachSwipe } from './swipe-row.js';
 //   label      -> the main button's accessible name (what a tap does)
 //   onMain     -> the primary action; `disabled` + `hint` grey it out
 //   favorite   -> { on, onToggle } adds the leading star
-//   avatar     -> an avatar element (glance.js avatar(), #1437) leading the
+//   avatar     -> an avatar element (glance.js avatar()) leading the
 //                 text column inside the main button, so the tap target
 //                 stays the whole row
 //   kebabClass / kebabLabel -> the trailing kebab's hook class and name;
 //                 no kebabLabel, no kebab
 //   density    -> 'one-line': the meta runs after the title on one line, at
-//                 --row-md (the Board's question rows, #1501); 'small': the
+//                 --row-md (the Board's question rows); 'small': the
 //                 same at --row-sm (the plan lane)
 //   trailing   -> an element after the main button and before any kebab: the
 //                 row's one other trailing item (a chevron, an Answer button)
@@ -33,7 +33,7 @@ import { attachSwipe } from './swipe-row.js';
 //                 reports a fact and does nothing on tap (onMain unused)
 //   swipe      -> { leading, trailing }, each { label, glyph, tone, onCommit,
 //                 disabled, reason }: swipe actions on a touch screen
-//                 (swipe-row.js, #1503). The row's content moves into one
+//                 (swipe-row.js). The row's content moves into one
 //                 sliding surface; the actions must also be in the kebab,
 //                 the route for a mouse and for assistive tech
 // Each of the last four is optional: a row built without them is
@@ -81,7 +81,7 @@ export function actionRow(opts) {
   title.title = opts.title;
   column.appendChild(title);
   // The context line: the plain meta text, then any exception chips
-  // (glance.js chip(), #1434) after it, so a chip never ellipsizes away.
+  // (glance.js chip()) after it, so a chip never ellipsizes away.
   let meta = null;
   const chips = opts.chips || [];
   if (opts.meta || chips.length) {
@@ -144,7 +144,7 @@ export function actionRow(opts) {
 }
 
 // Where an action-row's kebab menu opens (the vendored row-menu's
-// `placement`, #1565): below the row, 2px off it, its right edge 4px in from
+// `placement`): below the row, 2px off it, its right edge 4px in from
 // the row's, which is the row's own right padding, so the menu lines up
 // under the kebab.
 export const ACTION_ROW_MENU = {

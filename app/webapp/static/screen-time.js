@@ -1,4 +1,4 @@
-/* Screen time (#1678, step 1/2): how long the launcher was on screen, like
+/* Screen time (step 1/2): how long the launcher was on screen, like
  * the phone's Screen Time, in Settings › Activity.
  *
  * Nothing new is recorded. The vendored usage log already stores each

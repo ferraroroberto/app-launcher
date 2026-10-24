@@ -1,4 +1,4 @@
-/* The page header's CPU reading (#1522): "is the box loaded?" at a glance
+/* The page header's CPU reading: "is the box loaded?" at a glance
  * on every tab, and "by what?" one tap away.
  *
  * Every pane's home-head carries a .cpu-reading button left of the theme

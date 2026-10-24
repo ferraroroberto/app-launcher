@@ -1,4 +1,4 @@
-/* Screen view (#1520): the PC's desktop, live, behind the terminal's gate.
+/* Screen view: the PC's desktop, live, behind the terminal's gate.
  *
  * openScreen() is the one way in. On a phone it opens #screenView full
  * screen; on a desktop browser (fine pointer) it pops the same view out into
@@ -17,7 +17,7 @@
  * two pointers zoom around their midpoint, one pans while zoomed, the wheel
  * zooms on a desktop.
  *
- * Control (#1521). The View / Control switch picks what touches do. View
+ * Control. The View / Control switch picks what touches do. View
  * (the default on every open, so a stray tap never clicks) is the above.
  * Control sends input messages on the same socket: tap = click, a second
  * tap soon after = double click, long-press = right click, press-and-drag =
@@ -25,14 +25,14 @@
  * pans) locally. The keyboard toggle raises the phone keyboard through a
  * hidden input and shows the keys bar (Esc, Tab, arrows, Backspace, Del,
  * Enter, and Ctrl / Alt / Shift / Win, sticky for one key; a second page
- * holds F1-F12 and Home / End / PgUp / PgDn, #1602). A hardware keyboard's
- * non-text keys and Ctrl / Alt / Cmd shortcuts arrive on keydown (#1723). sendInput() is
+ * holds F1-F12 and Home / End / PgUp / PgDn). A hardware keyboard's
+ * non-text keys and Ctrl / Alt / Cmd shortcuts arrive on keydown. sendInput() is
  * the one way out, and it sends nothing in View mode or while the picture
  * is not live: input aimed at a stale frame would land somewhere else.
  * Coordinates are 0-1 within the frame (screen-gestures.js maps them); the
  * server turns them into PC pixels.
  *
- * Cursor (#1598). The picture never contains the PC's mouse cursor, so the
+ * Cursor. The picture never contains the PC's mouse cursor, so the
  * server sends it as its own `cursor` messages (0-1 in the frame, a shape
  * name, visible or not) whenever it moves, frame or no frame. placeCursor()
  * draws it over the picture with stagePoint(), outside the zoom transform,
@@ -40,7 +40,7 @@
  * off the picture, off the stage, while the picture is not live, and when
  * the PC hides it.
  *
- * Trackpad (#1599). Control has two styles, picked by the Touch / Trackpad
+ * Trackpad. Control has two styles, picked by the Touch / Trackpad
  * switch beside it: Touch is the above, Trackpad works like a laptop's. One
  * finger moves the cursor (view.pad, 0-1 in the frame) by how far it
  * travels, wherever it lands, and a move never clicks; a tap clicks at the
@@ -53,7 +53,7 @@
  * server's cursor, except while the finger is moving it and its messages
  * lag behind: then the locally moved one, which is where it is going.
  *
- * Reconnect (#1603). A dropped socket is retried on its own, after 1 s, 2 s,
+ * Reconnect. A dropped socket is retried on its own, after 1 s, 2 s,
  * 4 s, 8 s and 15 s steps (screen-reconnect.js), with "Reconnecting…" over
  * the last frame; a drawn frame resets the count, and a spent budget falls
  * back to the Retry card. A refusal (4401, 4403, 4404) is never retried, and
@@ -62,7 +62,7 @@
  * tunnel refusal apply every time. The monitor picked is remembered per
  * device and reopened by its rectangle, then its id, then the primary.
  *
- * Clipboard (#1719). Two keys on the keys bar send the phone's clipboard text
+ * Clipboard. Two keys on the keys bar send the phone's clipboard text
  * to the PC: Paste to PC sets the PC's clipboard, Paste + Ctrl+V sets it and
  * then presses Ctrl+V. The text is read inside the tap (iOS asks for its own
  * Paste confirmation there) and goes out as one `clipboard_set` message
@@ -72,7 +72,7 @@
  * message (ok, or why not), shown as a short line over the picture. Nothing
  * here keeps, logs or counts what was copied.
  *
- * Quality (#1721). A button in the tools row opens a small sheet with three
+ * Quality. A button in the tools row opens a small sheet with three
  * presets (Sharp, Balanced, Data saver) and a readout switch. The preset rides
  * the connect query (`preset=`) and is remembered per device, so a pick
  * reconnects through connect() like the first open; what each preset means is
@@ -83,7 +83,7 @@
  * control message (not input, so it works in View too); with it off the server
  * sends no `stats` at all. The ack protocol is untouched.
  *
- * Loupe (#1725). In Touch control the finger covers the spot it is about to
+ * Loupe. In Touch control the finger covers the spot it is about to
  * click, so while one finger is down (after 150 ms) and while it drags, a round
  * loupe above it shows the local frame under it at 2.5x. It is drawn from the
  * frame already in hand (no network), sits in its own overlay like the cursor,
@@ -113,7 +113,7 @@ const MAX_ZOOM = 5;
 const MAX_FRAME_WIDTH = 1920;
 const POPUP_NAME = 'launcher-screen';
 const POPUP_FEATURES = 'popup,width=1280,height=760';
-// The last Control style used on this device (#1599).
+// The last Control style used on this device.
 const CONTROL_KEY = 'launcher.screenControlMode';
 
 const view = {
@@ -135,7 +135,7 @@ const view = {
   cursor: null,        // the last cursor message: {x, y, shape, visible}
   pad: null,           // the trackpad's cursor, {x, y} 0-1 in the frame
   padSentAt: 0,        // when input that moves the PC's cursor last went out
-  preset: 'balanced',  // the quality preset on the connect query (#1721)
+  preset: 'balanced',  // the quality preset on the connect query
   readoutOn: false,    // the readout overlay is up (and the server sends stats)
   readout: null,       // the client's Readout while it is up
   serverStats: null,   // the last `stats` message from the server
@@ -220,7 +220,7 @@ function showRefusal(message, glyph) {
   setState('error', { message: message, glyph: glyph || 'lock', retry: start });
 }
 
-// The monitor last picked on this device (#1603), or null.
+// The monitor last picked on this device, or null.
 function readStoredMonitor() {
   try { return parseMonitorChoice(localStorage.getItem(MONITOR_KEY)); } catch (_) { return null; }
 }
@@ -788,7 +788,7 @@ function controlDown(pointers, e, pt) {
 // A second finger lands: whatever one finger was doing is over, and two
 // fingers pinch, scroll or (lifted quickly) right-click. A third finger
 // ends that too and only a quick tap of all three does anything: raise the
-// keyboard (#1600). Both Control styles share this.
+// keyboard. Both Control styles share this.
 function startMultiFinger(pointers) {
   cancelGesture();
   const t0 = Date.now();
@@ -933,7 +933,7 @@ function movePad(from, to) {
 }
 
 // Trackpad gestures, after the Windows remote desktop app's mouse-pointer
-// mode (#1599). Touching never clicks by itself: a touch that moves only
+// mode. Touching never clicks by itself: a touch that moves only
 // moves the cursor, however long it rested first. A clean tap clicks, two
 // quick taps double-click, a long-press lifted without moving right-clicks,
 // as does a two-finger tap, and a double-tap held then moved drags with the
@@ -1132,7 +1132,7 @@ function renderMods() {
   });
 }
 
-// Which page of keys is up (#1602): 'main', the original keys, or 'fn', the
+// Which page of keys is up: 'main', the original keys, or 'fn', the
 // F-keys and the navigation cluster. view.mods is not touched, so a modifier
 // tapped on one page is still held on the other.
 function setKeysPage(page) {
@@ -1262,7 +1262,7 @@ function wireKeyboard() {
 
 // A hardware keyboard (an iPad's, or the pop-out window's) presses keys the
 // hidden input's beforeinput never sees: arrows, Esc, Tab, F-keys, Ctrl
-// shortcuts (#1723). keydown carries them, where screen-gestures.js's
+// shortcuts. keydown carries them, where screen-gestures.js's
 // hardwareKey decides what each one is; a plain printable character is left
 // to beforeinput so nothing goes twice, and so is a phone IME's composition
 // (keyCode 229). Only a key that was sent is cancelled, so a View-mode Esc
@@ -1319,7 +1319,7 @@ function fitToKeyboard() {
   dialog.style.height = vv.height + 'px';
 }
 
-// ----------------------------------------------------------- clipboard (#1719)
+// ----------------------------------------------------------- clipboard
 
 // The most text one transfer carries, in UTF-8 bytes: the server's own cap
 // (src/desktop_clipboard.py MAX_CLIPBOARD_BYTES), checked here first so a
@@ -1445,7 +1445,7 @@ function wirePasteSheet() {
   });
 }
 
-// ------------------------------------------------------- quality (#1721)
+// ------------------------------------------------------- quality
 
 const READOUT_REFRESH_MS = 500;
 let readoutTimer = null;
@@ -1723,7 +1723,7 @@ function wireStage(stage) {
   stage.addEventListener('contextmenu', function (e) { e.preventDefault(); });
 }
 
-// ------------------------------------------------- landscape handle (#1601)
+// ------------------------------------------------- landscape handle
 
 // A phone held sideways hides the bar and the tools row behind the handle
 // (styles/apps.css). The CSS owns the layout, so this only tracks whether the bars

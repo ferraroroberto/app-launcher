@@ -1,5 +1,5 @@
-/* Launch defaults (Settings › Launch defaults, #1435; the Code tab's
- * Options card until then): one sheet per agent — a Claude Code subsection (model + effort + verbose/debug + flags preview),
+/* Launch defaults (Settings › Launch defaults): one sheet per agent — a Claude Code subsection
+ * (model + effort + verbose/debug + flags preview),
  * an Antigravity subsection (skip-permissions + sandbox toggles), a
  * GitHub Copilot subsection (model picker + skip-permissions toggle), and a
  * Pi subsection (model picker + effort select + project-trust segmented control — Opus and
@@ -28,8 +28,8 @@ let piModelCombo = null;
 let codingModelSelectionSequence = 0;
 let codingModelSaveQueue = Promise.resolve();
 
-// Ordered persistence for the coding-model picker (#857). Quota rows no
-// longer follow this selection (#860) — both agents are always shown — so
+// Ordered persistence for the coding-model picker. Quota rows no
+// longer follow this selection — both agents are always shown — so
 // this is now purely about the selector settling on server truth.
 async function selectCodingModel(patch) {
   const sequence = ++codingModelSelectionSequence;
@@ -136,14 +136,14 @@ export async function fetchConfig(shouldApply) {
   return true;
 }
 
-// Settings fields save as they change (#1435), and every save re-reads the
+// Settings fields save as they change, and every save re-reads the
 // config. Leave the field being typed in alone: the user has moved on to it,
 // and the stored value would overwrite what they typed so far.
 function setFieldValue(el, value) {
   if (el && el !== document.activeElement) el.value = value;
 }
 
-// "Usage shows" (#1451): which providers the usage meter draws. Saves at once;
+// "Usage shows": which providers the usage meter draws. Saves at once;
 // the meter repaints from the server's value, so another device's change
 // shows here too.
 export const USAGE_SHOWS_LABELS = { claude: 'Claude', codex: 'Codex', both: 'Both', none: 'None' };
@@ -162,7 +162,7 @@ function renderUsageShows(body) {
   setUsageShows(current);
 }
 
-// Settings › Chief's auto-compact (#1298): 0 is off, shown as the switch off and the percent
+// Settings › Chief's auto-compact: 0 is off, shown as the switch off and the percent
 // field disabled at the default, since 0 keeps no earlier percent.
 const _DEFAULT_CHIEF_AUTO_COMPACT = 30;
 
@@ -189,7 +189,7 @@ export function renderClaudeOptions() {
 
 // One host, one array of items, the currently-active value, a label
 // renderer, and a select callback — every permission/trust choice below
-// is this same shape (issue #520), on the vendored segmented control (#1586).
+// is this same shape, on the vendored segmented control.
 // `valueFn` defaults to identity for plain-string items.
 function renderSegmented(host, items, currentValue, labelFn, onSelect, valueFn) {
   host.innerHTML = '';
@@ -208,7 +208,7 @@ function renderSegmented(host, items, currentValue, labelFn, onSelect, valueFn) 
   });
 }
 
-// Effort / reasoning is a select-native, not pills (#1133): the lists run
+// Effort / reasoning is a select-native, not pills: the lists run
 // three to seven options and "Extra high" won't fit a segment, past segmented's
 // five-option, one-line contract. onchange is assigned, not added, because
 // every config readback re-renders the options into the same element.
@@ -245,7 +245,7 @@ function renderClaudeSubsection() {
   if (codingModelCombo && state.config.coding_model_choice) {
     codingModelCombo.setValue(state.config.coding_model_choice);
   }
-  // The Effort row follows the Model combo above it (#1711): it shows and
+  // The Effort row follows the Model combo above it: it shows and
   // edits the selected model's override. The empty first choice clears it, so
   // the model runs at its catalog default, named in the label. "Don't send"
   // (off) goes last: it omits --effort rather than naming a level.
@@ -312,7 +312,7 @@ function renderAntigravitySubsection() {
 function renderCopilotSubsection() {
   const c = state.config && state.config.copilot;
   if (!c) return;
-  // No model picker (issue #1017): Copilot resolves --model against the
+  // No model picker: Copilot resolves --model against the
   // account at launch and silently falls back, so a launcher-side choice
   // could only ever assert a model the session might not be running.
   // `/model` in-session owns it, as it does for the Antigravity CLI.
@@ -330,8 +330,8 @@ function renderPiSubsection() {
     piModelCombo.setOptions(modelOptions(p.models_available));
     piModelCombo.setValue(p.model);
   }
-  // Effort — mapped to `--thinking`. Like Claude's (#1711) it follows the Model
-  // combo above it and edits that model's override (#1713); the empty first
+  // Effort — mapped to `--thinking`. Like Claude's it follows the Model
+  // combo above it and edits that model's override; the empty first
   // choice clears it, so the model runs at its catalog default, named in the
   // label. `off` is a real `--thinking` level here, so it keeps its place.
   renderEffortSelect(
@@ -408,7 +408,7 @@ async function saveCodingModelPatch(patch, sequence) {
 
 // Resolves true on a saved-and-refreshed patch, false on a failed one (the
 // toast already fired) — callers that only self-correct on failure (e.g.
-// apps-coding.js's agent-visibility switches, issue #732) branch on this.
+// apps-coding.js's agent-visibility switches) branch on this.
 export async function patchConfig(patch) {
   try {
     await postConfigPatch(patch);
@@ -420,7 +420,7 @@ export async function patchConfig(patch) {
   }
 }
 
-// role="switch" buttons (issue #355): click reads the current aria-checked,
+// role="switch" buttons: click reads the current aria-checked,
 // flips it, applies it optimistically, then patchConfig() round-trips
 // through GET /api/config, which re-renders from server truth anyway.
 function wireBoolSwitch(el, patchKey) {
@@ -453,5 +453,5 @@ export function wireClaudeOptions() {
   // Pi's effort select and trust control wire their own handlers in
   // renderPiSubsection(), so there are no static listeners for those controls.
   // The Detached and Resume switches wire themselves: they are part of the
-  // launch toolbar component (launch-toolbar.js, #1434).
+  // launch toolbar component (launch-toolbar.js).
 }

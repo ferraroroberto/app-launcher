@@ -1,7 +1,7 @@
-/* One edit's diff (#1349), drawn from the server's hunks — Chat's per-step
+/* One edit's diff, drawn from the server's hunks — Chat's per-step
  * diffs, and the session's Changed files panel after them.
  *
- * Same look as the Show changes viewer (#977, `.chg-diff` + the `--diff-*`
+ * Same look as the Show changes viewer (`.chg-diff` + the `--diff-*`
  * tokens), plus a line-number gutter where the harness recorded real
  * numbers (`diff.numbered`). A diff worked out from an edit's own old/new
  * text has none, and gets no gutter rather than made-up numbers; its hunks

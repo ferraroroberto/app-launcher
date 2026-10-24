@@ -1,21 +1,21 @@
-// The composer's attach queue (#1354): the DOM-free half of `attachFiles`,
+// The composer's attach queue: the DOM-free half of `attachFiles`,
 // kept apart so it runs under plain Node (tests/js/attach_batch.test.mjs).
 //
 // One queue per composer. Files upload strictly one after another — the
-// append reads then writes the textarea, so they never overlap (#41/#448) —
+// append reads then writes the textarea, so they never overlap —
 // and a pick made while a batch is running is queued behind it, never
 // interleaved: the append order is the pick order. Progress is reported as
 // "N of M" over everything queued since the queue last went idle, so a second
 // pick just grows M. A failure is recorded with its reason and the queue moves
 // on; the summary is one message for the whole run, not one per file.
 //
-// cancel() (#1413) ends a run at once: the upload in flight is aborted through
+// cancel() ends a run at once: the upload in flight is aborted through
 // the AbortSignal it was handed, the rest of the queue is dropped, and the run
 // settles there and then, so the button is ready again on the same tap. A file
 // that was in flight never appends its path, even if its answer was already on
 // the way: the run it belonged to is over.
 //
-// A pick carries a kind (#1430): none for an ordinary attachment, 'large' for
+// A pick carries a kind: none for an ordinary attachment, 'large' for
 // a file put on the machine and never read into the context. Both kinds share
 // the one queue, so the append order stays the pick order; only an ordinary
 // attachment is held to MAX_UPLOAD_BYTES, since a large file's limit is a
@@ -41,7 +41,7 @@ export function oversizeReason(file, limit) {
   return file && file.size > max ? formatMB(file.size) + ', limit ' + formatMB(max) : '';
 }
 
-// The line a large file (#1430) appends to the message: what it is, that the
+// The line a large file appends to the message: what it is, that the
 // agent must not read it, and on a line of its own the path to use instead.
 export function largeFileLine(path, bytes) {
   return 'Large file (' + formatMB(bytes) + ') stored on this machine. Do not read it ' +

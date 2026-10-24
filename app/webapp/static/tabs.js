@@ -1,9 +1,9 @@
-/* Five-tab switcher: Board | Code | Life | Apps | Jobs (#1131: six
+/* Five-tab switcher: Board | Code | Life | Apps | Jobs (six
  * exceeded the five a bottom bar holds, forcing 11px labels). Settings is
  * no tab: every page header's gear opens its pane, and choosing any tab
  * leaves it.
  *
- * Wraps the vendored _vendored/nav/nav-tabs.js (issue #355) — that file owns
+ * Wraps the vendored _vendored/nav/nav-tabs.js — that file owns
  * tab/pane discovery, ARIA + roving tabindex, the standalone-PWA fixed-inset
  * .app scroller reset, and the visualViewport pin (browser-tab toolbar only;
  * never a measured translate in standalone). This module only keeps
@@ -12,8 +12,7 @@
  *
  * The Coding tab's element ids keep the historical `claude` prefix
  * (tabClaude / paneClaude / state.tab='claude') — only the visible
- * label changed (issue #45). Jobs added by issue #47; Board by #300;
- * Settings by #383. */
+ * label changed. Jobs, Board and Settings were added later. */
 
 import { state } from './state.js';
 import { revealSettingsField } from './settings-sheets.js';
@@ -21,7 +20,7 @@ import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
 let nav = null;
 
-// Every switch, Settings included, as a `launcher:tab` event (#1135): the
+// Every switch, Settings included, as a `launcher:tab` event: the
 // wide layout's docked session view closes when the Code tab is left, and
 // listening beats session-overlay.js and this file importing each other.
 function announceTab(tab) {
@@ -32,14 +31,13 @@ export function setTab(tab) {
   if (nav) nav.setTab(tab);
 }
 
-// A count badge on a tab (#1436, the vendored nav's setBadge,
-// project-scaffolding#338): 0 removes it, and `noun` is spoken in the tab's
+// A count badge on a tab (the vendored nav's setBadge): 0 removes it, and `noun` is spoken in the tab's
 // accessible name ("Board, 2 waiting").
 export function setTabBadge(tab, count, noun) {
   if (nav) nav.setBadge(tab, count, noun);
 }
 
-// Show the Settings pane over the current tab (#1131). The vendored nav
+// Show the Settings pane over the current tab. The vendored nav
 // only manages its own tabs' panes, so this hides them here and leaves no
 // tab selected; the nav's next setTab (any tab tap) shows that tab's pane
 // again, and onChange below hides this one.
@@ -62,7 +60,7 @@ export function openSettings() {
   window.scrollTo(0, 0);
 }
 
-// Settings, opened at one field or sheet (#1238 J-09, #1435): an empty
+// Settings, opened at one field or sheet: an empty
 // state whose fix is a Settings folder ("No projects found", "No life-os
 // skills") lands on it, inside the sheet that holds it; the Board's chief
 // gear opens the Chief sheet by its id.
@@ -78,7 +76,7 @@ export function wireTabs() {
     // vendored controller selects the first DOM tab, coupling presentation
     // order to startup behavior.
     defaultTab: 'claude',
-    // The chosen tab survives a reload and a PWA relaunch (#1131, design.md).
+    // The chosen tab survives a reload and a PWA relaunch (design.md).
     // The vendored controller wraps every storage access in try/catch and
     // ignores an unknown stored name, so blocked storage means the default
     // above. Settings is no tab and never writes it (openSettings bypasses

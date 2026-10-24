@@ -1,17 +1,16 @@
-/* Usage meter (#1433, step 1/7 of #1432): one component and one sheet. It
- * replaced the coloured quota sentences (#326/#847/#860).
+/* Usage meter: one component and one sheet. It
+ * replaced the coloured quota sentences.
  *
  *   The Code tab's Usage card: a "Claude Code" row, then 5h and Week rows
  *   (label, 6px bar, %, reset time) with a 2px pace tick on the week bar at
- *   the week-elapsed %, then a Codex row. (The Board's compact one-line size
- *   left the Board in #1436: usage stays on Code.)
+ *   the week-elapsed %, then a Codex row. (Usage stays on Code.)
  *
  * Tapping it opens the Usage sheet: exact resets, week elapsed, Codex state
  * and the context filter's savings.
  *
  * It is fed from GET /api/rate-limits (sessions.js polls it on every tab).
  *
- * Colour follows pace, not raw percent (#1432 round 2): a bar is accent
+ * Colour follows pace, not raw percent: a bar is accent
  * while its window is on or under pace, attention when the week is ahead of
  * the week elapsed, and danger at 90% or more in either window. The 5h
  * window has no pace of its own, so it is accent or danger. A stale reading
@@ -39,7 +38,7 @@ const STATE_COPY = {
   error: 'unavailable',
 };
 
-// The "Usage shows" setting (#1451): which providers the meter draws.
+// The "Usage shows" setting: which providers the meter draws.
 // "none" draws no meter at all (the Code tab's Usage card hides). A value
 // the server does not know reads as the default.
 export const USAGE_SHOWS_DEFAULT = 'both';
@@ -252,7 +251,7 @@ function renderFull(claude, codex, show) {
   const btn = meterButton('full', r, [show.claude && claude, show.codex && codex].filter(Boolean));
 
   // The harness heading names a line only when there is more than one to tell
-  // apart (#1510); alone, the card title and the button's name already say
+  // apart; alone, the card title and the button's name already say
   // whose it is. A chip (stale, ...) has no other home, so it keeps a row of
   // its own, ahead of the windows, with no heading beside it.
   const both = show.claude && show.codex;
@@ -299,7 +298,7 @@ function place(container, node) {
   container.replaceChildren(node);
 }
 
-// The Usage card's summary (#1434): the pace in its tone, from Claude Code's
+// The Usage card's summary: the pace in its tone, from Claude Code's
 // reading (the one that gates a launch). Nothing measured says nothing: the
 // meter below already carries the state word.
 const PACE_WORDS = {
@@ -323,7 +322,7 @@ function renderCardMeta(reading) {
 }
 
 // The meter from the poll of /api/rate-limits (sessions.js), drawn for the
-// providers "Usage shows" (#1451) names. With none, the Code tab's Usage card
+// providers "Usage shows" names. With none, the Code tab's Usage card
 // is hidden.
 export function renderUsage(lines) {
   lastLines = Array.isArray(lines) ? lines : [];
@@ -347,7 +346,7 @@ export function setUsageShows(value) {
   const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
   if (next === usageShows) return;
   usageShows = next;
-  // The pre-paint choice (index.html, #1657): the next load draws this row
+  // The pre-paint choice (index.html): the next load draws this row
   // set from its first paint, and the placeholder follows it until a poll lands.
   document.documentElement.dataset.usageShows = next;
   try { localStorage.setItem(USAGE_SHOWS_KEY, next); } catch (_) { /* storage blocked */ }
@@ -442,8 +441,8 @@ function closeUsageSheet() {
   if (dialog && dialog.open) dialog.close();
 }
 
-// The meter opens the sheet, and so does the rest of the Usage card (#1434:
-// its header and footer are part of the one tap). The listener sits on the
+// The meter opens the sheet, and so does the rest of the Usage card (its header and footer are
+// part of the one tap). The listener sits on the
 // stable card: the button inside is rebuilt whenever its reading changes.
 export function wireUsageMeter() {
   const card = document.getElementById('codingUsageCard');

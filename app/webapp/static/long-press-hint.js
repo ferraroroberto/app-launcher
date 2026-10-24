@@ -1,4 +1,4 @@
-// Long-press hint (#1238 J-05): the phone's stand-in for a hover tooltip.
+// Long-press hint: the phone's stand-in for a hover tooltip.
 //
 // A few controls stay icon-only by decision, and their glyphs aren't
 // conventional (the context ring, the Terminal / Chat toggle, read-aloud,

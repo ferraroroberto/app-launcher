@@ -1,4 +1,4 @@
-/* Did the agent take a message Chat just sent? (#1744)
+/* Did the agent take a message Chat just sent?
  *
  * `/input` answers `submit_state: 'unconfirmed'` for a short payload or a bare
  * submit: Enter went in and nothing checked it. Nearly every such send does

@@ -1,12 +1,12 @@
-/* The chief's answer sheet (issue #1295).
+/* The chief's answer sheet.
  *
- * The Chief's-plan card (#1279, board.js) lists what waits on Roberto. This
+ * The Chief's-plan card (board.js) lists what waits on Roberto. This
  * module is the one-shot way to answer all of it: a sheet in the style of the
- * transcript's AskUserQuestion card (#1149, the same `.tr-ask-*` rows) with
+ * transcript's AskUserQuestion card (the same `.tr-ask-*` rows) with
  * one block per waiting item, in file order: the repo and ref, the question,
  * the detail, the options (single- or multi-select, the recommended one
  * labelled "(Recommended)"), an Other field on every item (with a mic when
- * dictation is available, #1450), and an "Anything else"
+ * dictation is available), and an "Anything else"
  * box under them all. The chief's recommendation shows as its own
  * quiet line only when it marks no option — the label already says it.
  * Anything else is the shared composer (composer.js, as a field): dictation
@@ -18,7 +18,7 @@
  *
  * The app never writes the plan file: the chief removes the items it has
  * taken. Until the plan's `updated_at` moves, the items sent are marked
- * "answered, waiting for the chief" on every device (#1487): Done records
+ * "answered, waiting for the chief" on every device: Done records
  * them with the webapp (POST /api/board/chief/answered), and the plan the
  * Board polls carries them back as `answered`. This page also remembers what
  * it sent, in memory, so its own marks show at once and survive a record
@@ -46,7 +46,7 @@ import { itemKey, markSent } from './chief-keys.js';
 const DONE_LABEL = 'Done';
 // Question and answer are joined by an arrow in the message the chief
 // parses. It is message text, never a rendered glyph, so it is spelled as an
-// escape (the #1127 no-glyph guard reads raw source).
+// escape (the no-glyph guard reads raw source).
 const ANSWER_SEP = ' \u2192 ';
 
 // The open sheet: the plan it was built from, one draft per item
@@ -55,7 +55,7 @@ const ANSWER_SEP = ' \u2192 ';
 let sheet = null;
 // Anything else: the shared composer, mounted once.
 let also = null;
-// One dictation per Other field in the open sheet (#1450), disposed when the
+// One dictation per Other field in the open sheet, disposed when the
 // sheet closes or is rebuilt so no mic outlives the fields it types into.
 let otherDictations = [];
 // Whether the chief is running, as the Board last read it.
@@ -64,7 +64,7 @@ let sending = false;
 
 // ------------------------------------------------------ answered marks
 
-// The keys, and this page's own marks, live in chief-keys.js (#1502), shared
+// The keys, and this page's own marks, live in chief-keys.js, shared
 // with the Board's counts.
 
 // Share the marks with every device. The webapp records them only while
@@ -107,13 +107,13 @@ function answerText(item, draft) {
 // position in the plan, tagged with its ref (or repo) and — when the chief
 // gave it one — its id, so the chief can find the item to remove:
 //   Answers from the Board (2 of 3):
-//   1. [fleet-config#959] Approve the four plans? → Yes, all four (recommended) {id: q-plans}
-//   2. [life-os#171] Blank the old passwords? → Other: only the transcripts
+//   1. [fleet-config#<n>] Approve the four plans? → Yes, all four (recommended) {id: q-plans}
+//   2. [life-os#<n>] Blank the old passwords? → Other: only the transcripts
 //   Skipped: 3
 //   Also: <anything-else text>
 // Anything else goes as typed (trimmed), not folded to one line: an attached
 // file is its own paragraph, as a Chat send carries it. `shown` lists the
-// plan positions the sheet offered (a Board repo filter narrows it, #1332);
+// plan positions the sheet offered (a Board repo filter narrows it);
 // an item the filter hid was never asked, so it is neither answered nor
 // "Skipped", and the count is out of what was shown.
 export function composeAnswers(items, drafts, extra, shown) {
@@ -199,7 +199,7 @@ function renderItem(item, index) {
   input.placeholder = options.length ? 'Other' : 'Your answer';
   input.setAttribute('aria-label', (options.length ? 'Other answer to: ' : 'Answer to: ') + (question || 'the question'));
   input.value = draft.other;
-  // Typed or dictated (#1450): the field's text is the draft.
+  // Typed or dictated: the field's text is the draft.
   function otherChanged() {
     draft.other = input.value;
     // Single-select: typing is the answer, so it drops a pick.
@@ -302,10 +302,10 @@ export function syncChiefAnswers(run) {
   syncDone();
 }
 
-// `shown` is the plan positions to ask: the Board's repo filter (#1332)
-// minus what is already answered (#1487); omitted, every item. Drafts stay
+// `shown` is the plan positions to ask: the Board's repo filter
+// minus what is already answered; omitted, every item. Drafts stay
 // indexed by plan position, so narrowing or widening it between opens keeps
-// whatever was typed. `startAt` (#1502), a plan position among them, opens
+// whatever was typed. `startAt`, a plan position among them, opens
 // the sheet scrolled to that question: a tap on its Board row.
 export function openChiefAnswers(plan, run, shown, startAt) {
   const dialog = els.chiefAnswersDialog;
@@ -339,7 +339,7 @@ export function openChiefAnswers(plan, run, shown, startAt) {
   const start = startAt == null ? null
     : els.chiefAnswersList.querySelector('[data-key="' + CSS.escape(itemKey(items[startAt], startAt)) + '"]');
   // The dialog is the scroller, scrolled by hand two frames on: in WebKit
-  // the modal's autofocused title (#1537) scrolls itself into view on the
+  // the modal's autofocused title scrolls itself into view on the
   // first frame after showModal(), undoing an earlier scroll, and it ignores
   // scrollIntoView() inside the modal altogether.
   if (start) {
@@ -351,7 +351,7 @@ export function openChiefAnswers(plan, run, shown, startAt) {
 
 async function submitAnswers() {
   if (!sheet || sending) return;
-  // A stopped dictation is still settling into the box (#489): wait for it,
+  // A stopped dictation is still settling into the box: wait for it,
   // as the composer's own Send does.
   if (also.isBusy() || otherDictations.some(function (d) { return d.isBusy(); })) {
     toast('Still transcribing — wait for the transcript, then tap Done', 'error', { icon: 'mic' });
@@ -410,7 +410,7 @@ export function wireChiefAnswers() {
   });
   // However it closes (the X, Esc, a send): keep the text for a reopen of
   // the same plan, then reset the composer so a recording or a staged
-  // screenshot never outlives the sheet (#755).
+  // screenshot never outlives the sheet.
   els.chiefAnswersDialog.addEventListener('close', function () {
     if (sheet) sheet.also = alsoText();
     also.reset();

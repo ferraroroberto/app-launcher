@@ -27,7 +27,7 @@ body.terminal-open {
   padding-top: env(safe-area-inset-top, 0);
   /* No padding-bottom: the overlay itself runs to the physical bottom edge
      (no dead band of its own background above the iOS home indicator).
-     The session overlay's bottom row is the status strip (#1219), and it
+     The session overlay's bottom row is the status strip, and it
      takes env(safe-area-inset-bottom) into its OWN height — the same idea
      as `.app` and the lightbox: the bottom-most surface carries the inset,
      so its background reaches the glass while everything above it clears
@@ -45,9 +45,9 @@ body.terminal-open {
   position: relative;
   display: flex;
   align-items: center;
-  /* (#514) 6px, matching .terminal-bar-actions' own gap, so every button
+  /* 6px, matching .terminal-bar-actions' own gap, so every button
      sits at one uniform distance. The session overlay's row is six 44px
-     controls at most since #1223 (‹ Back · title · context ring · mode
+     controls at most (‹ Back · title · context ring · mode
      toggle · 🔊 · ⋮), which still leaves the title ~74px of a 390px phone
      and only a few px of a 320px one with 🔊 showing. */
   gap: 6px;
@@ -65,7 +65,7 @@ body.terminal-open {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Fleet chief crown in the terminal overlay's own title (#547) — same marker
+/* Fleet chief crown in the terminal overlay's own title — same marker
    as the Board card and the Coding-tab row, set by terminal-mirror.js's
    setTerminalTitleText(). */
 .terminal-title-crown {
@@ -74,11 +74,11 @@ body.terminal-open {
   margin-right: 4px;
   vertical-align: -0.15em;
 }
-/* (#514) .terminal-bar-actions is a flex item of the row-flex .terminal-bar;
+/* .terminal-bar-actions is a flex item of the row-flex .terminal-bar;
    without min-width: 0 a flex item's automatic minimum size is its content's
    min-content width, so this group refused to shrink below the sum of its
-   six 44px buttons and pushed past the viewport edge once #496 widened the
-   adjacent Back/Kill buttons — same shrinkable-scroll-container contract as
+   six 44px buttons and pushed past the viewport edge once the
+   adjacent Back/Kill buttons widened — same shrinkable-scroll-container contract as
    design.md's grid minmax(0, 1fr) rule, applied to a flex row. overflow-x:
    auto lets it scroll internally, within the bar's own padding, instead of
    clipping the last button off-screen. */
@@ -91,11 +91,11 @@ body.terminal-open {
   scrollbar-width: none;
 }
 .terminal-bar-actions::-webkit-scrollbar { display: none; }
-/* The session overlay's bar no longer needs that scroller (#981): with ✕ and
-   ↓ gone its group holds the context ring (#1223), the Terminal⇄Chat toggle
-   (#982), 🔊 and ⋮, which always fit beside a shrinking title (≈316px of a
+/* The session overlay's bar no longer needs that scroller: with ✕ and
+   ↓ gone its group holds the context ring, the Terminal⇄Chat toggle
+, 🔊 and ⋮, which always fit beside a shrinking title (≈316px of a
    320px phone with all four showing, title keeps the rest). Only the Life OS
-   bars (#886) still scroll. */
+   bars still scroll. */
 #terminalOverlay .terminal-bar-actions { overflow-x: visible; }
 .term-btn:not(.icon-button) {
   background: var(--card-2);
@@ -104,14 +104,14 @@ body.terminal-open {
   border-radius: var(--radius-md);
   padding: 9px 12px;
   font-size: var(--font-label);
-  /* 44×44 effective minimum app-wide (#496 audit, extending #477 beyond the
+  /* 44×44 effective minimum app-wide (extended beyond the
      terminal bar): the base class also dresses the Life OS browser bar. */
   min-height: 44px;
   min-width: 44px;
   cursor: pointer;
 }
-/* Reading the last reply aloud (issue #190) — success-green pulse so the ⏹
-   stop state is unmistakable while speech is playing (on-state, #391). */
+/* Reading the last reply aloud — success-green pulse so the ⏹
+   stop state is unmistakable while speech is playing (on-state). */
 .term-btn.speaking {
   color: var(--success-text);
   animation: compose-record-pulse 1.2s ease-in-out infinite;
@@ -120,16 +120,15 @@ body.terminal-open {
    floor (the bar is a cluster, so no expanded hit area). */
 .term-btn.icon-button { --icon-btn-box: var(--hit-min); }
 /* Every icon-only button in the terminal toolbar meets the 44x44pt HIG
-   minimum (issue #477) — restated here for clarity even though the base
-   .term-btn now carries 44×44 itself (#496). */
+   minimum — restated here for clarity even though the base
+   .term-btn now carries 44×44 itself. */
 .terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
-/* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
-   the #259 close-tap complaint, but the extra 24px pushed the eight-button
-   row past the phone viewport (#514). Reverted to the uniform 44px HIG
-   target (#477) every other bar button uses, at the bar's uniform 6px gap,
+/* ‹ Back button — a wider one (64px + 4px kill clearance) pushed the
+   eight-button row past the phone viewport, so it uses the uniform 44px HIG
+   target every other bar button uses, at the bar's uniform 6px gap,
    so the whole row fits on-screen at once. */
 #terminalBack { text-align: center; }
-/* Read-aloud action menu (issue #210): a small dropdown anchored below the
+/* Read-aloud action menu: a small dropdown anchored below the
    terminal bar under the 🔊 button — "Read aloud" (verbatim) and
    "Summarize & read" (hub-condensed for hands-free / driving). */
 .speak-popover {
@@ -159,7 +158,7 @@ body.terminal-open {
   cursor: pointer;
 }
 .speak-action:active { background: var(--card-2); }
-/* Read-aloud summary modal (issue #210): the hub summary shown on screen while
+/* Read-aloud summary modal: the hub summary shown on screen while
    it's read aloud (and readable on its own), auto-closing when the read ends or
    on a tap. Sits above the terminal overlay (300), below the toast (400). */
 .summary-modal {
@@ -197,9 +196,9 @@ body.terminal-open {
   white-space: pre-wrap;
 }
 .summary-foot { text-align: center; }
-/* On-screen keys popover (issue #36): D-pad floating ABOVE the composer
-   (#980 — it used to hang under the terminal bar), right-aligned over the
-   ⌨ button in the composer grid so the thumb reaches it. Since #986 it is a
+/* On-screen keys popover: D-pad floating ABOVE the composer
+   (it used to hang under the terminal bar), right-aligned over the
+   ⌨ button in the composer grid so the thumb reaches it. It is a
    4-col grid — Esc/↑/Tab/Ctrl, ←/↵/→/C, ⇧/↓/U/X — to fit the sticky Ctrl
    toggle and its C/U/X letters. */
 .keys-popover {
@@ -216,7 +215,7 @@ body.terminal-open {
   z-index: 30;
   box-shadow: var(--shadow);
 }
-/* Not migrated to the button tiers (issue #477 audit): this is a fixed 4-col
+/* Not migrated to the button tiers: this is a fixed 4-col
    D-pad grid keyboard popover, not a standalone action button. */
 .key-btn {
   min-height: 52px;
@@ -228,7 +227,7 @@ body.terminal-open {
   cursor: pointer;
 }
 .key-btn:active { background: var(--card-2); }
-/* Sticky-Shift / sticky-Ctrl engaged (issue #137, #986): the toggle stays
+/* Sticky-Shift / sticky-Ctrl engaged: the toggle stays
    lit until tapped off so the user can see the modifier is held for the
    next key. */
 .key-btn.active {
@@ -236,7 +235,7 @@ body.terminal-open {
   color: var(--accent-text);
   border-color: var(--accent);
 }
-/* C/U/X (issue #986): disabled whenever Ctrl isn't held, so a stray tap
+/* C/U/X: disabled whenever Ctrl isn't held, so a stray tap
    can't type a letter into the prompt — the fleet's one shared disabled
    recipe (design.md button-disabled), never opacity on a solid fill. */
 .key-btn:disabled {
@@ -268,7 +267,7 @@ body.terminal-open {
   overscroll-behavior: contain;
 }
 .terminal-host .xterm { height: 100%; }
-/* Floating "Latest" pill (#981 → #1140): one look for all three mounts —
+/* Floating "Latest" pill: one look for all three mounts —
    the Terminal, the Chat pane and the Life OS conversation viewer
    (latest-pill.js owns when it shows). Bottom-right of its scroll surface,
    so it sits just above the docked composer. A hairline border and the card
@@ -307,7 +306,7 @@ body.terminal-open {
   flex: 1;
   min-height: 0;
 }
-/* The shared composer (#980, composer.js): a column of OCR tray + compose
+/* The shared composer (composer.js): a column of OCR tray + compose
    bar, always docked under the terminal (and, later, under Chat mode and
    in the Board drawer). Positioned so the keys D-pad can float above it. */
 .composer {
@@ -316,7 +315,7 @@ body.terminal-open {
   flex-direction: column;
   flex-shrink: 0;
 }
-/* An attach batch in flight (#1354). The image button swaps its glyph for an
+/* An attach batch in flight. The image button swaps its glyph for an
    hourglass over "N/M" and stays tappable (a second pick queues behind the
    batch), so it is marked busy in the accent, never dimmed like a disabled
    button. The status line above the compose bar says the same in words. */
@@ -339,13 +338,13 @@ body.terminal-open {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Compose bar (issue #37): a predictive-keyboard text surface docked
+/* Compose bar: a predictive-keyboard text surface docked
    at the bottom of the overlay, between the xterm host and the status
    line. flex-shrink:0 lets it claim its height; the host (flex:1)
    shrinks and xterm re-fits on the visualViewport resize. */
 .compose-bar {
   display: flex;
-  /* flex-end, not stretch (issue #447): the textarea auto-grows on every
+  /* flex-end, not stretch: the textarea auto-grows on every
      dictation partial, and its growth pushes the row's TOP edge up while
      the bottom stays put. With align-items:stretch the mic/OCR/attach
      column and the Send button stretched to match the taller row, moving
@@ -360,10 +359,10 @@ body.terminal-open {
   border-top: 1px solid var(--line);
   flex-shrink: 0;
 }
-/* 🎤 / ⌨ / 🖼 / ➤ sit in a 2x2 grid (mic · keys / image · send since #980),
+/* 🎤 / ⌨ / 🖼 / ➤ sit in a 2x2 grid (mic · keys / image · send),
    anchored bottom-right of the bar, so the textarea keeps the horizontal
-   space (issue #171 UX) while all four buttons read as one matched cluster
-   (issue #453) instead of a tall 1x4 column. Fixed cell size + the size rule
+   space while all four buttons read as one matched cluster
+ instead of a tall 1x4 column. Fixed cell size + the size rule
    below give every button the same canonical footprint and tap area. */
 .compose-tools {
   display: grid;
@@ -375,9 +374,9 @@ body.terminal-open {
 /* All four buttons in the terminal compose grid are identical 44px squares. */
 .compose-tools { --icon-btn-box: var(--hit-min); }
 /* A refused ➤ Send takes that same recipe — without it the button kept its
-   full accent fill and read as perfectly usable (#1069). On aria-disabled,
+   full accent fill and read as perfectly usable. On aria-disabled,
    not :disabled, so the tap still lands and toasts the reason. A send in
-   flight takes it too (#1239), with an hourglass for the arrow: the hold is a
+   flight takes it too, with an hourglass for the arrow: the hold is a
    real `disabled`, and it used to look exactly like a live button. */
 .compose-tools .compose-send[aria-disabled="true"],
 .compose-tools .compose-send[aria-disabled="true"]:active,
@@ -386,7 +385,7 @@ body.terminal-open {
   cursor: default;
 }
 .compose-tools .compose-send.is-sending { cursor: progress; }
-/* A field mount (#1295, composer.js `field`) has no Send and no keys: the
+/* A field mount (composer.js `field`) has no Send and no keys: the
    remaining mic and image stack in one column, the same 44px cells. */
 .composer-field .compose-tools { grid-template-columns: 44px; }
 .compose-input {
@@ -410,7 +409,7 @@ body.terminal-open {
 /* Background work in progress (OCR / transcribe) — keep the ticking timer
    legible despite the disabled dim, and tint it so it reads as "busy". */
 .compose-record.working { color: var(--accent); font-size: var(--font-label); }
-/* Arming (#1295 follow-up): the tap landed and the mic is starting — an
+/* Arming: the tap landed and the mic is starting — an
    hourglass in the accent, so a second tap is not needed to find out. */
 .compose-record.arming { color: var(--accent-text); cursor: progress; }
 /* Recording in progress — red pulse so the state is unmistakable. */
@@ -422,7 +421,7 @@ body.terminal-open {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
 }
-/* OCR staging tray (issue #171): images accumulate here as the 📷 button is
+/* OCR staging tray: images accumulate here as the 📷 button is
    tapped; one Extract call collates them all into deduplicated text. */
 .ocr-tray {
   display: flex;
@@ -478,7 +477,7 @@ body.terminal-open {
 }
 .ocr-extract:active { opacity: 0.85; }
 .ocr-extract.working { opacity: 1; }
-/* The session overlay's bottom status strip (#1219). Always laid out, in
+/* The session overlay's bottom status strip. Always laid out, in
    both modes, one status line tall — the height the old status line added
    when it appeared: 8px + one body-sm line + 8px. The controls above it
    therefore sit clear of the phone's rounded corners, and a message coming
@@ -491,7 +490,7 @@ body.terminal-open {
    is max(row, inset) tall, not row + inset. On an iPhone the two are about
    the same size (~36px row, ~34px home-indicator inset), so the first cut
    stacked them into ~70px of blank card under the composer, twice the gap
-   the owner wanted (#1219 reopened). Overlapped, the controls still sit a
+   the owner wanted. Overlapped, the controls still sit a
    full row above the glass, clear of the rounded corners, and a device with
    no inset keeps exactly the one row. The card background runs to the glass,
    as on `.app` and the lightbox.
@@ -506,7 +505,7 @@ body.terminal-open {
   background: var(--card);
 }
 /* While the on-screen keyboard is up the overlay is pinned to end at the
-   keyboard's top edge (terminal.js applySize, #135), and the keyboard covers
+   keyboard's top edge (terminal.js applySize), and the keyboard covers
    the home indicator, so the inset has nothing left to clear. `data-keyboard`
    is set and cleared at exactly the sites that apply and undo that pin. Only
    the inset goes: the reserved status row stays, so a message appearing
@@ -531,8 +530,8 @@ body.terminal-open {
   text-align: center;
   color: var(--attention);
 }
-/* Chat mode's line in the same strip (#1387): the turn in progress, or a
-   forced read's note (#1292). One line that ellipsizes, never wraps, so it
+/* Chat mode's line in the same strip: the turn in progress, or a
+   forced read's note. One line that ellipsizes, never wraps, so it
    fills the reserved row exactly like a message does and moves nothing.
    Muted, not attention: it is ambient, not an instruction. Connection
    status always wins the row. */
@@ -551,7 +550,7 @@ body.terminal-open {
   color: var(--muted);
 }
 /* The text is the part that ellipsizes (an ellipsis needs a block box, not the
-   flex row); the timer icon (#1394) is the vendored glyph, in the line's own
+   flex row); the timer icon is the vendored glyph, in the line's own
    muted colour and centred on the text by the row's align-items. */
 .terminal-activity-text {
   min-width: 0;

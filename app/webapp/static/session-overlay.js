@@ -1,4 +1,4 @@
-/* Session overlay mode routing (#982, Step 3 of #979).
+/* Session overlay mode routing.
  *
  * One overlay (#terminalOverlay), two render modes of the same session:
  *
@@ -21,7 +21,7 @@
  * mode the session was last viewed in wins (remembered per session id in
  * localStorage), defaulting to Terminal. A session that can offer *neither*
  * (detached, no reader) still opens, in Chat, on the reader's reason line
- * — the overlay is the only place its Rename and Stop live (#1025).
+ * — the overlay is the only place its Rename and Stop live.
  */
 
 import { els, state } from './state.js';
@@ -117,7 +117,7 @@ function syncSegment(mode, session) {
   const label = mode === 'chat' ? 'Chat' : 'Terminal';
   if (ok) {
     btn.removeAttribute('aria-disabled');
-    // What the long-press hint (#1238 J-05) and a desktop hover say.
+    // What the long-press hint and a desktop hover say.
     btn.title = mode === 'chat' ? 'Show the chat' : 'Show the terminal';
     btn.setAttribute('aria-label', label);
   } else {
@@ -134,7 +134,7 @@ function syncPressed(mode) {
   });
 }
 
-// Release a keyboard pin (#135) left by whichever pane was showing, so the
+// Release a keyboard pin left by whichever pane was showing, so the
 // next pane starts from the CSS-driven full height; the pane re-pins itself
 // if the keyboard is genuinely still up.
 function releasePin() {
@@ -163,12 +163,12 @@ export function setSessionMode(mode) {
     terminalComposer.closePopovers();
     closeChatComposerPopovers();
   }
-  // The chat pane's live refresh follows the mode (#1050): showing Terminal
+  // The chat pane's live refresh follows the mode: showing Terminal
   // stops it, showing Chat starts it. Called for both so a window sitting on
   // Terminal never fetches chat for the session it is showing — the "10
   // windows, only one being read" constraint the feature exists for.
   syncLiveRefresh();
-  // The context ring (#1223) polls its own route in both modes; a switch
+  // The context ring polls its own route in both modes; a switch
   // reads it once more straight away.
   syncContextRing();
   if (mode === 'terminal') {
@@ -183,7 +183,7 @@ export function setSessionMode(mode) {
     }
   } else {
     if (chatPaneSession() !== s.session_id) openChatPane(s);
-    // A detached session never runs attachTerminalPane's reveal (#988) — the
+    // A detached session never runs attachTerminalPane's reveal — the
     // 🔊 button lives in the shared bar, so Chat mode reveals it here too.
     revealReadAloudButton();
     updateLatestPill();
@@ -194,7 +194,7 @@ export function setSessionMode(mode) {
   applyTermTheme();
 }
 
-// The wide layout's list-and-detail (#1135): the row whose session is in the
+// The wide layout's list-and-detail: the row whose session is in the
 // docked view keeps the accent tint. The mark is harmless below 1100px,
 // where the view covers the list; CSS only paints it at the wide query.
 export function markSelectedSession(sid) {
@@ -205,7 +205,7 @@ export function markSelectedSession(sid) {
 }
 
 // The mode a session opens in: an explicit choice, else the one it was last
-// viewed in (per session, remembered), else Chat on a desktop browser (#1273)
+// viewed in (per session, remembered), else Chat on a desktop browser
 // and Terminal on the phone — clamped to the panes this session has. The
 // row-tap's desktop mirror gate (sessions.js) resolves through this too, so
 // only a session that resolves to Terminal leaves for the PC window.
@@ -224,14 +224,14 @@ export function openSessionOverlay(session, wantMode) {
   // On a wide window the view is the Code tab's detail pane, so a session
   // opened from elsewhere (the Board drawer) lands on the Code tab.
   if (isWideLayout() && state.tab !== 'claude') setTab('claude');
-  // A session that can offer neither pane still opens (#1025): both segments
+  // A session that can offer neither pane still opens: both segments
   // render aria-disabled and the chat pane shows the reader's own reason
   // line, which beats an unexplained dead row. That shape — detached, agent
   // with no reader — is the only way Rename and Stop stay reachable for it
   // now that the row gear is gone, and they live in the bar's ⋮ menu.
   const mode = resolveSessionMode(session, wantMode);
   // Panes left showing another session are stale for this one: the chat
-  // pane is closed, and an active terminal is stashed warm (#430) so its
+  // pane is closed, and an active terminal is stashed warm so its
   // title poll can't keep writing the old title over this session's bar
   // while Chat is showing (Terminal mode re-attaches through the cache).
   if (chatPaneSession() && chatPaneSession() !== session.session_id) closeChatPane();
@@ -256,8 +256,8 @@ export function closeSessionOverlay() {
 export function wireSessionModeToggle() {
   // A wide window shows the rail beside the docked view, so another tab is
   // one click away. The view belongs to the Code tab's list: leaving it
-  // closes the view (a terminal stays warm, #430), rather than leaving a
-  // hidden chat polling for a reader who has gone (#1050).
+  // closes the view (a terminal stays warm), rather than leaving a
+  // hidden chat polling for a reader who has gone.
   document.addEventListener('launcher:tab', function (ev) {
     const tab = ev.detail && ev.detail.tab;
     if (tab !== 'claude' && state.sessionView && isWideLayout()) closeSessionOverlay();

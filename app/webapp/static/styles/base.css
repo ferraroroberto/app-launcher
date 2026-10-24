@@ -4,7 +4,7 @@
 
 /* ============================================================ design tokens
    Fleet design system (~/.claude/design.md + design.dark.md, canonical spec
-   ferraroroberto/fleet-config#178; this app's migration: issue #355). Token
+   ferraroroberto/fleet-config). Token
    *names* are this app's; their *values* are the spec's. Light = :root,
    dark = [data-theme="dark"] (stamped pre-paint by the index.html boot
    script — localStorage override, prefers-color-scheme fallback). P3
@@ -32,7 +32,7 @@
   --danger: #cf222e;
   /* Status TEXT on its own 16% tint (badge, banner, destructive tint): the
      base hue drops under AA there, so text takes these and the base stays
-     for fills, dots, icons and borders (fleet-config#963). sRGB-only on
+     for fills, dots, icons and borders. sRGB-only on
      purpose -- each holds a verified ratio. */
   --success-text: #116329;
   --danger-text: #a40e26;
@@ -44,7 +44,7 @@
   --neutral-soft: color-mix(in srgb, var(--muted) 16%, transparent);
   --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
   --code-fg: #1f2328;        /* text inside a code/output inset */
-  /* Unified-diff line tints (#977, GitHub's light diff palette): added /
+  /* Unified-diff line tints (GitHub's light diff palette): added /
      removed line background + text, hunk-header text. Status colors stay
      for state; these are the one legitimately green/red *surface* pair. */
   --diff-add-bg: #dafbe1;
@@ -54,8 +54,8 @@
   --diff-hunk-fg: #0969da;
   /* Terminal screen: dark in both themes by default (ANSI output is
      authored against dark), same model as home-automation's --video-matte
-     (#383). terminal.js reads these. The opt-in override after the dark
-     block (issue #359) flips them light when the user asks the terminal
+. terminal.js reads these. The opt-in override after the dark
+     block flips them light when the user asks the terminal
      to follow the app theme. */
   --term-bg: #0a0a0a;
   --term-fg: #f3f3f3;
@@ -72,12 +72,12 @@
      colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
      never forks from its base colour. */
   /* Accent-ghost button recipe (home-automation's Net-tab .big-btn):
-     soft accent tint + accent text + soft accent border — no solid fills
-     (issue #383 review round). Derived from --accent so both themes ride. */
+     soft accent tint + accent text + soft accent border — no solid fills.
+     Derived from --accent so both themes ride. */
   --accent-soft: rgb(from var(--accent) r g b / 0.16);
   --accent-border-soft: rgb(from var(--accent) r g b / 0.24);
   --accent-border-strong: rgb(from var(--accent) r g b / 0.28);
-  /* Vendored button.css's danger-tier token names (issue #477) — this app's
+  /* Vendored button.css's danger-tier token names — this app's
      equivalent status color is --danger, so alias rather than fork a second
      red. Lazily re-resolves per theme same as the accent-soft trio above. */
   --deficit: var(--danger);
@@ -96,7 +96,7 @@
   --space-lg: 24px;
   --space-xl: 32px;
   --gap: 12px;
-  /* desktop placement (design.md layout.*, #1135): the centred column below
+  /* desktop placement (design.md layout.*): the centred column below
      the wide breakpoint, and the nav rail at and above it. The breakpoint
      itself is the literal (min-width: 1100px) and (pointer: fine) — a media
      query can't read a custom property. */
@@ -115,17 +115,17 @@
   --font-label: 0.875rem;
   --font-caption: 0.75rem;
   /* design.md code-listing: 13px, the one sanctioned off-scale size, for mono
-     listings only -- a fenced block (.md-block) and a diff (.chg-diff) (#1486) */
+     listings only -- a fenced block (.md-block) and a diff (.chg-diff) */
   --font-code: 13px;
   /* shared inline-control height (select / input / compact buttons) */
   --control-h: 36px;
-  /* The one control fill (#1525): every text field, the composer and a
+  /* The one control fill: every text field, the composer and a
      disabled button inside a card paint this, never `--card-off` (true black
-     in dark, fleet-config#1368). Light keeps canvas-subtle; dark overrides to
+     in dark). Light keeps canvas-subtle; dark overrides to
      border-muted below. The vendored select-native/modal fill with it too
-     (#1133). `--card-off` stays for off-card wells. */
+. `--card-off` stays for off-card wells. */
   --input-bg: var(--card-off);
-  /* unified row-height scale for repeated list rows (issue #365): sm =
+  /* unified row-height scale for repeated list rows: sm =
      utility/action targets (iOS 44px tap minimum), md = single-line rows,
      lg = the standard two-line row (name + meta). Every list row height
      derives from these three — no more per-tab ad hoc values. */
@@ -143,14 +143,14 @@
   --icon-title: 18px;
   --icon-feature: 24px;
   /* home-head's toggles and the modal close are icon buttons: a glyph on
-     nothing at rest (fleet-config#1259), so no fill in either theme. */
+     nothing at rest, so no fill in either theme. */
   --close-bg: transparent;
-  /* Vendored switch.css contract (project-scaffolding#120); its off-track
-     is --control-border since #274 and its on-track is --accent-fill. */
+  /* Vendored switch.css contract; its off-track
+     is --control-border and its on-track is --accent-fill. */
   --toggle-knob: #ffffff;
   color-scheme: light;
   /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
-     label) is intentionally undefined here (issue #355) — nav-tabs.css's
+     label) is intentionally undefined here — nav-tabs.css's
      own canonical var(..., fallback) defaults (61/21/53/4/4/20/11px) are
      the fleet-standard floating-bar geometry, phone-validated on
      home-automation. Define one here only to deliberately diverge. */
@@ -166,7 +166,7 @@
   --muted: #7d8590;
   --line: #30363d;
   --line-muted: #21262d;
-  --input-bg: var(--line-muted); /* control fill, not true black (fleet-config#1368) */
+  --input-bg: var(--line-muted); /* control fill, not true black */
   --accent: #2f81f7;
   --accent-fg: #ffffff;
   --accent-fill: #1f6feb;    /* one step below --accent so white text holds AA */
@@ -196,7 +196,7 @@
 }
 
 /* Light terminal screen: the terminal always follows the app theme
-   (issue #383; supersedes the #359 opt-in switch). The matching
+   (there is no opt-in switch). The matching
    ANSI palette rides terminal.js (xterm colors live in the renderer, not
    CSS). Values are the spec's colors.canvas / colors.fg. */
 :root:not([data-theme="dark"]) {
@@ -228,7 +228,7 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-/* Canonical focus-visible ring (design.md v2 focus contract, issue #355).
+/* Canonical focus-visible ring (design.md v2 focus contract).
    One tokenized rule covers every interactive element app-wide; without it
    keyboard focus falls to the browser default, which on Windows Chrome is
    themed off the OS accent, not this app's --accent. */
@@ -257,13 +257,13 @@
 .icon { pointer-events: none; }
 /* The contract sizes a glyph at 1em, so one inside caption or label text
    rendered at 12.5px / 14.7px -- off the design's icons.size steps and
-   visibly lighter than the 16px icons beside it (#1127). Floor every glyph
+   visibly lighter than the 16px icons beside it. Floor every glyph
    at --icon-inline; explicit title/feature sizes above it are unaffected.
    Brand marks (.agent-icon) are not `.icon` and keep their own sizing. */
 svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
 /* The empty-state glyph is feature-size by its component's contract, but
    this stylesheet loads after the component's, so `.icon`'s own `1em` would
-   otherwise win on source order alone (#1133). */
+   otherwise win on source order alone. */
 .icon.empty-state-icon {
   width: var(--icon-feature);
   height: var(--icon-feature);
@@ -277,7 +277,7 @@ svg.icon { min-width: var(--icon-inline); min-height: var(--icon-inline); }
 .hit-target { position: relative; }
 .hit-target::before { content: ""; position: absolute; inset: -5px; }
 
-/* The audit's compact controls (#1124), by shape.
+/* The audit's compact controls, by shape.
 
    Wide enough already, short by 8px — the expansion is vertical only, so
    however tight the cluster's gap is, two neighbours can never share a
@@ -304,7 +304,7 @@ html, body {
   overscroll-behavior-y: contain;
   /* No system double-tap-to-zoom on the page itself — pairs with the
      viewport meta's maximum-scale=1/user-scalable=no zoom lock (design.md
-     Layout; fleet-config#296). Individual elements still opt into their own
+     Layout). Individual elements still opt into their own
      gesture handling (e.g. touch-action: pan-y on scrollable lists). */
   touch-action: manipulation;
   /* Reserve the scrollbar gutter so the centred .app container doesn't
@@ -321,7 +321,7 @@ html, body {
   padding-right: var(--gap);
 }
 /* Bottom padding is desktop/wide-only, deliberately split out of the rule
-   above (issue #355): the coarse-pointer + narrow breakpoint below is where
+   above: the coarse-pointer + narrow breakpoint below is where
    nav-tabs.css reserves .app's bottom padding for the floating tab bar (its
    own `.app { padding: ... }` in that same media condition) — a shorthand
    `padding` here would win the cascade (equal specificity, later in source
@@ -335,7 +335,7 @@ html, body {
 
 /* ---------- tabs ----------
    Nav geometry + the desktop segmented control / mobile floating pill are
-   now owned by the vendored _vendored/nav/nav-tabs.css (issue #355) — see
+   now owned by the vendored _vendored/nav/nav-tabs.css — see
    its <link> in index.html. `.tab.active`, `.tab-icon` sizing, the
    standalone fixed-inset .app shell, and the visualViewport pin all live
    there; do not re-add them here.
@@ -348,7 +348,7 @@ html, body {
    technique — gentler on iOS fixed-layer repainting across show/hide.
 
    Every such overlay goes in this rule and in the standalone .app lock below;
-   tests/test_overlay_nav_hide.py fails when one is left out (#1143). The ones
+   tests/test_overlay_nav_hide.py fails when one is left out. The ones
    nested inside <main class="app"> are the ones that break: the standalone
    shell makes .app position: fixed, a stacking context, so their z-index 300
    stacks inside it and the body-level bar (z-index 120) paints over them. */
@@ -363,7 +363,7 @@ html, body {
   }
 
   /* In the standalone shell .app (not the document) is the real scroller
-     (home-automation#303, via nav-tabs.css). terminal.js's lockBodyScroll()
+     (via nav-tabs.css). terminal.js's lockBodyScroll()
      pins document.body during an overlay — a no-op there since body was
      never the scroller in standalone — so without this, .app's own content
      stays touch-scrollable behind a hand-rolled overlay. Mirrors
@@ -371,7 +371,7 @@ html, body {
      the app-specific overlays get the same treatment as the .tabs hide
      rule above, plus native <dialog> for completeness (this app has both).
      Only the session overlay sets body.terminal-open, so only it needs the
-     #1099 1px-scrollable override below; the others never touch body or the
+     1px-scrollable override below; the others never touch body or the
      vendored body::after spacer. */
   @media (display-mode: standalone) {
     body.terminal-open .app,
@@ -383,8 +383,8 @@ html, body {
       overflow: hidden;
     }
 
-    /* Keep the document 1px scrollable while the session overlay is open
-       (#1099 avenue B). The base body.terminal-open lock below sets
+    /* Keep the document 1px scrollable while the session overlay is open.
+       The base body.terminal-open lock below sets
        overflow: hidden, which propagates to the viewport, and
        lockBodyScroll() (skipped under this same query) would pin body
        out of flow — either one zeroes the vendored body::after spacer's
@@ -408,7 +408,7 @@ html, body {
    adds only the inter-card gutter. */
 .card { margin: 0 0 var(--gap); }
 /* The view's main action is the full-width primary, on its own line, with
-   the secondary ghost beneath it (#1125) — it used to be the smallest
+   the secondary ghost beneath it — it used to be the smallest
    control on the card. */
 /* `.row.settings-actions`, not `.settings-actions`: `.row`'s own
    `align-items: center` is declared later in this file at equal
@@ -427,15 +427,14 @@ html, body {
   gap: 8px;
 }
 /* A hairline divider between the card's sections, the same recipe the rest
-   of the app uses, in place of two bare <hr>s (#1125). */
+   of the app uses, in place of two bare <hr>s. */
 .settings-section {
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
 
-/* Theme toggle (issue #355; #392 put it in the options summary, #496 moved
-   it into the vendored home-head card's .home-toggle slot — the same
+/* Theme toggle (it sits in the vendored home-head card's .home-toggle slot — the same
    position as the other fleet apps). The button's box now comes from
    home-head.css; only the sun/moon glyph pair lives here. Shows the glyph
    for the ACTION: moon in light (tap → dark), sun in dark (tap → light). */
@@ -452,7 +451,7 @@ html, body {
 :root[data-theme="dark"] .theme-icon-moon { display: none; }
 :root:not([data-theme="dark"]) .theme-icon-sun { display: none; }
 
-/* ---------- page header (#1131) ---------- */
+/* ---------- page header ---------- */
 /* Every pane opens with the vendored home-head: the tab's name, one context
    line, then two trailing actions — the theme toggle and the Settings gear.
    The vendored home-head owns the pair's layout (auto margin on the first,

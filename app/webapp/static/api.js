@@ -13,8 +13,8 @@ import { escapeHtml } from './dom-utils.js';
 // Read a `?<name>=<value>` deep-link param once, strip it from the visible
 // URL, and return its trimmed value (or null if absent/blank). Used for the
 // bearer ?token=, PC-mirror ?terminal=<sid>, shared ?session=<sid>, Board
-// ?board=<sid> deep link (issue #301), and Life OS ?convo=<skill>/<file>
-// (issue #1170).
+// ?board=<sid> deep link, and Life OS ?convo=<skill>/<file>
+// 
 export function consumeUrlParam(name) {
   const params = new URLSearchParams(window.location.search);
   const v = (params.get(name) || '').trim();
@@ -53,8 +53,8 @@ export function authHeaders({ terminalToken, contentType } = {}) {
 // True when this browser is a desktop (a fine/mouse pointer), as opposed
 // to a phone (a coarse/touch pointer). A coding launch carries this so the
 // server opens a dedicated PC mirror window rather than rendering the
-// terminal inside the desktop browser's own tab (issue #241 — the "obvious"
-// #159 optimization of skipping a redundant in-page render was reversed:
+// terminal inside the desktop browser's own tab (the "obvious"
+// The optimization of skipping a redundant in-page render was reversed:
 // that redundancy was what let Stop & Close tear down the controlling
 // browser window). The flag is what distinguishes a desktop from a phone
 // regardless of loopback vs tunnel, since the server can't tell by IP alone.
@@ -102,7 +102,7 @@ export async function api(path, opts) {
 // The parsed JSON body of `res` (null when there is none), or a thrown
 // `Error(detail || 'HTTP n')` carrying `.status` / `.body` on a non-2xx. The
 // one place a response becomes a verdict: jsonApi() and apiRawJson() both end
-// here (#1422).
+// here.
 async function jsonVerdict(res) {
   let body = null;
   try { body = await res.json(); } catch (_) { body = null; }
@@ -122,14 +122,14 @@ export async function jsonApi(path, opts) {
 
 // A raw-Response counterpart to jsonApi() for callers that need the Response
 // itself (FormData uploads, streamed audio bodies) instead of jsonApi()'s
-// parsed-JSON contract (issue #333). Folds authHeaders() in so a caller
+// parsed-JSON contract. Folds authHeaders() in so a caller
 // doesn't have to build the passkey terminal-token / content-type headers by
 // hand — pass them as `opts.terminalToken` / `opts.contentType` alongside the
 // usual fetch options — then goes through the exact same 401 → showLogin() +
 // AuthRequiredError path as jsonApi(), via api(). Callers still own res.ok /
 // res.json() beyond that, same as they did calling fetch() directly before.
 // `opts.signal` rides through to fetch() untouched: the composer's upload and
-// dictation requests pass one so a second tap can abort them (#1413).
+// dictation requests pass one so a second tap can abort them.
 export async function apiRaw(path, opts) {
   opts = opts || {};
   const headers = Object.assign(
@@ -140,7 +140,7 @@ export async function apiRaw(path, opts) {
   return api(path, Object.assign({}, opts, { headers: headers }));
 }
 
-// apiRaw() + jsonApi()'s verdict (#1422): resolves the parsed JSON body (null
+// apiRaw() + jsonApi()'s verdict: resolves the parsed JSON body (null
 // when there is none) and throws `Error(detail || 'HTTP n')` with `.status` /
 // `.body` on a non-2xx, so an upload / transcribe caller states neither the
 // `res.ok` check nor the error-body parse. A caller that must read the status
@@ -193,7 +193,7 @@ export function wireLoginForm(onLoginSuccess) {
 
 // --------------------------------------------------------------- toast
 // escapeHtml lives in dependency-free dom-utils.js so the markdown renderer
-// can import it without this module's DOM/localStorage-bound state (#1141);
+// can import it without this module's DOM/localStorage-bound state;
 // re-exported here so existing `from './api.js'` importers are unchanged.
 export { escapeHtml };
 
@@ -210,7 +210,7 @@ export function toast(msg, kind, opts) {
   els.toast.className = 'toast ' + (kind || '');
   // Errors interrupt (aria-live="assertive"); everything else stays polite so
   // routine confirmations don't cut off other screen-reader speech — the
-  // design.md feedback contract, same as home-automation's toast (#782).
+  // design.md feedback contract, same as home-automation's toast.
   els.toast.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
   els.toast.hidden = false;
   if (toastTimer) clearTimeout(toastTimer);
@@ -224,8 +224,8 @@ export function toast(msg, kind, opts) {
 // up and a red toast on top of it would double-fire. `prefix` may be falsy
 // for the few sites that just toast the raw message.
 //
-// A plain Error carrying `.status === 401` gets the same treatment (issue
-// #333): terminal-speech.js (re-exported through terminal-readback.js, #884)
+// A plain Error carrying `.status === 401` gets the same treatment: terminal-speech.js
+// (re-exported through terminal-readback.js)
 // is kept free of api.js imports by design (it receives credentials as
 // parameters rather than reaching into this module's token storage itself),
 // so its own fetches can't throw AuthRequiredError —

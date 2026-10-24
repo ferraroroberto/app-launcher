@@ -1,16 +1,16 @@
-/* The shared composer (#980, Step 1 of #979): the one input surface every
- * session view mounts — the terminal overlay, Chat mode (#983) and the Board
- * drawer (#984) — plus the chief answer sheet's Anything else as a field
- * (#1295). Owns its own markup so a second mount is one
+/* The shared composer: the one input surface every
+ * session view mounts — the terminal overlay, Chat mode and the Board
+ * drawer — plus the chief answer sheet's Anything else as a field
+ * Owns its own markup so a second mount is one
  * call, not a second copy of the HTML:
  *
  *   ┌ OCR staging tray (hidden until a screenshot is staged) ┐
  *   │ tall predictive <textarea>            │ 🎤 mic    │ ⌨ keys │
  *   │                                       │ 📎 attach │ ➤ send │
  *
- * The 2×2 grid keeps today's shape on every surface (owner's decision, #979
- * decision log): mic · keys on row 1, attach · send on row 2. The 📎 button
- * (#1430; it was a photo glyph) opens a menu — the same row-menu component
+ * The 2×2 grid keeps today's shape on every surface (an owner decision): mic · keys on row 1,
+  * attach · send on row 2. The 📎 button
+ * (it was a photo glyph) opens a menu — the same row-menu component
  * as the session ⚙️ gear — of everything that puts something into the
  * message: Photo, Extract text (OCR), Attach file (to context) and Attach
  * large file (not read). The OCR row hides with photo-ocr unconfigured; the
@@ -24,29 +24,29 @@
  *   mountComposer(host, {
  *     placeholder:       textarea placeholder,
  *     send(text, meta):  deliver a composed prompt. `meta.hasImage` says the
- *                        buffer carries an attached-file path (#450). Return
+ *                        buffer carries an attached-file path. Return
  *                        a falsy value — or a promise that resolves falsy /
  *                        rejects — to KEEP the draft (a failed send must not
  *                        eat the text); anything else clears the buffer.
  *                        Send is disabled while a promise is pending.
  *     upload(file, signal, kind): store one attachment and resolve the text
  *                        to append — its path, or for `kind === 'large'`
- *                        (#1430) a line naming the path and telling the agent
+ *                        a line naming the path and telling the agent
  *                        not to read the file. A throw carries the failure's
  *                        reason. `signal` aborts when the operator cancels
- *                        (#1413); pass it to the request.
+ *                        pass it to the request.
  *     keys:              { send(bytes), onOpen() } to drive a PTY from the
  *                        ⌨ D-pad, or null when the session has none — the
  *                        button then renders disabled with the reason.
  *     keysOffReason:     optional — the disabled ⌨ button's title when the
  *                        default ("this session has no PTY") is not the
- *                        reason (the Board drawer, #984, has no socket).
+ *                        reason (the Board drawer has no socket).
  *     onDictationStart:  optional — fires when a recording starts (the
- *                        terminal silences an in-flight read-aloud, #190).
+ *                        terminal silences an in-flight read-aloud).
  *     sendOnModEnter:    optional — bind Ctrl+Enter / Cmd+Enter in the
- *                        textarea to Send (#1072). Off by default; only
+ *                        textarea to Send. Off by default; only
  *                        Chat mode asks for it.
- *     field:             optional — mount as a form field (#1295: the chief
+ *     field:             optional — mount as a form field (the chief
  *                        answer sheet's Anything else). No ➤ Send and no ⌨
  *                        keys: the host's own primary action reads the
  *                        text, so `send` and `keys` are not used and the
@@ -57,48 +57,47 @@
  *   }) → handle
  *
  * The handle: `root`, `textarea`, `attachFiles(files)` (the entry point the
- * attach menu, the composer's own paste and drop (#1206) and the terminal
+ * attach menu, the composer's own paste and drop and the terminal
  * host's paste and drop all use), `restoreDraft(text)` (hand back a cleared
- * draft whose send went unanswered, #1744), `reset()` (leave-surface teardown), `closePopovers()`,
+ * draft whose send went unanswered), `reset()` (leave-surface teardown), `closePopovers()`,
  * `setAvailability({ dictate, ocr })`, `setKeys(keysOpts | null, reason?)`,
  * `setPlaceholder(text)`, `setSendable(enabled, reason)`, `isBusy()` (a
  * stopped dictation is still finalizing — a field host's own send waits it
- * out, as ➤ does, #489).
+ * out, as ➤ does).
  *
- * `setSendable(false, reason)` gates ➤ Send alone (#983: a detached session
+ * `setSendable(false, reason)` gates ➤ Send alone (a detached session
  * whose agent the console-input probe never proved) — the textarea, mic,
  * image and OCR stay usable. The gate is `aria-disabled`, never `disabled`:
  * a genuinely disabled button fires no tap event on iOS, so the reason could
  * only ever surface through a `title` hover a phone does not have, leaving a
- * dead button and no explanation (#1069). A tap still lands and toasts the
+ * dead button and no explanation. A tap still lands and toasts the
  * reason — the same convention as the Board drawer's actions and the
- * overlay's mode segments (#982).
+ * overlay's mode segments.
  *
  * Unavailable mic / keys render DISABLED rather than hidden: a grid that
  * collapses to three buttons is a different shape (design.md button-disabled
  * — flat muted text, never opacity). The OCR *option* hides, as the issue
  * asks, since it lives inside a menu.
  *
- * Voice dictation (#165 / #168 / #489 / #755): the mic drops the transcript
+ * Voice dictation: the mic drops the transcript
  * into the textarea for review — never straight into a PTY. Send refuses
- * while a stopped recording is still finalizing (#489); reset() disposes the
+ * while a stopped recording is still finalizing; reset() disposes the
  * instance so the mic and the app-wide dictation mutex release even
- * mid-permission-prompt (#755).
+ * mid-permission-prompt.
  *
- * Screenshot OCR (#171): the option *stages* screenshots into the tray;
+ * Screenshot OCR: the option *stages* screenshots into the tray;
  * Extract sends ALL of them to photo-ocr in one /api/ocr call so it collates
  * them into one deduplicated text (overlapping shots merged), which lands in
  * the textarea for review. photo-ocr may hold that call for ~15 min on a slow
- * hub, so a tap on the busy Extract button cancels it (#1420, as #1413 does
- * for uploads); the staged shots stay for a retry.
+ * hub, so a tap on the busy Extract button cancels it (as uploads do); the staged shots stay for a retry.
  *
- * Large file (#1430): a file for the agent to move, archive or process by
+ * Large file: a file for the agent to move, archive or process by
  * path, never to read. It goes through the same queue, uncapped by the
  * ordinary 12 MB (its own limit is a Setting the upload enforces), streams
  * to the machine, and appends a line with its path and size that tells the
  * agent to leave its contents out of the context.
  *
- * Attach (#41 / #366 / #448 / #450 / #1354): uploads run sequentially (never
+ * Attach: uploads run sequentially (never
  * Promise.all — the append reads then writes the textarea), every path is
  * appended at the very end as its own paragraph regardless of the caret,
  * and the textarea is refocused synchronously inside the picker's `change`
@@ -109,7 +108,7 @@
  * naming each failure. While it runs the image button shows an hourglass
  * with "N/M" and a status line above the textarea says "Uploading N of M"
  * (neither takes focus, so the keyboard stays up). A tap on the busy image
- * button cancels the run (#1413): the upload in flight is aborted, the rest of
+ * button cancels the run: the upload in flight is aborted, the rest of
  * the queue is dropped, and the button is ready again with "Upload
  * cancelled". A paste or drop mid-run still queues behind it.
  */
@@ -124,7 +123,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { cancelledSummary, createAttachQueue, summarize } from './attach-batch.js';
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
-// for a long dictated voice note (#165) without the bar eating the whole
+// for a long dictated voice note without the bar eating the whole
 // screen when the keyboard is up. The CSS min-height floors it at 2 rows.
 const _COMPOSE_MAX_ROWS = 8;
 
@@ -137,7 +136,7 @@ const _TITLE_ATTACH = 'Attach';
 // The button's own title. The plain one is the honest default: on a phone,
 // and on the surfaces that don't opt into `sendOnModEnter`, ➤ is the only way
 // to deliver. The shortcut variant names the binding that actually exists
-// (#1072) — it replaced 'Send (with Enter)', which promised a shortcut no
+// — it replaced 'Send (with Enter)', which promised a shortcut no
 // code implemented and described the opposite of what the return key does.
 const _TITLE_SEND = 'Send';
 const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
@@ -150,7 +149,7 @@ const _LABEL_LARGE = 'Attach large file (not read)';
 
 // Auto-grow a composer textarea up to _COMPOSE_MAX_ROWS; the return key adds
 // newlines on every surface, and ➤ Send delivers the text — plus Ctrl/Cmd+Enter
-// on a surface that opted into `sendOnModEnter` (#1072).
+// on a surface that opted into `sendOnModEnter`.
 export function growTextarea(ta) {
   ta.style.height = 'auto';
   const lineHeight = parseFloat(getComputedStyle(ta).lineHeight) || 20;
@@ -177,10 +176,10 @@ function render(host, placeholder) {
         '<button type="button" class="icon-button compose-send composer-send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
-    // No accept filter on the attach input (#366): iOS then offers Photo
+    // No accept filter on the attach input: iOS then offers Photo
     // Library / Take Photo / Choose Files, so arbitrary files can be
-    // attached. `multiple` (#448): one gallery tap picks several photos.
-    // Photo is the same upload narrowed to images (#1430), and the large-file
+    // attached. `multiple`: one gallery tap picks several photos.
+    // Photo is the same upload narrowed to images, and the large-file
     // input feeds the not-read path.
     '<input type="file" class="composer-attach-input" multiple hidden>' +
     '<input type="file" class="composer-photo-input" accept="image/*" multiple hidden>' +
@@ -223,7 +222,7 @@ function carriesFiles(dt) {
 }
 
 // `label` pins the accessible name when the tooltip carries state the name
-// must not (the mic stays "Dictate" while unavailable, #1617).
+// must not (the mic stays "Dictate" while unavailable).
 function setButtonState(btn, enabled, titleOn, titleOff, label) {
   btn.disabled = !enabled;
   btn.title = enabled ? titleOn : titleOff;
@@ -240,12 +239,12 @@ function newComposerState(host, opts, el) {
     el: el,
     keysOpts: opts.keys || null,
     // Fixed for the life of the mount: the surface opts into the shortcut at
-    // mount time, so the title can't drift from the binding (#1072).
+    // mount time, so the title can't drift from the binding.
     titleSend: opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND,
-    // #450: the buffer carries an attached-file path, so the surface's send
+    // the buffer carries an attached-file path, so the surface's send
     // may hold its submitting CR back for the path→attachment conversion.
     hasImage: false,
-    // #983: Send's own gate (setSendable) — kept apart from the in-flight
+    // Send's own gate (setSendable) — kept apart from the in-flight
     // disable an async send holds, so settling a send never re-enables a
     // button the surface gated off.
     sendBlocked: false,
@@ -260,8 +259,8 @@ function newComposerState(host, opts, el) {
     ocrStaged: [],      // File objects awaiting a collated extraction
     ocrThumbUrls: [],   // object URLs to revoke when the tray re-renders
     // The in-flight extraction's AbortController, or null at rest. photo-ocr may
-    // hold one call for ~15 min on a slow hub (#1420), so the busy Extract button
-    // stays tappable and a second tap cancels it, like the upload (#1413).
+    // hold one call for ~15 min on a slow hub, so the busy Extract button
+    // stays tappable and a second tap cancels it, like the upload.
     ocrCtrl: null,
     // OCR is offered only while photo-ocr is configured (setAvailability).
     ocrOffered: true,
@@ -360,7 +359,7 @@ async function runOcrExtraction(c) {
     ta.focus();
     clearOcrStaging(c);
     // A partly read take is a 200 whose text already carries a
-    // `[missing: photo N …]` line per unread photo (photo-ocr#166); say so
+    // `[missing: photo N …]` line per unread photo; say so
     // up front rather than a plain success the owner might not look past.
     const missed = (body.missing_photos || []).length;
     if (missed) {
@@ -413,7 +412,7 @@ function wireOcr(c) {
 }
 
 // ---- attach ------------------------------------------------------------
-// Always append at the very end as its own paragraph (#366) — never
+// Always append at the very end as its own paragraph — never
 // splice at the caret, which glued the path onto whatever the cursor
 // happened to sit on. A blank line separates it from existing text, so
 // sequential attachments stack cleanly: <text>\n\n<path1>\n\n<path2>.
@@ -427,9 +426,9 @@ function appendParagraph(c, text) {
   ta.focus();
 }
 
-// `kind` is 'large' for a not-read large file (#1430): its line names a path
+// `kind` is 'large' for a not-read large file: its line names a path
 // the agent must not open as an attachment, so it does not set hasImage
-// (which holds Send's CR back for an image conversion, #450).
+// (which holds Send's CR back for an image conversion).
 function appendPath(c, path, kind) {
   appendParagraph(c, path);
   if (kind !== 'large') c.hasImage = true;
@@ -440,9 +439,9 @@ function labelImage(c, text) {
   c.el.image.setAttribute('aria-label', text);
 }
 
-// #1354: "N of M" on the image button and in the status line while the
+// "N of M" on the image button and in the status line while the
 // queue runs; both go back to rest when it drains. The button stays
-// tappable — a tap now cancels the run (#1413) — so it is `aria-busy`,
+// tappable — a tap now cancels the run — so it is `aria-busy`,
 // never `disabled`: iOS fires no tap on a disabled button.
 function showUploadProgress(c, p) {
   const el = c.el;
@@ -484,7 +483,7 @@ function createComposerAttachQueue(c) {
 function attachFiles(c, files, kind) {
   const list = files ? Array.prototype.slice.call(files) : [];
   if (!list.length) return Promise.resolve();
-  // #450: refocus NOW, synchronously in the caller's gesture tick — the
+  // refocus NOW, synchronously in the caller's gesture tick — the
   // native picker dismissed the keyboard, and a post-upload focus() lands
   // outside the gesture: the caret shows but the keyboard stays down, so
   // the whole composer drops to the screen bottom, out of thumb reach.
@@ -508,7 +507,7 @@ function wireAttach(c) {
   wirePicker(c, el.photoInput);
   wirePicker(c, el.largeInput, 'large');
 
-  // Paste and drop reach attachFiles from every mount (#1206). They were only
+  // Paste and drop reach attachFiles from every mount. They were only
   // wired to the terminal's xterm host (terminal-image.js), so Chat, which
   // has no terminal, took neither. A clipboard that also carries plain text
   // pastes as text: Office and similar apps put a rendered image of copied
@@ -529,7 +528,7 @@ function wireAttach(c) {
     attachFiles(c, dt.files);
   });
 
-  // While an upload runs a tap on 📎 cancels it (#1413) instead of opening
+  // While an upload runs a tap on 📎 cancels it instead of opening
   // the menu. Registered BEFORE the menu binds its own anchor handler, so
   // this listener wins the click and stops the menu from opening.
   el.image.addEventListener('click', function (ev) {
@@ -544,7 +543,7 @@ function mountImageMenu(c) {
   const host = c.host;
   // Above the composer, right edges 10px in (mockup screen 3). The vendored
   // row-menu mounts the open menu on <body>, so the Board drawer's column
-  // carousel, which clipped an absolutely-positioned menu, cannot (#996).
+  // carousel, which clipped an absolutely-positioned menu, cannot.
   c.imageMenu = createRowMenu({
     className: 'composer-menu',
     placement: {
@@ -586,10 +585,10 @@ function finishSend(c) {
   c.el.textarea.focus();
 }
 
-// The surface's gate is aria-disabled (see the module header, #1069) so a
+// The surface's gate is aria-disabled (see the module header) so a
 // phone tap still reaches the button and can say why. The in-flight hold
 // stays a real `disabled`: it lasts one request and has no reason to state.
-// It must also *look* held (#1239): `disabled` alone left ➤ at full accent,
+// It must also *look* held: `disabled` alone left ➤ at full accent,
 // so a send in progress read as a live button inviting a second tap.
 function syncSend(c) {
   const send = c.el.send;
@@ -610,7 +609,7 @@ function submit(c) {
     return;
   }
   if (c.sending) return;
-  // #489: a dictation that just stopped is still finalizing until the
+  // a dictation that just stopped is still finalizing until the
   // canonical transcript settles into the textarea. Reading + clearing the
   // buffer mid-window raced that settle — wait it out instead.
   if (c.dictation.isBusy()) {
@@ -626,7 +625,7 @@ function submit(c) {
     return;
   }
   if (res && typeof res.then === 'function') {
-    // Async delivery (Chat mode's /input route, #983): hold Send and
+    // Async delivery (Chat mode's /input route): hold Send and
     // keep the draft until the surface says it went through.
     c.sending = true;
     syncSend(c);
@@ -646,7 +645,7 @@ function wireSend(c) {
   c.el.send.addEventListener('click', function () { submit(c); });
   ta.addEventListener('input', function () { composerGrow(c); });
 
-  // Ctrl+Enter / Cmd+Enter sends (#1072) — opt-in per surface, because only
+  // Ctrl+Enter / Cmd+Enter sends — opt-in per surface, because only
   // Chat asked for it: the terminal overlay has its own input path and the
   // Board drawer keeps today's shape. Three things this deliberately is:
   //
@@ -707,7 +706,7 @@ function closePopovers(c) {
 // in-flight recording. dispose() (not stop()) so the mic and the app-wide
 // dictation mutex release even mid-permission-prompt or mid-finalize, and
 // a late transcript is dropped rather than written into a bar about to be
-// hidden and cleared (#755).
+// hidden and cleared.
 function resetComposer(c) {
   c.el.textarea.value = '';
   c.el.textarea.style.height = '';
@@ -718,7 +717,7 @@ function resetComposer(c) {
 }
 
 // Give back a draft the surface cleared on a send it later found unanswered
-// (#1744). Whatever was typed meanwhile stays, after the returned text.
+// Whatever was typed meanwhile stays, after the returned text.
 function restoreDraft(c, text) {
   const cur = c.el.textarea.value;
   c.el.textarea.value = cur ? text + '\n' + cur : text;
@@ -727,7 +726,7 @@ function restoreDraft(c, text) {
 
 export function mountComposer(host, opts) {
   const el = render(host, opts.placeholder || 'Message for the agent');
-  // The terminal-keys glyph isn't a conventional icon (#1238 J-05).
+  // The terminal-keys glyph isn't a conventional icon.
   bindLongPressHint(el.keys);
   const c = newComposerState(host, opts, el);
   if (opts.field) {

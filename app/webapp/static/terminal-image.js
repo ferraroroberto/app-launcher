@@ -3,11 +3,11 @@
  * An image pasted or dropped straight onto the terminal goes the same way
  * as one picked through the composer's image button: it is uploaded to the
  * session-host, and the stored path is appended to the composer's text for
- * review before sending (issues #41/#366/#448/#450). The upload itself and
- * the append live in composer.js / terminal-compose.js since #980; this is
+ * review before sending. The upload itself and
+ * the append live in composer.js / terminal-compose.js; this is
  * only the host's two extra entry points.
  *
- * Split out of terminal.js in issue #723, continuing the #315 split.
+ * Split out of terminal.js.
  */
 
 import { els } from './state.js';

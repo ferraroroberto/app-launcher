@@ -1,7 +1,7 @@
 /* Small, dependency-free DOM helpers shared across modules. */
 
 // A plain element with a class and text content — the one element builder
-// this shape (#1627), was copied verbatim into board-answers.js,
+// this shape, was copied verbatim into board-answers.js,
 // chat-resume.js, launch-toolbar.js, system-load.js and usage-meter.js.
 export function el(tag, cls, text) {
   const node = document.createElement(tag);
@@ -12,7 +12,7 @@ export function el(tag, cls, text) {
 
 // A settings-sheet row: a label on the left, a value (optionally toned via
 // the caller setting `.lastChild.dataset.tone`) on the right. Shared by the
-// usage sheet and the CPU/system-load sheet (#1627).
+// usage sheet and the CPU/system-load sheet.
 export function sheetRow(label, value, key) {
   const row = el('div', 'row usage-sheet-row');
   if (key) row.dataset.row = key;
@@ -38,15 +38,15 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-// Brand marks (#1070). These used to be <img src="/static/icons/NAME.svg">,
+// Brand marks. These used to be <img src="/static/icons/NAME.svg">,
 // which is a separate document: its glyph fill cannot reach page CSS vars,
-// so #361 painted a theme-aware grey chip *behind* every mark to keep the
+// so every mark gets a theme-aware grey chip *behind* it to keep the
 // baked mid-tone legible on both canvases. The marks are inline <symbol>s
 // in index.html's brand sprite now (same in-document <use> mechanism as the
 // Lucide sprite, same iOS Safari reason), so a monochrome mark simply
 // inherits currentColor and the chip is gone. That also means the marks
 // share the button's own colour, disabled and :active treatment for free,
-// and the ?v= cache-busting iconUrl() existed for (issue #372) is moot —
+// and the ?v= cache-busting iconUrl() existed for is moot —
 // the sprite ships in the version-stamped page itself.
 //
 // `name` is the brand id without the `b-` prefix (an agent id, or `github`
@@ -103,7 +103,7 @@ export function bindOutsideClickToClose(box, toggle, closer) {
   };
 }
 
-// A compact model-picker dropdown that is valid inside a <summary> (#540).
+// A compact model-picker dropdown that is valid inside a <summary>.
 // A native <select> cannot live there — WebKit's HTML parser derails on it,
 // closing the enclosing <details> early and cascading into a broken tree
 // that even zeroes custom-property inheritance on ancestors (the flat 0-token
@@ -119,7 +119,7 @@ export function bindOutsideClickToClose(box, toggle, closer) {
 // controls inside a native <dialog> stay in that top layer. Returns the one
 // controller used by every model surface, or null when markup is absent.
 //
-// A menu that holds more than the model list (Life's launch options, #1503)
+// A menu that holds more than the model list (Life's launch options)
 // wraps the options in a `.model-combo-list` listbox; setOptions then
 // rebuilds that list alone and leaves the rest of the menu in place. A tap
 // on anything that is not an option keeps the menu open.
@@ -379,13 +379,13 @@ export function wireModelCombo(root, onChange) {
 }
 
 // One duration formatter for the Board card's compact age chip and the
-// Coding tab's Running-sessions elapsed time (#750) — same quantity, kept at
+// Coding tab's Running-sessions elapsed time — same quantity, kept at
 // the two granularities each surface has always used (compact chip: "3h";
 // the denser sessions row: "3h 24m"), parametrised over the two input
 // shapes: a pre-computed duration in seconds (`fromEpoch: false`, the
 // default), or an epoch second diffed against now (`fromEpoch: true`).
 // `granular: true` also switches sub-minute output from "now" to "Ns" and
-// shows hours+minutes, rolling into "Nd Nh" past 24 h (#1523).
+// shows hours+minutes, rolling into "Nd Nh" past 24 h.
 
 // Whole local calendar days between `date` and today: positive when `date`
 // is in the past, negative when it is in the future, 0 for today. `date`'s
@@ -402,7 +402,7 @@ export function calendarDaysFromToday(date) {
   return Math.round((today - day) / 86400000);
 }
 
-// Past 24 h a whole-hours count reads as "11d 4h", not "268h" (#1523); below
+// Past 24 h a whole-hours count reads as "11d 4h", not "268h"; below
 // that it returns null so each caller keeps its own "Nh Nm" shape. Shared by
 // fmtDuration's granular mode and jobs-row.js's formatDuration.
 export function daysAndHours(hrs) {
@@ -429,7 +429,7 @@ export function fmtDuration(value, opts) {
   return Math.floor(secs / 86400) + 'd';
 }
 
-// The standing fleet chief (#245, cross-tab parity #547): one label="chief"
+// The standing fleet chief (cross-tab parity): one label="chief"
 // PTY session. Same label-first, name-fallback match everywhere a session
 // might be the chief — a session-host that predates the label field still
 // reports the chief's launch name, so the fallback keeps crown/tint/confirm
@@ -439,11 +439,11 @@ export function fmtDuration(value, opts) {
 export function isChiefSession(s) {
   return !!s && (s.label === 'chief' || (s.kind === 'pty' && s.name === 'chief'));
 }
-// The themed confirm's wording (#1501: confirmDialog, never a native
+// The themed confirm's wording (confirmDialog, never a native
 // confirm()). Same words as the native dialogs they replaced.
 export const CHIEF_KILL_CONFIRM = { title: 'Kill the chief session?', action: 'Kill' };
 
-// A Telegram channel session (#1366): the session-host label is
+// A Telegram channel session: the session-host label is
 // `telegram:<profile id>`, set only by the Life OS channel launch. Its
 // "Telegram · Health" name is derived from the id, so the Board and the Coding
 // tab need nothing but the label the host already echoes.
@@ -471,7 +471,7 @@ export const CHIEF_RESTART_CONFIRM = {
 };
 
 // A share as a whole-percent string — shared by the usage sheet and the
-// CPU/system-load sheet (#1627).
+// CPU/system-load sheet.
 export function pctText(pct) {
   return Math.round(pct) + '%';
 }
@@ -485,7 +485,7 @@ export function usageTier(pct) {
   return 'good';
 }
 
-// Context use at which a Telegram channel session is flagged (#1402): the
+// Context use at which a Telegram channel session is flagged: the
 // summary line's alert icon and the popup's highlighted Compact button. Lower
 // than usageTier()'s 60 "warn" on purpose — a compaction wants a head start,
 // not a last-minute scramble.
@@ -497,8 +497,8 @@ export function contextAlert(pct) {
   return typeof pct === 'number' && pct >= CONTEXT_ALERT_PCT;
 }
 
-// A reset timestamp in an arbitrary `Intl.DateTimeFormat` shape (#860,
-// #1433): usage-meter.js's compact row stamps (clock only / day only — a
+// A reset timestamp in an arbitrary `Intl.DateTimeFormat` shape: usage-meter.js's compact row
+// stamps (clock only / day only — a
 // full "Sep 11, 14:20" on both windows pushes a row past a 390px viewport)
 // and its full sheet stamps are all this one formatter with a different
 // `format` object, not three separate near-identical copies.
@@ -509,7 +509,7 @@ export function fmtResetFull(value, format) {
   return new Intl.DateTimeFormat([], format).format(date);
 }
 
-// The date on a Board card's second line (#1638): the clock for a stamp from
+// The date on a Board card's second line: the clock for a stamp from
 // today ("15:29"), day + short month for any other day ("14 Oct"), in the
 // viewer's local time. GitHub stamps are UTC; the conversion is the browser's,
 // never a server offset. '' for a value that can't be read, so the caller drops
@@ -532,7 +532,7 @@ export function nameLabel(value) {
   });
 }
 
-// Linear pace (#1330): how much of the window has elapsed, as a whole
+// Linear pace: how much of the window has elapsed, as a whole
 // percent, so weekly usage reads against it directly. Tuesday's `53%` means
 // usage under 53% is under budget. The window starts `duration_minutes`
 // before `resets_at` (7 days when the backend doesn't say). Null when the
@@ -553,7 +553,7 @@ export function quotaPace(windowData, nowMs) {
   return Math.round(Math.min(1, Math.max(0, elapsed)) * 100);
 }
 
-// Bring `el` into view for an empty state's action (#1238 J-09): open every
+// Bring `el` into view for an empty state's action: open every
 // disclosure it sits in (itself included), scroll it to the middle of the
 // screen, and focus it when it takes focus.
 export function revealInCard(el) {

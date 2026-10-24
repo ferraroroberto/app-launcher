@@ -1,6 +1,6 @@
-/* ---------- context filter (issue #713) ---------- */
+/* ---------- context filter ---------- */
 /* The Settings-tab card's mode control is the vendored segmented control
-   (#1586), the same one as the Coding-options permission rows. */
+, the same one as the Coding-options permission rows. */
 .context-filter-subhead {
   margin: 16px 0 6px;
   font-size: var(--font-body);
@@ -18,7 +18,7 @@
   min-width: 0;
   flex: 1;
 }
-/* A harness's status is a plain value (#1506): Active, Unsupported and
+/* A harness's status is a plain value: Active, Unsupported and
    Planned are facts, not exceptions, so none wears a chip or a colour. Its
    rule sits with the Telegram check values above. */
 .context-filter-stats {

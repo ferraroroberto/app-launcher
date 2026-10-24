@@ -1,10 +1,10 @@
-/* A changed file, drawn for its type (#1689): the Changed files panel's File
+/* A changed file, drawn for its type: the Changed files panel's File
  * view, beside its Diff.
  *
  * Markdown goes through the shared sanitising renderer (markdown.js), JSON is
  * pretty-printed and tinted, code is a monospace listing with a line-number
  * gutter (CSS counters) and, for the main languages, token colours from
- * syntax-tint.js (#1749), and anything else is plain text. Every byte of the file is escaped before any
+ * syntax-tint.js, and anything else is plain text. Every byte of the file is escaped before any
  * markup is put around it, so a file holding HTML or a `<script>` reads as
  * exactly that text and never runs.
  *

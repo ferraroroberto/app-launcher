@@ -2,7 +2,7 @@
 /* Structure and closed-box geometry come from _vendored/disclosure — the
    .card--collapsible modifier + .collapse-summary/.collapse-main/
    .collapse-title/.collapse-chevron/.collapse-body classes. A <summary>
-   holds nothing but icon, title and chevron (#1132): a card's own controls
+   holds nothing but icon, title and chevron: a card's own controls
    (git status, the launch toggles, Edit mode, sort/add) sit in a toolbar
    row at the top of its body, where a near-miss can't fold the card. */
 .card-toolbar {
@@ -10,14 +10,14 @@
   align-items: center;
   flex-wrap: wrap;
   /* A wrapped line meets the one above across the row gap, where a combo
-     trigger's -5 and a toggle's -4 expansion need 9 (#1176). */
+     trigger's -5 and a toggle's -4 expansion need 9. */
   gap: var(--gap) 8px;
   margin: 0 0 12px;
 }
-/* The vendored filter field above a long list (#1132): flush with the card
+/* The vendored filter field above a long list: flush with the card
    body's own padding rather than the component's gutter margin. */
 .action-row-filter.list-filter { margin: 0 0 12px; }
-/* Full-bleed action-row lists (#1128): Projects, Skills, Apps and Trays
+/* Full-bleed action-row lists: Projects, Skills, Apps and Trays
    carry the component contract's `.card.action-list`, so their rows run
    edge to edge with the hairlines at the card's width. The rows sit in a
    disclosure body, and the contract asks that host's side padding at zero
@@ -28,7 +28,7 @@
 /* Favorites filter: the star fills gold when the filter is active. */
 .fav-filter-btn.active .icon { fill: currentColor; }
 
-/* Image lightbox (#173, reused for transcript thumbnails by #1265): the
+/* Image lightbox (reused for transcript thumbnails): the
    full-screen overlay for pan/zoom. */
 .image-lightbox {
   position: fixed;
@@ -68,14 +68,14 @@
    position: relative, which would break this control's position: fixed. */
 .image-lightbox-close::before { content: ""; position: absolute; inset: -2px; }
 /* Tighter inter-tile gap on the Projects list — part of the vertical
-   compaction (issue #212); horizontal rhythm is left alone. */
+   compaction; horizontal rhythm is left alone. */
 .opt-group {
   padding: 6px 14px 14px;
   border-top: 1px solid var(--line);
 }
 /* Agent group headers read in the app font, normal case — the uppercase
    spaced-caption treatment looked like a different typeface next to the
-   mixed-case option rows (issue #383). */
+   mixed-case option rows. */
 .opt-group-title {
   font-size: var(--font-label);
   font-weight: 600;
@@ -118,7 +118,7 @@
   width: 56px;
   flex-shrink: 0;
 }
-/* The vendored segmented control (#1133, #1586) sits in an .opt-row beside its label:
+/* The vendored segmented control sits in an .opt-row beside its label:
    it takes the row's remaining width, and the row owns the spacing. */
 .opt-row .segmented { flex: 1; min-width: 0; }
 /* A control stacked under its label keeps the 12px the retired range-tabs row
@@ -141,7 +141,7 @@
   font-size: var(--font-label);
 }
 .toggles .switch-row { flex: 1 1 180px; }
-/* The Visible agents list (issue #666) is a *list*, not a pair of related
+/* The Visible agents list is a *list*, not a pair of related
    switches like Verbose/Debug: one entry per line, name left and switch
    pinned right, on the shared list-row divider. Wrapping three-to-a-line
    (the default .toggles flow) made it ambiguous which switch belonged to
@@ -171,8 +171,8 @@
   flex-direction: column;
   gap: 0;
 }
-/* Repeated list rows render flat (issue #365, generalizing the Board
-   backlog's #337/#339 pattern app-wide): no per-row box — a hairline
+/* Repeated list rows render flat (generalizing the Board
+   backlog's pattern app-wide): no per-row box — a hairline
    separator between rows is the row boundary, GitHub-issue-list style.
    The outer collapsible section containers (the vendored disclosure
    component) keep their card look; only the rows inside them changed. */
@@ -205,7 +205,7 @@
   gap: 4px;
 }
 .launch-btn:active { background: var(--card-2); }
-/* Apps + Trays rows are inert since #790 — launching moved to the per-row
+/* Apps + Trays rows are inert — launching moved to the per-row
    ⚡/🚫👁 pair, so the body must not read or feel tappable. Keeps the
    .launch-btn typography every other list row uses. */
 .launch-btn.inert {
@@ -218,10 +218,10 @@
   font-weight: 400;
   overflow-wrap: anywhere;
 }
-/* No uppercase transform (#1130): these chips carry *values* -- "py",
+/* No uppercase transform: these chips carry *values* -- "py",
    "daily 03:00", "p50 3m 33s" -- and uppercasing them made the units
    ambiguous ("P50 3M 33S"). Section headings are sentence case too:
-   caps are the overline role's alone (design.md Typography, #1156). */
+   caps are the overline role's alone (design.md Typography). */
 .launch-btn .kind-pill {
   display: inline-block;
   font-size: var(--font-caption);
@@ -237,7 +237,7 @@
   flex-direction: column;
   flex-shrink: 0;
   /* No border-left: the divider was part of the boxed-card look; flat
-     rows (issue #365) keep the action rail as plain glyphs. */
+     rows keep the action rail as plain glyphs. */
 }
 /* The rail's glyph buttons are the vendored icon-button at the 44px floor,
    flush with the rail's right edge. */
@@ -252,13 +252,13 @@
   background: rgb(from var(--danger) r g b / 0.2);
   color: var(--danger-text);
 }
-/* ---------- Jobs tab rows (#1438, step 6/7 of #1432) ---------- */
+/* ---------- Jobs tab rows ---------- */
 /* A job row is the shared action-row with a job avatar: the name, one meta
    line ("in 5m · Every 15 min") with chips for exceptions only, and the
    seven-dot history as the trailing value inside the row's tap target,
    before the one kebab. */
-/* The width budget at 390px: a name of about 24 characters must not be cut
-   (#1438's acceptance). The history is 6px dots on 2px gaps, 8px after the
+/* The width budget at 390px: a name of about 24 characters must not be cut.
+   The history is 6px dots on 2px gaps, 8px after the
    text column, and the kebab's own box is the space on its right. */
 .job-row .action-row-main { padding-right: 0; }
 .job-row .job-sparkline { flex: none; margin-left: -4px; }
@@ -269,7 +269,7 @@
   line-height: 1;
   white-space: nowrap;
 }
-/* A drawn dot, not a `●` glyph (#1127): the character sat on the text
+/* A drawn dot, not a `●` glyph: the character sat on the text
    baseline at a font-dependent size beside the Lucide icons. */
 .job-spark-dot {
   display: inline-block;
@@ -281,16 +281,15 @@
   color: var(--muted);
 }
 /* The legend: muted success, red failed, amber not confirmed, a hollow ring
-   deferred, a short dash for no outcome. Healthy is quiet (#1505, decision 7
-   of #1500): a failure is the only colour in the strip, and each dot's title
-   still names its exact outcome. A run in progress takes the accent (work in
+   deferred, a short dash for no outcome. Healthy is quiet: a failure is the only colour in the strip,
+   and each dot's title still names its exact outcome. A run in progress takes the accent (work in
    progress), never amber: the avatar's alive badge already says the job runs
-   (#1438). */
+. */
 .job-spark-dot.up { color: var(--muted); }
 .job-spark-dot.down { color: var(--danger); }
 .job-spark-dot.live { color: var(--accent); }
 .job-spark-dot.unconfirmed { color: var(--attention); }
-/* Deferred (#1316): a muted hollow ring, so it is not read as a run that
+/* Deferred: a muted hollow ring, so it is not read as a run that
    never happened. */
 .job-spark-dot.deferred {
   color: var(--muted);
@@ -298,7 +297,7 @@
   box-shadow: inset 0 0 0 1.5px currentColor;
 }
 /* `unknown` is a run with no real outcome at all (skipped, dry run): a short
-   dash, so it never reads as the muted dot of a healthy run (#1505). An
+   dash, so it never reads as the muted dot of a healthy run. An
    unconfirmed one above did run and is worth a look, so it is not grey. */
 .job-spark-dot.unknown {
   color: var(--muted);
@@ -318,16 +317,16 @@
   padding: 0 14px;
 }
 
-/* ---------- Coding tab tiles (issue #45) ---------- */
+/* ---------- Coding tab tiles ---------- */
 /* Bare folder name on the left, one icon button per coding agent on
    the right — sat side by side, not stacked. */
 .agent-icon {
-  width: 24px;                    /* icons.size feature step (issue #355) */
+  width: 24px;                    /* icons.size feature step */
   height: 24px;
   display: block;
   pointer-events: none;   /* clicks land on the button, not the glyph */
-  /* No chip (#1070). #361 painted a theme-aware grey tile behind every mark
-     because a brand <img> is a separate document: its glyph fill could not
+  /* No chip. A grey tile behind every mark was only needed because a brand
+     <img> is a separate document: its glyph fill could not
      reach page CSS vars, so monochrome marks were baked to a fixed mid-tone
      and needed a known surface to clear. The marks are inline sprite
      symbols now (index.html's brand sprite), so a monochrome one inherits
@@ -335,8 +334,8 @@
      themes by construction — the chip has nothing left to do. */
   flex-shrink: 0;
 }
-/* Favourites filter — icon-only at every width (#1070, kept by #1194), the
-   trailing star inside the Projects filter field since #1434: the vendored
+/* Favourites filter — icon-only at every width, the
+   trailing star inside the Projects filter field: the vendored
    icon-button at the 36px control box, pulled to the field's right edge.
    The active filter takes the star's gold glyph (fill rule:
    `.fav-filter-btn.active .icon`, near `.opt-group`); the accessible name
@@ -353,7 +352,7 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
-  /* Chip removed with the rest (#1070) — see .agent-icon above. */
+  /* Chip removed with the rest — see .agent-icon above. */
 }
 
 /* ---------- running sessions ---------- */

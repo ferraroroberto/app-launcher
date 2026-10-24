@@ -1,4 +1,4 @@
-/* ---------- Apps tab (#1437, step 5/7 of #1432) ---------- */
+/* ---------- Apps tab ---------- */
 /* An action-row that leads with an avatar (action-rows.js `avatar`): the
    main button lays out as a row, the avatar then the title and meta
    stacked, at the session row's 12px gap. */
@@ -57,7 +57,7 @@
 .running-apps-note[hidden] { display: none; }
 .listeners-footer { margin: 12px 0; }
 
-/* A list's stale line (async-state.js, #1501): the last good data stays
+/* A list's stale line (async-state.js): the last good data stays
    below it, and it says how old that data is. */
 .async-stale {
   margin: 0 0 8px;
@@ -72,7 +72,7 @@
   font-size: var(--font-body);
   color: var(--muted);
 }
-/* promptDialog's one field (#1501): the full width, above the action.
+/* promptDialog's one field: the full width, above the action.
    16px text so iOS doesn't zoom the page on focus. */
 .confirm-dialog-input {
   display: block;
@@ -118,7 +118,7 @@
 }
 .action-row-meta-text:empty { display: none; }
 
-/* actionRow's optional variants (#1501, action-rows.js), app-side so the
+/* actionRow's optional variants (action-rows.js), app-side so the
    vendored action-row.css stays verbatim. One-line: the meta runs after the
    title on the same line at rows.md, the title ellipsizing first; small is
    the same at rows.sm. Inert: a row that reports and does nothing on tap,
@@ -140,7 +140,7 @@
 .action-row--small .action-row-title { flex: 0 1 auto; min-width: 0; }
 .action-row--one-line .action-row-meta,
 .action-row--small .action-row-meta { flex: 0 1 auto; min-width: 0; max-width: 50%; }
-/* The scaffold's meta wraps to two lines (project-scaffolding#396); these
+/* The scaffold's meta wraps to two lines; these
    densities are single-line by contract, so they put the one-line ellipsis
    back (the same scoped override the scaffold's day-row uses). */
 .action-row--one-line .action-row-meta:not(.has-chips),
@@ -166,7 +166,7 @@
 .launch-toolbar {
   display: flex;
   flex-direction: column;
-  /* 8px: the combo's -5 and a switch's -9 tap expansions (#1124) must not
+  /* 8px: the combo's -5 and a switch's -9 tap expansions must not
      meet across the two rows. */
   gap: 8px;
 }
@@ -189,8 +189,8 @@
   cursor: pointer;
   user-select: none;
 }
-/* The switches in the combo's menu (launch-toolbar.js `switchesInMenu`,
-   #1503): under the model list on a hairline, one 44px row each with the
+/* The switches in the combo's menu (launch-toolbar.js `switchesInMenu`): under the model list
+   on a hairline, one 44px row each with the
    word left and the track right, then a muted help line. */
 .launch-menu .model-combo-list {
   display: flex;
@@ -226,14 +226,14 @@
   margin-left: 0.3em;
 }
 
-/* The PC load sheet's Screen row (#1520): a link row that acts on tap, on
+/* The PC load sheet's Screen row: a link row that acts on tap, on
    the sheet's own inset, divided from the readings above like a row. */
 .detail-card .cpu-sheet-screen {
   padding-inline: 0;
   border-top: 1px solid var(--line-muted);
 }
 
-/* The Screen view (#1520): the PC's desktop, full screen. A bar on the card
+/* The Screen view: the PC's desktop, full screen. A bar on the card
    surface (title, the display picker when there is more than one, the
    modal's x) over a stage the frame fills, letterboxed on the canvas. The
    page is zoom-locked, so pinch and pan are the view's own (screen-view.js):
@@ -297,7 +297,7 @@
   pointer-events: none;
 }
 .screen-image[hidden] { display: none; }
-/* The PC's mouse cursor (#1598). A 0x0 anchor moved to the cursor's spot by
+/* The PC's mouse cursor. A 0x0 anchor moved to the cursor's spot by
    transform, outside the picture's own zoom transform, so it keeps its size
    when zoomed; the SVG inside sits so its hotspot is on the anchor
    (screen-cursor.js). It never takes a touch. A light body with a dark
@@ -315,7 +315,7 @@
 }
 .screen-cursor[hidden] { display: none; }
 .screen-cursor svg { position: absolute; overflow: visible; }
-/* Trackpad (#1599): a long-press held, so the next move drags with the
+/* Trackpad: a long-press held, so the next move drags with the
    button down, or a lift right-clicks. A ring round the hotspot says so. */
 .screen-cursor.held::before {
   content: "";
@@ -329,7 +329,7 @@
   border: 3px solid var(--screen-cursor-fill);
   box-shadow: 0 0 0 1.5px var(--screen-cursor-edge), inset 0 0 0 1.5px var(--screen-cursor-edge);
 }
-/* The magnifier loupe (#1725): a round window on the frame under a finger held
+/* The magnifier loupe: a round window on the frame under a finger held
    down in Touch control. screen-view.js sets its size, its transform and the
    frame it magnifies; it sits above the finger (data-side="below" when it had
    to flip under it) and never takes a touch. A card-coloured ring and a
@@ -380,7 +380,7 @@
   margin: 0;
   text-align: center;
 }
-/* A short result line (#1719), the app's frosted toast recipe inside the view:
+/* A short result line, the app's frosted toast recipe inside the view:
    a toast sits under a modal dialog's top layer, so it can't be seen here.
    Over the bottom of the stage, never takes a touch. */
 .screen-notice {
@@ -412,7 +412,7 @@
   color: var(--accent-fg);
 }
 
-/* Screen control (#1521). A toolbar row under the bar, on the same card
+/* Screen control. A toolbar row under the bar, on the same card
    surface: the View / Control segmented control, and the keyboard toggle (an
    icon button, pressed while the keys are up) once Control is on. */
 .screen-view-tools {
@@ -425,14 +425,14 @@
   border-bottom: 1px solid var(--line);
 }
 .screen-mode { flex: 0 1 240px; min-width: 0; margin: 0; }
-/* Control's style (#1599), Touch / Trackpad, beside it while Control is on;
+/* Control's style, Touch / Trackpad, beside it while Control is on;
    the two share the row evenly. */
 .screen-control { flex: 0 1 240px; min-width: 0; margin: 0; }
 .screen-control[hidden] { display: none; }
 .screen-keyboard { margin-left: auto; --icon-btn-box: var(--control-h); }
 .screen-keyboard[hidden] { display: none; }
 .screen-keyboard .icon { width: var(--icon-title); height: var(--icon-title); }
-/* Quality and readout (#1721): the last button in the row, a real 44px target.
+/* Quality and readout: the last button in the row, a real 44px target.
    Its vertical margins take back the 8px it is taller than the row's content,
    so the row (and the picture under it) stays where it was. It takes the free
    space itself in View, where the keyboard button is hidden; beside it, it
@@ -490,7 +490,7 @@
 }
 .screen-keys .key-btn .icon { width: var(--icon-title); height: var(--icon-title); }
 .screen-key-enter { grid-column: span 2; }
-/* Two pages of keys (#1602). A page is a display:contents wrapper, so its keys
+/* Two pages of keys. A page is a display:contents wrapper, so its keys
    lay out straight on the bar's grid and the hidden page takes no room. The
    page toggle and Task Mgr close each page's last row; their spans are
    variables so the landscape grid below can refill the row. */
@@ -499,7 +499,7 @@
   --keys-span-toggle-fn: 3;
   --keys-span-task-main: 4;
   --keys-span-task-fn: 2;
-  /* Paste to PC and Paste + Ctrl+V (#1719) end each page: a row of their own
+  /* Paste to PC and Paste + Ctrl+V end each page: a row of their own
      on the portrait grid, in the last row beside the others in landscape. */
   --keys-span-clip-set-main: 4;
   --keys-span-clip-set-fn: 4;
@@ -549,7 +549,7 @@
   pointer-events: none;
 }
 
-/* A phone held sideways (#1601). The bar and the tools row take a large share
+/* A phone held sideways. The bar and the tools row take a large share
    of the little height there is, and the picture is the point, so there they
    leave the flow behind a handle: a pill over the stage's top-left corner that
    names the mode (a hidden switch hides no state). It opens the bar and tools

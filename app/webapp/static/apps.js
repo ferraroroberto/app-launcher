@@ -6,7 +6,7 @@
  * rows); those tiles, their git-status annotation and the agent-visibility
  * toggles live in apps-coding.js, the rename/scan dialogs in
  * apps-dialogs.js, and the Other ports sheet in apps-listeners.js — all
- * split out in issue #723, following the shape jobs.js and board.js already
+ * split out, following the shape jobs.js and board.js already
  * set.
  */
 
@@ -34,9 +34,9 @@ import { failedFetchState, setAsyncState } from './async-state.js';
 import { WIDE_LAYOUT_QUERY, isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
 
-// The Apps and Trays rows' kebab menu (#1128), on the vendored row-menu.
+// The Apps and Trays rows' kebab menu, on the vendored row-menu.
 const appMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
-// The Apps list's name filter (#1132), re-applied after every render.
+// The Apps list's name filter, re-applied after every render.
 const appsFilter = listFilter({
   input: els.appsFilterInput,
   list: els.appsList,
@@ -44,7 +44,7 @@ const appsFilter = listFilter({
   storageKey: 'app-launcher.filter.apps',
 });
 
-// The kind avatar (#1437): one Lucide glyph per bat kind, the shared
+// The kind avatar: one Lucide glyph per bat kind, the shared
 // avatar's alive badge on top.
 const KIND_GLYPH = { streamlit: 'gauge', webapp: 'globe', tunnel: 'cloud', tray: 'package' };
 
@@ -52,7 +52,7 @@ function kindAvatar(kind, badge) {
   return avatar(KIND_GLYPH[kind] || 'layout-grid', badge, 'app-avatar');
 }
 
-// The kind in words, for the kebab's header line (#1505): the row itself
+// The kind in words, for the kebab's header line: the row itself
 // says it only through the avatar.
 const KIND_LABEL = { streamlit: 'Streamlit app', webapp: 'Web app', tunnel: 'Tunnel', tray: 'Tray' };
 
@@ -96,7 +96,7 @@ function renderBatLists() {
   appsFilter.apply();
 
   // The true-empty blocks only after a good read: before one, an empty list
-  // is appsState's loading or error, not an empty registry (#1501).
+  // is appsState's loading or error, not an empty registry.
   els.registeredTraysEmpty.hidden = trayApps.length !== 0 || !appsReadAt;
   els.appsEmpty.hidden = otherApps.length !== 0 || !appsReadAt;
   // The empty state offers the scan itself; the row would say it twice.
@@ -108,7 +108,7 @@ function renderBatLists() {
   renderHomeHead();
 }
 
-// Flip a Registered Trays entry's autostart flag (issue #456 part 2/2) via
+// Flip a Registered Trays entry's autostart flag via
 // the same PATCH /api/apps/{id} the rename dialog uses. Re-fetches
 // /api/apps on success so the switch reflects the authoritative persisted
 // state, not an optimistic local flip.
@@ -125,7 +125,7 @@ async function toggleTrayAutostart(a, next) {
   }
 }
 
-// A registered app's alive badge (#1437): red for a tunnel whose probe says
+// A registered app's alive badge: red for a tunnel whose probe says
 // down (it should be up), green while it is up or a launch from here is
 // running, none otherwise.
 function appBadge(a, running) {
@@ -134,7 +134,7 @@ function appBadge(a, running) {
   return '';
 }
 
-// A tray row's context line (#1437): "running" while a launch from here is
+// A tray row's context line: "running" while a launch from here is
 // up, and "starts at log on" when its autostart switch is on. Trays the
 // tray process starts at log on are not in the running list, so a tray not
 // seen running says nothing about it rather than "not running".
@@ -145,13 +145,13 @@ function trayMeta(a, running) {
   return parts.join(' · ');
 }
 
-// Apps and Trays rows on the vendored action-row (#1128). Tapping the row
-// launches the bat hidden, with no console window (#790's 🚫👁): the
-// phone-first case, the PC unattended (#1269). Launch visible (watch a
+// Apps and Trays rows on the vendored action-row. Tapping the row
+// launches the bat hidden, with no console window (🚫👁): the
+// phone-first case, the PC unattended. Launch visible (watch a
 // Streamlit boot, read a traceback) and every other action ride the kebab,
 // whose header line names the kind; the bat path is its Copy path item
-// (#1505). An app row leads with its kind avatar and is one line: the
-// avatar already says the kind (#1505). A tunnel keeps "Tunnel" as its
+// An app row leads with its kind avatar and is one line: the
+// avatar already says the kind. A tunnel keeps "Tunnel" as its
 // context line, since it is not the app's own web row, plus a danger "down"
 // chip when it is down (Up is normal, so it gets none). A tray row keeps
 // its autostart switch as the row's one leading toggle — it is state read
@@ -189,8 +189,8 @@ function renderList(host, items, running) {
     }
     appMenu.attach(a.id, row.kebab, [
       {
-        // The same bat in a console window you can watch (#790's ⚡); the
-        // row tap is the hidden launch (#1269).
+        // The same bat in a console window you can watch (⚡); the
+        // row tap is the hidden launch.
         dataset: { item: 'app-visible-btn' }, glyph: 'eye',
         label: 'Launch visible', ariaLabel: 'Launch ' + a.name + ' in a visible window',
         onTap: function () { launchApp(a, undefined, false); },
@@ -215,8 +215,8 @@ function renderList(host, items, running) {
         onTap: function () { copyUrl(a.tunnel_url); },
       },
       {
-        // Always offered (decision 5 of #1432, #1437): there is no Edit mode
-        // anywhere since #1438.
+        // Always offered: there is no Edit mode
+        // anywhere.
         dataset: { item: 'app-rename-btn' }, glyph: 'pencil',
         label: 'Rename', ariaLabel: 'Rename ' + a.name,
         onTap: function () { openRename(a); },
@@ -238,17 +238,17 @@ function renderList(host, items, running) {
 }
 
 // Coding-tab launch mode is the Detached switch in the Projects card's
-// launch toolbar (launch-toolbar.js, #1434): on → 'remote' (detached
+// launch toolbar (launch-toolbar.js): on → 'remote' (detached
 // console window, listed + killable here but no phone terminal); off →
-// full-control PTY streamed to the phone. The Resume switch (issue #151)
+// full-control PTY streamed to the phone. The Resume switch
 // reopens the agent's own
-// session picker; it is orthogonal to Detached (issue #157) — Detached +
+// session picker; it is orthogonal to Detached — Detached +
 // Resume opens the picker in the detached console, Resume alone streams it
 // to the phone over a PTY. `agentId` (claude | codex | antigravity |
 // copilot) is set by the Coding tile's per-agent button; undefined for
 // Apps-tab bat launches.
 //
-// `stealth` (issue #790) is the Apps/Trays 🚫👁 button: the bat runs with
+// `stealth` is the Apps/Trays 🚫👁 button: the bat runs with
 // no console window on screen. Bat kinds only — a coding session has no
 // console window of its own to hide.
 export async function launchApp(a, agentId, stealth) {
@@ -279,9 +279,9 @@ export async function launchApp(a, agentId, stealth) {
     // (remote) launches have no PTY, so skip it.
     if (a.kind === 'claude-code' && !mode) {
       // A desktop browser gets a dedicated PC Edge --app window, not an
-      // in-page terminal (issue #241); a phone carries its real terminal
+      // in-page terminal; a phone carries its real terminal
       // size so the PTY's first frame is the right width for a ratatui
-      // TUI (issue #126) — see applyLaunchSizePayload.
+      // TUI — see applyLaunchSizePayload.
       applyLaunchSizePayload(payload);
     }
     if (Object.keys(payload).length) {
@@ -299,7 +299,7 @@ export async function launchApp(a, agentId, stealth) {
       agentTag = ' (' + (known ? known.label : body.agent) + ')';
     }
     // A stealth launch leaves nothing on screen to confirm it worked, so
-    // the toast is the only feedback — say the mode out loud (issue #790).
+    // the toast is the only feedback — say the mode out loud.
     toast(
       (resume ? 'Resumed ' : 'Launched ') + a.name + agentTag +
         (mode === 'remote' ? ' (detached)' : '') +
@@ -311,7 +311,7 @@ export async function launchApp(a, agentId, stealth) {
       // Full-control sessions drop straight into the terminal; detached
       // ones only appear in the running-sessions list. A desktop browser
       // gets its terminal in a dedicated PC Edge window instead of in-page,
-      // so it stays on the launcher SPA (issue #241).
+      // so it stays on the launcher SPA.
       handleLaunchResponse(body.session);
     } else if (a.kind !== 'claude-code') {
       // Non-claude-code: a bat was spawned and is now tracked. Port
@@ -346,7 +346,7 @@ async function removeApp(a) {
   }
 }
 
-// When the registry last read well (#1501): a failure before it is the
+// When the registry last read well: a failure before it is the
 // Apps card's error with Retry, one after it a stale line over the last list.
 let appsReadAt = 0;
 
@@ -363,7 +363,7 @@ export async function fetchApps() {
   try {
     body = await jsonApi('/api/apps');
   } catch (exc) {
-    // The Trays card reads the same registry, so it fails with it (#1505).
+    // The Trays card reads the same registry, so it fails with it.
     failedFetchState(els.appsState, !!appsReadAt, appsReadAt, 'the apps', retryApps);
     failedFetchState(els.traysState, !!appsReadAt, appsReadAt, 'the trays', retryApps);
     throw exc;
@@ -384,7 +384,7 @@ export async function fetchAgents() {
     if (Array.isArray(body.agents) && body.agents.length) {
       state.agents = body.agents;
     }
-    // Rides on the same payload (#802) — the VS Code button isn't an agent,
+    // Rides on the same payload — the VS Code button isn't an agent,
     // but it's detected the same way. Guarded on the type so an older server
     // that omits the field leaves the conservative fallback in place rather
     // than coercing `undefined` to a hard `false`.
@@ -403,20 +403,20 @@ export async function fetchAgents() {
 }
 
 // -------------------------------------------------- the Running card
-// Apps spawned from the launcher (bats), as action-rows (#1129): tapping the
+// Apps spawned from the launcher (bats), as action-rows: tapping the
 // row opens the app over Tailscale; Copy URL and the destructive Stop (last,
-// confirmed) are in its ⋮ menu rather than a visible button. Since #1437 a
+// confirmed) are in its ⋮ menu rather than a visible button. A
 // row leads with its kind avatar wearing the alive badge, its context line
 // is "up 2h · :8501", and the pid is the menu's header line.
 const runningMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 // The running app ids the Apps list was last badged from: it re-renders
 // only when that set changes, not on every poll.
 let badgedRunning = '';
-// When the running list last read well (#1505): its empty state and the
+// When the running list last read well: its empty state and the
 // footnote wait for one, and a failure before it is the error with Retry.
 let runningReadAt = 0;
 
-// The wide layout's line in place of the empty-state block (#1505): CSS
+// The wide layout's line in place of the empty-state block: CSS
 // shows it only at that query, and only while nothing runs.
 function renderIdleLine() {
   if (!els.appsIdleLine) return;
@@ -425,11 +425,11 @@ function renderIdleLine() {
   els.appsIdleLine.textContent = 'Nothing running · ' + n + (n === 1 ? ' app' : ' apps') + ' to start';
 }
 
-// A running row's common actions as visible buttons (#1505): CSS shows them
+// A running row's common actions as visible buttons: CSS shows them
 // at the wide layout only, where hiding them behind the kebab is a phone
 // compromise; the kebab keeps them for the phone. Open is also the row tap.
 // All three are the vendored plain verb (icon-button action-row-verb, no fill
-// or border at rest, fleet-config#1420); Stop takes the quiet danger hover.
+// or border at rest); Stop takes the quiet danger hover.
 function runningVerb(className, glyph, label, onTap, disabled, hint) {
   const btn = document.createElement('button');
   btn.type = 'button';
@@ -464,7 +464,7 @@ export function renderRunningApps() {
   els.runningAppsEmpty.hidden = !none || !runningReadAt;
   // The note is on from first paint and leaves only once a read finds rows:
   // it is the one line the empty answer adds under the block that stood in
-  // for it (#1641), so the card keeps its height when the answer lands.
+  // for it, so the card keeps its height when the answer lands.
   els.runningAppsNote.hidden = !!runningReadAt && !none;
   renderIdleLine();
   renderOtherPortsRow();
@@ -568,7 +568,7 @@ export async function fetchRunningApps() {
   renderRunningApps();
 }
 
-// The wide layout (#1505): two columns right of the rail. The left is the
+// The wide layout: two columns right of the rail. The left is the
 // page itself (header, Apps, Trays); the "what is up now" column moves after
 // Trays, so the keyboard reaches the list before the pane, and CSS docks it
 // on the right. Other ports' list moves out of its sheet into the inline

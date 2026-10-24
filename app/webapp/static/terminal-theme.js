@@ -1,4 +1,4 @@
-/* Terminal-screen theme resolution (issues #381, #383).
+/* Terminal-screen theme resolution.
  *
  * xterm owns its rendered colours, so the app's CSS theme tokens have to be
  * resolved into an xterm ITheme and pushed again whenever html[data-theme]
@@ -69,7 +69,7 @@ export function termContrastRatio() {
 export function applyTermTheme() {
   if (els.terminalOverlay) {
     // The user override paints the overlay chrome behind the terminal only;
-    // in Chat mode (#982) the stylesheet's app-canvas background must win,
+    // in Chat mode the stylesheet's app-canvas background must win,
     // and an inline style would beat it.
     const chat = els.terminalOverlay.dataset.mode === 'chat';
     els.terminalOverlay.style.background =

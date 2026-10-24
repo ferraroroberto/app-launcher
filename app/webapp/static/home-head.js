@@ -1,16 +1,16 @@
-/* Page-header context lines (#496, one per tab since #1131): the one-line
+/* Page-header context lines (one per tab): the one-line
  * status in each pane's vendored home-head. Pure render over shared state;
  * callers (sessions, apps, jobs and skills refreshes) invoke it whenever
  * their slice changes, and the .status slot ellipsizes on overflow by
  * contract.
  *
- * The header rule (#1434, for every tab as #1432 moves it over): the line
+ * The header rule (every tab): the line
  * holds only the exceptions, each in its tone colour ("1 stalled · 1
  * needs you"), worst first, and falls back to the plain count when nothing is wrong. At
  * 390px that leaves about 22 characters, so at most two parts. Code, the
- * Board (#1436), Apps (#1437), Jobs (#1438), Life (#1439) and Settings
- * (#1506) are on it, all through the vendored renderHeadStatus
- * (_vendored/home-head/home-head.js, #1586), which sorts exceptions by
+ * Board, Apps, Jobs, Life and Settings
+ * are on it, all through the vendored renderHeadStatus
+ * (_vendored/home-head/home-head.js), which sorts exceptions by
  * severity: "stalled" (danger) shows before "needs you" (attention).
  */
 
@@ -28,7 +28,7 @@ function plural(n, one, many) {
 
 // Code: "N needs you" / "N stalled" from the Board's own column routing
 // (glance.js sessionAttention), else "N sessions". The running-apps count
-// is the Apps tab's, and git lives in the Projects card (#1434).
+// is the Apps tab's, and git lives in the Projects card.
 export function renderHomeHead() {
   const shown = state.sessions.filter(function (s) { return !isHiddenChannel(s); });
   let needsYou = 0;
@@ -50,12 +50,12 @@ export function renderHomeHead() {
 // response never hands the count back and forth between the two sources.
 const BOARD_BADGE_FRESH_MS = 2 * BOARD_POLL_MS;
 
-// The Board tab's badge (#1436, decision 2 of #1432; questions since #1502):
+// The Board tab's badge:
 // what waits on you, visible from every tab — the chief's unanswered
 // questions, fleet-wide, plus the sessions in Your turn. While the Board is
 // up its own payload is both halves, so the badge matches the lanes,
 // external sessions included. Everywhere else the sessions poll, which runs
-// on every tab, carries each session's Board column (#1434) and the
+// on every tab, carries each session's Board column and the
 // question count, from the server's same routing and the same key rule
 // (chief-keys.js), so the badge stays live without polling /api/board off
 // the Board. A question count that could not be read adds nothing: the
@@ -76,7 +76,7 @@ export function renderBoardBadge() {
   setTabBadge('board', sessions + (questions || 0), 'waiting');
 }
 
-// Apps (#1437): "N down" while a tunnel's probe says down, else "N apps ·
+// Apps: "N down" while a tunnel's probe says down, else "N apps ·
 // M running", where N is the Apps card's rows (trays and Code's projects
 // are not apps here).
 function renderAppsHead() {
@@ -94,7 +94,7 @@ function renderAppsHead() {
   );
 }
 
-// Jobs (#1438): "N failing" (a failed last run, or stuck, as the Board
+// Jobs: "N failing" (a failed last run, or stuck, as the Board
 // counts them) and "N not firing" (a schedule with no runs), else "N jobs".
 function renderJobsHead() {
   let failing = 0;
@@ -111,7 +111,7 @@ function renderJobsHead() {
   renderHeadStatus(els.jobsHeadStatus, exceptions, plural(state.jobs.length, 'job', 'jobs'));
 }
 
-// Life (#1439): "recap overdue" / "recap due" while the weekly recap wants a
+// Life: "recap overdue" / "recap due" while the weekly recap wants a
 // review, else "N skills". Only a recap Life OS can actually read counts.
 function renderLifeHead() {
   const r = state.lifeOsRecap;
@@ -124,7 +124,7 @@ function renderLifeHead() {
   );
 }
 
-// Settings (#1506, decision 10 of #1500): only what the pane itself shows as
+// Settings: only what the pane itself shows as
 // a problem — a Telegram profile that needs setup, or a setup status that
 // could not be read — else the build this page runs ("Build a1b2c3d"), so a
 // stale PWA shows from the header. Blank until /api/version answers.
@@ -144,6 +144,6 @@ function renderOtherHeads() {
   renderAppsHead();
   renderJobsHead();
   renderLifeHead();
-  // The Board's line is live (#1436): board.js writes it on every render.
+  // The Board's line is live: board.js writes it on every render.
   renderSettingsHead();
 }

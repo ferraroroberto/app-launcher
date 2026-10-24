@@ -1,4 +1,4 @@
-/* Context ring in the session overlay's bar (#1223).
+/* Context ring in the session overlay's bar.
  *
  * How full the open session's context window is, as a ring whose border
  * fills with the percentage, just before the Terminal ⇄ Chat toggle. A tap
@@ -14,7 +14,7 @@
  * /compact) or a failed request hides the ring rather than drawing 0%.
  *
  * Polled on its own route, never the transcript, so a window sitting on
- * Terminal still fetches no chat (#1050): once on open and on every mode
+ * Terminal still fetches no chat: once on open and on every mode
  * switch (session-overlay.js calls syncContextRing), then every
  * CONTEXT_POLL_MS while the overlay is open and the page is visible.
  */

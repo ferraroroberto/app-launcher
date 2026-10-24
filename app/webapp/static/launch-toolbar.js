@@ -1,18 +1,18 @@
-/* The launch toolbar (#1434, step 2/7 of #1432): the controls that shape the
+/* The launch toolbar: the controls that shape the
  * next agent launch, as one component every launch surface mounts. Code ›
- * Projects and Life › Skills (#1439) both mount it.
+ * Projects and Life › Skills both mount it.
  *
  *   [ Claude · Opus ▾ ]              [trailing]
  *   Detached (switch)   Resume (switch)
  *
- *   model     the provider-qualified model combo (#540/#845). The toolbar
+ *   model     the provider-qualified model combo. The toolbar
  *             only builds its markup; the caller wires it with
  *             wireModelCombo (dom-utils.js), as each surface owns its own
  *             option list and saves its choice its own way.
  *   Detached  launch in a console window on the PC, listed and killable here
  *             but with no phone terminal ('remote' mode).
- *   Resume    reopen the agent's own session picker (#151), orthogonal to
- *             Detached (#157): both on renders the picker in the console.
+ *   Resume    reopen the agent's own session picker, orthogonal to
+ *             Detached: both on renders the picker in the console.
  *
  * Two rows, so a phone never wraps it raggedly (the three controls and a
  * labelled switch pair do not fit 390px on one line): the model with an
@@ -22,7 +22,7 @@
  * <label>, so a tap on either toggles it. They are client-side state read at launch time, never
  * saved: a launch mode that survives a reload would surprise the next tap.
  *
- * `switchesInMenu` (#1503 decision 6, Life only) folds the switch row into
+ * `switchesInMenu` (Life only) folds the switch row into
  * the combo's menu: the model list on top (a pick commits and closes, as
  * ever), the two switches under it (they toggle in place and leave the menu
  * open), then an optional help line. The combo's label then names any
@@ -52,7 +52,7 @@ function labelledSwitch(spec) {
   // rebuilds its insides, so a tap that landed on the knob (where the knob
   // sits once it is on) leaves a detached target, and WebKit's <label> then
   // reads the click as outside its control and clicks the switch again:
-  // two toggles, no change (#1503). Cancelling the click stops the label's
+  // two toggles, no change. Cancelling the click stops the label's
   // re-dispatch; a tap on the word still reaches the switch through it.
   sw.addEventListener('click', function (ev) { ev.preventDefault(); });
   wrap.appendChild(sw);
@@ -68,7 +68,7 @@ function labelledSwitch(spec) {
 //   trailing   optional element pinned right on the model's row (Code puts
 //              its git refresh there)
 //   switchesInMenu  the switches live in the combo's menu, under the model
-//              list, and the label names any that is on (#1503)
+//              list, and the label names any that is on
 //   menuHint   with switchesInMenu: a short help line under the switches
 // Returns { root, combo, isDetached(), isResume() }.
 export function mountLaunchToolbar(host, opts) {

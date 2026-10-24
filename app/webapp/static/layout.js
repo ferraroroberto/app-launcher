@@ -1,4 +1,4 @@
-/* The wide desktop layout (#1135, design.md Layout "Wide layout").
+/* The wide desktop layout (design.md Layout "Wide layout").
  *
  * At this query the nav is a left rail and the Code tab is list-and-detail:
  * the session view (#terminalOverlay) docks beside the session list instead
