@@ -1,4 +1,4 @@
-/* Screen view: when to reconnect, and which monitor to reopen (#1603).
+/* Screen view: when to reconnect, and which monitor to reopen.
  *
  * The decisions as plain functions, so the backoff steps and the monitor
  * choice are pinned under plain Node (tests/js/screen_reconnect.test.mjs)

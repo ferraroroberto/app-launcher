@@ -1,4 +1,4 @@
-/* A name filter above a long list (#1132, the action-row contract's filter
+/* A name filter above a long list (the action-row contract's filter
  * field — design.md: a list that can pass ~12 rows gets one).
  *
  * Client-side substring match on each row's `.action-row-title`, case
@@ -21,7 +21,7 @@ function save(key, value) {
 
 // { input, list, empty, storageKey, onApply } -> { apply, set }
 // onApply(query), optional: told the folded query after every apply, so a
-// list can react to filtering as a whole (Life's fold opens, #1503).
+// list can react to filtering as a whole (Life's fold opens).
 // set(value) replaces the text as typing would: through an input event, so
 // any other listener on the field (Life's conversation search) hears it too.
 export function listFilter(opts) {
@@ -54,7 +54,7 @@ export function listFilter(opts) {
     save(opts.storageKey, input.value.trim());
     apply();
   });
-  // The no-match empty state's one action (#1238 J-09): clear the filter.
+  // The no-match empty state's one action: clear the filter.
   const clear = opts.empty && opts.empty.querySelector('.empty-state-action');
   if (clear) {
     clear.addEventListener('click', function () {

@@ -1,15 +1,13 @@
-/* Terminal bar ⋮ session menu + the floating "Latest" pill (#981, Step 2
- * of #979).
+/* Terminal bar ⋮ session menu + the floating "Latest" pill.
  *
  * The bar used to carry ✕ Kill and ↓ Jump as permanent controls. They
  * left the bar so it fits a 390px phone without scrolling: ‹ Back · title
- * · context ring (#1223, context-ring.js) · Terminal⇄Chat toggle (#982,
- * session-overlay.js) · 🔊 · ⋮.
+ * · context ring (context-ring.js) · Terminal⇄Chat toggle (* session-overlay.js) · 🔊 · ⋮.
  *
  *   ⋮ menu — Rename · Copy link · [Hide/Show steps · Reload, Chat mode
- *   only] · [Compact, Claude sessions only, #1218] · Stop and kill. Copy link prefers the session's provider-native
+ *   only] · [Compact, Claude sessions only] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
- *   same resolution the Rename / link dialog uses (#1096 — see
+ *   same resolution the Rename / link dialog uses (see
  *   sessionCopyLink below). Built once on the vendored row-menu component
  *   (the same one as the sessions-list gear); the chat-only rows are
  *   declared with function-valued `hidden`, so the menu re-evaluates them
@@ -71,7 +69,7 @@ function sessionShareUrl(sid) {
     '?session=' + encodeURIComponent(sid);
 }
 
-// What ⋮ Copy link writes, and how to describe it (#1096). The launcher's own
+// What ⋮ Copy link writes, and how to describe it. The launcher's own
 // ?session= URL is tailnet-gated by design — the terminal endpoints refuse
 // anything that did not arrive from 100.64.0.0/10 — so it is dead outside the
 // tailnet and is the *fallback*, not the answer. When the session has a
@@ -79,8 +77,8 @@ function sessionShareUrl(sid) {
 // from the same `web_url` the Rename / link dialog shows) copy that instead:
 // it is authenticated by the Anthropic account and opens anywhere. The toast
 // names which one went to the clipboard rather than folding the two — a
-// silent fallback is how #981 re-introduced the tailnet link for two weeks
-// without anyone noticing (#879 had already removed it).
+// silent fallback can quietly bring back the tailnet link
+// without anyone noticing.
 //
 // `s` may be the bare {session_id, name} a ?session= deep link opens with,
 // which carries no agent or web_url at all — providerWebUrl('' agent) is ''
@@ -102,14 +100,14 @@ function notInChat() {
   return !inChatMode();
 }
 
-// Whether ⋮ Changed files applies (#1349, #1356): any agent with a
+// Whether ⋮ Changed files applies: any agent with a
 // transcript reader (a missing agent reads as Claude), whose transcript the
 // fold reads.
 function hasChangedFiles(s) {
   return !!s && hasTranscriptReader(s);
 }
 
-// The shared ↓ Latest pill (latest-pill.js, #1140) over the xterm buffer,
+// The shared ↓ Latest pill (latest-pill.js) over the xterm buffer,
 // created by wireTerminalMenu().
 let latestPill = null;
 
@@ -152,7 +150,7 @@ export function wireTerminalMenu() {
         );
       },
     },
-    // Changed files (#1349): every file this session edited, folded from
+    // Changed files: every file this session edited, folded from
     // its transcript into the Show changes panel. In both modes.
     {
       glyph: 'file-diff', label: 'Changed files',
@@ -162,10 +160,10 @@ export function wireTerminalMenu() {
         if (s) openSessionChanges(s, sessionTitle(s));
       },
     },
-    // Chat-only (#982): the transcript bar's 👁 and 🔄 moved here when the
+    // Chat-only: the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
     // Terminal mode (function-valued `hidden`, the row menu). The step lines
-    // show by default since #1476, so the item reads "Hide steps" first.
+    // show by default, so the item reads "Hide steps" first.
     {
       glyph: function () { return groupsAreHidden() ? 'eye' : 'eye-off'; },
       label: function () { return groupsAreHidden() ? 'Show steps' : 'Hide steps'; },
@@ -177,7 +175,7 @@ export function wireTerminalMenu() {
       hidden: notInChat,
       onTap: toggleGroups,
     },
-    // Load new (#1292): only what came after the newest turn shown, the
+    // Load new: only what came after the newest turn shown, the
     // live tick's own read, forced now. Reload stays as the full escape hatch.
     {
       glyph: 'arrow-down', label: 'Load new', ariaLabel: 'Load new messages',
@@ -189,7 +187,7 @@ export function wireTerminalMenu() {
       hidden: notInChat,
       onTap: reloadNewest,
     },
-    // Compact (#1218): sends Claude Code's /compact in one tap, in either
+    // Compact: sends Claude Code's /compact in one tap, in either
     // mode, through the same verified /input route Chat's Send uses, so the
     // toast says what actually happened. Claude only: /compact is its
     // command, and other agents would take it as a prompt.
@@ -211,9 +209,9 @@ export function wireTerminalMenu() {
     {
       dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
       label: 'Stop and kill', ariaLabel: 'Stop and kill session',
-      // A hidden Telegram session can be looked at, never stopped (#1384).
+      // A hidden Telegram session can be looked at, never stopped.
       hidden: function () { return isHiddenChannel(currentSession()); },
-      // stopSession() keeps the chief confirm (#547) and closes the overlay
+      // stopSession() keeps the chief confirm and closes the overlay
       // once the session it is showing stops.
       onTap: function () {
         const s = currentSession();
@@ -252,7 +250,7 @@ export function updateLatestPill() {
 // (touch, wheel, scrollToBottom), new output landing while scrolled up,
 // and a reflow can each move the viewport off or back onto the tail.
 // Coalesced to one check per frame by the pill; a stashed warm terminal
-// (#430) is inert. Returns a disposer.
+// is inert. Returns a disposer.
 export function watchLatestPill(t) {
   const schedule = function () {
     if (latestPill && t === state.terminal) latestPill.schedule();

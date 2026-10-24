@@ -1,4 +1,4 @@
-/* One lifecycle-state block for a data-backed list (#1501, design.md "Async
+/* One lifecycle-state block for a data-backed list (design.md "Async
  * data & feedback"). A list declares loading / empty / error / stale / ready
  * through one host element beside it, never a blank pane:
  *
@@ -14,7 +14,7 @@
  * drawn into the host, so the host carries the .empty-state look itself.
  * Repeating the same state is a no-op: a poll that fails every 5 s must not
  * rebuild the Retry button under a keyboard user's focus. Life's
- * Conversations group uses it too (#1504); the jobs-agenda block
+ * Conversations group uses it too; the jobs-agenda block
  * (setNextUpState) predates it and moves onto it with its own step.
  */
 

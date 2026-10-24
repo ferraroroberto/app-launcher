@@ -1,8 +1,8 @@
-/* Transcript entry renderer (#1629, split out of session-transcript.js).
+/* Transcript entry renderer (split out of session-transcript.js).
  *
  * Turns a transcript's entries into list nodes: prompt bubbles, agent turns
  * with their replies, step lines and the items under them, sent-file cards,
- * per-step diffs and file chips. Two mounts use it (#979): the session
+ * per-step diffs and file chips. Two mounts use it: the session
  * overlay's Chat pane (session-transcript.js, which owns paging, live
  * refresh, the outbox cursor and the composer) and the Life OS conversation
  * viewer (life-os-viewer.js), which mounts a parsed capture through
@@ -39,7 +39,7 @@ import { isPlan, isQuestion, renderPlan, renderQuestion } from './transcript-dec
 export const TRANSCRIPT_AGENTS = ['claude', 'codex', 'grok', 'pi', 'antigravity', 'copilot'];
 
 // How far the open session's harness can be trusted to mark a failed tool
-// call — the server's per-flavour `tool_errors` (#1020). Only a `reported`
+// call — the server's per-flavour `tool_errors`. Only a `reported`
 // harness lets an unmarked call be read as "it worked"; for the other two
 // values an unmarked call is "nobody recorded the outcome", which the
 // expanded card says in as many words rather than leaving silence to pass
@@ -66,7 +66,7 @@ const KIND_ICON = {
   assistant: 'messages-square',
 };
 
-// A step item's verb glyph (#1476): what the call did — run, read, edit,
+// A step item's verb glyph: what the call did — run, read, edit,
 // search — rather than one terminal glyph for every tool.
 const VERB_ICON = {
   ran: 'terminal',
@@ -175,7 +175,7 @@ function baseName(path) {
   return parts[parts.length - 1] || String(path || '');
 }
 
-// A file as "folder / name" pieces (#1476): the folder relative to the open
+// A file as "folder / name" pieces: the folder relative to the open
 // session's project when the path sits under it (or was recorded relative),
 // else just its parent folder. Never the whole absolute path, which wrapped
 // to three lines at 390px; callers keep that on `title`. `session` is the
@@ -195,7 +195,7 @@ export function fileParts(path, session) {
 
 // An edit's line counts, "+4 −0" (a true minus sign, as the Claude Code app),
 // coloured like the Changed files panel's. Its own element, so a step line's
-// ellipsis can never cut it (#1476).
+// ellipsis can never cut it.
 function deltaEl(added, removed, className) {
   const el = document.createElement('span');
   el.className = className;
@@ -208,7 +208,7 @@ function deltaEl(added, removed, className) {
   el.append(add, ' ', del);
   return el;
 }
-// --- an opened step (#1532) ----------------------------------------------
+// --- an opened step ----------------------------------------------
 //
 // A card on the code-listing frame: a small header (the tool, the file as
 // "folder / name", a recorded exit status), then the call's input and its
@@ -296,7 +296,7 @@ function stepCard(e, session) {
   tool.textContent = e.name || 'tool';
   head.appendChild(tool);
   if (a && a.path) {
-    // "folder / name" (#1476), never the whole absolute path; that stays on hover.
+    // "folder / name", never the whole absolute path; that stays on hover.
     const f = fileParts(a.path, session);
     const where = document.createElement('span');
     where.className = 'tr-cmd-path';
@@ -326,7 +326,7 @@ function stepCard(e, session) {
   }
   return card;
 }
-// --- image thumbnails (#1265) ---------------------------------------------
+// --- image thumbnails ---------------------------------------------
 //
 // An entry lists where its images are ({offset, n}); the bytes come from the
 // image route, fetched through the authenticated API (an <img src> can carry
@@ -375,7 +375,7 @@ async function loadThumb(btn) {
 }
 
 // Run `load(el)` once `el` scrolls near the viewport: a thumbnail's bytes, or
-// a sent file's (#1530).
+// a sent file's.
 function observeLazy(el, load) {
   el._trLoad = load;
   if (!('IntersectionObserver' in window)) {
@@ -433,7 +433,7 @@ export function resetBlobs(sid) {
   fileBlobs.clear();
 }
 
-// --- files the agent sent (#1530) -------------------------------------------
+// --- files the agent sent -------------------------------------------
 //
 // Two sources, one card. An outbox entry (any harness: the agent posted the
 // file to its session's outbox, and the transcript responses carry the list)
@@ -639,7 +639,7 @@ function renderSentFiles(e, session) {
   return li;
 }
 
-// --- links open in the PC's browser (#1274) --------------------------------
+// --- links open in the PC's browser --------------------------------
 //
 // A transcript link is a plain target=_blank anchor, so it opens in the
 // browser hosting the page — on the PC that is Edge (the tray's default
@@ -686,8 +686,8 @@ function joinTexts(texts) {
 // synchronously inside the tap gesture — iOS requires this, an `await`
 // ahead of the first write loses the gesture and the copy silently fails on
 // the one device this feature is for — with whatever text the turn already
-// has. `entries` is the prompt, or every reply fragment of the turn (#1475).
-// A capped fragment then fetches the uncapped one (#985's ``/transcript/
+// has. `entries` is the prompt, or every reply fragment of the turn.
+// A capped fragment then fetches the uncapped one (the ``/transcript/
 // entry`` route) and *visibly* upgrades the clipboard with a second toast:
 // never a silent rewrite, since a paste in the gap between the two would
 // hand back truncated text with no reason to suspect it, and the clipboard
@@ -733,21 +733,21 @@ async function copyTurn(entries, kind, sid) {
   toast('Full ' + label.toLowerCase() + ' copied', 'good', { icon: 'copy' });
 }
 
-// --- turns (#1475) -----------------------------------------------------------
+// --- turns -----------------------------------------------------------
 //
 // A turn reads as one piece: the user's prompt is a right-aligned bubble, and
 // everything the agent does until the next prompt (each reply fragment, the
 // step lines between them, a question or plan card) sits in ONE block under
 // one header: the agent's mark and name, the time, copy for the whole turn,
 // and collapse. It used to be one card per text fragment, each with its own
-// "Agent · time" and copy (#1472's diagnosis 1). The prompt is plain text
+// "Agent · time" and copy. The prompt is plain text
 // (pre-wrap); a reply goes through the same escape-first markdown renderer
 // the Life OS doc browser uses — never raw HTML from a transcript.
 
-// --- the rest of a capped turn (#1745) ------------------------------------------
+// --- the rest of a capped turn ------------------------------------------
 //
 // A very long prompt or reply arrives capped. Where there is a way to ask for
-// the rest (a session, and the offset #985's ``/transcript/entry`` route
+// the rest (a session, and the offset the ``/transcript/entry`` route
 // reads) the note is a "Show the rest" button that swaps the block's text for
 // the full one in place; otherwise it stays the plain note. One helper for
 // every capped block, so the prompt, the reply and the plan card (whose text
@@ -897,7 +897,7 @@ function textHint(e) {
 // The prompt bubble. Open, it is the bubble with the time, copy and a fold
 // chevron under it; folded, the <summary> takes its place as a one-line
 // bubble that a tap opens again. The summary is hidden while open rather than
-// carrying the controls, so the bubble has no header row (#1472 mockup).
+// carrying the controls, so the bubble has no header row.
 function renderPrompt(e, session) {
   const li = document.createElement('li');
   li.className = 'tr-turn-item tr-prompt-item';
@@ -992,7 +992,7 @@ function turnReplies(li) {
 // The agent's turn: one <details> whose summary is the header and whose body
 // is the ordered list of its parts. `first` is the entry it starts at — the
 // header's time and the disclosure's key. `edited` (the Chat pane only)
-// lets the turn grow an Edited N files card once it is over (#1477). `sid`
+// lets the turn grow an Edited N files card once it is over. `sid`
 // is the session the turn came from, for its copy.
 function renderAgentTurn(first, agent, edited, sid) {
   const li = document.createElement('li');
@@ -1039,7 +1039,7 @@ function renderAgentTurn(first, agent, edited, sid) {
 // A turn with no reply and no decision card is "silent": with the steps
 // hidden it would be a header over nothing, so it hides with them. Its step
 // lines are recomputed here too, since a run's duration ends at whatever
-// part follows it (#1476). `live` is the step in progress, if any.
+// part follows it. `live` is the step in progress, if any.
 export function syncTurnHead(li, live) {
   li._trParts.querySelectorAll(':scope > .tr-run').forEach(function (run) { syncRunSummary(run, live); });
   const replies = turnReplies(li);
@@ -1057,19 +1057,19 @@ export function syncTurnHead(li, live) {
 
 // With the steps hidden, a turn with no reply, no decision card and no Edited
 // card would be a header over nothing, so it hides with them. The Edited card
-// keeps it: the work still has a trace (#1477).
+// keeps it: the work still has a trace.
 export function markSilent(li) {
   const quiet = !turnReplies(li).length && !li._trEdited &&
     !li._trParts.querySelector(':scope > .tr-ask-item, :scope > .tr-plan-item, :scope > .tr-file-item');
   li.classList.toggle('tr-turn-silent', quiet);
 }
 
-// --- file chips (#1478) --------------------------------------------------------
+// --- file chips --------------------------------------------------------
 //
 // A reply that names a file this session edited, in a code span or as a bare
 // path in its prose, gets a file chip there: the code chip in the accent, a
 // file glyph and the file's name, and a tap opens that file's diff in Changed
-// files (decision 6 of #1472). Only an edited file links, and only when the
+// files. Only an edited file links, and only when the
 // name is unambiguous: the span must be the file's whole path or a trailing
 // run of its folders and name (`styles.css`, `static/styles.css`, the full
 // path) that no other edited file ends with. Everything else stays the plain
@@ -1166,7 +1166,7 @@ export function unchipFiles(body) {
   body.normalize();
 }
 
-// --- the step in progress (#1532) ------------------------------------------
+// --- the step in progress ------------------------------------------
 //
 // A step line whose newest call is still running shows a counter in its
 // duration's place. Which call that is, and the tick that redraws it, are the
@@ -1193,7 +1193,7 @@ function liveStepEl(e) {
   return el;
 }
 
-// --- per-step diffs (#1349) -------------------------------------------------
+// --- per-step diffs -------------------------------------------------
 //
 // An edit/write call's `action.diff` carries the page's share of its diff
 // (capped per step, server-side); the rest is one request away through the
@@ -1201,7 +1201,7 @@ function liveStepEl(e) {
 // today's body, as does any call whose tool the server doesn't recognise.
 
 // `bare` leaves the "folder / name" header off: the Changed files panel's
-// This turn scope (#1477) draws a step under the file's own row. `session`
+// This turn scope draws a step under the file's own row. `session`
 // shortens the path and serves the full diff (null: neither).
 export function stepDiff(e, bare, session) {
   const a = e.action;
@@ -1209,7 +1209,7 @@ export function stepDiff(e, bare, session) {
   const wrap = document.createElement('div');
   wrap.className = 'tr-diff-wrap';
   if (!bare) {
-    // Headed "folder / name" (#1476); the whole path stays on hover.
+    // Headed "folder / name"; the whole path stays on hover.
     const path = document.createElement('div');
     path.className = 'tr-diff-path';
     path.title = a.path || '';
@@ -1281,7 +1281,7 @@ function renderItem(e, opts) {
   tagKey(d, e, 'item');
   // A failed call is marked on the row itself, so it reads as failed while
   // the group is still folded open at one item — never as a banner over the
-  // whole turn (#1020).
+  // whole turn.
   if (e.error === true) d.classList.add('tr-item-failed');
   const s = document.createElement('summary');
   s.innerHTML = icon(itemGlyph(e));
@@ -1291,10 +1291,10 @@ function renderItem(e, opts) {
   hint.className = 'tr-item-hint';
   let delta = null;
   if (e.kind === 'tool_call') {
-    // Plain words where the server knows the tool (#1266): the command's
-    // first line, or the file's name with its folder as the hint (#1476)
+    // Plain words where the server knows the tool: the command's
+    // first line, or the file's name with its folder as the hint
     // and, for an edit, its +N −M.
-    // A call that carries its own description (#1532) is named by it, its
+    // A call that carries its own description is named by it, its
     // command the hint.
     const a = e.action;
     if (a && a.verb === 'ran' && described(e)) {
@@ -1341,9 +1341,9 @@ function renderItem(e, opts) {
   const body = document.createElement('div');
   body.className = 'tr-item-body';
   if (e.kind === 'tool_call') {
-    // An edit opens as its diff (#1349) and nothing else: the tool's own
-    // "file has been updated" line was a second box saying less (#1476).
-    // Anything else opens as a card: header, input, output (#1532).
+    // An edit opens as its diff and nothing else: the tool's own
+    // "file has been updated" line was a second box saying less.
+    // Anything else opens as a card: header, input, output.
     const diff = stepDiff(e, false, opts.session);
     if (diff) {
       body.appendChild(diff);
@@ -1372,7 +1372,7 @@ function renderItem(e, opts) {
   return d;
 }
 
-// A run in plain words (#1266, #1476): [verb, object] pairs that read
+// A run in plain words: [verb, object] pairs that read
 // "Edited main.js, ran 2 commands, read 3 files", plus the edits' total +N −M.
 // The total is not label text: the step line gives it its own element,
 // which the label's ellipsis can't reach. Built from each call's server-side
@@ -1427,13 +1427,13 @@ function runSummary(run) {
   return { parts: parts, total: total };
 }
 
-// Whether a call carries its own description (#1532): the server's `label`
+// Whether a call carries its own description: the server's `label`
 // is the description when the harness recorded one, else the summary.
 function described(e) {
   return !!e.label && e.label !== e.summary;
 }
 
-// One step in plain words (#1532): its description, else what it did
+// One step in plain words: its description, else what it did
 // ("Ran pytest -q", "Edited main.js"), else the tool and its summary.
 function stepText(e) {
   if (described(e)) return e.label;
@@ -1454,7 +1454,7 @@ function latestCall(run) {
   return null;
 }
 
-// The label (#1532): the newest step in plain words, then, for a run of
+// The label: the newest step in plain words, then, for a run of
 // more than one entry, the counts in muted secondary text. A run with no
 // tool call keeps the counts alone. Counts: verbs muted, what they acted on
 // in the text colour while they lead the line.
@@ -1506,14 +1506,14 @@ function runSpan(li) {
   return fmtSpan(Date.parse(end.timestamp) - Date.parse(run[0].timestamp));
 }
 
-// A run of consecutive folded entries → one quiet step line (#1476): a
+// A run of consecutive folded entries → one quiet step line: a
 // chevron, the label, then the parts no ellipsis may cut. Open, its items
 // hang off a rail beneath it.
 function renderRun(run, opts) {
   const li = document.createElement('li');
   li.className = 'tr-run';
   // The entries this line holds, kept on the node so a later tick can merge
-  // more into it and recompute the summary (#1050).
+  // more into it and recompute the summary.
   li._trRun = run.slice();
   const d = document.createElement('details');
   d.className = 'tr-step';
@@ -1534,14 +1534,14 @@ function renderRun(run, opts) {
   return li;
 }
 
-// --- live refresh rendering (#1050) ---------------------------------------
+// --- live refresh rendering ---------------------------------------
 //
 // Every disclosure in a live region is tagged with the byte offset of the
 // entry it renders, so an open card can be found again after the region is
 // rebuilt. Offsets are stable identities: an entry keeps the offset of the
 // line it started at for as long as that file is not rewritten.
 //
-// The key is namespaced by what kind of disclosure it is (#1531): a turn that
+// The key is namespaced by what kind of disclosure it is: a turn that
 // opens with a tool call, its step line and the call's own item all render
 // the same entry, so a bare offset let a folded step line's state be restored
 // onto the open turn and a new reply arrived folded.
@@ -1573,7 +1573,7 @@ export function syncRunSummary(li, live) {
     chip.textContent = failed + ' failed';
     line.appendChild(chip);
   }
-  // The step in progress counts up in the duration's place (#1532).
+  // The step in progress counts up in the duration's place.
   if (live && run.indexOf(live) !== -1) {
     line.appendChild(liveStepEl(live));
     return;
@@ -1587,11 +1587,11 @@ export function syncRunSummary(li, live) {
   }
 }
 
-// The one place entries become list nodes (#1475): appends `entries` to
+// The one place entries become list nodes: appends `entries` to
 // `container` (the list itself, or a fragment), continuing whatever it ends
 // with. A prompt starts a bubble; anything else joins the trailing agent
 // turn, or opens one; a folded entry joins the turn's trailing step line, or
-// opens one. So a page renders, a live tick appends (#1050) and the Life OS
+// opens one. So a page renders, a live tick appends and the Life OS
 // viewer mounts through the same rules, and an autonomous stretch arriving a
 // tick at a time still folds into one turn and one run rather than a card
 // per tick.
@@ -1652,13 +1652,13 @@ export function appendEntries(container, entries, opts) {
   return created;
 }
 
-// The Life OS conversation viewer's mount (#1119): this same renderer over a
-// parsed capture rather than a second one (#979). It has no session, so
+// The Life OS conversation viewer's mount: this same renderer over a
+// parsed capture rather than a second one. It has no session, so
 // nothing here asks a route: no thumbnails, no file bytes, no full diff, and
 // a truncated turn's copy upgrade has nowhere to go (a capture's turns are
 // never truncated).
 //
-// `answering` (#1149) is the Chat pane's own marker that a question card may
+// `answering` is the Chat pane's own marker that a question card may
 // go live; the viewer passes nothing, so its cards stay read-only history.
 // `agent` names whose turns these are (an agent id); without one they read
 // "Agent".

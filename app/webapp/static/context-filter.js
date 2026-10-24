@@ -1,5 +1,5 @@
-/* Context filter (issue #713) — the fleet's PreToolUse token-reduction hook
- * (fleet-config#392/#541/#544): the Settings-tab "Context filter" card
+/* Context filter — the fleet's PreToolUse token-reduction hook
+ * the Settings-tab "Context filter" card
  * (mode switch + harness matrix + savings stats) and the Coding-tab "filter
  * saved" badge beside #codingUsage. One module owns the whole feature, per
  * the issue's self-containment constraint — it gets ported to
@@ -7,7 +7,7 @@
  * routers/context_filter.py later.
  *
  * GET /api/context-filter -> {mode, harnesses, stats}. The mode control is a
- * three-way row of the vendored segmented control (#1586), the same shape as
+ * three-way row of the vendored segmented control, the same shape as
  * claude-options.js's permission rows. A click PUTs then
  * re-fetches; never an optimistic flip (main.js's toggleBootAutostart
  * precedent).
@@ -18,7 +18,7 @@ import { apiFailToast, jsonApi, toast } from './api.js';
 import { setUsageFilterStats } from './usage-meter.js';
 
 const MODES = ['off', 'shadow', 'rewrite'];
-// Plain words for the hook's modes (#1238 J-07): `shadow` measures what it
+// Plain words for the hook's modes: `shadow` measures what it
 // would save without changing output; `rewrite` shortens the output.
 const MODE_LABELS = { off: 'Off', shadow: 'Measure only', rewrite: 'Shorten output' };
 const STATUS_LABELS = { active: 'Active', unsupported: 'Unsupported', planned: 'Planned' };
@@ -66,7 +66,7 @@ function renderHarnesses(harnesses) {
       meta.appendChild(note);
     }
     li.appendChild(meta);
-    // A plain value, no chip (#1506): none of these is an exception the
+    // A plain value, no chip: none of these is an exception the
     // owner has to act on, so none wears a status colour.
     const status = document.createElement('span');
     status.className = 'context-filter-status';
@@ -116,7 +116,7 @@ function renderStats(stats) {
   }
 }
 
-// The Usage card's footer line on the Code tab (#713, a footer since #1434):
+// The Usage card's footer line on the Code tab (a footer):
 // what the filter saved, from the stats this fetch already read. Hidden when
 // the stats are unavailable or nothing was saved.
 function renderUsageFooter(stats) {
@@ -134,7 +134,7 @@ function renderUsageFooter(stats) {
     footer.hidden = true;
     return;
   }
-  // User words (#1191): the filter as its Settings card names it, whole
+  // User words: the filter as its Settings card names it, whole
   // "tokens", and the window spelled out.
   footer.textContent = 'Context filter saved ' +
     fmtTokens(saved) + ' tokens ' + (useToday ? 'today' : 'in 7 days');
@@ -150,11 +150,11 @@ export async function fetchContextFilter() {
     renderHarnesses(body.harnesses);
     renderStats(body.stats);
     renderUsageFooter(body.stats);
-    // The Usage sheet's savings rows (#1433) read the same stats.
+    // The Usage sheet's savings rows read the same stats.
     setUsageFilterStats(body.stats);
   } catch (exc) {
     console.warn('context-filter fetch failed', exc);
-    // The footer's dash holds its line until the first read (#1641); a read
+    // The footer's dash holds its line until the first read; a read
     // that never lands has nothing to say there.
     if (!state.contextFilter && els.codingUsageFooter) els.codingUsageFooter.hidden = true;
   }

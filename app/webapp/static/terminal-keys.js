@@ -1,14 +1,13 @@
-/* On-screen keys D-pad popover (issue #36).
+/* On-screen keys D-pad popover.
  *
  * Arrow / Esc / Tab / Enter keys for iPhone keyboards (SwiftKey etc.) that
  * lack them, so an agent's TUI prompts stay navigable from the phone. Each
  * key hands the matching VT/xterm escape sequence to the mounting surface's
  * `send(bytes)` (the terminal writes it over the same WS `input` channel as
- * a composed prompt). ⇧ and Ctrl are sticky modifiers (issue #137, #986) —
+ * a composed prompt). ⇧ and Ctrl are sticky modifiers —
  * mutually exclusive, engaging one releases the other.
  *
- * Split out of terminal.js in issue #723, continuing the #315 split. Since
- * #980 it is mounted by the shared composer (composer.js) — the ⌨ button is
+ * Split out of terminal.js. It is mounted by the shared composer (composer.js) — the ⌨ button is
  * the composer grid's second slot and the popover anchors above the
  * composer, where the thumb reaches it — instead of hanging under the
  * terminal bar. The popover renders its own markup so a second composer
@@ -51,7 +50,7 @@ export function mountKeysPopover(anchor, container, opts) {
   // Sticky-Shift / sticky-Ctrl state: each stays engaged across taps (so ⇧
   // then Tab Tab Tab cycles modes, or Ctrl then C C interrupts twice) until
   // its own key is tapped again, the popover closes, or the other modifier
-  // is engaged (issue #986 — ⇧ and Ctrl are mutually exclusive here).
+  // is engaged (⇧ and Ctrl are mutually exclusive here).
   let shiftHeld = false;
   let ctrlHeld = false;
   const shiftBtn = pop.querySelector('.key-shift');

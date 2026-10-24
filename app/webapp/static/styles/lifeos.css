@@ -1,16 +1,16 @@
-/* ---------- Life OS tab (issue #102) ---------- */
+/* ---------- Life OS tab ---------- */
 /* The model combo + Detached/Resume controls live in the Skills card's
-   summary (#496 round 2 — no separate options card); the recap tile is the
+   summary (no separate options card); the recap tile is the
    only .card--row left on the tab. */
 /* Single-row (non-collapsible) cards inherit the disclosure closed-box:
    zero vertical padding, a 52px .card-head (vendored card.css) owns the
    height, so they sit pixel-identical beside collapsed disclosure cards. */
 .card--row { padding: 0 14px; }
 .card--row .card-head { min-height: 52px; }
-/* The weekly-recap glance row (#1439): the action-row with the notebook
+/* The weekly-recap glance row: the action-row with the notebook
    avatar, glyph in the accent like the job avatars, and its ▶ verb. */
 .lifeos-recap-avatar .avatar-glyph { color: var(--accent); }
-/* A skill row's avatar (#1503): the skill's own glyph (its SKILL.md `icon:`)
+/* A skill row's avatar: the skill's own glyph (its SKILL.md `icon:`)
    or, without one, its name's first letter, in the accent like the recap's
    and the job rows'. */
 .lifeos-avatar .avatar-glyph { color: var(--accent); }
@@ -22,7 +22,7 @@
   font-weight: 600;
   line-height: 1;
 }
-/* The fold (#1503): skills not used lately sit under one "N more skills"
+/* The fold: skills not used lately sit under one "N more skills"
    row and show once it opens, or while a filter is typed (which searches
    every skill, so the row itself steps aside). */
 #lifeOsList:not(.is-unfolded):not(.is-filtering) > .is-folded { display: none; }
@@ -30,7 +30,7 @@
 .lifeos-fold + .action-row { border-top: 1px solid var(--line-muted); }
 .lifeos-fold-avatar .avatar-glyph { color: var(--muted); }
 
-/* Swipe actions on a row (swipe-row.js, action-rows.js `swipe`, #1503).
+/* Swipe actions on a row (swipe-row.js, action-rows.js `swipe`).
    The row's content is one opaque surface that slides over two panes; the
    track clips both, so the row's own kebab menu is never clipped. The
    surface takes the row's inline padding and lets vertical pans through
@@ -102,7 +102,7 @@
   .swipe-pane-btn .icon { transition: none; }
 }
 
-/* Full-bleed Skills rows on the phone (#1503, an experiment the owner asked
+/* Full-bleed Skills rows on the phone (an experiment the owner asked
    for, one switch to revert on its own): the Skills card runs to the
    screen's edges so a row and its swipe panes are edge to edge, with
    hairlines between rows. Its header, toolbar, filter and the rows' text
@@ -123,7 +123,7 @@
   #lifeOsList .drill-row { padding-left: calc(14px + var(--gap)); }
 }
 
-/* ---------- Life OS: one field for skills and conversations (#1504) ---------- */
+/* ---------- Life OS: one field for skills and conversations ---------- */
 .lifeos-toolbar .launch-toolbar-slot { flex: 1; min-width: 0; }
 /* The placeholder ellipsizes rather than clipping mid-word when the scope
    chip takes its share of a 390px field. */
@@ -165,7 +165,7 @@
 .lifeos-convo-group > :not(.action-rows) { margin-inline: 14px; }
 /* Three short labels: on a wide card the track keeps a phone's width, but a
    phone's own column (up to 520px, a 430px iPhone's is 378) runs full, equal
-   segments, like the search field above it (#1588). */
+   segments, like the search field above it. */
 .lifeos-convo-sort { margin-bottom: 8px; }
 @media (min-width: 521px) {
   .lifeos-convo-sort { max-width: 360px; }
@@ -177,7 +177,7 @@
   .lifeos-convo-group .lifeos-archived-summary { margin-inline: calc(14px + var(--gap)); }
 }
 .lifeos-group-count { font-weight: 400; }
-/* The Conversations head with the search's Start new (#1588) at its end. */
+/* The Conversations head with the search's Start new at its end. */
 .lifeos-group-bar {
   display: flex;
   align-items: center;
@@ -186,8 +186,8 @@
   margin-bottom: 6px;
 }
 .lifeos-group-bar > .lifeos-group-head { margin: 0; min-width: 0; }
-/* A plain + at the head's trailing end (the vendored icon-button, fleet-config
-   #1420): the 44px row-sm box is the whole target, and the end margin pulls the
+/* A plain + at the head's trailing end (the vendored icon-button): the 44px row-sm box is the
+   whole target, and the end margin pulls the
    16px glyph to the content edge, as the rows' kebabs sit. */
 .lifeos-start-new {
   --icon-btn-box: var(--row-sm);
@@ -198,7 +198,7 @@
 #lifeOsStartPickerList { max-height: 55vh; overflow-y: auto; }
 .lifeos-start-pick .avatar { flex: none; }
 
-/* ---------- Life OS sheets (#1504) ---------- */
+/* ---------- Life OS sheets ---------- */
 /* The conversation sheet, the reader and Browse's two sheets are the
    vendored modal. The title is one line, the full name in its title. A
    block, not the header h2's flex row: text-overflow does not apply to a
@@ -212,7 +212,7 @@
   white-space: nowrap;
 }
 /* The conversation sheet's meta, summary and the reason Resume can't run are
-   secondary lines (body-sm, muted, the shade the owner kept in #1528). */
+   secondary lines (body-sm, muted, the shade the owner chose). */
 .lifeos-sheet-line {
   margin: 0 0 var(--space-sm);
   font-size: var(--font-body-sm);
@@ -287,7 +287,7 @@
 .lifeos-archived-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .lifeos-archived[open] .lifeos-archived-chevron { transform: rotate(90deg); }
 
-/* The Jobs sort-and-filter sheet (#1538): the tabs fill the row's value
+/* The Jobs sort-and-filter sheet: the tabs fill the row's value
    side, and the footer is Clear beside Done (design.md "Long lists") — the
    one place this app's stacked detail-actions runs as a row. Clear takes the
    primary's 48px height and type so the pair reads as one footer. */
@@ -300,7 +300,7 @@
   font-size: var(--font-body);
 }
 
-/* ---------- conversation viewer (#1119) ---------- */
+/* ---------- conversation viewer ---------- */
 /* One capture, read-only, in the Chat pane's own cards, scrolling inside
    the reader sheet. */
 #lifeOsViewerState {

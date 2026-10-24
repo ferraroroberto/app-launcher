@@ -1,9 +1,9 @@
-/* ---------- wide layout: the Board beside the rail (#1135) ---------- */
-/* design.md Layout, "Wide layout" (fleet-config#968): the 80px left rail
+/* ---------- wide layout: the Board beside the rail ---------- */
+/* design.md Layout, "Wide layout": the 80px left rail
    itself — placement, the content offset and top gap — comes from the
-   vendored nav (_vendored/nav/nav-tabs.css, project-scaffolding#281). What
+   vendored nav (_vendored/nav/nav-tabs.css). What
    stays here is the Board's full-width exception, which the scaffold leaves
-   app-side: its full-bleed breakout (#325) starts at the rail's edge, so the
+   app-side: its full-bleed breakout starts at the rail's edge, so the
    Board, its header and the nav share one measure. Below 1100px, or on a
    coarse pointer at any width, none of this applies. */
 @media (min-width: 1100px) and (pointer: fine) {
@@ -25,7 +25,7 @@
   }
 }
 
-/* ---------- wide layout: Code tab list-and-detail (#1135) ---------- */
+/* ---------- wide layout: Code tab list-and-detail ---------- */
 /* design.md Layout, "Master-detail": on the Code tab the session list and the
    session view sit side by side, list : detail = 1 : 1.5 of the space right
    of the rail, each scrolling on its own. The view is the same overlay the
@@ -48,14 +48,14 @@
     box-sizing: border-box;
     /* Fixed makes .app a stacking context, so the full-screen overlays
        nested inside it (image lightbox, summary modal) stack within
-       it; the changes viewer is body-level since #1349. Lifting it over the docked view (300) keeps them on
+       it; the changes viewer is body-level. Lifting it over the docked view (300) keeps them on
        top; the two panes never overlap, so nothing else changes order. */
     z-index: 310;
   }
-  /* The Changed files / Show changes panel (#1349, #977) is body-level and a
+  /* The Changed files / Show changes panel is body-level and a
      full-window layer, not a docked pane: at the shared 300 it sat under the
      310 column above and the Coding tab's cards painted over its file list
-     (#1471). One step over that column, still under the lightbox / summary
+. One step over that column, still under the lightbox / summary
      modal (350) and the toast (400). */
   #changesOverlay { z-index: 320; }
   body:has(nav.tabs[data-active-tab="claude"]) #terminalOverlay,
@@ -106,11 +106,11 @@
   }
 }
 
-/* ---------- wide layout: Jobs tab list-and-detail (#1438) ---------- */
+/* ---------- wide layout: Jobs tab list-and-detail ---------- */
 /* The same master-detail as the Code tab: the job sheet docks as the detail
    pane (opened non-modal by jobs.js at this query), list : detail = 1 :
    1.5 right of the rail. With no job open, the pane shows the week's
-   schedule (#1505), the Schedule sheet's content under "This week". */
+   schedule, the Schedule sheet's content under "This week". */
 .job-detail-empty { display: none; }
 @media (min-width: 1100px) and (pointer: fine) {
   body:has(nav.tabs[data-active-tab="jobs"]) .app {
@@ -162,8 +162,8 @@
   }
 }
 
-/* ---------- wide layout: Apps tab in two columns (#1505) ---------- */
-/* Apps is a PC surface (step 5 of #1500), so at the wide query it uses the
+/* ---------- wide layout: Apps tab in two columns ---------- */
+/* Apps is a PC surface, so at the wide query it uses the
    room the way Code and Jobs do: two columns right of the rail, each
    scrolling on its own, split 1 : 1.5 like theirs. The left is the page
    (header, Apps, Trays: what can I start); the right is #appsNowCol (Running,

@@ -1,4 +1,4 @@
-/* ---------- Show changes overlay (#977) ---------- */
+/* ---------- Show changes overlay ---------- */
 /* GitHub "Files changed" on the phone: a summary line, then flat list-row
    groups (Changes / Untracked) whose rows are <details> — badge · path ·
    +N −N in the summary, the file's unified diff in the body, tinted per
@@ -37,7 +37,7 @@
   font-size: var(--font-label);
 }
 .chg-file > summary::-webkit-details-marker { display: none; }
-/* The file row the panel and the Edited card share (#1477): badge, the name
+/* The file row the panel and the Edited card share: badge, the name
    over its folder, counts. A status badge is its status text on its own 16%
    tint (design.md), never a coloured letter on a grey tile. */
 .chg-badge {
@@ -84,7 +84,7 @@
 .chg-dir { color: var(--muted); font-size: var(--font-body-sm); font-weight: 400; }
 .chg-file .chg-base,
 .chg-file .chg-dir { white-space: normal; overflow-wrap: anywhere; }
-/* The file a card row opened (#1477): a faint accent wash, bled into the
+/* The file a card row opened: a faint accent wash, bled into the
    panel's 12px gutter so the row's content stays aligned with its siblings. */
 .chg-file.chg-focus {
   margin: 0 -8px;
@@ -93,7 +93,7 @@
   background: rgb(from var(--accent) r g b / 0.06);
 }
 .chg-file.chg-focus + .chg-file { border-top-color: transparent; }
-/* "This turn · Whole session" (#1477): chip-geometry pills, the pressed one in
+/* "This turn · Whole session": chip-geometry pills, the pressed one in
    the accent tint, each inside a 44px tap target. */
 .chg-scope { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; }
 .chg-scope-btn {
@@ -140,7 +140,7 @@
 .chg-diff {
   margin: 0;
   padding: 6px 0;
-  /* The card surface on a hairline (#1474), never `--card-off`: that is true
+  /* The card surface on a hairline, never `--card-off`: that is true
      black inside a dark card. Same frame as a fenced block (`.md-block`). */
   background: var(--card);
   border: 1px solid var(--line);
@@ -174,17 +174,17 @@
 .chg-diff .d-add.d-tint .d-pfx { color: var(--diff-add-fg); }
 .chg-diff .d-del.d-tint .d-pfx { color: var(--diff-del-fg); }
 [data-theme="dark"] .chg-diff :is(.d-add, .d-del) .fv-cmt { color: var(--code-fg); }
-/* Per-step diffs (#1349): the same diff inside a Chat step, plus a
+/* Per-step diffs: the same diff inside a Chat step, plus a
    line-number gutter when the harness recorded real numbers. A numbered line
    is a two-track grid, so a wrapped long line stays right of its number and
    the page never scrolls sideways; an unnumbered diff keeps the plain block
    lines above. Long diffs scroll inside their own box. */
 .tr-diff { margin: 0 0 8px; max-height: 60vh; overflow-y: auto; }
-/* Changed files (#1349): a file's edits each get a quiet label above their
+/* Changed files: a file's edits each get a quiet label above their
    diff, and the panel scrolls as a whole rather than per diff. */
 .chg-body .tr-diff { max-height: none; }
 .chg-step { padding: 6px 0 4px; }
-/* A session file's tools (#1689, #1749): the vendored Diff | File segmented
+/* A session file's tools: the vendored Diff | File segmented
    switch, then Download and the ⋮ menu as icon buttons on one quiet row, and
    the file's absolute path under it as text you can select. The icon buttons'
    44px targets reach 8px past their 28px boxes, so the group is inset by as
@@ -252,7 +252,7 @@
   -webkit-user-select: none;
   user-select: none;
 }
-/* Token colours (#1749), the fleet's existing text tokens in both themes:
+/* Token colours, the fleet's existing text tokens in both themes:
    keyword / tag / at-rule and the JSON key take the accent, a string the
    success text, a number or literal the attention text, a comment the muted
    grey in italic, and a function / attribute / property name the code colour
@@ -287,7 +287,7 @@
   -webkit-user-select: none;
   user-select: none;
 }
-/* "folder / name" (#1476): the folder muted, the name in fg. */
+/* "folder / name": the folder muted, the name in fg. */
 .tr-diff-path {
   margin: 0 0 6px;
   font-size: var(--font-body-sm);
@@ -298,7 +298,7 @@
 .tr-diff-more { margin: 0 0 8px; }
 .tr-diff-note { margin: 0 0 8px; }
 
-/* ---------- Edited N files card (#1477) ---------- */
+/* ---------- Edited N files card ---------- */
 /* Closes a turn that edited files: the card contract on the canvas, a header
    (glyph, "Edited N files", total +N -M), then list-rows at rows.md -- the
    panel's own file row -- and a full-width "Show N more". Every row is a

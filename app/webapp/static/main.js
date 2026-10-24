@@ -40,12 +40,12 @@ import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
-// No Edit mode (#1438, decision 5 of #1432): Add, Edit and Remove are
+// No Edit mode: Add, Edit and Remove are
 // always one tap away, so the switch and its persisted key are gone. A
 // device that still holds the key drops it here, once per boot.
 try { localStorage.removeItem('launcher.editMode'); } catch (_) { /* storage blocked */ }
 
-// Boot-autostart (issue #456 part 1/2) is its own dedicated endpoint, not a
+// Boot-autostart is its own dedicated endpoint, not a
 // patchConfig() field — enabling/disabling it writes/removes a Startup-folder
 // wrapper bat (a real filesystem side effect), so the click re-fetches
 // /api/config for the actual on-disk state rather than optimistically
@@ -72,12 +72,12 @@ function wireSettings() {
   if (els.bootAutostartToggle) {
     els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);
   }
-  // Every other Settings field saves as it changes (#1435): settings-sheets.js.
+  // Every other Settings field saves as it changes: settings-sheets.js.
   wireSettingsSheets();
   wireScreenTime();
 }
 
-// Telegram channel sessions (#1384): the switch saves at once like every other
+// Telegram channel sessions: the switch saves at once like every other
 // Settings switch, then both lists repaint under the new setting.
 function wireChannelHide() {
   const el = els.hideChannelSessionsToggle;
@@ -94,7 +94,7 @@ function wireChannelHide() {
   });
 }
 
-// Start Telegram sessions automatically (#1542): saves at once; the server
+// Start Telegram sessions automatically: saves at once; the server
 // reads it when the webapp next starts, so nothing here repaints.
 function wireChannelAutostart() {
   const el = els.autostartChannelSessionsToggle;
@@ -114,9 +114,9 @@ function wireTheme() {
   // html[data-theme] (localStorage override, prefers-color-scheme
   // fallback); the button just flips it. The sun/moon glyph swap is pure
   // CSS keyed on the attribute, so there is nothing to re-render here —
-  // the terminal screen follows the app theme (issue #383) via
+  // the terminal screen follows the app theme via
   // terminal.js's own data-theme observer, which restyles any open
-  // terminal. Every page header carries one (#1131, the home-head toggle
+  // terminal. Every page header carries one (the home-head toggle
   // slot); they all flip the same attribute.
   document.querySelectorAll('.theme-toggle-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
@@ -130,7 +130,7 @@ function wireTheme() {
 // --------------------------------------------------------- status readout
 // Renders a sprite-icon span + a trailing text node — data (tunnel_url,
 // etc.) always rides a text node, never innerHTML, even though it's
-// locally-sourced (issue #355 straggler fix).
+// locally-sourced.
 async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
@@ -158,7 +158,7 @@ async function fetchVersion() {
   // Visible proof of which build the PWA is running. Catches stale-cache
   // confusion before it costs a debugging session. Uses jsonApi so the
   // bearer token is attached — /api/version is auth-gated like the rest.
-  // A transient failure is retried on boot's backoff (#1287): one dropped
+  // A transient failure is retried on boot's backoff: one dropped
   // request used to leave the readout blank until a reload. No toast — it is
   // a readout; after the last attempt it stays blank.
   for (let attempt = 0; ; attempt++) {
@@ -167,7 +167,7 @@ async function fetchVersion() {
       const sha = body.git_sha || 'unknown';
       const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
       els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
-      // The Settings header carries the sha too, without the time (#1506).
+      // The Settings header carries the sha too, without the time.
       state.buildSha = sha;
       renderSettingsHead();
       return;
@@ -184,12 +184,12 @@ async function fetchVersion() {
 
 // --------------------------------------------------------- boot
 // A transient /api/config failure (a dropped connection on the phone, or a
-// loopback socket error on a loaded box, #1243) used to end boot() for good:
+// loopback socket error on a loaded box) used to end boot() for good:
 // no session list, and none of the polls armed at the end of boot(), so the
-// app stayed empty until a manual reload (issue #1230). Non-auth failures are
+// app stayed empty until a manual reload. Non-auth failures are
 // retried on this backoff before the toast. A 401 is not retried: it has
 // already raised the login overlay, whose success handler calls boot() again.
-// fetchVersion() above retries on the same backoff (#1287).
+// fetchVersion() above retries on the same backoff.
 const BOOT_RETRY_MS = [500, 1000, 2000, 4000];
 
 async function fetchConfigForBoot() {
@@ -211,7 +211,7 @@ async function fetchConfigForBoot() {
   }
 }
 
-// The Screen view's pop-out window (#1520) opens on ?screen=1. Read once, at
+// The Screen view's pop-out window opens on ?screen=1. Read once, at
 // the first boot: a login in between re-runs boot() after the param is gone.
 let screenWindow = null;
 
@@ -220,7 +220,7 @@ async function boot() {
   const fromUrl = consumeUrlParam('token');
   if (fromUrl) writeToken(fromUrl);
   // A launcher-spawned PC mirror window on the ts.net URL carries a
-  // server-minted passkey terminal token (issue #356) — cache it like a
+  // server-minted passkey terminal token — cache it like a
   // ceremony-minted one. TTL mirrors the server's 12 h _TERMINAL_TOKEN_TTL.
   const ttFromUrl = consumeUrlParam('tt');
   if (ttFromUrl) writeTerminalToken(ttFromUrl, 12 * 3600);
@@ -230,18 +230,18 @@ async function boot() {
   // Human-copyable links use ?session=<sid>, so opening one on a phone does
   // not claim mirror ownership or surrender the phone's PTY-size authority.
   // Recording only the former here is what lets terminal.js tell a real
-  // mirror apart from an ordinary browser (issues #241/#877).
+  // mirror apart from an ordinary browser.
   state.isMirrorWindow = !!mirrorSid;
   // Mark the window closable before the first network call: a mirror whose
   // /api/config 401s returns below and never reaches announceMirrorWindow
-  // (issue #940). ?session= links stay unmarked.
+  // ?session= links stay unmarked.
   if (mirrorSid) markMirrorWindowEarly(mirrorSid);
 
   if (!(await fetchConfigForBoot())) return;
   // Each remaining boot fetch fills one panel — none is load-bearing for
   // the rest of the app, so a single failure must not abort boot() and take
   // the deep-link branch below down with it: the PC mirror window's title
-  // marker + terminal connect depend on reaching it (issue #371).
+  // marker + terminal connect depend on reaching it.
   const safe = function (fn) { return fn().catch(function (exc) {
     console.warn('boot: non-critical fetch failed', exc);
   }); };
@@ -257,7 +257,7 @@ async function boot() {
 
   // A PC mirror (?terminal=) or human-shared link (?session=) drops straight
   // into the same session; only the former set state.isMirrorWindow above.
-  // ?board=<sid> (issue #301) lands a Slack ping on that session's Board
+  // ?board=<sid> lands a Slack ping on that session's Board
   // card, drawer open — mutually exclusive with the session links by
   // construction (each link carries one param).
   const deepLinkSid = mirrorSid || sharedSessionSid;
@@ -265,7 +265,7 @@ async function boot() {
   const convo = deepLinkSid ? null : consumeUrlParam('convo');
   const cut = convo ? convo.indexOf('/') : -1;
 
-  // Every panel fetch starts at once (#1258): awaited one by one they cost
+  // Every panel fetch starts at once: awaited one by one they cost
   // the phone ~13 serial round trips over the tunnel before the git flags
   // (last in line) painted. Only real reads are chained. The session and
   // project lists render agent icons from state.agents, and fetchAgents
@@ -278,11 +278,11 @@ async function boot() {
     // redraw it by coming last in the serial chain; now nothing else would.
     if (state.tab === 'board') renderBoard();
   });
-  // ?convo=<skill>/<file> (issue #1170): a copied Life OS conversation link
+  // ?convo=<skill>/<file>: a copied Life OS conversation link
   // reopens that capture in the viewer, over the Life OS tab. It needs only
   // the skills, so it opens as soon as they land, never behind the rest of
   // boot: the git-status fan-out alone took 1–7 s on an idle box, which is
-  // what timed the link out (issue #1222).
+  // what timed the link out.
   const skills = safe(fetchSkills).then(function () {
     if (boardSid || cut <= 0) return;
     setTab('lifeos');
@@ -293,7 +293,7 @@ async function boot() {
   // The terminal deep link reads both: reachability and the passkey gate.
   const status = safe(fetchStatus);
   const webauthn = safe(fetchWebauthnStatus);
-  // Git flags fill without a tap (#496): one fetch at boot, then the slow
+  // Git flags fill without a tap: one fetch at boot, then the slow
   // poll below keeps them current while a git-reading tab is visible.
   const git = safe(function () { return refreshGitStatus({ quiet: true }); });
   const usage = Promise.all([safe(fetchRateLimits), safe(fetchContextFilter)]);
@@ -306,7 +306,7 @@ async function boot() {
 
   // Each poll arms once its own first fetch has settled, so it never
   // overlaps it, and never waits on a slower, unrelated one: a git scan
-  // still running must not hold back the Jobs poll (#1258).
+  // still running must not hold back the Jobs poll.
   const noop = function () {};
   lists.then(function () {
     setInterval(function () {
@@ -314,10 +314,10 @@ async function boot() {
     }, TUNNEL_POLL_MS);
     setInterval(function () {
       // Pause the session poll while the session overlay is open (either
-      // mode, #982) — it would re-render the list under the overlay for no
+      // mode) — it would re-render the list under the overlay for no
       // reason. The open terminal keeps its own title poll (terminal.js).
-      // Not on the wide layout (#1488): the view docks beside the list
-      // (#1135), so the list is on screen and must keep updating — a session
+      // Not on the wide layout: the view docks beside the list
+      // so the list is on screen and must keep updating — a session
       // that ends there would otherwise keep its card until a reload.
       if (!state.sessionView || isWideLayout()) fetchSessions().catch(noop);
     }, SESSIONS_POLL_MS);
@@ -325,7 +325,7 @@ async function boot() {
   usage.then(function () {
     setInterval(function () {
       fetchRateLimits().catch(noop);
-      // Context filter (issue #713) rides the same cadence as the usage
+      // Context filter rides the same cadence as the usage
       // meter above — no dedicated timer for one more lightweight GET.
       fetchContextFilter().catch(noop);
     }, SESSIONS_POLL_MS);
@@ -354,8 +354,8 @@ async function boot() {
   });
   git.then(function () {
     setInterval(function () {
-      // Always-on git flags (#496): refresh only while the tab that shows
-      // them (Code; the Board's Backlog dropped them in #1436) is visible and
+      // Always-on git flags: refresh only while the tab that shows
+      // them (Code; the Board's Backlog doesn't draw them) is visible and
       // the page is foreground — a backgrounded PWA must not keep spawning
       // git subprocesses.
       if (document.hidden) return;
@@ -410,7 +410,7 @@ wireSettings();
 wireTokens();
 wireFleetScope();
 wireTheme();
-// Settings → Text size (#1134): same localStorage prefix as the theme,
+// Settings → Text size: same localStorage prefix as the theme,
 // which the pre-paint boot script reads.
 if (document.getElementById('textSizeControl')) {
   bindTextSize(document.getElementById('textSizeControl'), 'app-launcher');

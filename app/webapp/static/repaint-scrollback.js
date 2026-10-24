@@ -1,4 +1,4 @@
-/* Clear the terminal's scrollback on a full-viewport repaint (#930).
+/* Clear the terminal's scrollback on a full-viewport repaint.
  *
  * When one turn's live region grows taller than the viewport, Claude Code
  * (Ink) can no longer redraw it in place with cursor-up. It homes the
@@ -8,7 +8,7 @@
  *
  * ESC[2K reaches only the viewport, so whatever the redraw repeats from
  * above it lands in xterm's scrollback a second time. xterm has no API to
- * delete particular scrollback lines (#1038, #930's 2026-09-22 comment), so
+ * delete particular scrollback lines, so
  * the one lever is clearing scrollback at that moment: no duplicate, at the
  * cost of the terminal's history before a long turn. Chat mode reads the
  * conversation from the transcript and keeps all of it.

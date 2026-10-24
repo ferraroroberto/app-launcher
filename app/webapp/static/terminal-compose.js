@@ -1,16 +1,15 @@
-/* The live terminal's composer transport (issue #315 split off terminal.js;
- * #980 moved the composer itself into composer.js).
+/* The live terminal's composer transport (split off terminal.js; the composer itself lives in composer.js).
  *
  * composer.js owns the surface — textarea, mic, keys, image menu, OCR tray,
  * send — and knows nothing about sessions. This module is the terminal's
  * binding of it: ➤ Send forwards the buffered text over the PTY WebSocket,
- * then a submitting \r as a SEPARATE WS frame (sendSubmit / #166); attach
+ * then a submitting \r as a SEPARATE WS frame (sendSubmit); attach
  * uploads through the session-host's inline image route and hands the
  * composer the stored path; the ⌨ D-pad writes escape bytes down the same
- * `input` channel. The compose bar was born here (#37) as a normal
+ * `input` channel. The compose bar was born here as a normal
  * <textarea> with default predictive/autocorrect so iOS/Android keyboards
  * offer suggestions — which they can't inside xterm's per-keystroke-wiped
- * helper textarea — and since #980 it is always docked: no ✏️ toggle, the
+ * helper textarea — and it is always docked: no ✏️ toggle, the
  * PC mirror window is the only place it hides (terminal.js).
  */
 
@@ -21,7 +20,7 @@ import { mountComposer } from './composer.js';
 import { largeFileLine, oversizeReason } from './attach-batch.js';
 import { stopReading } from './terminal-readaloud.js';
 
-// Attachment settle (issue #1211, replacing #450's fixed 350 ms defer): a
+// Attachment settle (not a fixed 350 ms defer): a
 // CR that reaches Claude Code while it is still turning a pasted image path
 // into an attachment is absorbed, and the prompt sits unsent in its composer
 // until someone presses Enter again. The conversion is not a fixed cost: it
@@ -37,17 +36,17 @@ import { stopReading } from './terminal-readaloud.js';
 // cap is no worse than the old fixed defer.
 const _ATTACH_CAP_MS = 10000;
 
-// Bulk-text CR settle watch (issue #499): a dictation-sized paste can outrun
+// Bulk-text CR settle watch: a dictation-sized paste can outrun
 // Claude Code's bracketed-paste ingest when the machine is under load
-// (concurrent PTY sessions, gates, browsers — #493 measured 5× latency
-// spikes), so the immediately-following CR lands mid-ingest and becomes a
+// (concurrent PTY sessions, gates, browsers — 5× latency
+// spikes were measured), so the immediately-following CR lands mid-ingest and becomes a
 // newline into the still-settling composer instead of Submit. For payloads
 // past the threshold, the CR is held until the session's output stream shows
 // the paste was ingested AND settled: some output arrived after the send
 // (Claude echoes the paste / collapses it into a "[Pasted text #N]" chip)
 // and that output has been quiet for _BULK_QUIET_MS — with a floor (never
 // sooner than _BULK_FLOOR_MS) and a cap (send anyway at _BULK_CAP_MS).
-// Calibrated with a real-Claude ConPTY probe under synthetic load (#499):
+// Calibrated with a real-Claude ConPTY probe under synthetic load:
 // immediate CR submitted 1/20, fixed 350 ms 19/20, fixed 1000 ms 19/20, a
 // bare quiet-window 13/20 (under load the echo itself is deferred, so it
 // fires early) — this echo-then-quiet protocol was the only one to run
@@ -67,7 +66,7 @@ export let terminalComposer = null;
 // 2004) when the agent's TUI has them enabled, so it buffers the whole
 // block as one atomic paste instead of absorbing a per-keystroke burst —
 // which the Windows console input queue silently drops spans of under a
-// multi-KB load (#64). This is exactly what xterm already does for its own
+// multi-KB load. This is exactly what xterm already does for its own
 // native paste (term.onData); compose ➤ Send bypasses xterm, so it has to
 // replicate it. Only bracket when the app actually asked for it
 // (`term.modes.bracketedPasteMode`) — otherwise the literal `\x1b[200~`
@@ -75,7 +74,7 @@ export let terminalComposer = null;
 //
 // Framing only — this never appends the submitting carriage return. A
 // submit goes through `sendSubmit`, which delivers the CR as its OWN WS
-// frame after this block (see #166).
+// frame after this block.
 export function framePaste(t, text) {
   const bracketed = !!(t.term && t.term.modes && t.term.modes.bracketedPasteMode);
   if (!bracketed) return text;
@@ -92,19 +91,19 @@ export function framePaste(t, text) {
 // finished exiting bracketed-paste mode — before the bare CR arrives. When
 // the CR rode in the same frame as the end marker, the TUI intermittently
 // absorbed it into paste finalization instead of running the prompt: the
-// "➤ Send sometimes does nothing" race of #166. A CR *inside* the markers
+// "➤ Send sometimes does nothing" race. A CR *inside* the markers
 // is literal pasted text by design, so the split is the only ordering that
 // reliably submits. With bracketed mode off there is no paste state machine
 // to race, but the two-frame path is harmless there, so it stays uniform.
-// `opts.bulkSettle` (issue #499): hold the CR until the session's output
+// `opts.bulkSettle`: hold the CR until the session's output
 // stream shows the paste was ingested and settled (echo seen after the send,
 // then quiet — floor/quiet/cap constants above). Used for dictation-sized
 // text payloads, whose ingest under machine load outlives any fixed delay.
-// `opts.attachSettle` (issue #1211): the same watch for a payload carrying
+// `opts.attachSettle`: the same watch for a payload carrying
 // an attached-file path, which also waits out an image conversion still in
 // flight, up to _ATTACH_CAP_MS (see that constant).
 // Short plain-text sends pass no options and stay instant (the CR still
-// goes as its own frame, preserving #166's ordering fix).
+// goes as its own frame, preserving the ordering).
 export function sendSubmit(t, text, opts) {
   if (!t || !t.ws || t.ws.readyState !== WebSocket.OPEN) return;
   const sentAt = Date.now();
@@ -136,17 +135,17 @@ export function sendSubmit(t, text, opts) {
 
 // Store one attachment on the session-host for session `sid` and resolve its
 // path. `inline=1` asks the host to skip its paste-into-PTY step and just
-// return the stored path (#41), so the composer can append it for
+// return the stored path, so the composer can append it for
 // review-before-send. A terminal can't hold an image: the agent is handed
 // the *file path* and reads the image from there. Always inline, so it
-// serves a detached session too (#983) — the host saves under the session's
+// serves a detached session too — the host saves under the session's
 // project_dir and never writes to it.
-// #1354: a failure throws its reason and does not toast — the composer names
+// a failure throws its reason and does not toast — the composer names
 // every failed file in the one summary toast that ends the batch, instead of
 // one toast per file.
-// `signal` (#1413) is the composer's per-upload AbortSignal: a second tap on
+// `signal` is the composer's per-upload AbortSignal: a second tap on
 // the busy image button aborts the request instead of waiting it out.
-// `kind === 'large'` (#1430) takes the large-file path instead and resolves
+// `kind === 'large'` takes the large-file path instead and resolves
 // the line the composer appends, not a bare path.
 export async function uploadSessionFile(sid, file, signal, kind) {
   if (!sid || !file) throw new Error('no session to attach to');
@@ -162,7 +161,7 @@ export async function uploadSessionFile(sid, file, signal, kind) {
   return path;
 }
 
-// A large file (#1430) goes up as the raw request body, not a form: the
+// A large file goes up as the raw request body, not a form: the
 // webapp relays it to the session-host as it arrives and the host writes it
 // to disk as it goes, so neither holds the whole file. The limit is the
 // large_upload_max_mb Setting, checked here first so an oversize file costs no
@@ -189,10 +188,10 @@ function uploadTerminalImage(file, signal, kind) {
   return t ? uploadSessionFile(t.sid, file, signal, kind) : Promise.resolve(null);
 }
 
-// sendSubmit's options for one composed send. #499: bulk text (a long
+// sendSubmit's options for one composed send. Bulk text (a long
 // dictation) holds the CR until the paste's ingest visibly settles — under
 // machine load a fixed defer still lands mid-ingest and the CR becomes a
-// newline instead of Submit. #1211: an attached-file path holds it until the
+// newline instead of Submit. An attached-file path holds it until the
 // agent has finished converting the image, however short the buffer.
 export function submitOptions(text, meta) {
   if (meta && meta.hasImage) return { attachSettle: true };
@@ -231,7 +230,7 @@ export function mountTerminalComposer() {
     send: sendComposed,
     upload: uploadTerminalImage,
     keys: { send: sendKeyBytes, onOpen: snapToTail },
-    // Starting to talk silences any in-flight read-aloud (issue #190):
+    // Starting to talk silences any in-flight read-aloud:
     // you're answering, not still listening.
     onDictationStart: stopReading,
   });
@@ -240,7 +239,7 @@ export function mountTerminalComposer() {
 
 // Leave-terminal teardown (stashActiveTerminal / disposeTerminal in
 // terminal.js): drop the draft, staged screenshots and any in-flight
-// recording (#755) so a re-open never shows a stale bar.
+// recording so a re-open never shows a stale bar.
 export function resetComposeBar() {
   if (terminalComposer) terminalComposer.reset();
 }

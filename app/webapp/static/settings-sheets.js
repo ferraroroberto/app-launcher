@@ -1,9 +1,9 @@
-/* Settings as inset groups (#1435, step 3 of #1432).
+/* Settings as inset groups.
  *
  * The Settings pane is a stack of rows: a lead icon, a label, the current
  * value in muted text and a chevron. Each row opens a sheet, a <dialog> on
  * the vendored modal shell with a header back + ✕ and one full-width Done
- * (#545). Text size and Start at log on stay inline on their rows.
+ * Text size and Start at log on stay inline on their rows.
  *
  * This module owns three things:
  * - the sheets' navigation: Launch defaults opens one agent's sheet on top
@@ -89,7 +89,7 @@ function openAgentSheet(agentId) {
   showPath(['launchDefaultsSheet', 'agentSheet']);
 }
 
-// Land on one Settings field or sheet (#1238 J-09, via tabs.js's
+// Land on one Settings field or sheet (via tabs.js's
 // openSettingsAt): open the sheet that holds it, then scroll to and focus
 // the field. A sheet id opens just that sheet.
 export function revealSettingsField(el) {
@@ -182,7 +182,7 @@ function launchValue(cfg) {
   return joined([label ? label.textContent : fav, model]);
 }
 
-// "3 profiles", or "1 needs setup" in attention while one does (#1506): a
+// "3 profiles", or "1 needs setup" in attention while one does: a
 // healthy state is a plain count, never a "ready" word.
 function renderTelegramValue() {
   const ch = state.lifeOsChannels;
@@ -300,7 +300,7 @@ async function saveConfigField(input, patch, message, after) {
 }
 
 // ---------------------------------------------------- chat file folders
-// The folders an agent may send Chat files from (#1748), one row each. Every
+// The folders an agent may send Chat files from, one row each. Every
 // add or remove posts the whole new list and the rows are redrawn from the
 // server's answer (fetchConfig), so a refused entry never lingers on screen.
 // The last row cannot be removed: an empty list would read as unset on the
@@ -416,7 +416,7 @@ function wireFields() {
 // ------------------------------------------------------------------ chief
 // Model and worker cap are the chief's own settings (PUT
 // /api/board/chief/settings, passkey-gated: they steer it); auto-compact is
-// a config field (#1298) the chief reads. GET /api/config carries all four,
+// a config field the chief reads. GET /api/config carries all four,
 // so the row's value needs no passkey.
 let chiefModelCombo = null;
 const CHIEF_MODELS = [
@@ -490,7 +490,7 @@ function wireChief() {
 }
 
 // A config switch saves at once and is re-read by the server on its next use,
-// so off is also the phone's kill switch: the doorbell (fleet-config#1457) by
+// so off is also the phone's kill switch: the doorbell by
 // its 3 s tick, the job-failure event by the next failed run, the Life OS
 // skill refresh by the next resume.
 function wireConfigSwitch(el, key, label) {
@@ -537,7 +537,7 @@ export function wireSettingsSheets() {
     // the time it runs after this module's own close the path has moved on
     // and its top is another sheet, or nothing. It can also be stale for the
     // top sheet itself: Back reopens the parent, and the parent's earlier
-    // close event may land after that. An open dialog was not closed (#1677),
+    // close event may land after that. An open dialog was not closed,
     // or the path would be wiped under a sheet that is still showing.
     d.addEventListener('close', function () {
       if (d.open || stack[stack.length - 1] !== d.id) return;

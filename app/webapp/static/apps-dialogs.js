@@ -1,7 +1,7 @@
 /* Apps tab dialogs: rename an existing registry entry, and the scan dialog
  * that offers newly discovered launcher bats for adoption.
  *
- * Split out of apps.js in issue #723. Both dialogs are self-contained —
+ * Split out of apps.js. Both dialogs are self-contained —
  * open, submit, re-fetch the registry — and share nothing with the list
  * rendering beyond fetchApps.
  */
@@ -99,8 +99,8 @@ function renderScanResults() {
 }
 
 export function wireScanDialog() {
-  // The Apps card's last row (#1437, moved here from Settings › Folders),
-  // and the empty registries straight from their empty state (#1238 J-09).
+  // The Apps card's last row (moved here from Settings › Folders),
+  // and the empty registries straight from their empty state.
   els.appsScanRow.addEventListener('click', runScan);
   ['appsEmptyAction', 'registeredTraysEmptyAction'].forEach(function (id) {
     const btn = document.getElementById(id);

@@ -1,6 +1,6 @@
-/* Settings-tab "API tokens" panel (issue #72).
+/* Settings-tab "API tokens" panel.
  *
- * Mint / list / revoke (after a confirm, #1506) job-scoped bearer tokens
+ * Mint / list / revoke (after a confirm) job-scoped bearer tokens
  * against /api/tokens. The
  * raw token appears exactly once, in the mint response — the panel shows
  * it in a readonly field with a copy button and it is gone on the next
@@ -54,7 +54,7 @@ function renderTokens(tokens) {
     revoke.type = 'button';
     revoke.className = 'button-ghost';
     revoke.textContent = 'Revoke';
-    // Asked first, in the themed dialog (#1506), like removing a passkey:
+    // Asked first, in the themed dialog, like removing a passkey:
     // a revoked token cannot be brought back.
     revoke.addEventListener('click', async function () {
       if (!(await confirmDialog({
@@ -157,14 +157,14 @@ async function copyMinted() {
 
 export function wireTokens() {
   if (!els.tokensList) return;
-  // No tokens yet: the create form sits right below (#1238 J-09).
+  // No tokens yet: the create form sits right below.
   const tokensEmptyAction = document.getElementById('tokensEmptyAction');
   if (tokensEmptyAction) {
     tokensEmptyAction.addEventListener('click', function () {
       revealInCard(els.tokenLabelInput);
     });
   }
-  // Load the token list when Settings opens (#1131: from any header's gear,
+  // Load the token list when Settings opens (from any header's gear,
   // or an empty state landing on a field), so its row shows the count.
   document.addEventListener('launcher:tab', function (e) {
     if (e.detail && e.detail.tab === 'settings') ensureLoaded();

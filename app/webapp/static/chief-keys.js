@@ -1,5 +1,4 @@
-/* Which of the chief's questions are answered (#1487, one module since
- * #1502).
+/* Which of the chief's questions are answered (one module).
  *
  * A question's key is the chief's own id, else its position in the plan's
  * list. The answer sheet records answered keys with it (board-answers.js),
@@ -44,7 +43,7 @@ export function markSent(plan, keys) {
   sent = { updated_at: version, ids: union(sent.updated_at === version ? sent.ids : [], keys) };
 }
 
-// The plan's open questions, fleet-wide (#1502): a number for a plan the
+// The plan's open questions, fleet-wide: a number for a plan the
 // Board read (0 when it has nothing queued), null when it could not read it
 // (unreadable, or the webapp did not answer) — unknown, never zero.
 export function openQuestionCount(plan) {

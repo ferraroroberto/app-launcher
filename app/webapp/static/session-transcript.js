@@ -1,4 +1,4 @@
-/* Session transcript — the Chat pane of the session overlay (#953, #982).
+/* Session transcript — the Chat pane of the session overlay.
  *
  * The whole conversation of one live Coding session, chat-style: typed
  * user prompts and assistant replies expanded, everything else — tool calls
@@ -9,37 +9,37 @@
  * newest page loads first, older pages prepend on "Load older" or when the
  * list is scrolled to its top.
  *
- * The shared composer (composer.js, #980) is mounted under the list for
- * every session kind (#983). ➤ Send always goes through the kind-agnostic
+ * The shared composer (composer.js) is mounted under the list for
+ * every session kind. ➤ Send always goes through the kind-agnostic
  * /input route, never the terminal's WebSocket — even for a full-control
  * session whose terminal is connected: Chat cannot show the PTY, so the
  * route's verdict (confirmed / unconfirmed / queued, sessions.js
  * sendOutcome) is the only feedback the phone gets, and the session-host
  * applies the same framing and settle protocol the terminal composer does
- * (#611). Attach uploads inline and appends the path, which a detached
+ * Attach uploads inline and appends the path, which a detached
  * session can take too. The ⌨ keys drive a full-control session's live
  * terminal socket while Chat shows; a detached session has none, so they
  * render disabled. A detached session whose agent was never probed for
  * console input keeps the composer but not ➤ Send.
  *
- * Claude Code's AskUserQuestion renders as a question card (#1149), never
+ * Claude Code's AskUserQuestion renders as a question card, never
  * folded. The pending one answers through its own route (/answer), not
  * /input: the picker needs raw keystrokes, and /input frames text as a
- * paste. That card, the ExitPlanMode card (#1151) and the plan-picker panel
+ * paste. That card, the ExitPlanMode card and the plan-picker panel
  * that answers a waiting plan from the terminal's own screen live in
- * transcript-decisions.js (#1309), which reads and mutates this module's
- * `view`. Entries become list nodes in transcript-render.js (#1629), the
+ * transcript-decisions.js, which reads and mutates this module's
+ * `view`. Entries become list nodes in transcript-render.js, the
  * renderer the Life OS viewer mounts too, which is handed the open session
  * rather than reading `view`; this module owns paging, live refresh, the
  * outbox cursor, the Edited N files card and the composer.
  *
- * Since #982 this is one pane of #terminalOverlay, not its own overlay:
+ * This is one pane of #terminalOverlay, not its own overlay:
  * session-overlay.js opens/closes it and flips the overlay's data-mode;
  * the bar's ⋮ menu (terminal-bar.js) carries the pane's Hide-steps and
  * Reload actions. Switching panes never reloads: the pages and fold state
  * loaded here survive a trip through Terminal mode.
  *
- * ## Live refresh (#1050)
+ * ## Live refresh
  *
  * A chat view that is *being looked at* keeps itself current, and nothing
  * else does. The gate is deliberately narrow, because the cost of getting
@@ -53,7 +53,7 @@
  *
  * Fail any of those and the timer is cleared, not merely skipped, so a
  * window sitting on Terminal or an overlay that was closed fetches nothing
- * at all. Each page instance (a PC mirror window is its own, #282) polls
+ * at all. Each page instance (a PC mirror window is its own) polls
  * only the one conversation its own overlay is showing. This is the one
  * place the terminal's design is deliberately NOT copied: terminal.js keeps
  * its socket warm after the overlay closes (:235) because an idle PTY costs
@@ -74,7 +74,7 @@
  *     it changes, with open disclosures carried across by entry offset.
  *
  * Rebuilding only that tail is what keeps this clear of the Board's lesson
- * (#680/#958): a poll that rebuilds the DOM breaks whatever the reader is
+ * a poll that rebuilds the DOM breaks whatever the reader is
  * interacting with.
  */
 
@@ -130,7 +130,7 @@ export function hasTranscriptReader(s) {
 const PAGE_LIMIT = 40;
 
 // One Load older tap keeps fetching until an older user or assistant turn
-// arrives (#1120). A page can hold no turn at all (the server's per-request
+// arrives. A page can hold no turn at all (the server's per-request
 // read ceiling stops it inside a run of huge tool results), and with tool
 // calls hidden such a page used to add nothing visible. Bounded by requests
 // and by wall time, so a transcript that is all tool calls back to the file
@@ -139,7 +139,7 @@ const OLDER_CHAIN_MAX = 8;
 const OLDER_CHAIN_MS = 2500;
 const OLDER_LABEL = 'Load older';
 
-// Live refresh (#1050). How often a chat view that is actually being looked
+// Live refresh. How often a chat view that is actually being looked
 // at asks for what the agent has appended. 3s reads as "live" for a
 // conversation without being a busy-loop; the tick itself is cheap by
 // design — an unchanged file answers from one `stat` server-side (0.02ms
@@ -155,16 +155,16 @@ const LIVE_BACKOFF_MAX_MS = 30000;
 // After a send, tick once this long later so the sent turn shows up without
 // waiting for the next scheduled one — the agent appends it to its history
 // file only after it has consumed the input, which nothing here can observe.
-// Before #1050 this was a full `loadNewest()`, which rebuilt the whole pane
+// A full `loadNewest()` would rebuild the whole pane
 // (losing scroll position and every open disclosure) after every message.
 export const SENT_REFRESH_MS = 3000;
-// A forced read's "No new messages" stays this long (#1292).
+// A forced read's "No new messages" stays this long.
 const NEWER_NOTE_MS = 2000;
-// The activity line's elapsed counter redraws this often (#1387). A local
+// The activity line's elapsed counter redraws this often. A local
 // repaint of what the last read said, not a request.
 const ACTIVITY_TICK_MS = 1000;
 // How far a finger must drag past an edge before it counts as a pull, well
-// beyond a tap's jitter and short of a deliberate scroll (#1292).
+// beyond a tap's jitter and short of a deliberate scroll.
 const PULL_PX = 64;
 
 // The chat pane's composer handle (composer.js), mounted once by
@@ -175,7 +175,7 @@ let chatComposer = null;
 // "couldn't read it" (and vice versa).
 const REASON_COPY = {
   session_not_found: 'This session is no longer running',
-  // Not an ending (#1308): the session list could not be read, so nothing is
+  // Not an ending: the session list could not be read, so nothing is
   // known about the session; the live tick keeps asking, backed off.
   session_host_unreachable: 'Can’t reach the session host — retrying',
   unsupported_agent: 'Transcript not supported for this agent yet',
@@ -187,17 +187,17 @@ const REASON_COPY = {
 // for the next older page. `seq` guards a slow response from a previous
 // open/refresh landing in a newer view.
 //
-// Exported as a live binding (#1309) so transcript-decisions.js's cards and
+// Exported as a live binding so transcript-decisions.js's cards and
 // plan-picker panel — which read and mutate its fields, never reassign the
 // binding itself — see the same object this module does; only openChatPane
 // / closeChatPane ever assign `view =` a new value.
 export let view = null;
 // Whether the step lines (each run of tool calls, thinking and system
-// entries) are hidden from the list. Shown by default since #1476: one quiet
+// entries) are hidden from the list. Shown by default: one quiet
 // line per run, still folded, so a turn that edited four files says so; the
 // ⋮ menu's "Hide steps" leaves a plain user ↔ agent exchange. Turns
 // themselves render open and collapse one at a time on their own summary
-// (the bar-wide collapse-all left with the bar, #982).
+// (the bar-wide collapse-all left with the bar).
 let groupsHidden = false;
 
 // The session id the pane currently shows, or null — session-overlay.js
@@ -206,7 +206,7 @@ export function chatPaneSession() {
   return view ? view.session.session_id : null;
 }
 
-// --- the outbox cursor (#1530) -----------------------------------------------
+// --- the outbox cursor -----------------------------------------------
 //
 // Files the agent posted to its session's outbox arrive beside the
 // transcript pages and render as `{kind: 'file'}` entries (transcript-render.js
@@ -269,7 +269,7 @@ function releaseHeld(since) {
 }
 
 // The newest assistant entry's text for read-aloud in Chat mode / a detached
-// session (#988) — the same reply provider terminal-readaloud.js otherwise
+// session — the same reply provider terminal-readaloud.js otherwise
 // reads from the live xterm buffer. Parallels copyTurn()'s upgrade
 // (transcript-render.js): the loaded page's text first, then the uncapped
 // /transcript/entry fetch when that page capped it, so a long reply is never
@@ -297,9 +297,9 @@ export async function lastAssistantEntryFullText() {
   return e.text || '';
 }
 
-// --- the Edited N files card (#1477) -------------------------------------------
+// --- the Edited N files card -------------------------------------------
 //
-// It appears once the turn is over (decision 4 of #1472): a prompt follows it,
+// It appears once the turn is over: a prompt follows it,
 // or it is the newest turn and the activity line does not say the agent is
 // working. An activity the server could not establish (null) counts as over:
 // the card only summarises loaded steps, so showing it early misleads less
@@ -338,7 +338,7 @@ function turnFiles(li) {
   return files;
 }
 
-// A card tap: the Changed files panel on this turn (#1477), focused on
+// A card tap: the Changed files panel on this turn, focused on
 // `focus` (a card row's file) or on none (the header). The turn's files go
 // with it, named as the card names them, and how to draw one of its steps.
 function openTurnChanges(files, partial, focus) {
@@ -351,8 +351,8 @@ function openTurnChanges(files, partial, focus) {
 }
 
 // Rebuilt only when what it shows changed: a live tick lands every few
-// seconds, and rebuilding an unchanged card would break a tap in flight
-// (the #680 lesson). True when it did change.
+// seconds, and rebuilding an unchanged card would break a tap in flight.
+// True when it did change.
 function syncEditedCard(li) {
   if (!li._trEditable) return false;
   const files = turnOver(li) ? turnFiles(li) : [];
@@ -394,17 +394,17 @@ function syncEditedCards() {
   return changed;
 }
 
-// --- file chips (#1478) -------------------------------------------------------
+// --- file chips -------------------------------------------------------
 //
 // transcript-render.js chips a reply's file names; which files count as
 // edited, and what a tap opens, are decided here. The edited set is folded
 // from every step the page holds, so a file a later tick edits, or an older
 // page shows was edited, links when it arrives. A reply's chips are undone
 // and redone only when that set changes, never on a tick that brought no new
-// file (the #680 lesson).
+// file.
 
 // A tap on a chip: if the chip's own turn edited the file, the panel on that
-// turn, focused on it, as the turn's card row opens it (#1477); otherwise the
+// turn, focused on it, as the turn's card row opens it; otherwise the
 // whole session's list, focused on it.
 function openFileChip(chip, file) {
   if (!view) return;
@@ -465,7 +465,7 @@ export function toggleGroups() {
 
 // ⋮ menu — "Reload transcript": the newest page again, from scratch.
 //
-// Kept after #1050 made refresh automatic, deliberately. Live refresh is a
+// Kept deliberately even though refresh is automatic. Live refresh is a
 // best-effort background tick that can stop for reasons the reader cannot
 // see: it backs off on repeated fetch failures, and it latches off entirely
 // when the session ends. This is the one control that restarts it, and it is
@@ -477,8 +477,8 @@ export function reloadNewest() {
   if (view) loadNewest();
 }
 
-// ⋮ menu — "Load new" (#1292), and a pull up past the bottom of the list:
-// one forward read now, the same one the live tick makes (#1050), so what
+// ⋮ menu — "Load new", and a pull up past the bottom of the list:
+// one forward read now, the same one the live tick makes, so what
 // arrives is appended without rebuilding the list. For when polling seems
 // stuck: it runs whether or not a tick is due, and says what it found. A
 // tick already in flight is waited out first, never raced.
@@ -500,7 +500,7 @@ export async function loadNew() {
   }
 }
 
-// A forced read's status, in the bottom strip (#1387; it floated over the
+// A forced read's status, in the bottom strip (it floated over the
 // transcript before). Null clears it; `ms` clears it after that long. While
 // it shows it takes the activity line's place.
 function newerNote(text, ms) {
@@ -513,13 +513,13 @@ function newerNote(text, ms) {
   }
 }
 
-// --- the strip's live line (#1387) -----------------------------------------
+// --- the strip's live line -----------------------------------------
 //
 // "[timer icon] 15:02 · 10 actions · Running Bash": the turn in progress, from
 // the `activity` the transcript responses carry (src/session_transcript.py).
 // Everything but the elapsed counter is the last read's word; the counter is
 // redrawn here once a second from `since`. The timer is the vendored `i-timer`
-// icon, never the emoji (#1394): iOS draws a colour stopwatch for it and
+// icon, never the emoji: iOS draws a colour stopwatch for it and
 // desktop another glyph, and the emoji's fallback font metrics inflate the
 // line box, which is what let the line sit low on the phone.
 
@@ -576,7 +576,7 @@ function renderStripLine() {
   syncLiveStep();
 }
 
-// --- the step in progress (#1532) ------------------------------------------
+// --- the step in progress ------------------------------------------
 //
 // While the agent is working and its newest tool call has no result yet, that
 // call's step line counts up from the call's own timestamp in place of the
@@ -623,7 +623,7 @@ function syncLiveStep() {
   }
 }
 
-// --- live refresh rendering (#1050) ---------------------------------------
+// --- live refresh rendering ---------------------------------------
 //
 // Every disclosure the renderer draws carries its entry's key (tagKey,
 // transcript-render.js), so an open card can be found again after the
@@ -703,7 +703,7 @@ function clearPending() {
 // "Following the conversation": within the shared pill's slack of the
 // bottom (latest-pill.js). Inside it, new turns scroll into view; outside it
 // the reader has deliberately scrolled up into history, is left exactly where
-// they are, and the ↓ Latest pill (#1140) is their one tap back — which puts
+// they are, and the ↓ Latest pill is their one tap back — which puts
 // them inside it again, so sticking resumes.
 export function atBottom() {
   return !scrollerIsAway(els.transcriptBody);
@@ -738,7 +738,7 @@ function hideState() {
   if (els.transcriptState) els.transcriptState.hidden = true;
 }
 
-// --- the live tick (#1050) -------------------------------------------------
+// --- the live tick -------------------------------------------------
 
 // Is this view allowed to fetch right now? Every condition is re-checked on
 // every tick rather than trusted from when the timer was set, because all
@@ -792,7 +792,7 @@ export function syncLiveRefresh() {
 // session either. Every other reason is a condition that can
 // clear on its own — most sharply `no_transcript`, which a *live* Claude
 // session reports for as long as its hook row is deleted and the filesystem
-// fallback can't name the file (#1023) — so those keep ticking, backed off,
+// fallback can't name the file — so those keep ticking, backed off,
 // and recover without the reader having to tap Reload. Treating a transient
 // unknown as an ending would be the same mistake in reverse as treating an
 // unresolved check as a pass.
@@ -814,8 +814,8 @@ async function liveTick() {
   await view.inflight;
 }
 
-// One forward-cursor read (#1050), the background tick's or a forced one
-// (#1292). Resolves to what it found — 'changed', 'unchanged',
+// One forward-cursor read, the background tick's or a forced one
+// Resolves to what it found — 'changed', 'unchanged',
 // 'unavailable', 'reset', 'failed', or 'stale' when the pane moved on — so
 // a forced read can say it. A failed forced read toasts, as a tapped action
 // does; a failed tick backs off quietly, as it always has.
@@ -860,7 +860,7 @@ async function forwardRead(target, manual) {
     return 'unavailable';
   }
   // Read before anything lands: a card that appears at the end of the turn
-  // keeps a reader who was following the conversation at the bottom (#1477).
+  // keeps a reader who was following the conversation at the bottom.
   const stick = atBottom();
   if (body.reset) {
     // The file was rotated, or this view fell further behind than one
@@ -873,7 +873,7 @@ async function forwardRead(target, manual) {
     renderStripLine();
   }
   // A file sent since the last read is the newest thing there is: it lands
-  // after whatever settled this tick, never back in time (#1530).
+  // after whatever settled this tick, never back in time.
   const files = takeOutbox(body, -Infinity);
   if (body.changed) {
     target.tail = body.tail;
@@ -888,7 +888,7 @@ async function forwardRead(target, manual) {
   // A tick that got an answer clears any reason line an earlier failed one
   // left on screen, so a condition that cleared by itself looks like it.
   // Checked after this tick's turns land: a view that opened unavailable
-  // (#1300) has none until then.
+  // has none until then.
   if (target.reasonShown) {
     target.reasonShown = false;
     if (view.entries && view.entries.length) hideState();
@@ -943,14 +943,14 @@ async function loadNewest() {
     // Only an ending ends the view, as on a live tick. A `claude --resume`
     // launch sits here from the start, with no transcript yet and the resume
     // picker on its screen, so the screen is asked about now rather than
-    // after the first backed-off tick (#1300).
+    // after the first backed-off tick.
     liveUnavailable(body.reason);
     pollPicker();
     return;
   }
   view.activity = body.activity || null;
   renderStripLine();
-  // The page is one complete list, as it has always been. #1050 adds `tail`
+  // The page is one complete list, as it has always been. It also carries `tail`
   // — the offset where its newest, still-growing message begins — and keys
   // every entry from there on, so the live region can be told apart locally
   // and re-rendered later without disturbing anything above it.
@@ -960,7 +960,7 @@ async function loadNewest() {
   });
   const entries = cut < 0 ? all : all.slice(0, cut);
   const pending = cut < 0 ? [] : all.slice(cut);
-  // Everything currently shown, kept for lastAssistantEntryFullText() (#988).
+  // Everything currently shown, kept for lastAssistantEntryFullText().
   // The live tick maintains it too, so read-aloud follows the conversation
   // instead of reading whatever was newest when the pane opened.
   view.settled = entries;
@@ -968,7 +968,7 @@ async function loadNewest() {
   view.entries = entries.concat(pending);
   view.tail = body.tail != null ? body.tail : 0;
   view.size = body.size;
-  // Sent files (#1530) older than this page wait for the page that reaches them.
+  // Sent files older than this page wait for the page that reaches them.
   const files = takeOutbox(body, body.next_cursor == null ? -Infinity : oldestTime(all));
   if (!view.entries.length && !files.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
@@ -996,7 +996,7 @@ async function loadNewest() {
   scheduleLive(LIVE_POLL_MS);
 }
 
-// The line a Load older that found no turn leaves behind (#1120), so the
+// The line a Load older that found no turn leaves behind, so the
 // reader is told what happened instead of seeing a tap that did nothing.
 function olderLabel(entries) {
   const calls = entries.filter(function (e) { return e.kind === 'tool_call'; }).length;
@@ -1087,7 +1087,7 @@ async function loadOlder() {
 
 // iOS shrinks the visual viewport for the software keyboard but not the
 // layout viewport, so the fixed inset:0 overlay would keep the composer
-// under the keyboard (the terminal's #135). Same fix as the terminal pane:
+// under the keyboard (as in the terminal). Same fix as the terminal pane:
 // pin the overlay to the visual viewport while the keyboard is up, and
 // release it to the CSS when it hides or the pane closes. Only while the
 // chat pane owns the overlay — in Terminal mode terminal.js's applySize
@@ -1111,14 +1111,14 @@ export function pinChatToKeyboard() {
   }
 }
 
-// ➤ Send from Chat (#983): the /input route for either kind. Resolves true to
+// ➤ Send from Chat: the /input route for either kind. Resolves true to
 // clear the draft; a failed send (502 not ingested / console failed, 409
 // exited, 501 stale host) toasts and resolves false so the text stays to
 // retry. A send that lands after the pane moved to another session toasts
 // but leaves that session's composer and list alone.
 async function sendFromChat(text) {
   if (!view) return false;
-  // `/resume` opens the searchable resume card (#1300) instead of Claude
+  // `/resume` opens the searchable resume card instead of Claude
   // Code's scrolling picker, where Chat can read the terminal's screen.
   if (text.trim() === '/resume' && pickerAllowed(view.session)) {
     openResumeCard('composer');
@@ -1145,7 +1145,7 @@ async function sendFromChat(text) {
   target.refreshTimer = window.setTimeout(function () {
     // One extra tick, not a reload: the sent turn arrives as an append like
     // any other, so the pane keeps its scroll position and open cards
-    // (#1050). Brought forward rather than waiting out the current interval,
+    // Brought forward rather than waiting out the current interval,
     // and still subject to the same gate — a send followed by a switch to
     // Terminal fetches nothing.
     if (view === target) scheduleLive(0);
@@ -1153,7 +1153,7 @@ async function sendFromChat(text) {
   return true;
 }
 
-// Look for evidence the agent took an unconfirmed send (#1744). The look is
+// Look for evidence the agent took an unconfirmed send. The look is
 // the live tick's own read: `checkSendWatch` judges after each one, and a
 // timer at the deadline forces a read so a quiet session still gets its
 // verdict. A pane that cannot read then (Terminal showing, phone locked) keeps
@@ -1193,7 +1193,7 @@ function uploadFromChat(file, signal, kind) {
 }
 
 // The live terminal socket of the session Chat is showing, if one is open.
-// Opening straight into Chat connects nothing (#982), so the keys have no
+// Opening straight into Chat connects nothing, so the keys have no
 // socket until Terminal has been shown once.
 function liveTerminalFor(s) {
   const t = state.terminal;
@@ -1260,18 +1260,18 @@ export function openChatPane(s) {
   view = {
     session: s, cursor: null, loading: false, seq: 0, refreshTimer: null,
     entries: null, toolErrors: 'reported',
-    // Live refresh (#1050): `tail`/`size` are the forward cursor, `pending*`
+    // Live refresh: `tail`/`size` are the forward cursor, `pending*`
     // the provisional tail currently rendered, `ended` latches when the
     // session is gone so no timer is ever rescheduled for it.
     tail: 0, size: null, liveTimer: null, ticking: false, backoff: 0,
     ended: false, reasonShown: false,
-    // A forced read (#1292): the read in flight (either kind), whether a
+    // A forced read: the read in flight (either kind), whether a
     // forced one is running, and the status line's hide timer.
     inflight: null, forcing: false, newerTimer: null, note: null,
-    // The turn in progress (#1387), as the last read described it.
+    // The turn in progress, as the last read described it.
     activity: null,
     settled: [], pending: [], pendingNodes: [],
-    // The plan panel (#1151): the last screen read, its render signature,
+    // The plan panel: the last screen read, its render signature,
     // and when an answer was sent from it.
     picker: null, pickerSig: null, pickerSent: null, pickerBusy: false,
   };
@@ -1288,7 +1288,7 @@ export function closeChatPane() {
     newerNote(null);
     view.seq += 1;  // any in-flight page lands nowhere
     window.clearTimeout(view.refreshTimer);
-    stopLiveTimer();  // a closed overlay fetches nothing (#1050)
+    stopLiveTimer();  // a closed overlay fetches nothing
   }
   view = null;
   renderStripLine();
@@ -1318,10 +1318,10 @@ export function wireChatPane() {
     send: sendFromChat,
     upload: uploadFromChat,
     keys: null,
-    // Starting to talk silences any in-flight read-aloud (#190).
+    // Starting to talk silences any in-flight read-aloud.
     onDictationStart: stopReading,
     // Chat is the surface a desktop keyboard actually types into, so it is
-    // the one that takes the Ctrl/Cmd+Enter send (#1072). Plain Enter stays
+    // the one that takes the Ctrl/Cmd+Enter send. Plain Enter stays
     // a newline for everyone, phone included.
     sendOnModEnter: true,
   });
@@ -1331,7 +1331,7 @@ export function wireChatPane() {
   }
   // A backgrounded tab or a locked phone stops refreshing entirely; coming
   // back does one catch-up fetch, not a replay of every tick it missed
-  // (#1050). One listener for the page, not one per opened session.
+  // One listener for the page, not one per opened session.
   document.addEventListener('visibilitychange', syncLiveRefresh);
   // Scrolling to the very top pulls the next older page in without a tap.
   els.transcriptBody.addEventListener('scroll', function () {
@@ -1342,7 +1342,7 @@ export function wireChatPane() {
   wirePullGestures(els.transcriptBody);
 }
 
-// Pull gestures (#1292): a drag that starts and ends at one edge of the list
+// Pull gestures: a drag that starts and ends at one edge of the list
 // forces a fetch there — down at the top for older turns (which also covers
 // a list too short to scroll, where the scroll listener above never fires),
 // up past the bottom for new ones, the same read as ⋮ Load new. The

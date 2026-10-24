@@ -10,13 +10,13 @@
 }
 
 /* Neutral frosted toast — the same glass treatment as the floating bottom nav
-   (not a solid block), ported from home-automation's reference recipe (#782).
+   (not a solid block), ported from home-automation's reference recipe.
    Sits above the nav so it's never hidden behind it. Only real errors tint. */
 .toast {
   position: fixed;
   left: 50%;
   /* --bottom-tabs-* are deliberately undefined in this app's token block
-     (#355), so the nav geometry has to come from nav-tabs.css's own canonical
+, so the nav geometry has to come from nav-tabs.css's own canonical
      var(..., fallback) defaults — same spelling nav-tabs.css uses itself. */
   bottom: calc(
     var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) * 2 +
@@ -35,7 +35,7 @@
      max-width a real ceiling — one line whenever the message fits, and only
      then a wrap. Centred, with real leading and `balance` so a message that
      *does* wrap splits evenly across two comfortable lines instead of reading
-     as a crammed line plus an orphan word (#782 review round). */
+     as a crammed line plus an orphan word. */
   width: max-content;
   padding: 12px 18px;
   border-radius: var(--radius-md);
@@ -47,7 +47,7 @@
   max-width: min(calc(100vw - 24px), 560px);
   box-shadow: var(--shadow);
   /* Above the full-screen terminal overlay (z-index 300) — otherwise every
-     toast raised while the terminal is open (read-aloud feedback #190, the
+     toast raised while the terminal is open (read-aloud feedback, the
      🎤 dictation / 📷 OCR / paste results) renders behind it and is invisible
      on the phone. A transient toast should sit above everything. (This is the
      one deliberate divergence from home-automation's 130, which has no such
@@ -61,8 +61,8 @@
 }
 
 /* ---------- settings ---------- */
-/* The fields inside Settings' sheets (#1435; disclosure cards before it). */
-/* API-tokens panel (issue #72) */
+/* The fields inside Settings' sheets (disclosure cards before it). */
+/* API-tokens panel */
 .token-row { justify-content: space-between; }
 .token-meta { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 #tokenMintValue { flex: 1; min-width: 0; font-family: ui-monospace, monospace; }
@@ -74,7 +74,7 @@
   gap: 4px;
   margin: 10px 0;
 }
-/* One help line under a Settings field, saying why it matters (#1176). It
+/* One help line under a Settings field, saying why it matters. It
    hugs the field above rather than taking the label's full 10px margin. */
 .settings-sheet .field-help {
   margin: -6px 0 10px;
@@ -82,7 +82,7 @@
   color: var(--muted);
   line-height: 1.45;
 }
-/* Chat file folders (#1748, settings-sheets.js): flat full-bleed rows on a
+/* Chat file folders (settings-sheets.js): flat full-bleed rows on a
    hairline (design.md list-row), the path in mono, a 44px remove at the
    trailing edge; the add field and its button sit under the list. */
 .outbox-roots > li {
@@ -110,11 +110,11 @@
   color: var(--muted);
   line-height: 1.45;
 }
-/* `.select-native` is the vendored component's (#1133) — its `height` is
+/* `.select-native` is the vendored component's — its `height` is
    what iOS Safari honours on a <select>, where this rule's `min-height` is
    ignored and the control renders stubby. Text inputs keep this recipe. */
 /* A form field is a row, not an inline control: the 44px floor, not the
-   36px control height (#1124 — these measured 39px rendered). */
+   36px control height (these measured 39px rendered). */
 .input-native {
   background: var(--input-bg);
   color: var(--fg);
@@ -128,7 +128,7 @@
    inline toolbar cluster. The vendored component's own 36px `height` is the
    inline-control contract and stays for those. */
 /* Selects outline in the spec's control-border, like .input-native above
-   (fleet-config#963, 3:1 vs the card); the vendored select-native still
+   (3:1 vs the card); the vendored select-native still
    draws the quieter card hairline. */
 .select-native { border-color: var(--control-border); }
 .stacked .select-native,
@@ -136,7 +136,7 @@
 .opt-row .select-native,
 .job-param-row .select-native { height: var(--row-sm); }
 /* .big-btn / .ghost-btn migrated to the vendored button-tint / button-ghost
-   tiers (issue #477, project-scaffolding's button/ component) — fill,
+   tiers (project-scaffolding's button/ component) — fill,
    border, radius, cursor and the shared :disabled recipe now come from
    _vendored/button/button.css. What's left here is app-launcher's own
    layout/size/weight/press-feedback, kept as-is so this migration doesn't
@@ -153,7 +153,7 @@
   padding: 8px 12px;
 }
 .button-ghost:active { color: var(--fg); }
-/* `.button-ghost.accent-btn` is gone (#1125): a tinted fill is the tint
+/* `.button-ghost.accent-btn` is gone: a tinted fill is the tint
    tier, never a ghost, so the hybrid was not one of design.md's four
    tiers. Its users moved to button-primary (the view's one main action)
    or button-tint. */
@@ -161,7 +161,7 @@
 .muted { color: var(--muted); }
 .small { font-size: var(--font-body-sm); }
 
-/* Status + build identity footer (issue #212): centred plain text at the
+/* Status + build identity footer: centred plain text at the
    very bottom of the page, outside every card. */
 .page-foot {
   margin: 16px 4px;
@@ -169,8 +169,8 @@
 }
 .page-foot p { margin: 2px 0; }
 
-/* Port listeners (#1129) are action-rows: a parent app's row folds its
-   helper services behind a tap (#480), and a helper nests under it (#224).
+/* Port listeners are action-rows: a parent app's row folds its
+   helper services behind a tap, and a helper nests under it.
    The port is the scannable datum, so it leads the context line as a
    monospace chip. */
 .listener-row.child {
@@ -195,7 +195,7 @@
   padding: 1px 6px;
   margin-right: 6px;
 }
-/* A group footer (#1434, the iOS inset-group footer): one muted body-sm
+/* A group footer (the iOS inset-group footer): one muted body-sm
    line under a card or at the foot of its body, never wrapping — a footnote
    that needs two lines is too long to sit on every visit. */
 .group-footer {
@@ -211,21 +211,21 @@
 .git-checked-footer { margin-top: 12px; }
 
 /* ---------- dialogs ---------- */
-/* Every editor <dialog> is the vendored modal shell (#1133): .detail-dialog
+/* Every editor <dialog> is the vendored modal shell: .detail-dialog
    > .detail-card, a .detail-header with the heading-lg title and the 34px ×
    .detail-close, label/value .row fields on a top divider, and a sticky
    .detail-actions footer carrying the one full-width .detail-save-btn.
    What follows is only what this app adds on top. */
 /* Titles carry a leading Lucide glyph. */
 .detail-header h2 { display: flex; align-items: center; gap: 8px; line-height: 1.2; }
-/* A field in a dialog is a row the user taps: the 44px floor (#1124), not
+/* A field in a dialog is a row the user taps: the 44px floor, not
    the component's 36px inline-control height. Text inputs already get it
    from .input-native's min-height; a <select> needs `height` (iOS). */
 .detail-card .row .select-native { height: var(--row-sm); }
 /* A multi-line body can't share a line with its label: stack that one row. */
 .detail-card .row:has(> textarea) { flex-direction: column; align-items: stretch; }
 textarea.input-native { height: auto; }
-/* The chief's model picker is a phrasing-only combo (#540), not a select:
+/* The chief's model picker is a phrasing-only combo, not a select:
    give it the modal's value-column width. */
 .detail-card .row .model-combo { min-width: 55%; }
 /* Footer: the job editor can show a warn-tier "Save anyway" above the
@@ -263,7 +263,7 @@ textarea.input-native { height: auto; }
   color: var(--muted);
   margin: 12px 0 6px;
 }
-/* role="switch" row (issue #355) — was a <label><input type=checkbox>. */
+/* role="switch" row — was a <label><input type=checkbox>. */
 .scan-section .scan-row {
   display: flex;
   align-items: center;
@@ -321,7 +321,7 @@ textarea.input-native { height: auto; }
 }
 
 /* Dry-run toggle in the run-now dialog + confirm-on-fire toggle in the
-   job editor (issue #69) — role="switch" rows (issue #355), styled as a
+   job editor — role="switch" rows, styled as a
    full modal row (44px tap target on a top divider). */
 .job-run-dryrow,
 .job-confirm-row {
@@ -344,7 +344,7 @@ textarea.input-native { height: auto; }
   border-radius: var(--radius-sm);
 }
 
-/* Save-time pre-flight problems (issue #69) — rendered inline in the job
+/* Save-time pre-flight problems — rendered inline in the job
  * dialog above the actions row. Errors block the save (red); warnings
  * save once acknowledged via "Save anyway" (amber). */
 .job-preflight-problems {
@@ -374,7 +374,7 @@ textarea.input-native { height: auto; }
 }
 .job-preflight-tag { flex: 0 0 auto; }
 
-/* Job-kind registry (issue #70) — inline-shell body + http-check config
+/* Job-kind registry — inline-shell body + http-check config
  * groups swapped in/out of #jobForm by kind (jobs-dialog.js syncKindFields). */
 .job-kind-group {
   display: flex;
@@ -386,7 +386,7 @@ textarea.input-native { height: auto; }
 }
 
 /* Job chain checklist (on-success / on-failure) — role="switch" rows
-   (issue #355) rendered per the list-row contract: flat full-bleed rows on
+ rendered per the list-row contract: flat full-bleed rows on
    a hairline divider, capped with an inner scroll so a dozen registered
    jobs don't triple the dialog's height. */
 .job-chain-list {
@@ -413,7 +413,7 @@ textarea.input-native { height: auto; }
   text-align: left;
 }
 
-/* Job parameters editor (issue #67) — embedded inside #jobDialog as a
+/* Job parameters editor — embedded inside #jobDialog as a
  * .dialog-section. The Run-now dialog uses the same stacked label pattern
  * as the rest of the form, so no extra styling is needed there. */
 .job-params-list {
@@ -488,7 +488,7 @@ textarea.input-native { height: auto; }
 
 /* ---------- running sessions (tap to open the terminal) ---------- */
 /* The row is one button (the text column) plus a kebab in its own rail,
-   centred against the row's full height (#1025). The chevron that briefly
+   centred against the row's full height. The chevron that briefly
    replaced the gear is gone: it was centred against the badge line inside
    .session-head, not the row, which is what never lined up — and it carried
    no actions. The kebab sits in the 52px slot the gear held, outside the row
@@ -497,7 +497,7 @@ textarea.input-native { height: auto; }
   width: 100%;
   text-align: left;
 }
-/* Single declaration for `.session-head` (issue #690 — it used to be declared
+/* Single declaration for `.session-head` (it used to be declared
    twice, non-adjacently, and the two halves both mattered: the earlier copy
    carried the font, this one the gap). Emitted by `sessions.js`, `apps.js`,
    `jobs.js` and `jobs-row.js`. */
@@ -508,7 +508,7 @@ textarea.input-native { height: auto; }
   font-size: var(--font-body);
   font-weight: 600;
 }
-/* A name in a row head is one line, truncated, never broken mid-word (#1126).
+/* A name in a row head is one line, truncated, never broken mid-word.
    The session and job rows below refine it; the running-apps row relies on
    this alone. */
 .session-head .name {
@@ -517,7 +517,7 @@ textarea.input-native { height: auto; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* ---------- Glance UI kit (#1433, step 1/7 of #1432) ----------
+/* ---------- Glance UI kit ----------
    The shared parts every tab moves onto (glance.js, usage-meter.js). */
 
 /* Chip: one class, four tones, for exceptions only (a normal state gets no
@@ -630,12 +630,12 @@ textarea.input-native { height: auto; }
   min-height: var(--row-lg);
   padding: 8px 4px 8px 14px;
 }
-/* ---------- row action menus: session kebab (#953) + project ⋯ (#977) ---------- */
-/* The floating menu is the vendored row-menu (_vendored/row-menu/, #1565):
+/* ---------- row action menus: session kebab + project ⋯ ---------- */
+/* The floating menu is the vendored row-menu (_vendored/row-menu/):
    row-menu.js mounts the open menu on <body> and places it against the
    element each caller names, and row-menu.css owns its look. What stays
    here is this app's side of it. The session rail centres its kebab
-   against the row's full height, the alignment #1025 asked for. */
+   against the row's full height, the alignment the owner asked for. */
 .app-item .row-actions.session-actions {
   justify-content: center;
 }
@@ -650,7 +650,7 @@ textarea.input-native { height: auto; }
 .row-menu.composer-menu {
   z-index: 315;
 }
-/* The Changed files panel's ⋮ menu (#1749) opens inside the Changes panel
+/* The Changed files panel's ⋮ menu opens inside the Changes panel
    (320), so it needs to sit over it: one step up, still under the lightbox
    (350) and the toast (400). */
 .row-menu.changes-menu {

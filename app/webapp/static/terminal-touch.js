@@ -1,4 +1,4 @@
-/* Native iOS momentum (fling) scrolling for the phone terminal — #23.
+/* Native iOS momentum (fling) scrolling for the phone terminal.
  *
  * xterm's scroll container, `.xterm-viewport`, is a genuine
  * `overflow-y:scroll` element with a full-height scroll area — iOS

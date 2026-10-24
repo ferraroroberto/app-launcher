@@ -1,4 +1,4 @@
-/* "Edited N files" card (#1477, Step 4/6 of #1472) and the file row it
+/* "Edited N files" card and the file row it
  * shares with the Changed files panel.
  *
  * When an agent's turn is over, a card closes it: a header with the turn's
@@ -7,7 +7,7 @@
  * SHOW_FIRST of them and then "Show N more". A row opens the Changed files
  * panel focused on that file; the header opens it on the turn as a whole.
  * There is no Undo button: the list is folded from the transcript, not git,
- * and later work may have touched the file since (decision 1 of #1472).
+ * and later work may have touched the file since.
  *
  * Folded on the client from the steps the page already holds — each edit
  * call's server-side `action` — never a new request, so the card's counts are
@@ -28,7 +28,7 @@ export const STATUS_NAME = {
   T: 'type changed', U: 'untracked', C: 'conflict',
 };
 
-// Rows shown before "Show N more", on every width (decision 8 of #1472).
+// Rows shown before "Show N more", on every width.
 export const SHOW_FIRST = 3;
 
 const EDIT_VERBS = ['edited', 'wrote', 'deleted'];

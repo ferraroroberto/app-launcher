@@ -1,12 +1,12 @@
-/* Jobs tab: the Next up card and the 7-day agenda sheet (#230, #1438).
+/* Jobs tab: the Next up card and the 7-day agenda sheet.
  *
  * One GET /api/jobs/agenda payload feeds all three: the card shows the next
  * three distinct jobs without a tap (a job firing again the same day folds
- * into its row as "also 18:00", #1505), and its header opens the whole week
+ * into its row as "also 18:00"), and its header opens the whole week
  * in a sheet, day-grouped (the deliberate alternative to a 2D calendar
  * grid), with the frequent jobs that would flood it in the footer. On the
  * wide layout the same week fills the detail pane while no job is open
- * (#1505, decision 8 of #1500). A fire opens its job's sheet (jobs.js
+ *. A fire opens its job's sheet (jobs.js
  * openJobSheet).
  *
  * Fetched once per visit to the tab and again when the app comes back to
@@ -141,7 +141,7 @@ function nextUpRows(occurrences) {
 }
 
 // While the schedule is being read the card already holds NEXT_UP_COUNT rows
-// of the final height, each a dash (#1641): the answer fills them in place,
+// of the final height, each a dash: the answer fills them in place,
 // so the content under the card does not move when it lands. They are inert
 // and hidden from a reader; the list says it is busy instead.
 function pendingRow() {
@@ -198,7 +198,7 @@ function buildAgenda(host, onAdd) {
   const occ = agenda.occurrences || [];
   const frequent = agenda.frequent || [];
   if (!occ.length && !frequent.length) {
-    // Its own next step (#1201): the same Add job dialog the Jobs card's +
+    // Its own next step: the same Add job dialog the Jobs card's +
     // opens.
     host.appendChild(emptyStateEl(
       'calendar-days',
@@ -243,7 +243,7 @@ function renderAgendaSheet() {
   });
 }
 
-// The wide layout's detail pane while no job is open (#1505): CSS shows it
+// The wide layout's detail pane while no job is open: CSS shows it
 // only there, so on the phone this renders into a hidden node.
 function renderWeekPane() {
   const host = document.getElementById('jobWeekBody');

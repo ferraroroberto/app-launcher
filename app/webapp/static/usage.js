@@ -1,4 +1,4 @@
-/* Usage log wiring (#1524): which views and controls the owner uses, on which
+/* Usage log wiring: which views and controls the owner uses, on which
  * device class — see _vendored/usage-log/README.md for the contract.
  *
  * The loopback PC bypasses the bearer token, a phone on the tunnel or tailnet

@@ -1,4 +1,4 @@
-/* Read an AI reply aloud (issues #190, #197): eyes-free / driving mode.
+/* Read an AI reply aloud: eyes-free / driving mode.
  *
  * The Coding tab is a raw TUI stream, not structured chat — but Claude Code
  * marks every block with a leading filled bullet whose COLOUR is the signal
@@ -12,17 +12,17 @@
  * line `assistant` / `tool` / `none`. The buffer then segments cleanly into an
  * ordered list of reply blocks — no bottom-up boundary-walk heuristics. The 🔊
  * button reads the LAST block by default; a future depth-selector ("read last
- * N", #197) is just a slice of that list.
+ * N") is just a slice of that list.
  *
  * One small residual filter survives the colour signal: the per-turn epilogue
  * the TUI renders BELOW the final reply while/after working — the "Worked for"
  * timing line, the recap block, the live thinking spinner, and the spinner's
- * randomised "Tip:" hint (issues #193/#195). Those carry no bullet, so they
+ * randomised "Tip:" hint. Those carry no bullet, so they
  * never open their own block, but they trail the last reply as unmarked
  * continuation; each block is truncated at the first epilogue line.
  *
  * The two voices themselves — hub TTS and Web Speech, plus the one
- * speaking-state machine they share — live in `terminal-speech.js` (#884).
+ * speaking-state machine they share — live in `terminal-speech.js`.
  * This module re-exports them so it stays the single read-aloud engine
  * entry point `terminal-readaloud.js` imports from.
  */
@@ -85,11 +85,11 @@ const TIMING_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+ for \d+
 // The *live* thinking spinner: "✻ Cogitating… (4m 39s · thinking)",
 // "Ruminating… (2m 3s · ↓ 7.2k tokens)". Match the shape, not the gerund: an
 // optional spinner glyph, a Capitalised gerund, a trailing ellipsis, then a
-// parenthetical status (issue #193 — the "· thinking" form has no token count).
+// parenthetical status (the "· thinking" form has no token count).
 const SPINNER_LINE_RE = /^\s*[*✶✻✽✢✱·•∗⁘]?\s*[A-Z][a-z]+(?:…|\.\.\.)\s*\(/;
 // The spinner's randomised help line, rendered as a tool-result child:
 // "⎿  Tip: Running multiple Claude sessions? Use /color and /rename …" — its
-// wrapped continuation carries no glyph, so it trails the reply (issue #195).
+// wrapped continuation carries no glyph, so it trails the reply.
 const TIP_RESULT_RE = /^\s*[⎿└╰⤷↳]\s*Tip\b/i;
 
 // True once a block's prose has ended and the per-turn epilogue begins. The
@@ -253,7 +253,7 @@ function bufferToRows(term) {
 }
 
 /** Extract every assistant reply block (oldest → newest) from a live xterm
- *  Terminal. The future depth-selector (#197) reads a slice of this list. */
+ *  Terminal. The future depth-selector reads a slice of this list. */
 export function extractReplyBlocks(term) {
   if (!term) return [];
   return extractReplyBlocksFromRows(bufferToRows(term));
@@ -266,7 +266,7 @@ export function extractLastReply(term) {
   return blocks.length ? blocks[blocks.length - 1] : '';
 }
 
-// Test seam (#190/#197 e2e): the block segmentation and speech helpers are
+// Test seam (e2e): the block segmentation and speech helpers are
 // standalone, so the suite drives them directly. `extractReplyBlocksFromRows`
 // takes synthetic `{text, marker}` rows (the marker is what the cell-colour
 // reader derives live); `extractReplyBlocks`/`extractLastReply` exercise the

@@ -1,12 +1,12 @@
-/* The confirm sheet (#1437): the vendored modal standing in for native
- * confirm() before a destructive action (round 2 of #1432, "the vendored
+/* The confirm sheet: the vendored modal standing in for native
+ * confirm() before a destructive action ("the vendored
  * dialog replaces native confirm()"). One <dialog id="confirmDialog"> in
  * index.html serves every caller: a title, one line saying what happens,
  * the header ✕ and one full-width action in the danger tint, or the primary
- * for a step that destroys nothing (the modal contract, #545). The ✕,
+ * for a step that destroys nothing (the modal contract). The ✕,
  * Escape and a backdrop tap all answer "no".
  *
- * promptDialog() is the same sheet with one text field (#1501, in place of
+ * promptDialog() is the same sheet with one text field (in place of
  * native prompt()): it resolves the trimmed text, or null on a "no".
  *
  * Opens over another dialog too (Stop process from the Other ports sheet):
@@ -58,7 +58,7 @@ function wire(d) {
 
 // The action's look: the danger tint for a destructive step (the default),
 // the solid primary for one that only starts something new (the Life OS
-// handoff, #1439), which a red button would misdescribe.
+// handoff), which a red button would misdescribe.
 const ACTION_CLASS = {
   danger: 'button-tint danger detail-save-btn',
   primary: 'button-primary detail-save-btn',

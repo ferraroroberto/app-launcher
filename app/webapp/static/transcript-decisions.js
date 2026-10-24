@@ -1,12 +1,12 @@
-/* Chat pane decision cards + the plan-picker panel (#1309, split out of
+/* Chat pane decision cards + the plan-picker panel (split out of
  * session-transcript.js).
  *
  * Claude Code's two "the agent is asking the user something" moments — the
- * AskUserQuestion card (#1149) and the ExitPlanMode card (#1151) — plus the
+ * AskUserQuestion card and the ExitPlanMode card — plus the
  * plan panel that answers a waiting plan from the terminal's own screen
  * (src/plan_picker.py), rather than from the transcript. session-transcript.js
  * owns paging and live refresh, and transcript-render.js the turn/run
- * rendering these cards sit beside (#1629); this module owns everything about
+ * rendering these cards sit beside; this module owns everything about
  * the cards themselves and their entry points are what transcript-render.js's
  * appendEntries and session-transcript.js's live-tick code call back into.
  *
@@ -33,7 +33,7 @@ import {
 } from './session-transcript.js';
 import { linkify, meta, pre, tagKey, toolOutcomeNote, truncControl } from './transcript-render.js';
 
-// --- AskUserQuestion card (#1149) -----------------------------------------
+// --- AskUserQuestion card -----------------------------------------
 //
 // Claude Code's multiple-choice prompt renders as a card of its own, never
 // folded into a tool-call run: it is the agent talking to the user, so it
@@ -344,8 +344,8 @@ function paintQuestion(li, mode, out, statusText) {
   if (live) paintDraft(li);
 }
 
-// The call id of the session's pending decision (a question, #1149, or a
-// plan, #1151), or null: the newest such call in what is loaded, still
+// The call id of the session's pending decision (a question or a
+// plan), or null: the newest such call in what is loaded, still
 // without a result, with no turn, tool call or thinking after it (a later
 // one means the agent moved on). Results and harness plumbing after it don't
 // count — they are not the agent continuing.
@@ -444,7 +444,7 @@ async function submitAnswer(li, answers) {
   }, SENT_REFRESH_MS);
 }
 
-// --- ExitPlanMode card (#1151) --------------------------------------------
+// --- ExitPlanMode card --------------------------------------------
 //
 // The plan the agent wants approved, through the same escape-first markdown
 // renderer as a reply, and how it was answered: approved (and whether it was
@@ -568,7 +568,7 @@ function paintPlan(li, mode, out, where) {
   card.querySelector('.tr-ask-status').textContent = text;
 }
 
-// --- The plan panel: answering from the terminal's screen (#1151) ---------
+// --- The plan panel: answering from the terminal's screen ---------
 //
 // The server reads the plan picker off the terminal (src/plan_picker.py):
 // the session's PTY capture rendered at the PTY's own size. While it is up,
@@ -621,7 +621,7 @@ export async function pollPicker() {
   target.pickerBusy = false;
   if (view !== target) return;
   applyPicker(body && body.showing ? body : null);
-  // The same read says whether the /resume picker is up (#1300). A failed
+  // The same read says whether the /resume picker is up. A failed
   // read says nothing, so it leaves the resume card as it is.
   if (body) syncResumePicker(!!body.resume_picker);
 }

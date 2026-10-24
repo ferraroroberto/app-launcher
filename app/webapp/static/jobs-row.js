@@ -1,12 +1,12 @@
 /* Registered-job row rendering and the job sheet's detail block.
  *
  * jobs.js owns fetching, sorting, the sheet and the dialogs. This module
- * owns the row's DOM (#1438, step 6/7 of #1432): the shared action-row
+ * owns the row's DOM: the shared action-row
  * anatomy, a job avatar with the alive badge while it runs, the name, one
  * meta line ("in 5m · Every 15 min"), chips for exceptions only, the
  * seven-dot history as the trailing value and one kebab. The poll rebuilds
  * the rows, so every handler sees the job the row was drawn from, never a
- * copy from an earlier poll (#1007).
+ * copy from an earlier poll.
  */
 
 import { fmtAgo } from './sessions.js';
@@ -33,24 +33,24 @@ function fmtUntil(epochSeconds) {
   return 'in ' + Math.round(secs / 86400) + 'd';
 }
 
-/* Keyed by a run's `outcome` (issue #916), which is its persisted `status`
+/* Keyed by a run's `outcome`, which is its persisted `status`
  * widened with `unconfirmed`: the scheduled-run adapter reserves a block of
  * exit codes for "this may well have delivered, but nobody established that",
  * and drawing those as failures is what made the Board's red stop meaning
  * anything. `status` still keys every other entry, so a caller that has only a
- * status (or a payload predating #916) renders exactly as before.
+ * status (or an older payload) renders exactly as before.
  *
  * `spark` is the history dot's class. A run in progress is `live`, drawn in
- * the accent (work in progress, #1438): amber means unconfirmed, and the
+ * the accent (work in progress): amber means unconfirmed, and the
  * avatar's alive badge already says the job is running. A healthy run (`up`)
- * is muted since #1505, so a failure is the only colour in the strip. */
+ * is muted, so a failure is the only colour in the strip. */
 const STATUS_META = {
   running: { icon: 'hourglass', spark: 'live' },
   pending: { icon: 'hourglass', spark: 'live' },
   success: { icon: 'circle-check', spark: 'up' },
   failed: { icon: 'circle-x', spark: 'down' },
   unconfirmed: { icon: 'circle-help', spark: 'unconfirmed' },
-  // A designed deferral the job itself declared by exit code (#1316): muted,
+  // A designed deferral the job itself declared by exit code: muted,
   // because it needs nobody, and a hollow ring, so it is not mistaken for a
   // run that never happened.
   deferred: { icon: 'clock', spark: 'deferred' },
@@ -112,7 +112,7 @@ export function toEpoch(isoString) {
 }
 
 // The server's cadence text ("daily 03:00") as the start of a line: only
-// the first letter is lifted, never the whole value (#1130).
+// the first letter is lifted, never the whole value.
 export function cadenceText(text) {
   const t = (text || '').trim();
   return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
@@ -131,7 +131,7 @@ export function jobMeta(job) {
     : cadenceText(cadence);
 }
 
-/* Chips for exceptions only (the tone map, #1432): a failed last run is
+/* Chips for exceptions only (the tone map): a failed last run is
  * danger; stuck, not firing and not confirmed want a look, so attention;
  * paused is a plain fact, so neutral. A healthy job gets none. A running
  * job's last outcome is history, so it raises no chip of its own. */
@@ -150,7 +150,7 @@ export function jobChips(job) {
     if (reason) c.title = reason;
     out.push(c);
   }
-  // Missed-fire coverage (#697): only 'problem' raises it; 'ok', 'exempt'
+  // Missed-fire coverage: only 'problem' raises it; 'ok', 'exempt'
   // and 'unknown' stay silent, so an unestablished fact never reads as one.
   if (job.coverage && job.coverage.state === 'problem') {
     const c = chip('not firing', 'attention', 'job-coverage-chip');
@@ -188,7 +188,7 @@ export function runBlockedReason(job) {
   return '';
 }
 
-/* The avatar's glyph says what kind of job it is (#1505): the kind names
+/* The avatar's glyph says what kind of job it is: the kind names
  * src/jobs_kinds registers. A kind this map does not know, or a payload
  * without `target_kind`, keeps the generic `activity`. */
 const KIND_GLYPH = {
@@ -261,7 +261,7 @@ export function renderJobRow(job, handlers) {
 }
 
 /* The last run, as one sentence, under the detail block's own "Last run"
- * key (#1130): the success rate and retention counts are sibling rows. */
+ * key: the success rate and retention counts are sibling rows. */
 function describeLastRun(job) {
   const bits = [];
   if (job.last_run) {
@@ -291,7 +291,7 @@ function describeDuration(job) {
   return p50 && p95 ? 'p50 ' + p50 + ' · p95 ' + p95 : 'p50 ' + (p50 || p95);
 }
 
-/* The sheet's detail block (#1130, in the sheet since #1438): what it runs,
+/* The sheet's detail block (in the sheet): what it runs,
  * its cadence and next fire, how long it takes, how often it succeeds, what
  * is kept, whether it alerts (the bell that left the row), and the
  * situational flags (an externally-managed schedule, a mutex group, a

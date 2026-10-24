@@ -1,4 +1,4 @@
-/* Screen view: quality presets and the live readout (#1721).
+/* Screen view: quality presets and the live readout.
  *
  * The preset table the picker shows, the choice remembered per device, and the
  * readout's arithmetic, as plain functions and one small class, so the numbers

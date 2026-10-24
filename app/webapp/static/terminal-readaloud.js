@@ -1,4 +1,4 @@
-/* Read-aloud UI orchestration for the live terminal (issue #315 — finishes
+/* Read-aloud UI orchestration for the live terminal (finishes
  * the split terminal-readback.js started): the 🔊 button, its action
  * popover, the summary modal, and the two user-facing actions ("Read
  * aloud" verbatim / "Summarize & read"). terminal-readback.js stays the
@@ -6,12 +6,12 @@
  * module is the DOM-facing layer wired onto it.
  *
  * The 🔊 button opens a small dropdown with two actions: "Read aloud" (the
- * verbatim path, #190/#203/#206) and "Summarize & read" — condense the reply
+ * verbatim path) and "Summarize & read" — condense the reply
  * via the hub's claude-haiku-4-5 first, for hands-free / driving listening. The
  * menu only appears when the summarize action is available (hub reachable);
  * otherwise the button keeps its original single-tap "read aloud" behaviour.
  *
- * Text provider (#988): Terminal mode reads the live xterm scrollback via
+ * Text provider: Terminal mode reads the live xterm scrollback via
  * terminal-readback.js's extractLastReply() — keyed on Claude Code's own
  * bullet colours, so it only ever works for that one agent. Chat mode, and
  * any session with no PTY (a detached session can only ever show Chat), reads
@@ -54,7 +54,7 @@ export function stopReading() {
 
 // Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
 function setSpeakingUI(on) {
-  // Auto-close the summary modal (issue #210) the moment reading stops —
+  // Auto-close the summary modal the moment reading stops —
   // whether it finished naturally, was stopped, or the tab was left. This is
   // the single sink for every speaking→idle transition, so the modal can't
   // outlive the read.
@@ -67,7 +67,7 @@ function setSpeakingUI(on) {
   btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
 }
 
-// ── Summary modal (issue #210) ──────────────────────────────────────────────
+// ── Summary modal ──────────────────────────────────────────────
 // Shows the hub summary on screen while it's read aloud — and readable on its
 // own when audio is muted. Auto-closes when the read ends (via setSpeakingUI);
 // a tap anywhere (or the ✕) dismisses it and stops the read.
@@ -92,7 +92,7 @@ function wireSummaryModal() {
   });
 }
 
-// ── Read-aloud action menu (issue #210) ─────────────────────────────────────
+// ── Read-aloud action menu ─────────────────────────────────────
 let _disposeSpeakOutsideClick = null;
 
 export function closeSpeakPopover() {
@@ -139,7 +139,7 @@ async function readTextAloud(text, handle, quiet) {
       else await speakHub(text, opts);
       return true;
     } catch (exc) {
-      // A stale session (issue #333): reopen the login overlay, but still
+      // A stale session: reopen the login overlay, but still
       // fall through to Web Speech below — losing the nicer hub voice is a
       // fair trade for not breaking read-aloud outright on an expired token.
       if (exc && exc.status === 401) showLogin();
@@ -154,9 +154,9 @@ async function readTextAloud(text, handle, quiet) {
 }
 
 // "Read aloud": extract the last reply and speak it verbatim. Terminal mode
-// (a live PTY) reads the xterm scrollback (issue #190); Chat mode, and any
+// (a live PTY) reads the xterm scrollback; Chat mode, and any
 // session with no PTY, reads the transcript's newest assistant entry instead
-// (issue #988) — the harness-agnostic source, since the xterm extractor is
+// — the harness-agnostic source, since the xterm extractor is
 // keyed on Claude Code's own bullet colours. Must be called directly from the
 // button-click gesture (speakHub / prepareHub arm audio synchronously) — the
 // transcript path arms hub audio before its own awaited fetch for the same
@@ -220,7 +220,7 @@ async function summarizeAndReadLastReply() {
   } catch (exc) {
     if (handle) cancelHub();   // release the armed context + reset the button
     // Routes a stale-session 401 to showLogin() instead of a generic toast
-    // (issue #333) — apiFailToast() already treats err.status === 401 that
+    // — apiFailToast() already treats err.status === 401 that
     // way; any other failure still gets this friendly prefixed message.
     apiFailToast('Could not summarize the reply', exc);
     return;
@@ -256,7 +256,7 @@ function wireSpeakMenu() {
 // Reveal/hide the 🔊 button + "Summarize" menu action for the session just
 // opened — called from attachTerminalPane (Terminal mode) and from
 // session-overlay.js's setSessionMode (Chat mode, including a detached
-// session with no PTY, #988). `state.status.tts` is the cheap config-presence
+// session with no PTY). `state.status.tts` is the cheap config-presence
 // flag; the live /api/tts/health probe then refines which path the click
 // takes — summarize only ever appears once the hub is confirmed reachable.
 export function revealReadAloudButton() {
@@ -277,7 +277,7 @@ export function revealReadAloudButton() {
 }
 
 // Single wiring entrypoint for terminal.js's wireTerminal(): the 🔊 control
-// (issues #190, #210), its speaking-state sync, and the summary modal.
+// its speaking-state sync, and the summary modal.
 export function wireReadAloud() {
   onSpeakingChange(setSpeakingUI);
   // When the reply finishes reading on its own, reset the button (done by

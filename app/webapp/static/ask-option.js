@@ -1,4 +1,4 @@
-/* The `.tr-ask-opt` option button every answer surface builds (#1422): the
+/* The `.tr-ask-opt` option button every answer surface builds: the
    transcript's question card and plan picker (transcript-decisions.js), the
    Board answer sheet (board-answers.js) and the resume list (chat-resume.js)
    share the `.tr-ask-*` styles, so they share this one builder too. */

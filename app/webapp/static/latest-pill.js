@@ -1,4 +1,4 @@
-/* The "↓ Latest" pill (#981 → #1140): one control, three mounts.
+/* The "↓ Latest" pill: one control, three mounts.
  *
  * The Terminal, the session overlay's Chat pane and the Life OS conversation
  * viewer all float the same bottom-right pill while the newest content is
@@ -15,7 +15,7 @@
  */
 
 // How far above the end of a scrollable element still counts as "at the
-// latest". The Chat pane's stick-to-bottom (#1050) uses the same number, so
+// latest". The Chat pane's stick-to-bottom uses the same number, so
 // the pill shows exactly when new turns would stop scrolling into view.
 export const LATEST_SLACK_PX = 120;
 

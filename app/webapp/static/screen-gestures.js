@@ -1,4 +1,4 @@
-/* Screen control's gesture maths (#1521), as plain functions of numbers.
+/* Screen control's gesture maths, as plain functions of numbers.
  *
  * screen-view.js owns the pointers and the socket; the decisions live here so
  * plain Node can pin them (tests/js/screen_gestures.test.mjs): Playwright's
@@ -10,10 +10,10 @@
  * stage, then the view's own zoom (translate x/y, then scale) moves it, so a
  * stage point is un-zoomed first and then read against the letterboxed
  * picture. stagePoint goes the other way, for the PC's cursor. Trackpad
- * mode (#1599) moves its own cursor by how far the finger travels
+ * mode moves its own cursor by how far the finger travels
  * (padStep), and pans a zoomed picture to keep it in view (followPan).
- * Two- and three-finger taps (#1600) are decided by isMultiFingerTap. The
- * magnifier loupe's place and picture (#1725) are loupeLayout's.
+ * Two- and three-finger taps are decided by isMultiFingerTap. The
+ * magnifier loupe's place and picture are loupeLayout's.
  */
 
 export const GESTURE = {
@@ -30,12 +30,12 @@ export const GESTURE = {
   scrollSlop: 12,
   // Two or three fingers that land and all lift again within this long (ms)
   // without moving past their slop are a tap: two right-click, three raise
-  // the keyboard (#1600). The trackpad's two-finger tap had this window
-  // before (#1599); it is the long-press time, so a rest is not a tap.
+  // the keyboard. The trackpad's two-finger tap had this window
+  // before; it is the long-press time, so a rest is not a tap.
   multiTapMs: 500,
   // Wheel units per CSS px a two-finger drag travels (120 = one notch).
   wheelPerPx: 4,
-  // Trackpad (#1599): the cursor moves this many CSS px of the picture per
+  // Trackpad: the cursor moves this many CSS px of the picture per
   // px the finger travels, from padGainSlow for a finger at rest up to
   // padGainFast at padFastSpeed (px/ms) and beyond: slow is precise, a
   // flick crosses the screen.
@@ -91,7 +91,7 @@ export function frameFraction(qx, qy, zoom, stageW, stageH, natW, natH, clamp) {
  * The inverse of frameFraction: where the 0-1 frame point (fx, fy) sits on
  * the stage, as {x, y} in stage-local CSS px, or null when it can't be drawn
  * (no frame yet, a point off the frame, or zoomed and panned off the stage).
- * The PC's cursor (#1598) is drawn here, outside the zoom transform, so it
+ * The PC's cursor is drawn here, outside the zoom transform, so it
  * keeps its size while the picture zooms.
  */
 export function stagePoint(fx, fy, zoom, stageW, stageH, natW, natH) {
@@ -143,7 +143,7 @@ export function anyMovedPastTap(starts, nows) {
  * Two or three fingers that were down for `heldMs`, having `moved` or not: a
  * tap when they never moved past their slop and did not stay down as long
  * as a long-press. One decision for the two-finger right-click in both
- * Control styles and for the three-finger keyboard tap (#1600). For two
+ * Control styles and for the three-finger keyboard tap. For two
  * fingers `moved` means "classified as a pinch or a scroll".
  */
 export function isMultiFingerTap(moved, heldMs) {
@@ -177,7 +177,7 @@ export function padGain(speed) {
 }
 
 /**
- * Trackpad (#1599): the cursor, 0-1 in the frame, after the finger moved
+ * Trackpad: the cursor, 0-1 in the frame, after the finger moved
  * (dx, dy) CSS px in `dtMs`. The step is in px of the picture as drawn
  * (drawnW x drawnH unzoomed), divided by the zoom, so the cursor crosses
  * the stage at the same speed zoomed or not. It stops at the frame's edge.
@@ -212,7 +212,7 @@ export function followPan(zoom, bx, by, stageW, stageH, margin) {
   return { x: axis(bx, zoom.x, stageW), y: axis(by, zoom.y, stageH) };
 }
 
-// Magnifier loupe (#1725): one finger down in Touch control shows the frame
+// Magnifier loupe: one finger down in Touch control shows the frame
 // under it, `zoom` times as large as the stage draws it, in a round window
 // `size` CSS px across, `gap` px above the finger's point and `margin` px from
 // every stage edge. It is shown `delayMs` after the finger lands.
@@ -254,7 +254,7 @@ export function loupeLayout(pt, zoom, stageW, stageH, natW, natH) {
 }
 
 /**
- * The Control style a device remembers (#1599): what the storage key held,
+ * The Control style a device remembers: what the storage key held,
  * or direct touch for a first use, a blocked storage (null) or junk.
  */
 export function controlStyle(stored) {
@@ -275,7 +275,7 @@ export function comboKey(ch) {
   return /^[!-~]$/.test(ch) ? ch : null;
 }
 
-// Hardware keyboard (#1723): event.key -> the server's named key.
+// Hardware keyboard: event.key -> the server's named key.
 const HARDWARE_NAMED = {
   ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
   Escape: 'esc', Tab: 'tab', Enter: 'enter', Backspace: 'backspace', Delete: 'delete',

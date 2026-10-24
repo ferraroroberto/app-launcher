@@ -1,4 +1,4 @@
-/* The "Glance" UI kit (#1433, step 1/7 of #1432): the shared parts every tab
+/* The "Glance" UI kit: the shared parts every tab
  * moves onto, so one fact is drawn one way everywhere.
  *
  *   chip()          one chip in four tones, for exceptions only
@@ -64,11 +64,11 @@ export function avatar(glyph, badge, extraClass) {
   return el;
 }
 
-// A session's Board status words (#608, moved here from board.js by #1580 so
+// A session's Board status words (shared here so
 // the Board's rows and the Code tab's read one table). The hook-written
 // needs-you is split server-side into five caller-actionable values
 // (src/board_transcript.py::_refine_waiting_status), the raw "needs-you"
-// string itself never reaches a card's status field. tool-pending (#813) is a
+// string itself never reaches a card's status field. tool-pending is a
 // pending ordinary tool_use, genuinely ambiguous between "still executing" and
 // "permission-gated", so it renders as an ambient working-ish state. `cls` is
 // the Board row's state hook; no rule colours it, status is plain meta.
@@ -85,9 +85,9 @@ const STATUS_META = {
 };
 
 // The chief's Stop-hook status sits in the needs-you family for nearly all
-// of its life between dispatches (#575) and the server already routes it out
-// of Your turn (build_board's _is_chief_card carve-out). #608 sharpened what
-// "resting state" means: idle-finished/awaiting-input/awaiting-decision are
+// of its life between dispatches and the server already routes it out
+// of Your turn (build_board's _is_chief_card carve-out). "Resting state" means:
+// idle-finished/awaiting-input/awaiting-decision are
 // all ordinary waiting for a long-lived chat session, so they get the same
 // "standing by" label. stalled is deliberately excluded: a chief dispatch
 // outstanding this long is a real anomaly, not something to hide behind a
@@ -104,7 +104,7 @@ export function sessionStatusMeta(status, chief) {
 
 // The "status · age" bits a session row carries after its folder: the status
 // word and how long since it last did anything ("working", "9m"). One
-// formatter for the Board's rows and the Code tab's (#1580). `hideStatus`
+// formatter for the Board's rows and the Code tab's. `hideStatus`
 // keeps the age but drops the word, for a row that already says it as a chip
 // (stalled everywhere; "needs you" on the Code tab). An unknown status (the
 // Code tab's placement could not be worked out) yields nothing: no word and
@@ -118,7 +118,7 @@ export function sessionStatusBits(status, ageSeconds, opts) {
 
 // Drop the tail whenever the line would otherwise be ellipsized, so a phone
 // keeps the folder, status and age whole instead of cutting "up 1d 4h" to
-// "up 1" (#1580). Re-measured on every width change (rotation, the keyboard).
+// "up 1". Re-measured on every width change (rotation, the keyboard).
 // The tail leaves the line's own width alone, so hiding it cannot re-trigger
 // the observer. Without ResizeObserver the tail simply stays.
 function fitMetaTail(metaText, tail) {
@@ -130,7 +130,7 @@ function fitMetaTail(metaText, tail) {
 }
 
 // The session row's leading avatar and text column, for the Code tab's rows
-// (the Board's session rows are action-rows with the same avatar, #1502).
+// (the Board's session rows are action-rows with the same avatar).
 // The caller puts them in its own tap target and adds its own trailing
 // accessory.
 //
@@ -180,7 +180,7 @@ export function sessionRowBody(opts) {
   return [lead, text];
 }
 
-// What a session's Board placement says it needs from the user (#1434), so
+// What a session's Board placement says it needs from the user, so
 // the Code tab's rows and header speak the Board's status vocabulary. The
 // server routes each session with the Board's own logic and sends the
 // result on the sessions poll (`board_column`, `board_status`):

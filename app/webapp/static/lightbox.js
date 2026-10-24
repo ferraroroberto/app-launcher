@@ -1,5 +1,5 @@
 /* Image lightbox: a full-screen overlay for any image the app already holds
- * as a URL — a transcript thumbnail's full size (#1265). The caller owns the
+ * as a URL — a transcript thumbnail's full size. The caller owns the
  * URL; tap anywhere (or ✕) to dismiss.
  *
  * HTML viewer: a sent HTML document's card preview and its full-size modal.

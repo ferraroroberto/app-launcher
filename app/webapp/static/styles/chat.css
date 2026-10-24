@@ -1,7 +1,7 @@
-/* ---------- session transcript: the Chat pane (#953, #982) ---------- */
+/* ---------- session transcript: the Chat pane ---------- */
 /* The transcript is the session overlay's Chat mode: the same shell as the
    terminal, on the app canvas rather than the terminal's own black — a
-   reading surface, not a TTY. The Show-changes overlay (#977) is the same
+   reading surface, not a TTY. The Show-changes overlay is the same
    reading surface. Which pane shows is the overlay's data-mode (set by
    session-overlay.js); the terminal pane's DOM stays mounted underneath so
    its xterm keeps its frame and socket. */
@@ -14,13 +14,13 @@
 }
 #terminalOverlay:not([data-mode="chat"]) .chat-pane { display: none; }
 /* The bottom status strip (#terminalStatusStrip) is deliberately NOT in this
-   list (#1219): it stays in both modes, so Chat's controls sit on the same
+   list: it stays in both modes, so Chat's controls sit on the same
    reserved strip as Terminal's and a mode switch never moves them. */
 #terminalOverlay[data-mode="chat"] .terminal-host,
 #terminalOverlay[data-mode="chat"] #terminalComposeBar { display: none; }
 /* Why the Terminal segment is off (a detached session) — caption under the
    list, above the composer. Padded on the one 12px gutter on every side
-   (#1098). It used to be `0 12px 8px`, and the only air above it was the
+. It used to be `0 12px 8px`, and the only air above it was the
    scroller's own 12px inner padding — which is *inside* the scroll box, so
    it only shows when the transcript is scrolled to its end. At any other
    scroll position a line is clipped flush with the scroller's bottom edge
@@ -43,11 +43,11 @@
   flex-shrink: 0;
 }
 .chat-note .icon { width: var(--icon-inline); height: var(--icon-inline); }
-/* Terminal ⇄ Chat toggle in the bar (#982): an inset track at the bar's
+/* Terminal ⇄ Chat toggle in the bar: an inset track at the bar's
    44px control height, icon-only so the title keeps most of a 390px phone
-   (labels were measured to crush it — #979 decision log). A toolbar toggle,
+   (labels were measured to crush it). A toolbar toggle,
    not a range, so it stays app-side rather than on the vendored segmented
-   control (#1133). The active segment lifts on the card surface in accent; an
+   control. The active segment lifts on the card surface in accent; an
    unavailable one takes the fleet's one disabled recipe (canvas-subtle /
    hairline / muted, never opacity) and toasts its reason on tap. */
 .session-mode {
@@ -86,7 +86,7 @@
   box-shadow: none;
   cursor: default;
 }
-/* Model pill (#1383): the session's model, left of the context ring. A
+/* Model pill: the session's model, left of the context ring. A
    neutral chip (design.md: neutral-soft fill, text in fg, pill radius,
    caption type) at the compact control height so it sits level with the
    header's buttons. Not a control, so no tap target to size. The title gives
@@ -112,7 +112,7 @@
   text-overflow: ellipsis;
 }
 .terminal-model[hidden] { display: none; }
-/* Context ring (#1223): the session's context-window use, just before the
+/* Context ring: the session's context-window use, just before the
    toggle. A real 44×44 term-btn (the bar is a cluster, so no expanded hit
    area), holding an 18px SVG ring — the toggle's own glyph size. The track
    is the hairline; the fill is accent, stepping to attention / danger at
@@ -165,17 +165,17 @@
   cursor: pointer;
 }
 .transcript-older:disabled { opacity: 0.5; cursor: default; }
-/* Where a Load older that found only tool calls ran out (#1120). */
+/* Where a Load older that found only tool calls ran out. */
 .tr-start {
   text-align: center;
   font-size: var(--font-body-sm);
   color: var(--muted);
 }
-/* Chat mode's mount of the shared composer (#983) deliberately carries NO
-   bottom-padding override of its own (#1099).
+/* Chat mode's mount of the shared composer deliberately carries NO
+   bottom-padding override of its own.
 
    It used to add `calc(env(safe-area-inset-bottom, 0px) + 8px)`, inherited
-   verbatim from the #975 detached-session composer it replaced — back when
+   verbatim from the detached-session composer it replaced — back when
    that really was the only composer in the transcript view and did have to
    clear the home indicator by itself. The terminal mount of the same
    component never had it and has always sat 8px off the overlay's bottom
@@ -190,7 +190,7 @@
    identical markup (composer.js `mountComposer`), so this rule was the only
    thing that told them apart.
 
-   That row of bottom UI now exists (#1219): the status strip under both
+   That row of bottom UI now exists: the status strip under both
    panes, `.terminal-status-strip`, which takes the inset once for the
    session overlay — one element shared by both modes, so they still move
    together. Never on one mount of a shared component. */
@@ -203,7 +203,7 @@
   gap: 12px;
 }
 .tr-turn-item, .tr-run, .tr-reply { min-width: 0; }
-/* Turns (#1475, Step 2/6 of #1472). The prompt is a right-aligned bubble;
+/* Turns. The prompt is a right-aligned bubble;
    the agent's whole turn is one block on the canvas, no card: a header (mark,
    name, time, copy, chevron), then its parts in order -- reply text, run
    cards, question and plan cards -- at the list's own 12px rhythm. */
@@ -313,7 +313,7 @@
 /* A clipped 1em square, so the open turn's quarter-turn spins inside its own
    box: the narrow glyph box swept 7px past the edge, and the font's content
    area (taller than the 1em line) another 4px once turned -- a card's padding
-   absorbed both, the canvas-flush turn header (#1475) does not. */
+   absorbed both, the canvas-flush turn header does not. */
 .tr-turn-chevron {
   flex: none;
   width: 1em;
@@ -335,7 +335,7 @@
 .tr-reply > .tr-trunc { margin-top: 8px; }
 .tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
 .tr-md { white-space: normal; }
-/* Reply typography (#1474, Step 1/6 of #1472). Headings used to render at the
+/* Reply typography. Headings used to render at the
    14px label size -- smaller than the 16px body, so a bold line out-ranked an
    `##`. Now `#`/`##` take heading-md and `###` and below are body-size bold;
    paragraphs and lists breathe at 12px with a 6px gap between items. A
@@ -360,7 +360,7 @@
   line-height: 1.4;
 }
 .tr-md > :first-child { margin-top: 0; }
-/* Inline code (#1100, restyled #1474) is the `code-inline` chip: mono at
+/* Inline code is the `code-inline` chip: mono at
    0.875em of the text around it (a caption-sized chip read as a timestamp),
    on `neutral-soft` -- never `--card-off`, which is true black inside a dark
    card (the "black hole", design.md `chip`). 6px radius is the chip scale,
@@ -374,7 +374,7 @@
   font-size: 0.875em;
   white-space: break-spaces;
 }
-/* A file chip (#1478) is the code chip, linked: a span or bare path in a
+/* A file chip is the code chip, linked: a span or bare path in a
    reply that names a file this session edited, opening its diff in Changed
    files. The reference-pill colours (`accent-text` on `accent-soft`, an
    `accent-border-soft` hairline) on the code chip's geometry, the hairline
@@ -411,7 +411,7 @@
 @media (hover: hover) {
   .tr-md .tr-file-chip:hover { text-decoration: underline; }
 }
-/* A fenced block (#1100, restyled #1474): `markdown.js` wraps every fence in
+/* A fenced block: `markdown.js` wraps every fence in
    `.md-block` -- a `--card` frame on a hairline, a small header carrying the
    language and a copy button, then the listing. Unscoped, like the tables
    and quotes below, because the Life OS document viewer renders the same
@@ -459,10 +459,10 @@
 /* In Chat the listing wraps rather than scrolls -- see the note on `.tr-pre`
    below for why. The Life OS viewer keeps its own scroll route. */
 .tr-md .md-block pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }
-/* GFM tables (#1141) -- `markdown.js` emits the wrapper for every consumer
+/* GFM tables -- `markdown.js` emits the wrapper for every consumer
    (Chat pane, Life OS conversation + document viewers), so these rules are
    deliberately unscoped. A wide table scrolls sideways inside its own
-   wrapper and the page never does; unlike #1100's code blocks this scrolls
+   wrapper and the page never does; unlike code blocks this scrolls
    rather than wraps, because columns only read when they stay aligned.
    Cells break at spaces but never inside a word (`.tr-text`'s
    `overflow-wrap: anywhere` would otherwise squeeze each column to a

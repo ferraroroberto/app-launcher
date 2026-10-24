@@ -1,15 +1,15 @@
-/* Apps tab "Other ports" (#1437): what is bound on this machine right now,
- * with helper services collapsed under their parent app's row (#224/#480)
- * and a per-port Stop process in each row's ⋮ menu (#1129). On the phone the
+/* Apps tab "Other ports": what is bound on this machine right now,
+ * with helper services collapsed under their parent app's row
+ * and a per-port Stop process in each row's ⋮ menu. On the phone the
  * list lives in a sheet opened from the Running card's last row, which
  * carries the count of listeners the launcher did not start (the Port
  * listeners card merged into Running); on the wide layout the same list
- * sits inline under Running (#1505, apps.js moves it).
+ * sits inline under Running (apps.js moves it).
  *
- * The probe is Apps-only (#1505): it reads nothing while another tab is up
+ * The probe is Apps-only: it reads nothing while another tab is up
  * or the page is hidden, and runs once when the tab opens.
  *
- * Split out of apps.js in issue #723. It owns its own fetch and expand
+ * Split out of apps.js. It owns its own fetch and expand
  * state, and imports nothing from apps.js (apps.js imports copyUrl and the
  * row's repaint from here).
  */
@@ -24,7 +24,7 @@ import { setAsyncState, staleMessage } from './async-state.js';
 const listenerMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
 
 // Parent rows with dependent children keep them collapsed behind a tap
-// (#480). Module-level so the expand state survives the poll's re-renders.
+// Module-level so the expand state survives the poll's re-renders.
 const expandedListenerPorts = new Set();
 
 // The one copy every Apps-tab menu uses: `what` names the thing copied
@@ -54,7 +54,7 @@ function retryListeners() {
 }
 
 export async function fetchListeners() {
-  // Apps-tab-only, like fetchRunningApps (#1505): nothing else reads
+  // Apps-tab-only, like fetchRunningApps: nothing else reads
   // state.listeners, so a probe for another tab or a hidden page is waste.
   if (state.tab !== 'apps' || document.hidden) return;
   try {
@@ -80,7 +80,7 @@ export async function fetchListeners() {
 }
 
 // Group helper services (parent_port set, parent present) under their
-// parent app's row so one app reads as one top-level entry — see #224.
+// parent app's row so one app reads as one top-level entry.
 function groupListeners(items) {
   const byPort = {};
   items.forEach(function (l) { byPort[l.port] = l; });
@@ -152,8 +152,8 @@ async function killListener(l, label) {
   }
 }
 
-// One listener as an action-row (#1129). A parent whose helper services
-// are folded under it (#480) toggles them on tap; any other row opens the
+// One listener as an action-row. A parent whose helper services
+// are folded under it toggles them on tap; any other row opens the
 // app, like a running app's Open. The destructive Stop process lives in the
 // ⋮ menu, last and confirmed — nine stacked red Kill buttons were the
 // loudest thing in the app.
@@ -187,7 +187,7 @@ function buildListenerRow(l, isChild, hasChildren) {
   row.meta.insertBefore(port, row.meta.firstChild);
 
   if (hasChildren) {
-    // Collapsed by default (#480); the chevron rotates open like the
+    // Collapsed by default; the chevron rotates open like the
     // panel-level disclosure idiom.
     row.li.classList.add('expandable');
     row.li.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -215,7 +215,7 @@ function buildListenerRow(l, isChild, hasChildren) {
       onTap: function () { copyUrl(l.url); },
     },
     {
-      // `power` reads as "shut this down" (#782); `octagon-x` is this app's
+      // `power` reads as "shut this down"; `octagon-x` is this app's
       // *failure* mark (a killed job run).
       dataset: { item: 'listener-kill' }, glyph: 'power', danger: true,
       label: 'Stop process', ariaLabel: 'Stop ' + label + ' (pid ' + l.pid + ')',

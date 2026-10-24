@@ -1,6 +1,6 @@
 /* The SPA's minimal markdown renderer — feature-agnostic, shared.
 
-Lived in `life-os.js` until #1006, which made the module name a lie and
+Split out of `life-os.js`: living there made the module name a lie and
 coupled two unrelated tabs through it: the Coding tab's Chat pane
 (`session-transcript.js`) imported the renderer from the Life OS feature
 module. It also left a verification blind spot — `.fleet.toml`'s `lifeos`
@@ -12,7 +12,7 @@ are covered.
 
 NOT in `dom-utils.js`, which the finding proposed: that module declares
 itself dependency-free and ten modules import it. A leaf of its own keeps
-that property intact. `escapeHtml` moved into `dom-utils.js` (#1141) so this
+that property intact. `escapeHtml` moved into `dom-utils.js` so this
 module imports nothing DOM- or storage-bound and runs under plain Node, which
 is how `tests/js/markdown.test.mjs` pins the parser without a browser.
 */
@@ -34,7 +34,7 @@ function inlineMd(s) {
       '<a href="$2" target="_blank" rel="noopener">$1</a>');
 }
 
-// GFM tables (#1141). A row's cells split on `|`, except inside a backtick
+// GFM tables. A row's cells split on `|`, except inside a backtick
 // code span or when escaped as `\|`; one optional leading and trailing pipe
 // is dropped. Runs on already-escaped text, so every cell stays escaped.
 function splitRow(line) {
@@ -95,7 +95,7 @@ function renderTable(header, aligns, rows) {
 // Null for anything that is not a quote line.
 const QUOTE_LINE = /^\s*&gt; ?(.*)$/;
 
-// Blockquotes (#1326). A quote is usually a draft the owner will paste
+// Blockquotes. A quote is usually a draft the owner will paste
 // somewhere else, so its single line breaks are kept (`<br>`) rather than
 // joined into a paragraph, a bare `>` line is a paragraph break, and the
 // quote carries a copy button whose `data-copy` is its plain text: markers
@@ -124,7 +124,7 @@ function renderQuote(inner) {
     + ' data-copy="' + lines.join('&#10;') + '">' + icon('copy') + '</button></blockquote>';
 }
 
-// A fenced block (#1474): a card-surface frame whose small header carries the
+// A fenced block: a card-surface frame whose small header carries the
 // fence's language and a copy button. `lang` is the first word of the info
 // string, kept only when it is a plain token -- it lands in element text, and
 // everything on the line was escaped already. `codeLines` is the
@@ -212,7 +212,7 @@ export function renderMarkdown(text) {
       out.push('<h' + level + '>' + inlineMd(h[2]) + '</h' + level + '>');
       continue;
     }
-    // Numbered items open an <ol> (#1202), keeping a first number other
+    // Numbered items open an <ol>, keeping a first number other
     // than 1; a change of list kind closes the open list first.
     const bullet = line.match(/^\s*[-*]\s+(.*)$/);
     const numbered = bullet ? null : line.match(/^\s*(\d+)[.)]\s+(.*)$/);

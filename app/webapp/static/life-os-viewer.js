@@ -1,7 +1,7 @@
-/* Life OS conversation viewer (#1119): one captured conversation, read-only,
+/* Life OS conversation viewer: one captured conversation, read-only,
  * chat-style.
  *
- * Opened by the conversation sheet's "Read the conversation" (#1504), as a
+ * Opened by the conversation sheet's "Read the conversation", as a
  * tall sheet stacked over it: ✕, Escape and Done all come back to the sheet,
  * which holds every action (Resume, Rename, Copy link, Open raw, Delete).
  * An archived capture (life-os-convos.js) opens it straight from its row,
@@ -9,7 +9,7 @@
  * The capture is parsed server-side (`/api/life-os/file/transcript`,
  * src/life_os_capture.py) into the entry shape the session overlay's Chat
  * pane already renders, and it is rendered by that pane's own renderer
- * (transcript-render.js, #1629): one transcript surface, two mounts (#979),
+ * (transcript-render.js): one transcript surface, two mounts,
  * and no dependency on the Chat pane's state. There
  * is no composer: this is a finished conversation, reopened through Resume if
  * it is to continue. The capture reader keeps speaker turns only, so there
@@ -90,7 +90,7 @@ async function load() {
     return;
   }
   hideState();
-  // The capture's agent heads its turns (#1475), as the session's does in Chat.
+  // The capture's agent heads its turns, as the session's does in Chat.
   els.lifeOsViewerList.appendChild(
     renderEntries(body.entries || [], 'reported', null, body.agent || row.agent)
   );
@@ -149,6 +149,6 @@ export function wireConvoViewer() {
   });
   openLinksOnThePc(els.lifeOsViewerList);
   // Opening at the top (a finished conversation reads from its start), the
-  // shared ↓ Latest pill (#1140) shows whenever the end is off screen.
+  // shared ↓ Latest pill shows whenever the end is off screen.
   mountScrollerPill(els.lifeOsViewerLatest, els.lifeOsViewerBody);
 }

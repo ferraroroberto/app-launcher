@@ -94,8 +94,7 @@ export function clearTerminalToken() {
 
 // ----------------------------------------------------------- webauthn flows
 // Settings passkey section: status readout, device list, enroll button.
-// Enrollment stays a two-step, two-device act by design (#795, restoring
-// the #383 review round's drop) — the tray opens a one-time window on the
+// Enrollment stays a two-step, two-device act by design — the tray opens a one-time window on the
 // PC (deliberate, loopback-only), then this button on the *other* device
 // (the phone being enrolled) completes the ceremony while the window is
 // open. The gate itself (ensureTerminalToken) never depended on this UI.
@@ -215,7 +214,7 @@ export async function ensureTerminalToken() {
   return await unlockTerminal();
 }
 
-// One terminal-grade JSON request (#1422): awaits the passkey token, sends it
+// One terminal-grade JSON request: awaits the passkey token, sends it
 // with the bearer, and resolves jsonApi()'s parsed body or its thrown verdict.
 // `body`, when given, is JSON-encoded here; omit `method` for a GET.
 export async function terminalJsonApi(path, { method, body } = {}) {

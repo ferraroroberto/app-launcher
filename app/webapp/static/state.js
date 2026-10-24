@@ -12,7 +12,7 @@
  *   state.webauthn     — { configured, enrollment_open, devices[] }
  *   state.terminal     — null when overlay closed, else { sid, ws, term, fit, onWindowResize }
  *   state.status       — /api/status payload (incl. terminal reachability)
- *   state.contextFilter — /api/context-filter payload ({mode, harnesses, stats}, issue #713)
+ *   state.contextFilter — /api/context-filter payload ({mode, harnesses, stats})
  *
  * Auth: a bearer token is stored in localStorage. The page extracts it
  * from ?token=… on first load and strips it from the URL. On 401, the
@@ -30,12 +30,12 @@ export const RUNNING_APPS_POLL_MS = 4000; // refresh launcher-spawned apps
 export const JOBS_POLL_MS = 4000;         // refresh Jobs tab while it's visible
 export const BOARD_POLL_MS = 5000;        // refresh Board tab while it's visible
 export const WEBAUTHN_POLL_MS = 15000;
-// The header's CPU reading (#1522): one poll for the whole page, foreground
+// The header's CPU reading: one poll for the whole page, foreground
 // only; the server samples every 5 s, so 10 s never reads the same sample
 // twice in a row by much. The retry covers the sampler's ~2 s first sample.
 export const SYSTEM_LOAD_POLL_MS = 10000;
 export const SYSTEM_LOAD_WARMING_RETRY_MS = 3000;
-// Git-status refresh (#496, reversing #115's tap-only contract): slow on
+// Git-status refresh (not tap-only): slow on
 // purpose — one git run per project per tick, gated to the tabs that show
 // the flags (Coding tiles, Board backlog) and to a foreground page.
 export const GIT_STATUS_POLL_MS = 45000;
@@ -43,7 +43,7 @@ export const GIT_STATUS_POLL_MS = 45000;
 export const state = {
   tab: 'claude',
   config: null,
-  // /api/context-filter payload — {mode, harnesses, stats} (issue #713).
+  // /api/context-filter payload — {mode, harnesses, stats}.
   // null until the boot fetch lands.
   contextFilter: null,
   apps: [],
@@ -52,7 +52,7 @@ export const state = {
   // launcher's core agent so it's assumed present; the other agents
   // stay disabled until detection confirms their CLI is on PATH. The
   // fullscreen flags mirror src/agents.py so a terminal opened while the
-  // fetch is degraded still takes the pan-not-reflow path (#264/#430) —
+  // fetch is degraded still takes the pan-not-reflow path —
   // without them a ratatui agent would silently fall onto Claude's
   // reflow path and replay-scroll on every keyboard toggle.
   agents: [
@@ -63,39 +63,38 @@ export const state = {
     { id: 'pi', label: 'Pi', available: false, fullscreen: true },
     { id: 'grok', label: 'Grok Build', available: false, fullscreen: true },
   ],
-  // Is the `code` CLI on the server's PATH (issue #802)? Drives the enabled
+  // Is the `code` CLI on the server's PATH? Drives the enabled
   // state of the Coding row's VS Code button. Overwritten by the same
   // /api/agents boot fetch as `agents`; conservative `false` until it lands,
   // matching how a not-yet-detected agent renders — a button that greys in
   // for a moment beats one that offers a launch the server would 503.
   vscodeAvailable: false,
   runningApps: [],
-  // Every port listener on this PC (#1437): the Other ports sheet and its
+  // Every port listener on this PC: the Other ports sheet and its
   // row's count. null until the first probe lands, so the row can say
   // "Checking…" instead of a count it does not have.
   listeners: null,
-  // Git flags for the Coding tiles + Board backlog (issue #115, always-on
-  // since #496). null only until the boot fetch lands; then a map of
+  // Git flags for the Coding tiles + Board backlog (always-on). null only until the boot fetch lands; then a map of
   // project id → { is_git, branch, default_branch, on_default_branch,
   // dirty }, refreshed by the GIT_STATUS_POLL_MS poll while the Coding or
   // Board tab is visible. Cached: the 4-5 s tab polls re-render from this
   // map but never re-run the git check themselves.
   gitStatus: null,
   // When that map last landed (Date.now()), for the Projects card's "Git
-  // checked N min ago" footer (#1434). null until the first fetch.
+  // checked N min ago" footer. null until the first fetch.
   gitStatusAt: null,
-  // Coding-tab favorites filter (issue #250). false = show all projects
+  // Coding-tab favorites filter. false = show all projects
   // (favorites pinned to the top); true = show only starred projects. A
   // client-side view toggle, persisted across reloads so the
   // 4 s apps poll re-renders without dropping it.
   codingFavFilter: localStorage.getItem('launcher.codingFavFilter') === '1',
   jobs: [],
-  jobsLoaded: false,   // first /api/jobs answer arrived (#1176)
-  // Jobs-list ordering (issue #229). 'next' = ascending by computed next
+  jobsLoaded: false,   // first /api/jobs answer arrived
+  // Jobs-list ordering. 'next' = ascending by computed next
   // fire (imminent dailies above weeklies; manual/paused sink to the
   // bottom); 'name' = A–Z. Persisted across reloads.
   jobsSort: localStorage.getItem('launcher.jobsSort') === 'name' ? 'name' : 'next',
-  // Life OS conversations ordering (issue #886). 'interaction' = the
+  // Life OS conversations ordering. 'interaction' = the
   // default: newest last-touched first, since reopening this view is
   // almost always about a conversation you were just in; 'created' =
   // the date-stamped filename order the index itself is written in.
@@ -105,47 +104,47 @@ export const state = {
   jobsSearchQuery: '',
   jobsSearchMatches: [],
   jobRuns: {},      // job_id → array of recent runs (lazy)
-  sheetJob: null,    // job_id whose sheet is open (#1438; the inline accordion before)
+  sheetJob: null,    // job_id whose sheet is open (the inline accordion before)
   selectedRun: null, // { jobId, runId } — which run's log is in the sheet
   sessions: [],
-  // Board tab (issue #300 / #164): the /api/board payload, null until the
+  // Board tab: the /api/board payload, null until the
   // tab's first fetch. The 5 s poll self-gates on the tab being visible;
   // GitHub data inside it comes from the server-side gh cache and is only
   // refreshed on demand (the ↻ button / first activation), never per poll.
   board: null,
   // When `board` last landed (Date.now()): the Board tab's nav badge counts
-  // from it while it is this fresh, else from the sessions poll (#1436).
+  // from it while it is this fresh, else from the sessions poll.
   boardFetchedAt: 0,
-  // GET /api/board/chief-plan's last answer (#1279), fetched with `board`.
+  // GET /api/board/chief-plan's last answer, fetched with `board`.
   chiefPlan: null,
   // The chief's unanswered questions, fleet-wide, from the sessions poll
-  // (#1502): the Board tab's badge off the Board. null = unknown.
+  // the Board tab's badge off the Board. null = unknown.
   chiefQuestions: null,
-  // Session id whose drawer is open (#301). The board poll keeps running;
+  // Session id whose drawer is open. The board poll keeps running;
   // renderBoard() keeps this drawer's node so a reply being typed survives
-  // (#958).
+  // 
   boardExpanded: null,
-  // Life OS tab (issue #102): skills from /api/life-os/skills, plus the
+  // Life OS tab: skills from /api/life-os/skills, plus the
   // read-only content browser's current skill + loaded files.
   lifeOsSkills: [],
   lifeOsChannels: { profiles: [], problems: [], setup: null },
-  // The last channels read failed (#1506): with no setup read yet, the
+  // The last channels read failed: with no setup read yet, the
   // Settings header says the status could not be read.
   lifeOsChannelsFailed: false,
-  // The short git sha /api/version reports, for the Settings header (#1506).
+  // The short git sha /api/version reports, for the Settings header.
   buildSha: null,
   lifeOsRecap: null,   // /api/life-os/recap-status, once the tab has read it
-  // How many API tokens exist (#1435, Settings › API tokens' value); null
+  // How many API tokens exist (Settings › API tokens' value); null
   // until Settings first loads the list.
   apiTokenCount: null,
-  // Today's minutes on screen (#1678, Settings › Screen time's value); null
+  // Today's minutes on screen (Settings › Screen time's value); null
   // until read, or when the read failed.
   screenTimeToday: null,
   lifeOsBrowser: null,   // { skillId, name, files } while the browser is open
   pendingScan: [],
   webauthn: { configured: false, enrollment_open: false, devices: [] },
   terminal: null,   // { sid, ws, term, fit, onWindowResize }
-  // The session overlay's open view (#982): null while closed, else the
+  // The session overlay's open view: null while closed, else the
   // session it shows and its render mode ('terminal' | 'chat'). Distinct
   // from `terminal` above — a detached session viewed in Chat has no
   // terminal at all, and a full-control session keeps its warm terminal
@@ -153,8 +152,8 @@ export const state = {
   sessionView: null,
   status: null,     // /api/status payload (incl. terminal reachability)
   // True only when this page was opened as the launcher-spawned PC mirror
-  // window — i.e. via the ?terminal=<sid> deep-link (set at boot, issue
-  // #241). A human's own desktop browser over loopback is NOT a mirror, so
+  // window — i.e. via the ?terminal=<sid> deep-link (set at boot). A human's own desktop
+  // browser over loopback is NOT a mirror, so
   // the connection's loopback reason alone must never flip isMirror — that
   // mis-classification made Stop & Close window.close() the user's Chrome.
   isMirrorWindow: false,
@@ -264,7 +263,7 @@ export const els = {
   lifeOsViewerState: document.getElementById('lifeOsViewerState'),
   lifeOsViewerLatest: document.getElementById('lifeOsViewerLatest'),
 
-  // Chat pane of the session overlay (#953 transcript, #982 mode)
+  // Chat pane of the session overlay (transcript, mode)
   chatPane: document.getElementById('chatPane'),
   chatNote: document.getElementById('chatNote'),
   contextRing: document.getElementById('contextRing'),
@@ -280,7 +279,7 @@ export const els = {
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),
 
-  // Show changes overlay (#977)
+  // Show changes overlay
   changesOverlay: document.getElementById('changesOverlay'),
   changesClose: document.getElementById('changesClose'),
   changesRefresh: document.getElementById('changesRefresh'),

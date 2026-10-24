@@ -1,4 +1,4 @@
-/* ---------- Settings: inset groups (#1435) ---------- */
+/* ---------- Settings: inset groups ---------- */
 /* iOS-Settings-style groups under overline headers: each row is a lead
    icon, a label, the current value in muted text and a chevron, and opens
    a sheet. A row that holds its control inline (Text size, Start at log
@@ -62,7 +62,7 @@ button.settings-row:active { background: var(--card-2); }
   height: var(--icon-inline);
   color: var(--muted);
 }
-/* Text size (#1134): the label beside the vendored segmented control. */
+/* Text size: the label beside the vendored segmented control. */
 .settings-row--inline .text-size-label { flex: none; }
 .text-size-card .segmented { flex: 1; min-width: 0; }
 /* A row's value that is an exception (settings-sheets.js setValue). */
@@ -113,7 +113,7 @@ button.settings-row:active { background: var(--card-2); }
 .settings-sheet .opt-group { padding: 6px 0 14px; }
 .settings-sheet-body > .opt-group:first-child,
 #agentSheet .opt-group { border-top: 0; }
-/* A field's inline error (#1435), under its help line. */
+/* A field's inline error, under its help line. */
 .field-error {
   margin: -6px 0 10px;
   font-size: var(--font-body-sm);
@@ -122,7 +122,7 @@ button.settings-row:active { background: var(--card-2); }
 .field-error[hidden] { display: none; }
 .input-native[aria-invalid="true"] { border-color: var(--danger); }
 
-/* Screen time (#1678, screen-time.js): the period, the total, daily bars by
+/* Screen time (screen-time.js): the period, the total, daily bars by
    device and two lists of share rows (by device, by section). */
 .screen-time .segmented { margin-top: 4px; }
 .screen-time-state.empty-state { padding-inline: 0; }
@@ -227,6 +227,6 @@ button.settings-row:active { background: var(--card-2); }
   text-align: right;
 }
 .settings-sheet .screen-time-note { margin: 16px 0 10px; }
-/* The last send to task-os (#1678 step 2/2), just above Send. */
+/* The last send to task-os, just above Send. */
 .settings-sheet .screen-time-sent { margin: 0 0 4px; color: var(--fg); }
 

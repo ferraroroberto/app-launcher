@@ -1,7 +1,7 @@
-/* Shared voice dictation (issue #302 — extracted verbatim from terminal.js).
+/* Shared voice dictation (extracted verbatim from terminal.js).
  *
- * One module, many mics: the compose bar (issues #165 / #168), the Board
- * dispatch bar and the shared composer (#980 — terminal, Chat, Board drawer) each mount a
+ * One module, many mics: the compose bar, the Board
+ * dispatch bar and the shared composer (terminal, Chat, Board drawer) each mount a
  * `createDictation` instance on their own button + textarea. The recording
  * pipeline is unchanged from the compose-bar original: preferred flow is
  * *streamed* (create a voice session, POST audio chunks at a 1 s cadence,
@@ -13,7 +13,7 @@
  * the target textarea for review — never straight into a PTY or a dispatch.
  *
  * A tap while recording stops and transcribes; a tap while the stopped take
- * is still transcribing cancels it (#1413): its requests are aborted, the
+ * is still transcribing cancels it: its requests are aborted, the
  * button is at rest again at once with "Dictation cancelled", and whatever
  * text is already in the textarea stays. The voice-transcriber has no abort
  * route, so its server-side session is simply dropped.
@@ -27,7 +27,7 @@ import { readTerminalToken } from './webauthn.js';
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
 // times in all, backing off _CHUNK_RETRY_MS x attempt, before it is counted
-// as lost (#1234). Chunks stay in order: the drain waits on each one.
+// as lost. Chunks stay in order: the drain waits on each one.
 const _CHUNK_ATTEMPTS = 3;
 const _CHUNK_RETRY_MS = 500;
 
@@ -80,7 +80,7 @@ function voiceQuery() {
 // transcribe, streamed finish — visibly shows progress instead of looking
 // stuck. ``workingLabel`` defaults to the hourglass glyph; pass a richer
 // label for wide buttons. Labels are HTML (the Lucide icon() markup rides
-// them — issue #355 PR 3). Returns a stop() that restores ``restoreHtml``.
+// them). Returns a stop() that restores ``restoreHtml``.
 export function startWorkTimer(btn, restoreHtml, workingLabel) {
   const lbl = workingLabel || icon('hourglass') + ' ';
   const t0 = Date.now();
@@ -114,10 +114,10 @@ function newDictationState(opts) {
     recordChunks: [],
     // The live getUserMedia stream, held from the moment it's granted until
     // the recorder's own 'stop' handler releases its tracks. Lets dispose()
-    // (#755) release the mic even in the narrow window after permission is
+    // release the mic even in the narrow window after permission is
     // granted but before the recorder has actually started.
     stream: null,
-    // Set by dispose() (#755): startRecording()'s two async gaps (the
+    // Set by dispose(): startRecording()'s two async gaps (the
     // getUserMedia permission prompt, the streamed-session POST) check this
     // after resuming and bail out releasing the mic instead of proceeding;
     // the 'stop' handler checks it to skip finish/transcribe entirely for a
@@ -125,14 +125,14 @@ function newDictationState(opts) {
     // startRecording() call, so a disposed-while-idle instance can record
     // again normally.
     aborted: false,
-    // Streaming state (#168). voiceSession is the upstream session id;
+    // Streaming state. voiceSession is the upstream session id;
     // streaming flips true only once a session is created. The chunk queue
     // drains sequentially so chunks reach the session-host in order.
     voiceSession: null,
     streaming: false,
     voiceEvents: null,
     chunkQueue: [],
-    // The drain in flight (#1234): one promise, settled only once the queue is
+    // The drain in flight: one promise, settled only once the queue is
     // empty, so /finish can wait for the whole take. It used to be a boolean,
     // and a second caller — finishStreaming — returned at once while the
     // first drain still had chunks queued, so /finish closed the session
@@ -145,15 +145,15 @@ function newDictationState(opts) {
     dictStart: 0,
     dictLen: 0,
     // True from the moment recording stops until the canonical transcript has
-    // settled (issue #489). A long dictation gives the finalize network round
+    // settled. A long dictation gives the finalize network round
     // trip a real window to still be in flight when the user taps Send; Send
     // reading+clearing the textarea mid-window raced the late
     // renderDictation() call, which writes into the tracked span with
     // ``setRangeText`` — on an already-cleared textarea that clamps to offset
     // 0, so the final transcript landed unsent instead of Send ever seeing it.
     finishing: false,
-    // True from the tap until the recorder is actually capturing (#1295
-    // follow-up): the permission prompt and the streamed-session POST take a
+    // True from the tap until the recorder is actually capturing:
+    // the permission prompt and the streamed-session POST take a
     // moment, and a tap used to give no feedback, so the operator tapped
     // again — and that second tap started a second recorder, since the
     // mutex above only refuses *another* instance. While arming the button
@@ -164,7 +164,7 @@ function newDictationState(opts) {
     labelHeld: false,
     idleLabel: null,
     idleTitle: '',
-    // One take's requests (#1413): the session create, the chunk uploads, the
+    // One take's requests: the session create, the chunk uploads, the
     // finish and the single-shot transcribe all carry this signal, so a cancel
     // or a dispose aborts whatever is still in flight. New per take.
     takeCtrl: null,
@@ -199,7 +199,7 @@ function releaseLabel(d) {
   d.idleLabel = null;
 }
 
-// #1581: what a tap on the mic would do right now, as the usage log's
+// what a tap on the mic would do right now, as the usage log's
 // `data-track` control id (usage.js). The log's click listener reads the
 // attribute when the tap lands, before toggle() runs, so the id is kept in
 // step with the state — each tap is then logged under what it did. A phone's
@@ -295,7 +295,7 @@ async function sendChunk(sid, blob, signal) {
 // order (overlapping POSTs could interleave on the raw file). Every caller
 // gets the same promise, which settles only when the queue is empty.
 //
-// Each POST carries everything queued so far, not one chunk (#1234): the
+// Each POST carries everything queued so far, not one chunk: the
 // recorder's chunks are consecutive slices of one byte stream, so joined
 // they are still valid audio, in order. On 2026-09-25 a 1 s chunk took
 // 3-5 s to upload under load; one chunk per request then fell further
@@ -365,8 +365,8 @@ function createRecorder(d, stream, mime) {
   return true;
 }
 
-// Try to open a streamed session (#168). On any failure, fall back to
-// the buffered single-shot path (#165) — streaming stays false.
+// Try to open a streamed session. On any failure, fall back to
+// the buffered single-shot path — streaming stays false.
 async function openStreamSession(d, signal) {
   try {
     const res = await apiRaw('/api/transcribe/sessions', {
@@ -414,7 +414,7 @@ function handleRecorderStop(d, stream, mime) {
   _activeInstance = null;
   d.stream = null;
   if (d.aborted) {
-    // dispose() force-stopped an active recording (#755) — the mic is
+    // dispose() force-stopped an active recording — the mic is
     // already released above; skip finish/transcribe entirely, this
     // take is abandoned, not just paused.
     d.recordChunks = [];
@@ -448,7 +448,7 @@ async function startRecording(d) {
   // Claim synchronously, before the first `await` — otherwise two taps
   // (e.g. dispatch-bar mic then a drawer reply-box mic) can both read
   // _activeInstance as falsy before either's getUserMedia() promise
-  // settles, and both proceed (issue #409). Released on every early-return
+  // settles, and both proceed. Released on every early-return
   // below; the 'stop' listener clears it on the normal path.
   _activeInstance = d.api;
   d.aborted = false;
@@ -511,7 +511,7 @@ function stopRecording(d) {
 }
 
 // The finalizing phase: from stop until the transcript has settled. The
-// button stays tappable — a tap now cancels (#1413) — so it is aria-busy
+// button stays tappable — a tap now cancels — so it is aria-busy
 // with a Cancel label, never `disabled`: iOS fires no tap on a disabled
 // button, which is how a hung request used to strand it for good.
 function beginFinishing(d) {
@@ -551,14 +551,14 @@ function dropFinishing(d) {
   return true;
 }
 
-// Streamed stop (#168): flush remaining chunks, ask the voice-transcriber
+// Streamed stop: flush remaining chunks, ask the voice-transcriber
 // for the canonical transcript, settle the dictated span, tear down.
 async function finishStreaming(d) {
   const sid = d.voiceSession;
   const signal = d.takeCtrl.signal;
   d.recorder = null;
   const op = beginFinishing(d);
-  // A dispose() (#755) or a cancel (#1413) that lands mid-finalize: the
+  // A dispose() or a cancel that lands mid-finalize: the
   // caller has moved on (a torn-down compose bar, a collapsed drawer, a
   // retry), so a late transcript must not be written into whatever textarea
   // getTextarea() now resolves to.
@@ -604,14 +604,14 @@ async function finishStreaming(d) {
   }
 }
 
-// Single-shot fallback (#165): the whole take in one POST to /api/transcribe.
+// Single-shot fallback: the whole take in one POST to /api/transcribe.
 async function sendBufferedRecording(d, blob) {
   const ext = (blob.type && blob.type.indexOf('mp4') >= 0) ? 'mp4' : 'webm';
   const fd = new FormData();
   fd.append('file', blob, 'recording.' + ext);
   const signal = d.takeCtrl.signal;
   const op = beginFinishing(d);
-  // A dispose() (#755) or a cancel (#1413) that lands mid-request must not
+  // A dispose() or a cancel that lands mid-request must not
   // write a late transcript into whatever textarea getTextarea() now
   // resolves to.
   const gone = function () { return d.aborted || d.finishOp !== op; };
@@ -647,7 +647,7 @@ async function sendBufferedRecording(d, blob) {
 
 // Force-stop + release the mic and abandon this take, for a caller that
 // is tearing the mount point down rather than just closing the bar
-// (issue #755) — e.g. leaving the terminal, or a Board drawer collapsing
+// — e.g. leaving the terminal, or a Board drawer collapsing
 // out from under a per-render dictation instance. Unlike `stop`, which
 // still runs finish/transcribe to settle the result into the textarea,
 // `dispose` guarantees the mic and the app-wide `_activeInstance` mutex
@@ -658,7 +658,7 @@ async function sendBufferedRecording(d, blob) {
 // once.
 function disposeDictation(d) {
   d.aborted = true;
-  // Abort the take's requests too (#1413): nothing will read their answers.
+  // Abort the take's requests too: nothing will read their answers.
   if (d.takeCtrl) d.takeCtrl.abort();
   if (d.recorder && d.recorder.state !== 'inactive') {
     // The 'stop' handler releases the stream, clears _activeInstance and
@@ -683,7 +683,7 @@ function disposeDictation(d) {
 }
 
 function toggleDictation(d) {
-  // #1581: one info line per tap saying what it did. A report of "the mic
+  // one info line per tap saying what it did. A report of "the mic
   // needed two taps" then reads off the device console: no line means the
   // tap never reached us (touch/layout), "ignored"/"cancelled" means the
   // state swallowed it, "start" means we did begin.
@@ -691,7 +691,7 @@ function toggleDictation(d) {
     console.info('[dictation] tap ignored: the mic is still arming');
     return;
   }
-  // A tap while the stopped take is still transcribing cancels it (#1413).
+  // A tap while the stopped take is still transcribing cancels it.
   if (dropFinishing(d)) {
     console.info('[dictation] tap cancelled the take that was still finalizing');
     toast('Dictation cancelled', undefined, { icon: 'mic' });
@@ -715,7 +715,7 @@ function toggleDictation(d) {
  *     onRender:    optional — called after each transcript render (the
  *                  compose bar re-grows its textarea),
  *     onStart:     optional — called when recording starts (the compose
- *                  bar silences an in-flight read-aloud, #190),
+ *                  bar silences an in-flight read-aloud),
  *   }) → { toggle, stop, dispose, isRecording, isBusy }
  */
 export function createDictation(opts) {
@@ -729,7 +729,7 @@ export function createDictation(opts) {
       return !!(d.recorder && d.recorder.state === 'recording');
     },
     // True while actively recording OR while a stopped take is still
-    // finalizing (#489) — the window a caller like Send must not race.
+    // finalizing — the window a caller like Send must not race.
     isBusy: function () {
       return !!(d.recorder && d.recorder.state === 'recording') || d.finishing;
     },

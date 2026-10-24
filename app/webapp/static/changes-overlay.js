@@ -1,6 +1,6 @@
-/* "Show changes" overlay (#977): a read-only, phone-first view of one
+/* "Show changes" overlay: a read-only, phone-first view of one
  * project's working tree — what a red (dirty) Coding tile actually means,
- * without opening VS Code just to look. Since #1349 the same panel also
+ * without opening VS Code just to look. The same panel also
  * shows a session's **Changed files** (the session ⋮ menu): every file that
  * session's edits touched, folded from its transcript rather than git, so it
  * still works once the work is committed or the worktree is gone.
@@ -12,16 +12,16 @@
  * drawn by diff-view.js. No library. A viewer only — nothing here stages,
  * commits or discards.
  *
- * Since #1477 a row reads name first, its folder as the hint (the row the
+ * A row reads name first, its folder as the hint (the row the
  * Chat pane's Edited N files card shares, edited-card.js), and a session's
  * panel can open from that card: focused on one file, with a "This turn ·
  * Whole session" pair that starts on the turn. The turn's scope is drawn from
  * the steps the Chat page already holds, so it costs no request.
  *
- * Since #1689 an opened session file has a Diff | File switch: File is the
+ * An opened session file has a Diff | File switch: File is the
  * file as it is on disk now, drawn for its type by file-view.js, read through
  * a route that serves only files the session edited. Beside it, Download
- * (#1749) and a ⋮ menu: Copy content in File view, Copy diff in Diff view,
+ * and a ⋮ menu: Copy content in File view, Copy diff in Diff view,
  * Copy path, and on the PC itself Open on PC (VS Code, else Explorer). Still
  * read-only: nothing edits, stages or discards.
  */
@@ -45,7 +45,7 @@ const SESSION_REASON = {
   session_host_unreachable: 'The session host is unreachable',
 };
 
-// Why the File view can't show a file (#1689), one sentence per reason.
+// Why the File view can't show a file, one sentence per reason.
 const FILE_REASON = {
   file_not_found: 'This session didn’t edit this file',
   deleted: 'This file is no longer on disk',
@@ -208,14 +208,14 @@ async function loadSessionDiff(file, body) {
   });
   noteLargeDiff(body);
   // Most agents record only an edit's own text, so their diffs have no line
-  // numbers (#1356); say so once rather than leaving a missing gutter unexplained.
+  // numbers; say so once rather than leaving a missing gutter unexplained.
   if (steps.some(function (s) { return !s.deleted && s.diff && s.diff.hunks.length && !s.diff.numbered; })) {
     body.insertAdjacentHTML('beforeend', note('This agent’s diffs carry no line numbers'));
   }
   if (res.truncated) body.insertAdjacentHTML('beforeend', note('Diff truncated at 200 KB'));
 }
 
-// This turn's share of a file (#1477): each of the turn's own steps on it, in
+// This turn's share of a file: each of the turn's own steps on it, in
 // order, drawn from the entries the Chat page holds, so nothing is fetched.
 function renderTurnDiff(file, body) {
   body.innerHTML = '';
@@ -236,7 +236,7 @@ function renderTurnDiff(file, body) {
   noteLargeDiff(body);
 }
 
-// --- a session file's tools: Diff | File, Copy path, Open on PC (#1689) -----
+// --- a session file's tools: Diff | File, Copy path, Open on PC -----
 
 // The path the session's routes know a file by: a turn row's recorded path,
 // else the list's key (the recorded path, made absolute by the fold).
@@ -353,7 +353,7 @@ async function downloadFile(file, read) {
   saveAs(requestPath(file).split(/[\\/]/).pop() || 'file', res.text || '');
 }
 
-// The ⋮ menu of an opened file's tool row (#1749), one controller for the
+// The ⋮ menu of an opened file's tool row, one controller for the
 // panel. It drops below the button group, right edges 4px in, as the Board
 // drawer's kebab does; `changes-menu` lifts it over the panel (styles/shared.css).
 const fileMenu = createRowMenu({
@@ -545,7 +545,7 @@ function renderProject(body) {
   if (untracked.length) list.appendChild(group('Untracked', untracked));
 }
 
-// "This turn · Whole session" (#1477), only on a panel opened from a turn's
+// "This turn · Whole session", only on a panel opened from a turn's
 // Edited card. Switching keeps the focused file and re-renders the list.
 function scopeSwitch() {
   const wrap = document.createElement('div');
@@ -708,7 +708,7 @@ export function openChanges(a) {
 }
 
 // `s` is a session as the list knows it ({session_id, name, project_dir, …}); `title`
-// is what the session bar shows for it. `opts` (an Edited card's tap, #1477):
+// is what the session bar shows for it. `opts` (an Edited card's tap):
 // `turn` — {files, partial, renderStep(entry)} — starts the panel on that
 // turn with the scope pair; `focus` is the recorded path to open.
 export function openSessionChanges(s, title, opts) {

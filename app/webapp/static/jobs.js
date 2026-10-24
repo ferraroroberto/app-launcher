@@ -1,6 +1,6 @@
-/* Jobs tab: list registered jobs, fire run-now, view history (issue #47).
+/* Jobs tab: list registered jobs, fire run-now, view history.
  *
- * Tapping a job opens its sheet (#1438, decision 7 of #1432; an inline
+ * Tapping a job opens its sheet (an inline
  * accordion before): details, flags, Kill stuck run, the runs list and one
  * selected run's output, with Run now as the sheet's one primary action.
  *   - The sheet opens on the newest run; tap a run to switch the log.
@@ -11,7 +11,7 @@
  *   - On the wide desktop layout the sheet docks beside the list as the
  *     detail pane (design.md master-detail) instead of covering it.
  *
- * This is the residual module after the audit #315/#408 splits: list
+ * This is the residual module after the splits: list
  * orchestration, the poller and the job sheet. Row rendering lives in
  * jobs-row.js; the edit/add and run-now dialogs in jobs-dialog.js; the Next
  * up card and the agenda sheet in jobs-agenda.js.
@@ -59,7 +59,7 @@ function findJob(jobId) {
 
 // The empty-state block's visibility. Until the first /api/jobs answer, the
 // list is loading rather than empty: the loading line says so, and the
-// empty state waits for a real zero (#1133, #1176).
+// empty state waits for a real zero.
 function syncJobsEmpty() {
   if (els.jobsLoading) els.jobsLoading.hidden = state.jobsLoaded;
   els.jobsEmpty.hidden = !state.jobsLoaded || !!state.jobsSearchQuery ||
@@ -94,7 +94,7 @@ export function renderJobs() {
   syncSortControls();
 
   if (state.jobsSearchQuery) {
-    // Jobs whose name matches come first, as ordinary rows (#1132: the
+    // Jobs whose name matches come first, as ordinary rows (the
     // search used to match run output only, never the job you were looking
     // for by name), then the run-output hits.
     const query = state.jobsSearchQuery.toLowerCase();
@@ -173,7 +173,7 @@ function openSearchMatch(match) {
 
 // ------------------------------------------------------------ sort + order
 //
-// Two orderings (issue #229). 'next' is the default and the point of the
+// Two orderings. 'next' is the default and the point of the
 // feature: ascending by the server-computed next_run_epoch, so imminent
 // daily jobs float above weekly ones and the eye lands on "what fires
 // next". Manual-only / paused jobs (no next fire) sink to the bottom,
@@ -201,8 +201,8 @@ function byName(a, b) {
 
 const JOBS_SORT_NAMES = { next: 'next run', name: 'A–Z' };
 
-// The sort's entry button and sheet (#1538, the Conversations pattern of
-// #1528): the sliders button names the order in force, and the sheet's tabs
+// The sort's entry button and sheet (the Conversations pattern): the sliders button names the
+// order in force, and the sheet's tabs
 // mark it. Re-synced on every change.
 function syncSortControls() {
   const btn = els.jobsFilters;
@@ -316,7 +316,7 @@ function buildSheet(job) {
   artifacts.hidden = true;
   body.appendChild(artifacts);
 
-  // Raw webhook payload (issue #73) — collapsed by default, only shown
+  // Raw webhook payload — collapsed by default, only shown
   // (and populated) for a run that was actually webhook-triggered.
   const webhookDetails = document.createElement('details');
   webhookDetails.className = 'jobs-webhook-payload';
@@ -364,7 +364,7 @@ function panelEl(jobId) {
   return els.jobSheetBody;
 }
 
-/* Provenance chip (issue #72): compact "who fired this" label from the
+/* Provenance chip: compact "who fired this" label from the
  * run's trigger_source (+ token label when a scoped token was used). Falls
  * back to the raw trigger string for pre-provenance records. */
 function triggerChip(r) {
@@ -381,7 +381,7 @@ function triggerChip(r) {
   return escapeHtml(r.trigger || '?');
 }
 
-/* "Who ended this run" chip (issue #695, #747). A bare `failed` covers
+/* "Who ended this run" chip. A bare `failed` covers
  * several genuinely different outcomes and the row used to render them
  * identically: the job exited non-zero on its own, an operator tapped
  * Kill (`killed`), the executor's last-resort watchdog tore down a
@@ -417,13 +417,13 @@ function redrawRunsList(jobId, runs) {
     return;
   }
   // Look up the job's current params declaration to spot keys that have
-  // since been removed (used by the Re-run pre-fill flow, issue #67).
+  // since been removed (used by the Re-run pre-fill flow).
   const job = findJob(jobId);
   const declaredNames = new Set(((job && job.params) || []).map(function (p) { return p.name; }));
 
   // Render the whole server response (already capped at MAX_RUNS_PER_JOB) —
   // a hardcoded 5-row slice hid older runs on high-cadence jobs, making their
-  // logs unreachable (#316).
+  // logs unreachable.
   runs.forEach(function (r) {
     const li = document.createElement('li');
     const btn = document.createElement('button');
@@ -434,7 +434,7 @@ function redrawRunsList(jobId, runs) {
       btn.classList.add('selected');
     }
     const iconEl = document.createElement('span');
-    // `outcome` (issue #916), not `status`: an exit code the scheduled-run
+    // `outcome`, not `status`: an exit code the scheduled-run
     // adapter reserves for "delivery was never established" is not a failure,
     // and drawing it with the red ✗ is what buried the genuine ones.
     const outcome = runOutcome(r);
@@ -457,7 +457,7 @@ function redrawRunsList(jobId, runs) {
       (paramsChip ? ' · ' + escapeHtml(paramsChip) : '');
     // A failed run says nothing about *who* ended it. The note carries
     // the watchdog's own one-liner ("watchdog: no output for 68min"); absent
-    // one, the exit code's own meaning (#916) is the next best explanation,
+    // one, the exit code's own meaning is the next best explanation,
     // and for 122/124 it is the whole answer.
     if (r.note) meta.title = r.note;
     else if (r.outcome_reason) meta.title = r.outcome_reason;
@@ -478,7 +478,7 @@ function redrawRunsList(jobId, runs) {
     });
     li.appendChild(pin);
 
-    // Re-run button (issue #67) — only meaningful when the job declares
+    // Re-run button — only meaningful when the job declares
     // params now. Opens the run dialog pre-filled with this run's values.
     if (job && declaredNames.size && r.params && typeof r.params === 'object') {
       const rerun = document.createElement('button');
@@ -517,7 +517,7 @@ function formatRunParams(params) {
 function writeOutput(jobId, runId, text, status, extras) {
   const panel = panelEl(jobId);
   if (!panel) return;
-  // Out-of-order replies (#1630): tapping run A then run B fires two fetches
+  // Out-of-order replies: tapping run A then run B fires two fetches
   // and A's slower reply can land second. Only the selected run may paint, so
   // the pane never shows a log under another run's highlight.
   if (!state.selectedRun || state.selectedRun.jobId !== jobId
@@ -611,7 +611,7 @@ function renderArtifacts(jobId, runId, artifacts) {
   host.appendChild(list);
 }
 
-// Tap-to-copy (issue #97). One tap on the run's output pane drops the whole
+// Tap-to-copy. One tap on the run's output pane drops the whole
 // log on the clipboard so it can be pasted into an error report / chat. We
 // read textContent live, so the same handler always copies the currently
 // selected run. Guards: a non-empty manual selection inside the pane is left
@@ -664,7 +664,7 @@ async function refreshSheetContent(jobId, opts) {
   // If selection no longer exists (pruned), fall back to newest — but only on
   // an explicit/initial refresh, never on the poll. Snapping the poll back
   // to the newest run yanked the user off an older run's log they were reading
-  // (#316); on the poll we leave a vanished selection alone.
+  // on the poll we leave a vanished selection alone.
   if (!opts.poll && state.selectedRun && state.selectedRun.jobId === jobId &&
       !runs.find(function (r) { return r.run_id === state.selectedRun.runId; })) {
     state.selectedRun = runs.length ? { jobId: jobId, runId: runs[0].run_id } : null;
@@ -803,7 +803,7 @@ function renderKillButton(jobId, runId, status) {
     killBtn.innerHTML = icon('octagon-x') + ' Kill stuck run';
     // Exactly one listener for the button's lifetime, reading the run id the
     // latest render stamped below — re-binding per render stacked a second
-    // handler on a stale run id, so one tap killed twice (#881).
+    // handler on a stale run id, so one tap killed twice.
     killBtn.addEventListener('click', function () {
       killRun(jobId, killBtn.dataset.runId);
     });
@@ -850,7 +850,7 @@ async function togglePause(job) {
 }
 
 export async function runJobNow(job, options) {
-  // Issue #67: jobs with declared params open a small typed form so the
+  // Jobs with declared params open a small typed form so the
   // user supplies values. Parameter-less jobs keep their one-tap fire.
   const params = (job && job.params) || [];
   const opts = options || {};
@@ -858,14 +858,13 @@ export async function runJobNow(job, options) {
     openRunDialog(job, opts.prefill || null, opts.staleKeys || null);
     return;
   }
-  // Body carries params (issue #67) and/or a dry_run mode (issue #69:
-  // "check" = resolve only, "execute" = spawn with JOB_DRY_RUN=1).
+  // Body carries params and/or a dry_run mode ("check" = resolve only, "execute" = spawn with JOB_DRY_RUN=1).
   const body = {};
   if (opts.params) body.params = opts.params;
   if (opts.dryRun) body.dry_run = opts.dryRun;
   const hasBody = Object.keys(body).length > 0;
-  // Confirm-on-fire (issue #69), through the vendored confirm sheet since
-  // #1438. A flagged job needs explicit confirmation before a real fire; a
+  // Confirm-on-fire, through the vendored confirm sheet.
+  // A flagged job needs explicit confirmation before a real fire; a
   // dry-run "check" is exempt (no side effects). The ?confirmed=1 keeps the
   // server gate honest.
   const isCheck = opts.dryRun === 'check';
@@ -908,7 +907,7 @@ export async function runJobNow(job, options) {
     }
     renderJobs();
     // The sheet showing this job follows the run it just started, so its
-    // output streams there (#1438).
+    // output streams there.
     if (state.sheetJob === job.id && sheetOpen()) {
       syncSheetRun(job);
       if (res && res.run_id && (started || res.status === 'queued')) {
@@ -924,7 +923,7 @@ export async function runJobNow(job, options) {
     if (exc && exc.status === 429) {
       // FastAPI wraps our raise HTTPException(detail={...}) in its own
       // {"detail": ...} envelope, so the cooldown payload is nested one
-      // level deeper than a typical error body (#403).
+      // level deeper than a typical error body.
       const payload = exc.body && exc.body.detail;
       const detail = payload && payload.detail;
       const remaining = payload && Number(payload.retry_after_seconds);
@@ -961,7 +960,7 @@ export async function fetchJobs() {
   }
   // The open sheet refreshes in place the way the accordion did: its facts
   // from the fresh job, then its runs, without stealing the user's run
-  // selection (the `opts.poll` guard in refreshSheetContent, #316).
+  // selection (the `opts.poll` guard in refreshSheetContent).
   if (state.sheetJob && sheetOpen()) {
     const job = findJob(state.sheetJob);
     // Removed (from its kebab, beside the docked pane): nothing left to show.
@@ -976,7 +975,7 @@ export async function fetchJobs() {
 
 export function wireJobs() {
   if (!els.tabJobs) return;
-  // Empty-state actions (#1238 J-09): the Add job flow, and clearing the
+  // Empty-state actions: the Add job flow, and clearing the
   // search field.
   const jobsEmptyAction = document.getElementById('jobsEmptyAction');
   if (jobsEmptyAction) {
@@ -1008,7 +1007,7 @@ export function wireJobs() {
     els.jobsSortSheetDone.addEventListener('click', closeSortSheet);
     els.jobsSortSheetClose.addEventListener('click', closeSortSheet);
     // Labelled from the saved order now, not on the first jobs render — the
-    // button was blank while the tab loaded (#1176).
+    // button was blank while the tab loaded.
     syncSortControls();
   }
   if (els.jobsSearchInput) {

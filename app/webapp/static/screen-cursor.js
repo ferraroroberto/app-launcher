@@ -1,4 +1,4 @@
-/* The PC's mouse cursor as the Screen view draws it (#1598).
+/* The PC's mouse cursor as the Screen view draws it.
  *
  * The server sends a shape name, never the cursor's own image (an app's
  * cursor can carry its content), so each name it can send has a drawing

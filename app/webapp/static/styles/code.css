@@ -1,11 +1,11 @@
-/* ---------- Code tab (#1434, step 2/7 of #1432) ----------
+/* ---------- Code tab ----------
    The Usage card, the quieter Sessions list and the launch toolbar. */
 
 /* The header rule: each exception in its tone's text colour. */
 .head-exception[data-tone="attention"] { color: var(--attention-text); }
 .head-exception[data-tone="danger"] { color: var(--danger-text); }
 
-/* The header's CPU reading (#1522), left of the theme toggle on every tab:
+/* The header's CPU reading, left of the theme toggle on every tab:
    a quiet muted number, colour only for an exception. A fixed 38px box so
    "9%" to "100%" never moves the row; .hit-target's ::before takes it past
    the 44px floor, and the row's 12px gap keeps it off the toggle's. */
@@ -51,9 +51,9 @@
 /* Usage: the full meter in a card. The whole card is one tap to the Usage
    sheet; the meter inside is its keyboard target. */
 .usage-card { cursor: pointer; }
-/* "Usage shows: None" (#1451) hides the whole card. */
+/* "Usage shows: None" hides the whole card. */
 .usage-card[hidden] { display: none; }
-/* The static placeholder (#1657) draws the head and Codex rows only for
+/* The static placeholder draws the head and Codex rows only for
    "both"; "none" hides the card from the first paint, before any script. */
 .usage-meter-full[data-pending] .um-head,
 .usage-meter-full[data-pending] .um-codex { display: none; }

@@ -1,7 +1,7 @@
 /* Jobs tab: the edit/add dialog (schedule + params + chain checklist +
- * pre-flight), and the run-now dialog for parametrized jobs (issue #67).
+ * pre-flight), and the run-now dialog for parametrized jobs.
  *
- * Split out of jobs.js (audit #315) — these two <dialog> forms are each
+ * Split out of jobs.js — these two <dialog> forms are each
  * their own self-contained surface (open/populate/build-payload/submit)
  * independent of the list render + poller that jobs.js keeps.
  */
@@ -193,7 +193,7 @@ function readParamsEditor() {
   });
 }
 
-// ------------------------------------------------------ webhook editor (#73)
+// ------------------------------------------------------ webhook editor
 
 function renderMappingRow(name, path) {
   const li = document.createElement('li');
@@ -288,7 +288,7 @@ function buildWebhookField() {
   return out;
 }
 
-// ------------------------------------------------------ run-now dialog (#67)
+// ------------------------------------------------------ run-now dialog
 
 let runDialogJob = null;
 
@@ -408,7 +408,7 @@ async function submitRunDialog(ev) {
   });
 }
 
-// Remove, the kebab's last item, behind the vendored confirm sheet (#1438).
+// Remove, the kebab's last item, behind the vendored confirm sheet.
 export async function removeJob(job) {
   const ok = await confirmDialog({
     title: 'Remove ' + job.name + '?',
@@ -438,7 +438,7 @@ export function openJobDialog(job) {
   els.jobScriptInput.value = job ? job.script_path : '';
   els.jobArgsInput.value = job ? (job.args || '') : '';
 
-  // Job-kind registry (issue #70). Empty kind = "auto (from extension)",
+  // Job-kind registry. Empty kind = "auto (from extension)",
   // the back-compat default every pre-existing job round-trips through.
   const kindConfig = (job && job.kind_config) || {};
   if (els.jobKindInput) els.jobKindInput.value = (job && job.kind) || '';
@@ -534,7 +534,7 @@ function syncScheduleFields() {
   if (els.jobScheduleOnceRow) els.jobScheduleOnceRow.hidden = t !== 'once';
 }
 
-// Job-kind registry (issue #70). "" (auto) and every file-kind
+// Job-kind registry. "" (auto) and every file-kind
 // (python/batch/powershell/shell-wsl) show the plain script-path row;
 // inline-shell swaps it for a body textarea + extension picker; http-check
 // swaps it for url/method/expect-status/timeout. Args apply to every kind
@@ -589,7 +589,7 @@ function buildSchedule() {
   return { type: 'none' };
 }
 
-// Pre-flight problems (issue #69). The last-submitted payload is held so
+// Pre-flight problems. The last-submitted payload is held so
 // "Save anyway" can re-POST it with acknowledge_warnings:true once the
 // user has seen the warnings.
 let lastJobPayload = null;
@@ -625,7 +625,7 @@ function renderPreflightProblems(problems) {
   host.hidden = (problems || []).length === 0;
 }
 
-// Job-kind registry (issue #70). Returns {kind, script_path, kind_config}
+// Job-kind registry. Returns {kind, script_path, kind_config}
 // for whichever kind group is currently visible — the two non-file kinds
 // carry their settings in kind_config and leave script_path empty; every
 // other kind (including "" / auto) is the plain script_path path.
@@ -677,7 +677,7 @@ function buildJobPayload() {
   // Empty → omit on create (server stores null); on edit, send an explicit
   // null so blanking the field actually clears a previously-set value —
   // edit_job only patches keys present in the body, so omitting the key
-  // means "leave unchanged," not "clear" (issue #409). "0" → same as empty
+  // means "leave unchanged," not "clear". "0" → same as empty
   // (treated as off). Negative or non-numeric → tell the user; the server
   // cap (>86400) we let the server reject so the limit lives in one place.
   const cdRaw = els.jobCooldownInput ? els.jobCooldownInput.value.trim() : '';
@@ -697,15 +697,15 @@ function buildJobPayload() {
   const mg = els.jobMutexGroupInput ? els.jobMutexGroupInput.value.trim() : '';
   if (mg) payload.mutex_group = mg;
   else if (dialogTargetId) payload.mutex_group = null;  // clear on edit
-  // Chain edges (issue #68 PR #3). Always send both keys on submit so a
+  // Chain edges. Always send both keys on submit so a
   // user un-checking the last entry actually clears it server-side.
   payload.on_success = readChainList(els.jobOnSuccessList, 'on_success');
   payload.on_failure = readChainList(els.jobOnFailureList, 'on_failure');
-  // Alert-to-Telegram-on-failure (issue #597). Always send so unchecking clears it.
+  // Alert-to-Telegram-on-failure. Always send so unchecking clears it.
   payload.alert_on_failure = !!(els.jobAlertOnFailureInput && els.jobAlertOnFailureInput.getAttribute('aria-checked') === 'true');
-  // Confirm-on-fire (issue #69). Always send so unchecking clears it.
+  // Confirm-on-fire. Always send so unchecking clears it.
   payload.confirm = !!(els.jobConfirmInput && els.jobConfirmInput.getAttribute('aria-checked') === 'true');
-  // Webhook trigger (issue #73). null clears an existing config when the
+  // Webhook trigger. null clears an existing config when the
   // provider is set back to "None" on edit.
   payload.webhook = buildWebhookField();  // may throw
   return payload;
@@ -726,7 +726,7 @@ async function postJobPayload(payload) {
     // dialog open, show the warnings, and offer "Save anyway".
     if (res && res.saved === false) {
       renderPreflightProblems(res.warnings || []);
-      // Modal contract (#545): exactly one full-width primary action —
+      // Modal contract: exactly one full-width primary action —
       // swap the submit button out for "Save anyway" rather than stacking both.
       if (els.jobSaveAnyway) els.jobSaveAnyway.hidden = false;
       if (els.jobSaveBtn) els.jobSaveBtn.hidden = true;
@@ -826,7 +826,7 @@ export function wireJobDialogs() {
     });
   }
   // Alert-on-failure + Require-confirmation + Dry-run role="switch"
-  // buttons (issue #355) — no native checkbox toggling any more, so the
+  // buttons — no native checkbox toggling any more, so the
   // click has to flip aria-checked.
   [els.jobAlertOnFailureInput, els.jobConfirmInput, els.jobRunDialogDryRun].forEach(function (btn) {
     if (!btn) return;
