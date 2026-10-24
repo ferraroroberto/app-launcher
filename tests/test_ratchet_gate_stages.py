@@ -1,4 +1,4 @@
-"""The gate's docs-, structure-, instruction- and doc-refs-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction-, doc-refs- and dead-code-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -49,6 +49,10 @@ def _stage(name: str) -> str:
     ("doc_refs", {"README.md": "# T\n\nRun `scripts/missing.py` first.\n"}, 1,
      ["doc refs ratchet failed", "README.md", "scripts/missing.py"]),
     ("doc_refs", {"README.md": "# T\n\nPlain prose.\n"}, 0, ["STAGE-PASSED"]),
+    ("dead_code", {"src/a.py": "def broken(:\n"}, 1, ["dead code ratchet NOT CONFIRMED ("]),
+    ("dead_code", {"src/a.py": "def never_called():\n    pass\n"}, 1,
+     ["dead code ratchet failed", "src/a.py", "never_called"]),
+    ("dead_code", {"src/a.py": "def used():\n    pass\n\n\nused()\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
