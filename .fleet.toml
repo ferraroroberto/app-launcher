@@ -70,6 +70,7 @@ static_ratchet = { src = "scripts/static_ratchet.py", sha = "f0e6f5449ecf64c9b18
 docs_ratchet = { src = "scripts/docs_ratchet.py", sha = "fdb750461997c4a13eacea8091f115ff12bba564", dest = "scripts/docs_ratchet.py" }
 build_info = { src = "src/build_info.py", sha = "c9e54e917fd3cbc96011d6c09f9d363af460b205", dest = "src/build_info.py" }
 structure_ratchet = { src = "scripts/structure_ratchet.py", sha = "84d2b12ab416551762e4a615e4a706df91cea69f", dest = "scripts/structure_ratchet.py" }
+instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "60fdd0350f18d28838428b2e773f7868f6381fbf", dest = "scripts/instruction_ratchet.py" }
 shot_capture = { src = "tests/e2e/_shot.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "scripts/shot_baseline.py" }
 
@@ -133,6 +134,21 @@ baseline = ".docs-ratchet-baseline.json"
 [structure_ratchet]
 enabled  = true
 baseline = ".structure-ratchet-baseline.json"
+
+# ---------------------------------------------------------------------------
+# [instruction_ratchet] -- the scaffold's baseline-and-ratchet lint of the
+# fleet's prompt-audit rules over this repo's instruction files (CLAUDE.md,
+# AGENTS.md and every SKILL.md plus the docs a skill links to).
+# scripts/verify-before-ship.ps1 runs scripts/instruction_ratchet.py, which fails
+# when a file's count of hits for a rule rises above
+# .instruction-ratchet-baseline.json or a file passes its size cap. Existing
+# hits are baselined at today's count, never excluded. Exit 3 (git unusable, a
+# file that is not UTF-8, a fence that never closes, an unreadable skill
+# description) fails the gate. Procedure and limits: project-scaffolding
+# docs/instruction-ratchet.md.
+[instruction_ratchet]
+enabled  = true
+baseline = ".instruction-ratchet-baseline.json"
 
 # ---------------------------------------------------------------------------
 # [test_weight] -- test-to-code ratchet. scripts/verify-before-ship.ps1
@@ -574,6 +590,10 @@ label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
 path  = ".docs-ratchet-baseline.json"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = ".instruction-ratchet-baseline.json"
 label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
