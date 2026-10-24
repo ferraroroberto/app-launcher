@@ -28,6 +28,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import open_session_row, stub_session_mirror
+from tests.e2e.test_chat_live_refresh import _pull
 
 pytestmark = pytest.mark.smoke
 
@@ -96,23 +97,6 @@ def _boot(page: Page, base_url: str, pages: dict) -> list:
                      mode="chat")
     expect(page.locator("#transcriptList .tr-assistant")).to_contain_text(["newest reply"])
     return calls
-
-
-def _pull(page: Page, dy: int) -> None:
-    """Drag one finger ``dy`` px on the Chat list (+ down, - up), as #1292's
-    pull gestures read it: a touchstart, then a touchend ``dy`` further on."""
-    page.evaluate("""(dy) => {
-        const box = document.getElementById('transcriptBody');
-        const fire = (type, y) => {
-            const ev = new Event(type, {bubbles: true});
-            const pt = [{clientX: 20, clientY: y}];
-            Object.defineProperty(ev, 'touches', {value: type === 'touchend' ? [] : pt});
-            Object.defineProperty(ev, 'changedTouches', {value: pt});
-            box.dispatchEvent(ev);
-        };
-        fire('touchstart', 300);
-        fire('touchend', 300 + dy);
-    }""", dy)
 
 
 _NEWEST = _page_body([_turn("user", "newest prompt"), _tool(0), _turn("assistant", "newest reply")], 9000)

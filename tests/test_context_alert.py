@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from src.subprocess_flags import NO_WINDOW
 
 pytestmark = pytest.mark.skipif(
     shutil.which("node") is None, reason="Node.js is required"
@@ -31,6 +32,7 @@ def test_context_alert():
         capture_output=True,
         text=True,
         timeout=30,
+        creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
         "dom-utils.js contextAlert failed its Node-side pin:\n"

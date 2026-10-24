@@ -17,26 +17,14 @@ from __future__ import annotations
 
 import json as _json
 import re
-import time
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import stable_eval
+from tests.e2e.test_board_nav_badge import _session
 
 pytestmark = pytest.mark.smoke
-
-_NOW = int(time.time())
-
-
-def _session(sid: str, column, status, **extra) -> dict:
-    s = {"session_id": sid, "kind": "pty", "agent": "claude", "label": "",
-         "project_dir": "E:/work/" + sid, "name": sid, "flags": "",
-         "started_at": _NOW - 600, "alive": True, "rows": 40, "cols": 120,
-         "live_title": "", "prompt_title": sid + " title", "manual_title": "",
-         "output_chars": 10, "board_column": column, "board_status": status}
-    s.update(extra)
-    return s
 
 
 _CHIEF = _session("s-chief", "claude_turn", "awaiting-input", label="chief",

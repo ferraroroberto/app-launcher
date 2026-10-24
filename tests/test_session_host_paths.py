@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 from src import session_host_paths
+from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_MD = _REPO_ROOT / "CLAUDE.md"
@@ -191,7 +192,8 @@ class TestPathsTouchedBetween:
         no_hooks = tmp_path / "no-hooks"
         no_hooks.mkdir()
         run = lambda *args: subprocess.run(  # noqa: E731
-            ["git", *args], cwd=repo, check=True, capture_output=True, text=True
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True,
+            creationflags=NO_WINDOW,
         )
         run("init", "-q")
         # This machine's global git config points core.hooksPath at a
@@ -211,13 +213,15 @@ class TestPathsTouchedBetween:
         repo = self._init_repo(tmp_path)
 
         def commit(message: str) -> str:
-            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
             subprocess.run(
-                ["git", "commit", "-q", "-m", message], cwd=repo, check=True, capture_output=True
+                ["git", "commit", "-q", "-m", message], cwd=repo, check=True, capture_output=True,
+                creationflags=NO_WINDOW,
             )
             return subprocess.run(
                 ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
                 capture_output=True, text=True,
+                creationflags=NO_WINDOW,
             ).stdout.strip()
 
         (repo / "src").mkdir()
@@ -235,9 +239,10 @@ class TestPathsTouchedBetween:
     def test_returns_none_for_unresolvable_sha(self, tmp_path):
         repo = self._init_repo(tmp_path)
         (repo / "other.py").write_text("v1", encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
         subprocess.run(
-            ["git", "commit", "-q", "-m", "base"], cwd=repo, check=True, capture_output=True
+            ["git", "commit", "-q", "-m", "base"], cwd=repo, check=True, capture_output=True,
+            creationflags=NO_WINDOW,
         )
         result = session_host_paths.paths_touched_between(
             repo, "deadbee", "HEAD", ["src/session_host.py"]
@@ -266,13 +271,15 @@ class TestShaContainsCommit:
 
     def _commit(self, repo: Path, name: str) -> str:
         (repo / f"{name}.txt").write_text(name, encoding="utf-8")
-        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
         subprocess.run(
-            ["git", "commit", "-q", "-m", name], cwd=repo, check=True, capture_output=True
+            ["git", "commit", "-q", "-m", name], cwd=repo, check=True, capture_output=True,
+            creationflags=NO_WINDOW,
         )
         return subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"], cwd=repo, check=True,
             capture_output=True, text=True,
+            creationflags=NO_WINDOW,
         ).stdout.strip()
 
     def test_true_when_sha_descends_from_commit(self, tmp_path):

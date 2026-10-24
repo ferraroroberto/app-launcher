@@ -100,7 +100,9 @@ async def transcribe_events(vid: str, request: Request) -> StreamingResponse:
 
     async def _pump():
         try:
-            async with httpx.AsyncClient(verify=False, timeout=None) as client:
+            # A partial-transcript stream stays open as long as the dictation does,
+            # so a read deadline would cut a live stream.
+            async with httpx.AsyncClient(verify=False, timeout=None) as client:  # noqa: S113
                 async with client.stream("GET", url) as upstream:
                     if upstream.status_code >= 400:
                         yield (
@@ -285,7 +287,9 @@ async def tts_speak(request: Request) -> StreamingResponse:
     # Open the upstream stream first so the hub's X-Sample-Rate header can be
     # forwarded on the response (it must be set before streaming begins). This
     # mirrors the hub's own /v1/audio/speech streaming proxy.
-    client = httpx.AsyncClient(timeout=None)
+    # The speech stream's length follows the text, so a read deadline would cut
+    # a long reply short.
+    client = httpx.AsyncClient(timeout=None)  # noqa: S113
     stream_cm = client.stream("POST", upstream_url, json=payload)
     try:
         upstream = await stream_cm.__aenter__()

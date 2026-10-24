@@ -416,15 +416,6 @@ class TestPauseResume:
 class TestChainValidation:
     """``on_success`` / ``on_failure`` shape + cycle detection (#68 PR #3)."""
 
-    def _two_jobs(self, **j2_extras):
-        j1 = job_from_dict(
-            {"id": "j1", "name": "J1", "script_path": "C:\\a.py"}
-        )
-        j2 = job_from_dict(
-            {"id": "j2", "name": "J2", "script_path": "C:\\b.py", **j2_extras}
-        )
-        return JobsConfig(jobs=[j1, j2])
-
     def test_default_lists_are_empty(self):
         job = job_from_dict(
             {"id": "x", "name": "X", "script_path": "C:\\x.py"}

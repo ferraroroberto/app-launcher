@@ -164,15 +164,6 @@ def _menu_item(page: Page, name: str):
     return menu.get_by_role("menuitem", name=name)
 
 
-# The row's own action menu (#1025), mounted on <body> while open (#1565).
-# `name` is the item's accessible name: its `ariaLabel`, else its caption.
-def _row_menu_item(page: Page, row, name: str):
-    row.locator(".session-kebab").click()
-    menu = page.locator(".session-menu")
-    expect(menu).to_be_visible()
-    return menu.get_by_role("menuitem", name=name)
-
-
 @pytest.mark.iphone
 def test_row_carries_a_centred_kebab_and_no_chevron(
     authed_page: Page, base_url: str

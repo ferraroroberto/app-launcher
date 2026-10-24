@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from app.session_host import server as session_host_server
+from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "attach_batch.test.mjs"
@@ -36,6 +37,7 @@ def test_attach_queue_size_check_and_summary():
         capture_output=True,
         text=True,
         timeout=30,
+        creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
         "attach-batch.js failed its Node-side pin:\n"

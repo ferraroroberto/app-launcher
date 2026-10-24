@@ -70,3 +70,28 @@ AUDIO_MOCK = """
   };
 })()
 """
+
+
+# The MediaRecorder stand-in the dictation tests share: it fires one
+# `dataavailable` then `stop` synchronously on .stop(), mirroring the real
+# start->stop->blob flow the handler depends on, and accepts (and ignores) the
+# timeslice arg the streaming path passes to .start(). A test that needs a
+# different take subclasses it, then installs its own class on window.
+RECORDER_BASE_JS = """  class FakeRecorder {
+    constructor(stream, opts) {
+      this.stream = stream;
+      this.mimeType = (opts && opts.mimeType) || 'audio/webm';
+      this.state = 'inactive';
+      this._listeners = {};
+    }
+    addEventListener(ev, cb) { this._listeners[ev] = cb; }
+    start(_timeslice) { this.state = 'recording'; }
+    stop() {
+      this.state = 'inactive';
+      const da = this._listeners['dataavailable'];
+      if (da) da({ data: new Blob(['fake-audio'], { type: this.mimeType }) });
+      const st = this._listeners['stop'];
+      if (st) st();
+    }
+  }
+"""

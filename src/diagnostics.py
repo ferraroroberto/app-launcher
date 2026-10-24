@@ -11,7 +11,6 @@ import os
 import socket
 import ssl
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, List, Optional
 
 try:

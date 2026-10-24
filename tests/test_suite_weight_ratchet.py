@@ -8,19 +8,20 @@ from pathlib import Path
 import pytest
 
 from scripts import suite_weight_ratchet as ratchet
+from src.subprocess_flags import NO_WINDOW
 
 
 def _repo(tmp_path: Path, ceiling: str, files: dict[str, str]) -> Path:
     """A git repo with ``.fleet.toml`` at ``ceiling`` and ``files`` tracked or left untracked."""
     repo = tmp_path / "repo"
     repo.mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
     (repo / ".fleet.toml").write_text(f'[test_weight]\nratio_ceiling = "{ceiling}"\n', encoding="utf-8")
     for path, text in files.items():
         (repo / path).parent.mkdir(parents=True, exist_ok=True)
         (repo / path).write_text(text, encoding="utf-8")
     if (repo / "src").exists():
-        subprocess.run(["git", "add", "src"], cwd=repo, check=True, capture_output=True)
+        subprocess.run(["git", "add", "src"], cwd=repo, check=True, capture_output=True, creationflags=NO_WINDOW)
     return repo
 
 

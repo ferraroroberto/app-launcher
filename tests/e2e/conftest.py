@@ -1178,16 +1178,6 @@ def open_row_menu(page: Page):
     return page.locator(".row-menu")
 
 
-def session_menu_item(page: Page, name: str):
-    """Open the overlay bar's ⋮ menu and return the item named ``name``
-    (``Rename session`` / ``Copy session link`` / ``Stop and kill session``).
-    The overlay must already be open. The open menu is mounted on <body>
-    (the vendored row-menu, #1565), not inside the overlay."""
-    page.locator("#terminalMenu").click()
-    expect(page.locator(".terminal-menu")).to_be_visible()
-    return page.get_by_role("menuitem", name=name)
-
-
 @pytest.fixture(autouse=True)
 def _bound_default_timeouts(context: BrowserContext) -> None:
     # Set on the context, not a single page: authed_page / unauthed_page each
