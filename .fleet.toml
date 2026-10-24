@@ -6,6 +6,10 @@ layer       = "enabling"
 icon        = "🚀"
 port        = ":8445"
 description = "<b>Where I live</b> — phone-first hub: Coding · Apps · Jobs · Life OS · Board."
+shape       = "webapp-tray"
+# `webapp/` holds the gitignored runtime state the tray writes (briefs, verify logs,
+# certificates); the preset lists `assets/` and `config/` already.
+extra_roots = ["webapp"]
 
 # ---------------------------------------------------------------------------
 # [worktree] -- gitignored paths fleet-config junctions from this primary
@@ -65,6 +69,7 @@ comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "e56308e1c099712cf
 static_ratchet = { src = "scripts/static_ratchet.py", sha = "f0e6f5449ecf64c9b188ed394c2a9fd8ff678406", dest = "scripts/static_ratchet.py" }
 docs_ratchet = { src = "scripts/docs_ratchet.py", sha = "fdb750461997c4a13eacea8091f115ff12bba564", dest = "scripts/docs_ratchet.py" }
 build_info = { src = "src/build_info.py", sha = "c9e54e917fd3cbc96011d6c09f9d363af460b205", dest = "src/build_info.py" }
+structure_ratchet = { src = "scripts/structure_ratchet.py", sha = "84d2b12ab416551762e4a615e4a706df91cea69f", dest = "scripts/structure_ratchet.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
@@ -111,6 +116,21 @@ exclude  = ["**/_vendored/**"]
 [docs_ratchet]
 enabled  = true
 baseline = ".docs-ratchet-baseline.json"
+
+# ---------------------------------------------------------------------------
+# [structure_ratchet] -- the scaffold's baseline-and-ratchet layout stage.
+# scripts/verify-before-ship.ps1 runs scripts/structure_ratchet.py, which fails when
+# a new file passes 1,000 lines, a new function 100 lines or a flat directory 40
+# modules, when a baselined offender grows past its size in
+# .structure-ratchet-baseline.json, when a `src` file imports `app`, and when the
+# root folders do not match `shape` plus `extra_roots`. Existing offenders are
+# baselined at today's size, never excluded; vendored destinations are skipped by
+# the script itself. Exit 3 (git unusable, an unparseable file, an unknown shape)
+# fails the gate. Where code goes: docs/layout.md; procedure and limits:
+# project-scaffolding docs/structure-ratchet.md.
+[structure_ratchet]
+enabled  = true
+baseline = ".structure-ratchet-baseline.json"
 
 # ---------------------------------------------------------------------------
 # [test_weight] -- test-to-code ratchet. scripts/verify-before-ship.ps1

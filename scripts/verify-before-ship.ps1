@@ -169,6 +169,17 @@ try {
     if ($docsExit -eq 3) { Fail "docs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence/comment that never closes)." }
     if ($docsExit -ne 0) { Fail "docs ratchet failed (exit $docsExit): README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .docs-ratchet-baseline.json." }
 
+    # Structure ratchet (scaffold docs/structure-ratchet.md): file size, function
+    # length, flat directories, the src -> app layer contract and the root layout
+    # may not rise above .structure-ratchet-baseline.json. Whole tree, never
+    # path-routed; exit 3 means git was unusable, a file could not be read or parsed,
+    # or the declared shape is unknown, a failure and never a pass.
+    Phase "structure ratchet..."
+    & $python scripts/structure_ratchet.py
+    $structureExit = $LASTEXITCODE
+    if ($structureExit -eq 3) { Fail "structure ratchet NOT CONFIRMED (git was unusable, a file could not be read or parsed, or the declared shape is unknown)." }
+    if ($structureExit -ne 0) { Fail "structure ratchet failed (exit $structureExit): a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .structure-ratchet-baseline.json." }
+
     # Worker counts for both pytest phases live in e2e-gate-route.ps1 (#1231,
     # #1512); a bad override fails here, before any phase runs.
     . (Join-Path $PSScriptRoot "e2e-gate-route.ps1")
