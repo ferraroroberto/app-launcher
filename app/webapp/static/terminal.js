@@ -259,12 +259,7 @@ export function stashActiveTerminal() {
   updateLatestPill();
   // Release any keyboard-driven override (issue #135) so the next open
   // starts from the CSS-driven full height and inset:0 origin.
-  if (els.terminalOverlay) {
-    els.terminalOverlay.style.height = '';
-    els.terminalOverlay.style.bottom = '';
-    els.terminalOverlay.style.top = '';
-    delete els.terminalOverlay.dataset.keyboard;
-  }
+  releaseOverlayPin();
 }
 
 // Full teardown of one terminal (cache eviction, session gone, mirror
@@ -343,15 +338,7 @@ export async function attachTerminalPane(session) {
   // front instead of opening a terminal that only says "Disconnected".
   if (state.status && state.status.terminal &&
       state.status.terminal.reachable === false) {
-    stashActiveTerminal();
-    showSessionShell(session);
-    // An unreachable origin is never a mirror: shed a ?terminal= marker (#940).
-    dropEarlyMirrorMarker();
-    setTerminalStatus(
-      state.status.terminal.reason ||
-        'The live terminal is Tailscale-only.',
-      { icon: 'lock' }
-    );
+    showUnreachableTerminal(session);
     return;
   }
 
@@ -373,7 +360,81 @@ export async function attachTerminalPane(session) {
   // the PTY — the phone is the single size authority, so the two clients
   // never fight (the server also ignores resize frames from role=pc).
   const isMirror = isMirrorWindowSession();
+  syncPaneChrome(session, isMirror);
 
+  // Warm re-open (#430): the session's terminal is still alive from a
+  // previous open — show its already-painted frame and reuse its WS.
+  // Nothing is re-subscribed, so the session-host never fires the repaint
+  // nudge and ratatui never re-emits the transcript. Only if the WS died
+  // while stashed (iOS killed it in the background) do we reconnect,
+  // which falls back to the concealed clear+repaint path.
+  const cached = _termCache.get(sid);
+  if (cached && cached.term) {
+    resumeCachedTerminal(sid, cached, tt);
+    return;
+  }
+
+  const xterm = openXterm(isMirror);
+  const t = {
+    sid: sid, ws: null, tt: tt, term: xterm.term, fit: xterm.fit,
+    webgl: xterm.webgl,
+    mirror: isMirror, retryCount: 0, giveUpAt: 0,
+    retryTimer: null, visibilityListener: null, tapHandler: null,
+    disposeTouch: null, disposeLatest: null,
+    isFullscreen: isFullscreenAgent(session, sid),
+    // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
+    // same-size resize frames; fsSized gates the fullscreen pan path until
+    // the first real fit has run; batch* is owned by terminal-connection.js.
+    // resizeSettleTimer holds a pending settled resize frame (#930).
+    lastSentSize: null, fsSized: false, resizeSettleTimer: null,
+    batchBuf: null, batchTimer: null, batchQuietTimer: null, batchDeadline: 0,
+    onShutdown: closeTerminal,
+  };
+  state.terminal = t;
+  registerWarmTerminal(t);
+  // Sync the overlay chrome with any user background override (#381) —
+  // the constructor already resolved theme + contrast for xterm itself.
+  applyTermTheme();
+
+  startTitleRefresh(t);
+
+  // Native iOS momentum (fling) scrolling on the phone (issue #23).
+  // Skipped for the PC mirror window — it scrolls with a wheel and
+  // should keep mouse text-selection.
+  if (!isMirror) t.disposeTouch = enableNativeTouchScroll(t.term);
+  t.disposeLatest = watchLatestPill(t);
+
+  t.applySize = function () { applyTerminalSize(t, session); };
+  wireSizeTracking(t);
+
+  t.term.onData(function (d) {
+    // Typing during a repaint batch (#430): flush first so the echo isn't
+    // held back behind the batch's quiet-gap/deadline window.
+    flushRepaintBatch(t);
+    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
+      t.ws.send(JSON.stringify({ type: 'input', data: d }));
+    }
+  });
+
+  connectTerminalWs(t);
+}
+
+// The unreachable-origin face of the pane: a lock icon and the reason,
+// no terminal.
+function showUnreachableTerminal(session) {
+  stashActiveTerminal();
+  showSessionShell(session);
+  // An unreachable origin is never a mirror: shed a ?terminal= marker (#940).
+  dropEarlyMirrorMarker();
+  setTerminalStatus(
+    state.status.terminal.reason ||
+      'The live terminal is Tailscale-only.',
+    { icon: 'lock' }
+  );
+}
+
+// Per-open chrome around the pane that doesn't depend on a terminal object.
+function syncPaneChrome(session, isMirror) {
   // The composer (issue #37, always docked since #980) is phone-only — the
   // PC mirror already has a real keyboard with full predictive support.
   // Reset visible on every (non-mirror) open so a prior mirror open can't
@@ -398,42 +459,40 @@ export async function attachTerminalPane(session) {
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
   // with WM_CLOSE on Stop & Close (issue #20).
-  if (isMirror) announceMirrorWindow(sid, sessionTitle(session));
+  if (isMirror) announceMirrorWindow(session.session_id, sessionTitle(session));
+}
 
-  // Warm re-open (#430): the session's terminal is still alive from a
-  // previous open — show its already-painted frame and reuse its WS.
-  // Nothing is re-subscribed, so the session-host never fires the repaint
-  // nudge and ratatui never re-emits the transcript. Only if the WS died
-  // while stashed (iOS killed it in the background) do we reconnect,
-  // which falls back to the concealed clear+repaint path.
-  const cached = _termCache.get(sid);
-  if (cached && cached.term) {
-    _termCache.delete(sid);
-    _termCache.set(sid, cached);
-    cached.tt = tt;
-    state.terminal = cached;
-    if (cached.term.element) cached.term.element.style.display = '';
-    applyTermTheme();
-    const wsAlive = cached.ws &&
-      (cached.ws.readyState === WebSocket.CONNECTING ||
-       cached.ws.readyState === WebSocket.OPEN);
-    if (wsAlive) {
-      if (cached.ws.readyState === WebSocket.OPEN) setTerminalStatus(null);
-      if (cached.applySize) cached.applySize();
-      try {
-        cached.term.refresh(0, cached.term.rows - 1);
-        cached.term.scrollToBottom();
-      } catch (_) { /* best effort */ }
-      updateLatestPill();
-      cached.term.focus();
-    } else {
-      cached.retryCount = 0;
-      cached.giveUpAt = 0;
-      connectTerminalWs(cached);
-    }
-    return;
+// Re-show a warm terminal: LRU-touch it, repaint, and either reuse its
+// live WS or reconnect.
+function resumeCachedTerminal(sid, cached, tt) {
+  _termCache.delete(sid);
+  _termCache.set(sid, cached);
+  cached.tt = tt;
+  state.terminal = cached;
+  if (cached.term.element) cached.term.element.style.display = '';
+  applyTermTheme();
+  const wsAlive = cached.ws &&
+    (cached.ws.readyState === WebSocket.CONNECTING ||
+     cached.ws.readyState === WebSocket.OPEN);
+  if (wsAlive) {
+    if (cached.ws.readyState === WebSocket.OPEN) setTerminalStatus(null);
+    if (cached.applySize) cached.applySize();
+    try {
+      cached.term.refresh(0, cached.term.rows - 1);
+      cached.term.scrollToBottom();
+    } catch (_) { /* best effort */ }
+    updateLatestPill();
+    cached.term.focus();
+  } else {
+    cached.retryCount = 0;
+    cached.giveUpAt = 0;
+    connectTerminalWs(cached);
   }
+}
 
+// Build the xterm instance (+ fit addon on the phone, + WebGL renderer) and
+// open it into the host.
+function openXterm(isMirror) {
   // Source the terminal colours from the design tokens so they can't fork
   // from the stylesheet (issue #314). --term-bg/--term-fg are the
   // terminal-screen tokens (issue #355), following the app theme
@@ -458,11 +517,14 @@ export async function attachTerminalPane(session) {
     term.loadAddon(new window.WebLinksAddon.WebLinksAddon());
   } catch (_) { /* optional */ }
   term.open(els.terminalHost);
+  return { term: term, fit: fit, webgl: loadWebgl(term) };
+}
 
-  // GPU-accelerated renderer. Falls back to the default DOM renderer
-  // on any failure (no WebGL2, driver bug, OS reclaiming the context
-  // under memory pressure). Without the fallback the terminal would
-  // freeze; with it, worst case is same perf as before.
+// GPU-accelerated renderer. Falls back to the default DOM renderer
+// on any failure (no WebGL2, driver bug, OS reclaiming the context
+// under memory pressure). Without the fallback the terminal would
+// freeze; with it, worst case is same perf as before.
+function loadWebgl(term) {
   let webgl = null;
   try {
     if (window.WebglAddon && window.WebglAddon.WebglAddon) {
@@ -477,16 +539,19 @@ export async function attachTerminalPane(session) {
     try { if (webgl) webgl.dispose(); } catch (_) {}
     webgl = null;
   }
+  return webgl;
+}
 
-  // Full-screen differential agents (Codex/Antigravity/Copilot ratatui)
-  // drive the pan-not-reflow keyboard path (issue #264): on these the phone
-  // pans the fixed canvas above the keyboard rather than resizing the PTY.
-  // Resolved off the live /api/agents flag; an unknown/missing agent (or a
-  // degraded fallback agents list) reads as non-fullscreen — Claude's
-  // inline reflow (#135), the safe default. Board drill-down and ?session=
-  // deep links pass a synthetic {session_id, name} with no agent field
-  // (#430) — resolve it from the sessions list so a Codex session opened
-  // from the Board still gets the fullscreen client handling.
+// Full-screen differential agents (Codex/Antigravity/Copilot ratatui)
+// drive the pan-not-reflow keyboard path (issue #264): on these the phone
+// pans the fixed canvas above the keyboard rather than resizing the PTY.
+// Resolved off the live /api/agents flag; an unknown/missing agent (or a
+// degraded fallback agents list) reads as non-fullscreen — Claude's
+// inline reflow (#135), the safe default. Board drill-down and ?session=
+// deep links pass a synthetic {session_id, name} with no agent field
+// (#430) — resolve it from the sessions list so a Codex session opened
+// from the Board still gets the fullscreen client handling.
+function isFullscreenAgent(session, sid) {
   const liveSession = (state.sessions || []).find(function (x) {
     return x.session_id === sid;
   });
@@ -494,254 +559,247 @@ export async function attachTerminalPane(session) {
   const knownAgent = (state.agents || []).find(function (a) {
     return a.id === agentId;
   });
-  const t = {
-    sid: sid, ws: null, tt: tt, term: term, fit: fit, webgl: webgl,
-    mirror: isMirror, retryCount: 0, giveUpAt: 0,
-    retryTimer: null, visibilityListener: null, tapHandler: null,
-    disposeTouch: null, disposeLatest: null,
-    isFullscreen: !!(knownAgent && knownAgent.fullscreen),
-    // Resize-dedupe + repaint-batch state (#430). lastSentSize suppresses
-    // same-size resize frames; fsSized gates the fullscreen pan path until
-    // the first real fit has run; batch* is owned by terminal-connection.js.
-    // resizeSettleTimer holds a pending settled resize frame (#930).
-    lastSentSize: null, fsSized: false, resizeSettleTimer: null,
-    batchBuf: null, batchTimer: null, batchQuietTimer: null, batchDeadline: 0,
-    onShutdown: closeTerminal,
-  };
-  state.terminal = t;
-  // Register in the warm cache (#430) and evict the least-recently-used
-  // beyond the cap — a full teardown, so its WS/GL context are released.
-  _termCache.set(sid, t);
+  return !!(knownAgent && knownAgent.fullscreen);
+}
+
+// Register in the warm cache (#430) and evict the least-recently-used
+// beyond the cap — a full teardown, so its WS/GL context are released.
+function registerWarmTerminal(t) {
+  _termCache.set(t.sid, t);
   while (_termCache.size > _TERM_CACHE_MAX) {
     const oldest = _termCache.values().next().value;
     if (!oldest || oldest === t) break;
     disposeTerminal(oldest);
   }
-  // Sync the overlay chrome with any user background override (#381) —
-  // the constructor already resolved theme + contrast for xterm itself.
-  applyTermTheme();
+}
 
-  // Live-refresh the title while the overlay is open (issue #266). The main
-  // sessions poll is paused under the overlay (main.js), so without this an
-  // open terminal / PC mirror window stays stuck on its first-paint title when
-  // the agent renames the conversation (or a first-prompt title lands). Reuses
-  // SESSIONS_POLL_MS so the session-fetch cadence is unchanged whether the
-  // overlay is open or closed — just a direct fetch with no Running-sessions
-  // list re-render, which is what the main poll's pause deliberately avoids.
+// Live-refresh the title while the overlay is open (issue #266). The main
+// sessions poll is paused under the overlay (main.js), so without this an
+// open terminal / PC mirror window stays stuck on its first-paint title when
+// the agent renames the conversation (or a first-prompt title lands). Reuses
+// SESSIONS_POLL_MS so the session-fetch cadence is unchanged whether the
+// overlay is open or closed — just a direct fetch with no Running-sessions
+// list re-render, which is what the main poll's pause deliberately avoids.
+function startTitleRefresh(t) {
   t.titleTimer = setInterval(function () {
     if (t !== state.terminal) return;
     jsonApi('/api/claude-code/sessions').then(function (body) {
       if (t !== state.terminal) return;
       const s = (body.sessions || []).find(function (x) {
-        return x.session_id === sid;
+        return x.session_id === t.sid;
       });
       if (s) refreshTerminalTitle(t, s);
     }).catch(function () { /* best-effort; title just won't refresh */ });
   }, SESSIONS_POLL_MS);
+}
 
-  // Native iOS momentum (fling) scrolling on the phone (issue #23).
-  // Skipped for the PC mirror window — it scrolls with a wheel and
-  // should keep mouse text-selection.
-  if (!isMirror) t.disposeTouch = enableNativeTouchScroll(term);
-  t.disposeLatest = watchLatestPill(t);
+// Hand the overlay back to its CSS-driven full height and inset:0 origin.
+function releaseOverlayPin() {
+  if (!els.terminalOverlay) return;
+  els.terminalOverlay.style.height = '';
+  els.terminalOverlay.style.bottom = '';
+  els.terminalOverlay.style.top = '';
+  delete els.terminalOverlay.dataset.keyboard;
+}
 
-  function applySize() {
-    // A stashed warm terminal (#430) is inert: its resize listeners stay
-    // bound while hidden, but only the ACTIVE terminal may touch the
-    // shared overlay chrome or its own layout. Resume re-runs applySize.
-    // Same while the Chat pane is showing (#982): the host is display:none,
-    // so fit() would measure 0 rows/cols, floor to the PTY minimum and
-    // SIGWINCH the agent into a repaint (#930's class of bug) — the switch
-    // back to Terminal re-runs applySize once against the real box.
-    if (t !== state.terminal || inChatMode()) return;
-    if (isMirror) {
-      // Match the phone's PTY dimensions; never touch the PTY itself.
-      const s = (state.sessions || []).find(function (x) {
-        return x.session_id === sid;
-      });
-      const cols = (s && s.cols) || session.cols || 120;
-      const rows = (s && s.rows) || session.rows || 40;
-      try { term.resize(cols, rows); } catch (_) {}
-      return;
-    }
-    // Pin the overlay to the visual viewport when the keyboard is up so
-    // its bottom edge lands at the top of the keyboard and the prompt
-    // stays visible — then fit() reflows xterm to the smaller box
-    // (issue #135). iOS doesn't just shrink the visual viewport for the
-    // keyboard, it also shifts it *down* (visualViewport.offsetTop > 0)
-    // to sweep the focused line into view; a position:fixed; inset:0
-    // overlay is anchored to the layout-viewport top, so unless we match
-    // that offset it slides up off-screen — clipping the top rows and
-    // exposing a band of the page behind it just above the keyboard.
-    // Track both the height and the offset. Released (back to CSS 100dvh)
-    // when the keyboard hides. Must run *before* fit() so it measures the
-    // new host size.
-    const vp = window.visualViewport;
-    const kbH = (vp && els.terminalOverlay)
-      ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
-    if (vp && els.terminalOverlay) {
-      if (kbH != null) {
-        els.terminalOverlay.style.height = kbH + 'px';
-        els.terminalOverlay.style.bottom = 'auto';
-        els.terminalOverlay.style.top = Math.round(vp.offsetTop || 0) + 'px';
-        // Keyboard-up marker for CSS (#1219): the keyboard covers the home
-        // indicator, so the bottom status strip drops its safe-area inset.
-        // Set and cleared at exactly the sites that apply/undo this pin.
-        els.terminalOverlay.dataset.keyboard = 'up';
-      } else {
-        els.terminalOverlay.style.height = '';
-        els.terminalOverlay.style.bottom = '';
-        els.terminalOverlay.style.top = '';
-        delete els.terminalOverlay.dataset.keyboard;
-      }
-    }
-    // Full-screen differential agent: once sized, the PTY is PINNED for the
-    // rest of the session's lifetime — no further reflow, ever (#432b).
-    // EVERY change after the first real size (keyboard up/down, compose
-    // bar, browser chrome, a PWA layout-viewport shrink, OR a phone
-    // rotation) PANS/letterboxes the fixed-size canvas instead (#264,
-    // #430, #432). Empirical (#430 probe): Codex/ratatui re-emits its
-    // ENTIRE transcript on any winsize change — rows or cols, either
-    // direction (~65 KB on a long conversation) — so a single stray
-    // SIGWINCH replays the whole conversation through the phone terminal.
-    // iOS supports neither the manifest `orientation` member nor
-    // `ScreenOrientation.lock()`, so rotation can't be blocked at the
-    // platform level — pinning cols makes it harmless instead: landscape
-    // just shows the same portrait-width canvas letterboxed (xterm sizes
-    // its own canvas off `cols`, not the host box, so no extra CSS is
-    // needed). The host is overflow:hidden, so panned-off top rows clip
-    // cleanly; panning by the content-vs-box overflow also covers the
-    // keyboard-down case (overflow 0 → transform cleared). Claude (inline)
-    // and the fullscreen first-fit case fall through to the reflow path
-    // below, which also clears the pan.
-    // (The pan shortcut additionally requires a size to have been SENT —
-    // the pre-WS first fit sets fsSized, but the phone's authoritative
-    // size must still go out on the first open.)
-    if (t.isFullscreen && t.fsSized && t.lastSentSize) {
-      const screen = term.element &&
-        term.element.querySelector('.xterm-screen');
-      const contentH = screen ? screen.getBoundingClientRect().height : 0;
-      // Pan against the HOST's real box, not the visual-viewport height
-      // (#430 round 2): the overlay also holds the header bar and the
-      // compose bar, so the viewport height over-states the terminal's
-      // visible box by their combined height — under-panning by exactly
-      // that much and hiding the bottom rows (the prompt echo) behind
-      // the compose bar whenever the native keyboard is up. The overlay
-      // pinning above already resized the flex layout, so the host rect
-      // is the box the canvas actually shows through.
-      const boxH = els.terminalHost ?
-        els.terminalHost.getBoundingClientRect().height : 0;
-      const panY = terminalPanY(contentH, boxH);
-      if (term.element) {
-        term.element.style.transform =
-          panY ? ('translateY(-' + panY + 'px)') : '';
-      }
-      return;
-    }
-    if (term.element) term.element.style.transform = '';
-    try { if (fit) fit.fit(); } catch (_) {}
-    // Keep the prompt (bottom row) in view after a keyboard-driven
-    // reflow, but only if the user hadn't scrolled up to read history.
-    try {
-      const b = term.buffer.active;
-      if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
-    } catch (_) {}
-    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
-      // The first size on this terminal is the phone's authoritative one
-      // and goes out at once; every later change is settled (#930) so a
-      // keyboard sweep's intermediate samples never reach the PTY.
-      if (t.resizeSettleTimer) clearTimeout(t.resizeSettleTimer);
-      t.resizeSettleTimer = null;
-      if (t.lastSentSize) {
-        t.resizeSettleTimer = setTimeout(sendPtySize, RESIZE_SETTLE_MS);
-      } else {
-        sendPtySize();
-      }
-    }
-    t.fsSized = true;
+// Fit the terminal to its box and tell the PTY. A stashed warm terminal
+// (#430) is inert: its resize listeners stay bound while hidden, but only
+// the ACTIVE terminal may touch the shared overlay chrome or its own layout.
+// Resume re-runs applySize. Same while the Chat pane is showing (#982): the
+// host is display:none, so fit() would measure 0 rows/cols, floor to the PTY
+// minimum and SIGWINCH the agent into a repaint (#930's class of bug) — the
+// switch back to Terminal re-runs applySize once against the real box.
+function applyTerminalSize(t, session) {
+  if (t !== state.terminal || inChatMode()) return;
+  if (t.mirror) {
+    resizeMirrorTerm(t, session);
+    return;
   }
-  t.applySize = applySize;
+  pinOverlayToKeyboard();
+  if (t.isFullscreen && t.fsSized && t.lastSentSize) {
+    panFullscreenCanvas(t.term);
+    return;
+  }
+  reflowTerminal(t);
+}
 
-  function sendPtySize() {
+// Match the phone's PTY dimensions; never touch the PTY itself.
+function resizeMirrorTerm(t, session) {
+  const s = (state.sessions || []).find(function (x) {
+    return x.session_id === t.sid;
+  });
+  const cols = (s && s.cols) || session.cols || 120;
+  const rows = (s && s.rows) || session.rows || 40;
+  try { t.term.resize(cols, rows); } catch (_) {}
+}
+
+// Pin the overlay to the visual viewport when the keyboard is up so
+// its bottom edge lands at the top of the keyboard and the prompt
+// stays visible — then fit() reflows xterm to the smaller box
+// (issue #135). iOS doesn't just shrink the visual viewport for the
+// keyboard, it also shifts it *down* (visualViewport.offsetTop > 0)
+// to sweep the focused line into view; a position:fixed; inset:0
+// overlay is anchored to the layout-viewport top, so unless we match
+// that offset it slides up off-screen — clipping the top rows and
+// exposing a band of the page behind it just above the keyboard.
+// Track both the height and the offset. Released (back to CSS 100dvh)
+// when the keyboard hides. Must run *before* fit() so it measures the
+// new host size.
+function pinOverlayToKeyboard() {
+  const vp = window.visualViewport;
+  const kbH = (vp && els.terminalOverlay)
+    ? keyboardOverlayHeight(window.innerHeight, vp.height) : null;
+  if (!vp || !els.terminalOverlay) return;
+  if (kbH != null) {
+    els.terminalOverlay.style.height = kbH + 'px';
+    els.terminalOverlay.style.bottom = 'auto';
+    els.terminalOverlay.style.top = Math.round(vp.offsetTop || 0) + 'px';
+    // Keyboard-up marker for CSS (#1219): the keyboard covers the home
+    // indicator, so the bottom status strip drops its safe-area inset.
+    // Set and cleared at exactly the sites that apply/undo this pin.
+    els.terminalOverlay.dataset.keyboard = 'up';
+  } else {
+    releaseOverlayPin();
+  }
+}
+
+// Full-screen differential agent: once sized, the PTY is PINNED for the
+// rest of the session's lifetime — no further reflow, ever (#432b).
+// EVERY change after the first real size (keyboard up/down, compose
+// bar, browser chrome, a PWA layout-viewport shrink, OR a phone
+// rotation) PANS/letterboxes the fixed-size canvas instead (#264,
+// #430, #432). Empirical (#430 probe): Codex/ratatui re-emits its
+// ENTIRE transcript on any winsize change — rows or cols, either
+// direction (~65 KB on a long conversation) — so a single stray
+// SIGWINCH replays the whole conversation through the phone terminal.
+// iOS supports neither the manifest `orientation` member nor
+// `ScreenOrientation.lock()`, so rotation can't be blocked at the
+// platform level — pinning cols makes it harmless instead: landscape
+// just shows the same portrait-width canvas letterboxed (xterm sizes
+// its own canvas off `cols`, not the host box, so no extra CSS is
+// needed). The host is overflow:hidden, so panned-off top rows clip
+// cleanly; panning by the content-vs-box overflow also covers the
+// keyboard-down case (overflow 0 → transform cleared). Claude (inline)
+// and the fullscreen first-fit case fall through to reflowTerminal,
+// which also clears the pan.
+// (The pan shortcut additionally requires a size to have been SENT —
+// the pre-WS first fit sets fsSized, but the phone's authoritative
+// size must still go out on the first open.)
+function panFullscreenCanvas(term) {
+  const screen = term.element &&
+    term.element.querySelector('.xterm-screen');
+  const contentH = screen ? screen.getBoundingClientRect().height : 0;
+  // Pan against the HOST's real box, not the visual-viewport height
+  // (#430 round 2): the overlay also holds the header bar and the
+  // compose bar, so the viewport height over-states the terminal's
+  // visible box by their combined height — under-panning by exactly
+  // that much and hiding the bottom rows (the prompt echo) behind
+  // the compose bar whenever the native keyboard is up. The overlay
+  // pinning above already resized the flex layout, so the host rect
+  // is the box the canvas actually shows through.
+  const boxH = els.terminalHost ?
+    els.terminalHost.getBoundingClientRect().height : 0;
+  const panY = terminalPanY(contentH, boxH);
+  if (term.element) {
+    term.element.style.transform =
+      panY ? ('translateY(-' + panY + 'px)') : '';
+  }
+}
+
+function reflowTerminal(t) {
+  const term = t.term;
+  if (term.element) term.element.style.transform = '';
+  try { if (t.fit) t.fit.fit(); } catch (_) {}
+  // Keep the prompt (bottom row) in view after a keyboard-driven
+  // reflow, but only if the user hadn't scrolled up to read history.
+  try {
+    const b = term.buffer.active;
+    if (b.viewportY >= b.baseY - 1) term.scrollToBottom();
+  } catch (_) {}
+  if (t.ws && t.ws.readyState === WebSocket.OPEN) {
+    // The first size on this terminal is the phone's authoritative one
+    // and goes out at once; every later change is settled (#930) so a
+    // keyboard sweep's intermediate samples never reach the PTY.
+    if (t.resizeSettleTimer) clearTimeout(t.resizeSettleTimer);
     t.resizeSettleTimer = null;
-    if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
-    // Same-size dedupe (#430): a resize frame that changes nothing still
-    // costs a setwinsize round-trip; skip it. Compared on the floored size,
-    // so a settled sweep that lands back where it started sends nothing. A
-    // real change on a fullscreen agent triggers the transcript
-    // re-emission — batch it into a single paint (terminal-connection.js).
-    const size = ptySendSize(term.rows, term.cols);
-    const key = size.rows + 'x' + size.cols;
-    if (key === t.lastSentSize) return;
-    t.lastSentSize = key;
-    if (t.isFullscreen) beginRepaintBatch(t);
-    t.ws.send(JSON.stringify({
-      type: 'resize', rows: size.rows, cols: size.cols,
-    }));
+    if (t.lastSentSize) {
+      t.resizeSettleTimer = setTimeout(function () { sendPtySize(t); },
+        RESIZE_SETTLE_MS);
+    } else {
+      sendPtySize(t);
+    }
   }
+  t.fsSized = true;
+}
 
-  if (isMirror) {
+function sendPtySize(t) {
+  t.resizeSettleTimer = null;
+  if (!t.ws || t.ws.readyState !== WebSocket.OPEN) return;
+  // Same-size dedupe (#430): a resize frame that changes nothing still
+  // costs a setwinsize round-trip; skip it. Compared on the floored size,
+  // so a settled sweep that lands back where it started sends nothing. A
+  // real change on a fullscreen agent triggers the transcript
+  // re-emission — batch it into a single paint (terminal-connection.js).
+  const size = ptySendSize(t.term.rows, t.term.cols);
+  const key = size.rows + 'x' + size.cols;
+  if (key === t.lastSentSize) return;
+  t.lastSentSize = key;
+  if (t.isFullscreen) beginRepaintBatch(t);
+  t.ws.send(JSON.stringify({
+    type: 'resize', rows: size.rows, cols: size.cols,
+  }));
+}
+
+// Keep the terminal sized to its box for as long as it lives: the mirror
+// polls the phone's size, the phone listens to every viewport change.
+function wireSizeTracking(t) {
+  const applySize = t.applySize;
+  if (t.mirror) {
     // The phone may rotate or resize — re-sync to its size periodically.
     t.sizeTimer = setInterval(function () {
       fetchSessions().then(applySize).catch(function () {});
     }, 2500);
-  } else {
-    setTimeout(applySize, 0);
-    t.onWindowResize = applySize;
-    window.addEventListener('resize', applySize);
-    // iOS doesn't fire 'resize' when its chrome (URL bar / home
-    // indicator) shows or hides — those changes ride on the
-    // visualViewport API instead. Without re-fitting, xterm keeps
-    // its old row count and the freed pixels show as a dead black
-    // band at the bottom of the overlay.
-    if (window.visualViewport) {
-      t.onVisualViewport = applySize;
-      window.visualViewport.addEventListener('resize', applySize);
-      // Keyboard-driven shifts of visualViewport.offsetTop (iOS sweeping
-      // the focused line into view) ride on 'scroll', not 'resize' — wire
-      // it too so the overlay re-tracks the offset mid-sweep instead of
-      // leaving a band of the page behind it above the keyboard (#135).
-      window.visualViewport.addEventListener('scroll', applySize);
-    }
-    // A portrait/landscape rotation cycle (issue #446) can leave
-    // window.innerHeight and visualViewport.height transiently mismatched
-    // while iOS's chrome bars settle, so a 'resize'/'visualViewport resize'
-    // event mid-rotation can sample keyboardOverlayHeight() at a bad
-    // moment and pin the overlay to a stale shrunk height — with no
-    // guaranteed later event to release it, leaving the session list/
-    // Projects grid bleeding through underneath. 'orientationchange' fires
-    // once per rotation regardless of that race: release any pin
-    // immediately so the overlay is never stuck small, then re-run
-    // applySize() once the viewport has settled so a keyboard that's
-    // genuinely still open gets correctly re-pinned.
-    t.onOrientationChange = function () {
-      // Stashed (warm-cached, #430) terminals keep this listener bound
-      // while hidden — same as applySize()'s own guard, only the ACTIVE
-      // terminal may touch the shared overlay chrome, and not while the
-      // Chat pane owns it (#982).
-      if (t !== state.terminal || inChatMode()) return;
-      if (els.terminalOverlay) {
-        els.terminalOverlay.style.height = '';
-        els.terminalOverlay.style.bottom = '';
-        els.terminalOverlay.style.top = '';
-        delete els.terminalOverlay.dataset.keyboard;
-      }
-      if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
-      t.orientationSettleTimer = setTimeout(applySize, 350);
-    };
-    window.addEventListener('orientationchange', t.onOrientationChange);
+    return;
   }
-
-  term.onData(function (d) {
-    // Typing during a repaint batch (#430): flush first so the echo isn't
-    // held back behind the batch's quiet-gap/deadline window.
-    flushRepaintBatch(t);
-    if (t.ws && t.ws.readyState === WebSocket.OPEN) {
-      t.ws.send(JSON.stringify({ type: 'input', data: d }));
-    }
-  });
-
-  connectTerminalWs(t);
+  setTimeout(applySize, 0);
+  t.onWindowResize = applySize;
+  window.addEventListener('resize', applySize);
+  // iOS doesn't fire 'resize' when its chrome (URL bar / home
+  // indicator) shows or hides — those changes ride on the
+  // visualViewport API instead. Without re-fitting, xterm keeps
+  // its old row count and the freed pixels show as a dead black
+  // band at the bottom of the overlay.
+  if (window.visualViewport) {
+    t.onVisualViewport = applySize;
+    window.visualViewport.addEventListener('resize', applySize);
+    // Keyboard-driven shifts of visualViewport.offsetTop (iOS sweeping
+    // the focused line into view) ride on 'scroll', not 'resize' — wire
+    // it too so the overlay re-tracks the offset mid-sweep instead of
+    // leaving a band of the page behind it above the keyboard (#135).
+    window.visualViewport.addEventListener('scroll', applySize);
+  }
+  // A portrait/landscape rotation cycle (issue #446) can leave
+  // window.innerHeight and visualViewport.height transiently mismatched
+  // while iOS's chrome bars settle, so a 'resize'/'visualViewport resize'
+  // event mid-rotation can sample keyboardOverlayHeight() at a bad
+  // moment and pin the overlay to a stale shrunk height — with no
+  // guaranteed later event to release it, leaving the session list/
+  // Projects grid bleeding through underneath. 'orientationchange' fires
+  // once per rotation regardless of that race: release any pin
+  // immediately so the overlay is never stuck small, then re-run
+  // applySize() once the viewport has settled so a keyboard that's
+  // genuinely still open gets correctly re-pinned.
+  t.onOrientationChange = function () {
+    // Stashed (warm-cached, #430) terminals keep this listener bound
+    // while hidden — same as applySize()'s own guard, only the ACTIVE
+    // terminal may touch the shared overlay chrome, and not while the
+    // Chat pane owns it (#982).
+    if (t !== state.terminal || inChatMode()) return;
+    releaseOverlayPin();
+    if (t.orientationSettleTimer) clearTimeout(t.orientationSettleTimer);
+    t.orientationSettleTimer = setTimeout(applySize, 350);
+  };
+  window.addEventListener('orientationchange', t.onOrientationChange);
 }
 
 // Full teardown of the ACTIVE terminal — kept for the paths where the
@@ -753,12 +811,7 @@ export function closeTerminal() {
   disposeTerminal(t);
   // Release any keyboard-driven override (issue #135) so the next open
   // starts from the CSS-driven full height and inset:0 origin.
-  if (els.terminalOverlay) {
-    els.terminalOverlay.style.height = '';
-    els.terminalOverlay.style.bottom = '';
-    els.terminalOverlay.style.top = '';
-    delete els.terminalOverlay.dataset.keyboard;
-  }
+  releaseOverlayPin();
 }
 
 // iOS PWA rubber-band lets the user drag the whole body while the
