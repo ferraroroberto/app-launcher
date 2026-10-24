@@ -19,7 +19,6 @@ from src.channel_profiles import (
 )
 from src.launch_flags import CHANNEL_PLUGIN, build_claude_flags
 from src.webapp_config import WebappConfig
-from tests.test_webapp_api_life_os import life_os_client  # noqa: F401  (fixture)
 
 
 def _write_profiles(path: Path, rows: list) -> Path:
@@ -166,7 +165,7 @@ def _bypass_gate(monkeypatch):
 
 
 @pytest.fixture
-def channels(_bypass_gate, life_os_client, tmp_path, monkeypatch):  # noqa: F811
+def channels(_bypass_gate, life_os_client, tmp_path, monkeypatch):
     """A client with two profiles (one skill exists) and a recording spawn."""
     client, app, _ = life_os_client
     monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", (tmp_path / "data").as_posix())
@@ -653,7 +652,7 @@ class TestSetupChecks:
         assert opened == []
 
     def test_setup_block_reports_checks_and_leaks_nothing(
-        self, life_os_client, tmp_path, monkeypatch  # noqa: F811
+        self, life_os_client, tmp_path, monkeypatch
     ):
         from app.webapp import middleware
         monkeypatch.setattr(
@@ -689,7 +688,7 @@ class TestSetupChecks:
         assert "TOP-SECRET" not in raw and str(tmp_path) not in raw
 
     def test_setup_without_a_profile_file(
-        self, life_os_client, tmp_path, monkeypatch  # noqa: F811
+        self, life_os_client, tmp_path, monkeypatch
     ):
         from app.webapp import middleware
         monkeypatch.setattr(

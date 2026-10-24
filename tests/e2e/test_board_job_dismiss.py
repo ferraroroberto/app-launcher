@@ -16,7 +16,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.test_board_tab import (
+from tests.e2e.board._support import (
     _board_payload, _mock_board, _open_board, _route_board_from,
 )
 from tests.e2e.conftest import flush_requests, wait_until

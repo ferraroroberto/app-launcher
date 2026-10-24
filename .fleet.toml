@@ -139,8 +139,10 @@ baseline = ".structure-ratchet-baseline.json"
 # Shrink-only: `python -m scripts.suite_weight_ratchet --update` lowers it after
 # a trim; `--raise-ceiling` is the one way up, and a raise says in its PR what
 # the extra test weight is for.
+# The ceiling includes the import header every feature module repeats: the same
+# tests weigh a few hundred lines more as small modules than as one giant file.
 [test_weight]
-ratio_ceiling = "1.1329"
+ratio_ceiling = "1.1389"
 
 # ---------------------------------------------------------------------------
 # [e2e] -- diff-proportionate routing for scripts/verify-before-ship.ps1's
@@ -618,8 +620,10 @@ paths    = [
     "tests/e2e/test_board_nav_badge.py",
     "tests/e2e/test_board_job_dismiss.py",
 ]
+prefixes = ["tests/e2e/board/"]
 pytest_targets = [
     "tests/e2e/test_board_tab.py",
+    "tests/e2e/board",
     "tests/e2e/test_board_chief.py",
     "tests/e2e/test_board_nav_badge.py",
     "tests/e2e/test_board_job_dismiss.py",
@@ -663,12 +667,12 @@ paths    = [
     "app/webapp/routers/life_os_files.py",
     "app/webapp/routers/life_os_spawn.py",
     "app/webapp/routers/life_os_channels.py",
-    "tests/e2e/test_life_os_tab.py",
     "tests/e2e/test_life_tab_glance.py",
     "tests/e2e/test_markdown_link_rendering.py",
 ]
+prefixes = ["tests/e2e/life_os/"]
 pytest_targets = [
-    "tests/e2e/test_life_os_tab.py",
+    "tests/e2e/life_os",
     "tests/e2e/test_life_tab_glance.py",
     "tests/e2e/test_resume_toggle.py",
     "tests/e2e/test_page_headers.py",

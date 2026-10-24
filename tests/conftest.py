@@ -15,6 +15,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -631,3 +632,102 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "tmp_jobs_runs_dir": tmp_jobs_runs,
     }
     yield client, app, overrides
+
+
+def _make_life_os(root: Path) -> Path:
+    """Build a minimal life-os layout with one skill + identity."""
+    from tests.api._life_os_support import RESUMABLE_SID
+
+    skill = root / ".claude" / "skills" / "journal-daily"
+    skill.mkdir(parents=True)
+    (skill / "SKILL.md").write_text(
+        "---\nname: journal-daily\ndescription: Journal from a transcript.\n---\n# journal-daily\n",
+        encoding="utf-8",
+    )
+    (skill / "description.md").write_text("Public blurb.", encoding="utf-8")
+    (skill / "memory").mkdir()
+    (skill / "memory" / "observations.md").write_text(
+        "# obs\n\nprivate note", encoding="utf-8"
+    )
+    (skill / "conversations").mkdir()
+    (skill / "conversations" / "2026-06-01-1917-trial.md").write_text(
+        "trial log", encoding="utf-8"
+    )
+    # The placeholder that keeps an empty conversations/ tracked — must stay
+    # un-deletable / un-renameable.
+    (skill / "conversations" / ".gitkeep").write_text("", encoding="utf-8")
+    # The digested index the Conversations view reads (#727), covering all
+    # three states the UI must render: resumable, no stored session id, and a
+    # non-claude agent. Deliberately written oldest-first so the endpoint's
+    # newest-first ordering is a property it enforces, not one it inherits.
+    (skill / "conversations" / "2026-07-02-1030-notion-schema.md").write_text(
+        "notion log", encoding="utf-8"
+    )
+    (skill / "conversations" / "2026-08-01-0900-ferry-booking.md").write_text(
+        f'<!-- capture sid="{RESUMABLE_SID}" agent="claude" updated="synthetic" -->\nferry log', encoding="utf-8"
+    )
+    (skill / "conversations" / "index.json").write_text(
+        json.dumps([
+            {
+                "skill": "journal-daily",
+                "file": "2026-06-01-1917-trial.md",
+                "date": "2026-06-01", "slug": "trial", "turns": 4,
+                "sid": "not-a-uuid", "agent": "codex",
+                "topic": "a codex trial", "decisions": "none",
+                "open_loops": "none",
+            },
+            {
+                "skill": "journal-daily",
+                "file": "2026-08-01-0900-ferry-booking.md",
+                "date": "2026-08-01", "slug": "ferry-booking", "turns": 12,
+                "sid": RESUMABLE_SID, "agent": "claude",
+                "topic": "booking the ferry", "decisions": "took the 07:40",
+                "open_loops": "confirm the return leg",
+            },
+            {
+                "skill": "journal-daily",
+                "file": "2026-07-02-1030-notion-schema.md",
+                "date": "2026-07-02", "slug": "notion-schema", "turns": 7,
+                "sid": "", "agent": "claude",
+                "topic": "notion schema", "decisions": "none",
+                "open_loops": "none",
+                # The one-paragraph digest shape (fleet-config#1373).
+                "summary": "Settled the property types for the reading list.",
+            },
+        ]),
+        encoding="utf-8",
+    )
+    identity = root / "identity"
+    identity.mkdir()
+    (identity / "who-i-am.md").write_text("# who\n\nme", encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def life_os_client(webapp_client, tmp_path, monkeypatch):
+    """webapp_client with life_os_dir pointed at a temp life-os checkout."""
+    client, app, overrides = webapp_client
+    life_os = _make_life_os(tmp_path / "life-os")
+    app.state.webapp_config.life_os_dir = str(life_os)
+    from app.webapp.routers import life_os_conversations
+    monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
+    # API tests own the external parser contract, so CI needs no sibling repo.
+    # Native verification separately runs the real shared parser against synthetic captures.
+    from src import life_os_history
+    fleet = tmp_path / "synthetic-fleet"
+    fleet.mkdir()
+    app.state.webapp_config.fleet_config_dir = str(fleet)
+    def synthetic_parser(fleet_dir, texts):
+        if not fleet_dir.is_dir():
+            raise OSError("synthetic missing contract")
+        results = []
+        for text in texts:
+            lines = text.splitlines()
+            header = lines[0] if lines and lines[0].startswith("<!-- capture ") else ""
+            attrs = dict(re.findall(r'(\w+)="([^\"]*)"', header))
+            results.append({"header": attrs, "body": "\n".join(lines[1:] if header else lines),
+                            "native": attrs.get("agent") in ("claude", "codex") and bool(attrs.get("sid"))})
+        return results
+    monkeypatch.setattr(life_os_history, "_parse_capture_texts", synthetic_parser)
+    overrides["life_os_dir"] = life_os
+    return client, app, overrides

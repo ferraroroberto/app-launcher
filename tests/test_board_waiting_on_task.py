@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from src import board
-from tests.test_board import (
+from tests.unit.board._support import (
     NOW, _bash_tool_use_line, _iso, _live, _msg_line, _state_row,
     _tool_use_notification_line, _transcript_file,
 )

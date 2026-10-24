@@ -4,7 +4,7 @@ The Life OS half of the Coding tab's favorites feature (#250), deliberately
 built to the same contract: an idempotent toggle that persists to
 webapp_config and surfaces on the next list read. The frontend's star and
 its favorites-first partition are pinned by the e2e suite
-(tests/e2e/test_life_os_tab.py); this covers the backend, including the part
+(tests/e2e/life_os/test_life_os_pin_history.py); this covers the backend, including the part
 the e2e cannot reach because it route-mocks the list — that the state
 actually reaches disk and survives a webapp restart.
 """

@@ -96,7 +96,7 @@ One feature file per view, each with the exact pytest node that drives it. Read 
 Drive every mapped node in one pass (the suite boots its own disposable instance; `LAUNCHER_E2E_LIVE` stays unset):
 
 ```
-.\.venv\Scripts\python.exe -m pytest tests/e2e/test_apps_tab_glance.py tests/e2e/test_board_chief.py tests/e2e/test_board_tab.py tests/e2e/test_coding_changes_overlay.py tests/e2e/test_composer_image_menu.py tests/e2e/test_jobs_tab_glance.py tests/e2e/test_keys_popover.py tests/e2e/test_life_os_tab.py tests/e2e/test_screen_quality.py tests/e2e/test_session_mode_toggle.py tests/e2e/test_settings_sheets.py tests/e2e/test_smoke.py tests/e2e/test_summarize_readback.py tests/e2e/test_terminal_session_menu.py -q --browser chromium --junitxml <scratch>/maintain.xml
+.\.venv\Scripts\python.exe -m pytest tests/e2e/test_apps_tab_glance.py tests/e2e/test_board_chief.py tests/e2e/test_board_tab.py tests/e2e/test_coding_changes_overlay.py tests/e2e/test_composer_image_menu.py tests/e2e/test_jobs_tab_glance.py tests/e2e/test_keys_popover.py tests/e2e/life_os tests/e2e/test_screen_quality.py tests/e2e/test_session_mode_toggle.py tests/e2e/test_settings_sheets.py tests/e2e/test_smoke.py tests/e2e/test_summarize_readback.py tests/e2e/test_terminal_session_menu.py -q --browser chromium --junitxml <scratch>/maintain.xml
 ```
 
 A node that cannot run (missing browser, boot failure) is a blocked drive, not a skipped one.

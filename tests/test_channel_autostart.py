@@ -23,7 +23,6 @@ from app.webapp import server
 from app.webapp.routers import life_os_channels, life_os_spawn
 from src import instance_role
 from src.webapp_config import SESSION_HOST_PORT_ENV
-from tests.test_webapp_api_life_os import life_os_client  # noqa: F401  (fixture)
 
 _LOGGER = life_os_channels.logger.name
 
@@ -37,7 +36,7 @@ def _ready_dir(tmp_path: Path, name: str, *, token: bool = True) -> str:
 
 
 @pytest.fixture
-def boot(life_os_client, tmp_path, monkeypatch):  # noqa: F811
+def boot(life_os_client, tmp_path, monkeypatch):
     """Two ready profiles, a recording spawn and a fake session-host list."""
     _client, app, _ = life_os_client
     monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", (tmp_path / "data").as_posix())

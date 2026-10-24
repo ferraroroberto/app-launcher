@@ -3,8 +3,8 @@
   "entries": [
     {"key": "dir:app/webapp/static", "modules": 83},
     {"key": "dir:src", "modules": 104},
-    {"key": "dir:tests", "modules": 251},
-    {"key": "dir:tests/e2e", "modules": 138},
+    {"key": "dir:tests", "modules": 248},
+    {"key": "dir:tests/e2e", "modules": 137},
     {"key": "fn:app/cli/commands/run_job_cmd.py:RunJobCommand.execute", "lines": 114},
     {"key": "fn:app/session_host/server.py:create_app", "lines": 276},
     {"key": "fn:app/webapp/routers/apps.py:launch_app", "lines": 196},
@@ -89,18 +89,13 @@
     {"key": "size:src/webapp_config.py", "lines": 1146},
     {"key": "size:tests/e2e/conftest.py", "lines": 1746},
     {"key": "size:tests/e2e/test_board_chief.py", "lines": 1484},
-    {"key": "size:tests/e2e/test_board_tab.py", "lines": 2241},
     {"key": "size:tests/e2e/test_chat_live_refresh.py", "lines": 1172},
-    {"key": "size:tests/e2e/test_life_os_tab.py", "lines": 2369},
-    {"key": "size:tests/test_board.py", "lines": 2955},
     {"key": "size:tests/test_board_drilldown.py", "lines": 1753},
     {"key": "size:tests/test_chief_ensure.py", "lines": 1220},
     {"key": "size:tests/test_desktop_screen.py", "lines": 1112},
     {"key": "size:tests/test_jobs.py", "lines": 1420},
     {"key": "size:tests/test_session_host_submit_input.py", "lines": 1034},
-    {"key": "size:tests/test_session_transcript.py", "lines": 3261},
     {"key": "size:tests/test_webapp_api_config.py", "lines": 1008},
-    {"key": "size:tests/test_webapp_api_jobs.py", "lines": 1921},
-    {"key": "size:tests/test_webapp_api_life_os.py", "lines": 3163}
+    {"key": "size:tests/test_webapp_api_jobs.py", "lines": 1921}
   ]
 }

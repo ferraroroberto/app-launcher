@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from src import board, jobs_dismissed
 
-from tests.test_board import _seed_job
+from tests.unit.board._support import _seed_job
 
 
 def _failed_run(local_now: datetime, run_id: str, exit_code: int = 1) -> dict:

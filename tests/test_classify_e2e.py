@@ -242,7 +242,7 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
 # full diff to one tab's tests. Each surface is pinned with a path that narrows
 # and shared paths that must keep the whole suite.
 _BOARD_TARGETS = (
-    "tests/e2e/test_board_tab.py tests/e2e/test_board_chief.py "
+    "tests/e2e/test_board_tab.py tests/e2e/board tests/e2e/test_board_chief.py "
     "tests/e2e/test_board_nav_badge.py tests/e2e/test_board_job_dismiss.py "
     "tests/e2e/test_page_headers.py "
     "tests/e2e/test_header_cpu_reading.py "
@@ -262,7 +262,7 @@ _BOARD_TARGETS = (
     " tests/e2e/test_action_row_variants.py tests/e2e/test_async_list_states.py"
 )
 _LIFEOS_TARGETS = (
-    "tests/e2e/test_life_os_tab.py tests/e2e/test_life_tab_glance.py "
+    "tests/e2e/life_os tests/e2e/test_life_tab_glance.py "
     "tests/e2e/test_resume_toggle.py tests/e2e/test_page_headers.py "
     "tests/e2e/test_header_cpu_reading.py "
     "tests/e2e/test_text_size.py "
@@ -308,7 +308,8 @@ def test_real_surfaces_are_usable(cfg: E2EConfig) -> None:
         ("tests/e2e/test_board_tab.py", "board", _BOARD_TARGETS),
         ("app/webapp/static/life-os.js", "lifeos", _LIFEOS_TARGETS),
         ("app/webapp/routers/life_os_files.py", "lifeos", _LIFEOS_TARGETS),
-        ("tests/e2e/test_life_os_tab.py", "lifeos", _LIFEOS_TARGETS),
+        ("tests/e2e/life_os/test_life_os_skills.py", "lifeos", _LIFEOS_TARGETS),
+        ("tests/e2e/board/test_board_drawer.py", "board", _BOARD_TARGETS),
     ],
 )
 def test_surface_path_narrows_to_its_surface(cfg: E2EConfig, path: str, surface: str, targets: str) -> None:

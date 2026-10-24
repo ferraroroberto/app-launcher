@@ -59,10 +59,12 @@ def _declares_smoke(source: str) -> bool:
 
 
 def test_every_e2e_module_declares_the_smoke_marker():
-    modules = sorted(_E2E_DIR.glob("test_*.py"))
+    modules = sorted(_E2E_DIR.rglob("test_*.py"))
     assert modules, "no e2e test modules found -- wrong path?"
     missing = [
-        p.name for p in modules if not _declares_smoke(p.read_text(encoding="utf-8"))
+        p.relative_to(_E2E_DIR).as_posix()
+        for p in modules
+        if not _declares_smoke(p.read_text(encoding="utf-8"))
     ]
     assert not missing, (
         "e2e module(s) without a module-level `smoke` marker: "
