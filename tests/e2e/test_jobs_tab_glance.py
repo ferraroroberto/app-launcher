@@ -68,8 +68,11 @@ _AGENDA = {"days": 7, "generated_epoch": _NOW, "occurrences": [
      "fire_epoch": _NOW + 7 * 3600, "cadence": "daily 01:00"},
     {"job_id": "planner", "name": "Planner sync",
      "fire_epoch": _NOW + 8 * 3600, "cadence": "daily 03:00"},
+    # Two days after its first fire: a daylight-saving shift between them can
+    # never put the two on one local day, which would fold this one into the
+    # first's row as "also HH:MM".
     {"job_id": "ledger", "name": "Ledger reconciliation",
-     "fire_epoch": _NOW + 30 * 3600, "cadence": "daily 03:00"},
+     "fire_epoch": _NOW + 54 * 3600, "cadence": "daily 03:00"},
 ], "frequent": [{"job_id": "mailbox", "name": "Mailbox sweep", "cadence": "every 15 min"}]}
 
 _RUNS = [
