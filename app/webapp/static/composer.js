@@ -230,246 +230,245 @@ function setButtonState(btn, enabled, titleOn, titleOff, label) {
   btn.setAttribute('aria-label', label || btn.title);
 }
 
-export function mountComposer(host, opts) {
-  const el = render(host, opts.placeholder || 'Message for the agent');
-  // The terminal-keys glyph isn't a conventional icon (#1238 J-05).
-  bindLongPressHint(el.keys);
-  let keysOpts = opts.keys || null;
-  // Fixed for the life of the mount: the surface opts into the shortcut at
-  // mount time, so the title can't drift from the binding (#1072).
-  const titleSend = opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND;
-  // #450: the buffer carries an attached-file path, so the surface's send
-  // may hold its submitting CR back for the path→attachment conversion.
-  let hasImage = false;
-  // #983: Send's own gate (setSendable) — kept apart from the in-flight
-  // disable an async send holds, so settling a send never re-enables a
-  // button the surface gated off.
-  let sendBlocked = false;
-  let sendReason = '';
-  let sending = false;
-  if (opts.field) {
-    host.classList.add('composer-field');
-    el.send.hidden = true;
-    el.keys.hidden = true;
+// One mount's mutable state, threaded through the module-level helpers below.
+// The helpers read and write these fields instead of closing over locals, so
+// each stays a small function of its own.
+function newComposerState(host, opts, el) {
+  return {
+    host: host,
+    opts: opts,
+    el: el,
+    keysOpts: opts.keys || null,
+    // Fixed for the life of the mount: the surface opts into the shortcut at
+    // mount time, so the title can't drift from the binding (#1072).
+    titleSend: opts.sendOnModEnter ? _TITLE_SEND_MOD_ENTER : _TITLE_SEND,
+    // #450: the buffer carries an attached-file path, so the surface's send
+    // may hold its submitting CR back for the path→attachment conversion.
+    hasImage: false,
+    // #983: Send's own gate (setSendable) — kept apart from the in-flight
+    // disable an async send holds, so settling a send never re-enables a
+    // button the surface gated off.
+    sendBlocked: false,
+    sendReason: '',
+    sending: false,
+    // Created by mountComposer once the state exists: the helpers below reach
+    // them through here.
+    dictation: null,
+    keysPopover: null,
+    attachQueue: null,
+    imageMenu: null,
+    ocrStaged: [],      // File objects awaiting a collated extraction
+    ocrThumbUrls: [],   // object URLs to revoke when the tray re-renders
+    // The in-flight extraction's AbortController, or null at rest. photo-ocr may
+    // hold one call for ~15 min on a slow hub (#1420), so the busy Extract button
+    // stays tappable and a second tap cancels it, like the upload (#1413).
+    ocrCtrl: null,
+    // OCR is offered only while photo-ocr is configured (setAvailability).
+    ocrOffered: true,
+  };
+}
+
+function composerGrow(c) {
+  growTextarea(c.el.textarea);
+  if (c.opts.onChange) c.opts.onChange();
+}
+
+// ---- OCR staging tray ----------------------------------------------------
+function renderOcrTray(c) {
+  const el = c.el;
+  el.thumbs.innerHTML = '';
+  c.ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+  c.ocrThumbUrls = [];
+  if (!c.ocrStaged.length) {
+    el.tray.hidden = true;
+    return;
   }
+  el.tray.hidden = false;
+  c.ocrStaged.forEach(function (file, idx) {
+    const cell = document.createElement('div');
+    cell.className = 'ocr-thumb';
+    const img = document.createElement('img');
+    const url = URL.createObjectURL(file);
+    c.ocrThumbUrls.push(url);
+    img.src = url;
+    img.alt = 'staged screenshot ' + (idx + 1);
+    const rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'ocr-thumb-x';
+    rm.innerHTML = icon('x');
+    rm.title = 'Remove';
+    rm.addEventListener('click', function () {
+      c.ocrStaged.splice(idx, 1);
+      renderOcrTray(c);
+    });
+    cell.appendChild(img);
+    cell.appendChild(rm);
+    el.thumbs.appendChild(cell);
+  });
+  el.extract.innerHTML =
+    icon('camera') + ' Extract text (' + c.ocrStaged.length + ')';
+}
 
-  function grow() {
-    growTextarea(el.textarea);
-    if (opts.onChange) opts.onChange();
+function clearOcrStaging(c) {
+  c.ocrStaged = [];
+  renderOcrTray(c);
+}
+
+// Run OCR over EVERY staged image in one call so photo-ocr deduplicates
+// the overlap. Same bearer + passkey terminal token as an upload. A tap while
+// one is running cancels it instead: staged images are kept for a retry.
+async function runOcrExtraction(c) {
+  const el = c.el;
+  if (c.ocrCtrl) {
+    c.ocrCtrl.abort();
+    return;
   }
-
-  // ---- dictation -------------------------------------------------------
-  const dictation = createDictation({
-    button: el.mic,
-    getTextarea: function () { return el.textarea; },
-    onRender: grow,
-    onStart: opts.onDictationStart || function () {},
+  const list = c.ocrStaged.slice();
+  if (!list.length) return;
+  const fd = new FormData();
+  list.forEach(function (f, i) {
+    fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
   });
-  el.mic.addEventListener('click', dictation.toggle);
-
-  // ---- keys D-pad --------------------------------------------------------
-  const keysPopover = mountKeysPopover(el.keys, host, {
-    send: function (bytes) { if (keysOpts) keysOpts.send(bytes); },
-    onOpen: function () { if (keysOpts && keysOpts.onOpen) keysOpts.onOpen(); },
-  });
-
-  // ---- OCR staging tray ----------------------------------------------------
-  let ocrStaged = [];      // File objects awaiting a collated extraction
-  let ocrThumbUrls = [];   // object URLs to revoke when the tray re-renders
-
-  function renderOcrTray() {
-    el.thumbs.innerHTML = '';
-    ocrThumbUrls.forEach(function (u) { URL.revokeObjectURL(u); });
-    ocrThumbUrls = [];
-    if (!ocrStaged.length) {
-      el.tray.hidden = true;
+  const ctrl = new AbortController();
+  c.ocrCtrl = ctrl;
+  // `aria-busy`, never `disabled`: iOS fires no tap on a disabled button.
+  el.extract.setAttribute('aria-busy', 'true');
+  el.extract.title = _TITLE_CANCEL_EXTRACT;
+  el.extract.setAttribute('aria-label', _TITLE_CANCEL_EXTRACT);
+  el.image.disabled = true;
+  const stopTimer = startWorkTimer(
+    el.extract, icon('camera') + ' Extract text', icon('hourglass') + ' Reading '
+  );
+  try {
+    const body = await apiRawJson('/api/ocr', {
+      method: 'POST', terminalToken: readTerminalToken(), body: fd,
+      signal: ctrl.signal,
+    });
+    const text = body && body.text;
+    const plural = list.length > 1;
+    if (!text) {
+      toast('No text found in the image' + (plural ? 's' : ''), undefined, { icon: 'camera' });
       return;
     }
-    el.tray.hidden = false;
-    ocrStaged.forEach(function (file, idx) {
-      const cell = document.createElement('div');
-      cell.className = 'ocr-thumb';
-      const img = document.createElement('img');
-      const url = URL.createObjectURL(file);
-      ocrThumbUrls.push(url);
-      img.src = url;
-      img.alt = 'staged screenshot ' + (idx + 1);
-      const rm = document.createElement('button');
-      rm.type = 'button';
-      rm.className = 'ocr-thumb-x';
-      rm.innerHTML = icon('x');
-      rm.title = 'Remove';
-      rm.addEventListener('click', function () {
-        ocrStaged.splice(idx, 1);
-        renderOcrTray();
-      });
-      cell.appendChild(img);
-      cell.appendChild(rm);
-      el.thumbs.appendChild(cell);
-    });
-    el.extract.innerHTML =
-      icon('camera') + ' Extract text (' + ocrStaged.length + ')';
-  }
-
-  function clearOcrStaging() {
-    ocrStaged = [];
-    renderOcrTray();
-  }
-
-  // The in-flight extraction's AbortController, or null at rest. photo-ocr may
-  // hold one call for ~15 min on a slow hub (#1420), so the busy Extract button
-  // stays tappable and a second tap cancels it, like the upload (#1413).
-  let ocrCtrl = null;
-
-  // Run OCR over EVERY staged image in one call so photo-ocr deduplicates
-  // the overlap. Same bearer + passkey terminal token as an upload. A tap while
-  // one is running cancels it instead: staged images are kept for a retry.
-  async function runOcrExtraction() {
-    if (ocrCtrl) {
-      ocrCtrl.abort();
-      return;
+    // Insert at the caret with a leading space when the textarea already
+    // has trailing content, so the OCR appends cleanly to typed text.
+    const ta = el.textarea;
+    const before = ta.value.slice(0, ta.selectionStart);
+    const sep = (before && !/\s$/.test(before)) ? ' ' : '';
+    ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
+    composerGrow(c);
+    ta.focus();
+    clearOcrStaging(c);
+    // A partly read take is a 200 whose text already carries a
+    // `[missing: photo N …]` line per unread photo (photo-ocr#166); say so
+    // up front rather than a plain success the owner might not look past.
+    const missed = (body.missing_photos || []).length;
+    if (missed) {
+      toast(
+        missed + ' of ' + list.length + ' screenshot' + (plural ? 's' : '') +
+          ' could not be read — see the [missing] lines.',
+        'error',
+        { icon: 'camera' }
+      );
+    } else {
+      toast(
+        'Text extracted from ' + list.length + ' image' +
+          (plural ? 's' : '') + ' — review, then tap Send.',
+        'good',
+        { icon: 'camera' }
+      );
     }
-    const list = ocrStaged.slice();
-    if (!list.length) return;
-    const fd = new FormData();
-    list.forEach(function (f, i) {
-      fd.append('files', f, f.name || ('screenshot-' + (i + 1) + '.png'));
-    });
-    const ctrl = new AbortController();
-    ocrCtrl = ctrl;
-    // `aria-busy`, never `disabled`: iOS fires no tap on a disabled button.
-    el.extract.setAttribute('aria-busy', 'true');
-    el.extract.title = _TITLE_CANCEL_EXTRACT;
-    el.extract.setAttribute('aria-label', _TITLE_CANCEL_EXTRACT);
-    el.image.disabled = true;
-    const stopTimer = startWorkTimer(
-      el.extract, icon('camera') + ' Extract text', icon('hourglass') + ' Reading '
-    );
-    try {
-      const body = await apiRawJson('/api/ocr', {
-        method: 'POST', terminalToken: readTerminalToken(), body: fd,
-        signal: ctrl.signal,
-      });
-      const text = body && body.text;
-      const plural = list.length > 1;
-      if (!text) {
-        toast('No text found in the image' + (plural ? 's' : ''), undefined, { icon: 'camera' });
-        return;
-      }
-      // Insert at the caret with a leading space when the textarea already
-      // has trailing content, so the OCR appends cleanly to typed text.
-      const ta = el.textarea;
-      const before = ta.value.slice(0, ta.selectionStart);
-      const sep = (before && !/\s$/.test(before)) ? ' ' : '';
-      ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
-      grow();
-      ta.focus();
-      clearOcrStaging();
-      // A partly read take is a 200 whose text already carries a
-      // `[missing: photo N …]` line per unread photo (photo-ocr#166); say so
-      // up front rather than a plain success the owner might not look past.
-      const missed = (body.missing_photos || []).length;
-      if (missed) {
-        toast(
-          missed + ' of ' + list.length + ' screenshot' + (plural ? 's' : '') +
-            ' could not be read — see the [missing] lines.',
-          'error',
-          { icon: 'camera' }
-        );
-      } else {
-        toast(
-          'Text extracted from ' + list.length + ' image' +
-            (plural ? 's' : '') + ' — review, then tap Send.',
-          'good',
-          { icon: 'camera' }
-        );
-      }
-    } catch (exc) {
-      if (ctrl.signal.aborted) {
-        toast('Extraction cancelled', undefined, { icon: 'camera' });
-      } else {
-        apiFailToast('OCR failed', exc);
-      }
-    } finally {
-      ocrCtrl = null;
-      stopTimer();
-      // The timer restores the bare label; a kept (cancelled/failed) staging
-      // needs its "(N)" back.
-      if (ocrStaged.length) renderOcrTray();
-      el.extract.removeAttribute('aria-busy');
-      el.extract.removeAttribute('aria-label');
-      el.extract.removeAttribute('title');
-      el.image.disabled = false;
+  } catch (exc) {
+    if (ctrl.signal.aborted) {
+      toast('Extraction cancelled', undefined, { icon: 'camera' });
+    } else {
+      apiFailToast('OCR failed', exc);
     }
+  } finally {
+    c.ocrCtrl = null;
+    stopTimer();
+    // The timer restores the bare label; a kept (cancelled/failed) staging
+    // needs its "(N)" back.
+    if (c.ocrStaged.length) renderOcrTray(c);
+    el.extract.removeAttribute('aria-busy');
+    el.extract.removeAttribute('aria-label');
+    el.extract.removeAttribute('title');
+    el.image.disabled = false;
   }
+}
 
+function wireOcr(c) {
+  const el = c.el;
   el.ocrInput.addEventListener('change', function () {
     const picked = el.ocrInput.files;
     const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
     el.ocrInput.value = '';
     // Stage, don't send — accumulate across taps; Extract collates them all.
     if (list.length) {
-      ocrStaged = ocrStaged.concat(list);
-      renderOcrTray();
+      c.ocrStaged = c.ocrStaged.concat(list);
+      renderOcrTray(c);
     }
   });
-  el.extract.addEventListener('click', runOcrExtraction);
+  el.extract.addEventListener('click', function () { runOcrExtraction(c); });
+}
 
-  // ---- attach ------------------------------------------------------------
-  // `kind` is 'large' for a not-read large file (#1430): its line names a path
-  // the agent must not open as an attachment, so it does not set hasImage
-  // (which holds Send's CR back for an image conversion, #450).
-  function appendPath(path, kind) {
-    appendParagraph(path);
-    if (kind !== 'large') hasImage = true;
+// ---- attach ------------------------------------------------------------
+// Always append at the very end as its own paragraph (#366) — never
+// splice at the caret, which glued the path onto whatever the cursor
+// happened to sit on. A blank line separates it from existing text, so
+// sequential attachments stack cleanly: <text>\n\n<path1>\n\n<path2>.
+function appendParagraph(c, text) {
+  const ta = c.el.textarea;
+  const cur = ta.value;
+  const sep = cur ? (/\n\n$/.test(cur) ? '' : (/\n$/.test(cur) ? '\n' : '\n\n')) : '';
+  ta.value = cur + sep + text;
+  ta.selectionStart = ta.selectionEnd = ta.value.length;
+  composerGrow(c);
+  ta.focus();
+}
+
+// `kind` is 'large' for a not-read large file (#1430): its line names a path
+// the agent must not open as an attachment, so it does not set hasImage
+// (which holds Send's CR back for an image conversion, #450).
+function appendPath(c, path, kind) {
+  appendParagraph(c, path);
+  if (kind !== 'large') c.hasImage = true;
+}
+
+function labelImage(c, text) {
+  c.el.image.title = text;
+  c.el.image.setAttribute('aria-label', text);
+}
+
+// #1354: "N of M" on the image button and in the status line while the
+// queue runs; both go back to rest when it drains. The button stays
+// tappable — a tap now cancels the run (#1413) — so it is `aria-busy`,
+// never `disabled`: iOS fires no tap on a disabled button.
+function showUploadProgress(c, p) {
+  const el = c.el;
+  if (!p) {
+    el.uploadStatus.hidden = true;
+    el.uploadStatus.textContent = '';
+    el.image.classList.remove('is-uploading');
+    el.image.removeAttribute('aria-busy');
+    el.image.innerHTML = icon('paperclip');
+    labelImage(c, _TITLE_ATTACH);
+    return;
   }
+  el.uploadStatus.hidden = false;
+  el.uploadStatus.textContent = 'Uploading ' + p.index + ' of ' + p.total + ' · ' + p.name;
+  el.image.classList.add('is-uploading');
+  el.image.setAttribute('aria-busy', 'true');
+  labelImage(c, _TITLE_CANCEL_UPLOAD);
+  el.image.innerHTML = icon('hourglass') +
+    '<span class="composer-upload-count">' + p.index + '/' + p.total + '</span>';
+}
 
-  // Always append at the very end as its own paragraph (#366) — never
-  // splice at the caret, which glued the path onto whatever the cursor
-  // happened to sit on. A blank line separates it from existing text, so
-  // sequential attachments stack cleanly: <text>\n\n<path1>\n\n<path2>.
-  function appendParagraph(text) {
-    const ta = el.textarea;
-    const cur = ta.value;
-    const sep = cur ? (/\n\n$/.test(cur) ? '' : (/\n$/.test(cur) ? '\n' : '\n\n')) : '';
-    ta.value = cur + sep + text;
-    ta.selectionStart = ta.selectionEnd = ta.value.length;
-    grow();
-    ta.focus();
-  }
-
-  function labelImage(text) {
-    el.image.title = text;
-    el.image.setAttribute('aria-label', text);
-  }
-
-  // #1354: "N of M" on the image button and in the status line while the
-  // queue runs; both go back to rest when it drains. The button stays
-  // tappable — a tap now cancels the run (#1413) — so it is `aria-busy`,
-  // never `disabled`: iOS fires no tap on a disabled button.
-  function showUploadProgress(p) {
-    if (!p) {
-      el.uploadStatus.hidden = true;
-      el.uploadStatus.textContent = '';
-      el.image.classList.remove('is-uploading');
-      el.image.removeAttribute('aria-busy');
-      el.image.innerHTML = icon('paperclip');
-      labelImage(_TITLE_ATTACH);
-      return;
-    }
-    el.uploadStatus.hidden = false;
-    el.uploadStatus.textContent = 'Uploading ' + p.index + ' of ' + p.total + ' · ' + p.name;
-    el.image.classList.add('is-uploading');
-    el.image.setAttribute('aria-busy', 'true');
-    labelImage(_TITLE_CANCEL_UPLOAD);
-    el.image.innerHTML = icon('hourglass') +
-      '<span class="composer-upload-count">' + p.index + '/' + p.total + '</span>';
-  }
-
-  const attachQueue = createAttachQueue({
-    upload: function (file, signal, kind) { return opts.upload(file, signal, kind); },
-    onAppend: appendPath,
-    onProgress: showUploadProgress,
+function createComposerAttachQueue(c) {
+  return createAttachQueue({
+    upload: function (file, signal, kind) { return c.opts.upload(file, signal, kind); },
+    onAppend: function (path, kind) { appendPath(c, path, kind); },
+    onProgress: function (p) { showUploadProgress(c, p); },
     onSettle: function (r) {
       if (!r.total) return;
       const s = r.cancelled ? cancelledSummary(r.ok, r.total) : summarize(r.ok, r.total, r.failures);
@@ -480,29 +479,34 @@ export function mountComposer(host, opts) {
         e.ok ? 'ok' : 'failed: ' + e.reason);
     },
   });
+}
 
-  function attachFiles(files, kind) {
-    const list = files ? Array.prototype.slice.call(files) : [];
-    if (!list.length) return Promise.resolve();
-    // #450: refocus NOW, synchronously in the caller's gesture tick — the
-    // native picker dismissed the keyboard, and a post-upload focus() lands
-    // outside the gesture: the caret shows but the keyboard stays down, so
-    // the whole composer drops to the screen bottom, out of thumb reach.
-    try { el.textarea.focus(); } catch (_) {}
-    return attachQueue.enqueue(list, kind);
-  }
+function attachFiles(c, files, kind) {
+  const list = files ? Array.prototype.slice.call(files) : [];
+  if (!list.length) return Promise.resolve();
+  // #450: refocus NOW, synchronously in the caller's gesture tick — the
+  // native picker dismissed the keyboard, and a post-upload focus() lands
+  // outside the gesture: the caret shows but the keyboard stays down, so
+  // the whole composer drops to the screen bottom, out of thumb reach.
+  try { c.el.textarea.focus(); } catch (_) {}
+  return c.attachQueue.enqueue(list, kind);
+}
 
-  function wirePicker(input, kind) {
-    input.addEventListener('change', function () {
-      const picked = input.files;
-      const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
-      input.value = '';
-      attachFiles(list, kind);
-    });
-  }
-  wirePicker(el.attachInput);
-  wirePicker(el.photoInput);
-  wirePicker(el.largeInput, 'large');
+function wirePicker(c, input, kind) {
+  input.addEventListener('change', function () {
+    const picked = input.files;
+    const list = picked && picked.length ? Array.prototype.slice.call(picked) : [];
+    input.value = '';
+    attachFiles(c, list, kind);
+  });
+}
+
+function wireAttach(c) {
+  const el = c.el;
+  const host = c.host;
+  wirePicker(c, el.attachInput);
+  wirePicker(c, el.photoInput);
+  wirePicker(c, el.largeInput, 'large');
 
   // Paste and drop reach attachFiles from every mount (#1206). They were only
   // wired to the terminal's xterm host (terminal-image.js), so Chat, which
@@ -513,7 +517,7 @@ export function mountComposer(host, opts) {
     const files = pastedFiles(ev.clipboardData);
     if (!files.length) return;
     ev.preventDefault();
-    attachFiles(files);
+    attachFiles(c, files);
   });
   host.addEventListener('dragover', function (ev) {
     if (carriesFiles(ev.dataTransfer)) ev.preventDefault();
@@ -522,30 +526,33 @@ export function mountComposer(host, opts) {
     const dt = ev.dataTransfer;
     if (!dt || !dt.files || !dt.files.length) return;
     ev.preventDefault();
-    attachFiles(dt.files);
+    attachFiles(c, dt.files);
   });
 
   // While an upload runs a tap on 📎 cancels it (#1413) instead of opening
   // the menu. Registered BEFORE the menu binds its own anchor handler, so
   // this listener wins the click and stops the menu from opening.
   el.image.addEventListener('click', function (ev) {
-    if (!attachQueue.busy()) return;
+    if (!c.attachQueue.busy()) return;
     ev.stopImmediatePropagation();
-    attachQueue.cancel();
+    c.attachQueue.cancel();
   });
+}
+
+function mountImageMenu(c) {
+  const el = c.el;
+  const host = c.host;
   // Above the composer, right edges 10px in (mockup screen 3). The vendored
   // row-menu mounts the open menu on <body>, so the Board drawer's column
   // carousel, which clipped an absolutely-positioned menu, cannot (#996).
-  const imageMenu = createRowMenu({
+  c.imageMenu = createRowMenu({
     className: 'composer-menu',
     placement: {
       against: function () { return host; },
       side: 'above', offset: 6, inset: 10, minWidth: 260,
     },
   });
-  // OCR is offered only while photo-ocr is configured (setAvailability).
-  let ocrOffered = true;
-  imageMenu.attach('image', el.image, [
+  c.imageMenu.attach('image', el.image, [
     {
       glyph: 'image', label: _LABEL_PHOTO,
       dataset: { item: 'composer-menu-photo' },
@@ -554,7 +561,7 @@ export function mountComposer(host, opts) {
     {
       glyph: 'scan-text', label: _LABEL_OCR,
       dataset: { item: 'composer-menu-ocr' },
-      hidden: function () { return !ocrOffered; },
+      hidden: function () { return !c.ocrOffered; },
       onTap: function () { el.ocrInput.click(); },
     },
     {
@@ -568,71 +575,76 @@ export function mountComposer(host, opts) {
       onTap: function () { el.largeInput.click(); },
     },
   ]);
-  labelImage(_TITLE_ATTACH);
+  labelImage(c, _TITLE_ATTACH);
+}
 
-  // ---- send --------------------------------------------------------------
-  function finishSend() {
-    hasImage = false;
-    el.textarea.value = '';
-    el.textarea.style.height = '';
-    el.textarea.focus();
-  }
+// ---- send --------------------------------------------------------------
+function finishSend(c) {
+  c.hasImage = false;
+  c.el.textarea.value = '';
+  c.el.textarea.style.height = '';
+  c.el.textarea.focus();
+}
 
-  // The surface's gate is aria-disabled (see the module header, #1069) so a
-  // phone tap still reaches the button and can say why. The in-flight hold
-  // stays a real `disabled`: it lasts one request and has no reason to state.
-  // It must also *look* held (#1239): `disabled` alone left ➤ at full accent,
-  // so a send in progress read as a live button inviting a second tap.
-  function syncSend() {
-    el.send.disabled = sending;
-    if (el.send.classList.contains('is-sending') !== sending) {
-      el.send.classList.toggle('is-sending', sending);
-      el.send.innerHTML = icon(sending ? 'hourglass' : 'send-horizontal');
-    }
-    if (sending) el.send.setAttribute('aria-busy', 'true');
-    else el.send.removeAttribute('aria-busy');
-    if (sendBlocked) el.send.setAttribute('aria-disabled', 'true');
-    else el.send.removeAttribute('aria-disabled');
+// The surface's gate is aria-disabled (see the module header, #1069) so a
+// phone tap still reaches the button and can say why. The in-flight hold
+// stays a real `disabled`: it lasts one request and has no reason to state.
+// It must also *look* held (#1239): `disabled` alone left ➤ at full accent,
+// so a send in progress read as a live button inviting a second tap.
+function syncSend(c) {
+  const send = c.el.send;
+  send.disabled = c.sending;
+  if (send.classList.contains('is-sending') !== c.sending) {
+    send.classList.toggle('is-sending', c.sending);
+    send.innerHTML = icon(c.sending ? 'hourglass' : 'send-horizontal');
   }
+  if (c.sending) send.setAttribute('aria-busy', 'true');
+  else send.removeAttribute('aria-busy');
+  if (c.sendBlocked) send.setAttribute('aria-disabled', 'true');
+  else send.removeAttribute('aria-disabled');
+}
 
-  function submit() {
-    if (sendBlocked) {
-      toast(sendReason, '', { icon: 'send-horizontal' });
-      return;
-    }
-    if (sending) return;
-    // #489: a dictation that just stopped is still finalizing until the
-    // canonical transcript settles into the textarea. Reading + clearing the
-    // buffer mid-window raced that settle — wait it out instead.
-    if (dictation.isBusy()) {
-      toast('Still transcribing — wait for the transcript, then tap Send', 'error', { icon: 'mic' });
-      return;
-    }
-    const text = el.textarea.value;
-    if (!text) return;
-    let res;
-    try {
-      res = opts.send(text, { hasImage: hasImage });
-    } catch (_) {
-      return;
-    }
-    if (res && typeof res.then === 'function') {
-      // Async delivery (Chat mode's /input route, #983): hold Send and
-      // keep the draft until the surface says it went through.
-      sending = true;
-      syncSend();
-      res.then(function (ok) {
-        if (ok !== false && ok !== null && ok !== undefined) finishSend();
-      }, function () { /* the surface toasted; the draft stays */ })
-        .finally(function () { sending = false; syncSend(); });
-      return;
-    }
-    // Sync delivery (the PTY WebSocket): clear inside the tap gesture so
-    // the refocus keeps the phone keyboard up.
-    if (res) finishSend();
+function submit(c) {
+  if (c.sendBlocked) {
+    toast(c.sendReason, '', { icon: 'send-horizontal' });
+    return;
   }
-  el.send.addEventListener('click', submit);
-  el.textarea.addEventListener('input', grow);
+  if (c.sending) return;
+  // #489: a dictation that just stopped is still finalizing until the
+  // canonical transcript settles into the textarea. Reading + clearing the
+  // buffer mid-window raced that settle — wait it out instead.
+  if (c.dictation.isBusy()) {
+    toast('Still transcribing — wait for the transcript, then tap Send', 'error', { icon: 'mic' });
+    return;
+  }
+  const text = c.el.textarea.value;
+  if (!text) return;
+  let res;
+  try {
+    res = c.opts.send(text, { hasImage: c.hasImage });
+  } catch (_) {
+    return;
+  }
+  if (res && typeof res.then === 'function') {
+    // Async delivery (Chat mode's /input route, #983): hold Send and
+    // keep the draft until the surface says it went through.
+    c.sending = true;
+    syncSend(c);
+    res.then(function (ok) {
+      if (ok !== false && ok !== null && ok !== undefined) finishSend(c);
+    }, function () { /* the surface toasted; the draft stays */ })
+      .finally(function () { c.sending = false; syncSend(c); });
+    return;
+  }
+  // Sync delivery (the PTY WebSocket): clear inside the tap gesture so
+  // the refocus keeps the phone keyboard up.
+  if (res) finishSend(c);
+}
+
+function wireSend(c) {
+  const ta = c.el.textarea;
+  c.el.send.addEventListener('click', function () { submit(c); });
+  ta.addEventListener('input', function () { composerGrow(c); });
 
   // Ctrl+Enter / Cmd+Enter sends (#1072) — opt-in per surface, because only
   // Chat asked for it: the terminal overlay has its own input path and the
@@ -650,83 +662,114 @@ export function mountComposer(host, opts) {
   //
   // preventDefault() so the gesture doesn't also leave a stray newline behind
   // — including on the refusal paths, where the keystroke was still a send.
-  if (opts.sendOnModEnter) {
-    el.textarea.addEventListener('keydown', function (ev) {
+  if (c.opts.sendOnModEnter) {
+    ta.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Enter' || !(ev.ctrlKey || ev.metaKey)) return;
       ev.preventDefault();
-      submit();
+      submit(c);
     });
   }
+}
 
-  // ---- availability --------------------------------------------------------
-  function setAvailability(a) {
-    if (a && 'dictate' in a) {
-      setButtonState(el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF, _LABEL_MIC);
-    }
-    if (a && 'ocr' in a) ocrOffered = !!a.ocr;
+// ---- availability and handle -------------------------------------------
+function setAvailability(c, a) {
+  if (a && 'dictate' in a) {
+    setButtonState(c.el.mic, !!a.dictate, _TITLE_MIC, _TITLE_MIC_OFF, _LABEL_MIC);
+  }
+  if (a && 'ocr' in a) c.ocrOffered = !!a.ocr;
+}
+
+function setSendable(c, enabled, reason) {
+  c.sendBlocked = !enabled;
+  c.sendReason = enabled ? '' : (reason || 'Sending is unavailable');
+  c.el.send.title = enabled ? c.titleSend : c.sendReason;
+  c.el.send.setAttribute('aria-label', enabled ? 'Send' : c.sendReason);
+  syncSend(c);
+}
+
+function setPlaceholder(c, text) {
+  c.el.textarea.placeholder = text;
+  c.el.textarea.setAttribute('aria-label', text);
+}
+
+function setKeys(c, k, reason) {
+  c.keysOpts = k || null;
+  setButtonState(c.el.keys, !!c.keysOpts, _TITLE_KEYS, reason || _TITLE_KEYS_OFF);
+  if (!c.keysOpts) c.keysPopover.close();
+}
+
+function closePopovers(c) {
+  c.keysPopover.close();
+  c.imageMenu.close();
+}
+
+// Leave-surface teardown: drop the draft, the staged screenshots and any
+// in-flight recording. dispose() (not stop()) so the mic and the app-wide
+// dictation mutex release even mid-permission-prompt or mid-finalize, and
+// a late transcript is dropped rather than written into a bar about to be
+// hidden and cleared (#755).
+function resetComposer(c) {
+  c.el.textarea.value = '';
+  c.el.textarea.style.height = '';
+  c.hasImage = false;
+  clearOcrStaging(c);
+  c.dictation.dispose();
+  closePopovers(c);
+}
+
+// Give back a draft the surface cleared on a send it later found unanswered
+// (#1744). Whatever was typed meanwhile stays, after the returned text.
+function restoreDraft(c, text) {
+  const cur = c.el.textarea.value;
+  c.el.textarea.value = cur ? text + '\n' + cur : text;
+  c.el.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+export function mountComposer(host, opts) {
+  const el = render(host, opts.placeholder || 'Message for the agent');
+  // The terminal-keys glyph isn't a conventional icon (#1238 J-05).
+  bindLongPressHint(el.keys);
+  const c = newComposerState(host, opts, el);
+  if (opts.field) {
+    host.classList.add('composer-field');
+    el.send.hidden = true;
+    el.keys.hidden = true;
   }
 
-  function setSendable(enabled, reason) {
-    sendBlocked = !enabled;
-    sendReason = enabled ? '' : (reason || 'Sending is unavailable');
-    el.send.title = enabled ? titleSend : sendReason;
-    el.send.setAttribute('aria-label', enabled ? 'Send' : sendReason);
-    syncSend();
-  }
+  c.dictation = createDictation({
+    button: el.mic,
+    getTextarea: function () { return el.textarea; },
+    onRender: function () { composerGrow(c); },
+    onStart: opts.onDictationStart || function () {},
+  });
+  el.mic.addEventListener('click', c.dictation.toggle);
 
-  function setPlaceholder(text) {
-    el.textarea.placeholder = text;
-    el.textarea.setAttribute('aria-label', text);
-  }
+  c.keysPopover = mountKeysPopover(el.keys, host, {
+    send: function (bytes) { if (c.keysOpts) c.keysOpts.send(bytes); },
+    onOpen: function () { if (c.keysOpts && c.keysOpts.onOpen) c.keysOpts.onOpen(); },
+  });
 
-  function setKeys(k, reason) {
-    keysOpts = k || null;
-    setButtonState(el.keys, !!keysOpts, _TITLE_KEYS, reason || _TITLE_KEYS_OFF);
-    if (!keysOpts) keysPopover.close();
-  }
+  wireOcr(c);
+  c.attachQueue = createComposerAttachQueue(c);
+  wireAttach(c);
+  mountImageMenu(c);
+  wireSend(c);
 
-  function closePopovers() {
-    keysPopover.close();
-    imageMenu.close();
-  }
-
-  // Leave-surface teardown: drop the draft, the staged screenshots and any
-  // in-flight recording. dispose() (not stop()) so the mic and the app-wide
-  // dictation mutex release even mid-permission-prompt or mid-finalize, and
-  // a late transcript is dropped rather than written into a bar about to be
-  // hidden and cleared (#755).
-  function reset() {
-    el.textarea.value = '';
-    el.textarea.style.height = '';
-    hasImage = false;
-    clearOcrStaging();
-    dictation.dispose();
-    closePopovers();
-  }
-
-  setAvailability({ dictate: voiceDictationAvailable(), ocr: false });
-  setKeys(keysOpts, opts.keysOffReason);
-  setSendable(true);
-
-  // Give back a draft the surface cleared on a send it later found unanswered
-  // (#1744). Whatever was typed meanwhile stays, after the returned text.
-  function restoreDraft(text) {
-    const cur = el.textarea.value;
-    el.textarea.value = cur ? text + '\n' + cur : text;
-    el.textarea.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+  setAvailability(c, { dictate: voiceDictationAvailable(), ocr: false });
+  setKeys(c, c.keysOpts, opts.keysOffReason);
+  setSendable(c, true);
 
   return {
     root: host,
     textarea: el.textarea,
-    attachFiles: attachFiles,
-    restoreDraft: restoreDraft,
-    reset: reset,
-    closePopovers: closePopovers,
-    setAvailability: setAvailability,
-    setKeys: setKeys,
-    setPlaceholder: setPlaceholder,
-    setSendable: setSendable,
-    isBusy: function () { return dictation.isBusy(); },
+    attachFiles: function (files, kind) { return attachFiles(c, files, kind); },
+    restoreDraft: function (text) { restoreDraft(c, text); },
+    reset: function () { resetComposer(c); },
+    closePopovers: function () { closePopovers(c); },
+    setAvailability: function (a) { setAvailability(c, a); },
+    setKeys: function (k, reason) { setKeys(c, k, reason); },
+    setPlaceholder: function (text) { setPlaceholder(c, text); },
+    setSendable: function (enabled, reason) { setSendable(c, enabled, reason); },
+    isBusy: function () { return c.dictation.isBusy(); },
   };
 }
