@@ -1,0 +1,106 @@
+/* ---------- Code tab (#1434, step 2/7 of #1432) ----------
+   The Usage card, the quieter Sessions list and the launch toolbar. */
+
+/* The header rule: each exception in its tone's text colour. */
+.head-exception[data-tone="attention"] { color: var(--attention-text); }
+.head-exception[data-tone="danger"] { color: var(--danger-text); }
+
+/* The header's CPU reading (#1522), left of the theme toggle on every tab:
+   a quiet muted number, colour only for an exception. A fixed 38px box so
+   "9%" to "100%" never moves the row; .hit-target's ::before takes it past
+   the 44px floor, and the row's 12px gap keeps it off the toggle's. */
+.home-head .cpu-reading {
+  flex: none;
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-label);
+  font-variant-numeric: tabular-nums;
+  line-height: normal;
+  text-align: center;
+  cursor: pointer;
+}
+.home-head .cpu-reading[data-level="attention"] { color: var(--attention-text); }
+.home-head .cpu-reading[data-level="danger"] { color: var(--danger-text); }
+/* A quiet reading yields to the header line's exceptions: at 390px the line's
+   two parts need the reading's 50px, and no ellipsis may cut the part that
+   matters (design.md page-header). A hot reading is itself the exception, so
+   it always shows. */
+.home-head:has(> .status[data-tone]) .cpu-reading:is([data-level="normal"], [data-level="unknown"]) {
+  display: none;
+}
+.cpu-sheet-body .usage-sheet-value[data-tone="attention"] { color: var(--attention-text); }
+.cpu-sheet-body .usage-sheet-value[data-tone="danger"] { color: var(--danger-text); }
+.cpu-sheet-caption {
+  margin: var(--space-md) 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+
+/* Usage: the full meter in a card. The whole card is one tap to the Usage
+   sheet; the meter inside is its keyboard target. */
+.usage-card { cursor: pointer; }
+/* "Usage shows: None" (#1451) hides the whole card. */
+.usage-card[hidden] { display: none; }
+/* The static placeholder (#1657) draws the head and Codex rows only for
+   "both"; "none" hides the card from the first paint, before any script. */
+.usage-meter-full[data-pending] .um-head,
+.usage-meter-full[data-pending] .um-codex { display: none; }
+html[data-usage-shows="both"] .usage-meter-full[data-pending] .um-head,
+html[data-usage-shows="both"] .usage-meter-full[data-pending] .um-codex { display: flex; }
+html[data-usage-shows="none"] .usage-card { display: none; }
+.usage-card .usage-meter-slot { margin: 12px 0 0; }
+.usage-card-meta { font-size: var(--font-body-sm); }
+.usage-card-meta[data-tone="accent"] { color: var(--accent-text); }
+.usage-card-meta[data-tone="attention"] { color: var(--attention-text); }
+.usage-card-meta[data-tone="danger"] { color: var(--danger-text); }
+.usage-card-footer {
+  margin: 10px 0 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.usage-card-footer[hidden] { display: none; }
+
+/* The chief's row while no chief runs: the row body is not a tap target
+   (there is nothing to open), and Start / Resume sit as plain icon-button
+   verbs beside the kebab, their 44px targets touching. */
+.chief-stopped-row .chief-stopped-body {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-lg);
+  padding: 8px 4px 8px 14px;
+}
+.app-item .row-actions.session-actions:has(.chief-verb) {
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+}
+
+/* The Telegram row: a flat session-shaped row on the list's hairline, not
+   a filled button inside the card (round 1's "nested surfaces"). */
+.channel-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-lg);
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-top: 1px solid var(--line);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.channel-row[hidden] { display: none; }
+.channel-row:active { background: var(--card-2); }
+.channel-row .avatar-glyph { color: var(--accent); }
+.sessions-card #sessionsList:empty + .channel-row { border-top: 0; }
+

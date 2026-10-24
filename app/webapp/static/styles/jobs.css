@@ -1,0 +1,293 @@
+/* ---------- jobs tab ---------- */
+/* The Jobs card's toolbar (#1438): the search field in the vendored filter
+   look, then the sort and Add icon buttons at the 44px floor. The filter
+   field's own 12px bottom margin would sit inside the centring box and
+   lift the field 6px above the icons (#1541), so the toolbar owns that
+   gap instead. */
+.jobs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.jobs-toolbar .jobs-search { flex: 1; min-width: 0; margin: 0; }
+.jobs-toolbar > .icon-button { --icon-btn-box: var(--hit-min); flex: none; }
+/* The sort sheet's trigger (#1538, as the Conversations field's, #1528)
+   pulled to the right edge like the Projects filter's star. The field's
+   clear is the engine's own ✕, as on every other filter (#1554). */
+.jobs-filters { --icon-btn-box: var(--control-h); flex: none; margin-right: -8px; }
+.jobs-search-empty {
+  list-style: none;
+  padding: 16px 4px;
+  text-align: center;
+}
+/* A run-output hit: the matching line may take two lines. */
+.jobs-search-snippet {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+/* Never let the action cluster shove the title into a two-line wrap —
+   truncate the title instead (the vendored disclosure grid stays 1fr auto). */
+.jobs-card .collapse-main { min-width: 0; }
+.jobs-card .collapse-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* An ellipsized title clips at its padding box, and the vendored disclosure
+   sets line-height: 1, so the box was a font-size tall and cut the glyphs'
+   descenders ("g", "j") off, at every text size (#1134's no-clipped-rows
+   check). A little vertical padding widens the clip box and the equal
+   negative margin gives the space back, so the summary's layout is
+   unchanged. */
+.jobs-card .collapse-title {
+  padding-block: 0.2em;
+  margin-block: -0.2em;
+}
+
+/* Next up (#1438): the tab's glance card. Its header is one 52px button
+   (the card head's glyph and title, a chevron right) opening the agenda
+   sheet; the fires run full-bleed under a hairline. */
+.jobs-next-card { padding: 0; }
+.jobs-next-title { display: block; }
+.jobs-next-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 0 4px 0 14px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.jobs-next-head:active { background: var(--accent-soft); }
+.jobs-next-head .icon { width: var(--icon-title); height: var(--icon-title); }
+.jobs-next-head-text { flex: 1; min-width: 0; }
+.jobs-next-card .action-rows:not(:empty) { border-top: 1px solid var(--line-muted); }
+.jobs-next-card .empty-state {
+  border-top: 1px solid var(--line-muted);
+  padding: var(--space-md);
+}
+.jobs-next-card .empty-state[hidden] { display: none; }
+/* A fire's time: the leading value, tabular so the column lines up. */
+.jobs-fire-time {
+  flex: none;
+  min-width: 3.25em;
+  font-size: var(--font-body);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+}
+
+/* The agenda sheet (#230, a sheet since #1438): day groups under the
+   Settings overline headers' type (the one legal caps role), the frequent
+   jobs in the footer. */
+.jobs-agenda-sheet { width: min(480px, calc(100vw - 24px)); }
+.jobs-agenda-day { margin: 12px 4px 4px; }
+.jobs-agenda-day:first-child { margin-top: 0; }
+.jobs-agenda-frequent { margin: 12px 4px 0; }
+
+/* The sheet's detail block (#1130, in the sheet since #1438): label/value
+   rows above the runs list, muted keys so the values read first. No rule
+   under it (#1348): the run tiles carry their own edges, so its bottom
+   padding alone sets them apart. */
+.job-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 0 12px;
+}
+.job-detail-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: var(--font-body-sm);
+  line-height: 1.4;
+}
+.job-detail-key {
+  flex: none;
+  width: 74px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.job-detail-value { color: var(--fg); overflow-wrap: anywhere; }
+.job-detail-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+.job-detail-flags .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* The job sheet (#1438): the vendored modal at full height; its sticky
+   footer keeps Run now at the foot however long the log. */
+.job-sheet {
+  width: min(480px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
+}
+.job-sheet .detail-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.job-sheet-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-sheet-body { flex: 1 0 auto; }
+.job-sheet-section {
+  margin: 4px 0 8px;
+  font-size: var(--font-label);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.jobs-runs-list {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.jobs-runs-list > li {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+}
+.jobs-run-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--fg);
+  font: inherit;
+  font-size: var(--font-caption);
+  line-height: 1.3;
+  text-align: left;
+  min-height: 40px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.jobs-run-btn .jobs-run-icon { font-size: var(--font-label); }
+/* The three terminal outcomes are told apart by glyph AND status colour
+   (#916): ✓ success, ✗ failed, ? not confirmed. The glyph alone carried it
+   before, which is thin on a phone at a glance — and `unconfirmed` has to be
+   unmistakable from both neighbours, not merely different from one. */
+.jobs-run-btn .jobs-run-success { color: var(--success); }
+.jobs-run-btn .jobs-run-failed { color: var(--danger); }
+.jobs-run-btn .jobs-run-unconfirmed { color: var(--attention); }
+.jobs-run-btn .jobs-run-deferred { color: var(--muted); }
+.jobs-run-btn .jobs-run-meta {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+}
+.jobs-run-btn.selected {
+  border-color: var(--accent);
+  background: rgb(from var(--accent) r g b / 0.12);
+}
+.jobs-run-btn.selected .jobs-run-meta { color: var(--fg); }
+/* A run row's icon buttons (pin, re-run) are the vendored icon-button at the
+   44px floor: `stretch` in the row makes the button its full height, so the
+   centred glyph sits on the row's middle line. A pinned run's glyph takes
+   the accent: on, without a box. */
+.jobs-runs-list > li > .icon-button { --icon-btn-box: var(--hit-min); }
+.jobs-runs-list > li > .jobs-pin-btn.selected { color: var(--accent); }
+
+.jobs-output-label {
+  margin: 4px 0 6px;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
+.jobs-output-tail {
+  margin: 0;
+  padding: 8px;
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--code-fg);
+  font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.jobs-artifacts {
+  margin-top: 10px;
+}
+.jobs-artifacts h4 {
+  margin: 0 0 4px;
+  font-size: var(--font-label);
+}
+.jobs-artifacts ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.jobs-artifacts li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--font-body-sm);
+}
+.jobs-artifacts a {
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jobs-artifacts span { color: var(--muted); flex-shrink: 0; }
+.jobs-webhook-payload {
+  margin-top: 8px;
+}
+.jobs-webhook-payload > summary {
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+.jobs-webhook-payload > summary .icon {
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+.jobs-webhook-payload-body {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--code-fg);
+  font: 11px/1.35 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  max-height: 30vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+

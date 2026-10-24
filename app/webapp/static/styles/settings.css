@@ -1,0 +1,230 @@
+/* ---------- Settings: inset groups (#1435) ---------- */
+/* iOS-Settings-style groups under overline headers: each row is a lead
+   icon, a label, the current value in muted text and a chevron, and opens
+   a sheet. A row that holds its control inline (Text size, Start at log
+   on) drops the value and chevron. */
+.settings-overline,
+.jobs-agenda-day,
+.lifeos-group-head {
+  margin: 4px 14px 6px;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.card.settings-group { padding: 0; overflow: hidden; }
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 14px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  font: inherit;
+  font-size: var(--font-body);
+  text-align: left;
+}
+.settings-row + .settings-row { border-top: 1px solid var(--line-muted); }
+button.settings-row { cursor: pointer; }
+button.settings-row:active { background: var(--card-2); }
+.settings-row-icon {
+  flex: none;
+  width: var(--icon-title);
+  height: var(--icon-title);
+  color: var(--muted);
+}
+.settings-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.settings-row-value {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.settings-row-chevron {
+  flex: none;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  color: var(--muted);
+}
+/* Text size (#1134): the label beside the vendored segmented control. */
+.settings-row--inline .text-size-label { flex: none; }
+.text-size-card .segmented { flex: 1; min-width: 0; }
+/* A row's value that is an exception (settings-sheets.js setValue). */
+.settings-row-value[data-tone="attention"] { color: var(--attention-text); }
+/* The note under This PC: it wraps, unlike a one-line group footer. */
+.settings-footnote { margin: calc(-1 * var(--gap) + 6px) 14px 0; }
+/* Launch defaults' per-agent rows: the same rows, boxed inside the sheet. */
+.settings-group--nested {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.settings-group--nested .agent-icon { width: var(--icon-title); height: var(--icon-title); }
+
+/* A Settings sheet: the vendored modal shell at full height, a back button
+   before the title, and the Done footer pinned to the bottom however short
+   the body. */
+.settings-sheet {
+  width: min(480px, calc(100vw - 24px));
+  height: 92vh;
+  height: 92dvh;
+}
+.settings-sheet .detail-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.settings-sheet-body { flex: 1 0 auto; }
+.settings-sheet-head { justify-content: flex-start; gap: 4px; }
+/* A long title at Large text on a narrow phone wraps rather than clipping
+   ("Launch defaults" at 320px). */
+.settings-sheet-head h2 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-sheet-back {
+  --icon-btn-box: 34px;
+  margin-left: -8px;
+}
+.settings-sheet-back .icon { width: var(--icon-title); height: var(--icon-title); }
+/* The agent groups bring their own padding and dividers for a card; inside
+   a sheet's padding they sit flush, and the first one under the header
+   draws no divider of its own. */
+.settings-sheet .opt-group { padding: 6px 0 14px; }
+.settings-sheet-body > .opt-group:first-child,
+#agentSheet .opt-group { border-top: 0; }
+/* A field's inline error (#1435), under its help line. */
+.field-error {
+  margin: -6px 0 10px;
+  font-size: var(--font-body-sm);
+  color: var(--danger-text);
+}
+.field-error[hidden] { display: none; }
+.input-native[aria-invalid="true"] { border-color: var(--danger); }
+
+/* Screen time (#1678, screen-time.js): the period, the total, daily bars by
+   device and two lists of share rows (by device, by section). */
+.screen-time .segmented { margin-top: 4px; }
+.screen-time-state.empty-state { padding-inline: 0; }
+.screen-time-total {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 16px 0 12px;
+}
+.screen-time-total-value {
+  font-size: var(--font-heading-xl);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.screen-time-caption { font-size: var(--font-body-sm); color: var(--muted); }
+.screen-time-chart { margin: 4px 0 12px; }
+.screen-time-chart[hidden] { display: none; }
+/* One column per day; the gap narrows as the days grow (8px for a week,
+   2px for a month). Bars stand on a hairline baseline. */
+.screen-time-bars,
+.screen-time-ticks {
+  display: grid;
+  grid-template-columns: repeat(var(--days), minmax(0, 1fr));
+  column-gap: max(2px, calc(56px / var(--days)));
+}
+.screen-time-bars {
+  height: 120px;
+  border-bottom: 1px solid var(--line);
+}
+.screen-time-bar {
+  display: flex;
+  flex-direction: column-reverse;
+  min-width: 0;
+}
+.screen-time-seg { display: block; flex: none; min-height: 2px; }
+.screen-time-seg:last-child { border-radius: 3px 3px 0 0; }
+.screen-time-ticks {
+  margin-top: 6px;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--muted);
+}
+.screen-time-tick { grid-row: 1; justify-self: center; white-space: nowrap; }
+.screen-time-tick[data-edge="start"] { justify-self: start; }
+.screen-time-tick[data-edge="end"] { justify-self: end; }
+/* The device fills, told apart by pattern as well as tone (design.md
+   Charts): PC solid, phone striped, tablet dotted. The chart's bars and the
+   device list's share bars use the same three. */
+.screen-time [data-device="desktop"] { background: var(--accent); }
+.screen-time [data-device="phone"] {
+  background: repeating-linear-gradient(135deg,
+    var(--accent) 0 3px, var(--accent-soft) 3px 6px);
+}
+.screen-time [data-device="tablet"] {
+  background:
+    radial-gradient(circle, var(--accent) 1px, transparent 1.5px) 0 0 / 4px 4px,
+    var(--accent-soft);
+}
+.screen-time-devices,
+.screen-time-sections {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.screen-time-sections { margin-bottom: 4px; }
+/* Fixed label and value columns, so every share track starts and ends at
+   the same place down the list. */
+.screen-time-row {
+  display: grid;
+  grid-template-columns: minmax(0, 6.5em) minmax(0, 1fr) 5em;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-sm);
+}
+.screen-time-row + .screen-time-row { border-top: 1px solid var(--line-muted); }
+.screen-time-row-label {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.screen-time-share {
+  display: block;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  overflow: hidden;
+}
+.screen-time-share-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+.screen-time-row-value {
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.settings-sheet .screen-time-note { margin: 16px 0 10px; }
+/* The last send to task-os (#1678 step 2/2), just above Send. */
+.settings-sheet .screen-time-sent { margin: 0 0 4px; color: var(--fg); }
+

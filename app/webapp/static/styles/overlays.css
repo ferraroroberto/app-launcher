@@ -1,0 +1,415 @@
+/* ---------- Show changes overlay (#977) ---------- */
+/* GitHub "Files changed" on the phone: a summary line, then flat list-row
+   groups (Changes / Untracked) whose rows are <details> — badge · path ·
+   +N −N in the summary, the file's unified diff in the body, tinted per
+   line. The overlay + body chrome is shared with the transcript above. */
+.changes-body { gap: 0; }
+.chg-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px 16px;
+  color: var(--muted);
+  text-align: center;
+  font-size: var(--font-body);
+}
+.chg-state .icon { width: 24px; height: 24px; }
+.chg-summary { padding: 0 0 8px; }
+.chg-group { margin: 0 0 12px; }
+.chg-group-title {
+  margin: 8px 0 0;
+  padding: 0 0 4px;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--fg);
+}
+/* list-row contract: full-bleed rows, 12px 0, hairline between rows. */
+.chg-file + .chg-file { border-top: 1px solid var(--line-muted); }
+.chg-file > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--row-md);
+  padding: 8px 0;
+  cursor: pointer;
+  font-size: var(--font-label);
+}
+.chg-file > summary::-webkit-details-marker { display: none; }
+/* The file row the panel and the Edited card share (#1477): badge, the name
+   over its folder, counts. A status badge is its status text on its own 16%
+   tint (design.md), never a coloured letter on a grey tile. */
+.chg-badge {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+  font-weight: 700;
+  font-family: var(--font-mono);
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+.chg-badge-M { background: rgb(from var(--attention) r g b / 0.16); color: var(--attention-text); }
+.chg-badge-A, .chg-badge-U { background: rgb(from var(--success) r g b / 0.16); color: var(--success-text); }
+.chg-badge-D, .chg-badge-C { background: rgb(from var(--danger) r g b / 0.16); color: var(--danger-text); }
+.chg-badge-R, .chg-badge-T { background: var(--accent-soft); color: var(--accent-text); }
+/* Name first in mono, the folder under it as the hint. One line each,
+   ellipsised, in the card; the panel wraps them, so a deep folder still
+   reads whole there. */
+.chg-path {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.3;
+}
+.chg-base,
+.chg-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chg-base {
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+}
+.chg-dir { color: var(--muted); font-size: var(--font-body-sm); font-weight: 400; }
+.chg-file .chg-base,
+.chg-file .chg-dir { white-space: normal; overflow-wrap: anywhere; }
+/* The file a card row opened (#1477): a faint accent wash, bled into the
+   panel's 12px gutter so the row's content stays aligned with its siblings. */
+.chg-file.chg-focus {
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--accent) r g b / 0.06);
+}
+.chg-file.chg-focus + .chg-file { border-top-color: transparent; }
+/* "This turn · Whole session" (#1477): chip-geometry pills, the pressed one in
+   the accent tint, each inside a 44px tap target. */
+.chg-scope { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 4px; }
+.chg-scope-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.chg-scope-btn > span {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.chg-scope-btn[aria-pressed="true"] > span { background: var(--accent-soft); color: var(--accent-text); }
+.chg-staged {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--success);
+}
+.chg-counts {
+  flex: none;
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.chg-add { color: var(--diff-add-fg); }
+.chg-del { color: var(--diff-del-fg); }
+.chg-body { padding: 0 0 10px; }
+.chg-note { padding: 4px 0 6px; }
+/* The diff: the transcript's mono inset recipe, uncapped (the <details>
+   already scopes it), every line a block so a wrapped long line keeps its
+   tint across the continuation. */
+.chg-diff {
+  margin: 0;
+  padding: 6px 0;
+  /* The card surface on a hairline (#1474), never `--card-off`: that is true
+     black inside a dark card. Same frame as a fenced block (`.md-block`). */
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  color: var(--code-fg);
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: var(--font-code);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chg-diff > span { display: block; padding: 0 8px; }
+.chg-diff .d-add { background: var(--diff-add-bg); color: var(--diff-add-fg); }
+.chg-diff .d-del { background: var(--diff-del-bg); color: var(--diff-del-fg); }
+.chg-diff .d-hunk {
+  background: var(--neutral-soft);
+  color: var(--diff-hunk-fg);
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.chg-diff .d-meta { color: var(--muted); }
+/* Token colours on a diff line (the `.fv-*` rules below): plain code on an
+   added or removed line takes the code colour, since the line's own green or
+   red would flatten every token; the +/- prefix keeps it, and the tinted
+   background still says added or removed. A comment is `--muted` everywhere
+   but under the dark tints, where that is under AA, so it reads as the code
+   colour in italic there. */
+.chg-diff .d-add.d-tint,
+.chg-diff .d-del.d-tint { color: var(--code-fg); }
+.chg-diff .d-add.d-tint .d-pfx { color: var(--diff-add-fg); }
+.chg-diff .d-del.d-tint .d-pfx { color: var(--diff-del-fg); }
+[data-theme="dark"] .chg-diff :is(.d-add, .d-del) .fv-cmt { color: var(--code-fg); }
+/* Per-step diffs (#1349): the same diff inside a Chat step, plus a
+   line-number gutter when the harness recorded real numbers. A numbered line
+   is a two-track grid, so a wrapped long line stays right of its number and
+   the page never scrolls sideways; an unnumbered diff keeps the plain block
+   lines above. Long diffs scroll inside their own box. */
+.tr-diff { margin: 0 0 8px; max-height: 60vh; overflow-y: auto; }
+/* Changed files (#1349): a file's edits each get a quiet label above their
+   diff, and the panel scrolls as a whole rather than per diff. */
+.chg-body .tr-diff { max-height: none; }
+.chg-step { padding: 6px 0 4px; }
+/* A session file's tools (#1689, #1749): the vendored Diff | File segmented
+   switch, then Download and the ⋮ menu as icon buttons on one quiet row, and
+   the file's absolute path under it as text you can select. The icon buttons'
+   44px targets reach 8px past their 28px boxes, so the group is inset by as
+   much and its last target stays inside the panel. */
+.chg-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: var(--hit-min);
+  padding: 4px 0 0;
+}
+.chg-view { flex: 0 1 168px; }
+.chg-acts { padding: 0 8px; }
+.chg-fullpath {
+  padding: 4px 0 8px;
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  overflow-wrap: anywhere;
+  -webkit-user-select: text;
+  user-select: text;
+}
+/* The File view (file-view.js): the code-listing frame (COMP-17) for code,
+   JSON and plain text, a CSS-counter gutter on each listing line so a long
+   line wraps right of its number and a copy takes the code alone. JSON and
+   the main code languages are tinted with the shell tint's pairs. */
+.fv-listing,
+.fv-text {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--code-fg);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fv-listing { padding: 6px 0; }
+.fv-text { padding: 8px 10px; }
+.fv-listing > code {
+  display: block;
+  padding: 0;
+  background: none;
+  font: inherit;
+  counter-reset: fv-line;
+}
+/* The number hangs in the left padding (not a grid column): a line holds
+   several token spans, and each would be a grid item of its own, one per
+   row. */
+.fv-line {
+  display: block;
+  position: relative;
+  padding: 0 10px 0 calc(6px + 4ch + 10px);
+  counter-increment: fv-line;
+}
+.fv-line::before {
+  content: counter(fv-line);
+  position: absolute;
+  left: 6px;
+  width: 4ch;
+  color: var(--muted);
+  text-align: right;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Token colours (#1749), the fleet's existing text tokens in both themes:
+   keyword / tag / at-rule and the JSON key take the accent, a string the
+   success text, a number or literal the attention text, a comment the muted
+   grey in italic, and a function / attribute / property name the code colour
+   in bold (no hue of its own: the spec has no purple or red text token, and
+   danger-text reads as an error). */
+.fv-key,
+.fv-kw { color: var(--accent-text); }
+.fv-str { color: var(--success-text); }
+.fv-num,
+.fv-lit { color: var(--attention-text); }
+.fv-cmt {
+  color: var(--muted);
+  font-style: italic;
+}
+.fv-name {
+  color: var(--code-fg);
+  font-weight: 600;
+}
+.fv-note { padding: 0 0 6px; }
+.fv-md { padding: 4px 2px 0; }
+.tr-diff-numbered > span {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding-left: 0;
+}
+.tr-diff .d-ln {
+  min-width: 4ch;
+  padding: 0 8px 0 6px;
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* "folder / name" (#1476): the folder muted, the name in fg. */
+.tr-diff-path {
+  margin: 0 0 6px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.tr-diff-base { color: var(--fg); font-weight: 600; }
+.tr-diff-more { margin: 0 0 8px; }
+.tr-diff-note { margin: 0 0 8px; }
+
+/* ---------- Edited N files card (#1477) ---------- */
+/* Closes a turn that edited files: the card contract on the canvas, a header
+   (glyph, "Edited N files", total +N -M), then list-rows at rows.md -- the
+   panel's own file row -- and a full-width "Show N more". Every row is a
+   button: a tap opens Changed files on that file, across the row's full
+   width. */
+.tr-edited {
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  overflow: hidden;
+}
+.tr-edited-head,
+.tr-edited-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--row-md);
+  padding: 4px 14px;
+  border: 0;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tr-edited-head { gap: 8px; }
+.tr-edited-head > .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); color: var(--muted); }
+.tr-edited-title { flex: 1; min-width: 0; font-weight: 700; }
+.tr-edited-line,
+.tr-edited-more,
+.tr-edited-partial { border-top: 1px solid var(--line-muted); }
+.tr-edited-line { display: flex; align-items: stretch; }
+.tr-edited-line > .tr-edited-row { flex: 1; min-width: 0; width: auto; }
+.tr-edited-chev { flex: none; display: inline-flex; color: var(--muted); }
+.tr-edited-chev .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.tr-edited-head:active,
+.tr-edited-row:active,
+.tr-edited-more:active { background: var(--neutral-soft); }
+@media (hover: hover) {
+  .tr-edited-head:hover,
+  .tr-edited-row:hover,
+  .tr-edited-more:hover { background: var(--neutral-soft); }
+}
+.tr-edited-more {
+  display: block;
+  width: 100%;
+  min-height: var(--hit-min);
+  padding: 0 14px;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* A turn whose first steps sit on a page not loaded yet (decision 7). */
+.tr-edited-partial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 4px;
+  padding: 0 14px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.tr-edited-older {
+  min-height: var(--hit-min);
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chg-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 8px;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+  color: var(--muted);
+}
+.chg-branch .icon { width: var(--icon-inline); height: var(--icon-inline); }
+
+/* ---------- webauthn / passkey settings ---------- */
+.webauthn-devices {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.webauthn-devices li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card-2);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  font-size: var(--font-body-sm);
+}
+.webauthn-devices li span { flex: 1; word-break: break-word; }
+/* A passkey row's remove stands alone in its row: the vendored icon-button at
+   30px, its ::before reaching the 44px floor. */
+.webauthn-devices .icon-button { --icon-btn-box: 30px; }
+

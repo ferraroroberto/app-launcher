@@ -539,7 +539,7 @@ let activityTimer = null;
 
 // The line's two children, built once: the timer icon (shown for the live
 // line only) and the text, which alone is rewritten on every tick. The line
-// is a centring flex row (styles.css), so neither child can lift or sink it.
+// is a centring flex row (styles/terminal.css), so neither child can lift or sink it.
 function stripLineParts(el) {
   let text = el.querySelector('.terminal-activity-text');
   if (!text) {

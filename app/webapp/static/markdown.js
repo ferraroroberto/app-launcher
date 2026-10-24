@@ -75,7 +75,7 @@ function renderCell(tag, content, align) {
 }
 
 // Wrapped so a table wider than its container scrolls sideways inside it --
-// the page never does (styles.css `.md-table-wrap`).
+// the page never does (styles/chat.css `.md-table-wrap`).
 function renderTable(header, aligns, rows) {
   const width = header.length;
   const row = function (cells, tag) {

@@ -49,7 +49,7 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("app/webapp/static/icons/foo.svg", Category.STATIC),
         # real browser surface -> FULL
         ("app/webapp/static/apps.js", Category.FULL),
-        ("app/webapp/static/styles.css", Category.FULL),
+        ("app/webapp/static/styles/base.css", Category.FULL),
         ("app/webapp/static/index.html", Category.FULL),          # real page, not vendored
         ("app/webapp/static/_vendored/nav/nav.css", Category.FULL),  # vendored CSS is layout
         ("app/webapp/server.py", Category.FULL),
@@ -110,7 +110,7 @@ def test_js_change_routes_to_full(cfg: E2EConfig) -> None:
 
 
 def test_css_change_routes_to_full(cfg: E2EConfig) -> None:
-    r = classify(["app/webapp/static/styles.css"], cfg)
+    r = classify(["app/webapp/static/styles/base.css"], cfg)
     assert r.tier == "full"
 
 
@@ -326,7 +326,7 @@ def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
 @pytest.mark.parametrize(
     "shared",
     [
-        "app/webapp/static/styles.css",
+        "app/webapp/static/styles/base.css",
         "app/webapp/static/index.html",
         "app/webapp/static/main.js",
         "app/webapp/static/state.js",

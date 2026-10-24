@@ -7,7 +7,7 @@
  * match src/desktop_cursor.py's STANDARD_SHAPES (tests/test_desktop_screen.py
  * fails when one is missing here).
  *
- * Colours are the overlay's two custom properties (styles.css,
+ * Colours are the overlay's two custom properties (styles/apps.css,
  * .screen-cursor): a light body with a dark edge, like Windows' own cursor,
  * so it reads over any desktop.
  */

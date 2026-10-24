@@ -1,0 +1,913 @@
+/* ---------- Board tab (issue #300 / #164, reshaped by #1436) ---------- */
+/* The lane toolbar (#1436): the Board's first row under the page header —
+   the project filter, full width, and ↻ beside it, above the lanes they act
+   on. 8px apart: two 44px targets, no overlap. */
+.board-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 var(--gap);
+  --icon-btn-box: var(--hit-min);
+}
+.board-toolbar .board-repo-combo { flex: 1; min-width: 0; }
+/* Repo/project dropdown (#337): tap-to-open/tap-to-select, not a typable
+   field — a <button> trigger, not a native <select> (which paints its own
+   OS chrome) or a text input (which would invite typing). The live filter
+   over the board's lanes; "All projects" (the default) shows everything.
+   The filter height of the action-row contract (44px), so the target is
+   real geometry. */
+.board-repo-combo { position: relative; }
+.board-repo-combo::after {
+  content: '';
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  background: currentColor;
+  -webkit-mask: var(--chevron-down-mask) center / contain no-repeat;
+  mask: var(--chevron-down-mask) center / contain no-repeat;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+.board-repo-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: var(--hit-min);
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  padding: 0 34px 0 12px;
+  font: inherit;
+  font-size: var(--font-body-sm);
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+.board-repo-input .icon { flex: none; color: var(--muted); }
+.board-repo-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-repo-list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow);
+}
+.board-repo-list li {
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-body-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.board-repo-list li[data-repo]:hover,
+.board-repo-list li[aria-selected="true"] { background: var(--card); color: var(--accent); }
+
+/* One attention banner above the lanes (#1436), only while a source is down
+   or stale: the status text on its own 16% tint, behind one glyph. */
+.board-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 var(--gap);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
+  font-size: var(--font-body-sm);
+}
+.board-status[hidden] { display: none; }
+.board-status .icon {
+  flex: none;
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  margin-top: 2px;
+}
+
+/* The Backlog lane's toolbar (#1436): "Start with" and the model combo the
+   rows' Start and YOLO launch with. */
+.board-lane-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px var(--board-card-inset, 14px) 8px;
+}
+.board-lane-toolbar-label {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+}
+.board-lane-toolbar .model-combo { flex: 1; min-width: 0; }
+.board-lane-toolbar .model-combo-trigger { width: 100%; min-width: 0; }
+/* The Backlog's footer: "GitHub · updated N min ago". */
+.board-lane-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px var(--board-card-inset, 14px) 4px;
+  border-top: 1px solid var(--line-muted);
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+}
+.board-lane-foot[hidden] { display: none; }
+.board-lane-foot .icon { flex: none; width: var(--icon-inline); height: var(--icon-inline); }
+
+/* A folded lane's exception (#1436): "1 failing", "1 question for you", in
+   its tone, in place of the count. Open, the lane shows its rows and count. */
+.board-lane-exception {
+  display: none;
+  font-size: var(--font-body-sm);
+  font-weight: 400;
+}
+.board-lane-exception[data-tone="attention"] { color: var(--attention-text); }
+.board-lane-exception[data-tone="danger"] { color: var(--danger-text); }
+details:not([open]) > .collapse-summary .board-lane-exception:not([hidden]) { display: inline; }
+details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden])) .board-count { display: none; }
+
+/* Launch-model dropdown (#540) for the Coding + Life OS card summaries. A
+   native <select> cannot live inside a <summary> — WebKit's HTML parser
+   derails on it (closes the <details> early, cascading into a broken tree
+   that even zeroes custom-property inheritance on ancestors). So this is
+   built from phrasing-only content — a <button> trigger + a
+   <span role="listbox"> of <button role="option"> — which is valid in a
+   summary, styled as the fleet's inline control (36px control height, 12px
+   radius, --card-2 fill, chevron-down affordance). */
+.model-combo { position: relative; display: inline-flex; }
+.model-combo-trigger {
+  height: var(--control-h);
+  min-height: var(--control-h);
+  padding: 0 24px 0 10px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  font-size: var(--font-caption);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.model-combo-trigger:active { background: var(--card); }
+.model-combo::after {
+  content: '';
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  background: currentColor;
+  -webkit-mask: var(--chevron-down-mask) center / contain no-repeat;
+  mask: var(--chevron-down-mask) center / contain no-repeat;
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+/* Closed menus live beside their triggers. The controller portals an open
+   menu to the document viewport (except inside a native dialog's top layer),
+   so scrollable toolbars and card overflow cannot clip it. */
+.model-combo-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-shadow: var(--shadow);
+}
+.model-combo-menu--portal {
+  position: fixed;
+  right: auto;
+  z-index: 380;
+  width: max-content;
+}
+.model-combo-menu[hidden] { display: none; }
+.model-combo-menu button:not(.toggle) {
+  padding: 8px 14px;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--fg);
+  font-size: var(--font-caption);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.model-combo-menu button:not(.toggle):hover,
+.model-combo-menu button:not(.toggle):focus-visible,
+.model-combo-menu button[aria-selected="true"] {
+  background: var(--card);
+  color: var(--accent);
+}
+.model-combo-trigger:disabled {
+  background: var(--card-2);
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+.model-combo-menu button:not(.toggle):disabled {
+  background: var(--card-2);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Column count in each section's summary (#1198; was the phone strip's
+   pill before the strip retired). Its own text colour, not --muted: that
+   reads 4.08:1 on the dark --card-2 pill (#1175). */
+.board-count {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: var(--card-2);
+  color: var(--fg);
+  font-size: var(--font-caption);
+  text-align: center;
+}
+/* "Your turn" holding work is the one number that matters. State signal,
+   not decoration — the warn color marks pending human action. */
+.board-col.attention .board-count { background: var(--attention); color: var(--attention-fg); }
+
+/* Usage meter (#1433): one component, a button that opens the Usage
+   sheet (the Board's compact size left with #1436). Colour follows pace: a bar is accent on or under
+   pace, attention ahead of it, danger at 90%+; a stale reading dims and
+   carries a chip; with nothing measured the state word stays as text. */
+.usage-meter-slot { margin: 0 0 8px; min-width: 0; }
+.usage-meter {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.usage-meter:active { background: var(--card-2); }
+.usage-meter .um-mark { width: var(--icon-inline); height: var(--icon-inline); flex: none; }
+.usage-meter .um-name { font-weight: 600; white-space: nowrap; }
+.usage-meter .um-label,
+.usage-meter .um-reset { color: var(--muted); white-space: nowrap; }
+.usage-meter .um-pct { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-meter [data-tone="attention"] > .um-pct,
+.usage-meter .um-codex-value[data-tone="attention"] { color: var(--attention-text); }
+.usage-meter [data-tone="danger"] > .um-pct,
+.usage-meter .um-codex-value[data-tone="danger"] { color: var(--danger-text); }
+.usage-meter .um-note,
+.usage-meter .um-codex-value[data-tone="none"] { color: var(--muted); }
+/* The bar: a neutral track, a tone fill, and the week's 2px pace tick. */
+.usage-meter .um-bar {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+}
+.usage-meter .um-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+}
+.usage-meter .um-fill[data-tone="attention"] { background: var(--attention); }
+.usage-meter .um-fill[data-tone="danger"] { background: var(--danger); }
+.usage-meter .um-tick {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--fg);
+}
+/* No longer confirmed: the numbers stay, dimmed. */
+.usage-meter[data-stale="true"] .um-windows,
+.usage-meter .um-codex-value[data-stale="true"] { opacity: 0.55; }
+
+/* Full (Code): the head row, the 5h and Week rows, the Codex row. */
+.usage-meter-full {
+  flex-direction: column;
+  gap: 6px;
+  /* Vertical only: the card's own padding is the content edge the heading
+     icon, the rows and the footer share (#1541). */
+  padding: 8px 0;
+  font-size: var(--font-body-sm);
+}
+.usage-meter-full .um-head,
+.usage-meter-full .um-codex {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+.usage-meter-full .um-windows { display: flex; flex-direction: column; gap: 6px; }
+.usage-meter-full .um-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px 64px;
+  align-items: center;
+  gap: var(--space-sm);
+}
+.usage-meter-full .um-row .um-pct { text-align: right; }
+.usage-meter-full .um-reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: var(--font-caption);
+}
+.usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
+.usage-meter-full .um-codex .um-codex-value { margin-left: auto; white-space: nowrap; }
+
+/* The Usage sheet's label/value rows: the short label keeps its line, a long
+   value wraps beside it. */
+.usage-sheet-body .row > span { flex: none; white-space: nowrap; }
+.usage-sheet-body .usage-sheet-value {
+  font-weight: 400;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* Context-filter "saved" badge (issue #713) — the last consumer of the
+   dotted badge row the quota rows above used to share. */
+.usage-badges {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px 12px;
+  margin: 0 0 8px;
+}
+.usage-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-caption); color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.usage-badge::before {
+  content: ''; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--muted); flex: 0 0 auto;
+}
+.usage-badge.good { color: var(--success); }
+.usage-badge.good::before { background: var(--success); }
+
+/* Columns are section cards (#1198): on the phone they stack like every
+   other tab's cards; the desktop block below lays them side by side. */
+.board-col { min-width: 0; }
+
+/* The chief's plan (#1279) sits under Claude's turn: the two share one
+   wrapper, a grid cell on the desktop and plain stacked cards on the phone.
+   Its rows are the shared action-row (#1502): questions open the answer
+   sheet, lanes and queue rows only report, each with its status chip; an
+   unknown status keeps the neutral chip. */
+.board-col-stack { min-width: 0; }
+.board-plan-line { margin: 0 0 6px; }
+.board-plan-heading {
+  margin: 12px 0 2px;
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--muted);
+}
+/* A lane, queue or parked row (#1578): two lines on the default action-row,
+   the title over `repo#N, Model`, the status chip pushed to the right end of
+   line 2 so the title keeps the whole first line, and (on a row that opens its
+   issue) a chevron as the one trailing item. The model word is quiet text
+   inside the meta line (#1352). */
+.board-plan-model { white-space: nowrap; }
+.board-plan-row .action-row-meta .chip { margin-left: auto; }
+.board-plan-section-note { margin: 0 0 4px; }
+/* Parked folds (#1578): its heading is the <details> summary, with the
+   section's own chevron instead of the browser marker. The summary is a
+   control, not a heading element, so it keeps the caption size the shared
+   `.board-plan-heading` rule no longer gives it (#1623). */
+.board-plan-parked-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--row-sm);
+  margin: 0;
+  font-size: var(--font-caption);
+  cursor: pointer;
+  list-style: none;
+}
+.board-plan-parked-summary::-webkit-details-marker { display: none; }
+.board-plan-parked-chevron {
+  margin-left: auto;
+  display: inline-flex;
+  width: var(--row-sm);
+  justify-content: center;
+  transition: transform 0.15s;
+}
+.board-plan-parked-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.board-plan-parked[open] > .board-plan-parked-summary .board-plan-parked-chevron { transform: rotate(90deg); }
+/* What waits on you (#1502, decision 2 of #1500): plain one-line rows under
+   an attention heading, no bar or stripe; a chevron says a row opens the
+   answer sheet. "N more" unfolds the rest in place. */
+.board-plan-group-waiting .board-plan-heading { color: var(--attention-text); }
+.board-plan-chevron,
+.lifeos-convo-chevron {
+  width: var(--row-sm);
+  height: var(--row-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+.board-plan-chevron .icon,
+.lifeos-convo-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.board-plan-answer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding-block: 0;
+}
+
+/* The chief's answer sheet (#1295): the modal shell, full-screen on the
+   phone. Each question borrows the transcript AskUserQuestion card's parts
+   (.tr-ask-*), so options, marks and the Other field look as they do in
+   Chat — but as a flat list row on the modal's top hairline (design.md
+   list-row), never a card nested in the modal's card. */
+.chief-answers-list { display: flex; flex-direction: column; }
+.chief-answers-list .tr-ask.chief-answer {
+  padding: 12px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+.chief-answer-head { flex-wrap: wrap; }
+.chief-answer-num {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.chief-answer-ref {
+  font-size: var(--font-body-sm);
+  color: var(--accent-text);
+  overflow-wrap: anywhere;
+}
+span.chief-answer-ref { color: var(--muted); }
+.chief-answers-also {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.chief-answers-also > span { font-weight: 600; }
+/* The composer mount sits on the sheet's own surface, as the Board drawer's
+   does: no docked bar padding, hairline or card fill. */
+.chief-answers-also .compose-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+.chief-answers-note { margin: 0; text-align: center; }
+@media (max-width: 520px) {
+  .chief-answers-dialog {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+  .chief-answers-dialog .detail-card {
+    min-height: 100%;
+    border-radius: 0;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 18px);
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  }
+}
+
+.board-list { list-style: none; margin: 0; padding: 0; }
+/* Every Board row is the shared action-row (#1501, #1502); .board-item stays
+   the hook the poll and the tests use. A session row wraps, so its drawer
+   lands below the row at full width (#301 phone feedback), never beside it.
+   Titles are one line with an ellipsis on every width (decision 3 of #1500,
+   reversing #339's two-line clamp), the full text in the title attribute;
+   the repo reference is part of the meta text that ellipsizes. */
+.board-list .action-row.board-item {
+  margin: 0;
+  flex-wrap: wrap;
+}
+.board-list .action-row.board-item > .board-drawer { flex: 0 0 100%; }
+/* A Backlog card's date (#1638). With a claim chip the meta is one line whose
+   text ellipsizes; the date is its own item beside the chip so it is never the
+   part that gets cut (LAYOUT-09) while a long repo name still ellipsizes. */
+.board-card-stamp { flex: none; white-space: nowrap; }
+.board-agent-icon { width: 16px; height: 16px; }
+.board-empty { margin: 0; }
+
+/* Telegram sessions hidden from the lists (#1384): the Coding tab's
+   Telegram row (.channel-row) stands in for them and opens a read-only list;
+   the Board has none (#1436). */
+.channel-summary-text { flex: 1; min-width: 0; }
+.channel-summary-chevron { color: var(--muted); flex: none; }
+
+/* The read-only list those lines open: name + status over two meta cells per
+   session. The row is the card; its look (a button, read-only) fills it, and
+   Compact (#1402) is a borderless icon at its right end. Never a Stop. */
+.channel-list { margin: 0 0 var(--gap); }
+.channel-list-row + .channel-list-row { margin-top: 8px; }
+.channel-list-row {
+  display: flex;
+  align-items: center;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+.channel-list-open {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--fg);
+  border: 0;
+  border-radius: var(--radius-md);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* Icon only: the vendored icon-button's 44px box is the hit area. The >= 50%
+   highlight is the icon's colour, not a border. */
+.channel-list-compact { --icon-btn-box: var(--hit-min); }
+.channel-list-compact[data-high="true"] { color: var(--attention); }
+.channel-list-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.channel-list-status { font-size: var(--font-caption); font-weight: 600; justify-self: end; }
+.channel-list-status.is-up { color: var(--success); }
+.channel-list-status.is-down { color: var(--muted); }
+/* A Compact outcome standing in for the status word (same cell, same height). */
+.channel-list-note.is-good { color: var(--success); }
+.channel-list-note.is-error { color: var(--danger); }
+.channel-list-meta { display: inline-flex; gap: 6px; font-size: var(--font-body-sm); }
+.channel-list-context[data-tier="warn"] { color: var(--attention); }
+.channel-list-context[data-tier="danger"] { color: var(--danger); }
+
+/* Settings → Telegram channels (#1369): read-only check rows, the same
+   meta-left / value-right shape as the context-filter harness rows. A
+   healthy check's value is plain text; only an exception wears a chip
+   (#1506): attention for what needs you, neutral for an unknown. */
+.channel-check-list .channel-check {
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 10px 0;
+}
+.channel-check-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.channel-check-chip {
+  flex-shrink: 0;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+/* A chip its tone's text, a value plain. The vendored modal paints only a
+   row's first span (its label) in --ink at 600 (project-scaffolding#363),
+   so the value and the chip keep their own colour and weight. */
+.channel-check-chip-attention {
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
+}
+.channel-check-chip-neutral {
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+.channel-check-value,
+.context-filter-status {
+  flex-shrink: 0;
+  font-size: var(--font-body-sm);
+  white-space: nowrap;
+}
+/* A meta column (a check, a harness, an API token) is that first span, so
+   the detail line under its title would inherit the label's 600; it stays
+   muted at 400. Muted on the sheet's card measures 5.25:1 light and 4.64:1
+   dark (COLOR-02, #1506; pinned by test_settings_sheets.py). */
+.detail-card .row > span:first-child .muted { font-weight: 400; }
+.channel-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin: 0;
+}
+/* A skill folder name is code, so the `code-inline` chip (#1624, COMP-17):
+   mono at 0.875em of the line around it, never caption-sized -- the same
+   chip as inline code in a reply (`.tr-md code`). */
+.channel-skill-chip {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--neutral-soft);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+}
+.channel-steps {
+  margin: 0 0 var(--space-md);
+  padding-left: 1.25em;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  font-size: var(--font-body-sm);
+}
+/* The playbook names long folder/file paths inline (#1371); let them wrap at
+   any character so a phone-width card never scrolls sideways. */
+.channel-steps code {
+  overflow-wrap: anywhere;
+}
+
+/* Drill-down drawer (#301): last exchange + reply, inline under the card. */
+.board-drawer {
+  margin: 6px 0 4px;
+  padding: 10px 12px;
+  background: var(--card-2);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.board-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: var(--font-body-sm);
+}
+.board-exchange[data-state="loading"],
+.board-exchange[data-state="empty"],
+.board-exchange[data-state="error"] {
+  color: var(--muted);
+  min-height: 44px;
+  justify-content: center;
+}
+/* The user's side of a drawer exchange. fg, not muted: on the dark theme's
+   card-2 the muted text measured 4.08:1 (COLOR-02), and design.md puts text
+   on a tinted fill in fg. The left rule still marks it as the user's. */
+.board-exchange-user {
+  color: var(--fg);
+  font-size: var(--font-body-sm);
+  border-left: 2px solid var(--muted);
+  padding-left: 8px;
+}
+/* The drawer's mount of the shared composer (#984, mockup screen 8): the
+   bar sits inside the drawer's own surface, so it drops the docked bar's
+   padding, hairline and card fill. */
+.board-drawer-composer .compose-bar {
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+}
+/* Drawer actions (#1502, decision 4 of #1500): Chat, the one tint primary,
+   then Terminal on the secondary surface, each a glyph beside its label at
+   the 44px floor, then the kebab holding Rename and Stop. The drawer's own
+   width decides the layout, never squeezing a button under the floor
+   (#1174): one row while the two labelled buttons keep their words beside
+   the kebab; in a narrow desktop column Chat and the kebab share the first
+   row and Terminal spans the second; in the narrowest, one column.
+   minmax(0, 1fr) keeps the buttons inside the drawer (#473). The kebab's
+   menu drops below the row. */
+.board-drawer { container-type: inline-size; }
+.board-drawer-actions {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--row-sm);
+  gap: 8px;
+}
+@container (max-width: 279.98px) {
+  .board-drawer-actions {
+    grid-template-columns: minmax(0, 1fr) var(--row-sm);
+    grid-template-areas: "chat menu" "terminal terminal";
+  }
+  .board-drawer-actions > .board-open-chat { grid-area: chat; }
+  .board-drawer-actions > .board-open-terminal { grid-area: terminal; }
+  .board-drawer-actions > .board-drawer-kebab { grid-area: menu; }
+}
+@container (max-width: 103.98px) {
+  .board-drawer-actions {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "chat" "terminal" "menu";
+  }
+}
+.board-drawer-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: var(--row-sm);
+  padding: 0 10px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.board-drawer-action:active { background: var(--card); }
+.board-drawer-action.is-primary {
+  background: var(--accent-soft);
+  border-color: var(--accent-border-soft);
+  color: var(--accent-text);
+}
+.board-drawer-action.is-primary:active { filter: brightness(0.9); }
+.board-drawer-action .icon { flex: none; }
+.board-drawer-action-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.board-drawer-kebab { --icon-btn-box: var(--row-sm); justify-self: end; }
+/* An action the session can't take (Terminal for a detached session, Chat
+   with no transcript reader): design.md button-disabled — flat muted text on
+   the subtle surface, never opacity. aria-disabled, not :disabled, so the
+   tap still toasts the reason. */
+.board-drawer-action[aria-disabled="true"],
+.board-drawer-action[aria-disabled="true"]:active {
+  background: var(--input-bg);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: default;
+  filter: none;
+}
+
+/* The GitHub refresh in flight (#1502, COLOR-02): the ↻ spins at full
+   strength instead of a disabled "…" (1.55:1 on dark). Still, under reduced
+   motion. */
+.board-refresh[aria-busy="true"] .icon { animation: board-refresh-spin 0.9s linear infinite; }
+@keyframes board-refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .board-refresh[aria-busy="true"] .icon { animation: none; }
+}
+
+/* Desktop / wide: all five column sections side by side.
+   Board (only) also breaks out of the phone-first `.app` 720px cap —
+   full-bleed to the viewport, since `.app`'s horizontal centering makes
+   the standard breakout offsets cancel out exactly (issue #325). Every
+   other tab stays inside the 720px column unchanged. */
+@media (min-width: 700px) and (pointer: fine) {
+  #paneBoard {
+    width: 100vw;
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+    padding: 0 24px;
+    box-sizing: border-box;
+    /* The lane grid's gap, named once: the project filter below is sized to
+       one lane from it, so the two cannot drift apart (#1464). */
+    --board-col-gap: 20px;
+  }
+  /* `start`, not the grid's default stretch: a folded section keeps its
+     52px summary height instead of growing an empty card to the row. */
+  /* One column per lane that holds rows (board.js sizeLaneGrid sets
+     --board-lanes on the pane, #1502); an empty lane spans the grid as a
+     strip, and `dense` keeps the lanes with rows side by side above the
+     strips, each set in lane order. */
+  .board-columns {
+    display: grid;
+    grid-template-columns: repeat(var(--board-lanes, 5), minmax(0, 1fr));
+    grid-auto-flow: row dense;
+    align-items: start;
+    gap: var(--board-col-gap);
+  }
+  .board-columns > .board-col.is-empty { grid-column: 1 / -1; }
+  /* The strip (#1502): title and count, then the empty sentence and its one
+     action inline, on one line; the sentence ellipsizes first. */
+  .board-col.is-empty[open] {
+    display: flex;
+    align-items: center;
+  }
+  /* One line, so no divider under the summary; the chevron keeps a gap
+     from the count. */
+  .board-col.is-empty[open] > .collapse-summary {
+    flex: none;
+    column-gap: 12px;
+    border-bottom: 0;
+  }
+  .board-col.is-empty[open] > .collapse-body {
+    flex: 1;
+    min-width: 0;
+    padding: 0 14px 0 0;
+  }
+  .board-col.is-empty .board-lane-toolbar,
+  .board-col.is-empty .board-lane-foot,
+  .board-col.is-empty .empty-state-icon { display: none; }
+  .board-col.is-empty .empty-state {
+    flex-direction: row;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 0;
+    min-height: 0;
+  }
+  .board-col.is-empty .empty-state-message {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .board-col.is-empty .empty-state-action { flex: none; margin: 0; }
+  .board-col { margin: 0; }
+  .board-col-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .board-chief-plan { margin: 0; }
+  /* A fifth of the pane is narrow: the body's 14px sides on top of each
+     row's own inset left the drawer's actions too little room for one row.
+     The rows carry an inset already, so the grid's bodies drop the sides. */
+  .board-col > .collapse-body { padding: 4px 0 8px; }
+  /* A full-bleed pane makes a full-width filter absurdly long: it is exactly
+     one lane wide (the toolbar and the grid share the pane's content box and
+     --board-lanes), so its edges line up with the first column's, ↻ beside
+     it (#1464). */
+  .board-toolbar .board-repo-combo {
+    flex: 0 0 calc((100% - (var(--board-lanes, 5) - 1) * var(--board-col-gap)) / var(--board-lanes, 5));
+  }
+}
+.lifeos-file-btn {
+  flex: 1;
+  display: block;
+  text-align: left;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: var(--font-label);
+  min-height: var(--row-sm);   /* the 44px touch floor */
+  cursor: pointer;
+}
+/* The document sheet's text, scrolling inside the reader sheet (#1504). */
+.lifeos-file-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.lifeos-file-content h1,
+.lifeos-file-content h2,
+.lifeos-file-content h3,
+.lifeos-file-content h4 { line-height: 1.3; }
+.lifeos-file-content p { line-height: 1.5; }
+.lifeos-file-content a { color: var(--accent); }
+.lifeos-file-content code {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--font-caption);
+}
+/* A fence here is the same `.md-block` frame as in Chat (#1474); the document
+   viewer keeps its scroll route, where Chat wraps. */
+.lifeos-file-content pre.md-code { overflow-x: auto; }
+

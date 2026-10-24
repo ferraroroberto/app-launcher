@@ -1,0 +1,563 @@
+/* ---------- interactive terminal overlay ---------- */
+/* Stop iOS rubber-band / pull-to-refresh chrome from leaking through
+   into the underlying page when the terminal overlay is open. Applied
+   globally (harmless on the launcher home view) because Safari's
+   negative-overscroll behaviour is rooted at the document, not body. */
+html, body { overscroll-behavior: none; }
+/* When the terminal is open the body is scroll-locked so the overlay is
+   the only thing on screen — long output can't push the bar off-screen
+   or reveal the app list underneath. The JS lockBodyScroll() also pins
+   position:fixed + top:-Ypx + width:100%; the rules below cap the height
+   and isolate touch gestures so iOS doesn't try to scroll the page that
+   isn't there. 100dvh handles the dynamic chrome (URL bar show/hide). */
+body.terminal-open {
+  overflow: hidden;
+  height: 100dvh;
+  height: 100vh;            /* fallback for engines without dvh */
+  touch-action: none;       /* iOS: no system pan/zoom on body itself */
+}
+.terminal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: var(--term-bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-top: env(safe-area-inset-top, 0);
+  /* No padding-bottom: the overlay itself runs to the physical bottom edge
+     (no dead band of its own background above the iOS home indicator).
+     The session overlay's bottom row is the status strip (#1219), and it
+     takes env(safe-area-inset-bottom) into its OWN height — the same idea
+     as `.app` and the lightbox: the bottom-most surface carries the inset,
+     so its background reaches the glass while everything above it clears
+     the indicator and the rounded corners. Not here: that would put
+     a band of the overlay's background under the strip and also move the
+     two Life OS shells that share this class, which have no bottom row. */
+  /* Containment + the iOS-supported `overscroll-behavior: contain`
+     stop any scroll attempt that exits the overlay from bubbling up
+     to the (now-pinned) body and triggering rubber-band. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  overflow-anchor: none;
+}
+.terminal-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* (#514) 6px, matching .terminal-bar-actions' own gap, so every button
+     sits at one uniform distance. The session overlay's row is six 44px
+     controls at most since #1223 (‹ Back · title · context ring · mode
+     toggle · 🔊 · ⋮), which still leaves the title ~74px of a 390px phone
+     and only a few px of a 320px one with 🔊 showing. */
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.terminal-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: var(--font-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Fleet chief crown in the terminal overlay's own title (#547) — same marker
+   as the Board card and the Coding-tab row, set by terminal-mirror.js's
+   setTerminalTitleText(). */
+.terminal-title-crown {
+  display: inline-flex;
+  color: var(--accent);
+  margin-right: 4px;
+  vertical-align: -0.15em;
+}
+/* (#514) .terminal-bar-actions is a flex item of the row-flex .terminal-bar;
+   without min-width: 0 a flex item's automatic minimum size is its content's
+   min-content width, so this group refused to shrink below the sum of its
+   six 44px buttons and pushed past the viewport edge once #496 widened the
+   adjacent Back/Kill buttons — same shrinkable-scroll-container contract as
+   design.md's grid minmax(0, 1fr) rule, applied to a flex row. overflow-x:
+   auto lets it scroll internally, within the bar's own padding, instead of
+   clipping the last button off-screen. */
+.terminal-bar-actions {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.terminal-bar-actions::-webkit-scrollbar { display: none; }
+/* The session overlay's bar no longer needs that scroller (#981): with ✕ and
+   ↓ gone its group holds the context ring (#1223), the Terminal⇄Chat toggle
+   (#982), 🔊 and ⋮, which always fit beside a shrinking title (≈316px of a
+   320px phone with all four showing, title keeps the rest). Only the Life OS
+   bars (#886) still scroll. */
+#terminalOverlay .terminal-bar-actions { overflow-x: visible; }
+.term-btn:not(.icon-button) {
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 9px 12px;
+  font-size: var(--font-label);
+  /* 44×44 effective minimum app-wide (#496 audit, extending #477 beyond the
+     terminal bar): the base class also dresses the Life OS browser bar. */
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+}
+/* Reading the last reply aloud (issue #190) — success-green pulse so the ⏹
+   stop state is unmistakable while speech is playing (on-state, #391). */
+.term-btn.speaking {
+  color: var(--success-text);
+  animation: compose-record-pulse 1.2s ease-in-out infinite;
+}
+/* The glyph-only bar controls are the vendored icon-button at the 44px
+   floor (the bar is a cluster, so no expanded hit area). */
+.term-btn.icon-button { --icon-btn-box: var(--hit-min); }
+/* Every icon-only button in the terminal toolbar meets the 44x44pt HIG
+   minimum (issue #477) — restated here for clarity even though the base
+   .term-btn now carries 44×44 itself (#496). */
+.terminal-bar .term-btn { min-width: 44px; min-height: 44px; }
+/* ‹ Back button — #496 had widened it to 64px (+ 4px kill clearance) after
+   the #259 close-tap complaint, but the extra 24px pushed the eight-button
+   row past the phone viewport (#514). Reverted to the uniform 44px HIG
+   target (#477) every other bar button uses, at the bar's uniform 6px gap,
+   so the whole row fits on-screen at once. */
+#terminalBack { text-align: center; }
+/* Read-aloud action menu (issue #210): a small dropdown anchored below the
+   terminal bar under the 🔊 button — "Read aloud" (verbatim) and
+   "Summarize & read" (hub-condensed for hands-free / driving). */
+.speak-popover {
+  position: absolute;
+  top: 48px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  z-index: 30;
+  box-shadow: var(--shadow);
+}
+.speak-action {
+  min-height: 44px;
+  padding: 10px 14px;
+  font-size: var(--font-label);
+  text-align: left;
+  white-space: nowrap;
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.speak-action:active { background: var(--card-2); }
+/* Read-aloud summary modal (issue #210): the hub summary shown on screen while
+   it's read aloud (and readable on its own), auto-closing when the read ends or
+   on a tap. Sits above the terminal overlay (300), below the toast (400). */
+.summary-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.summary-card {
+  width: min(560px, 100%);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  box-shadow: var(--shadow);
+}
+.summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.summary-title { font-weight: 700; font-size: var(--font-body); }
+.summary-close { --icon-btn-box: var(--control-h); }
+.summary-text {
+  margin: 0 0 12px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+.summary-foot { text-align: center; }
+/* On-screen keys popover (issue #36): D-pad floating ABOVE the composer
+   (#980 — it used to hang under the terminal bar), right-aligned over the
+   ⌨ button in the composer grid so the thumb reaches it. Since #986 it is a
+   4-col grid — Esc/↑/Tab/Ctrl, ←/↵/→/C, ⇧/↓/U/X — to fit the sticky Ctrl
+   toggle and its C/U/X letters. */
+.keys-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 8px;
+  display: grid;
+  grid-template-columns: repeat(4, 56px);
+  gap: 8px;
+  padding: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  z-index: 30;
+  box-shadow: var(--shadow);
+}
+/* Not migrated to the button tiers (issue #477 audit): this is a fixed 4-col
+   D-pad grid keyboard popover, not a standalone action button. */
+.key-btn {
+  min-height: 52px;
+  font-size: var(--icon-title);
+  background: var(--card);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.key-btn:active { background: var(--card-2); }
+/* Sticky-Shift / sticky-Ctrl engaged (issue #137, #986): the toggle stays
+   lit until tapped off so the user can see the modifier is held for the
+   next key. */
+.key-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+/* C/U/X (issue #986): disabled whenever Ctrl isn't held, so a stray tap
+   can't type a letter into the prompt — the fleet's one shared disabled
+   recipe (design.md button-disabled), never opacity on a solid fill. */
+.key-btn:disabled {
+  color: var(--muted);
+  background: var(--input-bg);
+  cursor: default;
+}
+.terminal-host {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 6px 4px 4px 8px;
+  background: var(--term-bg);
+  overflow: hidden;
+  /* xterm.js owns the inner scrollback; tell iOS the host is a
+     vertical pan target so edge touches don't get hijacked by
+     system gestures. (Momentum-scrolling hints belong on
+     .xterm-viewport — the actual scrolling element — see below.) */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+/* The element xterm.js actually scrolls is .xterm-viewport, not
+   .terminal-host (host has overflow:hidden). On iOS this is where
+   the -webkit-overflow-scrolling: touch hint earns its keep —
+   inside the rendered window xterm can give the browser a real
+   scrollable area, and iOS will apply native momentum there. */
+.terminal-host .xterm-viewport {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+.terminal-host .xterm { height: 100%; }
+/* Floating "Latest" pill (#981 → #1140): one look for all three mounts —
+   the Terminal, the Chat pane and the Life OS conversation viewer
+   (latest-pill.js owns when it shows). Bottom-right of its scroll surface,
+   so it sits just above the docked composer. A hairline border and the card
+   surface lift it off the screen — no shadow (design.md keeps real elevation
+   for the bottom nav). */
+.latest-pill {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  /* Above xterm's own layers (its helper textarea sits at z-index 5 and
+     follows the pill in the DOM), below the bar's menus (30). */
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--card-2);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font: inherit;
+  font-size: var(--font-label);
+  font-weight: 600;
+  cursor: pointer;
+}
+.latest-pill[hidden] { display: none; }
+.latest-pill:active { border-color: var(--accent); color: var(--accent); }
+/* The scroll panes' positioning box for the pill: it takes the scroller's
+   place in the column, so the pill floats over the scroller's visible
+   bottom edge rather than scrolling with the content. */
+.latest-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* The shared composer (#980, composer.js): a column of OCR tray + compose
+   bar, always docked under the terminal (and, later, under Chat mode and
+   in the Board drawer). Positioned so the keys D-pad can float above it. */
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+/* An attach batch in flight (#1354). The image button swaps its glyph for an
+   hourglass over "N/M" and stays tappable (a second pick queues behind the
+   batch), so it is marked busy in the accent, never dimmed like a disabled
+   button. The status line above the compose bar says the same in words. */
+.compose-tools .compose-record.composer-image.is-uploading {
+  flex-direction: column;
+  gap: 1px;
+  color: var(--accent-text);
+  cursor: progress;
+}
+.composer-image.is-uploading .composer-upload-count {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1;
+}
+.composer-upload-status {
+  padding: 4px 4px 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* Compose bar (issue #37): a predictive-keyboard text surface docked
+   at the bottom of the overlay, between the xterm host and the status
+   line. flex-shrink:0 lets it claim its height; the host (flex:1)
+   shrinks and xterm re-fits on the visualViewport resize. */
+.compose-bar {
+  display: flex;
+  /* flex-end, not stretch (issue #447): the textarea auto-grows on every
+     dictation partial, and its growth pushes the row's TOP edge up while
+     the bottom stays put. With align-items:stretch the mic/OCR/attach
+     column and the Send button stretched to match the taller row, moving
+     their buttons up with it — measured 46px of drift on a realistic
+     transcript, a moving-target race against a tap aimed at the pre-grow
+     position. flex-end keeps every button's own natural size, anchored to
+     the row's one stable edge (the bottom), so only the textarea grows. */
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+/* 🎤 / ⌨ / 🖼 / ➤ sit in a 2x2 grid (mic · keys / image · send since #980),
+   anchored bottom-right of the bar, so the textarea keeps the horizontal
+   space (issue #171 UX) while all four buttons read as one matched cluster
+   (issue #453) instead of a tall 1x4 column. Fixed cell size + the size rule
+   below give every button the same canonical footprint and tap area. */
+.compose-tools {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  grid-template-rows: repeat(2, 44px);
+  gap: 6px;
+  flex-shrink: 0;
+}
+/* All four buttons in the terminal compose grid are identical 44px squares. */
+.compose-tools { --icon-btn-box: var(--hit-min); }
+/* A refused ➤ Send takes that same recipe — without it the button kept its
+   full accent fill and read as perfectly usable (#1069). On aria-disabled,
+   not :disabled, so the tap still lands and toasts the reason. A send in
+   flight takes it too (#1239), with an hourglass for the arrow: the hold is a
+   real `disabled`, and it used to look exactly like a live button. */
+.compose-tools .compose-send[aria-disabled="true"],
+.compose-tools .compose-send[aria-disabled="true"]:active,
+.compose-tools .compose-send.is-sending {
+  color: var(--line);
+  cursor: default;
+}
+.compose-tools .compose-send.is-sending { cursor: progress; }
+/* A field mount (#1295, composer.js `field`) has no Send and no keys: the
+   remaining mic and image stack in one column, the same 44px cells. */
+.composer-field .compose-tools { grid-template-columns: 44px; }
+.compose-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  /* Taller start so the bar is a roomy writing area from the first tap;
+     JS auto-grows up to 8 rows from there. */
+  min-height: 92px;
+  /* System font, not the xterm monospace — predictive UI looks native.
+     16px keeps iOS from auto-zooming the page on focus. */
+  font-family: var(--font);
+  font-size: var(--font-body);
+  line-height: 20px;
+  padding: 10px 12px;
+  background: var(--input-bg);
+  color: var(--fg);
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+}
+/* Background work in progress (OCR / transcribe) — keep the ticking timer
+   legible despite the disabled dim, and tint it so it reads as "busy". */
+.compose-record.working { color: var(--accent); font-size: var(--font-label); }
+/* Arming (#1295 follow-up): the tap landed and the mic is starting — an
+   hourglass in the accent, so a second tap is not needed to find out. */
+.compose-record.arming { color: var(--accent-text); cursor: progress; }
+/* Recording in progress — red pulse so the state is unmistakable. */
+.compose-record.recording {
+  color: var(--danger-text);
+  animation: compose-record-pulse 1.2s ease-in-out infinite;
+}
+@keyframes compose-record-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+/* OCR staging tray (issue #171): images accumulate here as the 📷 button is
+   tapped; one Extract call collates them all into deduplicated text. */
+.ocr-tray {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.ocr-thumbs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  flex: 1;
+  min-width: 0;
+}
+.ocr-thumb { position: relative; flex-shrink: 0; }
+.ocr-thumb img {
+  height: 44px;
+  width: 44px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  display: block;
+}
+.ocr-thumb-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: none;
+  background: var(--danger, #d9534f);
+  color: var(--accent-fg);
+  font-size: var(--font-caption);
+  line-height: 18px;
+  padding: 0;
+  cursor: pointer;
+}
+.ocr-extract {
+  flex-shrink: 0;
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: var(--font-label);
+  font-weight: 600;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.ocr-extract:active { opacity: 0.85; }
+.ocr-extract.working { opacity: 1; }
+/* The session overlay's bottom status strip (#1219). Always laid out, in
+   both modes, one status line tall — the height the old status line added
+   when it appeared: 8px + one body-sm line + 8px. The controls above it
+   therefore sit clear of the phone's rounded corners, and a message coming
+   or going changes only the strip's content, never its box, so nothing
+   above it moves (it used to be a `hidden` flex child that pushed the
+   composer up on every "Connecting…" and dropped it back on connect).
+
+   env(safe-area-inset-bottom) enters here and nowhere else in the overlay,
+   and it OVERLAPS the reserved row instead of stacking under it: the strip
+   is max(row, inset) tall, not row + inset. On an iPhone the two are about
+   the same size (~36px row, ~34px home-indicator inset), so the first cut
+   stacked them into ~70px of blank card under the composer, twice the gap
+   the owner wanted (#1219 reopened). Overlapped, the controls still sit a
+   full row above the glass, clear of the rounded corners, and a device with
+   no inset keeps exactly the one row. The card background runs to the glass,
+   as on `.app` and the lightbox.
+
+   No top hairline: blank, the strip reads as the composer's own bottom
+   margin on the same card surface; the message is marked by its colour. */
+.terminal-status-strip {
+  --status-row: calc(var(--font-body-sm) * 1.45 + 16px);
+  display: flex;
+  flex-shrink: 0;
+  min-height: max(var(--status-row), env(safe-area-inset-bottom, 0px));
+  background: var(--card);
+}
+/* While the on-screen keyboard is up the overlay is pinned to end at the
+   keyboard's top edge (terminal.js applySize, #135), and the keyboard covers
+   the home indicator, so the inset has nothing left to clear. `data-keyboard`
+   is set and cleared at exactly the sites that apply and undo that pin. Only
+   the inset goes: the reserved status row stays, so a message appearing
+   still moves nothing. */
+#terminalOverlay[data-keyboard] .terminal-status-strip { min-height: var(--status-row); }
+/* The message itself: stretched to fill the reserved row (so the tap-to-
+   reconnect target is the whole row) and centred both ways, so a short
+   message never runs into a rounded corner and the icon never grows the
+   line box. A message too long for one line wraps and grows the strip —
+   deliberately, rather than truncating the only instruction on a dead-end
+   state (the Tailscale-only notice at 320px). */
+.terminal-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  text-align: center;
+  color: var(--attention);
+}
+/* Chat mode's line in the same strip (#1387): the turn in progress, or a
+   forced read's note (#1292). One line that ellipsizes, never wraps, so it
+   fills the reserved row exactly like a message does and moves nothing.
+   Muted, not attention: it is ambient, not an instruction. Connection
+   status always wins the row. */
+.terminal-activity {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+/* The text is the part that ellipsizes (an ellipsis needs a block box, not the
+   flex row); the timer icon (#1394) is the vendored glyph, in the line's own
+   muted colour and centred on the text by the row's align-items. */
+.terminal-activity-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.terminal-activity[hidden],
+.terminal-status:not([hidden]) ~ .terminal-activity { display: none; }
+

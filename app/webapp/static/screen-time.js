@@ -27,7 +27,7 @@ import { renderSettingsValues } from './settings-sheets.js';
 import { calendarDaysFromToday } from './dom-utils.js';
 
 // Device classes in drawing order. Each fill differs by pattern as well as
-// tone (design.md Charts: a non-colour second channel); styles.css draws
+// tone (design.md Charts: a non-colour second channel); styles/settings.css draws
 // them from data-device.
 const DEVICES = [
   { id: 'desktop', label: 'PC' },

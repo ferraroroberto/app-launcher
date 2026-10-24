@@ -355,7 +355,7 @@ async function downloadFile(file, read) {
 
 // The ⋮ menu of an opened file's tool row (#1749), one controller for the
 // panel. It drops below the button group, right edges 4px in, as the Board
-// drawer's kebab does; `changes-menu` lifts it over the panel (styles.css).
+// drawer's kebab does; `changes-menu` lifts it over the panel (styles/shared.css).
 const fileMenu = createRowMenu({
   className: 'changes-menu',
   placement: { against: function (kebab) { return kebab.parentElement; }, offset: 2, inset: 4 },

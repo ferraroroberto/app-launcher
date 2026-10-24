@@ -325,7 +325,7 @@ extensions = ["html"]
 label      = "static-asset"
 
 # --- the real browser surface -> full ---------------------------------------
-# CSS routes full rather than to a curated "layout subset": styles.css is
+# CSS routes full rather than to a curated "layout subset": styles/*.css is
 # global and WebKit is exactly where layout regressions surface, so a
 # hand-kept subset would be drift-prone and an under-testing risk.
 [[e2e.rule]]
@@ -562,7 +562,7 @@ label      = "repo-meta"
 # A diff that would route "full" but whose every full- or static-tier path
 # sits in ONE surface below runs only that surface's pytest_targets, on both
 # projections. A surface owns a tab's own modules and its own tests, nothing
-# shared: styles.css, index.html, main.js/state.js/api.js/tabs.js and the other
+# shared: styles/*.css, index.html, main.js/state.js/api.js/tabs.js and the other
 # shared JS, server.py, the session-host paths and both conftests stay out of
 # every surface, so a change there still runs the whole suite. So do a path in
 # two surfaces, a diff spanning two, any unclassified path, and any diff that

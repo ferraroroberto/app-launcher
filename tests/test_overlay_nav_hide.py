@@ -2,7 +2,7 @@
 
 The floating bottom tab bar is a body-level ``<nav class="tabs">`` at
 ``z-index: 120``. A hand-rolled overlay (a ``[hidden]``-toggled ``<div>``, not
-a native ``<dialog>``) has to be named in two ``styles.css`` rules: the phone
+a native ``<dialog>``) has to be named in two stylesheet rules: the phone
 ``.tabs`` hide rule and the standalone ``.app { overflow: hidden }`` lock.
 
 A forgotten entry doesn't show up in Safari, so it tends to slip through. In
@@ -16,11 +16,10 @@ to both rules too.
 
 from __future__ import annotations
 
-import pathlib
 import re
 from html.parser import HTMLParser
 
-STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
+from tests._css import STATIC, stylesheet_text
 
 # The hand-rolled overlay classes: the session overlay's chrome, which every
 # full-screen Coding / Life OS view reuses, plus the three one-off overlays.
@@ -50,9 +49,9 @@ def _overlay_ids() -> list:
 
 
 def _selectors_of_rules(declaration: str, target: str) -> set:
-    """Every selector in a ``styles.css`` rule that sets ``declaration`` and
+    """Every selector in a stylesheet rule that sets ``declaration`` and
     whose selectors all end at ``target``."""
-    css = re.sub(r"/\*.*?\*/", "", (STATIC / "styles.css").read_text(encoding="utf-8"), flags=re.S)
+    css = re.sub(r"/\*.*?\*/", "", stylesheet_text(), flags=re.S)
     found = set()
     for sel_text, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
         if declaration not in body:
@@ -84,7 +83,7 @@ def test_overlay_ids_are_found() -> None:
 def test_every_overlay_hides_the_phone_tab_bar() -> None:
     missing = _missing(".tabs", "visibility: hidden")
     assert not missing, (
-        f"overlays not in the phone .tabs hide rule in styles.css: {missing} — "
+        f"overlays not in the phone .tabs hide rule in styles/base.css: {missing} — "
         "the floating bottom bar stays on top of them (#1143)"
     )
 
@@ -92,6 +91,6 @@ def test_every_overlay_hides_the_phone_tab_bar() -> None:
 def test_every_overlay_locks_the_standalone_app_scroller() -> None:
     missing = _missing(".app", "overflow: hidden")
     assert not missing, (
-        f"overlays not in the standalone .app overflow lock in styles.css: {missing} — "
+        f"overlays not in the standalone .app overflow lock in styles/base.css: {missing} — "
         ".app stays touch-scrollable behind them in the installed PWA (#1143)"
     )

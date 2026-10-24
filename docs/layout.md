@@ -16,6 +16,7 @@ app-launcher/
 │       ├── manager.py         # adopt-or-spawn uvicorn lifecycle
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
+│           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
 ├── src/                        # logic layer (no UI imports)
 │   ├── app_config.py           # log level, webapp embed section
@@ -117,3 +118,14 @@ app-launcher/
     ├── last_tunnel_url.txt    # tray + run_named_tunnel write here
     └── auth.log               # failed-login audit
 ```
+
+## Stylesheets
+
+`app/webapp/static/styles/` holds the app's own rules, cut into files of at most 1,000 lines. `index.html` links them one by one, and that link order is the cascade: a rule in a later file wins a tie against an earlier one exactly as it did when they were a single sheet.
+
+- **Tokens, tabs, cards and the page header** live in `base.css`; the bottom-tab nav and the standalone PWA shell rules are there, so they stay first.
+- **A view's rules go in that view's file**: `settings.css`, `jobs.css`, `lifeos.css`, `board.css`, `code.css`, `apps.css`, `terminal.css`, and `chat.css` / `chat-cards.css` for the transcript pane. Rules several views share go in `shared.css` (toasts, dialogs, the Glance kit, row menus) or `lists.css` (collapsible cards, option rows, card lists).
+- **A rule that overrides another stays after it.** The `wide.css` desktop media blocks restyle the views above, so they sit below those views' files; a new file goes where its rules must win, not alphabetically.
+- **A file that would pass 1,000 lines splits at a section comment**, never inside a block, and its link goes right after the file it was cut from.
+- **Cache-busting is automatic**: `src/static_versioning.py` stamps every `href="/static/styles/*.css"` with the fleet hash, so a new file needs only its `<link>`.
+- **Tests read the sheets through `tests/_css.py`**, which concatenates them in `index.html`'s link order.
