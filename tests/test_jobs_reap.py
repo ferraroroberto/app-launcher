@@ -769,3 +769,38 @@ class TestReapRacesExecutorFinalise:
             assert on_disk[key] == value
         spy.assert_not_called()
         assert "reap skipped" in caplog.text
+
+
+# ------------------------------------------- reap vs. executor still finalising
+
+
+@pytest.mark.parametrize("executor_alive", [True, False])
+def test_reap_waits_for_a_live_executor_but_not_a_dead_one(
+    isolated_jobs, monkeypatch, caplog, executor_alive
+):
+    """A short job's child is dead before the executor writes its exit code;
+    only a dead executor makes the run stranded."""
+    started = (datetime.now() - timedelta(seconds=2)).isoformat(timespec="seconds")
+    rd = _seed_run(
+        isolated_jobs, "solo", "20260101T000000", status="running", pid=4242,
+        started_at=started, executor_pid=5151, executor_create_time=1000.0,
+    )
+    hints = {}
+
+    def fake_alive(pid, create_time_hint=None, **_):
+        hints[pid] = create_time_hint
+        return executor_alive and pid == 5151
+
+    monkeypatch.setattr(jobs_reap_mod, "is_pid_alive", fake_alive)
+    spy = MagicMock()
+    monkeypatch.setattr(jobs_reap_mod, "notify_failure", spy)
+    job = Job(id="solo", name="Solo", script_path="C:/nowhere/x.py")
+
+    with caplog.at_level("INFO", logger=jobs_reap_mod.logger.name):
+        reaped = jobs_reap_mod.finalize_dead_runs(job)
+
+    assert hints[5151] == 1000.0  # pid reuse is ruled out
+    assert ("reap deferred" in caplog.text) is executor_alive
+    assert (reaped == []) is executor_alive
+    assert (jobs_mod.read_run(rd)["status"] == "running") is executor_alive
+    assert spy.called is not executor_alive

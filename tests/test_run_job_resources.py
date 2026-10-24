@@ -21,6 +21,7 @@ from app.cli.commands import run_job_supervision as sup
 from src import jobs as jobs_mod
 from src import jobs_history as jobs_history_mod
 from src import notifications as notif
+from src.diagnostics import is_pid_alive
 
 
 # ============================================================== sampler
@@ -120,6 +121,11 @@ class TestExecutorFinalises:
         assert record["exit_code"] == 0
         assert isinstance(record.get("pid"), int)
         assert record["pid"] > 0
+        # The reaper's "executor still finalising" evidence: an OS create_time,
+        # not time.time() at the write, so a long-lived executor isn't read
+        # as a recycled pid.
+        assert record["executor_pid"] == os.getpid()
+        assert is_pid_alive(record["executor_pid"], record["executor_create_time"])
         assert record.get("duration_seconds") is not None
         assert record["duration_seconds"] >= 0.0
         # Resources are best-effort; we only assert presence, not values
