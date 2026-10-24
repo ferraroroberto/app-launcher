@@ -47,6 +47,12 @@ MANIFEST_SUFFIX = ".manifest.json"
 MANIFEST_VERSION = 1
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _MAX_TITLE_CHARS = 120
+# A zombie capture is a greeting, so its first 16 KiB is all of it; the cap
+# only bounds a stray large file a query would otherwise read whole.
+_SEARCH_HEAD_BYTES = 16 * 1024
+# 30 days of nightly runs capped at 25 each tops out near 750; a phone list
+# past this is unreadable anyway, and a query narrows it.
+MAX_ARCHIVED_ROWS = 200
 
 STATUS_RESTORED = "restored"
 STATUS_REFUSED = "refused"
@@ -153,6 +159,55 @@ def find_backups(root: Path, selector: str) -> List[tuple[str, str, str]]:
                 continue
             found.append((day, skill_dir.name, name))
     return found
+
+
+def list_archived(root: Path, query: str = "", skill: str = "") -> List[Dict[str, Any]]:
+    """Every backed-up conversation, newest run first, from the manifests.
+
+    ``query`` matches (case-insensitively) the title, the skill, the capture's
+    name and the start of its text — a zombie is a greeting, so its text is a
+    few lines. ``skill`` narrows to one skill. Nothing here touches the live
+    search index: the backup stays invisible to the capture pipeline.
+    """
+    needle = query.strip().lower()
+    try:
+        days = sorted((c.name for c in root.iterdir() if _DATE_RE.match(c.name)), reverse=True)
+    except OSError:
+        return []
+    rows: List[Dict[str, Any]] = []
+    for day in days:
+        for found_day, found_skill, capture in reversed(find_backups(root, day)):
+            if skill and found_skill != skill:
+                continue
+            folder = root / found_day / found_skill
+            try:
+                manifest = json.loads((folder / f"{capture}{MANIFEST_SUFFIX}").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if not isinstance(manifest, dict):
+                continue
+            title = " ".join(str(manifest.get("title") or "").split())
+            if needle:
+                haystack = " ".join((title, found_skill, capture, _capture_head(folder / capture))).lower()
+                if needle not in haystack:
+                    continue
+            rows.append({
+                "day": found_day, "skill": found_skill, "capture": capture, "title": title,
+                "agent": str(manifest.get("agent", "")), "moved_at": str(manifest.get("moved_at", "")),
+            })
+            if len(rows) >= MAX_ARCHIVED_ROWS:
+                return rows
+    return rows
+
+
+def _capture_head(path: Path) -> str:
+    if not path.is_file() or _is_link(path):
+        return ""
+    try:
+        with path.open("rb") as handle:
+            return handle.read(_SEARCH_HEAD_BYTES).decode("utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _refuse(day: str, skill: str, capture: str, reason: str) -> RestoreOutcome:

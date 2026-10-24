@@ -35,7 +35,8 @@ conversation history (index, search, targeted relaunch) lives in
 browser (read / delete / rename) in :mod:`app.webapp.routers.life_os_files`,
 the Telegram channel profiles (#1366) in
 :mod:`app.webapp.routers.life_os_channels` and their relay (#1639) in
-:mod:`app.webapp.routers.life_os_relay`, all mounted here via ``include_router`` so ``app/webapp/server.py`` still
+:mod:`app.webapp.routers.life_os_relay`, the zombie cleanup's archive
+(list, read, restore) in :mod:`app.webapp.routers.life_os_archived`, all mounted here via ``include_router`` so ``app/webapp/server.py`` still
 registers one ``life_os.router``. Skill resolution and the spawn tail that
 this module and the conversations router share live in
 :mod:`app.webapp.routers.life_os_spawn`, which neither imports the other
@@ -55,6 +56,7 @@ from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, update_webapp_config
 
 from app.webapp.routers import (
+    life_os_archived,
     life_os_channels,
     life_os_conversations,
     life_os_files,
@@ -75,6 +77,7 @@ from app.webapp.routers.life_os_spawn import (
 )
 
 router = APIRouter()
+router.include_router(life_os_archived.router)
 router.include_router(life_os_channels.router)
 router.include_router(life_os_conversations.router)
 router.include_router(life_os_files.router)

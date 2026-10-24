@@ -13,6 +13,7 @@ from tests.e2e.conftest import (
 
 
 _SEARCH_URL = re.compile(r".*/api/life-os/conversations/search.*")
+_ARCHIVED_URL = re.compile(r".*/api/life-os/archived(\?.*)?$")
 
 _FAKE_SKILLS = {
     "available": True,

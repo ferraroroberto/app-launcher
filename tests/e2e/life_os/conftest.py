@@ -7,7 +7,7 @@ import json as _json
 import pytest
 from playwright.sync_api import Page
 
-from tests.e2e.life_os._support import _SEARCH_URL, _mock_recap
+from tests.e2e.life_os._support import _ARCHIVED_URL, _SEARCH_URL, _mock_recap
 
 
 @pytest.fixture(autouse=True)
@@ -27,3 +27,6 @@ def _default_recap(authed_page: Page) -> None:
     authed_page.route(_SEARCH_URL, lambda route: route.fulfill(
         status=200, content_type="application/json",
         body=_json.dumps({"available": True, "query": "", "skill": "", "results": []})))
+    # Nor the zombie cleanup's real backup: nothing archived by default.
+    authed_page.route(_ARCHIVED_URL, lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps({"archived": []})))

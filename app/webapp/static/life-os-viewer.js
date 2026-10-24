@@ -4,6 +4,8 @@
  * Opened by the conversation sheet's "Read the conversation" (#1504), as a
  * tall sheet stacked over it: ✕, Escape and Done all come back to the sheet,
  * which holds every action (Resume, Rename, Copy link, Open raw, Delete).
+ * An archived capture (life-os-convos.js) opens it straight from its row,
+ * with Restore in Done's place.
  * The capture is parsed server-side (`/api/life-os/file/transcript`,
  * src/life_os_capture.py) into the entry shape the session overlay's Chat
  * pane already renders, and it is rendered by that pane's own renderer
@@ -21,8 +23,8 @@ import { openLinksOnThePc, renderEntries } from './transcript-render.js';
 import { icon } from './_vendored/icons/icons.js';
 import { mountScrollerPill } from './latest-pill.js';
 
-// null while closed, else { row, openRaw, seq }. `seq` drops a slow read
-// that lands after the viewer moved on to another conversation.
+// null while closed, else { row, openRaw, url, primary }. `seq` drops a slow
+// read that lands after the viewer moved on to another conversation.
 let viewer = null;
 let seq = 0;
 
@@ -52,7 +54,9 @@ function hideState() {
   els.lifeOsViewerState.hidden = true;
 }
 
+// No raw file to fall back to (an archived capture): no action.
 function openRawAction() {
+  if (!viewer || !viewer.openRaw) return null;
   return {
     text: 'Open raw',
     onTap: function () { if (viewer) viewer.openRaw(viewer.row); },
@@ -67,7 +71,7 @@ async function load() {
   let body;
   try {
     body = await jsonApi(
-      '/api/life-os/file/transcript?path=' + encodeURIComponent(row.path)
+      viewer.url || '/api/life-os/file/transcript?path=' + encodeURIComponent(row.path)
     );
   } catch (exc) {
     if (mine !== seq || !viewer) return;
@@ -101,10 +105,16 @@ async function load() {
 
 // `row` is one conversation (an index or search row); `openRaw(row)` opens
 // its capture raw in the document sheet, the fallback when it can't be read.
-export function openConvoViewer(row, openRaw) {
+// `opts.url` reads the transcript from elsewhere (an archived capture), and
+// `opts.primary` ({ text, onTap(button) }) takes Done's place as the one
+// full-width action.
+export function openConvoViewer(row, openRaw, opts) {
   const d = els.lifeOsConvoViewer;
   if (!d) return;
-  viewer = { row: row, openRaw: openRaw };
+  const o = opts || {};
+  viewer = { row: row, openRaw: openRaw, url: o.url || '', primary: o.primary || null };
+  els.lifeOsViewerDone.textContent = viewer.primary ? viewer.primary.text : 'Done';
+  els.lifeOsViewerDone.disabled = false;
   els.lifeOsViewerTitle.textContent = row.title || row.topic || row.slug || row.file || 'Conversation';
   if (!d.open) d.showModal();
   load();
@@ -128,7 +138,10 @@ export function wireConvoViewer() {
   const d = els.lifeOsConvoViewer;
   if (!d) return;
   els.lifeOsViewerClose.addEventListener('click', closeConvoViewer);
-  els.lifeOsViewerDone.addEventListener('click', closeConvoViewer);
+  els.lifeOsViewerDone.addEventListener('click', function () {
+    if (viewer && viewer.primary) viewer.primary.onTap(els.lifeOsViewerDone);
+    else closeConvoViewer();
+  });
   d.addEventListener('close', reset);
   // A tap on the backdrop lands on the <dialog> itself, outside the card.
   d.addEventListener('click', function (ev) {
