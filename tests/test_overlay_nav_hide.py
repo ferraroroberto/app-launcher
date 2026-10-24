@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-from src.shell_html import assemble_shell
+from app.webapp.shell_html import assemble_shell
 from tests._css import STATIC, stylesheet_text
 
 # The hand-rolled overlay classes: the session overlay's chrome, which every

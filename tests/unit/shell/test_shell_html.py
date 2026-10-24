@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from src.shell_html import assemble_shell, shell_stat_key
+from app.webapp.shell_html import assemble_shell, shell_stat_key
 
-_STATIC = Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
+_STATIC = Path(__file__).resolve().parents[3] / "app" / "webapp" / "static"
 _INDEX = _STATIC / "index.html"
 
 
