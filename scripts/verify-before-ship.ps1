@@ -337,7 +337,7 @@ try {
             # a failure, never a pass.
             $env:LAUNCHER_E2E_AUTOBOOT = "1"
             try {
-                if (@($route.Targets | Where-Object { $_ -eq "tests/e2e" -or $_ -eq "tests/e2e/test_screen_shots.py" }).Count -gt 0) {
+                if (@($route.Targets | Where-Object { $_ -eq "tests/e2e" -or $_ -eq "tests/e2e/screens/test_screen_shots.py" }).Count -gt 0) {
                     $since = $shotSince.ToString([Globalization.CultureInfo]::InvariantCulture)
                     Phase "shot baseline (compare)..."
                     & $python scripts/shot_baseline.py --check-tree --since $since

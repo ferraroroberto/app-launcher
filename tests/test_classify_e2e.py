@@ -259,7 +259,7 @@ _BOARD_TARGETS = (
     "tests/e2e/test_session_row_glance.py tests/e2e/test_code_row_status_age.py "
     "tests/e2e/test_usage_meter.py"
     " tests/e2e/test_settings_sheets.py"
-    " tests/e2e/test_action_row_variants.py tests/e2e/test_async_list_states.py tests/e2e/test_screen_shots.py"
+    " tests/e2e/test_action_row_variants.py tests/e2e/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
 )
 _LIFEOS_TARGETS = (
     "tests/e2e/life_os tests/e2e/test_life_tab_glance.py "
@@ -274,7 +274,7 @@ _LIFEOS_TARGETS = (
     "tests/e2e/test_smoke.py "
     "tests/e2e/test_row_name_typography.py tests/e2e/test_icon_sizes.py "
     "tests/e2e/test_vendored_empty_and_select.py tests/e2e/test_touch_targets.py"
-    " tests/e2e/test_settings_sheets.py tests/e2e/test_async_list_states.py tests/e2e/test_screen_shots.py"
+    " tests/e2e/test_settings_sheets.py tests/e2e/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
     " tests/e2e/test_dialog_title_focus.py"
 )
 
