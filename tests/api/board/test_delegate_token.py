@@ -8,7 +8,8 @@ import secrets
 import pytest
 from starlette.testclient import TestClient
 
-from src import delegate_token, github_client
+from src import github_client
+from src.auth import delegate_token
 
 TAILNET = "100.101.102.103"
 LOOPBACK = "127.0.0.1"

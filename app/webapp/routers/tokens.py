@@ -7,7 +7,7 @@ job-scoped token is rejected on these paths by the middleware's scope
 gate before the routes run.
 
 ``/api/delegate-token`` is the same panel's one regenerate / off control for
-the delegate token (:mod:`src.delegate_token`). Its own allow-list keeps it off
+the delegate token (:mod:`src.auth.delegate_token`). Its own allow-list keeps it off
 these paths, so only full access can change it.
 """
 
@@ -18,7 +18,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import api_tokens, delegate_token
+from src import api_tokens
+from src.auth import delegate_token
 from src.jobs_config import get_by_id, load_jobs
 from src.webapp_config import update_webapp_config
 

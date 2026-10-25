@@ -625,18 +625,13 @@ class WebappConfig:
     # "secrets" key, falling back to the legacy "webhook_secrets" key this
     # block shipped under before it was generalized. Empty by default.
     secrets: Dict[str, str] = field(default_factory=dict)
-    # --- Scoped API bearer tokens ---------------------------
-    # List of token records minted from the Settings tab (see
-    # src.api_tokens): {id, label, salt, hash, scope, created_at,
-    # last_used_at}. Only the salted SHA-256 hash is stored — the raw
-    # token is shown once at mint time and discarded. scope is "*" or
-    # {"jobs": [ids]}; a job-scoped token can only fire its allowed jobs
-    # (POST /api/jobs/<id>/run) and nothing else. The legacy auth_token
-    # above keeps working unchanged with implicit scope "*".
+    # --- Scoped bearer tokens, from Settings > API tokens ---
+    # Salted-hash records only; each raw token is shown once and discarded.
+    # api_tokens (src.api_tokens): {id, label, salt, hash, scope, ...}, scope
+    # "*" (like auth_token) or {"jobs": [ids]}, which fires only those jobs.
+    # delegate_token (src.auth.delegate_token): {salt, hash, created_at},
+    # {} = off; it may only read the Board and file issues.
     api_tokens: list = field(default_factory=list)
-    # The delegate token (src.delegate_token): {salt, hash, created_at},
-    # empty = off. It may only read the Board and file issues; regenerated or
-    # turned off from Settings > API tokens.
     delegate_token: dict = field(default_factory=dict)
 
 
@@ -692,12 +687,6 @@ def _load_api_tokens(raw: dict) -> list:
         for token in (raw.get("api_tokens") or [])
         if isinstance(token, dict)
     ]
-
-
-def _load_delegate_token(raw: dict) -> dict:
-    """``delegate_token`` — a record, never stringified; anything else is off."""
-    value = raw.get("delegate_token")
-    return dict(value) if isinstance(value, dict) else {}
 
 
 def _load_pi_model(raw: dict) -> str:
@@ -776,7 +765,6 @@ def _load_codex_effort(raw: dict) -> str:
 _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "secrets": _load_secrets,
     "api_tokens": _load_api_tokens,
-    "delegate_token": _load_delegate_token,
     "pi_model": _load_pi_model,
     "codex_effort": _load_codex_effort,
     "codex_model_efforts": _load_codex_model_efforts,

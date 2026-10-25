@@ -51,6 +51,7 @@ app-launcher/
 │   ├── context_filter_state.py # Context-filter card's persisted UI state
 │   ├── fleet_scope.py          # Settings › Fleet scope: fleet-config's active/dormant switch, via its own writer
 │   ├── api_tokens.py           # job-scoped bearer tokens (Settings → API tokens)
+│   ├── auth/                   # credentials beyond the main token: the delegate token (read the Board, file issues)
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # provider package behind notifications.py (Telegram, …)
 │   ├── github_client.py        # `gh`-backed client for Board backlog/PR/issue data

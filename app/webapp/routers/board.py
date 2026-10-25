@@ -404,7 +404,7 @@ async def file_issue(request: Request) -> Dict[str, Any]:
 
     Body: ``{"repo": str, "title": str, "body": str}``. The repo must be one
     in the projects folder, the same lookup ``issues/start`` uses. This is the
-    one write the delegate token may make (:mod:`src.delegate_token`); an
+    one write the delegate token may make (:mod:`src.auth.delegate_token`); an
     issue it files carries a footer saying so.
     """
     cfg: WebappConfig = request.app.state.webapp_config

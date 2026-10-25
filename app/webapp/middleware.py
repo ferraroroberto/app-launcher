@@ -21,7 +21,8 @@ from fastapi import Request, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src import api_tokens, delegate_token
+from src import api_tokens
+from src.auth import delegate_token
 from src.webauthn_gate import WebAuthnGate
 
 logger = logging.getLogger(__name__)
