@@ -28,7 +28,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.conftest import open_session_row, stub_session_mirror
-from tests.e2e.test_chat_live_refresh import _pull
+from tests.e2e.chat._support import _pull
 
 pytestmark = pytest.mark.smoke
 

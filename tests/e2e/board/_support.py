@@ -140,7 +140,7 @@ def _mock_board(page: Page, payload: dict | None = None, plan: dict | None = Non
     # (apps-coding.js::refreshGitStatus), rebuilding the card DOM
     # mid-test (#510/#680). Clean payload so it can't perturb the rendered
     # annotations other tests read.
-    # test_board_chief.py's own _mock_board already does this; the two tests
+    # _chief_support.py's own _mock_board already does this; the two tests
     # below that care about the response register their route *after* this.
     page.route(
         re.compile(r".*/api/claude-code/git-status$"),

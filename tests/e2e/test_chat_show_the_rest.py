@@ -30,7 +30,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
 from tests.e2e.conftest import OVERLAY_OPEN_MS, stable_read
-from tests.e2e.test_chat_live_refresh import (
+from tests.e2e.chat._support import (
     _SID,
     _Transcript,
     _mock_sessions_list,
