@@ -79,8 +79,10 @@ _HOOKS_MODAL_MARKER = "hooks need review"
 # "model:     loading" until the session is configured, then swaps in the model
 # name.  A submit before then is dropped even though the paste renders:
 # measured under a CPU burn, all 20 swallowed Enters landed while the header
-# still said "loading", and waiting for this cleared it (20/20).
-_SESSION_CONFIGURED = re.compile(r"model:\s+(?!loading\b)\S")
+# still said "loading", and waiting for this cleared it (20/20). Codex 0.164
+# dropped that header field: its footer status row, led by the context-used
+# item, appears only once the session has its model.
+_SESSION_CONFIGURED = re.compile(r"model:\s+(?!loading\b)\S|Context \d+% used · ")
 
 
 async def _reach_composer(session: PtySession) -> bool:
