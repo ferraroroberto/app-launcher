@@ -73,15 +73,12 @@ import { renderBoardBadge } from './home-head.js';
 import { renderHeadStatus } from './_vendored/home-head/home-head.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
-  boardRepoFilter,
-  getBoardDispatchModel,
-  isChiefCard,
-  matchesRepoFilter,
-  syncDispatchBar,
+  boardRepoFilter, getBoardDispatchModel, isChiefCard, matchesRepoFilter, syncDispatchBar,
   wireDispatch,
 } from './board-dispatch.js';
 import { openChiefAnswers, syncChiefAnswers, wireChiefAnswers } from './board-answers.js';
 import { answeredKeys, itemKey, openQuestionCount } from './chief-keys.js';
+import { clearMergedButton, mergedCount } from './board/plan-prune.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -1287,6 +1284,8 @@ function renderChiefPlan(body, liveRead) {
         'Only what the chief has scheduled; the Backlog counts every open issue.'));
     }
     if (parked.length) nodes.push(parkedGroup(parked.map(queueRow)));
+    const merged = mergedCount(plan);
+    if (merged) nodes.push(clearMergedButton(merged));
   }
   host.replaceChildren.apply(host, nodes);
 }

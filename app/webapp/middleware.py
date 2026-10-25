@@ -283,11 +283,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board drill-down (#301): issue-start spawns a coding session.",
     ),
     (
-        lambda p: p.startswith("/api/board/chief/"),
+        lambda p: p.startswith("/api/board/chief/") or p == "/api/board/chief-plan/prune",
         "passkey",
         "Fleet chief (#245): ensure spawns + types into a PTY, settings steer "
         "it — both terminal-grade; /answered (#1487) records what the answer "
-        "sheet typed into it. Loopback (the daily job, the /chief skill) "
+        "sheet typed into it; /chief-plan/prune (#1866) rewrites the plan "
+        "file the chief steers by. Loopback (the daily job, the /chief skill) "
         "bypasses like everything else.",
     ),
     (

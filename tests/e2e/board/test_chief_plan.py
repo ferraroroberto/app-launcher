@@ -463,3 +463,54 @@ def test_plan_sections_split_queue_from_parked_and_rows_open_their_issue(
     expect(inert.locator(".board-plan-chevron")).to_have_count(0)
     inert.locator(".action-row-main").click()
     assert len(opened()) == 3
+
+
+@pytest.mark.iphone
+def test_clear_merged_button_clears_only_merged_rows(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """#1866: "Clear merged (N)" shows only while merged rows exist; the tap
+    posts the prune, toasts the count and the re-read card drops those rows
+    and the button. Lanes, other rows and questions stay."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    f = tmp_path / "chief-plan.json"
+    rows = [
+        {"repo": "app-launcher", "ref": "#1", "title": "shipped one", "status": "merged"},
+        {"repo": "app-launcher", "ref": "#2", "title": "in flight", "status": "building"},
+        {"repo": "fleet-config", "ref": "#3", "title": "shipped two", "status": "merged"},
+    ]
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-10-25T09:00:00Z",
+        "lanes": [{"repo": "app-launcher", "session": "s-a", "item": "#2", "status": "building"}],
+        "queue": rows, "waiting_on_roberto": _QUESTIONS,
+    }), encoding="utf-8")
+    current = {"plan": chief_plan.read_chief_plan(f, "octo")}
+    _route_plan_from(authed_page, current)
+    posts: list = []
+
+    def _prune(route) -> None:
+        posts.append(route.request.method)
+        rows[:] = [r for r in rows if r["status"] != "merged"]
+        f.write_text(_json.dumps({
+            "version": 1, "updated_at": "2026-10-25T09:05:00Z",
+            "lanes": [{"repo": "app-launcher", "session": "s-a", "item": "#2", "status": "building"}],
+            "queue": rows, "waiting_on_roberto": _QUESTIONS,
+        }), encoding="utf-8")
+        current["plan"] = chief_plan.read_chief_plan(f, "octo")
+        route.fulfill(json={"pruned": 2})
+
+    authed_page.route(re.compile(r".*/api/board/chief-plan/prune$"), _prune)
+    _open_board(authed_page, base_url)
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    button = plan_body.locator(".board-plan-clear-merged")
+    expect(button).to_have_text("Clear merged (2)")
+    box = stable_read(button.bounding_box)
+    assert box and box["height"] >= 44, f"clear button under the 44px tap floor: {box}"
+
+    button.click()
+    expect(authed_page.locator("#toast")).to_have_text("Cleared 2 merged items")
+    expect(button).to_have_count(0)
+    expect(plan_body).not_to_contain_text("shipped")
+    expect(plan_body).to_contain_text("in flight")
+    expect(plan_body.locator("li.board-plan-waiting")).to_have_count(3)
+    assert posts == ["POST"], posts

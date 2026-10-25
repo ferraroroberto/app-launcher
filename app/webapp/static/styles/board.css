@@ -445,7 +445,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 }
 .board-plan-chevron .icon,
 .lifeos-convo-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
-.board-plan-answer {
+.board-plan-answer,
+.board-plan-clear-merged {
   display: inline-flex;
   align-items: center;
   justify-content: center;
