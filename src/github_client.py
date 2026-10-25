@@ -12,6 +12,8 @@ Shared ownership note (#164 ↔ #251): this module is the single fetch layer —
 the future Issues tab (#251) builds its rich inbox on these same functions
 instead of growing a second ``gh`` wrapper.
 
+The one write is :func:`create_issue`, behind the Board's issue-filing route.
+
 Errors degrade, never break the board: a failed refresh keeps the previous
 snapshot's data and surfaces ``error`` so the UI can badge it.
 
@@ -28,7 +30,7 @@ import os
 import subprocess
 import threading
 from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from src.subprocess_flags import NO_WINDOW
 
@@ -68,12 +70,18 @@ def _gh_argv() -> List[str]:
     return argv
 
 
-def _run_gh(args: Sequence[str], *, timeout: float = _GH_TIMEOUT_SECONDS) -> str:
+def _run_gh(
+    args: Sequence[str],
+    *,
+    timeout: float = _GH_TIMEOUT_SECONDS,
+    stdin_text: Optional[str] = None,
+) -> str:
     """Run ``gh <args>`` and return stdout; :class:`GhError` on any failure."""
     argv = _gh_argv()
     try:
         proc = subprocess.run(
             [*argv, *args],
+            input=stdin_text,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -218,6 +226,23 @@ _cache: Dict[str, Any] = {
     "done": [],
     "error": None,
 }
+
+
+def create_issue(owner: str, repo: str, title: str, body: str) -> str:
+    """File one issue on ``owner/repo`` assigned to the owner; returns its URL.
+
+    The body travels on stdin (``--body-file -``), so its size and content
+    never meet the Windows command line.
+    """
+    out = _run_gh(
+        ["issue", "create", "--repo", f"{owner}/{repo}", "--title", title,
+         "--body-file", "-", "--assignee", "@me"],
+        stdin_text=body,
+    )
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
+    if not lines:
+        raise GhError("gh issue create printed no issue URL")
+    return lines[-1]
 
 
 def snapshot() -> Dict[str, Any]:

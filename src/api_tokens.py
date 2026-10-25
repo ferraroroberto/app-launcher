@@ -59,7 +59,7 @@ class ApiToken:
         }
 
 
-def _hash_token(raw: str, salt_hex: str) -> str:
+def hash_token(raw: str, salt_hex: str) -> str:
     return hashlib.sha256(bytes.fromhex(salt_hex) + raw.encode("utf-8")).hexdigest()
 
 
@@ -76,7 +76,7 @@ def mint_token(label: str, scope: Any) -> Tuple[Dict[str, Any], str]:
         "id": "tok-" + secrets.token_hex(6),
         "label": label,
         "salt": salt,
-        "hash": _hash_token(raw, salt),
+        "hash": hash_token(raw, salt),
         "scope": scope,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "last_used_at": "",
@@ -127,7 +127,7 @@ def find_match(presented: str, raw_list: Any) -> Optional[ApiToken]:
     if not presented:
         return None
     for token in parse_tokens(raw_list):
-        if hmac.compare_digest(_hash_token(presented, token.salt), token.hash):
+        if hmac.compare_digest(hash_token(presented, token.salt), token.hash):
             return token
     return None
 

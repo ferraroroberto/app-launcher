@@ -85,6 +85,7 @@ CREDENTIAL_KEYS: Tuple[str, ...] = (
     "secrets",
     "webhook_secrets",
     "api_tokens",
+    "delegate_token",
 )
 
 # Bounded scrollback for full-screen (ratatui) agent sessions —
@@ -633,6 +634,10 @@ class WebappConfig:
     # (POST /api/jobs/<id>/run) and nothing else. The legacy auth_token
     # above keeps working unchanged with implicit scope "*".
     api_tokens: list = field(default_factory=list)
+    # The delegate token (src.delegate_token): {salt, hash, created_at},
+    # empty = off. It may only read the Board and file issues; regenerated or
+    # turned off from Settings > API tokens.
+    delegate_token: dict = field(default_factory=dict)
 
 
 def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:
@@ -687,6 +692,12 @@ def _load_api_tokens(raw: dict) -> list:
         for token in (raw.get("api_tokens") or [])
         if isinstance(token, dict)
     ]
+
+
+def _load_delegate_token(raw: dict) -> dict:
+    """``delegate_token`` — a record, never stringified; anything else is off."""
+    value = raw.get("delegate_token")
+    return dict(value) if isinstance(value, dict) else {}
 
 
 def _load_pi_model(raw: dict) -> str:
@@ -765,6 +776,7 @@ def _load_codex_effort(raw: dict) -> str:
 _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "secrets": _load_secrets,
     "api_tokens": _load_api_tokens,
+    "delegate_token": _load_delegate_token,
     "pi_model": _load_pi_model,
     "codex_effort": _load_codex_effort,
     "codex_model_efforts": _load_codex_model_efforts,

@@ -5,6 +5,10 @@ exactly once, in the mint response — only the salted hash is persisted
 (see :mod:`src.api_tokens`). Reachable only with full-scope auth: a
 job-scoped token is rejected on these paths by the middleware's scope
 gate before the routes run.
+
+``/api/delegate-token`` is the same panel's one regenerate / off control for
+the delegate token (:mod:`src.delegate_token`). Its own allow-list keeps it off
+these paths, so only full access can change it.
 """
 
 from __future__ import annotations
@@ -14,7 +18,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import api_tokens
+from src import api_tokens, delegate_token
 from src.jobs_config import get_by_id, load_jobs
 from src.webapp_config import update_webapp_config
 
@@ -93,3 +97,28 @@ async def revoke_token(token_id: str, request: Request) -> Dict[str, Any]:
     _persist(request, remaining)
     logger.info(f"🗑️ revoked API token {token_id}")
     return {"revoked": token_id}
+
+
+@router.get("/api/delegate-token")
+async def get_delegate_token(request: Request) -> Dict[str, Any]:
+    cfg = request.app.state.webapp_config
+    return delegate_token.public_dict(cfg.delegate_token)
+
+
+@router.post("/api/delegate-token")
+async def regenerate_delegate_token(request: Request) -> Dict[str, Any]:
+    """Turn the delegate token on, or replace it: the old value stops at once.
+
+    The response's ``token`` is the only time the raw value exists.
+    """
+    record, raw = delegate_token.mint()
+    request.app.state.webapp_config = update_webapp_config(delegate_token=record)
+    logger.info("🔑 delegate token regenerated")
+    return {"token": raw, **delegate_token.public_dict(record)}
+
+
+@router.delete("/api/delegate-token")
+async def disable_delegate_token(request: Request) -> Dict[str, Any]:
+    request.app.state.webapp_config = update_webapp_config(delegate_token={})
+    logger.info("🗑️ delegate token turned off")
+    return delegate_token.public_dict({})
