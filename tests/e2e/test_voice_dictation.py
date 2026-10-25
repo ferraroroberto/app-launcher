@@ -353,26 +353,8 @@ def test_mic_shows_arming_then_recording_and_ignores_taps_meanwhile(
     expect(record.locator('use[href="#i-mic"]')).to_have_count(1)
 
 
-def test_send_refuses_while_dictation_still_finishing(
-    authed_page: Page,
-    base_url: str,
-    launched_pty_session: str,
-    wait_for_session_log,
-) -> None:
-    """➤ Send is a no-op while a stopped dictation is still finalizing (#489).
-
-    finishStreaming() awaits /finish before settling the canonical
-    transcript into the tracked ``[_dictStart, _dictStart+_dictLen)`` span.
-    Before this fix, a Send tapped in that window read+submitted the stale
-    partial and cleared the textarea; the late ``renderDictation()`` call
-    then wrote the final transcript into the (now emptied) span via
-    ``setRangeText``, which clamps to offset 0 on a shorter string — so the
-    final transcript landed unsent in an already-"sent" box instead of Send
-    ever seeing it. A long dictation widens the finalize round trip, giving
-    this a real window to bite — reproduced here by holding the mocked
-    ``/finish`` response open until the test explicitly resolves it.
-    """
-    sid = launched_pty_session
+def _mock_dictation_with_held_finish(authed_page: Page) -> dict:
+    """Mock the dictation session routes, holding /finish open; returns the dict that captures its route."""
     authed_page.add_init_script(_MEDIA_MOCK)
     authed_page.route(
         "**/api/transcribe/sessions",
@@ -411,6 +393,30 @@ def test_send_refuses_while_dictation_still_finishing(
         "**/api/transcribe/sessions/vt-1/finish",
         lambda route: held_finish.__setitem__("route", route),
     )
+    return held_finish
+
+
+def test_send_refuses_while_dictation_still_finishing(
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
+) -> None:
+    """➤ Send is a no-op while a stopped dictation is still finalizing (#489).
+
+    finishStreaming() awaits /finish before settling the canonical
+    transcript into the tracked ``[_dictStart, _dictStart+_dictLen)`` span.
+    Before this fix, a Send tapped in that window read+submitted the stale
+    partial and cleared the textarea; the late ``renderDictation()`` call
+    then wrote the final transcript into the (now emptied) span via
+    ``setRangeText``, which clamps to offset 0 on a shorter string — so the
+    final transcript landed unsent in an already-"sent" box instead of Send
+    ever seeing it. A long dictation widens the finalize round trip, giving
+    this a real window to bite — reproduced here by holding the mocked
+    ``/finish`` response open until the test explicitly resolves it.
+    """
+    sid = launched_pty_session
+    held_finish = _mock_dictation_with_held_finish(authed_page)
 
     _open_terminal(authed_page, base_url, sid)
     _open_compose_with_record(authed_page)

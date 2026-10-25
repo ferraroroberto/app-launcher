@@ -341,50 +341,8 @@ def test_detached_reader_less_row_still_reaches_rename_and_stop(
     expect(menu.locator('button[aria-label="Compact conversation"]')).to_have_count(0)
 
 
-@pytest.mark.iphone
-def test_transcript_shows_turns_folds_tools_and_loads_older(
-    authed_page: Page, base_url: str
-) -> None:
-    calls: list = []
-    image_calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, {None: _NEWEST, 4096: _OLDER}, calls)
-    _mock_transcript_images(authed_page, image_calls)
-    # Tall enough that the list never scrolls: since the turn grew its Edited
-    # card (#1477) the list overflowed the default window, so folding the
-    # prompt scrolled it to the top, which pulls the older page in by itself
-    # and raced the manual Load older this test pins.
-    size = authed_page.viewport_size or {"width": 1280, "height": 900}
-    authed_page.set_viewport_size({"width": size["width"], "height": max(size["height"], 1600)})
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    row = _row(authed_page)
-    _open_chat(authed_page, row)
-
-    overlay = authed_page.locator("#terminalOverlay")
-    expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
-    # The row's own menu exists (#1025) but stays closed behind the overlay:
-    # opening a session is not what opens it.
-    expect(authed_page.locator(".session-menu")).to_be_hidden()
-    # The shared bar: the context ring's slot (#1223), then the Terminal /
-    # Chat segments, 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only
-    # bar buttons. The ring stays hidden here: this session's context use is
-    # unknown (the host has no such session), and unknown is never drawn.
-    bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
-        "els => els.map(e => e.id)"
-    )
-    assert bar_ids == [
-        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu",
-    ], bar_ids
-    # 🔊 is a top-bar control, NOT in the composer (which is for editing). The
-    # bar is one shared element in both modes, so this list is also the
-    # terminal-mode bar test_voice_readback.py used to pin separately (#1515).
-    expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
-    expect(authed_page.locator("#contextRing")).to_be_hidden()
-    expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
-    # A full-control session has no detached note.
-    expect(authed_page.locator("#chatNote")).to_be_hidden()
-
+def _assert_turns_thumbnail_and_link(authed_page: Page, image_calls: list) -> tuple:
+    """Check the user and agent turns, the lazy thumbnail and lightbox and the link; returns both turn locators."""
     turns_user = authed_page.locator("#transcriptList .tr-user")
     turns_agent = authed_page.locator("#transcriptList .tr-assistant")
     expect(turns_user).to_have_count(1)
@@ -421,18 +379,11 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     assert opened.value.post_data_json == {"url": "https://tower.example.ts.net:8953/?token=abc"}
     authed_page.wait_for_timeout(300)
     assert len(authed_page.context.pages) == pages_before, "the link also opened a tab"
+    return turns_user, turns_agent
 
-    # Turns are collapsible, open by default; a single turn collapses on its
-    # own while the tool group stays closed. The prompt bubble folds from the
-    # chevron under it and opens again from its folded line (#1475).
-    expect(turns_user.first).to_have_js_property("open", True)
-    expect(turns_agent.first).to_have_js_property("open", True)
-    turns_user.first.locator(".tr-prompt-fold").click()
-    expect(turns_user.first).to_have_js_property("open", False)
-    expect(authed_page.locator("#transcriptList .tr-step")).to_have_js_property("open", False)
-    turns_user.first.locator("summary").click()
-    expect(turns_user.first).to_have_js_property("open", True)
 
+def _assert_step_group_folds_and_items(authed_page: Page) -> None:
+    """Check the folded step line, the Hide steps toggle and each item's card."""
     # The five non-conversation entries fold into one closed step line —
     # shown by default since #1476; the ⋮ menu's chat-only "Hide steps"
     # hides it, and the item's label flips once they hide.
@@ -488,6 +439,66 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     expect(read.locator(".tr-item-name")).to_have_text("conftest.py")
     read.locator("summary").click()
     expect(read.locator(".tr-trunc")).to_contain_text("(truncated)")
+
+
+@pytest.mark.iphone
+def test_transcript_shows_turns_folds_tools_and_loads_older(
+    authed_page: Page, base_url: str
+) -> None:
+    calls: list = []
+    image_calls: list = []
+    _mock_sessions_list(authed_page)
+    _mock_transcript(authed_page, {None: _NEWEST, 4096: _OLDER}, calls)
+    _mock_transcript_images(authed_page, image_calls)
+    # Tall enough that the list never scrolls: since the turn grew its Edited
+    # card (#1477) the list overflowed the default window, so folding the
+    # prompt scrolled it to the top, which pulls the older page in by itself
+    # and raced the manual Load older this test pins.
+    size = authed_page.viewport_size or {"width": 1280, "height": 900}
+    authed_page.set_viewport_size({"width": size["width"], "height": max(size["height"], 1600)})
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    row = _row(authed_page)
+    _open_chat(authed_page, row)
+
+    overlay = authed_page.locator("#terminalOverlay")
+    expect(authed_page.locator("#terminalTitle")).to_have_text("Transcript demo")
+    # The row's own menu exists (#1025) but stays closed behind the overlay:
+    # opening a session is not what opens it.
+    expect(authed_page.locator(".session-menu")).to_be_hidden()
+    # The shared bar: the context ring's slot (#1223), then the Terminal /
+    # Chat segments, 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only
+    # bar buttons. The ring stays hidden here: this session's context use is
+    # unknown (the host has no such session), and unknown is never drawn.
+    bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
+        "els => els.map(e => e.id)"
+    )
+    assert bar_ids == [
+        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu",
+    ], bar_ids
+    # 🔊 is a top-bar control, NOT in the composer (which is for editing). The
+    # bar is one shared element in both modes, so this list is also the
+    # terminal-mode bar test_voice_readback.py used to pin separately (#1515).
+    expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
+    expect(authed_page.locator("#contextRing")).to_be_hidden()
+    expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
+    # A full-control session has no detached note.
+    expect(authed_page.locator("#chatNote")).to_be_hidden()
+
+    turns_user, turns_agent = _assert_turns_thumbnail_and_link(authed_page, image_calls)
+
+    # Turns are collapsible, open by default; a single turn collapses on its
+    # own while the tool group stays closed. The prompt bubble folds from the
+    # chevron under it and opens again from its folded line (#1475).
+    expect(turns_user.first).to_have_js_property("open", True)
+    expect(turns_agent.first).to_have_js_property("open", True)
+    turns_user.first.locator(".tr-prompt-fold").click()
+    expect(turns_user.first).to_have_js_property("open", False)
+    expect(authed_page.locator("#transcriptList .tr-step")).to_have_js_property("open", False)
+    turns_user.first.locator("summary").click()
+    expect(turns_user.first).to_have_js_property("open", True)
+
+    _assert_step_group_folds_and_items(authed_page)
 
     # Load older: the previous page prepends, the button goes away at the end.
     older = authed_page.locator("#transcriptOlder")
@@ -787,6 +798,57 @@ def _open_tool_group(page: Page):
     return group
 
 
+def _assert_long_run_and_thumbnail_fit(authed_page: Page, pages: dict) -> None:
+    """Check a long run title stays inside its line and the thumbnail sits on the text's inset."""
+    # -- #1292: a run title wider than the phone stays inside its line --
+    # The whole pane scrolled sideways once #1266's plain-word titles grew:
+    # the nowrap title kept its full width as a flex item's minimum. Since
+    # #1476 the label is the only part that gives way: the +N −M and the
+    # duration trail it whole, inside the line, at phone width.
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    pages[None] = _long_run_page()
+    _menu_item(authed_page, "Reload transcript").click()
+    long_group = authed_page.locator("#transcriptList .tr-step")
+    expect(long_group.locator(".tr-step-label")).to_contain_text("stage-orchestrator-pipeline.js")
+    expect(long_group.locator(".tr-step-delta")).to_be_visible()
+    expect(long_group.locator(".tr-step-dur")).to_be_visible()
+    fit = stable_eval(long_group.locator(".tr-step-line"), """line => {
+        const box = document.getElementById('transcriptBody');
+        const list = document.getElementById('transcriptList');
+        const title = line.querySelector('.tr-step-label');
+        const r = line.getBoundingClientRect();
+        if (!r.width) return null;
+        const inside = ['.tr-step-delta', '.tr-step-dur'].map(function (sel) {
+            const b = line.querySelector(sel).getBoundingClientRect();
+            return b.width > 0 && b.left >= r.left && b.right <= r.right
+                && line.querySelector(sel).scrollWidth <= line.querySelector(sel).clientWidth;
+        });
+        return {box: [box.scrollWidth, box.clientWidth], list: [list.scrollWidth, list.clientWidth],
+                ellipsed: title.scrollWidth > title.clientWidth, inside: inside};
+    }""")
+    assert fit["box"][0] <= fit["box"][1] and fit["list"][0] <= fit["list"][1], fit
+    assert fit["ellipsed"] and all(fit["inside"]), fit
+
+    # -- #1292: the prompt's thumbnail row sits on the text's inset (#1265),
+    # inside the bubble since #1475 --
+    thumb = authed_page.locator("#transcriptList .tr-user .tr-thumb").first
+    expect(thumb).to_be_visible()
+    inset = stable_read(lambda: authed_page.evaluate("""() => {
+        const turn = document.querySelector('#transcriptList .tr-turn.tr-user div.tr-bubble');
+        const text = turn.querySelector('.tr-text');
+        const thumb = turn.querySelector('.tr-thumb').getBoundingClientRect();
+        const t = text.getBoundingClientRect();
+        const card = turn.getBoundingClientRect();
+        const cs = getComputedStyle(text), ts = getComputedStyle(turn);
+        if (!thumb.width) return null;
+        return {textLeft: t.left + parseFloat(cs.paddingLeft), thumbLeft: thumb.left,
+                textBottomPad: parseFloat(cs.paddingBottom),
+                thumbBottomGap: card.bottom - parseFloat(ts.borderBottomWidth) - thumb.bottom};
+    }"""))
+    assert abs(inset["thumbLeft"] - inset["textLeft"]) < 1, inset
+    assert abs(inset["thumbBottomGap"] - inset["textBottomPad"]) < 1, inset
+
+
 @pytest.mark.iphone
 def test_failed_tool_call_is_marked_in_both_themes(
     authed_page: Page, base_url: str
@@ -849,53 +911,7 @@ def test_failed_tool_call_is_marked_in_both_themes(
     # Folded calls stay folded: marking one never opens it.
     expect(bad).to_have_js_property("open", False)
 
-    # -- #1292: a run title wider than the phone stays inside its line --
-    # The whole pane scrolled sideways once #1266's plain-word titles grew:
-    # the nowrap title kept its full width as a flex item's minimum. Since
-    # #1476 the label is the only part that gives way: the +N −M and the
-    # duration trail it whole, inside the line, at phone width.
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    pages[None] = _long_run_page()
-    _menu_item(authed_page, "Reload transcript").click()
-    long_group = authed_page.locator("#transcriptList .tr-step")
-    expect(long_group.locator(".tr-step-label")).to_contain_text("stage-orchestrator-pipeline.js")
-    expect(long_group.locator(".tr-step-delta")).to_be_visible()
-    expect(long_group.locator(".tr-step-dur")).to_be_visible()
-    fit = stable_eval(long_group.locator(".tr-step-line"), """line => {
-        const box = document.getElementById('transcriptBody');
-        const list = document.getElementById('transcriptList');
-        const title = line.querySelector('.tr-step-label');
-        const r = line.getBoundingClientRect();
-        if (!r.width) return null;
-        const inside = ['.tr-step-delta', '.tr-step-dur'].map(function (sel) {
-            const b = line.querySelector(sel).getBoundingClientRect();
-            return b.width > 0 && b.left >= r.left && b.right <= r.right
-                && line.querySelector(sel).scrollWidth <= line.querySelector(sel).clientWidth;
-        });
-        return {box: [box.scrollWidth, box.clientWidth], list: [list.scrollWidth, list.clientWidth],
-                ellipsed: title.scrollWidth > title.clientWidth, inside: inside};
-    }""")
-    assert fit["box"][0] <= fit["box"][1] and fit["list"][0] <= fit["list"][1], fit
-    assert fit["ellipsed"] and all(fit["inside"]), fit
-
-    # -- #1292: the prompt's thumbnail row sits on the text's inset (#1265),
-    # inside the bubble since #1475 --
-    thumb = authed_page.locator("#transcriptList .tr-user .tr-thumb").first
-    expect(thumb).to_be_visible()
-    inset = stable_read(lambda: authed_page.evaluate("""() => {
-        const turn = document.querySelector('#transcriptList .tr-turn.tr-user div.tr-bubble');
-        const text = turn.querySelector('.tr-text');
-        const thumb = turn.querySelector('.tr-thumb').getBoundingClientRect();
-        const t = text.getBoundingClientRect();
-        const card = turn.getBoundingClientRect();
-        const cs = getComputedStyle(text), ts = getComputedStyle(turn);
-        if (!thumb.width) return null;
-        return {textLeft: t.left + parseFloat(cs.paddingLeft), thumbLeft: thumb.left,
-                textBottomPad: parseFloat(cs.paddingBottom),
-                thumbBottomGap: card.bottom - parseFloat(ts.borderBottomWidth) - thumb.bottom};
-    }"""))
-    assert abs(inset["thumbLeft"] - inset["textLeft"]) < 1, inset
-    assert abs(inset["thumbBottomGap"] - inset["textBottomPad"]) < 1, inset
+    _assert_long_run_and_thumbnail_fit(authed_page, pages)
 
 
 @pytest.mark.iphone

@@ -93,46 +93,8 @@ def _open_projects(page: Page) -> None:
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
 
 
-def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) -> None:
-    """Every favourites check on one canned /api/apps render (#1215): the
-    pin + filter, the filter button's shape, and last the star toggles that
-    mutate the shared mock state."""
-    # Routes must be live before boot's first /api/apps fetch.
-    _install_routes(authed_page)
-    # Start with the filter OFF regardless of any persisted pref from a
-    # previous run on this profile.
-    authed_page.add_init_script(
-        "window.localStorage.setItem('launcher.codingFavFilter', '0');"
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-
-    # -- was test_favorites_pin_to_top_then_filter --
-    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
-
-    # Default view: the one favorite (bravo) is pinned above the alphabetical
-    # rest (alpha, charlie, delta).
-    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
-
-    # Star state is reflected on the tiles.
-    bravo_star = authed_page.locator('.coding-item[data-id="bravo"] .star-btn')
-    expect(bravo_star).to_have_attribute("aria-pressed", "true")
-    alpha_star = authed_page.locator('.coding-item[data-id="alpha"] .star-btn')
-    expect(alpha_star).to_have_attribute("aria-pressed", "false")
-
-    # Turn the "★ Favorites" filter ON → only the starred project shows.
-    authed_page.locator("#favFilterBtn").click()
-    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
-    assert _order(authed_page) == ["bravo"]
-    expect(authed_page.locator("#favFilterBtn")).to_have_attribute(
-        "aria-pressed", "true"
-    )
-
-    # Turn it OFF → full favorites-first list returns.
-    authed_page.locator("#favFilterBtn").click()
-    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
-    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
-
+def _assert_filter_is_icon_only_and_toggles(authed_page: Page) -> None:
+    """Check the favourites filter is an icon-only trailing star that still toggles."""
     # -- was test_favorites_filter_is_icon_only_beside_labelled_toggles --
     # #1194 (the decision on #1176): the favourites star is icon only, and
     # since #1434 it is the trailing star inside the Projects filter field.
@@ -176,6 +138,49 @@ def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) 
     # Filter back OFF so the star-toggle step below sees the full list.
     btn.click()
     expect(btn).to_have_attribute("aria-pressed", "false")
+
+
+def test_favorites_pin_filter_and_star_toggle(authed_page: Page, base_url: str) -> None:
+    """Every favourites check on one canned /api/apps render (#1215): the
+    pin + filter, the filter button's shape, and last the star toggles that
+    mutate the shared mock state."""
+    # Routes must be live before boot's first /api/apps fetch.
+    _install_routes(authed_page)
+    # Start with the filter OFF regardless of any persisted pref from a
+    # previous run on this profile.
+    authed_page.add_init_script(
+        "window.localStorage.setItem('launcher.codingFavFilter', '0');"
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
+
+    # -- was test_favorites_pin_to_top_then_filter --
+    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
+
+    # Default view: the one favorite (bravo) is pinned above the alphabetical
+    # rest (alpha, charlie, delta).
+    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
+
+    # Star state is reflected on the tiles.
+    bravo_star = authed_page.locator('.coding-item[data-id="bravo"] .star-btn')
+    expect(bravo_star).to_have_attribute("aria-pressed", "true")
+    alpha_star = authed_page.locator('.coding-item[data-id="alpha"] .star-btn')
+    expect(alpha_star).to_have_attribute("aria-pressed", "false")
+
+    # Turn the "★ Favorites" filter ON → only the starred project shows.
+    authed_page.locator("#favFilterBtn").click()
+    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
+    assert _order(authed_page) == ["bravo"]
+    expect(authed_page.locator("#favFilterBtn")).to_have_attribute(
+        "aria-pressed", "true"
+    )
+
+    # Turn it OFF → full favorites-first list returns.
+    authed_page.locator("#favFilterBtn").click()
+    expect(authed_page.locator("#claudeList .coding-item")).to_have_count(4)
+    assert _order(authed_page) == ["bravo", "alpha", "charlie", "delta"]
+
+    _assert_filter_is_icon_only_and_toggles(authed_page)
 
     # -- was test_star_toggle_reorders_and_persists (last: mutates the
     # favourites mock state) --

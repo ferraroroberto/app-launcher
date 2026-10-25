@@ -28,10 +28,8 @@ _TOKEN_COLOR = """(name) => {
 }"""
 
 
-@pytest.mark.iphone
-def test_search_jump_artifact_link_and_pin_toggle(
-    authed_page: Page, base_url: str
-) -> None:
+def _demo_job_fixtures() -> tuple[dict, dict, dict]:
+    """Build the demo job, its one pinned run and that run's detail payload."""
     fake_job = {
         "id": "demo",
         "name": "Demo artifact job",
@@ -79,6 +77,11 @@ def test_search_jump_artifact_link_and_pin_toggle(
             "webhook_payload": None,
         }
     }
+    return fake_job, fake_run, detail
+
+
+def _mock_jobs_routes(authed_page: Page, fake_job: dict, fake_run: dict, detail: dict) -> list[dict]:
+    """Route the jobs list, search, runs and run detail; returns the pin PUT payloads."""
     pin_payloads: list[dict] = []
 
     authed_page.route(
@@ -133,6 +136,14 @@ def test_search_jump_artifact_link_and_pin_toggle(
         )
 
     authed_page.route(re.compile(r".*/api/jobs/demo/runs/r1$"), _run_detail)
+    return pin_payloads
+
+
+@pytest.mark.iphone
+def test_search_jump_artifact_link_and_pin_toggle(
+    authed_page: Page, base_url: str
+) -> None:
+    pin_payloads = _mock_jobs_routes(authed_page, *_demo_job_fixtures())
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()

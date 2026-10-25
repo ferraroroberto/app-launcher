@@ -19,7 +19,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
-from typing import Iterator
+from typing import Dict, Iterator
 from unittest.mock import MagicMock
 
 import pytest
@@ -368,19 +368,8 @@ def sample_webapp_config() -> dict:
     )
 
 
-@pytest.fixture
-def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
-    """Build a fresh launcher webapp wired to temp dirs + mocked deps.
-
-    Yields ``(client, app, overrides)``:
-      - ``client`` — fastapi.testclient.TestClient
-      - ``app`` — the FastAPI instance (so tests can mutate ``app.state``)
-      - ``overrides`` — dict of the mocks, so tests can configure return
-        values / assert call args.
-
-    Auth is disabled by default (``auth_token = ""``, ``auth_password = ""``).
-    Auth tests opt back in by setting these on ``app.state.webapp_config``.
-    """
+def _isolate_webapp_files(tmp_path: Path, monkeypatch) -> Dict[str, Path]:
+    """Point every on-disk file the webapp reads at ``tmp_path``; the paths by role."""
     # The two on-disk configs the app reads on startup. Point both at temp
     # paths so a stray real config can never affect the test.
     tmp_apps_root = tmp_path / "scan_root"
@@ -454,7 +443,20 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     if hasattr(app_cfg_mod, "DEFAULT_CONFIG_PATH"):
         monkeypatch.setattr(app_cfg_mod, "DEFAULT_CONFIG_PATH", tmp_app_cfg)
 
-    # Quota API tests own the legacy cache file above; keep their canonical
+    _stub_quota_snapshot(monkeypatch)
+    return {
+        "registry": tmp_registry,
+        "apps_scan_root": tmp_apps_root,
+        "projects_dir": tmp_projects_dir,
+        "webapp_cfg": tmp_webapp_cfg,
+        "jobs_cfg": tmp_jobs_cfg,
+        "jobs_runs": tmp_jobs_runs,
+    }
+
+
+def _stub_quota_snapshot(monkeypatch) -> None:
+    """A fixed, unknown quota snapshot instead of the sibling fleet-config's."""
+    # Quota API tests own the legacy rate-limits cache file; keep their canonical
     # source state deterministic even when no sibling fleet-config is checked
     # out (as in hosted CI).
     from src import quota_usage as quota_usage_mod
@@ -477,55 +479,10 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         },
     )
 
-    # Now import the server + routers. Important: import after monkeypatching
-    # the config paths, but before patching session_client / audit (which are
-    # module-level references inside each router that talks to them).
-    from app.webapp import server as server_mod
-    from app.webapp.routers import apps as apps_router
-    from app.webapp.routers import board as board_router
-    from app.webapp.routers import board_chief as board_chief_router
-    from app.webapp.routers import board_spawn as board_spawn_router
-    from app.webapp.routers import life_os_conversations as life_os_conversations_router
-    from app.webapp.routers import life_os_files as life_os_files_router
-    from app.webapp.routers import life_os_channels as life_os_channels_router
-    from app.webapp.routers import life_os_spawn as life_os_spawn_router
-    from app.webapp.routers import life_os_search as life_os_search_router
-    from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
-    from app.webapp.routers import misc as misc_router
-    from app.webapp.routers import sessions as sessions_router
 
-    # Mock the session-host loopback client. Every route that talks to
-    # :8446 goes through this module, so patch each router that holds a
-    # module-level `session_client` reference of its own. The launch
-    # routers (apps.py, life_os.py) no longer do since #689 moved their
-    # spawn + error-mapping head into _helpers.spawn_session_or_400 —
-    # they reach the host only through the `spawn_claude_session` the
-    # per-test fakes replace.
-    from src import session_client as real_session_client
-    session_mock = MagicMock()
-    session_mock.list_sessions.return_value = []
-    session_mock.stop.return_value = {"ok": True}
-    session_mock.create_session.return_value = {
-        "session_id": "test-session-1",
-        "kind": "pty",
-    }
-    session_mock.upload_image.return_value = {"path": "stub.png"}
-    # Default: no session-host in the test env (#615) — /api/version's
-    # freshness check degrades to "unreachable", never a real loopback call.
-    session_mock.identity.return_value = None
-    session_mock.SessionHostError = real_session_client.SessionHostError
-    monkeypatch.setattr(sessions_router, "session_client", session_mock)
-    monkeypatch.setattr(board_router, "session_client", session_mock)
-    # The Board's chief lifecycle and its shared spawn-then-type mechanics
-    # each hold their own module-level reference since the #691 split.
-    monkeypatch.setattr(board_chief_router, "session_client", session_mock)
-    monkeypatch.setattr(board_spawn_router, "session_client", session_mock)
-    monkeypatch.setattr(misc_router, "session_client", session_mock)
-    monkeypatch.setattr(life_os_channels_router, "session_client", session_mock)
-    # The Chat question card's /answer route types into a session (#1149).
-    from app.webapp.routers import session_screen as session_screen_router
-    monkeypatch.setattr(session_screen_router, "session_client", session_mock)
-
+def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
+    """Mock the voice, OCR, TTS and LLM loopback clients the
+    voice_ocr_tts router calls; ``(voice, photo_ocr, tts, llm)``."""
     # Mock the voice-transcriber loopback client (issue #165) — the
     # /api/transcribe proxy goes through it; tests assert call args and set
     # the transcript without a live voice-transcriber on :8443. Lives in
@@ -577,31 +534,95 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     llm_mock.summarize.return_value = "Build is green. No decision needed."
     llm_mock.LlmError = real_llm_client.LlmError
     monkeypatch.setattr(voice_ocr_tts_router, "llm_client", llm_mock)
+    return voice_mock, photo_ocr_mock, tts_mock, llm_mock
 
-    # Audit log writer — stub so no files land in webapp/sessions/ during
-    # tests. The real audit module opens log files lazily. The `audit`
-    # import lives in routers/apps.py, routers/sessions.py,
-    # routers/voice_ocr_tts.py (split off sessions.py, #521), and
-    # routers/webauthn.py — patch all four.
+
+def _mock_session_client(monkeypatch, routers: list) -> MagicMock:
+    """One session-host client mock on every router holding its own reference."""
+    from src import session_client as real_session_client
+    session_mock = MagicMock()
+    session_mock.list_sessions.return_value = []
+    session_mock.stop.return_value = {"ok": True}
+    session_mock.create_session.return_value = {
+        "session_id": "test-session-1",
+        "kind": "pty",
+    }
+    session_mock.upload_image.return_value = {"path": "stub.png"}
+    # Default: no session-host in the test env (#615) — /api/version's
+    # freshness check degrades to "unreachable", never a real loopback call.
+    session_mock.identity.return_value = None
+    session_mock.SessionHostError = real_session_client.SessionHostError
+    for router in routers:
+        monkeypatch.setattr(router, "session_client", session_mock)
+    return session_mock
+
+
+def _stub_audit(monkeypatch, routers: list) -> MagicMock:
+    """One audit mock on every router that writes audit lines, so no file
+    lands in webapp/sessions/ during tests."""
     audit_mock = MagicMock()
-    from app.webapp.routers import webauthn as webauthn_router
-    monkeypatch.setattr(apps_router, "audit", audit_mock)
-    monkeypatch.setattr(sessions_router, "audit", audit_mock)
-    monkeypatch.setattr(voice_ocr_tts_router, "audit", audit_mock)
-    monkeypatch.setattr(webauthn_router, "audit", audit_mock)
-    # Life OS's launch tail, conversation search and file browser each hold
-    # their own reference since the #884 split; life_os.py itself has none.
-    monkeypatch.setattr(life_os_spawn_router, "audit", audit_mock)
-    monkeypatch.setattr(life_os_conversations_router, "audit", audit_mock)
-    monkeypatch.setattr(life_os_search_router, "audit", audit_mock)
-    monkeypatch.setattr(life_os_files_router, "audit", audit_mock)
-    monkeypatch.setattr(board_router, "audit", audit_mock)
-    monkeypatch.setattr(board_chief_router, "audit", audit_mock)
-    # The Telegram restart's channel_restart line (#1675).
-    monkeypatch.setattr(life_os_channels_router, "audit", audit_mock)
-    # The Screen view's connect/disconnect lines (#1520).
+    for router in routers:
+        monkeypatch.setattr(router, "audit", audit_mock)
+    return audit_mock
+
+
+@pytest.fixture
+def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
+    """Build a fresh launcher webapp wired to temp dirs + mocked deps.
+
+    Yields ``(client, app, overrides)``:
+      - ``client`` — fastapi.testclient.TestClient
+      - ``app`` — the FastAPI instance (so tests can mutate ``app.state``)
+      - ``overrides`` — dict of the mocks, so tests can configure return
+        values / assert call args.
+
+    Auth is disabled by default (``auth_token = ""``, ``auth_password = ""``).
+    Auth tests opt back in by setting these on ``app.state.webapp_config``.
+    """
+    paths = _isolate_webapp_files(tmp_path, monkeypatch)
+
+    # Now import the server + routers. Important: import after monkeypatching
+    # the config paths, but before patching session_client / audit (which are
+    # module-level references inside each router that talks to them).
+    from app.webapp import server as server_mod
+    from app.webapp.routers import apps as apps_router
+    from app.webapp.routers import board as board_router
+    from app.webapp.routers import board_chief as board_chief_router
+    from app.webapp.routers import board_spawn as board_spawn_router
+    from app.webapp.routers import life_os_conversations as life_os_conversations_router
+    from app.webapp.routers import life_os_files as life_os_files_router
+    from app.webapp.routers import life_os_channels as life_os_channels_router
+    from app.webapp.routers import life_os_spawn as life_os_spawn_router
+    from app.webapp.routers import life_os_search as life_os_search_router
+    from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
+    from app.webapp.routers import misc as misc_router
+    from app.webapp.routers import sessions as sessions_router
+
+    # Mock the session-host loopback client. Every route that talks to
+    # :8446 goes through this module, so patch each router that holds a
+    # module-level `session_client` reference of its own. The launch
+    # routers (apps.py, life_os.py) no longer do since #689 moved their
+    # spawn + error-mapping head into _helpers.spawn_session_or_400 —
+    # they reach the host only through the `spawn_claude_session` the
+    # per-test fakes replace.
+    # The Chat question card's /answer route types into a session (#1149).
+    from app.webapp.routers import session_screen as session_screen_router
+    session_mock = _mock_session_client(monkeypatch, [
+        sessions_router, board_router, board_chief_router, board_spawn_router,
+        misc_router, life_os_channels_router, session_screen_router,
+    ])
+
+    voice_mock, photo_ocr_mock, tts_mock, llm_mock = _mock_loopback_clients(monkeypatch, voice_ocr_tts_router)
+
+    # Every router holding its own module-level `audit` reference.
     from app.webapp.routers import desktop_screen as desktop_screen_router
-    monkeypatch.setattr(desktop_screen_router, "audit", audit_mock)
+    from app.webapp.routers import webauthn as webauthn_router
+    audit_mock = _stub_audit(monkeypatch, [
+        apps_router, sessions_router, voice_ocr_tts_router, webauthn_router,
+        life_os_spawn_router, life_os_conversations_router, life_os_search_router,
+        life_os_files_router, board_router, board_chief_router,
+        life_os_channels_router, desktop_screen_router,
+    ])
 
     # WebAuthnGate doesn't touch disk until configured (rp_id + origin set)
     # so default tests are safe. We still stub it for the few endpoints that
@@ -631,12 +652,12 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
         "llm": llm_mock,
         "audit": audit_mock,
         "webauthn": webauthn_mock,
-        "tmp_registry_path": tmp_registry,
-        "tmp_apps_scan_root": tmp_apps_root,
-        "tmp_projects_dir": tmp_projects_dir,
-        "tmp_webapp_cfg_path": tmp_webapp_cfg,
-        "tmp_jobs_path": tmp_jobs_cfg,
-        "tmp_jobs_runs_dir": tmp_jobs_runs,
+        "tmp_registry_path": paths["registry"],
+        "tmp_apps_scan_root": paths["apps_scan_root"],
+        "tmp_projects_dir": paths["projects_dir"],
+        "tmp_webapp_cfg_path": paths["webapp_cfg"],
+        "tmp_jobs_path": paths["jobs_cfg"],
+        "tmp_jobs_runs_dir": paths["jobs_runs"],
     }
     yield client, app, overrides
 

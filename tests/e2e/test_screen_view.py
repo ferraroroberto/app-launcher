@@ -717,44 +717,8 @@ def _held(page: Page) -> None:
     )
 
 
-def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
-    authed_page: Page, base_url: str
-) -> None:
-    sockets: List[WebSocketRoute] = []
-
-    def on_connect(ws: WebSocketRoute) -> None:
-        sockets.append(ws)
-        ws.send(_frame())
-
-    seen = _stub_screen(authed_page.context, on_connect)
-    page = _open_from_sheet(authed_page, base_url)
-    expect(page.locator("#screenImage")).to_be_visible()
-    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
-    style = page.locator("#screenControl")
-    touch = style.locator('[data-control="touch"]')
-    trackpad = style.locator('[data-control="trackpad"]')
-
-    # The style switch is Control's: hidden in View, and a first use on this
-    # device is direct touch.
-    expect(style).to_be_hidden()
-    _set_mode(page, "control")
-    expect(style).to_be_visible()
-    expect(touch).to_have_attribute("aria-pressed", "true")
-    # Both switches and the keyboard button share the row, every label whole.
-    fit = page.locator(".screen-view-tools").evaluate("""(row) => ({
-      row: row.scrollWidth <= row.clientWidth,
-      labels: Array.from(row.querySelectorAll('.segmented-item')).every(
-        (b) => b.scrollWidth <= b.clientWidth),
-    })""")
-    assert fit == {"row": True, "labels": True}, fit
-
-    # Trackpad: the cursor shows mid-picture before the PC has said where its
-    # own is, and the keyboard is still offered.
-    trackpad.click()
-    expect(trackpad).to_have_attribute("aria-pressed", "true")
-    expect(page.locator("#screenKeyboard")).to_be_visible()
-    _cursor_on(page, 0.5, 0.5, "the trackpad cursor mid-picture")
-
+def _move_cursor_by_drag_and_rest(page: Page, seen: dict) -> float:
+    """Drag and rest-then-move the trackpad; check only moves are sent and return the cursor's x."""
     # A drag that starts far off, low on the left, moves the cursor right
     # from where it was, not to the finger, and clicks nothing.
     _drag(page, _point(page, 0.1, 0.9), 40, steps=4)
@@ -779,7 +743,11 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     assert rested and all(m["type"] == "move" for m in rested), rested
     x1 = rested[-1]["x"]
     assert x0 < x1 < 0.95, (x0, x1)
+    return x1
 
+
+def _assert_click_gestures_at_cursor(page: Page, seen: dict, x1: float) -> None:
+    """Check tap, double tap, long-press, two-finger tap and hold-drag act at the cursor."""
     # A tap anywhere clicks at the cursor, once its wait for a second touch
     # is over.
     count = len(seen["inputs"])
@@ -826,6 +794,49 @@ def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
     assert drag[0] == {"type": "down", "button": "left", "x": x1, "y": 0.5}, drag
     assert all(m["type"] == "move" for m in drag[1:-1]), drag
     assert drag[-1]["type"] == "up" and drag[-1]["x"] > x1 and drag[-1]["y"] == 0.5, drag
+
+
+def test_trackpad_moves_a_cursor_clicks_at_it_and_is_remembered(
+    authed_page: Page, base_url: str
+) -> None:
+    sockets: List[WebSocketRoute] = []
+
+    def on_connect(ws: WebSocketRoute) -> None:
+        sockets.append(ws)
+        ws.send(_frame())
+
+    seen = _stub_screen(authed_page.context, on_connect)
+    page = _open_from_sheet(authed_page, base_url)
+    expect(page.locator("#screenImage")).to_be_visible()
+    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    style = page.locator("#screenControl")
+    touch = style.locator('[data-control="touch"]')
+    trackpad = style.locator('[data-control="trackpad"]')
+
+    # The style switch is Control's: hidden in View, and a first use on this
+    # device is direct touch.
+    expect(style).to_be_hidden()
+    _set_mode(page, "control")
+    expect(style).to_be_visible()
+    expect(touch).to_have_attribute("aria-pressed", "true")
+    # Both switches and the keyboard button share the row, every label whole.
+    fit = page.locator(".screen-view-tools").evaluate("""(row) => ({
+      row: row.scrollWidth <= row.clientWidth,
+      labels: Array.from(row.querySelectorAll('.segmented-item')).every(
+        (b) => b.scrollWidth <= b.clientWidth),
+    })""")
+    assert fit == {"row": True, "labels": True}, fit
+
+    # Trackpad: the cursor shows mid-picture before the PC has said where its
+    # own is, and the keyboard is still offered.
+    trackpad.click()
+    expect(trackpad).to_have_attribute("aria-pressed", "true")
+    expect(page.locator("#screenKeyboard")).to_be_visible()
+    _cursor_on(page, 0.5, 0.5, "the trackpad cursor mid-picture")
+
+    x1 = _move_cursor_by_drag_and_rest(page, seen)
+
+    _assert_click_gestures_at_cursor(page, seen, x1)
 
     # The PC's own cursor moved: the next drag starts from there.
     _send_cursor(sockets[-1], x=0.25, y=0.25, shape="arrow", visible=True)
