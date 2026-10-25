@@ -4,6 +4,8 @@
     GET  /api/board/chief-plan            → the chief's plan + answered marks (token-gated)
     POST /api/board/chief/answered        → record answered questions (#1487;
                                             Tailscale + passkey)
+    POST /api/board/chief-plan/prune      → clear the plan's merged rows through
+                                            fleet-config's writer (Tailscale + passkey)
     POST /api/board/github/refresh        → run the gh searches now (token-gated)
     GET  /api/board/sessions/{sid}/exchange → last user↔assistant exchange
                                             (Tailscale + passkey — transcript text)
@@ -57,6 +59,7 @@ from src import (
     audit,
     board,
     chief_answers,
+    chief_plan_prune,
     dispatch_brief,
     github_client,
     jobs_snapshot,
@@ -301,6 +304,26 @@ async def get_chief_plan(request: Request) -> Dict[str, Any]:
 
 def _read_plan_with_answers(cfg: WebappConfig) -> Dict[str, Any]:
     return chief_answers.read_plan_with_answers(Path(cfg.chief_plan_file), cfg.github_owner)
+
+
+@router.post("/api/board/chief-plan/prune")
+async def post_chief_plan_prune(request: Request) -> Dict[str, Any]:
+    """Clear every ``merged`` row from the chief's plan (Tailscale + passkey).
+
+    The edit is fleet-config's own plan writer; the app never writes the file.
+    ``{"pruned": n}`` on success. 503 when fleet-config cannot serve the verb
+    (the plan file is untouched), 409 when the writer refuses the plan on disk.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    try:
+        pruned = await asyncio.to_thread(
+            chief_plan_prune.prune_merged, cfg.fleet_config_dir, cfg.chief_plan_file
+        )
+    except chief_plan_prune.PlanPruneUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except chief_plan_prune.PlanPruneRefused as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"pruned": pruned}
 
 
 @router.post("/api/board/chief/answered")
