@@ -406,7 +406,7 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     route the scan has no competing source to outrank — refusing would
     turn a rough answer into no answer at all, and its ``source``
     vocabulary would have to grow a case it never had. The drawer's opted-in
-    refusal is pinned in ``test_board_drilldown``.
+    refusal is pinned in ``tests/api/board/test_exchange_sources.py``.
     """
     from src import transcript_locate
 

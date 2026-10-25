@@ -16,7 +16,7 @@ Hermetic — board/exchange/ensure/settings are route-mocked before goto,
 per the #510 convention (mock non-deterministic boot fetches first).
 
 Server-side logic (spawn shape, label matching, fresh respawn, settings
-validation) is covered by tests/test_chief_ensure.py.
+validation) is covered by tests/api/chief/.
 """
 
 from __future__ import annotations

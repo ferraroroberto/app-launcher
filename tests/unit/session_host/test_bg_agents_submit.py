@@ -31,7 +31,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
 )
 from src.session_host import PtySession
-from tests.test_session_host_submit_input import _make_session, clock  # noqa: F401
+from tests.unit.session_host._support import _make_session
 
 # Captured before the ``clock`` fixture swaps time.sleep for its fake: the
 # harness below needs a real wait for the reader thread to catch up.
@@ -195,7 +195,7 @@ def test_a_running_main_turn_still_defers(scripted, monkeypatch):
     """On an agent whose type-ahead was never probed, #763's wait stands:
     with the main turn's spinner repainting, background agents or not, no CR
     goes in. (A type-ahead agent gets Enter at once instead — #1548, pinned
-    in ``test_session_host_typeahead_submit``.)"""
+    in ``test_typeahead_submit``.)"""
     session, pty, clock = scripted
     session.agent = "codex"
     pty.paint(_BG_WAIT_FRAME)

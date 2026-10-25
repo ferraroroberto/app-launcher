@@ -9,7 +9,7 @@ The last section is the security pin, in the shape of the input one in
 ``tests/test_desktop_input.py``: a clipboard API is reached only from
 ``src/desktop_clipboard.py``, and that module only through the input session
 the gated Screen socket owns. The socket-level tests (reply on the wire, the
-close audit) are in ``tests/test_desktop_screen.py``.
+close audit) are in ``tests/api/screen/``.
 """
 
 from __future__ import annotations

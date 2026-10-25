@@ -14,7 +14,7 @@ stub ``test_screen_view`` uses, the frames are invented JPEGs of a known size,
 and ``performance.now`` is pinned by the test, so the readout's arithmetic is
 checked against exact bytes and exact milliseconds. The server half (the preset
 numbers, the stage times, no ``stats`` while off) is
-``tests/test_desktop_screen_quality.py``; the Node-side arithmetic is
+``tests/api/screen/test_screen_quality.py``; the Node-side arithmetic is
 ``tests/js/screen_quality.test.mjs``.
 """
 from __future__ import annotations
