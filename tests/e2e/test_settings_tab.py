@@ -430,14 +430,20 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
 
-def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize(("toggle", "key", "label", "help_word"), [
+    ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox"),
+    ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch"),
+], ids=["doorbell", "grok-auto-switch"])
+def test_chief_off_by_default_switch_saves_and_reloads(
+    authed_page: Page, base_url: str, toggle: str, key: str, label: str, help_word: str
 ) -> None:
     """fleet-config#1457: Settings' Chief sheet shows the doorbell switch
     (#1645's ``chief_doorbell``), off by default. It saves at once through
     the ordinary /api/config POST, survives a reload, and turns back off the
     same way, which is how it doubles as the phone kill switch. The gate's
-    disposable webapp is not canonical, so its doorbell never rings."""
+    disposable webapp is not canonical, so its doorbell never rings. The
+    Grok auto-switch for Sonnet lanes is the same kind of off-by-default
+    switch on the same sheet."""
     page = authed_page
     posts: list = []
     page.on("request", lambda req: posts.append(req.post_data_json)
@@ -450,14 +456,14 @@ def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
             act()
 
     _open_chief_sheet(page, base_url)
-    switch = page.locator("#chiefDoorbellToggle")
+    switch = page.locator(f"#{toggle}Toggle")
     expect(switch).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#chiefDoorbellHelp")).to_contain_text("mailbox")
+    expect(page.locator(f"#{toggle}Help")).to_contain_text(help_word)
 
     saving(switch.click)
     expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#toast")).to_contain_text("Chief doorbell on")
-    assert posts[-1] == {"chief_doorbell": True}, posts
+    expect(page.locator("#toast")).to_contain_text(f"{label} on")
+    assert posts[-1] == {key: True}, posts
 
     _open_chief_sheet(page, base_url)
     expect(switch).to_have_attribute("aria-checked", "true")
@@ -465,8 +471,8 @@ def test_chief_doorbell_switch_defaults_off_saves_and_reloads(
     # Off again, so the shared webapp is left as found.
     saving(switch.click)
     expect(switch).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#toast")).to_contain_text("Chief doorbell off")
-    assert posts[-1] == {"chief_doorbell": False}, posts
+    expect(page.locator("#toast")).to_contain_text(f"{label} off")
+    assert posts[-1] == {key: False}, posts
 
     _open_chief_sheet(page, base_url)
     expect(switch).to_have_attribute("aria-checked", "false")

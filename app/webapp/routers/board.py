@@ -49,6 +49,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -71,6 +72,7 @@ from src.board_exchange import resolve_exchange, unavailable
 from src.chief import plan_prune
 from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
+from src.usage import auto_switch
 from src.webapp_config import WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
@@ -589,12 +591,12 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     title = str(body.get("title") or "").strip()
     model = str(body.get("model") or "").strip().lower()
     brief = _validated_brief(body)
-    if model:
-        agent, base_flags = _agent_and_flags(cfg, model)
+    entry = _resolve_repo_entry(cfg, repo)
+    switch = await _auto_switch(cfg, model, Path(entry.project_dir))
+    if switch.model:
+        agent, base_flags = _agent_and_flags(cfg, switch.model)
     else:
         agent, base_flags = "claude", build_claude_flags(cfg)
-
-    entry = _resolve_repo_entry(cfg, repo)
 
     prompt = f"/issue-{mode} {number}"
     brief_path = None
@@ -641,9 +643,38 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     # rename; the host keeps `manual_title` apart from the captured prompt
     # title, so the name survives the capture. Manual starts keep `title`.
     name = _dispatch_session_name(entry.name, number, title) if chief_dispatch else title
+    if switch.outcome == "switched":
+        name = f"{name or entry.name} · Grok fallback"
     if sid and name:
         await _auto_name_session(cfg, sid, name)
-    return {"launched": prompt, "repo": entry.name, "session": session}
+    return {"launched": prompt, "repo": entry.name, "session": session,
+            "auto_switch": switch.payload(model)}
+
+
+async def _auto_switch(
+    cfg: WebappConfig, model: str, project_dir: Path
+) -> auto_switch.SwitchDecision:
+    """Whether this dispatch's Sonnet lane runs on Grok; see :mod:`src.usage.auto_switch`.
+
+    The quota read, the install probe and the trust read are skipped unless
+    the rule can apply, so a toggle-off start costs nothing extra.
+    """
+    if not cfg.grok_auto_switch or model not in auto_switch.SONNET_DISPATCH_MODELS:
+        return auto_switch.SwitchDecision(model)
+    lines = await asyncio.to_thread(_read_quota_lines, cfg)
+    claude = next((line for line in lines if line.get("harness") == "claude"), None)
+    decision = auto_switch.decide(
+        model, enabled=True, claude_line=claude, now=time.time(),
+        grok_installed=await asyncio.to_thread(agents.is_installed, "grok"),
+        repo_trusted=await asyncio.to_thread(
+            auto_switch.grok_trusts, project_dir, quota_usage.grok_home()),
+    )
+    logger.info(
+        "ℹ️ Grok auto-switch for %s: %s (%s), Claude weekly %s%% vs pace %s%%",
+        project_dir.name, decision.outcome, decision.reason,
+        decision.weekly_pct, decision.pace_pct,
+    )
+    return decision
 
 
 def _validated_brief(body: Dict[str, Any]) -> Optional[str]:

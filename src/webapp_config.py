@@ -43,7 +43,7 @@ from src.model_catalog import (
 )
 
 from src._json_io import atomic_write_json
-from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers, validate_usage_providers
+from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 
 logger = logging.getLogger(__name__)
 
@@ -520,8 +520,9 @@ class WebappConfig:
     # Large-file attach limit in MB, Settings-tab configurable.
     # See DEFAULT_LARGE_UPLOAD_MAX_MB.
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
-    # Which providers the usage meter draws; see src.usage.providers.
+    # Usage meter providers, and the Grok auto-switch for Sonnet lanes: src/usage/.
     usage_providers: list = field(default_factory=lambda: list(DEFAULT_USAGE_PROVIDERS))
+    grok_auto_switch: bool = False
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
     # https origin the phone connects to. Empty disables the passkey gate.
@@ -1079,7 +1080,6 @@ def _validate(cfg: WebappConfig) -> None:
             raise ValueError(
                 f"{field_name} must be one of {allowed}; got {value!r}"
             )
-    validate_usage_providers(cfg.usage_providers)
     if not isinstance(cfg.claude_model_efforts, dict):
         raise ValueError("claude_model_efforts must be an object")
     for model, effort in cfg.claude_model_efforts.items():
