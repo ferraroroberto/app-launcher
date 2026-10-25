@@ -36,14 +36,14 @@ import { failedFetchState, setAsyncState } from './async-state.js';
 import { mountLaunchToolbar } from './launch-toolbar.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
-import { renderChannelSetup } from './telegram-setup.js';
-import { renderSettingsValues } from './settings-sheets.js';
+import { renderChannelSetup } from './settings/telegram-setup.js';
+import { renderSettingsValues } from './settings/settings-sheets.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { terminalJsonApi } from './webauthn.js';
-import { openBrowser, refreshFileListIfOpen, wireContentBrowser } from './life-os-content.js';
+import { openBrowser, refreshFileListIfOpen, wireContentBrowser } from './life-os/life-os-content.js';
 import {
   openConvoByLink, openConvos, refreshConvosIfShowing, syncSkillsHead, wireConvoSearch,
-} from './life-os-convos.js';
+} from './life-os/life-os-convos.js';
 
 // main.js's boot (?convo= links) imports this from here; life-os-convos.js
 // owns the implementation.

@@ -3,7 +3,7 @@
 // src/chief_answers.py does (tests/test_chief_question_keys.py runs both).
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { itemKey, unansweredCount } from '../../app/webapp/static/chief-keys.js';
+import { itemKey, unansweredCount } from '../../app/webapp/static/board/chief-keys.js';
 
 const fixture = JSON.parse(
   readFileSync(new URL('../fixtures/chief_question_keys.json', import.meta.url), 'utf8')

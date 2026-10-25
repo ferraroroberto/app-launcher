@@ -30,8 +30,8 @@ import {
 } from './api.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { isWideLayout } from './layout.js';
-import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs-dialog.js';
-import { fetchAgenda, wireJobsAgenda } from './jobs-agenda.js';
+import { openJobDialog, openRunDialog, removeJob, wireJobDialogs } from './jobs/jobs-dialog.js';
+import { fetchAgenda, wireJobsAgenda } from './jobs/jobs-agenda.js';
 import {
   endJobRowRender,
   formatBytes,
@@ -41,7 +41,7 @@ import {
   runBlockedReason,
   runOutcome,
   statusIcon,
-} from './jobs-row.js';
+} from './jobs/jobs-row.js';
 import { renderRunRow } from './jobs/run-row.js';
 import { icon } from './_vendored/icons/icons.js';
 

@@ -20,7 +20,7 @@ import re
 from scripts.classify_e2e import classify, load_config
 
 STATIC = pathlib.Path(__file__).resolve().parents[1] / "app" / "webapp" / "static"
-RENDER_MODULE = "app/webapp/static/transcript-render.js"
+RENDER_MODULE = "app/webapp/static/chat/transcript-render.js"
 
 _IMPORT_RE = re.compile(r"^import\s+(?:\{[^}]*\}|[\w*\s,]+)\s+from\s+'([^']+)';", re.M)
 
@@ -34,16 +34,16 @@ def _imports(name: str) -> set[str]:
 
 
 def test_the_viewer_imports_the_renderer_not_the_chat_pane():
-    imports = _imports("life-os-viewer.js")
-    assert "./transcript-render.js" in imports
-    assert "./session-transcript.js" not in imports, (
+    imports = _imports("life-os/life-os-viewer.js")
+    assert "../chat/transcript-render.js" in imports
+    assert "../chat/session-transcript.js" not in imports, (
         "the Life OS viewer must not depend on the Chat pane's module"
     )
 
 
 def test_the_renderer_never_reads_the_chat_panes_state():
-    assert "./session-transcript.js" not in _imports("transcript-render.js")
-    source = _read("transcript-render.js")
+    assert "./session-transcript.js" not in _imports("chat/transcript-render.js")
+    source = _read("chat/transcript-render.js")
     assert not re.search(r"(?<![\w-])view\.", source), (
         "the renderer is handed the session (opts.session); it never reads the Chat pane's view"
     )

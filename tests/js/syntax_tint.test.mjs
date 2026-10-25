@@ -5,8 +5,8 @@ import { performance } from 'node:perf_hooks';
 
 import {
   TINT_MAX_CHARS, TINT_MAX_LINES, tintDiffLines, tintLanguage, tintLines, tintable,
-} from '../../app/webapp/static/syntax-tint.js';
-import { renderFileView } from '../../app/webapp/static/file-view.js';
+} from '../../app/webapp/static/changes/syntax-tint.js';
+import { renderFileView } from '../../app/webapp/static/changes/file-view.js';
 
 const unescape = (s) => s
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')

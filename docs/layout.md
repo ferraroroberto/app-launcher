@@ -18,8 +18,15 @@ app-launcher/
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
-│           ├── board/         # Board tab modules beside board.js: the drawer, the Chief's plan card, its Clear merged control
-│           ├── jobs/          # Jobs tab modules beside jobs.js: a Recent runs row
+│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners
+│           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control
+│           ├── changes/       # Show changes and Changed files: the overlay, a diff, a file's view and its token colours
+│           ├── chat/          # the session overlay's Chat pane: session-transcript.js, the entry renderer and its parts, the decision and resume cards
+│           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
+│           ├── life-os/       # Life OS tab modules beside life-os.js: conversations, the doc browser, the conversation viewer
+│           ├── screen/        # the Screen view: the socket and lifecycle (screen-view.js), control, keys, quality, and their pure helpers
+│           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope
+│           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
 ├── src/                        # logic layer (no UI imports)
@@ -166,6 +173,6 @@ app-launcher/
 
 - **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests under `tests/unit/<domain>/` (logic), `tests/api/` (routers) or `tests/e2e/<tab>/` (browser), not loose in the flat `tests/` or `tests/e2e/`. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
 - **Declared shape:** `webapp-tray`, with `webapp/` as the one extra root. It is the tray's runtime-state folder: only the two `*.sample.*` files in it are tracked, and the rest is gitignored. The preset itself lists `assets/` and `config/`.
-- **Flat directories, baselined:** `src/`, `tests/`, `tests/e2e/` and `app/webapp/static/` each hold more than 40 modules today. They take no new module until they are split.
+- **Flat directories, baselined:** `src/`, `tests/` and `tests/e2e/` each hold more than 40 modules today. They take no new module until they are split. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
 - **Layer import, known debt:** `src/chief_job_failed.py` imports `board_chief` from `app.webapp.routers` inside a function, which breaks the rule that `src` has no UI imports. The shared piece belongs in `src/`; until it moves, the baseline records the one import and a second one fails the gate.
 - **Oversized files and functions:** every one over the limits is in the baseline at its current size. Splitting them is separate work, and a split lowers its entry.

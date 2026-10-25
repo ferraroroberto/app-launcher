@@ -15,7 +15,7 @@
  * label changed. Jobs, Board and Settings were added later. */
 
 import { state } from './state.js';
-import { revealSettingsField } from './settings-sheets.js';
+import { revealSettingsField } from './settings/settings-sheets.js';
 import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
 let nav = null;

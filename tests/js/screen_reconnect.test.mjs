@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const {
   RECONNECT_DELAYS_MS, reconnectDelay, monitorChoice, parseMonitorChoice, chooseMonitor,
-} = await import('../../app/webapp/static/screen-reconnect.js');
+} = await import('../../app/webapp/static/screen/screen-reconnect.js');
 
 // Backoff: grows, is capped, and ends.
 assert.deepEqual(RECONNECT_DELAYS_MS.slice(0, 4), [1000, 2000, 4000, 8000]);

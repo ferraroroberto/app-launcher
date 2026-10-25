@@ -61,8 +61,8 @@ async () => {
   // the way terminal-connection.js stamps real frames: "Pasting…" at once,
   // the chip only after the old 350 ms defer has long run out. The CR must
   // wait for the chip, then follow it.
-  const compose = await import('/static/terminal-compose.js');
-  const conn = await import('/static/terminal-connection.js');
+  const compose = await import('/static/terminal/terminal-compose.js');
+  const conn = await import('/static/terminal/terminal-connection.js');
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const text = 'describe it\n\nC:\\p\\.launcher-tmp\\image.png';
   const attach = [];

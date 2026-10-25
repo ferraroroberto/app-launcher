@@ -38,14 +38,14 @@ import {
   closeChatPane,
   hasTranscriptReader,
   openChatPane,
-  pinChatToKeyboard,
   syncLiveRefresh,
-} from './session-transcript.js';
-import { applyTermTheme } from './terminal-theme.js';
-import { closeTerminalMenu, updateLatestPill } from './terminal-bar.js';
+} from './chat/session-transcript.js';
+import { pinChatToKeyboard } from './chat/chat-send.js';
+import { applyTermTheme } from './terminal/terminal-theme.js';
+import { closeTerminalMenu, updateLatestPill } from './terminal/terminal-bar.js';
 import { syncContextRing, wireContextRing } from './context-ring.js';
-import { closeSpeakPopover, revealReadAloudButton } from './terminal-readaloud.js';
-import { terminalComposer } from './terminal-compose.js';
+import { closeSpeakPopover, revealReadAloudButton } from './terminal/terminal-readaloud.js';
+import { terminalComposer } from './terminal/terminal-compose.js';
 import { isWideLayout } from './layout.js';
 import { setTab } from './tabs.js';
 import { bindLongPressHint } from './long-press-hint.js';

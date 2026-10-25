@@ -9,7 +9,7 @@
 import { state } from '../state.js';
 import { escapeHtml } from '../api.js';
 import { fmtAgo } from '../sessions.js';
-import { runOutcome, statusIcon, toEpoch } from '../jobs-row.js';
+import { runOutcome, statusIcon, toEpoch } from './jobs-row.js';
 import { icon } from '../_vendored/icons/icons.js';
 
 /* Provenance chip: compact "who fired this" label from the

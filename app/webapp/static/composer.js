@@ -118,7 +118,7 @@ import { readTerminalToken } from './webauthn.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from './voice.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { bindLongPressHint } from './long-press-hint.js';
-import { mountKeysPopover } from './terminal-keys.js';
+import { mountKeysPopover } from './terminal/terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
 import { cancelledSummary, createAttachQueue, summarize } from './attach-batch.js';
 

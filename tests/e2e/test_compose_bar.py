@@ -71,8 +71,8 @@ _SET_STATUS_JS = r"""
 async (message) => {
   const url = performance.getEntriesByType('resource')
     .map((r) => r.name)
-    .find((n) => n.includes('/static/terminal-connection.js?v='))
-    || '/static/terminal-connection.js';
+    .find((n) => n.includes('/static/terminal/terminal-connection.js?v='))
+    || '/static/terminal/terminal-connection.js';
   const { setTerminalStatus } = await import(url);
   setTerminalStatus(message, message ? { icon: 'lock' } : undefined);
 }

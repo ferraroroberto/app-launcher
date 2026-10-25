@@ -9,7 +9,7 @@ import './_browser_stubs.mjs';
 const { sendOutcome, NOT_PICKED_UP } = await import('../../app/webapp/static/sessions.js');
 const {
   CONFIRM_WINDOW_MS, countMatchingTurns, judgeWatch, startWatch,
-} = await import('../../app/webapp/static/send-confirm.js');
+} = await import('../../app/webapp/static/chat/send-confirm.js');
 
 // --- the outcome mapping -------------------------------------------------
 

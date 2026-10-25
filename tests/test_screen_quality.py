@@ -1,6 +1,6 @@
 """Unit pin for the Screen view's quality presets and readout (issue #1721).
 
-``app/webapp/static/screen-quality.js`` holds the preset ids, the remembered
+``app/webapp/static/screen/screen-quality.js`` holds the preset ids, the remembered
 choice and the readout's arithmetic (fps, kB/s, average frame size, ack to the
 next frame) as pure functions and one small class. Like
 ``test_screen_reconnect``, this shells out to plain Node to import the real ES

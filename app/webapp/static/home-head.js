@@ -17,10 +17,10 @@
 import { BOARD_POLL_MS, els, state } from './state.js';
 import { renderHeadStatus } from './_vendored/home-head/home-head.js';
 import { isHiddenChannel } from './channel-sessions.js';
-import { openQuestionCount } from './chief-keys.js';
+import { openQuestionCount } from './board/chief-keys.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
-import { profileNeedsSetup } from './telegram-setup.js';
+import { profileNeedsSetup } from './settings/telegram-setup.js';
 
 function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);

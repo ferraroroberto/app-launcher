@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 const {
   PRESETS, PRESET_KEY, DEFAULT_PRESET, presetChoice, presetNote,
   READOUT_WINDOW_MS, READOUT_MIN_SPAN_MS, Readout, readoutLines,
-} = await import('../../app/webapp/static/screen-quality.js');
+} = await import('../../app/webapp/static/screen/screen-quality.js');
 
 // The ids are the server's table: sharp, balanced, saver, Balanced by default.
 assert.deepEqual(PRESETS.map((p) => p.id), ['sharp', 'balanced', 'saver']);

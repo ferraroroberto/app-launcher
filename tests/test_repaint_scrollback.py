@@ -1,6 +1,6 @@
 """Unit pin for the full-viewport repaint detector (#930).
 
-``app/webapp/static/repaint-scrollback.js`` clears the terminal's scrollback
+``app/webapp/static/terminal/repaint-scrollback.js`` clears the terminal's scrollback
 right after Claude Code's full-viewport repaint preamble, so the rows the
 redraw repeats can't land in scrollback twice. Pinned without a browser: this
 module shells out to plain Node to import the real ES module, in

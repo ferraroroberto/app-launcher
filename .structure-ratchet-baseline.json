@@ -1,7 +1,6 @@
 {
   "version": 1,
   "entries": [
-    {"key": "dir:app/webapp/static", "modules": 83},
     {"key": "dir:src", "modules": 104},
     {"key": "dir:tests", "modules": 238},
     {"key": "dir:tests/e2e", "modules": 135},
@@ -10,9 +9,6 @@
     {"key": "fn:src/session_host_input.py:InputProtocol._submit_input_locked", "lines": 123},
     {"key": "fn:tests/e2e/conftest.py:_autoboot_server", "lines": 258},
     {"key": "layer:src/chief_job_failed.py:app.webapp.routers", "imports": 1},
-    {"key": "size:app/webapp/static/screen-view.js", "lines": 1832},
-    {"key": "size:app/webapp/static/session-transcript.js", "lines": 1379},
-    {"key": "size:app/webapp/static/transcript-render.js", "lines": 1672},
     {"key": "size:src/board_transcript.py", "lines": 1246},
     {"key": "size:src/session_host.py", "lines": 1363},
     {"key": "size:src/session_host_input.py", "lines": 1210},

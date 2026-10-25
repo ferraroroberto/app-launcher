@@ -2,7 +2,7 @@
 
 The key -> bytes mapping (arrows/Esc/Tab/Enter, Shift-modified, and the new
 Ctrl-modified C/U/X) is pure data in
-``app/webapp/static/terminal-keys-bytes.js``, extracted specifically so it
+``app/webapp/static/terminal/terminal-keys-bytes.js``, extracted specifically so it
 can be pinned without a browser. This module has no Python mirror — it
 shells out to plain Node (present on this dev box and on GitHub's
 ``windows-2025`` runner image; no npm install needed) to import the real

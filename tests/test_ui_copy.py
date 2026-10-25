@@ -144,10 +144,10 @@ def test_code_and_jobs_copy_use_whole_words_and_real_controls() -> None:
     refresh = _by_id(tree, "gitRefreshBtn")
     assert refresh["attrs"].get("aria-label") == "Refresh git status"
 
-    badge = _STATIC.joinpath("context-filter.js").read_text(encoding="utf-8")
+    badge = _STATIC.joinpath("settings/context-filter.js").read_text(encoding="utf-8")
     assert not re.search(r"\btok\b|\(7d\)", badge), "badge abbreviates"
 
-    agenda = _STATIC.joinpath("jobs-agenda.js").read_text(encoding="utf-8")
+    agenda = _STATIC.joinpath("jobs/jobs-agenda.js").read_text(encoding="utf-8")
     assert "actionLabel: 'Add job'" in agenda
     assert "openJobDialog(null)" in agenda, "the empty Schedule must reuse the Add job flow"
     assert _by_id(tree, "jobDialogTitle")["text"].strip() == "Add job"

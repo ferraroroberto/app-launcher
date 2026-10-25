@@ -1,5 +1,5 @@
 {
-  "_doc": "One fixture, two readers (#1502): src/chief_answers.py (item_key, unanswered_count) and app/webapp/static/chief-keys.js (itemKey, unansweredCount) must agree on every case. Invented data only.",
+  "_doc": "One fixture, two readers (#1502): src/chief_answers.py (item_key, unanswered_count) and app/webapp/static/board/chief-keys.js (itemKey, unansweredCount) must agree on every case. Invented data only.",
   "cases": [
     {
       "name": "ids and positions mixed",

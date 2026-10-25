@@ -19,14 +19,14 @@ import { switchEl } from './_vendored/switch/switch.js';
 import {
   codingLaunch, renderAgentVisibility, renderCodingList, renderFavoriteAgent,
   wireCoding, wireFavoriteAgent,
-} from './apps-coding.js';
-import { openRename, wireRenameDialog, wireScanDialog } from './apps-dialogs.js';
+} from './apps/apps-coding.js';
+import { openRename, wireRenameDialog, wireScanDialog } from './apps/apps-dialogs.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
 import { nameLabel } from './dom-utils.js';
 import {
   copyText, copyUrl, fetchListeners, renderOtherPortsRow, wireListeners,
-} from './apps-listeners.js';
+} from './apps/apps-listeners.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';
