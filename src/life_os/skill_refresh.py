@@ -85,7 +85,8 @@ class RefreshPlan:
 
 
 def refresh_prompt(skill_id: str) -> str:
-    return (f"This skill's instructions changed since this conversation began: re-read "
+    # Only characters session_host._SAFE_FLAGS_CHARS accepts: no apostrophe.
+    return (f"The instructions of this skill changed since this conversation began: re-read "
             f".claude/skills/{skill_id}/SKILL.md (and the files it points to) and follow "
             "the current version over anything earlier in this conversation.")
 
