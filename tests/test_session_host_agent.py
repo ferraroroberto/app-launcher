@@ -40,8 +40,8 @@ def _capture_run(captured: dict):
 def test_create_remote_uses_antigravity_command(tmp_path, monkeypatch):
     captured: dict = {}
 
-    from src import session_host
-    monkeypatch.setattr(session_host.subprocess, "run", _capture_run(captured))
+    from src.session_hosting import remote
+    monkeypatch.setattr(remote.subprocess, "run", _capture_run(captured))
 
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "", "antigravity")
@@ -54,8 +54,8 @@ def test_create_remote_uses_antigravity_command(tmp_path, monkeypatch):
 def test_create_remote_uses_copilot_command(tmp_path, monkeypatch):
     captured: dict = {}
 
-    from src import session_host
-    monkeypatch.setattr(session_host.subprocess, "run", _capture_run(captured))
+    from src.session_hosting import remote
+    monkeypatch.setattr(remote.subprocess, "run", _capture_run(captured))
 
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "", "copilot")
@@ -68,8 +68,8 @@ def test_create_remote_uses_copilot_command(tmp_path, monkeypatch):
 def test_create_remote_defaults_to_claude(tmp_path, monkeypatch):
     captured: dict = {}
 
-    from src import session_host
-    monkeypatch.setattr(session_host.subprocess, "run", _capture_run(captured))
+    from src.session_hosting import remote
+    monkeypatch.setattr(remote.subprocess, "run", _capture_run(captured))
 
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "")
@@ -84,13 +84,13 @@ def test_create_remote_orphans_console_via_start_process(tmp_path, monkeypatch):
     otherwise a ``taskkill /T`` on the tray subtree cascades into it and the
     session that was meant to outlive a restart dies."""
     captured: dict = {}
-    from src import session_host
+    from src.session_hosting import remote
 
     def boom_popen(*args, **kwargs):
         raise AssertionError("create_remote must not Popen the console directly")
 
-    monkeypatch.setattr(session_host.subprocess, "Popen", boom_popen)
-    monkeypatch.setattr(session_host.subprocess, "run", _capture_run(captured))
+    monkeypatch.setattr(remote.subprocess, "Popen", boom_popen)
+    monkeypatch.setattr(remote.subprocess, "run", _capture_run(captured))
 
     mgr = SessionManager()
     session = mgr.create_remote(str(tmp_path), "proj", "--foo")
@@ -108,9 +108,9 @@ def test_create_remote_orphans_console_via_start_process(tmp_path, monkeypatch):
 def test_create_remote_raises_when_no_pid(tmp_path, monkeypatch):
     """A spawn that prints no PID surfaces a clear error instead of a session
     tracking a bogus process."""
-    from src import session_host
+    from src.session_hosting import remote
     monkeypatch.setattr(
-        session_host.subprocess,
+        remote.subprocess,
         "run",
         lambda *a, **k: _FakeCompleted(stdout="", stderr="boom"),
     )
@@ -122,16 +122,16 @@ def test_create_remote_raises_when_no_pid(tmp_path, monkeypatch):
 
 def test_remote_stop_taskkills_by_pid(monkeypatch):
     """An explicit Stop still reaches the orphaned console by its own PID."""
-    from src import session_host
+    from src.session_hosting import remote
     calls: dict = {}
 
-    monkeypatch.setattr(session_host, "is_pid_alive", lambda pid, hint=None: True)
+    monkeypatch.setattr(remote, "is_pid_alive", lambda pid, hint=None: True)
 
     def fake_run(argv, **kwargs):
         calls["argv"] = argv
         return _FakeCompleted()
 
-    monkeypatch.setattr(session_host.subprocess, "run", fake_run)
+    monkeypatch.setattr(remote.subprocess, "run", fake_run)
 
     session = RemoteSession(
         session_id="sid",

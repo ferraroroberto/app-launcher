@@ -35,6 +35,7 @@ from fastapi.testclient import TestClient
 from app.session_host import server
 from src import session_client, session_host_input
 from src.session_host import PtySession
+from src.session_hosting import deferred_submit
 from src.session_host_input import (
     INPUT_DEFER_TIMEOUT,
     INPUT_DEFERRED,
@@ -200,7 +201,7 @@ def test_defer_timeout_is_reported_as_not_delivered_end_to_end(monkeypatch):
     """
     monkeypatch.setattr(session_host_input, "_BULK_FLOOR_MS", 50)
     monkeypatch.setattr(session_host_input, "_BULK_CAP_MS", 300)
-    monkeypatch.setattr(session_host_input, "_DEFER_CAP_MS", 800)
+    monkeypatch.setattr(deferred_submit, "_DEFER_CAP_MS", 800)
     session = PtySession(
         session_id="sid-929",
         project_dir=r"C:\stub",
@@ -279,7 +280,7 @@ def test_remote_input_answers_200_with_delivered_unconfirmed(monkeypatch):
     # RemoteSession.submit_input's verdict flows through the same route: a
     # console has no output stream to verify against, so the 200 body says
     # "unconfirmed" — a third state, never folded into True.
-    from src.session_host import RemoteInputOutcome
+    from src.session_hosting.remote import RemoteInputOutcome
 
     session = _session(
         RemoteInputOutcome(reason=INPUT_UNVERIFIED, submitted=True, units=8)
@@ -302,7 +303,7 @@ def test_remote_input_answers_200_with_delivered_unconfirmed(monkeypatch):
 
 def test_remote_console_failure_is_a_502_naming_the_error(monkeypatch):
     # Distinct from not_ingested's 502 wording: nothing was typed at all.
-    from src.session_host import RemoteInputOutcome
+    from src.session_hosting.remote import RemoteInputOutcome
     from src.session_host_input import INPUT_CONSOLE_FAILED
 
     session = _session(

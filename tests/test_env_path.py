@@ -136,12 +136,12 @@ class TestChildEnvUsesEffectivePath:
     def test_spawned_child_gets_the_same_path_detection_used(self, monkeypatch):
         """Detection and spawn must agree — a button that lights up for a
         launch that then dies with "is not recognized" is the worse bug."""
-        from src import session_host
+        from src.session_hosting import child_env
 
         monkeypatch.setattr(
-            session_host, "effective_path", lambda: "C:\\merged;C:\\extra"
+            child_env, "effective_path", lambda: "C:\\merged;C:\\extra"
         )
-        env = session_host.agent_child_env("sid-1", "claude")
+        env = child_env.agent_child_env("sid-1", "claude")
         assert env["PATH"] == "C:\\merged;C:\\extra"
         # The marker-scrubbing policy is untouched by #668.
         assert env["APP_LAUNCHER_SESSION_ID"] == "sid-1"

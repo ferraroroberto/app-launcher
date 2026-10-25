@@ -16,11 +16,7 @@ is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
-import subprocess
-import sys
 import threading
 import time
 import uuid
@@ -34,24 +30,20 @@ from src.agents import (
     is_fullscreen,
     is_safe_command_text,
     quit_command_for,
-    supports_console_input,
 )
 from src.audit import transcript_path
-from src.diagnostics import is_pid_alive
-from src.env_path import effective_path
 from src.session_host_composer import ComposerTracker, composer_tracker_for
-from src.session_host_input import (
-    DELIVERED_UNCONFIRMED,
-    INPUT_CONSOLE_FAILED,
-    INPUT_DROPPED,
-    INPUT_NOOP,
-    INPUT_UNVERIFIED,
-    SUBMIT_NOT_REQUESTED,
-    SUBMIT_NOT_SUBMITTED,
-    SUBMIT_UNCONFIRMED,
-    InputProtocol,
-    touches_composer,
+from src.session_host_input import touches_composer
+from src.session_hosting.child_env import agent_child_env
+from src.session_hosting.deferred_submit import DeferredSubmit
+from src.session_hosting.kinds import (
+    _STOP_GRACE_SECONDS,
+    KIND_PTY,
+    STOP_INTERRUPT,
+    STOP_KILL,
+    STOP_QUIT,
 )
+from src.session_hosting.remote import RemoteSession, launch_detached
 from src.session_host_scan import (  # noqa: F401 — re-exported for callers/tests
     _PROMPT_TITLE_MAX_CHARS,
     _PROMPT_TITLE_MAX_WORDS,
@@ -61,7 +53,6 @@ from src.session_host_scan import (  # noqa: F401 — re-exported for callers/te
     _scan_bracketed_paste_mode,
     _strip_color_osc,
 )
-from src.subprocess_flags import NO_WINDOW
 from src.vt_snapshot import VtSnapshot
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -111,12 +102,12 @@ PTY_MIN_ROWS = 8
 PTY_MIN_COLS = 20
 
 # The server-initiated input-delivery protocol — bracketed-paste framing,
-# bulk settle-then-submit, ingest/echo verification, and the deferred-submit
-# watcher — lives in :mod:`src.session_host_input`.
-# Only :class:`InputProtocol` is imported here (as
-# ``PtySession``'s base); callers/tests needing its constants or
-# :class:`InputOutcome` import them from :mod:`src.session_host_input`
-# directly.
+# bulk settle-then-submit and ingest/echo verification — lives in
+# :mod:`src.session_host_input`, and the deferred-submit watcher that extends
+# it in :mod:`src.session_hosting.deferred_submit`. Only
+# :class:`DeferredSubmit` is imported here (as ``PtySession``'s base);
+# callers/tests needing the protocol's constants or :class:`InputOutcome`
+# import them from those modules directly.
 
 # First-prompt session title: how much un-submitted input we
 # buffer while waiting for the first submit — a line the user never sends
@@ -134,17 +125,6 @@ _PROMPT_TITLE_BUF_MAX = 400
 # Kept in-memory on the session object (like live_title/prompt_title) rather
 # than persisted: it dies with the session, so it needs no cleanup/pruning.
 _MANUAL_TITLE_MAX_CHARS = 60
-
-# Stop modes accepted by SessionManager.stop / PtySession.stop.
-STOP_INTERRUPT = "interrupt"  # Ctrl+C into the PTY
-STOP_QUIT = "quit"            # type "/quit" — Claude Code's clean exit
-STOP_KILL = "kill"            # force-terminate the ConPTY
-
-# Graceful-stop grace window: how long STOP_QUIT waits for the agent to exit
-# on its own quit command before force-terminating as a fallback.
-# A clean /quit exits in ~0.7 s empirically; 5 s is generous headroom and
-# stays under the session-client stop timeout.
-_STOP_GRACE_SECONDS = 5.0
 
 # Beat between the three keystrokes STOP_QUIT types. The quit
 # command is ESC, then "/quit", then the submitting CR — three separate
@@ -173,32 +153,6 @@ _STOP_GRACE_SECONDS = 5.0
 # measured (and the ~100 ms xterm/crossterm/bubbletea defaults) with room to
 # spare, and the two beats together cost 0.5 s of the 5 s grace window.
 _STOP_KEY_SETTLE_SECONDS = 0.25
-
-# Session kinds. "pty" is a launcher-owned ConPTY streamed to the phone;
-# "remote" is a detached console window the launcher only tracks (no PTY,
-# no scrollback, no WebSocket — the Claude cloud app drives it).
-KIND_PTY = "pty"
-KIND_REMOTE = "remote"
-
-# The console-input helper a RemoteSession shells out to —
-# string-referenced on purpose, never imported: it must stay off the
-# session-host import closure (CLAUDE.md "## session-host") so a fix to it
-# goes live on the next send instead of needing the :8446 restart that kills
-# every live PTY. Run from the repo root so ``-m`` resolves the package.
-_CONSOLE_INPUT_MODULE = "src.console_input"
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-# Helper start-up (~100 ms) + the settle it sleeps (<= 3 s) + slack; a
-# helper wedged past this is killed and reported, never waited on forever.
-_CONSOLE_INPUT_TIMEOUT_S = 20.0
-
-# Absolute Windows PowerShell 5.1 — never the bare `pwsh` execution-alias stub
-# (a 0-byte reparse point that fails when spawned non-interactively).
-_POWERSHELL = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-
-# Guess, not measured: PowerShell start-up + `Start-Process` handing back the
-# console PID should finish in well under this; a detached launch wedged past
-# it fails loudly rather than hanging the create_remote caller forever.
-_DETACHED_SPAWN_TIMEOUT_S = 30.0
 
 # The allowlist for the ``flags`` string SessionManager.create/create_remote
 # splice straight into ``cmd /c <exe> <flags>`` (create) or a PowerShell
@@ -229,20 +183,6 @@ def _validate_flags(flags: str) -> None:
         raise ValueError(f"unsafe characters in flags: {flags!r}")
 
 
-def _ps_quote(value: str) -> str:
-    """Escape ``value`` for embedding inside a PowerShell single-quoted string."""
-    return value.replace("'", "''")
-
-
-def _parse_started_pid(stdout: Optional[str]) -> Optional[int]:
-    """Pull the PID ``Start-Process -PassThru`` printed (last numeric line)."""
-    for line in reversed((stdout or "").splitlines()):
-        text = line.strip()
-        if text.isdigit():
-            return int(text)
-    return None
-
-
 def _trim_ring_head(ring: str) -> str:
     """Advance a freshly hard-truncated ring to the next newline boundary.
 
@@ -260,13 +200,14 @@ def _trim_ring_head(ring: str) -> str:
 
 
 @dataclass
-class PtySession(InputProtocol):
+class PtySession(DeferredSubmit):
     """One ``claude`` process running inside a launcher-owned ConPTY.
 
     The server-initiated input-delivery protocol (``submit_input`` and
     everything downstream of it — settle-then-submit, ingest/echo
     verification, the deferred-submit watcher) is supplied by
-    :class:`~src.session_host_input.InputProtocol`, not defined here; this
+    :class:`~src.session_host_input.InputProtocol` and
+    :class:`~src.session_hosting.deferred_submit.DeferredSubmit`, not defined here; this
     class keeps only the raw PTY-lifecycle concerns plus ``write``/
     ``_write_locked``, the chunk-and-pace write path the protocol builds on.
     """
@@ -793,341 +734,6 @@ class PtySession(InputProtocol):
         }
 
 
-@dataclass(frozen=True)
-class RemoteInputOutcome:
-    """What happened to one message typed into a detached console (#967).
-
-    The console-shaped sibling of :class:`~src.session_host_input.InputOutcome`
-    — same ``to_api()`` keys, so every reader of a PTY verdict (the webapp
-    route, the Board drawer, ``last_input``) reads this one unchanged — with
-    the one difference the whole feature turns on: a console has no output
-    stream to verify a write against, so a successful send reports
-    ``delivered: "unconfirmed"`` (:data:`DELIVERED_UNCONFIRMED`), never
-    ``True``. ``reason`` is ``unverified`` on success (the #929 vocabulary
-    for "sent, nothing checked it"), ``dropped`` when the console process is
-    gone, ``console_failed`` when the helper could not attach or type.
-    """
-
-    reason: str
-    submitted: bool = False
-    submit_requested: bool = True
-    units: int = 0
-    error: str = ""
-
-    @property
-    def sent(self) -> bool:
-        return self.reason in (INPUT_UNVERIFIED, INPUT_NOOP)
-
-    @property
-    def submit_state(self) -> str:
-        if self.submitted:
-            return SUBMIT_UNCONFIRMED
-        if not self.submit_requested:
-            return SUBMIT_NOT_REQUESTED
-        return SUBMIT_NOT_SUBMITTED
-
-    @property
-    def delivered(self) -> "bool | str":
-        """``"unconfirmed"`` when the keystrokes went into the console,
-        ``False`` when they did not — never ``True`` (issue #967)."""
-        return DELIVERED_UNCONFIRMED if self.sent else False
-
-    def to_api(self) -> Dict[str, Any]:
-        return {
-            "delivered": self.delivered,
-            "reason": self.reason,
-            "ingested": None,
-            "submitted": self.submitted,
-            "submit_confirmed": None,
-            "submit_state": self.submit_state,
-            "waited_ms": 0,
-            "deferred": False,
-            "units": self.units,
-            "error": self.error or None,
-        }
-
-
-class RemoteSession:
-    """A detached ``claude`` window the launcher tracks but does not stream.
-
-    Spawned in its own console window and deliberately **orphaned out of the
-    session-host's process tree** (see :meth:`SessionManager.create_remote`),
-    so it stays visible on the PC and survives a session-host *or* a
-    ``tray.bat --restart`` tear-down (issue #130) — that survival is the whole
-    point of the detached mode. The launcher keeps only the console PID, so the
-    session shows up in the running-sessions list and can be killed from the
-    phone — there is no PTY, no scrollback, and no WebSocket. Remote control
-    comes from the Claude cloud app.
-
-    Since issue #967 the phone can also *type into* that console:
-    :meth:`submit_input` shells out to ``src/console_input.py``, which
-    attaches to the console by this PID and writes key records into its
-    shared input buffer. Nothing can observe the agent consuming them, so the
-    verdict is ``delivered: "unconfirmed"`` by design.
-    """
-
-    kind = KIND_REMOTE
-
-    def __init__(
-        self,
-        session_id: str,
-        project_dir: str,
-        name: str,
-        flags: str,
-        started_at: float,
-        pid: int,
-        agent: str = DEFAULT_AGENT,
-    ) -> None:
-        self.session_id = session_id
-        self.project_dir = project_dir
-        self.name = name
-        self.flags = flags
-        self.started_at = started_at
-        self._pid = pid
-        self.agent = agent
-        self.manual_title = ""
-        # Most recent submit_input verdict (same role as PtySession.last_input):
-        # a detached session that stopped taking console input
-        # is a readable state, not a guess.
-        self.last_input: Optional[Dict[str, Any]] = None
-        # Serializes sends (mirrors PtySession._write_lock): two phones
-        # steering the same detached console must not interleave key records.
-        self._input_lock = threading.Lock()
-
-    @property
-    def alive(self) -> bool:
-        return is_pid_alive(self._pid, self.started_at)
-
-    def submit_input(self, data: str, submit: bool) -> RemoteInputOutcome:
-        """Type ``data`` into the detached console and, if ``submit``,
-        press Enter (issue #967).
-
-        The shape of :meth:`PtySession.submit_input` minus everything that
-        needs an output stream: no bracketed-paste decision, no ingest/echo
-        verification, no deferred watcher. The helper process
-        (``python -m src.console_input <pid>``, ``CREATE_NO_WINDOW`` per the
-        fleet gotcha, text on **stdin**) writes the text's key records, waits
-        its own settle, then writes the one submitting Enter. The verdict is
-        therefore ``delivered: "unconfirmed"`` on success — never ``True``.
-
-        Refused up front, without spawning anything, for an agent the #967
-        probe did not prove (``agents.supports_console_input``): the menu
-        never offers those a Send item, and an API caller gets the same
-        ``console_failed`` answer rather than keystrokes into an unprobed TUI.
-        """
-        sid = self.session_id[:8]
-        if not data and not submit:
-            outcome = RemoteInputOutcome(reason=INPUT_NOOP, submit_requested=False)
-            self.last_input = outcome.to_api()
-            return outcome
-        if not supports_console_input(self.agent):
-            outcome = RemoteInputOutcome(
-                reason=INPUT_CONSOLE_FAILED, submit_requested=submit,
-                error=f"agent {self.agent!r} was not probed for console input",
-            )
-            self.last_input = outcome.to_api()
-            logger.info(f"⚠️ remote {sid} console input refused: {outcome.error}")
-            return outcome
-        if not self.alive:
-            outcome = RemoteInputOutcome(reason=INPUT_DROPPED, submit_requested=submit)
-            self.last_input = outcome.to_api()
-            return outcome
-        argv = [sys.executable, "-m", _CONSOLE_INPUT_MODULE, str(self._pid)]
-        if not submit:
-            argv.append("--no-submit")
-        with self._input_lock:
-            outcome = self._run_console_input(argv, data, submit)
-        self.last_input = outcome.to_api()
-        if outcome.sent:
-            # Breadcrumb carries the size only — never the text.
-            logger.info(
-                f"⌨️ remote {sid} console input typed ({outcome.units} units, "
-                f"submit={submit}) — delivery unconfirmed by design"
-            )
-        else:
-            logger.info(
-                f"⚠️ remote {sid} console input not typed "
-                f"({outcome.reason}, submit={outcome.submit_state}): {outcome.error}"
-            )
-        return outcome
-
-    def _run_console_input(
-        self, argv: List[str], data: str, submit: bool
-    ) -> RemoteInputOutcome:
-        try:
-            result = subprocess.run(
-                argv,
-                input=data,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                creationflags=NO_WINDOW,
-                timeout=_CONSOLE_INPUT_TIMEOUT_S,
-                cwd=str(_REPO_ROOT),
-            )
-        except subprocess.TimeoutExpired:
-            return RemoteInputOutcome(
-                reason=INPUT_CONSOLE_FAILED, submit_requested=submit,
-                error=f"console input helper timed out after {_CONSOLE_INPUT_TIMEOUT_S:.0f}s",
-            )
-        except OSError as exc:
-            return RemoteInputOutcome(
-                reason=INPUT_CONSOLE_FAILED, submit_requested=submit,
-                error=f"console input helper could not start: {exc}",
-            )
-        verdict: Dict[str, Any] = {}
-        for line in reversed((result.stdout or "").splitlines()):
-            line = line.strip()
-            if line.startswith("{"):
-                try:
-                    verdict = json.loads(line)
-                except ValueError:
-                    verdict = {}
-                break
-        if result.returncode == 0 and verdict.get("ok") is True:
-            return RemoteInputOutcome(
-                reason=INPUT_UNVERIFIED,
-                submitted=bool(submit),
-                submit_requested=submit,
-                units=int(verdict.get("units") or 0),
-            )
-        stderr_tail = (result.stderr or "").strip().splitlines()
-        detail = (
-            str(verdict.get("error") or "")
-            or (stderr_tail[-1] if stderr_tail else "")
-            or f"helper exited {result.returncode} with no verdict"
-        )
-        return RemoteInputOutcome(
-            reason=INPUT_CONSOLE_FAILED, submit_requested=submit, error=detail[:300]
-        )
-
-    def stop(
-        self, mode: str = STOP_KILL, grace_seconds: float = _STOP_GRACE_SECONDS
-    ) -> None:
-        """Stop and close the detached console session.
-
-        Detached processes (RemoteSession) cannot be gracefully stopped without
-        closing the window, since they have no stdin/PTY. We use taskkill /T /F
-        to terminate the console's whole subtree (cmd.exe + agent + children).
-        The console is orphaned from the host tree, but it is still reachable by
-        its own PID, so an explicit Stop from the phone still works.
-
-        ``mode`` / ``grace_seconds`` are accepted for interface parity with
-        :class:`PtySession` but ignored — there is no PTY to type a quit into.
-        """
-        if not is_pid_alive(self._pid, self.started_at):
-            return
-
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(self._pid), "/T", "/F"],
-                capture_output=True,
-                creationflags=NO_WINDOW,
-                timeout=10,
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            logger.debug(f"remote {self.session_id[:8]} taskkill failed: {exc}")
-
-    def force_kill(self) -> None:
-        self.stop()
-
-    def to_api(self) -> Dict[str, object]:
-        return {
-            "session_id": self.session_id,
-            "kind": self.kind,
-            "agent": self.agent,
-            "project_dir": self.project_dir,
-            "name": self.name,
-            "flags": self.flags,
-            "started_at": self.started_at,
-            "alive": self.alive,
-            "live_title": "",
-            "manual_title": self.manual_title,
-            "last_input": self.last_input,
-            # No PTY to read keystrokes from: always unknown.
-            "composer_dirty": None,
-            "composer_dirty_since": None,
-        }
-
-
-# Environment variables a *parent* coding agent injects into the short-lived,
-# non-interactive subprocesses it spawns for its own tool calls. They are
-# correct there and actively wrong for the long-lived interactive agent we are
-# about to host:
-#
-#   NO_COLOR                   strips every ANSI colour out of the child's TUI,
-#                              so the session renders monochrome.
-#   CLAUDE_CODE_CHILD_SESSION  makes Claude Code treat itself as a nested run
-#                              and disable transcript saving — no .jsonl, no
-#                              --resume, no history for the whole session.
-#
-# The rest are the parent's own identity, stale the moment we inherit it.
-#
-# They reach us whenever the tray was (re)started from inside an agent's tool
-# subprocess — an agent running `tray.bat --restart` is the usual route — since
-# the whole tray → webapp → session-host chain inherits that environment and we
-# then hand our own os.environ to everything we spawn. Scrubbing here makes a
-# launcher-hosted session independent of *how* the host happened to be started.
-#
-# Deliberately NOT scrubbed: user-scope settings.json vars that are meant for
-# every agent run (CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, telemetry), and
-# GIT_TERMINAL_PROMPT — restoring git's interactive credential prompt could
-# hang an agent's own git call on a prompt nobody is watching.
-_INHERITED_AGENT_MARKERS = frozenset(
-    {
-        "AI_AGENT",
-        "CLAUDECODE",
-        "CLAUDE_CODE_BRIDGE_SESSION_ID",
-        "CLAUDE_CODE_CHILD_SESSION",
-        "CLAUDE_CODE_ENTRYPOINT",
-        "CLAUDE_CODE_SESSION_ID",
-        "CLAUDE_PID",
-        "FORCE_COLOR",
-        "NO_COLOR",
-    }
-)
-
-
-def agent_child_env(session_id: str, agent: str) -> Dict[str, str]:
-    """Build the environment for a launcher-spawned agent process.
-
-    The host's own environment minus :data:`_INHERITED_AGENT_MARKERS`, plus
-    this session's ``APP_LAUNCHER_SESSION_ID``/``APP_LAUNCHER_AGENT`` stamp,
-    plus the **effective** ``PATH`` (issue #668).
-
-    That last part is what lets ``cmd /c <exe>`` find a CLI installed after
-    this host process started: the inherited block is frozen at spawn, so
-    without it the child inherits a ``PATH`` that predates the install. It
-    must be the *same* path :func:`src.agents.is_installed` resolves against
-    — a button that lights up for a launch that then dies with "is not
-    recognized as an internal or external command" is the worse failure.
-    Only ``PATH`` is refreshed: the marker-scrubbing policy above is
-    deliberate and stays exactly as it is.
-    """
-    env = {
-        key: value
-        for key, value in os.environ.items()
-        if key.upper() not in _INHERITED_AGENT_MARKERS
-    }
-    env["PATH"] = effective_path()
-    inherited_term = env.get("TERM", "")
-    # A PTY we own is xterm-compatible regardless of the shell that happened
-    # to start the tray. Codex 0.153.3 refuses its interactive TUI when an
-    # automation parent leaks TERM=dumb, even though ConPTY itself is fully
-    # capable. Pin the child-facing terminal contract at this boundary.
-    env["TERM"] = "xterm-256color"
-    if inherited_term and inherited_term != env["TERM"]:
-        logger.info(
-            "ℹ️ PTY child TERM normalized from %s to xterm-256color for %s",
-            inherited_term,
-            agent,
-        )
-    env["APP_LAUNCHER_SESSION_ID"] = session_id
-    env["APP_LAUNCHER_AGENT"] = agent
-    return env
-
-
 class SessionManager:
     """Owns every launcher-spawned PTY session for the life of the host."""
 
@@ -1259,34 +865,8 @@ class SessionManager:
         if not directory.is_dir():
             raise OSError(f"Project directory not found: {project_dir}")
         session_id = uuid.uuid4().hex
-        # `cmd /c` resolves the agent command (e.g. claude.cmd) off PATH and
-        # closes the window when the agent exits — same shape as the PTY spawn.
         exe = command_for(agent)
-        inner = (
-            f'set "APP_LAUNCHER_SESSION_ID={session_id}" && '
-            f'set "APP_LAUNCHER_AGENT={agent}" && '
-            f"{exe} {flags}"
-        ).strip()
-        ps_command = (
-            "(Start-Process -FilePath 'cmd' "
-            f"-ArgumentList '/c {_ps_quote(inner)}' "
-            f"-WorkingDirectory '{_ps_quote(str(directory))}' -PassThru).Id"
-        )
-        # The console inherits its environment through this PowerShell, so the
-        # scrub has to happen here too — otherwise a detached session gets the
-        # same monochrome, transcript-less child a PTY session would.
-        result = subprocess.run(
-            [_POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", ps_command],
-            capture_output=True,
-            text=True,
-            creationflags=NO_WINDOW,
-            timeout=_DETACHED_SPAWN_TIMEOUT_S,
-            env=agent_child_env(session_id, agent),
-        )
-        pid = _parse_started_pid(result.stdout)
-        if pid is None:
-            detail = (result.stderr or result.stdout or "").strip()[:200]
-            raise RuntimeError(f"Failed to launch detached session: {detail}")
+        pid = launch_detached(directory, session_id, agent, exe, flags)
         session = RemoteSession(
             session_id=session_id,
             project_dir=str(directory),

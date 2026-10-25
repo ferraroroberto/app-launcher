@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from src import session_host as session_host_module
-from src import session_host_input
+from src.session_hosting import deferred_submit
 
 from tests.unit.session_host._support import _FakeClock
 
@@ -36,5 +36,5 @@ def parked_watchers(monkeypatch):
         def run(self):
             self._call()
 
-    monkeypatch.setattr(session_host_input, "threading", SimpleNamespace(Thread=_Parked))
+    monkeypatch.setattr(deferred_submit, "threading", SimpleNamespace(Thread=_Parked))
     return parked

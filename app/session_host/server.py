@@ -48,7 +48,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional, Tuple
 
-from fastapi import FastAPI, HTTPException, Request, UploadFile, WebSocket
+from fastapi import APIRouter, FastAPI, HTTPException, Request, UploadFile, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
@@ -166,281 +166,296 @@ async def _reap_loop() -> None:
         pass
 
 
+# Every route lives on this router; create_app mounts it.
+router = APIRouter()
+
+
+@router.get("/healthz")
+async def healthz() -> Dict[str, Any]:
+    return {
+        "ok": True,
+        "service": "session-host",
+        "sessions": len(manager.list()),
+        "git_sha": _IDENTITY["git_sha"],
+        "started_at": _IDENTITY["built_at"],
+        "features": list(_FEATURES),
+    }
+
+
+@router.post("/sessions")
+async def create_session(request: Request) -> Dict[str, Any]:
+    body = await _json(request)
+    project_dir = str(body.get("project_dir") or "").strip()
+    name = str(body.get("name") or "claude").strip() or "claude"
+    flags = str(body.get("flags") or "").strip()
+    kind = str(body.get("kind") or "pty").strip().lower()
+    agent = str(body.get("agent") or DEFAULT_AGENT).strip().lower()
+    # Role tag (e.g. "chief") so callers can find a purpose-built
+    # session deterministically. PTY-only; remote sessions ignore it.
+    label = str(body.get("label") or "").strip().lower()
+    # Phone-supplied spawn dimensions: size the PTY to the
+    # real viewport before first paint so a ratatui TUI isn't cut.
+    # Omitted → the manager's legacy 40×120 default.
+    rows = int(body.get("rows") or 40)
+    cols = int(body.get("cols") or 120)
+    # User-configurable scrollback depth for full-screen agents (Settings
+    # tab). Omitted/absent → SessionManager's
+    # own default (older webapp builds, or a caller that doesn't set it).
+    history_lines_raw = body.get("history_lines")
+    history_lines = int(history_lines_raw) if history_lines_raw else None
+    if not project_dir:
+        raise HTTPException(status_code=400, detail="project_dir is required")
+    if agent not in SESSION_HOST_AGENTS:
+        raise HTTPException(status_code=400, detail=f"unknown agent: {agent}")
+    try:
+        # Off the event loop: SessionManager.create/
+        # create_remote block on a real OS spawn (PtyProcess.spawn / a
+        # PowerShell Start-Process). Left un-threaded, one slow spawn
+        # freezes every other coroutine sharing this loop — including
+        # an already-attached terminal's _pump_to_client, which is a
+        # concrete contributor to "terminal opens blank" under a
+        # multi-session burst (a fixed-delay mitigation was already
+        # ruled insufficient for the analogous readiness problem).
+        if kind == "remote":
+            session = await asyncio.to_thread(
+                manager.create_remote, project_dir, name, flags, agent
+            )
+        else:
+            session = await asyncio.to_thread(
+                manager.create, project_dir, name, flags, agent,
+                rows=rows, cols=cols, history_lines=history_lines,
+                label=label,
+            )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return session.to_api()
+
+
+@router.get("/sessions")
+async def list_sessions() -> Dict[str, Any]:
+    return {"sessions": [s.to_api() for s in manager.list()]}
+
+
+@router.get("/sessions/{sid}")
+async def get_session(sid: str) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    return session.to_api()
+
+
+@router.post("/sessions/{sid}/input")
+async def session_input(sid: str, request: Request) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    body = await _json(request)
+    data = str(body.get("data") or "")
+    submit = bool(body.get("submit", True))
+    # submit_input() blocks in real time — a bulk payload's settle wait
+    # plus its ingest verification plus write()'s own
+    # chunk-and-pace pauses over ~512 bytes — so offload it like .stop
+    # so it doesn't stall every other live session's WS pump.
+    # Both session kinds implement submit_input: a PtySession
+    # writes the PTY with the framing/settle protocol, a RemoteSession
+    # spawns the console-input helper against its console PID and can
+    # only ever answer ``delivered: "unconfirmed"``.
+    outcome = await asyncio.to_thread(session.submit_input, data, submit)
+    if outcome.reason == INPUT_DROPPED:
+        # The session had already exited (or the PTY write raised) — it
+        # can still be sitting in manager.get() for up to the 30s reap
+        # window. Report the drop instead of the previous unconditional
+        # {"ok": true}, which let a caller believe a message landed when
+        # it never reached the PTY at all.
+        raise HTTPException(
+            status_code=409, detail=f"session {sid} not accepting input (exited)"
+        )
+    if outcome.reason == INPUT_NOT_INGESTED:
+        # Written, but the terminal never painted it back — the silent
+        # drop the ingest check exists for. A distinct status from the 409 above:
+        # the session is alive and may well still take keyboard input, it
+        # just did not take *this*. No CR was sent, so nothing is
+        # half-done and a caller can safely resend once the terminal is
+        # back in a state that accepts a paste.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"session {sid} never echoed the input after "
+                f"{outcome.waited_ms}ms — NOT delivered, and no submit was "
+                f"sent; the terminal may be in a modal/dialog state"
+            ),
+        )
+    if outcome.reason == INPUT_CONSOLE_FAILED:
+        # Detached target: the helper could not attach to or
+        # type into the console — the session is alive by PID but its
+        # console did not take the keystrokes (or the agent was never
+        # probed for console input). Nothing was typed, nothing was
+        # submitted; a caller may retry once the console is back.
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"session {sid} console input failed — NOT typed, no "
+                f"submit was sent: {outcome.error}"
+            ),
+        )
+    if outcome.reason == INPUT_DEFERRED:
+        # The payload is in the composer but the agent was still working,
+        # so the submitting CR is with a background watcher rather
+        # than fired blind mid-repaint. 202 is the honest status for that:
+        # accepted, not yet completed. The final verdict lands on the
+        # session's ``last_input`` (GET /sessions/{sid}), so a caller can
+        # follow it up without holding the request open.
+        return JSONResponse(status_code=202, content={"ok": True, **outcome.to_api()})
+    # 200 carries the whole verdict: a submit that went out unverified is
+    # a success-shaped response that must still say so
+    # (submit_state="unconfirmed") rather than imply a confirmed landing.
+    # ``delivered`` is never true for a submit that was not sent.
+    return {"ok": True, **outcome.to_api()}
+
+
+@router.post("/sessions/{sid}/resize")
+async def session_resize(sid: str, request: Request) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    body = await _json(request)
+    session.resize(int(body.get("rows") or 40), int(body.get("cols") or 120))
+    return {"ok": True}
+
+
+@router.post("/sessions/{sid}/stop")
+async def session_stop(sid: str, request: Request) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    body = await _json(request)
+    mode = str(body.get("mode") or "quit")
+    # The graceful stop polls for exit up to a few seconds — run it off
+    # the event loop so the session-host stays responsive.
+    await asyncio.to_thread(session.stop, mode)
+    return {"ok": True, "mode": mode}
+
+
+@router.post("/sessions/{sid}/rename")
+async def session_rename(sid: str, request: Request) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    body = await _json(request)
+    manager.rename(sid, str(body.get("title") or ""))
+    return session.to_api()
+
+
+@router.post("/sessions/{sid}/image")
+async def session_image(
+    sid: str, file: UploadFile, inline: bool = False
+) -> Dict[str, Any]:
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    path = await _save_image(session.project_dir, file)
+    # inline=1 (compose bar open): skip the paste — the caller drops the
+    # returned path into the textarea for review-before-send.
+    if not inline:
+        # Bracketed paste so the Claude TUI takes the path as one unit.
+        session.write(f"\x1b[200~{path}\x1b[201~")
+    return {"ok": True, "path": path, "inline": inline}
+
+
+@router.post("/sessions/{sid}/large-file")
+async def session_large_file(
+    sid: str, request: Request, max_bytes: int, name: str = ""
+) -> Dict[str, Any]:
+    """Stream a raw request body to disk (#1430). The body is the file
+    itself, not a multipart form, so it can be written as it arrives;
+    ``name`` carries the original filename. The path is only returned,
+    never typed into the PTY: the caller drops it into the composer with
+    a note telling the agent not to read the file."""
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    path, size = await _save_large_upload(
+        session.project_dir, sid, name, request, max_bytes
+    )
+    return {"ok": True, "path": path, "bytes": size}
+
+
+@router.websocket("/sessions/{sid}/ws")
+async def session_ws(websocket: WebSocket, sid: str) -> None:
+    session = manager.get(sid)
+    if session is None:
+        await websocket.close(code=4404)
+        return
+    # Remote sessions are detached console windows — no PTY to stream.
+    if getattr(session, "kind", "pty") != "pty":
+        await websocket.close(code=4404, reason="remote session has no terminal")
+        return
+    role = (websocket.query_params.get("role") or "phone").strip().lower()
+    await websocket.accept()
+    snapshot, queue = session.subscribe()
+    # Breadcrumb for "terminal opens blank and never paints": an
+    # empty ring at attach is expected for a session that hasn't
+    # printed yet, but if a future report recurs, this timestamp +
+    # ring size lets it be correlated against a concurrent create burst
+    # (see the asyncio.to_thread fix above) without guessing blind.
+    logger.info(
+        f"🔌 WS attach {sid[:8]} role={role} ring_chars={len(snapshot)}"
+    )
+    try:
+        if is_fullscreen(getattr(session, "agent", DEFAULT_AGENT)):
+            # Full-screen differential TUI (Codex/ratatui): do NOT replay
+            # the raw scrollback ring. Replaying its stale move-cursor /
+            # clear deltas garbles a fresh xterm, and replaying the
+            # agent's startup terminal queries makes xterm re-answer them
+            # as input — the `[?1;2c` DA leak.
+            #
+            # Wipe the client's buffer first: the xterm
+            # instance is reused across a reconnect, so without this a
+            # repaint appends below the stale frame and crawls through it.
+            await websocket.send_text(_CLEAR_FRAME)
+            # Serve the headless-VT current-frame snapshot:
+            # no winsize toggle, no SIGWINCH, no agent re-emission — a
+            # ratatui agent re-emits its ENTIRE transcript on any resize,
+            # which is exactly what the old toggle-based
+            # repaint nudge below used to trigger on every (re)connect,
+            # visible to every subscriber including the PC mirror.
+            frame = session.snapshot_frame()
+            if frame:
+                await websocket.send_text(frame)
+            else:
+                # No VT frame yet (nothing painted, or an older session
+                # from before this build) — fall back to the toggle nudge.
+                task = asyncio.create_task(_force_repaint(session))
+                _repaint_tasks.add(task)
+                task.add_done_callback(_repaint_tasks.discard)
+        elif snapshot:
+            # Wipe the client's buffer before the raw-ring replay.
+            # The phone reuses the same xterm instance across
+            # reconnects — the reconnect backoff re-runs connectTerminalWs on
+            # the same terminal, and the warm cache keeps it alive
+            # across overlay close/re-open — so without the wipe this
+            # full-ring replay is APPENDED below the stale buffer,
+            # duplicating the conversation tail on every reconnect
+            # (worst on iOS, which drops the WS each time the PWA is
+            # backgrounded). Same _CLEAR_FRAME the fullscreen branch
+            # sends; prepended into the same frame so wipe + replay
+            # render atomically.
+            await websocket.send_text(_CLEAR_FRAME + snapshot)
+        await asyncio.gather(
+            _pump_to_client(websocket, queue),
+            _pump_from_client(websocket, session, role),
+        )
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:  # noqa: BLE001
+        logger.debug(f"WS {sid[:8]} ended: {exc}")
+    finally:
+        session.unsubscribe(queue)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Launcher session-host", version="0.1.0", lifespan=_lifespan)
-
-    @app.get("/healthz")
-    async def healthz() -> Dict[str, Any]:
-        return {
-            "ok": True,
-            "service": "session-host",
-            "sessions": len(manager.list()),
-            "git_sha": _IDENTITY["git_sha"],
-            "started_at": _IDENTITY["built_at"],
-            "features": list(_FEATURES),
-        }
-
-    @app.post("/sessions")
-    async def create_session(request: Request) -> Dict[str, Any]:
-        body = await _json(request)
-        project_dir = str(body.get("project_dir") or "").strip()
-        name = str(body.get("name") or "claude").strip() or "claude"
-        flags = str(body.get("flags") or "").strip()
-        kind = str(body.get("kind") or "pty").strip().lower()
-        agent = str(body.get("agent") or DEFAULT_AGENT).strip().lower()
-        # Role tag (e.g. "chief") so callers can find a purpose-built
-        # session deterministically. PTY-only; remote sessions ignore it.
-        label = str(body.get("label") or "").strip().lower()
-        # Phone-supplied spawn dimensions: size the PTY to the
-        # real viewport before first paint so a ratatui TUI isn't cut.
-        # Omitted → the manager's legacy 40×120 default.
-        rows = int(body.get("rows") or 40)
-        cols = int(body.get("cols") or 120)
-        # User-configurable scrollback depth for full-screen agents (Settings
-        # tab). Omitted/absent → SessionManager's
-        # own default (older webapp builds, or a caller that doesn't set it).
-        history_lines_raw = body.get("history_lines")
-        history_lines = int(history_lines_raw) if history_lines_raw else None
-        if not project_dir:
-            raise HTTPException(status_code=400, detail="project_dir is required")
-        if agent not in SESSION_HOST_AGENTS:
-            raise HTTPException(status_code=400, detail=f"unknown agent: {agent}")
-        try:
-            # Off the event loop: SessionManager.create/
-            # create_remote block on a real OS spawn (PtyProcess.spawn / a
-            # PowerShell Start-Process). Left un-threaded, one slow spawn
-            # freezes every other coroutine sharing this loop — including
-            # an already-attached terminal's _pump_to_client, which is a
-            # concrete contributor to "terminal opens blank" under a
-            # multi-session burst (a fixed-delay mitigation was already
-            # ruled insufficient for the analogous readiness problem).
-            if kind == "remote":
-                session = await asyncio.to_thread(
-                    manager.create_remote, project_dir, name, flags, agent
-                )
-            else:
-                session = await asyncio.to_thread(
-                    manager.create, project_dir, name, flags, agent,
-                    rows=rows, cols=cols, history_lines=history_lines,
-                    label=label,
-                )
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
-        return session.to_api()
-
-    @app.get("/sessions")
-    async def list_sessions() -> Dict[str, Any]:
-        return {"sessions": [s.to_api() for s in manager.list()]}
-
-    @app.get("/sessions/{sid}")
-    async def get_session(sid: str) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        return session.to_api()
-
-    @app.post("/sessions/{sid}/input")
-    async def session_input(sid: str, request: Request) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        body = await _json(request)
-        data = str(body.get("data") or "")
-        submit = bool(body.get("submit", True))
-        # submit_input() blocks in real time — a bulk payload's settle wait
-        # plus its ingest verification plus write()'s own
-        # chunk-and-pace pauses over ~512 bytes — so offload it like .stop
-        # so it doesn't stall every other live session's WS pump.
-        # Both session kinds implement submit_input: a PtySession
-        # writes the PTY with the framing/settle protocol, a RemoteSession
-        # spawns the console-input helper against its console PID and can
-        # only ever answer ``delivered: "unconfirmed"``.
-        outcome = await asyncio.to_thread(session.submit_input, data, submit)
-        if outcome.reason == INPUT_DROPPED:
-            # The session had already exited (or the PTY write raised) — it
-            # can still be sitting in manager.get() for up to the 30s reap
-            # window. Report the drop instead of the previous unconditional
-            # {"ok": true}, which let a caller believe a message landed when
-            # it never reached the PTY at all.
-            raise HTTPException(
-                status_code=409, detail=f"session {sid} not accepting input (exited)"
-            )
-        if outcome.reason == INPUT_NOT_INGESTED:
-            # Written, but the terminal never painted it back — the silent
-            # drop the ingest check exists for. A distinct status from the 409 above:
-            # the session is alive and may well still take keyboard input, it
-            # just did not take *this*. No CR was sent, so nothing is
-            # half-done and a caller can safely resend once the terminal is
-            # back in a state that accepts a paste.
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    f"session {sid} never echoed the input after "
-                    f"{outcome.waited_ms}ms — NOT delivered, and no submit was "
-                    f"sent; the terminal may be in a modal/dialog state"
-                ),
-            )
-        if outcome.reason == INPUT_CONSOLE_FAILED:
-            # Detached target: the helper could not attach to or
-            # type into the console — the session is alive by PID but its
-            # console did not take the keystrokes (or the agent was never
-            # probed for console input). Nothing was typed, nothing was
-            # submitted; a caller may retry once the console is back.
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    f"session {sid} console input failed — NOT typed, no "
-                    f"submit was sent: {outcome.error}"
-                ),
-            )
-        if outcome.reason == INPUT_DEFERRED:
-            # The payload is in the composer but the agent was still working,
-            # so the submitting CR is with a background watcher rather
-            # than fired blind mid-repaint. 202 is the honest status for that:
-            # accepted, not yet completed. The final verdict lands on the
-            # session's ``last_input`` (GET /sessions/{sid}), so a caller can
-            # follow it up without holding the request open.
-            return JSONResponse(status_code=202, content={"ok": True, **outcome.to_api()})
-        # 200 carries the whole verdict: a submit that went out unverified is
-        # a success-shaped response that must still say so
-        # (submit_state="unconfirmed") rather than imply a confirmed landing.
-        # ``delivered`` is never true for a submit that was not sent.
-        return {"ok": True, **outcome.to_api()}
-
-    @app.post("/sessions/{sid}/resize")
-    async def session_resize(sid: str, request: Request) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        body = await _json(request)
-        session.resize(int(body.get("rows") or 40), int(body.get("cols") or 120))
-        return {"ok": True}
-
-    @app.post("/sessions/{sid}/stop")
-    async def session_stop(sid: str, request: Request) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        body = await _json(request)
-        mode = str(body.get("mode") or "quit")
-        # The graceful stop polls for exit up to a few seconds — run it off
-        # the event loop so the session-host stays responsive.
-        await asyncio.to_thread(session.stop, mode)
-        return {"ok": True, "mode": mode}
-
-    @app.post("/sessions/{sid}/rename")
-    async def session_rename(sid: str, request: Request) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        body = await _json(request)
-        manager.rename(sid, str(body.get("title") or ""))
-        return session.to_api()
-
-    @app.post("/sessions/{sid}/image")
-    async def session_image(
-        sid: str, file: UploadFile, inline: bool = False
-    ) -> Dict[str, Any]:
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        path = await _save_image(session.project_dir, file)
-        # inline=1 (compose bar open): skip the paste — the caller drops the
-        # returned path into the textarea for review-before-send.
-        if not inline:
-            # Bracketed paste so the Claude TUI takes the path as one unit.
-            session.write(f"\x1b[200~{path}\x1b[201~")
-        return {"ok": True, "path": path, "inline": inline}
-
-    @app.post("/sessions/{sid}/large-file")
-    async def session_large_file(
-        sid: str, request: Request, max_bytes: int, name: str = ""
-    ) -> Dict[str, Any]:
-        """Stream a raw request body to disk (#1430). The body is the file
-        itself, not a multipart form, so it can be written as it arrives;
-        ``name`` carries the original filename. The path is only returned,
-        never typed into the PTY: the caller drops it into the composer with
-        a note telling the agent not to read the file."""
-        session = manager.get(sid)
-        if session is None:
-            raise HTTPException(status_code=404, detail=f"unknown session {sid}")
-        path, size = await _save_large_upload(
-            session.project_dir, sid, name, request, max_bytes
-        )
-        return {"ok": True, "path": path, "bytes": size}
-
-    @app.websocket("/sessions/{sid}/ws")
-    async def session_ws(websocket: WebSocket, sid: str) -> None:
-        session = manager.get(sid)
-        if session is None:
-            await websocket.close(code=4404)
-            return
-        # Remote sessions are detached console windows — no PTY to stream.
-        if getattr(session, "kind", "pty") != "pty":
-            await websocket.close(code=4404, reason="remote session has no terminal")
-            return
-        role = (websocket.query_params.get("role") or "phone").strip().lower()
-        await websocket.accept()
-        snapshot, queue = session.subscribe()
-        # Breadcrumb for "terminal opens blank and never paints": an
-        # empty ring at attach is expected for a session that hasn't
-        # printed yet, but if a future report recurs, this timestamp +
-        # ring size lets it be correlated against a concurrent create burst
-        # (see the asyncio.to_thread fix above) without guessing blind.
-        logger.info(
-            f"🔌 WS attach {sid[:8]} role={role} ring_chars={len(snapshot)}"
-        )
-        try:
-            if is_fullscreen(getattr(session, "agent", DEFAULT_AGENT)):
-                # Full-screen differential TUI (Codex/ratatui): do NOT replay
-                # the raw scrollback ring. Replaying its stale move-cursor /
-                # clear deltas garbles a fresh xterm, and replaying the
-                # agent's startup terminal queries makes xterm re-answer them
-                # as input — the `[?1;2c` DA leak.
-                #
-                # Wipe the client's buffer first: the xterm
-                # instance is reused across a reconnect, so without this a
-                # repaint appends below the stale frame and crawls through it.
-                await websocket.send_text(_CLEAR_FRAME)
-                # Serve the headless-VT current-frame snapshot:
-                # no winsize toggle, no SIGWINCH, no agent re-emission — a
-                # ratatui agent re-emits its ENTIRE transcript on any resize,
-                # which is exactly what the old toggle-based
-                # repaint nudge below used to trigger on every (re)connect,
-                # visible to every subscriber including the PC mirror.
-                frame = session.snapshot_frame()
-                if frame:
-                    await websocket.send_text(frame)
-                else:
-                    # No VT frame yet (nothing painted, or an older session
-                    # from before this build) — fall back to the toggle nudge.
-                    task = asyncio.create_task(_force_repaint(session))
-                    _repaint_tasks.add(task)
-                    task.add_done_callback(_repaint_tasks.discard)
-            elif snapshot:
-                # Wipe the client's buffer before the raw-ring replay.
-                # The phone reuses the same xterm instance across
-                # reconnects — the reconnect backoff re-runs connectTerminalWs on
-                # the same terminal, and the warm cache keeps it alive
-                # across overlay close/re-open — so without the wipe this
-                # full-ring replay is APPENDED below the stale buffer,
-                # duplicating the conversation tail on every reconnect
-                # (worst on iOS, which drops the WS each time the PWA is
-                # backgrounded). Same _CLEAR_FRAME the fullscreen branch
-                # sends; prepended into the same frame so wipe + replay
-                # render atomically.
-                await websocket.send_text(_CLEAR_FRAME + snapshot)
-            await asyncio.gather(
-                _pump_to_client(websocket, queue),
-                _pump_from_client(websocket, session, role),
-            )
-        except WebSocketDisconnect:
-            pass
-        except Exception as exc:  # noqa: BLE001
-            logger.debug(f"WS {sid[:8]} ended: {exc}")
-        finally:
-            session.unsubscribe(queue)
-
+    app.include_router(router)
     return app
 
 

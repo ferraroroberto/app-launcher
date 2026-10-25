@@ -42,10 +42,10 @@ class _FakeCompleted:
 
 
 def _make_remote_session(manager: SessionManager, tmp_path, monkeypatch):
-    from src import session_host
+    from src.session_hosting import remote
 
     monkeypatch.setattr(
-        session_host.subprocess, "run", lambda *a, **k: _FakeCompleted()
+        remote.subprocess, "run", lambda *a, **k: _FakeCompleted()
     )
     return manager.create_remote(str(tmp_path), "proj", "", "codex")
 
