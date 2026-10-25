@@ -7,7 +7,7 @@ text still there; the other was still ``pending``, waiting for a quiet window
 that a working agent does not give.
 
 These tests drive the session's real reader thread with a scripted PTY (the
-harness from ``test_session_host_bg_agents_submit``), so turn state and the
+harness from ``test_bg_agents_submit``), so turn state and the
 composer are read off the stream the way the session-host reads them:
 
 - a type-ahead agent mid-turn gets Enter at once, and the queued-message
@@ -32,7 +32,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
     touches_composer,
 )
-from tests.test_session_host_bg_agents_submit import (  # noqa: F401 — fixtures
+from tests.unit.session_host.test_bg_agents_submit import (  # noqa: F401 — fixtures
     _SPINNER_FRAME,
     _TICK_S,
     _TIMER_TICK_FRAME,
@@ -40,7 +40,6 @@ from tests.test_session_host_bg_agents_submit import (  # noqa: F401 — fixture
     _ScriptedPty,
     scripted,
 )
-from tests.test_session_host_submit_input import clock  # noqa: F401 — fixture
 
 # An invented steer of the stranded size: 800+ bytes over several paragraphs.
 _STEER = "\n\n".join(

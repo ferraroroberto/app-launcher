@@ -3,8 +3,8 @@ the readiness wait shared by the issue-start and fleet-chief launch paths.
 
 The free-text dispatch endpoint (#302) that first exercised these is gone
 (#1382); the spawn-then-type contract itself is still pinned end to end by
-``test_chief_ensure.py`` (timeout kill, boot-never-quiescent cap) and
-``test_board_drilldown.py`` (chief-managed marking, #1283). What those go
+``tests/api/chief/`` (timeout kill, boot-never-quiescent cap) and
+``tests/api/board/test_drawer_issue_start.py`` (chief-managed marking, #1283). What those go
 through the HTTP routes for, this file reaches directly: the model allowlist
 and the two readiness edges (a dead session, a session-host old enough to not
 report ``output_chars``).

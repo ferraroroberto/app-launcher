@@ -29,7 +29,7 @@ from src import jobs_history as jobs_history_mod
 from src import jobs_queue as jobs_queue_mod
 from src.jobs_config import Job
 
-from tests.test_webapp_api_jobs import _seed_one_job
+from tests.api.jobs._support import _seed_one_job
 
 
 @pytest.fixture

@@ -4,7 +4,7 @@
  * cursor can carry its content), so each name it can send has a drawing
  * here: a 24px SVG in the view's CSS px, and the hotspot (the point that
  * sits on the cursor's position). Any other name draws the arrow. The names
- * match src/desktop_cursor.py's STANDARD_SHAPES (tests/test_desktop_screen.py
+ * match src/desktop_cursor.py's STANDARD_SHAPES (tests/api/screen/test_screen_capture.py
  * fails when one is missing here).
  *
  * Colours are the overlay's two custom properties (styles/apps.css,

@@ -27,8 +27,7 @@ from PIL import Image, ImageDraw
 from src import desktop_capture
 from src.desktop_capture import Monitor, StageStats
 
-# Fixtures the Screen route tests share; imported by name so pytest finds them.
-from tests.test_desktop_screen import (  # noqa: F401
+from tests.api.screen._support import (
     LOOPBACK,
     _as,
     _close_and_wait,
@@ -36,8 +35,6 @@ from tests.test_desktop_screen import (  # noqa: F401
     _next_text,
     _wait_for,
     encoded,
-    fake_cursor,
-    screen,
 )
 
 BIG = Monitor(id=0, left=0, top=0, width=1920, height=1080, primary=True)

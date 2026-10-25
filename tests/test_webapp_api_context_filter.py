@@ -1,6 +1,6 @@
 """GET /api/context-filter, PUT /api/context-filter/mode (issue #713).
 
-Style mirrors test_webapp_api_config.py / test_webapp_api_basics.py: build
+Style mirrors tests/api/config/ and test_webapp_api_basics.py: build
 the TestClient via the shared webapp_client fixture (context_filter_mode_file
 / context_filter_log_file point at tmp_path — see conftest.py), assert
 response shape, and confirm the absent/corrupt-file degradation never

@@ -82,7 +82,7 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
         # The autostart switch (#1542), pinned off so the box's own config
         # (the disposable webapp reads the checkout's webapp_config.json) cannot
         # decide the starting state (#1550); the server default is pinned by
-        # tests/test_webapp_api_config.py.
+        # tests/api/config/.
         "autostart": False,
         # session_id -> context percent; absent = "not showing" (no figure).
         "pct": {"s-tg-health": 42},
