@@ -27,7 +27,7 @@
   min-width: 200px;
   max-width: calc(100vw - 16px);
   padding: 4px;
-  /* The fleet menu surface (#362, owner's decision 2026-10-13): one elevation
+  /* The fleet menu surface (owner's decision 2026-10-13): one elevation
    * step above the card it opens over, so it reads as a layer in both themes.
    * An app without the token keeps the card surface. */
   background: var(--card-2, var(--card));
@@ -80,7 +80,7 @@
  * as the quieter line by weight (400 against the items' 500) and the hairline
  * under it, not by a muted colour: `--muted` on the dark menu surface is 4.08:1,
  * under the 4.5:1 floor, so the text takes `--ink` like the labelled
- * button-surface does (#398, fleet-config#1375). It wraps rather than widening
+ * button-surface does. It wraps rather than widening
  * the menu (`width: 0` + `min-width: 100%`). */
 .row-menu-head {
   width: 0;
