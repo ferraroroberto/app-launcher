@@ -234,7 +234,7 @@ def test_life_os_search_start_new_in_the_scoped_skill(
 
     life_launch_switch(page, "#lifeOsDetached")
     life_launch_switch(page, "#lifeOsResume")
-    _pick_life_model(page, "codex:gpt-6-astra")
+    _pick_life_model(page, "codex:gpt-6-luna")
     page.locator("#lifeOsFilterInput").fill("no such thing")
     wait_until(page, lambda: len(seen) == 1, "the scoped search")
     expect(page.locator("#lifeOsConvoState")).to_contain_text("Nothing matched")
@@ -247,7 +247,7 @@ def test_life_os_search_start_new_in_the_scoped_skill(
     wait_until(page, lambda: len(launches) == 1, "the fresh launch")
     skill, payload = launches[0]
     assert skill == "journal-daily"
-    assert payload == {"mode": "remote", "model": "codex:gpt-6-astra", "resume": False}, payload
+    assert payload == {"mode": "remote", "model": "codex:gpt-6-luna", "resume": False}, payload
     expect(page.locator("#lifeOsStartPicker")).to_be_hidden()
     assert "no such thing" not in _json.dumps(payload)
 
@@ -288,12 +288,12 @@ def test_life_os_browse_mode_start_new_starts_the_skill(
 
     life_launch_switch(page, "#lifeOsDetached")
     life_launch_switch(page, "#lifeOsResume")
-    _pick_life_model(page, "codex:gpt-6-astra")
+    _pick_life_model(page, "codex:gpt-6-luna")
     start.click()
     wait_until(page, lambda: len(launches) == 1, "the fresh launch")
     skill, payload = launches[0]
     assert skill == "journal-daily"
-    assert payload == {"mode": "remote", "model": "codex:gpt-6-astra", "resume": False}, payload
+    assert payload == {"mode": "remote", "model": "codex:gpt-6-luna", "resume": False}, payload
     expect(page.locator("#lifeOsStartPicker")).to_be_hidden()
 
     # Widening to every skill with nothing typed steps the group, and the +, aside.

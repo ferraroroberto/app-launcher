@@ -59,7 +59,7 @@ def test_life_os_tab_renders_skill_tiles(authed_page: Page, base_url: str) -> No
     expect(authed_page.locator("#lifeOsModelCombo")).to_be_attached()
     expect(
         authed_page.locator(
-            "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
+            "#lifeOsModelMenu button[data-value='codex:gpt-6-luna']"
         )
     ).to_be_enabled()
     expect(authed_page.locator("#lifeOsDetached")).to_be_attached()
@@ -104,12 +104,12 @@ def test_life_os_toggles_live_in_skills_summary_without_options_card(
     expect(authed_page.locator("#lifeOsModelMenu")).to_be_visible()
     surface(authed_page, "lifeos.model-menu")
     authed_page.locator(
-        "#lifeOsModelMenu button[data-value='codex:gpt-6-astra']"
+        "#lifeOsModelMenu button[data-value='codex:gpt-6-luna']"
     ).click()
     expect(authed_page.locator("#lifeOsModelCombo")).to_have_attribute(
-        "data-value", "codex:gpt-6-astra"
+        "data-value", "codex:gpt-6-luna"
     )
-    expect(authed_page.locator("#lifeOsModelBtn")).to_have_text("Codex · Astra")
+    expect(authed_page.locator("#lifeOsModelBtn")).to_have_text("Codex · Luna")
     assert skills_card.evaluate("el => el.open") is True, (
         "model-dropdown pick must not collapse the Skills panel"
     )
@@ -170,11 +170,11 @@ def test_life_os_launch_posts_mode_and_model(
     """#540/#845: launch carries the provider-qualified model choice. Detached
     on, so it launches detached → no terminal overlay / WS in the assertion."""
     payload = _launch_journal_daily(
-        authed_page, base_url, model="codex:gpt-6-astra", detached=True,
+        authed_page, base_url, model="codex:gpt-6-luna", detached=True,
     )
     # resume defaults to False on a normal (non-resume) launch (issue #151).
     assert payload == {
-        "mode": "remote", "model": "codex:gpt-6-astra", "resume": False
+        "mode": "remote", "model": "codex:gpt-6-luna", "resume": False
     }, payload
 
 

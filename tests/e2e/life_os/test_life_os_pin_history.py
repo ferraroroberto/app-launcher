@@ -30,7 +30,7 @@ pytestmark = pytest.mark.smoke
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-astra"), ("codex", "claude:opus")])
+@pytest.mark.parametrize("source,target", [("claude", "codex:gpt-6-luna"), ("codex", "claude:opus")])
 def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_url: str, source: str, target: str, browser_name: str) -> None:
     """Source-aware actions in the sheet (#1504); handoff is explicit.
 
@@ -56,7 +56,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     page.route(re.compile(r".*/api/life-os/skills/journal-daily/conversations/launch$"), launch)
     _open_life(page, base_url)
     life_launch_switch(page, "#lifeOsDetached")
-    source_choice = "codex:gpt-6-astra" if source == "codex" else "claude:opus"
+    source_choice = "codex:gpt-6-luna" if source == "codex" else "claude:opus"
     _pick_life_model(page, source_choice)
     _skill_menu_item(page, "journal-daily", "[data-item=lifeos-convo-btn]").click()
     resume = page.locator("#lifeOsConvoSheetResume")
