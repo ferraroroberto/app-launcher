@@ -231,6 +231,17 @@ def _checked_outbox_roots(raw: Any, current: List[str]) -> List[str]:
     return entries
 
 
+def _checked_usage_providers(raw: Any) -> List[str]:
+    """The written provider list in card order, whatever order the client
+    sent; 400 on an unknown name. Checked here rather than in _validate: the
+    loader already drops an unknown name on read, so only a write carries one."""
+    try:
+        validate_usage_providers(raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return [p for p in VALID_USAGE_PROVIDERS if p in raw]
+
+
 # The Settings switches: a truthy string must never flip
 # one ("false" is truthy in Python), so patch_config refuses anything but a bool.
 _SWITCH_KEYS = (
@@ -312,16 +323,8 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
-    # The usage providers are stored in card order whatever order the client
-    # sent. Checked here rather than in _validate: the loader already drops an
-    # unknown name on read, so only a write can carry one.
     if "usage_providers" in patch:
-        raw = patch["usage_providers"]
-        try:
-            validate_usage_providers(raw)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
-        patch["usage_providers"] = [p for p in VALID_USAGE_PROVIDERS if p in raw]
+        patch["usage_providers"] = _checked_usage_providers(patch["usage_providers"])
     # The threshold is a whole percent. A bool is an int in Python
     # and a float would be silently truncated, so both are refused here;
     # the range itself is _validate's, which words the 400.

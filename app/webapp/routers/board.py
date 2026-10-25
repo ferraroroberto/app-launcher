@@ -647,10 +647,8 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         name = f"{name or entry.name} · Grok fallback"
     if sid and name:
         await _auto_name_session(cfg, sid, name)
-    return {
-        "launched": prompt, "repo": entry.name, "session": session,
-        "auto_switch": switch.payload(model),
-    }
+    return {"launched": prompt, "repo": entry.name, "session": session,
+            "auto_switch": switch.payload(model)}
 
 
 async def _auto_switch(
