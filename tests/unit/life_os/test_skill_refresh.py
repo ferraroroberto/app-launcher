@@ -118,6 +118,16 @@ class TestDecision:
         second = refresh.plan_refresh(cfg, "garden", SID.upper(), CAPTURE)
         assert (second.state, second.suffix) == ("unchanged", "")
 
+    def test_the_prompt_passes_the_session_host_flags_allowlist(self, cfg, life_os, monkeypatch):
+        from src.session_host import _validate_flags
+
+        _git(monkeypatch, None)
+        refresh.record_refresh(refresh.plan_refresh(cfg, "garden", SID, CAPTURE))
+        (life_os / ".claude" / "skills" / "garden" / "SKILL.md").write_text("# new boundary", encoding="utf-8")
+        plan = refresh.plan_refresh(cfg, "garden", SID, CAPTURE)
+        assert plan.state == "changed"
+        _validate_flags(f"--resume {SID} --remote-control{plan.suffix}")
+
     @pytest.mark.parametrize("commit, state", [
         (datetime(2026, 8, 1, 9, 30), "changed"),
         (datetime(2026, 8, 1, 8, 30), "unchanged"),
