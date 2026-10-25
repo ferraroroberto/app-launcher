@@ -21,8 +21,9 @@ on disk showing red — re-render correctly without a migration, and ``status``
 keeps meaning exactly what it has always meant for every consumer that has not
 been taught the new vocabulary.
 
-**Provenance of the table below.** These codes are *defined* by
-``scheduled_runner.py``; this is a reader's copy, which is why
+**Provenance of the table below.** These codes are *defined* by fleet-config's
+``skills/_lib/scheduled/progress.py`` (``scheduled_runner.py`` re-imports them);
+this is a reader's copy, which is why
 ``tests/unit/jobs/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner``
 parses that file (when the sibling fleet-config checkout is present) and fails
 if it grows a code this table does not name. A new upstream code would otherwise
