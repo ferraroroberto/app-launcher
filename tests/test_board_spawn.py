@@ -61,6 +61,28 @@ class TestBoardModelResolution:
         assert agent == "codex"
         assert "gpt-5.6-sol" in flags
 
+    def test_grok_uses_the_coding_tab_grok_settings(self, webapp_client, monkeypatch):
+        monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: True)
+        cfg = self._cfg(webapp_client)
+        agent, flags = board_spawn._agent_and_flags(cfg, "grok:grok-4.5")
+        assert agent == "grok"
+        assert flags == board_spawn.build_grok_flags(cfg)
+        assert "--permission-mode" in flags
+
+    def test_grok_not_installed_is_a_distinct_400(self, webapp_client, monkeypatch):
+        monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: False)
+        with pytest.raises(HTTPException) as excinfo:
+            board_spawn._agent_and_flags(self._cfg(webapp_client), "grok:grok-4.5")
+        assert excinfo.value.status_code == 400
+        assert "Grok Build is not installed" == excinfo.value.detail
+
+    def test_unknown_grok_model_is_unknown_model(self, webapp_client, monkeypatch):
+        monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: True)
+        with pytest.raises(HTTPException) as excinfo:
+            board_spawn._agent_and_flags(self._cfg(webapp_client), "grok:grok-9")
+        assert excinfo.value.status_code == 400
+        assert excinfo.value.detail == "unknown model: grok:grok-9"
+
 
 class TestAwaitDispatchReady:
 

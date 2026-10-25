@@ -34,7 +34,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import HTTPException
 
 from src import agents, session_client
-from src.launch_flags import build_claude_flags, build_codex_flags
+from src.launch_flags import build_claude_flags, build_codex_flags, build_grok_flags
 from src.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.registry import AppEntry, live_claude_code_entries
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
@@ -124,13 +124,19 @@ PTY_QUIESCENT_POLL_S = 0.5
 # Provider-qualified choices come from the shared model catalog.
 _DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 
+# ``grok models`` lists one model and the Coding tab sends no ``--model``, so
+# the id only gates the provider-qualified value; flags carry the Coding tab's
+# effort and permission mode.
+_DISPATCH_GROK_MODELS = ("grok-4.5",)
+
 
 def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
     """Validated ``(agent, flags)`` for a Board per-launch ``model`` (#500/#505).
 
     The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
     Codex values select an exact model with the Coding tab's remembered
-    compatible effort. The ``is_installed`` check is the
+    compatible effort; ``grok:grok-4.5`` takes the Coding tab's Grok effort and
+    permission mode. The ``is_installed`` check is the
     same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
     Coding tab's already-disabled button.
     """
@@ -140,14 +146,22 @@ def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
         provider, model_value = "claude", model
     if provider == "claude" and model_value in _DISPATCH_CLAUDE_MODELS:
         return "claude", build_claude_flags(cfg, model_value)
+    if provider == "grok" and model_value in _DISPATCH_GROK_MODELS:
+        _require_installed("grok")
+        return "grok", build_grok_flags(cfg)
     if provider != "codex" or model_value not in VALID_CODEX_MODELS:
         raise HTTPException(status_code=400, detail=f"unknown model: {model}")
-    if not agents.is_installed("codex"):
+    _require_installed("codex")
+    return "codex", build_codex_flags(cfg, model_value)
+
+
+def _require_installed(agent_id: str) -> None:
+    """400 naming the agent when its CLI is not on this host."""
+    if not agents.is_installed(agent_id):
         raise HTTPException(
             status_code=400,
-            detail=f"{agents.AGENTS['codex'].label} is not installed",
+            detail=f"{agents.AGENTS[agent_id].label} is not installed",
         )
-    return "codex", build_codex_flags(cfg, model_value)
 
 
 async def _await_dispatch_ready(port: int, sid: str) -> None:
