@@ -52,6 +52,10 @@ _QUOTA_SHIM = """
     {harness: 'codex', provider: 'openai', label: 'Codex',
      state: 'available', reason: 'native_observation', stale: false,
      five_hour: win(0, nowS + 9000, 300), weekly: win(36, nowS + halfWeek, 10080)},
+    {harness: 'grok', provider: 'xai', label: 'Grok',
+     state: 'unsupported', reason: 'limits_not_exposed', stale: false,
+     five_hour: null, weekly: null,
+     cost_today: {state: 'available', reason: 'grok_usage_ledger', usd: 15.663}},
   ];
   window.__rateLimitPolls = 0;
   window.fetch = function (input, init) {
@@ -259,7 +263,7 @@ def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
       const m = await import('/static/usage-meter.js');
       const nowS = Date.now() / 1000;
       const win = (pct) => ({used_percentage: pct, resets_at: nowS + 3600, duration_minutes: 300});
-      m.setUsageShows(shown);
+      m.setUsageShows([shown]);
       m.renderUsage([
         {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
          five_hour: win(40), weekly: win(20)},
@@ -347,47 +351,52 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
 
 
 def _serve_usage_shows(page: Page, current: dict) -> list:
-    """Serve /api/config with ``current["usage_shows"]`` and answer its POSTs
-    from memory, so the page is driven by the setting without writing the
-    box's real config. Returns the POST bodies seen."""
+    """Serve /api/config with ``current["usage_providers"]`` and answer its
+    POSTs from memory, so the page is driven by the setting without writing
+    the box's real config. Returns the POST bodies seen."""
     posted: list = []
 
     def _config(route):
         if route.request.method == "POST":
             body = route.request.post_data_json
             posted.append(body)
-            if "usage_shows" in body:
-                current["usage_shows"] = body["usage_shows"]
+            if "usage_providers" in body:
+                current["usage_providers"] = body["usage_providers"]
             route.fulfill(status=200, content_type="application/json",
                           body=_json.dumps({"ok": True, "claude_flags": ""}))
             return
         resp = route.fetch()
         data = resp.json()
-        data["usage_shows"] = current["usage_shows"]
+        data["usage_providers"] = current["usage_providers"]
         route.fulfill(response=resp, json=data)
 
     page.route(re.compile(r".*/api/config$"), _config)
     return posted
 
 
-@pytest.mark.parametrize("mode", ["claude", "codex", "both", "none"])
+_NAMES = {"claude": "Claude Code", "codex": "Codex", "grok": "Grok"}
+
+
+@pytest.mark.parametrize("providers", [
+    ["claude"], ["codex"], ["claude", "codex"], [], ["claude", "codex", "grok"], ["grok"],
+])
 def test_usage_shows_draws_only_the_chosen_providers(
-    authed_page: Page, base_url: str, mode: str
+    authed_page: Page, base_url: str, providers: list
 ) -> None:
-    """#1451: the "Usage shows" setting. Claude / Codex draw only that
-    provider (no row, mark, or word of the other, in the card or the
-    accessible name); both is today's meter; none hides the Code tab's Usage
-    card, with the rest of the tab intact."""
+    """The "Usage shows" switches. A provider switched off leaves no row, mark
+    or word in the card or its accessible name; all off hides the Code tab's
+    Usage card, with the rest of the tab intact. Grok never draws a bar: its
+    row is today's spend."""
     errors: list = []
     authed_page.on("pageerror", lambda exc: errors.append(str(exc)))
     authed_page.add_init_script(_QUOTA_SHIM)
     _mock_board(authed_page)
-    _serve_usage_shows(authed_page, {"usage_shows": mode})
+    _serve_usage_shows(authed_page, {"usage_providers": providers})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     card = authed_page.locator("#codingUsageCard")
     full = authed_page.locator("#codingUsage .usage-meter-full")
-    if mode == "none":
+    if not providers:
         # The poll lands, then the card stays hidden: wait on the poll.
         authed_page.wait_for_function("window.__rateLimitPolls >= 1")
         expect(card).to_be_hidden()
@@ -400,41 +409,48 @@ def test_usage_shows_draws_only_the_chosen_providers(
 
     expect(full).to_be_visible(timeout=10_000)
     expect(card).to_be_visible()
-    # #1510: the harness heading (mark + name) shows only when both are
-    # shown; alone, the windows sit straight under the card title.
-    if mode == "both":
-        expect(full.locator(".um-name")).to_have_text(["Claude Code", "Codex"])
-        expect(full.locator(".um-mark")).to_have_count(2)
+    # The harness heading (mark + name) shows only when more than one
+    # provider is shown; alone, the content sits straight under the card title.
+    if len(providers) > 1:
+        expect(full.locator(".um-name")).to_have_text([_NAMES[p] for p in providers])
+        expect(full.locator(".um-mark")).to_have_count(len(providers))
     else:
         expect(full.locator(".um-head")).to_have_count(0)
         expect(full.locator(".um-name")).to_have_count(0)
         expect(full.locator(".um-mark")).to_have_count(0)
-        expect(full.locator(".um-row")).to_have_count(2)
-        # The windows are the first thing in the meter: one row shorter.
-        assert full.evaluate("el => el.firstElementChild.classList.contains('um-windows')")
     label = full.get_attribute("aria-label")
-    assert ("Claude" in label) == (mode in ("claude", "both")), label
-    assert ("Codex" in label) == (mode in ("codex", "both")), label
-    if mode == "claude":
-        expect(full.locator(".um-codex")).to_have_count(0)
-        expect(full.locator('use[href="#b-codex"]')).to_have_count(0)
+    for provider in ("claude", "codex", "grok"):
+        assert (_NAMES[provider] in label) == (provider in providers), label
+        if provider not in providers:
+            expect(full.locator(f'use[href="#b-{provider}"]')).to_have_count(0)
+    if providers == ["claude"]:
+        expect(full.locator(".um-row")).to_have_count(2)
         expect(full.locator(".um-row").nth(1).locator(".um-pct")).to_have_text("64%")
-    elif mode == "codex":
+    elif providers == ["codex"]:
         # Codex leads: its own two windows, no Claude row or mark.
-        expect(full.locator(".um-codex")).to_have_count(0)
-        expect(full.locator('use[href="#b-claude"]')).to_have_count(0)
         rows = full.locator(".um-row")
         expect(rows).to_have_count(2)
         expect(rows.nth(0).locator(".um-pct")).to_have_text("0%")
         expect(rows.nth(1).locator(".um-pct")).to_have_text("36%")
+    elif providers == ["grok"]:
+        # Grok alone: no bar at all, just its spend.
+        expect(full.locator(".um-bar")).to_have_count(0)
+        expect(full.locator(".um-note")).to_have_text("$15.66 today")
     else:
         expect(full.locator(".um-codex .um-codex-value")).to_have_text("5h 0% · wk 36%")
+    grok_row = full.locator(".um-grok")
+    if "grok" in providers and len(providers) > 1:
+        expect(grok_row.locator(".um-codex-value")).to_have_text("$15.66 today")
+        expect(grok_row.locator(".um-bar")).to_have_count(0)
+    else:
+        expect(grok_row).to_have_count(0)
 
-    # The sheet follows: the other provider's rows are not in it.
+    # The sheet follows: a provider switched off has no rows in it.
     full.click()
     body = authed_page.locator("#usageSheetBody")
-    expect(body.locator('[data-row^="claude-"]')).to_have_count(2 if mode in ("claude", "both") else 0)
-    expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if mode in ("codex", "both") else 0)
+    expect(body.locator('[data-row^="claude-"]')).to_have_count(2 if "claude" in providers else 0)
+    expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if "codex" in providers else 0)
+    expect(body.locator('[data-row^="grok-"]')).to_have_count(2 if "grok" in providers else 0)
     authed_page.locator("#usageSheetClose").click()
     assert errors == [], errors
 
@@ -442,37 +458,46 @@ def test_usage_shows_draws_only_the_chosen_providers(
 def test_usage_shows_setting_saves_and_repaints_the_card(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1451: the Settings control is the four-way pill row in its own sheet
-    (#1435: Settings > Usage meter). It
-    defaults to Both, a tap saves at once as one POST, and the Usage card
-    repaints without a reload (None hides it, Both brings it back)."""
+    """The Settings control is one switch per provider in its own sheet
+    (#1435: Settings > Usage meter). Claude and Codex start on, Grok off; a
+    tap saves the whole set at once as one POST, and the Usage card repaints
+    without a reload (all off hides it, Grok alone brings it back)."""
     authed_page.add_init_script(_QUOTA_SHIM)
     _mock_board(authed_page)
-    current = {"usage_shows": "both"}
+    current = {"usage_providers": ["claude", "codex"]}
     posted = _serve_usage_shows(authed_page, current)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     expect(authed_page.locator("#codingUsage .usage-meter-full")).to_be_visible(timeout=10_000)
 
     open_settings_sheet(authed_page, "usageShowsSheet")
-    tabs = authed_page.locator("#usageShows .segmented-item")
-    expect(tabs).to_have_text(["Claude", "Codex", "Both", "None"])
-    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("Both")
+    switch = {
+        p: authed_page.locator(f'#usageShows [data-provider="{p}"]')
+        for p in ("claude", "codex", "grok")
+    }
+    expect(switch["claude"]).to_have_attribute("aria-checked", "true")
+    expect(switch["codex"]).to_have_attribute("aria-checked", "true")
+    expect(switch["grok"]).to_have_attribute("aria-checked", "false")
 
-    tabs.nth(3).click()
-    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("None")
-    assert [p for p in posted if "usage_shows" in p] == [{"usage_shows": "none"}], posted
+    switch["claude"].click()
+    expect(switch["claude"]).to_have_attribute("aria-checked", "false")
+    switch["codex"].click()
+    expect(switch["codex"]).to_have_attribute("aria-checked", "false")
+    assert [p for p in posted if "usage_providers" in p] == [
+        {"usage_providers": ["codex"]}, {"usage_providers": []},
+    ], posted
     # The Code pane is not showing, so read the card's own hidden state.
     card = authed_page.locator("#codingUsageCard")
     expect(card).to_have_attribute("hidden", "")
 
-    tabs.nth(0).click()
-    expect(authed_page.locator("#usageShows .segmented-item[aria-pressed=true]")).to_have_text("Claude")
+    switch["grok"].click()
+    expect(switch["grok"]).to_have_attribute("aria-checked", "true")
     expect(card).not_to_have_attribute("hidden", "")
     # An open sheet makes the nav inert: close it before leaving Settings.
     close_settings_sheets(authed_page)
     authed_page.locator("#tabClaude").click()
     expect(card).to_be_visible()
     expect(authed_page.locator("#codingUsage .um-codex")).to_have_count(0)
+    expect(authed_page.locator("#codingUsage .um-note")).to_have_text("$15.66 today")
 
 
 # Holds the /api/rate-limits answer until the test releases it, so the Board

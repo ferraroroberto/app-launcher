@@ -53,6 +53,14 @@ _QUOTA_CODEX_UNSUPPORTED = {"quota_lines": [
      "five_hour": None, "weekly": None},
 ]}
 
+# Grok on as well: its row has no windows, only today's spend.
+_QUOTA_WITH_GROK = {"quota_lines": _QUOTA["quota_lines"] + [
+    {"harness": "grok", "provider": "xai", "label": "Grok",
+     "state": "unsupported", "reason": "limits_not_exposed", "stale": False,
+     "five_hour": None, "weekly": None,
+     "cost_today": {"state": "available", "reason": "grok_usage_ledger", "usd": 1.5}},
+]}
+
 _FILTER = {
     "mode": {"available": True, "mode": "shadow"}, "harnesses": [],
     "stats": {"available": True, "totals": {"tokens_saved": 90000, "rows": 300},
@@ -179,12 +187,13 @@ def _assert_stable(page: Page, selector: str, held: List[_Held], settled: callab
 
 @pytest.mark.iphone
 @pytest.mark.parametrize(
-    ("shows", "quota", "expect_codex_row"),
-    [("claude", _QUOTA_CODEX_UNSUPPORTED, False), ("both", _QUOTA, True)],
-    ids=["claude-only-live-shape", "both-agents"],
+    ("shows", "quota"),
+    [(["claude"], _QUOTA_CODEX_UNSUPPORTED), (["claude", "codex"], _QUOTA),
+     (["claude", "codex", "grok"], _QUOTA_WITH_GROK)],
+    ids=["claude-only-live-shape", "both-agents", "with-grok"],
 )
 def test_usage_card_keeps_its_height_when_the_quota_arrives(
-    authed_page: Page, base_url: str, shows: str, quota: dict, expect_codex_row: bool
+    authed_page: Page, base_url: str, shows: list, quota: dict
 ) -> None:
     """The card holds its final rows from the first paint, whichever providers
     "Usage shows" names (#1657). Three moments are measured: the markup alone
@@ -197,11 +206,11 @@ def test_usage_card_keeps_its_height_when_the_quota_arrives(
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     page.add_init_script(
-        f"try {{ localStorage.setItem('app-launcher.usageshows', '{shows}'); }} catch (e) {{}}")
+        f"try {{ localStorage.setItem('app-launcher.usageshows', '{' '.join(shows)}'); }} catch (e) {{}}")
     _answer(page, r".*/api/claude-code/git-status$", {"projects": []})
     script = _Held(page, r".*/static/main\.js(\?.*)?$")
     # Boot reads the config first and the quota only after it lands.
-    config = _Held(page, r".*/api/config$", patch={"usage_shows": shows})
+    config = _Held(page, r".*/api/config$", patch={"usage_providers": shows})
     data = [_Held(page, r".*/api/rate-limits(\?.*)?$", quota),
             _Held(page, r".*/api/context-filter$", _FILTER)]
     # The held script keeps DOMContentLoaded from firing: wait for the response.
@@ -224,7 +233,8 @@ def test_usage_card_keeps_its_height_when_the_quota_arrives(
         h.release()
     expect(page.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
     expect(page.locator("#codingUsage:not(:has([data-pending]))")).to_be_attached(timeout=10_000)
-    expect(page.locator("#codingUsage .um-codex")).to_have_count(1 if expect_codex_row else 0)
+    expect(page.locator("#codingUsage .um-codex")).to_have_count(1 if "codex" in shows else 0)
+    expect(page.locator("#codingUsage .um-grok")).to_have_count(1 if "grok" in shows else 0)
     expect(page.locator("#codingUsageFooter")).to_be_visible(timeout=10_000)
     settled = _height(page, card)
     for moment, height in heights.items():

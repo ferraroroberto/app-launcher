@@ -97,8 +97,9 @@ def test_groups_render_with_values_matching_the_saved_config(
     expect(_value(authed_page, "terminal")).to_have_text(
         f"{cfg['terminal_history_lines']} lines · {cfg['large_upload_max_mb']} MB"
     )
+    labels = {"claude": "Claude", "codex": "Codex", "grok": "Grok"}
     expect(_value(authed_page, "usage")).to_have_text(
-        {"claude": "Claude", "codex": "Codex", "both": "Both", "none": "None"}[cfg["usage_shows"]]
+        " · ".join(labels[p] for p in cfg["usage_providers"]) or "None"
     )
     claude = cfg["claude"]
     expect(authed_page.locator('#launchDefaultsSheet [data-settings-value="agent-claude"]')).to_contain_text(

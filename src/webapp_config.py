@@ -43,6 +43,7 @@ from src.model_catalog import (
 )
 
 from src._json_io import atomic_write_json
+from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers, validate_usage_providers
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +108,6 @@ MAX_TERMINAL_HISTORY_LINES = 50_000
 # 2 GB covers an archive of scanned documents with room to spare; the ceiling
 # keeps a typo from turning into an unbounded write to the project drive.
 DEFAULT_LARGE_UPLOAD_MAX_MB = 2048
-
-# Which providers the usage meter shows: the Code tab's Usage card and
-# the Board's compact line. "both" is today's behaviour; "none" hides the card.
-VALID_USAGE_SHOWS = ("claude", "codex", "both", "none")
-DEFAULT_USAGE_SHOWS = "both"
 MIN_LARGE_UPLOAD_MAX_MB = 1
 MAX_LARGE_UPLOAD_MAX_MB = 10240
 
@@ -524,8 +520,8 @@ class WebappConfig:
     # Large-file attach limit in MB, Settings-tab configurable.
     # See DEFAULT_LARGE_UPLOAD_MAX_MB.
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
-    # Which providers the usage meter draws; see VALID_USAGE_SHOWS.
-    usage_shows: str = DEFAULT_USAGE_SHOWS
+    # Which providers the usage meter draws; see src.usage.providers.
+    usage_providers: list = field(default_factory=lambda: list(DEFAULT_USAGE_PROVIDERS))
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
     # https origin the phone connects to. Empty disables the passkey gate.
@@ -770,6 +766,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "codex_model_efforts": _load_codex_model_efforts,
     "claude_model_efforts": _load_claude_model_efforts,
     "pi_model_efforts": _load_pi_model_efforts,
+    "usage_providers": load_usage_providers,
 }
 
 
@@ -1054,7 +1051,6 @@ _ENUM_VALIDATIONS: Tuple[Tuple[str, Tuple[str, ...]], ...] = (
     ("pi_model", VALID_PI_MODELS),
     ("pi_trust_mode", VALID_PI_TRUST_MODES),
     ("chief_model", VALID_CHIEF_MODELS),
-    ("usage_shows", VALID_USAGE_SHOWS),
 )
 
 
@@ -1083,6 +1079,7 @@ def _validate(cfg: WebappConfig) -> None:
             raise ValueError(
                 f"{field_name} must be one of {allowed}; got {value!r}"
             )
+    validate_usage_providers(cfg.usage_providers)
     if not isinstance(cfg.claude_model_efforts, dict):
         raise ValueError("claude_model_efforts must be an object")
     for model, effort in cfg.claude_model_efforts.items():

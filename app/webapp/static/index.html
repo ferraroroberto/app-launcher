@@ -36,10 +36,14 @@
        settled row set from the first paint. usage-meter.js keeps it current. -->
   <script>
     (function () {
-      var shows = 'both';
-      try { shows = localStorage.getItem('app-launcher.usageshows') || shows; } catch (e) {}
-      document.documentElement.dataset.usageShows =
-        shows === 'claude' || shows === 'codex' || shows === 'none' ? shows : 'both';
+      // A space-separated provider list; an older device stored one word.
+      var shows = 'claude codex';
+      var legacy = { claude: 'claude', codex: 'codex', both: 'claude codex', none: '' };
+      try {
+        var stored = localStorage.getItem('app-launcher.usageshows');
+        if (stored !== null) shows = legacy.hasOwnProperty(stored) ? legacy[stored] : stored;
+      } catch (e) {}
+      document.documentElement.dataset.usageShows = shows;
     })();
   </script>
   <!-- base.css first: form controls inherit the page font (its README's

@@ -39,7 +39,7 @@ BASELINE = {
     ("app/webapp/manager.py", 115),     # tray subprocess readiness probe
     ("app/tray/tailscale.py", 58),
     ("app/tray/tray.py", 275),
-    ("src/quota_usage.py", 362),
+    ("src/quota_usage.py", 559),
 }
 
 

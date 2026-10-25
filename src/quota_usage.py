@@ -8,17 +8,21 @@ the browser payload.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from types import ModuleType
 from typing import Any, Callable, Dict, Optional
 
 from src._fleet_contract import load_fleet_contract
+from src.env_path import effective_path
 from src.model_catalog import PI_MODEL_SPECS
 from src.subprocess_flags import NO_WINDOW
 
@@ -325,6 +329,199 @@ def read_quota_lines(
         )
         for route, label in routes
     ]
+
+
+# --------------------------------------------------------- Grok's line
+#
+# Grok exposes no session or weekly allowance to scripts (its status-line
+# guide says the payload carries no rate-limit summary; the allowance lives
+# only in the interactive /usage modal), so its row never draws a bar. What
+# Grok does persist is a per-session cost ledger, read through its own
+# documented `grok usage <session-id>` command, so the row shows today's
+# spend from that and nothing else.
+
+# `costUsdTicks` is 10^10 ticks per USD (Grok's sessions guide).
+GROK_TICKS_PER_USD = 10_000_000_000
+# One sweep spawns `grok usage` once per session touched today; the 5 s poll
+# reuses the result for this long instead of respawning them all.
+GROK_COST_TTL_SECONDS = 120.0
+GROK_USAGE_TIMEOUT_SECONDS = 10
+
+_grok_cache_lock = Lock()
+_grok_cache: Dict[str, Any] = {}
+
+
+def grok_home() -> Path:
+    """Grok's state folder: ``GROK_HOME`` when set, else ``~/.grok``."""
+    override = os.environ.get("GROK_HOME", "").strip()
+    return Path(override) if override else Path.home() / ".grok"
+
+
+def _grok_session_ids(home: Path, since: float) -> Optional[list]:
+    """Ids of the sessions touched since ``since`` (epoch seconds), from the
+    folder names alone; ``None`` when there is no sessions folder to list.
+
+    Sessions sit at ``sessions/<encoded cwd>/<id>/``. A folder's own mtime
+    can lag a rewrite of a file inside it, so its ``summary.json`` is
+    stat'ed too (never read: the ledger comes from ``grok usage``)."""
+    root = home / "sessions"
+    if not root.is_dir():
+        return None
+    ids = []
+    for cwd_dir in root.iterdir():
+        if not cwd_dir.is_dir():
+            continue
+        for session_dir in cwd_dir.iterdir():
+            try:
+                stamps = [session_dir.stat().st_mtime]
+                summary = session_dir / "summary.json"
+                if summary.exists():
+                    stamps.append(summary.stat().st_mtime)
+            except OSError:
+                continue
+            if session_dir.is_dir() and max(stamps) >= since:
+                ids.append(session_dir.name)
+    return ids
+
+
+def _run_grok_usage(exe: str, session_id: str) -> Optional[Dict[str, Any]]:
+    """One session's ledger as ``grok usage`` prints it, or ``None``."""
+    try:
+        result = subprocess.run(
+            [exe, "usage", session_id],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GROK_USAGE_TIMEOUT_SECONDS,
+            creationflags=NO_WINDOW,
+        )
+    except (OSError, subprocess.SubprocessError):
+        logger.info("ℹ️ grok usage: process failed for one session")
+        return None
+    if result.returncode != 0:
+        logger.info(f"ℹ️ grok usage: exit {result.returncode} for one session")
+        return None
+    try:
+        data = json.loads(result.stdout)
+    except ValueError:
+        logger.info("ℹ️ grok usage: output was not JSON")
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _parse_instant(text: Any) -> Optional[datetime]:
+    if not isinstance(text, str):
+        return None
+    # Grok writes nanoseconds; fromisoformat takes at most microseconds.
+    head, dot, tail = text.partition(".")
+    if dot:
+        digits = len(tail) - len(tail.lstrip("0123456789"))
+        text = f"{head}.{tail[:min(digits, 6)]}{tail[digits:]}"
+    try:
+        stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else None
+
+
+def grok_cost_today(
+    home: Path,
+    exe: Optional[str],
+    *,
+    now: Optional[datetime] = None,
+    runner: Callable[[str, str], Optional[Dict[str, Any]]] = _run_grok_usage,
+) -> Dict[str, Any]:
+    """Today's Grok spend (local midnight onward) and the state it is in.
+
+    ``available`` with ``usd`` summed over every turn that ended today;
+    ``unsupported`` when the CLI or its sessions folder is missing;
+    ``unknown`` when any session's ledger could not be read, because a
+    partial sum would understate the day. A resumed or forked session
+    carries its parent's turns, so a turn is counted once per
+    (end time, cost) pair.
+    """
+    local_now = (now or datetime.now(timezone.utc)).astimezone()
+    midnight = local_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if not exe:
+        return {"state": "unsupported", "reason": "grok_not_installed", "usd": None}
+    ids = _grok_session_ids(home, midnight.timestamp())
+    if ids is None:
+        return {"state": "unsupported", "reason": "grok_sessions_absent", "usd": None}
+    seen = set()
+    ticks = 0
+    for session_id in ids:
+        data = runner(exe, session_id)
+        if data is None:
+            return {"state": "unknown", "reason": "grok_usage_unreadable", "usd": None}
+        for turn in data.get("turns") or []:
+            if not isinstance(turn, dict):
+                continue
+            ended = _parse_instant(turn.get("endedAt"))
+            cost = turn.get("costUsdTicks")
+            if ended is None or ended < midnight:
+                continue
+            if not isinstance(cost, int) or isinstance(cost, bool):
+                continue
+            key = (turn.get("endedAt"), cost)
+            if key in seen:
+                continue
+            seen.add(key)
+            ticks += cost
+    return {"state": "available", "reason": "grok_usage_ledger", "usd": ticks / GROK_TICKS_PER_USD}
+
+
+def _grok_line(cost: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "harness": "grok",
+        "provider": "xai",
+        "label": "Grok",
+        "state": "unsupported",
+        "reason": "limits_not_exposed",
+        "stale": False,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "five_hour": None,
+        "weekly": None,
+        "cost_today": cost,
+    }
+
+
+def _sweep_grok_cost() -> None:
+    try:
+        exe = shutil.which("grok", path=effective_path())
+        cost = grok_cost_today(grok_home(), exe)
+    except Exception:  # noqa: BLE001 - a failed sweep must still clear in_flight
+        logger.exception("❌ Grok cost sweep failed")
+        cost = {"state": "unknown", "reason": "grok_usage_unreadable", "usd": None}
+    with _grok_cache_lock:
+        _grok_cache.update(line=_grok_line(cost), at=time.monotonic(), in_flight=False)
+
+
+def grok_quota_line(
+    *,
+    now: Optional[float] = None,
+    start: Optional[Callable[[Callable[[], None]], None]] = None,
+) -> Dict[str, Any]:
+    """Grok's usage row: no windows ever, today's cost when it can be read.
+
+    The row's own ``state`` is ``unsupported`` (limits not exposed), which
+    the meter keeps as text; the cost has a state of its own. A sweep spawns
+    the CLI once per session touched today (seconds, on a busy day), so it
+    runs on a background thread at most every :data:`GROK_COST_TTL_SECONDS`
+    and the poll returns the last result, ``unknown`` until the first lands.
+    """
+    tick = time.monotonic() if now is None else now
+    with _grok_cache_lock:
+        cached = _grok_cache.get("line")
+        fresh = cached is not None and tick - _grok_cache["at"] < GROK_COST_TTL_SECONDS
+        launch = not fresh and not _grok_cache.get("in_flight")
+        if launch:
+            _grok_cache["in_flight"] = True
+    if launch:
+        (start or (lambda fn: Thread(target=fn, daemon=True).start()))(_sweep_grok_cost)
+    if cached is None:
+        return _grok_line({"state": "unknown", "reason": "grok_usage_pending", "usd": None})
+    return dict(cached)
 
 
 class RefreshGate:

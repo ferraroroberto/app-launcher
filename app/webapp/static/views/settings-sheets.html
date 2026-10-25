@@ -51,11 +51,21 @@
           </button>
         </div>
         <div class="settings-sheet-body">
-          <div class="stacked">
-            <span id="usageShowsLabel">Usage shows</span>
-            <div id="usageShows" class="segmented" role="group" aria-labelledby="usageShowsLabel" aria-describedby="usageShowsHelp"></div>
+          <div id="usageShows" role="group" aria-label="Usage shows" aria-describedby="usageShowsHelp">
+            <div class="switch-row settings-switch-row">
+              <span>Claude</span>
+              <button type="button" class="toggle" role="switch" data-provider="claude" aria-checked="false" aria-label="Show Claude in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            </div>
+            <div class="switch-row settings-switch-row">
+              <span>Codex</span>
+              <button type="button" class="toggle" role="switch" data-provider="codex" aria-checked="false" aria-label="Show Codex in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            </div>
+            <div class="switch-row settings-switch-row">
+              <span>Grok</span>
+              <button type="button" class="toggle" role="switch" data-provider="grok" aria-checked="false" aria-label="Show Grok in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            </div>
           </div>
-          <p id="usageShowsHelp" class="field-help">Which providers the Usage card and the Board's usage line draw. None hides the card. It saves at once and applies on every device.</p>
+          <p id="usageShowsHelp" class="field-help">Which providers the Usage card draws; all off hides the card. Grok shares no limits with scripts, so its row shows today's spend, never a bar. Each switch saves at once and applies on every device.</p>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

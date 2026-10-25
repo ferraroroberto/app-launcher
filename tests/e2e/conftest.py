@@ -1428,9 +1428,9 @@ def pin_launch_target(cfg: dict, target: Path) -> dict:
 # UI preferences the e2e suite's assertions depend on. The disposable config
 # is derived from the checkout's real one (and a new worktree copies the live
 # one), so a value the owner picked in Settings would otherwise leak into every
-# test that reads the default (#1458: ``usage_shows: "claude"`` hides the Codex
+# test that reads the default (#1458: ``usage_providers: ["claude"]`` hides the Codex
 # row). A new setting a test asserts against belongs here.
-E2E_PINNED_UI_PREFS = {"usage_shows": "both"}
+E2E_PINNED_UI_PREFS = {"usage_providers": ["claude", "codex"]}
 
 
 def pin_ui_prefs(cfg: dict) -> dict:

@@ -330,31 +330,37 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.chief_doorbell is False
 
-    def test_usage_shows_defaults_to_both_and_round_trips(self, webapp_client):
-        """usage_shows (#1451): which providers the usage meter draws. Default
-        "both" (today's behaviour); each choice must reach disk so it applies
-        on every device and survives a restart."""
+    def test_usage_providers_default_and_round_trip(self, webapp_client):
+        """usage_providers: which providers the usage meter draws, each on or
+        off by itself. Default Claude and Codex; every set (the empty one
+        hides the card) must reach disk so it applies on every device, stored
+        in card order whatever order the client sent."""
         from src.webapp_config import load_webapp_config
 
         client, app, overrides = webapp_client
         body = client.get("/api/config").json()
-        assert body["usage_shows"] == "both"
-        assert body["usage_shows_available"] == ["claude", "codex", "both", "none"]
+        assert body["usage_providers"] == ["claude", "codex"]
+        assert body["usage_providers_available"] == ["claude", "codex", "grok"]
 
         cfg_path = overrides["tmp_webapp_cfg_path"]
-        for choice in ("claude", "codex", "none", "both"):
-            resp = client.post("/api/config", json={"usage_shows": choice})
-            assert resp.status_code == 200, choice
-            assert app.state.webapp_config.usage_shows == choice
-            assert client.get("/api/config").json()["usage_shows"] == choice
-            assert load_webapp_config(cfg_path).usage_shows == choice
+        for sent, stored in (
+            (["grok"], ["grok"]),
+            (["grok", "claude"], ["claude", "grok"]),
+            ([], []),
+            (["codex", "grok", "claude"], ["claude", "codex", "grok"]),
+        ):
+            resp = client.post("/api/config", json={"usage_providers": sent})
+            assert resp.status_code == 200, sent
+            assert app.state.webapp_config.usage_providers == stored
+            assert client.get("/api/config").json()["usage_providers"] == stored
+            assert load_webapp_config(cfg_path).usage_providers == stored
 
-    @pytest.mark.parametrize("junk", ["", "Claude", "all", 1, None, True])
-    def test_usage_shows_rejects_unknown_values(self, webapp_client, junk):
+    @pytest.mark.parametrize("junk", ["claude", ["Claude"], ["all"], [1], None, True])
+    def test_usage_providers_rejects_unknown_values(self, webapp_client, junk):
         client, app, _ = webapp_client
-        resp = client.post("/api/config", json={"usage_shows": junk})
+        resp = client.post("/api/config", json={"usage_providers": junk})
         assert resp.status_code == 400
-        assert app.state.webapp_config.usage_shows == "both"
+        assert app.state.webapp_config.usage_providers == ["claude", "codex"]
 
     def test_config_reports_chief_model_and_worker_cap_read_only(self, webapp_client):
         """Settings › Chief's row (#1435) reads the chief's model and worker

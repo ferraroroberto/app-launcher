@@ -39,8 +39,8 @@
         </div>
         <!-- The placeholder is the meter's own structure with dashes (#1657), so
              the card is its final height before usage-meter.js runs; the first
-             poll replaces it in place. CSS shows the head and Codex rows only
-             for "both" (html[data-usage-shows]). -->
+             poll replaces it in place. CSS shows the head, Codex and Grok rows
+             for the providers Settings shows (html[data-usage-shows]). -->
         <div id="codingUsage" class="usage-meter-slot">
           <button type="button" class="usage-meter usage-meter-full" data-tone="none" data-pending="true" aria-label="Usage: reading the quota. Open usage details">
             <span class="um-head">
@@ -54,6 +54,11 @@
             <span class="um-codex">
               <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-codex"></use></svg>
               <span class="um-name">Codex</span>
+              <span class="um-codex-value" data-tone="none">–</span>
+            </span>
+            <span class="um-grok">
+              <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-grok"></use></svg>
+              <span class="um-name">Grok</span>
               <span class="um-codex-value" data-tone="none">–</span>
             </span>
           </button>

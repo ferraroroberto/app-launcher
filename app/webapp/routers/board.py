@@ -371,11 +371,15 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
     no quota of its own.
 
     Both heavy agents are always returned, in a fixed order (#860); the row
-    set no longer depends on the caller's selected model.
+    set no longer depends on the caller's selected model. Grok's row is
+    added only while the meter shows Grok, since reading its ledger spawns
+    the Grok CLI.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     quota_lines = await asyncio.to_thread(_read_quota_lines, cfg)
     _refresh_codex_for_lines(cfg, quota_lines)
+    if "grok" in cfg.usage_providers:
+        quota_lines.append(quota_usage.grok_quota_line())
     return {"quota_lines": quota_lines}
 
 

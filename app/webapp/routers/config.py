@@ -30,6 +30,7 @@ from src.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
+from src.usage.providers import VALID_USAGE_PROVIDERS
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
     MAX_CHIEF_WORKER_CAP,
@@ -44,7 +45,6 @@ from src.webapp_config import (
     VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
     VALID_PI_TRUST_MODES,
-    VALID_USAGE_SHOWS,
     WebappConfig,
     update_webapp_config,
 )
@@ -94,8 +94,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "large_upload_max_mb_min": MIN_LARGE_UPLOAD_MAX_MB,
         "large_upload_max_mb_max": MAX_LARGE_UPLOAD_MAX_MB,
         # Which providers the usage meter shows.
-        "usage_shows": cfg.usage_shows,
-        "usage_shows_available": list(VALID_USAGE_SHOWS),
+        "usage_providers": list(cfg.usage_providers),
+        "usage_providers_available": list(VALID_USAGE_PROVIDERS),
         # The chief's auto-compact threshold: percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -256,7 +256,7 @@ _PATCH_KEYS = frozenset({
     "fleet_config_dir",
     "terminal_history_lines",
     "large_upload_max_mb",
-    "usage_shows",
+    "usage_providers",
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_job_failures",
@@ -308,6 +308,14 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["coding_hidden_agents"] = [
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
+    # The usage providers are stored in card order whatever order the client
+    # sent; an unknown name is kept so _validate words the 400.
+    if "usage_providers" in patch:
+        raw = patch["usage_providers"]
+        if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
+            raise HTTPException(status_code=400, detail="usage_providers must be a list of provider names")
+        unknown = [p for p in raw if p not in VALID_USAGE_PROVIDERS]
+        patch["usage_providers"] = unknown + [p for p in VALID_USAGE_PROVIDERS if p in raw]
     # The threshold is a whole percent. A bool is an int in Python
     # and a float would be silently truncated, so both are refused here;
     # the range itself is _validate's, which words the 400.
