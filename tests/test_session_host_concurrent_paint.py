@@ -144,6 +144,37 @@ async def _create_and_attach(
     }
 
 
+def _load_diagnosis(tick_gaps: list[float], results: list[dict[str, Any]]) -> str:
+    """The worst event-loop gap and each session's spawn and paint times."""
+    worst_gap = max(tick_gaps) if tick_gaps else 0.0
+    return (
+        f"worst event-loop tick gap during the burst: {worst_gap * 1000:.0f} ms "
+        f"(interval {_TICK_INTERVAL_S * 1000:.0f} ms); "
+        "per-session spawn/paint: "
+        + ", ".join(
+            f"#{r['index']} spawn={r['spawn_s'] * 1000:.0f}ms paint="
+            + ("never" if r["paint_s"] is None else f"{r['paint_s'] * 1000:.0f}ms")
+            for r in results
+        )
+    )
+
+
+def _assert_not_cross_wired(results: list[dict[str, Any]], diagnosis: str) -> None:
+    """A session must never receive another session's output (#537's
+    failure mode, re-reported on #610's exchange endpoint)."""
+    for row in results:
+        foreign = [
+            other["sentinel"]
+            for other in results
+            if other["index"] != row["index"] and other["sentinel"] in row["buffer"]
+        ]
+        assert not foreign, (
+            f"session #{row['index']} ({row['session_id'][:8]}) received another "
+            f"session's output {foreign} — terminals are cross-wired under a "
+            f"{_SESSION_COUNT}-session burst. {diagnosis}"
+        )
+
+
 async def test_five_concurrent_sessions_each_paint_their_own_first_frame(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -219,17 +250,7 @@ async def test_five_concurrent_sessions_each_paint_their_own_first_frame(
         with contextlib.suppress(asyncio.TimeoutError, TimeoutError):
             await asyncio.wait_for(serve_task, timeout=30)
 
-    worst_gap = max(tick_gaps) if tick_gaps else 0.0
-    diagnosis = (
-        f"worst event-loop tick gap during the burst: {worst_gap * 1000:.0f} ms "
-        f"(interval {_TICK_INTERVAL_S * 1000:.0f} ms); "
-        "per-session spawn/paint: "
-        + ", ".join(
-            f"#{r['index']} spawn={r['spawn_s'] * 1000:.0f}ms paint="
-            + ("never" if r["paint_s"] is None else f"{r['paint_s'] * 1000:.0f}ms")
-            for r in results
-        )
-    )
+    diagnosis = _load_diagnosis(tick_gaps, results)
 
     # The measurement is the point of this test, not a side effect: AC1 asks
     # for what a five-session load actually does, so the numbers go to stdout
@@ -245,16 +266,4 @@ async def test_five_concurrent_sessions_each_paint_their_own_first_frame(
         + f". {diagnosis}"
     )
 
-    # Cross-wiring: a session must never receive another session's output
-    # (#537's failure mode, re-reported on #610's exchange endpoint).
-    for row in results:
-        foreign = [
-            other["sentinel"]
-            for other in results
-            if other["index"] != row["index"] and other["sentinel"] in row["buffer"]
-        ]
-        assert not foreign, (
-            f"session #{row['index']} ({row['session_id'][:8]}) received another "
-            f"session's output {foreign} — terminals are cross-wired under a "
-            f"{_SESSION_COUNT}-session burst. {diagnosis}"
-        )
+    _assert_not_cross_wired(results, diagnosis)

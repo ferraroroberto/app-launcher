@@ -131,6 +131,26 @@ def _show_composer(page: Page) -> None:
     expect(page.locator(COMPOSER)).to_be_visible()
 
 
+def _spy_on_ws_input_frames(authed_page: Page) -> None:
+    """Record every outgoing WS input frame into window.__sentInput."""
+    # Record the data of every outgoing WS `input` frame, in order. Patching
+    # the prototype catches the already-open socket too (send resolves on the
+    # prototype at call time); resize frames are type!='input' and skipped.
+    authed_page.evaluate(
+        """() => {
+            window.__sentInput = [];
+            const orig = WebSocket.prototype.send;
+            WebSocket.prototype.send = function (d) {
+                try {
+                    const m = JSON.parse(d);
+                    if (m && m.type === 'input') window.__sentInput.push(m.data);
+                } catch (_) { /* non-JSON frame */ }
+                return orig.call(this, d);
+            };
+        }"""
+    )
+
+
 def test_compose_send_forwards_text_to_pty(
     authed_page: Page,
     base_url: str,
@@ -167,22 +187,7 @@ def test_compose_send_forwards_text_to_pty(
     _open_terminal(authed_page, base_url, sid)
     expect(authed_page.locator(COMPOSER)).to_be_hidden()
 
-    # Record the data of every outgoing WS `input` frame, in order. Patching
-    # the prototype catches the already-open socket too (send resolves on the
-    # prototype at call time); resize frames are type!='input' and skipped.
-    authed_page.evaluate(
-        """() => {
-            window.__sentInput = [];
-            const orig = WebSocket.prototype.send;
-            WebSocket.prototype.send = function (d) {
-                try {
-                    const m = JSON.parse(d);
-                    if (m && m.type === 'input') window.__sentInput.push(m.data);
-                } catch (_) { /* non-JSON frame */ }
-                return orig.call(this, d);
-            };
-        }"""
-    )
+    _spy_on_ws_input_frames(authed_page)
     _show_composer(authed_page)
 
     order = authed_page.eval_on_selector_all(
@@ -280,6 +285,60 @@ def test_compose_attach_appends_at_end_with_blank_line(
     expect(authed_page.locator(f"{COMPOSER} .composer-image")).to_be_attached()
 
 
+def _assert_status_message_keeps_layout(authed_page: Page, send, attach, send_after: dict, attach_after: dict) -> dict:
+    """Check a status message appearing and clearing moves nothing; returns the idle strip box."""
+    # #1219: a status message coming and going must not move them either.
+    # The status line used to be a `hidden` flex child under the composer, so
+    # every "Connecting…" pushed the whole grid up one line and every connect
+    # dropped it back — the same moving-target race as #447, from below. It
+    # is now the content of an always-laid-out bottom strip, so only the
+    # strip's content changes, and the message is centred in it.
+    #
+    # env(safe-area-inset-bottom) resolves to 0px in headless Chromium and in
+    # the WebKit/iPhone projection alike (the #1099 blind spot, .fleet.toml),
+    # so these checks run with no inset; the Chromium-only block at the end
+    # emulates one. Whether the corners actually clear is still a device check.
+    idle = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    assert idle and idle["hidden"] is True, f"status not idle once connected: {idle}"
+    assert idle["height"] >= 30, (
+        f"the bottom status strip is not reserving its row while idle: {idle}"
+    )
+
+    authed_page.evaluate(_SET_STATUS_JS, "Passkey unlock required")
+    shown = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    send_status = stable_read(send.bounding_box)
+    attach_status = stable_read(attach.bounding_box)
+    assert shown and shown["hidden"] is False and "Passkey unlock required" in shown["text"], shown
+    assert abs(shown["height"] - idle["height"]) < 1 and abs(shown["top"] - idle["top"]) < 1, (
+        f"the status strip changed size when a message appeared: {idle} -> {shown}"
+    )
+    assert send_status and abs(send_status["y"] - send_after["y"]) < 1, (
+        f"Send button moved when a status message appeared: {send_after} -> {send_status}"
+    )
+    assert attach_status and abs(attach_status["y"] - attach_after["y"]) < 1, (
+        f"Attach button moved when a status message appeared: {attach_after} -> {attach_status}"
+    )
+    assert shown["textAlign"] == "center", shown
+    left_gap = shown["contentLeft"] - shown["left"]
+    right_gap = shown["right"] - shown["contentRight"]
+    assert shown["contentWidth"] > 0 and abs(left_gap - right_gap) <= 1, (
+        f"status message is not centred in the strip: {left_gap:.1f}px left vs "
+        f"{right_gap:.1f}px right ({shown})"
+    )
+
+    authed_page.evaluate(_SET_STATUS_JS, None)
+    cleared = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
+    send_cleared = stable_read(send.bounding_box)
+    assert cleared and cleared["hidden"] is True and cleared["text"] == "", cleared
+    assert abs(cleared["height"] - idle["height"]) < 1, (
+        f"the status strip changed size when the message cleared: {idle} -> {cleared}"
+    )
+    assert send_cleared and abs(send_cleared["y"] - send_after["y"]) < 1, (
+        f"Send button moved when the status message cleared: {send_after} -> {send_cleared}"
+    )
+    return idle
+
+
 def test_compose_send_and_attach_stay_put_during_autogrow(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
@@ -334,55 +393,8 @@ def test_compose_send_and_attach_stay_put_during_autogrow(
         f"Attach button moved during autogrow: {attach_before} -> {attach_after}"
     )
 
-    # #1219: a status message coming and going must not move them either.
-    # The status line used to be a `hidden` flex child under the composer, so
-    # every "Connecting…" pushed the whole grid up one line and every connect
-    # dropped it back — the same moving-target race as #447, from below. It
-    # is now the content of an always-laid-out bottom strip, so only the
-    # strip's content changes, and the message is centred in it.
-    #
-    # env(safe-area-inset-bottom) resolves to 0px in headless Chromium and in
-    # the WebKit/iPhone projection alike (the #1099 blind spot, .fleet.toml),
-    # so these checks run with no inset; the Chromium-only block at the end
-    # emulates one. Whether the corners actually clear is still a device check.
-    idle = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
-    assert idle and idle["hidden"] is True, f"status not idle once connected: {idle}"
-    assert idle["height"] >= 30, (
-        f"the bottom status strip is not reserving its row while idle: {idle}"
-    )
-
-    authed_page.evaluate(_SET_STATUS_JS, "Passkey unlock required")
-    shown = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
-    send_status = stable_read(send.bounding_box)
-    attach_status = stable_read(attach.bounding_box)
-    assert shown and shown["hidden"] is False and "Passkey unlock required" in shown["text"], shown
-    assert abs(shown["height"] - idle["height"]) < 1 and abs(shown["top"] - idle["top"]) < 1, (
-        f"the status strip changed size when a message appeared: {idle} -> {shown}"
-    )
-    assert send_status and abs(send_status["y"] - send_after["y"]) < 1, (
-        f"Send button moved when a status message appeared: {send_after} -> {send_status}"
-    )
-    assert attach_status and abs(attach_status["y"] - attach_after["y"]) < 1, (
-        f"Attach button moved when a status message appeared: {attach_after} -> {attach_status}"
-    )
-    assert shown["textAlign"] == "center", shown
-    left_gap = shown["contentLeft"] - shown["left"]
-    right_gap = shown["right"] - shown["contentRight"]
-    assert shown["contentWidth"] > 0 and abs(left_gap - right_gap) <= 1, (
-        f"status message is not centred in the strip: {left_gap:.1f}px left vs "
-        f"{right_gap:.1f}px right ({shown})"
-    )
-
-    authed_page.evaluate(_SET_STATUS_JS, None)
-    cleared = stable_read(lambda: authed_page.evaluate(_STATUS_STRIP_JS))
-    send_cleared = stable_read(send.bounding_box)
-    assert cleared and cleared["hidden"] is True and cleared["text"] == "", cleared
-    assert abs(cleared["height"] - idle["height"]) < 1, (
-        f"the status strip changed size when the message cleared: {idle} -> {cleared}"
-    )
-    assert send_cleared and abs(send_cleared["y"] - send_after["y"]) < 1, (
-        f"Send button moved when the status message cleared: {send_after} -> {send_cleared}"
-    )
+    idle = _assert_status_message_keeps_layout(
+        authed_page, send, attach, send_after, attach_after)
 
     # #1219 reopened: under the home-indicator inset the strip must be
     # max(row, inset) tall, the inset overlapping the reserved row. The first

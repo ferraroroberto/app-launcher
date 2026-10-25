@@ -114,21 +114,8 @@ def _parent_row(page: Page):
     return page.locator("#listenersList .listener-row.expandable")
 
 
-@pytest.mark.iphone
-def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
-    """Every listener-row check on one canned probe render (#1215).
-
-    Read-only steps first; the kill (the only step that fires the API) last.
-    """
-    page = listeners_page
-
-    # -- was test_childless_listener_keeps_flat_row --
-    flat = page.locator(
-        "#listenersList .listener-row:not(.child):not(.expandable)"
-    )
-    expect(flat).to_have_count(1)
-    expect(flat.locator(".listener-chevron")).to_have_count(0)
-
+def _assert_kill_is_last_menu_item(page: Page) -> None:
+    """Check the row menu puts the confirmed kill last, after a divider, in the danger colour."""
     # -- was test_no_visible_kill_and_the_menu_puts_danger_last --
     # #1129: nine stacked red Kill buttons were the loudest thing in the app.
     # A destructive action is the least prominent control on a row: the row
@@ -150,6 +137,24 @@ def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
     # Close the menu so the collapse steps below start from a clean row.
     page.keyboard.press("Escape")
     expect(menu).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_listener_rows_collapse_menu_and_kill(listeners_page: Page) -> None:
+    """Every listener-row check on one canned probe render (#1215).
+
+    Read-only steps first; the kill (the only step that fires the API) last.
+    """
+    page = listeners_page
+
+    # -- was test_childless_listener_keeps_flat_row --
+    flat = page.locator(
+        "#listenersList .listener-row:not(.child):not(.expandable)"
+    )
+    expect(flat).to_have_count(1)
+    expect(flat.locator(".listener-chevron")).to_have_count(0)
+
+    _assert_kill_is_last_menu_item(page)
 
     # -- was test_parent_collapsed_by_default_and_toggles --
     # Only the grouped parent gets the affordance; children start hidden.

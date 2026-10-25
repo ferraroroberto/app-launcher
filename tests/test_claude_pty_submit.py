@@ -131,6 +131,40 @@ async def _wait_for_any(
     return any(m in frame for m in markers)
 
 
+async def _await_output_quiet(session) -> None:
+    """Wait until the PTY output has been quiet for 350 ms, capped at 5 s."""
+    quiet_since = asyncio.get_running_loop().time()
+    last_len = len(session._ring)
+    cap = quiet_since + 5.0
+    while asyncio.get_running_loop().time() < cap:
+        now = asyncio.get_running_loop().time()
+        cur = len(session._ring)
+        if cur != last_len:
+            last_len = cur
+            quiet_since = now
+        elif now - quiet_since >= 0.35:
+            break
+        await asyncio.sleep(0.05)
+
+
+async def _composer_cleared(session) -> bool:
+    """Whether the composer reads clear of the payload three times running
+    within 15 s."""
+    clear_reads = 0
+    for _ in range(150):  # 15 s ceiling
+        composer = _composer_text(session.snapshot_frame() or "")
+        if any(marker in composer for marker in _IN_COMPOSER):
+            clear_reads = 0
+        else:
+            clear_reads += 1
+            if clear_reads >= 3:
+                return True
+        if not session.alive:
+            break
+        await asyncio.sleep(0.1)
+    return False
+
+
 async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claude(
 ) -> None:
     manager = SessionManager()
@@ -188,18 +222,7 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         # now wait for the output stream to go quiet for 350 ms, capped.
         # The probe measured this echo-then-quiet protocol at 20/20 under
         # synthetic load where fixed 350/1000 ms defers were each 19/20.
-        quiet_since = asyncio.get_running_loop().time()
-        last_len = len(session._ring)
-        cap = quiet_since + 5.0
-        while asyncio.get_running_loop().time() < cap:
-            now = asyncio.get_running_loop().time()
-            cur = len(session._ring)
-            if cur != last_len:
-                last_len = cur
-                quiet_since = now
-            elif now - quiet_since >= 0.35:
-                break
-            await asyncio.sleep(0.05)
+        await _await_output_quiet(session)
 
         # The composer must be holding the payload right now, or the assertion
         # below would pass without ever proving a submit happened.
@@ -221,21 +244,7 @@ async def test_bracketed_bulk_paste_plus_one_enter_semantically_submits_to_claud
         #
         # Three consecutive clear reads, because a frame caught mid-repaint can
         # momentarily show an empty composer while the paste is still there.
-        clear_reads = 0
-        submitted = False
-        for _ in range(150):  # 15 s ceiling
-            composer = _composer_text(session.snapshot_frame() or "")
-            if any(marker in composer for marker in _IN_COMPOSER):
-                clear_reads = 0
-            else:
-                clear_reads += 1
-                if clear_reads >= 3:
-                    submitted = True
-                    break
-            if not session.alive:
-                break
-            await asyncio.sleep(0.1)
-        if not submitted:
+        if not await _composer_cleared(session):
             pytest.fail(
                 "one Enter did not submit the bulk paste within 15 s — the "
                 "payload is still sitting in the composer, so the CR was "

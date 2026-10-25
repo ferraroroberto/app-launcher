@@ -65,30 +65,8 @@ _LIVE_MODULE = """
 """
 
 
-def test_warm_reopen_reuses_terminal_and_ws(
-    authed_page: Page,
-    base_url: str,
-    launched_pty_session: str,
-    wait_for_session_log,
-) -> None:
-    sid = launched_pty_session
-    authed_page.add_init_script(_WS_PROBE)
-    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
-
-    # First open: one WS, reaching OPEN.
-    authed_page.wait_for_function(
-        "() => window.__wsInstances && window.__wsInstances.length === 1 "
-        "&& window.__wsInstances[0].readyState === 1",
-        timeout=OVERLAY_OPEN_MS,
-    )
-    expect(authed_page.locator("#terminalOverlay")).to_be_visible()
-
-    # Tag the live xterm root so element identity survives the round-trip.
-    authed_page.wait_for_selector("#terminalHost .xterm", timeout=OVERLAY_OPEN_MS)
-    authed_page.evaluate(
-        "document.querySelector('#terminalHost .xterm').dataset.warm = 'tagged'"
-    )
-
+def _hide_overlay_and_assert_stashed(authed_page: Page) -> None:
+    """Hide the terminal overlay and check the xterm element and WS were kept, not disposed."""
     # Close the overlay — must stash, not dispose (#430): element stays in
     # the DOM (hidden) and the WS stays OPEN.
     authed_page.evaluate(
@@ -120,6 +98,33 @@ def test_warm_reopen_reuses_terminal_and_ws(
         f"hiding the overlay should keep the single WS open, got "
         f"count={kept['wsCount']} state={kept['wsState']}"
     )
+
+
+def test_warm_reopen_reuses_terminal_and_ws(
+    authed_page: Page,
+    base_url: str,
+    launched_pty_session: str,
+    wait_for_session_log,
+) -> None:
+    sid = launched_pty_session
+    authed_page.add_init_script(_WS_PROBE)
+    authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
+
+    # First open: one WS, reaching OPEN.
+    authed_page.wait_for_function(
+        "() => window.__wsInstances && window.__wsInstances.length === 1 "
+        "&& window.__wsInstances[0].readyState === 1",
+        timeout=OVERLAY_OPEN_MS,
+    )
+    expect(authed_page.locator("#terminalOverlay")).to_be_visible()
+
+    # Tag the live xterm root so element identity survives the round-trip.
+    authed_page.wait_for_selector("#terminalHost .xterm", timeout=OVERLAY_OPEN_MS)
+    authed_page.evaluate(
+        "document.querySelector('#terminalHost .xterm').dataset.warm = 'tagged'"
+    )
+
+    _hide_overlay_and_assert_stashed(authed_page)
 
     # Re-open the same session: same element, same socket, no new WS.
     authed_page.evaluate(

@@ -52,17 +52,8 @@ def _is_config_post(req) -> bool:
     return req.method == "POST" and req.url.endswith("/api/config")
 
 
-@pytest.mark.iphone
-def test_settings_pane_controls_and_theme_toggle(
-    authed_page: Page, base_url: str
-) -> None:
-    """Every read-only Settings-pane check on one page load (#1215).
-
-    Merged from six tests that each did the same goto: pane routing, the
-    panel's absence from the other tabs, the switch shape, the status readout,
-    the context-filter card, and — last, since it is the only step that
-    mutates page state — the Coding-tab theme toggle's flip.
-    """
+def _load_with_flaky_version(authed_page: Page, base_url: str) -> None:
+    """Load the app with /api/version failing twice and check the build readout recovers."""
     # #1287: the build readout survives a transient /api/version failure.
     # The first two requests fail; the retry's third fills the readout.
     version_calls = []
@@ -81,37 +72,9 @@ def test_settings_pane_controls_and_theme_toggle(
     )
     assert len(version_calls) == 3, version_calls
 
-    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 1) --
-    toggle = authed_page.locator("#themeToggle")
-    # Lives in the home-head card on the Coding tab (#496) — visible on load.
-    expect(toggle).to_be_visible()
 
-    # -- was test_settings_panel_absent_from_other_tabs (part 1) --
-    # Default tab is Coding — the settings panel must not bleed through.
-    expect(authed_page.locator("#paneSettings")).to_be_hidden()
-
-    # -- was test_settings_tab_opens_pane_with_controls --
-    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
-    expect(authed_page.locator("#paneSettings")).to_be_visible()
-    expect(authed_page.locator("#paneClaude")).to_be_hidden()
-    # No tab is selected while Settings shows (#1131: it has no tab).
-    expect(authed_page.locator("nav.tabs .tab[aria-selected='true']")).to_have_count(0)
-    expect(authed_page.locator("nav.tabs")).to_have_attribute("data-active-tab", "settings")
-
-    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 2) --
-    # Not duplicated into the Settings pane.
-    expect(toggle).to_be_hidden()
-
-    # (test_settings_tab_opens_pane_with_controls, continued)
-    # Each Settings sheet is closed until its row is tapped (issue #719,
-    # #1435) — its fields are hidden, and there is no Save button: a field
-    # saves as it changes.
-    expect(authed_page.locator("#projectsDir")).to_be_hidden()
-    open_settings_sheet(authed_page, "foldersSheet")
-    expect(authed_page.locator("#projectsDir")).to_be_visible()
-    expect(authed_page.locator("#saveSettings")).to_have_count(0)
-    close_settings_sheets(authed_page)
-
+def _assert_switch_shape_and_status_readout(authed_page: Page) -> None:
+    """Check the vendored switch geometry and that the status readout leaks no TLS or tunnel text."""
     # -- was test_settings_boolean_controls_use_vendored_switch --
     # Settings booleans use the fleet switch track + sliding thumb; Start at
     # log on stays inline on the pane (#1435), no sheet needed.
@@ -135,6 +98,9 @@ def test_settings_pane_controls_and_theme_toggle(
     assert "tunnel" not in text
     assert "http" not in text
 
+
+def _assert_context_filter_card(authed_page: Page) -> None:
+    """Check the read-only context filter card renders one active mode and plain harness statuses."""
     # -- was test_context_filter_card_renders_and_reflects_api_mode --
     # Context filter Settings card (issue #713) — segmented off/shadow/
     # rewrite control and harness matrix render from live server data.
@@ -173,6 +139,9 @@ def test_settings_pane_controls_and_theme_toggle(
 
     close_settings_sheets(authed_page)
 
+
+def _assert_no_internal_jargon(authed_page: Page) -> None:
+    """Read the pane and every sheet and check no internal term reaches the rendered text."""
     # #1238 J-07: the pane and every sheet speak plain language. None of the
     # internal terms it used to show ("Harness support", "Fleet config
     # folder", bearer/minted tokens, the hook's shadow/rewrite modes, issue
@@ -201,6 +170,57 @@ def test_settings_pane_controls_and_theme_toggle(
         shown, flags=re.IGNORECASE,
     )]
     assert not jargon, f"internal terms in Settings: {sorted(set(jargon))}"
+
+
+@pytest.mark.iphone
+def test_settings_pane_controls_and_theme_toggle(
+    authed_page: Page, base_url: str
+) -> None:
+    """Every read-only Settings-pane check on one page load (#1215).
+
+    Merged from six tests that each did the same goto: pane routing, the
+    panel's absence from the other tabs, the switch shape, the status readout,
+    the context-filter card, and — last, since it is the only step that
+    mutates page state — the Coding-tab theme toggle's flip.
+    """
+    _load_with_flaky_version(authed_page, base_url)
+
+    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 1) --
+    toggle = authed_page.locator("#themeToggle")
+    # Lives in the home-head card on the Coding tab (#496) — visible on load.
+    expect(toggle).to_be_visible()
+
+    # -- was test_settings_panel_absent_from_other_tabs (part 1) --
+    # Default tab is Coding — the settings panel must not bleed through.
+    expect(authed_page.locator("#paneSettings")).to_be_hidden()
+
+    # -- was test_settings_tab_opens_pane_with_controls --
+    authed_page.locator(".pane:not([hidden]) .settings-open-btn").click()
+    expect(authed_page.locator("#paneSettings")).to_be_visible()
+    expect(authed_page.locator("#paneClaude")).to_be_hidden()
+    # No tab is selected while Settings shows (#1131: it has no tab).
+    expect(authed_page.locator("nav.tabs .tab[aria-selected='true']")).to_have_count(0)
+    expect(authed_page.locator("nav.tabs")).to_have_attribute("data-active-tab", "settings")
+
+    # -- was test_theme_toggle_lives_on_coding_tab_and_flips_theme (part 2) --
+    # Not duplicated into the Settings pane.
+    expect(toggle).to_be_hidden()
+
+    # (test_settings_tab_opens_pane_with_controls, continued)
+    # Each Settings sheet is closed until its row is tapped (issue #719,
+    # #1435) — its fields are hidden, and there is no Save button: a field
+    # saves as it changes.
+    expect(authed_page.locator("#projectsDir")).to_be_hidden()
+    open_settings_sheet(authed_page, "foldersSheet")
+    expect(authed_page.locator("#projectsDir")).to_be_visible()
+    expect(authed_page.locator("#saveSettings")).to_have_count(0)
+    close_settings_sheets(authed_page)
+
+    _assert_switch_shape_and_status_readout(authed_page)
+
+    _assert_context_filter_card(authed_page)
+
+    _assert_no_internal_jargon(authed_page)
 
     # -- was test_settings_panel_absent_from_other_tabs (part 2) --
     # (every sheet is closed above — an open one would leave the nav inert)

@@ -53,20 +53,8 @@ from tests.e2e.board._support import (
 pytestmark = pytest.mark.smoke
 
 
-@pytest.mark.iphone
-def test_board_renders_columns_counts_and_cards(
-    authed_page: Page, base_url: str, tmp_path
-) -> None:
-    """One render of the mocked board, checked top to bottom (#1215 merged
-    the section-structure and column-geometry tests in here): the section
-    cards and their default open state, counts, the Your-turn card, the
-    projection's column geometry — all before anything is unfolded — then
-    the GitHub-fed columns' cards, and last a fold that must survive a poll.
-    """
-    _mock_board(authed_page, plan=_plan(tmp_path))
-    _fake_clock.install(authed_page)
-    _open_board(authed_page, base_url)
-
+def _assert_board_structure(authed_page: Page) -> None:
+    """Check the board's toolbar, header exceptions and section cards."""
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
     # (structure + default open state) --
     # #1198 / #1436: the Board is built like every other tab. There is no
@@ -120,6 +108,9 @@ def test_board_renders_columns_counts_and_cards(
     yours_section = authed_page.locator("#boardColYours")
     expect(yours_section).to_have_attribute("open", "")
 
+
+def _assert_counts_and_your_turn(authed_page: Page) -> None:
+    """Check per-column counts, the attention mark and the Your-turn card."""
     # -- counts, attention mark and the Your-turn card (this test's own) --
     # Per-column counts in each section's summary; Your turn (1) carries the
     # attention mark.
@@ -156,6 +147,9 @@ def test_board_renders_columns_counts_and_cards(
         re.compile(r"\bboard-card-session\b")
     )
 
+
+def _assert_columns_geometry(authed_page: Page, viewport: dict) -> None:
+    """Check the column sections stack on phone and sit in a grid on desktop."""
     # -- was test_board_columns_layout_matches_projection (measured before any
     # section is unfolded, as that test did) --
     # Phone (WebKit / iPhone projection): the column sections stack like
@@ -187,6 +181,9 @@ def test_board_renders_columns_counts_and_cards(
             f"container={box_container['width']}"
         )
 
+
+def _assert_chief_plan(authed_page: Page, viewport: dict) -> None:
+    """Check the chief's plan card, its groups and the 320px title clipping."""
     # -- the chief's plan (#1279): a card, not a column, directly above
     # Claude's turn in both projections (#1436) --
     expect(authed_page.locator("#boardChiefPlan + #boardColClaude")).to_have_count(1)
@@ -248,6 +245,9 @@ def test_board_renders_columns_counts_and_cards(
         assert overflow <= 0, f"page scrolls sideways at 320px by {overflow}px"
         authed_page.set_viewport_size(viewport)
 
+
+def _assert_github_columns(authed_page: Page) -> None:
+    """Unfold the GitHub-fed columns and check their cards."""
     # -- the GitHub-fed columns' cards (this test's own) --
     _unfold(authed_page, "boardColBacklog", "boardColOther", "boardColDone")
 
@@ -295,6 +295,33 @@ def test_board_renders_columns_counts_and_cards(
     expect(done.first).to_have_class(re.compile(r"\baction-row\b"))
     expect(done.first.locator(".action-row-title")).to_have_css("white-space", "nowrap")
     surface(authed_page, "board.tab")
+
+
+@pytest.mark.iphone
+def test_board_renders_columns_counts_and_cards(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """One render of the mocked board, checked top to bottom (#1215 merged
+    the section-structure and column-geometry tests in here): the section
+    cards and their default open state, counts, the Your-turn card, the
+    projection's column geometry — all before anything is unfolded — then
+    the GitHub-fed columns' cards, and last a fold that must survive a poll.
+    """
+    _mock_board(authed_page, plan=_plan(tmp_path))
+    _fake_clock.install(authed_page)
+    _open_board(authed_page, base_url)
+
+    _assert_board_structure(authed_page)
+    viewport = authed_page.viewport_size or {"width": 0}
+    yours_section = authed_page.locator("#boardColYours")
+
+    _assert_counts_and_your_turn(authed_page)
+
+    _assert_columns_geometry(authed_page, viewport)
+
+    _assert_chief_plan(authed_page, viewport)
+
+    _assert_github_columns(authed_page)
 
     # -- was test_board_sections_are_collapsible_cards_that_survive_the_poll
     # (the fold that must survive a poll; last: it changes section state) --
@@ -461,6 +488,32 @@ def _blind_payload() -> dict:
     return payload
 
 
+def _assert_calm_header_states(authed_page: Page, head, plan_body, current: dict, read_empty: dict) -> None:
+    """Walk the header from plain totals to blank plan to unknown session count."""
+    # Nothing wrong: the header falls back to the plain totals (#1436).
+    expect(head).to_have_text("1 failing")
+    calm = copy.deepcopy(read_empty)
+    calm["columns"]["other"] = [c for c in calm["columns"]["other"] if c["kind"] != "job"]
+    calm["columns"]["claude_turn"] = copy.deepcopy(_FAKE_BOARD["columns"]["claude_turn"])
+    # No plan file: the card stays blank, no note, no line.
+    current["body"] = calm
+    current["plan"] = {"state": "empty"}
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    authed_page.locator("#boardRefresh").click()
+    expect(plan_body).to_have_attribute("data-state", "empty")
+    expect(plan_body.locator("> *")).to_have_count(0)
+    expect(head).to_have_text("1 session · 1 issue")
+    expect(head.locator(".head-exception")).to_have_count(0)
+    # And with the session list unreadable, the count is said to be
+    # unknown, never "0 sessions".
+    blind_calm = copy.deepcopy(calm)
+    blind_calm["live_sessions"] = {"available": False, "error": "session-host unreachable"}
+    blind_calm["columns"]["claude_turn"] = []
+    current["body"] = blind_calm
+    authed_page.locator("#boardRefresh").click()
+    expect(head).to_have_text("sessions unknown · 1 issue")
+
+
 def test_board_unreadable_sources_render_unknown_not_zero(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
@@ -543,28 +596,41 @@ def test_board_unreadable_sources_render_unknown_not_zero(
     )
     expect(authed_page.locator("#boardColOther .board-count")).to_have_text("2")
 
-    # Nothing wrong: the header falls back to the plain totals (#1436).
-    expect(head).to_have_text("1 failing")
-    calm = copy.deepcopy(read_empty)
-    calm["columns"]["other"] = [c for c in calm["columns"]["other"] if c["kind"] != "job"]
-    calm["columns"]["claude_turn"] = copy.deepcopy(_FAKE_BOARD["columns"]["claude_turn"])
-    # No plan file: the card stays blank, no note, no line.
-    current["body"] = calm
-    current["plan"] = {"state": "empty"}
-    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
-    authed_page.locator("#boardRefresh").click()
-    expect(plan_body).to_have_attribute("data-state", "empty")
-    expect(plan_body.locator("> *")).to_have_count(0)
-    expect(head).to_have_text("1 session · 1 issue")
-    expect(head.locator(".head-exception")).to_have_count(0)
-    # And with the session list unreadable, the count is said to be
-    # unknown, never "0 sessions".
-    blind_calm = copy.deepcopy(calm)
-    blind_calm["live_sessions"] = {"available": False, "error": "session-host unreachable"}
-    blind_calm["columns"]["claude_turn"] = []
-    current["body"] = blind_calm
-    authed_page.locator("#boardRefresh").click()
-    expect(head).to_have_text("sessions unknown · 1 issue")
+    _assert_calm_header_states(authed_page, head, plan_body, current, read_empty)
+
+
+def _route_input_capture(authed_page: Page) -> dict:
+    """Route the s-wait input proxy and return the dict it fills on POST."""
+    captured: dict = {}
+
+    def _capture_input(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/input$"), _capture_input
+    )
+    return captured
+
+
+def _assert_drawer_below_card(authed_page: Page, card, drawer) -> None:
+    """Check the drawer stacks below the card at almost full card width."""
+    # The drawer stacks BELOW the card at (almost) full card width — never
+    # splits it horizontally (phone feedback on #301). Raw Board geometry, so
+    # read through stable_read (#680).
+    box_card = stable_read(card.bounding_box)
+    box_drawer = stable_read(drawer.bounding_box)
+    assert box_card and box_drawer, "card/drawer not laid out"
+    assert box_drawer["y"] >= box_card["y"] + box_card["height"] - 2, (
+        "drawer must render below the card, not beside it"
+    )
+    assert box_drawer["width"] >= box_card["width"] * 0.9, (
+        "drawer must span the card's width"
+    )
 
 
 @pytest.mark.iphone
@@ -583,19 +649,7 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     _mock_board(authed_page)
     _mock_exchange(authed_page)
 
-    captured: dict = {}
-
-    def _capture_input(route):
-        captured["method"] = route.request.method
-        captured["body"] = route.request.post_data_json
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"ok": True, "bytes": 8, "submit": True}),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-wait/input$"), _capture_input
-    )
+    captured = _route_input_capture(authed_page)
 
     _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
@@ -636,18 +690,7 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
         assert ratio >= 4.5, f"{theme}: drawer user text at {ratio:.2f}:1, under 4.5:1"
     authed_page.evaluate("delete document.documentElement.dataset.theme")
 
-    # The drawer stacks BELOW the card at (almost) full card width — never
-    # splits it horizontally (phone feedback on #301). Raw Board geometry, so
-    # read through stable_read (#680).
-    box_card = stable_read(card.bounding_box)
-    box_drawer = stable_read(drawer.bounding_box)
-    assert box_card and box_drawer, "card/drawer not laid out"
-    assert box_drawer["y"] >= box_card["y"] + box_card["height"] - 2, (
-        "drawer must render below the card, not beside it"
-    )
-    assert box_drawer["width"] >= box_card["width"] * 0.9, (
-        "drawer must span the card's width"
-    )
+    _assert_drawer_below_card(authed_page, card, drawer)
 
     drawer.locator(".composer-input").fill("go ahead")
     drawer.locator(".composer-send").click()
@@ -680,6 +723,74 @@ def test_board_card_drawer_shows_exchange_and_posts_reply(
     assert captured.get("body") == {"data": "go ahead", "submit": True}
 
 
+def _route_stop_capture(authed_page: Page) -> dict:
+    """Route the s-wait stop endpoint and return the dict it fills on POST."""
+    captured: dict = {}
+
+    def _capture_stop(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"ok": True, "stopped": "s-wait"}),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/s-wait/stop$"), _capture_stop
+    )
+    return captured
+
+
+def _assert_drawer_action_geometry(composer, actions, buttons) -> None:
+    """Check the composer sits above the action row and the buttons meet the 44px floor."""
+    # The composer sits above the action row; Chat and Terminal are equal,
+    # side by side, at the 44px floor. Raw geometry on a Board node goes
+    # through stable_read (#680).
+    box_composer = stable_read(composer.bounding_box)
+    box_actions = stable_read(actions.bounding_box)
+    assert box_composer and box_actions, "drawer not laid out"
+    assert box_actions["y"] >= box_composer["y"] + box_composer["height"] - 2, (
+        "the action row must sit below the composer"
+    )
+    boxes = [stable_read(buttons.nth(i).bounding_box) for i in range(3)]
+    assert all(boxes), f"drawer buttons not laid out: {boxes}"
+    for box in boxes:
+        assert box["height"] >= 44 and box["width"] >= 44, (
+            f"drawer button under the 44px floor: {box}"
+        )
+    if box_actions["width"] >= 280:
+        # Room for both labels beside the kebab: one row, Chat and Terminal
+        # equal.
+        assert abs(boxes[0]["width"] - boxes[1]["width"]) <= 1, f"Chat and Terminal differ: {boxes}"
+        assert len({round(b["y"]) for b in boxes}) == 1, f"drawer actions not one row: {boxes}"
+    else:
+        # A narrow desktop column: Chat and the kebab, then Terminal across
+        # the drawer.
+        assert boxes[0]["y"] == boxes[2]["y"] < boxes[1]["y"], f"narrow drawer layout: {boxes}"
+
+
+def _assert_drawer_floor_on_narrow_desktop(authed_page: Page, browser_name: str, drawer, actions, buttons) -> None:
+    """On Chromium, check the 44px floor and unclipped labels at narrow desktop widths."""
+    # #1174: never under the floor at a narrow desktop column either.
+    if browser_name == "chromium":
+        for width in (1100, 700):
+            authed_page.set_viewport_size({"width": width, "height": 900})
+            expect(drawer).to_be_visible()
+            for i in range(3):
+                box = stable_read(buttons.nth(i).bounding_box)
+                assert box and box["width"] >= 44 and box["height"] >= 44, (
+                    f"drawer action {i} under the 44px floor at {width}px: {box}"
+                )
+            if width < 1100:
+                continue  # five lanes in 700px leave words no room; only the floor holds
+            # Chat and Terminal keep their whole words in a desktop lane.
+            clipped = stable_eval(actions, (
+                "el => el.isConnected ? Array.from(el.querySelectorAll("
+                "'.board-drawer-action-label')).filter("
+                "l => l.scrollWidth > l.clientWidth + 1).map(l => l.textContent) : null"))
+            assert clipped == [], f"drawer labels clipped at {width}px: {clipped}"
+
+
 @pytest.mark.iphone
 def test_board_drawer_chat_primary_menu_and_stop_confirms(
     authed_page: Page, base_url: str, browser_name: str
@@ -698,19 +809,7 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
         "assistant": {"text": "Merge **fixed**:\n\n- tests green\n- ready", "timestamp": None},
     })
 
-    captured: dict = {}
-
-    def _capture_stop(route):
-        captured["method"] = route.request.method
-        captured["body"] = route.request.post_data_json
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({"ok": True, "stopped": "s-wait"}),
-        )
-
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/s-wait/stop$"), _capture_stop
-    )
+    captured = _route_stop_capture(authed_page)
 
     _open_board(authed_page, base_url)
     authed_page.locator(
@@ -743,49 +842,9 @@ def test_board_drawer_chat_primary_menu_and_stop_confirms(
     # Rename and Stop are not on the row: they are in the kebab's menu.
     expect(actions.locator(":scope > [data-item=board-rename-btn], :scope > [data-item=board-stop-btn]")).to_have_count(0)
 
-    # The composer sits above the action row; Chat and Terminal are equal,
-    # side by side, at the 44px floor. Raw geometry on a Board node goes
-    # through stable_read (#680).
-    box_composer = stable_read(composer.bounding_box)
-    box_actions = stable_read(actions.bounding_box)
-    assert box_composer and box_actions, "drawer not laid out"
-    assert box_actions["y"] >= box_composer["y"] + box_composer["height"] - 2, (
-        "the action row must sit below the composer"
-    )
-    boxes = [stable_read(buttons.nth(i).bounding_box) for i in range(3)]
-    assert all(boxes), f"drawer buttons not laid out: {boxes}"
-    for box in boxes:
-        assert box["height"] >= 44 and box["width"] >= 44, (
-            f"drawer button under the 44px floor: {box}"
-        )
-    if box_actions["width"] >= 280:
-        # Room for both labels beside the kebab: one row, Chat and Terminal
-        # equal.
-        assert abs(boxes[0]["width"] - boxes[1]["width"]) <= 1, f"Chat and Terminal differ: {boxes}"
-        assert len({round(b["y"]) for b in boxes}) == 1, f"drawer actions not one row: {boxes}"
-    else:
-        # A narrow desktop column: Chat and the kebab, then Terminal across
-        # the drawer.
-        assert boxes[0]["y"] == boxes[2]["y"] < boxes[1]["y"], f"narrow drawer layout: {boxes}"
+    _assert_drawer_action_geometry(composer, actions, buttons)
 
-    # #1174: never under the floor at a narrow desktop column either.
-    if browser_name == "chromium":
-        for width in (1100, 700):
-            authed_page.set_viewport_size({"width": width, "height": 900})
-            expect(drawer).to_be_visible()
-            for i in range(3):
-                box = stable_read(buttons.nth(i).bounding_box)
-                assert box and box["width"] >= 44 and box["height"] >= 44, (
-                    f"drawer action {i} under the 44px floor at {width}px: {box}"
-                )
-            if width < 1100:
-                continue  # five lanes in 700px leave words no room; only the floor holds
-            # Chat and Terminal keep their whole words in a desktop lane.
-            clipped = stable_eval(actions, (
-                "el => el.isConnected ? Array.from(el.querySelectorAll("
-                "'.board-drawer-action-label')).filter("
-                "l => l.scrollWidth > l.clientWidth + 1).map(l => l.textContent) : null"))
-            assert clipped == [], f"drawer labels clipped at {width}px: {clipped}"
+    _assert_drawer_floor_on_narrow_desktop(authed_page, browser_name, drawer, actions, buttons)
 
     kebab.click()
     menu = open_row_menu(authed_page)

@@ -157,24 +157,8 @@ def _mock_config(page: Page) -> dict:
     return state
 
 
-@pytest.mark.iphone
-def test_coding_model_combo_syncs_with_settings_control(
-    authed_page: Page, base_url: str
-) -> None:
-    """Picking a model in the Projects-summary combo updates the options-card
-    picker (and vice versa), and both persist the same
-    ``claude_model`` — the #540 no-double-setting contract."""
-    state = _mock_config(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_projects(authed_page)
-    # Coding (#tabClaude) is the default active tab.
-    combo = authed_page.locator("#codingModelCombo")
-    trigger = authed_page.locator("#codingModelBtn")
-    expect(trigger).to_be_visible(timeout=5_000)
-    # Boot default is Sonnet.
-    expect(combo).to_have_attribute("data-value", "claude:sonnet")
-    expect(trigger).to_have_text("Claude · Sonnet")
-
+def _assert_haiku_hidden_and_trigger_keys(authed_page: Page, trigger) -> None:
+    """Check Haiku is filtered from both controls and navigation keys skip unavailable options."""
     # Haiku is filtered out of BOTH controls despite being in models_available.
     expect(
         authed_page.locator("#codingModelMenu button[data-value='claude:haiku']")
@@ -201,39 +185,9 @@ def test_coding_model_combo_syncs_with_settings_control(
         authed_page.keyboard.press("Escape")
         expect(trigger).to_have_attribute("aria-expanded", "false")
 
-    # Header → settings: pick Fable; the settings picker follows and persists.
-    trigger.click()
-    authed_page.locator("#codingModelMenu button[data-value='claude:fable']").click()
-    expect(authed_page.locator("#claudeModel")).to_have_attribute(
-        "data-value", "fable", timeout=5_000
-    )
-    expect(trigger).to_have_text("Claude · Fable")
-    assert state["model"] == "fable"
 
-    # Settings → header: open the Claude sheet and click Opus; the dropdown
-    # trigger follows (it sits on the Code tab behind the modal sheet, so only
-    # its attribute and text are read) and Opus is persisted.
-    open_agent_sheet(authed_page, "claude")
-    authed_page.locator("#claudeModel .model-combo-trigger").click()
-    authed_page.locator("#claudeModelMenu [data-value='opus']").click()
-    expect(combo).to_have_attribute("data-value", "claude:opus", timeout=5_000)
-    expect(trigger).to_have_text("Claude · Opus")
-    assert state["model"] == "opus"
-    close_settings_sheets(authed_page)
-
-    # Every settings picker is populated through the same controller. Pointer
-    # choices persist through the real POST→GET round-trip and dependent Codex
-    # effort options repaint from that readback.
-    open_agent_sheet(authed_page, "codex")
-    authed_page.locator("#codexModel .model-combo-trigger").click()
-    expect(authed_page.locator("#codexModelMenu [data-value='gpt-6-astra']")).to_be_disabled()
-    authed_page.locator("#codexModelMenu [data-value='gpt-5.6-sol']").click()
-    expect(authed_page.locator("#codexModel")).to_have_attribute(
-        "data-value", "gpt-5.6-sol"
-    )
-    expect(authed_page.locator("#codexEffort")).to_have_value("high", timeout=5_000)
-    close_settings_sheets(authed_page)
-
+def _assert_long_pi_menu_stays_reachable(authed_page: Page) -> None:
+    """Check a long Pi model menu stays reachable inside a short viewport."""
     # A long menu is held to the viewport (dom-utils.js positionMenu caps its
     # height at the room beside the trigger). Whether 15 options (480px) need
     # capping depends on where the trigger sits, and that used to be wherever
@@ -278,6 +232,9 @@ def test_coding_model_combo_syncs_with_settings_control(
     authed_page.set_viewport_size(viewport)
     close_settings_sheets(authed_page)
 
+
+def _assert_codex_keyboard_traversal(authed_page: Page, state: dict) -> None:
+    """Check keyboard traversal skips disabled options, selects once and restores focus."""
     # Keyboard traversal skips disabled Astra, selects exactly once, and
     # Escape restores focus and the collapsed ARIA state.
     open_agent_sheet(authed_page, "codex")
@@ -315,6 +272,64 @@ def test_coding_model_combo_syncs_with_settings_control(
     expect(codex_trigger).to_have_attribute("aria-expanded", "false")
     assert codex_trigger.evaluate("el => document.activeElement === el")
     close_settings_sheets(authed_page)
+
+
+@pytest.mark.iphone
+def test_coding_model_combo_syncs_with_settings_control(
+    authed_page: Page, base_url: str
+) -> None:
+    """Picking a model in the Projects-summary combo updates the options-card
+    picker (and vice versa), and both persist the same
+    ``claude_model`` — the #540 no-double-setting contract."""
+    state = _mock_config(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
+    # Coding (#tabClaude) is the default active tab.
+    combo = authed_page.locator("#codingModelCombo")
+    trigger = authed_page.locator("#codingModelBtn")
+    expect(trigger).to_be_visible(timeout=5_000)
+    # Boot default is Sonnet.
+    expect(combo).to_have_attribute("data-value", "claude:sonnet")
+    expect(trigger).to_have_text("Claude · Sonnet")
+
+    _assert_haiku_hidden_and_trigger_keys(authed_page, trigger)
+
+    # Header → settings: pick Fable; the settings picker follows and persists.
+    trigger.click()
+    authed_page.locator("#codingModelMenu button[data-value='claude:fable']").click()
+    expect(authed_page.locator("#claudeModel")).to_have_attribute(
+        "data-value", "fable", timeout=5_000
+    )
+    expect(trigger).to_have_text("Claude · Fable")
+    assert state["model"] == "fable"
+
+    # Settings → header: open the Claude sheet and click Opus; the dropdown
+    # trigger follows (it sits on the Code tab behind the modal sheet, so only
+    # its attribute and text are read) and Opus is persisted.
+    open_agent_sheet(authed_page, "claude")
+    authed_page.locator("#claudeModel .model-combo-trigger").click()
+    authed_page.locator("#claudeModelMenu [data-value='opus']").click()
+    expect(combo).to_have_attribute("data-value", "claude:opus", timeout=5_000)
+    expect(trigger).to_have_text("Claude · Opus")
+    assert state["model"] == "opus"
+    close_settings_sheets(authed_page)
+
+    # Every settings picker is populated through the same controller. Pointer
+    # choices persist through the real POST→GET round-trip and dependent Codex
+    # effort options repaint from that readback.
+    open_agent_sheet(authed_page, "codex")
+    authed_page.locator("#codexModel .model-combo-trigger").click()
+    expect(authed_page.locator("#codexModelMenu [data-value='gpt-6-astra']")).to_be_disabled()
+    authed_page.locator("#codexModelMenu [data-value='gpt-5.6-sol']").click()
+    expect(authed_page.locator("#codexModel")).to_have_attribute(
+        "data-value", "gpt-5.6-sol"
+    )
+    expect(authed_page.locator("#codexEffort")).to_have_value("high", timeout=5_000)
+    close_settings_sheets(authed_page)
+
+    _assert_long_pi_menu_stays_reachable(authed_page)
+
+    _assert_codex_keyboard_traversal(authed_page, state)
 
     # A reload reads every stored value back without a programmatic onChange.
     persisted_patch_count = len(state["patches"])
@@ -393,16 +408,8 @@ def test_server_catalog_populates_shared_model_selectors(
         assert len(set(signatures)) == 1, f"{theme} settings picker style drift: {signatures}"
 
 
-def test_model_selection_owns_polls_until_config_save_settles(
-    authed_page: Page, base_url: str
-) -> None:
-    """#847: a rapid reselection cannot be repainted by an older save.
-
-    Quota rows stopped following this selection in #860; what still has to
-    hold is that the picker itself settles on persisted server truth no
-    matter how the concurrent POST + readback interleave.
-    """
-    config = _config("sonnet", "claude:sonnet")
+def _install_model_save_harness(authed_page: Page, config: dict) -> None:
+    """Hold config saves and reads in the page until the test settles them."""
     authed_page.add_init_script(
         """
         (fixture => {
@@ -463,6 +470,19 @@ def test_model_selection_owns_polls_until_config_save_settles(
         })(%s)
         """ % _json.dumps({"config": config}),
     )
+
+
+def test_model_selection_owns_polls_until_config_save_settles(
+    authed_page: Page, base_url: str
+) -> None:
+    """#847: a rapid reselection cannot be repainted by an older save.
+
+    Quota rows stopped following this selection in #860; what still has to
+    hold is that the picker itself settles on persisted server truth no
+    matter how the concurrent POST + readback interleave.
+    """
+    config = _config("sonnet", "claude:sonnet")
+    _install_model_save_harness(authed_page, config)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
     combo = authed_page.locator("#codingModelCombo")

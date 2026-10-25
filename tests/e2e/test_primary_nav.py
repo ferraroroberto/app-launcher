@@ -193,6 +193,63 @@ def _assert_bottom_tab_bar_is_stable_and_low(page: Page) -> None:
     assert metrics["navBottom"] <= metrics["viewportHeight"]
 
 
+def _assert_nav_layout(authed_page: Page, browser_name: str, tabs) -> None:
+    """Check the nav's computed layout per projection, and the WebKit bar's overlay hide rule."""
+    metrics = authed_page.evaluate(
+        """() => {
+          const nav = document.querySelector('nav.tabs');
+          const app = document.querySelector('.app');
+          const icon = document.querySelector('#tabJobs .tab-icon');
+          const navStyle = getComputedStyle(nav);
+          const appStyle = getComputedStyle(app);
+          const iconStyle = getComputedStyle(icon);
+          const rect = nav.getBoundingClientRect();
+          return {
+            position: navStyle.position,
+            display: navStyle.display,
+            bottom: navStyle.bottom,
+            iconDisplay: iconStyle.display,
+            paddingBottom: parseFloat(appStyle.paddingBottom),
+            rectBottom: rect.bottom,
+            rectTop: rect.top,
+            viewportHeight: window.innerHeight,
+          };
+        }"""
+    )
+
+    if browser_name == "webkit":
+        assert metrics["position"] == "fixed"
+        assert metrics["display"] == "grid"
+        assert metrics["iconDisplay"] == "block"
+        assert metrics["paddingBottom"] >= 80
+        assert metrics["rectBottom"] <= metrics["viewportHeight"]
+        assert metrics["rectTop"] > metrics["viewportHeight"] / 2
+
+        # Jobs is open, so one pill is active: the #267 bar metrics.
+        _assert_bottom_tab_bar_is_stable_and_low(authed_page)
+
+        # Last: fakes an open terminal overlay.
+        authed_page.evaluate(
+            """() => {
+              document.getElementById('terminalOverlay').hidden = false;
+              document.body.classList.add('terminal-open');
+            }"""
+        )
+        expect(tabs).to_be_hidden()
+    else:
+        # sticky (issue #355): the vendored nav-tabs.css keeps the desktop
+        # segmented control pinned to the top of the scroll container —
+        # the fleet-standard behavior, not app-launcher's own prior static/
+        # in-flow placement.
+        assert metrics["position"] == "sticky"
+        assert metrics["display"] == "flex"
+        # icon shows (issue #421): the vendored nav-tabs.css now renders the
+        # desktop segmented control's SVG glyph, like the mobile pill does,
+        # per project-scaffolding#142 — no longer hidden outside coarse-pointer.
+        assert metrics["iconDisplay"] == "block"
+        assert metrics["paddingBottom"] < 100
+
+
 def test_primary_nav_is_responsive_and_accessible(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
@@ -247,56 +304,4 @@ def test_primary_nav_is_responsive_and_accessible(
     )
     expect(tabs).to_have_attribute("data-active-tab", "jobs")
 
-    metrics = authed_page.evaluate(
-        """() => {
-          const nav = document.querySelector('nav.tabs');
-          const app = document.querySelector('.app');
-          const icon = document.querySelector('#tabJobs .tab-icon');
-          const navStyle = getComputedStyle(nav);
-          const appStyle = getComputedStyle(app);
-          const iconStyle = getComputedStyle(icon);
-          const rect = nav.getBoundingClientRect();
-          return {
-            position: navStyle.position,
-            display: navStyle.display,
-            bottom: navStyle.bottom,
-            iconDisplay: iconStyle.display,
-            paddingBottom: parseFloat(appStyle.paddingBottom),
-            rectBottom: rect.bottom,
-            rectTop: rect.top,
-            viewportHeight: window.innerHeight,
-          };
-        }"""
-    )
-
-    if browser_name == "webkit":
-        assert metrics["position"] == "fixed"
-        assert metrics["display"] == "grid"
-        assert metrics["iconDisplay"] == "block"
-        assert metrics["paddingBottom"] >= 80
-        assert metrics["rectBottom"] <= metrics["viewportHeight"]
-        assert metrics["rectTop"] > metrics["viewportHeight"] / 2
-
-        # Jobs is open, so one pill is active: the #267 bar metrics.
-        _assert_bottom_tab_bar_is_stable_and_low(authed_page)
-
-        # Last: fakes an open terminal overlay.
-        authed_page.evaluate(
-            """() => {
-              document.getElementById('terminalOverlay').hidden = false;
-              document.body.classList.add('terminal-open');
-            }"""
-        )
-        expect(tabs).to_be_hidden()
-    else:
-        # sticky (issue #355): the vendored nav-tabs.css keeps the desktop
-        # segmented control pinned to the top of the scroll container —
-        # the fleet-standard behavior, not app-launcher's own prior static/
-        # in-flow placement.
-        assert metrics["position"] == "sticky"
-        assert metrics["display"] == "flex"
-        # icon shows (issue #421): the vendored nav-tabs.css now renders the
-        # desktop segmented control's SVG glyph, like the mobile pill does,
-        # per project-scaffolding#142 — no longer hidden outside coarse-pointer.
-        assert metrics["iconDisplay"] == "block"
-        assert metrics["paddingBottom"] < 100
+    _assert_nav_layout(authed_page, browser_name, tabs)
