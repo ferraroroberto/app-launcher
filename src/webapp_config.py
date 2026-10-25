@@ -85,6 +85,7 @@ CREDENTIAL_KEYS: Tuple[str, ...] = (
     "secrets",
     "webhook_secrets",
     "api_tokens",
+    "delegate_token",
 )
 
 # Bounded scrollback for full-screen (ratatui) agent sessions —
@@ -624,15 +625,14 @@ class WebappConfig:
     # "secrets" key, falling back to the legacy "webhook_secrets" key this
     # block shipped under before it was generalized. Empty by default.
     secrets: Dict[str, str] = field(default_factory=dict)
-    # --- Scoped API bearer tokens ---------------------------
-    # List of token records minted from the Settings tab (see
-    # src.api_tokens): {id, label, salt, hash, scope, created_at,
-    # last_used_at}. Only the salted SHA-256 hash is stored — the raw
-    # token is shown once at mint time and discarded. scope is "*" or
-    # {"jobs": [ids]}; a job-scoped token can only fire its allowed jobs
-    # (POST /api/jobs/<id>/run) and nothing else. The legacy auth_token
-    # above keeps working unchanged with implicit scope "*".
+    # --- Scoped bearer tokens, from Settings > API tokens ---
+    # Salted-hash records only; each raw token is shown once and discarded.
+    # api_tokens (src.api_tokens): {id, label, salt, hash, scope, ...}, scope
+    # "*" (like auth_token) or {"jobs": [ids]}, which fires only those jobs.
+    # delegate_token (src.auth.delegate_token): {salt, hash, created_at},
+    # {} = off; it may only read the Board and file issues.
     api_tokens: list = field(default_factory=list)
+    delegate_token: dict = field(default_factory=dict)
 
 
 def _apply_session_host_override(cfg: WebappConfig) -> WebappConfig:

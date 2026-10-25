@@ -79,6 +79,7 @@ UI prefs + secrets, authored from the web UI:
 | `auth_password` | `""` | Optional companion for `/api/login`. |
 | `secrets` | `{}` | One gitignored place for job secret values: a job's `webhook.secret` and any `Job.env` value can be `$secret:<key>` resolved against this dict at fire time. Legacy key `webhook_secrets` still loads. |
 | `api_tokens` | `[]` | Scoped bearer tokens minted from **Settings → API tokens**: salted-hash records whose job-scoped kind can only call `POST /api/jobs/<id>/run` for its allowed jobs — safe to bake into a Stream Deck URL. Don't hand-edit. |
+| `delegate_token` | `{}` | The delegate token, off by default: a salted-hash record turned on, regenerated or turned off from **Settings → API tokens → Delegate token**. See [The delegate token](#the-delegate-token). Don't hand-edit. |
 | `session_host_port` | `8446` | Loopback port the PTY session-host binds. Never network-reachable; must differ from `port`. |
 | `tailnet_allowlist` | `[]` | Extra IPs / CIDRs allowed to reach the terminal endpoints, on top of loopback + `100.64.0.0/10`. |
 | `outbox_scratch_roots` | `["%TEMP%/claude"]` | Folders, besides a session's own, that an agent may send a file to Chat from: the outbox and Claude's `SendUserFile`. Edited in Settings → Folders → Chat file folders, which stores the text as typed and refuses a network or device path, a whole drive, a missing folder, a file and a duplicate; at least one folder stays. `%VAR%` and `~` expand. The default is Claude Code's scratch base, so a file from any session's scratchpad is admitted; a non-empty list here replaces it (an empty one reads as unset, like every list setting). Besides images, PDF, text and markdown, a `.zip`, `.gz`, `.tgz` or `.7z` from any of these folders is shown as a download-only card (see the outbox paragraph above). |
@@ -102,6 +103,20 @@ UI prefs + secrets, authored from the web UI:
 **Only the canonical checkout may alert.** The coverage tick pushes to a real phone, so it is gated on `src/instance_role.py::canonical_instance`, not just on the e2e autoboot marker. A **linked git worktree** — a `.git` *file* rather than a `.git` *directory* — is never canonical: it carries the real `config/jobs.json` and the real Telegram/Pushover credentials, but `webapp/jobs/` resolves under *its own* root, so it reads an empty run history and concludes every scheduled fire was missed. That is exactly what happened on 2026-08-10, when a webapp booted out of `app-launcher-wt-727` pushed three false "scheduled run never fired" alerts. A non-canonical instance logs its reason and its root at `WARNING` and starts no tick. Inference cannot distinguish a *second full clone* from the real one, so `LAUNCHER_CANONICAL_INSTANCE=0` force-silences an instance and `=1` force-arms one (e.g. a deployment with no `.git` at all, which otherwise stands down rather than guessing). The `LAUNCHER_SESSION_HOST_PORT` autoboot exemption is checked first and cannot be overridden.
 
 `--remote-control` is always added to Claude Code. Codex fresh and resume launches pass `--model <id>` plus a compatible `-c model_reasoning_effort=<level>`; permission flags are omitted from `codex resume`, whose subcommand rejects them. Full-control Codex sessions additionally carry `-c disable_paste_burst=true`.
+
+## The delegate token
+
+A narrow credential for an outside agent, such as a cloud-hosted bot, that should see the fleet and hand it work without being able to run anything. The main bearer token can spawn coding sessions that run with full permissions on this PC, so it must never sit in a third party's store. The delegate token is the one to hand over instead.
+
+It allows exactly three calls, and every other request carrying it gets a 403 that names the limit, terminal endpoints included even from the tailnet:
+
+- `GET /api/board`: the Board snapshot.
+- `GET /api/board/chief-plan`: the chief's plan.
+- `POST /api/board/issues/file` with `{"repo", "title", "body"}`: files a GitHub issue on a repo in the projects folder, assigned to the owner, with a footer saying the delegate token filed it. Nothing is spawned. The fleet chief triages every filed issue before any lane builds it.
+
+It is off until **Turn on** in Settings → API tokens shows its value once. **Regenerate** replaces it and the old value stops at once; **Turn off** removes it. A wrong or turned-off value gets the ordinary 401. Loopback callers and the main token behave as they would without it. Every request made with it goes to `webapp/auth.log` with its method, path and outcome, never the token. It narrows only a gate that is on: with `auth_token` empty and no `api_tokens`, the API is open to every caller anyway.
+
+The network side is the owner's to set up: give the agent a VPN identity that can reach only this PC's launcher port, nothing else on the machine or the tailnet.
 
 ## Refreshing model catalogs
 

@@ -22,9 +22,13 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src import api_tokens
+from src.auth import delegate_token
 from src.webauthn_gate import WebAuthnGate
 
 logger = logging.getLogger(__name__)
+# The logger behind webapp/auth.log, the auth trail that persists on the live
+# tray, so every delegate-token request is reviewable after the fact.
+auth_logger = logging.getLogger("launcher.auth")
 
 # Loopback addresses bypass the bearer-token gate so local probes keep
 # working without carrying the token. Tunnel traffic arrives with a
@@ -539,6 +543,15 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         client_host = request.client.host if request.client else ""
         is_loopback = is_pc_itself(client_host, request.headers)
         path = request.url.path
+        cfg = self._get_config()
+
+        # The delegate token is decided before every other leg, the terminal
+        # gate included, so a delegate caller on the tailnet is still held to
+        # its allow-list. Loopback never reaches it and keeps its bypass.
+        if not is_loopback:
+            presented = _presented_credential(request)
+            if delegate_token.matches(presented, getattr(cfg, "delegate_token", None)):
+                return await _delegate_dispatch(request, call_next, client_host)
 
         # Terminal endpoints are Tailscale-only (+ passkey for the
         # interactive ones). Enforced even when no bearer token is
@@ -551,7 +564,6 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         if _is_webhook_hook_path(path):
             return await call_next(request)
 
-        cfg = self._get_config()
         token = (getattr(cfg, "auth_token", "") or "").strip()
         minted = getattr(cfg, "api_tokens", None) or []
         # Auth is enforced when EITHER credential class is configured —
@@ -567,13 +579,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        presented = ""
-        auth_header = request.headers.get("authorization", "")
-        if auth_header.lower().startswith("bearer "):
-            presented = auth_header[7:].strip()
-        if not presented:
-            presented = request.query_params.get("token", "").strip()
-
+        presented = _presented_credential(request)
         if presented and token and hmac.compare_digest(presented, token):
             return await call_next(request)
 
@@ -594,3 +600,32 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             content={"detail": "missing or invalid bearer token"},
             headers={"WWW-Authenticate": 'Bearer realm="launcher"'},
         )
+
+
+def _presented_credential(request: Request) -> str:
+    """The bearer the caller sent: the ``Authorization`` header, else ``?token=``."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        presented = auth_header[7:].strip()
+        if presented:
+            return presented
+    return request.query_params.get("token", "").strip()
+
+
+async def _delegate_dispatch(request: Request, call_next, client_host: str):
+    """Serve a delegate-token request on its allow-list, refuse anything else.
+
+    The refusal is a 403 with its own reason, so a caller can tell "this token
+    may not do that" apart from a bad credential's 401. Every request is
+    logged with its method, path and outcome, never the token.
+    """
+    method, path = request.method, request.url.path
+    if not delegate_token.allowed(method, path):
+        auth_logger.info(f"🔒 delegate token from {client_host}: {method} {path} → 403 refused")
+        return JSONResponse(status_code=403, content={"detail": delegate_token.REFUSAL})
+    request.state.delegate = True
+    response = await call_next(request)
+    auth_logger.info(
+        f"ℹ️ delegate token from {client_host}: {method} {path} → {response.status_code}"
+    )
+    return response

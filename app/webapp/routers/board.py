@@ -7,6 +7,8 @@
     POST /api/board/chief-plan/prune      → clear the plan's merged rows through
                                             fleet-config's writer (Tailscale + passkey)
     POST /api/board/github/refresh        → run the gh searches now (token-gated)
+    POST /api/board/issues/file           → file a GitHub issue, nothing spawned
+                                            (token-gated; the delegate token's one write)
     GET  /api/board/sessions/{sid}/exchange → last user↔assistant exchange
                                             (Tailscale + passkey — transcript text)
     POST /api/board/issues/start          → spawn /issue-start|yolo <N> in the
@@ -383,6 +385,51 @@ async def refresh_github(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     snap = await asyncio.to_thread(github_client.refresh, cfg.github_owner)
     return _github_section(snap)
+
+
+# GitHub's own title limit is 256; the body cap keeps a filed issue a work
+# request, well under GitHub's 65,536, rather than a document dump.
+_FILE_TITLE_MAX = 256
+_FILE_BODY_MAX = 20_000
+# Appended server-side, so a delegate-filed issue always says where it came from.
+_DELEGATE_FOOTER = (
+    "\n\n---\nFiled through the launcher's delegate token. The fleet chief "
+    "triages it before any lane builds it."
+)
+
+
+@router.post("/api/board/issues/file")
+async def file_issue(request: Request) -> Dict[str, Any]:
+    """File a GitHub issue for the chief to triage, without spawning anything.
+
+    Body: ``{"repo": str, "title": str, "body": str}``. The repo must be one
+    in the projects folder, the same lookup ``issues/start`` uses. This is the
+    one write the delegate token may make (:mod:`src.auth.delegate_token`); an
+    issue it files carries a footer saying so.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    body = await maybe_json(request)
+    title = str(body.get("title") or "").strip()
+    text = str(body.get("body") or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="title is required")
+    if len(title) > _FILE_TITLE_MAX:
+        raise HTTPException(status_code=400, detail=f"title is over {_FILE_TITLE_MAX} characters")
+    if len(text) > _FILE_BODY_MAX:
+        raise HTTPException(status_code=400, detail=f"body is over {_FILE_BODY_MAX} characters")
+    entry = _resolve_repo_entry(cfg, str(body.get("repo") or "").strip())
+    delegate = bool(getattr(request.state, "delegate", False))
+    if delegate:
+        text += _DELEGATE_FOOTER
+    try:
+        url = await asyncio.to_thread(
+            github_client.create_issue, cfg.github_owner, entry.name, title, text
+        )
+    except github_client.GhError as exc:
+        logger.warning(f"⚠️ filing an issue on {entry.name} failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"gh could not file the issue: {exc}")
+    logger.info(f"✅ issue filed on {entry.name}{' by the delegate token' if delegate else ''}: {url}")
+    return {"repo": entry.name, "url": url}
 
 
 @router.get("/api/board/sessions/{sid}/exchange")

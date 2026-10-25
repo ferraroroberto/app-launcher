@@ -473,6 +473,22 @@
             </div>
             <span id="tokenMintUrl" class="muted small"></span>
           </div>
+          <div class="opt-group">
+            <h3 class="opt-group-title">Delegate token</h3>
+            <p class="opt-hint">For an outside agent. It can read the Board and the chief&rsquo;s plan and file issues for the chief to triage. Nothing else: no sessions, terminals or settings. Regenerating stops the old value at once.</p>
+            <p id="delegateTokenStatus" class="muted small">Off</p>
+            <div class="row settings-actions">
+              <button id="delegateTokenRegenBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> <span id="delegateTokenRegenLabel">Turn on</span></button>
+              <button id="delegateTokenOffBtn" type="button" class="button-ghost" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-power"></use></svg> Turn off</button>
+            </div>
+            <div id="delegateTokenResult" class="stacked" hidden>
+              <span id="delegateTokenValueHelp" class="field-help">Copy it now — it is shown only once.</span>
+              <div class="row">
+                <input id="delegateTokenValue" type="text" class="input-native" readonly aria-label="Delegate token" aria-describedby="delegateTokenValueHelp">
+                <button id="delegateTokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
