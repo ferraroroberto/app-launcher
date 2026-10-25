@@ -61,6 +61,7 @@ from app.webapp.routers import (
     life_os_conversations,
     life_os_files,
     life_os_relay,
+    life_os_search,
 )
 from app.webapp.routers._helpers import maybe_json
 from app.webapp.routers.life_os_conversations import (
@@ -82,6 +83,7 @@ router.include_router(life_os_channels.router)
 router.include_router(life_os_conversations.router)
 router.include_router(life_os_files.router)
 router.include_router(life_os_relay.router)
+router.include_router(life_os_search.router)
 
 # --- weekly recap -----------------------------------------
 # The recap is the ``_recap`` infra skill; it is underscore-prefixed, so

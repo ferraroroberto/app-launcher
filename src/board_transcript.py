@@ -693,76 +693,16 @@ def _monitor_notification(obj: Dict[str, Any]) -> Optional[Tuple[str, bool]]:
     return ids[0], _STATUS_TAG in text
 
 
-def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[datetime]:
-    """The earliest still-outstanding background dispatch's own launch
-    timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
-    needs *how long* a dispatch has been outstanding, not just whether one
-    is).
-
-    A ``Stop`` hook fires (stamping ``needs-you``) the moment Claude's own
-    turn ends — even when that turn dispatched a background sub-agent or
-    shell command it is still waiting to hear back from. The parent
-    transcript then goes quiet until the eventual ``<task-notification>``
-    lands, so #305's activity check alone never catches this window (#464).
-    Unlike :func:`_last_activity` this runs unconditionally, not mtime-gated:
-    the dispatch's launch line sits *before* the hook's stamp, not after it,
-    so the mtime pre-filter that skips a quiet tail would otherwise hide it.
-
-    Two independent launched/completed id schemes are unioned (#576): the
-    original one keyed on internal ``toolUseResult`` fields
-    (:func:`_launched_background_ids` / :func:`_notified_background_ids`,
-    covers backgrounded ``Bash`` via ``backgroundTaskId`` and async
-    ``Agent``/``Task`` dispatches via ``isAsync``+``agentId``), and a
-    narrower, more robust one for backgrounded ``Bash``/``PowerShell`` calls
-    specifically, keyed on the tool call's own ``tool_use`` id
-    (:func:`_launched_bash_dispatch_ids` / :func:`_notified_bash_dispatch_ids`),
-    which doesn't depend on the internal result-shape field that a live
-    spot-check found had drifted. Either scheme flagging a dispatch as
-    still-outstanding is enough to keep the status ``working`` — a launched
-    id only counts as resolved within its own scheme's id-space, so there's
-    no cross-scheme false match. (The sub-agent/``Task`` path is left to the
-    original scheme alone — unlike backgrounded Bash, most ``Task`` dispatches
-    are ordinary *synchronous* sub-agent calls, so a tool-call-id-keyed check
-    would need to tell "still running async" apart from "finished, this is
-    just the normal blocking reply" and risk misreading the common case.)
-
-    A ``Monitor`` is a third scheme, keyed on its own ``taskId``: pending from
-    its launch ack until a notification carrying ``<status>`` (or a timeout
-    event) ends it. A bare monitor event never ends it, and counts as proof it
-    is running when the launch line has left the tail window.
-
-    Reads :data:`_EXCHANGE_TAIL_BYTES` rather than the smaller
-    ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
-    large intervening tool result (e.g. a file ``Read``) by the time the turn
-    ends, and the 8 KB window sized for the cheap #309 mtime pre-filter was
-    empirically too small to still reach it. The read, torn-first-line drop
-    and parse are :class:`_ExchangeTail`'s, shared with
-    :func:`_tail_tool_use_pairs` (#881).
-
-    Even :data:`_EXCHANGE_TAIL_BYTES` is still just a window, and a long
-    enough turn pushes the launch line past it — a real transcript (#627,
-    project-scaffolding#199's worker) dispatched a background ``Explore``
-    sub-agent whose launch line sat ~299 KB from EOF by the time the turn
-    ended, past this window, so the id-keyed scan below found nothing
-    outstanding and the row read as a clean stop when a dispatch was still
-    genuinely running. Claude Code itself reports this directly, independent
-    of any byte window: the ``system``/``turn_duration`` line it appends the
-    moment a turn ends carries ``pendingBackgroundAgentCount`` — the exact
-    real transcript above had one such line reading ``1`` at the same instant
-    the id-keyed scan below found nothing. When the scan below finds no
-    outstanding stamp but the tail's last ``turn_duration`` line reports a
-    nonzero count, that harness-native count wins — treated the same as
-    :data:`_UNKNOWN_LAUNCH_STAMP` (genuinely outstanding, age unknown) since
-    it carries no per-dispatch launch time of its own.
+def _outstanding_dispatch_stamps(tail: _ExchangeTail) -> Tuple[List[Optional[datetime]], Optional[int]]:
+    """Launch stamps of every dispatch the tail never saw end, plus the last
+    ``turn_duration`` line's ``pendingBackgroundAgentCount``.
 
     A ``<task-notification>``'s ``<task-id>``/``<tool-use-id>`` tags first
     appear on a ``queue-operation`` line whose ``operation`` is ``"enqueue"``
     — that only means the background result is *ready*, not that Claude has
-    received it yet. A live-transcript spot-check for #601 found a session
-    where the enqueue line was the last thing written to the transcript, with
-    no later ``dequeue``/``remove`` — the notification was still sitting in
-    the queue, unconsumed, while the row's stale ``needs-you`` Stop stamp
-    stood. So an enqueued notification is only counted as delivered once a
+    received it yet: an enqueue with no later ``dequeue``/``remove`` is a
+    notification still sitting unconsumed in the queue, under a stale
+    ``needs-you`` Stop stamp. So an enqueued notification is only counted as delivered once a
     *later* ``dequeue``/``remove`` operation pops it off the (FIFO) queue —
     tracked positionally, since a ``dequeue`` line carries no content of its
     own to correlate by id. Other queue traffic (e.g. a prompt typed into an
@@ -772,8 +712,6 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     The ``attachment``-shaped notification (:func:`_notified_background_ids`'s
     other fallback) is not queue-gated: it isn't a ``queue-operation`` line at
     all, so it already represents a delivered conversation event.
-
-    Any failure degrades to "nothing pending" — callers keep the hook status.
     """
     launched: Dict[str, Optional[datetime]] = {}
     completed: set = set()
@@ -829,6 +767,68 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     ] + [
         stamp for tid, stamp in monitors.items() if tid not in monitors_ended
     ]
+    return outstanding_stamps, last_turn_pending_agent_count
+
+
+def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[datetime]:
+    """The earliest still-outstanding background dispatch's own launch
+    timestamp, or ``None`` if nothing is pending (#608's ``stalled`` status
+    needs *how long* a dispatch has been outstanding, not just whether one
+    is).
+
+    A ``Stop`` hook fires (stamping ``needs-you``) the moment Claude's own
+    turn ends — even when that turn dispatched a background sub-agent or
+    shell command it is still waiting to hear back from. The parent
+    transcript then goes quiet until the eventual ``<task-notification>``
+    lands, so #305's activity check alone never catches this window (#464).
+    Unlike :func:`_last_activity` this runs unconditionally, not mtime-gated:
+    the dispatch's launch line sits *before* the hook's stamp, not after it,
+    so the mtime pre-filter that skips a quiet tail would otherwise hide it.
+
+    Two independent launched/completed id schemes are unioned (#576): the
+    original one keyed on internal ``toolUseResult`` fields
+    (:func:`_launched_background_ids` / :func:`_notified_background_ids`,
+    covers backgrounded ``Bash`` via ``backgroundTaskId`` and async
+    ``Agent``/``Task`` dispatches via ``isAsync``+``agentId``), and a
+    narrower, more robust one for backgrounded ``Bash``/``PowerShell`` calls
+    specifically, keyed on the tool call's own ``tool_use`` id
+    (:func:`_launched_bash_dispatch_ids` / :func:`_notified_bash_dispatch_ids`),
+    which doesn't depend on the internal result-shape field that a live
+    spot-check found had drifted. Either scheme flagging a dispatch as
+    still-outstanding is enough to keep the status ``working`` — a launched
+    id only counts as resolved within its own scheme's id-space, so there's
+    no cross-scheme false match. (The sub-agent/``Task`` path is left to the
+    original scheme alone — unlike backgrounded Bash, most ``Task`` dispatches
+    are ordinary *synchronous* sub-agent calls, so a tool-call-id-keyed check
+    would need to tell "still running async" apart from "finished, this is
+    just the normal blocking reply" and risk misreading the common case.)
+
+    A ``Monitor`` is a third scheme, keyed on its own ``taskId``: pending from
+    its launch ack until a notification carrying ``<status>`` (or a timeout
+    event) ends it. A bare monitor event never ends it, and counts as proof it
+    is running when the launch line has left the tail window.
+
+    Reads :data:`_EXCHANGE_TAIL_BYTES` rather than the smaller
+    ``_ACTIVITY_TAIL_BYTES`` (#594): a launch line can sit well behind one
+    large intervening tool result (e.g. a file ``Read``) by the time the turn
+    ends, and the 8 KB window sized for the cheap #309 mtime pre-filter was
+    empirically too small to still reach it. The read, torn-first-line drop
+    and parse are :class:`_ExchangeTail`'s, shared with
+    :func:`_tail_tool_use_pairs` (#881).
+
+    Even :data:`_EXCHANGE_TAIL_BYTES` is just a window: a long turn can push
+    the launch line past it (one real background ``Explore`` dispatch sat
+    ~299 KB from EOF), and the id-keyed scan then finds nothing outstanding.
+    Claude Code reports the count itself, independent of any window: the
+    ``system``/``turn_duration`` line it appends when a turn ends carries
+    ``pendingBackgroundAgentCount``. When the scan finds no outstanding stamp
+    but that last count is nonzero, the count wins, reported as
+    :data:`_UNKNOWN_LAUNCH_STAMP` (outstanding, age unknown) since it carries
+    no per-dispatch launch time.
+
+    Any failure degrades to "nothing pending" — callers keep the hook status.
+    """
+    outstanding_stamps, last_turn_pending_agent_count = _outstanding_dispatch_stamps(tail)
     if not outstanding_stamps:
         if last_turn_pending_agent_count:
             return _UNKNOWN_LAUNCH_STAMP

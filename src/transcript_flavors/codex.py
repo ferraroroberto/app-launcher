@@ -217,74 +217,11 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
         ts = obj.get("timestamp")
         pt = payload.get("type")
         if pt == "message":
-            role = str(payload.get("role") or "")
-            if role == "assistant":
-                text = _blocks_text(payload.get("content"), types=("output_text",))
-                if text.strip():
-                    entries.append(_text_entry("assistant", offset, ts, text, assistant_cap, sidechain=False))
-            elif role in ("user", "developer"):
-                text = _blocks_text(payload.get("content"), types=("input_text",))
-                stripped = text.strip()
-                if not stripped:
-                    continue
-                if role == "developer" or any(stripped.startswith(p) for p in _CODEX_SKIP_USER_PREFIXES):
-                    entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
-                                               label="developer" if role == "developer" else "system",
-                                               sidechain=False))
-                else:
-                    entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=False))
+            _codex_message(entries, payload, offset, ts, assistant_cap, user_cap)
         elif pt in ("function_call", "custom_tool_call"):
-            e = _with_action(_entry(
-                "tool_call", offset, ts,
-                name=str(payload.get("name") or "tool"),
-                summary=_tool_summary(payload.get("arguments") if pt == "function_call" else payload.get("input")),
-                result=None, result_truncated=False, sidechain=False,
-            ), _tool_action(str(payload.get("name") or ""), payload.get("input"), raw_text=True)
-                if pt == "custom_tool_call" else None)
-            entries.append(e)
-            call_id = str(payload.get("call_id") or "")
-            if call_id:
-                open_calls[call_id] = e
-            # A patch's file edits: one step each, after the call's own row,
-            # sharing its result.
-            siblings = [
-                _with_action(_entry(
-                    "tool_call", offset, ts, name="apply_patch", summary=str(a["path"]),
-                    result=None, result_truncated=False, sidechain=False,
-                ), a)
-                for a in (_patch_actions(str(payload.get("name") or ""), payload.get("input"))
-                          if pt == "custom_tool_call" else [])
-            ]
-            entries.extend(siblings)
-            if siblings and call_id:
-                patch_steps[call_id] = siblings
+            _codex_tool_call(entries, open_calls, patch_steps, payload, offset, ts)
         elif pt in ("function_call_output", "custom_tool_call_output"):
-            # No structural `error=` here, deliberately: Codex records
-            # **no** success/error field at any level. A failed call and a
-            # working one are structurally identical — measured over the 30
-            # newest rollouts (one key-set, `call_id,id,
-            # internal_chat_message_metadata_passthrough,output,type`) and
-            # re-confirmed by probe, where a failing tool wrote "Script
-            # failed" and a working one "Script completed" in the same
-            # `output` text and nothing else differed. Telling them apart
-            # would mean reading that prose, so the flavour is declared
-            # `partial` in `FLAVORS`: the client says "can't tell" for an
-            # unmarked call rather than showing a failure as a success.
-            # The one exception is a patch: `apply_patch` states its
-            # own rejection in a fixed tool message (28 of 710 direct calls
-            # and 79 of ~1,100 `exec` ones on the dev box), and a rejected
-            # patch changed nothing, so its steps must not count as edits.
-            output = payload.get("output")
-            text = output if isinstance(output, str) else _blocks_text(output, types=("input_text", "output_text", "text"))
-            call_id = str(payload.get("call_id") or "")
-            steps = patch_steps.pop(call_id, [])
-            failed = bool(steps) and _PATCH_FAILED in text
-            _attach_result(entries, open_calls, call_id, text, offset, ts, False, error=failed)
-            for step in steps:
-                step["result"], step["result_truncated"] = _shared._cap(text.strip(), _shared.TOOL_RESULT_CAP)
-                if failed:
-                    step["error"] = True
-                    step["action"].pop("diff", None)
+            _codex_tool_output(entries, open_calls, patch_steps, payload, offset, ts)
         elif pt == "reasoning":
             text = _blocks_text(payload.get("summary"), types=("summary_text",))
             if text.strip():
@@ -295,6 +232,93 @@ def codex_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
                 entries.append(_text_entry("system", offset, ts, text, SYSTEM_TEXT_CAP,
                                            label="sub-agent", sidechain=True))
     return entries
+
+
+def _codex_message(
+    entries: List[Entry], payload: Dict[str, Any], offset: int, ts: Any, assistant_cap: int, user_cap: int,
+) -> None:
+    """Append one ``message`` payload as an assistant, user or system entry."""
+    role = str(payload.get("role") or "")
+    if role == "assistant":
+        text = _blocks_text(payload.get("content"), types=("output_text",))
+        if text.strip():
+            entries.append(_text_entry("assistant", offset, ts, text, assistant_cap, sidechain=False))
+    elif role in ("user", "developer"):
+        text = _blocks_text(payload.get("content"), types=("input_text",))
+        stripped = text.strip()
+        if not stripped:
+            return
+        if role == "developer" or any(stripped.startswith(p) for p in _CODEX_SKIP_USER_PREFIXES):
+            entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
+                                       label="developer" if role == "developer" else "system",
+                                       sidechain=False))
+        else:
+            entries.append(_text_entry("user", offset, ts, stripped, user_cap, sidechain=False))
+
+
+def _codex_tool_call(
+    entries: List[Entry], open_calls: Dict[str, Entry], patch_steps: Dict[str, List[Entry]],
+    payload: Dict[str, Any], offset: int, ts: Any,
+) -> None:
+    """Append one tool call, plus one step per file a patch call edits."""
+    pt = payload.get("type")
+    e = _with_action(_entry(
+        "tool_call", offset, ts,
+        name=str(payload.get("name") or "tool"),
+        summary=_tool_summary(payload.get("arguments") if pt == "function_call" else payload.get("input")),
+        result=None, result_truncated=False, sidechain=False,
+    ), _tool_action(str(payload.get("name") or ""), payload.get("input"), raw_text=True)
+        if pt == "custom_tool_call" else None)
+    entries.append(e)
+    call_id = str(payload.get("call_id") or "")
+    if call_id:
+        open_calls[call_id] = e
+    # A patch's file edits: one step each, after the call's own row,
+    # sharing its result.
+    siblings = [
+        _with_action(_entry(
+            "tool_call", offset, ts, name="apply_patch", summary=str(a["path"]),
+            result=None, result_truncated=False, sidechain=False,
+        ), a)
+        for a in (_patch_actions(str(payload.get("name") or ""), payload.get("input"))
+                  if pt == "custom_tool_call" else [])
+    ]
+    entries.extend(siblings)
+    if siblings and call_id:
+        patch_steps[call_id] = siblings
+
+
+def _codex_tool_output(
+    entries: List[Entry], open_calls: Dict[str, Entry], patch_steps: Dict[str, List[Entry]],
+    payload: Dict[str, Any], offset: int, ts: Any,
+) -> None:
+    """Attach one tool output to its call and to the call's patch steps.
+
+    No structural `error=` here, deliberately: Codex records **no**
+    success/error field at any level. A failed call and a working one are
+    structurally identical — measured over the 30 newest rollouts (one
+    key-set, `call_id,id, internal_chat_message_metadata_passthrough,output,
+    type`) and re-confirmed by probe, where a failing tool wrote "Script
+    failed" and a working one "Script completed" in the same `output` text
+    and nothing else differed. Telling them apart would mean reading that
+    prose, so the flavour is declared `partial` in `FLAVORS`: the client says
+    "can't tell" for an unmarked call rather than showing a failure as a
+    success. The one exception is a patch: `apply_patch` states its own
+    rejection in a fixed tool message (28 of 710 direct calls and 79 of
+    ~1,100 `exec` ones on the dev box), and a rejected patch changed nothing,
+    so its steps must not count as edits.
+    """
+    output = payload.get("output")
+    text = output if isinstance(output, str) else _blocks_text(output, types=("input_text", "output_text", "text"))
+    call_id = str(payload.get("call_id") or "")
+    steps = patch_steps.pop(call_id, [])
+    failed = bool(steps) and _PATCH_FAILED in text
+    _attach_result(entries, open_calls, call_id, text, offset, ts, False, error=failed)
+    for step in steps:
+        step["result"], step["result_truncated"] = _shared._cap(text.strip(), _shared.TOOL_RESULT_CAP)
+        if failed:
+            step["error"] = True
+            step["action"].pop("diff", None)
 
 
 def _codex_line_key(raw: str) -> Optional[str]:

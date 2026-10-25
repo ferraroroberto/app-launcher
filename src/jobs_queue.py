@@ -273,51 +273,66 @@ def admit_and_spawn(
         meta["params"] = params
 
     if holder is not None:
-        meta.update(
-            status="queued",
-            mutex_group=job.mutex_group,
-            mutex_blocked_by=holder.id,
-        )
-        write_run_json(run_dir, **meta)
-        enqueue_mutex(
-            job.mutex_group,
-            {
-                "job_id": job.id,
-                "run_id": run_dir.name,
-                "trigger": trigger,
-                "params": params or None,
-            },
-        )
-        logger.info(
-            f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
-            f"(mutex_group={job.mutex_group!r}, trigger={trigger!r})"
-        )
-        return meta
+        return _queue_behind(job, holder, run_dir, meta, trigger, params)
 
     meta["status"] = "pending"
     write_run_json(run_dir, **meta)
     try:
         spawn_run_job_detached(job.id, run_dir.name, trigger, params or None)
     except (OSError, ValueError) as exc:
-        # Reflect the failure in the *returned* meta too, not just on disk
-        # — a caller reading the return value used to see a
-        # stale status="pending" even though run.json already said "failed".
-        failure: Dict[str, Any] = {
-            "finished_at": datetime.now().isoformat(timespec="seconds"),
-            "exit_code": -1,
-            "status": "failed",
-            spawn_error_key: str(exc),
-            "refused": isinstance(exc, ArgvRejected),
-        }
-        meta.update(failure)
-        write_run_json(run_dir, **failure)
-        logger.warning(
-            f"⚠️  spawn failed {job.id}/{run_dir.name} "
-            f"(trigger={trigger!r}): {exc}"
-        )
-        return meta
+        return _record_spawn_failure(job, run_dir, meta, trigger, exc, spawn_error_key)
 
     logger.info(f"🚀 fired {job.id}/{run_dir.name} (trigger={trigger!r})")
+    return meta
+
+
+def _record_spawn_failure(
+    job: Job, run_dir: Path, meta: Dict[str, Any], trigger: str, exc: Exception, spawn_error_key: str,
+) -> Dict[str, Any]:
+    """Record a spawn that produced no child as ``failed``, on disk and in ``meta``."""
+    # Reflect the failure in the *returned* meta too, not just on disk
+    # — a caller reading the return value used to see a
+    # stale status="pending" even though run.json already said "failed".
+    failure: Dict[str, Any] = {
+        "finished_at": datetime.now().isoformat(timespec="seconds"),
+        "exit_code": -1,
+        "status": "failed",
+        spawn_error_key: str(exc),
+        "refused": isinstance(exc, ArgvRejected),
+    }
+    meta.update(failure)
+    write_run_json(run_dir, **failure)
+    logger.warning(
+        f"⚠️  spawn failed {job.id}/{run_dir.name} "
+        f"(trigger={trigger!r}): {exc}"
+    )
+    return meta
+
+
+def _queue_behind(
+    job: Job, holder: Job, run_dir: Path, meta: Dict[str, Any], trigger: str,
+    params: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Record the run as ``queued`` behind ``holder`` and push it on the group's FIFO."""
+    meta.update(
+        status="queued",
+        mutex_group=job.mutex_group,
+        mutex_blocked_by=holder.id,
+    )
+    write_run_json(run_dir, **meta)
+    enqueue_mutex(
+        job.mutex_group,
+        {
+            "job_id": job.id,
+            "run_id": run_dir.name,
+            "trigger": trigger,
+            "params": params or None,
+        },
+    )
+    logger.info(
+        f"🪢 queued {job.id}/{run_dir.name} behind {holder.id} "
+        f"(mutex_group={job.mutex_group!r}, trigger={trigger!r})"
+    )
     return meta
 
 

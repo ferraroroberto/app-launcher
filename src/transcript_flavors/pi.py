@@ -142,42 +142,8 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
         content = msg.get("content")
 
         if role == "assistant":
-            if not isinstance(content, list):
-                continue
-            reply: Optional[Entry] = None
-            for block in content:
-                if not isinstance(block, dict):
-                    continue
-                bt = block.get("type")
-                if bt == "text":
-                    text = str(block.get("text") or "").strip()
-                    if not text:
-                        continue
-                    if reply is not None:
-                        joined, truncated = _cap(reply["text"] + "\n\n" + text, assistant_cap)
-                        reply["text"] = joined
-                        reply["truncated"] = reply["truncated"] or truncated
-                        continue
-                    reply = _text_entry("assistant", offset, ts, text, assistant_cap,
-                                        sidechain=False)
-                    entries.append(reply)
-                elif bt == "thinking":
-                    # `thinkingSignature` rides alongside and is an encrypted
-                    # blob many times the size of the thought — never shown.
-                    text = str(block.get("thinking") or "").strip()
-                    if text:
-                        entries.append(_text_entry("thinking", offset, ts, text,
-                                                   THINKING_TEXT_CAP, sidechain=False))
-                elif bt == "toolCall":
-                    call = _with_action(_entry(
-                        "tool_call", offset, ts,
-                        name=str(block.get("name") or "tool"),
-                        summary=_tool_summary(block.get("arguments")),
-                        result=None, result_truncated=False, sidechain=False,
-                    ), _tool_action(str(block.get("name") or ""), block.get("arguments")), _tool_description(block.get("arguments")))
-                    entries.append(call)
-                    if block.get("id"):
-                        open_calls[str(block["id"])] = call
+            if isinstance(content, list):
+                _pi_assistant_blocks(entries, open_calls, content, offset, ts, assistant_cap)
             continue
 
         if role == "toolResult":
@@ -191,22 +157,69 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
             continue
 
         if role == "user":
-            text, _count = _pi_blocks(content)
-            refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
-            text = _with_placeholders(text, missing)
-            stripped = text.strip()
-            if not stripped and not refs:
-                continue
-            if any(stripped.startswith(p) for p in _PI_SKIP_USER_PREFIXES):
-                label = "skill" if stripped.startswith("<skill name=") else _harness_label(stripped)
-                entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
-                                           label=label, sidechain=False))
-            else:
-                user = _text_entry("user", offset, ts, stripped, user_cap, sidechain=False)
-                if refs:
-                    user["images"] = refs
-                entries.append(user)
+            _pi_user_message(entries, content, offset, ts, user_cap)
     return entries
+
+
+def _pi_user_message(entries: List[Entry], content: Any, offset: int, ts: Any, user_cap: int) -> None:
+    """Append a user message as a typed prompt, or as ``system`` when harness-injected."""
+    text, _count = _pi_blocks(content)
+    refs, missing = _image_refs(_line_image_blocks(content), offset, 0)
+    text = _with_placeholders(text, missing)
+    stripped = text.strip()
+    if not stripped and not refs:
+        return
+    if any(stripped.startswith(p) for p in _PI_SKIP_USER_PREFIXES):
+        label = "skill" if stripped.startswith("<skill name=") else _harness_label(stripped)
+        entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
+                                   label=label, sidechain=False))
+    else:
+        user = _text_entry("user", offset, ts, stripped, user_cap, sidechain=False)
+        if refs:
+            user["images"] = refs
+        entries.append(user)
+
+
+
+def _pi_assistant_blocks(
+    entries: List[Entry], open_calls: Dict[str, Entry], content: List[Any],
+    offset: int, ts: Any, assistant_cap: int,
+) -> None:
+    """Append one assistant message's merged reply, thinking and tool calls."""
+    reply: Optional[Entry] = None
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        bt = block.get("type")
+        if bt == "text":
+            text = str(block.get("text") or "").strip()
+            if not text:
+                continue
+            if reply is not None:
+                joined, truncated = _cap(reply["text"] + "\n\n" + text, assistant_cap)
+                reply["text"] = joined
+                reply["truncated"] = reply["truncated"] or truncated
+                continue
+            reply = _text_entry("assistant", offset, ts, text, assistant_cap,
+                                sidechain=False)
+            entries.append(reply)
+        elif bt == "thinking":
+            # `thinkingSignature` rides alongside and is an encrypted
+            # blob many times the size of the thought — never shown.
+            text = str(block.get("thinking") or "").strip()
+            if text:
+                entries.append(_text_entry("thinking", offset, ts, text,
+                                           THINKING_TEXT_CAP, sidechain=False))
+        elif bt == "toolCall":
+            call = _with_action(_entry(
+                "tool_call", offset, ts,
+                name=str(block.get("name") or "tool"),
+                summary=_tool_summary(block.get("arguments")),
+                result=None, result_truncated=False, sidechain=False,
+            ), _tool_action(str(block.get("name") or ""), block.get("arguments")), _tool_description(block.get("arguments")))
+            entries.append(call)
+            if block.get("id"):
+                open_calls[str(block["id"])] = call
 
 
 def _pi_line_key(raw: str) -> Optional[str]:

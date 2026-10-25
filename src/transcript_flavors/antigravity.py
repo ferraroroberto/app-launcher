@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
@@ -168,32 +168,7 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
             continue
 
         if step_type == "PLANNER_RESPONSE":
-            thinking = str(obj.get("thinking") or "").strip()
-            if thinking:
-                entries.append(_agy_mark(_text_entry(
-                    "thinking", offset, ts, thinking, THINKING_TEXT_CAP,
-                    sidechain=False), "thinking", cut))
-            if content.strip():
-                entries.append(_agy_mark(_text_entry(
-                    "assistant", offset, ts, content, assistant_cap,
-                    sidechain=False), "content", cut))
-            calls = obj.get("tool_calls")
-            for index, call in enumerate(calls if isinstance(calls, list) else []):
-                if not isinstance(call, dict):
-                    continue
-                key = f"{offset}:{index}"
-                args = call.get("args")
-                unwrapped = {k: _agy_arg(v) for k, v in args.items()} if isinstance(args, dict) else args
-                entry = _with_action(_entry(
-                    "tool_call", offset, ts,
-                    name=str(_agy_arg(call.get("name")) or "tool"),
-                    summary=_agy_tool_summary(args),
-                    result=None, result_truncated=False, sidechain=False,
-                ), _tool_action(str(_agy_arg(call.get("name")) or ""), unwrapped),
-                    _tool_description(unwrapped, "toolSummary"))
-                entries.append(entry)
-                open_calls[key] = entry
-                unanswered.append(key)
+            _agy_planner_response(entries, open_calls, unanswered, obj, offset, ts, cut, assistant_cap)
             continue
 
         # Every remaining MODEL step is a tool result, for the oldest call
@@ -208,6 +183,40 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
                        _AGY_RESULT_HEADER_RE.sub("", content), offset, ts, False,
                        error=str(obj.get("status") or "") == "ERROR")
     return entries
+
+
+def _agy_planner_response(
+    entries: List[Entry], open_calls: Dict[str, Entry], unanswered: List[str],
+    obj: Dict[str, Any], offset: int, ts: Any, cut: Set[str], assistant_cap: int,
+) -> None:
+    """Append one ``PLANNER_RESPONSE`` step's thinking, reply and tool calls."""
+    content = str(obj.get("content") or "")
+    thinking = str(obj.get("thinking") or "").strip()
+    if thinking:
+        entries.append(_agy_mark(_text_entry(
+            "thinking", offset, ts, thinking, THINKING_TEXT_CAP,
+            sidechain=False), "thinking", cut))
+    if content.strip():
+        entries.append(_agy_mark(_text_entry(
+            "assistant", offset, ts, content, assistant_cap,
+            sidechain=False), "content", cut))
+    calls = obj.get("tool_calls")
+    for index, call in enumerate(calls if isinstance(calls, list) else []):
+        if not isinstance(call, dict):
+            continue
+        key = f"{offset}:{index}"
+        args = call.get("args")
+        unwrapped = {k: _agy_arg(v) for k, v in args.items()} if isinstance(args, dict) else args
+        entry = _with_action(_entry(
+            "tool_call", offset, ts,
+            name=str(_agy_arg(call.get("name")) or "tool"),
+            summary=_agy_tool_summary(args),
+            result=None, result_truncated=False, sidechain=False,
+        ), _tool_action(str(_agy_arg(call.get("name")) or ""), unwrapped),
+            _tool_description(unwrapped, "toolSummary"))
+        entries.append(entry)
+        open_calls[key] = entry
+        unanswered.append(key)
 
 
 def _antigravity_line_key(raw: str) -> Optional[str]:

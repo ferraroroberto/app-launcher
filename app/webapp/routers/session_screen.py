@@ -523,27 +523,8 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     if via not in _RESUME_VIA:
         raise HTTPException(status_code=400, detail="via must be 'picker' or 'composer'")
     reason, session, lines = await _read_screen(cfg, sid)
-    _refuse_if_host_unreachable(reason)
-    if reason == "session_not_found":
-        raise HTTPException(status_code=409, detail="This session is no longer running")
-    if reason == "detached":
-        raise HTTPException(
-            status_code=409,
-            detail="Chat can't see a detached session's screen: resume it in the PC console",
-        )
-    if reason is not None:
-        raise HTTPException(
-            status_code=409, detail="Chat can't see the terminal's screen, so nothing was sent"
-        )
-    showing = resume_picker.parse_resume_picker(lines)
-    if via == "picker" and not showing:
-        raise HTTPException(
-            status_code=409, detail="The resume picker closed on the terminal: nothing was sent"
-        )
-    if not showing and plan_picker.parse_picker(lines) is not None:
-        raise HTTPException(
-            status_code=409, detail="The terminal is waiting on a plan: answer it first"
-        )
+    _refuse_unseen_resume_screen(reason)
+    showing = _resume_picker_showing(via, lines)
     sessions = await asyncio.to_thread(
         resume_picker.list_sessions, str(session.get("project_dir") or "")
     )
@@ -605,6 +586,37 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     await audit_off_loop(audit.session_log, sid, "resume", via=via, steps=steps, reason=outcome)
     logger.info("⌨️ resume %s typed (%s, %d steps): %s", sid[:8], via, steps, outcome)
     return {"ok": True, "outcome": outcome, "title": title}
+
+
+def _refuse_unseen_resume_screen(reason: Optional[str]) -> None:
+    """409 (503 for an unreachable host) when the screen could not be read."""
+    _refuse_if_host_unreachable(reason)
+    if reason == "session_not_found":
+        raise HTTPException(status_code=409, detail="This session is no longer running")
+    if reason == "detached":
+        raise HTTPException(
+            status_code=409,
+            detail="Chat can't see a detached session's screen: resume it in the PC console",
+        )
+    if reason is not None:
+        raise HTTPException(
+            status_code=409, detail="Chat can't see the terminal's screen, so nothing was sent"
+        )
+
+
+def _resume_picker_showing(via: str, lines: List[str]) -> bool:
+    """Whether the ``/resume`` picker is up; 409 when ``via`` needs it and it
+    closed, or when the plan picker holds the terminal instead."""
+    showing = resume_picker.parse_resume_picker(lines)
+    if via == "picker" and not showing:
+        raise HTTPException(
+            status_code=409, detail="The resume picker closed on the terminal: nothing was sent"
+        )
+    if not showing and plan_picker.parse_picker(lines) is not None:
+        raise HTTPException(
+            status_code=409, detail="The terminal is waiting on a plan: answer it first"
+        )
+    return showing
 
 
 

@@ -499,94 +499,117 @@ def merge_sessions(
         _PICKER_SCREEN_CACHE.pop(gone, None)
 
     for sess, row, sid in pairs:
-        project_dir = sess.get("project_dir")
-
-        raw_status = (row or {}).get("status")
-        status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-        anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
-            _parse_iso(sess.get("started_at"))
-        )
-        tail = _ExchangeTail((row or {}).get("transcript_path"))
-        status, anchor = _transcript_overlay(
-            row,
-            status,
-            anchor,
-            now=now,
-            live_title=sess.get("live_title"),
-            last_output_at=sess.get("last_output_at"),
-            tail=tail,
-        )
-        status = _refine_waiting_status(status, tail)
-        if status in _SCREEN_CHECKED_STATUSES and _plan_picker_on_screen(sess):
-            status = "awaiting-decision"
-        project = (row or {}).get("project") or Path(str(project_dir or "")).name
-        if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
-            status = "awaiting-input"
-        cards.append({
-            "session_id": sess.get("session_id"),
-            "state_sid": sid,
-            "kind": sess.get("kind"),
-            "agent": sess.get("agent"),
-            "label": sess.get("label") or "",
-            "project_dir": project_dir,
-            "name": sess.get("name"),
-            "alive": bool(sess.get("alive", True)),
-            "started_at": sess.get("started_at"),
-            "live_title": sess.get("live_title") or "",
-            "prompt_title": sess.get("prompt_title") or "",
-            "manual_title": sess.get("manual_title") or "",
-            "model": session_model_label(sess),
-            "shared_name": (row or {}).get("name"),
-            "shared_name_source": (row or {}).get("name_source"),
-            "project": project,
-            "status": status,
-            "age_seconds": _age_seconds(anchor, now),
-        })
+        cards.append(_live_card(sess, row, sid, now, active_repos))
 
     claimed_transcripts = _claimed_transcript_paths(pairs)
     live_launcher_session_ids = _live_launcher_session_ids(live)
 
     for sid, row in unmatched.items():
-        stamp = _parse_iso(row.get("updated_at"))
-        if stamp is None or now - stamp > STATE_STALE_AFTER:
-            continue  # cold leftovers: not worth a card
-        raw_status = row.get("status")
-        cwd = row.get("cwd")
-        project = row.get("project") or Path(str(cwd or "")).name
-        status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-        tail = _ExchangeTail(row.get("transcript_path"))
-        status, anchor = _transcript_overlay(row, status, stamp, now=now, tail=tail)
-        status = _refine_waiting_status(status, tail)
-        if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
-            status = "awaiting-input"
-        externally_live, reason = _external_row_liveness(
-            row, now,
+        card = _external_card(
+            sid, row, now, active_repos,
             claimed_transcripts=claimed_transcripts,
             live_launcher_session_ids=live_launcher_session_ids,
         )
-        if not externally_live:
-            log_once(
-                _LOGGED_SUPPRESSED_ROWS, sid, _SUPPRESSED_LOG_CAP, logger.info,
-                "ℹ️ Board suppressed unverifiable state row %s (%s, %s): %s",
-                sid[:8], project, status, reason,
-            )
-            continue
-        cards.append({
-            "session_id": None,
-            "kind": "external",
-            "agent": _row_agent(row),
-            "project_dir": cwd,
-            "name": str(project),
-            "alive": False,
-            "started_at": None,
-            "live_title": "",
-            "prompt_title": "",
-            "manual_title": "",
-            "shared_name": row.get("name"),
-            "shared_name_source": row.get("name_source"),
-            "project": str(project),
-            "status": status,
-            "age_seconds": _age_seconds(anchor, now),
-        })
+        if card is not None:
+            cards.append(card)
 
     return cards
+
+
+def _live_card(
+    sess: Dict[str, Any], row: Optional[Dict[str, Any]], sid: Optional[str],
+    now: datetime, active_repos: AbstractSet[str],
+) -> Dict[str, Any]:
+    """The card for one live session and the state row it claimed, if any."""
+    project_dir = sess.get("project_dir")
+
+    raw_status = (row or {}).get("status")
+    status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
+    anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
+        _parse_iso(sess.get("started_at"))
+    )
+    tail = _ExchangeTail((row or {}).get("transcript_path"))
+    status, anchor = _transcript_overlay(
+        row,
+        status,
+        anchor,
+        now=now,
+        live_title=sess.get("live_title"),
+        last_output_at=sess.get("last_output_at"),
+        tail=tail,
+    )
+    status = _refine_waiting_status(status, tail)
+    if status in _SCREEN_CHECKED_STATUSES and _plan_picker_on_screen(sess):
+        status = "awaiting-decision"
+    project = (row or {}).get("project") or Path(str(project_dir or "")).name
+    if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
+        status = "awaiting-input"
+    return {
+        "session_id": sess.get("session_id"),
+        "state_sid": sid,
+        "kind": sess.get("kind"),
+        "agent": sess.get("agent"),
+        "label": sess.get("label") or "",
+        "project_dir": project_dir,
+        "name": sess.get("name"),
+        "alive": bool(sess.get("alive", True)),
+        "started_at": sess.get("started_at"),
+        "live_title": sess.get("live_title") or "",
+        "prompt_title": sess.get("prompt_title") or "",
+        "manual_title": sess.get("manual_title") or "",
+        "model": session_model_label(sess),
+        "shared_name": (row or {}).get("name"),
+        "shared_name_source": (row or {}).get("name_source"),
+        "project": project,
+        "status": status,
+        "age_seconds": _age_seconds(anchor, now),
+    }
+
+
+def _external_card(
+    sid: str, row: Dict[str, Any], now: datetime, active_repos: AbstractSet[str], *,
+    claimed_transcripts: AbstractSet[str], live_launcher_session_ids: AbstractSet[str],
+) -> Optional[Dict[str, Any]]:
+    """The external card for an unclaimed state row, or ``None`` when it is
+    cold or its process cannot be shown to still exist."""
+    stamp = _parse_iso(row.get("updated_at"))
+    if stamp is None or now - stamp > STATE_STALE_AFTER:
+        return None  # cold leftovers: not worth a card
+    raw_status = row.get("status")
+    cwd = row.get("cwd")
+    project = row.get("project") or Path(str(cwd or "")).name
+    status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
+    tail = _ExchangeTail(row.get("transcript_path"))
+    status, anchor = _transcript_overlay(row, status, stamp, now=now, tail=tail)
+    status = _refine_waiting_status(status, tail)
+    if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
+        status = "awaiting-input"
+    externally_live, reason = _external_row_liveness(
+        row, now,
+        claimed_transcripts=claimed_transcripts,
+        live_launcher_session_ids=live_launcher_session_ids,
+    )
+    if not externally_live:
+        log_once(
+            _LOGGED_SUPPRESSED_ROWS, sid, _SUPPRESSED_LOG_CAP, logger.info,
+            "ℹ️ Board suppressed unverifiable state row %s (%s, %s): %s",
+            sid[:8], project, status, reason,
+        )
+        return None
+    return {
+        "session_id": None,
+        "kind": "external",
+        "agent": _row_agent(row),
+        "project_dir": cwd,
+        "name": str(project),
+        "alive": False,
+        "started_at": None,
+        "live_title": "",
+        "prompt_title": "",
+        "manual_title": "",
+        "shared_name": row.get("name"),
+        "shared_name_source": row.get("name_source"),
+        "project": str(project),
+        "status": status,
+        "age_seconds": _age_seconds(anchor, now),
+    }

@@ -63,12 +63,14 @@ from app.webapp.middleware import is_pc_itself
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.board import session_exchange
 from app.webapp.routers.life_os_conversations import (
-    _MAX_QUERY_CHARS,
     _group_by_conversation,
-    _search_limit,
     resume_or_open,
-    run_conversation_search,
     skill_conversations,
+)
+from app.webapp.routers.life_os_search import (
+    _MAX_QUERY_CHARS,
+    _search_limit,
+    run_conversation_search,
 )
 from app.webapp.routers.life_os_spawn import _resolve_skill
 from app.webapp.routers.sessions import session_input

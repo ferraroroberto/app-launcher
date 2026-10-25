@@ -471,26 +471,55 @@ def _find_resumable_chief_session_id(
     when it doesn't.
     """
     now = now or board._now()
-    if preferred_sid:
-        row = state_rows.get(preferred_sid)
-        if _fresh_fleet_config_stamp(row, now) is not None and (
-            board.has_typed_user_prompt(row.get("transcript_path")) is not False
-        ):
-            logger.info(
-                "↩️ chief resume: reattaching the stopped PTY's own conversation %s",
-                str(preferred_sid)[:8],
-            )
-            return str(preferred_sid)
+    if preferred_sid and _preferred_is_resumable(state_rows.get(preferred_sid), now):
+        logger.info(
+            "↩️ chief resume: reattaching the stopped PTY's own conversation %s",
+            str(preferred_sid)[:8],
+        )
+        return str(preferred_sid)
 
-    # (stamp, sid) of the newest candidate in each substance tier.
-    confirmed: Tuple[Optional[datetime], str] = (None, "")
-    unknown: Tuple[Optional[datetime], str] = (None, "")
+    tiers = _ResumeTiers()
+    for sid, row in state_rows.items():
+        stamp = _fresh_fleet_config_stamp(row, now)
+        if stamp is None:
+            continue
+        if str(row.get("name") or "").strip().lower() != _CHIEF_TITLE:
+            continue
+        tiers.consider(str(sid), stamp, row.get("transcript_path"), "state row")
 
-    def consider(sid: str, stamp: datetime, transcript: Any, origin: str) -> None:
+    pointer = _pointer_candidate(state_rows, now)
+    if pointer is not None:
+        tiers.consider(*pointer, "pointer")
+
+    chosen = tiers.confirmed[1] or tiers.unknown[1]
+    logger.info(
+        "↩️ chief resume: %s",
+        f"resuming {chosen[:8]} ({'confirmed' if tiers.confirmed[1] else 'unknown'} substance)"
+        if chosen
+        else "nothing resumable — falling back to a fresh spawn",
+    )
+    return chosen
+
+
+def _preferred_is_resumable(row: Any, now: datetime) -> bool:
+    """Whether the stopped live chief's own row is fresh and not confirmed
+    bootstrap-only."""
+    return _fresh_fleet_config_stamp(row, now) is not None and (
+        board.has_typed_user_prompt(row.get("transcript_path")) is not False
+    )
+
+
+class _ResumeTiers:
+    """The newest resume candidate in each substance tier, as ``(stamp, sid)``."""
+
+    def __init__(self) -> None:
+        self.confirmed: Tuple[Optional[datetime], str] = (None, "")
+        self.unknown: Tuple[Optional[datetime], str] = (None, "")
+
+    def consider(self, sid: str, stamp: datetime, transcript: Any, origin: str) -> None:
         """Rank one candidate into its substance tier, newest-first. The one
         place the "confirmed bootstrap-only is never resumable" rule lives, so
         a state row and the pointer can't drift apart on it."""
-        nonlocal confirmed, unknown
         typed = board.has_typed_user_prompt(transcript)
         if typed is False:
             # Breadcrumb: this is the conversation the old
@@ -500,45 +529,30 @@ def _find_resumable_chief_session_id(
                 sid[:8], origin,
             )
             return
-        tier = confirmed if typed else unknown
+        tier = self.confirmed if typed else self.unknown
         if tier[0] is None or stamp > tier[0]:
             if typed:
-                confirmed = (stamp, sid)
+                self.confirmed = (stamp, sid)
             else:
-                unknown = (stamp, sid)
+                self.unknown = (stamp, sid)
 
-    for sid, row in state_rows.items():
-        stamp = _fresh_fleet_config_stamp(row, now)
-        if stamp is None:
-            continue
-        if str(row.get("name") or "").strip().lower() != _CHIEF_TITLE:
-            continue
-        consider(str(sid), stamp, row.get("transcript_path"), "state row")
 
+def _pointer_candidate(state_rows: Dict[str, Any], now: datetime) -> Optional[Tuple[str, datetime, Any]]:
+    """``(sid, stamp, transcript)`` of the remembered chief conversation:
+    ranked by its row's ``updated_at`` while the row exists, else by the
+    pointer's own ``seen_at``; ``None`` with no pointer or no stamp."""
     pointer = chief_pointer.read_chief_pointer(now=now)
-    if pointer:
-        pointer_sid = str(pointer.get("session_id") or "")
-        pointer_row = state_rows.get(pointer_sid)
-        pointer_row = pointer_row if isinstance(pointer_row, dict) else {}
-        pointer_stamp = board._parse_iso(
-            pointer_row.get("updated_at")
-        ) or board._parse_iso(pointer.get("seen_at"))
-        if pointer_stamp is not None:
-            consider(
-                pointer_sid,
-                pointer_stamp,
-                pointer.get("transcript_path"),
-                "pointer",
-            )
-
-    chosen = confirmed[1] or unknown[1]
-    logger.info(
-        "↩️ chief resume: %s",
-        f"resuming {chosen[:8]} ({'confirmed' if confirmed[1] else 'unknown'} substance)"
-        if chosen
-        else "nothing resumable — falling back to a fresh spawn",
-    )
-    return chosen
+    if not pointer:
+        return None
+    pointer_sid = str(pointer.get("session_id") or "")
+    pointer_row = state_rows.get(pointer_sid)
+    pointer_row = pointer_row if isinstance(pointer_row, dict) else {}
+    pointer_stamp = board._parse_iso(
+        pointer_row.get("updated_at")
+    ) or board._parse_iso(pointer.get("seen_at"))
+    if pointer_stamp is None:
+        return None
+    return pointer_sid, pointer_stamp, pointer.get("transcript_path")
 
 
 def _refresh_chief_pointer_after_resume(
@@ -687,28 +701,15 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
-    fresh_raw = body.get("fresh", request.query_params.get("fresh"))
-    fresh = str(fresh_raw).strip().lower() in ("1", "true", "yes")
-    resume_raw = body.get("resume", request.query_params.get("resume"))
-    resume = str(resume_raw).strip().lower() in ("1", "true", "yes")
-    restart_raw = body.get("restart", request.query_params.get("restart"))
-    restart = str(restart_raw).strip().lower() in ("1", "true", "yes")
+    fresh = _truthy_flag(body, request, "fresh")
+    resume = _truthy_flag(body, request, "resume")
+    restart = _truthy_flag(body, request, "restart")
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
 
     async with _CHIEF_ENSURE_LOCK:
         live, state, host_error = await _live_sessions_with_chief_label(cfg)
-        if host_error:
-            # An unreadable list is not "no chief": spawning on it
-            # could double-spawn a chief that is alive behind a host that
-            # timed out once, or stop-and-respawn one it never saw.
-            logger.warning(
-                "⚠️ chief ensure refused: session-host list unreadable: %s", host_error
-            )
-            raise HTTPException(
-                status_code=503,
-                detail="The session host is unreachable, so the chief was not started",
-            )
+        _refuse_unreadable_host(host_error)
         chief = _find_chief(live)
         preferred_sid = ""
         if chief:
@@ -728,88 +729,9 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             )
             await _stop_chief_for_respawn(cfg.session_host_port, sid)
 
-        resumed_session_id = (
-            await asyncio.to_thread(
-                _find_resumable_chief_session_id,
-                state["rows"],
-                preferred_sid=preferred_sid,
-            )
-            if resume
-            else ""
-        )
-        resume_fallback_reason = (
-            "no resumable chief conversation found in the last 24h"
-            if resume and not resumed_session_id
-            else ""
-        )
-
-        entry = _resolve_repo_entry(cfg, _CHIEF_REPO)
-        if resumed_session_id:
-            agent = "claude"
-            flags = build_resume_flags(
-                cfg, agent, model_override=cfg.chief_model,
-                session_id=resumed_session_id,
-            )
-        else:
-            agent, flags = _agent_and_flags(cfg, cfg.chief_model)
-        session, sid = await spawn_launcher_session(
-            spawn_claude_session, cfg,
-            project_dir=Path(entry.project_dir), name=_CHIEF_LABEL,
-            flags=flags, agent=agent, rows=rows, cols=cols,
-            label=_CHIEF_LABEL,
-        )
-        if resumed_session_id:
-            await asyncio.to_thread(
-                _refresh_chief_pointer_after_resume,
-                state["rows"], resumed_session_id,
-            )
-        # Order matters: rename FIRST, then /chief. The rename
-        # also forwards the agent-native /rename into the PTY, so it must
-        # land after boot but before the skill invocation — typed the other
-        # way round it interleaves with /chief's processing and the agent
-        # rejects it ("Args from unknown skill: rename"). The ready-wait
-        # here plus _type_into_session's own settle give the rename a clear
-        # beat before /chief goes in. Best-effort — a rename failure never
-        # fails the spawn. A resumed conversation skips /chief below —
-        # it's already past that point — but still gets the same rename so
-        # its title reads "chief" immediately rather than waiting on the
-        # self-heal signals in _reconcile_chief_label.
-        try:
-            await _await_dispatch_ready(cfg.session_host_port, sid)
-        except HTTPException:
-            try:
-                await asyncio.to_thread(
-                    session_client.stop, cfg.session_host_port, sid, "kill"
-                )
-            except session_client.SessionHostError:
-                pass
-            raise
-        # First paint is not "input live" — wait for boot output to go
-        # quiet before typing the rename, or its CR gets swallowed and the
-        # text merges with the /chief paste (see _await_pty_quiescent). The
-        # later _type_into_session call for the /chief command itself also
-        # runs this wait, but by then boot has already settled here.
-        await _await_pty_quiescent(cfg.session_host_port, sid)
-        try:
-            await asyncio.to_thread(
-                session_client.rename,
-                cfg.session_host_port, sid, _CHIEF_TITLE,
-            )
-        except session_client.SessionHostError as exc:
-            logger.warning(
-                "⚠️ chief ensure could not name session %s: %s",
-                sid[:8], exc,
-            )
-        if not resumed_session_id:
-            await _type_into_session(cfg.session_host_port, sid, _CHIEF_COMMAND)
-
-        await audit_session_start_and_maybe_mirror(
-            cfg, request, body,
-            sid=sid, agent=agent, name=_CHIEF_LABEL,
-            project=entry.project_dir,
-            skill=None if resumed_session_id else _CHIEF_COMMAND,
-            resume=bool(resumed_session_id),
-            audit_mod=audit, mirror_fn=open_local_terminal_window,
+        resumed_session_id = await _resume_target(state["rows"], preferred_sid) if resume else ""
+        session, sid = await _spawn_chief(
+            cfg, request, body, state["rows"], resumed_session_id, rows=rows, cols=cols,
         )
         # The branch ensure took, paired with the "kept" line above:
         # a chief that disappears and comes back is diagnosable from here.
@@ -823,5 +745,117 @@ async def ensure_chief(request: Request) -> Dict[str, Any]:
             "spawned": True,
             "session": session,
             "resumed": bool(resumed_session_id),
-            "resume_fallback_reason": resume_fallback_reason,
+            "resume_fallback_reason": (
+                "no resumable chief conversation found in the last 24h"
+                if resume and not resumed_session_id
+                else ""
+            ),
         }
+
+
+async def _resume_target(state_rows: Dict[str, Any], preferred_sid: str) -> str:
+    """The chief conversation a resume reattaches, ``""`` for none, read off the loop."""
+    return await asyncio.to_thread(
+        _find_resumable_chief_session_id, state_rows, preferred_sid=preferred_sid,
+    )
+
+
+def _refuse_unreadable_host(host_error: Any) -> None:
+    """503 when the session list could not be read.
+
+    An unreadable list is not "no chief": spawning on it could double-spawn a
+    chief that is alive behind a host that timed out once, or stop-and-respawn
+    one it never saw.
+    """
+    if not host_error:
+        return
+    logger.warning(
+        "⚠️ chief ensure refused: session-host list unreadable: %s", host_error
+    )
+    raise HTTPException(
+        status_code=503,
+        detail="The session host is unreachable, so the chief was not started",
+    )
+
+
+def _truthy_flag(body: Dict[str, Any], request: Request, name: str) -> bool:
+    """A body field, else the same-named query parameter, read as a boolean."""
+    raw = body.get(name, request.query_params.get(name))
+    return str(raw).strip().lower() in ("1", "true", "yes")
+
+
+async def _spawn_chief(
+    cfg: WebappConfig, request: Request, body: Dict[str, Any], state_rows: Dict[str, Any],
+    resumed_session_id: str, *, rows: int, cols: int,
+) -> Tuple[Dict[str, Any], str]:
+    """Spawn the chief, resumed into ``resumed_session_id`` or fresh with
+    ``/chief`` typed in, name it and audit the start; ``(session, sid)``."""
+    entry = _resolve_repo_entry(cfg, _CHIEF_REPO)
+    if resumed_session_id:
+        agent = "claude"
+        flags = build_resume_flags(
+            cfg, agent, model_override=cfg.chief_model,
+            session_id=resumed_session_id,
+        )
+    else:
+        agent, flags = _agent_and_flags(cfg, cfg.chief_model)
+    session, sid = await spawn_launcher_session(
+        spawn_claude_session, cfg,
+        project_dir=Path(entry.project_dir), name=_CHIEF_LABEL,
+        flags=flags, agent=agent, rows=rows, cols=cols,
+        label=_CHIEF_LABEL,
+    )
+    if resumed_session_id:
+        await asyncio.to_thread(
+            _refresh_chief_pointer_after_resume,
+            state_rows, resumed_session_id,
+        )
+    # Order matters: rename FIRST, then /chief. The rename
+    # also forwards the agent-native /rename into the PTY, so it must
+    # land after boot but before the skill invocation — typed the other
+    # way round it interleaves with /chief's processing and the agent
+    # rejects it ("Args from unknown skill: rename"). The ready-wait
+    # here plus _type_into_session's own settle give the rename a clear
+    # beat before /chief goes in. Best-effort — a rename failure never
+    # fails the spawn. A resumed conversation skips /chief below —
+    # it's already past that point — but still gets the same rename so
+    # its title reads "chief" immediately rather than waiting on the
+    # self-heal signals in _reconcile_chief_label.
+    try:
+        await _await_dispatch_ready(cfg.session_host_port, sid)
+    except HTTPException:
+        try:
+            await asyncio.to_thread(
+                session_client.stop, cfg.session_host_port, sid, "kill"
+            )
+        except session_client.SessionHostError:
+            pass
+        raise
+    # First paint is not "input live" — wait for boot output to go
+    # quiet before typing the rename, or its CR gets swallowed and the
+    # text merges with the /chief paste (see _await_pty_quiescent). The
+    # later _type_into_session call for the /chief command itself also
+    # runs this wait, but by then boot has already settled here.
+    await _await_pty_quiescent(cfg.session_host_port, sid)
+    try:
+        await asyncio.to_thread(
+            session_client.rename,
+            cfg.session_host_port, sid, _CHIEF_TITLE,
+        )
+    except session_client.SessionHostError as exc:
+        logger.warning(
+            "⚠️ chief ensure could not name session %s: %s",
+            sid[:8], exc,
+        )
+    if not resumed_session_id:
+        await _type_into_session(cfg.session_host_port, sid, _CHIEF_COMMAND)
+
+    await audit_session_start_and_maybe_mirror(
+        cfg, request, body,
+        sid=sid, agent=agent, name=_CHIEF_LABEL,
+        project=entry.project_dir,
+        skill=None if resumed_session_id else _CHIEF_COMMAND,
+        resume=bool(resumed_session_id),
+        audit_mod=audit, mirror_fn=open_local_terminal_window,
+    )
+    return session, sid

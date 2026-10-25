@@ -494,6 +494,27 @@ def _claude_scan(
     started = _started_epoch(session)
     if not project_dir or started is None:
         return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_UNCORRELATED
+    if _claude_folder_shared(session, live, project_dir):
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_SHARED_FOLDER
+
+    folders = _claude_project_folders(project_dir)
+    if folders is None:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
+    newest, newest_at = _newest_jsonl(folders)
+    if newest is None:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
+    if newest_at < started - _CLAUDE_MTIME_SLOP_SECONDS:
+        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_STALE
+    if not disprove:
+        return newest, _TITLE_CHECK_NOT_CHECKED, ""
+    verdict = _disprove_by_live_title(newest, session)
+    if verdict == _TITLE_CHECK_DISPROVED:
+        return None, verdict, _CLAUDE_REFUSED_TITLE
+    return newest, verdict, ""
+
+
+def _claude_folder_shared(session: Dict[str, Any], live: Iterable[Dict[str, Any]], project_dir: str) -> bool:
+    """Whether another alive Claude session runs in this session's folder."""
     normalized = _normalize_dir(project_dir)
     sid = str(session.get("session_id") or "")
     for other in live or ():
@@ -503,13 +524,14 @@ def _claude_scan(
             and other.get("alive")
             and _normalize_dir(other.get("project_dir")) == normalized
         ):
-            return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_SHARED_FOLDER
+            return True
+    return False
 
+
+def _newest_jsonl(folders: Iterable[Path]) -> Tuple[Optional[Path], float]:
+    """The most recently written ``*.jsonl`` across ``folders`` and its mtime."""
     newest: Optional[Path] = None
     newest_at = 0.0
-    folders = _claude_project_folders(project_dir)
-    if folders is None:
-        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
     for folder in folders:
         try:
             candidates = list(folder.glob("*.jsonl"))
@@ -522,17 +544,7 @@ def _claude_scan(
                 continue
             if newest is None or written > newest_at:
                 newest, newest_at = path, written
-    if newest is None:
-        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_NO_FILE
-    if newest_at < started - _CLAUDE_MTIME_SLOP_SECONDS:
-        return None, _TITLE_CHECK_NOT_CHECKED, _CLAUDE_REFUSED_STALE
-    if not disprove:
-        return newest, _TITLE_CHECK_NOT_CHECKED, ""
-    verdict = _disprove_by_live_title(newest, session)
-    if verdict == _TITLE_CHECK_DISPROVED:
-        return None, verdict, _CLAUDE_REFUSED_TITLE
-    return newest, verdict, ""
-
+    return newest, newest_at
 
 def claude_resume_id(session: Dict[str, Any]) -> Optional[str]:
     """The conversation id a Claude session was launched to resume, if any.

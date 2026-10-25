@@ -721,41 +721,9 @@ class RunJobCommand(BaseCommand):
         if job_env is None:
             return 2
 
-        started_at = datetime.now().isoformat(timespec="seconds")
         dry_run = bool(getattr(args, "dry_run", False))
-        run_meta: Dict[str, Any] = seed_run_meta(
-            job, args.trigger, started_at, run_id=run_dir.name, status="running"
-        )
-        # Persist the typed-parameter payload so the history
-        # row can replay it and the meta line can show the values back.
-        if values:
-            run_meta["params"] = values
-        # Provenance: a Task Scheduler fire reaches this
-        # executor directly, so it stamps its own source here; API fires
-        # carry trigger_source="api" (+ip/ua/token id) pre-written by the
-        # route into the run dir this executor merges into.
-        if args.trigger == "scheduled":
-            run_meta["trigger_source"] = "schtasks"
-        # Dry-run 'execute' mode: the child still spawns, but
-        # JOB_DRY_RUN=1 lets an opted-in script no-op its side effects.
-        # The flag is stamped so history shows the 🧪 chip.
-        if dry_run:
-            run_meta["dry_run"] = True
-        write_run_json(run_dir, **run_meta)
-        logger.info(
-            f"🚀 run-job {job.id} → {run_dir.name} (trigger={args.trigger})"
-        )
-
-        env = os.environ.copy()
-        # Job env overlay first, then the invocation's own extra_env (typed
-        # params + kind env) so a per-run param can override a static value.
-        env.update(job_env)
-        env.update(extra_env)
-        artifact_dir = run_dir / "artifacts"
-        artifact_dir.mkdir(parents=True, exist_ok=True)
-        env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
-        if dry_run:
-            env["JOB_DRY_RUN"] = "1"
+        _write_running_record(job, args, run_dir, values, dry_run)
+        env = _child_env(job_env, extra_env, run_dir, dry_run)
         spawn_started = time.monotonic()
         exit_code, status, sampler, watchdog = _spawn_and_wait(
             job, argv, cwd, env, run_dir
@@ -786,3 +754,47 @@ class RunJobCommand(BaseCommand):
         if status == "failed":
             return 1
         return 0 if exit_code == 0 else 1
+
+
+def _write_running_record(
+    job: Job, args: argparse.Namespace, run_dir: Path, values: Optional[Dict[str, Any]], dry_run: bool,
+) -> None:
+    """Flip the run to ``running`` on disk, with its params and provenance."""
+    started_at = datetime.now().isoformat(timespec="seconds")
+    run_meta: Dict[str, Any] = seed_run_meta(
+        job, args.trigger, started_at, run_id=run_dir.name, status="running"
+    )
+    # Persist the typed-parameter payload so the history
+    # row can replay it and the meta line can show the values back.
+    if values:
+        run_meta["params"] = values
+    # Provenance: a Task Scheduler fire reaches this
+    # executor directly, so it stamps its own source here; API fires
+    # carry trigger_source="api" (+ip/ua/token id) pre-written by the
+    # route into the run dir this executor merges into.
+    if args.trigger == "scheduled":
+        run_meta["trigger_source"] = "schtasks"
+    # Dry-run 'execute' mode: the child still spawns, but
+    # JOB_DRY_RUN=1 lets an opted-in script no-op its side effects.
+    # The flag is stamped so history shows the 🧪 chip.
+    if dry_run:
+        run_meta["dry_run"] = True
+    write_run_json(run_dir, **run_meta)
+    logger.info(
+        f"🚀 run-job {job.id} → {run_dir.name} (trigger={args.trigger})"
+    )
+
+
+def _child_env(job_env: Dict[str, str], extra_env: Dict[str, str], run_dir: Path, dry_run: bool) -> Dict[str, str]:
+    """The child's environment: ours, the job overlay, then the invocation's."""
+    env = os.environ.copy()
+    # Job env overlay first, then the invocation's own extra_env (typed
+    # params + kind env) so a per-run param can override a static value.
+    env.update(job_env)
+    env.update(extra_env)
+    artifact_dir = run_dir / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
+    if dry_run:
+        env["JOB_DRY_RUN"] = "1"
+    return env

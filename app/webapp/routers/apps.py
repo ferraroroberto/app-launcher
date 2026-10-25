@@ -235,150 +235,7 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # streamed). `agent` must be a key in `agents.AGENTS` (see
     # `src/agents.py` for the full set).
     if entry.kind == KIND_CLAUDE_CODE:
-        if not entry.project_dir:
-            raise HTTPException(
-                status_code=400,
-                detail=f"claude-code entry {entry.id} has no project_dir",
-            )
-        body = await maybe_json(request)
-        mode = str(body.get("mode") or "pty").strip().lower()
-        agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
-        # Resume: reopen the agent's own native session picker.
-        # It swaps the normal flags for the agent's resume invocation but
-        # honours the requested `mode`: with Detached on, the
-        # picker renders in the detached console window; with Detached off it
-        # streams to the phone over a PTY. Resume no longer forces a PTY.
-        resume = bool(body.get("resume"))
-        requested_model = str(body.get("model") or "").strip()
-        # Phone's real terminal size: a pty session spawns at
-        # these dimensions so a ratatui TUI's first frame isn't cut. Absent
-        # (older client, or remote mode) → the legacy 40×120 default.
-        rows = safe_int(body, "rows", 40)
-        cols = safe_int(body, "cols", 120)
-        if agent not in agents.AGENTS:
-            raise HTTPException(
-                status_code=400, detail=f"unknown agent: {agent}"
-            )
-        # Claude Code is the launcher's core agent — its launch path is
-        # unguarded, exactly as before the other agents were gated. Other agents
-        # (Antigravity, Copilot) are checked server-side too, as
-        # defence-in-depth behind the Coding tab's already-disabled button.
-        if agent != agents.DEFAULT_AGENT and not agents.is_installed(agent):
-            raise HTTPException(
-                status_code=400,
-                detail=f"{agents.AGENTS[agent].label} is not installed",
-            )
-        if requested_model:
-            provider, separator, model_value = requested_model.partition(":")
-            if not separator or provider != agent:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"model {requested_model!r} does not belong to {agent}",
-                )
-            # The prefix match is not enough on its own, in two ways.
-            #
-            # First: four of the six agents take no per-launch model at all.
-            # Antigravity, Copilot and Grok send no `--model`, and Pi's comes
-            # from the persisted `pi_model` setting - so a request naming one
-            # fell straight through to the cfg-only builder and returned 200
-            # on a session running whatever the agent picked for itself,
-            # which a caller cannot tell apart from having got what it asked
-            # for. Which agents those are is read off the registry
-            # (`Agent.per_launch_model`), not re-listed here, so a seventh
-            # agent inherits the guard. Refusing is safe: no first-party
-            # bundle has ever sent one - the `startsWith(agent + ':')` guard
-            # shipped in the very commit that introduced `payload.model`, and
-            # the model combo has only ever offered `claude:`/`codex:`
-            # values - so the cached-client risk the issue flagged does not
-            # exist, and a non-browser caller learns from the 400.
-            if not agents.AGENTS[agent].per_launch_model:
-                raise HTTPException(
-                    status_code=400,
-                    detail=(
-                        f"{agents.AGENTS[agent].label} takes no per-launch "
-                        f"model, so {requested_model!r} cannot be applied - "
-                        "launch without one and choose the model in the agent"
-                    ),
-                )
-            # Second: for the two that do, an out-of-catalog *value* used to
-            # launch silently on the CLI's own default.
-            # build_claude_flags / build_codex_flags emit no --model at all
-            # for a value they don't recognise *and* discard the persisted
-            # model (model_override is not None), so a phone holding a
-            # pre-rename cached bundle got a 200 and a session on the wrong
-            # model with nothing said. Reject it instead, as the Life OS
-            # and Board launch routes already do. The
-            # accepted set is exactly what the builder would honour, so a
-            # legacy-but-still-supported alias keeps working.
-            if model_value not in _LAUNCH_MODEL_CATALOG[agent]:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"unsupported model for {agent}: {model_value!r}",
-                )
-        else:
-            model_value = ""
-        if resume:
-            # Swap the normal flags for the agent's resume invocation; the
-            # requested `mode` decides where its picker renders — a detached
-            # console (mode="remote") or a streamed PTY.
-            flags = build_resume_flags(
-                cfg, agent, model_override=model_value or None
-            )
-        else:
-            if agent == "claude":
-                flags = build_claude_flags(cfg, model_override=model_value or None)
-            elif agent == "codex":
-                flags = build_codex_flags(cfg, model_override=model_value or None)
-            else:
-                flags = _NO_MODEL_FLAG_BUILDERS[agent](cfg)
-
-        if mode == "remote":
-            session = await spawn_session_or_400(
-                spawn_claude_session,
-                Path(entry.project_dir),
-                entry.name,
-                flags,
-                cfg.session_host_port,
-                "remote",
-                agent,
-            )
-            sid = str(session.get("session_id") or "")
-            await audit_off_loop(
-                audit.audit_event,
-                "remote_launch",
-                session=sid,
-                agent=agent,
-                name=entry.name,
-                project=entry.project_dir,
-                client=client_ip(request),
-            )
-            return {
-                "launched": entry.id,
-                "name": entry.name,
-                "kind": entry.kind,
-                "agent": agent,
-                "mode": "remote",
-                "session": session,
-            }
-
-        session, sid = await spawn_launcher_session(
-            spawn_claude_session, cfg,
-            project_dir=Path(entry.project_dir), name=entry.name,
-            flags=flags, agent=agent, rows=rows, cols=cols,
-        )
-        await audit_session_start_and_maybe_mirror(
-            cfg, request, body,
-            sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
-            resume=resume, audit_mod=audit, mirror_fn=open_local_terminal_window,
-        )
-        return {
-            "launched": entry.id,
-            "name": entry.name,
-            "kind": entry.kind,
-            "agent": agent,
-            "mode": "pty",
-            "session": session,
-        }
+        return await _launch_coding(entry, cfg, request)
 
     # everything else: a fresh CMD window running the bat. `stealth` picks the Apps tab's 🚫👁 button
     # instead of its ⚡ one — same bat, same process shape, no console window on screen. Absent or false keeps
@@ -411,6 +268,164 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
         "kind": entry.kind,
         "stealth": stealth,
     }
+
+
+async def _launch_coding(entry: AppEntry, cfg: WebappConfig, request: Request) -> Dict[str, Any]:
+    """Launch a Coding-tab row as a PTY session or a detached console."""
+    if not entry.project_dir:
+        raise HTTPException(
+            status_code=400,
+            detail=f"claude-code entry {entry.id} has no project_dir",
+        )
+    body = await maybe_json(request)
+    mode = str(body.get("mode") or "pty").strip().lower()
+    agent = str(body.get("agent") or agents.DEFAULT_AGENT).strip().lower()
+    # Resume: reopen the agent's own native session picker.
+    # It swaps the normal flags for the agent's resume invocation but
+    # honours the requested `mode`: with Detached on, the
+    # picker renders in the detached console window; with Detached off it
+    # streams to the phone over a PTY. Resume no longer forces a PTY.
+    resume = bool(body.get("resume"))
+    requested_model = str(body.get("model") or "").strip()
+    # Phone's real terminal size: a pty session spawns at
+    # these dimensions so a ratatui TUI's first frame isn't cut. Absent
+    # (older client, or remote mode) → the legacy 40×120 default.
+    rows = safe_int(body, "rows", 40)
+    cols = safe_int(body, "cols", 120)
+    if agent not in agents.AGENTS:
+        raise HTTPException(
+            status_code=400, detail=f"unknown agent: {agent}"
+        )
+    # Claude Code is the launcher's core agent — its launch path is
+    # unguarded, exactly as before the other agents were gated. Other agents
+    # (Antigravity, Copilot) are checked server-side too, as
+    # defence-in-depth behind the Coding tab's already-disabled button.
+    if agent != agents.DEFAULT_AGENT and not agents.is_installed(agent):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{agents.AGENTS[agent].label} is not installed",
+        )
+    model_value = _validated_launch_model(agent, requested_model)
+    flags = _coding_flags(cfg, agent, resume, model_value)
+
+    if mode == "remote":
+        session = await spawn_session_or_400(
+            spawn_claude_session,
+            Path(entry.project_dir),
+            entry.name,
+            flags,
+            cfg.session_host_port,
+            "remote",
+            agent,
+        )
+        sid = str(session.get("session_id") or "")
+        await audit_off_loop(
+            audit.audit_event,
+            "remote_launch",
+            session=sid,
+            agent=agent,
+            name=entry.name,
+            project=entry.project_dir,
+            client=client_ip(request),
+        )
+        return {
+            "launched": entry.id,
+            "name": entry.name,
+            "kind": entry.kind,
+            "agent": agent,
+            "mode": "remote",
+            "session": session,
+        }
+
+    session, sid = await spawn_launcher_session(
+        spawn_claude_session, cfg,
+        project_dir=Path(entry.project_dir), name=entry.name,
+        flags=flags, agent=agent, rows=rows, cols=cols,
+    )
+    await audit_session_start_and_maybe_mirror(
+        cfg, request, body,
+        sid=sid, agent=agent, name=entry.name, project=entry.project_dir,
+        resume=resume, audit_mod=audit, mirror_fn=open_local_terminal_window,
+    )
+    return {
+        "launched": entry.id,
+        "name": entry.name,
+        "kind": entry.kind,
+        "agent": agent,
+        "mode": "pty",
+        "session": session,
+    }
+
+
+def _validated_launch_model(agent: str, requested_model: str) -> str:
+    """The model value of a Coding launch's ``provider:value`` pick, ``""``
+    for none; 400 when it names another agent, an agent that takes no
+    per-launch model, or a value outside the agent's catalog."""
+    if not requested_model:
+        return ""
+    provider, separator, model_value = requested_model.partition(":")
+    if not separator or provider != agent:
+        raise HTTPException(
+            status_code=400,
+            detail=f"model {requested_model!r} does not belong to {agent}",
+        )
+    # The prefix match is not enough on its own, in two ways.
+    #
+    # First: four of the six agents take no per-launch model at all.
+    # Antigravity, Copilot and Grok send no `--model`, and Pi's comes
+    # from the persisted `pi_model` setting - so a request naming one
+    # fell straight through to the cfg-only builder and returned 200
+    # on a session running whatever the agent picked for itself,
+    # which a caller cannot tell apart from having got what it asked
+    # for. Which agents those are is read off the registry
+    # (`Agent.per_launch_model`), not re-listed here, so a seventh
+    # agent inherits the guard. Refusing is safe: no first-party
+    # bundle has ever sent one - the `startsWith(agent + ':')` guard
+    # shipped in the very commit that introduced `payload.model`, and
+    # the model combo has only ever offered `claude:`/`codex:`
+    # values - so the cached-client risk the issue flagged does not
+    # exist, and a non-browser caller learns from the 400.
+    if not agents.AGENTS[agent].per_launch_model:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{agents.AGENTS[agent].label} takes no per-launch "
+                f"model, so {requested_model!r} cannot be applied - "
+                "launch without one and choose the model in the agent"
+            ),
+        )
+    # Second: for the two that do, an out-of-catalog *value* used to
+    # launch silently on the CLI's own default.
+    # build_claude_flags / build_codex_flags emit no --model at all
+    # for a value they don't recognise *and* discard the persisted
+    # model (model_override is not None), so a phone holding a
+    # pre-rename cached bundle got a 200 and a session on the wrong
+    # model with nothing said. Reject it instead, as the Life OS
+    # and Board launch routes already do. The
+    # accepted set is exactly what the builder would honour, so a
+    # legacy-but-still-supported alias keeps working.
+    if model_value not in _LAUNCH_MODEL_CATALOG[agent]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unsupported model for {agent}: {model_value!r}",
+        )
+    return model_value
+
+
+def _coding_flags(cfg: WebappConfig, agent: str, resume: bool, model_value: str) -> List[str]:
+    """The agent's CLI flags for a Coding launch, or its resume invocation."""
+    if resume:
+        # Swap the normal flags for the agent's resume invocation; the
+        # requested `mode` decides where its picker renders — a detached
+        # console (mode="remote") or a streamed PTY.
+        return build_resume_flags(
+            cfg, agent, model_override=model_value or None
+        )
+    if agent == "claude":
+        return build_claude_flags(cfg, model_override=model_value or None)
+    if agent == "codex":
+        return build_codex_flags(cfg, model_override=model_value or None)
+    return _NO_MODEL_FLAG_BUILDERS[agent](cfg)
 
 
 @router.get("/api/apps/running")
