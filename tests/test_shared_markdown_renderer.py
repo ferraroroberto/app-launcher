@@ -33,11 +33,11 @@ def _read(name: str) -> str:
 
 
 def test_both_tabs_import_it_from_the_shared_module():
-    for name in ("life-os-content.js", "transcript-render.js"):
+    for name in ("life-os/life-os-content.js", "chat/transcript-render.js"):
         source = _read(name)
-        assert "from './markdown.js'" in source, f"{name} must import the shared renderer"
-        for feature_module in ("life-os.js", "life-os-content.js"):
-            assert f"renderMarkdown }} from './{feature_module}'" not in source, (
+        assert "from '../markdown.js'" in source, f"{name} must import the shared renderer"
+        for feature_module in ("../life-os.js", "./life-os-content.js", "../life-os/life-os-content.js"):
+            assert f"renderMarkdown }} from '{feature_module}'" not in source, (
                 f"{name} must not reach into a Life OS feature module for it"
             )
 

@@ -307,7 +307,7 @@ def test_real_surfaces_are_usable(cfg: E2EConfig) -> None:
     "path,surface,targets",
     [
         ("app/webapp/static/board.js", "board", _BOARD_TARGETS),
-        ("app/webapp/static/board-dispatch.js", "board", _BOARD_TARGETS),
+        ("app/webapp/static/board/board-dispatch.js", "board", _BOARD_TARGETS),
         ("app/webapp/routers/board_chief.py", "board", _BOARD_TARGETS),
         ("tests/e2e/test_board_tab.py", "board", _BOARD_TARGETS),
         ("app/webapp/static/life-os.js", "lifeos", _LIFEOS_TARGETS),
@@ -335,7 +335,7 @@ def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
         "app/webapp/static/index.html",
         "app/webapp/static/main.js",
         "app/webapp/static/state.js",
-        "app/webapp/static/claude-options.js",
+        "app/webapp/static/settings/claude-options.js",
         "app/webapp/server.py",
         "app/webapp/routers/_helpers.py",
         "src/session_host.py",

@@ -723,8 +723,8 @@ label      = "repo-meta"
 name     = "board"
 paths    = [
     "app/webapp/static/board.js",
-    "app/webapp/static/board-dispatch.js",
-    "app/webapp/static/board-answers.js",
+    "app/webapp/static/board/board-dispatch.js",
+    "app/webapp/static/board/board-answers.js",
     "app/webapp/static/board/drawer.js",
     "app/webapp/static/board/chief-plan.js",
     "app/webapp/static/board/plan-prune.js",
@@ -774,9 +774,9 @@ pytest_targets = [
 name     = "lifeos"
 paths    = [
     "app/webapp/static/life-os.js",
-    "app/webapp/static/life-os-content.js",
-    "app/webapp/static/life-os-convos.js",
-    "app/webapp/static/telegram-setup.js",
+    "app/webapp/static/life-os/life-os-content.js",
+    "app/webapp/static/life-os/life-os-convos.js",
+    "app/webapp/static/settings/telegram-setup.js",
     "app/webapp/routers/life_os.py",
     "app/webapp/routers/life_os_conversations.py",
     "app/webapp/routers/life_os_files.py",

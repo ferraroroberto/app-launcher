@@ -353,7 +353,7 @@ def _probe_route_frame_classifies_shutdown_vs_output(page: Page) -> None:
 _REPAINT_BATCH_PROBE = """
 async () => {
   const live = """ + _LIVE_MODULE + """;
-  const mod = await import(live('terminal-connection.js'));
+  const mod = await import(live('terminal/terminal-connection.js'));
 
   const terminal = {
     isFullscreen: true,
@@ -457,7 +457,7 @@ def _probe_reconnect_closes_the_previous_socket(page: Page) -> None:
         """
         async () => {
           const live = """ + live + """;
-          const { connectTerminalWs } = await import(live('terminal-connection.js'));
+          const { connectTerminalWs } = await import(live('terminal/terminal-connection.js'));
 
           class FakeWs extends EventTarget {
             constructor(url) {
@@ -511,7 +511,7 @@ def _probe_reconnect_closes_the_previous_socket(page: Page) -> None:
 # touches[0]/changedTouches[0].clientX/Y and timeStamp.
 _NATIVE_SCROLL_PROBE = r"""
 async () => {
-  const { enableNativeTouchScroll } = await import('/static/terminal-touch.js');
+  const { enableNativeTouchScroll } = await import('/static/terminal/terminal-touch.js');
 
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:240px;';

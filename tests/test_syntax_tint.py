@@ -1,6 +1,6 @@
 """Unit pin for the File view's token colours (issue #1749).
 
-``app/webapp/static/syntax-tint.js`` colours a changed code file for the
+``app/webapp/static/changes/syntax-tint.js`` colours a changed code file for the
 Changed files panel's File view: a regex tokenizer per language family, escape
 first, one balanced HTML string per source line. It is pinned without a
 browser: this module shells out to plain Node to import the real ES module, in

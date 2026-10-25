@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';
 
 const { fmtDuration } = await import('../../app/webapp/static/dom-utils.js');
-const { formatDuration } = await import('../../app/webapp/static/jobs-row.js');
+const { formatDuration } = await import('../../app/webapp/static/jobs/jobs-row.js');
 
 const H = 3600;
 const granular = (secs) => fmtDuration(secs, { granular: true });

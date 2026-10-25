@@ -8,7 +8,7 @@ import {
   KEY_BYTES,
   SHIFT_KEY_BYTES,
   CTRL_KEY_BYTES,
-} from '../../app/webapp/static/terminal-keys-bytes.js';
+} from '../../app/webapp/static/terminal/terminal-keys-bytes.js';
 
 assert.deepEqual(KEY_BYTES, {
   up: '\x1b[A', down: '\x1b[B', right: '\x1b[C', left: '\x1b[D',

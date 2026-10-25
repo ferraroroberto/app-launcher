@@ -122,7 +122,7 @@ def test_the_client_draws_every_shape_the_server_sends():
     """screen-cursor.js has a drawing for each name; a missing one would
     silently draw the arrow."""
     js = (Path(__file__).resolve().parents[3]
-          / "app" / "webapp" / "static" / "screen-cursor.js").read_text(encoding="utf-8")
+          / "app" / "webapp" / "static" / "screen" / "screen-cursor.js").read_text(encoding="utf-8")
     for name in desktop_cursor.SHAPES:
         assert f"'{name}':" in js, name
 

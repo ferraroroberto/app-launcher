@@ -62,9 +62,9 @@ import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
   boardRepoFilter, getBoardDispatchModel, isChiefCard, matchesRepoFilter, syncDispatchBar,
   wireDispatch,
-} from './board-dispatch.js';
-import { wireChiefAnswers } from './board-answers.js';
-import { openQuestionCount } from './chief-keys.js';
+} from './board/board-dispatch.js';
+import { wireChiefAnswers } from './board/board-answers.js';
+import { openQuestionCount } from './board/chief-keys.js';
 import {
   buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
 } from './board/drawer.js';

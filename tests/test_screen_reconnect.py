@@ -1,6 +1,6 @@
 """Unit pin for the Screen view's reconnect decisions (issue #1603).
 
-``app/webapp/static/screen-reconnect.js`` holds the backoff steps, their bound
+``app/webapp/static/screen/screen-reconnect.js`` holds the backoff steps, their bound
 and the remembered-monitor choice as pure functions. Like
 ``test_screen_gestures``, this shells out to plain Node to import the real ES
 module and assert against it, in ``tests/js/screen_reconnect.test.mjs``;

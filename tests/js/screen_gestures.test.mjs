@@ -13,9 +13,9 @@ const {
   GESTURE, frameFraction, stagePoint, movedPastTap, isDoubleTap, classifyTwoFinger,
   wheelFromDrag, wheelFromWheelEvent, comboKey, padGain, padStep, followPan, controlStyle,
   anyMovedPastTap, isMultiFingerTap, LOUPE, loupeLayout,
-} = await import('../../app/webapp/static/screen-gestures.js');
+} = await import('../../app/webapp/static/screen/screen-gestures.js');
 const { CURSOR_SHAPES, cursorShape, cursorSvg } = await import(
-  '../../app/webapp/static/screen-cursor.js');
+  '../../app/webapp/static/screen/screen-cursor.js');
 
 const NO_ZOOM = { scale: 1, x: 0, y: 0 };
 
@@ -220,7 +220,7 @@ assert.equal(comboKey(undefined), null);
 // Hardware keyboard (#1723): which key presses become a `key` message.
 {
   const { hardwareKey, allowKeyRepeat, KEY_REPEAT } = await import(
-    '../../app/webapp/static/screen-gestures.js');
+    '../../app/webapp/static/screen/screen-gestures.js');
   const press = (key, extra) => hardwareKey({ key, ...(extra || {}) });
 
   // Named keys, with and without a modifier.

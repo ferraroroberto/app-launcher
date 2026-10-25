@@ -1,6 +1,6 @@
 """Unit pin for Screen control's gesture maths (issue #1521).
 
-``app/webapp/static/screen-gestures.js`` holds the letterbox + zoom mapping
+``app/webapp/static/screen/screen-gestures.js`` holds the letterbox + zoom mapping
 and the tap / long-press / double-tap / pinch / scroll decisions as pure
 functions, because Playwright's touch emulation only taps. Like
 ``test_swipe_row``, this shells out to plain Node to import the real ES module

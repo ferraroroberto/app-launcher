@@ -20,7 +20,7 @@ import {
 import { openTerminal } from '../terminal.js';
 import { chatAvailable, modeReason, openSessionOverlay, terminalAvailable } from '../session-overlay.js';
 import { mountComposer } from '../composer.js';
-import { uploadSessionFile } from '../terminal-compose.js';
+import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { voiceDictationAvailable } from '../voice.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { terminalJsonApi } from '../webauthn.js';
@@ -28,7 +28,7 @@ import { CHIEF_KILL_CONFIRM, channelKillConfirm, isChannelSession } from '../dom
 import { renderMarkdown } from '../markdown.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
-import { isChiefCard } from '../board-dispatch.js';
+import { isChiefCard } from './board-dispatch.js';
 import { fetchBoard, noteBoardEdit, renderBoard, sessionLabel } from '../board.js';
 
 // Chief-only exchange refresh: loadExchange is one-shot, fine for a

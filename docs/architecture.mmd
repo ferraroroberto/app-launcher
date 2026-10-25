@@ -80,14 +80,14 @@ reads the PTY screen + types keystrokes (#1424)"]
   subgraph static["app/webapp/static/ — vanilla JS PWA"]
     STATICJS["index.html, tabs.js, state.js,
 session-overlay.js (Terminal ⇄ Chat modes of one
-session overlay, #982) over terminal*.js (PTY pane)
-+ session-transcript.js (chat pane) with its
+session overlay, #982) over terminal.js + terminal/ (PTY pane)
++ chat/session-transcript.js (chat pane) with its
 transcript-decisions.js (question/plan cards +
 plan-picker panel, #1309) and transcript-render.js
 (entry renderer, shared with life-os-viewer.js, #1629),
 composer.js (shared composer, #980),
-sessions.js, jobs*.js, board*.js, apps*.js,
-life-os.js, life-os-viewer.js, voice.js"]
+sessions.js, jobs.js + jobs/, board.js + board/, apps.js + apps/,
+life-os.js + life-os/, screen/, settings/, voice.js"]
   end
   R_MISC --> STATICJS
 

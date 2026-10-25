@@ -3,7 +3,7 @@
 // tests/test_repaint_scrollback.py.
 
 import assert from 'node:assert/strict';
-import { CLEAR_SCROLLBACK, createRepaintClearer } from '../../app/webapp/static/repaint-scrollback.js';
+import { CLEAR_SCROLLBACK, createRepaintClearer } from '../../app/webapp/static/terminal/repaint-scrollback.js';
 
 const ESC = '\x1b';
 const pre = (n) => ESC + '[H' + (ESC + '[2K' + ESC + '[1B').repeat(n) + ESC + '[H';

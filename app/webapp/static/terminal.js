@@ -28,7 +28,7 @@
 import { els, state, SESSIONS_POLL_MS } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
-import { enableNativeTouchScroll } from './terminal-touch.js';
+import { enableNativeTouchScroll } from './terminal/terminal-touch.js';
 import {
   announceMirrorWindow,
   dropEarlyMirrorMarker,
@@ -36,22 +36,22 @@ import {
   mirrorDocTitle,
   refreshTerminalTitle,
   setTerminalTitleText,
-} from './terminal-mirror.js';
+} from './terminal/terminal-mirror.js';
 import {
   framePaste,
   mountTerminalComposer,
   resetComposeBar,
   sendSubmit,
   terminalComposer,
-} from './terminal-compose.js';
-import { wireTerminalImage } from './terminal-image.js';
+} from './terminal/terminal-compose.js';
+import { wireTerminalImage } from './terminal/terminal-image.js';
 import {
   closeTerminalMenu,
   updateLatestPill,
   watchLatestPill,
   wireTerminalMenu,
-} from './terminal-bar.js';
-import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal-readaloud.js';
+} from './terminal/terminal-bar.js';
+import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal/terminal-readaloud.js';
 import {
   beginRepaintBatch,
   clearTerminalReconnect,
@@ -59,13 +59,13 @@ import {
   flushRepaintBatch,
   routeFrame,
   setTerminalStatus,
-} from './terminal-connection.js';
+} from './terminal/terminal-connection.js';
 import {
   applyTermTheme,
   setUserTermThemes,
   termContrastRatio,
   termScreenTheme,
-} from './terminal-theme.js';
+} from './terminal/terminal-theme.js';
 import { voiceDictationAvailable } from './voice.js';
 import { isWideLayout } from './layout.js';
 import { ensureTerminalToken } from './webauthn.js';

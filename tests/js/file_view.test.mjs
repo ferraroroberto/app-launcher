@@ -3,7 +3,7 @@
 // markdown.js, neither DOM-bound). Invoked by tests/test_file_view.py.
 
 import assert from 'node:assert/strict';
-import { fileKind, renderFileView, tintJson, windowsPath } from '../../app/webapp/static/file-view.js';
+import { fileKind, renderFileView, tintJson, windowsPath } from '../../app/webapp/static/changes/file-view.js';
 
 const SCRIPT = '<script>alert(1)</script>';
 // Escaped text may still read "onerror=": only a live tag is a fault.

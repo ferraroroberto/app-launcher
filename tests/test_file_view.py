@@ -1,6 +1,6 @@
 """Unit pin for the Changed files panel's File view (issue #1689).
 
-``app/webapp/static/file-view.js`` draws a changed file for its type
+``app/webapp/static/changes/file-view.js`` draws a changed file for its type
 (Markdown, JSON, code, plain text) and builds the Windows path Copy path
 hands out. It is pinned without a browser: this module shells out to plain
 Node to import the real ES module, in ``tests/js/file_view.test.mjs`` (same
