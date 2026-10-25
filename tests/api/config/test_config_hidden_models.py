@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.model_visibility import DEFAULT_HIDDEN_MODELS
+from src.model_catalog import DEFAULT_HIDDEN_MODELS
 
 
 class TestHiddenModels:

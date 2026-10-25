@@ -38,12 +38,11 @@ from src.agents import DEFAULT_AGENT
 from src.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
-    PI_MODEL_SPECS,
-    available_values,
+    DEFAULT_HIDDEN_MODELS, PI_MODEL_SPECS, available_values,
+    load_hidden_models, migrate_renamed_models, with_visible_defaults,
 )
 
 from src._json_io import atomic_write_json
-from src.model_visibility import DEFAULT_HIDDEN_MODELS, load_hidden_models, migrate_renamed_models, with_visible_defaults  # noqa: E501
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 
 logger = logging.getLogger(__name__)
@@ -342,7 +341,7 @@ class WebappConfig:
     # by default and needs no config migration. Stored like
     # `coding_favorites` — a plain string list in this same config.
     coding_hidden_agents: list = field(default_factory=list)
-    # Provider-qualified models the dropdowns leave out (`src.model_visibility`).
+    # Provider-qualified models the dropdowns leave out (`src.model_catalog`).
     hidden_models: list = field(default_factory=lambda: list(DEFAULT_HIDDEN_MODELS))
     # The one agent whose launch button stays on a Coding project row.
     # Every other visible agent — and the GitHub-issues

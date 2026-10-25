@@ -1,10 +1,10 @@
-"""src.model_visibility: renamed ids and the hidden-default fallback."""
+"""Loading hidden_models and renamed Codex ids from a saved config."""
 
 from __future__ import annotations
 
 import json
 
-from src.model_visibility import migrate_renamed_models, visible_choice
+from src.model_catalog import migrate_renamed_models, visible_choice
 from src.webapp_config import VALID_CODING_MODEL_CHOICES, load_webapp_config
 
 

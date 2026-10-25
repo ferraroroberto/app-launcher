@@ -123,6 +123,18 @@ export function bindOutsideClickToClose(box, toggle, closer) {
 // wraps the options in a `.model-combo-list` listbox; setOptions then
 // rebuilds that list alone and leaves the rest of the menu in place. A tap
 // on anything that is not an option keeps the menu open.
+// The value a combo moves to when its options drop the current one (a model
+// switched off in Settings): the first enabled option of the same agent
+// (`codex:` of `codex:gpt-…`), else the first enabled option, so the trigger
+// never names a missing choice.
+function fallbackComboValue(current, enabled) {
+  const agent = current.includes(':') ? current.split(':')[0] + ':' : null;
+  const next = enabled.find(function (option) {
+    return agent && option.dataset.value.startsWith(agent);
+  }) || enabled[0];
+  return next ? next.dataset.value : '';
+}
+
 export function wireModelCombo(root, onChange) {
   if (!root) return null;
   const trigger = root.querySelector('.model-combo-trigger');
@@ -366,19 +378,7 @@ export function wireModelCombo(root, onChange) {
         }
         list.appendChild(option);
       });
-      // A value the new list dropped (a model hidden in Settings) moves to the
-      // first enabled option of its agent (`codex:` of `codex:gpt-…`), else
-      // the first enabled option, so the trigger never names a missing choice.
-      if (findOption(current)) {
-        apply(current, false);
-      } else {
-        const agent = current.includes(':') ? current.split(':')[0] + ':' : null;
-        const enabled = enabledOptions();
-        const next = enabled.find(function (option) {
-          return agent && option.dataset.value.startsWith(agent);
-        }) || enabled[0];
-        if (next) apply(next.dataset.value, false);
-      }
+      apply(findOption(current) ? current : fallbackComboValue(current, enabledOptions()), false);
     },
     destroy: function () {
       close(false);
