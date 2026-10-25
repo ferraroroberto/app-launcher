@@ -3,7 +3,8 @@
  *
  *   The Code tab's Usage card: a "Claude Code" row, then 5h and Week rows
  *   (label, 6px bar, %, reset time) with a 2px pace tick on the week bar at
- *   the week-elapsed %, then a Codex row. (Usage stays on Code.)
+ *   the week-elapsed %, then one-line Codex and Grok rows, each only while
+ *   Settings shows that provider. (Usage stays on Code.)
  *
  * Tapping it opens the Usage sheet: exact resets, week elapsed, Codex state
  * and the context filter's savings.
@@ -38,16 +39,42 @@ const STATE_COPY = {
   error: 'unavailable',
 };
 
-// The "Usage shows" setting: which providers the meter draws.
-// "none" draws no meter at all (the Code tab's Usage card hides). A value
-// the server does not know reads as the default.
-export const USAGE_SHOWS_DEFAULT = 'both';
-const USAGE_SHOWS_VALUES = ['claude', 'codex', 'both', 'none'];
+// The "Usage shows" setting: which providers the meter draws, each on or
+// off by itself. An empty list draws no meter at all (the Code tab's Usage
+// card hides); anything but a list reads as the default.
+export const USAGE_PROVIDERS = ['claude', 'codex', 'grok'];
+export const USAGE_PROVIDERS_DEFAULT = ['claude', 'codex'];
 const USAGE_SHOWS_KEY = 'app-launcher.usageshows';
 
-export function usageProviders(mode) {
-  const m = USAGE_SHOWS_VALUES.indexOf(mode) === -1 ? USAGE_SHOWS_DEFAULT : mode;
-  return { claude: m === 'claude' || m === 'both', codex: m === 'codex' || m === 'both' };
+// The list in card order, unknown names dropped.
+export function normalizeProviders(list) {
+  const names = Array.isArray(list) ? list : USAGE_PROVIDERS_DEFAULT;
+  return USAGE_PROVIDERS.filter(function (name) { return names.indexOf(name) !== -1; });
+}
+
+export function usageProviders(list) {
+  const names = normalizeProviders(list);
+  return {
+    claude: names.indexOf('claude') !== -1,
+    codex: names.indexOf('codex') !== -1,
+    grok: names.indexOf('grok') !== -1,
+  };
+}
+
+// Grok exposes no session or weekly limit to scripts, so its row never draws
+// a bar: it shows today's spend from Grok's own ledger when the server read
+// it, and otherwise says why there is nothing to show.
+function grokCost(reading) {
+  const cost = reading && reading.cost;
+  if (cost && cost.state === 'available' && typeof cost.usd === 'number') {
+    return '$' + cost.usd.toFixed(2);
+  }
+  return '';
+}
+
+export function grokText(reading) {
+  const cost = grokCost(reading);
+  return cost ? cost + ' today' : 'limits not exposed by Grok';
 }
 
 const TONE_RANK = { none: 0, accent: 1, attention: 2, danger: 3 };
@@ -129,6 +156,8 @@ export function meterReading(line, nowMs, fallback) {
     chip: chipText,
     // Kept as text when there is nothing to draw.
     note: hasNumbers ? '' : (STATE_COPY[state] || 'unknown'),
+    // Grok's spend today (its row has no windows); null for the others.
+    cost: row.cost_today || null,
   };
 }
 
@@ -138,7 +167,7 @@ export function meterReading(line, nowMs, fallback) {
 const lastMeasured = new Map();
 let lastLines = [];
 let filterStats = null;
-let usageShows = USAGE_SHOWS_DEFAULT;
+let usageShows = USAGE_PROVIDERS_DEFAULT;
 // Whether a poll has landed: the setting alone never paints an empty meter.
 let polled = false;
 
@@ -156,8 +185,10 @@ function byHarness(list, harness) {
   return list.find(function (r) { return r.harness === harness; }) || null;
 }
 
+const PROVIDER_NAMES = { claude: 'Claude Code', codex: 'Codex', grok: 'Grok' };
+
 function mark(harness) {
-  return brandIconEl(harness === 'codex' ? 'codex' : 'claude', 'um-mark');
+  return brandIconEl(PROVIDER_NAMES[harness] ? harness : 'claude', 'um-mark');
 }
 
 // A bar: the track, its fill at the used share, and (the week only) the
@@ -201,6 +232,7 @@ function windowRow(win, tone, label, resetFormat) {
 // The plain reading of a line, for the meter's accessible name and title.
 function readingText(r) {
   if (!r) return '';
+  if (r.harness === 'grok') return r.label + ' ' + grokText(r);
   if (r.note) return r.label + ' quota ' + r.note;
   const parts = [];
   if (r.five) parts.push('5h ' + pctText(r.five.pct));
@@ -229,9 +261,27 @@ function codexValue(r) {
 }
 
 // The provider that leads a meter: Claude Code when shown (the reading that
-// gates a launch), else Codex.
-function leading(show, claude, codex) {
-  return show.claude ? { harness: 'claude', reading: claude } : { harness: 'codex', reading: codex };
+// gates a launch), else Codex, else Grok.
+function leading(show, claude, codex, grok) {
+  if (show.claude) return { harness: 'claude', reading: claude };
+  if (show.codex) return { harness: 'codex', reading: codex };
+  return { harness: 'grok', reading: grok };
+}
+
+// A one-line row under the lead: Codex's windows, or Grok's spend.
+function sideRow(harness, r) {
+  const row = el('span', harness === 'grok' ? 'um-grok' : 'um-codex');
+  row.appendChild(mark(harness));
+  row.appendChild(el('span', 'um-name', r ? r.label : PROVIDER_NAMES[harness]));
+  if (harness === 'grok') {
+    const value = el('span', 'um-codex-value', grokText(r));
+    value.dataset.tone = 'none';
+    row.appendChild(value);
+    return row;
+  }
+  row.appendChild(codexValue(r));
+  if (r && r.chip) row.appendChild(chip(r.chip, 'neutral', 'um-chip'));
+  return row;
 }
 
 function meterButton(size, lead, shown) {
@@ -245,27 +295,30 @@ function meterButton(size, lead, shown) {
   return btn;
 }
 
-function renderFull(claude, codex, show) {
-  const lead = leading(show, claude, codex);
+function renderFull(claude, codex, grok, show) {
+  const lead = leading(show, claude, codex, grok);
   const r = lead.reading;
-  const btn = meterButton('full', r, [show.claude && claude, show.codex && codex].filter(Boolean));
+  const shown = [show.claude && claude, show.codex && codex, show.grok && grok].filter(Boolean);
+  const btn = meterButton('full', r, shown);
 
   // The harness heading names a line only when there is more than one to tell
   // apart; alone, the card title and the button's name already say
   // whose it is. A chip (stale, ...) has no other home, so it keeps a row of
   // its own, ahead of the windows, with no heading beside it.
-  const both = show.claude && show.codex;
-  if (both || (r && r.chip)) {
+  const many = [show.claude, show.codex, show.grok].filter(Boolean).length > 1;
+  if (many || (r && r.chip)) {
     const head = el('span', 'um-head');
-    if (both) {
+    if (many) {
       head.appendChild(mark(lead.harness));
-      head.appendChild(el('span', 'um-name', r ? r.label : (lead.harness === 'codex' ? 'Codex' : 'Claude Code')));
+      head.appendChild(el('span', 'um-name', r ? r.label : PROVIDER_NAMES[lead.harness]));
     }
     if (r && r.chip) head.appendChild(chip(r.chip, 'neutral', 'um-chip'));
     btn.appendChild(head);
   }
 
-  if (!r || r.note) {
+  if (lead.harness === 'grok') {
+    btn.appendChild(el('span', 'um-note', grokText(r)));
+  } else if (!r || r.note) {
     btn.appendChild(el('span', 'um-note', 'Quota ' + (r ? r.note : 'unknown')));
   } else {
     const windows = el('span', 'um-windows');
@@ -274,14 +327,9 @@ function renderFull(claude, codex, show) {
     btn.appendChild(windows);
   }
 
-  // Codex rides under Claude Code only when both are shown; alone it leads.
-  if (!both) return btn;
-  const codexRow = el('span', 'um-codex');
-  codexRow.appendChild(mark('codex'));
-  codexRow.appendChild(el('span', 'um-name', codex ? codex.label : 'Codex'));
-  codexRow.appendChild(codexValue(codex));
-  if (codex && codex.chip) codexRow.appendChild(chip(codex.chip, 'neutral', 'um-chip'));
-  btn.appendChild(codexRow);
+  // Codex and Grok ride under the lead as one-line rows; alone, one leads.
+  if (show.codex && lead.harness !== 'codex') btn.appendChild(sideRow('codex', codex));
+  if (show.grok && lead.harness !== 'grok') btn.appendChild(sideRow('grok', grok));
   return btn;
 }
 
@@ -330,26 +378,27 @@ export function renderUsage(lines) {
   const list = readings(lastLines);
   const claude = byHarness(list, 'claude');
   const codex = byHarness(list, 'codex');
+  const grok = byHarness(list, 'grok');
   const show = usageProviders(usageShows);
-  const any = show.claude || show.codex;
+  const any = show.claude || show.codex || show.grok;
   const card = document.getElementById('codingUsageCard');
   if (card) card.hidden = !any;
-  place(document.getElementById('codingUsage'), any ? renderFull(claude, codex, show) : null);
-  renderCardMeta(any ? leading(show, claude, codex).reading : null);
+  place(document.getElementById('codingUsage'), any ? renderFull(claude, codex, grok, show) : null);
+  renderCardMeta(any ? leading(show, claude, codex, grok).reading : null);
   if (sheetOpen()) renderSheet(list);
 }
 
 // The setting, pushed in by the Settings loader so this module keeps no
 // import of the page state. Repaints at once from the last poll, so a change
 // on this device or a pick-up from another shows without waiting for the next.
-export function setUsageShows(value) {
-  const next = USAGE_SHOWS_VALUES.indexOf(value) === -1 ? USAGE_SHOWS_DEFAULT : value;
-  if (next === usageShows) return;
+export function setUsageShows(list) {
+  const next = normalizeProviders(list);
+  if (next.join(' ') === usageShows.join(' ')) return;
   usageShows = next;
   // The pre-paint choice (index.html): the next load draws this row
   // set from its first paint, and the placeholder follows it until a poll lands.
-  document.documentElement.dataset.usageShows = next;
-  try { localStorage.setItem(USAGE_SHOWS_KEY, next); } catch (_) { /* storage blocked */ }
+  document.documentElement.dataset.usageShows = next.join(' ');
+  try { localStorage.setItem(USAGE_SHOWS_KEY, next.join(' ')); } catch (_) { /* storage blocked */ }
   if (polled) renderUsage(lastLines);
 }
 
@@ -412,15 +461,20 @@ function renderSheet(list) {
   if (!body) return;
   const claude = byHarness(list, 'claude');
   const codex = byHarness(list, 'codex');
+  const grok = byHarness(list, 'grok');
   const show = usageProviders(usageShows);
   body.replaceChildren();
   if (show.claude) harnessRows(body, claude, 'claude', 'Claude');
   if (show.claude || show.codex) {
-    const lead = leading(show, claude, codex).reading;
+    const lead = leading(show, claude, codex, grok).reading;
     const pace = lead && lead.week ? lead.week.pace : null;
     body.appendChild(sheetRow('Week elapsed', pace == null ? 'unknown' : pace + '%', 'elapsed'));
   }
   if (show.codex) harnessRows(body, codex, 'codex', 'Codex');
+  if (show.grok) {
+    body.appendChild(sheetRow('Grok today', grokCost(grok) || 'unknown', 'grok-cost'));
+    body.appendChild(sheetRow('Grok limits', 'Not exposed by Grok', 'grok-limits'));
+  }
   if (filterStats && filterStats.available) {
     body.appendChild(sheetRow('Filter today', savingsValue(filterStats.today), 'filter-today'));
     body.appendChild(sheetRow('Filter 7 days', savingsValue(filterStats.last_7_days), 'filter-week'));

@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 import {
-  DANGER_PCT, USAGE_SHOWS_DEFAULT, meterReading, paceSummary, usageProviders, windowTone,
+  DANGER_PCT, USAGE_PROVIDERS_DEFAULT, grokText, meterReading, paceSummary, usageProviders, windowTone,
 } from '../../app/webapp/static/usage-meter.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -111,13 +111,26 @@ assert.deepEqual(paceSummary(meterReading(line(95, 30), now)), { text: 'nearly u
 assert.deepEqual(paceSummary(meterReading(line(null, null, { state: 'unknown' }), now)), { text: '', tone: 'none' });
 assert.deepEqual(paceSummary(null), { text: '', tone: 'none' });
 
-// "Usage shows" (#1451): which providers are drawn. An unknown value is the default.
-assert.equal(USAGE_SHOWS_DEFAULT, 'both');
-assert.deepEqual(usageProviders('claude'), { claude: true, codex: false });
-assert.deepEqual(usageProviders('codex'), { claude: false, codex: true });
-assert.deepEqual(usageProviders('both'), { claude: true, codex: true });
-assert.deepEqual(usageProviders('none'), { claude: false, codex: false });
-assert.deepEqual(usageProviders('Claude'), { claude: true, codex: true });
-assert.deepEqual(usageProviders(undefined), { claude: true, codex: true });
+// "Usage shows": each provider on or off by itself. Anything but a list is
+// the default; an unknown name is dropped.
+assert.deepEqual(USAGE_PROVIDERS_DEFAULT, ['claude', 'codex']);
+assert.deepEqual(usageProviders(['claude']), { claude: true, codex: false, grok: false });
+assert.deepEqual(usageProviders(['grok', 'codex']), { claude: false, codex: true, grok: true });
+assert.deepEqual(usageProviders([]), { claude: false, codex: false, grok: false });
+assert.deepEqual(usageProviders(['Claude']), { claude: false, codex: false, grok: false });
+assert.deepEqual(usageProviders(undefined), { claude: true, codex: true, grok: false });
+assert.deepEqual(usageProviders('both'), { claude: true, codex: true, grok: false });
+
+// Grok's row: today's spend when the ledger was read, never a bar; else why not.
+const grokLine = function (cost) {
+  return { harness: 'grok', label: 'Grok', state: 'unsupported', five_hour: null, weekly: null, cost_today: cost };
+};
+r = meterReading(grokLine({ state: 'available', usd: 15.663 }), now);
+assert.equal(r.five, null);
+assert.equal(r.week, null);
+assert.equal(grokText(r), '$15.66 today');
+assert.equal(grokText(meterReading(grokLine({ state: 'available', usd: 0 }), now)), '$0.00 today');
+assert.equal(grokText(meterReading(grokLine({ state: 'unknown', usd: null }), now)), 'limits not exposed by Grok');
+assert.equal(grokText(meterReading(grokLine(null), now)), 'limits not exposed by Grok');
 
 console.log('OK');

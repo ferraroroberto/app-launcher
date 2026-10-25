@@ -226,3 +226,34 @@ def test_new_fleet_config_dir_key_wins_over_the_legacy_one(tmp_path):
     )
 
     assert load_webapp_config(target).fleet_config_dir == "D:/new"
+
+
+@pytest.mark.parametrize(
+    "legacy, providers",
+    [
+        ("claude", ["claude"]),
+        ("codex", ["codex"]),
+        ("both", ["claude", "codex"]),
+        ("none", []),
+        ("garbage", ["claude", "codex"]),
+    ],
+)
+def test_legacy_usage_shows_migrates_to_usage_providers(tmp_path, legacy, providers):
+    """The single "Usage shows" choice became one switch per provider; an older
+    file's choice is read into the list, and the next save drops the old key."""
+    target = _write(tmp_path, {"usage_shows": legacy})
+    cfg = load_webapp_config(target)
+    assert cfg.usage_providers == providers
+    save_webapp_config(cfg, target)
+    on_disk = json.loads(target.read_text(encoding="utf-8"))
+    assert "usage_shows" not in on_disk
+    assert load_webapp_config(target).usage_providers == providers
+
+
+def test_usage_providers_keeps_an_empty_list_and_card_order(tmp_path):
+    """An empty list hides the card, so it must not fall back to the default,
+    and it wins over a leftover legacy key."""
+    assert load_webapp_config(_write(tmp_path, {"usage_providers": [], "usage_shows": "both"})).usage_providers == []
+    assert load_webapp_config(
+        _write(tmp_path, {"usage_providers": ["grok", "nope", "claude"]})
+    ).usage_providers == ["claude", "grok"]

@@ -296,6 +296,21 @@ def test_api_rate_limits_standalone_endpoint_absent(webapp_client):
         assert line["five_hour"] is None and line["weekly"] is None
 
 
+def test_api_rate_limits_adds_grok_only_while_the_meter_shows_it(webapp_client, monkeypatch):
+    """Reading Grok's ledger spawns its CLI, so its row is served only while
+    Settings shows Grok, after the two quota rows."""
+    from dataclasses import replace
+
+    from src import quota_usage
+
+    client, app, _overrides = webapp_client
+    monkeypatch.setattr(quota_usage, "grok_quota_line", lambda: {"harness": "grok", "label": "Grok"})
+    assert [line["harness"] for line in client.get("/api/rate-limits").json()["quota_lines"]] == ["claude", "codex"]
+    app.state.webapp_config = replace(app.state.webapp_config, usage_providers=["grok"])
+    lines = client.get("/api/rate-limits").json()["quota_lines"]
+    assert [line["harness"] for line in lines] == ["claude", "codex", "grok"]
+
+
 def test_api_rate_limits_standalone_endpoint_present(webapp_client):
     client, app, _overrides = webapp_client
     rate_limits_file = Path(app.state.webapp_config.rate_limits_file)

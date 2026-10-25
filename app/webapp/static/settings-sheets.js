@@ -25,7 +25,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import { revealInCard, wireModelCombo } from './dom-utils.js';
-import { fetchConfig, patchConfig, USAGE_SHOWS_LABELS } from './claude-options.js';
+import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS } from './claude-options.js';
 import { terminalJsonApi } from './webauthn.js';
 import { fetchApps } from './apps.js';
 import { fetchSkills } from './life-os.js';
@@ -227,7 +227,10 @@ export function renderSettingsValues() {
   setValue('tokens', tokensValue());
   setValue('passkeys', passkeysValue());
   if (!cfg) return;
-  setValue('usage', USAGE_SHOWS_LABELS[cfg.usage_shows || 'both'] || '');
+  const providers = Array.isArray(cfg.usage_providers) ? cfg.usage_providers : [];
+  setValue('usage', providers.length
+    ? joined(providers.map(function (p) { return USAGE_PROVIDER_LABELS[p] || p; }))
+    : 'None');
   setValue('launch', launchValue(cfg));
   Object.keys(AGENT_SUMMARY).forEach(function (id) {
     setValue('agent-' + id, cfg[id] ? AGENT_SUMMARY[id](cfg[id]) : '');

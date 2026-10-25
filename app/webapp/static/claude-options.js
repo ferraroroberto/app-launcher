@@ -145,22 +145,38 @@ function setFieldValue(el, value) {
   if (el && el !== document.activeElement) el.value = value;
 }
 
-// "Usage shows": which providers the usage meter draws. Saves at once;
-// the meter repaints from the server's value, so another device's change
-// shows here too.
-export const USAGE_SHOWS_LABELS = { claude: 'Claude', codex: 'Codex', both: 'Both', none: 'None' };
+// "Usage shows": which providers the usage meter draws, one switch each.
+// A switch saves at once; the meter repaints from the server's value, so
+// another device's change shows here too.
+export const USAGE_PROVIDER_LABELS = { claude: 'Claude', codex: 'Codex', grok: 'Grok' };
+
+function usageSwitches() {
+  return els.usageShows ? Array.from(els.usageShows.querySelectorAll('[data-provider]')) : [];
+}
+
+function wireUsageShows() {
+  if (!els.usageShows || els.usageShows.dataset.wired) return;
+  els.usageShows.dataset.wired = 'true';
+  usageSwitches().forEach(function (sw) {
+    sw.addEventListener('click', async function () {
+      const next = sw.getAttribute('aria-checked') !== 'true';
+      setSwitch(sw, next);
+      const providers = usageSwitches()
+        .filter(function (s) { return s.getAttribute('aria-checked') === 'true'; })
+        .map(function (s) { return s.dataset.provider; });
+      if (!(await patchConfig({ usage_providers: providers }))) {
+        setSwitch(sw, !next);   // patchConfig already fired the failure toast
+      }
+    });
+  });
+}
 
 function renderUsageShows(body) {
-  const current = body.usage_shows || 'both';
-  if (els.usageShows) {
-    renderSegmented(
-      els.usageShows,
-      body.usage_shows_available || ['claude', 'codex', 'both', 'none'],
-      current,
-      function (v) { return USAGE_SHOWS_LABELS[v] || v; },
-      function (v) { patchConfig({ usage_shows: v }); }
-    );
-  }
+  const current = Array.isArray(body.usage_providers) ? body.usage_providers : ['claude', 'codex'];
+  wireUsageShows();
+  usageSwitches().forEach(function (sw) {
+    setSwitch(sw, current.indexOf(sw.dataset.provider) !== -1);
+  });
   setUsageShows(current);
 }
 

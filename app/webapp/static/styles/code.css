@@ -51,15 +51,19 @@
 /* Usage: the full meter in a card. The whole card is one tap to the Usage
    sheet; the meter inside is its keyboard target. */
 .usage-card { cursor: pointer; }
-/* "Usage shows: None" hides the whole card. */
+/* No provider shown hides the whole card. */
 .usage-card[hidden] { display: none; }
-/* The static placeholder draws the head and Codex rows only for
-   "both"; "none" hides the card from the first paint, before any script. */
+/* The static placeholder draws the head row only for more than one provider,
+   the Codex row under Claude, and the Grok row under either; an empty list
+   hides the card from the first paint, before any script. */
 .usage-meter-full[data-pending] .um-head,
-.usage-meter-full[data-pending] .um-codex { display: none; }
-html[data-usage-shows="both"] .usage-meter-full[data-pending] .um-head,
-html[data-usage-shows="both"] .usage-meter-full[data-pending] .um-codex { display: flex; }
-html[data-usage-shows="none"] .usage-card { display: none; }
+.usage-meter-full[data-pending] .um-codex,
+.usage-meter-full[data-pending] .um-grok { display: none; }
+html[data-usage-shows~="claude"][data-usage-shows~="codex"] .usage-meter-full[data-pending] .um-codex,
+html[data-usage-shows~="claude"][data-usage-shows~="codex"] .usage-meter-full[data-pending] .um-head,
+html[data-usage-shows~="grok"]:is([data-usage-shows~="claude"], [data-usage-shows~="codex"]) .usage-meter-full[data-pending] .um-head,
+html[data-usage-shows~="grok"]:is([data-usage-shows~="claude"], [data-usage-shows~="codex"]) .usage-meter-full[data-pending] .um-grok { display: flex; }
+html[data-usage-shows=""] .usage-card { display: none; }
 .usage-card .usage-meter-slot { margin: 12px 0 0; }
 .usage-card-meta { font-size: var(--font-body-sm); }
 .usage-card-meta[data-tone="accent"] { color: var(--accent-text); }

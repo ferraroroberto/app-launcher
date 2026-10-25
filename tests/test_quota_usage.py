@@ -353,3 +353,83 @@ def test_lines_degrade_both_rows_when_the_contract_read_fails(monkeypatch):
     for line in lines:
         assert line["state"] == "error"
         assert line["reason"] == "consumer_contract_unavailable"
+
+
+# ------------------------------------------------------------ Grok's line
+
+
+def _grok_session(home: Path, session_id: str, mtime: float) -> None:
+    import os
+
+    folder = home / "sessions" / "E%3A%5Crepo" / session_id
+    folder.mkdir(parents=True)
+    (folder / "summary.json").write_text("{}", encoding="utf-8")
+    os.utime(folder / "summary.json", (mtime, mtime))
+    os.utime(folder, (mtime, mtime))
+
+
+def _turn(ended: str, ticks: int) -> dict:
+    return {"endedAt": ended, "costUsdTicks": ticks}
+
+
+def test_grok_cost_today_sums_todays_turns_once(tmp_path):
+    """Only turns that ended since local midnight count, and a turn a resumed
+    or forked session inherited (same end time and cost) counts once."""
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 10, 25, 15, 0, tzinfo=timezone.utc)
+    today = now.astimezone().replace(hour=1).timestamp()
+    yesterday = today - 2 * 86400
+    _grok_session(tmp_path, "a", today)
+    _grok_session(tmp_path, "b", today)
+    _grok_session(tmp_path, "old", yesterday)
+    shared = _turn("2026-10-25T14:19:32.696693600+00:00", 9_000_000_000)
+    ledgers = {
+        "a": {"turns": [shared, _turn("2026-10-20T10:00:00Z", 50_000_000_000)]},
+        "b": {"turns": [shared, _turn("2026-10-25T14:30:00Z", 1_000_000_000)]},
+    }
+    calls = []
+
+    def runner(exe, session_id):
+        calls.append(session_id)
+        return ledgers[session_id]
+
+    cost = quota_usage.grok_cost_today(tmp_path, "grok", now=now, runner=runner)
+    assert sorted(calls) == ["a", "b"], "a session untouched today is never spawned for"
+    assert cost == {"state": "available", "reason": "grok_usage_ledger", "usd": 1.0}
+
+
+def test_grok_cost_today_is_unknown_when_any_ledger_fails(tmp_path):
+    """A partial sum would understate the day, so one unreadable session makes
+    the whole figure unknown rather than a smaller number."""
+    from datetime import datetime, timezone
+
+    now = datetime(2026, 10, 25, 15, 0, tzinfo=timezone.utc)
+    _grok_session(tmp_path, "a", now.timestamp())
+    _grok_session(tmp_path, "b", now.timestamp())
+    ledgers = {"a": {"turns": [_turn("2026-10-25T14:30:00Z", 1_000_000_000)]}, "b": None}
+
+    cost = quota_usage.grok_cost_today(tmp_path, "grok", now=now, runner=lambda exe, sid: ledgers[sid])
+    assert cost["state"] == "unknown"
+    assert cost["usd"] is None
+
+
+def test_grok_cost_today_without_the_cli_or_its_sessions(tmp_path):
+    assert quota_usage.grok_cost_today(tmp_path, None)["state"] == "unsupported"
+    missing = quota_usage.grok_cost_today(tmp_path, "grok", runner=lambda exe, sid: {})
+    assert missing == {"state": "unsupported", "reason": "grok_sessions_absent", "usd": None}
+
+
+def test_grok_line_never_carries_a_limit_window(monkeypatch):
+    """Grok exposes no limits to scripts: its row has no windows, whatever
+    the cost sweep finds, and the poll never waits on that sweep."""
+    monkeypatch.setattr(quota_usage, "_grok_cache", {})
+    started = []
+    line = quota_usage.grok_quota_line(now=1000.0, start=started.append)
+    assert line["five_hour"] is None and line["weekly"] is None
+    assert line["state"] == "unsupported" and line["reason"] == "limits_not_exposed"
+    assert line["cost_today"]["state"] == "unknown"
+    assert len(started) == 1
+    # A second poll while the sweep runs starts no second sweep.
+    quota_usage.grok_quota_line(now=1001.0, start=started.append)
+    assert len(started) == 1

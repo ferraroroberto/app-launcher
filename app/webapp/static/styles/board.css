@@ -325,7 +325,8 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   font-size: var(--font-body-sm);
 }
 .usage-meter-full .um-head,
-.usage-meter-full .um-codex {
+.usage-meter-full .um-codex,
+.usage-meter-full .um-grok {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
@@ -346,7 +347,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   font-size: var(--font-caption);
 }
 .usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
-.usage-meter-full .um-codex .um-codex-value { margin-left: auto; white-space: nowrap; }
+.usage-meter-full :is(.um-codex, .um-grok) .um-codex-value { margin-left: auto; white-space: nowrap; }
 
 /* The Usage sheet's label/value rows: the short label keeps its line, a long
    value wraps beside it. */
