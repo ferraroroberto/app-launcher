@@ -36,8 +36,8 @@ _FMT_RESET_RE = re.compile(r"\bfunction\s+fmtReset\w*\s*\(")
 
 def test_calendar_day_math_and_reset_formatters_stay_in_dom_utils() -> None:
     offenders = []
-    for path in sorted(_STATIC.glob("*.js")):
-        if path.name == _OWNER:
+    for path in sorted(_STATIC.rglob("*.js")):
+        if path.name == _OWNER or {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):
             continue
         code = path.read_text(encoding="utf-8")
         if _DAY_MS_RE.search(code):

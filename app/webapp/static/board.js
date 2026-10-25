@@ -33,9 +33,10 @@
  * Split off a single-file module (`/codebase-audit`), the way
  * `jobs.js` and `terminal.js` already were: the lane toolbar's project
  * filter, the Backlog's "Start with" model combo and the fleet chief's
- * lifecycle live in `board-dispatch.js`. This module keeps card rendering,
- * the drill-down drawer, one-tap issue-start and the lanes, and calls into
- * that one for the rest. The Board has no chief card:
+ * lifecycle live in `board-dispatch.js`; the drill-down drawer in
+ * `board/drawer.js`; the Chief's plan card in `board/chief-plan.js`. This
+ * module keeps card rendering, one-tap issue-start, the lanes and the poll,
+ * and calls into those for the rest. The Board has no chief card:
  * the chief lives in its row under Code › Sessions, and here only as its
  * session row in Claude's turn.
  */
@@ -43,31 +44,17 @@
 import { els, state } from './state.js';
 import { apiFailToast, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
 import { setTab } from './tabs.js';
-import {
-  detachedSendRefused,
-  openSessionRename,
-  sendOutcome,
-  sendSessionMessage,
-  sessionTitle,
-  stopSession,
-} from './sessions.js';
+import { sessionTitle } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
-import { chatAvailable, modeReason, openSessionOverlay, terminalAvailable } from './session-overlay.js';
-import { mountComposer } from './composer.js';
-import { uploadSessionFile } from './terminal-compose.js';
-import { voiceDictationAvailable } from './voice.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isHiddenChannel } from './channel-sessions.js';
 import {
-  CHIEF_KILL_CONFIRM, brandIconEl, channelKillConfirm, channelSessionName, fmtCardStamp, fmtDuration,
-  isChannelSession,
+  brandIconEl, channelSessionName, fmtCardStamp, fmtDuration, isChannelSession,
 } from './dom-utils.js';
-import { renderMarkdown } from './markdown.js';
 import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
-import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { renderBoardBadge } from './home-head.js';
 import { renderHeadStatus } from './_vendored/home-head/home-head.js';
@@ -76,9 +63,12 @@ import {
   boardRepoFilter, getBoardDispatchModel, isChiefCard, matchesRepoFilter, syncDispatchBar,
   wireDispatch,
 } from './board-dispatch.js';
-import { openChiefAnswers, syncChiefAnswers, wireChiefAnswers } from './board-answers.js';
-import { answeredKeys, itemKey, openQuestionCount } from './chief-keys.js';
-import { clearMergedButton, mergedCount } from './board/plan-prune.js';
+import { wireChiefAnswers } from './board-answers.js';
+import { openQuestionCount } from './chief-keys.js';
+import {
+  buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
+} from './board/drawer.js';
+import { agoText, renderChiefPlan } from './board/chief-plan.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -106,6 +96,18 @@ let lastAutoRefreshAt = 0;
 // The drawer whose section renderBoard() last unfolded (see there).
 let revealedDrawer = null;
 
+// Bumped when a rename the server has confirmed is patched into the Board
+// A Board read issued before that carries the old title, and its
+// reply can land after the patch (the poll also awaits the chief's plan), so
+// fetchBoard() drops a payload whose read predates the last bump; the next
+// poll brings the server's view.
+let boardEditSeq = 0;
+
+// A Board edit the server confirmed was patched in client-side.
+export function noteBoardEdit() {
+  boardEditSeq += 1;
+}
+
 // --------------------------------------------------------------- helpers
 
 // The exact same title resolution as the Coding tab's Running-sessions list
@@ -114,7 +116,7 @@ let revealedDrawer = null;
 // sessionTitle() reads, so a single shared function keeps both tabs
 // agreeing on one session's title instead of two independently-drifting
 // codepaths.
-function sessionLabel(card) {
+export function sessionLabel(card) {
   return sessionTitle(card) || card.project || 'session';
 }
 
@@ -221,317 +223,6 @@ function renderSessionCard(card, openItem) {
   li.dataset.drawerShape = drawerShape(card);
   li.appendChild(buildDrawer(card));
   return li;
-}
-
-// ------------------------------------------------------ drill-down drawer
-
-// Chief-only exchange refresh: loadExchange is one-shot, fine for a
-// worker drawer you glance at — but a chat conversation needs the chief's
-// reply to *arrive*. While the chief's drawer is open, re-run loadExchange
-// on a short interval. Cleared unconditionally at the top of renderBoard()
-// whenever that render doesn't keep the open drawer, and every close
-// path goes through it.
-let chiefExchangeTimer = null;
-const CHIEF_EXCHANGE_POLL_MS = 5000;
-
-// The open drawer's shared composer (the same component the session
-// overlay mounts), replacing the private reply box and its per-drawer
-// mic. Same lifecycle problem as chiefExchangeTimer above: a drawer
-// collapse (state.boardExpanded set to null, then renderBoard() rebuilds the
-// card list) drops the composer's DOM node with no teardown, so a recording
-// in flight (or a still-finalizing one) stayed live and held the app-wide
-// dictation mutex indefinitely. reset() — which dispose()s the mic and closes
-// the composer's popovers — runs at the top of renderBoard() under the same
-// rule as chiefExchangeTimer. A kept drawer keeps this instance, its
-// draft and a live recording included.
-let drawerComposer = null;
-
-// The open drawer's kebab menu (Rename, Stop). A kept drawer
-// keeps its menu, open or not; renderBoard() ends it with a drawer it drops.
-// It drops below the drawer's action row, right edges 4px in.
-const drawerMenu = createRowMenu({
-  className: 'project-menu',
-  placement: { against: function (kebab) { return kebab.parentElement; }, offset: 2, inset: 4 },
-});
-
-// Bumped when a rename the server has confirmed is patched into the Board
-// A Board read issued before that carries the old title, and its
-// reply can land after the patch (the poll also awaits the chief's plan), so
-// fetchBoard() drops a payload whose read predates the last bump; the next
-// poll brings the server's view.
-let boardEditSeq = 0;
-
-const DRAWER_KEYS_OFF = 'Open the terminal for keys';
-
-// What the session overlay needs to decide its modes: kind picks
-// Terminal, agent picks Chat, label marks the chief.
-function overlaySession(card) {
-  return {
-    session_id: card.session_id,
-    name: sessionLabel(card),
-    kind: card.kind,
-    agent: card.agent,
-    label: card.label,
-    // The header's model pill paints on first open, before any poll.
-    model: card.model,
-  };
-}
-
-function composerAvailability() {
-  return {
-    dictate: voiceDictationAvailable(),
-    ocr: !!(state.status && state.status.screenshot_ocr),
-  };
-}
-
-function buildDrawerComposer(card) {
-  const host = document.createElement('div');
-  host.className = 'board-drawer-composer';
-  drawerComposer = mountComposer(host, {
-    placeholder: 'Reply to ' + (card.project || 'session') + '…',
-    send: function (text) { return sendFromDrawer(card, text); },
-    upload: function (file, signal, kind) {
-      return uploadSessionFile(card.session_id, file, signal, kind);
-    },
-    // The Board never opens the PTY's WebSocket, so ⌨ has nothing to drive
-    // for either kind — disabled, with the way to get keys as its reason.
-    keys: null,
-    keysOffReason: DRAWER_KEYS_OFF,
-  });
-  // The console-input gate (agents.py) holds back Send alone, as in Chat.
-  if (detachedSendRefused(card)) {
-    drawerComposer.setSendable(false, 'No console input for this agent: sending is off');
-  }
-  drawerComposer.setAvailability(composerAvailability());
-  return host;
-}
-
-// Chat or Terminal, the drawer's two visible actions:
-// glyph beside label. An action the session can't take stays in the row,
-// aria-disabled so a tap still reaches it and toasts the reason (a phone has
-// no hover) — the same convention as the overlay's mode segments — so
-// the row never changes shape.
-function drawerAction(cls, glyph, label, title, reason, onTap) {
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'board-drawer-action ' + cls;
-  btn.innerHTML = icon(glyph) + '<span class="board-drawer-action-label">' + label + '</span>';
-  btn.title = reason || title;
-  btn.setAttribute('aria-label', reason || title);
-  if (reason) btn.setAttribute('aria-disabled', 'true');
-  btn.addEventListener('click', function () {
-    if (reason) {
-      toast(reason, '', { icon: glyph });
-      return;
-    }
-    onTap(btn);
-  });
-  return btn;
-}
-
-// The open drawer's id, which its card header's aria-controls names.
-function drawerId(card) {
-  return 'board-drawer-' + card.session_id;
-}
-
-function buildDrawer(card) {
-  const drawer = document.createElement('div');
-  drawer.className = 'board-drawer';
-  drawer.id = drawerId(card);
-
-  const exchange = document.createElement('div');
-  exchange.className = 'board-exchange';
-  exchange.dataset.state = 'loading';
-  exchange.setAttribute('role', 'status');
-  exchange.setAttribute('aria-live', 'polite');
-  exchange.textContent = 'Reading last exchange…';
-  drawer.appendChild(exchange);
-  loadExchange(card, exchange);
-  if (isChiefCard(card)) {
-    chiefExchangeTimer = setInterval(function () {
-      // Defensive: a tab switch doesn't re-render the board, so gate on
-      // the drawer actually still being the visible one.
-      if (state.tab !== 'board' || state.boardExpanded !== card.session_id) return;
-      loadExchange(card, exchange);
-    }, CHIEF_EXCHANGE_POLL_MS);
-  }
-  // A session that has ended has nothing to reply to or act on.
-  if (!card.alive) return drawer;
-
-  // The shared composer for both kinds: a detached session is typed
-  // into its PC console through the same /input route.
-  drawer.appendChild(buildDrawerComposer(card));
-
-  // Chat, the one tint primary, with Terminal beside it,
-  // then a kebab holding Rename and Stop.
-  const actions = document.createElement('div');
-  actions.className = 'board-drawer-actions';
-  const session = overlaySession(card);
-  const chat = drawerAction(
-    'board-open-chat', 'messages-square', 'Chat', 'Open the chat view',
-    chatAvailable(session) ? null : modeReason(session, 'chat'),
-    function () {
-      state.boardExpanded = null;
-      openSessionOverlay(session, 'chat');
-    }
-  );
-  chat.classList.add('is-primary');
-  actions.appendChild(chat);
-  actions.appendChild(drawerAction(
-    'board-open-terminal', 'terminal', 'Terminal', 'Open the full terminal',
-    terminalAvailable(session) ? null : modeReason(session, 'terminal'),
-    function () {
-      state.boardExpanded = null;
-      openTerminal(session);
-    }
-  ));
-  const kebab = document.createElement('button');
-  kebab.type = 'button';
-  kebab.className = 'icon-button board-drawer-kebab';
-  kebab.innerHTML = icon('ellipsis-vertical');
-  kebab.title = 'Session actions';
-  kebab.setAttribute('aria-label', kebab.title);
-  actions.appendChild(kebab);
-  drawerMenu.attach(card.session_id, kebab, [
-    {
-      // Rename: the launcher-native override (no PTY needed). The drawer
-      // stays open across a rename (unlike Chat/Terminal, which navigate
-      // away), so the completion callback patches the card optimistically
-      // rather than waiting for the next poll. A kept drawer can
-      // outlive the payload its `card` came from, so the patch goes to the
-      // card in the current payload.
-      dataset: { item: 'board-rename-btn' }, glyph: 'pencil',
-      label: 'Rename', ariaLabel: 'Rename this session',
-      onTap: function () {
-        openSessionRename(card, function (title) {
-          boardEditSeq += 1;
-          card.manual_title = title;
-          const current = boardCard(card.session_id);
-          if (current) current.manual_title = title;
-          renderBoard();
-        });
-      },
-    },
-    {
-      // Stop: the unified stop path the Coding tab's row menu uses for both
-      // kinds (the agent's own quit, force-fallback server-side),
-      // always behind the themed confirm.
-      dataset: { item: 'board-stop-btn' }, glyph: 'octagon-x',
-      label: 'Stop', ariaLabel: 'Stop and kill this session',
-      danger: true,
-      onTap: async function () {
-        if (!(await confirmDialog(stopConfirm(card)))) return;
-        // Close the drawer first — the session it belongs to is going away.
-        state.boardExpanded = null;
-        renderBoard();
-        await stopSession({ session_id: card.session_id, name: sessionLabel(card) });
-        // The host stops gracefully (quit → force) — give it the same beat
-        // sessions.js gives fetchSessions before reconciling the board.
-        setTimeout(function () { fetchBoard().catch(function () {}); }, 1500);
-      },
-    },
-  ]);
-  drawer.appendChild(actions);
-  return drawer;
-}
-
-// Stop asks every time: the chief and a Telegram channel
-// keep their own words, any other session gets a plain one.
-function stopConfirm(card) {
-  if (isChiefCard(card)) return CHIEF_KILL_CONFIRM;
-  if (isChannelSession(card)) return channelKillConfirm(card);
-  return {
-    title: 'Stop ' + sessionLabel(card) + '?',
-    message: 'The agent quits and its terminal closes.',
-    action: 'Stop',
-  };
-}
-
-async function loadExchange(card, el) {
-  try {
-    const body = await terminalJsonApi(
-      '/api/board/sessions/' + encodeURIComponent(card.session_id) + '/exchange'
-    );
-    el.replaceChildren();
-    if (!body.available) {
-      el.dataset.state = body.reason === 'no_exchange' ? 'empty' : 'error';
-      const reasons = {
-        no_exchange: 'No exchange yet.',
-        session_not_found: 'Session ended — refresh the Board.',
-        session_host_unreachable: 'Can’t reach the session host — try again.',
-        native_unavailable: 'Conversation preview unavailable — open the terminal.',
-        capture_unparseable: 'Conversation preview unavailable — open the terminal.',
-      };
-      el.textContent = reasons[body.reason] ||
-        'Conversation preview unavailable — open the terminal.';
-      return;
-    }
-    el.dataset.state = 'ready';
-    // Rendered as markdown by Chat mode's renderer, which escapes
-    // the text before it builds any markup.
-    if (body.user && body.user.text) {
-      const u = document.createElement('div');
-      u.className = 'board-exchange-user tr-md';
-      u.innerHTML = renderMarkdown(body.user.text);
-      el.appendChild(u);
-    }
-    if (body.assistant && body.assistant.text) {
-      const a = document.createElement('div');
-      a.className = 'board-exchange-assistant tr-md';
-      a.innerHTML = renderMarkdown(body.assistant.text);
-      el.appendChild(a);
-    }
-    el.scrollTop = el.scrollHeight;
-  } catch (exc) {
-    el.dataset.state = 'error';
-    el.textContent = 'Conversation preview unavailable — try again.';
-  }
-}
-
-// Optimistic move for sendFromDrawer(): relocate a card from Your turn into
-// Claude's turn client-side, ahead of the poll that will confirm it. A reply
-// just went into a live PTY sitting at its prompt, so there is no value in
-// making the Board visibly wait out the hook -> state-file -> poll round trip
-// for something already known. Only touches state.board.columns — the next
-// fetchBoard() replaces state.board wholesale as usual, so this is a
-// display-only shortcut, never a second source of truth.
-function moveCardToClaudeTurn(sessionId) {
-  const columns = state.board && state.board.columns;
-  if (!columns) return;
-  const yourTurn = columns.your_turn || [];
-  const idx = yourTurn.findIndex(function (c) { return c.session_id === sessionId; });
-  if (idx === -1) return;
-  const card = yourTurn.splice(idx, 1)[0];
-  card.status = 'working';
-  columns.claude_turn = [card].concat(columns.claude_turn || []);
-}
-
-// ➤ Send from the drawer's composer: the kind-agnostic /input route,
-// worded by the same verdict table as Chat mode (sessions.js::sendOutcome —
-// Sent / Sent, not confirmed / Queued / Not submitted stay distinct). A thrown
-// 502/409/501 toasts and resolves false so the draft stays to retry.
-async function sendFromDrawer(card, text) {
-  let verdict;
-  try {
-    verdict = await sendSessionMessage(card.session_id, text);
-  } catch (exc) {
-    apiFailToast('Send failed', exc);
-    return false;
-  }
-  const outcome = sendOutcome(verdict);
-  toast(outcome.text, outcome.kind, { icon: 'send-horizontal' });
-  // Close the drawer and optimistically flip the card to Claude's turn right
-  // away. Deliberately no immediate fetchBoard() here: the hook that
-  // actually flips the server's status hasn't had time to run yet, so an
-  // immediate re-poll almost always still sees the pre-reply needs-you state
-  // and would revert this straight back — worse than the original lag. The
-  // regular 5 s poll (already running) reconciles with ground truth as
-  // always. A reply whose Enter never went in (not_submitted, the one error
-  // verdict) leaves the agent waiting, so that card stays put.
-  if (state.boardExpanded === card.session_id) state.boardExpanded = null;
-  if (outcome.kind !== 'error') moveCardToClaudeTurn(card.session_id);
-  renderBoard();
-  return true;
 }
 
 // ---------------------------------------------------- one-tap issue start
@@ -714,7 +405,7 @@ async function dismissJob(card, btn) {
   try {
     await jsonApi('/api/jobs/' + encodeURIComponent(card.job_id) + '/runs/' +
       encodeURIComponent(card.run_id) + '/dismiss', { method: 'POST' });
-    boardEditSeq += 1;
+    noteBoardEdit();
     const other = state.board && state.board.columns && state.board.columns.other;
     if (other) {
       state.board.columns.other = other.filter(function (c) {
@@ -773,32 +464,6 @@ function renderCard(colKey, card, openItem) {
   if (card.kind === 'pr') return renderPrCard(card);
   if (card.kind === 'job') return renderJobCard(card);
   return renderSessionCard(card, openItem);
-}
-
-function boardCard(sessionId) {
-  const columns = (state.board && state.board.columns) || {};
-  for (const key of Object.keys(columns)) {
-    const found = (columns[key] || []).find(function (c) { return c.session_id === sessionId; });
-    if (found) return found;
-  }
-  return null;
-}
-
-// What buildDrawer() decides its actions from. A kept drawer is only valid
-// while this holds — a session that died keeps no reply box for a dead PTY.
-function drawerShape(card) {
-  return String(!!card.alive) + ':' + String(card.kind || '');
-}
-
-// The open drawer's <li> as it stands in the DOM right now, if it can be kept
-// for `card` (the expanded card in the payload being rendered), else null.
-function openDrawerItem(card) {
-  if (!card || !els.boardColumns) return null;
-  const items = els.boardColumns.querySelectorAll('li.board-item.expanded');
-  return Array.from(items).find(function (li) {
-    return li.dataset.sessionId === card.session_id &&
-      li.dataset.drawerShape === drawerShape(card);
-  }) || null;
 }
 
 // Set a list's children to `nodes` without ever detaching a node that is
@@ -888,7 +553,7 @@ function renderStatusLine(body) {
 
 // A lane's exception: in its tone, in place of the count, while the
 // lane is folded (the CSS swaps them); '' when there is none.
-function setLaneException(section, text, tone) {
+export function setLaneException(section, text, tone) {
   const el = section && section.querySelector('.board-lane-exception');
   if (!el) return;
   el.textContent = text;
@@ -906,7 +571,7 @@ function renderBacklogFoot(body, ghLoaded) {
   foot.innerHTML = ago ? icon('globe') + '<span>GitHub · updated ' + ago + '</span>' : '';
 }
 
-function plural(n, one, many) {
+export function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
 }
 
@@ -935,361 +600,6 @@ function renderBoardHead(body, ghLoaded, liveRead) {
 }
 
 
-// ------------------------------------------------------- chief's plan
-//
-// The fleet chief records its lanes, its queue and what waits on Roberto in a
-// plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
-// it tolerantly (src/chief_plan.py) and this card shows it under Claude's
-// turn. No plan, the card stays blank. A plan the server could not trust adds
-// one quiet note, never a toast. Whether the chief is running comes from the
-// session cards /api/board already carries, and is said on its own line: a
-// plan with no chief behind it must not read as current. What waits on
-// Roberto carries an "Answer N questions" button into the one-shot answer
-// sheet (board-answers.js).
-
-// Status -> chip tone, on the tone map: work in progress is accent,
-// waiting on you is attention, merged and anything unlisted (an unknown status
-// included) is neutral.
-const PLAN_TONES = {
-  building: 'accent', gate: 'accent',
-  waiting: 'attention', 'waiting-roberto': 'attention',
-  merged: 'neutral',
-};
-
-// "just now" / "12 min ago" / "3 h ago" / "2 d ago", or '' for a time that
-// can't be read: the plan's age and the Backlog footer's.
-function agoText(iso) {
-  const t = Date.parse(iso || '');
-  if (isNaN(t)) return '';
-  const min = Math.floor((Date.now() - t) / 60000);
-  if (min < 1) return 'just now';
-  if (min < 60) return min + ' min ago';
-  const h = Math.floor(min / 60);
-  if (h < 48) return h + ' h ago';
-  return Math.floor(h / 24) + ' d ago';
-}
-
-function planAge(updatedAt) {
-  const ago = agoText(updatedAt);
-  return ago ? 'Updated ' + ago : 'Update time unknown';
-}
-
-// Running / not running / unknown are three answers: an unreadable
-// session-host can't prove the chief is gone.
-function chiefRunState(body, liveRead) {
-  const columns = (body && body.columns) || {};
-  const running = Object.keys(columns).some(function (key) {
-    return (columns[key] || []).some(function (c) {
-      return isChiefCard(c) && c.alive !== false;
-    });
-  });
-  if (running) return 'running';
-  return liveRead ? 'stopped' : 'unknown';
-}
-
-function planLine(cls, text) {
-  const p = document.createElement('p');
-  p.className = 'board-plan-line muted small' + (cls ? ' ' + cls : '');
-  p.textContent = text;
-  return p;
-}
-
-// A plan section: its heading carries the row count, "Lanes (2)", and
-// an optional muted line under it (`note`) says what the number counts.
-function planGroup(heading, rows, cls, note) {
-  const wrap = document.createElement('div');
-  wrap.className = 'board-plan-group' + (cls ? ' ' + cls : '');
-  const h = document.createElement('h4');
-  h.className = 'board-plan-heading';
-  h.textContent = heading;
-  wrap.appendChild(h);
-  if (note) wrap.appendChild(planLine('board-plan-section-note', note));
-  const list = document.createElement('ul');
-  list.className = 'card-list board-list';
-  rows.forEach(function (row) { list.appendChild(row); });
-  wrap.appendChild(list);
-  return wrap;
-}
-
-// Parked: the same section as a <details>, so a long parked list does
-// not push the queue off a phone. Collapsed by default on a phone, open on the
-// desktop board; once the reader toggles it the choice holds across rebuilds.
-let parkedOpen = null;
-
-function parkedGroup(rows) {
-  const open = parkedOpen === null
-    ? !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches)
-    : parkedOpen;
-  const wrap = document.createElement('details');
-  wrap.className = 'board-plan-group board-plan-parked';
-  wrap.open = open;
-  const sum = document.createElement('summary');
-  sum.className = 'board-plan-heading board-plan-parked-summary';
-  const label = document.createElement('span');
-  label.textContent = 'Parked (' + rows.length + ')';
-  const mark = document.createElement('span');
-  mark.className = 'board-plan-parked-chevron';
-  mark.setAttribute('aria-hidden', 'true');
-  mark.innerHTML = icon('chevron-right');
-  sum.append(label, mark);
-  const list = document.createElement('ul');
-  list.className = 'card-list board-list';
-  rows.forEach(function (row) { list.appendChild(row); });
-  wrap.append(sum, list);
-  wrap.addEventListener('toggle', function () { parkedOpen = wrap.open; });
-  return wrap;
-}
-
-// `shown` is the plan positions the repo filter keeps that no
-// device has answered yet: the button counts and opens only those.
-function answerButton(plan, run, shown) {
-  const n = shown.length;
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'button-tint board-plan-answer';
-  btn.innerHTML = icon('messages-square') + ' ';
-  btn.appendChild(document.createTextNode('Answer ' + n + (n === 1 ? ' question' : ' questions')));
-  btn.addEventListener('click', function () { openChiefAnswers(plan, run, shown); });
-  return btn;
-}
-
-// The Board's repo filter narrows the plan too, so a filtered Board
-// is one project's whole picture. A row's repo is its own `repo`, else the
-// repo half of a `repo#N` ref. A row with neither is fleet-wide context and
-// stays under any filter: hiding it could hide a question that needs an
-// answer.
-const PLAN_REF_REPO = /^([A-Za-z0-9._-]+)#\d+$/;
-
-function planRowRepo(row) {
-  if (row.repo) return row.repo;
-  const m = PLAN_REF_REPO.exec(row.ref || '');
-  return m ? m[1] : null;
-}
-
-function planRowShown(row, filter) {
-  const repo = planRowRepo(row);
-  return !repo || matchesRepoFilter({ repo: repo }, filter);
-}
-
-// What the chief has set aside: shown under Parked, never in the
-// queue. Every other status is work in the queue's order.
-const PARKED_STATUSES = ['parked', 'waiting-roberto'];
-
-function isParked(q) {
-  return PARKED_STATUSES.indexOf(q.status) !== -1;
-}
-
-// A queue row: the issue title leads, the meta is `repo#N`, then the
-// chief's note. An item without a title is named by its label and keeps just
-// the note here.
-function queueRow(q) {
-  const ref = q.ref && q.ref.charAt(0) === '#' && q.repo ? q.repo + q.ref : q.ref;
-  const label = ref || q.repo;
-  const meta = [];
-  if (q.title && label) meta.push(label);
-  if (q.note) meta.push(q.note);
-  return planRow({
-    title: q.title || label,
-    meta: meta,
-    status: q.status,
-    model: q.model,
-    url: q.ref_url,
-    ref: label,
-  });
-}
-
-// A lane: the repo is its title, the item (`#N`) its meta.
-function planLaneRow(l) {
-  return planRow({
-    title: l.repo || 'lane',
-    meta: l.item ? [l.item] : [],
-    status: l.status,
-    model: l.model,
-    url: l.ref_url,
-    ref: l.item ? (l.repo || '') + l.item : '',
-  });
-}
-
-// A lane, queue or parked row (on the shared action-row as the Backlog
-// card's rows are): line 1 the title, on its own so it reads in full; line 2
-// the meta pieces joined by " · " with the chief's optional model word
-// among them, the status chip at the right end of that line. A row with a
-// link (`url`, resolved by the reader from its `repo#N`) is a tap that opens
-// it and carries the trailing chevron that says so; a row without one reports
-// and does nothing.
-function planRow(o) {
-  const pieces = o.meta.slice();
-  if (o.model) {
-    const tag = document.createElement('span');
-    tag.className = 'board-plan-model';
-    tag.textContent = o.model.charAt(0).toUpperCase() + o.model.slice(1);
-    pieces.splice(Math.min(1, pieces.length), 0, tag);
-  }
-  const open = o.url ? function () { window.open(o.url, '_blank', 'noopener'); } : null;
-  const row = actionRow({
-    className: 'board-item board-plan-row' + (open ? ' is-link' : ''),
-    title: o.title,
-    meta: pieces.length ? ' ' : '',
-    chips: o.status ? [chip(o.status, PLAN_TONES[o.status] || 'neutral', 'board-plan-chip')] : [],
-    label: 'Open ' + (o.ref || o.title) + ' on GitHub',
-    onMain: open,
-    inert: !open,
-    trailing: open ? chevron('chevron-right', open) : null,
-  });
-  // The pieces take the place of the meta text, so the line still
-  // ellipsizes as one and the chip never does.
-  const text = row.meta && row.meta.querySelector('.action-row-meta-text');
-  if (text) {
-    text.textContent = '';
-    pieces.forEach(function (p, i) {
-      if (i) text.appendChild(document.createTextNode(' · '));
-      text.appendChild(typeof p === 'string' ? document.createTextNode(p) : p);
-    });
-  }
-  return row.li;
-}
-
-// A row's trailing chevron (design.md action-row: a row that opens a sheet
-// carries one). It sits outside the main button, so it takes the same tap.
-function chevron(glyph, onTap) {
-  const el = document.createElement('span');
-  el.className = 'board-plan-chevron';
-  el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = icon(glyph);
-  el.addEventListener('click', onTap);
-  return el;
-}
-
-// The questions still waiting on you that the repo filter shows, unanswered:
-// the folded plan card's "N questions for you".
-function pendingQuestions(plan, answered, filter) {
-  if (plan.state !== 'ok') return 0;
-  return (plan.waiting_on_roberto || []).filter(function (w, i) {
-    return planRowShown(w, filter) && answered.indexOf(itemKey(w, i)) === -1;
-  }).length;
-}
-
-// The first QUESTIONS_SHOWN questions, then one "N more"
-// row that unfolds the rest in place (for as long as the page lives), then
-// the one Answer button.
-const QUESTIONS_SHOWN = 3;
-let questionsUnfolded = false;
-
-// One waiting question: its one-line text (the sheet asks the full
-// question), its ref as the meta, a chevron; a tap opens the answer sheet on
-// it. One already answered says so and does nothing on tap: the sheet skips
-// it.
-function questionRow(plan, run, open, i, answered) {
-  const w = plan.waiting_on_roberto[i];
-  const sent = answered.indexOf(itemKey(w, i)) !== -1;
-  const title = w.text || w.question || w.ref;
-  const ref = (w.text || w.question) ? (w.ref || w.repo) : '';
-  const openSheet = function () { openChiefAnswers(plan, run, open, i); };
-  return actionRow({
-    className: 'board-item board-plan-row board-plan-waiting' + (sent ? ' is-answered' : ''),
-    title: title,
-    meta: [ref, sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
-    density: 'one-line',
-    label: 'Answer: ' + title,
-    onMain: openSheet,
-    inert: sent,
-    trailing: sent ? null : chevron('chevron-right', openSheet),
-  }).li;
-}
-
-function moreRow(n) {
-  const unfold = function () {
-    questionsUnfolded = true;
-    renderBoard();
-  };
-  const text = plural(n, 'more question', 'more questions');
-  return actionRow({
-    className: 'board-item board-plan-more',
-    title: text,
-    label: 'Show ' + text,
-    density: 'one-line',
-    onMain: unfold,
-    trailing: chevron('chevron-down', unfold),
-  }).li;
-}
-
-function renderChiefPlan(body, liveRead) {
-  const host = els.boardColumns && els.boardColumns.querySelector('.board-plan-body');
-  if (!host) return;
-  const plan = state.chiefPlan || { state: 'empty' };
-  const run = plan.state === 'ok' ? chiefRunState(body, liveRead) : '';
-  const age = plan.state === 'ok' ? planAge(plan.updated_at) : '';
-  // An open answer sheet follows whether the chief runs, every poll — read
-  // from the sessions, whatever state the plan itself is in.
-  syncChiefAnswers(chiefRunState(body, liveRead));
-  const answered = plan.state === 'ok' ? answeredKeys(plan) : [];
-  const filter = boardRepoFilter();
-  const pending = pendingQuestions(plan, answered, filter);
-  setLaneException(els.boardChiefPlan,
-    pending ? plural(pending, 'question', 'questions') + ' for you' : '',
-    'attention');
-  // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age, answered, filter, questionsUnfolded]);
-  if (host.dataset.sig === sig) return;
-  host.dataset.sig = sig;
-  host.dataset.state = plan.state;
-  const nodes = [];
-  if (plan.state === 'unreadable') {
-    nodes.push(planLine('board-plan-note', 'Plan unreadable.'));
-  } else if (plan.state === 'unavailable') {
-    nodes.push(planLine('board-plan-note', 'Plan not loaded — the webapp did not answer.'));
-  } else if (plan.state === 'ok') {
-    if (run === 'stopped') {
-      nodes.push(planLine('board-plan-chief', 'Chief not running — this plan may be out of date.'));
-    } else if (run === 'unknown') {
-      nodes.push(planLine('board-plan-chief', 'Chief status unknown — session-host unreachable.'));
-    }
-    nodes.push(planLine('board-plan-age', age));
-    const waiting = plan.waiting_on_roberto || [];
-    // Positions, not items: an answer's key is its place in the whole list.
-    const shown = [];
-    waiting.forEach(function (w, i) { if (planRowShown(w, filter)) shown.push(i); });
-    const hidden = waiting.length - shown.length;
-    if (shown.length) {
-      // Answered from any device: not counted, not asked again.
-      const open = shown.filter(function (i) {
-        return answered.indexOf(itemKey(waiting[i], i)) === -1;
-      });
-      // "1 more" would take a row to save one: fold only from two hidden.
-      const folded = !questionsUnfolded && shown.length > QUESTIONS_SHOWN + 1;
-      const listed = folded ? shown.slice(0, QUESTIONS_SHOWN) : shown;
-      const rows = listed.map(function (i) { return questionRow(plan, run, open, i, answered); });
-      if (folded) rows.push(moreRow(shown.length - listed.length));
-      const group = planGroup('Waiting on you', rows, 'board-plan-group-waiting');
-      if (open.length) group.appendChild(answerButton(plan, run, open));
-      nodes.push(group);
-    }
-    // A pending decision is never invisible: say what the filter hides.
-    if (hidden) {
-      nodes.push(planLine('board-plan-hidden', hidden + ' more question'
-        + (hidden === 1 ? '' : 's') + ' in other projects'));
-    }
-    const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
-    if (lanes.length) {
-      nodes.push(planGroup('Lanes (' + lanes.length + ')', lanes.map(planLaneRow)));
-    }
-    // Unfiltered, the Queue heading shows even when empty, as it always has;
-    // a filter that empties it hides it, as the columns do. Parked items
-    // leave the queue for their own section below it.
-    const planned = (plan.queue || []).filter(function (q) { return planRowShown(q, filter); });
-    const queue = planned.filter(function (q) { return !isParked(q); });
-    const parked = planned.filter(isParked);
-    if (queue.length || !filter) {
-      nodes.push(planGroup('Queue (' + queue.length + ')', queue.map(queueRow), '',
-        'Only what the chief has scheduled; the Backlog counts every open issue.'));
-    }
-    if (parked.length) nodes.push(parkedGroup(parked.map(queueRow)));
-    const merged = mergedCount(plan);
-    if (merged) nodes.push(clearMergedButton(merged));
-  }
-  host.replaceChildren.apply(host, nodes);
-}
-
 // The desktop grid: one column per lane that holds rows, the plan
 // and Claude's turn sharing one as always; an empty lane spans the grid as
 // a strip under them (CSS). The pane carries the count, so the project
@@ -1301,118 +611,113 @@ function sizeLaneGrid() {
   els.boardColumns.parentElement.style.setProperty('--board-lanes', String(Math.max(1, cells)));
 }
 
-export function renderBoard() {
-  const body = state.board;
-  const columns = (body && body.columns) || {};
+// Each lane's cards as drawn: Telegram channel sessions leave the columns
+// for the summary line, and the project filter narrows the rest.
+function visibleCards(columns) {
   const repoFilter = boardRepoFilter();
   const visible = {};
   COLUMNS.forEach(function (col) {
     visible[col.key] = (columns[col.key] || []).filter(function (card) {
-      // Telegram channel sessions leave the columns for the summary line.
       return !isHiddenChannel(card) && matchesRepoFilter(card, repoFilter);
     });
   });
+  return visible;
+}
+
+// The drawn card whose drawer is open, else null. An open drawer whose card
+// is gone (session ended) or filtered out has nothing to render into;
+// collapse it rather than hold an expanded id no card matches.
+function expandedCardIn(visible, body) {
+  if (!state.boardExpanded) return null;
   let expandedCard = null;
-  if (state.boardExpanded) {
-    COLUMNS.forEach(function (col) {
-      expandedCard = expandedCard || visible[col.key].find(function (c) {
-        return c.session_id === state.boardExpanded;
-      }) || null;
-    });
-    // An open drawer whose card is gone (session ended) or filtered out has
-    // nothing to render into; collapse it rather than hold an expanded id no
-    // card matches.
-    if (body && !expandedCard) state.boardExpanded = null;
+  COLUMNS.forEach(function (col) {
+    expandedCard = expandedCard || visible[col.key].find(function (c) {
+      return c.session_id === state.boardExpanded;
+    }) || null;
+  });
+  if (body && !expandedCard) state.boardExpanded = null;
+  return expandedCard;
+}
+
+// A drawer opened from outside its section — the ?board= deep link, a chief
+// chat send — unfolds that section once. After that the section's open
+// state is the user's again: the poll never re-opens one they folded.
+function revealDrawerSection(visible, expandedCard) {
+  if (!expandedCard) {
+    revealedDrawer = null;
+    return;
   }
+  if (revealedDrawer === state.boardExpanded) return;
+  revealedDrawer = state.boardExpanded;
+  const home = COLUMNS.find(function (col) {
+    return visible[col.key].indexOf(expandedCard) !== -1;
+  });
+  const section = home && els[home.section];
+  if (section) section.open = true;
+}
+
+// One lane: its section's count and flags, its rows, its empty state.
+function renderLane(col, cards, openItem, body, ghLoaded, liveRead) {
+  // A live column can still hold external cards (hook state + fresh
+  // transcript) with the session-host down; those make a real lower bound,
+  // so only an empty one reads as unknown.
+  const unknown = (col.gh === 'all' && !ghLoaded)
+    || (col.live && !liveRead && cards.length === 0);
+  const shown = unknown ? '—' : String(cards.length);
+  const section = els[col.section];
+  if (section) {
+    const count = section.querySelector('.board-count');
+    if (count) count.textContent = shown;
+    section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
+    // At the wide query an empty lane is a one-line strip.
+    section.classList.toggle('is-empty', cards.length === 0);
+    // PRs and jobs, folded, says what is wrong instead of its count.
+    if (col.key === 'other') {
+      const failing = cards.filter(jobFailing).length;
+      setLaneException(section, failing ? failing + ' failing' : '', 'danger');
+    }
+  }
+  const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
+  const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
+  if (!list) return;
+  placeChildren(list, cards.map(function (card) {
+    return renderCard(col.key, card, openItem);
+  }));
+  if (!empty) return;
+  // The canonical empty-state block: a muted glyph over the one-line
+  // reason, instead of a bare sentence in a dashed box. `empty` stays the
+  // hidden/shown container the poll toggles, so nothing else about the
+  // column changes. Rebuilt only when its words change: the 5 s poll would
+  // otherwise replace the action button under a keyboard user's focus.
+  const text = emptyText(col, body, ghLoaded, liveRead);
+  const action = emptyAction(col, liveRead);
+  const sig = text + '|' + action.actionLabel;
+  if (empty.dataset.sig !== sig) {
+    empty.dataset.sig = sig;
+    empty.replaceChildren(emptyStateEl(col.glyph, text, action));
+  }
+  empty.hidden = cards.length > 0;
+}
+
+export function renderBoard() {
+  const body = state.board;
+  const visible = visibleCards((body && body.columns) || {});
+  const expandedCard = expandedCardIn(visible, body);
   // The poll keeps running with a drawer open, so a render that still
   // shows the same drawer keeps its node — reply text, focus, a live mic and
   // the chief exchange poll all live on it.
   const openItem = openDrawerItem(expandedCard);
   const activeEl = openItem && openItem.contains(document.activeElement)
     ? document.activeElement : null;
-  if (!openItem) {
-    // Drawers that aren't kept are rebuilt — the chief exchange poll
-    // must never outlive the DOM node it writes into.
-    if (chiefExchangeTimer) {
-      clearInterval(chiefExchangeTimer);
-      chiefExchangeTimer = null;
-    }
-    // Same lifecycle rule for the drawer composer's mic: reset()
-    // before the rebuild below drops its DOM node, so a live or
-    // still-finalizing recording is force-stopped and the mic mutex released
-    // instead of wedging every other mic in the app.
-    if (drawerComposer) {
-      drawerComposer.reset();
-      drawerComposer = null;
-    }
-  } else if (drawerComposer) {
-    // A kept drawer's composer outlives the render that built it, so its
-    // mic / OCR availability follows an /api/status that lands after it.
-    drawerComposer.setAvailability(composerAvailability());
-  }
+  syncDrawerLifecycle(openItem);
   if (!body || !els.boardColumns) return;
   const ghLoaded = ghFetched(body);
   const liveRead = liveSessionsRead(body);
 
-  // A drawer opened from outside its section — the ?board= deep link, a chief
-  // chat send — unfolds that section once. After that the section's open
-  // state is the user's again: the poll never re-opens one they folded.
-  if (!expandedCard) {
-    revealedDrawer = null;
-  } else if (revealedDrawer !== state.boardExpanded) {
-    revealedDrawer = state.boardExpanded;
-    const home = COLUMNS.find(function (col) {
-      return visible[col.key].indexOf(expandedCard) !== -1;
-    });
-    const section = home && els[home.section];
-    if (section) section.open = true;
-  }
-
+  revealDrawerSection(visible, expandedCard);
   COLUMNS.forEach(function (col) {
-    const cards = visible[col.key];
-    // A live column can still hold external cards (hook state + fresh
-    // transcript) with the session-host down; those make a real lower bound,
-    // so only an empty one reads as unknown.
-    const unknown = (col.gh === 'all' && !ghLoaded)
-      || (col.live && !liveRead && cards.length === 0);
-    const shown = unknown ? '—' : String(cards.length);
-    const section = els[col.section];
-    if (section) {
-      const count = section.querySelector('.board-count');
-      if (count) count.textContent = shown;
-      section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
-      // At the wide query an empty lane is a one-line strip.
-      section.classList.toggle('is-empty', cards.length === 0);
-      // PRs and jobs, folded, says what is wrong instead of its count.
-      if (col.key === 'other') {
-        const failing = cards.filter(jobFailing).length;
-        setLaneException(section, failing ? failing + ' failing' : '', 'danger');
-      }
-    }
-    const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
-    const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
-    if (!list) return;
-    placeChildren(list, cards.map(function (card) {
-      return renderCard(col.key, card, openItem);
-    }));
-    if (empty) {
-      // The canonical empty-state block, rebuilt each render: a
-      // muted glyph over the one-line reason, instead of a bare sentence in
-      // a dashed box. `empty` stays the hidden/shown container the poll
-      // toggles, so nothing else about the column changes.
-      // Rebuilt only when its words change: the 5 s poll would otherwise
-      // replace the action button under a keyboard user's focus.
-      const text = emptyText(col, body, ghLoaded, liveRead);
-      const action = emptyAction(col, liveRead);
-      const sig = text + '|' + action.actionLabel;
-      if (empty.dataset.sig !== sig) {
-        empty.dataset.sig = sig;
-        empty.replaceChildren(emptyStateEl(col.glyph, text, action));
-      }
-      empty.hidden = cards.length > 0;
-    }
+    renderLane(col, visible[col.key], openItem, body, ghLoaded, liveRead);
   });
-
   sizeLaneGrid();
 
   // A card that changed column moved its kept <li> between lists, which
@@ -1424,7 +729,7 @@ export function renderBoard() {
   // The open Backlog kebab's row is gone (issue closed, filtered out).
   issueMenu.endRender();
   // A kept drawer keeps its menu; one rebuilt re-attached it; none, ends it.
-  if (!openItem) drawerMenu.endRender();
+  endDrawerRender(openItem);
   renderBacklogFoot(body, ghLoaded);
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
@@ -1569,7 +874,7 @@ async function refreshGithub() {
 
 // --------------------------------------------------------- column sections
 
-const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
+export const DESKTOP_BOARD = '(min-width: 700px) and (pointer: fine)';
 
 // The desktop grid is a kanban at a glance, so all five sections start open
 // there; the phone keeps the markup's default (the two live columns open).

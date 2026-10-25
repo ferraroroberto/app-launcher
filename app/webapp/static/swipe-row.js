@@ -109,52 +109,28 @@ function paintPane(p, spec, icon) {
   p.el.replaceChildren(p.btn);
 }
 
-// Make `li` swipeable: `surface` is the element that slides (it holds the
-// row's content), and the panes go in behind it, in its parent (the clipping
-// track action-rows.js builds); `spec` is { leading, trailing }, each { label, glyph,
-// tone, onCommit, disabled, reason } or absent. `icon(name)` returns a
-// glyph's markup (the sprite helper, passed in so this module stays
-// importable without a DOM).
-export function attachSwipe(li, surface, spec, icon) {
-  const sides = { leading: spec.leading || null, trailing: spec.trailing || null };
-  const panes = {};
-  ['leading', 'trailing'].forEach(function (side) {
-    if (!sides[side]) return;
-    const p = pane(side, sides[side]);
-    paintPane(p, sides[side], icon);
-    p.btn.addEventListener('click', function (ev) {
-      ev.stopPropagation();
-      const action = sides[side];
-      ctl.close();
-      if (!action.disabled) action.onCommit();
-    });
-    panes[side] = p;
-    surface.parentNode.insertBefore(p.el, surface);
-  });
-  li.classList.add('has-swipe');
-  surface.classList.add('swipe-surface');
+// One row's resting state: its offset, the open-row bookkeeping, and the
+// click a gesture leaves behind. `ctl` is what openRow holds.
+function swipeState(li, surface, sides) {
+  const row = { offset: 0, drag: null, swallowClick: false };
 
-  let offset = 0;        // the surface's resting offset
-  let drag = null;       // the gesture in progress
-  let swallowClick = false;
+  row.width = function () { return li.getBoundingClientRect().width || 1; };
 
-  function width() { return li.getBoundingClientRect().width || 1; }
-
-  function show(next, dragging) {
-    offset = next;
+  row.show = function (next, dragging) {
+    row.offset = next;
     surface.style.transform = next ? 'translateX(' + next + 'px)' : '';
     li.classList.toggle('is-dragging', !!dragging);
     if (next) li.dataset.swipe = next > 0 ? 'leading' : 'trailing';
     else delete li.dataset.swipe;
     const action = next > 0 ? sides.leading : next < 0 ? sides.trailing : null;
     li.classList.toggle('is-armed',
-      !!(dragging && action && !action.disabled && isArmed(next, width())));
-  }
+      !!(dragging && action && !action.disabled && isArmed(next, row.width())));
+  };
 
   const ctl = {
     li: li,
     close: function () {
-      show(0, false);
+      row.show(0, false);
       if (openRow === ctl) {
         openRow = null;
         document.removeEventListener('pointerdown', onDocumentPointerDown, true);
@@ -162,38 +138,75 @@ export function attachSwipe(li, surface, spec, icon) {
       }
     },
   };
+  row.ctl = ctl;
 
-  function rest(side) {
+  row.rest = function (side) {
     if (openRow && openRow !== ctl) closeOpenRow();
-    show(side === 'leading' ? SWIPE.paneWidth : -SWIPE.paneWidth, false);
+    row.show(side === 'leading' ? SWIPE.paneWidth : -SWIPE.paneWidth, false);
     if (openRow !== ctl) {
       openRow = ctl;
       document.addEventListener('pointerdown', onDocumentPointerDown, true);
       document.addEventListener('scroll', onDocumentScroll, true);
     }
-  }
+  };
+  return row;
+}
 
+// The panes go in behind the surface, in its parent; a tap on one commits
+// its action (or, disabled, only closes the row).
+function mountPanes(surface, sides, icon, row) {
+  ['leading', 'trailing'].forEach(function (side) {
+    if (!sides[side]) return;
+    const p = pane(side, sides[side]);
+    paintPane(p, sides[side], icon);
+    p.btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      const action = sides[side];
+      row.ctl.close();
+      if (!action.disabled) action.onCommit();
+    });
+    surface.parentNode.insertBefore(p.el, surface);
+  });
+}
+
+// What a released swipe does: commit, rest open on its pane, or close.
+function finishSwipe(row, sides, velocity, cancelled) {
+  row.swallowClick = true;
+  const side = row.offset > 0 ? 'leading' : row.offset < 0 ? 'trailing' : '';
+  const action = side ? sides[side] : null;
+  const outcome = cancelled || !action ? 'close'
+    : release(row.offset, velocity, row.width(), !!action.disabled);
+  if (outcome === 'open') {
+    row.rest(side);
+  } else {
+    row.ctl.close();
+    if (outcome === 'commit') action.onCommit();
+  }
+}
+
+function wirePointer(surface, sides, row) {
   surface.addEventListener('pointerdown', function (ev) {
     if (ev.pointerType === 'mouse' || !ev.isPrimary) return;
-    if (offset) {
+    if (row.offset) {
       // A tap on an open row closes it and does nothing else.
-      swallowClick = true;
-      ctl.close();
+      row.swallowClick = true;
+      row.ctl.close();
       return;
     }
     if (startsInEdge(ev.clientX)) return;
-    if (openRow && openRow !== ctl) closeOpenRow();
-    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, axis: null,
-             lastX: ev.clientX, lastT: ev.timeStamp, velocity: 0 };
+    if (openRow && openRow !== row.ctl) closeOpenRow();
+    row.drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, axis: null,
+                 lastX: ev.clientX, lastT: ev.timeStamp, velocity: 0 };
   });
 
   surface.addEventListener('pointermove', function (ev) {
+    const drag = row.drag;
     if (!drag || ev.pointerId !== drag.id) return;
     const dx = ev.clientX - drag.x;
     const dy = ev.clientY - drag.y;
     if (!drag.axis) {
       drag.axis = lockAxis(dx, dy);
-      if (drag.axis === 'y') { drag = null; return; }
+      if (drag.axis === 'y') { row.drag = null; return; }
       if (drag.axis !== 'x') return;
       try { surface.setPointerCapture(ev.pointerId); } catch (exc) { /* gone */ }
     }
@@ -201,35 +214,26 @@ export function attachSwipe(li, surface, spec, icon) {
     if (dt > 0) drag.velocity = (ev.clientX - drag.lastX) / dt;
     drag.lastX = ev.clientX;
     drag.lastT = ev.timeStamp;
-    show(clampOffset(dx, width(), sides), true);
+    row.show(clampOffset(dx, row.width(), sides), true);
   });
 
   function finish(ev, cancelled) {
+    const drag = row.drag;
     if (!drag || ev.pointerId !== drag.id) return;
-    const wasSwipe = drag.axis === 'x';
-    const velocity = drag.velocity;
-    drag = null;
-    if (!wasSwipe) return;
-    swallowClick = true;
-    const side = offset > 0 ? 'leading' : offset < 0 ? 'trailing' : '';
-    const action = side ? sides[side] : null;
-    const outcome = cancelled || !action ? 'close'
-      : release(offset, velocity, width(), !!action.disabled);
-    if (outcome === 'open') {
-      rest(side);
-    } else {
-      ctl.close();
-      if (outcome === 'commit') action.onCommit();
-    }
+    row.drag = null;
+    if (drag.axis === 'x') finishSwipe(row, sides, drag.velocity, cancelled);
   }
 
   surface.addEventListener('pointerup', function (ev) { finish(ev, false); });
   surface.addEventListener('pointercancel', function (ev) { finish(ev, true); });
+}
+
+function wireClickSwallow(li, surface, row) {
   // The click a drag (or a tap that closed an open row) leaves behind must
   // not also launch the row or open its menu.
   li.addEventListener('click', function (ev) {
-    if (!swallowClick) return;
-    swallowClick = false;
+    if (!row.swallowClick) return;
+    row.swallowClick = false;
     ev.stopPropagation();
     ev.preventDefault();
   }, true);
@@ -238,9 +242,24 @@ export function attachSwipe(li, surface, spec, icon) {
   // exception is a tap on an open row's surface, which closes it: that
   // tap's own click is the one to swallow.
   li.addEventListener('pointerdown', function (ev) {
-    if (offset && surface.contains(ev.target)) return;
-    swallowClick = false;
+    if (row.offset && surface.contains(ev.target)) return;
+    row.swallowClick = false;
   }, true);
+}
 
-  return ctl;
+// Make `li` swipeable: `surface` is the element that slides (it holds the
+// row's content), and the panes go in behind it, in its parent (the clipping
+// track action-rows.js builds); `spec` is { leading, trailing }, each { label, glyph,
+// tone, onCommit, disabled, reason } or absent. `icon(name)` returns a
+// glyph's markup (the sprite helper, passed in so this module stays
+// importable without a DOM).
+export function attachSwipe(li, surface, spec, icon) {
+  const sides = { leading: spec.leading || null, trailing: spec.trailing || null };
+  const row = swipeState(li, surface, sides);
+  mountPanes(surface, sides, icon, row);
+  li.classList.add('has-swipe');
+  surface.classList.add('swipe-surface');
+  wirePointer(surface, sides, row);
+  wireClickSwallow(li, surface, row);
+  return row.ctl;
 }

@@ -18,6 +18,8 @@ app-launcher/
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
+│           ├── board/         # Board tab modules beside board.js: the drawer, the Chief's plan card, its Clear merged control
+│           ├── jobs/          # Jobs tab modules beside jobs.js: a Recent runs row
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
 ├── src/                        # logic layer (no UI imports)

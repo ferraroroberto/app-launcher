@@ -130,8 +130,8 @@ class TestMarkup:
         logged under is what that tap did). The second test below pins that
         it stays a literal map of valid ids, never anything built from data."""
         offenders = []
-        for path in _STATIC.glob("*.js"):
-            if path.name == "voice.js":
+        for path in _STATIC.rglob("*.js"):
+            if path.name == "voice.js" or {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):
                 continue
             text = path.read_text(encoding="utf-8")
             if re.search(r"data-track|dataset\.track|dataset\[['\"]track", text):
