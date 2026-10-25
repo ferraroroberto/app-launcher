@@ -316,6 +316,16 @@ class TestPatchConfig:
         assert load_webapp_config(cfg_path).chief_job_failures is False
         assert client.get("/api/config").json()["chief_job_failures"] is False
 
+    def test_grok_auto_switch_defaults_off_and_round_trips(self, webapp_client):
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["grok_auto_switch"] is False
+        assert client.post("/api/config", json={"grok_auto_switch": True}).status_code == 200
+        assert load_webapp_config(overrides["tmp_webapp_cfg_path"]).grok_auto_switch is True
+        assert client.post("/api/config", json={"grok_auto_switch": "true"}).status_code == 400
+        assert app.state.webapp_config.grok_auto_switch is True
+
     @pytest.mark.parametrize("junk", ["false", 0, None])
     def test_chief_job_failures_rejects_non_booleans(self, webapp_client, junk):
         client, app, _ = webapp_client

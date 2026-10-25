@@ -536,3 +536,70 @@ class TestChiefManagedMarking:
             webapp_client, monkeypatch, chief=False, cached=self._CACHED,
             body_extra={"title": "Card title"})
         rename.assert_called_once_with(8446, "spawned-1", "Card title")
+
+
+class TestGrokAutoSwitch:
+    """A Sonnet start runs on Grok near Claude's weekly pace, toggle on only."""
+
+    _spawn = TestIssueStart._spawn
+
+    @pytest.fixture
+    def _grok(self, webapp_client, monkeypatch, tmp_path):
+        import time
+        from app.webapp.routers import board as board_router
+        client, _, overrides = webapp_client
+        project = overrides["tmp_projects_dir"] / "myrepo"
+        project.mkdir()
+        home = tmp_path / "grok-home"
+        home.mkdir()
+        (home / "trusted_folders.toml").write_text(
+            f"[folders.'{project}']\ntrusted = true\n",
+            encoding="utf-8")
+        monkeypatch.setenv("GROK_HOME", str(home))
+        monkeypatch.setattr(board_router.agents, "is_installed", lambda a: True)
+        state = {"used": 47}
+        # Half the week gone: pace 50.
+        monkeypatch.setattr(board_router, "_read_quota_lines", lambda cfg: [{
+            "harness": "claude", "state": "available", "stale": False,
+            "weekly": {"used_percentage": state["used"],
+                       "resets_at": time.time() + 3.5 * 86400,
+                       "duration_minutes": 10080},
+        }])
+        rename = MagicMock()
+        monkeypatch.setattr(board_router.session_client, "rename", rename)
+        assert client.post("/api/config", json={"grok_auto_switch": True}).status_code == 200
+        return client, state, home, rename
+
+    def _start(self, client, model="claude:sonnet"):
+        return client.post("/api/board/issues/start", json={
+            "repo": "myrepo", "number": 5, "mode": "start", "model": model,
+            "title": "Card"}).json()
+
+    def test_sonnet_near_pace_launches_grok_and_says_so(self, _bypass_gate, _spawn, _grok):
+        client, _, _, rename = _grok
+        body = self._start(client)
+        assert _spawn["agent"] == "grok"
+        assert body["auto_switch"]["outcome"] == "switched"
+        assert body["auto_switch"]["launched"] == "grok:grok-4.5"
+        assert body["auto_switch"]["week_pace_pct"] == 50
+        rename.assert_called_once_with(8446, "spawned-1", "Card · Grok fallback")
+
+    def test_under_pace_opus_and_toggle_off_stay_on_claude(self, _bypass_gate, _spawn, _grok):
+        client, state, _, _ = _grok
+        assert self._start(client, "claude:opus")["auto_switch"] is None
+        assert _spawn["agent"] == "claude"
+        state["used"] = 30
+        assert self._start(client)["auto_switch"]["reason"] == "claude_under_pace"
+        assert _spawn["agent"] == "claude"
+        client.post("/api/config", json={"grok_auto_switch": False})
+        state["used"] = 99
+        assert self._start(client)["auto_switch"] is None
+        assert _spawn["agent"] == "claude"
+
+    def test_untrusted_repo_skips_with_a_reason(self, _bypass_gate, _spawn, _grok):
+        client, _, home, _ = _grok
+        (home / "trusted_folders.toml").write_text("[folders]\n", encoding="utf-8")
+        body = self._start(client)
+        assert _spawn["agent"] == "claude"
+        assert body["auto_switch"]["outcome"] == "skipped"
+        assert body["auto_switch"]["reason"] == "repo_not_trusted_by_grok"

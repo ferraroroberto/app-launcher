@@ -30,7 +30,7 @@ from src.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
-from src.usage.providers import VALID_USAGE_PROVIDERS
+from src.usage.providers import VALID_USAGE_PROVIDERS, validate_usage_providers
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
     MAX_CHIEF_WORKER_CAP,
@@ -96,6 +96,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Which providers the usage meter shows.
         "usage_providers": list(cfg.usage_providers),
         "usage_providers_available": list(VALID_USAGE_PROVIDERS),
+        # Sonnet-tier dispatches run on Grok near Claude's weekly pace; off by default.
+        "grok_auto_switch": cfg.grok_auto_switch,
         # The chief's auto-compact threshold: percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -237,6 +239,7 @@ _SWITCH_KEYS = (
     "chief_doorbell",
     "chief_job_failures",
     "life_os_refresh_skill_instructions",
+    "grok_auto_switch",
 )
 
 
@@ -257,6 +260,7 @@ _PATCH_KEYS = frozenset({
     "terminal_history_lines",
     "large_upload_max_mb",
     "usage_providers",
+    "grok_auto_switch",
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_job_failures",
@@ -309,13 +313,15 @@ async def patch_config(request: Request) -> Dict[str, Any]:
             str(p).strip() for p in (raw or []) if str(p).strip()
         ]
     # The usage providers are stored in card order whatever order the client
-    # sent; an unknown name is kept so _validate words the 400.
+    # sent. Checked here rather than in _validate: the loader already drops an
+    # unknown name on read, so only a write can carry one.
     if "usage_providers" in patch:
         raw = patch["usage_providers"]
-        if not isinstance(raw, list) or not all(isinstance(p, str) for p in raw):
-            raise HTTPException(status_code=400, detail="usage_providers must be a list of provider names")
-        unknown = [p for p in raw if p not in VALID_USAGE_PROVIDERS]
-        patch["usage_providers"] = unknown + [p for p in VALID_USAGE_PROVIDERS if p in raw]
+        try:
+            validate_usage_providers(raw)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        patch["usage_providers"] = [p for p in VALID_USAGE_PROVIDERS if p in raw]
     # The threshold is a whole percent. A bool is an int in Python
     # and a float would be silently truncated, so both are refused here;
     # the range itself is _validate's, which words the 400.

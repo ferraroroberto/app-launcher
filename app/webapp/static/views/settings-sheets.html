@@ -308,6 +308,11 @@
             <button type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
+          <div class="row">
+            <span>Grok for Sonnet lanes</span>
+            <button type="button" id="grokAutoSwitchToggle" class="toggle" role="switch" aria-checked="false" aria-label="Grok auto-switch" aria-describedby="grokAutoSwitchHelp" title="Launch Sonnet lanes on Grok when Claude's week runs short"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="grokAutoSwitchHelp" class="field-help">A Board start asking for Sonnet runs on Grok Build instead when Claude's weekly use is within 5 points of the week's pace or above it. Opus lanes never switch. An unknown Claude reading, Grok not installed, or a repo Grok has not trusted (run <code>grok --trust</code> once in it) keeps the lane on Claude.</p>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
