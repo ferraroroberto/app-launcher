@@ -52,14 +52,13 @@
 .tab.active { background: var(--accent-soft); color: var(--accent-text); }
 .tab:active { transform: scale(0.97); }
 /* The stroke SVG icon shows everywhere — desktop segmented control and mobile
-   pill alike (home-automation #77 made icon-as-SVG the fleet's direction; this
-   file hid it on desktop until project-scaffolding #142). Sized in `em` so it
+   pill alike (icon-as-SVG is the fleet's direction). Sized in `em` so it
    tracks the label's font-size; the coarse-pointer block below re-sizes it to
    the pill's --bottom-tabs-icon and stacks it above the label.
    Scoped under .tabs (0,2,0) here and in both re-sizes below, so an app's own
    single-class icon utility (`.icon { width: 1em }`, loaded after this file)
    can't resize the nav's glyphs: it shrank the rail's icons to 12px in
-   home-automation (project-scaffolding#303). */
+   home-automation. */
 .tabs .tab-icon {
   display: block;
   flex: none;
@@ -71,7 +70,7 @@
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-/* Optional count badge (project-scaffolding#338): nav-tabs.js setBadge() adds
+/* Optional count badge: nav-tabs.js setBadge() adds
    it, so a nav that never calls setBadge carries none of these elements. It sits
    on the icon's top-right corner in all three placements (inline tabs, pill,
    rail) because the first badge wraps the icon in .tab-icon-wrap, the box it is
@@ -80,7 +79,7 @@
    Geometry is px, not rem/em: the badge must not reflow with the Large text
    size. Never animated, so there is nothing for prefers-reduced-motion to
    cancel. Opaque, so the active tab's accent-soft tint can't hide it.
-   The optional danger tone (project-scaffolding#342, setBadge's `tone`) swaps
+   The optional danger tone (setBadge's `tone`) swaps
    the fill for the danger one (--deficit) under the same card text, for a count
    that is an alarm rather than a to-do; attention stays the default. Both tones
    are contrast-measured in test_vendored_nav.
@@ -133,11 +132,11 @@
 }
 /* Narrow non-touch windows (a squeezed desktop browser, fine-pointer tablets):
    an icon BESIDE its label no longer fits, and labels collided with the next
-   tab (home-automation #365). Stack the icon OVER the label instead, the
+   tab. Stack the icon OVER the label instead, the
    mobile pill's own shape, so every tab keeps its label: the nav contract is
-   "icon and label, never icon-only" (fleet-config#966). Measured at five tabs
+   "icon and label, never icon-only". Measured at five tabs
    from 320 to 520px, Chromium and WebKit: inline, 7-8 letter labels clipped
-   below ~440px; stacked, every label fits (project-scaffolding#278). The
+   below ~440px; stacked, every label fits. The
    ellipsis is the safety net for the Large text step at 320px. min-height
    holds the 44px floor the stack would otherwise miss by 2px. The
    coarse-pointer pill below is untouched: it matches (pointer: coarse). */
@@ -160,12 +159,12 @@
 }
 
 /* ------------------------------------------------- wide layout: left rail */
-/* design.md Layout, "Wide layout" (fleet-config#968): on a wide, fine-pointer
+/* design.md Layout, "Wide layout": on a wide, fine-pointer
    window the top segmented control becomes a full-height left rail
    (layout.rail, 80px) on the card surface with a line hairline on its right
    edge, each tab an icon over its label, never icon-only. Placement only: the
    active tint, aria-selected and persistence are the rules above, unchanged.
-   Lifted from app-launcher#1166 (project-scaffolding#281). The content offsets
+   The content offsets
    key on the nav itself (body:has(> .tabs), .tabs ~ .app) so they outrank an
    app's own `body`/`.app` padding shorthand loaded after this file; without
    that, content slides under the rail. Master-detail and a board's
@@ -221,14 +220,14 @@
    apps (don't re-author it per-app). */
 @media (pointer: coarse) and (max-width: 520px) {
   .app {
-    /* Keep the bar outside this content wrapper. home-automation#232 proved on a
+    /* Keep the bar outside this content wrapper. It was proven on a
        real iPhone PWA that putting a fixed nav inside a momentum/content scroller
        lets iOS anchor it to short-tab content rather than the viewport. Normal
        document scroll keeps the physical screen filled; the +1px keeps short
        tabs technically scrollable so iOS anchors fixed to the screen bottom. */
     min-height: calc(100vh + 1px);
     min-height: calc(100dvh + 1px);
-    /* Top is the safe area alone (#288): the first card starts directly under
+    /* Top is the safe area alone: the first card starts directly under
        the status bar, as in app-launcher. Sides and bottom keep --gap. */
     padding: env(safe-area-inset-top, 0px) var(--gap) calc(
       env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
@@ -240,7 +239,7 @@
     );
   }
 
-  /* Standalone-PWA shell (home-automation#303): in the installed app the
+  /* Standalone-PWA shell: in the installed app the
      *document* was the scroller, and the home-screen WKWebView's native
      scroll bounce moves the visual viewport itself, dragging every
      `position: fixed` element (the floating nav) with it — `overscroll-
@@ -251,13 +250,12 @@
      fixed nav stays put by construction rather than by after-the-fact
      correction.
 
-     The load-bearing subtlety (home-automation#303 rounds 1-2, proven by
-     on-device nav-debug forensics): iOS standalone expands the layout
+     The load-bearing subtlety (proven by on-device nav-debug forensics): iOS standalone expands the layout
      viewport to the full physical screen ONLY WHILE THE DOCUMENT IS
      SCROLLABLE. With every body child out of flow the document has zero
      scrollable overflow, and the fixed-positioning viewport contracts —
      every fixed element (nav, .app) anchors above the physical bottom: the
-     home-automation#232 dead band again. The baseline's
+     dead band again. The baseline's
      `min-height: calc(100dvh + 1px)` forcer above exists to keep exactly this
      expansion alive ("so position:fixed anchors to the screen rather than the
      content"). So the shell re-creates that 1px overflow with an inert
@@ -265,16 +263,16 @@
      expanded), but no touch can ever reach it — content gestures land on the
      fixed .app scroller (its overscroll-behavior: none stops chaining), and
      the nav declines pan gestures outright — so the WKWebView bounce that
-     moves `visualViewport.offsetTop` (home-automation#300) still has no entry
+     moves `visualViewport.offsetTop` still has no entry
      point.
 
-     Page-head dependency (#287): this shell and the `.tabs` anchor below
+     Page-head dependency: this shell and the `.tabs` anchor below
      assume the web view spans the WHOLE screen, which iOS gives an installed
      app only when the page sets
      `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
      plus `viewport-fit=cover` in its viewport meta. Without them the app starts
      below an opaque status bar and the pill lands one status-bar height
-     (about 59pt) too low, mostly off-screen (parking-manager#24). */
+     (about 59pt) too low, mostly off-screen. */
   @media (display-mode: standalone) {
     .app {
       position: fixed;
@@ -283,7 +281,7 @@
       right: 0;
       /* Sized with the LARGE viewport unit, not bottom-anchored (`inset: 0`):
          at cold launch iOS *animates* the layout-viewport expansion (1px per
-         vv:resize frame over ~2s — home-automation#303 round-3 on-device
+         vv:resize frame over ~2s, seen in an on-device
          log), so a bottom edge tied to the live viewport slides down with it.
          lvh reports the final expanded height from the very first frame, and
          the top edge is stable, so this box has its final geometry
@@ -346,7 +344,7 @@
     backdrop-filter: blur(20px) saturate(1.25);
     -webkit-backdrop-filter: blur(20px) saturate(1.25);
   }
-  /* Hit area only, never painted (#348, TOUCH-02). Each tab's tap rectangle
+  /* Hit area only, never painted (TOUCH-02). Each tab's tap rectangle
      is square-cornered, but the bar's rounded corners (radius-nav) take no
      taps outside the curve, so a list row scrolled under the pill took taps
      in the outer tabs' corner slivers. This transparent square layer below
@@ -359,7 +357,7 @@
     inset: 0;
   }
 
-  /* Standalone-PWA nav anchoring (home-automation#303, pairs with the shell
+  /* Standalone-PWA nav anchoring (pairs with the shell
      above; placed after the base rule so the cascade picks it). Two changes:
      1. Anchor from the stable TOP edge via the large-viewport unit instead of
         `bottom`: during the cold-launch viewport-expansion animation (see the
@@ -371,7 +369,7 @@
         geometry is unchanged, only the anchor.
      2. Refuse pan gestures: the nav is the one fixed surface a drag could
         still reach the 1px-scrollable document through (it sits outside
-        .app), and home-automation#300 proved the standalone bounce ignores
+        .app), and the standalone bounce was proven to ignore
         overscroll-behavior. Taps are unaffected. */
   @media (display-mode: standalone) {
     .tabs {
@@ -387,7 +385,7 @@
          1.8s delay clears it without waiting out the whole sweep. Pure CSS,
          runs once per page load; `backwards` fill guarantees it always ends
          fully visible. The translate lives only inside the animation
-         (computed, never inline style), so nav-tabs.js's home-automation#300
+         (computed, never inline style), so nav-tabs.js's
          never-translate rule — which reads/writes nav.style.transform — is
          untouched, and with no `forwards` fill the resting geometry after the
          entrance is byte-identical to before. */
@@ -447,7 +445,7 @@
        back blank until a class/theme change forces a repaint. An own layer
        keeps the glyphs out of the stale texture so they repaint on show.
        iOS-only; desktop WebKit composites differently and never reproduces it.
-       Validated on a real iPhone PWA (home-automation#381). */
+       Validated on a real iPhone PWA. */
     transform: translateZ(0);
     backface-visibility: hidden;
   }
