@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from src.jobs import upcoming_fires
-from src.jobs_config import Schedule
+from src.jobs.config import Schedule
 
 
 # Tuesday 2026-06-16 10:00:00.

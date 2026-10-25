@@ -13,7 +13,10 @@ from unittest.mock import Mock
 import httpx
 
 from app.webapp.routers import board as board_router
-from src import board, chief_plan, github_client, quota_usage
+from src import board
+from src.chief import plan as chief_plan
+from src.clients import github as github_client
+from src.usage import quota as quota_usage
 
 from tests.unit.board._support import _FakeGh, _claim_contract, _iso, _live
 
@@ -228,7 +231,7 @@ def test_api_board_exposes_claim_state_per_backlog_card(
 ):
     """#948: the owner's live-session verdict reaches every backlog card, and
     an unreadable session list never turns a claim into a dead one."""
-    from src.session_client import SessionHostError
+    from src.clients.session import SessionHostError
 
     client, app, overrides = webapp_client
     fake = _FakeGh()
@@ -301,7 +304,7 @@ def test_api_rate_limits_adds_grok_only_while_the_meter_shows_it(webapp_client, 
     Settings shows Grok, after the two quota rows."""
     from dataclasses import replace
 
-    from src import quota_usage
+    from src.usage import quota as quota_usage
 
     client, app, _overrides = webapp_client
     monkeypatch.setattr(quota_usage, "grok_quota_line", lambda: {"harness": "grok", "label": "Grok"})
@@ -413,7 +416,7 @@ def test_api_board_survives_session_host_down(webapp_client, caplog):
     so, the failure logs one warning rather than one per poll, and a read
     that genuinely comes back empty is ``available`` again."""
     client, _app, overrides = webapp_client
-    from src.session_client import SessionHostError
+    from src.clients.session import SessionHostError
     overrides["session"].list_sessions.side_effect = SessionHostError("down")
     with caplog.at_level(logging.DEBUG, logger="app.webapp.routers.board_spawn"):
         body = client.get("/api/board").json()
@@ -457,7 +460,7 @@ def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
     """#1434: the Coding tab's per-session placement is build_board's own
     routing: the needs-you family lands in Your turn, the chief never does,
     and a state-only card (no session id) is left out."""
-    from src import active_issue_claims
+    from src.board import active_issue_claims
 
     cards = [
         {"session_id": "s-stall", "status": "stalled", "label": "", "age_seconds": 900},

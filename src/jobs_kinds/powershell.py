@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from src.jobs_config import Job
+from src.jobs.config import Job
 from src.jobs_kinds.base import Problem, require_script
 
 POWERSHELL_EXE = (

@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 
 from app.webapp.routers import board_spawn
-from src import board, github_client
+from src import board
+from src.clients import github as github_client
 
 
 @pytest.fixture(autouse=True)

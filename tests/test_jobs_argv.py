@@ -1,7 +1,7 @@
-"""``src.jobs_argv.compose_argv`` — typed parameter composition (issue #67).
+"""``src.jobs.argv.compose_argv`` — typed parameter composition (issue #67).
 
 The argv composer is a pure function: every test wires a hand-built
-:class:`~src.jobs_config.Job` with the relevant ``params`` shape, then
+:class:`~src.jobs.config.Job` with the relevant ``params`` shape, then
 exercises composition and validation. No I/O.
 """
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.jobs_argv import ArgvRejected, compose_argv, reject_cmd_unsafe
-from src.jobs_config import Job, Param
+from src.jobs.argv import ArgvRejected, compose_argv, reject_cmd_unsafe
+from src.jobs.config import Job, Param
 
 
 def _mk(*params: Param, args: str = "") -> Job:

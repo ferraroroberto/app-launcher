@@ -19,7 +19,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
-from src.life_os_index import search_cli
+from src.life_os.index import search_cli
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig
 

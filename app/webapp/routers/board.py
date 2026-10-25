@@ -56,22 +56,18 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import (
-    active_issue_claims,
-    agents,
-    audit,
-    board,
-    chief_answers,
-    dispatch_brief,
-    github_client,
-    jobs_snapshot,
-    quota_usage,
-    session_client,
-)
-from src.board_exchange import resolve_exchange, unavailable
+from src import agents, audit, board
+from src.board import active_issue_claims
+from src.chief import answers as chief_answers
+from src.chief import dispatch_brief
+from src.clients import github as github_client
+from src.jobs import snapshot as jobs_snapshot
+from src.usage import quota as quota_usage
+from src.clients import session as session_client
+from src.board.exchange import resolve_exchange, unavailable
 from src.chief import plan_prune
-from src.launch_flags import build_claude_flags
-from src.launcher import open_local_terminal_window, spawn_claude_session
+from src.launching.flags import build_claude_flags
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
 from src.usage import auto_switch
 from src.webapp_config import WebappConfig
 
@@ -574,7 +570,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     The optional ``brief`` (#1114, fleet-config#944) is a dispatcher's scope,
     queue and constraints for the lane, carried on the one channel the lane
     trusts — its launch command. The text is written to a launcher-owned file
-    (:mod:`src.dispatch_brief`) and only that uuid-named path is appended as
+    (:mod:`src.chief.dispatch_brief`) and only that uuid-named path is appended as
     ``--brief <path>``, so the invariant above still holds. Absent (or
     ``null``) → the prompt is byte-identical to a brief-less start; empty or
     oversize → 400.

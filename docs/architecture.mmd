@@ -64,12 +64,12 @@ reads the PTY screen + types keystrokes (#1424)"]
   /file/transcript: capture parsed to Chat entries)\n+ life_os_spawn.py (shared skill resolve + spawn tail)
 + life_os_channels.py (Telegram channel profiles, #1366)
 + life_os_relay.py (a profile's bot finds, resumes, steers its skill's conversations, #1639)
-(its Delete runs src/life_os_delete.py, shared with the life-os-zombie-cleanup CLI + nightly Job, #1738)
+(its Delete runs src/life_os/delete.py, shared with the life-os-zombie-cleanup CLI + nightly Job, #1738)
 + life_os_archived.py (the zombie cleanup's archive: list, read, restore)"]
       R_BOARD["board.py — /api/board (Board tab) + issue start\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
       R_USAGE["src/usage_log.py (vendored) — /api/usage\nlocal view/tap log, runtime-data SQLite (#1524)"]
-      R_SCREENTIME["screen_time.py — /api/screen-time/export\nSend to task-os via src/usage_export.py\n(also the usage-export CLI + nightly Job, #1678)"]    end
+      R_SCREENTIME["screen_time.py — /api/screen-time/export\nSend to task-os via src/usage/export.py\n(also the usage-export CLI + nightly Job, #1678)"]    end
   end
   WEBAPPCMD --> MGR
   WEBAPPPROC --> WSERVER
@@ -102,52 +102,52 @@ life-os.js + life-os/, screen/, settings/, voice.js"]
     CONSOLEINPUT["console_input.py\nAttachConsole + WriteConsoleInputW\nhelper process per detached send (#967)\nstring-referenced, off the host closure"]
     VTSNAP["vt_snapshot.py\nheadless pyte VT mirror per\nfullscreen session — reconnect snapshot"]
     AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi · grok"]
-    SESSCLIENT["session_client.py\nHTTP client → session-host over loopback"]
+    SESSCLIENT["clients/session.py\nHTTP client → session-host over loopback"]
     REGISTRY["registry.py\nconfig/apps.json load/save/scan"]
     SCANNER["scanner.py\nfs scan: project dirs + *.bat classify"]
-    VSCODEWS["vscode_workspace.py\n.code-workspace resolve + create,\ncode CLI spawn (#802)"]
-    GITCHANGES["git_changes.py\nworking-tree list + per-file diff,\nexplorer spawn (#977)"]
-    SESSCHANGES["session_changes.py\na session's Changed files,\nfolded from its transcript (#1349)"]
-    SESSOUTBOX["session_outbox.py\nfiles an agent sends to Chat:\nroot/type/size guards + runtime store (#1530)"]
-    JOBSFACADE["jobs.py (facade)"]
-    JOBSCFG["jobs_config.py"]
-    JOBSSCHTASKS["jobs_schtasks.py\nWindows Task Scheduler sync"]
-    JOBSQUEUE["jobs_queue.py\ncross-job mutex queue"]
-    JOBSHISTORY["jobs_history.py\nrun.json / output.log per run"]
-    JOBSINDEX["jobs_index.py\nderived SQLite + FTS5 run mirror"]
-    JOBSSTATS["jobs_stats.py\npercentiles, health, stuck detection"]
-    JOBSOUTCOME["jobs_outcome.py\nexit code → success / failed / unconfirmed (#916)"]
-    JOBSCOVERAGE["jobs_coverage.py\nmissed-fire coverage (#697)"]
-    JOBSSNAPSHOT["jobs_snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
-    DESKCAP["desktop_capture.py\nScreen view: per-monitor BitBlt + JPEG,\nack-paced, only while a viewer is connected (#1520);
+    VSCODEWS["launching/vscode_workspace.py\n.code-workspace resolve + create,\ncode CLI spawn (#802)"]
+    GITCHANGES["session_view/git_changes.py\nworking-tree list + per-file diff,\nexplorer spawn (#977)"]
+    SESSCHANGES["session_view/changes.py\na session's Changed files,\nfolded from its transcript (#1349)"]
+    SESSOUTBOX["session_view/outbox.py\nfiles an agent sends to Chat:\nroot/type/size guards + runtime store (#1530)"]
+    JOBSFACADE["jobs/__init__.py (facade)"]
+    JOBSCFG["jobs/config.py"]
+    JOBSSCHTASKS["jobs/schtasks.py\nWindows Task Scheduler sync"]
+    JOBSQUEUE["jobs/queue.py\ncross-job mutex queue"]
+    JOBSHISTORY["jobs/history.py\nrun.json / output.log per run"]
+    JOBSINDEX["jobs/index.py\nderived SQLite + FTS5 run mirror"]
+    JOBSSTATS["jobs/stats.py\npercentiles, health, stuck detection"]
+    JOBSOUTCOME["jobs/outcome.py\nexit code → success / failed / unconfirmed (#916)"]
+    JOBSCOVERAGE["jobs/coverage.py\nmissed-fire coverage (#697)"]
+    JOBSSNAPSHOT["jobs/snapshot.py\nin-memory job runtime snapshot:\nthe one run-history walk behind\n/api/jobs + /api/board (#1324)"]
+    DESKCAP["desktop/capture.py\nScreen view: per-monitor BitBlt + JPEG,\nack-paced, only while a viewer is connected (#1520);
 quality presets + per-stage times for the readout (#1721)"]
-    DESKIN["desktop_input.py\nScreen control: 0-1 to virtual-desktop mapping,\nthe one SendInput seam, held input released on close (#1521)"]
-    DESKCLIP["desktop_clipboard.py
+    DESKIN["desktop/input.py\nScreen control: 0-1 to virtual-desktop mapping,\nthe one SendInput seam, held input released on close (#1521)"]
+    DESKCLIP["desktop/clipboard.py
 Screen clipboard: the one clipboard seam, text to the PC only,
 reached through the input session, never logged (#1719)"]
-    DESKCUR["desktop_cursor.py\nScreen cursor: GetCursorInfo to 0-1 + shape name,\nsent on change, never a bitmap (#1598)"]
+    DESKCUR["desktop/cursor.py\nScreen cursor: GetCursorInfo to 0-1 + shape name,\nsent on change, never a bitmap (#1598)"]
     SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
-    JOBSNEXTFIRE["jobs_next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
-    JOBSPREFLIGHT["jobs_preflight.py"]
-    JOBSARGV["jobs_argv.py"]
-    JOBSTRIGGER["jobs_trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
-    BOARD["board.py\npure assembly: sessions + jobs + GitHub"]
-    GHCLIENT["github_client.py\ngh CLI reads, cached snapshot"]
+    JOBSNEXTFIRE["jobs/next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
+    JOBSPREFLIGHT["jobs/preflight.py"]
+    JOBSARGV["jobs/argv.py"]
+    JOBSTRIGGER["jobs/trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
+    BOARD["board/__init__.py\npure assembly: sessions + jobs + GitHub"]
+    GHCLIENT["clients/github.py\ngh CLI reads, cached snapshot"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
-    LAUNCHFLAGS["launch_flags.py\nper-agent CLI flag builders"]
-    APITOKENS["api_tokens.py\nscoped-token mint/hash/scope (#72)"]
-    JOBSSECRETS["jobs_secrets.py\n$secret: reference resolution (#72/#73)"]
+    LAUNCHFLAGS["launching/flags.py\nper-agent CLI flag builders"]
+    APITOKENS["auth/api_tokens.py\nscoped-token mint/hash/scope (#72)"]
+    JOBSSECRETS["jobs/secrets.py\n$secret: reference resolution (#72/#73)"]
     APPCFG["app_config.py\nconfig/config.json"]
-    WEBAUTHNGATE["webauthn_gate.py"]
+    WEBAUTHNGATE["auth/webauthn_gate.py"]
     STATICVER["static_versioning.py\nasset content-hash stamping"]
     DIAG["diagnostics.py\nport/process introspection"]
-    LLMCLIENT["llm_client.py"]
-    TTSCLIENT["tts_client.py"]
-    OCRCLIENT["photo_ocr_client.py"]
-    VOICECLIENT["voice_client.py"]
+    LLMCLIENT["clients/llm.py"]
+    TTSCLIENT["clients/tts.py"]
+    OCRCLIENT["clients/photo_ocr.py"]
+    VOICECLIENT["clients/voice.py"]
     JSONIO["_json_io.py"]
-    LOOPHTTP["_loopback_http.py"]
+    LOOPHTTP["clients/_loopback_http.py"]
     AUDIT["audit.py\ntranscript_path"]
     SESSRETENTION["session_retention.py\nwebapp/sessions retention sweep (#902)"]
   end
@@ -216,11 +216,11 @@ reached through the input session, never logged (#1719)"]
   BOARD --> GHCLIENT
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
-  R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief_pointer.py →\nwebapp/chief-pointer.json"]
-  R_BOARD -->|"reads + writes\n(answered marks on the chief's plan, #1487)"| CHIEFANSWERED["src/chief_answers.py →\nwebapp/chief-answered.json"]
-  R_JOBS -->|"writes\n(dismissed failed runs, #1669)"| JOBSDISMISSED["src/jobs_dismissed.py →\nwebapp/jobs-dismissed.json"]
+  R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief/pointer.py →\nwebapp/chief-pointer.json"]
+  R_BOARD -->|"reads + writes\n(answered marks on the chief's plan, #1487)"| CHIEFANSWERED["src/chief/answers.py →\nwebapp/chief-answered.json"]
+  R_JOBS -->|"writes\n(dismissed failed runs, #1669)"| JOBSDISMISSED["src/jobs/dismissed.py →\nwebapp/jobs-dismissed.json"]
   BOARD -->|reads| JOBSDISMISSED
-  R_BOARD -->|"writes + TTL-prunes\n(issue-start --brief path, #1114)"| BRIEFS["src/dispatch_brief.py →\nwebapp/briefs/*.md"]
+  R_BOARD -->|"writes + TTL-prunes\n(issue-start --brief path, #1114)"| BRIEFS["src/chief/dispatch_brief.py →\nwebapp/briefs/*.md"]
   R_CONFIG --> WEBAPPCFG
   R_CONFIG --> LAUNCHFLAGS
   R_APPS --> LAUNCHFLAGS
@@ -281,7 +281,7 @@ reached through the input session, never logged (#1719)"]
   TESTS -.->|exercises| sessionhost
   SCRIPTS -.->|setup for| tray
 
-  R_LIFEOS --> LIFEHISTORY["src/life_os_history.py\nshared capture metadata + bounded private handoff"]
-  R_LIFEOS --> LIFEINDEX["src/life_os_index.py\nbest-effort index.json / index.md / search-db\nreconciliation after a delete or rename (#1006)"]
-  R_LIFEOS --> LIFETRANSCRIPT["src/life_os_transcript.py\nexact-session-id removal of the Claude Code transcript + sidecar (#1410)"]
+  R_LIFEOS --> LIFEHISTORY["src/life_os/history.py\nshared capture metadata + bounded private handoff"]
+  R_LIFEOS --> LIFEINDEX["src/life_os/index.py\nbest-effort index.json / index.md / search-db\nreconciliation after a delete or rename (#1006)"]
+  R_LIFEOS --> LIFETRANSCRIPT["src/life_os/transcript.py\nexact-session-id removal of the Claude Code transcript + sidecar (#1410)"]
   LIFEHISTORY --> FLEETCFG

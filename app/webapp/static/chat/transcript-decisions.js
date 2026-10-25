@@ -4,7 +4,7 @@
  * Claude Code's two "the agent is asking the user something" moments — the
  * AskUserQuestion card and the ExitPlanMode card — plus the
  * plan panel that answers a waiting plan from the terminal's own screen
- * (src/plan_picker.py), rather than from the transcript. session-transcript.js
+ * (src/session_view/plan_picker.py), rather than from the transcript. session-transcript.js
  * owns paging and live refresh, and transcript-render.js the turn/run
  * rendering these cards sit beside; this module owns everything about
  * the cards themselves and their entry points are what transcript-render.js's
@@ -576,7 +576,7 @@ function paintPlan(li, mode, out, where) {
 
 // --- The plan panel: answering from the terminal's screen ---------
 //
-// The server reads the plan picker off the terminal (src/plan_picker.py):
+// The server reads the plan picker off the terminal (src/session_view/plan_picker.py):
 // the session's PTY capture rendered at the PTY's own size. While it is up,
 // the panel below the transcript shows the options exactly as the screen
 // lists them, and a tap sends the digit and the label the reader saw. The

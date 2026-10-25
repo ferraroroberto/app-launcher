@@ -16,9 +16,9 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from src import jobs as jobs_mod
-from src.jobs_argv import compose_argv
-from src.jobs_config import get_by_id, load_jobs
-from src.jobs_webhook import (
+from src.jobs.argv import compose_argv
+from src.jobs.config import get_by_id, load_jobs
+from src.jobs.webhook import (
     event_allowed,
     resolve_mapping,
     resolve_secret,

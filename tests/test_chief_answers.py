@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from src import chief_answers
+from src.chief import answers as chief_answers
 
 
 def _write_plan(path: Path, updated_at: str) -> str:

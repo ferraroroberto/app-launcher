@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
-from src import chief_pointer
+from src.chief import pointer as chief_pointer
 
 
 def _chief_row(**extra):

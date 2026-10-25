@@ -33,7 +33,8 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 
 from app.session_host import server
-from src import session_client, session_host_input
+from src import session_host_input
+from src.clients import session as session_client
 from src.session_host import PtySession
 from src.session_hosting import deferred_submit
 from src.session_host_input import (
@@ -259,7 +260,7 @@ def test_defer_timeout_is_reported_as_not_delivered_end_to_end(monkeypatch):
 
 
 def test_deferred_reason_constant_does_not_drift_across_the_process_boundary():
-    """``src.session_client`` restates this one reason rather than importing
+    """``src.clients.session`` restates this one reason rather than importing
     it, because the webapp process never imports the PTY module. Pin the two
     definitions equal so the 202 mirror can't silently stop matching."""
     assert session_client.INPUT_DEFERRED == session_host_input.INPUT_DEFERRED

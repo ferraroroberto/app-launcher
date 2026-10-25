@@ -67,7 +67,7 @@ export function avatar(glyph, badge, extraClass) {
 // A session's Board status words (shared here so
 // the Board's rows and the Code tab's read one table). The hook-written
 // needs-you is split server-side into five caller-actionable values
-// (src/board_transcript.py::_refine_waiting_status), the raw "needs-you"
+// (src/board/transcript.py::_refine_waiting_status), the raw "needs-you"
 // string itself never reaches a card's status field. tool-pending is a
 // pending ordinary tool_use, genuinely ambiguous between "still executing" and
 // "permission-gated", so it renders as an ambient working-ish state. `cls` is

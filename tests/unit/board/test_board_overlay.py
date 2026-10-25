@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import board as board_router
-from src import active_issue_claims, board
+from src import board
+from src.board import active_issue_claims
 
 from tests.unit.board._support import (
     NOW,
@@ -101,13 +102,13 @@ def test_unrecognized_title_glyph_logs_one_breadcrumb_per_glyph(caplog):
     lead now leaves exactly one info line naming the codepoint — once per
     distinct glyph, since the Board re-polls every 5s — while ASCII titles
     and the known idle marker stay quiet, and the verdict is unchanged."""
-    from src.board_transcript import (
+    from src.board.transcript import (
         _LOGGED_UNKNOWN_TITLE_GLYPHS,
         _live_title_is_busy,
     )
 
     _LOGGED_UNKNOWN_TITLE_GLYPHS.clear()
-    with caplog.at_level(logging.INFO, logger="src.board_transcript"):
+    with caplog.at_level(logging.INFO, logger="src.board.transcript"):
         for _ in range(3):
             assert _live_title_is_busy("\u2699 future spinner") is False
         assert _live_title_is_busy("\u2733 chief") is False
@@ -165,7 +166,7 @@ def test_overlay_busy_live_title_overrides_stale_needs_you_inside_epsilon(tmp_pa
 
 
 def test_pty_output_is_fresh_boundaries():
-    from src.board_transcript import _WEDGED_PTY_AFTER, _pty_output_is_fresh
+    from src.board.transcript import _WEDGED_PTY_AFTER, _pty_output_is_fresh
 
     assert _pty_output_is_fresh(None, NOW) is True  # no signal -> trust the glyph
     assert _pty_output_is_fresh(0.0, NOW) is True  # never recorded, same as no signal
@@ -310,7 +311,7 @@ def test_idle_finished_downgrade_matches_worktree_sibling(tmp_path: Path):
 
 def test_idle_finished_downgrade_applies_to_external_cards(tmp_path: Path):
     """The same repo-scoped downgrade applies to unmatched/external rows
-    (:func:`src.board_sessions.merge_sessions`'s second, no-live-match loop),
+    (:func:`src.board.sessions.merge_sessions`'s second, no-live-match loop),
     not just live-session-claimed cards. ``updated_min_ago=2`` keeps the
     transcript mtime inside both the #305 resume epsilon (so the status
     doesn't flip to ``working``) and #613's 5-minute external-liveness

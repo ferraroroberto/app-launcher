@@ -29,16 +29,16 @@ import pytest
 
 from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
-from src import jobs_queue as jobs_queue_mod
+from src.jobs import history as jobs_history_mod
+from src.jobs import queue as jobs_queue_mod
 from src.app_config import AppConfig
-from src.jobs_config import Job, JobsConfig
+from src.jobs.config import Job, JobsConfig
 
 
 @pytest.fixture
 def isolated_jobs(tmp_path, monkeypatch):
-    # JOBS_RUNS_DIR / JOBS_QUEUE_PATH are owned by src.jobs_history /
-    # src.jobs_queue respectively (issue #315 split).
+    # JOBS_RUNS_DIR / JOBS_QUEUE_PATH are owned by src.jobs.history /
+    # src.jobs.queue respectively (issue #315 split).
     monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json")
     return tmp_path
@@ -101,7 +101,7 @@ class TestExecutorMutexDrain:
         # spawns by id without consulting the registry, so this is just
         # for completeness.
         monkeypatch.setattr(
-            "src.jobs_config.load_jobs",
+            "src.jobs.config.load_jobs",
             lambda: JobsConfig(jobs=[job_a]),
         )
         monkeypatch.setattr(rjc, "load_jobs", lambda: JobsConfig(jobs=[job_a]))
@@ -158,7 +158,7 @@ class TestExecutorScheduledAdmission:
     @staticmethod
     def _stub_load_jobs(monkeypatch, jobs):
         cfg = JobsConfig(jobs=list(jobs))
-        monkeypatch.setattr("src.jobs_config.load_jobs", lambda: cfg)
+        monkeypatch.setattr("src.jobs.config.load_jobs", lambda: cfg)
         monkeypatch.setattr(rjc, "load_jobs", lambda: cfg)
 
     @staticmethod
@@ -190,7 +190,7 @@ class TestExecutorScheduledAdmission:
     ):
         alpha, beta = self._pair(tmp_path)
         # Alpha holds the group. No pid on the record, so the reaper in
-        # mutex_collision leaves it alone (src/jobs_reap.py::_reap_one).
+        # mutex_collision leaves it alone (src/jobs/reap.py::_reap_one).
         _seed_run(
             isolated_jobs, "alpha", "20260101T000000",
             started_at=datetime.now().isoformat(timespec="seconds"),

@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from src import dispatch_brief
+from src.chief import dispatch_brief
 
 
 @pytest.fixture

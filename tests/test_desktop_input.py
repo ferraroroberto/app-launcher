@@ -2,7 +2,7 @@
 the one input path.
 
 Nothing here injects: every session runs against a
-:class:`src.desktop_input.RecordingInjector` (and ``tests/conftest.py``'s
+:class:`src.desktop.input.RecordingInjector` (and ``tests/conftest.py``'s
 autouse ``fake_injector`` replaces the process injector for the whole suite).
 
 The mapping expectations are literal numbers, worked out once from the
@@ -26,8 +26,8 @@ from typing import List
 
 import pytest
 
-from src import desktop_input as di
-from src.desktop_capture import Monitor
+from src.desktop import input as di
+from src.desktop.capture import Monitor
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -543,33 +543,33 @@ def _imported_modules(tree: ast.AST):
 
 
 def test_only_desktop_input_injects():
-    """No code but ``src/desktop_input.py`` calls a Win32 input-injection
+    """No code but ``src/desktop/input.py`` calls a Win32 input-injection
     API or imports an input-automation library."""
     offenders = []
     for path in _python_files():
         rel = path.relative_to(REPO).as_posix()
-        if rel == "src/desktop_input.py":
+        if rel == "src/desktop/input.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names = set(_identifiers(tree)) & _INJECTION_NAMES
         mods = {m.split(".")[0] for m in _imported_modules(tree)} & _INJECTION_MODULES
         if names or mods:
             offenders.append(f"{rel}: {sorted(names | mods)}")
-    assert offenders == [], "input injection outside src/desktop_input.py: " + "; ".join(offenders)
+    assert offenders == [], "input injection outside src/desktop/input.py: " + "; ".join(offenders)
 
 
 def test_only_the_screen_socket_reaches_desktop_input():
-    """``src.desktop_input`` is imported by the Screen router alone."""
+    """``src.desktop.input`` is imported by the Screen router alone."""
     importers = []
     for path in _python_files():
         rel = path.relative_to(REPO).as_posix()
-        if rel == "src/desktop_input.py":
+        if rel == "src/desktop/input.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        imported = any("desktop_input" in m for m in _imported_modules(tree))
-        # importlib.import_module("src.desktop_input") counts too.
+        imported = any(m.startswith("src.desktop.input") for m in _imported_modules(tree))
+        # importlib.import_module("src.desktop.input") counts too.
         dynamic = any(
-            isinstance(n, ast.Constant) and isinstance(n.value, str) and "src.desktop_input" in n.value
+            isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith("src.desktop.input")
             for n in ast.walk(tree)
         )
         if imported or dynamic:

@@ -19,7 +19,7 @@ class TestEnsureSpawn:
     ):
         """#1308: a list the host would not answer must not be read as "no
         chief", or a live chief gets a duplicate spawned beside it."""
-        from src.session_client import SessionHostError
+        from src.clients.session import SessionHostError
 
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.side_effect = SessionHostError("timed out")

@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import board_chief as chief_router
-from src import chief_pointer
+from src.chief import pointer as chief_pointer
 
 from tests.api.chief._support import (
     _chief,

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from src import chief_pointer
+from src.chief import pointer as chief_pointer
 
 
 @pytest.fixture

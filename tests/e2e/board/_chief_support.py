@@ -10,7 +10,8 @@ from datetime import datetime, timezone
 
 from playwright.sync_api import Page, expect
 
-from src import chief_answers, chief_plan
+from src.chief import answers as chief_answers
+from src.chief import plan as chief_plan
 from tests.e2e._audio_mock import RECORDER_BASE_JS
 
 
@@ -162,7 +163,7 @@ def _open_board(page: Page, base_url: str) -> None:
 # ------------------------------------------- chief's answer sheet (#1295)
 
 # The chief's questions as its plan writer records them (additive plan v1),
-# served as the real reader (src/chief_plan.py) makes of them: one full
+# served as the real reader (src/chief/plan.py) makes of them: one full
 # single-select, one multi-select with no ref whose recommendation marks no
 # option, one old-style text-only item.
 _QUESTIONS = [

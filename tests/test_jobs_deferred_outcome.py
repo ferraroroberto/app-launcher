@@ -23,18 +23,18 @@ from unittest.mock import MagicMock
 import pytest
 
 from src import board
-from src import jobs_history
+from src.jobs import history as jobs_history
 from src import jobs as jobs_mod
-from src import jobs_config as jc
+from src.jobs import config as jc
 from src import notifications as notif
-from src.jobs_config import Job, JobsConfig, job_from_dict, save_jobs
-from src.jobs_outcome import (
+from src.jobs.config import Job, JobsConfig, job_from_dict, save_jobs
+from src.jobs.outcome import (
     OUTCOME_DEFERRED,
     OUTCOME_FAILED,
     OUTCOME_UNCONFIRMED,
     run_outcome,
 )
-from src.jobs_stats import consecutive_failed_runs, run_stats
+from src.jobs.stats import consecutive_failed_runs, run_stats
 
 SWEEP_ID = "email-sweep"
 DECLARED = {3: OUTCOME_DEFERRED}

@@ -1,6 +1,6 @@
 """Dismissing a failed job's Board card (#1669).
 
-The store (``src.jobs_dismissed``), its effect on ``board.jobs_attention`` and
+The store (``src.jobs.dismissed``), its effect on ``board.jobs_attention`` and
 the ``POST /api/jobs/<id>/runs/<rid>/dismiss`` route.
 """
 
@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-from src import board, jobs_dismissed
+from src import board
+from src.jobs import dismissed as jobs_dismissed
 
 from tests.unit.board._support import _seed_job
 
@@ -103,7 +104,7 @@ def test_a_newer_failed_run_raises_a_fresh_card(webapp_client):
 
     newer = _failed_run(local_now + timedelta(minutes=5), "20260717T120500")
     _add_run(overrides, "photos", newer)
-    from src import jobs_snapshot
+    from src.jobs import snapshot as jobs_snapshot
     jobs_snapshot.reset()
 
     cards = board.jobs_attention(now=local_now)

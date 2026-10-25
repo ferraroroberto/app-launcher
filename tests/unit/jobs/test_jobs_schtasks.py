@@ -9,8 +9,8 @@ from unittest.mock import MagicMock
 
 
 from src import jobs as jobs_mod
-from src import jobs_schtasks as jobs_schtasks_mod
-from src.jobs_config import (
+from src.jobs import schtasks as jobs_schtasks_mod
+from src.jobs.config import (
     Job,
     Schedule,
 )
@@ -354,7 +354,7 @@ class TestDeleteSchtasks:
 
 
 class TestBulkParser:
-    """``src.jobs_schtasks._parse_bulk_records`` — the bulk Next Run Time parse."""
+    """``src.jobs.schtasks._parse_bulk_records`` — the bulk Next Run Time parse."""
 
     def test_filters_by_prefix(self):
         stdout = (

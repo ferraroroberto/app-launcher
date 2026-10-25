@@ -634,7 +634,7 @@ class TestLaunchSpawnErrorMapping:
         self, webapp_client, monkeypatch
     ):
         client, _, overrides = webapp_client
-        from src.session_client import SessionHostError
+        from src.clients.session import SessionHostError
         from app.webapp.routers import apps as apps_router
 
         (overrides["tmp_projects_dir"] / "live-proj").mkdir()

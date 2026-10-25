@@ -97,7 +97,7 @@ function worseTone(a, b) {
   return TONE_RANK[a] >= TONE_RANK[b] ? a : b;
 }
 
-// What one quota line shows, from the backend row (src/quota_usage.py
+// What one quota line shows, from the backend row (src/usage/quota.py
 // `_quota_line`) and, when this poll measured nothing, the last pair this
 // page did measure.
 //

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from src import launcher
+from src.launching import launcher
 
 
 def _capture_create(monkeypatch) -> dict:

@@ -1,4 +1,4 @@
-"""The voice-transcriber loopback client (`src.voice_client`, issue #165).
+"""The voice-transcriber loopback client (`src.clients.voice`, issue #165).
 
 Thin ``requests`` wrappers over the voice-transcriber session API — so we
 stub ``requests.post`` and assert the two-call shape (create → upload) plus
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import voice_client
+from src.clients import voice as voice_client
 
 
 class _Resp:

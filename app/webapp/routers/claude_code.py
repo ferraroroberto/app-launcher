@@ -17,9 +17,9 @@ from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.git_changes import file_diff, is_git_repo, list_changes, open_folder
+from src.session_view.git_changes import file_diff, is_git_repo, list_changes, open_folder
 from src.scanner import ProjectDir, git_status, scan_project_dirs
-from src.vscode_workspace import (
+from src.launching.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
     open_workspace,
@@ -128,7 +128,7 @@ async def project_file_diff(project_id: str, request: Request, path: str = "") -
 
     ``path`` is a repo-relative path the ``changes`` payload handed out;
     anything else — absolute, ``..``, a symlink out of the tree — is 400,
-    checked in :func:`src.git_changes.safe_relative_path` before git sees it.
+    checked in :func:`src.session_view.git_changes.safe_relative_path` before git sees it.
     """
     project = _project_or_404(request, project_id)
     if not is_git_repo(project.project_dir):

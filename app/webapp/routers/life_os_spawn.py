@@ -20,12 +20,12 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
 
 from src import audit
-from src.model_catalog import (
+from src.launching.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
     available_values,
 )
-from src.launcher import open_local_terminal_window, spawn_claude_session
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
 from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
 

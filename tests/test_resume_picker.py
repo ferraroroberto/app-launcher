@@ -1,4 +1,4 @@
-"""The /resume picker reader and session list (#1300, src/resume_picker.py).
+"""The /resume picker reader and session list (#1300, src/session_view/resume_picker.py).
 
 Screens are the picker as probed on Claude Code 2.1.283 (the probe is on
 #1300): after ``/resume`` at 140 and 52 columns, and as a ``claude --resume``
@@ -15,7 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from src import resume_picker, transcript_locate
+from src.session_view import resume_picker
+from src.session_view import transcript_locate
 
 _RULE_140 = "\u2500" * 140
 _PICKER_140 = [
@@ -374,7 +375,7 @@ def test_resume_routes_are_passkey_gated_and_scoped_to_sessions():
 
 def test_an_unreachable_session_host_refuses_a_resume_with_503(resume_client):
     """#1308: not the 409 "no longer running" a gone session gets."""
-    from src.session_client import SessionHostError
+    from src.clients.session import SessionHostError
 
     client, session, _, typed, _, _ = resume_client
     session.list_sessions.side_effect = SessionHostError("timed out")

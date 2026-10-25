@@ -22,10 +22,11 @@ import pytest
 
 from scripts import design_review_synthetic as syn
 from scripts import synthetic_gh
-from src import board_sessions, github_client
-from src.jobs_config import load_jobs
+from src.board import sessions as board_sessions
+from src.clients import github as github_client
+from src.jobs.config import load_jobs
 from src.scanner import scan_skills
-from src.session_transcript import claude_entries
+from src.session_view.transcript import claude_entries
 from src.subprocess_flags import NO_WINDOW
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

@@ -39,7 +39,7 @@ class TestRunJob:
     ):
         """Issue #810: a refused argv is a rejected request, not a server
         fault — distinct from a genuine spawn failure (OSError, below)."""
-        from src.jobs_argv import ArgvRejected
+        from src.jobs.argv import ArgvRejected
 
         client, _, _ = webapp_client
         created = _seed_one_job(client, name="Demo").json()["job"]

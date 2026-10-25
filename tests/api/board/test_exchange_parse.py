@@ -5,7 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-from src import board, board_exchange
+from src import board
+from src.board import exchange as board_exchange
 
 from tests.api.board._support import _assistant_line, _user_line, _write_jsonl
 

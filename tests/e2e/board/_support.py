@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 from playwright.sync_api import Page, expect
 
-from src import chief_plan
+from src.chief import plan as chief_plan
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -74,7 +74,7 @@ def _board_payload(gh_age_seconds: int = 0) -> dict:
 
 
 # The chief's plan file (#1279, format v1) as the chief's helper writes it.
-# Tests serve what the real reader (src/chief_plan.py) makes of it, so the
+# Tests serve what the real reader (src/chief/plan.py) makes of it, so the
 # card is proven against the server's own output, not a hand-written copy.
 _PLAN_FILE_V1 = {
     "version": 1,

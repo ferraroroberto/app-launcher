@@ -14,7 +14,7 @@ import pytest
 
 from app.webapp import middleware
 from app.webapp.routers import misc
-from src import desktop_browser as db
+from src.desktop import browser as db
 
 
 def test_only_http_links_with_a_host_open():

@@ -2,7 +2,7 @@
 list must show an identical title for the same live session, sourced from
 the shared ``shared_name`` field (fleet-config#302) both ``GET
 /api/claude-code/sessions`` and ``GET /api/board`` now carry (joined by the
-same agent-aware claim walk server-side — see ``src/board.py``'s ``attach_shared_names``/
+same agent-aware claim walk server-side — see ``src/board/__init__.py``'s ``attach_shared_names``/
 ``merge_sessions``).
 
 Hermetic like ``test_board_tab.py``: both endpoints are route-mocked with a

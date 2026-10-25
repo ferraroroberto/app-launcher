@@ -8,7 +8,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from src import chief_plan
+from src.chief import plan as chief_plan
 from tests.e2e import _fake_clock
 from tests.e2e.conftest import (
     _seed_token_init_script, stable_eval, stable_read, wait_until,

@@ -13,7 +13,7 @@ PyYAML>=6.0
 # Process introspection (port-owner lookup, smart kill)
 psutil>=5.9
 
-# Pillow is a runtime import: the Screen view (src/desktop_capture.py, #1520)
+# Pillow is a runtime import: the Screen view (src/desktop/capture.py, #1520)
 # resizes and JPEG-encodes each captured frame with it. It also assembles the
 # icon set: scripts/gen_icons.py calls project-scaffolding's shared
 # brand_gen.py, which rasterizes the vendored Lucide master SVGs with resvg-py

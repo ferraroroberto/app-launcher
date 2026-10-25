@@ -33,7 +33,7 @@ _SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: interactive terminal)". Keyed by ``path::function`` rather than line so it
 #: survives edits above it; adding an entry is a deliberate, reviewable act.
 _VISIBLE_CONSOLE_EXEMPT = {
-    "src/launcher.py::spawn_bat": (
+    "src/launching/launcher.py::spawn_bat": (
         "Chooses its own flag per launch (#790): NO_WINDOW for the Apps "
         "tab's stealth button, CREATE_NEW_CONSOLE on purpose for its ⚡ "
         "one — a visible CMD window the user watches and closes."

@@ -1,7 +1,7 @@
-"""Unit tests for ``src.jobs_preflight`` (issue #69 PR #1).
+"""Unit tests for ``src.jobs.preflight`` (issue #69 PR #1).
 
 Pure-function checks, so no webapp / schtasks scaffolding is needed — we
-build :class:`~src.jobs_config.Job` objects directly and inspect the
+build :class:`~src.jobs.config.Job` objects directly and inspect the
 returned ``Problem`` list.
 """
 
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.jobs_config import Job
-from src.jobs_preflight import has_errors, preflight
+from src.jobs.config import Job
+from src.jobs.preflight import has_errors, preflight
 
 
 def _job(script_path: str, args: str = "") -> Job:

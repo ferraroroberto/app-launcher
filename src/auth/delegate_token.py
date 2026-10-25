@@ -6,7 +6,7 @@ which can spawn coding sessions that run with full permissions on the host.
 
 The record lives in ``webapp_config.delegate_token`` as
 ``{"salt": ..., "hash": ..., "created_at": ...}``; an empty dict means off,
-which is the default. As with :mod:`src.api_tokens`, only the salted SHA-256
+which is the default. As with :mod:`src.auth.api_tokens`, only the salted SHA-256
 hash is stored and the raw value exists only in the regenerate response, so
 regenerating replaces the hash and the old value stops matching at once.
 
@@ -23,7 +23,7 @@ import secrets
 from datetime import datetime
 from typing import Any, Dict, FrozenSet, Optional, Tuple
 
-from src.api_tokens import hash_token
+from src.auth.api_tokens import hash_token
 
 # The same strength class as a minted API token and scripts/gen_token.py.
 _TOKEN_BYTES = 32

@@ -3,7 +3,7 @@
 Derived on the webapp side from fields the session-host already reports --
 the spawn ``flags`` and, for Codex, its OSC ``live_title`` -- plus, for Claude,
 the ``transcript_model`` the webapp reads from the session's transcript
-(:func:`src.board_sessions.attach_transcript_model`). Never from a new
+(:func:`src.board.sessions.attach_transcript_model`). Never from a new
 session-host field: a change to the session-host's import closure is not live
 until ``:8446`` restarts, and that restart kills every live session.
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 import shlex
 from typing import Any, Dict, List, Mapping, Optional
 
-from src.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
+from src.launching.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
 
 
 def _flag_value(flags: str, name: str) -> Optional[str]:

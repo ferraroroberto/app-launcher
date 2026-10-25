@@ -8,10 +8,11 @@ from typing import Dict, List
 import pytest
 from PIL import Image
 
-from src import desktop_capture, desktop_cursor
-from src.desktop_capture import Monitor
-from src.desktop_cursor import CursorState
-from src.webauthn_gate import WebAuthnGate
+from src.desktop import capture as desktop_capture
+from src.desktop import cursor as desktop_cursor
+from src.desktop.capture import Monitor
+from src.desktop.cursor import CursorState
+from src.auth.webauthn_gate import WebAuthnGate
 
 from tests.api.screen._support import ABOVE, LOOPBACK, PRIMARY, TOKEN, _SilentSocket
 

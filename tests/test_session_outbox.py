@@ -20,8 +20,9 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import board, session_outbox
-from src.session_outbox import OutboxRefusal
+from src import board
+from src.session_view import outbox as session_outbox
+from src.session_view.outbox import OutboxRefusal
 from src.webapp_config import WebappConfig
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
@@ -428,7 +429,7 @@ def _prompt(text: str = "show me the chart") -> Dict[str, Any]:
 
 
 def test_send_user_file_becomes_refs_without_the_path(tmp_path: Path):
-    from src import session_transcript as st
+    from src.session_view import transcript as st
 
     path = _jsonl(tmp_path / "t.jsonl", [
         _prompt(),
@@ -449,7 +450,7 @@ def test_send_user_file_becomes_refs_without_the_path(tmp_path: Path):
 
 
 def test_a_sent_file_name_loses_its_bidi_override(tmp_path: Path):
-    from src import session_transcript as st
+    from src.session_view import transcript as st
 
     path = _jsonl(tmp_path / "t.jsonl", [_prompt(), _send_call(["C:/invented/report\u202egnp.txt"])])
     call = next(e for e in st.transcript_page(path, flavor="claude")["entries"] if e["kind"] == "tool_call")

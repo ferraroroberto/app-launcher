@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Tuple
 
 import pytest
 
-from src import board, session_transcript as st
+from src import board
+from src.session_view import transcript as st
 
 from tests.unit.transcript._support import (
     _assistant,

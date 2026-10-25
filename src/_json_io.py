@@ -3,8 +3,8 @@
 Six call sites across ``src/`` each hand-rolled the same
 tempfile-then-``os.replace`` dance with their own suffix bikeshed. This
 module is the single place that owns it. It also owns the msvcrt-based
-file-lock-with-retry pattern (issue #520) that both ``src.jobs_queue`` and
-``src.jobs_history`` need for their own read-modify-write critical sections.
+file-lock-with-retry pattern (issue #520) that both ``src.jobs.queue`` and
+``src.jobs.history`` need for their own read-modify-write critical sections.
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:
 def file_lock(lock_path: Path, *, label: str) -> Iterator[None]:
     """Hold an exclusive interprocess lock for a read-modify-write section.
 
-    Shared by :mod:`src.jobs_queue` (``_queue_file_lock``) and
-    :mod:`src.jobs_history` (``_run_json_lock``) — both need to serialize a
+    Shared by :mod:`src.jobs.queue` (``_queue_file_lock``) and
+    :mod:`src.jobs.history` (``_run_json_lock``) — both need to serialize a
     read-modify-``os.replace`` across genuinely separate OS processes (the
     webapp process and a spawned executor process). Uses a Windows
     ``msvcrt.locking`` byte-range lock on a dedicated ``lock_path`` sidecar

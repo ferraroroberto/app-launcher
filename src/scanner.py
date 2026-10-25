@@ -436,7 +436,7 @@ def git_status(project_dir: Path) -> GitStatus:
     current branch and dirty flag in one call, then a default-branch
     resolve. Fanned out across threads by ``/api/claude-code/git-status``
     on a slow (~45 s) poll (#496) — the per-file detail is deliberately
-    dropped here so that poll stays cheap; :mod:`src.git_changes` lists
+    dropped here so that poll stays cheap; :mod:`src.session_view.git_changes` lists
     it on demand. Non-git folders and any git failure return
     :data:`_NOT_GIT`.
     """

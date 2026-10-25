@@ -46,7 +46,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
-from src import board, session_client
+from src import board
+from src.clients import session as session_client
 
 from app.webapp.routers import board_chief
 from app.webapp.routers.board_spawn import _read_live_sessions

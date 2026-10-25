@@ -15,7 +15,7 @@ from unittest.mock import MagicMock
 
 from app.cli.commands import run_job_cmd as rjc
 from src.app_config import AppConfig
-from src.jobs_config import (
+from src.jobs.config import (
     Job,
     JobsConfig,
     Schedule,
@@ -62,7 +62,7 @@ class TestOnceCleanup:
         assert delete.called
         assert delete.call_args.args[0] == "oneoff"
         # And the on-disk job has schedule=none now.
-        from src.jobs_config import load_jobs
+        from src.jobs.config import load_jobs
         reloaded = load_jobs()
         survivor = next(j for j in reloaded.jobs if j.id == "oneoff")
         assert survivor.schedule.type == "none"
@@ -91,7 +91,7 @@ class TestOnceCleanup:
         ))
         assert rc == 0
         assert not delete.called
-        from src.jobs_config import load_jobs
+        from src.jobs.config import load_jobs
         reloaded = load_jobs()
         survivor = next(j for j in reloaded.jobs if j.id == "oneoff")
         assert survivor.schedule.type == "once"

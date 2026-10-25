@@ -4,7 +4,7 @@
     POST /api/screen-time/export   send the last 7 completed days now
 
 The numbers themselves come from the vendored ``GET /api/usage/time``; these
-two routes only drive :mod:`src.usage_export`, the same code the
+two routes only drive :mod:`src.usage.export`, the same code the
 ``usage-export`` CLI and the nightly Job run. A failed send answers with the
 failure kind's status (409 not set up / category missing / no usage log, 503
 task-os unreachable, 502 task-os refused) and a message fit for the sheet.
@@ -18,7 +18,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import usage_export
+from src.usage import export as usage_export
 from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)

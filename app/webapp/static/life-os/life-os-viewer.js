@@ -7,7 +7,7 @@
  * An archived capture (life-os-convos.js) opens it straight from its row,
  * with Restore in Done's place.
  * The capture is parsed server-side (`/api/life-os/file/transcript`,
- * src/life_os_capture.py) into the entry shape the session overlay's Chat
+ * src/life_os/capture.py) into the entry shape the session overlay's Chat
  * pane already renders, and it is rendered by that pane's own renderer
  * (transcript-render.js): one transcript surface, two mounts,
  * and no dependency on the Chat pane's state. There

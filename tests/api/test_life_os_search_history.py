@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src.life_os_index import search_cli
+from src.life_os.index import search_cli
 from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 from tests.api._life_os_support import RESUMABLE_SID, _completed
 
@@ -244,7 +244,7 @@ class TestSearchCliResolution:
         was never router-shaped work, and one router importing it from
         another was the shape that made a second copy tempting. The pin is
         unchanged in intent: one definition, and it lives in the leaf."""
-        from src import life_os_index
+        from src.life_os import index as life_os_index
         from app.webapp.routers import life_os_conversations, life_os_files, life_os_search
 
         assert life_os_search.search_cli is life_os_index.search_cli
@@ -282,7 +282,7 @@ class TestSourceHistory:
     def _private_access(self, monkeypatch, tmp_path):
         from app.webapp import middleware
         from app.webapp.routers import life_os_conversations
-        from src import life_os_history
+        from src.life_os import history as life_os_history
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
         monkeypatch.setattr(life_os_history, "runtime_data_dir", lambda *a, **k: tmp_path)
@@ -387,13 +387,13 @@ class TestSourceHistory:
         assert captured == {}
 
     def _oversized(self, life_os_client):
-        from src.life_os_history import MAX_CAPTURE_BYTES
+        from src.life_os.history import MAX_CAPTURE_BYTES
         # Non-ASCII so the header prefix is cut inside a multi-byte character.
         return self._capture(life_os_client, content="é" * (MAX_CAPTURE_BYTES // 2 + 500))
 
     def test_oversized_capture_resumes_natively_from_its_header(self, life_os_client, monkeypatch):
         import hashlib
-        from src.life_os_history import MAX_CAPTURE_BYTES
+        from src.life_os.history import MAX_CAPTURE_BYTES
         client, _, _ = life_os_client
         path, row = self._oversized(life_os_client)
         assert path.stat().st_size > MAX_CAPTURE_BYTES
@@ -407,7 +407,7 @@ class TestSourceHistory:
         assert f"--resume {RESUMABLE_SID}" in captured["flags"]
 
     def test_oversized_capture_never_loads_its_body(self, life_os_client, monkeypatch):
-        from src import life_os_history
+        from src.life_os import history as life_os_history
         seen = []
         real = life_os_history._parse_capture_texts
         monkeypatch.setattr(life_os_history, "_parse_capture_texts",
@@ -517,7 +517,7 @@ class TestSourceHistory:
 @pytest.mark.parametrize("action", ["resume", "handoff"])
 def test_history_launch_private_gate(life_os_client, monkeypatch, action):
     from app.webapp import middleware
-    from src.webauthn_gate import WebAuthnGate
+    from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     endpoint = "/api/life-os/skills/journal-daily/conversations/launch"
     assert client.post(endpoint, json={"action": action}, headers={"Cf-Ray": "synthetic"}).status_code == 403
@@ -539,7 +539,7 @@ def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, 
     is built to fail *after* the gate (unknown skill / missing life_os_dir), so
     getting past it is proven without spawning anything."""
     from app.webapp import middleware
-    from src.webauthn_gate import WebAuthnGate
+    from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     if "recap" in endpoint:
         monkeypatch.setattr(app.state.webapp_config, "life_os_dir", str(tmp_path / "missing"))
@@ -559,7 +559,7 @@ def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, 
     ('[]', False), ('[{"header":{},"native":true}]', False), ('invalid', False),
 ])
 def test_shared_capture_subprocess_contract(tmp_path, monkeypatch, output, success):
-    from src import life_os_history as history
+    from src.life_os import history
     python = tmp_path / ".venv/Scripts/python.exe"
     python.parent.mkdir(parents=True)
     python.touch()

@@ -13,7 +13,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import session_transcript as st
+from src.session_view import transcript as st
 from src.plan_review import PLAN_CAP, plan_from_input, plan_outcome
 
 _REJECT = ("The user doesn't want to proceed with this tool use. The tool use was rejected "

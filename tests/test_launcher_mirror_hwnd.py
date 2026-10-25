@@ -21,7 +21,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src import launcher
+from src.launching import launcher
 
 
 # Window message constant — matches winuser.h. Tests assert the exact

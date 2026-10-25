@@ -534,7 +534,7 @@ def test_external_row_liveness_reaped_check_does_not_fire_when_id_is_live(tmp_pa
     reaped-session check must not fire for a row whose ``launcher_session_id``
     genuinely IS in the live set -- it falls through to the transcript-claim
     check and then the ordinary freshness fallback, exactly as before #613."""
-    from src.board_transcript import _external_row_liveness
+    from src.board.transcript import _external_row_liveness
 
     row = _state_row(
         "E:/automation/app-launcher", status="working", updated_min_ago=2,

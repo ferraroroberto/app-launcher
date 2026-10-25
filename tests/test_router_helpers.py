@@ -31,7 +31,7 @@ from app.webapp.routers._helpers import (
     tsnet_host_from_cert,
 )
 from src.webapp_config import SESSION_HOST_PORT_ENV
-from src.webauthn_gate import WebAuthnGate
+from src.auth.webauthn_gate import WebAuthnGate
 
 
 @pytest.fixture(autouse=True)

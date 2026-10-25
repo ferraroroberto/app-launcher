@@ -46,14 +46,15 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, session_client
+from src import audit
+from src.clients import session as session_client
 from src.agents import is_installed
-from src.life_os_history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
-from src.life_os_delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
-from src.life_os_title import run_title_cli as _run_title_cli
+from src.life_os.history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
+from src.life_os.delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
+from src.life_os.title import run_title_cli as _run_title_cli
 from src.life_os.skill_refresh import plan_refresh, record_refresh
-from src.conversation_model import recorded_model
-from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
+from src.session_view.conversation_model import recorded_model
+from src.launching.flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
@@ -79,7 +80,7 @@ _CONVERSATIONS_INDEX = "index.json"
 # Owner titles. fleet-config's writer refuses over 120 characters
 # itself (exit 2); the router checks first so the phone gets a plain 400
 # without a subprocess. The writer call itself, serialised, is
-# ``src.life_os_title.run_title_cli`` (shared with Delete and the zombie job).
+# ``src.life_os.title.run_title_cli`` (shared with Delete and the zombie job).
 _MAX_TITLE_CHARS = 120
 
 # A resumable session id, validated strictly because it reaches claude's
@@ -468,7 +469,7 @@ async def _group_by_conversation(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """:func:`_conversation_sessions` over a session list the caller already has.
 
-    The grouping itself is ``src.life_os_delete.group_by_conversation`` (shared
+    The grouping itself is ``src.life_os.delete.group_by_conversation`` (shared
     with the zombie cleanup job, #1738); it reads the hook-state file, so it
     runs off the loop.
     """

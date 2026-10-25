@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from src import life_os_title
+from src.life_os import title as life_os_title
 
 from tests.api._life_os_support import RESUMABLE_SID
 
@@ -30,8 +30,8 @@ class TestDeleteConversation:
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
         from app.webapp import middleware
-        from src import session_client
-        from src.life_os_transcript import claude_projects_dir
+        from src.clients import session as session_client
+        from src.life_os.transcript import claude_projects_dir
 
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         home = tmp_path / "home"
@@ -127,7 +127,7 @@ class TestDeleteConversation:
         assert self._delete().status_code == 200
 
     def test_unreachable_session_host_is_unknown_not_clear(self, monkeypatch):
-        from src import session_client
+        from src.clients import session as session_client
 
         def down(port):
             raise session_client.SessionHostError("down")
@@ -187,7 +187,7 @@ class TestDeleteConversation:
         assert jsonl.exists()
 
     def test_capture_whose_header_cannot_be_read_is_refused(self, monkeypatch):
-        from src import life_os_history
+        from src.life_os import history as life_os_history
 
         def broken(fleet_dir, texts):
             raise OSError("shared interpreter missing")
@@ -198,7 +198,7 @@ class TestDeleteConversation:
         assert jsonl.exists() and (self.conversations / self.CAPTURE).exists()
 
     def test_transcript_failure_leaves_the_capture_intact(self, monkeypatch):
-        from src import life_os_delete
+        from src.life_os import delete as life_os_delete
 
         def locked(*args, **kwargs):
             raise PermissionError("locked")
@@ -298,7 +298,7 @@ class TestRenameConversation:
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
         from app.webapp.routers import life_os_conversations as router
-        from src import session_client
+        from src.clients import session as session_client
 
         self.calls: list = []
         _stub_title_cli(tmp_path, monkeypatch, self.calls)
@@ -483,7 +483,7 @@ class TestConversationNameSync:
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
         from app.webapp.routers import life_os_conversations as router
         from app.webapp.routers import life_os_spawn
-        from src import session_client
+        from src.clients import session as session_client
 
         self.calls: list = []
         _stub_title_cli(tmp_path, monkeypatch, self.calls)

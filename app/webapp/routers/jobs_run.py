@@ -7,7 +7,7 @@ the run path that are reused across triggers:
 * :func:`_dry_run_check` / :func:`_dry_run_execute` — the two dry-run
   modes (issue #69), used only by the manual ``POST /run`` route.
 * :func:`_admit_and_spawn` — the cooldown gate plus the HTTP framing of
-  :func:`src.jobs_queue.admit_and_spawn` (the mutex admission itself,
+  :func:`src.jobs.queue.admit_and_spawn` (the mutex admission itself,
   shared with the chain dispatcher and the executor since issue #794).
   The shared tail of every *real* fire, used by both the manual
   ``POST /run`` route (in ``jobs.py``) and the webhook ``POST /hook``
@@ -29,8 +29,8 @@ from typing import Any, Callable, Dict, Optional
 from fastapi import HTTPException
 
 from src import jobs as jobs_mod
-from src.jobs_argv import ArgvRejected
-from src.jobs_config import Job, JobsConfig
+from src.jobs.argv import ArgvRejected
+from src.jobs.config import Job, JobsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def _dry_run_check(job: Job, raw_params: Dict[str, Any]) -> Dict[str, Any]
             # an unresolvable $secret: reference must fail the
             # check, not wait for a real fire. Values are discarded —
             # only argv ever lands in the note.
-            from src.jobs_secrets import resolve_env_overlay  # local: leaf util
+            from src.jobs.secrets import resolve_env_overlay  # local: leaf util
             from src.webapp_config import load_webapp_config
 
             wcfg = await asyncio.to_thread(load_webapp_config)
@@ -113,7 +113,7 @@ async def _dry_run_execute(job: Job, raw_params: Dict[str, Any]) -> Dict[str, An
     except (OSError, ValueError) as exc:
         # ValueError as well as OSError: the argv is refused before the
         # spawn when a value can't survive the `cmd /c start` hop
-        # (src.jobs_argv.reject_cmd_unsafe). The run dir already exists, so
+        # (src.jobs.argv.reject_cmd_unsafe). The run dir already exists, so
         # an escaping exception would leave it stuck at "pending".
         refused = isinstance(exc, ArgvRejected)
         jobs_mod.write_run_json(
@@ -149,7 +149,7 @@ async def _admit_and_spawn(
     cooldown gate (a route-only concern — a chain or scheduled fire is an
     explicit consequence, not user mashing) and the translation of the
     admission outcome into a response body or an ``HTTPException``. The
-    admission itself is :func:`src.jobs_queue.admit_and_spawn`, shared with
+    admission itself is :func:`src.jobs.queue.admit_and_spawn`, shared with
     the chain dispatcher and the executor's scheduled-fire gate (issue
     #794). ``on_run_dir`` fires right after the run directory is created
     (before the queued-vs-spawn branch) so a caller can persist extra files
@@ -175,7 +175,7 @@ async def _admit_and_spawn(
 
     # Mutex-group admission + spawn. Shared with the chain dispatcher and
     # the executor's own scheduled-fire gate — see
-    # src.jobs_queue.admit_and_spawn for the queued-vs-spawn contract. Runs
+    # src.jobs.queue.admit_and_spawn for the queued-vs-spawn contract. Runs
     # as one to_thread hop: every step in it is blocking file/subprocess
     # work, so there is nothing for the event loop to interleave.
     meta = await asyncio.to_thread(

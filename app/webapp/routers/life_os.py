@@ -21,7 +21,7 @@ specialised to the skills in the sibling ``life-os`` repo:
     GET  /api/life-os/file?path=…              → file content (Tailscale + passkey)
 
 Launch reuses the Coding tab's session-host / ConPTY machinery wholesale
-(:func:`src.launcher.spawn_claude_session`). The cwd is always ``life_os_dir``
+(:func:`src.launching.launcher.spawn_claude_session`). The cwd is always ``life_os_dir``
 so project skills resolve. Claude receives the native bare ``/<skill>``
 slash-command; Codex receives a server-authored prompt pointing at that same
 validated skill's ``SKILL.md``. No caller-supplied free text is interpolated
@@ -51,7 +51,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.launch_flags import build_claude_flags, build_codex_flags, build_resume_flags
+from src.launching.flags import build_claude_flags, build_codex_flags, build_resume_flags
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig, update_webapp_config
 

@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from src.jobs_config import PROJECT_ROOT, Job
+from src.jobs.config import PROJECT_ROOT, Job
 from src.jobs_kinds.base import Problem
 
 DEFAULT_METHOD = "GET"

@@ -1,13 +1,13 @@
 """Screen clipboard (#1719): the phone's text onto the PC's clipboard.
 
 Nothing here touches the real clipboard: every session runs against a
-:class:`src.desktop_clipboard.RecordingClipboard` (and ``tests/conftest.py``'s
+:class:`src.desktop.clipboard.RecordingClipboard` (and ``tests/conftest.py``'s
 autouse ``fake_clipboard`` replaces the process clipboard for the whole suite);
 the real :class:`Win32Clipboard` is driven against a fake ``win32clipboard``.
 
 The last section is the security pin, in the shape of the input one in
 ``tests/test_desktop_input.py``: a clipboard API is reached only from
-``src/desktop_clipboard.py``, and that module only through the input session
+``src/desktop/clipboard.py``, and that module only through the input session
 the gated Screen socket owns. The socket-level tests (reply on the wire, the
 close audit) are in ``tests/api/screen/``.
 """
@@ -24,9 +24,9 @@ from typing import List
 
 import pytest
 
-from src import desktop_clipboard as dc
-from src import desktop_input as di
-from src.desktop_capture import Monitor
+from src.desktop import clipboard as dc
+from src.desktop import input as di
+from src.desktop.capture import Monitor
 
 REPO = Path(__file__).resolve().parent.parent
 MONITOR = Monitor(id=0, left=0, top=0, width=1920, height=1080, primary=True)
@@ -297,12 +297,12 @@ def _identifiers(tree: ast.AST):
 
 
 def test_only_desktop_clipboard_touches_the_clipboard():
-    """No code but ``src/desktop_clipboard.py`` calls a Windows clipboard API,
+    """No code but ``src/desktop/clipboard.py`` calls a Windows clipboard API,
     imports a clipboard library or shells out to a clipboard command."""
     offenders = []
     for path in _python_files():
         rel = path.relative_to(REPO).as_posix()
-        if rel == "src/desktop_clipboard.py":
+        if rel == "src/desktop/clipboard.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         names = set(_identifiers(tree)) & _CLIPBOARD_NAMES
@@ -314,27 +314,27 @@ def test_only_desktop_clipboard_touches_the_clipboard():
         }
         if names or mods or commands:
             offenders.append(f"{rel}: {sorted(names | mods | commands)}")
-    assert offenders == [], "clipboard access outside src/desktop_clipboard.py: " + "; ".join(offenders)
+    assert offenders == [], "clipboard access outside src/desktop/clipboard.py: " + "; ".join(offenders)
 
 
 def test_only_the_input_session_reaches_the_clipboard_seam():
-    """``src.desktop_clipboard`` is imported by ``src/desktop_input.py`` alone,
+    """``src.desktop.clipboard`` is imported by ``src/desktop/input.py`` alone,
     and that module is imported by the Screen router alone (pinned in
     ``tests/test_desktop_input.py``), so the socket is the only way in."""
     importers = []
     for path in _python_files():
         rel = path.relative_to(REPO).as_posix()
-        if rel == "src/desktop_clipboard.py":
+        if rel == "src/desktop/clipboard.py":
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        imported = any("desktop_clipboard" in m for m in _imported_modules(tree))
+        imported = any(m.startswith("src.desktop.clipboard") for m in _imported_modules(tree))
         dynamic = any(
-            isinstance(n, ast.Constant) and isinstance(n.value, str) and "desktop_clipboard" in n.value
+            isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value.startswith("src.desktop.clipboard")
             for n in ast.walk(tree)
         )
         if imported or dynamic:
             importers.append(rel)
-    assert importers == ["src/desktop_input.py"]
+    assert importers == ["src/desktop/input.py"]
 
 
 def test_the_clipboard_has_no_http_route():
@@ -344,4 +344,4 @@ def test_the_clipboard_has_no_http_route():
     for route in desktop_screen.router.routes:
         assert "clipboard" not in getattr(route, "path", "")
     source = (REPO / "app/webapp/routers/desktop_screen.py").read_text(encoding="utf-8")
-    assert "desktop_clipboard" not in source
+    assert "desktop import clipboard" not in source and "src.desktop.clipboard" not in source

@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from src import session_transcript as st
+from src.session_view import transcript as st
 
 
 def _lines(rows: List[Dict[str, Any]]) -> List[Any]:

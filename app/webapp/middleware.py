@@ -21,9 +21,9 @@ from fastapi import Request, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from src import api_tokens
+from src.auth import api_tokens
 from src.auth import delegate_token
-from src.webauthn_gate import WebAuthnGate
+from src.auth.webauthn_gate import WebAuthnGate
 
 logger = logging.getLogger(__name__)
 # The logger behind webapp/auth.log, the auth trail that persists on the live
@@ -591,7 +591,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             request.state.token_id = match.id
             request.state.token_label = match.label
             # In-memory freshness stamp; persisted opportunistically on
-            # the next mint/revoke save (see src.api_tokens).
+            # the next mint/revoke save (see src.auth.api_tokens).
             api_tokens.touch_last_used(minted, match.id)
             return await call_next(request)
 

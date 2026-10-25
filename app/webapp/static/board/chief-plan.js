@@ -16,7 +16,7 @@ import { clearMergedButton, mergedCount } from './plan-prune.js';
 
 // The fleet chief records its lanes, its queue and what waits on Roberto in a
 // plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
-// it tolerantly (src/chief_plan.py) and this card shows it under Claude's
+// it tolerantly (src/chief/plan.py) and this card shows it under Claude's
 // turn. No plan, the card stays blank. A plan the server could not trust adds
 // one quiet note, never a toast. Whether the chief is running comes from the
 // session cards /api/board already carries, and is said on its own line: a

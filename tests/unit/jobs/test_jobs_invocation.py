@@ -8,10 +8,10 @@ import pytest
 
 from app.cli.commands.run_job_cmd import build_invocation
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
-from src import jobs_index as jobs_index_mod
+from src.jobs import history as jobs_history_mod
+from src.jobs import index as jobs_index_mod
 from src.jobs import resolve_venv_python
-from src.jobs_config import (
+from src.jobs.config import (
     Job,
 )
 

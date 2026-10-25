@@ -278,7 +278,7 @@ class TestContentBrowser:
         """Pretend fleet-config's search CLI is installed, on an isolated
         ``subprocess`` binding so patching ``.run`` can't leak into the real
         module (mirrors ``TestConversationSearch.stub_cli``)."""
-        from src import life_os_index
+        from src.life_os import index as life_os_index
         monkeypatch.setattr(life_os_index, "search_cli", lambda cfg: list(argv))
         monkeypatch.setattr(life_os_index, "subprocess", SimpleNamespace(**vars(subprocess)))
         return life_os_index

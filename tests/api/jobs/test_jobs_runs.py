@@ -162,7 +162,7 @@ class TestBulkCacheNextRun:
 
         from app.webapp.routers import jobs as jobs_router
         from src import jobs as jobs_mod
-        from src import jobs_schtasks as jobs_schtasks_mod
+        from src.jobs import schtasks as jobs_schtasks_mod
 
         client, _, _ = webapp_client
 
@@ -203,7 +203,7 @@ class TestBulkCacheNextRun:
             )
             return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout, stderr="")
 
-        # _run_schtasks is owned by src.jobs_schtasks (issue #315 split) —
+        # _run_schtasks is owned by src.jobs.schtasks (issue #315 split) —
         # query_next_run's cache reads it as its own module global.
         monkeypatch.setattr(jobs_schtasks_mod, "_run_schtasks", fake_run)
 
@@ -233,7 +233,7 @@ class TestBulkCacheNextRun:
     def test_invalidation_after_sync(self, monkeypatch):
 
         from src import jobs as jobs_mod
-        from src import jobs_schtasks as jobs_schtasks_mod
+        from src.jobs import schtasks as jobs_schtasks_mod
 
         # Set up a fake runner that records calls.
         calls = []
@@ -246,7 +246,7 @@ class TestBulkCacheNextRun:
             stdout = "TaskName: \\AppLauncher\\demo\nNext Run Time: N/A\n"
             return subprocess.CompletedProcess(args=argv, returncode=0, stdout=stdout, stderr="")
 
-        # _run_schtasks is owned by src.jobs_schtasks (issue #315 split).
+        # _run_schtasks is owned by src.jobs.schtasks (issue #315 split).
         monkeypatch.setattr(jobs_schtasks_mod, "_run_schtasks", fake_run)
         jobs_mod.invalidate_next_run_cache()
 
@@ -355,7 +355,7 @@ class TestReapOnPoll:
         client, _, _ = webapp_client
         created = _seed_one_job(client, name="Demo").json()["job"]
         from src import jobs as jobs_mod
-        from src import jobs_reap as jobs_reap_mod
+        from src.jobs import reap as jobs_reap_mod
 
         run_dir = jobs_mod.new_run_dir(created["id"], "20260524T080000")
         jobs_mod.write_run_json(

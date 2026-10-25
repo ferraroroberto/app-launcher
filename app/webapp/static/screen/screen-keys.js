@@ -276,7 +276,7 @@ export function fitToKeyboard() {
 // ----------------------------------------------------------- clipboard
 
 // The most text one transfer carries, in UTF-8 bytes: the server's own cap
-// (src/desktop_clipboard.py MAX_CLIPBOARD_BYTES), checked here first so a
+// (src/desktop/clipboard.py MAX_CLIPBOARD_BYTES), checked here first so a
 // huge paste is never sent just to be refused.
 const CLIPBOARD_MAX_BYTES = 64 * 1024;
 const CLIPBOARD_FAILURES = {

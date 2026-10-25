@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src import audit
 from src.webapp_config import WebappConfig
-from src.webauthn_gate import WebAuthnGate
+from src.auth.webauthn_gate import WebAuthnGate
 
 from app.webapp.middleware import LOOPBACK_HOSTS
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json

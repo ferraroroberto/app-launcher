@@ -220,7 +220,7 @@ class TestSkillLastUsed:
 
     def test_cached_by_index_mtime_and_reads_no_capture(self, life_os_client, monkeypatch):
         from app.webapp.routers import life_os_conversations
-        from src import life_os_history
+        from src.life_os import history as life_os_history
         client, _, overrides = life_os_client
         reads = []
         real = life_os_conversations._read_conversation_index
@@ -250,8 +250,8 @@ class TestResumeLatest:
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
         from app.webapp import middleware
-        from src import session_client
-        from src.life_os_transcript import claude_projects_dir
+        from src.clients import session as session_client
+        from src.life_os.transcript import claude_projects_dir
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
@@ -356,7 +356,7 @@ class TestResumeLatest:
         assert self.captured == {}
 
     def test_unreachable_session_host_launches_nothing(self, monkeypatch):
-        from src import session_client
+        from src.clients import session as session_client
 
         def down(port):
             raise session_client.SessionHostError("down")
@@ -371,7 +371,7 @@ class TestKeepModel:
     """The explicit ``keep_model`` switch on the shared resume path."""
 
     def test_claude_resume_flags_drop_the_model(self, webapp_client):
-        from src.launch_flags import build_resume_flags
+        from src.launching.flags import build_resume_flags
         _, app, _ = webapp_client
         cfg = app.state.webapp_config
         kept = build_resume_flags(cfg, "claude", model_override="opus",
@@ -417,7 +417,7 @@ class TestKeepModel:
 
 
 class TestRecordedModel:
-    """src.conversation_model against synthetic files in a temporary home."""
+    """src.session_view.conversation_model against synthetic files in a temporary home."""
 
     @pytest.fixture(autouse=True)
     def _home(self, tmp_path, monkeypatch):
@@ -426,13 +426,13 @@ class TestRecordedModel:
         self.home = tmp_path
 
     def test_claude_newest_assistant_model(self):
-        from src.conversation_model import recorded_model
+        from src.session_view.conversation_model import recorded_model
         _claude_transcript(self.home, RESUMABLE_SID, "claude-haiku-5-5")
         assert recorded_model("claude", RESUMABLE_SID) == "claude-haiku-5-5"
         assert recorded_model("claude", RESUMABLE_SID.upper()) == "claude-haiku-5-5"
 
     def test_codex_newest_turn_model(self):
-        from src.conversation_model import recorded_model
+        from src.session_view.conversation_model import recorded_model
         _codex_rollout(self.home, CODEX_SID, "gpt-5.6-terra")
         assert recorded_model("codex", CODEX_SID) == "gpt-5.6-terra"
 
@@ -441,12 +441,12 @@ class TestRecordedModel:
         ("claude", OTHER_SID), ("codex", OTHER_SID),
     ])
     def test_anything_else_is_not_known(self, agent, sid):
-        from src.conversation_model import recorded_model
+        from src.session_view.conversation_model import recorded_model
         _claude_transcript(self.home, RESUMABLE_SID, "claude-haiku-5-5")
         assert recorded_model(agent, sid) == ""
 
     def test_two_codex_rollouts_for_one_id_are_not_a_fact(self):
-        from src.conversation_model import recorded_model
+        from src.session_view.conversation_model import recorded_model
         _codex_rollout(self.home, CODEX_SID, "gpt-5.6-terra")
         twin = self.home / ".codex" / "sessions" / "2026" / "09" / "04"
         twin.mkdir(parents=True)

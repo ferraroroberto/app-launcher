@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from src import launcher
+from src.launching import launcher
 from src.subprocess_flags import NO_WINDOW
 
 

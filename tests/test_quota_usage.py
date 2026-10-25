@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src import quota_usage
+from src.usage import quota as quota_usage
 
 
 def _window(

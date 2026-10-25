@@ -1,6 +1,6 @@
 """Unit tests for :func:`src.jobs.next_fire` (issue #229).
 
-Computes the next wall-clock fire from a :class:`~src.jobs_config.Schedule`
+Computes the next wall-clock fire from a :class:`~src.jobs.config.Schedule`
 definition — deterministic, no schtasks. ``now`` is injected so every case
 is reproducible. This is the field the Jobs tab sorts on and renders the
 "in 3h" countdown from.
@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from src.jobs import next_fire
-from src.jobs_config import Schedule
+from src.jobs.config import Schedule
 
 
 # A fixed reference: Tuesday 2026-06-16 10:00:00 (weekday()==1).
@@ -93,7 +93,7 @@ def test_paused_job_active_schedule_is_none():
 class TestTheArithmeticStaysPure:
     """The property that made the split real, pinned so it stays real (#1006).
 
-    ``next_fire`` moved out of ``src/jobs_schtasks.py`` because nothing in it
+    ``next_fire`` moved out of ``src/jobs/schtasks.py`` because nothing in it
     touches Task Scheduler - it is derived entirely from the ``Schedule``
     shape. A single import back into the schtasks client would rebuild the
     seam silently, so it is asserted rather than trusted to a docstring.
@@ -103,7 +103,7 @@ class TestTheArithmeticStaysPure:
         import ast
         import pathlib
 
-        module = pathlib.Path(__file__).resolve().parents[1] / "src" / "jobs_next_fire.py"
+        module = pathlib.Path(__file__).resolve().parents[1] / "src" / "jobs" / "next_fire.py"
         tree = ast.parse(module.read_text(encoding="utf-8"))
         sources = set()
         for node in ast.walk(tree):
@@ -128,7 +128,7 @@ class TestTheArithmeticStaysPure:
         expected = next_fire(Schedule(type="daily", at="12:00"), now=NOW)
         for name in [n for n in list(sys.modules) if "jobs_schtasks" in n]:
             monkeypatch.delitem(sys.modules, name, raising=False)
-        module = importlib.import_module("src.jobs_next_fire")
+        module = importlib.import_module("src.jobs.next_fire")
         importlib.reload(module)
         assert module.next_fire(Schedule(type="daily", at="12:00"), now=NOW) == expected
         assert not any("jobs_schtasks" in n for n in sys.modules), (

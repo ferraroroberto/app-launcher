@@ -19,7 +19,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.webapp import server
-from src import instance_role, session_client, session_retention
+from src import instance_role, session_retention
+from src.clients import session as session_client
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig, _validate
 
 DAY = 86400

@@ -1,4 +1,4 @@
-"""src/git_changes.py — the working-tree list + per-file diff behind the
+"""src/session_view/git_changes.py — the working-tree list + per-file diff behind the
 Coding row's ``⋯`` menu (#977).
 
 Every case runs against a real throwaway ``git`` repository built in
@@ -15,8 +15,8 @@ from pathlib import Path
 
 import pytest
 
-from src import git_changes
-from src.git_changes import (
+from src.session_view import git_changes
+from src.session_view.git_changes import (
     EMPTY_TREE,
     file_diff,
     list_changes,

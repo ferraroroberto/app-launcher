@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from src import board, board_transcript
+from src import board
+from src.board import transcript as board_transcript
 
 from tests.unit.board._support import (
     NOW,
@@ -93,7 +94,7 @@ def test_overlay_pending_dispatch_survives_large_intervening_tool_result(tmp_pat
 def _turn_duration_line(ts: datetime, pending_agent_count: int) -> str:
     """Claude Code's own end-of-turn accounting line, emitted the moment a
     turn ends — the harness-native signal
-    :func:`src.board_transcript._pending_background_dispatch_launched_at`
+    :func:`src.board.transcript._pending_background_dispatch_launched_at`
     falls back to when its id-keyed scan comes up empty (#627)."""
     return json.dumps({
         "type": "system",
@@ -283,7 +284,7 @@ def test_overlay_foreground_bash_tool_use_is_not_flagged_pending(tmp_path: Path)
 def _tool_use_line(ts: datetime, tool_use_id: str, name: str) -> str:
     """One assistant line dispatching an arbitrary foreground tool call —
     the generic counterpart to :func:`_bash_tool_use_line`, for exercising
-    :func:`src.board_transcript._refine_waiting_status`'s own tail scan
+    :func:`src.board.transcript._refine_waiting_status`'s own tail scan
     rather than the background-dispatch-specific one."""
     return json.dumps({
         "type": "assistant",
@@ -385,7 +386,9 @@ def picker_screen(tmp_path: Path, monkeypatch):
     screen renders. ``show(sid)`` writes the plan picker as the session-host
     writes a capture (text mode); ``show(sid, picker=False)`` writes an
     ordinary prompt instead."""
-    from src import audit, board_sessions, plan_picker
+    from src import audit
+    from src.board import sessions as board_sessions
+    from src.session_view import plan_picker
     from tests.test_plan_picker import PLAN_MODE, _screen
 
     monkeypatch.setattr(audit, "transcript_path", lambda sid: tmp_path / f"{sid}.transcript")

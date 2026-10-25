@@ -27,7 +27,7 @@ from src.transcript_flavors._shared import (
 )
 
 # Codex user-role messages that are harness plumbing, not a typed prompt —
-# the Codex counterpart of `board_transcript._SKIP_USER_PREFIXES`.
+# the Codex counterpart of `src.board.transcript_exchange._SKIP_USER_PREFIXES`.
 _CODEX_SKIP_USER_PREFIXES = (
     "<environment_context>", "<user_instructions>", "<recommended_plugins>",
     "<skills_instructions>", "<turn_aborted>", "<permissions_instructions>",

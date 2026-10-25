@@ -467,11 +467,11 @@ prefix = "app/session_host/"
 label  = "session-host"
 [[e2e.rule]]
 tier = "full"
-path = "src/session_client.py"
+path = "src/clients/session.py"
 label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"
-path = "src/launcher.py"
+path = "src/launching/launcher.py"
 label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"

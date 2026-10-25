@@ -27,7 +27,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from src import board, jobs_history, jobs_reap, jobs_snapshot, jobs_stats
+from src import board
+from src.jobs import history as jobs_history
+from src.jobs import reap as jobs_reap
+from src.jobs import snapshot as jobs_snapshot
+from src.jobs import stats as jobs_stats
 from tests.unit.board._support import _seed_job
 
 

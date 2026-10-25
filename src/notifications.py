@@ -7,7 +7,7 @@ on finalisation and pushes when the run failed (or, optionally, when an
 N-failure streak ticks over).
 
 Three independent channels share this one finalisation hook (the third, the
-chief mailbox event, lives in :mod:`src.chief_job_failed`):
+chief mailbox event, lives in :mod:`src.chief.job_failed`):
 
 * **Pushover (global, issue #66)** — every job, gated by the master
   switch. Config keys live in :class:`src.webapp_config.WebappConfig`:
@@ -47,11 +47,11 @@ from typing import Any, List, NamedTuple, Optional, Protocol
 
 import requests
 
-from src import llm_client
-from src.chief_job_failed import publish_job_failed
-from src.jobs_history import read_output_tail
-from src.jobs_outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
-from src.jobs_stats import consecutive_failed_runs
+from src.clients import llm as llm_client
+from src.chief.job_failed import publish_job_failed
+from src.jobs.history import read_output_tail
+from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
+from src.jobs.stats import consecutive_failed_runs
 from src.notify import NotifierError as TelegramNotifierError
 from src.notify import TelegramNotifier
 
@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 PUSHOVER_URL = "https://api.pushover.net/1/messages.json"
 
 # Local LLM hub — see global CLAUDE.md "`local-llm-hub` local LLM hub".
-# The model id lives once on :mod:`src.llm_client`
+# The model id lives once on :mod:`src.clients.llm`
 # (:data:`llm_client.DEFAULT_MODEL`) — both hub callers route through the
 # same client.
 LOCAL_LLM_BASE_URL = "http://127.0.0.1:8000"
@@ -177,7 +177,7 @@ def summarise_failure(
 ) -> Optional[str]:
     """Ask the local LLM hub for a one-line summary of ``tail``.
 
-    Routes through the shared :func:`src.llm_client.summarize` hub client
+    Routes through the shared :func:`src.clients.llm.summarize` hub client
     (issue #520) instead of hand-rolling a second one — same OpenAI-shape
     ``/v1/chat/completions`` call, model constant, and ``LlmError`` handling
     as the Coding-tab read-aloud summary, just with a root-cause-focused
@@ -266,7 +266,7 @@ def notify_failure(
 
     Shared by the executor's normal finalise
     (:func:`app.cli.commands.run_job_cmd._finalize_run`) and the stranded-run
-    reconciler (:func:`src.jobs_reap._reap_one`, issue #747) — a run that
+    reconciler (:func:`src.jobs.reap._reap_one`, issue #747) — a run that
     fails because the launcher discovered a dead executor pages the same way
     a run that fails on its own exit code does.
 
@@ -274,7 +274,7 @@ def notify_failure(
 
     * Chief mailbox — one ``job-failed`` event for the fleet chief,
       gated by ``cfg.chief_job_failures``, a live chief and the canonical
-      instance (:func:`src.chief_job_failed.publish_job_failed`).
+      instance (:func:`src.chief.job_failed.publish_job_failed`).
 
     * Pushover (global, issue #66) — gated by ``cfg.notify_on_failure``,
       fires for every job.
@@ -301,7 +301,7 @@ def notify_failure(
     Composes with ``reaped`` if a future caller ever has both.
 
     **Not every ``failed`` finalisation is reported as a failure** (issue
-    #916). Both channels consult :func:`src.jobs_outcome.run_outcome`: an exit
+    #916). Both channels consult :func:`src.jobs.outcome.run_outcome`: an exit
     code meaning "delivery was never established" pages as ``❓ … not
     confirmed`` at ``warning`` severity (Pushover priority 0 — no quiet-hour
     bypass) instead of ``❌ … failed`` at ``error``, and both bodies name the

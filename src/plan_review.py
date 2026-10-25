@@ -17,7 +17,7 @@ the dev box and re-probed on Claude Code 2.1.281):
 
 Answering is not read from here: the pending call is not reliably in the
 transcript while the picker is up, and the first option's meaning depends on
-the session's permission mode. :mod:`src.plan_picker` reads the picker off
+the session's permission mode. :mod:`src.session_view.plan_picker` reads the picker off
 the terminal's screen instead (#1151).
 """
 

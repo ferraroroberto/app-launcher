@@ -1,6 +1,6 @@
 """Shared types for the job-kind registry (issue #70).
 
-Deliberately a leaf module — no import of :mod:`src.jobs_preflight` or
+Deliberately a leaf module — no import of :mod:`src.jobs.preflight` or
 :mod:`src.jobs_kinds` (the registry) — so that ``jobs_preflight`` can
 import from here and *also* import the registry (``src.jobs_kinds``)
 without a cycle: ``jobs_kinds.<kind module>`` → ``jobs_kinds.base`` →
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Protocol, Tuple
 
-from src.jobs_config import Job
+from src.jobs.config import Job
 
 # Kinds backed by a real on-disk ``script_path`` the executor spawns
 # directly. Everything else (``inline-shell``, ``http-check``, and any
@@ -56,7 +56,7 @@ class JobKind(Protocol):
     """One entry in the job-kind registry.
 
     ``validate`` is a pure function (no subprocess, no disk writes) run
-    at save time by ``src.jobs_preflight``. ``build_argv`` is called by
+    at save time by ``src.jobs.preflight``. ``build_argv`` is called by
     the executor (``app.cli.commands.run_job_cmd``) at fire time; it may
     write files (``inline-shell`` writes its body into ``run_dir``) but
     must never spawn a subprocess itself — that stays the executor's job
@@ -75,7 +75,7 @@ class JobKind(Protocol):
         """Return ``(argv, cwd, env_overlay)`` for spawning ``job``.
 
         ``tail`` and ``param_env`` are already composed by the caller
-        (``src.jobs_argv.compose_argv`` plus the legacy whitespace-split
+        (``src.jobs.argv.compose_argv`` plus the legacy whitespace-split
         ``job.args`` tail) — every kind just appends ``tail`` to its own
         interpreter/wrapper argv and merges its own env additions (e.g.
         ``python``'s ``PYTHONPATH``) with ``param_env``; none of them

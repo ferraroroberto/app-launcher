@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from src import life_os_zombie_backup
+from src.life_os import zombie_backup as life_os_zombie_backup
 
 SKILL = "journal-daily"
 DAY = "2026-09-14"
