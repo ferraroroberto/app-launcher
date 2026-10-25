@@ -1,6 +1,6 @@
 // Unit pin for the composer's attach queue (#1354). Runs under plain Node
 // against the DOM-free module the composer imports. Invoked by
-// tests/test_attach_batch.py.
+// tests/unit/board/test_attach_batch.py.
 
 import assert from 'node:assert/strict';
 import {

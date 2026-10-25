@@ -2,7 +2,7 @@
  *
  * Pure data, no DOM — extracted out of terminal-keys.js so the mapping is
  * pinned by a unit test that runs under plain Node, without a browser
- * (tests/js/terminal_keys_bytes.test.mjs via tests/test_terminal_keys_bytes.py).
+ * (tests/js/terminal_keys_bytes.test.mjs via tests/unit/static_ui/test_terminal_keys_bytes.py).
  */
 
 export const KEY_BYTES = {
@@ -34,7 +34,7 @@ export const SHIFT_KEY_BYTES = {
 // Ctrl+C — the quit confirmation it prints when there is no turn to cancel —
 // not a second press the launcher owes it. A doubled byte here would be a
 // second interrupt for Claude; pinned by tests/js/terminal_keys_bytes.test.mjs
-// and tests/e2e/test_keys_popover.py::test_ctrl_c_delivers_exactly_one_interrupt_byte.
+// and tests/e2e/terminal/test_keys_popover.py::test_ctrl_c_delivers_exactly_one_interrupt_byte.
 export const CTRL_KEY_BYTES = {
   c: '\x03', u: '\x15', x: '\x18',
 };

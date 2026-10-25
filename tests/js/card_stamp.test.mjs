@@ -1,7 +1,7 @@
 // Unit pin for the Board card's date stamp (#1638): dom-utils.js fmtCardStamp.
 // A clock time for today, a short date for any other day, always the viewer's
 // local time, '' for a value that can't be read. Runs under plain Node;
-// invoked by tests/test_card_stamp.py.
+// invoked by tests/unit/board/test_card_stamp.py.
 
 import assert from 'node:assert/strict';
 

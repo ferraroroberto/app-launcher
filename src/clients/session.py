@@ -42,7 +42,7 @@ _STOP_TIMEOUT = 10.0
 # background watcher. Restated here rather than imported because the webapp
 # process deliberately never imports ``src.session_host`` — that module owns
 # live ConPTYs and belongs to the *other* process; this client is the webapp's
-# whole view of the protocol. ``tests/test_session_host_input_endpoint.py``
+# whole view of the protocol. ``tests/unit/session_host/test_session_host_input_endpoint.py``
 # pins the two definitions equal so they cannot drift apart silently.
 INPUT_DEFERRED = "deferred"
 

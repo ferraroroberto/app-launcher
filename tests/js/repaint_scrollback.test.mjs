@@ -1,6 +1,6 @@
 // Unit pin for the full-viewport repaint detector (#930). Runs under plain
 // Node against the real ES module the terminal imports. Invoked by
-// tests/test_repaint_scrollback.py.
+// tests/unit/pty/test_repaint_scrollback.py.
 
 import assert from 'node:assert/strict';
 import { CLEAR_SCROLLBACK, createRepaintClearer } from '../../app/webapp/static/terminal/repaint-scrollback.js';

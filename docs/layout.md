@@ -100,10 +100,12 @@ app-launcher/
 │   ├── restart-session-host.ps1 # confirmation-gated `:8446` restart — see CLAUDE.md `## session-host`
 │   └── verify-before-ship.ps1  # the pre-ship gate — disposable webapp + session-host, no tray needed
 │
-├── tests/                      # pytest suite, one test_<module>.py per unit; a flat package by history (see below)
-│   ├── unit/                   # unit tests by domain: board/ (Board backend), transcript/ (Coding-tab transcript)
-│   ├── api/                    # API tests by router, with a shared-support module per tab (Life OS)
-│   ├── e2e/                    # Playwright browser suite (chromium + iPhone projections) and its helpers; board/ and life_os/ hold one tab's modules each
+├── tests/                      # pytest suite; shared helpers and the root conftest sit here, every test module in a folder below
+│   ├── unit/                   # unit tests by domain: board/ chief/ clients/ core/ desktop/ jobs/ launching/ life_os/ pty/ repo/
+│   │                           #   scanner/ session_host/ sessions/ shell/ static_ui/ telegram/ transcript/ tray/ usage/ webapp_config/
+│   ├── api/                    # API tests by router, with a shared-support module per tab (Life OS); webapp/ and nonblocking/ hold the webapp suite
+│   ├── e2e/                    # Playwright browser suite (chromium + iPhone projections): one folder per tab (apps/ board/ chat/ code/
+│   │                           #   compose/ jobs/ life_os/ screens/ session/ settings/ shell/ terminal/), fixtures/ for the conftest's parts
 │   ├── js/                     # plain-Node tests for browser-side logic that a desktop engine cannot judge
 │   └── fixtures/               # recorded transcripts and sample files the tests read
 │
@@ -159,7 +161,8 @@ app-launcher/
 
 `scripts/structure_ratchet.py` (vendored byte-for-byte from project-scaffolding, recorded in `.fleet.toml` `[vendored]`) runs in the pre-ship gate. It fails a new file over 1,000 lines, a new function over 100 lines, a directory past 40 modules, a `src` file that imports `app`, and a root folder the declared shape does not list. A finding already in `.structure-ratchet-baseline.json` may not grow past its recorded size. Shrinking one means lowering the baseline with `--update-baseline`; raising or adding an entry needs `--allow-additions`, which shows in review.
 
-- **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests under `tests/unit/<domain>/` (logic), `tests/api/` (routers) or `tests/e2e/<tab>/` (browser), not loose in the flat `tests/` or `tests/e2e/`. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
+- **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests under `tests/unit/<domain>/` (logic), `tests/api/<router>/` (routers) or `tests/e2e/<tab>/` (browser), never loose in `tests/` or `tests/e2e/`, which hold only shared helpers and the conftests. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
 - **Declared shape:** `webapp-tray`, with `webapp/` as the one extra root. It is the tray's runtime-state folder: only the two `*.sample.*` files in it are tracked, and the rest is gitignored. The preset itself lists `assets/` and `config/`.
-- **Flat directories, baselined:** `tests/` and `tests/e2e/` each hold more than 40 modules today. They take no new module until they are split. `src/` is under the limit because its domains sit in subpackages; a new module goes in its domain's package, not loose in `src/`. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
+- **Flat directories:** `tests/` and `tests/e2e/` hold only helpers and conftests, so a test module never goes loose in either. `src/` is under the limit because its domains sit in subpackages; a new module goes in its domain's package, not loose in `src/`. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
+- **The e2e conftest is a registrar.** `tests/e2e/conftest.py` holds the pytest hooks, the `_autoboot_server` session fixture and the fixtures it re-exports; the code behind them is in `tests/e2e/fixtures/`: `env.py` (paths, env-var names, run state), `waits.py` (waiting helpers and timeout budgets), `ui.py` (page-driving helpers), `processes.py` (spawning and leak scans), `autoboot.py` (the disposable servers' boot and isolation checks), `launch_target.py`, `sessions.py` and `pages.py`.
 - **Oversized files and functions:** every one over the limits is in the baseline at its current size. Splitting them is separate work, and a split lowers its entry.

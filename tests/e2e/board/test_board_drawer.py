@@ -9,9 +9,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import (
-    open_row_menu, stable_read,
-)
+from tests.e2e.fixtures.ui import open_row_menu
+from tests.e2e.fixtures.waits import stable_read
 
 from tests.e2e.board._support import _board_payload, _mock_board, _mock_exchange, _open_board
 

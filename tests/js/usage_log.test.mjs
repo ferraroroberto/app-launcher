@@ -1,7 +1,7 @@
 // Privacy and origin pin for the usage log's browser half (#1524). Runs under
 // plain Node against the real vendored client and the real wiring module
 // (static/usage.js), with just enough of a browser faked around them.
-// Invoked by tests/test_usage_log_adoption.py.
+// Invoked by tests/unit/usage/test_usage_log_adoption.py.
 //
 // Every value below is invented. The sentinels stand in for the things the
 // contract forbids: message text, names, queries, form values, a URL with a

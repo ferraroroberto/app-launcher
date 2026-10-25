@@ -3,7 +3,7 @@
 // jobs-row.js formatDuration (Jobs tab run duration). Runs under plain Node;
 // jobs-row.js pulls in the DOM-bound module graph, so the browser globals it
 // touches at import time are stubbed first. Invoked by
-// tests/test_duration_days.py.
+// tests/unit/core/test_duration_days.py.
 
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';

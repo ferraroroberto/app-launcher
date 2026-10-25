@@ -8,10 +8,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import (
-    flush_requests,
-    life_launch_switch,
-)
+from tests.e2e.fixtures.ui import life_launch_switch
+from tests.e2e.fixtures.waits import flush_requests
 
 from tests.e2e.life_os._support import (
     _FAKE_CONVERSATIONS,
@@ -130,7 +128,7 @@ def test_life_os_skill_can_be_pinned_and_sorts_to_the_top(
     The skills list is route-mocked (the dev box's real life-os checkout is
     not a fixture), so the mock is what flips: this asserts the ordering and
     the POST the star sends, and the *persistence* half is pinned in the
-    non-browser suite against the real endpoint (tests/test_webapp_api_life_os_favorites.py).
+    non-browser suite against the real endpoint (tests/api/webapp/test_webapp_api_life_os_favorites.py).
     """
     posted: list = []
 

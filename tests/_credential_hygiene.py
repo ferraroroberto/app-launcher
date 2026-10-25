@@ -137,7 +137,7 @@ def _mask(node: Any, values: Set[str]) -> Any:
 #: in the owner's profile: the fleet-config hook-state directory and the
 #: context filter's home folder (#1717). A disposable webapp gets each one
 #: under its own ``state_dir`` instead, so it reads (and the context-filter
-#: Settings panel writes) nothing real. Pinned by ``tests/test_credential_hygiene.py``.
+#: Settings panel writes) nothing real. Pinned by ``tests/unit/repo/test_credential_hygiene.py``.
 HOST_STATE_KEYS = {
     "sessions_state_file": "hooks-state/sessions-state.json",
     "rate_limits_file": "hooks-state/rate-limits.json",

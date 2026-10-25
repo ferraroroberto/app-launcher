@@ -16,7 +16,7 @@ belongs here and nowhere else (#1111): a hand-rolled
 ``subprocess.run(["git", ...])`` opts back out of it invisibly, still
 exiting 0 with the right answer, so the conventions ratchet's ``git-wrapper``
 rule fails the build on any ``git`` spawn under ``src/`` or ``app/`` outside
-this file, and ``tests/test_git_spawn_gate.py`` pins that this file's own
+this file, and ``tests/unit/repo/test_git_spawn_gate.py`` pins that this file's own
 spawns pass ``env=``.
 """
 
@@ -75,7 +75,7 @@ def git_env(base: Optional[dict] = None) -> dict:
     ``GIT_OPTIONAL_LOCKS=0`` suppresses only *optional* locks — a requested
     write still takes the real index lock and still refuses when one is
     already held, which is correct and must stay. Verified, not assumed:
-    ``tests/test_git_utils.py`` drives both halves against a real repo.
+    ``tests/unit/core/test_git_utils.py`` drives both halves against a real repo.
     """
     env = dict(os.environ if base is None else base)
     env["GIT_OPTIONAL_LOCKS"] = "0"

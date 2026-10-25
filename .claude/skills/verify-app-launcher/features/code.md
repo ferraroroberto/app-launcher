@@ -9,11 +9,11 @@
 
 | Sub-feature | Surface name | Driving test node(s) |
 | --- | --- | --- |
-| changes-empty | `code.changes-empty` | `tests/e2e/test_coding_changes_overlay.py::test_clean_tree_shows_the_empty_state` |
-| changes-overlay | `code.changes-overlay` | `tests/e2e/test_coding_changes_overlay.py::test_overlay_lists_files_and_expands_a_tinted_diff` |
-| tab | `code.tab` | `tests/e2e/test_smoke.py::test_pty_session_renders_with_both_stop_buttons` |
+| changes-empty | `code.changes-empty` | `tests/e2e/session/test_coding_changes_overlay.py::test_clean_tree_shows_the_empty_state` |
+| changes-overlay | `code.changes-overlay` | `tests/e2e/session/test_coding_changes_overlay.py::test_overlay_lists_files_and_expands_a_tinted_diff` |
+| tab | `code.tab` | `tests/e2e/shell/test_smoke.py::test_pty_session_renders_with_both_stop_buttons` |
 
-**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/test_coding_changes_overlay.py::test_clean_tree_shows_the_empty_state tests/e2e/test_coding_changes_overlay.py::test_overlay_lists_files_and_expands_a_tinted_diff tests/e2e/test_smoke.py::test_pty_session_renders_with_both_stop_buttons -q --browser chromium` (the suite boots its own disposable instance).
+**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/session/test_coding_changes_overlay.py::test_clean_tree_shows_the_empty_state tests/e2e/session/test_coding_changes_overlay.py::test_overlay_lists_files_and_expands_a_tinted_diff tests/e2e/shell/test_smoke.py::test_pty_session_renders_with_both_stop_buttons -q --browser chromium` (the suite boots its own disposable instance).
 <!-- gen:end feature -->
 
 ## Gotchas

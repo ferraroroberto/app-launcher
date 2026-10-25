@@ -8,11 +8,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import (
-    OVERLAY_OPEN_MS,
-    stable_eval,
-    stable_read,
-)
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval, stable_read
 
 from tests.e2e.chat._support import (
     _Picker,

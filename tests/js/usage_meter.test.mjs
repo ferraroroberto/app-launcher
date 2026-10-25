@@ -1,6 +1,6 @@
 // Unit pin for the usage meter's reading and colour (#1433). Runs under
 // plain Node against the real ES module the Coding tab's meter renders
-// through. Invoked by tests/test_usage_meter.py.
+// through. Invoked by tests/unit/usage/test_usage_meter.py.
 
 import assert from 'node:assert/strict';
 import {

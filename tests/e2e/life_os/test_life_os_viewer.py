@@ -8,7 +8,7 @@ import re
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from tests.e2e.test_overlay_standalone_scrollable import (
+from tests.e2e.terminal.test_overlay_standalone_scrollable import (
     _PATCH_MATCH_MEDIA,
     _PROJECT_STANDALONE_CSS,
 )

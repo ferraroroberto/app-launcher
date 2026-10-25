@@ -1,5 +1,5 @@
 // Plain-Node pin for the File view's token colours (#1749): run by
-// tests/test_syntax_tint.py. Imports the real ES module — no browser.
+// tests/unit/static_ui/test_syntax_tint.py. Imports the real ES module — no browser.
 import assert from 'node:assert/strict';
 import { performance } from 'node:perf_hooks';
 

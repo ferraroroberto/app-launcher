@@ -9,13 +9,13 @@
 
 | Sub-feature | Surface name | Driving test node(s) |
 | --- | --- | --- |
-| attach-menu | `terminal.attach-menu` | `tests/e2e/test_composer_image_menu.py::test_attach_button_menu_reaches_all_four_options` |
-| keys-popover | `terminal.keys-popover` | `tests/e2e/test_keys_popover.py::test_keys_popover_sends_escape_sequences` |
-| overlay | `terminal.overlay` | `tests/e2e/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
-| rename-dialog | `terminal.rename-dialog` | `tests/e2e/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
-| session-menu | `terminal.session-menu` | `tests/e2e/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
+| attach-menu | `terminal.attach-menu` | `tests/e2e/compose/test_composer_image_menu.py::test_attach_button_menu_reaches_all_four_options` |
+| keys-popover | `terminal.keys-popover` | `tests/e2e/terminal/test_keys_popover.py::test_keys_popover_sends_escape_sequences` |
+| overlay | `terminal.overlay` | `tests/e2e/terminal/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
+| rename-dialog | `terminal.rename-dialog` | `tests/e2e/terminal/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
+| session-menu | `terminal.session-menu` | `tests/e2e/terminal/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar` |
 
-**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/test_composer_image_menu.py::test_attach_button_menu_reaches_all_four_options tests/e2e/test_keys_popover.py::test_keys_popover_sends_escape_sequences tests/e2e/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar -q --browser chromium` (the suite boots its own disposable instance).
+**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/compose/test_composer_image_menu.py::test_attach_button_menu_reaches_all_four_options tests/e2e/terminal/test_keys_popover.py::test_keys_popover_sends_escape_sequences tests/e2e/terminal/test_terminal_session_menu.py::test_menu_copy_link_and_rename_update_the_bar -q --browser chromium` (the suite boots its own disposable instance).
 <!-- gen:end feature -->
 
 ## Gotchas

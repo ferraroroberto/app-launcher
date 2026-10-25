@@ -23,7 +23,7 @@ been taught the new vocabulary.
 
 **Provenance of the table below.** These codes are *defined* by
 ``scheduled_runner.py``; this is a reader's copy, which is why
-``tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner``
+``tests/unit/jobs/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner``
 parses that file (when the sibling fleet-config checkout is present) and fails
 if it grows a code this table does not name. A new upstream code would otherwise
 land here silently as a generic failure — the drift the issue asked to prevent.

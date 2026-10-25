@@ -10,12 +10,8 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
 from tests.e2e._surface import surface
-from tests.e2e.conftest import (
-    flush_requests,
-    stable_eval,
-    wait_until,
-)
-from tests.e2e.test_jobs_log_copy import _CLIPBOARD_MOCK
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
+from tests.e2e.jobs.test_jobs_log_copy import _CLIPBOARD_MOCK
 
 from tests.e2e.life_os._support import (
     _FAKE_CONVERSATIONS,

@@ -78,7 +78,7 @@ router = APIRouter()
 # called directly with `model_override`, so an entry here would advertise a
 # dispatch path that cannot be reached - the table was carrying two such
 # entries. Module level so the coverage contract below it is a fact a
-# test can check rather than a comment: `tests/test_apps_launch_dispatch.py`
+# test can check rather than a comment: `tests/unit/launching/test_apps_launch_dispatch.py`
 # fails when a newly added agent has no builder, which is otherwise a
 # KeyError on the first launch from the phone.
 _NO_MODEL_FLAG_BUILDERS = {

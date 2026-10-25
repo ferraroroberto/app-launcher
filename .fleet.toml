@@ -49,7 +49,7 @@ base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20
 action-row = { src = "app/webapp/static/_vendored/action-row", sha = "59ae763c4dea588aef07a66c236ee3e57c8459ac", dest = "app/webapp/static/_vendored/action-row" }
 row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a858193e5b83ade533bf94468eb81", dest = "app/webapp/static/_vendored/row-menu" }
 # Every vendored web component above is byte-identical to the scaffold and declared;
-# tests/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
+# tests/unit/repo/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
 # decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
 # in project-scaffolding#391 and the sprite is now the scaffold's copy, byte for byte.
 # app/tray/watchdog.py is NOT declared (#1586): it is an app-side fork, not the
@@ -250,7 +250,7 @@ capture   = ["-m", "pytest", "tests/e2e/screens/test_screen_shots.py", "-q", "-p
 # escalates, never narrows. Labels are echoed into E2E_REASON, and the gate's
 # session-host warning keys on the "session-host" labels below, so keep them.
 [e2e]
-static_pytest_target = "tests/e2e/test_smoke.py"
+static_pytest_target = "tests/e2e/shell/test_smoke.py"
 static_browsers       = ["chromium"]
 full_pytest_target    = "tests/e2e"
 # The gate's per-test START/DONE/FAILED history (gitignored): the last 20
@@ -403,7 +403,7 @@ time_budget_s         = 1200
 # removed and Chromium coverage is unchanged: 620 = 310 Chromium + 310 WebKit
 # nodes before, 310 Chromium + 126 WebKit = 436 after, 184 WebKit nodes
 # deselected. The drift risk the old note named (a hand-kept single-engine
-# subset) is what `tests/test_e2e_iphone_projection.py` answers: a test that
+# subset) is what `tests/unit/repo/test_e2e_iphone_projection.py` answers: a test that
 # measures layout, taps or reads `browser_name` without the marker fails the
 # build. Basis, from #1220's measurement: 0 WebKit-engine product bugs in 400
 # PRs, WebKit was 61% of browser time, and iOS-only bugs don't reproduce in
@@ -459,7 +459,7 @@ label  = "webapp"
 # browser surface: the CLAUDE.md `## session-host` import closure (#881, #923),
 # plus the launcher entry points. Kept as literal paths rather than parsed
 # from CLAUDE.md at classify time on purpose -- a parse failure would narrow
-# routing silently. tests/test_classify_e2e.py walks that CLAUDE.md block and
+# routing silently. tests/unit/repo/test_classify_e2e.py walks that CLAUDE.md block and
 # fails when a declared path stops routing full.
 [[e2e.rule]]
 tier   = "full"
@@ -582,7 +582,7 @@ tier  = "full"
 path  = "tests/__init__.py"
 label = "e2e-test-support"
 # The disposable webapp's GitHub refresh runs this script (LAUNCHER_GH_CMD in
-# tests/e2e/conftest.py) and test_board_tab imports it.
+# tests/e2e/fixtures/autoboot.py) and test_board_tab imports it.
 [[e2e.rule]]
 tier  = "full"
 path  = "scripts/synthetic_gh.py"
@@ -600,7 +600,7 @@ path  = "scripts/classify_e2e.py"
 label = "routing-table"
 # Deliberately NOT here: tests/_pty_frame_text.py, _pty_paint_child.py,
 # _pty_readback_child.py and _pty_wait.py. No e2e module or conftest imports
-# them (the real-PTY coverage is tests/test_session_host_pty_realpty.py, outside
+# them (the real-PTY coverage is tests/unit/session_host/test_session_host_pty_realpty.py, outside
 # the browser suite), and the root conftest only fingerprints their bytes, so
 # the `non-e2e-test` rule below is right and a diff to one runs no browser.
 
@@ -708,7 +708,7 @@ label      = "repo-meta"
 # (claude-options.js imports them), and test_terminal_bar_overflow shares the
 # terminal bar's classes with the Life OS doc-browser bar and mirrors the board
 # carousel's overflow pattern.
-# tests/test_classify_e2e.py pins every surface with a narrowing path and a
+# tests/unit/repo/test_classify_e2e.py pins every surface with a narrowing path and a
 # shared path that must stay full, and checks that every e2e test naming a
 # surface module is in that surface's targets.
 
@@ -731,39 +731,39 @@ paths    = [
     "app/webapp/routers/board.py",
     "app/webapp/routers/board_chief.py",
     "app/webapp/routers/board_spawn.py",
-    "tests/e2e/test_board_tab.py",
-    "tests/e2e/test_board_nav_badge.py",
-    "tests/e2e/test_board_job_dismiss.py",
+    "tests/e2e/board/test_board_tab.py",
+    "tests/e2e/board/test_board_nav_badge.py",
+    "tests/e2e/board/test_board_job_dismiss.py",
 ]
 prefixes = ["tests/e2e/board/"]
 pytest_targets = [
-    "tests/e2e/test_board_tab.py",
+    "tests/e2e/board/test_board_tab.py",
     "tests/e2e/board",
-    "tests/e2e/test_board_nav_badge.py",
-    "tests/e2e/test_board_job_dismiss.py",
-    "tests/e2e/test_page_headers.py",
-    "tests/e2e/test_header_cpu_reading.py",
-    "tests/e2e/test_text_size.py",
-    "tests/e2e/test_wide_layout.py",
-    "tests/e2e/test_wide_code_detail.py",
-    "tests/e2e/test_coding_chief.py",
-    "tests/e2e/test_channel_sessions_hidden.py",
-    "tests/e2e/test_session_rename.py",
-    "tests/e2e/test_shared_session_title.py",
-    "tests/e2e/test_coding_model_selector.py",
-    "tests/e2e/test_terminal_bar_overflow.py",
-    "tests/e2e/test_primary_nav.py",
-    "tests/e2e/test_smoke.py",
-    "tests/e2e/test_row_name_typography.py",
-    "tests/e2e/test_icon_sizes.py",
-    "tests/e2e/test_vendored_empty_and_select.py",
-    "tests/e2e/test_touch_targets.py",
-    "tests/e2e/test_session_row_glance.py",
-    "tests/e2e/test_code_row_status_age.py",
-    "tests/e2e/test_usage_meter.py",
-    "tests/e2e/test_settings_sheets.py",
-    "tests/e2e/test_action_row_variants.py",
-    "tests/e2e/test_async_list_states.py",
+    "tests/e2e/board/test_board_nav_badge.py",
+    "tests/e2e/board/test_board_job_dismiss.py",
+    "tests/e2e/shell/test_page_headers.py",
+    "tests/e2e/shell/test_header_cpu_reading.py",
+    "tests/e2e/shell/test_text_size.py",
+    "tests/e2e/shell/test_wide_layout.py",
+    "tests/e2e/code/test_wide_code_detail.py",
+    "tests/e2e/code/test_coding_chief.py",
+    "tests/e2e/code/test_channel_sessions_hidden.py",
+    "tests/e2e/session/test_session_rename.py",
+    "tests/e2e/session/test_shared_session_title.py",
+    "tests/e2e/code/test_coding_model_selector.py",
+    "tests/e2e/terminal/test_terminal_bar_overflow.py",
+    "tests/e2e/shell/test_primary_nav.py",
+    "tests/e2e/shell/test_smoke.py",
+    "tests/e2e/shell/test_row_name_typography.py",
+    "tests/e2e/shell/test_icon_sizes.py",
+    "tests/e2e/shell/test_vendored_empty_and_select.py",
+    "tests/e2e/shell/test_touch_targets.py",
+    "tests/e2e/session/test_session_row_glance.py",
+    "tests/e2e/code/test_code_row_status_age.py",
+    "tests/e2e/settings/test_usage_meter.py",
+    "tests/e2e/settings/test_settings_sheets.py",
+    "tests/e2e/shell/test_action_row_variants.py",
+    "tests/e2e/shell/test_async_list_states.py",
     "tests/e2e/screens/test_screen_shots.py",
 ]
 
@@ -782,33 +782,33 @@ paths    = [
     "app/webapp/routers/life_os_files.py",
     "app/webapp/routers/life_os_spawn.py",
     "app/webapp/routers/life_os_channels.py",
-    "tests/e2e/test_life_tab_glance.py",
-    "tests/e2e/test_markdown_link_rendering.py",
+    "tests/e2e/life_os/test_life_tab_glance.py",
+    "tests/e2e/shell/test_markdown_link_rendering.py",
 ]
 prefixes = ["tests/e2e/life_os/"]
 pytest_targets = [
     "tests/e2e/life_os",
-    "tests/e2e/test_life_tab_glance.py",
-    "tests/e2e/test_resume_toggle.py",
-    "tests/e2e/test_page_headers.py",
-    "tests/e2e/test_header_cpu_reading.py",
-    "tests/e2e/test_text_size.py",
-    "tests/e2e/test_action_row_lists.py",
-    "tests/e2e/test_markdown_link_rendering.py",
-    "tests/e2e/test_markdown_tables.py",
-    "tests/e2e/test_collapsible_other_tabs.py",
-    "tests/e2e/test_coding_model_selector.py",
-    "tests/e2e/test_terminal_bar_overflow.py",
-    "tests/e2e/test_primary_nav.py",
-    "tests/e2e/test_smoke.py",
-    "tests/e2e/test_row_name_typography.py",
-    "tests/e2e/test_icon_sizes.py",
-    "tests/e2e/test_vendored_empty_and_select.py",
-    "tests/e2e/test_touch_targets.py",
-    "tests/e2e/test_settings_sheets.py",
-    "tests/e2e/test_async_list_states.py",
+    "tests/e2e/life_os/test_life_tab_glance.py",
+    "tests/e2e/life_os/test_resume_toggle.py",
+    "tests/e2e/shell/test_page_headers.py",
+    "tests/e2e/shell/test_header_cpu_reading.py",
+    "tests/e2e/shell/test_text_size.py",
+    "tests/e2e/shell/test_action_row_lists.py",
+    "tests/e2e/shell/test_markdown_link_rendering.py",
+    "tests/e2e/shell/test_markdown_tables.py",
+    "tests/e2e/shell/test_collapsible_other_tabs.py",
+    "tests/e2e/code/test_coding_model_selector.py",
+    "tests/e2e/terminal/test_terminal_bar_overflow.py",
+    "tests/e2e/shell/test_primary_nav.py",
+    "tests/e2e/shell/test_smoke.py",
+    "tests/e2e/shell/test_row_name_typography.py",
+    "tests/e2e/shell/test_icon_sizes.py",
+    "tests/e2e/shell/test_vendored_empty_and_select.py",
+    "tests/e2e/shell/test_touch_targets.py",
+    "tests/e2e/settings/test_settings_sheets.py",
+    "tests/e2e/shell/test_async_list_states.py",
     "tests/e2e/screens/test_screen_shots.py",
-    "tests/e2e/test_dialog_title_focus.py",
+    "tests/e2e/shell/test_dialog_title_focus.py",
 ]
 
 # [design] wide_views -- tabs whose content is two-dimensional (the Board's lanes) may

@@ -2,8 +2,8 @@
 // preset ids the connect query carries, the remembered choice, and the
 // readout's arithmetic over a known sequence of frames. screen-quality.js keeps
 // them as plain functions and one small class; the socket and the overlay are
-// pinned by tests/e2e/test_screen_quality.py. Invoked by
-// tests/test_screen_quality.py.
+// pinned by tests/e2e/screens/test_screen_quality.py. Invoked by
+// tests/unit/desktop/test_screen_quality.py.
 
 import assert from 'node:assert/strict';
 

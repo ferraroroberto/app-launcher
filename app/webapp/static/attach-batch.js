@@ -22,7 +22,7 @@
 // Setting its upload enforces.
 
 // The session-host rejects anything larger (`_MAX_IMAGE_BYTES` in
-// app/session_host/server.py; tests/test_attach_batch.py pins the two equal).
+// app/session_host/server.py; tests/unit/board/test_attach_batch.py pins the two equal).
 // Checked here so an oversize file costs no upload at all: the host only
 // answers after it has received every byte.
 export const MAX_UPLOAD_BYTES = 12 * 1024 * 1024;

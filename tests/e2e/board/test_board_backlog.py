@@ -10,8 +10,13 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import (
-    assert_unpainted_at_rest, boot_retrying_static_failure, open_row_menu, stable_eval, stylesheet_report, wait_until,
+from tests.e2e.fixtures.ui import open_row_menu
+from tests.e2e.fixtures.waits import (
+    assert_unpainted_at_rest,
+    boot_retrying_static_failure,
+    stable_eval,
+    stylesheet_report,
+    wait_until,
 )
 
 from tests.e2e.board._support import _FAKE_BOARD, _board_payload, _mock_board, _open_board, _unfold

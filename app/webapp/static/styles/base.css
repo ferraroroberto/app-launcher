@@ -348,7 +348,7 @@ html, body {
    technique — gentler on iOS fixed-layer repainting across show/hide.
 
    Every such overlay goes in this rule and in the standalone .app lock below;
-   tests/test_overlay_nav_hide.py fails when one is left out. The ones
+   tests/unit/static_ui/test_overlay_nav_hide.py fails when one is left out. The ones
    nested inside <main class="app"> are the ones that break: the standalone
    shell makes .app position: fixed, a stacking context, so their z-index 300
    stacks inside it and the body-level bar (z-index 120) paints over them. */

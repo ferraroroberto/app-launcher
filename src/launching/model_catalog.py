@@ -14,7 +14,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 # ``default_effort`` is the model's own documented default (Anthropic's effort
 # page: "Claude Opus 5.5 and Claude Haiku 5.5 default to medium", every other
 # model to high), so sending it is the same as sending nothing. The ``opus``
-# alias is Opus 5.5 today; ``tests/test_effort_resolver.py`` pins the value, so
+# alias is Opus 5.5 today; ``tests/unit/launching/test_effort_resolver.py`` pins the value, so
 # an alias that moves to another Opus forces a deliberate edit here.
 CLAUDE_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     "sonnet": {
