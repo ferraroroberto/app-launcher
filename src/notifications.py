@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, List, Optional, Protocol
+from typing import Any, List, NamedTuple, Optional, Protocol
 
 import requests
 
@@ -313,38 +313,9 @@ def notify_failure(
     try:
         if status != "failed":
             return
-
-        exit_text = "unknown" if exit_code is None else str(exit_code)
-        origin_note = " (reaped — end time not confirmed)" if reaped else ""
-        if watchdog_note:
-            origin_note += f" ({watchdog_note})"
-
-        # A run this launcher itself ended or found dead is a failure whatever
-        # exit code the torn-down tree reported; otherwise the scheduled-run
-        # adapter's exit code decides whether this alert may use the word
-        # "failed" at all. An unconfirmed run still pages —
-        # nobody established that it delivered — but calling it a failure is
-        # exactly what made these alerts stop being read.
-        outcome, outcome_reason = run_outcome({
-            "status": status,
-            "exit_code": exit_code,
-            "reaped": reaped,
-            "watchdog": bool(watchdog_note),
-        }, job.exit_outcomes)
-        if outcome == OUTCOME_DEFERRED:
-            # The job declared this exit code a designed deferral: the
-            # child chose not to do the work, and paging about it every night
-            # is what trains a reader to ignore the real failures.
-            logger.info(
-                f"ℹ️ {job.id} run {run_dir.name} deferred (exit {exit_text}); "
-                f"no failure alert"
-            )
+        wording = _failure_wording(job, run_dir, status, exit_code, reaped, watchdog_note)
+        if wording is None:
             return
-        unconfirmed = outcome == OUTCOME_UNCONFIRMED
-        mark = "❓" if unconfirmed else "❌"
-        verdict = "not confirmed" if unconfirmed else "failed"
-        severity = "warning" if unconfirmed else "error"
-        reason_note = f" — {outcome_reason}" if outcome_reason else ""
 
         # Third channel, independent of the two below: its own switch and its
         # own swallow, so neither a missing push credential nor a push error
@@ -352,53 +323,109 @@ def notify_failure(
         publish_job_failed(
             cfg, job, run_dir,
             exit_code=exit_code,
-            outcome="not-confirmed" if unconfirmed else "failed",
+            outcome="not-confirmed" if wording.unconfirmed else "failed",
         )
 
         if cfg.notify_on_failure:
-            notifier = notifier or build_notifier_from_config(cfg)
-            if not isinstance(notifier, NoopNotifier):
-                tail = read_output_tail(run_dir, max_bytes=8 * 1024)
-                body_parts: List[str] = []
-                if cfg.notify_failure_summary:
-                    summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
-                    if summary:
-                        body_parts.append(summary)
-                # The raw tail is what an operator wants when the summary is
-                # missing or wrong — always include the last 500 chars.
-                body_parts.append(tail[-500:] if tail else "(no output captured)")
-                body_parts.append(
-                    f"— job={job.id} run={run_dir.name} exit={exit_text}"
-                    f"{origin_note}{reason_note}"
-                )
-                # The failed title is unchanged — "❌ <job>" already said it.
-                # Only the new state needs the word, because ❓ alone is not
-                # self-explanatory the way ❌ is.
-                title = f"{mark} {job.name}" + (
-                    f" — {verdict}" if unconfirmed else ""
-                )
-                notifier.notify(title, "\n\n".join(body_parts), severity=severity)
-
-                streak = cfg.notify_failure_streak
-                if streak and streak > 1:
-                    count = consecutive_failed_runs(job.id)
-                    if count == streak:
-                        notifier.notify(
-                            f"🔁 {job.name} — {count} consecutive failures",
-                            f"Failure streak reached {count} runs.\n"
-                            f"Most recent: {run_dir.name} (exit {exit_text}).",
-                            severity="error",
-                        )
+            _push_failure(cfg, job, run_dir, notifier or build_notifier_from_config(cfg), wording)
 
         if job.alert_on_failure:
             telegram_notifier = telegram_notifier or build_telegram_notifier_from_config(cfg)
             if not isinstance(telegram_notifier, NoopNotifier):
                 when = datetime.now().strftime("%Y-%m-%d %H:%M")
                 telegram_notifier.notify(
-                    f"{mark} {job.name} {verdict}",
-                    f"{when} — run={run_dir.name} exit={exit_text}"
-                    f"{origin_note}{reason_note}",
-                    severity=severity,
+                    f"{wording.mark} {job.name} {wording.verdict}",
+                    f"{when} — {wording.detail}",
+                    severity=wording.severity,
                 )
     except Exception as exc:  # noqa: BLE001 — never block finalisation
         logger.warning(f"⚠️  notification path raised: {exc}")
+
+
+class _FailureWording(NamedTuple):
+    """How one failed finalisation is worded on every channel."""
+
+    unconfirmed: bool
+    mark: str
+    verdict: str
+    severity: str
+    exit_text: str
+    detail: str     # "run=<id> exit=<code>" plus the origin and reason notes
+
+
+def _failure_wording(
+    job: Any, run_dir: Path, status: str, exit_code: Optional[int], reaped: bool,
+    watchdog_note: Optional[str],
+) -> Optional[_FailureWording]:
+    """The alert wording for a ``failed`` run, or ``None`` when its job
+    declared the exit code a deferral and nothing is sent."""
+    exit_text = "unknown" if exit_code is None else str(exit_code)
+    origin_note = " (reaped — end time not confirmed)" if reaped else ""
+    if watchdog_note:
+        origin_note += f" ({watchdog_note})"
+
+    # A run this launcher itself ended or found dead is a failure whatever
+    # exit code the torn-down tree reported; otherwise the scheduled-run
+    # adapter's exit code decides whether this alert may use the word
+    # "failed" at all. An unconfirmed run still pages —
+    # nobody established that it delivered — but calling it a failure is
+    # exactly what made these alerts stop being read.
+    outcome, outcome_reason = run_outcome({
+        "status": status,
+        "exit_code": exit_code,
+        "reaped": reaped,
+        "watchdog": bool(watchdog_note),
+    }, job.exit_outcomes)
+    if outcome == OUTCOME_DEFERRED:
+        # The job declared this exit code a designed deferral: the
+        # child chose not to do the work, and paging about it every night
+        # is what trains a reader to ignore the real failures.
+        logger.info(
+            f"ℹ️ {job.id} run {run_dir.name} deferred (exit {exit_text}); "
+            f"no failure alert"
+        )
+        return None
+    unconfirmed = outcome == OUTCOME_UNCONFIRMED
+    reason_note = f" — {outcome_reason}" if outcome_reason else ""
+    return _FailureWording(
+        unconfirmed=unconfirmed,
+        mark="❓" if unconfirmed else "❌",
+        verdict="not confirmed" if unconfirmed else "failed",
+        severity="warning" if unconfirmed else "error",
+        exit_text=exit_text,
+        detail=f"run={run_dir.name} exit={exit_text}{origin_note}{reason_note}",
+    )
+
+
+def _push_failure(cfg: Any, job: Any, run_dir: Path, notifier: JobNotifier, wording: _FailureWording) -> None:
+    """The Pushover failure alert, plus the streak alert when it is reached."""
+    if isinstance(notifier, NoopNotifier):
+        return
+    tail = read_output_tail(run_dir, max_bytes=8 * 1024)
+    body_parts: List[str] = []
+    if cfg.notify_failure_summary:
+        summary = summarise_failure(tail, base_url=cfg.llm_hub_url)
+        if summary:
+            body_parts.append(summary)
+    # The raw tail is what an operator wants when the summary is
+    # missing or wrong — always include the last 500 chars.
+    body_parts.append(tail[-500:] if tail else "(no output captured)")
+    body_parts.append(f"— job={job.id} {wording.detail}")
+    # The failed title is unchanged — "❌ <job>" already said it.
+    # Only the new state needs the word, because ❓ alone is not
+    # self-explanatory the way ❌ is.
+    title = f"{wording.mark} {job.name}" + (
+        f" — {wording.verdict}" if wording.unconfirmed else ""
+    )
+    notifier.notify(title, "\n\n".join(body_parts), severity=wording.severity)
+
+    streak = cfg.notify_failure_streak
+    if streak and streak > 1:
+        count = consecutive_failed_runs(job.id)
+        if count == streak:
+            notifier.notify(
+                f"🔁 {job.name} — {count} consecutive failures",
+                f"Failure streak reached {count} runs.\n"
+                f"Most recent: {run_dir.name} (exit {wording.exit_text}).",
+                severity="error",
+            )

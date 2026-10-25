@@ -528,32 +528,13 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
     ``docs/board.md``.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    body = await maybe_json(request)
-    data = body.get("data")
-    if not isinstance(data, str):
-        raise HTTPException(status_code=400, detail="data must be a string")
-    submit = bool(body.get("submit", True))
-    text = data if data.strip() else ""
-    if not text and not submit:
-        raise HTTPException(status_code=400, detail="data must be a non-empty string")
+    text, submit = _input_payload(await maybe_json(request))
     try:
         result = await asyncio.to_thread(
             session_client.send_input, cfg.session_host_port, sid, text, submit
         )
     except session_client.SessionHostError as exc:
-        status, detail = exc.status, str(exc)
-        if exc.status == 500:
-            status, detail = await asyncio.to_thread(
-                _classify_input_500, cfg.session_host_port, sid, detail
-            )
-        # Includes the 502 the host raises for a payload it wrote but never
-        # saw echoed — audited too, since a *failed* steer is the
-        # event worth finding in the log afterwards.
-        await audit_off_loop(
-            audit.session_log, sid, "input", bytes=len(text), submit=submit,
-            reason="stale_host" if status == 501 else "error", detail=detail[:200],
-        )
-        raise HTTPException(status_code=status, detail=detail)
+        raise await _input_refused(cfg, sid, exc, text, submit)
     verdict = result if isinstance(result, dict) else {}
     # Audit the verdict, not just the byte count: the three stalled
     # sessions' logs recorded `bytes=6637 submit=True` for steers that were
@@ -574,6 +555,37 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
         "submit": submit,
         **{k: v for k, v in verdict.items() if k != "ok"},
     }
+
+
+def _input_payload(body: Dict[str, Any]) -> Tuple[str, bool]:
+    """``(text, submit)`` from an input body; blank text means a bare submit."""
+    data = body.get("data")
+    if not isinstance(data, str):
+        raise HTTPException(status_code=400, detail="data must be a string")
+    submit = bool(body.get("submit", True))
+    text = data if data.strip() else ""
+    if not text and not submit:
+        raise HTTPException(status_code=400, detail="data must be a non-empty string")
+    return text, submit
+
+
+async def _input_refused(
+    cfg: WebappConfig, sid: str, exc: session_client.SessionHostError, text: str, submit: bool,
+) -> HTTPException:
+    """Audit a refused input and return the HTTP error to raise for it."""
+    status, detail = exc.status, str(exc)
+    if exc.status == 500:
+        status, detail = await asyncio.to_thread(
+            _classify_input_500, cfg.session_host_port, sid, detail
+        )
+    # Includes the 502 the host raises for a payload it wrote but never
+    # saw echoed — audited too, since a *failed* steer is the
+    # event worth finding in the log afterwards.
+    await audit_off_loop(
+        audit.session_log, sid, "input", bytes=len(text), submit=submit,
+        reason="stale_host" if status == 501 else "error", detail=detail[:200],
+    )
+    return HTTPException(status_code=status, detail=detail)
 
 
 @router.websocket("/api/claude-code/sessions/{sid}/ws")

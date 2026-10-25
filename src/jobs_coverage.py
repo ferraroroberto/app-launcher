@@ -404,9 +404,43 @@ def coverage_for(
     if job.is_paused or job.schedule.type == "none":
         return _result(STATE_EXEMPT, detail="no active schedule")
 
+    structural_unknown = task_states is None
+    missing, disabled = _structural_gaps(job, task_states)
+    interactive, principal_unknown = _interactive_principals(job, principals)
+
+    missed, behavioural_unknown = behavioural_coverage(job, now=now)
+
+    problems, bits = _problem_bits(missing, disabled, interactive, missed)
+    if problems:
+        return _result(
+            STATE_PROBLEM,
+            detail="; ".join(bits),
+            problems=problems,
+            missing_tasks=missing,
+            disabled_tasks=disabled,
+            interactive_tasks=interactive,
+            missed=missed,
+        )
+    unresolved: List[str] = []
+    if structural_unknown:
+        unresolved.append("Task Scheduler query failed — coverage not established")
+    if principal_unknown:
+        unresolved.append(
+            "Task Scheduler logon mode unreadable — session-less principal "
+            "not established"
+        )
+    if behavioural_unknown:
+        unresolved.append(behavioural_unknown)
+    if unresolved:
+        return _result(STATE_UNKNOWN, detail="; ".join(unresolved))
+    return _result(STATE_OK, detail="schedule registered and firing")
+
+
+def _structural_gaps(job: Job, task_states: Optional[Dict[str, Optional[bool]]]) -> Tuple[List[str], List[str]]:
+    """``(missing, disabled)`` Task Scheduler entries of ``job``; both empty
+    when the query failed, which the caller reports as unknown."""
     missing: List[str] = []
     disabled: List[str] = []
-    structural_unknown = task_states is None
     if task_states is not None:
         for name in task_names_for(job):
             enabled = task_states.get(name, _MISSING)
@@ -414,11 +448,18 @@ def coverage_for(
                 missing.append(name)
             elif enabled is False:
                 disabled.append(name)
+    return missing, disabled
 
-    # Principal half — only meaningful for a job that declared
-    # it must run session-less. A task already reported missing is skipped:
-    # the structural half owns that, and "missing" plus "wrong principal"
-    # for one entry is one problem told twice.
+
+def _interactive_principals(
+    job: Job, principals: Optional[Dict[str, Optional[bool]]],
+) -> Tuple[List[str], bool]:
+    """``(interactive-only entries, principal unknown)`` for ``job``.
+
+    Only meaningful for a job that declared it must run session-less. A task
+    already reported missing is skipped: the structural half owns that, and
+    "missing" plus "wrong principal" for one entry is one problem told twice.
+    """
     interactive: List[str] = []
     principal_unknown = False
     if job.session_less:
@@ -433,9 +474,13 @@ def coverage_for(
                     interactive.append(name)
                 elif capable is None:
                     principal_unknown = True
+    return interactive, principal_unknown
 
-    missed, behavioural_unknown = behavioural_coverage(job, now=now)
 
+def _problem_bits(
+    missing: List[str], disabled: List[str], interactive: List[str], missed: List[datetime],
+) -> Tuple[List[str], List[str]]:
+    """``(problem classes, detail phrases)`` for the gaps found, in order."""
     problems: List[str] = []
     bits: List[str] = []
     if missing:
@@ -464,30 +509,7 @@ def coverage_for(
             f"{len(missed)} scheduled fire{'' if len(missed) == 1 else 's'} "
             f"produced no run (last {missed[-1].isoformat(timespec='minutes')})"
         )
-
-    if problems:
-        return _result(
-            STATE_PROBLEM,
-            detail="; ".join(bits),
-            problems=problems,
-            missing_tasks=missing,
-            disabled_tasks=disabled,
-            interactive_tasks=interactive,
-            missed=missed,
-        )
-    unresolved: List[str] = []
-    if structural_unknown:
-        unresolved.append("Task Scheduler query failed — coverage not established")
-    if principal_unknown:
-        unresolved.append(
-            "Task Scheduler logon mode unreadable — session-less principal "
-            "not established"
-        )
-    if behavioural_unknown:
-        unresolved.append(behavioural_unknown)
-    if unresolved:
-        return _result(STATE_UNKNOWN, detail="; ".join(unresolved))
-    return _result(STATE_OK, detail="schedule registered and firing")
+    return problems, bits
 
 
 def scan_coverage(

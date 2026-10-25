@@ -338,6 +338,36 @@ def entry_diff(path: Path, offset: int, n: int, flavor: str) -> Optional[Dict[st
     return {"path": action.get("path"), "diff": action["diff"]}
 
 
+def _trim_to_turns(
+    collected: List[Line], entries: List[Entry], limit: int, at_file_start: bool,
+    build: EntryBuilder, line_key: LineKey,
+) -> Tuple[List[Line], List[Entry]]:
+    """``(lines, entries)`` cut to the newest ``limit`` turns of a page."""
+    # Trim to `limit` turns at a turn boundary: drop every raw line before the
+    # line that opens the oldest surviving turn — pulled back to that
+    # message's first line so its thinking/tool blocks stay with its text —
+    # then rebuild so a tool result whose call fell off the page stands on
+    # its own instead of vanishing. Sidechain turns are never cut points
+    # (`_is_turn`), so the cut message is a top-level one, which nothing
+    # else's span contains.
+    # A page that includes the file start and fits in `limit` keeps every
+    # line; any other page is trimmed to its oldest turn — even at exactly
+    # `limit` turns — so it never opens at a raw window edge that may fall
+    # between a tool call and its result. (A page with no turn at all — a
+    # multi-MB autonomous stretch under the byte cap — keeps the edge.)
+    turn_offsets = [e["offset"] for e in entries if _is_turn(e)]
+    whole_file = at_file_start and len(turn_offsets) <= limit
+    if turn_offsets and not whole_file:
+        cut = turn_offsets[max(0, len(turn_offsets) - limit)]
+        idx = next(i for i, ln in enumerate(collected) if ln[0] == cut)
+        cut_key = line_key(collected[idx][1])
+        if cut_key is not None:
+            idx = next(i for i, ln in enumerate(collected) if line_key(ln[1]) == cut_key)
+        collected = collected[idx:]
+        entries = build(collected)
+    return collected, entries
+
+
 def _page(
     path: Path, before: Optional[int], limit: int, build: EntryBuilder, line_key: LineKey
 ) -> Dict[str, Any]:
@@ -393,29 +423,7 @@ def _page(
         # land one 1 MB line, spending the read ceiling on re-reads.
         end = lines[0][0]
 
-    entries = build(collected)
-    # Trim to `limit` turns at a turn boundary: drop every raw line before the
-    # line that opens the oldest surviving turn — pulled back to that
-    # message's first line so its thinking/tool blocks stay with its text —
-    # then rebuild so a tool result whose call fell off the page stands on
-    # its own instead of vanishing. Sidechain turns are never cut points
-    # (`_is_turn`), so the cut message is a top-level one, which nothing
-    # else's span contains.
-    # A page that includes the file start and fits in `limit` keeps every
-    # line; any other page is trimmed to its oldest turn — even at exactly
-    # `limit` turns — so it never opens at a raw window edge that may fall
-    # between a tool call and its result. (A page with no turn at all — a
-    # multi-MB autonomous stretch under the byte cap — keeps the edge.)
-    turn_offsets = [e["offset"] for e in entries if _is_turn(e)]
-    whole_file = start == 0 and len(turn_offsets) <= limit
-    if turn_offsets and not whole_file:
-        cut = turn_offsets[max(0, len(turn_offsets) - limit)]
-        idx = next(i for i, ln in enumerate(collected) if ln[0] == cut)
-        cut_key = line_key(collected[idx][1])
-        if cut_key is not None:
-            idx = next(i for i, ln in enumerate(collected) if line_key(ln[1]) == cut_key)
-        collected = collected[idx:]
-        entries = build(collected)
+    collected, entries = _trim_to_turns(collected, build(collected), limit, start == 0, build, line_key)
     # The next page reads strictly before the oldest line this one kept;
     # None once that line is the file's first (an empty `collected` means an
     # empty file — the loop only exits without lines at offset 0).

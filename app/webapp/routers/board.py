@@ -47,7 +47,7 @@ import functools
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -509,22 +509,12 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     mode = str(body.get("mode") or "start").strip().lower()
     if mode not in ("start", "yolo"):
         raise HTTPException(status_code=400, detail=f"unknown mode: {mode}")
-    try:
-        number = int(body.get("number"))
-    except (TypeError, ValueError):
-        raise HTTPException(status_code=400, detail="number must be an integer")
-    if number <= 0:
-        raise HTTPException(status_code=400, detail="number must be positive")
+    number = _issue_number(body)
     rows = safe_int(body, "rows", 40)
     cols = safe_int(body, "cols", 120)
     title = str(body.get("title") or "").strip()
     model = str(body.get("model") or "").strip().lower()
-    brief = None
-    if body.get("brief") is not None:
-        try:
-            brief = dispatch_brief.validate_brief(body.get("brief"))
-        except dispatch_brief.BriefError as exc:
-            raise HTTPException(status_code=400, detail=str(exc))
+    brief = _validated_brief(body)
     if model:
         agent, base_flags = _agent_and_flags(cfg, model)
     else:
@@ -578,13 +568,39 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     # title, so the name survives the capture. Manual starts keep `title`.
     name = _dispatch_session_name(entry.name, number, title) if chief_dispatch else title
     if sid and name:
-        try:
-            await asyncio.to_thread(
-                session_client.rename, cfg.session_host_port, sid, name
-            )
-        except session_client.SessionHostError as exc:
-            logger.warning(
-                "⚠️ Board issue-start could not auto-name session %s: %s",
-                sid[:8], exc,
-            )
+        await _auto_name_session(cfg, sid, name)
     return {"launched": prompt, "repo": entry.name, "session": session}
+
+
+def _validated_brief(body: Dict[str, Any]) -> Optional[str]:
+    """The body's dispatch brief, ``None`` when absent; 400 when invalid."""
+    if body.get("brief") is None:
+        return None
+    try:
+        return dispatch_brief.validate_brief(body.get("brief"))
+    except dispatch_brief.BriefError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _issue_number(body: Dict[str, Any]) -> int:
+    """The body's positive issue ``number``; 400 otherwise."""
+    try:
+        number = int(body.get("number"))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="number must be an integer")
+    if number <= 0:
+        raise HTTPException(status_code=400, detail="number must be positive")
+    return number
+
+
+async def _auto_name_session(cfg: WebappConfig, sid: str, name: str) -> None:
+    """Rename a just-started session; a failure is logged, never raised."""
+    try:
+        await asyncio.to_thread(
+            session_client.rename, cfg.session_host_port, sid, name
+        )
+    except session_client.SessionHostError as exc:
+        logger.warning(
+            "⚠️ Board issue-start could not auto-name session %s: %s",
+            sid[:8], exc,
+        )

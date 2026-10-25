@@ -170,57 +170,63 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
         obj = _loads(raw)
         if obj is None:
             continue
-        kind = obj.get("type")
-        ts = obj.get("timestamp")
         data = obj.get("data") if isinstance(obj.get("data"), dict) else {}
-
-        if kind == "user.message":
-            text = str(data.get("content") or "")
-            if text.strip():
-                entries.append(_text_entry(
-                    "user", offset, ts, text, user_cap, sidechain=False))
-            continue
-
-        if kind == "assistant.message":
-            thinking = str(data.get("reasoningText") or "").strip()
-            if thinking:
-                entries.append(_text_entry(
-                    "thinking", offset, ts, thinking, THINKING_TEXT_CAP,
-                    sidechain=False))
-            text = str(data.get("content") or "")
-            if text.strip():
-                entries.append(_text_entry(
-                    "assistant", offset, ts, text, assistant_cap, sidechain=False))
-            continue
-
-        if kind == "tool.execution_start":
-            call_id = str(data.get("toolCallId") or "")
-            entry = _with_action(_entry(
-                "tool_call", offset, ts,
-                name=str(data.get("toolName") or "tool"),
-                summary=_tool_summary(data.get("arguments")),
-                result=None, result_truncated=False, sidechain=False,
-            ), _tool_action(str(data.get("toolName") or ""), data.get("arguments")), _tool_description(data.get("arguments")))
-            entries.append(entry)
-            if call_id:
-                open_calls[call_id] = entry
-            continue
-
-        if kind == "tool.execution_complete":
-            text, failed = _copilot_outcome(data)
-            _attach_result(
-                entries, open_calls, data.get("toolCallId"),
-                text, offset, ts, False, error=failed,
-            )
-            continue
-
-        if kind == "session.error":
-            text = str(data.get("message") or "").strip()
-            if text:
-                entries.append(_text_entry(
-                    "system", offset, ts, text, SYSTEM_TEXT_CAP,
-                    label=str(data.get("errorType") or "error"), sidechain=False))
+        _copilot_event(entries, open_calls, obj.get("type"), data, offset, obj.get("timestamp"),
+                       assistant_cap, user_cap)
     return entries
+
+
+def _copilot_event(
+    entries: List[Entry], open_calls: Dict[str, Entry], kind: Any, data: Dict[str, Any],
+    offset: int, ts: Any, assistant_cap: int, user_cap: int,
+) -> None:
+    """Append what one event contributes; plumbing events add nothing."""
+    if kind == "user.message":
+        text = str(data.get("content") or "")
+        if text.strip():
+            entries.append(_text_entry(
+                "user", offset, ts, text, user_cap, sidechain=False))
+        return
+
+    if kind == "assistant.message":
+        thinking = str(data.get("reasoningText") or "").strip()
+        if thinking:
+            entries.append(_text_entry(
+                "thinking", offset, ts, thinking, THINKING_TEXT_CAP,
+                sidechain=False))
+        text = str(data.get("content") or "")
+        if text.strip():
+            entries.append(_text_entry(
+                "assistant", offset, ts, text, assistant_cap, sidechain=False))
+        return
+
+    if kind == "tool.execution_start":
+        call_id = str(data.get("toolCallId") or "")
+        entry = _with_action(_entry(
+            "tool_call", offset, ts,
+            name=str(data.get("toolName") or "tool"),
+            summary=_tool_summary(data.get("arguments")),
+            result=None, result_truncated=False, sidechain=False,
+        ), _tool_action(str(data.get("toolName") or ""), data.get("arguments")), _tool_description(data.get("arguments")))
+        entries.append(entry)
+        if call_id:
+            open_calls[call_id] = entry
+        return
+
+    if kind == "tool.execution_complete":
+        text, failed = _copilot_outcome(data)
+        _attach_result(
+            entries, open_calls, data.get("toolCallId"),
+            text, offset, ts, False, error=failed,
+        )
+        return
+
+    if kind == "session.error":
+        text = str(data.get("message") or "").strip()
+        if text:
+            entries.append(_text_entry(
+                "system", offset, ts, text, SYSTEM_TEXT_CAP,
+                label=str(data.get("errorType") or "error"), sidechain=False))
 
 
 def _copilot_line_key(raw: str) -> Optional[str]:

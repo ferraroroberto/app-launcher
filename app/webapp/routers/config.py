@@ -113,56 +113,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_worker_cap_min": MIN_CHIEF_WORKER_CAP,
         "chief_worker_cap_max": MAX_CHIEF_WORKER_CAP,
         "claude": claude_flags_payload(cfg),
-        "codex": {
-            "model": cfg.codex_model,
-            "effort": cfg.codex_effort,
-            "model_efforts": cfg.codex_model_efforts,
-            "models_available": catalog_payload(CODEX_MODEL_SPECS),
-            "efforts_available": list(CODEX_MODEL_SPECS[cfg.codex_model]["efforts"]),
-            "permission_mode": cfg.codex_permission_mode,
-            "permission_modes_available": list(VALID_CODEX_PERMISSION_MODES),
-            "computed_flags": build_codex_flags(cfg),
-        },
-        "antigravity": {
-            "skip_permissions": cfg.antigravity_skip_permissions,
-            "sandbox": cfg.antigravity_sandbox,
-            "computed_flags": build_antigravity_flags(cfg),
-        },
-        # No model/models_available: Copilot's model is not a launcher
-        # setting — the CLI resolves it per launch against
-        # the account, so only `/model` can report it truthfully.
-        "copilot": {
-            "skip_permissions": cfg.copilot_skip_permissions,
-            "computed_flags": build_copilot_flags(cfg),
-        },
-        "pi": {
-            "model": cfg.pi_model,
-            # What the selected model launches at, and the two parts it is made
-            # of: the owner's overrides and its catalog default.
-            "effort": effective_effort("pi", cfg.pi_model, cfg),
-            "model_efforts": cfg.pi_model_efforts,
-            "default_effort": default_effort("pi", cfg.pi_model),
-            "trust_mode": cfg.pi_trust_mode,
-            "models_available": [
-                {
-                    "value": item["value"],
-                    "label": item["label"],
-                    "available": item["available"],
-                    **({"unavailable_reason": item["unavailable_reason"]} if item.get("unavailable_reason") else {}),
-                }
-                for item in catalog_payload(PI_MODEL_SPECS)
-            ],
-            "efforts_available": list(VALID_PI_EFFORTS),
-            "trust_modes_available": list(VALID_PI_TRUST_MODES),
-            "computed_flags": build_pi_flags(cfg),
-        },
-        "grok": {
-            "effort": cfg.grok_effort,
-            "permission_mode": cfg.grok_permission_mode,
-            "efforts_available": list(VALID_GROK_EFFORTS),
-            "permission_modes_available": list(VALID_GROK_PERMISSION_MODES),
-            "computed_flags": build_grok_flags(cfg),
-        },
+        **_agent_payloads(cfg),
         "model_catalog": {
             "claude": catalog_payload(CLAUDE_MODEL_SPECS),
             "codex": catalog_payload(CODEX_MODEL_SPECS),
@@ -172,6 +123,62 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # webapp_config.json — the Startup-folder wrapper bat's presence
         # *is* the state, so a stale cached bool can never drift from it.
         "boot_autostart_enabled": boot_autostart.is_enabled(),
+    }
+
+
+def _agent_payloads(cfg: WebappConfig) -> Dict[str, Any]:
+    """Each non-Claude agent's settings, choices and computed flags."""
+    return {
+    "codex": {
+        "model": cfg.codex_model,
+        "effort": cfg.codex_effort,
+        "model_efforts": cfg.codex_model_efforts,
+        "models_available": catalog_payload(CODEX_MODEL_SPECS),
+        "efforts_available": list(CODEX_MODEL_SPECS[cfg.codex_model]["efforts"]),
+        "permission_mode": cfg.codex_permission_mode,
+        "permission_modes_available": list(VALID_CODEX_PERMISSION_MODES),
+        "computed_flags": build_codex_flags(cfg),
+    },
+    "antigravity": {
+        "skip_permissions": cfg.antigravity_skip_permissions,
+        "sandbox": cfg.antigravity_sandbox,
+        "computed_flags": build_antigravity_flags(cfg),
+    },
+    # No model/models_available: Copilot's model is not a launcher
+    # setting — the CLI resolves it per launch against
+    # the account, so only `/model` can report it truthfully.
+    "copilot": {
+        "skip_permissions": cfg.copilot_skip_permissions,
+        "computed_flags": build_copilot_flags(cfg),
+    },
+    "pi": {
+        "model": cfg.pi_model,
+        # What the selected model launches at, and the two parts it is made
+        # of: the owner's overrides and its catalog default.
+        "effort": effective_effort("pi", cfg.pi_model, cfg),
+        "model_efforts": cfg.pi_model_efforts,
+        "default_effort": default_effort("pi", cfg.pi_model),
+        "trust_mode": cfg.pi_trust_mode,
+        "models_available": [
+            {
+                "value": item["value"],
+                "label": item["label"],
+                "available": item["available"],
+                **({"unavailable_reason": item["unavailable_reason"]} if item.get("unavailable_reason") else {}),
+            }
+            for item in catalog_payload(PI_MODEL_SPECS)
+        ],
+        "efforts_available": list(VALID_PI_EFFORTS),
+        "trust_modes_available": list(VALID_PI_TRUST_MODES),
+        "computed_flags": build_pi_flags(cfg),
+    },
+    "grok": {
+        "effort": cfg.grok_effort,
+        "permission_mode": cfg.grok_permission_mode,
+        "efforts_available": list(VALID_GROK_EFFORTS),
+        "permission_modes_available": list(VALID_GROK_PERMISSION_MODES),
+        "computed_flags": build_grok_flags(cfg),
+    },
     }
 
 
@@ -227,48 +234,51 @@ _SWITCH_KEYS = (
 )
 
 
+# The settings POST /api/config may change; any other body key is ignored.
+_PATCH_KEYS = frozenset({
+    "projects_dir",
+    "projects_ignore",
+    "outbox_scratch_roots",
+    "coding_hidden_agents",
+    "coding_favorite_agent",
+    "coding_model_choice",
+    "hide_channel_sessions",
+    "autostart_channel_sessions",
+    "channel_model",
+    "apps_scan_root",
+    "life_os_dir",
+    "fleet_config_dir",
+    "terminal_history_lines",
+    "large_upload_max_mb",
+    "usage_shows",
+    "chief_auto_compact_threshold",
+    "chief_doorbell",
+    "chief_job_failures",
+    "life_os_refresh_skill_instructions",
+    "claude_model",
+    "claude_effort",
+    "claude_verbose",
+    "claude_debug",
+    "claude_permission_mode",
+    "antigravity_skip_permissions",
+    "antigravity_sandbox",
+    "codex_model",
+    "codex_effort",
+    "codex_permission_mode",
+    "copilot_skip_permissions",
+    "pi_model",
+    "pi_effort",
+    "pi_trust_mode",
+    "grok_effort",
+    "grok_permission_mode",
+})
+
+
 @router.post("/api/config")
 async def patch_config(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
-    allowed = {
-        "projects_dir",
-        "projects_ignore",
-        "outbox_scratch_roots",
-        "coding_hidden_agents",
-        "coding_favorite_agent",
-        "coding_model_choice",
-        "hide_channel_sessions",
-        "autostart_channel_sessions",
-        "channel_model",
-        "apps_scan_root",
-        "life_os_dir",
-        "fleet_config_dir",
-        "terminal_history_lines",
-        "large_upload_max_mb",
-        "usage_shows",
-        "chief_auto_compact_threshold",
-        "chief_doorbell",
-        "chief_job_failures",
-        "life_os_refresh_skill_instructions",
-        "claude_model",
-        "claude_effort",
-        "claude_verbose",
-        "claude_debug",
-        "claude_permission_mode",
-        "antigravity_skip_permissions",
-        "antigravity_sandbox",
-        "codex_model",
-        "codex_effort",
-        "codex_permission_mode",
-        "copilot_skip_permissions",
-        "pi_model",
-        "pi_effort",
-        "pi_trust_mode",
-        "grok_effort",
-        "grok_permission_mode",
-    }
-    patch = {k: v for k, v in body.items() if k in allowed}
+    patch = {k: v for k, v in body.items() if k in _PATCH_KEYS}
     # projects_ignore is a list of patterns — coerce to a clean string
     # list so a stray scalar from the client can't corrupt the config.
     if "projects_ignore" in patch:

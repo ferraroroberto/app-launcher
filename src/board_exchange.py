@@ -163,17 +163,9 @@ def resolve_exchange(
     agent = str(session.get("agent") or "claude").lower()
     title_check: Optional[str] = None
     if not native_path and agent == "claude":
-        scanned_path, title_check = transcript_locate._scan_claude_transcript(
-            session, live or (), disprove=True
-        )
-        scanned = last_exchange(scanned_path)
-        if scanned.get("available"):
-            return {
-                **scanned,
-                "source": "native_scan",
-                "reason": None,
-                "title_check": title_check,
-            }
+        scanned, title_check = _scanned_exchange(session, live)
+        if scanned is not None:
+            return scanned
 
     if agent == "codex":
         codex_path = transcript_locate.find_codex_transcript(session)
@@ -191,15 +183,36 @@ def resolve_exchange(
     if fallback.get("available"):
         return _with_title_check(fallback, title_check)
 
-    native_declared = bool(native_path)
-    capture_exists = _nonempty_file(launcher_capture_path)
-    if capture_exists:
-        reason = str(fallback.get("reason") or "capture_unparseable")
-    elif native_declared:
-        reason = "native_unavailable"
-    else:
-        reason = "no_exchange"
+    reason = _unavailable_reason(fallback, native_path, launcher_capture_path)
     return _with_title_check(unavailable(reason), title_check)
+
+
+def _scanned_exchange(
+    session: Dict[str, Any], live: Optional[Iterable[Dict[str, Any]]],
+) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """The exchange from the scanned Claude transcript (``None`` when the
+    scan found nothing readable) and the scan's ``title_check``."""
+    scanned_path, title_check = transcript_locate._scan_claude_transcript(
+        session, live or (), disprove=True
+    )
+    scanned = last_exchange(scanned_path)
+    if not scanned.get("available"):
+        return None, title_check
+    return {
+        **scanned,
+        "source": "native_scan",
+        "reason": None,
+        "title_check": title_check,
+    }, title_check
+
+
+def _unavailable_reason(fallback: Dict[str, Any], native_path: Any, launcher_capture_path: Path) -> str:
+    """Why no source answered: the capture's own reason, else the gap."""
+    if _nonempty_file(launcher_capture_path):
+        return str(fallback.get("reason") or "capture_unparseable")
+    if native_path:
+        return "native_unavailable"
+    return "no_exchange"
 
 
 def _with_title_check(

@@ -116,7 +116,6 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     from src.jobs_config import load_jobs
 
     now_local = (now or _now()).astimezone()
-    today = now_local.date()
     cards: List[Dict[str, Any]] = []
 
     jobs = load_jobs().jobs
@@ -127,77 +126,83 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
         # executor, so the Board doesn't keep rendering a
         # "stuck" card for a run that nothing is actually executing.
         runtime = snap.jobs[job.id]  # current() covers every job it is given
-        latest = runtime.latest
-        if runtime.error is not None:
-            exc = runtime.error
-            if job.id not in _UNREADABLE_JOBS:
-                logger.warning(
-                    "⚠️ board: run history of job %s unreadable, "
-                    "attention unknown: %s", job.id, exc,
-                )
-                _UNREADABLE_JOBS.add(job.id)
-            cards.append({
-                "kind": "job",
-                "job_id": job.id,
-                "job_name": job.name,
-                "state": "unreadable",
-                "run_id": None,
-                "finished_at": None,
-                "age_seconds": None,
-                "error": str(exc),
-            })
-            continue
-        if job.id in _UNREADABLE_JOBS:
-            logger.info("✅ board: run history of job %s readable again", job.id)
-            _UNREADABLE_JOBS.discard(job.id)
-        if not latest:
-            continue
-        if latest.get("status") == "running" and runtime.stuck:
-            started = _parse_iso(latest.get("started_at"))
-            cards.append({
-                "kind": "job",
-                "job_id": job.id,
-                "job_name": job.name,
-                "state": "stuck",
-                "run_id": latest.get("run_id"),
-                "finished_at": None,
-                "age_seconds": _age_seconds(started, now_local),
-            })
-            continue
-        # A deferral the job itself declared is by design, so nothing
-        # here needs a human. Its state is shown on the job card, not here.
-        if (
-            latest.get("status") == "failed"
-            and latest.get("outcome") != OUTCOME_DEFERRED
-        ):
-            finished = _parse_iso(latest.get("finished_at"))
-            if (
-                finished is not None
-                and finished.astimezone().date() == today
-                and not jobs_dismissed.is_dismissed(
-                    dismissed, job.id, latest.get("run_id")
-                )
-            ):
-                # A run whose delivery the adapter could not establish still
-                # wants a human's eye, so it keeps its card — but it is not a
-                # failure and must not be drawn as one. ``outcome`` is
-                # decorated onto every record by ``jobs_history.read_run``.
-                outcome = latest.get("outcome") or "failed"
-                cards.append({
-                    "kind": "job",
-                    "job_id": job.id,
-                    "job_name": job.name,
-                    "state": (
-                        "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
-                        else "failed"
-                    ),
-                    "run_id": latest.get("run_id"),
-                    "finished_at": latest.get("finished_at"),
-                    "age_seconds": _age_seconds(finished, now_local),
-                    "error": latest.get("outcome_reason"),
-                })
+        card = _job_attention_card(job, runtime, now_local, dismissed)
+        if card is not None:
+            cards.append(card)
 
     return cards
+
+
+def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: Any) -> Optional[Dict[str, Any]]:
+    """The attention card one job's latest run raises, or ``None``."""
+    latest = runtime.latest
+    if runtime.error is not None:
+        exc = runtime.error
+        if job.id not in _UNREADABLE_JOBS:
+            logger.warning(
+                "⚠️ board: run history of job %s unreadable, "
+                "attention unknown: %s", job.id, exc,
+            )
+            _UNREADABLE_JOBS.add(job.id)
+        return {
+            "kind": "job",
+            "job_id": job.id,
+            "job_name": job.name,
+            "state": "unreadable",
+            "run_id": None,
+            "finished_at": None,
+            "age_seconds": None,
+            "error": str(exc),
+        }
+    if job.id in _UNREADABLE_JOBS:
+        logger.info("✅ board: run history of job %s readable again", job.id)
+        _UNREADABLE_JOBS.discard(job.id)
+    if not latest:
+        return None
+    if latest.get("status") == "running" and runtime.stuck:
+        started = _parse_iso(latest.get("started_at"))
+        return {
+            "kind": "job",
+            "job_id": job.id,
+            "job_name": job.name,
+            "state": "stuck",
+            "run_id": latest.get("run_id"),
+            "finished_at": None,
+            "age_seconds": _age_seconds(started, now_local),
+        }
+    # A deferral the job itself declared is by design, so nothing
+    # here needs a human. Its state is shown on the job card, not here.
+    if (
+        latest.get("status") == "failed"
+        and latest.get("outcome") != OUTCOME_DEFERRED
+    ):
+        finished = _parse_iso(latest.get("finished_at"))
+        if (
+            finished is not None
+            and finished.astimezone().date() == now_local.date()
+            and not jobs_dismissed.is_dismissed(
+                dismissed, job.id, latest.get("run_id")
+            )
+        ):
+            # A run whose delivery the adapter could not establish still
+            # wants a human's eye, so it keeps its card — but it is not a
+            # failure and must not be drawn as one. ``outcome`` is
+            # decorated onto every record by ``jobs_history.read_run``.
+            outcome = latest.get("outcome") or "failed"
+            return {
+                "kind": "job",
+                "job_id": job.id,
+                "job_name": job.name,
+                "state": (
+                    "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
+                    else "failed"
+                ),
+                "run_id": latest.get("run_id"),
+                "finished_at": latest.get("finished_at"),
+                "age_seconds": _age_seconds(finished, now_local),
+                "error": latest.get("outcome_reason"),
+            }
+    return None
 
 
 # The family of statuses that still mean "a human needs to look at

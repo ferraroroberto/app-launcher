@@ -35,12 +35,12 @@ class TestConversationSearch:
     def stub_cli(self, monkeypatch):
         """Pretend fleet-config's CLI is installed (its own resolution is
         covered by TestSearchCliResolution)."""
-        from app.webapp.routers import life_os_conversations
+        from app.webapp.routers import life_os_search
         monkeypatch.setattr(
-            life_os_conversations, "search_cli", lambda cfg: ["py", "search.py"]
+            life_os_search, "search_cli", lambda cfg: ["py", "search.py"]
         )
-        monkeypatch.setattr(life_os_conversations, "subprocess", SimpleNamespace(**vars(subprocess)))
-        return life_os_conversations
+        monkeypatch.setattr(life_os_search, "subprocess", SimpleNamespace(**vars(subprocess)))
+        return life_os_search
 
     def _hit(self, life_os: Path, file_name: str, **over):
         row = {
@@ -245,10 +245,10 @@ class TestSearchCliResolution:
         another was the shape that made a second copy tempting. The pin is
         unchanged in intent: one definition, and it lives in the leaf."""
         from src import life_os_index
-        from app.webapp.routers import life_os_conversations, life_os_files
+        from app.webapp.routers import life_os_conversations, life_os_files, life_os_search
 
-        assert life_os_conversations.search_cli is life_os_index.search_cli
-        for module in (life_os_conversations, life_os_files):
+        assert life_os_search.search_cli is life_os_index.search_cli
+        for module in (life_os_conversations, life_os_files, life_os_search):
             assert "search_cli" not in vars(module) or (
                 vars(module)["search_cli"] is life_os_index.search_cli
             ), f"{module.__name__} must not define its own resolver"
