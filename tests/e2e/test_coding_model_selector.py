@@ -377,7 +377,10 @@ def test_server_catalog_populates_shared_model_selectors(
         expect(root.locator(".model-combo-menu")).to_have_count(1)
 
     board = authed_page.locator("#boardDispatchModel")
-    expect(board.locator("[role='option']")).to_have_count(7)
+    # Grok Build is offered only where its CLI is installed, so count without it.
+    expect(
+        board.locator("[role='option']:not([data-value^='grok:'])")
+    ).to_have_count(7)
     expect(
         board.locator("[data-value='codex:gpt-6-astra']")
     ).to_be_enabled()
@@ -406,6 +409,38 @@ def test_server_catalog_populates_shared_model_selectors(
             ))
             close_settings_sheets(authed_page)
         assert len(set(signatures)) == 1, f"{theme} settings picker style drift: {signatures}"
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("installed", [True, False])
+def test_grok_is_offered_by_the_board_dispatch_picker_only(
+    authed_page: Page, base_url: str, installed: bool
+) -> None:
+    """Grok Build joins the Board's "Start with" picker when the server reports
+    it installed; the Coding tab and Life OS pickers never carry it."""
+    body = _config("sonnet", "claude:sonnet")
+    body["board_dispatch_models"] = {
+        "grok": [{"value": "grok-4.5", "label": "4.5", "available": True}] if installed else []
+    }
+    authed_page.route(
+        re.compile(r".*/api/config$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body)
+        ),
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_projects(authed_page)
+    expect(
+        authed_page.locator("#codingModelMenu button[data-value='claude:sonnet']")
+    ).to_have_count(1, timeout=5_000)
+
+    grok = authed_page.locator("#boardDispatchModel [data-value='grok:grok-4.5']")
+    expect(grok).to_have_count(1 if installed else 0)
+    if installed:
+        expect(grok).to_have_text("Grok · 4.5")
+        expect(grok).to_be_enabled()
+    expect(authed_page.locator("#codingModelMenu [data-value^='grok:']")).to_have_count(0)
+    expect(authed_page.locator("#lifeOsModelCombo [data-value^='grok:']")).to_have_count(0)
 
 
 def _install_model_save_harness(authed_page: Page, config: dict) -> None:

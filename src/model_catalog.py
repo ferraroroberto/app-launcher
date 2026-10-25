@@ -99,6 +99,14 @@ PI_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
     },
 }
 
+# Grok Build lists one model and takes no ``--model`` (flags carry the Coding
+# tab's effort and permission mode), so this row only names the Board dispatch
+# value ``grok:grok-4.5``. It stays out of the shared Claude/Codex catalog on
+# purpose: the Coding tab launches Grok its own way and Life OS rejects it.
+GROK_DISPATCH_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
+    "grok-4.5": {"label": "4.5", "available": True},
+}
+
 # GitHub Copilot has no entry here on purpose. Its model
 # list was removed rather than refreshed: `copilot help config` reports
 # what the CLI accepts, while what a *launch* gets is decided by the
