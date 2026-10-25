@@ -215,8 +215,9 @@ _GLYPH_OUTCOMES = {"❓": OUTCOME_UNCONFIRMED, "❌": OUTCOME_FAILED, "⏱": OUT
 
 
 def _code_keyed_verdicts(text: str) -> dict:
-    """``{constant name: outcome}`` for every rung of ``ProgressFormatter.finish``
-    whose condition compares ``exit_code`` against a ``*_EXIT_CODE`` constant.
+    """``{constant name: outcome}`` for every rung in ``ProgressFormatter`` (its
+    ``finish`` and the helpers ``finish`` calls) whose condition compares
+    ``exit_code`` against a ``*_EXIT_CODE`` constant.
 
     The outcome is read off the leading glyph of the ``status`` string that
     rung assigns — the same line the job's own ``output.log`` ends with — so the
@@ -225,12 +226,10 @@ def _code_keyed_verdicts(text: str) -> dict:
     printed ``❓ not confirmed`` beside it).
     """
     tree = ast.parse(text)
-    finish = next(
-        node
+    formatter = next(
+        cls
         for cls in tree.body
         if isinstance(cls, ast.ClassDef) and cls.name == "ProgressFormatter"
-        for node in cls.body
-        if isinstance(node, ast.FunctionDef) and node.name == "finish"
     )
 
     def status_glyph(body):
@@ -247,7 +246,7 @@ def _code_keyed_verdicts(text: str) -> dict:
         return None
 
     verdicts = {}
-    for node in ast.walk(finish):
+    for node in ast.walk(formatter):
         if not isinstance(node, ast.If):
             continue
         compares_code = any(
@@ -287,7 +286,7 @@ def test_exit_code_outcomes_match_scheduled_runner_verdicts():
         )
     }
     parsed = _code_keyed_verdicts(text)
-    assert parsed, "parsed no exit-code rungs in ProgressFormatter.finish"
+    assert parsed, "parsed no exit-code rungs in ProgressFormatter"
     assert None not in parsed.values(), (
         f"a code-keyed rung assigns a status with no known glyph: {parsed}"
     )
