@@ -330,7 +330,7 @@ def test_api_rate_limits_standalone_endpoint_present(webapp_client):
 def test_api_rate_limits_never_follows_the_selected_model(webapp_client):
     """#860: both agents always, whatever the caller has selected."""
     client, _app, _overrides = webapp_client
-    for selection in ("claude:sonnet", "codex:gpt-5.6-luna", "pi:opus"):
+    for selection in ("claude:sonnet", "codex:gpt-6-luna", "pi:opus"):
         lines = client.get(
             "/api/rate-limits?quota_selection=" + selection
         ).json()["quota_lines"]

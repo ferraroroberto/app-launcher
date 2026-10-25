@@ -293,7 +293,7 @@ class TestClaudeCodeDiscovery:
         assert resp.status_code == 200
         assert spawn_args["agent"] == "codex"
         assert "--ask-for-approval never --sandbox workspace-write" in spawn_args["flags"]
-        assert "--model gpt-5.6-luna" in spawn_args["flags"]
+        assert "--model gpt-6-luna" in spawn_args["flags"]
         assert "model_reasoning_effort=xhigh" in spawn_args["flags"]
         assert resp.json()["agent"] == "codex"
         # Skip permissions swaps the sandboxed-auto pair for the bypass.
@@ -361,7 +361,7 @@ class TestClaudeCodeDiscovery:
         assert resp.status_code == 200
         assert spawn_args["kind"] == "pty"
         assert spawn_args["flags"] == (
-            "resume --model gpt-5.6-luna -c model_reasoning_effort=xhigh"
+            "resume --model gpt-6-luna -c model_reasoning_effort=xhigh"
         )
         assert "--ask-for-approval" not in spawn_args["flags"]
         assert "--sandbox" not in spawn_args["flags"]

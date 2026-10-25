@@ -22,7 +22,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.conftest import close_settings_sheets, open_agent_sheet
+from src.model_catalog import DEFAULT_HIDDEN_MODELS
+from tests.e2e.conftest import close_settings_sheets, open_agent_sheet, open_settings_sheet
 
 
 pytestmark = pytest.mark.smoke
@@ -350,13 +351,15 @@ def test_server_catalog_populates_shared_model_selectors(
     authed_page: Page, base_url: str
 ) -> None:
     """#845/#851: every model surface uses the shared catalog-backed picker."""
+    # Every catalog model on, whatever the copied config hides.
+    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": []})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
     coding = authed_page.locator("#codingModelMenu button[data-value]")
     expect(coding).to_have_count(7, timeout=5_000)
     expect(
-        authed_page.locator("#codingModelMenu [data-value='codex:gpt-5.6-luna']")
+        authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-luna']")
     ).to_have_text("Codex · Luna")
     expect(
         authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-astra']")
@@ -586,3 +589,40 @@ def test_model_selection_owns_polls_until_config_save_settles(
     expect(combo).to_have_attribute("data-value", "claude:sonnet")
     authed_page.evaluate("window.__settleModelSave('fail')")
     expect(combo).to_have_attribute("data-value", "codex:gpt-5.6-luna")
+
+
+# Settings › Models in the dropdowns: a switched-off model leaves the Coding,
+# Life OS and Board pickers, and switching it on returns it with no reload.
+VISIBILITY_PICKERS = ("#codingModelMenu", "#lifeOsModelCombo", "#boardDispatchModel")
+
+
+def _offered(page: Page, value: str):
+    """`value`'s option in each of the three shared pickers."""
+    return [page.locator(f"{picker} [role=option][data-value='{value}']") for picker in VISIBILITY_PICKERS]
+
+
+def test_switching_a_model_on_offers_it_in_every_dropdown(authed_page: Page, base_url: str) -> None:
+    # The disposable webapp boots from a copy of the real config, so the
+    # baseline is set rather than assumed.
+    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})
+    try:
+        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        for option in _offered(authed_page, "codex:gpt-6-luna"):
+            expect(option).to_have_count(1)
+        for option in _offered(authed_page, "codex:gpt-5.6-sol"):
+            expect(option).to_have_count(0)
+
+        open_settings_sheet(authed_page, "launchDefaultsSheet")
+        sol = authed_page.locator('[data-model-toggle="codex:gpt-5.6-sol"]')
+        expect(authed_page.locator('[data-model-toggle="codex:gpt-6-luna"]')).to_have_attribute("aria-checked", "true")
+        expect(sol).to_have_attribute("aria-checked", "false")
+        sol.click()
+        expect(sol).to_have_attribute("aria-checked", "true")
+        close_settings_sheets(authed_page)
+
+        for option in _offered(authed_page, "codex:gpt-5.6-sol"):
+            expect(option).to_have_count(1)
+        saved = authed_page.request.get(f"{base_url}/api/config").json()["hidden_models"]
+        assert "codex:gpt-5.6-sol" not in saved
+    finally:
+        authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": list(DEFAULT_HIDDEN_MODELS)})

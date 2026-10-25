@@ -139,12 +139,12 @@ class TestGetConfig:
         # Default config → high reasoning + auto permission (sandboxed,
         # no prompts): the safe autopilot, not the all-bypass switch.
         assert cx["effort"] == "xhigh"
-        assert cx["model"] == "gpt-5.6-luna"
+        assert cx["model"] == "gpt-6-luna"
         assert cx["permission_mode"] == "auto"
         assert "--ask-for-approval never" in cx["computed_flags"]
         assert "--sandbox workspace-write" in cx["computed_flags"]
         assert "model_reasoning_effort=xhigh" in cx["computed_flags"]
-        assert "--model gpt-5.6-luna" in cx["computed_flags"]
+        assert "--model gpt-6-luna" in cx["computed_flags"]
         astra = next(m for m in cx["models_available"] if m["label"] == "Astra")
         assert astra["available"] is True
 

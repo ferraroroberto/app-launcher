@@ -94,8 +94,13 @@
         </div>
         <div class="opt-group">
           <h3 class="opt-group-title">Visible agents</h3>
-          <p class="opt-hint">Which agents are offered in each project row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu. Hiding one only trims that menu — a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
+          <p class="opt-hint">Which agents each project row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu offers. It does not change the model dropdowns (that is Models in the dropdowns, below), and a running session still shows its agent in the sessions list and on the Board. The favorite agent is always on the row, whatever this says.</p>
           <div id="agentVisibility" class="toggles"></div>
+        </div>
+        <div class="opt-group">
+          <h3 class="opt-group-title">Models in the dropdowns</h3>
+          <p class="opt-hint">Which models the model dropdowns offer: the Projects picker on Coding, the Skills picker on Life OS and the dispatch picker on the Board. A saved choice you switch off moves to the first model still on for that agent; a running or resumed session keeps its own model.</p>
+          <div id="modelVisibility" class="toggles"></div>
         </div>
         <div class="opt-group">
           <h3 class="opt-group-title">Per agent</h3>
@@ -184,7 +189,7 @@
         <div class="opt-group" data-agent-group="codex" hidden>
           <div class="opt-row">
             <span class="opt-name">Model</span>
-            <span id="codexModel" class="model-combo model-combo--settings" data-value="gpt-5.6-luna">
+            <span id="codexModel" class="model-combo model-combo--settings" data-value="gpt-6-luna">
               <button type="button" class="model-combo-trigger" aria-label="Codex model" aria-haspopup="listbox"
                       aria-expanded="false" aria-controls="codexModelMenu">Luna</button>
               <span id="codexModelMenu" class="model-combo-menu" role="listbox"

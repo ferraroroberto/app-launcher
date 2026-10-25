@@ -16,7 +16,7 @@ import { apiFailToast, jsonApi } from './api.js';
 import { wireModelCombo } from './dom-utils.js';
 import { setBoardDispatchModelOptions } from './board-dispatch.js';
 import { setLifeOsModelOptions } from './life-os.js';
-import { setSwitch } from './_vendored/switch/switch.js';
+import { setSwitch, switchEl } from './_vendored/switch/switch.js';
 import { setUsageShows } from './usage-meter.js';
 import { renderSettingsValues } from './settings-sheets.js';
 
@@ -75,17 +75,115 @@ function modelOptions(models, valuePrefix, labelPrefix) {
   });
 }
 
-function renderSharedModelSelectors() {
+// Settings › Models in the dropdowns: `hidden_models` holds provider-qualified
+// values (`codex:gpt-5.6-sol`) every model dropdown leaves out.
+function hiddenModels() {
+  return new Set(((state.config || {}).hidden_models || []).map(String));
+}
+
+// `options` minus the hidden ones; `prefix` qualifies a bare per-agent value.
+// With `keepWhenEmpty` a per-agent sheet whose every model is hidden keeps its
+// full list, so its picker never goes blank.
+function visibleModels(options, prefix, keepWhenEmpty) {
+  const hidden = hiddenModels();
+  const shown = options.filter(function (option) {
+    return !hidden.has((prefix || '') + option.value);
+  });
+  return shown.length || !keepWhenEmpty ? shown : options;
+}
+
+// Catalog models by agent, in dropdown order. Grok is listed only while its
+// CLI is on this host, and only the Board dispatches it.
+function modelGroups() {
   const config = state.config || {};
   const catalog = config.model_catalog || {};
-  const options = modelOptions(catalog.claude, 'claude:', 'Claude · ')
-    .concat(modelOptions(catalog.codex, 'codex:', 'Codex · '));
+  const extra = config.board_dispatch_models || {};
+  return [
+    { agent: 'claude', label: 'Claude', models: catalog.claude },
+    { agent: 'codex', label: 'Codex', models: catalog.codex },
+    { agent: 'grok', label: 'Grok', models: extra.grok },
+  ].filter(function (group) { return (group.models || []).length; });
+}
+
+function renderSharedModelSelectors() {
+  const config = state.config || {};
+  let options = [];
+  let boardOptions = [];
+  modelGroups().forEach(function (group) {
+    const items = visibleModels(
+      modelOptions(group.models, group.agent + ':', group.label + ' · ')
+    );
+    // Only the Board can dispatch Grok; the Coding tab and Life OS keep `options`.
+    if (group.agent !== 'grok') options = options.concat(items);
+    boardOptions = boardOptions.concat(items);
+  });
   if (codingModelCombo) codingModelCombo.setOptions(options);
   if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
   setLifeOsModelOptions(options);
-  // Only the Board can dispatch Grok; the Coding tab and Life OS keep `options`.
-  const extra = config.board_dispatch_models || {};
-  setBoardDispatchModelOptions(options.concat(modelOptions(extra.grok, 'grok:', 'Grok · ')));
+  setBoardDispatchModelOptions(boardOptions);
+}
+
+// The list to write, read off the rendered switches (a fast second tap must
+// not compose from a config the first save hasn't refreshed yet), plus any
+// hidden value no switch shows, such as a Grok model while its CLI is absent.
+function hiddenModelsFromSwitches() {
+  const host = els.modelVisibility;
+  const switches = host ? Array.from(host.querySelectorAll('[data-model-toggle]')) : [];
+  const rendered = new Set(switches.map(function (sw) { return sw.dataset.modelToggle; }));
+  const kept = Array.from(hiddenModels()).filter(function (value) {
+    return !rendered.has(value);
+  });
+  return kept.concat(switches
+    .filter(function (sw) { return sw.getAttribute('aria-checked') !== 'true'; })
+    .map(function (sw) { return sw.dataset.modelToggle; }));
+}
+
+let modelVisibilityWrite = Promise.resolve();
+let modelVisibilityRows = '';
+
+// One switch per catalog model, grouped by agent. Rebuilt only when the
+// catalog's rows change or a save failed: rebuilding on every config readback
+// would race a fast second tap against the teardown, the race
+// `renderAgentVisibility` documents.
+function renderModelVisibility(force) {
+  const host = els.modelVisibility;
+  if (!host) return;
+  const groups = modelGroups();
+  const rows = JSON.stringify(groups.map(function (group) {
+    return [group.agent, group.models.map(function (m) { return m.value; })];
+  }));
+  if (!force && rows === modelVisibilityRows) return;
+  modelVisibilityRows = rows;
+  const hidden = hiddenModels();
+  host.innerHTML = '';
+  groups.forEach(function (group) {
+    const heading = document.createElement('span');
+    heading.className = 'model-visibility-agent';
+    heading.textContent = group.label;
+    host.appendChild(heading);
+    modelOptions(group.models, group.agent + ':').forEach(function (model) {
+      const wrap = document.createElement('span');
+      wrap.className = 'switch-row';
+      const name = document.createElement('span');
+      name.textContent = model.label;
+      wrap.appendChild(name);
+      const sw = switchEl(!hidden.has(model.value), {
+        label: 'Offer ' + group.label + ' ' + model.label + ' in the model dropdowns',
+        onToggle: function (next) {
+          setSwitch(sw, next);
+          const wanted = hiddenModelsFromSwitches();
+          modelVisibilityWrite = modelVisibilityWrite.then(function () {
+            return patchConfig({ hidden_models: wanted }).then(function (ok) {
+              if (!ok) renderModelVisibility(true);
+            });
+          });
+        },
+      });
+      sw.dataset.modelToggle = model.value;
+      wrap.appendChild(sw);
+      host.appendChild(wrap);
+    });
+  });
 }
 
 export async function fetchConfig(shouldApply) {
@@ -200,6 +298,7 @@ function renderChiefAutoCompact(body) {
 
 export function renderClaudeOptions() {
   renderSharedModelSelectors();
+  renderModelVisibility(false);
   renderClaudeSubsection();
   renderCodexSubsection();
   renderAntigravitySubsection();
@@ -254,9 +353,9 @@ function renderClaudeSubsection() {
     return surfaced.includes(model);
   });
   if (claudeModelCombo) {
-    claudeModelCombo.setOptions(modelOptions(models.map(function (model) {
+    claudeModelCombo.setOptions(visibleModels(modelOptions(models.map(function (model) {
       return { value: model, label: model.charAt(0).toUpperCase() + model.slice(1) };
-    })));
+    })), 'claude:', true));
     claudeModelCombo.setValue(c.model);
   }
   // Keep the compact dropdown in lockstep. patchConfig() round-trips through
@@ -297,7 +396,7 @@ function renderCodexSubsection() {
   const c = state.config && state.config.codex;
   if (!c) return;
   if (codexModelCombo) {
-    codexModelCombo.setOptions(modelOptions(c.models_available));
+    codexModelCombo.setOptions(visibleModels(modelOptions(c.models_available), 'codex:', true));
     codexModelCombo.setValue(c.model);
   }
   renderEffortSelect(
