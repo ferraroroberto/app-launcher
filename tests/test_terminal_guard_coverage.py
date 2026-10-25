@@ -130,6 +130,11 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "Read-only listener list — the Apps tab renders its listeners panel "
         "off-tailnet. Stated as deliberate in the /api/ports/{port}/kill row."
     ),
+    "/api/board/issues/file": (
+        "Files a GitHub issue through gh and spawns nothing: no PTY, no "
+        "terminal text in or out. It is the delegate token's one write, and "
+        "that caller is held to its own allow-list before this gate runs."
+    ),
 }
 
 # ``{sid}`` etc. are FastAPI templates; ``_terminal_guard_level`` matches on a
