@@ -43,6 +43,7 @@ from src.model_catalog import (
 )
 
 from src._json_io import atomic_write_json
+from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers, validate_usage_providers
 
 logger = logging.getLogger(__name__)
 
@@ -107,19 +108,6 @@ MAX_TERMINAL_HISTORY_LINES = 50_000
 # 2 GB covers an archive of scanned documents with room to spare; the ceiling
 # keeps a typo from turning into an unbounded write to the project drive.
 DEFAULT_LARGE_UPLOAD_MAX_MB = 2048
-
-# Which providers the usage meter shows on the Code tab's Usage card, each
-# switched on or off by itself; an empty list hides the card. The tuple order
-# is the order the card draws them in.
-VALID_USAGE_PROVIDERS = ("claude", "codex", "grok")
-DEFAULT_USAGE_PROVIDERS = ("claude", "codex")
-# The single choice this setting replaced, read once from an older file.
-_LEGACY_USAGE_SHOWS = {
-    "claude": ("claude",),
-    "codex": ("codex",),
-    "both": ("claude", "codex"),
-    "none": (),
-}
 MIN_LARGE_UPLOAD_MAX_MB = 1
 MAX_LARGE_UPLOAD_MAX_MB = 10240
 
@@ -532,7 +520,7 @@ class WebappConfig:
     # Large-file attach limit in MB, Settings-tab configurable.
     # See DEFAULT_LARGE_UPLOAD_MAX_MB.
     large_upload_max_mb: int = DEFAULT_LARGE_UPLOAD_MAX_MB
-    # Which providers the usage meter draws; see VALID_USAGE_PROVIDERS.
+    # Which providers the usage meter draws; see src.usage.providers.
     usage_providers: list = field(default_factory=lambda: list(DEFAULT_USAGE_PROVIDERS))
     # WebAuthn relying-party identity for the passkey gate. rp_id is the
     # bare tailnet hostname (e.g. "pc.tailnet.ts.net"); origin is the full
@@ -759,20 +747,6 @@ def _load_pi_model_efforts(raw: dict) -> Dict[str, str]:
     }
 
 
-def _load_usage_providers(raw: dict) -> list:
-    """The providers in card order. An empty list is kept (it hides the card),
-    so this cannot ride the generic falsy-means-default rule. An older file's
-    ``usage_shows`` choice is carried over; the next save drops that key."""
-    authored = raw.get("usage_providers")
-    if isinstance(authored, list):
-        wanted = {str(item) for item in authored}
-    elif "usage_shows" in raw:
-        wanted = set(_LEGACY_USAGE_SHOWS.get(str(raw["usage_shows"]), DEFAULT_USAGE_PROVIDERS))
-    else:
-        wanted = set(DEFAULT_USAGE_PROVIDERS)
-    return [name for name in VALID_USAGE_PROVIDERS if name in wanted]
-
-
 def _load_codex_effort(raw: dict) -> str:
     """Do not reinterpret the old global High default as Luna's preference."""
     if "codex_model" not in raw and "codex_model_efforts" not in raw:
@@ -792,7 +766,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "codex_model_efforts": _load_codex_model_efforts,
     "claude_model_efforts": _load_claude_model_efforts,
     "pi_model_efforts": _load_pi_model_efforts,
-    "usage_providers": _load_usage_providers,
+    "usage_providers": load_usage_providers,
 }
 
 
@@ -1105,12 +1079,7 @@ def _validate(cfg: WebappConfig) -> None:
             raise ValueError(
                 f"{field_name} must be one of {allowed}; got {value!r}"
             )
-    if not isinstance(cfg.usage_providers, list) or any(
-        name not in VALID_USAGE_PROVIDERS for name in cfg.usage_providers
-    ):
-        raise ValueError(
-            f"usage_providers must list only {VALID_USAGE_PROVIDERS}; got {cfg.usage_providers!r}"
-        )
+    validate_usage_providers(cfg.usage_providers)
     if not isinstance(cfg.claude_model_efforts, dict):
         raise ValueError("claude_model_efforts must be an object")
     for model, effort in cfg.claude_model_efforts.items():

@@ -71,6 +71,7 @@ app-launcher/
 │   ├── session_transcript.py   # paginated, typed transcript pages for one live Coding session
 │   ├── session_screen.py       # a live session's terminal screen: answer a question, plan picker, resume, context % (#1424)
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
+│   ├── usage/                  # usage-meter settings: providers.py owns the usage_providers list and its migration
 │   ├── session_changes.py      # a session's Changed files, folded from its transcript (never `git diff`)
 │   ├── session_outbox.py       # files an agent sends to Chat: path/type/size guards + runtime store (#1530)
 │   ├── usage_log.py            # vendored: local view/tap log router + SQLite store (#1524)

@@ -30,6 +30,7 @@ from src.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
+from src.usage.providers import VALID_USAGE_PROVIDERS
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
     MAX_CHIEF_WORKER_CAP,
@@ -44,7 +45,6 @@ from src.webapp_config import (
     VALID_GROK_PERMISSION_MODES,
     VALID_PI_EFFORTS,
     VALID_PI_TRUST_MODES,
-    VALID_USAGE_PROVIDERS,
     WebappConfig,
     update_webapp_config,
 )

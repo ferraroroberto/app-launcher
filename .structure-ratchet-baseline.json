@@ -21,7 +21,7 @@
     {"key": "size:src/board_transcript.py", "lines": 1246},
     {"key": "size:src/session_host.py", "lines": 1363},
     {"key": "size:src/session_host_input.py", "lines": 1210},
-    {"key": "size:src/webapp_config.py", "lines": 1145},
+    {"key": "size:src/webapp_config.py", "lines": 1142},
     {"key": "size:tests/e2e/conftest.py", "lines": 1736}
   ]
 }
