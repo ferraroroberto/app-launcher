@@ -20,13 +20,15 @@ _COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 _NATIVE = re.compile(r"(?<![\w.$])(?:window\.)?(confirm|prompt|alert)\s*\(")
 
 
+# First-party modules only, the tab subfolders (board/, jobs/) included.
 _MODULES = sorted(
-    p.name for p in _STATIC.glob("*.js") if not p.name.startswith("terminal")
+    p.relative_to(_STATIC).as_posix() for p in _STATIC.rglob("*.js")
+    if not p.name.startswith("terminal") and not {"_vendored", "vendor"} & set(p.relative_to(_STATIC).parts)
 )
 
 
 def test_the_module_list_is_real() -> None:
-    assert "life-os.js" in _MODULES and "board.js" in _MODULES, _MODULES
+    assert "life-os.js" in _MODULES and "board/drawer.js" in _MODULES, _MODULES
 
 
 @pytest.mark.parametrize("module", _MODULES)
