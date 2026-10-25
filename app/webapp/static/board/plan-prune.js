@@ -8,11 +8,11 @@
  * shows what is on disk. The control exists only while N > 0.
  */
 
-import { state } from './state.js';
-import { apiFailToast, jsonApi, toast } from './api.js';
-import { terminalJsonApi } from './webauthn.js';
-import { icon } from './_vendored/icons/icons.js';
-import { renderBoard } from './board.js';
+import { state } from '../state.js';
+import { apiFailToast, jsonApi, toast } from '../api.js';
+import { terminalJsonApi } from '../webauthn.js';
+import { icon } from '../_vendored/icons/icons.js';
+import { renderBoard } from '../board.js';
 
 const MERGED = 'merged';
 

@@ -59,7 +59,6 @@ from src import (
     audit,
     board,
     chief_answers,
-    chief_plan_prune,
     dispatch_brief,
     github_client,
     jobs_snapshot,
@@ -67,6 +66,7 @@ from src import (
     session_client,
 )
 from src.board_exchange import resolve_exchange, unavailable
+from src.chief import plan_prune
 from src.launch_flags import build_claude_flags
 from src.launcher import open_local_terminal_window, spawn_claude_session
 from src.webapp_config import WebappConfig
@@ -317,11 +317,11 @@ async def post_chief_plan_prune(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     try:
         pruned = await asyncio.to_thread(
-            chief_plan_prune.prune_merged, cfg.fleet_config_dir, cfg.chief_plan_file
+            plan_prune.prune_merged, cfg.fleet_config_dir, cfg.chief_plan_file
         )
-    except chief_plan_prune.PlanPruneUnavailable as exc:
+    except plan_prune.PlanPruneUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc))
-    except chief_plan_prune.PlanPruneRefused as exc:
+    except plan_prune.PlanPruneRefused as exc:
         raise HTTPException(status_code=409, detail=str(exc))
     return {"pruned": pruned}
 

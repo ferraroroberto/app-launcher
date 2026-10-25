@@ -1,4 +1,4 @@
-"""src/chief_plan_prune.py and POST /api/board/chief-plan/prune.
+"""src/chief/plan_prune.py and POST /api/board/chief-plan/prune.
 
 The launcher loads fleet-config's ``skills/_lib/chief_plan.py`` by path. These
 tests give it a scratch checkout whose writer is a small stand-in over a plan
@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from src import chief_plan_prune
+from src.chief import plan_prune as chief_plan_prune
 
 _WRITER = '''
 import json
