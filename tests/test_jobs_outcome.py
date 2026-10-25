@@ -148,7 +148,10 @@ def test_booleans_are_not_exit_codes():
 
 
 def _scheduled_runner() -> Path | None:
-    """fleet-config's scheduled-run adapter, if this machine has the checkout.
+    """fleet-config's scheduled-run progress module, if this machine has the checkout.
+
+    ``scheduled/progress.py`` defines the ``*_EXIT_CODE`` constants and
+    ``ProgressFormatter``; ``scheduled_runner.py`` only re-imports them.
 
     Resolved the same way :mod:`src.webapp_config` resolves its default
     ``fleet_config_dir`` — the sibling ``fleet-config`` next to this repo — so
@@ -161,7 +164,8 @@ def _scheduled_runner() -> Path | None:
         / "fleet-config"
         / "skills"
         / "_lib"
-        / "scheduled_runner.py"
+        / "scheduled"
+        / "progress.py"
     )
     return candidate if candidate.is_file() else None
 
@@ -193,7 +197,7 @@ def test_exit_code_table_matches_scheduled_runner():
     assert defined, "parsed no *_EXIT_CODE constants — has the adapter moved?"
     unexplained = {code for code in defined if classify_exit_code(code) is None}
     assert not unexplained, (
-        "scheduled_runner.py defines exit code(s) src.jobs.outcome does not "
+        "scheduled/progress.py defines exit code(s) src.jobs.outcome does not "
         f"name: {sorted(unexplained)}. Classify each one (failed vs "
         "unconfirmed) rather than letting it render as a generic failure."
     )
@@ -295,7 +299,7 @@ def test_exit_code_outcomes_match_scheduled_runner_verdicts():
     unclassified = sorted(set(constants) - set(expected))
     assert not unclassified, (
         f"no verdict rung or _FLAG_KEYED_OUTCOMES entry for {unclassified} — "
-        "read its verdict in scheduled_runner.py and classify it here"
+        "read its verdict in scheduled/progress.py and classify it here"
     )
     overlap = {
         name for name in set(parsed) & set(_FLAG_KEYED_OUTCOMES)
