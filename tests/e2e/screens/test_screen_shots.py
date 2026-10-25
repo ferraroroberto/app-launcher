@@ -113,6 +113,9 @@ _MOCKS = {
     r"/api/board/chief-plan": {"state": "empty"},
     r"/api/board/github/refresh": {"fetched_at": STAMP, "error": None},
     r"/api/usage/events": {},
+    # Settings' "Screen time today" row: unmocked it counts the capture run's own
+    # wall-clock minutes, so a run of a few minutes drifts the Settings shots.
+    r"/api/usage/time": {"total_minutes": 0},
 }
 
 #: tab button -> the first row that proves the tab rendered its fixture.
