@@ -489,6 +489,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import life_os_files as life_os_files_router
     from app.webapp.routers import life_os_channels as life_os_channels_router
     from app.webapp.routers import life_os_spawn as life_os_spawn_router
+    from app.webapp.routers import life_os_search as life_os_search_router
     from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
     from app.webapp.routers import misc as misc_router
     from app.webapp.routers import sessions as sessions_router
@@ -592,6 +593,7 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # their own reference since the #884 split; life_os.py itself has none.
     monkeypatch.setattr(life_os_spawn_router, "audit", audit_mock)
     monkeypatch.setattr(life_os_conversations_router, "audit", audit_mock)
+    monkeypatch.setattr(life_os_search_router, "audit", audit_mock)
     monkeypatch.setattr(life_os_files_router, "audit", audit_mock)
     monkeypatch.setattr(board_router, "audit", audit_mock)
     monkeypatch.setattr(board_chief_router, "audit", audit_mock)
