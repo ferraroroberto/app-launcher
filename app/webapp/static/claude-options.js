@@ -83,7 +83,9 @@ function renderSharedModelSelectors() {
   if (codingModelCombo) codingModelCombo.setOptions(options);
   if (codingModelCombo) codingModelCombo.setValue(config.coding_model_choice);
   setLifeOsModelOptions(options);
-  setBoardDispatchModelOptions(options);
+  // Only the Board can dispatch Grok; the Coding tab and Life OS keep `options`.
+  const extra = config.board_dispatch_models || {};
+  setBoardDispatchModelOptions(options.concat(modelOptions(extra.grok, 'grok:', 'Grok · ')));
 }
 
 export async function fetchConfig(shouldApply) {

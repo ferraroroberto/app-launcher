@@ -92,6 +92,35 @@ class TestGetConfig:
         assert gk["permission_mode"] == "auto"
         assert gk["computed_flags"] == "--permission-mode auto --reasoning-effort high"
 
+    def test_board_dispatch_models_offer_grok_only_when_installed(
+        self, webapp_client, monkeypatch
+    ):
+        client, _, _ = webapp_client
+        from app.webapp.routers import config as config_router
+
+        monkeypatch.setattr(config_router, "is_installed", lambda _: True)
+        body = client.get("/api/config").json()
+        assert body["board_dispatch_models"]["grok"] == [
+            {"value": "grok-4.5", "label": "4.5", "available": True, "efforts": []}
+        ]
+
+        monkeypatch.setattr(config_router, "is_installed", lambda _: False)
+        body = client.get("/api/config").json()
+        assert body["board_dispatch_models"] == {"grok": []}
+
+    def test_grok_stays_out_of_the_shared_model_catalog(self, webapp_client, monkeypatch):
+        """The Coding tab and Life OS read ``model_catalog``; Grok is Board-only."""
+        client, _, _ = webapp_client
+        from app.webapp.routers import config as config_router
+
+        monkeypatch.setattr(config_router, "is_installed", lambda _: True)
+        catalog = client.get("/api/config").json()["model_catalog"]
+        assert set(catalog) == {"claude", "codex"}
+        assert not [
+            item for items in catalog.values() for item in items
+            if "grok" in item["value"]
+        ]
+
     def test_codex_block_shape(self, webapp_client):
         client, _, _ = webapp_client
         body = client.get("/api/config").json()

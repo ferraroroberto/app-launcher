@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Request
 
 from src import boot_autostart, session_outbox
-from src.agents import AGENTS, DEFAULT_AGENT
+from src.agents import AGENTS, DEFAULT_AGENT, is_installed
 from src.launch_flags import (
     build_antigravity_flags,
     build_claude_flags,
@@ -26,6 +26,7 @@ from src.launch_flags import (
 from src.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
+    GROK_DISPATCH_MODEL_SPECS,
     PI_MODEL_SPECS,
     catalog_payload,
 )
@@ -117,6 +118,11 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "model_catalog": {
             "claude": catalog_payload(CLAUDE_MODEL_SPECS),
             "codex": catalog_payload(CODEX_MODEL_SPECS),
+        },
+        # Models only the Board dispatch picker adds to the shared catalog's
+        # choices; a provider is empty while its CLI is not on this host.
+        "board_dispatch_models": {
+            "grok": catalog_payload(GROK_DISPATCH_MODEL_SPECS) if is_installed("grok") else [],
         },
         "auth_password_set": bool(cfg.auth_password),
         # Boot-autostart toggle: live-queried, not stored in

@@ -35,7 +35,7 @@ from fastapi import HTTPException
 
 from src import agents, session_client
 from src.launch_flags import build_claude_flags, build_codex_flags, build_grok_flags
-from src.model_catalog import CLAUDE_MODEL_SPECS, available_values
+from src.model_catalog import CLAUDE_MODEL_SPECS, GROK_DISPATCH_MODEL_SPECS, available_values
 from src.registry import AppEntry, live_claude_code_entries
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
@@ -124,10 +124,9 @@ PTY_QUIESCENT_POLL_S = 0.5
 # Provider-qualified choices come from the shared model catalog.
 _DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 
-# ``grok models`` lists one model and the Coding tab sends no ``--model``, so
-# the id only gates the provider-qualified value; flags carry the Coding tab's
+# The id only gates the provider-qualified value; flags carry the Coding tab's
 # effort and permission mode.
-_DISPATCH_GROK_MODELS = ("grok-4.5",)
+_DISPATCH_GROK_MODELS = available_values(GROK_DISPATCH_MODEL_SPECS)
 
 
 def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
