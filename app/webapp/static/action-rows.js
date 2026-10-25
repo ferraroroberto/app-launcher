@@ -46,20 +46,7 @@ export function actionRow(opts) {
   if (opts.density) li.classList.add('action-row--' + opts.density);
   if (opts.id != null) li.dataset.id = opts.id;
 
-  if (opts.favorite) {
-    const fav = document.createElement('button');
-    fav.type = 'button';
-    // `star-btn` stays as the hook the e2e suite has always used.
-    fav.className = 'icon-button action-row-fav star-btn';
-    fav.setAttribute('aria-pressed', opts.favorite.on ? 'true' : 'false');
-    fav.title = opts.favorite.on
-      ? 'Unstar (remove from favorites)'
-      : 'Star (add to favorites)';
-    fav.setAttribute('aria-label', fav.title);
-    fav.innerHTML = icon('star', 'action-row-fav-off') + icon('star-fill', 'action-row-fav-on');
-    fav.addEventListener('click', opts.favorite.onToggle);
-    li.appendChild(fav);
-  }
+  if (opts.favorite) li.appendChild(favoriteStar(opts.favorite));
 
   const main = document.createElement(opts.inert ? 'div' : 'button');
   if (!opts.inert) main.type = 'button';
@@ -80,25 +67,8 @@ export function actionRow(opts) {
   title.textContent = opts.title;
   title.title = opts.title;
   column.appendChild(title);
-  // The context line: the plain meta text, then any exception chips
-  // (glance.js chip()) after it, so a chip never ellipsizes away.
-  let meta = null;
-  const chips = opts.chips || [];
-  if (opts.meta || chips.length) {
-    meta = document.createElement('span');
-    meta.className = 'action-row-meta';
-    if (chips.length) {
-      meta.classList.add('has-chips');
-      const text = document.createElement('span');
-      text.className = 'action-row-meta-text';
-      text.textContent = opts.meta || '';
-      meta.appendChild(text);
-      chips.forEach(function (c) { meta.appendChild(c); });
-    } else {
-      meta.textContent = opts.meta;
-    }
-    column.appendChild(meta);
-  }
+  const meta = metaLine(opts.meta, opts.chips || []);
+  if (meta) column.appendChild(meta);
   if (opts.inert) {
     // Nothing to name: the row's own text is what a reader hears.
   } else if (opts.disabled) {
@@ -141,6 +111,42 @@ export function actionRow(opts) {
   }
 
   return { li: li, main: main, title: title, meta: meta, kebab: kebab };
+}
+
+// The leading favorite star: { on, onToggle }.
+function favoriteStar(favorite) {
+  const fav = document.createElement('button');
+  fav.type = 'button';
+  // `star-btn` stays as the hook the e2e suite has always used.
+  fav.className = 'icon-button action-row-fav star-btn';
+  fav.setAttribute('aria-pressed', favorite.on ? 'true' : 'false');
+  fav.title = favorite.on
+    ? 'Unstar (remove from favorites)'
+    : 'Star (add to favorites)';
+  fav.setAttribute('aria-label', fav.title);
+  fav.innerHTML = icon('star', 'action-row-fav-off') + icon('star-fill', 'action-row-fav-on');
+  fav.addEventListener('click', favorite.onToggle);
+  return fav;
+}
+
+// The context line: the plain meta text, then any exception chips
+// (glance.js chip()) after it, so a chip never ellipsizes away. Null when
+// there is neither.
+function metaLine(text, chips) {
+  if (!text && !chips.length) return null;
+  const meta = document.createElement('span');
+  meta.className = 'action-row-meta';
+  if (chips.length) {
+    meta.classList.add('has-chips');
+    const span = document.createElement('span');
+    span.className = 'action-row-meta-text';
+    span.textContent = text || '';
+    meta.appendChild(span);
+    chips.forEach(function (c) { meta.appendChild(c); });
+  } else {
+    meta.textContent = text;
+  }
+  return meta;
 }
 
 // Where an action-row's kebab menu opens (the vendored row-menu's

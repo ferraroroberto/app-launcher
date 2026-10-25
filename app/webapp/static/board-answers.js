@@ -166,21 +166,7 @@ function renderItem(item, index) {
   const block = el('section', 'tr-ask chief-answer');
   block.dataset.key = itemKey(item, index);
 
-  const head = el('div', 'tr-ask-head chief-answer-head');
-  head.appendChild(el('span', 'chief-answer-num', String(index + 1)));
-  if (item.repo) head.appendChild(el('span', 'tr-ask-header chief-answer-repo', item.repo));
-  if (item.ref) {
-    if (item.ref_url) {
-      const a = el('a', 'chief-answer-ref', item.ref);
-      a.href = item.ref_url;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      head.appendChild(a);
-    } else {
-      head.appendChild(el('span', 'chief-answer-ref', item.ref));
-    }
-  }
-  block.appendChild(head);
+  block.appendChild(answerHead(item, index));
 
   const question = item.question || item.text;
   block.appendChild(el('p', 'tr-ask-question', question));
@@ -250,25 +236,47 @@ function renderItem(item, index) {
   other.appendChild(input);
   // The same dictation Anything else and the chat bar use, bound to this
   // field; the transcript lands in the field for review before Done.
-  if (voiceDictationAvailable()) {
-    const mic = el('button', 'icon-button compose-record tr-ask-mic');
-    mic.type = 'button';
-    mic.title = 'Dictate (voice to text)';
-    mic.setAttribute('aria-label', 'Dictate');
-    mic.setAttribute('aria-pressed', 'false');
-    mic.innerHTML = icon('mic');
-    const dictation = createDictation({
-      button: mic,
-      getTextarea: function () { return input; },
-      onRender: otherChanged,
-    });
-    mic.addEventListener('click', dictation.toggle);
-    otherDictations.push(dictation);
-    other.appendChild(mic);
-  }
+  if (voiceDictationAvailable()) other.appendChild(otherMic(input, otherChanged));
   block.appendChild(other);
   paintItem(block, draft);
   return block;
+}
+
+// An item's head: its number, then its repo and its ref (a link when it has one).
+function answerHead(item, index) {
+  const head = el('div', 'tr-ask-head chief-answer-head');
+  head.appendChild(el('span', 'chief-answer-num', String(index + 1)));
+  if (item.repo) head.appendChild(el('span', 'tr-ask-header chief-answer-repo', item.repo));
+  if (item.ref) {
+    if (item.ref_url) {
+      const a = el('a', 'chief-answer-ref', item.ref);
+      a.href = item.ref_url;
+      a.target = '_blank';
+      a.rel = 'noopener';
+      head.appendChild(a);
+    } else {
+      head.appendChild(el('span', 'chief-answer-ref', item.ref));
+    }
+  }
+  return head;
+}
+
+// The Other field's dictation button; `onRender` runs on each transcript.
+function otherMic(input, onRender) {
+  const mic = el('button', 'icon-button compose-record tr-ask-mic');
+  mic.type = 'button';
+  mic.title = 'Dictate (voice to text)';
+  mic.setAttribute('aria-label', 'Dictate');
+  mic.setAttribute('aria-pressed', 'false');
+  mic.innerHTML = icon('mic');
+  const dictation = createDictation({
+    button: mic,
+    getTextarea: function () { return input; },
+    onRender: onRender,
+  });
+  mic.addEventListener('click', dictation.toggle);
+  otherDictations.push(dictation);
+  return mic;
 }
 
 function disposeOtherDictations() {

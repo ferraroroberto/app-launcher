@@ -298,79 +298,84 @@ export function renderCodingList(host, items) {
     // Stored `vscode` hide values from the old per-button key land on this; inert now.
     row.kebab.dataset.agent = VSCODE_BUTTON_ID;
 
-    // ⋯ project menu — everything a project row
-    // offers besides the favourite launch and the star:
-    //   · Launch <agent> — one row per visible non-favourite agent.
-    //   · GitHub issues — the repo's open-issues list (sorted by last
-    //     updated, excluding audit-meta ledger issues) in a new tab.
-    //     Greyed with a hint when the project has no GitHub remote.
-    //   · Open in VS Code — the project's sibling `.code-workspace`,
-    //     created server-side first if missing. Greyed when the `code` CLI
-    //     isn't on PATH.
-    //   · Show changes — the read-only working-tree viewer (changes-
-    //     overlay.js). Hidden once git-status says the folder isn't a repo.
-    //     This is the only route in from the row: the coloured
-    //     name can't be its own tap target inside the row's launch button.
-    //   · Open folder — the project directory in Explorer on the PC.
-    // Declared in the item list rather than appended conditionally:
-    // the row menu detaches a hidden row instead of marking it [hidden], so a
-    // count of the menu's buttons only ever sees what is actually offered.
-    const menuItems = agents
-      .filter(function (agent) { return agent.id !== favoriteId; })
-      .map(function (agent) {
-        return {
-          dataset: { item: 'project-launch-btn', agent: agent.id },
-          brand: 'b-' + agent.id,
-          label: agent.label,
-          ariaLabel: agent.available
-            ? 'Launch ' + agent.label
-            : agent.label + ' is not installed',
-          hidden: hidden.has(agent.id),
-          disabled: !agent.available,
-          hint: agent.label + ' is not installed',
-          onTap: function () { launchApp(a, agent.id); },
-        };
-      });
-    menuItems.push({
-      dataset: { item: 'project-github-btn' },
-      brand: 'b-github',
-      label: GITHUB_BUTTON_LABEL,
-      ariaLabel: a.repo_url ? 'Open GitHub issues' : 'No GitHub remote',
-      hidden: hidden.has(GITHUB_BUTTON_ID),
-      disabled: !a.repo_url,
-      hint: 'No GitHub remote',
-      onTap: function () {
-        const issuesUrl = a.repo_url +
-          '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
-        window.open(issuesUrl, '_blank', 'noopener,noreferrer');
-      },
-    });
-    projectMenu.attach(a.id, row.kebab, menuItems.concat([
-      {
-        dataset: { item: 'project-vscode-btn' },
-        brand: 'b-vscode',
-        label: 'Open in VS Code', ariaLabel: 'Open in ' + VSCODE_BUTTON_LABEL,
-        disabled: !state.vscodeAvailable,
-        hint: VSCODE_BUTTON_LABEL + ' is not installed',
-        onTap: function () { openInVscode(a); },
-      },
-      {
-        dataset: { item: 'project-changes-btn' }, glyph: 'git-branch',
-        label: 'Show changes',
-        hidden: !!(gs && !gs.is_git),
-        onTap: function () { openChanges(a); },
-      },
-      {
-        dataset: { item: 'project-folder-btn' }, glyph: 'folder',
-        label: 'Open folder',
-        onTap: function () { openFolder(a); },
-      },
-    ]));
+    projectMenu.attach(a.id, row.kebab, projectMenuItems(a, gs, agents, favoriteId, hidden));
     host.appendChild(row.li);
   });
   // An open menu whose row is gone drops its state; a reopened one keeps it.
   projectMenu.endRender();
   projectsFilter.apply();
+}
+
+// The project row's ⋯ menu items (its kebab), in menu order.
+function projectMenuItems(a, gs, agents, favoriteId, hidden) {
+  // ⋯ project menu — everything a project row
+  // offers besides the favourite launch and the star:
+  //   · Launch <agent> — one row per visible non-favourite agent.
+  //   · GitHub issues — the repo's open-issues list (sorted by last
+  //     updated, excluding audit-meta ledger issues) in a new tab.
+  //     Greyed with a hint when the project has no GitHub remote.
+  //   · Open in VS Code — the project's sibling `.code-workspace`,
+  //     created server-side first if missing. Greyed when the `code` CLI
+  //     isn't on PATH.
+  //   · Show changes — the read-only working-tree viewer (changes-
+  //     overlay.js). Hidden once git-status says the folder isn't a repo.
+  //     This is the only route in from the row: the coloured
+  //     name can't be its own tap target inside the row's launch button.
+  //   · Open folder — the project directory in Explorer on the PC.
+  // Declared in the item list rather than appended conditionally:
+  // the row menu detaches a hidden row instead of marking it [hidden], so a
+  // count of the menu's buttons only ever sees what is actually offered.
+  const menuItems = agents
+    .filter(function (agent) { return agent.id !== favoriteId; })
+    .map(function (agent) {
+      return {
+        dataset: { item: 'project-launch-btn', agent: agent.id },
+        brand: 'b-' + agent.id,
+        label: agent.label,
+        ariaLabel: agent.available
+          ? 'Launch ' + agent.label
+          : agent.label + ' is not installed',
+        hidden: hidden.has(agent.id),
+        disabled: !agent.available,
+        hint: agent.label + ' is not installed',
+        onTap: function () { launchApp(a, agent.id); },
+      };
+    });
+  menuItems.push({
+    dataset: { item: 'project-github-btn' },
+    brand: 'b-github',
+    label: GITHUB_BUTTON_LABEL,
+    ariaLabel: a.repo_url ? 'Open GitHub issues' : 'No GitHub remote',
+    hidden: hidden.has(GITHUB_BUTTON_ID),
+    disabled: !a.repo_url,
+    hint: 'No GitHub remote',
+    onTap: function () {
+      const issuesUrl = a.repo_url +
+        '/issues?q=is%3Aissue%20state%3Aopen%20sort%3Aupdated-desc%20-label%3Aaudit-meta';
+      window.open(issuesUrl, '_blank', 'noopener,noreferrer');
+    },
+  });
+  return menuItems.concat([
+    {
+      dataset: { item: 'project-vscode-btn' },
+      brand: 'b-vscode',
+      label: 'Open in VS Code', ariaLabel: 'Open in ' + VSCODE_BUTTON_LABEL,
+      disabled: !state.vscodeAvailable,
+      hint: VSCODE_BUTTON_LABEL + ' is not installed',
+      onTap: function () { openInVscode(a); },
+    },
+    {
+      dataset: { item: 'project-changes-btn' }, glyph: 'git-branch',
+      label: 'Show changes',
+      hidden: !!(gs && !gs.is_git),
+      onTap: function () { openChanges(a); },
+    },
+    {
+      dataset: { item: 'project-folder-btn' }, glyph: 'folder',
+      label: 'Open folder',
+      onTap: function () { openFolder(a); },
+    },
+  ]);
 }
 
 // Open the project directory in Explorer on the PC. Fire-and-report,

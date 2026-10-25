@@ -252,80 +252,86 @@ export function connectTerminalWs(terminal) {
     // isn't immediately wiped out by its own setup.
     armPaintWatchdog(terminal);
   };
-  ws.onmessage = function (event) {
-    // any frame at all — including a shutdown/close-mirror one —
-    // proves the pipe is alive and the "stuck, silently blank" state this
-    // watchdog exists for cannot be it; a definitive close/shutdown gets
-    // its own explicit status regardless.
-    disarmPaintWatchdog(terminal);
-    const route = routeFrame(event.data, terminal.mirror);
-    if (route === 'close-mirror') {
-      if (terminal.onShutdown) terminal.onShutdown();
-      try { window.close(); } catch (_) { /* teardown still stands */ }
-      return;
-    }
-    if (route === 'swallow' || !terminal.term) return;
-    // stamp every PTY output frame so the compose bar's bulk-send
-    // settle watch (terminal-compose.js) can tell "the agent echoed the
-    // paste and went quiet" from "the paste is still being ingested"; it also
-    // adds whether a pasted image is still converting.
-    stampOutput(terminal, event.data);
-    // Active repaint batch: buffer the burst, flush on the first
-    // quiet gap or at the hard deadline — one write, one render.
-    if (terminal.batchBuf) {
-      terminal.batchBuf.push(event.data);
-      if (terminal.batchQuietTimer) clearTimeout(terminal.batchQuietTimer);
-      if (Date.now() >= terminal.batchDeadline) {
-        flushRepaintBatch(terminal);
-      } else {
-        terminal.batchQuietTimer = setTimeout(function () {
-          flushRepaintBatch(terminal);
-        }, REPAINT_BATCH_QUIET_MS);
-      }
-      return;
-    }
-    const buffer = terminal.term.buffer.active;
-    const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
-    // Claude Code's full-viewport repaint would re-commit the rows it
-    // redraws to scrollback: clear scrollback right after it.
-    const data = terminal.repaintClearer
-      ? terminal.repaintClearer(event.data, terminal.term.rows)
-      : event.data;
-    terminal.term.write(data, function () {
-      if (wasAtBottom) {
-        try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
-      }
-    });
-  };
+  ws.onmessage = function (event) { onTerminalFrame(terminal, event); };
   ws.onerror = function () { /* onclose drives UI */ };
-  ws.onclose = function (event) {
-    // a close of any kind (clean or not) means the watchdog's own
-    // "no response yet" message would be stale/wrong the moment it later
-    // fires — every branch below sets its own definitive status instead.
-    disarmPaintWatchdog(terminal);
-    if (terminal !== state.terminal) return;
-    const reason = event && event.reason ? event.reason : '';
-    if (event.code === 4000) { setTerminalStatus('Session ended.'); return; }
-    if (event.code === 4403) {
-      setTerminalStatus((reason || 'Terminal is Tailscale-only') +
-        ' — open the launcher over your Tailscale URL.', { icon: 'lock' });
-      return;
+  ws.onclose = function (event) { onTerminalClose(terminal, event); };
+}
+
+// One WebSocket frame for the open terminal.
+function onTerminalFrame(terminal, event) {
+  // any frame at all — including a shutdown/close-mirror one —
+  // proves the pipe is alive and the "stuck, silently blank" state this
+  // watchdog exists for cannot be it; a definitive close/shutdown gets
+  // its own explicit status regardless.
+  disarmPaintWatchdog(terminal);
+  const route = routeFrame(event.data, terminal.mirror);
+  if (route === 'close-mirror') {
+    if (terminal.onShutdown) terminal.onShutdown();
+    try { window.close(); } catch (_) { /* teardown still stands */ }
+    return;
+  }
+  if (route === 'swallow' || !terminal.term) return;
+  // stamp every PTY output frame so the compose bar's bulk-send
+  // settle watch (terminal-compose.js) can tell "the agent echoed the
+  // paste and went quiet" from "the paste is still being ingested"; it also
+  // adds whether a pasted image is still converting.
+  stampOutput(terminal, event.data);
+  // Active repaint batch: buffer the burst, flush on the first
+  // quiet gap or at the hard deadline — one write, one render.
+  if (terminal.batchBuf) {
+    terminal.batchBuf.push(event.data);
+    if (terminal.batchQuietTimer) clearTimeout(terminal.batchQuietTimer);
+    if (Date.now() >= terminal.batchDeadline) {
+      flushRepaintBatch(terminal);
+    } else {
+      terminal.batchQuietTimer = setTimeout(function () {
+        flushRepaintBatch(terminal);
+      }, REPAINT_BATCH_QUIET_MS);
     }
-    if (event.code === 4404) {
-      setTerminalStatus('Session not found — it may have ended.');
-      return;
+    return;
+  }
+  const buffer = terminal.term.buffer.active;
+  const wasAtBottom = buffer.viewportY >= buffer.baseY - 1;
+  // Claude Code's full-viewport repaint would re-commit the rows it
+  // redraws to scrollback: clear scrollback right after it.
+  const data = terminal.repaintClearer
+    ? terminal.repaintClearer(event.data, terminal.term.rows)
+    : event.data;
+  terminal.term.write(data, function () {
+    if (wasAtBottom) {
+      try { terminal.term.scrollToBottom(); } catch (_) { /* best effort */ }
     }
-    if (event.code === 4401) {
-      clearTerminalToken();
-      terminal.tt = '';
-      setTapToReconnect(terminal, reason || 'Passkey unlock required', { icon: 'lock' });
-      return;
-    }
-    if (!terminal.giveUpAt) {
-      terminal.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
-    }
-    scheduleReconnect(terminal);
-  };
+  });
+}
+
+// The terminal socket closed: say why, or schedule a reconnect.
+function onTerminalClose(terminal, event) {
+  // a close of any kind (clean or not) means the watchdog's own
+  // "no response yet" message would be stale/wrong the moment it later
+  // fires — every branch below sets its own definitive status instead.
+  disarmPaintWatchdog(terminal);
+  if (terminal !== state.terminal) return;
+  const reason = event && event.reason ? event.reason : '';
+  if (event.code === 4000) { setTerminalStatus('Session ended.'); return; }
+  if (event.code === 4403) {
+    setTerminalStatus((reason || 'Terminal is Tailscale-only') +
+      ' — open the launcher over your Tailscale URL.', { icon: 'lock' });
+    return;
+  }
+  if (event.code === 4404) {
+    setTerminalStatus('Session not found — it may have ended.');
+    return;
+  }
+  if (event.code === 4401) {
+    clearTerminalToken();
+    terminal.tt = '';
+    setTapToReconnect(terminal, reason || 'Passkey unlock required', { icon: 'lock' });
+    return;
+  }
+  if (!terminal.giveUpAt) {
+    terminal.giveUpAt = Date.now() + RECONNECT_GIVE_UP_MS;
+  }
+  scheduleReconnect(terminal);
 }
 
 function scheduleReconnect(terminal) {

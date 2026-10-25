@@ -217,25 +217,7 @@ let screenWindow = null;
 
 async function boot() {
   if (screenWindow === null) screenWindow = consumeUrlParam('screen') !== null;
-  const fromUrl = consumeUrlParam('token');
-  if (fromUrl) writeToken(fromUrl);
-  // A launcher-spawned PC mirror window on the ts.net URL carries a
-  // server-minted passkey terminal token — cache it like a
-  // ceremony-minted one. TTL mirrors the server's 12 h _TERMINAL_TOKEN_TTL.
-  const ttFromUrl = consumeUrlParam('tt');
-  if (ttFromUrl) writeTerminalToken(ttFromUrl, 12 * 3600);
-  const mirrorSid = consumeUrlParam('terminal');
-  const sharedSessionSid = consumeUrlParam('session');
-  // Only the launcher-spawned PC mirror window uses ?terminal=<sid>.
-  // Human-copyable links use ?session=<sid>, so opening one on a phone does
-  // not claim mirror ownership or surrender the phone's PTY-size authority.
-  // Recording only the former here is what lets terminal.js tell a real
-  // mirror apart from an ordinary browser.
-  state.isMirrorWindow = !!mirrorSid;
-  // Mark the window closable before the first network call: a mirror whose
-  // /api/config 401s returns below and never reaches announceMirrorWindow
-  // ?session= links stay unmarked.
-  if (mirrorSid) markMirrorWindowEarly(mirrorSid);
+  const { mirrorSid, sharedSessionSid } = consumeSessionParams();
 
   if (!(await fetchConfigForBoot())) return;
   // Each remaining boot fetch fills one panel — none is load-bearing for
@@ -304,11 +286,51 @@ async function boot() {
   // The Board card link fetches the Board itself, so it needs none of these.
   if (boardSid) openBoardCard(boardSid).catch(function () {});
 
-  // Each poll arms once its own first fetch has settled, so it never
-  // overlaps it, and never waits on a slower, unrelated one: a git scan
-  // still running must not hold back the Jobs poll.
+  armPolls({ lists, usage, listeners, running, webauthn, load, git });
+
+  if (deepLinkSid) {
+    await Promise.all([lists, status, webauthn]);
+    const found = state.sessions.find(function (s) {
+      return s.session_id === deepLinkSid;
+    });
+    openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
+  }
+  // safe() never rejects, so neither does this: boot() resolves once every
+  // boot fetch has settled.
+  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
+}
+
+// Cache the URL's tokens and read its session links: ?terminal=<sid> (the
+// launcher-spawned PC mirror) and ?session=<sid> (a shared link).
+function consumeSessionParams() {
+  const fromUrl = consumeUrlParam('token');
+  if (fromUrl) writeToken(fromUrl);
+  // A launcher-spawned PC mirror window on the ts.net URL carries a
+  // server-minted passkey terminal token — cache it like a
+  // ceremony-minted one. TTL mirrors the server's 12 h _TERMINAL_TOKEN_TTL.
+  const ttFromUrl = consumeUrlParam('tt');
+  if (ttFromUrl) writeTerminalToken(ttFromUrl, 12 * 3600);
+  const mirrorSid = consumeUrlParam('terminal');
+  const sharedSessionSid = consumeUrlParam('session');
+  // Only the launcher-spawned PC mirror window uses ?terminal=<sid>.
+  // Human-copyable links use ?session=<sid>, so opening one on a phone does
+  // not claim mirror ownership or surrender the phone's PTY-size authority.
+  // Recording only the former here is what lets terminal.js tell a real
+  // mirror apart from an ordinary browser.
+  state.isMirrorWindow = !!mirrorSid;
+  // Mark the window closable before the first network call: a mirror whose
+  // /api/config 401s returns from boot() and never reaches announceMirrorWindow
+  // ?session= links stay unmarked.
+  if (mirrorSid) markMirrorWindowEarly(mirrorSid);
+  return { mirrorSid, sharedSessionSid };
+}
+
+// Each poll arms once its own first fetch has settled, so it never
+// overlaps it, and never waits on a slower, unrelated one: a git scan
+// still running must not hold back the Jobs poll.
+function armPolls(first) {
   const noop = function () {};
-  lists.then(function () {
+  first.lists.then(function () {
     setInterval(function () {
       fetchApps().catch(noop);
     }, TUNNEL_POLL_MS);
@@ -322,7 +344,7 @@ async function boot() {
       if (!state.sessionView || isWideLayout()) fetchSessions().catch(noop);
     }, SESSIONS_POLL_MS);
   });
-  usage.then(function () {
+  first.usage.then(function () {
     setInterval(function () {
       fetchRateLimits().catch(noop);
       // Context filter rides the same cadence as the usage
@@ -330,29 +352,29 @@ async function boot() {
       fetchContextFilter().catch(noop);
     }, SESSIONS_POLL_MS);
   });
-  listeners.then(function () {
+  first.listeners.then(function () {
     setInterval(function () {
       fetchListeners().catch(noop);
     }, LISTENERS_POLL_MS);
   });
-  running.then(function () {
+  first.running.then(function () {
     setInterval(function () {
       // fetchRunningApps() self-gates: it no-ops unless the Apps tab is up.
       fetchRunningApps().catch(noop);
     }, RUNNING_APPS_POLL_MS);
   });
-  webauthn.then(function () {
+  first.webauthn.then(function () {
     setInterval(function () {
       fetchWebauthnStatus().catch(noop);
     }, WEBAUTHN_POLL_MS);
   });
-  load.then(function () {
+  first.load.then(function () {
     setInterval(function () {
       // Every tab's header shows it; fetchSystemLoad() skips a hidden page.
       fetchSystemLoad().catch(noop);
     }, SYSTEM_LOAD_POLL_MS);
   });
-  git.then(function () {
+  first.git.then(function () {
     setInterval(function () {
       // Always-on git flags: refresh only while the tab that shows
       // them (Code; the Board's Backlog doesn't draw them) is visible and
@@ -370,17 +392,6 @@ async function boot() {
   setInterval(function () {
     fetchBoard().catch(noop);
   }, BOARD_POLL_MS);
-
-  if (deepLinkSid) {
-    await Promise.all([lists, status, webauthn]);
-    const found = state.sessions.find(function (s) {
-      return s.session_id === deepLinkSid;
-    });
-    openTerminal(found || { session_id: deepLinkSid, name: deepLinkSid });
-  }
-  // safe() never rejects, so neither does this: boot() resolves once every
-  // boot fetch has settled.
-  await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
 }
 
 // --------------------------------------------------------- wire + go

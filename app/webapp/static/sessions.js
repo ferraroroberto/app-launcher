@@ -235,156 +235,169 @@ export function renderSessions() {
     : shown;
   if (!chief) host.appendChild(stoppedChiefRow());
 
-  ordered.forEach(function (s) {
-    const li = document.createElement('li');
-    li.className = 'app-item session-item';
-    // The crown avatar marks the chief; the class is the hook.
-    const isChief = isChiefSession(s);
-    if (isChief) li.classList.add('session-item-chief');
-    // Stable hook so a test (or any consumer) can target a specific
-    // session's row by id rather than position — e.g. the kill regression
-    // must act on the session it launched, never ".first".
-    li.dataset.sessionId = s.session_id;
-    // The session in the wide layout's docked view.
-    if (state.sessionView && state.sessionView.session.session_id === s.session_id) {
-      li.setAttribute('aria-current', 'true');
-    }
-
-    const main = document.createElement('div');
-    main.className = 'app-main';
-
-    const remote = s.kind === 'remote';
-    const reader = hasTranscriptReader(s);
-    // Every row opens the session overlay in the mode it was last viewed in
-    // a full-control row has a terminal, a detached row of an agent
-    // with a transcript reader opens in Chat. A detached row of an agent
-    // with *no* reader is tappable too — it opens Chat showing the reader's
-    // own reason line. That shape is reachable today (`ssh` is registered in
-    // SESSION_HOST_AGENTS and will never have a harness history), so no row
-    // is inert and none is stranded. Kept deliberately from the first
-    // attempt: restoring the kebab must not restore the dead row.
-    const open = document.createElement('button');
-    open.className = 'launch-btn session-open';
-    open.type = 'button';
-
-    // The shared session row: the agent's mark in an avatar whose
-    // badge says it is alive (the chief's says crown), a one-line title, and
-    // one meta line, "folder · status · age", then "up uptime". Chips only for exceptions: a detached
-    // row says so; a full-control row is the normal case and says nothing.
-    // The agent resolves against the registry (state.agents) so a new
-    // agent's mark flows through untouched, falling back to Claude Code.
-    const known = state.agents.find(function (a) { return a.id === s.agent; });
-    const chips = [];
-    // What the Board says it needs from you: "needs you" or
-    // "stalled", from the Board's own routing on this poll. No chip when
-    // the placement is unknown.
-    const attention = attentionChip(s);
-    if (attention) chips.push(attention);
-    if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
-    if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
-    const ago = fmtAgo(s.started_at);
-    // The Board's own "status · age", from this poll's Board
-    // placement: the same formatter and words as the Board's row. The word
-    // is dropped where the attention chip already says it; the age
-    // stays. No placement (null) shows neither.
-    const statusBits = sessionStatusBits(s.board_status, s.board_age_seconds, {
-      chief: isChief,
-      hideStatus: !!attention,
-    });
-    // The folder name, not the full Windows path that wrapped to four lines
-    // on a phone. The full path is the row's hover hint and the
-    // row menu's Copy path.
-    const body = sessionRowBody({
-      agentId: known ? known.id : 'claude',
-      agentLabel: known ? known.label : 'Claude Code',
-      badge: isChief ? 'crown' : (s.alive === false ? 'down' : 'alive'),
-      title: sessionTitle(s),
-      meta: [projectFolder(s)].concat(statusBits).filter(Boolean).join(' · '),
-      metaTail: ago ? 'up ' + ago : '',
-      chips: chips,
-      // `.name`: the hook every row test reads the title through.
-      titleClass: 'name',
-    });
-    body.forEach(function (node) { open.appendChild(node); });
-    open.dataset.kind = remote ? 'remote' : 'pty';
-    if (s.project_dir) open.title = s.project_dir;
-    open.addEventListener('click', function () { openSession(s); });
-    main.appendChild(open);
-    li.appendChild(main);
-
-    const actions = document.createElement('div');
-    actions.className = 'row-actions session-actions';
-
-    // One kebab, vertically centred against the full row height, opens the
-    // row's floating action menu — a vertical icon + label list
-    // It sits in its own rail *outside* the row button, so tapping
-    // it opens the menu and never the session, while the row's own 60px tap
-    // target still opens the session. The menu holds, in order:
-    //   · Terminal — full-control rows only: the session overlay in
-    //     Terminal mode (a desktop browser gets the PC mirror window, as a
-    //     row tap does).
-    //   · Chat — every row whose agent has a transcript reader
-    //     (Claude and Codex; hasTranscriptReader mirrors the
-    //     endpoint's flavour map): the same overlay in Chat mode. The reader
-    //     uses the agent's native history, never the PTY capture a detached
-    //     row lacks.
-    //   · Copy path — the full project path the row's context
-    //     line now shortens to its folder name; the toast shows it on a phone.
-    //   · Rename — a launcher-native override that always wins
-    //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
-    //     title clears it, reverting to the automatic precedence.
-    //   · Stop-and-kill, both kinds: the session-host quits
-    //     gracefully then force-falls-back; the window always closes. Keeps
-    //     the `action-stop-close` hook (data-item; danger text, a danger
-    //     tint on press).
-    // The glyph is the kebab the Coding tile's project menu already uses;
-    // the contents are the gear's, unchanged (second attempt).
-    const kebab = document.createElement('button');
-    kebab.type = 'button';
-    kebab.className = 'icon-button session-kebab';
-    kebab.innerHTML = icon('ellipsis-vertical');
-    kebab.title = 'Session actions';
-    kebab.setAttribute('aria-label', 'Session actions');
-    const items = [
-      {
-        dataset: { item: 'session-terminal-btn' }, glyph: 'terminal',
-        label: 'Terminal', ariaLabel: 'Open terminal',
-        hidden: remote,
-        onTap: function () { openSession(s, 'terminal'); },
-      },
-      {
-        dataset: { item: 'session-chat-btn' }, glyph: 'messages-square',
-        label: 'Chat', ariaLabel: 'Open chat',
-        hidden: !reader,
-        onTap: function () { openSession(s, 'chat'); },
-      },
-      {
-        dataset: { item: 'session-copy-path-btn' }, glyph: 'copy',
-        label: 'Copy path', ariaLabel: 'Copy the project path',
-        hidden: !s.project_dir,
-        onTap: function () { copyProjectPath(s.project_dir); },
-      },
-      {
-        glyph: 'pencil', label: 'Rename', ariaLabel: 'Rename session',
-        onTap: function () { openSessionRename(s); },
-      },
-    ];
-    // The chief's own controls sit before Stop, which stays last.
-    if (isChief) Array.prototype.push.apply(items, chiefMenuItems(kebab, s.alive !== false));
-    items.push({
-      dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
-      label: 'Stop', ariaLabel: 'Stop and kill session',
-      onTap: function () { stopSession(s); },
-    });
-    actions.appendChild(kebab);
-    sessionMenu.attach(s.session_id, kebab, items);
-
-    li.appendChild(actions);
-
-    host.appendChild(li);
-  });
+  ordered.forEach(function (s) { host.appendChild(sessionRow(s)); });
   // The open menu's row is gone (session ended) — drop the stale state.
   sessionMenu.endRender();
+}
+
+// One Running-sessions row: the open button, then its kebab rail.
+function sessionRow(s) {
+  const li = document.createElement('li');
+  li.className = 'app-item session-item';
+  // The crown avatar marks the chief; the class is the hook.
+  const isChief = isChiefSession(s);
+  if (isChief) li.classList.add('session-item-chief');
+  // Stable hook so a test (or any consumer) can target a specific
+  // session's row by id rather than position — e.g. the kill regression
+  // must act on the session it launched, never ".first".
+  li.dataset.sessionId = s.session_id;
+  // The session in the wide layout's docked view.
+  if (state.sessionView && state.sessionView.session.session_id === s.session_id) {
+    li.setAttribute('aria-current', 'true');
+  }
+
+  const main = document.createElement('div');
+  main.className = 'app-main';
+
+  const remote = s.kind === 'remote';
+  main.appendChild(sessionOpenButton(s, isChief, remote));
+  li.appendChild(main);
+
+  const actions = document.createElement('div');
+  actions.className = 'row-actions session-actions';
+
+  // One kebab, vertically centred against the full row height, opens the
+  // row's floating action menu — a vertical icon + label list
+  // It sits in its own rail *outside* the row button, so tapping
+  // it opens the menu and never the session, while the row's own 60px tap
+  // target still opens the session. The menu holds, in order:
+  //   · Terminal — full-control rows only: the session overlay in
+  //     Terminal mode (a desktop browser gets the PC mirror window, as a
+  //     row tap does).
+  //   · Chat — every row whose agent has a transcript reader
+  //     (Claude and Codex; hasTranscriptReader mirrors the
+  //     endpoint's flavour map): the same overlay in Chat mode. The reader
+  //     uses the agent's native history, never the PTY capture a detached
+  //     row lacks.
+  //   · Copy path — the full project path the row's context
+  //     line now shortens to its folder name; the toast shows it on a phone.
+  //   · Rename — a launcher-native override that always wins
+  //     in sessionTitle()'s precedence, for both kinds. Submitting a blank
+  //     title clears it, reverting to the automatic precedence.
+  //   · Stop-and-kill, both kinds: the session-host quits
+  //     gracefully then force-falls-back; the window always closes. Keeps
+  //     the `action-stop-close` hook (data-item; danger text, a danger
+  //     tint on press).
+  // The glyph is the kebab the Coding tile's project menu already uses;
+  // the contents are the gear's, unchanged (second attempt).
+  const kebab = document.createElement('button');
+  kebab.type = 'button';
+  kebab.className = 'icon-button session-kebab';
+  kebab.innerHTML = icon('ellipsis-vertical');
+  kebab.title = 'Session actions';
+  kebab.setAttribute('aria-label', 'Session actions');
+  const items = sessionMenuItems(s, kebab, isChief, remote);
+  actions.appendChild(kebab);
+  sessionMenu.attach(s.session_id, kebab, items);
+
+  li.appendChild(actions);
+
+  return li;
+}
+
+// The row's one tap target: it opens the session overlay.
+function sessionOpenButton(s, isChief, remote) {
+  // Every row opens the session overlay in the mode it was last viewed in
+  // a full-control row has a terminal, a detached row of an agent
+  // with a transcript reader opens in Chat. A detached row of an agent
+  // with *no* reader is tappable too — it opens Chat showing the reader's
+  // own reason line. That shape is reachable today (`ssh` is registered in
+  // SESSION_HOST_AGENTS and will never have a harness history), so no row
+  // is inert and none is stranded. Kept deliberately from the first
+  // attempt: restoring the kebab must not restore the dead row.
+  const open = document.createElement('button');
+  open.className = 'launch-btn session-open';
+  open.type = 'button';
+
+  // The shared session row: the agent's mark in an avatar whose
+  // badge says it is alive (the chief's says crown), a one-line title, and
+  // one meta line, "folder · status · age", then "up uptime". Chips only for exceptions: a detached
+  // row says so; a full-control row is the normal case and says nothing.
+  // The agent resolves against the registry (state.agents) so a new
+  // agent's mark flows through untouched, falling back to Claude Code.
+  const known = state.agents.find(function (a) { return a.id === s.agent; });
+  const chips = [];
+  // What the Board says it needs from you: "needs you" or
+  // "stalled", from the Board's own routing on this poll. No chip when
+  // the placement is unknown.
+  const attention = attentionChip(s);
+  if (attention) chips.push(attention);
+  if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
+  if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));
+  const ago = fmtAgo(s.started_at);
+  // The Board's own "status · age", from this poll's Board
+  // placement: the same formatter and words as the Board's row. The word
+  // is dropped where the attention chip already says it; the age
+  // stays. No placement (null) shows neither.
+  const statusBits = sessionStatusBits(s.board_status, s.board_age_seconds, {
+    chief: isChief,
+    hideStatus: !!attention,
+  });
+  // The folder name, not the full Windows path that wrapped to four lines
+  // on a phone. The full path is the row's hover hint and the
+  // row menu's Copy path.
+  const body = sessionRowBody({
+    agentId: known ? known.id : 'claude',
+    agentLabel: known ? known.label : 'Claude Code',
+    badge: isChief ? 'crown' : (s.alive === false ? 'down' : 'alive'),
+    title: sessionTitle(s),
+    meta: [projectFolder(s)].concat(statusBits).filter(Boolean).join(' · '),
+    metaTail: ago ? 'up ' + ago : '',
+    chips: chips,
+    // `.name`: the hook every row test reads the title through.
+    titleClass: 'name',
+  });
+  body.forEach(function (node) { open.appendChild(node); });
+  open.dataset.kind = remote ? 'remote' : 'pty';
+  if (s.project_dir) open.title = s.project_dir;
+  open.addEventListener('click', function () { openSession(s); });
+  return open;
+}
+
+// The row menu's items, in order, Stop last.
+function sessionMenuItems(s, kebab, isChief, remote) {
+  const items = [
+    {
+      dataset: { item: 'session-terminal-btn' }, glyph: 'terminal',
+      label: 'Terminal', ariaLabel: 'Open terminal',
+      hidden: remote,
+      onTap: function () { openSession(s, 'terminal'); },
+    },
+    {
+      dataset: { item: 'session-chat-btn' }, glyph: 'messages-square',
+      label: 'Chat', ariaLabel: 'Open chat',
+      hidden: !hasTranscriptReader(s),
+      onTap: function () { openSession(s, 'chat'); },
+    },
+    {
+      dataset: { item: 'session-copy-path-btn' }, glyph: 'copy',
+      label: 'Copy path', ariaLabel: 'Copy the project path',
+      hidden: !s.project_dir,
+      onTap: function () { copyProjectPath(s.project_dir); },
+    },
+    {
+      glyph: 'pencil', label: 'Rename', ariaLabel: 'Rename session',
+      onTap: function () { openSessionRename(s); },
+    },
+  ];
+  // The chief's own controls sit before Stop, which stays last.
+  if (isChief) Array.prototype.push.apply(items, chiefMenuItems(kebab, s.alive !== false));
+  items.push({
+    dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
+    label: 'Stop', ariaLabel: 'Stop and kill session',
+    onTap: function () { stopSession(s); },
+  });
+  return items;
 }
 
 // The row menu's Copy path: the toast names the path, so a phone (with no

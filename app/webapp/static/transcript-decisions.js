@@ -111,80 +111,7 @@ export function renderQuestion(e, toolErrors, answering) {
   }
   card.appendChild(head);
   const simple = e.questions.length === 1 && !e.questions[0].multiSelect;
-  e.questions.forEach(function (q, qi) {
-    const sec = document.createElement('section');
-    sec.className = 'tr-ask-q';
-    sec.dataset.q = String(qi);
-    if (q.header) {
-      const chip = document.createElement('span');
-      chip.className = 'tr-ask-header';
-      chip.textContent = q.header;
-      sec.appendChild(chip);
-    }
-    const text = document.createElement('p');
-    text.className = 'tr-ask-question';
-    text.textContent = q.question || '';
-    sec.appendChild(text);
-    if (q.multiSelect) {
-      const hint = document.createElement('p');
-      hint.className = 'tr-ask-hint';
-      hint.textContent = 'Pick any number';
-      sec.appendChild(hint);
-    }
-    const list = document.createElement('div');
-    list.className = 'tr-ask-options';
-    list.setAttribute('role', 'group');
-    list.setAttribute('aria-label', q.header || q.question || 'Options');
-    q.options.forEach(function (opt, oi) {
-      const b = askOption({
-        n: oi + 1, label: opt.label, description: opt.description, mark: true,
-        onTap: function () { onOptionTap(li, qi, oi + 1); },
-      });
-      b.dataset.n = String(oi + 1);
-      b.disabled = true;
-      list.appendChild(b);
-    });
-    sec.appendChild(list);
-    // "Type something" — single-select only: typing into a multi-select's
-    // text row was not probed (src/ask_user_question.py).
-    if (!q.multiSelect) {
-      const other = document.createElement('div');
-      other.className = 'tr-ask-other';
-      other.hidden = true;
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'tr-ask-input';
-      input.placeholder = 'Or type an answer';
-      input.setAttribute('aria-label', 'Type an answer to: ' + (q.question || 'the question'));
-      input.maxLength = 500;
-      input.addEventListener('input', function () { onTextInput(li, qi, input.value); });
-      other.appendChild(input);
-      if (simple) {
-        const send = document.createElement('button');
-        send.type = 'button';
-        send.className = 'button-tint tr-ask-send';
-        send.textContent = 'Send';
-        send.disabled = true;
-        send.addEventListener('click', function () {
-          const t = input.value.trim();
-          if (t) submitAnswer(li, [{ text: t }]);
-        });
-        input.addEventListener('keydown', function (ev) {
-          if (ev.key === 'Enter' && input.value.trim()) {
-            ev.preventDefault();
-            submitAnswer(li, [{ text: input.value.trim() }]);
-          }
-        });
-        other.appendChild(send);
-      }
-      sec.appendChild(other);
-    }
-    const typed = document.createElement('p');
-    typed.className = 'tr-ask-typed';
-    typed.hidden = true;
-    sec.appendChild(typed);
-    card.appendChild(sec);
-  });
+  e.questions.forEach(function (q, qi) { card.appendChild(questionSection(li, q, qi, simple)); });
   const status = document.createElement('p');
   status.className = 'tr-ask-status';
   status.setAttribute('role', 'status');
@@ -214,6 +141,83 @@ export function renderQuestion(e, toolErrors, answering) {
   const out = questionOutcome(e, null);
   paintQuestion(li, out ? (out.answers ? 'answered' : 'closed') : 'history', out);
   return li;
+}
+
+// One question's section of the card: its header chip, text, options and,
+// single-select only, the typed-answer row.
+function questionSection(li, q, qi, simple) {
+  const sec = document.createElement('section');
+  sec.className = 'tr-ask-q';
+  sec.dataset.q = String(qi);
+  if (q.header) {
+    const chip = document.createElement('span');
+    chip.className = 'tr-ask-header';
+    chip.textContent = q.header;
+    sec.appendChild(chip);
+  }
+  const text = document.createElement('p');
+  text.className = 'tr-ask-question';
+  text.textContent = q.question || '';
+  sec.appendChild(text);
+  if (q.multiSelect) {
+    const hint = document.createElement('p');
+    hint.className = 'tr-ask-hint';
+    hint.textContent = 'Pick any number';
+    sec.appendChild(hint);
+  }
+  const list = document.createElement('div');
+  list.className = 'tr-ask-options';
+  list.setAttribute('role', 'group');
+  list.setAttribute('aria-label', q.header || q.question || 'Options');
+  q.options.forEach(function (opt, oi) {
+    const b = askOption({
+      n: oi + 1, label: opt.label, description: opt.description, mark: true,
+      onTap: function () { onOptionTap(li, qi, oi + 1); },
+    });
+    b.dataset.n = String(oi + 1);
+    b.disabled = true;
+    list.appendChild(b);
+  });
+  sec.appendChild(list);
+  // "Type something" — single-select only: typing into a multi-select's
+  // text row was not probed (src/ask_user_question.py).
+  if (!q.multiSelect) {
+    const other = document.createElement('div');
+    other.className = 'tr-ask-other';
+    other.hidden = true;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'tr-ask-input';
+    input.placeholder = 'Or type an answer';
+    input.setAttribute('aria-label', 'Type an answer to: ' + (q.question || 'the question'));
+    input.maxLength = 500;
+    input.addEventListener('input', function () { onTextInput(li, qi, input.value); });
+    other.appendChild(input);
+    if (simple) {
+      const send = document.createElement('button');
+      send.type = 'button';
+      send.className = 'button-tint tr-ask-send';
+      send.textContent = 'Send';
+      send.disabled = true;
+      send.addEventListener('click', function () {
+        const t = input.value.trim();
+        if (t) submitAnswer(li, [{ text: t }]);
+      });
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' && input.value.trim()) {
+          ev.preventDefault();
+          submitAnswer(li, [{ text: input.value.trim() }]);
+        }
+      });
+      other.appendChild(send);
+    }
+    sec.appendChild(other);
+  }
+  const typed = document.createElement('p');
+  typed.className = 'tr-ask-typed';
+  typed.hidden = true;
+  sec.appendChild(typed);
+  return sec;
 }
 
 // The live card's in-progress picks, one slot per question, kept on the
