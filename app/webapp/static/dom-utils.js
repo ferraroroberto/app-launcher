@@ -366,7 +366,19 @@ export function wireModelCombo(root, onChange) {
         }
         list.appendChild(option);
       });
-      if (findOption(current)) apply(current, false);
+      // A value the new list dropped (a model hidden in Settings) moves to the
+      // first enabled option of its agent (`codex:` of `codex:gpt-…`), else
+      // the first enabled option, so the trigger never names a missing choice.
+      if (findOption(current)) {
+        apply(current, false);
+      } else {
+        const agent = current.includes(':') ? current.split(':')[0] + ':' : null;
+        const enabled = enabledOptions();
+        const next = enabled.find(function (option) {
+          return agent && option.dataset.value.startsWith(agent);
+        }) || enabled[0];
+        if (next) apply(next.dataset.value, false);
+      }
     },
     destroy: function () {
       close(false);

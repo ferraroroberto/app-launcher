@@ -78,6 +78,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # every other visible one is a row in that row's ⋯ menu.
         "coding_favorite_agent": cfg.coding_favorite_agent,
         "coding_model_choice": cfg.coding_model_choice,
+        # Models the Projects, Skills and Board dropdowns leave out.
+        "hidden_models": cfg.hidden_models,
         # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
         # ...and start by themselves when the webapp starts.
@@ -262,6 +264,7 @@ _PATCH_KEYS = frozenset({
     "coding_hidden_agents",
     "coding_favorite_agent",
     "coding_model_choice",
+    "hidden_models",
     "hide_channel_sessions",
     "autostart_channel_sessions",
     "channel_model",
@@ -316,13 +319,11 @@ async def patch_config(request: Request) -> Dict[str, Any]:
         patch["outbox_scratch_roots"] = _checked_outbox_roots(
             patch["outbox_scratch_roots"], cfg.outbox_scratch_roots
         )
-    # Same coercion for the hidden-button list — a stray scalar
-    # must never reach the config as anything but a clean string list.
-    if "coding_hidden_agents" in patch:
-        raw = patch["coding_hidden_agents"]
-        patch["coding_hidden_agents"] = [
-            str(p).strip() for p in (raw or []) if str(p).strip()
-        ]
+    # Same coercion for the hidden-button and hidden-model lists — a stray
+    # scalar must never reach the config as anything but a clean string list.
+    for key in ("coding_hidden_agents", "hidden_models"):
+        if key in patch:
+            patch[key] = [str(p).strip() for p in (patch[key] or []) if str(p).strip()]
     if "usage_providers" in patch:
         patch["usage_providers"] = _checked_usage_providers(patch["usage_providers"])
     # The threshold is a whole percent. A bool is an int in Python

@@ -42,7 +42,7 @@ from src.session_model import attach_models, session_model_label
     ({"agent": "codex", "flags": "", "live_title": "proj | gpt-6-astra high"}, "Astra"),
     ({"agent": "codex", "flags": "", "live_title": "proj"}, None),
     ({"agent": "codex", "flags": "", "live_title": "proj | something-else"}, None),
-    ({"agent": "codex", "flags": "--model gpt-5.6-luna", "live_title": "proj | unknown-model"}, "Luna"),
+    ({"agent": "codex", "flags": "--model gpt-6-luna", "live_title": "proj | unknown-model"}, "Luna"),
     # Pi: the provider-qualified model arg.
     ({"agent": "pi", "flags": "--provider openai-codex --model openai-codex/gpt-5.6-sol --thinking high"}, "Sol"),
     ({"agent": "pi", "flags": "--provider claude-agent-sdk --model claude-agent-sdk/claude-opus-5"}, "Opus"),

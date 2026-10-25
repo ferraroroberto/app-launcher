@@ -161,7 +161,7 @@ class TestCodexGolden:
     """Codex moved onto the resolver with byte-identical argv (#1711)."""
 
     GOLDEN_FRESH = {
-        "gpt-5.6-luna": "--model gpt-5.6-luna --ask-for-approval never --sandbox workspace-write -c model_reasoning_effort=xhigh",
+        "gpt-6-luna": "--model gpt-6-luna --ask-for-approval never --sandbox workspace-write -c model_reasoning_effort=xhigh",
         "gpt-5.6-terra": "--model gpt-5.6-terra --ask-for-approval never --sandbox workspace-write -c model_reasoning_effort=medium",
         "gpt-5.6-sol": "--model gpt-5.6-sol --ask-for-approval never --sandbox workspace-write -c model_reasoning_effort=low",
         "gpt-6-astra": "--model gpt-6-astra --ask-for-approval never --sandbox workspace-write -c model_reasoning_effort=medium",
@@ -169,7 +169,7 @@ class TestCodexGolden:
 
     @pytest.mark.parametrize("model", sorted(GOLDEN_FRESH))
     def test_fresh_launch_for_every_model(self, model):
-        cfg = _cfg(codex_model="gpt-5.6-luna", codex_effort="xhigh")
+        cfg = _cfg(codex_model="gpt-6-luna", codex_effort="xhigh")
         assert build_codex_flags(cfg, model_override=model) == self.GOLDEN_FRESH[model]
 
     @pytest.mark.parametrize("model", sorted(GOLDEN_FRESH))

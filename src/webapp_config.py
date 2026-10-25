@@ -43,6 +43,7 @@ from src.model_catalog import (
 )
 
 from src._json_io import atomic_write_json
+from src.model_visibility import DEFAULT_HIDDEN_MODELS, load_hidden_models, migrate_renamed_models, with_visible_defaults  # noqa: E501
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ DEFAULT_CLAUDE_PERMISSION_MODE = "auto"
 # encoded in the shared catalog; Luna intentionally defaults to Extra High.
 VALID_CODEX_MODELS = available_values(CODEX_MODEL_SPECS)
 VALID_CODEX_EFFORTS = ("low", "medium", "high", "xhigh", "max", "ultra")
-DEFAULT_CODEX_MODEL = "gpt-5.6-luna"
+DEFAULT_CODEX_MODEL = "gpt-6-luna"
 DEFAULT_CODEX_MODEL_EFFORTS = {
     value: spec["default_effort"]
     for value, spec in CODEX_MODEL_SPECS.items()
@@ -341,6 +342,8 @@ class WebappConfig:
     # by default and needs no config migration. Stored like
     # `coding_favorites` — a plain string list in this same config.
     coding_hidden_agents: list = field(default_factory=list)
+    # Provider-qualified models the dropdowns leave out (`src.model_visibility`).
+    hidden_models: list = field(default_factory=lambda: list(DEFAULT_HIDDEN_MODELS))
     # The one agent whose launch button stays on a Coding project row.
     # Every other visible agent — and the GitHub-issues
     # button — moved into the row's ⋯ menu, so the row is three controls
@@ -768,6 +771,7 @@ _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "claude_model_efforts": _load_claude_model_efforts,
     "pi_model_efforts": _load_pi_model_efforts,
     "usage_providers": load_usage_providers,
+    "hidden_models": load_hidden_models,
 }
 
 
@@ -969,21 +973,17 @@ def load_webapp_config(
         cfg = WebappConfig()
         return _apply_session_host_override(cfg) if apply_env_override else cfg
 
-    raw = _migrate_legacy_keys(raw, target)
+    raw = migrate_renamed_models(_migrate_legacy_keys(raw, target))
 
-    # One generic pass over the dataclass's own field list.
-    # The ~55 settings used to be enumerated three times — once as fields,
-    # once as a per-field ``raw.get`` block here, once as a payload dict in
-    # ``save_webapp_config`` — which meant three edits per new setting and a
-    # field silently stuck on its default whenever one was forgotten. The
-    # dataclass already carries the name, the type and the default, so it is
-    # the single declaration both directions now read.
+    # One generic pass over the dataclass's own field list: the dataclass is
+    # the single declaration of name, type and default both directions read.
     cfg = WebappConfig(
         **{
             spec.name: _load_field(spec, raw)
             for spec in dataclass_fields(WebappConfig)
         }
     )
+    cfg = with_visible_defaults(cfg, VALID_CODING_MODEL_CHOICES)
     if apply_env_override:
         _apply_session_host_override(cfg)
     _validate(cfg)
@@ -1018,7 +1018,7 @@ def update_webapp_config(**fields) -> WebappConfig:
     life — only the on-disk file is protected.
     """
     current = load_webapp_config(apply_env_override=False)
-    patched = replace(current, **fields)
+    patched = with_visible_defaults(replace(current, **fields), VALID_CODING_MODEL_CHOICES)
     _validate(patched)
     save_webapp_config(patched)
     return _apply_session_host_override(patched)

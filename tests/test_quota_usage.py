@@ -111,7 +111,7 @@ def test_source_states_remain_distinct(monkeypatch, state):
     view = _read(
         monkeypatch,
         {"sources": [_source("codex", "openai", observations, state=state, reason=state)], "pools": []},
-        "codex:gpt-5.6-luna",
+        "codex:gpt-6-luna",
     )
     assert view["state"] == state
     assert view["available"] is False
@@ -205,7 +205,7 @@ def test_stale_reset_passed_evidence_stays_historical(monkeypatch):
             )],
             "pools": [],
         },
-        "codex:gpt-5.6-luna",
+        "codex:gpt-6-luna",
     )
     assert view["state"] == "stale"
     assert view["observations"][0]["windows"][0]["used_percentage"] == 42

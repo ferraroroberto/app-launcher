@@ -77,14 +77,14 @@ class TestResumeRefresh:
     def test_codex_carries_the_prompt_after_its_flags(self, monkeypatch):
         from app.webapp.routers import life_os_conversations
         async def kept(cfg, agent, sid):
-            return "gpt-5.6-luna", True
+            return "gpt-6-luna", True
         monkeypatch.setattr(life_os_conversations, "_kept_model", kept)
         capture = self.skill_md.parent / "conversations" / CAPTURE
         capture.write_text(capture.read_text(encoding="utf-8").replace('agent="claude"', 'agent="codex"'),
                            encoding="utf-8")
         self.git = "4102444800"
         flags = self._resume()
-        assert flags.startswith(f"resume {RESUMABLE_SID} --model gpt-5.6-luna")
+        assert flags.startswith(f"resume {RESUMABLE_SID} --model gpt-6-luna")
         assert flags.endswith(f'"{refresh.refresh_prompt("journal-daily")}"')
 
 

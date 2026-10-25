@@ -350,13 +350,15 @@ def test_server_catalog_populates_shared_model_selectors(
     authed_page: Page, base_url: str
 ) -> None:
     """#845/#851: every model surface uses the shared catalog-backed picker."""
+    # Every catalog model on, whatever the copied config hides.
+    authed_page.request.post(f"{base_url}/api/config", data={"hidden_models": []})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_projects(authed_page)
 
     coding = authed_page.locator("#codingModelMenu button[data-value]")
     expect(coding).to_have_count(7, timeout=5_000)
     expect(
-        authed_page.locator("#codingModelMenu [data-value='codex:gpt-5.6-luna']")
+        authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-luna']")
     ).to_have_text("Codex · Luna")
     expect(
         authed_page.locator("#codingModelMenu [data-value='codex:gpt-6-astra']")

@@ -50,10 +50,10 @@
   "claude_permission_mode": "auto",
   "antigravity_skip_permissions": false,
   "antigravity_sandbox": false,
-  "codex_model": "gpt-5.6-luna",
+  "codex_model": "gpt-6-luna",
   "codex_effort": "xhigh",
   "codex_model_efforts": {
-    "gpt-5.6-luna": "xhigh",
+    "gpt-6-luna": "xhigh",
     "gpt-5.6-terra": "medium",
     "gpt-5.6-sol": "low",
     "gpt-6-astra": "medium"

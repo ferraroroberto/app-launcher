@@ -314,12 +314,12 @@ class TestResumeLatest:
         self.app.state.webapp_config.codex_model = "gpt-6-astra"
         self._add_capture("2026-09-03-0800-seed-order.md", CODEX_SID, agent="codex",
                           mtime=time.time() + 60)
-        _codex_rollout(self.home, CODEX_SID, "gpt-5.6-luna")
+        _codex_rollout(self.home, CODEX_SID, "gpt-5.6-terra")
         resp = self.client.post(self.ENDPOINT, json={"model": "claude:opus"})
         assert resp.status_code == 200, resp.text
         assert self.captured["agent"] == "codex"
         assert f"resume {CODEX_SID}" in self.captured["flags"]
-        assert "--model gpt-5.6-luna" in self.captured["flags"]
+        assert "--model gpt-5.6-terra" in self.captured["flags"]
         assert resp.json()["model_kept"] is True
 
     def test_codex_without_a_readable_model_says_it_was_not_kept(self):

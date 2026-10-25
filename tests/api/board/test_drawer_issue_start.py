@@ -210,7 +210,7 @@ class TestIssueStart:
             "/api/board/issues/start",
             json={
                 "repo": "myrepo", "number": 42, "mode": "start",
-                "model": "codex:gpt-5.6-luna", "title": "Codex title",
+                "model": "codex:gpt-6-luna", "title": "Codex title",
             },
         )
         assert resp.status_code == 200

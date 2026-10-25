@@ -35,8 +35,10 @@ CLAUDE_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
 # the legacy tuple it belongs to (``webapp_config.LEGACY_CLAUDE_MODELS``).
 LEGACY_CLAUDE_DEFAULT_EFFORTS: Dict[str, str] = {"haiku": "medium"}
 
+# Ids from ``codex debug models`` (CLI 0.164.0). Luna 6.0 replaced Luna 5.6;
+# ``model_visibility.RENAMED_CODEX_MODELS`` carries a saved id over.
 CODEX_MODEL_SPECS: Dict[str, Dict[str, Any]] = {
-    "gpt-5.6-luna": {
+    "gpt-6-luna": {
         "label": "Luna", "efforts": ("low", "medium", "high", "xhigh", "max"),
         "default_effort": "xhigh", "available": True,
     },

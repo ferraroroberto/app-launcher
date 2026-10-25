@@ -22,8 +22,10 @@ suits you. Verify with `codex --version`.
 > rather than API-key billing. The launcher only resolves the `codex` binary on
 > `PATH` and spawns it.
 >
-> Launch defaults explicitly select **Luna**, **Terra**, or **Sol** and show
-> only reasoning levels supported by that model. Each model remembers its
+> Launch defaults offer **Luna** (`gpt-6-luna`) by default; Codex on a ChatGPT
+> sign-in refuses Terra, Sol and Astra, which stay in the catalog switched off
+> under Settings › Launch defaults › Models in the dropdowns. The pickers show
+> only reasoning levels supported by the chosen model. Each model remembers its
 > effort; Luna defaults to **Extra High**. The **Permission** selector mirrors
 > Claude's: *Auto mode* runs with no prompts but keeps the sandbox; *Skip
 > permissions* is the all-bypass switch.

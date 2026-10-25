@@ -171,9 +171,9 @@ def test_pre_model_codex_config_adopts_luna_extra_high(tmp_path):
 
     cfg = load_webapp_config(target, apply_env_override=False)
 
-    assert cfg.codex_model == "gpt-5.6-luna"
+    assert cfg.codex_model == "gpt-6-luna"
     assert cfg.codex_effort == "xhigh"
-    assert cfg.codex_model_efforts["gpt-5.6-luna"] == "xhigh"
+    assert cfg.codex_model_efforts["gpt-6-luna"] == "xhigh"
 
 
 @pytest.mark.parametrize(

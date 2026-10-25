@@ -503,12 +503,14 @@ class TestPatchConfig:
 
     def test_codex_model_remembers_compatible_effort(self, webapp_client):
         client, app, _ = webapp_client
+        # Terra, Sol and Astra are hidden by default; a hidden default falls back.
+        client.post("/api/config", json={"hidden_models": []})
         assert client.post(
             "/api/config",
             json={"codex_model": "gpt-5.6-terra", "codex_effort": "ultra"},
         ).status_code == 200
         assert client.post(
-            "/api/config", json={"codex_model": "gpt-5.6-luna"}
+            "/api/config", json={"codex_model": "gpt-6-luna"}
         ).status_code == 200
         assert app.state.webapp_config.codex_effort == "xhigh"
         assert client.post(
@@ -521,6 +523,8 @@ class TestPatchConfig:
 
     def test_astra_model_and_effort_can_be_persisted(self, webapp_client):
         client, app, _ = webapp_client
+        # Terra, Sol and Astra are hidden by default; a hidden default falls back.
+        client.post("/api/config", json={"hidden_models": []})
         resp = client.post(
             "/api/config",
             json={"codex_model": "gpt-6-astra", "codex_effort": "max"},
@@ -575,7 +579,7 @@ class TestPatchConfig:
 
         # The retired key is not in the allow-list: it neither 400s nor
         # lands on the config, so a stale client cannot resurrect it.
-        resp = client.post("/api/config", json={"copilot_model": "gpt-5.6-luna"})
+        resp = client.post("/api/config", json={"copilot_model": "gpt-6-luna"})
         assert resp.status_code == 200
         assert not hasattr(app.state.webapp_config, "copilot_model")
         assert "--model" not in client.get("/api/config").json()["copilot"][
