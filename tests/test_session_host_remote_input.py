@@ -19,8 +19,8 @@ import time
 
 import pytest
 
-from src import session_host
-from src.session_host import RemoteInputOutcome, RemoteSession
+from src.session_hosting import remote
+from src.session_hosting.remote import RemoteInputOutcome, RemoteSession
 from src.session_host_input import (
     DELIVERED_UNCONFIRMED,
     INPUT_CONSOLE_FAILED,
@@ -52,7 +52,7 @@ def _remote(agent: str = "claude", alive: bool = True, monkeypatch=None) -> Remo
         agent=agent,
     )
     if monkeypatch is not None:
-        monkeypatch.setattr(session_host, "is_pid_alive", lambda pid, started: alive)
+        monkeypatch.setattr(remote, "is_pid_alive", lambda pid, started: alive)
     return session
 
 
@@ -61,7 +61,7 @@ def _capture_run(monkeypatch, completed: _Completed, calls: list) -> None:
         calls.append((argv, kwargs))
         return completed
 
-    monkeypatch.setattr(session_host.subprocess, "run", fake_run)
+    monkeypatch.setattr(remote.subprocess, "run", fake_run)
 
 
 def test_submit_spawns_helper_with_text_on_stdin_and_no_window(monkeypatch):
@@ -80,8 +80,9 @@ def test_submit_spawns_helper_with_text_on_stdin_and_no_window(monkeypatch):
     assert "continue" not in " ".join(argv)
     assert kwargs["creationflags"] & NO_WINDOW == NO_WINDOW
     assert kwargs["encoding"] == "utf-8"
-    assert kwargs["cwd"] == str(session_host._REPO_ROOT)
-    assert kwargs["timeout"] == session_host._CONSOLE_INPUT_TIMEOUT_S
+    assert kwargs["cwd"] == str(remote._REPO_ROOT)
+    assert (remote._REPO_ROOT / "src" / "console_input.py").is_file()
+    assert kwargs["timeout"] == remote._CONSOLE_INPUT_TIMEOUT_S
 
     assert isinstance(outcome, RemoteInputOutcome)
     assert outcome.reason == INPUT_UNVERIFIED
@@ -130,7 +131,7 @@ def test_breadcrumb_logs_unit_count_never_the_text(monkeypatch, caplog):
     session = _remote(monkeypatch=monkeypatch)
     secret = "the-secret-steer-nobody-logs"
 
-    with caplog.at_level("INFO", logger="src.session_host"):
+    with caplog.at_level("INFO", logger="src.session_hosting.remote"):
         session.submit_input(secret, submit=True)
 
     text = caplog.text
@@ -206,7 +207,7 @@ def test_helper_timeout_is_a_console_failure(monkeypatch):
     def fake_run(argv, **kwargs):
         raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
 
-    monkeypatch.setattr(session_host.subprocess, "run", fake_run)
+    monkeypatch.setattr(remote.subprocess, "run", fake_run)
     session = _remote(monkeypatch=monkeypatch)
 
     outcome = session.submit_input("hello", submit=True)
@@ -228,13 +229,13 @@ def test_blank_data_without_submit_is_a_noop(monkeypatch):
 
 def test_helper_module_stays_off_the_session_host_import_closure():
     # The whole point of shelling out (CLAUDE.md "## session-host"): a fix
-    # to the helper must not need the :8446 restart. If session_host ever
+    # to the helper must not need the :8446 restart. If the remote module ever
     # imports it, tests/test_session_host_paths.py will also demand it be
     # declared — this pins the *intent* next to the code that relies on it.
     import ast
     from pathlib import Path
 
-    tree = ast.parse(Path(session_host.__file__).read_text(encoding="utf-8"))
+    tree = ast.parse(Path(remote.__file__).read_text(encoding="utf-8"))
     imported = {
         node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
     } | {
@@ -242,7 +243,7 @@ def test_helper_module_stays_off_the_session_host_import_closure():
         for alias in node.names
     }
     assert "src.console_input" not in imported
-    assert session_host._CONSOLE_INPUT_MODULE == "src.console_input"
+    assert remote._CONSOLE_INPUT_MODULE == "src.console_input"
 
 
 def test_pty_submit_input_is_untouched_by_the_remote_path():

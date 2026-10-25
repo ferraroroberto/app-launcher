@@ -35,7 +35,7 @@ SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: Pre-existing bare timeouts, not part of #1793's two findings — fix and
 #: remove an entry in its own PR rather than growing this set.
 BASELINE = {
-    ("src/session_host.py", 1023),      # taskkill on a detached session's kill
+    ("src/session_hosting/remote.py", 332),  # taskkill on a detached session's kill
     ("app/webapp/manager.py", 115),     # tray subprocess readiness probe
     ("app/tray/tailscale.py", 58),
     ("app/tray/tray.py", 275),

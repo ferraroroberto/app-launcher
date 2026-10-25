@@ -23,6 +23,7 @@ import pytest
 
 from src import session_host_input
 from src.session_host import PtySession
+from src.session_hosting import deferred_submit
 from src.session_host_input import (
     INPUT_DEFER_FAILED,
     INPUT_DEFER_UNCLEAR,
@@ -218,7 +219,7 @@ def test_a_steer_the_renderer_never_repaints_is_still_submitted(scripted, monkey
     there: Enter goes in."""
     session, pty, clock = scripted
     # The evidence's own 113 s, past the harness's shortened give-up.
-    monkeypatch.setattr(session_host_input, "_DEFER_CAP_MS", 300_000)
+    monkeypatch.setattr(deferred_submit, "_DEFER_CAP_MS", 300_000)
 
     args, kw = _defer_steer(
         session, pty, clock, monkeypatch, _CHIP_FRAME, _status_row_ticks_for(pty, clock, 113)
@@ -344,4 +345,4 @@ def test_a_superseded_watcher_leaves_the_newer_verdict(scripted, monkeypatch):
 
 def test_queued_markers_survive_normalization():
     normalized = session_host_input._normalize_echo(_QUEUED_FRAME)
-    assert all(marker in normalized for marker in session_host_input._QUEUED_MARKERS)
+    assert all(marker in normalized for marker in deferred_submit._QUEUED_MARKERS)

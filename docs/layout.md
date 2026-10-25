@@ -37,10 +37,11 @@ app-launcher/
 │   ├── registry.py             # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py              # bat classifier + project-dir + life-os skill discovery
 │   ├── launcher.py             # spawn_bat / spawn_claude_session helpers
-│   ├── session_host.py         # PtySession + RemoteSession + SessionManager (ConPTY via pywinpty)
+│   ├── session_host.py         # PtySession + SessionManager (ConPTY via pywinpty)
 │   ├── session_host_scan.py    # pure PTY-protocol byte scanning (OSC title, colour-OSC, bracketed-paste, prompt-title)
 │   ├── session_host_composer.py # typed-but-unsent composer state inferred from PTY input (composer_dirty)
-│   ├── session_host_input.py   # server-initiated input-delivery protocol (settle-then-submit, ingest/echo verify, deferred-submit watcher)
+│   ├── session_host_input.py   # server-initiated input-delivery protocol (settle-then-submit, ingest/echo verify, outcome vocabulary)
+│   ├── session_hosting/        # session-host parts: session kinds + stop modes, child env, detached console sessions, deferred-submit watcher
 │   ├── session_host_paths.py   # session-host CLAUDE.md-declared path parsing (stale_relevant scoping)
 │   ├── vt_snapshot.py          # headless pyte VT mirror per fullscreen session (reconnect snapshot)
 │   ├── _loopback_http.py       # shared loopback HTTP client base (session/voice/photo/tts)

@@ -10,8 +10,6 @@ from src.session_host_input import (
     _BULK_FLOOR_MS,
     _BULK_QUIET_MS,
     _BULK_SUBMIT_THRESHOLD_CHARS,
-    _DEFER_CAP_MS,
-    _DEFER_QUIET_MS,
     _INGEST_CAP_MS,
     INPUT_DEFER_TIMEOUT,
     INPUT_DEFER_UNCLEAR,
@@ -24,6 +22,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
 )
 from src import session_host_input
+from src.session_hosting.deferred_submit import _DEFER_CAP_MS, _DEFER_QUIET_MS
 
 from tests.unit.session_host._support import _FakeClock, _echo, _make_session
 

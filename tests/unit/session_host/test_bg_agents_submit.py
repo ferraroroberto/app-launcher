@@ -31,6 +31,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
 )
 from src.session_host import PtySession
+from src.session_hosting import deferred_submit
 from tests.unit.session_host._support import _make_session
 
 # Captured before the ``clock`` fixture swaps time.sleep for its fake: the
@@ -114,7 +115,7 @@ class _ScriptedPty:
 
 @pytest.fixture
 def scripted(clock, monkeypatch):  # noqa: F811 — the shared fake-clock fixture
-    monkeypatch.setattr(session_host_input, "_DEFER_CAP_MS", _TEST_DEFER_CAP_MS)
+    monkeypatch.setattr(deferred_submit, "_DEFER_CAP_MS", _TEST_DEFER_CAP_MS)
     session = _make_session()
     session._bracketed_paste_mode = True
     pty = _ScriptedPty(session)

@@ -98,7 +98,7 @@ life-os.js + life-os/, screen/, settings/, voice.js"]
   HOSTPROC --> HOSTSERVER
 
   subgraph srclib["src/ — shared library"]
-    SESSHOST["session_host.py\nPtySession + SessionManager\nConPTY via winpty (Windows-only)"]
+    SESSHOST["session_host.py + session_hosting/\nPtySession + SessionManager, detached RemoteSession\nConPTY via winpty (Windows-only)"]
     CONSOLEINPUT["console_input.py\nAttachConsole + WriteConsoleInputW\nhelper process per detached send (#967)\nstring-referenced, off the host closure"]
     VTSNAP["vt_snapshot.py\nheadless pyte VT mirror per\nfullscreen session — reconnect snapshot"]
     AGENTS["agents.py\nagent registry: claude · codex · agy · copilot · pi · grok"]
