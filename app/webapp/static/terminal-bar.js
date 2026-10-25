@@ -115,40 +115,11 @@ export function wireTerminalMenu() {
   terminalMenu.attach('terminal', els.terminalMenu, [
     {
       glyph: 'pencil', label: 'Rename', ariaLabel: 'Rename session',
-      onTap: function () {
-        const s = currentSession();
-        if (!s) return;
-        const t = state.terminal;
-        openSessionRename(s, function (title) {
-          // manual_title wins in sessionTitle(), so the bar shows the new
-          // name now instead of waiting for the next title poll (which
-          // then keeps it in step); an empty title clears the override, as
-          // on the server. No list fetch: the list stays unrendered under
-          // the overlay, and closing it refreshes the list on the way out.
-          // A detached session viewed in Chat has no terminal to refresh
-          // through — set the bar title directly.
-          s.manual_title = title;
-          if (t && t === state.terminal && t.sid === s.session_id) {
-            refreshTerminalTitle(t, s);
-          } else {
-            setTerminalTitleText(s);
-          }
-        });
-      },
+      onTap: renameCurrentSession,
     },
     {
       glyph: 'link', label: 'Copy link', ariaLabel: 'Copy session link',
-      onTap: function () {
-        const s = currentSession();
-        if (!s) return;
-        const link = sessionCopyLink(s);
-        // iOS only allows a clipboard write inside the tap gesture:
-        // writeText is called synchronously from the click handler.
-        navigator.clipboard.writeText(link.url).then(
-          function () { toast(link.message, 'good', { icon: 'link' }); },
-          function (exc) { apiFailToast('Copy link failed', exc); }
-        );
-      },
+      onTap: copyCurrentSessionLink,
     },
     // Changed files: every file this session edited, folded from
     // its transcript into the Show changes panel. In both modes.
@@ -194,17 +165,7 @@ export function wireTerminalMenu() {
     {
       glyph: 'chevrons-down-up', label: 'Compact', ariaLabel: 'Compact conversation',
       hidden: function () { return !canCompact(currentSession()); },
-      onTap: function () {
-        const s = currentSession();
-        if (!canCompact(s)) return;
-        sendSessionMessage(s.session_id, '/compact').then(
-          function (verdict) {
-            const outcome = sendOutcome(verdict);
-            toast('Compact: ' + outcome.text, outcome.kind, { icon: 'chevrons-down-up' });
-          },
-          function (exc) { apiFailToast('Compact failed', exc); }
-        );
-      },
+      onTap: compactCurrentSession,
     },
     {
       dataset: { item: 'action-stop-close' }, glyph: 'x', danger: true,
@@ -232,6 +193,54 @@ export function wireTerminalMenu() {
       if (t && t.term) t.term.scrollToBottom();
     },
   });
+}
+
+// The menu's Rename: the bar shows the new name at once.
+function renameCurrentSession() {
+  const s = currentSession();
+  if (!s) return;
+  const t = state.terminal;
+  openSessionRename(s, function (title) {
+    // manual_title wins in sessionTitle(), so the bar shows the new
+    // name now instead of waiting for the next title poll (which
+    // then keeps it in step); an empty title clears the override, as
+    // on the server. No list fetch: the list stays unrendered under
+    // the overlay, and closing it refreshes the list on the way out.
+    // A detached session viewed in Chat has no terminal to refresh
+    // through — set the bar title directly.
+    s.manual_title = title;
+    if (t && t === state.terminal && t.sid === s.session_id) {
+      refreshTerminalTitle(t, s);
+    } else {
+      setTerminalTitleText(s);
+    }
+  });
+}
+
+// The menu's Copy link.
+function copyCurrentSessionLink() {
+  const s = currentSession();
+  if (!s) return;
+  const link = sessionCopyLink(s);
+  // iOS only allows a clipboard write inside the tap gesture:
+  // writeText is called synchronously from the click handler.
+  navigator.clipboard.writeText(link.url).then(
+    function () { toast(link.message, 'good', { icon: 'link' }); },
+    function (exc) { apiFailToast('Copy link failed', exc); }
+  );
+}
+
+// The menu's Compact, with the verified send's outcome in a toast.
+function compactCurrentSession() {
+  const s = currentSession();
+  if (!canCompact(s)) return;
+  sendSessionMessage(s.session_id, '/compact').then(
+    function (verdict) {
+      const outcome = sendOutcome(verdict);
+      toast('Compact: ' + outcome.text, outcome.kind, { icon: 'chevrons-down-up' });
+    },
+    function (exc) { apiFailToast('Compact failed', exc); }
+  );
 }
 
 // More than one screen of scrollback below the viewport → show the pill.
