@@ -70,15 +70,15 @@ from typing import Any, Awaitable, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from src import board
-from src.board_transcript import _live_title_is_busy, _pty_output_is_fresh
-from src.transcript_locate import (
+from src.board.transcript import _live_title_is_busy, _pty_output_is_fresh
+from src.session_view.transcript_locate import (
     find_antigravity_transcript,
     find_codex_transcript,
     find_copilot_transcript,
     find_pi_transcript,
     resolve_claude_transcript,
 )
-from src.session_transcript import (
+from src.session_view.transcript import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
     entry_diff,
@@ -89,16 +89,16 @@ from src.session_transcript import (
     transcript_sent_file,
     transcript_tail,
 )
-from src import session_outbox
-from src.git_changes import select_in_explorer
-from src.session_changes import (
+from src.session_view import outbox as session_outbox
+from src.session_view.git_changes import select_in_explorer
+from src.session_view.changes import (
     FileRefusal,
     changed_file_path,
     changed_files,
     file_steps,
     read_text_file,
 )
-from src.vscode_workspace import is_vscode_installed, open_file
+from src.launching.vscode_workspace import is_vscode_installed, open_file
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
@@ -115,7 +115,7 @@ router = APIRouter()
 router.include_router(session_outbox_routes.router)
 
 # Agents whose native history this reader understands. The values are the
-# line grammars in `src.session_transcript.FLAVORS`; the client's own
+# line grammars in `src.session_view.transcript.FLAVORS`; the client's own
 # availability list (`session-transcript.js`'s `TRANSCRIPT_AGENTS`) mirrors
 # the keys, so Chat mode is offered for exactly these agents.
 # A byte offset no transcript reaches. A larger one overflows `seek` with an
@@ -504,7 +504,7 @@ async def session_changed_files(sid: str, request: Request) -> Dict[str, Any]:
     """Every file this session's edits touched (Tailscale + passkey, #1349).
 
     Folded from the transcript, never ``git diff`` — see
-    :mod:`src.session_changes` for why. Every agent with a transcript reader
+    :mod:`src.session_view.changes` for why. Every agent with a transcript reader
     (#1356); ``reason: "unsupported_agent"`` for one without, whose ⋮ menu
     hides the item anyway. On demand only, like Show changes: nothing polls
     this.
@@ -713,7 +713,7 @@ async def session_transcript_file(
 
     ``offset`` and ``n`` are a ``sent_files`` ref off a page's tool call. The
     path comes from the transcript line, never from the request, and goes
-    through the outbox's guards (:func:`src.session_outbox.read_source`): a
+    through the outbox's guards (:func:`src.session_view.outbox.read_source`): a
     path outside the session's folder and its declared scratch roots, a type
     off the allowlist, or an oversize file is refused with its own reason,
     exactly as a post to the outbox would be.

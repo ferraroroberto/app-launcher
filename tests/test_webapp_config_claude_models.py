@@ -24,7 +24,7 @@ import sys
 import textwrap
 from pathlib import Path
 
-from src.model_catalog import CLAUDE_MODEL_SPECS, available_values
+from src.launching.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.webapp_config import (
     LEGACY_CLAUDE_MODELS,
     VALID_CLAUDE_MODELS,
@@ -38,13 +38,13 @@ _NEW_TIER_PROBE = textwrap.dedent(
     import json
     from dataclasses import replace
 
-    from src import model_catalog
+    from src.launching import model_catalog
 
     model_catalog.CLAUDE_MODEL_SPECS["probe-tier"] = {
         "label": "Probe", "efforts": ("low", "high"), "available": True,
     }
 
-    from src.launch_flags import build_claude_flags
+    from src.launching.flags import build_claude_flags
     from src.webapp_config import (
         VALID_CLAUDE_MODELS, VALID_CODING_MODEL_CHOICES, WebappConfig, _validate,
     )

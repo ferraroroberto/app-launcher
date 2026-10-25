@@ -1,7 +1,7 @@
 """Screen view quality presets and the live readout (#1721).
 
 Three presets (sharp, balanced, saver) live in one table in
-:mod:`src.desktop_capture`; the connect query's ``preset=`` picks one, and an
+:mod:`src.desktop.capture`; the connect query's ``preset=`` picks one, and an
 unknown value is Balanced. These tests pin each preset's numbers (JPEG quality,
 pause between frames, width cap), that the route hands them to the capture loop
 and the audit line, and the readout's server half: per-stage times in a
@@ -24,8 +24,8 @@ from typing import Any, Dict, List
 import pytest
 from PIL import Image, ImageDraw
 
-from src import desktop_capture
-from src.desktop_capture import Monitor, StageStats
+from src.desktop import capture as desktop_capture
+from src.desktop.capture import Monitor, StageStats
 
 from tests.api.screen._support import (
     LOOPBACK,

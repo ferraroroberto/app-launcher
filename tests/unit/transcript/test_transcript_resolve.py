@@ -40,7 +40,7 @@ def test_find_antigravity_transcript_uses_the_newest_conversation_cache(
     omits `conversationId` on a conversation's first history row — so the
     correlation is its own ``workspace → newest conversation`` cache, which
     *is* written the moment the first prompt lands (#1014 probe)."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
@@ -62,7 +62,7 @@ def test_find_antigravity_transcript_falls_back_to_the_flat_file(tmp_path: Path,
     """``transcript_full.jsonl`` is preferred — it alone can serve
     ``entry_full_text`` uncapped — but 55 of 265 conversations on this box
     have only the flat file, so its absence is a fallback, not an error."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     flat = _agy_tree(tmp_path, r"E:\work\project", uuid, full=False)
@@ -80,7 +80,7 @@ def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
     session's" — so two guards keep it from showing another session's text,
     the rule ``find_codex_transcript`` follows.
     """
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     uuid = "595bd0ae-ec7f-41dd-a242-2fe7517ee288"
     wanted = _agy_tree(tmp_path, r"E:\work\project", uuid)
@@ -124,7 +124,7 @@ def test_find_antigravity_transcript_fails_safe_on_ambiguity_and_staleness(
 def test_find_pi_transcript_matches_the_state_row_key(tmp_path: Path, monkeypatch):
     """Pi's state row is keyed by Pi's own session uuid and carries no
     ``transcript_path``; the file is named after that same uuid (#1013)."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
     folder = tmp_path / "--E--work-project--"
@@ -144,7 +144,7 @@ def test_find_pi_transcript_refuses_ambiguity_and_glob_syntax(tmp_path: Path, mo
     exactly one match answers ``None`` so the route says "no transcript"
     rather than risking a neighbouring session's text. A key carrying glob
     metacharacters is refused before it can match anything at all."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     sid = "01a0b0e2-84d4-787a-ae98-eef7f26179bc"
     for name in ("--E--work-a--", "--E--work-b--"):
@@ -191,7 +191,7 @@ def test_find_copilot_transcript_matches_cwd_and_launch_window(tmp_path: Path, m
     its ``workspace.yaml`` sidecar: this folder's ``cwd``, created inside the
     launch window. Measured on two real launches: 3.71 s and 3.72 s after
     ``started_at`` (#1015 capture)."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     wanted = _copilot_session_dir(
         tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
@@ -226,7 +226,7 @@ def test_find_copilot_transcript_refuses_two_candidates_in_one_window(
     construction — the sidecar says which folder, never which session — so
     both refuse rather than risk showing the other's conversation, the rule
     ``find_codex_transcript`` follows."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     _copilot_session_dir(tmp_path, "aaaaaaaa-0000-0000-0000-000000000001",
                        r"E:\work\project", "2026-09-17T21:57:34.176Z")
@@ -251,7 +251,7 @@ def test_find_copilot_transcript_needs_an_events_file(tmp_path: Path, monkeypatc
     only at the first prompt — so a session nobody has typed into has no
     transcript, and neither do the 28 of 71 older sessions here that kept a
     ``session.db`` instead."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     events = _copilot_session_dir(
@@ -267,7 +267,7 @@ def test_find_copilot_transcript_survives_a_damaged_sidecar(tmp_path: Path, monk
     """A folder whose ``workspace.yaml`` is missing, unparseable or lacks the
     two keys matches nothing — it must not raise, and must not swallow the
     real match sitting beside it."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     (tmp_path / "broken").mkdir()
@@ -287,7 +287,7 @@ def test_find_copilot_transcript_survives_a_damaged_sidecar(tmp_path: Path, monk
 def test_find_copilot_transcript_needs_a_dir_and_a_start(tmp_path: Path, monkeypatch):
     """A session row missing either half of the correlation answers None
     rather than scanning for a best guess."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_COPILOT_STATE_DIR", tmp_path)
     _copilot_session_dir(tmp_path, "79c18133-52bd-4f8f-9260-b33c853158be",
@@ -327,7 +327,7 @@ def test_resolve_claude_transcript_takes_the_newest_in_the_cwd_folder(
     """The fallback for a live session the hook left no row for (#1023):
     Claude files a conversation under the cwd with every non-alphanumeric
     character replaced by `-`, and the newest one there is this session's."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(
@@ -352,7 +352,7 @@ def test_resolve_claude_transcript_matches_a_lowercased_legacy_folder(
     replacing the separators — 4 of the 107 folders on this box that record
     their own cwd are spelled that way, so the lookup is case-insensitive
     rather than one constructed name."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "e--work-project", ("conv", 1_000_100.0))
@@ -368,7 +368,7 @@ def test_resolve_claude_transcript_fails_safe_on_ambiguity_and_staleness(
     a second live Claude session in the same folder makes "newest here"
     meaningless (#537), and a folder untouched since this session started
     holds only what ran there before it."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
@@ -408,7 +408,7 @@ def test_resolve_claude_transcript_keeps_its_two_guard_shape_for_transcript(
     vocabulary would have to grow a case it never had. The drawer's opted-in
     refusal is pinned in ``tests/api/board/test_exchange_sources.py``.
     """
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
@@ -429,7 +429,7 @@ def test_resolve_claude_transcript_needs_a_dir_a_start_and_a_folder(
 ):
     """Half a correlation, an empty folder or no projects directory at all
     answer None rather than scanning for a best guess."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", ("conv", 1_000_100.0))
@@ -459,7 +459,7 @@ def test_resumed_claude_session_reads_its_conversation_before_the_first_prompt(
     both of the scan's guards refuse. The id names the file exactly; Claude
     Code appends a resumed turn to that same `<id>.jsonl` (probed on
     2.1.280), so it is this session's conversation from spawn onwards."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(
@@ -494,7 +494,7 @@ def test_fresh_and_bare_resume_sessions_keep_both_guards(
     fresh launch in a folder of older conversations, and a bare `--resume`
     (the picker, whose choice nothing on the session records), both still
     answer no_transcript until they write, and say which guard refused."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
@@ -517,7 +517,7 @@ def test_resumed_session_that_moved_on_is_refused_by_its_title(
     its launch flags keep the old id. The live-title disproof (#1034) covers
     that: a title that genuinely conflicts with the resumed file's own name
     refuses it rather than showing the conversation the user left."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", tmp_path)
     folder = _claude_folder(tmp_path, "E--work-project", (_RESUMED, 1_000_100.0))
@@ -550,7 +550,7 @@ def _channel_world(tmp_path: Path, monkeypatch, keys: str = "abc") -> Tuple[Path
     """Three live channel sessions in one folder, none with a hook row and
     every conversation older than the launch, so each guard of the folder
     scan refuses all three."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     projects, registry = tmp_path / "projects", tmp_path / "sessions"
     monkeypatch.setattr(transcript_locate, "_CLAUDE_PROJECTS_DIR", projects)
@@ -569,7 +569,7 @@ def test_channel_sessions_in_a_shared_folder_each_read_their_own_conversation(
     Remote Control link names its Claude process in Claude Code's per-pid
     registry, and that record names the conversation, so every one resolves
     to its own file and never to a neighbour's."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     folder, live = _channel_world(tmp_path, monkeypatch)
     for key, session in zip("abc", live):
@@ -581,7 +581,7 @@ def test_channel_sessions_in_a_shared_folder_each_read_their_own_conversation(
 def test_bridge_id_never_guesses_when_the_registry_cannot_say(tmp_path: Path, monkeypatch):
     """The registry is trusted only when it names exactly this session's
     process in exactly this folder, and its file is on disk."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     folder, live = _channel_world(tmp_path, monkeypatch)
     registry = tmp_path / "sessions"
@@ -622,7 +622,7 @@ def test_bridge_id_conversation_that_moved_on_is_refused_by_its_title(
     """The registry's conversation id can lag a ``/resume`` inside the
     session, so the live-title disproof (#1034) applies to it as it does to a
     launch-flag id."""
-    from src import transcript_locate
+    from src.session_view import transcript_locate
 
     folder, live = _channel_world(tmp_path, monkeypatch)
     path = folder / f"{_CONV['a']}.jsonl"

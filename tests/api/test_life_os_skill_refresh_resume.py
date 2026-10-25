@@ -18,7 +18,7 @@ class TestResumeRefresh:
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, monkeypatch):
         from app.webapp import middleware
-        from src import session_client
+        from src.clients import session as session_client
         monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(session_client, "list_sessions", lambda port: [])
         self.client, self.app, overrides = life_os_client

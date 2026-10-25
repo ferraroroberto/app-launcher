@@ -1,6 +1,6 @@
 """The one mutex-admission implementation (issue #794, finding 2).
 
-``src.jobs_queue.admit_and_spawn`` replaced three parallel copies of the
+``src.jobs.queue.admit_and_spawn`` replaced three parallel copies of the
 same admission block — the webapp route's ``_admit_and_spawn``, the chain
 dispatcher's ``dispatch_chain_run``, and the executor's own
 ``_finalize_mutex_queue``. They had already drifted once (a chain-spawn
@@ -25,9 +25,9 @@ import json
 
 import pytest
 
-from src import jobs_history as jobs_history_mod
-from src import jobs_queue as jobs_queue_mod
-from src.jobs_config import Job
+from src.jobs import history as jobs_history_mod
+from src.jobs import queue as jobs_queue_mod
+from src.jobs.config import Job
 
 from tests.api.jobs._support import _seed_one_job
 

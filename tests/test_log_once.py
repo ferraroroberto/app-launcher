@@ -7,7 +7,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from src import active_issue_claims, board, board_sessions, board_transcript
+from src import board
+from src.board import active_issue_claims
+from src.board import sessions as board_sessions
+from src.board import transcript as board_transcript
 from src._fleet_contract import load_fleet_contract
 from src._log_once import log_once
 
@@ -123,7 +126,8 @@ def test_both_callers_share_one_loader():
     ``spec_from_file_location`` copy again (#1003)."""
     import inspect
 
-    from src import active_issue_claims, quota_usage
+    from src.board import active_issue_claims
+    from src.usage import quota as quota_usage
 
     for mod in (active_issue_claims, quota_usage):
         src = inspect.getsource(mod)

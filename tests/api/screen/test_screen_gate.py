@@ -6,8 +6,8 @@ import io
 
 from PIL import Image
 
-from src import desktop_capture
-from src.desktop_capture import CaptureUnavailable
+from src.desktop import capture as desktop_capture
+from src.desktop.capture import CaptureUnavailable
 
 from tests.api.screen._support import (
     ABOVE,

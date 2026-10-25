@@ -10,7 +10,7 @@ import { ACTIVITY_TICK_MS, liveAllowed, view } from './session-transcript.js';
 // --- the strip's live line -----------------------------------------
 //
 // "[timer icon] 15:02 · 10 actions · Running Bash": the turn in progress, from
-// the `activity` the transcript responses carry (src/session_transcript.py).
+// the `activity` the transcript responses carry (src/session_view/transcript.py).
 // Everything but the elapsed counter is the last read's word; the counter is
 // redrawn here once a second from `since`. The timer is the vendored `i-timer`
 // icon, never the emoji: iOS draws a colour stopwatch for it and

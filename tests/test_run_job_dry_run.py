@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
 from src.app_config import AppConfig
-from src.jobs_config import Job, JobsConfig, save_jobs
+from src.jobs.config import Job, JobsConfig, save_jobs
 
 
 def _silence_notifier(monkeypatch):

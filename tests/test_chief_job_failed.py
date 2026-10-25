@@ -16,8 +16,9 @@ from types import SimpleNamespace
 import pytest
 
 from app.webapp.chief_doorbell import count_pending
-from src import chief_job_failed as cjf
-from src import instance_role, notifications, session_client
+from src.chief import job_failed as cjf
+from src import instance_role, notifications
+from src.clients import session as session_client
 
 
 def _cfg(tmp_path, **over):
@@ -227,6 +228,9 @@ class TestAtomicPublish:
 class TestChiefLive:
     @pytest.mark.parametrize("sessions,expected", [
         ([{"session_id": "s1", "kind": "pty", "alive": True, "label": "chief"}], True),
+        # A chief typed by hand into a plain session carries no label and self-heals.
+        ([{"session_id": "s1", "kind": "pty", "alive": True, "project_dir": "E:/x/fleet-config",
+           "prompt_title": "/chief"}], True),
         ([{"session_id": "s1", "kind": "pty", "alive": True, "label": "worker"},
           {"session_id": "s2", "kind": "pty", "alive": False, "label": "chief"}], False),
         (session_client.SessionHostError("connection refused"), None),

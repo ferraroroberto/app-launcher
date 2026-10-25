@@ -23,7 +23,7 @@ from src.diagnostics import (
     kill_process_tree,
     listening_port_for_pid_tree,
 )
-from src.launch_flags import (
+from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
     build_codex_flags,
@@ -32,7 +32,7 @@ from src.launch_flags import (
     build_pi_flags,
     build_resume_flags,
 )
-from src.launcher import (
+from src.launching.launcher import (
     open_local_terminal_window,
     spawn_bat,
     spawn_claude_session,

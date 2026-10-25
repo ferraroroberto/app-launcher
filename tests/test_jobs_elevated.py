@@ -16,8 +16,8 @@ from typing import List
 import pytest
 
 from src import jobs as jobs_mod
-from src import jobs_config as jc
-from src.jobs_config import (
+from src.jobs import config as jc
+from src.jobs.config import (
     Job,
     JobsConfig,
     Schedule,

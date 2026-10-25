@@ -4,7 +4,7 @@ Resends the last 7 completed days (or every day from ``--since``) as one
 task-os Time entry per day; ``--dry-run`` prints the per-day table and sends
 nothing. The nightly Job runs it bare. Exit codes, one per failure kind:
 2 not set up, 3 category missing, 4 task-os unreachable, 5 task-os refused,
-6 no usage log yet. The rules live in :mod:`src.usage_export`.
+6 no usage log yet. The rules live in :mod:`src.usage.export`.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import argparse
 import logging
 from datetime import date
 
-from src.usage_export import ExportError, run_export
+from src.usage.export import ExportError, run_export
 from src.webapp_config import load_webapp_config
 
 from .base import BaseCommand

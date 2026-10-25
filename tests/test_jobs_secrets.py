@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.jobs_config import env_from_dict
-from src.jobs_secrets import resolve_env_overlay, resolve_secret_value
+from src.jobs.config import env_from_dict
+from src.jobs.secrets import resolve_env_overlay, resolve_secret_value
 
 
 class TestResolveSecretValue:

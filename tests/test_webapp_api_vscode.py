@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 from app.webapp.routers import claude_code as cc_router
-from src import vscode_workspace
+from src.launching import vscode_workspace
 
 
 def _make_project(app, name: str) -> Path:
@@ -31,7 +31,7 @@ def fake_code(monkeypatch):
     """Pretend the ``code`` CLI is installed, and record every spawn.
 
     Patched on the *router's* module-level names, not on
-    ``src.vscode_workspace`` — the router imports the functions directly, the
+    ``src.launching.vscode_workspace`` — the router imports the functions directly, the
     same shape ``tests/conftest.py`` already patches ``open_local_terminal_window``
     per router for. Without this a unit run on a machine that really has VS
     Code would pop a real editor window.

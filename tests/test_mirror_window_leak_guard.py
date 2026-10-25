@@ -17,7 +17,7 @@ import pytest
 
 from app.webapp.routers import apps as apps_router
 from app.webapp.routers import life_os_spawn
-from src import launcher
+from src.launching import launcher
 
 
 @pytest.mark.parametrize("router", [apps_router, life_os_spawn],

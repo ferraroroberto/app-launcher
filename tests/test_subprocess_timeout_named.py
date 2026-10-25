@@ -5,7 +5,7 @@ Why this is a *static* check and not a runtime one
 --------------------------------------------------
 A bare ``timeout=15`` or ``timeout=30`` runs exactly as well as a named one —
 nothing at runtime can tell the two apart, which is exactly how two of them
-(``src/life_os_history.py:51``, ``src/session_host.py:1279``) sat
+(``src/life_os/history.py:51``, ``src/session_host.py:1279``) sat
 unexplained long enough to be flagged twice by the maintainability audit
 (#1793): no name to carry a reason, and no diff ever had to touch a constant
 to ask "is 15 still right?". A name forces the one-clause reason the audit
@@ -39,7 +39,7 @@ BASELINE = {
     ("app/webapp/manager.py", 115),     # tray subprocess readiness probe
     ("app/tray/tailscale.py", 58),
     ("app/tray/tray.py", 275),
-    ("src/quota_usage.py", 559),
+    ("src/usage/quota.py", 559),
 }
 
 

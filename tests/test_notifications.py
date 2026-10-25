@@ -13,7 +13,8 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 
-from src import _loopback_http, notifications as notif
+from src import notifications as notif
+from src.clients import _loopback_http
 
 
 # ============================================================== Notifiers
@@ -89,7 +90,7 @@ class TestFactory:
 
 # ============================================================= LLM summary
 #
-# summarise_failure routes through the shared src.llm_client hub client
+# summarise_failure routes through the shared src.clients.llm hub client
 # (issue #520), so — like tests/test_llm_client.py — the hub round-trip is
 # stubbed by monkeypatching the shared pooled `_loopback_http.SESSION.request`
 # (issue #605) rather than injecting a mock http object.

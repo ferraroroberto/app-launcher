@@ -49,7 +49,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List, Optional, Set, Tuple
 
-from src import audit, session_client
+from src import audit
+from src.clients import session as session_client
 
 logger = logging.getLogger(__name__)
 

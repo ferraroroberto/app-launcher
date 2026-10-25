@@ -29,7 +29,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Redirect this repo's whole fleet runtime-data directory before any `src.*`
-# module is imported, so `src.jobs_index.INDEX_DIR` — resolved at import time —
+# module is imported, so `src.jobs.index.INDEX_DIR` — resolved at import time —
 # never points at the real store during a test run.
 #
 # The per-test `_isolated_jobs_index` fixture below is the precise isolation;
@@ -216,7 +216,7 @@ def fake_injector(monkeypatch):
     would have been sent asks for this fixture by name. The e2e suite's
     disposable webapp gets the same through ``LAUNCHER_SCREEN_FAKE_INPUT=1``.
     """
-    from src import desktop_input
+    from src.desktop import input as desktop_input
 
     recorder = desktop_input.RecordingInjector()
     monkeypatch.setattr(desktop_input, "get_injector", lambda: recorder)
@@ -235,7 +235,7 @@ def fake_clipboard(monkeypatch):
     e2e suite's disposable webapp gets the same through
     ``LAUNCHER_SCREEN_FAKE_INPUT=1``.
     """
-    from src import desktop_clipboard
+    from src.desktop import clipboard as desktop_clipboard
 
     recorder = desktop_clipboard.RecordingClipboard()
     monkeypatch.setattr(desktop_clipboard, "get_clipboard", lambda: recorder)
@@ -247,12 +247,12 @@ def fake_clipboard(monkeypatch):
 def isolated_jobs(tmp_path, monkeypatch):
     """Run history, the run queue and ``jobs.json`` all under ``tmp_path``.
 
-    ``JOBS_RUNS_DIR`` / ``JOBS_QUEUE_PATH`` are owned by ``src.jobs_history`` /
-    ``src.jobs_queue``, so they are patched there, not on the ``src.jobs`` facade.
+    ``JOBS_RUNS_DIR`` / ``JOBS_QUEUE_PATH`` are owned by ``src.jobs.history`` /
+    ``src.jobs.queue``, so they are patched there, not on the ``src.jobs`` facade.
     """
-    from src import jobs_config as jc
-    from src import jobs_history as jobs_history_mod
-    from src import jobs_queue as jobs_queue_mod
+    from src.jobs import config as jc
+    from src.jobs import history as jobs_history_mod
+    from src.jobs import queue as jobs_queue_mod
 
     monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json")
@@ -275,7 +275,7 @@ def _isolated_jobs_index(tmp_path, monkeypatch):
     above, not this fixture — verified by disabling this fixture and confirming
     a jobs test still writes only into the temp root.
     """
-    from src import jobs_index as jobs_index_mod
+    from src.jobs import index as jobs_index_mod
 
     monkeypatch.setattr(jobs_index_mod, "INDEX_DIR", tmp_path / "jobs_index")
 
@@ -289,7 +289,7 @@ def _fresh_jobs_snapshot(monkeypatch):
     test's temp dirs must not land in the next test's snapshot. The
     snapshot's own tests (``test_jobs_snapshot.py``) put the real ages back.
     """
-    from src import jobs_snapshot
+    from src.jobs import snapshot as jobs_snapshot
 
     jobs_snapshot.reset()
     monkeypatch.setattr(jobs_snapshot, "MAX_AGE_SECONDS", -1.0)
@@ -311,8 +311,8 @@ def _isolated_jobs_registry(request, tmp_path, monkeypatch):
     """
     if request.node.get_closest_marker("smoke"):
         return
-    from src import jobs_config as jobs_cfg_mod
-    from src import jobs_dismissed as jobs_dismissed_mod
+    from src.jobs import config as jobs_cfg_mod
+    from src.jobs import dismissed as jobs_dismissed_mod
 
     monkeypatch.setattr(
         jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_path / "isolated-jobs.json"
@@ -332,7 +332,7 @@ def _isolated_jobs_registry(request, tmp_path, monkeypatch):
 def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     """Never read or write the real chief pointer from a test (issue #675).
 
-    ``src.chief_pointer`` resolves ``webapp/chief-pointer.json`` off the repo
+    ``src.chief.pointer`` resolves ``webapp/chief-pointer.json`` off the repo
     root, and the chief resume lookup consults it on every call — so without
     this, a pointer sitting on the dev box would silently steer
     ``_find_resumable_chief_session_id`` tests, and a test that exercised the
@@ -344,8 +344,8 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     if request.node.get_closest_marker("smoke"):
         return
     from app.webapp.routers import board_chief as chief_router
-    from src import chief_answers as chief_answers_mod
-    from src import chief_pointer as chief_pointer_mod
+    from src.chief import answers as chief_answers_mod
+    from src.chief import pointer as chief_pointer_mod
     monkeypatch.setattr(
         chief_pointer_mod, "CHIEF_POINTER_FILE", tmp_path / "chief-pointer.json"
     )
@@ -426,10 +426,10 @@ def _isolate_webapp_files(tmp_path: Path, monkeypatch) -> Dict[str, Path]:
     # DEFAULT_JOBS_PATH and writes run records under JOBS_RUNS_DIR.
     tmp_jobs_cfg = tmp_path / "jobs.json"
     tmp_jobs_runs = tmp_path / "jobs_runs"
-    from src import jobs_config as jobs_cfg_mod
-    from src import jobs_history as jobs_history_mod
+    from src.jobs import config as jobs_cfg_mod
+    from src.jobs import history as jobs_history_mod
     monkeypatch.setattr(jobs_cfg_mod, "DEFAULT_JOBS_PATH", tmp_jobs_cfg)
-    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split) — patch
+    # JOBS_RUNS_DIR is owned by src.jobs.history (issue #315 split) — patch
     # it there, not on the src.jobs facade, so runs_dir()/list_runs()/etc.
     # (which read their own module's global, not the facade's copy) see it.
     monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_jobs_runs)
@@ -459,7 +459,7 @@ def _stub_quota_snapshot(monkeypatch) -> None:
     # Quota API tests own the legacy rate-limits cache file; keep their canonical
     # source state deterministic even when no sibling fleet-config is checked
     # out (as in hosted CI).
-    from src import quota_usage as quota_usage_mod
+    from src.usage import quota as quota_usage_mod
     monkeypatch.setattr(
         quota_usage_mod,
         "_read_snapshot",
@@ -487,7 +487,7 @@ def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
     # /api/transcribe proxy goes through it; tests assert call args and set
     # the transcript without a live voice-transcriber on :8443. Lives in
     # routers/voice_ocr_tts.py (split off routers/sessions.py, #521).
-    from src import voice_client as real_voice_client
+    from src.clients import voice as real_voice_client
     voice_mock = MagicMock()
     voice_mock.transcribe.return_value = {"transcript": "stub text", "language": "en"}
     voice_mock.create_session.return_value = {"session_id": "vt-stub"}
@@ -502,7 +502,7 @@ def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
     # Mock the photo-ocr loopback client (issue #171) — the /api/ocr proxy
     # goes through it; tests assert call args and set the extracted text
     # without a live photo-ocr on :8444. Lives in routers/voice_ocr_tts.py.
-    from src import photo_ocr_client as real_photo_ocr_client
+    from src.clients import photo_ocr as real_photo_ocr_client
     photo_ocr_mock = MagicMock()
     photo_ocr_mock.extract.return_value = {
         "text": "stub ocr text", "model": "gemini_flash", "session_id": "po-stub"
@@ -516,7 +516,7 @@ def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
     # :8000. build_speech_payload / speech_url keep their real behaviour so
     # the proxy builds the correct upstream call. Lives in
     # routers/voice_ocr_tts.py.
-    from src import tts_client as real_tts_client
+    from src.clients import tts as real_tts_client
     tts_mock = MagicMock()
     tts_mock.health.return_value = True
     tts_mock.speech_url.side_effect = real_tts_client.speech_url
@@ -529,7 +529,7 @@ def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
     # :8000. summarize() returns a stub by default; LlmError keeps its real
     # type so error-mapping tests can raise it. Lives in
     # routers/voice_ocr_tts.py.
-    from src import llm_client as real_llm_client
+    from src.clients import llm as real_llm_client
     llm_mock = MagicMock()
     llm_mock.summarize.return_value = "Build is green. No decision needed."
     llm_mock.LlmError = real_llm_client.LlmError
@@ -539,7 +539,7 @@ def _mock_loopback_clients(monkeypatch, voice_ocr_tts_router) -> tuple:
 
 def _mock_session_client(monkeypatch, routers: list) -> MagicMock:
     """One session-host client mock on every router holding its own reference."""
-    from src import session_client as real_session_client
+    from src.clients import session as real_session_client
     session_mock = MagicMock()
     session_mock.list_sessions.return_value = []
     session_mock.stop.return_value = {"ok": True}
@@ -741,7 +741,7 @@ def life_os_client(webapp_client, tmp_path, monkeypatch):
     monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
     # API tests own the external parser contract, so CI needs no sibling repo.
     # Native verification separately runs the real shared parser against synthetic captures.
-    from src import life_os_history
+    from src.life_os import history as life_os_history
     fleet = tmp_path / "synthetic-fleet"
     fleet.mkdir()
     app.state.webapp_config.fleet_config_dir = str(fleet)

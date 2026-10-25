@@ -58,16 +58,16 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("src/session_host.py", Category.FULL),
         ("src/session_host_pty.py", Category.FULL),  # future split, not on disk yet
         ("src/vt_snapshot.py", Category.FULL),  # declared session-host path (#881)
-        ("src/session_client.py", Category.FULL),
-        ("src/launcher.py", Category.FULL),
+        ("src/clients/session.py", Category.FULL),
+        ("src/launching/launcher.py", Category.FULL),
         ("launcher.py", Category.FULL),
         ("tests/e2e/test_board_tab.py", Category.FULL),
         ("tests/conftest.py", Category.FULL),
         (".fleet.toml", Category.FULL),  # the routing table reroutes the suite it gates
         ("scripts/classify_e2e.py", Category.FULL),  # ...and so does its classifier
         # no browser impact -> NONE
-        ("src/board.py", Category.NONE),
-        ("src/jobs.py", Category.NONE),
+        ("src/board/__init__.py", Category.NONE),
+        ("src/jobs/__init__.py", Category.NONE),
         ("tests/test_classify_e2e.py", Category.NONE),
         ("tests/test_icon_sprite_coverage.py", Category.NONE),
         ("docs/architecture.mmd", Category.NONE),
@@ -128,7 +128,7 @@ def test_mixed_static_and_js_routes_to_full(cfg: E2EConfig) -> None:
 
 
 def test_backend_python_only_skips_browser(cfg: E2EConfig) -> None:
-    r = classify(["src/board.py", "tests/test_board.py"], cfg)
+    r = classify(["src/board/__init__.py", "tests/test_board.py"], cfg)
     assert r.tier == "skip"
     assert r.pytest_target == ""
 
@@ -145,7 +145,7 @@ def test_backslash_paths_are_normalized(cfg: E2EConfig) -> None:
 
 def test_session_host_python_forces_full(cfg: E2EConfig) -> None:
     """A backend .py *on* the session-host path still gets full coverage."""
-    r = classify(["src/session_host.py", "src/board.py"], cfg)
+    r = classify(["src/session_host.py", "src/board/__init__.py"], cfg)
     assert r.tier == "full"
 
 
@@ -324,7 +324,7 @@ def test_surface_path_narrows_to_its_surface(cfg: E2EConfig, path: str, surface:
 
 def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
     """`none` paths (backend src/, unit tests, docs) ride along without widening."""
-    assert _route(cfg, "app/webapp/static/board.js", "src/board.py",
+    assert _route(cfg, "app/webapp/static/board.js", "src/board/__init__.py",
                   "tests/test_board.py", "README.md") == ("surface", _BOARD_TARGETS)
 
 
@@ -339,7 +339,7 @@ def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
         "app/webapp/server.py",
         "app/webapp/routers/_helpers.py",
         "src/session_host.py",
-        "src/launcher.py",
+        "src/launching/launcher.py",
         "app/session_host/server.py",
         "tests/e2e/conftest.py",
         "tests/conftest.py",

@@ -7,7 +7,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 
-from src import board, board_exchange, transcript_locate
+from src import board
+from src.board import exchange as board_exchange
+from src.session_view import transcript_locate
 
 from tests.api.board._support import (
     NOW,

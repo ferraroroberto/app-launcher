@@ -16,7 +16,7 @@ from dataclasses import replace
 import pytest
 
 from src.agents import resume_command_for
-from src.launch_flags import (
+from src.launching.flags import (
     build_claude_flags,
     build_codex_flags,
     build_pi_flags,
@@ -25,7 +25,7 @@ from src.launch_flags import (
     default_effort,
     effective_effort,
 )
-from src.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
+from src.launching.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
 from src.webapp_config import (
     VALID_CLAUDE_MODELS,
     VALID_PI_MODELS,

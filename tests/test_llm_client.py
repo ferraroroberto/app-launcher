@@ -1,4 +1,4 @@
-"""The local-llm-hub chat loopback client (`src.llm_client`, issue #210).
+"""The local-llm-hub chat loopback client (`src.clients.llm`, issue #210).
 
 Thin ``requests`` wrapper (via ``_loopback_http``) over the hub's OpenAI-shape
 ``/v1/chat/completions`` plus pure URL / payload / extraction helpers — so we
@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import pytest
 
-from src import _loopback_http, llm_client
+from src.clients import _loopback_http
+from src.clients import llm as llm_client
 
 
 class _Resp:

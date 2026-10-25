@@ -1,12 +1,12 @@
 """The executor's ``--trigger`` contract, at the real argparse boundary (#687).
 
 Every Jobs-tab fire path forwards a trigger string onto the executor's
-argv (``src.jobs_schtasks.spawn_run_job_detached``), and the spawn is
+argv (``src.jobs.schtasks.spawn_run_job_detached``), and the spawn is
 fire-and-forget — nothing waits on the child's exit code. So a trigger
 value argparse rejects does not surface as an error anywhere: the child
 ``sys.exit(2)``s before the pid is ever written, and the pre-created
 ``run.json`` sits at ``status: "pending"`` forever, unreapable by
-``src.jobs_reap`` (which needs a pid).
+``src.jobs.reap`` (which needs a pid).
 
 That is exactly what shipped: ``--trigger`` was declared
 ``choices=["scheduled", "manual"]`` while the code itself constructs
@@ -25,7 +25,7 @@ from __future__ import annotations
 import pytest
 
 from app.cli.main import _build_parser
-from src.jobs_trigger import (
+from src.jobs.trigger import (
     SIMPLE_TRIGGERS,
     chain_trigger,
     chain_upstream_id,

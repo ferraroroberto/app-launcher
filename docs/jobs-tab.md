@@ -64,7 +64,7 @@ A job's `kind` field selects the module. **`kind` is optional** — when absent,
 | `inline-shell` | must be empty | `{script_body, ext}` | body written to `webapp/jobs/<id>/<run>/_inline<ext>`, then dispatched through whichever of the three shapes above matches `ext` (`.ps1`/`.bat`/`.sh`) | matches the delegated kind |
 | `http-check` | must be empty | `{url, method?, expect_status?, timeout?}` | `python -m src.jobs_kinds.http_check_probe --url … --method … --expect-status … --timeout …` — a tiny built-in probe, no external script | project root |
 
-`python`'s venv walk-up (`src.jobs_schtasks.resolve_venv_python`) starts from `script_path.parent` and falls back to `sys.executable` if no ancestor `.venv\Scripts\python.exe` is found — the PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha (see global CLAUDE.md). `shell-wsl` is opt-in: pre-flight surfaces a warning (not a blocking error) when `wsl.exe` isn't resolvable on PATH.
+`python`'s venv walk-up (`src.jobs.schtasks.resolve_venv_python`) starts from `script_path.parent` and falls back to `sys.executable` if no ancestor `.venv\Scripts\python.exe` is found — the PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha (see global CLAUDE.md). `shell-wsl` is opt-in: pre-flight surfaces a warning (not a blocking error) when `wsl.exe` isn't resolvable on PATH.
 
 `args` is split on whitespace and appended to every kind's argv tail except `http-check` (its probe takes fixed flags only). If you need an argument containing spaces, put it inside the script/wrapper rather than relying on shell quoting.
 
@@ -191,7 +191,7 @@ A job opts out with `"session_less": true`:
 
 Capability is not in question: a probe ran a real S4U token on this host and got 12/12 — same SID, `SessionId=0`, both backup destinations writable, loopback hub and outbound HTTPS reachable, `gh`'s Credential-Manager token still resolving, and headless `claude -p` working. The one measured delta is a shorter `PATH` (1429 vs 1701 chars), harmless while every job invokes absolute interpreter paths per the fleet convention — but worth a glance for a job that depends on a tool only present on the interactive `PATH`.
 
-The registration command is generated for you: `GET /api/jobs` returns it as `registration_command` on any session-less row (`null` on every other job), built from the job's own schedule by `src.jobs_schtasks.registration_script`. Paste it into an **elevated** PowerShell. It fans out `daily_times` into the same `…-1`/`…-2` task names the rest of the app expects, and re-applies the fleet-wide on-battery/`StartWhenAvailable` settings, because `Register-ScheduledTask` replaces the whole settings object instead of merging into it.
+The registration command is generated for you: `GET /api/jobs` returns it as `registration_command` on any session-less row (`null` on every other job), built from the job's own schedule by `src.jobs.schtasks.registration_script`. Paste it into an **elevated** PowerShell. It fans out `daily_times` into the same `…-1`/`…-2` task names the rest of the app expects, and re-applies the fleet-wide on-battery/`StartWhenAvailable` settings, because `Register-ScheduledTask` replaces the whole settings object instead of merging into it.
 
 **Whether the entry actually carries that principal is checked, not assumed.** The missed-fire coverage scan reads `Logon Mode` out of the bulk `schtasks /Query /FO LIST /V` it already pays for, and reports a `principal_interactive` problem for a session-less job whose entry is still `Interactive only` — the failure mode where everything looks healthy (entry present, enabled, next-run populated) and nothing runs while logged out. An unreadable `Logon Mode` yields `unknown`, never a confident pass.
 
@@ -307,8 +307,8 @@ A job can declare a `mutex_group` — labelled **Exclusive group** in the job di
 }
 ```
 
-- **Admission points.** Every fire is gated before it runs, on whichever side of the process boundary it arrives: manual / webhook / API fires at `_admit_and_spawn` (`app/webapp/routers/jobs_run.py`), chain fires at `dispatch_chain_run` (`src/jobs_queue.py`), and **schtasks fires in the executor itself** (`_finalize_mutex_queue`, `app/cli/commands/run_job_cmd.py`) — Task Scheduler launches `run-job` directly and never touches the webapp, so without that third gate the weekly fleet chain, the main reason the feature exists, ran unserialized. The executor gate is scoped to `trigger == "scheduled"` **with no `--run-id`**: every already-admitted path pre-creates its run dir and passes `--run-id`, so the discriminator is what stops a drained entry (which replays its original `trigger="scheduled"`) being pushed straight back onto the queue it was just released from. Mirrors the `scheduled`-only cooldown gate next to it, and runs *after* it — a cooled-down fire is a no-op and shouldn't occupy a queue slot.
-- **One implementation behind those three points.** The gates differ in *when* they run and what they do with the outcome, but the admission itself — collision check, run-dir creation, the queued record, the enqueue, the spawn — is `src.jobs_queue.admit_and_spawn`, called by all three. It had been copied three times and had already drifted (a chain-spawn failure wrote `status="failed"` to disk while returning `"pending"`). What stays per call site is genuinely site-specific: the route owns the cooldown gate and the HTTP framing, the executor owns the `scheduled`-with-no-`--run-id` scoping and passes `spawn_when_free=False` (it is already the process that will run the job inline, so with no collision the helper touches nothing and the executor proceeds), and the chain dispatcher supplies `chained_from`.
+- **Admission points.** Every fire is gated before it runs, on whichever side of the process boundary it arrives: manual / webhook / API fires at `_admit_and_spawn` (`app/webapp/routers/jobs_run.py`), chain fires at `dispatch_chain_run` (`src/jobs/queue.py`), and **schtasks fires in the executor itself** (`_finalize_mutex_queue`, `app/cli/commands/run_job_cmd.py`) — Task Scheduler launches `run-job` directly and never touches the webapp, so without that third gate the weekly fleet chain, the main reason the feature exists, ran unserialized. The executor gate is scoped to `trigger == "scheduled"` **with no `--run-id`**: every already-admitted path pre-creates its run dir and passes `--run-id`, so the discriminator is what stops a drained entry (which replays its original `trigger="scheduled"`) being pushed straight back onto the queue it was just released from. Mirrors the `scheduled`-only cooldown gate next to it, and runs *after* it — a cooled-down fire is a no-op and shouldn't occupy a queue slot.
+- **One implementation behind those three points.** The gates differ in *when* they run and what they do with the outcome, but the admission itself — collision check, run-dir creation, the queued record, the enqueue, the spawn — is `src.jobs.queue.admit_and_spawn`, called by all three. It had been copied three times and had already drifted (a chain-spawn failure wrote `status="failed"` to disk while returning `"pending"`). What stays per call site is genuinely site-specific: the route owns the cooldown gate and the HTTP framing, the executor owns the `scheduled`-with-no-`--run-id` scoping and passes `spawn_when_free=False` (it is already the process that will run the job inline, so with no collision the helper touches nothing and the executor proceeds), and the chain dispatcher supplies `chained_from`.
 - **Failed spawns record why.** When `spawn_run_job_detached` raises `OSError` (the spawn itself failed) or `ArgvRejected` (the argv was refused before the spawn — see "cmd.exe-unsafe values" below), the run is finalised on disk as `status="failed"` / `exit_code=-1` with the reason on the record — `spawn_error` for route fires, `chain_spawn_error` for chain fires — plus a `refused` bool, instead of stranding a `pending` record with no explanation. The route answers `500 spawn failed: <reason>` for a genuine `OSError`, or `400 refused: <reason>` for a refused argv — a rejected request isn't "the server broke". (Executor fires never reach this branch: they queue or run inline, they never spawn.)
 - **Queue file.** `webapp/jobs/_queue.json` — one JSON document, keyed by group → FIFO list of `{job_id, run_id, trigger, params}`. Mutations go through `os.replace` so the file is always a complete document. Empty groups are pruned out so the file stays tidy.
 - **`status: "queued"`.** Queued runs land in history with `status="queued"`, `mutex_group`, and `mutex_blocked_by` (the id of the job currently holding the group). Queued runs do **not** contribute to p50/p95/success-rate stats and do **not** count toward the failure-streak gate. The route returns `{run_id, job_id, status: "queued", mutex_group, mutex_blocked_by}` so the UI can render a queue toast.
@@ -368,8 +368,8 @@ Bool params require either `flag` or `env` — they have no useful positional en
 #### cmd.exe-unsafe values
 
 A param value bound for a `.bat` dispatch or the `cmd /c start` re-parent hop
-(`src.jobs_schtasks.spawn_run_job_detached`) is tokenized a second time by
-`cmd.exe`, which doesn't honour Python's argv-quoting convention. `src.jobs_argv.reject_cmd_unsafe`
+(`src.jobs.schtasks.spawn_run_job_detached`) is tokenized a second time by
+`cmd.exe`, which doesn't honour Python's argv-quoting convention. `src.jobs.argv.reject_cmd_unsafe`
 (the single source for both hops) refuses:
 
 - Any of `"&|^<>` — cmd operators that flip the value out of quoting.
@@ -381,7 +381,7 @@ A param value bound for a `.bat` dispatch or the `cmd /c start` re-parent hop
 A bare `%` is otherwise allowed — an ordinary URL-encoded value (`...%20...`)
 is not rejected, only a pair that resembles a real environment-variable
 reference. A refused value never reaches the spawn: it raises
-`src.jobs_argv.ArgvRejected` (a `ValueError` subclass), which `POST
+`src.jobs.argv.ArgvRejected` (a `ValueError` subclass), which `POST
 /api/jobs/<id>/run` and the webhook route answer with `400 refused: <reason>`
 rather than firing the job.
 
@@ -475,7 +475,7 @@ could otherwise use to pull an environment variable out of the child.
 `config/webapp_config.json` carries a `secrets: {key: value}` dict (gitignored,
 alongside the existing `pushover_*` secrets). `$secret:<key>` in a job's
 `webhook.secret` — and in any `Job.env` value, see "Per-job secrets & env"
-below — resolves against it at fire time (`src.jobs_secrets`). A literal string
+below — resolves against it at fire time (`src.jobs.secrets`). A literal string
 works too — `jobs.json` is already gitignored — but `$secret:` keeps the
 secret in one place instead of duplicated across every job that shares it, and
 lets it rotate without touching `jobs.json`. This block shipped under the legacy key `webhook_secrets`, which still
@@ -582,11 +582,11 @@ Unpinned history is pruned to the most recent **20 runs per job** by the executo
 | `note` | str | executor | Human one-liner for a non-obvious finalisation — `"cooldown"` on a skipped fire, an invocation error, or `"watchdog: no output for 68min"` |
 | `pinned` | bool | run update endpoint | Keep-forever flag; omitted/false for normal retention |
 
-Plain files remain the canonical store — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling. `webapp/jobs/_index.sqlite` is only a derived mirror: `runs` stores queryable metadata and `output_fts` maps FTS5 rowids to run rowids for cross-run grep. `src/jobs_index.py` rebuilds it from every `run.json` / `output.log` pair when the file is missing, corrupt, or carries an older `PRAGMA user_version`; deleting it and reloading the Jobs tab is the supported repair path. Canonical writes update the mirror after the atomic JSON swap, and finalization captures the completed output plus artifact presence.
+Plain files remain the canonical store — same pattern as session transcripts and audit logs. A future LLM/human can `cat` a run record without any tooling. `webapp/jobs/_index.sqlite` is only a derived mirror: `runs` stores queryable metadata and `output_fts` maps FTS5 rowids to run rowids for cross-run grep. `src/jobs/index.py` rebuilds it from every `run.json` / `output.log` pair when the file is missing, corrupt, or carries an older `PRAGMA user_version`; deleting it and reloading the Jobs tab is the supported repair path. Canonical writes update the mirror after the atomic JSON swap, and finalization captures the completed output plus artifact presence.
 
 ## Authoring safety — pre-flight on save
 
-Adding a job used to be a leap of faith: the first scheduled fire was when you found out the path was wrong or the venv didn't walk up. `src/jobs_preflight.py::preflight(job)` front-loads those checks at save time so the dialog can surface problems *before* the schedule starts ticking. It is a **pure function** (no subprocess, no globals) — both so it is trivially unit-testable and so a request handler never shells out to `schtasks.exe`.
+Adding a job used to be a leap of faith: the first scheduled fire was when you found out the path was wrong or the venv didn't walk up. `src/jobs/preflight.py::preflight(job)` front-loads those checks at save time so the dialog can surface problems *before* the schedule starts ticking. It is a **pure function** (no subprocess, no globals) — both so it is trivially unit-testable and so a request handler never shells out to `schtasks.exe`.
 
 Two severities:
 
@@ -596,7 +596,7 @@ Two severities:
 Checks performed:
 
 1. **`script_path` exists** → *error* if the file is missing (the single most common authoring mistake).
-2. **`.py` venv walk-up** → *warning* when no ancestor `.venv\Scripts\python.exe` is found; the executor will fall back to `sys.executable`. Mirrors the executor's own `resolve_venv_python` (now living in `src/jobs.py`) so the check matches runtime behaviour exactly.
+2. **`.py` venv walk-up** → *warning* when no ancestor `.venv\Scripts\python.exe` is found; the executor will fall back to `sys.executable`. Mirrors the executor's own `resolve_venv_python` (now living in `src/jobs/__init__.py`) so the check matches runtime behaviour exactly.
 3. **`.bat` embedded `.venv` reference** → *warning* when the wrapper names a `.venv` interpreter / `activate` path that doesn't resolve (best-effort text scan).
 
 **Not a check** — `args` splitting: the executor uses plain `str.split()` (whitespace only, no shell quoting), so any non-empty string splits cleanly under that contract; there is nothing to validate at save time. Jobs that need arguments containing spaces should embed them in the `.bat` / `.py` wrapper instead — see the `build_invocation` docstring in `app/cli/commands/run_job_cmd.py`.
@@ -683,7 +683,7 @@ The **Next up** card is the tab's first card: the next three distinct jobs as ro
 
 ### `run_stats` shape
 
-`src/jobs.py::run_stats(job_id)` is the single helper feeding all of the above:
+`src/jobs/__init__.py::run_stats(job_id)` is the single helper feeding all of the above:
 
 ```python
 {
@@ -702,7 +702,7 @@ Process-local 30 s TTL cache per job id; invalidated explicitly when a run final
 
 `status` on disk is binary: `success` for exit 0, `failed` for everything else. That was right while a job's child was an ordinary script, where a non-zero exit means "this broke". It stopped being right once most jobs became scheduled Claude runs driven by fleet-config's `skills/_lib/scheduled_runner.py`, which spends a block of exit codes distinguishing *why* a run did not report success — and four of those codes do not mean failure at all. They mean **the adapter could not establish whether the run delivered**, which is a different fact, and folding it into `failed` produced exactly the failure this repo has been fixing all week in its other direction: an unknown rendered as a definite state. Four healthy weekly jobs showed red for it (each had committed, pushed and posted to Telegram), and the genuinely failed ones beside them stopped being distinguishable from the noise.
 
-So `src/jobs_outcome.py` classifies the exit code into a third state, and `jobs_history.read_run()` decorates **every** run record it reads with two derived keys:
+So `src/jobs/outcome.py` classifies the exit code into a third state, and `jobs_history.read_run()` decorates **every** run record it reads with two derived keys:
 
 | Key | Meaning |
 | --- | --- |
@@ -785,7 +785,7 @@ Either breach calls `src.diagnostics.kill_process_tree` on the child's whole tre
 **Defaults.**
 
 - `no_output_seconds` → 1 hour (`_WATCHDOG_DEFAULT_NO_OUTPUT_SECONDS`). Generous on purpose: a job that prints nothing until it finishes is common and must not be killed for being quiet.
-- `max_runtime_seconds` → `src.jobs_stats.derived_runtime_ceiling_seconds(job_id)`, the same `max(p95 × 3, 300 s)` heuristic behind the ⚠️ stuck badge (`stuck_threshold_seconds`, now the single definition both read). **But only once the job has at least `WATCHDOG_MIN_COMPLETED_RUNS` (5) completed runs on record** — below that it returns `None` and the run gets *no* runtime ceiling. A false ⚠️ costs a glance; a false auto-kill of a healthy first-ever run is not recoverable, so thin history is reported as unknown rather than collapsed onto the 300 s floor. Give such a job a ceiling by setting `max_runtime_seconds` explicitly.
+- `max_runtime_seconds` → `src.jobs.stats.derived_runtime_ceiling_seconds(job_id)`, the same `max(p95 × 3, 300 s)` heuristic behind the ⚠️ stuck badge (`stuck_threshold_seconds`, now the single definition both read). **But only once the job has at least `WATCHDOG_MIN_COMPLETED_RUNS` (5) completed runs on record** — below that it returns `None` and the run gets *no* runtime ceiling. A false ⚠️ costs a glance; a false auto-kill of a healthy first-ever run is not recoverable, so thin history is reported as unknown rather than collapsed onto the 300 s floor. Give such a job a ceiling by setting `max_runtime_seconds` explicitly.
 
 **Discipline inside the thread.** Both ceilings are resolved on the *main* thread before it starts (`run_job_supervision.resolve_watchdog_limits`), so the loop itself touches nothing but `Path.stat`, `Popen.poll`, and a bounded `Event.wait` — no config load, no run-history read, no notifier. It does not log inline either: the root logger writes to `stderr`, which for a `visible` job is the same console a wedge may already have jammed, so the kill happens **first** and the breadcrumb goes out afterwards on a throwaway daemon thread (`_log_off_thread`). That ordering applies the lesson of that deadlock directly. A child that exited on its own a moment before a breach is caught by a `poll()` check and is never reported as watchdog-killed.
 
@@ -793,14 +793,14 @@ Either breach calls `src.diagnostics.kill_process_tree` on the child's whole tre
 
 ### Stranded-run reap
 
-If the **executor itself** dies before it reaches its own finalise (interrupt, reboot, OOM, a parent shell killing its process tree) — not just the child it's tracking — nothing ever writes a terminal status, and the record stays `running` forever even after the recorded pid is long gone. `src/jobs_reap.py` automates the same reconciliation the kill route already does by hand for that exact case:
+If the **executor itself** dies before it reaches its own finalise (interrupt, reboot, OOM, a parent shell killing its process tree) — not just the child it's tracking — nothing ever writes a terminal status, and the record stays `running` forever even after the recorded pid is long gone. `src/jobs/reap.py` automates the same reconciliation the kill route already does by hand for that exact case:
 
-- **Where it runs.** Opportunistically on read, not a background sweep — every `GET /api/jobs` poll (`app/webapp/routers/jobs.py::_decorate_job`) and every `Board` "stuck" sweep (`src.board.jobs_attention`) call `reap_stranded_runs(job)` before deciding what to show. `src.jobs_queue.mutex_collision` calls the drain-less `finalize_dead_runs(job)` for the same reason mid-admission-check (draining there could spawn a queued sibling before the rest of that same collision sweep re-checks it).
+- **Where it runs.** Opportunistically on read, not a background sweep — every `GET /api/jobs` poll (`app/webapp/routers/jobs.py::_decorate_job`) and every `Board` "stuck" sweep (`src.board.jobs_attention`) call `reap_stranded_runs(job)` before deciding what to show. `src.jobs.queue.mutex_collision` calls the drain-less `finalize_dead_runs(job)` for the same reason mid-admission-check (draining there could spawn a queued sibling before the rest of that same collision sweep re-checks it).
 - **What counts as "provably dead".** Only a recorded `pid` that `psutil` confirms is gone (or has been recycled by Windows — a `pid_create_time` persisted alongside `pid` at spawn, and compared against the live process's actual `create_time()` within 1 s, rules out reuse). No `pid` yet, or a pid that's alive and unverifiable against a create-time hint, is left alone — a genuinely long-running job is never reconciled out from under itself.
 - **A dead child is not a dead run.** A short job's child exits before the executor has written its exit code, so a dead `pid` alone can describe a run that is about to finalise. The executor stamps `executor_pid` and `executor_create_time` (its own OS create time, same reuse guard as `pid_create_time`) when it flips the run to `running`; while that executor is alive the reap is deferred, with an info log line `reap deferred`, and the executor finalises the run. A reap needs the child **and** the executor dead. Records without `executor_pid` (written before it existed) keep the child-only rule. The write also re-checks the record under the run lock, so an exit code that lands after the check still wins.
 - **What gets swept.** Every non-terminal record in the job's history, not just the latest — an older `running` record superseded by a newer run is invisible to every behavioural consumer (mutex/streak/run-button all read only the latest), but still a lie if a user opens that specific historical run's detail view.
 - **What a reap does.** Writes `status: "failed"` plus `reaped: true` — distinct from `killed: true`, since this was never killed, just lost track of — invalidates the stats cache, drains the job's mutex group once if anything was reaped, and fires the same failure alert (Pushover / per-job Telegram) a live-detected failure would (a reap can be discovered hours after the fact, so without the alert nobody would be told about it at all).
-- **`finished_at`/`duration_seconds` — real evidence, never the discovery moment.** A dead executor's death is discovered lazily — the launcher only polls `/api/jobs` when someone has the tab open, so a stranded run can sit `running` for hours before anything notices. Stamping `finished_at` as "now" at that point folded the entire discovery gap into `duration_seconds`, poisoning the job's P50/P95 with a phantom multi-hour run. Instead the reap prefers `output.log`'s last-write mtime as real end-time evidence (rejected if it predates `started_at` — a stale leftover log proves nothing); when no usable evidence exists, `finished_at`/`duration_seconds` are omitted entirely and `end_time_unknown: true` is written instead — its own explicit state, never a guess. `src/jobs_stats.py::_duration_for` already treats a record with neither `duration_seconds` nor a `finished_at` pair as unmeasured, so an unknown-end reap is excluded from the percentile pool with no separate filter needed.
+- **`finished_at`/`duration_seconds` — real evidence, never the discovery moment.** A dead executor's death is discovered lazily — the launcher only polls `/api/jobs` when someone has the tab open, so a stranded run can sit `running` for hours before anything notices. Stamping `finished_at` as "now" at that point folded the entire discovery gap into `duration_seconds`, poisoning the job's P50/P95 with a phantom multi-hour run. Instead the reap prefers `output.log`'s last-write mtime as real end-time evidence (rejected if it predates `started_at` — a stale leftover log proves nothing); when no usable evidence exists, `finished_at`/`duration_seconds` are omitted entirely and `end_time_unknown: true` is written instead — its own explicit state, never a guess. `src/jobs/stats.py::_duration_for` already treats a record with neither `duration_seconds` nor a `finished_at` pair as unmeasured, so an unknown-end reap is excluded from the percentile pool with no separate filter needed.
 - **What it doesn't replace.** The ⚠️ stuck marker (a live-but-slow run) is untouched — reap only fires on a confirmed-dead pid. Nor does it replace the [executor watchdog](#executor-watchdog--the-running-forever-backstop) above: reap handles "the executor is gone and the record lied", the watchdog handles "the executor is still here, still waiting, and the child will never finish".
 
 ### `next_run` cache
@@ -808,7 +808,7 @@ If the **executor itself** dies before it reaches its own finalise (interrupt, r
 The original v1 issued one `schtasks /Query` per job per `/api/jobs` poll — N+1 fork+exec on Windows. The decoration layer now reads `next_run` out of a single process-local snapshot:
 
 - One bulk `schtasks /Query /FO LIST /V` populates `{task_name: {next_run, enabled}}` for every entry under `\AppLauncher\` — `next_run` backs the countdown, `enabled` backs the [missed-fire coverage](#missed-fire-coverage) structural check, so both read one query.
-- The snapshot is cached for **30 s** (`_NEXT_RUN_TTL_SECONDS` in `src/jobs_schtasks.py`).
+- The snapshot is cached for **30 s** (`_NEXT_RUN_TTL_SECONDS` in `src/jobs/schtasks.py`).
 - A *failed* query caches as `None`, distinct from `{}` ("the query worked and there are no `\AppLauncher\` tasks") — without that distinction one failed query would flag every scheduled job as missing its entry.
 - `sync_schtasks` and `delete_schtasks` call `invalidate_next_run_cache()` at the end so user edits show up on the next poll without waiting out the TTL. That also drops the derived coverage scan, which reads this same snapshot.
 
@@ -835,7 +835,7 @@ Set the Pushover keys in `config/webapp_config.json` and flip `notify_on_failure
 | `notify_failure_streak` | `0` | When > 0, also fires a separate "🔁 N consecutive failures" push when the streak ticks to exactly this count. Useful when individual-failure pushes are muted via Pushover quiet hours |
 | `notify_failure_summary` | `false` | When `true`, pipe the last ~500 chars of `output.log` through the local LLM hub (`http://127.0.0.1:8000`, `claude-haiku-4-5`) and prepend the model's one-line root-cause summary to the push body. Hub down → silently falls back to raw tail |
 
-**Not every `failed` run is announced as a failure**. Both channels classify the exit code through `src/jobs_outcome.py` first: a code meaning "delivery was never established" pushes as `❓ <job> — not confirmed` at `warning` severity (Pushover priority 0, so it does not bypass quiet hours) instead of `❌ <job> — failed` at `error`, and the footer carries the code's own meaning so `124` says "stalled" without a log dive. It still pushes — nobody established that the run delivered — but calling it a failure is what made these alerts stop being read. A `killed` / `reaped` / `watchdog` run is a failure regardless. The streak gate follows the same rule: an unconfirmed run **breaks** a failure streak rather than extending it.
+**Not every `failed` run is announced as a failure**. Both channels classify the exit code through `src/jobs/outcome.py` first: a code meaning "delivery was never established" pushes as `❓ <job> — not confirmed` at `warning` severity (Pushover priority 0, so it does not bypass quiet hours) instead of `❌ <job> — failed` at `error`, and the footer carries the code's own meaning so `124` says "stalled" without a log dive. It still pushes — nobody established that the run delivered — but calling it a failure is what made these alerts stop being read. A `killed` / `reaped` / `watchdog` run is a failure regardless. The streak gate follows the same rule: an unconfirmed run **breaks** a failure streak rather than extending it.
 
 The push body always includes: optional LLM summary, the raw output tail (last 500 chars), then a footer `— job=<id> run=<rid> exit=<code>`, with `(reaped — end time not confirmed)` and/or `(watchdog: <note>)` appended when applicable — see the Telegram body below, which shares the same qualifier logic. Pushover caps individual messages at ~1024 chars; longer bodies are truncated server-side, so the tail is what the executor budgets toward.
 
@@ -868,7 +868,7 @@ The message is short and job-scoped: `❌ <job name> failed` as the title, `<tim
 
 ## Missed-fire coverage
 
-Failure alerting covers a run that **failed**; the ⚠️ stuck marker covers one that never **ended**. `src/jobs_coverage.py` covers the third case — a run that never **started**. A job whose Task Scheduler entry is missing, disabled, or was never created simply doesn't fire, and the absence is otherwise invisible: the row keeps showing its old stats and nothing alerts. This is not hypothetical — `config-map` and `sota-watch` shipped launchers plus "runs weekly unattended" docs with *no registered task at all* for weeks, found only by a manual coherence review.
+Failure alerting covers a run that **failed**; the ⚠️ stuck marker covers one that never **ended**. `src/jobs/coverage.py` covers the third case — a run that never **started**. A job whose Task Scheduler entry is missing, disabled, or was never created simply doesn't fire, and the absence is otherwise invisible: the row keeps showing its old stats and nothing alerts. This is not hypothetical — `config-map` and `sota-watch` shipped launchers plus "runs weekly unattended" docs with *no registered task at all* for weeks, found only by a manual coherence review.
 
 Two halves, both answered from data the tab already reads:
 
@@ -890,7 +890,7 @@ The never-flag rules are the load-bearing half — a coverage check that cries w
 
 **Alerting** reuses the exact channels the failure path uses — global Pushover gated by `notify_on_failure`, per-job Telegram gated by `Job.alert_on_failure` — because a coverage problem is a job problem, not a new notification surface. A background tick in the webapp's lifespan re-scans on an interval (the whole point being that it does *not* depend on the Jobs tab being open); it is skipped entirely on a disposable instance (the e2e / verify-before-ship autoboot webapp, identified by `LAUNCHER_SESSION_HOST_PORT`) so a throwaway instance never pushes a real alert. Pings are de-duplicated through `webapp/jobs/coverage-alerts.json`: a job re-alerts only when its problem *signature* changes or its class's repeat interval has passed, and a job whose coverage recovers is dropped from the state so its next break alerts immediately.
 
-**Each problem class is announced in its own words.** All four used to share one hardcoded title — "scheduled run never fired" — which reads as an observed failure and is only true of `missed_fire`; the other three are structural risks about whether the entry *could* fire. A `session_less` backup that had run on time for six straight days was announced daily as never having fired, which is exactly how a reader learns to dismiss the channel — and then the next *real* missed fire lands unread. The table lives in `src/jobs_coverage.py::PROBLEM_ANNOUNCEMENTS`, ordered most root-causal first:
+**Each problem class is announced in its own words.** All four used to share one hardcoded title — "scheduled run never fired" — which reads as an observed failure and is only true of `missed_fire`; the other three are structural risks about whether the entry *could* fire. A `session_less` backup that had run on time for six straight days was announced daily as never having fired, which is exactly how a reader learns to dismiss the channel — and then the next *real* missed fire lands unread. The table lives in `src/jobs/coverage.py::PROBLEM_ANNOUNCEMENTS`, ordered most root-causal first:
 
 | Class | Title | Severity | Re-ping |
 | --- | --- | --- | --- |

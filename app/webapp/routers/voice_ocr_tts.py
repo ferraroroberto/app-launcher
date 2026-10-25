@@ -17,7 +17,11 @@ import httpx
 from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from starlette.responses import StreamingResponse
 
-from src import audit, llm_client, photo_ocr_client, tts_client, voice_client
+from src import audit
+from src.clients import llm as llm_client
+from src.clients import photo_ocr as photo_ocr_client
+from src.clients import tts as tts_client
+from src.clients import voice as voice_client
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json

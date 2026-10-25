@@ -1,6 +1,6 @@
 """Contract: argv handed to the detached run-job spawn stays intact.
 
-``src.jobs_schtasks.spawn_run_job_detached`` re-parents the executor through
+``src.jobs.schtasks.spawn_run_job_detached`` re-parents the executor through
 ``cmd /c start`` (issue #416) so the child is orphaned out of the tray's
 process subtree. That hop means the command line is tokenized a second time
 by ``cmd.exe``, which does **not** honour the backslash-escaping convention
@@ -9,7 +9,7 @@ metacharacters does not survive as a single argv element.
 
 The repo already enforces this contract one layer down for ``.bat`` argv
 (``src/jobs_kinds/batch.py``, issue #409); these tests pin the same contract
-at the earlier hop, where webhook-mapped values (``src.jobs_webhook``
+at the earlier hop, where webhook-mapped values (``src.jobs.webhook``
 ``resolve_mapping``) first reach a command line.
 """
 
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import jobs_schtasks
+from src.jobs import schtasks as jobs_schtasks
 
 
 @pytest.fixture
@@ -105,7 +105,7 @@ class TestRefusalReachesTheRunRecord:
     """A refused value must not escape as an unhandled exception.
 
     Since #794 the refusal fires *inside*
-    ``src.jobs_queue.admit_and_spawn``, which has already created the run
+    ``src.jobs.queue.admit_and_spawn``, which has already created the run
     directory and written ``status="pending"`` by the time the spawn is
     attempted. An escaping ``ValueError`` would therefore leave exactly the
     orphaned ``pending`` record that helper exists to prevent (and, on the
@@ -115,8 +115,8 @@ class TestRefusalReachesTheRunRecord:
 
     @pytest.fixture
     def isolated_jobs(self, tmp_path, monkeypatch):
-        from src import jobs_history as jobs_history_mod
-        from src import jobs_queue as jobs_queue_mod
+        from src.jobs import history as jobs_history_mod
+        from src.jobs import queue as jobs_queue_mod
 
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         monkeypatch.setattr(
@@ -127,8 +127,8 @@ class TestRefusalReachesTheRunRecord:
     def test_refused_param_is_recorded_as_failed_not_raised(self, isolated_jobs):
         import json
 
-        from src import jobs_queue as jobs_queue_mod
-        from src.jobs_config import Job
+        from src.jobs import queue as jobs_queue_mod
+        from src.jobs.config import Job
 
         job = Job(id="solo", name="Solo", script_path="C:/x.py")
 
@@ -158,8 +158,8 @@ class TestRefusalReachesTheRunRecord:
     ):
         """An `OSError` from the spawn itself (not an `ArgvRejected`) must
         keep `refused=False` so the route still answers 500 (issue #810)."""
-        from src import jobs_queue as jobs_queue_mod
-        from src.jobs_config import Job
+        from src.jobs import queue as jobs_queue_mod
+        from src.jobs.config import Job
 
         def _boom(*args, **kwargs):
             raise OSError("the executable vanished")
@@ -179,8 +179,8 @@ class TestRefusalReachesTheRunRecord:
         """The mutex-queued branch enqueues without attempting a spawn, so a
         refused value reaches `spawn_run_job_detached` only at drain time —
         called by the kill route and the reaper, neither of which fired it."""
-        from src import jobs_queue as jobs_queue_mod
-        from src.jobs_config import Job
+        from src.jobs import queue as jobs_queue_mod
+        from src.jobs.config import Job
 
         holder = Job(id="holder", name="Holder", script_path="C:/h.py",
                      mutex_group="g")

@@ -19,7 +19,7 @@ import pytest
 from app.cli.commands import run_job_cmd as rjc
 from app.cli.commands import run_job_supervision as sup
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
+from src.jobs import history as jobs_history_mod
 from src import notifications as notif
 from src.diagnostics import is_pid_alive
 
@@ -75,7 +75,7 @@ class TestExecutorFinalises:
     def test_records_pid_duration_and_resources(
         self, isolated_runs_dir, tmp_path, monkeypatch
     ):
-        from src.jobs_config import Job, JobsConfig
+        from src.jobs.config import Job, JobsConfig
 
         # A tiny script that succeeds quickly. We use the same Python
         # that's running the tests so the venv-walk falls back to
@@ -90,11 +90,11 @@ class TestExecutorFinalises:
             args="",
         )
         monkeypatch.setattr(
-            "src.jobs_config.load_jobs",
+            "src.jobs.config.load_jobs",
             lambda: JobsConfig(jobs=[job]),
         )
         # Also patch the executor's import binding (it does
-        # ``from src.jobs_config import ... load_jobs``).
+        # ``from src.jobs.config import ... load_jobs``).
         monkeypatch.setattr(rjc, "load_jobs", lambda: JobsConfig(jobs=[job]))
         # Notifier path must not raise; stub the config loader to a
         # plain noop-shaped config so we don't read the real on-disk one.
@@ -150,7 +150,7 @@ class TestNotifyFailure:
         return SimpleNamespace(**defaults)
 
     def test_noop_on_success(self, tmp_path, monkeypatch):
-        from src.jobs_config import Job
+        from src.jobs.config import Job
 
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
@@ -164,7 +164,7 @@ class TestNotifyFailure:
         notifier.notify.assert_not_called()
 
     def test_noop_when_master_switch_off(self, tmp_path, monkeypatch):
-        from src.jobs_config import Job
+        from src.jobs.config import Job
 
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
@@ -179,7 +179,7 @@ class TestNotifyFailure:
         notifier.notify.assert_not_called()
 
     def test_fires_on_failure(self, tmp_path, monkeypatch):
-        from src.jobs_config import Job
+        from src.jobs.config import Job
 
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         rd = jobs_mod.new_run_dir("demo", "20260524T080000")
@@ -202,7 +202,7 @@ class TestNotifyFailure:
         assert severity == "error"
 
     def test_streak_fires_on_exact_count(self, tmp_path, monkeypatch):
-        from src.jobs_config import Job
+        from src.jobs.config import Job
 
         monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
         # Seed two prior failed runs so the count hits 3 with the live one.

@@ -4,7 +4,7 @@ The Board tab's badge counts the chief's unanswered questions from every tab,
 so the webapp counts them on the sessions poll (``chief_questions``) while the
 Board counts them from its own plan payload. Which questions are answered
 depends on one key rule (the chief's ``id``, else the position), written once
-in Python (``src.chief_answers.item_key``) and once in JS
+in Python (``src.chief.answers.item_key``) and once in JS
 (``chief-keys.js``'s ``itemKey``). Both are pinned to the same fixture here;
 the JS half runs under plain Node and skips cleanly without it.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from src import chief_answers
+from src.chief import answers as chief_answers
 from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent

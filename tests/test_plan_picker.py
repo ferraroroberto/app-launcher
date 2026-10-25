@@ -19,8 +19,8 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import plan_picker as pp
-from src.statusline_context import context_percent
+from src.session_view import plan_picker as pp
+from src.session_view.statusline_context import context_percent
 
 RULE = "\u2500" * 40
 DASH = "\u254c" * 40
@@ -315,7 +315,7 @@ def test_the_picker_route_says_why_there_is_nothing_to_answer(picker_client):
 def test_an_unreachable_session_host_is_not_a_gone_session(picker_client):
     """#1308: the picker and context polls, and a tap, tell an unreadable
     session list apart from a session that is not in it."""
-    from src.session_client import SessionHostError
+    from src.clients.session import SessionHostError
 
     client, session, _, typed = picker_client
     session.list_sessions.side_effect = SessionHostError("timed out")

@@ -16,7 +16,7 @@ from src.git_utils import run_git
 ROOT = Path(__file__).resolve().parent.parent
 PROD_SUFFIXES = {".py", ".js", ".mjs", ".html", ".css", ".ps1", ".bat", ".json", ".toml", ".yml", ".mmd"}
 ALLOWED_ORPHANS = {  # ``path:name`` -> why production not naming it is fine
-    "src/github_client.py:reset_cache": "test seam: empties the module-level cache between tests",
+    "src/clients/github.py:reset_cache": "test seam: empties the module-level cache between tests",
 }
 
 

@@ -24,7 +24,7 @@ import pytest
 from starlette.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from src import api_tokens
+from src.auth import api_tokens
 
 
 @pytest.fixture

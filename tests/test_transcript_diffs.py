@@ -19,7 +19,7 @@ from typing import Any, Dict, List
 import pytest
 
 from src import board
-from src.session_transcript import (
+from src.session_view.transcript import (
     DIFF_INLINE_LINES,
     entry_diff,
     transcript_page,

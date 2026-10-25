@@ -1,7 +1,7 @@
 """A fake ``gh`` for the design-review synthetic instance (#1286).
 
 The synthetic instance (``scripts/design_review_synthetic.py``, #1227) points
-``src.github_client``'s ``LAUNCHER_GH_CMD`` at this script, so the Board's
+``src.clients.github``'s ``LAUNCHER_GH_CMD`` at this script, so the Board's
 GitHub refresh reads the synthetic rows below instead of the real ``gh`` CLI,
 whose login would otherwise put the real fleet's issue titles into a
 throwaway walk's screenshots and report. It answers the three searches

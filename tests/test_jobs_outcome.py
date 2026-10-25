@@ -7,7 +7,7 @@ weekly jobs showed red for it, and the genuinely failed ones beside them were
 camouflaged as a result.
 
 The last test in this module is the anti-drift guard the issue asked for: the
-table in :mod:`src.jobs_outcome` is a *reader's copy* of constants that live in
+table in :mod:`src.jobs.outcome` is a *reader's copy* of constants that live in
 another repo, so it is checked against that repo whenever the sibling checkout
 is present rather than trusted to stay correct on its own.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from src.jobs_outcome import (
+from src.jobs.outcome import (
     OUTCOME_FAILED,
     OUTCOME_SUCCESS,
     OUTCOME_UNCONFIRMED,
@@ -169,7 +169,7 @@ def _scheduled_runner() -> Path | None:
 def test_exit_code_table_matches_scheduled_runner():
     """Every exit code the adapter defines is one this repo can explain.
 
-    :mod:`src.jobs_outcome` holds a *copy* of a table that is authored in
+    :mod:`src.jobs.outcome` holds a *copy* of a table that is authored in
     another repo, which is exactly the drift the issue warned about: a seventh
     detector added upstream would land here as a silent generic ``failed``,
     with no test going red and nobody noticing until a Board card lied again.
@@ -193,7 +193,7 @@ def test_exit_code_table_matches_scheduled_runner():
     assert defined, "parsed no *_EXIT_CODE constants — has the adapter moved?"
     unexplained = {code for code in defined if classify_exit_code(code) is None}
     assert not unexplained, (
-        "scheduled_runner.py defines exit code(s) src.jobs_outcome does not "
+        "scheduled_runner.py defines exit code(s) src.jobs.outcome does not "
         f"name: {sorted(unexplained)}. Classify each one (failed vs "
         "unconfirmed) rather than letting it render as a generic failure."
     )
@@ -309,6 +309,6 @@ def test_exit_code_outcomes_match_scheduled_runner_verdicts():
         if got != expected[name]:
             mismatched.append(f"{name}={code}: table says {got}, adapter says {expected[name]}")
     assert not mismatched, (
-        "src.jobs_outcome disagrees with the adapter's own verdict: "
+        "src.jobs.outcome disagrees with the adapter's own verdict: "
         + "; ".join(mismatched)
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.board_transcript import _SKIP_USER_PREFIXES
+from src.board.transcript_exchange import _SKIP_USER_PREFIXES
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
     Entry,

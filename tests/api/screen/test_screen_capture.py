@@ -10,9 +10,10 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from src import desktop_capture, desktop_cursor
-from src.desktop_capture import CaptureUnavailable, Monitor
-from src.desktop_cursor import CursorState, CursorUnavailable
+from src.desktop import capture as desktop_capture
+from src.desktop import cursor as desktop_cursor
+from src.desktop.capture import CaptureUnavailable, Monitor
+from src.desktop.cursor import CursorState, CursorUnavailable
 
 from tests.api.screen._support import (
     ABOVE,
@@ -149,7 +150,7 @@ def test_a_tapped_spot_comes_back_as_the_cursor_spot(fx, fy):
     """A tap moves the real cursor to map_point's pixel; reading the cursor
     there gives the tapped fraction back within one pixel, so the drawn
     cursor lands where the tap did."""
-    from src import desktop_input
+    from src.desktop import input as desktop_input
 
     above = Monitor(id=1, left=-8, top=-1080, width=1920, height=1080, primary=False)
     px = above.left + min(above.width - 1, int(fx * above.width))
@@ -213,7 +214,7 @@ def test_an_unreadable_cursor_is_hidden_once_logged_once_and_not_polled_fast(cap
         reads["n"] += 1
         raise CursorUnavailable("secure desktop")
 
-    with caplog.at_level("INFO", logger="src.desktop_cursor"):
+    with caplog.at_level("INFO", logger="src.desktop.cursor"):
         sent = _run(_drive_cursor(read, run_for=0.3, interval=0.001, retry=0.1))
     assert sent == [{"type": "cursor", "visible": False}]
     assert reads["n"] <= 4, "an unreadable cursor must back off to the retry pace"

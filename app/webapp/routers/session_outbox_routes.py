@@ -4,7 +4,7 @@
 **Loopback-only**: the caller is an agent running on this PC (a companion
 ``send_file`` script, any harness). A request from anywhere else is refused
 outright, passkey or not — sending a file is the agent's act, never the
-phone's. The file is checked and copied by :mod:`src.session_outbox`; each
+phone's. The file is checked and copied by :mod:`src.session_view.outbox`; each
 refusal comes back with its own ``reason`` and status.
 
 ``GET /api/claude-code/sessions/{sid}/outbox`` lists a session's entries and
@@ -30,7 +30,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from src import session_outbox
+from src.session_view import outbox as session_outbox
 from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself
@@ -65,7 +65,7 @@ def file_headers(name: str, media: str) -> Dict[str, str]:
     capture), nothing sniffs it into another type, the name is a quoted
     ``filename*`` (never raw header text), and anything but a PDF — which
     the browser's own viewer must be free to render — is sandboxed; HTML
-    under :data:`~src.session_outbox.HTML_CSP`, so a direct open in a tab
+    under :data:`~src.session_view.outbox.HTML_CSP`, so a direct open in a tab
     runs no script either. An archive is opaque bytes, so it is an
     ``attachment``, never shown inline."""
     disposition = "attachment" if media == session_outbox.ARCHIVE_MEDIA else "inline"

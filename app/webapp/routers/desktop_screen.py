@@ -1,7 +1,7 @@
 """Screen view (#1520): the PC's desktop, live, on the phone.
 
 ``GET /api/screen/monitors`` lists the displays; ``WS /api/screen/ws`` streams
-one of them as JPEG binary frames. Capture lives in :mod:`src.desktop_capture`
+one of them as JPEG binary frames. Capture lives in :mod:`src.desktop.capture`
 and runs only inside a connected socket.
 
 A picture of the desktop shows whatever is on it, so this is terminal-grade
@@ -17,7 +17,7 @@ the text ``ack`` after drawing each frame, and the next frame waits for it.
 
 Input (#1521): every other text frame the client sends is a JSON input
 message (click, down/move/up, scroll, text, key), handed to a
-:class:`src.desktop_input.InputSession` for this socket's monitor. The reader
+:class:`src.desktop.input.InputSession` for this socket's monitor. The reader
 that receives them only starts after the gate above has passed, so input
 rides the same socket and the same gate as the picture; there is no other
 input path (``tests/test_desktop_input.py`` fails if one appears). When the
@@ -32,7 +32,7 @@ direction and records nothing of their content.
 
 Quality (#1721): the connect query's ``preset`` (sharp, balanced or saver;
 anything else is balanced) picks the JPEG quality, the pause between frames
-and a width cap from one table in :mod:`src.desktop_capture`. The client can
+and a width cap from one table in :mod:`src.desktop.capture`. The client can
 switch a readout on with ``{"type": "readout", "on": true}``, a control
 message that is not input; while it is on, the server sends one JSON ``stats``
 message about once a second with the mean time of each capture stage
@@ -40,7 +40,7 @@ message about once a second with the mean time of each capture stage
 
 Cursor (#1598): beside the frames, the server sends JSON ``cursor`` messages
 (position as 0-1 in the shown monitor, a shape name, visible or not) from
-:func:`src.desktop_cursor.stream_cursor`, whenever the cursor changed. It is
+:func:`src.desktop.cursor.stream_cursor`, whenever the cursor changed. It is
 not paced by the frame ack, starts only after the gate, and stops with the
 socket, like the frames.
 """
@@ -56,7 +56,10 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from src import audit, desktop_capture, desktop_cursor, desktop_input
+from src import audit
+from src.desktop import capture as desktop_capture
+from src.desktop import cursor as desktop_cursor
+from src.desktop import input as desktop_input
 
 from app.webapp.middleware import ws_terminal_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip_ws

@@ -25,7 +25,7 @@ import sys
 import textwrap
 from types import SimpleNamespace
 
-from src import jobs_schtasks
+from src.jobs import schtasks as jobs_schtasks
 from src.subprocess_flags import NO_WINDOW
 
 # cp850 bytes that are NOT valid UTF-8 — 0xE9 is 'Ú' in cp850 and an illegal
@@ -74,7 +74,7 @@ class TestDecodesUnderUtf8Mode:
                 # sys.path[0] is the probe's own tmp dir, so the repo root has
                 # to be named explicitly for `from src import ...` to resolve.
                 sys.path.insert(0, {str(_repo_root())!r})
-                from src import jobs_schtasks
+                from src.jobs import schtasks as jobs_schtasks
                 proc = jobs_schtasks._run_schtasks(
                     [sys.executable, {str(emitter)!r}]
                 )
@@ -122,4 +122,4 @@ class TestBulkRecordsAnnouncesFailure:
 def _repo_root():
     from pathlib import Path
 
-    return Path(jobs_schtasks.__file__).resolve().parent.parent
+    return Path(jobs_schtasks.__file__).resolve().parents[2]

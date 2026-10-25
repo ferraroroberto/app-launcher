@@ -10,7 +10,7 @@ That is not hypothetical. On 2026-08-10 a webapp booted out of the git
 worktree ``app-launcher-wt-727`` pushed three *false* "scheduled run never
 fired" alerts to the phone: the worktree carried the real
 ``config/jobs.json`` and the real Telegram credentials, but
-:data:`src.jobs_history.JOBS_RUNS_DIR` resolves under its own
+:data:`src.jobs.history.JOBS_RUNS_DIR` resolves under its own
 ``PROJECT_ROOT``, so it read an empty run history and concluded every
 scheduled fire in its window had been missed. The only exemption in place
 was the ``LAUNCHER_SESSION_HOST_PORT`` marker, which the e2e /
@@ -32,7 +32,7 @@ The predicate, in order:
    no network — it cannot return the wrong answer for a worktree.
 4. Neither → the role is *unestablished*, and an unestablished fact gets its
    own outcome rather than being folded into the acting one (the same rule
-   :func:`src.jobs_coverage.coverage_for` follows for a failed ``schtasks``
+   :func:`src.jobs.coverage.coverage_for` follows for a failed ``schtasks``
    query). Stand down; the override in step 2 is the way to say otherwise.
 
 Callers should log the returned reason: a stray instance that silently
@@ -85,7 +85,7 @@ def canonical_instance(
     ``project_root`` defaults to this repo's root, read from the module
     attribute at *call* time (not bound as a default argument) so a test can
     monkeypatch :data:`PROJECT_ROOT` — the same late-binding
-    :func:`src.jobs_coverage.coverage_alerts_path` uses for
+    :func:`src.jobs.coverage.coverage_alerts_path` uses for
     ``jobs_history.JOBS_RUNS_DIR``.
 
     ``reason`` is one of the ``REASON_*`` constants and is meant to be

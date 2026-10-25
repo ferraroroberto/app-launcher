@@ -1,8 +1,8 @@
-"""Scoped API bearer token library — src.api_tokens (issue #72)."""
+"""Scoped API bearer token library — src.auth.api_tokens (issue #72)."""
 
 from __future__ import annotations
 
-from src import api_tokens
+from src.auth import api_tokens
 
 
 def _mint(label="Deck", scope=None):

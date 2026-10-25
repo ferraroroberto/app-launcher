@@ -2,7 +2,7 @@
 
 ``alert_on_failure`` catches a run that failed and ``is_stuck`` catches one
 that never ended; nothing caught one that never *started*. These tests pin
-both halves of ``src.jobs_coverage`` — the structural check (a job whose Task
+both halves of ``src.jobs.coverage`` — the structural check (a job whose Task
 Scheduler entry is missing/disabled) and the behavioural one (an elapsed slot
 with no run record) — plus, crucially, the never-flag rules that keep it from
 crying wolf across a normal week.
@@ -19,10 +19,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from src import jobs as jobs_mod
-from src import jobs_coverage as cov
-from src import jobs_history as jobs_history_mod
-from src import jobs_schtasks as jobs_schtasks_mod
-from src.jobs_config import Job, Schedule
+from src.jobs import coverage as cov
+from src.jobs import history as jobs_history_mod
+from src.jobs import schtasks as jobs_schtasks_mod
+from src.jobs.config import Job, Schedule
 
 
 NOW = datetime(2026, 8, 1, 12, 0, 0)
@@ -30,7 +30,7 @@ NOW = datetime(2026, 8, 1, 12, 0, 0)
 
 @pytest.fixture
 def runs_root(tmp_path, monkeypatch):
-    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split) — patch
+    # JOBS_RUNS_DIR is owned by src.jobs.history (issue #315 split) — patch
     # there, not on the src.jobs facade.
     monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     cov.invalidate_coverage_cache()

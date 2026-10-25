@@ -142,7 +142,7 @@ def test_disposable_config_reads_nothing_from_the_host_state_dirs(tmp_path: Path
 
 def test_disposable_usage_meter_is_a_fixed_synthetic_value(tmp_path: Path) -> None:
     """#1717 acceptance: two runs show the same meter, and it is not stale."""
-    from src.board_state import read_rate_limits
+    from src.board.state import read_rate_limits
 
     readings = []
     for run in ("a", "b"):

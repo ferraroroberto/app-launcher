@@ -29,14 +29,13 @@ app-launcher/
 │           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
-├── src/                        # logic layer (no UI imports)
+├── src/                        # logic layer (no UI imports); flat modules first, then one subpackage per domain
 │   ├── app_config.py           # log level, webapp embed section
 │   ├── webapp_config.py        # host/port/scan-paths/agent settings/secrets/terminal knobs
-│   ├── launch_flags.py         # per-agent CLI flag builders (claude/codex/agy/copilot/pi/grok + resume)
+│   ├── webapp_settings/        # values.py: the defaults and value sets every webapp_config field validates against
 │   ├── agents.py               # coding-agent registry (claude/codex/agy/copilot/pi/grok) + PATH detection
 │   ├── registry.py             # apps registry (load/save/scan) + live claude-code rows
 │   ├── scanner.py              # bat classifier + project-dir + life-os skill discovery
-│   ├── launcher.py             # spawn_bat / spawn_claude_session helpers
 │   ├── session_host.py         # PtySession + SessionManager (ConPTY via pywinpty)
 │   ├── session_host_scan.py    # pure PTY-protocol byte scanning (OSC title, colour-OSC, bracketed-paste, prompt-title)
 │   ├── session_host_composer.py # typed-but-unsent composer state inferred from PTY input (composer_dirty)
@@ -44,14 +43,12 @@ app-launcher/
 │   ├── session_hosting/        # session-host parts: session kinds + stop modes, child env, detached console sessions, deferred-submit watcher
 │   ├── session_host_paths.py   # session-host CLAUDE.md-declared path parsing (stale_relevant scoping)
 │   ├── vt_snapshot.py          # headless pyte VT mirror per fullscreen session (reconnect snapshot)
-│   ├── _loopback_http.py       # shared loopback HTTP client base (session/voice/photo/tts)
-│   ├── session_client.py       # webapp → session-host loopback HTTP client
-│   ├── webauthn_gate.py        # passkey enrollment / assertion + terminal tokens
+│   ├── console_input.py        # per-send console-input helper, run as `python -m`, off the session-host closure
 │   ├── audit.py                # terminal audit + per-session logs
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
-│   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source, fleet-config#412)
+│   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source)
 │   ├── env_path.py             # effective-PATH resolution for coding-agent detection
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`
 │   ├── boot_autostart.py       # launch-on-login registration
@@ -60,39 +57,29 @@ app-launcher/
 │   ├── instance_role.py        # primary-checkout vs worktree role detection
 │   ├── context_filter_state.py # Context-filter card's persisted UI state
 │   ├── fleet_scope.py          # Settings › Fleet scope: fleet-config's active/dormant switch, via its own writer
-│   ├── api_tokens.py           # job-scoped bearer tokens (Settings → API tokens)
-│   ├── auth/                   # credentials beyond the main token: the delegate token (read the Board, file issues)
+│   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it
 │   ├── notifications.py        # notify_on_failure dispatch
-│   ├── notify/                 # provider package behind notifications.py (Telegram, …)
-│   ├── github_client.py        # `gh`-backed client for Board backlog/PR/issue data
-│   ├── llm_client.py           # local-llm-hub client (root-cause lines, fleet chief, summarize)
-│   ├── photo_ocr_client.py     # photo-ocr sibling-service client
-│   ├── tts_client.py           # local-llm-hub TTS client (🔊 Read aloud)
-│   ├── voice_client.py         # voice-transcriber sibling-service client
-│   ├── chief_pointer.py        # fleet-chief PTY session lookup for the chief's ensure path
-│   ├── chief_answers.py        # the chief's questions already answered, shared by every device
-│   ├── chief/                  # the chief's plan card writes: plan_prune.py clears merged rows through fleet-config's writer
-│   ├── board.py                # Board backend: kanban column computation
-│   ├── board_state.py          # session-state join (session-host + fleet-config overlay)
-│   ├── board_sessions.py       # live-session enumeration for the Board
-│   ├── board_exchange.py       # drill-down drawer's last-exchange read
-│   ├── transcript_locate.py    # filesystem correlation of a live session to its harness transcript file
-│   ├── board_transcript.py     # transcript overlay + conversation-source hierarchy
-│   ├── session_transcript.py   # paginated, typed transcript pages for one live Coding session
-│   ├── session_screen.py       # a live session's terminal screen: answer a question, plan picker, resume, context % (#1424)
+│   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)
+│   ├── usage_log.py            # vendored: local view/tap log router + SQLite store
+│   ├── auth/                   # credentials beyond the main token: api_tokens.py (job-scoped tokens), the delegate token,
+│   │                           #   webauthn_gate.py (passkey enrollment / assertion + terminal tokens)
+│   ├── clients/                # loopback HTTP clients: the shared _loopback_http.py base, the session-host (session.py),
+│   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
+│   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),
+│   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces
+│   ├── board/                  # Board backend: kanban assembly (__init__.py), session-state join (state.py),
+│   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
+│   │                           #   the transcript overlay (transcript.py, dispatch_ids.py, transcript_exchange.py)
+│   ├── chief/                  # the fleet chief: identity.py (which live session is the chief), the plan card, its pointer,
+│   │                           #   answered questions, dispatch briefs, the job-failed event
+│   ├── session_view/           # a live Coding session's views: typed transcript pages, Changed files, the Chat outbox,
+│   │                           #   the plan and `/resume` pickers, transcript-file location, the working-tree diff
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
-│   ├── usage/                  # usage-meter settings: providers.py owns the usage_providers list and its migration, auto_switch.py the Grok fallback rule for Sonnet lanes
-│   ├── session_changes.py      # a session's Changed files, folded from its transcript (never `git diff`)
-│   ├── session_outbox.py       # files an agent sends to Chat: path/type/size guards + runtime store (#1530)
-│   ├── usage_log.py            # vendored: local view/tap log router + SQLite store (#1524)
-│   ├── resume_picker.py        # Claude Code's `/resume` picker, answered from a Chat card
-│   ├── plan_picker.py          # Claude Code's plan picker, read off the live terminal screen
-│   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it (#794, #1111)
-│   ├── life_os_index.py        # Life OS conversation-artefact reconciliation (index.json/index.md/search db)
-│   ├── life_os_delete.py       # the one Life OS conversation delete routine: the Delete route and the zombie job share it (#1738)
-│   ├── life_os_zombies.py      # zombie classifier + sweep; life_os_zombie_backup.py is its backup/restore/retention (#1738)
-│   ├── channel_profiles.py     # Telegram channel launch profiles: loader + per-session settings file (#1366)
-│   └── jobs*.py, jobs_kinds/   # Jobs backend, the largest group in src/ — config chain, scheduling/trigger/queue/reap,
+│   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser
+│   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup
+│   ├── usage/                  # usage meter: providers.py, auto_switch.py (the Grok fallback for Sonnet lanes),
+│   │                           #   quota.py, export.py (Send to task-os)
+│   └── jobs/, jobs_kinds/      # Jobs backend: the facade (__init__.py), config chain, scheduling/trigger/queue/reap,
 │                               #   history/stats/coverage/outcome, webhooks, secrets, per-kind executors
 │                               #   (batch/http_check/inline_shell/powershell/python/shell_wsl)
 │
@@ -174,6 +161,5 @@ app-launcher/
 
 - **Where new code goes:** a view's browser code in `app/webapp/static/`, its API in `app/webapp/routers/`, logic with no UI import in `src/`, tests under `tests/unit/<domain>/` (logic), `tests/api/` (routers) or `tests/e2e/<tab>/` (browser), not loose in the flat `tests/` or `tests/e2e/`. A new module in a full directory goes in a subpackage (`src/notify/`, `src/jobs_kinds/` and `src/transcript_flavors/` are the pattern), never loose in the directory.
 - **Declared shape:** `webapp-tray`, with `webapp/` as the one extra root. It is the tray's runtime-state folder: only the two `*.sample.*` files in it are tracked, and the rest is gitignored. The preset itself lists `assets/` and `config/`.
-- **Flat directories, baselined:** `src/`, `tests/` and `tests/e2e/` each hold more than 40 modules today. They take no new module until they are split. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
-- **Layer import, known debt:** `src/chief_job_failed.py` imports `board_chief` from `app.webapp.routers` inside a function, which breaks the rule that `src` has no UI imports. The shared piece belongs in `src/`; until it moves, the baseline records the one import and a second one fails the gate.
+- **Flat directories, baselined:** `tests/` and `tests/e2e/` each hold more than 40 modules today. They take no new module until they are split. `src/` is under the limit because its domains sit in subpackages; a new module goes in its domain's package, not loose in `src/`. `app/webapp/static/` is under the limit because its views' modules sit in the subfolders above; a new module goes in its view's folder, not loose beside `main.js`.
 - **Oversized files and functions:** every one over the limits is in the baseline at its current size. Splitting them is separate work, and a split lowers its entry.

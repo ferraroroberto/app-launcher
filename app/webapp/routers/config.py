@@ -11,9 +11,10 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import boot_autostart, session_outbox
+from src import boot_autostart
+from src.session_view import outbox as session_outbox
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
-from src.launch_flags import (
+from src.launching.flags import (
     build_antigravity_flags,
     build_claude_flags,
     build_codex_flags,
@@ -23,7 +24,7 @@ from src.launch_flags import (
     default_effort,
     effective_effort,
 )
-from src.model_catalog import (
+from src.launching.model_catalog import (
     CLAUDE_MODEL_SPECS,
     CODEX_MODEL_SPECS,
     GROK_DISPATCH_MODEL_SPECS,

@@ -9,8 +9,8 @@ import re
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from src.jobs_argv import reject_cmd_unsafe
-from src.jobs_config import Job
+from src.jobs.argv import reject_cmd_unsafe
+from src.jobs.config import Job
 from src.jobs_kinds.base import Problem, require_script
 
 # A ``.venv\Scripts\python(w).exe`` (or ``activate``) reference embedded in
@@ -27,11 +27,11 @@ _BAT_VENV_RE = re.compile(
 # a tail value containing one of these can break out of its argv slot and
 # have cmd.exe run additional commands. A webhook-triggered
 # job can map an unsanitized payload field straight into a string param
-# value (src.jobs_webhook.resolve_mapping), so this has to be enforced
+# value (src.jobs.webhook.resolve_mapping), so this has to be enforced
 # here, not just at the UI layer.
 #
-# The character set and the check live in ``src.jobs_argv`` because this is
-# not the only hop that hands argv to cmd — ``src.jobs_schtasks`` re-parents
+# The character set and the check live in ``src.jobs.argv`` because this is
+# not the only hop that hands argv to cmd — ``src.jobs.schtasks`` re-parents
 # the executor through ``cmd /c start`` one layer up, and two copies of a
 # contract like this drift apart silently.
 

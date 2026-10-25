@@ -22,7 +22,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from src.model_catalog import DEFAULT_HIDDEN_MODELS
+from src.launching.model_catalog import DEFAULT_HIDDEN_MODELS
 from tests.e2e.conftest import close_settings_sheets, open_agent_sheet, open_settings_sheet
 
 

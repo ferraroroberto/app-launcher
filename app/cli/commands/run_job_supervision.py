@@ -36,8 +36,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 from src.diagnostics import kill_process_tree
-from src.jobs_config import Job
-from src.jobs_stats import derived_runtime_ceiling_seconds
+from src.jobs.config import Job
+from src.jobs.stats import derived_runtime_ceiling_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -453,12 +453,12 @@ def resolve_watchdog_limits(job: Job) -> Tuple[Optional[float], Optional[float]]
     the watchdog thread itself never reads config or run history — the
     "nothing that can block, inside the thread" constraint of issue #695.
 
-    Both fields are tri-state on :class:`~src.jobs_config.Job`: ``None``
+    Both fields are tri-state on :class:`~src.jobs.config.Job`: ``None``
     means "use the default", a positive int is that many seconds, and
     ``0`` means "disable this signal for this job".
 
     The runtime default reuses the job's own duration history via
-    :func:`~src.jobs_stats.derived_runtime_ceiling_seconds` — the same
+    :func:`~src.jobs.stats.derived_runtime_ceiling_seconds` — the same
     ``max(p95 × 3, 300 s)`` heuristic the UI's ⚠️ stuck badge shows — but
     only once there are enough completed runs to trust it. A job with
     thinner history gets no runtime ceiling rather than a fabricated one:

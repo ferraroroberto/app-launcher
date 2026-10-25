@@ -31,10 +31,10 @@ import pytest
 from app.cli.commands import run_job_cmd as rjc
 from app.cli.commands import run_job_supervision as sup
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
-from src import jobs_stats as jobs_stats_mod
+from src.jobs import history as jobs_history_mod
+from src.jobs import stats as jobs_stats_mod
 from src import notifications as notif
-from src.jobs_config import Job, JobsConfig, job_from_dict
+from src.jobs.config import Job, JobsConfig, job_from_dict
 from src.subprocess_flags import NO_WINDOW
 
 
@@ -403,7 +403,7 @@ class TestExecutorWatchdogIntegration:
     def _wire(self, monkeypatch, job: Job) -> None:
         monkeypatch.setattr(rjc, "load_jobs", lambda: JobsConfig(jobs=[job]))
         monkeypatch.setattr(
-            "src.jobs_config.load_jobs", lambda: JobsConfig(jobs=[job])
+            "src.jobs.config.load_jobs", lambda: JobsConfig(jobs=[job])
         )
         monkeypatch.setattr(
             rjc,

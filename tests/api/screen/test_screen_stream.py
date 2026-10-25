@@ -6,8 +6,9 @@ import asyncio
 import time
 
 
-from src import desktop_capture, desktop_cursor
-from src.desktop_cursor import CursorState
+from src.desktop import capture as desktop_capture
+from src.desktop import cursor as desktop_cursor
+from src.desktop.cursor import CursorState
 
 from tests.api.screen._support import (
     ABOVE,

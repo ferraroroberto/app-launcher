@@ -1,4 +1,4 @@
-"""The local-llm-hub TTS loopback client (`src.tts_client`, issue #203).
+"""The local-llm-hub TTS loopback client (`src.clients.tts`, issue #203).
 
 Thin ``requests`` wrapper over the hub's ``/health`` probe plus pure URL /
 payload builders — so we stub ``requests.request`` for health and assert the
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import tts_client
+from src.clients import tts as tts_client
 
 
 class _Resp:

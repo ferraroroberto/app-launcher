@@ -4,7 +4,7 @@
  * list. The answer sheet records answered keys with it (board-answers.js),
  * the Board's lane, header and tab badge count the questions still open with
  * it, and the webapp counts them for the badge on every other tab with its
- * Python twin (src/chief_answers.py item_key). One fixture pins both sides:
+ * Python twin (src/chief/answers.py item_key). One fixture pins both sides:
  * tests/fixtures/chief_question_keys.json.
  *
  * Imports nothing, so plain Node can load it for that test.

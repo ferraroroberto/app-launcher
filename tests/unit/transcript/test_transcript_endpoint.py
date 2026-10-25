@@ -51,7 +51,7 @@ class TestTranscriptEndpoint:
         """#1308: a list the host would not answer says nothing about the
         session, so it must not be reported as the terminal
         `session_not_found` the client latches off on."""
-        from src.session_client import SessionHostError
+        from src.clients.session import SessionHostError
 
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.side_effect = SessionHostError("timed out")
@@ -97,7 +97,7 @@ class TestTranscriptEndpoint:
         Before the filesystem fallback that answered `no_transcript` over a
         conversation sitting readable on disk, while Terminal mode showed
         it. The row stays first when there is one."""
-        from src import transcript_locate
+        from src.session_view import transcript_locate
 
         client, _, overrides = webapp_client
         session = _live(project_dir=r"E:\work\project", started_at=1_000_000.0)
@@ -127,7 +127,7 @@ class TestTranscriptEndpoint:
         shared by two live siblings reads the conversation its own bridge id
         names, and each sibling reads its own, not this one's. The link comes
         from the session's PTY capture (#1399), not the session-host's row."""
-        from src import transcript_locate
+        from src.session_view import transcript_locate
 
         from src import audit
 
@@ -176,7 +176,7 @@ class TestTranscriptEndpoint:
         and sharing its folder with another live session, reads its
         conversation; a fresh neighbour still answers no_transcript, and the
         log line names the guard that refused."""
-        from src import transcript_locate
+        from src.session_view import transcript_locate
 
         client, _, overrides = webapp_client
         resumed = _live(

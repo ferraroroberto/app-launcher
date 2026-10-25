@@ -32,8 +32,12 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, life_os_capture, life_os_delete, life_os_index, session_client
-from src.life_os_history import read_captures
+from src import audit
+from src.life_os import capture as life_os_capture
+from src.life_os import delete as life_os_delete
+from src.life_os import index as life_os_index
+from src.clients import session as session_client
+from src.life_os.history import read_captures
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
 
@@ -169,7 +173,7 @@ async def delete_file(request: Request) -> Dict[str, Any]:
     ``.claude/skills/<skill>/conversations/``. Used by the browser's
     edit-mode 🗑️ to declutter trial-run logs.
 
-    Shares :func:`src.life_os_delete.delete_conversation` with the
+    Shares :func:`src.life_os.delete.delete_conversation` with the
     skill-scoped ``DELETE /api/life-os/skills/{id}/conversations`` (#1410) so
     there is one routine for "delete a conversation everywhere it lives":
     this route also drops the matching Claude Code transcript, title and

@@ -1,4 +1,4 @@
-"""The photo-ocr loopback client (`src.photo_ocr_client`, issue #171).
+"""The photo-ocr loopback client (`src.clients.photo_ocr`, issue #171).
 
 Thin ``requests`` wrapper over photo-ocr's single-shot ``POST /api/extract``
 — so we stub ``requests.post`` and assert the one-call shape plus the error
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from src import photo_ocr_client
+from src.clients import photo_ocr as photo_ocr_client
 
 
 class _Resp:

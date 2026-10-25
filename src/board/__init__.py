@@ -1,0 +1,313 @@
+"""Assembly logic for the Board tab's kanban columns (issue #300 / #164).
+
+Five single-purpose columns (#399): Backlog and Done hold issues only;
+Claude's turn and Your turn hold session cards only; Other holds everything
+else that needs attention but isn't a terminal or an issue — open PRs and
+failed/stuck jobs. See :func:`build_board` for the exact routing.
+
+Three inputs, one board:
+
+* the **live session list** from the session-host (``session_client.list_sessions``),
+* the **sessions-state file** written by fleet-config's ``session_state`` hook
+  (``~/.claude/hooks/state/sessions-state.json`` — ``working`` / ``needs-you``
+  / ``idle`` rows per recent Claude Code session),
+* the **jobs attention scan** (failed-today / stuck / unreadable runs from
+  ``src.jobs``),
+
+plus the in-memory GitHub snapshot from :mod:`src.clients.github`.
+
+This module is now a thin ``build_board`` assembly plus the jobs-attention
+scan (issue #408 split — was a 690-line god file). The three other concerns
+each own their own module, and their public names are re-exported here so
+every existing ``board.<name>`` call site (routers, tests) keeps working
+unchanged:
+
+* :mod:`src.board.state` — hook-state-file IO (:func:`read_sessions_state`,
+  :func:`read_active_issues`, :func:`read_rate_limits`).
+* :mod:`src.board.sessions` — session-claim/merge logic
+  (:func:`merge_sessions`, :func:`attach_shared_names`,
+  :func:`state_row_for_session`). Writer-provided launcher id + agent wins;
+  legacy Claude rows use an agent-gated normalized-cwd fallback.
+* :mod:`src.board.transcript` — transcript-JSONL parsing
+  (:func:`last_exchange`, plus the activity-overlay/external-liveness helpers
+  ``merge_sessions`` calls internally).
+
+Degradation contract (#164 acceptance): a missing/corrupt/stale state file
+must never error — session cards fall back to ``unknown`` status and the
+GitHub/jobs columns render regardless.
+
+Shared session title (#396): the state row also carries ``name``/``name_source``
+(fleet-config#302's live Claude Code session title). ``merge_sessions`` copies
+those onto every card as ``shared_name``/``shared_name_source``, and
+:func:`attach_shared_names` runs the identical agent-aware claim walk for the
+Coding tab's own ``/api/claude-code/sessions`` list — so a live session
+resolves to the same state row, and therefore the same title, on both tabs.
+The frontend's precedence lives in one place, ``sessions.js``'s
+``sessionTitle()``, which both tabs call.
+"""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from src.board import active_issue_claims
+from src.jobs import dismissed as jobs_dismissed
+
+from src.board.state import (  # noqa: F401 — re-exported for board.<name> callers
+    RATE_LIMITS_STALE_AFTER,
+    STATE_STALE_AFTER,
+    _age_seconds,
+    _now,
+    _parse_iso,
+    read_active_issues,
+    read_rate_limits,
+    read_sessions_state,
+)
+from src.board.sessions import (  # noqa: F401 — re-exported for board.<name> callers
+    _live_launcher_session_ids,
+    active_issue_repos,
+    attach_last_turn,
+    attach_shared_names,
+    attach_transcript_model,
+    merge_sessions,
+    state_row_for_session,
+    state_sid_for_session,
+)
+from src.board.transcript_exchange import (  # noqa: F401 — re-exported
+    has_typed_user_prompt,
+    last_exchange,
+)
+from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
+
+logger = logging.getLogger(__name__)
+
+# Job ids whose run history is currently unreadable: one warning when a job
+# enters that state and one breadcrumb when it leaves, not one per 5 s Board
+# poll. Bounded by the job registry, so no cap is needed.
+_UNREADABLE_JOBS: set[str] = set()
+
+
+def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """Failed-today, unconfirmed-today, stuck and unreadable runs across all jobs.
+
+    A card's ``state`` is ``"failed"``, ``"unconfirmed"`` (#916 — the run may
+    well have delivered, but the scheduled-run adapter could not establish it),
+    ``"stuck"`` or ``"unreadable"``. ``error`` carries the exit code's own
+    one-liner when it has one, so the card can say *why* without a log dive.
+    A run whose job declares its exit code ``deferred`` (#1316) gets no card.
+    A failed or unconfirmed run the owner dismissed (#1669) gets none either;
+    ``stuck`` and ``unreadable`` cards describe a live problem and cannot be
+    dismissed.
+
+    Reads the jobs' in-memory runtime snapshot (#1324), shared with
+    ``/api/jobs``, instead of walking every job's history per poll. Still
+    blocking (a stale or dirty snapshot is rebuilt inline) — callers wrap in
+    ``asyncio.to_thread``. Job timestamps are naive local ISO strings
+    (``run_job_cmd`` writes ``datetime.now().isoformat()``), so "today" is the
+    local calendar day.
+
+    A job whose run history cannot be read gets an ``unreadable`` card rather
+    than being skipped (#915): skipping it meant that job could never raise
+    attention at all, and its absence read as "nothing stuck".
+    """
+    from src.jobs import snapshot as jobs_snapshot
+    from src.jobs.config import load_jobs
+
+    now_local = (now or _now()).astimezone()
+    cards: List[Dict[str, Any]] = []
+
+    jobs = load_jobs().jobs
+    snap = jobs_snapshot.current(jobs)
+    dismissed = jobs_dismissed.read_dismissed()
+    for job in jobs:
+        # The snapshot's walk reaps a run stranded "running" by a dead
+        # executor, so the Board doesn't keep rendering a
+        # "stuck" card for a run that nothing is actually executing.
+        runtime = snap.jobs[job.id]  # current() covers every job it is given
+        card = _job_attention_card(job, runtime, now_local, dismissed)
+        if card is not None:
+            cards.append(card)
+
+    return cards
+
+
+def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: Any) -> Optional[Dict[str, Any]]:
+    """The attention card one job's latest run raises, or ``None``."""
+    latest = runtime.latest
+    if runtime.error is not None:
+        exc = runtime.error
+        if job.id not in _UNREADABLE_JOBS:
+            logger.warning(
+                "⚠️ board: run history of job %s unreadable, "
+                "attention unknown: %s", job.id, exc,
+            )
+            _UNREADABLE_JOBS.add(job.id)
+        return {
+            "kind": "job",
+            "job_id": job.id,
+            "job_name": job.name,
+            "state": "unreadable",
+            "run_id": None,
+            "finished_at": None,
+            "age_seconds": None,
+            "error": str(exc),
+        }
+    if job.id in _UNREADABLE_JOBS:
+        logger.info("✅ board: run history of job %s readable again", job.id)
+        _UNREADABLE_JOBS.discard(job.id)
+    if not latest:
+        return None
+    if latest.get("status") == "running" and runtime.stuck:
+        started = _parse_iso(latest.get("started_at"))
+        return {
+            "kind": "job",
+            "job_id": job.id,
+            "job_name": job.name,
+            "state": "stuck",
+            "run_id": latest.get("run_id"),
+            "finished_at": None,
+            "age_seconds": _age_seconds(started, now_local),
+        }
+    # A deferral the job itself declared is by design, so nothing
+    # here needs a human. Its state is shown on the job card, not here.
+    if (
+        latest.get("status") == "failed"
+        and latest.get("outcome") != OUTCOME_DEFERRED
+    ):
+        finished = _parse_iso(latest.get("finished_at"))
+        if (
+            finished is not None
+            and finished.astimezone().date() == now_local.date()
+            and not jobs_dismissed.is_dismissed(
+                dismissed, job.id, latest.get("run_id")
+            )
+        ):
+            # A run whose delivery the adapter could not establish still
+            # wants a human's eye, so it keeps its card — but it is not a
+            # failure and must not be drawn as one. ``outcome`` is
+            # decorated onto every record by ``jobs_history.read_run``.
+            outcome = latest.get("outcome") or "failed"
+            return {
+                "kind": "job",
+                "job_id": job.id,
+                "job_name": job.name,
+                "state": (
+                    "unconfirmed" if outcome == OUTCOME_UNCONFIRMED
+                    else "failed"
+                ),
+                "run_id": latest.get("run_id"),
+                "finished_at": latest.get("finished_at"),
+                "age_seconds": _age_seconds(finished, now_local),
+                "error": latest.get("outcome_reason"),
+            }
+    return None
+
+
+# The family of statuses that still mean "a human needs to look at
+# this" after board_transcript's needs-you split. ``idle-finished`` and
+# ``tool-pending`` and ``waiting-on-task`` are deliberately excluded — a
+# clean-stopped session with nothing pending, one still mid-turn on an ordinary
+# tool call, and one waiting on its own background task aren't alerts; all are
+# Claude quietly holding a workspace, same as ``idle``.
+_NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input"})
+
+
+def _is_chief_card(card: Dict[str, Any]) -> bool:
+    """Board-side mirror of the frontend's ``isChiefSession`` (dom-utils.js) —
+    label-first, ``kind``/``name`` fallback for a session-host predating the
+    label field. Kept in lockstep with that JS predicate (#575)."""
+    return bool(
+        card.get("label") == "chief"
+        or (card.get("kind") == "pty" and card.get("name") == "chief")
+    )
+
+
+def build_board(
+    session_cards: List[Dict[str, Any]],
+    github: Dict[str, Any],
+    job_cards: List[Dict[str, Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Route the three sources into the five computed columns.
+
+    Each column now holds one kind of card (#399): Backlog = open issues.
+    Claude's turn = sessions working / unknown / idle / idle-finished /
+    tool-pending / waiting-on-task (idle and idle-finished are dimmed client-side, not hidden —
+    a session with nothing pending is still Claude holding a workspace, not
+    an alert; tool-pending (#813) is a session still mid-turn on an ordinary,
+    non-decision tool call — equally likely to be executing as
+    permission-gated, so it isn't asserted as an alert either). Your turn =
+    :data:`_NEEDS_YOU_STATUSES` only (#608: ``stalled`` / ``awaiting-decision``
+    / ``awaiting-input`` — the needs-you split's three genuinely
+    human-actionable outcomes) — a terminal that needs a human.
+    Other = everything else that needs attention but isn't a terminal: open
+    PRs, then failed/stuck/unreadable jobs. Done = today's closed issues only
+    — a merged PR that closed one is already reflected by the issue itself.
+
+    The standing fleet chief (#245) never routes to Your turn (#575): its
+    ``Stop``-hook-driven status sits in the needs-you family for nearly its
+    entire life between dispatches — for a long-lived chat session that's a
+    resting state, not a transient alert like it is for a worker session. It
+    always lands in Claude's turn instead, regardless of its raw status.
+    """
+    claude_turn = [
+        c for c in session_cards
+        if c["status"] not in _NEEDS_YOU_STATUSES or _is_chief_card(c)
+    ]
+    your_turn = [
+        c for c in session_cards
+        if c["status"] in _NEEDS_YOU_STATUSES and not _is_chief_card(c)
+    ]
+    return {
+        "backlog": list(github.get("issues") or []),
+        "claude_turn": claude_turn,
+        "your_turn": your_turn,
+        "other": list(github.get("prs") or []) + job_cards,
+        "done": list(github.get("done") or []),
+    }
+
+
+def session_board_columns(
+    live: List[Dict[str, Any]],
+    state_rows: Dict[str, Dict[str, Any]],
+    active_issue_rows: Dict[str, Any],
+    *,
+    fleet_config_dir: Path,
+    now: Optional[datetime] = None,
+) -> Dict[str, Dict[str, Any]]:
+    """Each live session's Board column, status and age, keyed by session id (#1434).
+
+    The Coding tab's rows carry the Board's status vocabulary ("needs you",
+    "stalled") without polling ``/api/board``: its own sessions poll asks this
+    instead, which runs the same claim walk, status split and column routing
+    as ``GET /api/board`` (:func:`merge_sessions` then :func:`build_board`), so
+    a session can never be "Your turn" on one tab and quiet on the other.
+
+    A session absent from the result has no known column; callers show no
+    chip for it rather than guess. ``age_seconds`` is the Board card's own
+    last-activity age (#1580), ``None`` when it has no anchor. Blocking (transcript tails and a pid probe
+    per owned claim row) — callers wrap in ``asyncio.to_thread``.
+    """
+    claim_states = active_issue_claims.classify_claims(
+        active_issue_rows,
+        live_session_ids=_live_launcher_session_ids(live),
+        fleet_config_dir=fleet_config_dir,
+    )
+    cards = merge_sessions(
+        live, state_rows, now=now,
+        active_issue_repos=active_issue_repos(active_issue_rows, claim_states),
+    )
+    columns = build_board(cards, {}, [])
+    out: Dict[str, Dict[str, Any]] = {}
+    for column in ("claude_turn", "your_turn"):
+        for card in columns[column]:
+            sid = card.get("session_id")
+            if sid:
+                out[str(sid)] = {
+                    "column": column,
+                    "status": str(card["status"]),
+                    "age_seconds": card.get("age_seconds"),
+                }
+    return out

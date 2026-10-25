@@ -53,7 +53,7 @@ class _Stall:
 
 
 def _stall_screen(monkeypatch, _tmp_path) -> _Stall:
-    from src import plan_picker
+    from src.session_view import plan_picker
 
     stall = _Stall(None)
     monkeypatch.setattr(plan_picker, "read_capture_tail", stall)
@@ -153,7 +153,7 @@ def test_a_stalled_context_poll_answers_stale_and_a_fresh_one_is_unchanged(
 ):
     """The first answer is the route's payload exactly; once the read hangs,
     the next poll gets that answer back within the bound, marked stale."""
-    from src import plan_picker
+    from src.session_view import plan_picker
 
     calls = {"n": 0}
     stall = _Stall(None)

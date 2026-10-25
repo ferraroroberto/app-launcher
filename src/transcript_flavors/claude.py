@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
-from src.board_transcript import _typed_user_kind
+from src.board.transcript_exchange import _typed_user_kind
 from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
-from src.session_outbox import clean_name, kind_of
+from src.session_view.outbox import clean_name, kind_of
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
     Entry,
@@ -107,9 +107,9 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
 
     One transcript line is one content block; assistant ``text`` blocks of
     the same ``message.id`` merge into one ``assistant`` entry (the same rule
-    :func:`board_transcript.last_exchange` applies). A ``user`` line is a
+    :func:`src.board.transcript_exchange.last_exchange` applies). A ``user`` line is a
     typed prompt when it is a plain string outside
-    :data:`board_transcript._SKIP_USER_PREFIXES` and not ``isMeta`` — or a
+    :data:`src.board.transcript_exchange._SKIP_USER_PREFIXES` and not ``isMeta`` — or a
     list of ``text``/``image`` blocks (an image-paste prompt) with no tool
     result. Tool results pair with their call by ``tool_use_id``. Lines on a
     sidechain (a sub-agent's traffic) keep their kind but carry
@@ -251,7 +251,7 @@ def _user_line(
     stripped = text.strip()
     if not stripped and not refs:
         return
-    # `_typed_user_kind` (board_transcript.py) is the one
+    # `_typed_user_kind` (src/board/transcript_exchange.py) is the one
     # classification shared with `last_exchange`/`has_typed_user_prompt`
     # so the Board drawer's "typed prompt" reading never drifts from
     # this reader's own.

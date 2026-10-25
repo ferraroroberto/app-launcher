@@ -64,7 +64,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
 from scripts import synthetic_gh  # noqa: E402
-from src.github_client import GH_CMD_ENV  # noqa: E402
+from src.clients.github import GH_CMD_ENV  # noqa: E402
 from src.git_utils import run_git  # noqa: E402
 from src.subprocess_flags import NO_WINDOW  # noqa: E402
 from tests.e2e.stub_session import STUB_FLAG, write_claude_shim  # noqa: E402

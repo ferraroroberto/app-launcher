@@ -1,4 +1,4 @@
-"""The loopback session-host client (`src.session_client`).
+"""The loopback session-host client (`src.clients.session`).
 
 Focused on the request *shape* — these are thin `requests` wrappers, so we
 stub the shared pooled session's `request` (issue #605 — calls go through
@@ -8,7 +8,7 @@ assert the JSON body the session-host receives.
 
 from __future__ import annotations
 
-from src import session_client
+from src.clients import session as session_client
 
 
 class _Resp:

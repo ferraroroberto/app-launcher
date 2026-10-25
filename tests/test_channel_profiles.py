@@ -10,14 +10,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from src import channel_profiles
-from src.channel_profiles import (
+from src.launching import channel_profiles
+from src.launching.channel_profiles import (
     label_profile_id,
     load_channel_profiles,
     profile_session_label,
     write_channel_settings,
 )
-from src.launch_flags import CHANNEL_PLUGIN, build_claude_flags
+from src.launching.flags import CHANNEL_PLUGIN, build_claude_flags
 from src.webapp_config import WebappConfig
 
 

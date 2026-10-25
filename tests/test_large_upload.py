@@ -22,7 +22,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.session_host import server as sh_server
-from src import session_client as real_session_client
+from src.clients import session as real_session_client
 
 _SID = "abc123"
 _DAY = 24 * 3600

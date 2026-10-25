@@ -31,7 +31,8 @@ from app.webapp.chief_doorbell import (
     observe,
     tick_once,
 )
-from src import instance_role, session_client
+from src import instance_role
+from src.clients import session as session_client
 from src.webapp_config import SESSION_HOST_PORT_ENV
 
 NOW_MS = 1_800_000_000_000

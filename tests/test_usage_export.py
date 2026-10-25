@@ -1,4 +1,4 @@
-"""Screen time export to task-os (#1678, step 2/2): src/usage_export.py.
+"""Screen time export to task-os (#1678, step 2/2): src/usage/export.py.
 
 The exporter runs against a fake task-os (a real HTTP server on a loopback
 port, so the real ``requests`` path and error mapping run) and a synthetic
@@ -31,7 +31,7 @@ from fastapi.testclient import TestClient
 
 from app.cli.commands.usage_export_cmd import UsageExportCommand
 from app.webapp.routers import screen_time
-from src import usage_export
+from src.usage import export as usage_export
 from src.usage_log import UsageLog, format_ts
 from src.webapp_config import WebappConfig
 

@@ -6,7 +6,7 @@ conversations and is never read by a test.
 
 from __future__ import annotations
 
-from src.life_os_capture import parse_capture
+from src.life_os.capture import parse_capture
 
 _CLAUDE = """journal-daily #4
 

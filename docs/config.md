@@ -122,7 +122,7 @@ The network side is the owner's to set up: give the agent a VPN identity that ca
 
 ## Refreshing model catalogs
 
-Run `claude --version; claude --help`, `codex --version; codex --help; codex resume --help`, `pi --version; pi --list-models claude-agent-sdk; pi --list-models openai-codex`, and `copilot --version; copilot help config`. Update `src/model_catalog.py` only from those harness outputs. A documented API model is not launchable until the relevant installed subscription harness advertises its exact ID; keep rollout entries disabled meanwhile. **GitHub Copilot is deliberately absent from `src/model_catalog.py`** — `copilot help config` reports what the *CLI* accepts, not what the *account* may launch, so a catalogue here could only produce claims the launcher cannot keep; there is nothing to refresh.
+Run `claude --version; claude --help`, `codex --version; codex --help; codex resume --help`, `pi --version; pi --list-models claude-agent-sdk; pi --list-models openai-codex`, and `copilot --version; copilot help config`. Update `src/launching/model_catalog.py` only from those harness outputs. A documented API model is not launchable until the relevant installed subscription harness advertises its exact ID; keep rollout entries disabled meanwhile. **GitHub Copilot is deliberately absent from `src/launching/model_catalog.py`** — `copilot help config` reports what the *CLI* accepts, not what the *account* may launch, so a catalogue here could only produce claims the launcher cannot keep; there is nothing to refresh.
 
 ## `config/apps.json`
 

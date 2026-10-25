@@ -9,7 +9,7 @@ sends one Telegram summary (counts only, to the log chat) and purges backups pas
 ``--retention-days``. Exit codes: 1 a capture failed, 2 bad arguments,
 3 breaker tripped (too many zombies; nothing touched), 4 session host unknown
 (nothing touched; declare it ``deferred`` in the job). The rules live in
-:mod:`src.life_os_zombies`.
+:mod:`src.life_os.zombies`.
 """
 
 from __future__ import annotations
@@ -17,13 +17,13 @@ from __future__ import annotations
 import argparse
 import logging
 
-from src.life_os_zombie_backup import (
+from src.life_os.zombie_backup import (
     STATUS_RESTORED,
     backup_root,
     find_backups,
     restore_one,
 )
-from src.life_os_zombies import (
+from src.life_os.zombies import (
     DEFAULT_GRACE_HOURS,
     DEFAULT_MAX_PER_RUN,
     DEFAULT_RETENTION_DAYS,

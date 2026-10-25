@@ -60,7 +60,7 @@ def test_a_forged_passkey_token_injects_nothing(screen, fake_injector):
 
 
 def test_an_unlocked_tailnet_client_clicks_where_it_taps(screen, fake_injector):
-    from src import desktop_input as di
+    from src.desktop import input as di
 
     app, tt, _ = screen
     with _as(app, TAILNET).websocket_connect(_ws_url(TOKEN, tt)) as ws:
@@ -87,7 +87,7 @@ def test_input_maps_onto_the_monitor_being_viewed(screen, fake_injector):
 
 
 def test_disconnect_releases_a_held_button(screen, fake_injector, webapp_client):
-    from src import desktop_input as di
+    from src.desktop import input as di
 
     app, _, _ = screen
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:
@@ -133,7 +133,7 @@ def test_a_clipboard_set_on_the_gated_socket_lands_and_is_answered(screen, fake_
 
 
 def test_a_clipboard_set_over_the_cap_is_answered_and_copies_nothing(screen, fake_clipboard):
-    from src import desktop_clipboard
+    from src.desktop import clipboard as desktop_clipboard
 
     app, _, _ = screen
     with _as(app, LOOPBACK).websocket_connect(_ws_url()) as ws:

@@ -261,7 +261,7 @@ class TestIssueStartBrief:
 
     @pytest.fixture(autouse=True)
     def _briefs_dir(self, tmp_path, monkeypatch):
-        from src import dispatch_brief
+        from src.chief import dispatch_brief
         d = tmp_path / "briefs"
         monkeypatch.setattr(dispatch_brief, "BRIEFS_DIR", d)
         return d
@@ -483,7 +483,7 @@ class TestChiefManagedMarking:
 
     def _dispatch(self, webapp_client, monkeypatch, *, chief: bool, cached,
                   body_extra=None):
-        from src import github_client
+        from src.clients import github as github_client
 
         client, _, overrides = webapp_client
         (overrides["tmp_projects_dir"] / "myrepo").mkdir(exist_ok=True)

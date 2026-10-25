@@ -4,7 +4,7 @@ A run record is written ``status: "running"`` before the child spawns and
 only reaches a terminal status once the executor's own finalise runs after
 ``proc.wait()``. If the executor itself dies first, nothing ever finalises
 the record and it stays "running" forever even though the tracked pid is
-long gone. ``src.jobs_reap`` automates the same reconciliation the webapp's
+long gone. ``src.jobs.reap`` automates the same reconciliation the webapp's
 kill route already does by hand for an orphan pid.
 """
 
@@ -20,10 +20,10 @@ import pytest
 
 from src import diagnostics
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
-from src import jobs_queue as jobs_queue_mod
-from src import jobs_reap as jobs_reap_mod
-from src.jobs_config import Job
+from src.jobs import history as jobs_history_mod
+from src.jobs import queue as jobs_queue_mod
+from src.jobs import reap as jobs_reap_mod
+from src.jobs.config import Job
 
 
 # --------------------------------------------------------------- fixtures
@@ -31,8 +31,8 @@ from src.jobs_config import Job
 
 @pytest.fixture
 def isolated_jobs(tmp_path, monkeypatch):
-    # JOBS_RUNS_DIR / JOBS_QUEUE_PATH are owned by src.jobs_history /
-    # src.jobs_queue respectively (issue #315 split) — patch there, not on
+    # JOBS_RUNS_DIR / JOBS_QUEUE_PATH are owned by src.jobs.history /
+    # src.jobs.queue respectively (issue #315 split) — patch there, not on
     # the src.jobs facade, mirroring tests/test_run_job_mutex.py.
     monkeypatch.setattr(jobs_history_mod, "JOBS_RUNS_DIR", tmp_path)
     monkeypatch.setattr(jobs_queue_mod, "JOBS_QUEUE_PATH", tmp_path / "_queue.json")

@@ -14,9 +14,10 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import board, session_changes
-from src.session_changes import changed_files, file_steps
-from src.session_transcript import transcript_page
+from src import board
+from src.session_view import changes as session_changes
+from src.session_view.changes import changed_files, file_steps
+from src.session_view.transcript import transcript_page
 
 
 def _write_jsonl(path: Path, lines: List[Dict[str, Any]]) -> Path:

@@ -54,9 +54,12 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, board, chief_pointer, session_client
-from src.launch_flags import build_resume_flags
-from src.launcher import open_local_terminal_window, spawn_claude_session
+from src import audit, board
+from src.chief import identity as chief_identity
+from src.chief import pointer as chief_pointer
+from src.clients import session as session_client
+from src.launching.flags import build_resume_flags
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig, update_webapp_config
 
@@ -80,9 +83,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _CHIEF_REPO = "fleet-config"
-_CHIEF_LABEL = "chief"
-_CHIEF_COMMAND = "/chief"
-_CHIEF_TITLE = "chief"
+_CHIEF_LABEL = chief_identity.CHIEF_LABEL
+_CHIEF_COMMAND = chief_identity.CHIEF_COMMAND
+_CHIEF_TITLE = chief_identity.CHIEF_TITLE
 # How long a fresh respawn waits for the old chief's graceful stop before
 # escalating to kill. Module-level so tests can patch it tiny.
 CHIEF_STOP_WAIT_S = 8.0
@@ -95,7 +98,11 @@ _CHIEF_ENSURE_LOCK = asyncio.Lock()
 # The directory-name grain every "is this fleet-config?" check in this repo
 # already uses (board_state.py's project fallback, the state-row `project`
 # field) — cheap and consistent, no registry scan needed.
-_CHIEF_PROJECT_DIR_NAME = "fleet-config"
+_CHIEF_PROJECT_DIR_NAME = chief_identity.CHIEF_PROJECT_DIR_NAME
+
+_live_title_names_chief = chief_identity.live_title_names_chief
+_reconcile_chief_label = chief_identity.reconcile_chief_label
+_find_chief = chief_identity.find_chief
 
 
 async def _mark_chief_managed(
@@ -166,101 +173,6 @@ async def _mark_chief_managed(
     return True
 
 
-def _live_title_names_chief(sess: Dict[str, Any]) -> bool:
-    """Whether ``live_title`` — the OSC window-title session_host parses
-    directly off the PTY's own raw output (``PtySession._read_loop``) —
-    names this conversation "chief" (#628).
-
-    This is the fastest of the three self-heal signals: it needs no hook and
-    no transcript read, just Claude Code's own title escape sequence, which
-    docs/board.md already documents as updating "sub-second inside an open
-    terminal, ahead of the next state-file poll". Verified live against the
-    real resumed chief session (7174c1d2…, the one this issue's own
-    "Constraints worth knowing" section cites): at a moment when
-    ``prompt_title`` and the hook-state ``shared_name`` had not yet
-    identified it, ``live_title`` already read the conversation's
-    self-declared title.
-
-    Matched on the *last whitespace-separated token*, not equality — Claude
-    prefixed its own title with an emoji (observed: a crown) in that live
-    case, which carries no fixed spelling to match against, so pinning down
-    only the trailing word avoids depending on which emoji (if any) it
-    chooses.
-    """
-    title = str(sess.get("live_title") or "").strip()
-    if not title:
-        return False
-    return title.split()[-1].strip().lower() == _CHIEF_TITLE
-
-
-def _reconcile_chief_label(sess: Dict[str, Any], shared_name: Any) -> Dict[str, Any]:
-    """Self-heal ``label`` for a chief PTY spawned outside ``ensure`` (#617).
-
-    ``ensure_chief`` is spawn-if-absent, but it is not the only way a chief
-    gets started. Two ways it slips past the label: Roberto opens a plain
-    Coding-tab session in fleet-config and types ``/chief`` himself, or — the
-    case actually observed live, verified against the real session
-    (1c8e6dde…) rather than only synthetic tests — the session-host restarts,
-    killing the PTY, and he re-attaches the *same underlying Claude Code
-    conversation* via Resume. Either way the launcher never gets to pass
-    ``label="chief"`` at spawn, so every consumer keying on it — this
-    module's own ``_find_chief``, ``chief_ops.py``'s worker-cap count and
-    ``chief-sid`` lookup (both read straight off ``GET /api/board``, so this
-    reconciliation is the only place any of them needs fixing), the Board's
-    crown/tint — silently treats a live, working chief as not running.
-
-    Three independent, narrow signals, any one sufficient on its own — not a
-    stack of guesses, three genuinely different things a chief session does,
-    each read from wherever Claude Code's own self-declared identity surfaces
-    earliest:
-
-    * ``live_title`` (#628, :func:`_live_title_names_chief`): checked first
-      here because it is available earliest — Claude Code re-emits its own
-      established OSC title on a Resume, before any hook fires or the user
-      types anything, closing the exact gap #628 was filed over (a resumed
-      chief unidentifiable "until its first hook fires").
-    * ``prompt_title`` (#266): the session-host's own capture of the first
-      line ever *submitted* into this PTY. Exact for a freshly typed
-      ``/chief`` — but a Resume never re-submits it (the conversation is
-      already past that point), so this alone misses exactly the observed
-      case.
-    * ``shared_name`` (fleet-config#302): Claude Code's own self-derived name
-      for the *conversation*, not the PTY — read from its live per-process
-      registry via the hook state file, joined by the same agent-aware claim
-      walk every other cross-tab title uses (:func:`board.attach_shared_names`).
-      This persists across a Resume into a brand-new PTY, because it belongs
-      to the conversation, not the process that's currently attached to it —
-      but it needs a hook to have fired at least once, which is exactly the
-      window ``live_title`` above closes.
-
-    All three are scoped to a live PTY cwd'd in the fleet-config checkout — a
-    directory name alone proves nothing (the dead ``name == "chief"``
-    fallback below learned that the hard way: it reads the *launcher's*
-    session name, which is the project name ("fleet-config") for a
-    Resume-launched session, never "chief").
-
-    Read-only: never mutates the session-host's own record, only the dict
-    this process just fetched from it.
-    """
-    if sess.get("label") or sess.get("kind") != "pty":
-        return sess
-    if Path(str(sess.get("project_dir") or "")).name != _CHIEF_PROJECT_DIR_NAME:
-        return sess
-    prompt_title = str(sess.get("prompt_title") or "").strip()
-    shared_name_norm = str(shared_name or "").strip().lower()
-    if (
-        prompt_title != _CHIEF_COMMAND
-        and shared_name_norm != _CHIEF_TITLE
-        and not _live_title_names_chief(sess)
-    ):
-        return sess
-    logger.info(
-        "👑 chief label self-healed for session %s (spawned outside ensure)",
-        str(sess.get("session_id") or "")[:8],
-    )
-    return {**sess, "label": _CHIEF_LABEL}
-
-
 def _reconcile_chief_labels(
     live: List[Dict[str, Any]], state_rows: Dict[str, Any]
 ) -> List[Dict[str, Any]]:
@@ -282,14 +194,7 @@ def _reconcile_chief_labels(
     module-level memo in :func:`_note_chief_conversation` keeps this a no-op
     write on every poll after the first for an unchanged chief.
     """
-    named = board.attach_shared_names(live, state_rows)
-    shared_names = {
-        str(item.get("session_id")): item.get("shared_name") for item in named
-    }
-    reconciled = [
-        _reconcile_chief_label(sess, shared_names.get(str(sess.get("session_id"))))
-        for sess in live
-    ]
+    reconciled = chief_identity.reconcile_chief_labels(live, state_rows)
     _note_chief_conversation(reconciled, state_rows)
     return reconciled
 
@@ -312,18 +217,6 @@ async def _live_sessions_with_chief_label(
     return reconciled, state, host_error
 
 
-def _find_chief(live: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """The alive chief PTY session, or {}. Matches the ``label`` tag with a
-    ``name`` fallback so a legacy session-host that didn't echo ``label``
-    still can't be double-spawned."""
-    for sess in live:
-        if not sess.get("alive") or sess.get("kind") != "pty":
-            continue
-        if sess.get("label") == _CHIEF_LABEL or sess.get("name") == _CHIEF_LABEL:
-            return sess
-    return {}
-
-
 # The conversation id last persisted to the pointer sidecar. A module-level
 # memo so the steady-state 5s board poll does **zero** file IO: a write
 # fires only when the chief's conversation actually changes — about once per
@@ -337,7 +230,7 @@ def _note_chief_conversation(
 ) -> None:
     """Persist which conversation the live chief is, when that changes (#675).
 
-    This is the write half of the durable pointer (:mod:`src.chief_pointer`).
+    This is the write half of the durable pointer (:mod:`src.chief.pointer`).
     It hangs off the *identification* path rather than ``ensure_chief``,
     because the two shapes the pointer exists for are precisely the ones
     ``ensure`` never sees: a chief the launcher never spawned (recognised only
@@ -459,7 +352,7 @@ def _find_resumable_chief_session_id(
     invisible to it: one the launcher never spawned (its row is named after the
     project, so the name scan skips it) once its PTY is gone, and any chief
     dead longer than the hook writer's 24h prune (no row left at all). So the
-    remembered conversation (:mod:`src.chief_pointer`, written by
+    remembered conversation (:mod:`src.chief.pointer`, written by
     :func:`_note_chief_conversation` while the chief was alive) joins the scan
     as one more candidate — exempt from the name check and the row-freshness
     gate, since bypassing exactly those two is its purpose, but subject to

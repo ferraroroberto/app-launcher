@@ -14,7 +14,7 @@ Split off ``life_os.py`` the way ``life_os_conversations.py`` and
                                                      confirm it is gone, start
                                                      it fresh (#1675)
 
-A profile (:mod:`src.channel_profiles`) binds one life-os skill to one Telegram
+A profile (:mod:`src.launching.channel_profiles`) binds one life-os skill to one Telegram
 bot. The launch opens that skill exactly as the skill tile does, plus
 ``--channels`` and a per-profile settings file that hands the bot's state
 directory to that one session. Claude only, and never detached: a detached
@@ -47,8 +47,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, session_client
-from src.channel_profiles import (
+from src import audit
+from src.clients import session as session_client
+from src.launching.channel_profiles import (
     ChannelProfile,
     bun_available,
     env_file_present,
@@ -59,8 +60,8 @@ from src.channel_profiles import (
     profiles_file_present,
     write_channel_settings,
 )
-from src.launch_flags import build_claude_flags
-from src.launcher import close_mirror_window
+from src.launching.flags import build_claude_flags
+from src.launching.launcher import close_mirror_window
 from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
 

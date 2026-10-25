@@ -49,9 +49,9 @@ import pytest
 import requests
 from playwright.sync_api import BrowserContext, Locator, Page, expect
 
-from src.desktop_input import FAKE_INPUT_ENV as _FAKE_INPUT_ENV
+from src.desktop.input import FAKE_INPUT_ENV as _FAKE_INPUT_ENV
 from src.git_utils import run_git
-from src.github_client import GH_CMD_ENV
+from src.clients.github import GH_CMD_ENV
 from src.scanner import dir_ignored, slugify
 
 from tests._credential_hygiene import (
@@ -142,7 +142,7 @@ _UPLOAD_MARKER = "e2e-stub-"
 # The `gh` the disposable webapp runs (#1516). Any test that opens the Board
 # without mocking it sets off the GitHub refresh (a never-filled cache heals
 # on the first poll, #910), so one profiled gate run went out to real GitHub
-# 15 times: 45 `gh.exe` spawns. `src.github_client` honours
+# 15 times: 45 `gh.exe` spawns. `src.clients.github` honours
 # `LAUNCHER_GH_CMD` for exactly this; the synthetic `gh` the design-review
 # instance already uses answers the three searches with a few public-safe
 # rows, so the Backlog still has cards to lay out and nothing reaches GitHub.

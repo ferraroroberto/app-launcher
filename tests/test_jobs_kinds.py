@@ -12,7 +12,7 @@ import shutil
 
 import pytest
 
-from src.jobs_config import Job
+from src.jobs.config import Job
 from src.jobs_kinds import KINDS, FILE_KINDS, resolve_kind
 from src.jobs_kinds.batch import BatchKind
 from src.jobs_kinds.http_check import HttpCheckKind

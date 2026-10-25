@@ -7,8 +7,8 @@ import hmac
 
 import pytest
 
-from src.jobs_config import job_from_dict
-from src.jobs_webhook import (
+from src.jobs.config import job_from_dict
+from src.jobs.webhook import (
     WebhookConfig,
     event_allowed,
     resolve_mapping,

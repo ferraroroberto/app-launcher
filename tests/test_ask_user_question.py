@@ -17,7 +17,8 @@ from typing import Any, Dict, List
 
 import pytest
 
-from src import board_transcript, session_transcript as st
+from src.board import transcript as board_transcript
+from src.session_view import transcript as st
 from src.ask_user_question import answer_keystrokes, answers_from_result, questions_from_input
 
 
@@ -272,7 +273,7 @@ def test_an_ended_session_and_a_bad_answer_are_refused(answer_client):
 
 def test_an_unreachable_session_host_is_a_503_not_an_ended_session(answer_client):
     """#1308: the session may be alive; the caller should retry, not give up."""
-    from src.session_client import SessionHostError
+    from src.clients.session import SessionHostError
 
     client, session, path, typed = answer_client
     _jsonl(path, [_ask("t1", [COLOUR])])

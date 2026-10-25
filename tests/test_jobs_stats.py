@@ -13,13 +13,13 @@ from datetime import datetime, timedelta
 import pytest
 
 from src import jobs as jobs_mod
-from src import jobs_history as jobs_history_mod
+from src.jobs import history as jobs_history_mod
 
 
 @pytest.fixture
 def temp_runs_dir(tmp_path, monkeypatch):
     """Redirect JOBS_RUNS_DIR + flush the per-job stats cache."""
-    # JOBS_RUNS_DIR is owned by src.jobs_history (issue #315 split); the
+    # JOBS_RUNS_DIR is owned by src.jobs.history (issue #315 split); the
     # stats helpers (jobs_mod.run_stats/is_stuck) read run history through
     # jobs_history.list_runs()/latest_run(), which resolve JOBS_RUNS_DIR as
     # their own module global — patch it there, not on the facade.

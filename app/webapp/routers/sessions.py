@@ -37,7 +37,10 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, board, chief_answers, launcher, session_client
+from src import audit, board
+from src.chief import answers as chief_answers
+from src.launching import launcher
+from src.clients import session as session_client
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig

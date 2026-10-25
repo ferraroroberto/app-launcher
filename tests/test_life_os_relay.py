@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src import channel_profiles
+from src.launching import channel_profiles
 from tests.api._life_os_support import OTHER_SID, RESUMABLE_SID
 
 PREFIX = "/api/life-os/channels/health/relay"
@@ -47,7 +47,7 @@ def relay(life_os_client, tmp_path, monkeypatch):
     from app.webapp import middleware
     from app.webapp.routers import life_os_relay, life_os_spawn
     from app.webapp.routers import sessions as sessions_router
-    from src import session_client
+    from src.clients import session as session_client
 
     client, app, overrides = life_os_client
     monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
@@ -143,7 +143,7 @@ class TestWhoMayCall:
         assert "not running" in resp.json()["detail"]["message"]
 
     def test_host_unreachable_is_its_own_state(self, relay, monkeypatch):
-        from src import session_client
+        from src.clients import session as session_client
 
         def down(port):
             raise session_client.SessionHostError("down")
@@ -276,7 +276,7 @@ class TestActions:
     @pytest.mark.parametrize("status, state", [(502, "stranded"), (409, "gone"),
                                                (500, "unknown")])
     def test_steer_failures_are_distinct_and_never_retried(self, relay, status, state):
-        from src.session_client import SessionHostError
+        from src.clients.session import SessionHostError
         relay.sessions.append(_conversation_session("conv-1", RESUMABLE_SID))
         relay.send_input.side_effect = SessionHostError("no", status=status)
         resp = _steer(relay, "conv-1")

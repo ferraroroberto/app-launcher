@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from src import board_exchange
+from src.board import exchange as board_exchange
 
 from tests.api.board._support import (
     NOW,
@@ -49,7 +49,7 @@ class TestExchangeEndpoint:
         self, webapp_client, _bypass_gate
     ):
         """#1308: an unreadable list must not say "Session ended"."""
-        from src.session_client import SessionHostError
+        from src.clients.session import SessionHostError
 
         client, _, overrides = webapp_client
         overrides["session"].list_sessions.side_effect = SessionHostError("down")

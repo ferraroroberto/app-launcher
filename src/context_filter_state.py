@@ -16,7 +16,7 @@ window. It is controlled machine-wide by two files under
   of these fields — every reader here is tolerant of a missing ``ts`` or
   ``agent`` rather than dropping the row outright.
 
-Mirrors :mod:`src.board_state`'s degradation contract: a missing, unreadable,
+Mirrors :mod:`src.board.state`'s degradation contract: a missing, unreadable,
 corrupt, or wrong-shaped file must never raise — callers get an
 ``available: False`` shape (or, for the mode file specifically, an absent
 file resolves to the true "off" default — see :func:`read_mode`) instead of
@@ -52,7 +52,7 @@ STATS_STALE_AFTER = timedelta(hours=24)
 
 # Process-local cache keyed by (path, (st_mtime_ns, st_size)) — recomputed
 # only when the log file itself changes, never on a wall-clock TTL (unlike
-# src/jobs_stats.py's 30s TTL precedent: here the mtime/size key already
+# src/jobs/stats.py's 30s TTL precedent: here the mtime/size key already
 # guarantees "unchanged file never re-parses", so no TTL is needed on top).
 _stats_cache: Dict[str, Tuple[Tuple[int, int], Dict[str, Any]]] = {}
 _stats_lock = Lock()

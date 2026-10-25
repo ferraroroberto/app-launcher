@@ -17,7 +17,7 @@ settings file, so it never starts a second plugin server or sees the token.
 
 **Who may call.** The PC itself only, carrying the profile's relay token
 (``X-Relay-Token``), which the launch wrote into that bot's settings ``env``
-block and nowhere else (:func:`src.channel_profiles.relay_token_matches`). The
+block and nowhere else (:func:`src.launching.channel_profiles.relay_token_matches`). The
 token names the profile and so the skill: no route takes a skill from the
 caller. The profile's bot session must be running.
 
@@ -48,8 +48,9 @@ from typing import Any, Dict, List, NoReturn
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from src import audit, board, session_client
-from src.channel_profiles import (
+from src import audit, board
+from src.clients import session as session_client
+from src.launching.channel_profiles import (
     ChannelProfile,
     LABEL_PREFIX,
     load_channel_profiles,

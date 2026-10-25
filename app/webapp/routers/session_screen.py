@@ -2,7 +2,7 @@
 (split out of ``session_transcript.py``, #1424).
 
 None of these routes read the transcript's content. They read the PTY's screen
-(``src.plan_picker``) and/or type keystrokes into the PTY, so they share
+(``src.session_view.plan_picker``) and/or type keystrokes into the PTY, so they share
 nothing with the transcript pager but the session lookup
 (``session_transcript._resolve_source``, used by ``/answer``).
 
@@ -16,14 +16,14 @@ call per key for a detached session. Same gate as ``/input``; its own
 
 ``GET .../plan-picker`` and ``POST .../plan-answer`` answer Claude Code's
 plan picker (#1151). They read the terminal's screen, not the transcript:
-the session's PTY capture rendered at the PTY's size (``src.plan_picker``).
+the session's PTY capture rendered at the PTY's size (``src.session_view.plan_picker``).
 The POST reads it again at send time and types only while the tapped digit
 still carries the tapped label. Full-control sessions only, and each route
 has its own ``_TERMINAL_GUARD_RULES`` row.
 
 ``GET .../context`` reads the same screen for the session's context-window
 use (#1223): the ``NN%c`` the fleet statusline paints under Claude Code's
-prompt (``src.statusline_context``), which the overlay bar draws as a ring.
+prompt (``src.session_view.statusline_context``), which the overlay bar draws as a ring.
 Same screen read as the plan picker, same reasons, its own guard row.
 """
 
@@ -39,10 +39,13 @@ from fastapi import APIRouter, HTTPException, Request
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from src import audit, plan_picker, resume_picker, session_client
+from src import audit
+from src.session_view import plan_picker
+from src.session_view import resume_picker
+from src.clients import session as session_client
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
-from src.board_transcript import pending_decision_call
-from src.statusline_context import context_percent
+from src.board.transcript import pending_decision_call
+from src.session_view.statusline_context import context_percent
 from src.webapp_config import WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
@@ -131,7 +134,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
 
     Checked **at send time**, not trusted from the card: the call named must
     be the newest decision call still unresolved in the transcript
-    (:func:`src.board_transcript.pending_decision_call`, the definition the
+    (:func:`src.board.transcript.pending_decision_call`, the definition the
     Board's ``awaiting-decision`` status uses), or it is a 409 and nothing
     is typed. The keys are built from the transcript's own copy of the
     questions, never the client's.
@@ -197,7 +200,7 @@ async def session_answer(sid: str, request: Request) -> Dict[str, Any]:
 # call can stay off disk until it is answered) or how full the context
 # window is (it never names the window's size), so these routes read the
 # terminal's screen instead: the session's PTY capture rendered at the PTY's
-# own size (src.plan_picker). Full-control Claude sessions only — a detached
+# own size (src.session_view.plan_picker). Full-control Claude sessions only — a detached
 # one has no screen here to read, so its plan is answered in the PC console.
 
 # The last state logged per session, one map per route, so a poll every few
@@ -326,7 +329,7 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
     Body: ``{"option": n, "label": str, "feedback"?: str}`` — the digit and
     the label the card showed for it. The screen is read again here, at
     send time, and the keys go in only when that digit still carries that
-    label and the picker can take a digit (``src.plan_picker.answer_keys``);
+    label and the picker can take a digit (``src.session_view.plan_picker.answer_keys``);
     otherwise it is a 409 and nothing is typed. A "Yes" option is its digit;
     the feedback option is its digit, the text, then Enter.
 
@@ -389,7 +392,7 @@ async def session_plan_answer(sid: str, request: Request) -> Dict[str, Any]:
 #
 # Claude Code's /resume picker is a long scrolling TUI list; the Chat pane
 # offers the project's conversations as a searchable card instead
-# (src.resume_picker). With no picker on screen a pick is typed as
+# (src.session_view.resume_picker). With no picker on screen a pick is typed as
 # `/resume <id>` + Enter, which a live probe showed resumes exactly that
 # conversation. With the picker up it is never left with Escape, which exits
 # a `claude --resume` launch outright: the highlight is stepped down one row
@@ -509,7 +512,7 @@ async def session_resume(sid: str, request: Request) -> Dict[str, Any]:
     still be up now, or nothing is typed. ``composer``: the user typed
     ``/resume`` in Chat; refused while the plan picker holds the terminal.
     Either way the id must be one ``/resume`` offers here right now
-    (:func:`src.resume_picker.resume_keys`).
+    (:func:`src.session_view.resume_picker.resume_keys`).
 
     ``outcome``, read back off the terminal: ``resumed`` (the window title
     switched to the picked conversation's), ``not_found`` / ``cancelled``

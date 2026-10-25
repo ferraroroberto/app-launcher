@@ -40,7 +40,7 @@ class TestBoardModelResolution:
         """#1004 — ``gpt5.6`` used to be silently rewritten to
         ``gpt-5.6-sol`` here, while both sibling resolvers rejected the
         identical string with a 400. No client, no catalog entry
-        (``src/model_catalog.py`` carries only ``gpt-5.6-sol``) and no doc
+        (``src/launching/model_catalog.py`` carries only ``gpt-5.6-sol``) and no doc
         referenced it, so the rewrite only made this one route disagree
         with the other two. It now takes the normal unknown-model 400.
         """

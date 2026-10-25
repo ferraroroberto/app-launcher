@@ -160,7 +160,7 @@ class TestLifespanGate:
             # is canonical-only, pinned in test_chief_doorbell. All are named
             # tick_forever, so their module tells them apart.
             module = coro.cr_frame.f_globals.get("__name__") if coro.cr_frame else ""
-            if coro.__qualname__ == "tick_forever" and module == "src.jobs_snapshot":
+            if coro.__qualname__ == "tick_forever" and module == "src.jobs.snapshot":
                 self.snapshot_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module == "src.system_load":
                 self.load_ticks.append(task)
@@ -292,8 +292,8 @@ class TestCoverageCycle:
             return []
 
         monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
-        monkeypatch.setattr("src.jobs_reap.reap_stranded_runs_all", _reap)
-        monkeypatch.setattr("src.jobs_coverage.check_and_alert", _check)
+        monkeypatch.setattr("src.jobs.reap.reap_stranded_runs_all", _reap)
+        monkeypatch.setattr("src.jobs.coverage.check_and_alert", _check)
 
         await server._coverage_cycle(SimpleNamespace())
 
@@ -302,11 +302,11 @@ class TestCoverageCycle:
     async def test_logs_when_something_was_reaped(self, monkeypatch, caplog):
         monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
         monkeypatch.setattr(
-            "src.jobs_reap.reap_stranded_runs_all",
+            "src.jobs.reap.reap_stranded_runs_all",
             lambda: {"insights-weekly": [{"status": "failed"}]},
         )
         monkeypatch.setattr(
-            "src.jobs_coverage.check_and_alert", lambda cfg: []
+            "src.jobs.coverage.check_and_alert", lambda cfg: []
         )
 
         with caplog.at_level("WARNING", logger=server._log.name):
@@ -320,10 +320,10 @@ class TestCoverageCycle:
     async def test_nothing_reaped_stays_quiet(self, monkeypatch, caplog):
         monkeypatch.setattr(server.asyncio, "to_thread", _passthrough_to_thread)
         monkeypatch.setattr(
-            "src.jobs_reap.reap_stranded_runs_all", lambda: {}
+            "src.jobs.reap.reap_stranded_runs_all", lambda: {}
         )
         monkeypatch.setattr(
-            "src.jobs_coverage.check_and_alert", lambda cfg: []
+            "src.jobs.coverage.check_and_alert", lambda cfg: []
         )
 
         with caplog.at_level("WARNING", logger=server._log.name):

@@ -1,6 +1,6 @@
 """Interprocess-lock regression for `config/jobs.json` (issue #755).
 
-Every mutator in ``src.jobs_config`` used to take a caller-supplied
+Every mutator in ``src.jobs.config`` used to take a caller-supplied
 ``JobsConfig`` snapshot at face value: mutate the in-memory copy, then
 ``save_jobs()`` the *whole* registry over the file. Two writers each
 holding a snapshot taken before the other's change would race — the
@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import pytest
 
-from src import jobs_config as jc
-from src.jobs_config import (
+from src.jobs import config as jc
+from src.jobs.config import (
     Job,
     JobsConfig,
     add_job,

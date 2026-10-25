@@ -4,7 +4,7 @@
  * readout's arithmetic, as plain functions and one small class, so the numbers
  * are pinned under plain Node (tests/js/screen_quality.test.mjs) without a
  * browser or a clock. The server owns what each preset means (quality, pace,
- * width cap: src/desktop_capture.py PRESETS); the ids here are the values of
+ * width cap: src/desktop/capture.py PRESETS); the ids here are the values of
  * the connect query's `preset=`. screen-view.js owns the socket and the DOM.
  */
 

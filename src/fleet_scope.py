@@ -3,7 +3,7 @@
 The switch lives in fleet-config's machine-local ``hooks/projects.toml`` and
 fleet-config's ``skills/_lib/fleet_status.py`` is the only code that reads or
 writes it. This module loads that contract by path (the same load
-:mod:`src.active_issue_claims` uses) and calls ``list_status()`` /
+:mod:`src.board.active_issue_claims` uses) and calls ``list_status()`` /
 ``set_status()``; it never opens the TOML itself.
 
 A missing, old or unloadable contract is its own state, ``available: False``

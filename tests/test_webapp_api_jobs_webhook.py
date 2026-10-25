@@ -3,7 +3,7 @@
 Schtasks + the detached executor spawn are mocked at the router-module
 level (via the shared ``mocked_jobs_side_effects`` fixture) so no real
 schtasks or subprocess runs. Signature verification uses real HMAC — no
-mocking of ``src.jobs_webhook`` — so these tests exercise the actual
+mocking of ``src.jobs.webhook`` — so these tests exercise the actual
 crypto, not a stub.
 """
 
@@ -66,12 +66,12 @@ def mocked_jobs_side_effects(monkeypatch):
             }
         ),
     }
-    # The shared run tail moved into src.jobs_queue (issue #794's
+    # The shared run tail moved into src.jobs.queue (issue #794's
     # admit_and_spawn), which binds spawn_run_job_detached in its own
     # namespace at import time — so stubbing only the src.jobs facade would
     # let the route spawn a real detached executor. Mirror every stub onto
     # jobs_queue for the names it actually holds.
-    from src import jobs_queue as jobs_queue_mod
+    from src.jobs import queue as jobs_queue_mod
 
     for name, m in mocks.items():
         monkeypatch.setattr(jobs_router.jobs_mod, name, m)

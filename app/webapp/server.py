@@ -66,7 +66,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import instance_role, jobs_snapshot, launcher, session_client, system_load
+from src import instance_role, system_load
+from src.jobs import snapshot as jobs_snapshot
+from src.launching import launcher
+from src.clients import session as session_client
 from src.app_config import load_app_config
 from src.runtime_data import runtime_db_path
 from src.static_versioning import (
@@ -76,7 +79,7 @@ from src.static_versioning import (
 )
 from src.usage_log import usage_router
 from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
-from src.webauthn_gate import WebAuthnGate
+from src.auth.webauthn_gate import WebAuthnGate
 
 from app.webapp import chief_doorbell
 from app.webapp.middleware import BearerTokenMiddleware
@@ -180,7 +183,7 @@ class _VersionedStatic(StaticFiles):
 async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
     """On boot, close Edge mirror windows no live session backs (issue #199).
 
-    The in-memory HWND registry (``src.launcher._mirror_hwnds``) is dropped
+    The in-memory HWND registry (``src.launching.launcher._mirror_hwnds``) is dropped
     on every webapp restart, so mirrors opened before the restart can no
     longer be closed by sid and pile up on the desktop. Reconcile them
     against the session-host's live list — but only when that list is
@@ -260,7 +263,7 @@ async def _coverage_cycle(cfg: object) -> None:
     """One sweep: stranded-run reap (issue #809) then missed-fire coverage
     (#697).
 
-    Reap runs first — :func:`src.jobs_reap.reap_stranded_runs_all` is
+    Reap runs first — :func:`src.jobs.reap.reap_stranded_runs_all` is
     otherwise lazy-on-read (only ``GET /api/jobs`` or the Board trigger it),
     so a stranded record from a checkout nobody polls can sit un-finalised,
     and its failure alert un-sent, indefinitely (a June spawn failure went
@@ -271,8 +274,8 @@ async def _coverage_cycle(cfg: object) -> None:
     Both halves never raise — a wedged Task Scheduler, a bad job's history,
     or an unreachable Telegram must not take the webapp's lifespan down.
     """
-    from src import jobs_coverage
-    from src.jobs_reap import reap_stranded_runs_all
+    from src.jobs import coverage as jobs_coverage
+    from src.jobs.reap import reap_stranded_runs_all
 
     reaped = await asyncio.to_thread(reap_stranded_runs_all)
     if reaped:
@@ -509,7 +512,7 @@ def create_app() -> FastAPI:
         runtime_db_path("app-launcher", "usage.sqlite3", create=True),
     ))
     # The Screen time sheet's Send to task-os: drives the same
-    # src/usage_export.py the usage-export CLI and the nightly Job run.
+    # src/usage/export.py the usage-export CLI and the nightly Job run.
     app.include_router(screen_time.router)
 
     return app

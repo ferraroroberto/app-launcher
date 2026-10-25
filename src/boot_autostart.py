@@ -6,7 +6,7 @@ that programmatically from the webapp process was tried and reverted:
 ``schtasks /Create /SC ONLOGON`` returns "Access is denied" from an
 unelevated process (empirically verified) — Windows gates the ONLOGON/
 ONSTART trigger types behind elevation, unlike the Jobs tab's time-based
-schedules (``DAILY``/``HOURLY``/…) which `src.jobs_schtasks` creates fine
+schedules (``DAILY``/``HOURLY``/…) which `src.jobs.schtasks` creates fine
 from this same unprivileged process.
 
 Instead this drops a tiny wrapper ``.bat`` into the current user's own
