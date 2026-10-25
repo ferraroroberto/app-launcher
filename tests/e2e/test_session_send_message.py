@@ -334,7 +334,7 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     [
         (200, _pty_verdict("ok", "confirmed", delivered=True), r"^\W*Sent$", False),
         # #1744: said as plain "Sent"; the look for the agent taking it follows
-        # (tests/e2e/test_chat_live_refresh.py), and only its failure warns.
+        # (tests/e2e/chat/test_chat_live_refresh.py), and only its failure warns.
         (200, _pty_verdict("unverified", "unconfirmed", delivered=True), r"^\W*Sent$", False),
         (202, _pty_verdict("deferred", "pending", delivered=False, deferred=True), r"Queued", False),
         (200, _pty_verdict("noop", "not_submitted", delivered=False), r"Not submitted", True),

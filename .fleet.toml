@@ -727,7 +727,6 @@ paths    = [
     "app/webapp/routers/board_chief.py",
     "app/webapp/routers/board_spawn.py",
     "tests/e2e/test_board_tab.py",
-    "tests/e2e/test_board_chief.py",
     "tests/e2e/test_board_nav_badge.py",
     "tests/e2e/test_board_job_dismiss.py",
 ]
@@ -735,7 +734,6 @@ prefixes = ["tests/e2e/board/"]
 pytest_targets = [
     "tests/e2e/test_board_tab.py",
     "tests/e2e/board",
-    "tests/e2e/test_board_chief.py",
     "tests/e2e/test_board_nav_badge.py",
     "tests/e2e/test_board_job_dismiss.py",
     "tests/e2e/test_page_headers.py",

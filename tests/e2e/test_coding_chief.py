@@ -7,10 +7,10 @@ session list and the terminal overlay had no idea a given running session
 was the chief, so it could be killed there with zero confirmation and there
 was no way to spot or (re)start it without switching to Board chat mode.
 
-Hermetic like ``test_board_chief.py``: ``GET /api/claude-code/sessions`` is
+Hermetic like ``board/test_chief_card.py``: ``GET /api/claude-code/sessions`` is
 route-mocked before ``goto`` with a chief + a worker session (the
 ``PtySession.to_api()`` shape — distinct from the Board's own card shape
-used in ``test_board_chief.py``), so this pins the frontend contract without
+used in ``board/_chief_support.py``), so this pins the frontend contract without
 depending on the real session-host.
 """
 

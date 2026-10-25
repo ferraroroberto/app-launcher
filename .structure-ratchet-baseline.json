@@ -4,19 +4,14 @@
     {"key": "dir:app/webapp/static", "modules": 83},
     {"key": "dir:src", "modules": 104},
     {"key": "dir:tests", "modules": 238},
-    {"key": "dir:tests/e2e", "modules": 137},
+    {"key": "dir:tests/e2e", "modules": 135},
     {"key": "fn:app/session_host/server.py:create_app", "lines": 276},
-    {"key": "fn:app/webapp/routers/life_os_conversations.py:_launch_conversation", "lines": 114},
     {"key": "fn:app/webapp/static/board.js:renderBoard", "lines": 133},
     {"key": "fn:app/webapp/static/dom-utils.js:wireModelCombo", "lines": 254},
     {"key": "fn:app/webapp/static/swipe-row.js:attachSwipe", "lines": 129},
     {"key": "fn:src/session_host_input.py:InputProtocol._await_deferred_submit", "lines": 184},
     {"key": "fn:src/session_host_input.py:InputProtocol._submit_input_locked", "lines": 123},
     {"key": "fn:tests/e2e/conftest.py:_autoboot_server", "lines": 258},
-    {"key": "fn:tests/e2e/test_board_chief.py:test_answer_sheet_renders_questions_and_done_sends_one_message", "lines": 129},
-    {"key": "fn:tests/e2e/test_board_chief.py:test_board_keeps_polling_with_chief_drawer_open_and_reply_survives", "lines": 103},
-    {"key": "fn:tests/e2e/test_board_chief.py:test_repo_filter_narrows_the_plan_and_its_questions", "lines": 108},
-    {"key": "fn:tests/e2e/test_chat_live_refresh.py:test_new_turns_appear_with_no_user_action", "lines": 196},
     {"key": "layer:src/chief_job_failed.py:app.webapp.routers", "imports": 1},
     {"key": "size:app/webapp/static/board.js", "lines": 1606},
     {"key": "size:app/webapp/static/jobs.js", "lines": 1033},
@@ -27,8 +22,6 @@
     {"key": "size:src/session_host.py", "lines": 1363},
     {"key": "size:src/session_host_input.py", "lines": 1210},
     {"key": "size:src/webapp_config.py", "lines": 1145},
-    {"key": "size:tests/e2e/conftest.py", "lines": 1736},
-    {"key": "size:tests/e2e/test_board_chief.py", "lines": 1469},
-    {"key": "size:tests/e2e/test_chat_live_refresh.py", "lines": 1172}
+    {"key": "size:tests/e2e/conftest.py", "lines": 1736}
   ]
 }

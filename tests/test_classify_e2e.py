@@ -246,7 +246,7 @@ def test_real_webapp_js_routes_full(cfg: E2EConfig) -> None:
 # full diff to one tab's tests. Each surface is pinned with a path that narrows
 # and shared paths that must keep the whole suite.
 _BOARD_TARGETS = (
-    "tests/e2e/test_board_tab.py tests/e2e/board tests/e2e/test_board_chief.py "
+    "tests/e2e/test_board_tab.py tests/e2e/board "
     "tests/e2e/test_board_nav_badge.py tests/e2e/test_board_job_dismiss.py "
     "tests/e2e/test_page_headers.py "
     "tests/e2e/test_header_cpu_reading.py "

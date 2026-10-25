@@ -13,7 +13,7 @@ for as long as an assertion needs. Every file is named ``e2e-stub-…`` per
 the marker in tests/e2e/conftest.py's leak check (#922), though nothing here
 reaches the host. The composer under test is the terminal's — the same
 ``composer.js`` Chat and the Board drawer mount; the answer sheet's field
-mount (which has no Send) has its own test in test_board_chief.py.
+mount (which has no Send) has its own test in board/test_chief_answer_sheet.py.
 """
 
 from __future__ import annotations
