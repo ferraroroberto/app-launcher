@@ -6,6 +6,8 @@ Split off ``life_os.py`` the way ``life_os_conversations.py`` and
 
     GET  /api/life-os/channels                    → the profiles + which are running,
                                                      and the setup checks (#1369)
+    PATCH /api/life-os/channels/{id}              → edit a profile's settings
+                                                     (Tailscale + passkey)
     POST /api/life-os/channels/{id}/launch        → start (or resume) a profile's
                                                      Claude session with the
                                                      Telegram channel attached
@@ -50,7 +52,9 @@ from fastapi import APIRouter, HTTPException, Request
 from src import audit
 from src.clients import session as session_client
 from src.launching.channel_profiles import (
+    DEFAULT_PROFILES_PATH,
     ChannelProfile,
+    ProfileEditError,
     bun_available,
     env_file_present,
     label_profile_id,
@@ -58,6 +62,8 @@ from src.launching.channel_profiles import (
     plugin_installed_for,
     profile_session_label,
     profiles_file_present,
+    restart_fields,
+    update_channel_profile,
     write_channel_settings,
 )
 from src.launching.flags import build_claude_flags
@@ -97,6 +103,26 @@ def _profiles(request: Request) -> tuple[List[ChannelProfile], List[str]]:
     )
 
 
+def _profile_model(cfg: WebappConfig, profile: ChannelProfile) -> str:
+    """The model a bot starts on when the caller names none: its own, else the
+    shared channel model."""
+    return profile.model or cfg.channel_model
+
+
+def _settings_fields(profile: ChannelProfile) -> Dict[str, Any]:
+    """The editable settings of one profile, as the list and the edit return
+    them. Never a path or a secret."""
+    return {
+        "id": profile.id,
+        "label": profile.label,
+        "skill": profile.skill,
+        "relay": profile.relay,
+        "resume_offer": profile.resume_offer,
+        "idle_close_minutes": profile.idle_close_minutes,
+        "model": profile.model,
+    }
+
+
 def relay_base_url(cfg: WebappConfig) -> str:
     """The loopback URL a relay-enabled bot calls this webapp on (#1639).
 
@@ -128,7 +154,8 @@ async def list_channels(request: Request) -> Dict[str, Any]:
     ``running`` is ``None`` (not ``False``) for every profile when the
     session-host cannot be reached: an unknown is not "nothing running". The
     same rule holds for ``setup.plugin`` (``None`` = Claude's install record
-    could not be read) and for ``restart_due`` (:func:`_restart_due`). Only
+    could not be read), for ``restart_due`` (:func:`_restart_due`) and for
+    ``restart_needed`` (:func:`_restart_needed`). Only
     booleans and names leave here: no state directory, no path, no file
     content — ``env_present`` is a stat of the token file, which is never
     opened.
@@ -147,18 +174,18 @@ async def list_channels(request: Request) -> Dict[str, Any]:
     rows = []
     for profile in profiles:
         sess = (live or {}).get(profile.id)
+        needed, changed = _restart_needed(cfg, profile, sess)
         rows.append({
-            "id": profile.id,
-            "label": profile.label,
-            "skill": profile.skill,
+            **_settings_fields(profile),
             "skill_found": profile.skill in skills_by_id,
-            "relay": profile.relay,
             "env_present": env_file_present(profile),
             "running": None if live is None else bool(sess),
             "session_id": str((sess or {}).get("session_id") or ""),
             "restart_due": _restart_due(
                 life_os_dir, skills_by_id.get(profile.skill), sess
             ),
+            "restart_needed": needed,
+            "restart_fields": changed,
         })
     return {
         "profiles": rows,
@@ -176,6 +203,23 @@ async def list_channels(request: Request) -> Dict[str, Any]:
             "skills": [{"id": s.id, "name": s.name} for s in skills],
         },
     }
+
+
+def _restart_needed(
+    cfg: WebappConfig, profile: ChannelProfile, sess: Optional[Dict[str, Any]]
+) -> tuple[Optional[bool], List[str]]:
+    """Whether the profile's start-time settings (``skill``, ``relay``,
+    ``model``) differ from what the running bot started with, and which.
+
+    ``(None, [])`` when it can't be told: the bot isn't running (or the host is
+    down) or the launch's record can't be read. Never ``False`` for those.
+    """
+    if not sess:
+        return None, []
+    changed = restart_fields(profile, _profile_model(cfg, profile))
+    if changed is None:
+        return None, []
+    return bool(changed), changed
 
 
 def _restart_due(
@@ -242,10 +286,11 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=400,
             detail="Telegram channel sessions run in a terminal, not detached",
         )
-    # No model named (and no legacy ``opus`` flag): the channel default, not
-    # the global Claude model. An explicit model still wins.
+    # No model named (and no legacy ``opus`` flag): the profile's own model,
+    # else the channel default, never the global Claude model. An explicit
+    # model still wins.
     if body.get("model") is None and "opus" not in body:
-        body = {**body, "model": cfg.channel_model}
+        body = {**body, "model": _profile_model(cfg, profile)}
     agent, model = _resolve_launch_choice(body)
     if agent != "claude":
         raise HTTPException(
@@ -353,7 +398,9 @@ async def _spawn_channel(
     """Write the profile's settings file and spawn its session. The caller
     holds the profile's lock and has confirmed nothing is running."""
     try:
-        settings_path = write_channel_settings(profile, relay_url=relay_base_url(cfg))
+        settings_path = write_channel_settings(
+            profile, relay_url=relay_base_url(cfg), model=model
+        )
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     base = build_claude_flags(
@@ -368,6 +415,52 @@ async def _spawn_channel(
     )
 
 
+# --- edit ----------------------------------------------------------
+@router.patch("/api/life-os/channels/{profile_id}")
+async def update_channel(profile_id: str, request: Request) -> Dict[str, Any]:
+    """Change a profile's settings in ``config/channel_profiles.json``.
+
+    Body: any of ``label``, ``skill`` (a scanned life-os skill), ``relay``,
+    ``resume_offer``, ``idle_close_minutes`` (0, 30, 60 or 120) and ``model``
+    (empty = the shared channel model). Any other key is a 400 and the file is
+    left as it was, as is an edit whose result would not load cleanly. Returns
+    the profile's settings and the keys that actually changed. Never restarts
+    the bot: ``skill``, ``relay`` and ``model`` take effect at its next start,
+    which the list reports as ``restart_needed``. The audit line names the
+    keys, never a value.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    profiles, _problems = _profiles(request)
+    if not any(p.id == profile_id for p in profiles):
+        raise HTTPException(
+            status_code=404, detail=f"unknown channel profile: {profile_id}"
+        )
+    body = await maybe_json(request)
+    life_os_dir = Path(cfg.life_os_dir)
+    skill_ids = (
+        {s.id for s in scan_skills(life_os_dir)} if life_os_dir.is_dir() else set()
+    )
+    try:
+        profile, changed = await asyncio.to_thread(
+            update_channel_profile, profile_id, body,
+            skill_ids=skill_ids,
+            path=getattr(request.app.state, "channel_profiles_path", None)
+            or DEFAULT_PROFILES_PATH,
+        )
+    except ProfileEditError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    await audit_off_loop(
+        audit.audit_event, "channel_profile_update",
+        profile=profile_id, keys=",".join(sorted(body)),
+        changed=",".join(sorted(changed)), client=client_ip(request),
+    )
+    logger.info(
+        f"✅ channel profile {profile_id} updated: "
+        f"{', '.join(sorted(changed)) or 'no change'}"
+    )
+    return {"profile": _settings_fields(profile), "changed": changed}
+
+
 # --- restart -------------------------------------------------------
 @router.post("/api/life-os/channels/{profile_id}/restart")
 async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
@@ -375,7 +468,7 @@ async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
     it picks up the current SKILL.md, settings, hooks and model.
 
     Body: ``{"rows": int, "cols": int}``. No model: a restart always uses
-    ``channel_model`` (#1673). A stopped profile is simply started
+    the profile's model, else ``channel_model``. A stopped profile is simply started
     (``restarted: false``). The quit, the confirmation that the old session
     is gone and the new start all run under the profile's launch lock, so a
     Launch arriving meanwhile waits and then gets the usual 409. When the old
@@ -391,7 +484,7 @@ async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=404, detail=f"unknown channel profile: {profile_id}"
         )
     body = await maybe_json(request)
-    _agent, model = _resolve_launch_choice({"model": cfg.channel_model})
+    _agent, model = _resolve_launch_choice({"model": _profile_model(cfg, profile)})
     life_os_dir, skill = _profile_skill(cfg, profile)
     async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
         running = (await _live_or_503(cfg, profile)).get(profile.id)
@@ -613,7 +706,8 @@ async def autostart_channel_sessions(
     for profile in ready:
         try:
             result = await start_channel_session(
-                cfg, profile, model=cfg.channel_model, resume=False, body={},
+                cfg, profile, model=_profile_model(cfg, profile), resume=False,
+                body={},
                 request=None,
             )
         except HTTPException as exc:
