@@ -1,18 +1,21 @@
 /* Screen time (step 1/2): how long the launcher was on screen, like
  * the phone's Screen Time, in Settings › Activity.
  *
- * Nothing new is recorded. The vendored usage log already stores each
- * visit's start and end, and its GET /api/usage/time turns them into
+ * The minutes are nothing new to record. The vendored usage log already stores
+ * each visit's start and end, and its GET /api/usage/time turns them into
  * foreground minutes (overlaps merged, a desktop's idle stretches cut at
  * 15 min; the rules live in src/usage_log.py). This module only draws it:
  *
  * - the Settings row's value, today's total, read whenever Settings opens;
  * - the sheet: a Today / 7 days / 30 days period, the total, daily bars
  *   split by device class (several days only), the device totals, which
- *   double as the chart's legend, and the time per section (tab).
+ *   double as the chart's legend, the time per section (tab) and the uses
+ *   per input feature, split by device (GET /api/usage/features; the page
+ *   records them in settings/feature-track.js).
  *
- * The sheet asks twice per period, by=device and by=view: the route keeps one
- * breakdown per answer. No poll: it reads on open and on a period change.
+ * The sheet asks three times per period, by=device, by=view and the feature
+ * counts: the time route keeps one breakdown per answer. A failed feature
+ * read hides only that block. No poll: it reads on open and on a period change.
  *
  * Step 2/2: the sheet's primary, Send to task-os, sends the last 7 completed
  * days now (POST /api/screen-time/export, the same code as the nightly
@@ -33,6 +36,19 @@ const DEVICES = [
   { id: 'desktop', label: 'PC' },
   { id: 'phone', label: 'Phone' },
   { id: 'tablet', label: 'Tablet' },
+];
+
+// The input features in the order they tie-break, with their labels. The ids
+// are src/usage/feature_counts.py's FEATURE_IDS.
+const FEATURES = [
+  { id: 'feat.send.typed', label: 'Sent typed' },
+  { id: 'feat.send.dictated', label: 'Sent dictated' },
+  { id: 'feat.dictation', label: 'Dictations' },
+  { id: 'feat.attach.image', label: 'Images' },
+  { id: 'feat.attach.file', label: 'Files' },
+  { id: 'feat.attach.large', label: 'Large files' },
+  { id: 'feat.ocr', label: 'Text from images' },
+  { id: 'feat.paste-pc', label: 'Paste to PC' },
 ];
 
 // The tabs' view ids (tabs.js) and the names they show. Time before a
@@ -63,6 +79,17 @@ export function formatMinutes(minutes) {
 
 function timeReport(n, by) {
   return jsonApi('/api/usage/time?days=' + n + '&by=' + by);
+}
+
+// The feature counts, or null when they could not be read: that hides the
+// By feature block and leaves the minutes standing.
+async function featureReport(n) {
+  try {
+    return await jsonApi('/api/usage/features?days=' + n);
+  } catch (exc) {
+    logPollFailure('screen time features', exc);
+    return null;
+  }
 }
 
 // The Settings row (settings-sheets.js renders it from state): today's
@@ -195,6 +222,45 @@ function renderSections(byView, total) {
   list.replaceChildren(...rows.map(function (r) { return shareRow(r.label, r.minutes, total); }));
 }
 
+// One row per feature, the busiest first: the bar is split by device (the
+// chart's fills), its length the share of the busiest feature, the value the
+// uses. A device's own count rides the row's title.
+function featureRow(label, byDevice, total, top) {
+  const li = shareRow(label, total, top, null);
+  const value = li.querySelector('.screen-time-row-value');
+  value.textContent = String(total);
+  const fill = li.querySelector('.screen-time-share-fill');
+  const track = fill.parentNode;
+  track.replaceChildren(...DEVICES
+    .filter(function (d) { return (byDevice[d.id] || 0) > 0; })
+    .map(function (d) {
+      const seg = document.createElement('span');
+      seg.className = 'screen-time-share-fill';
+      seg.dataset.device = d.id;
+      seg.style.width = (byDevice[d.id] / top * 100) + '%';
+      return seg;
+    }));
+  li.title = DEVICES
+    .filter(function (d) { return (byDevice[d.id] || 0) > 0; })
+    .map(function (d) { return d.label + ' ' + byDevice[d.id]; }).join(' · ');
+  return li;
+}
+
+function renderFeatures(report) {
+  const block = document.getElementById('screenTimeFeaturesBlock');
+  block.hidden = !report;
+  if (!report) return;
+  const rows = FEATURES.map(function (f) {
+    const hit = report.features.find(function (r) { return r.id === f.id; });
+    return { label: f.label, total: hit ? hit.total : 0, by_device: hit ? hit.by_device : {} };
+  });
+  rows.sort(function (a, b) { return b.total - a.total; });
+  const top = Math.max(1, ...rows.map(function (r) { return r.total; }));
+  document.getElementById('screenTimeFeatures').replaceChildren(...rows.map(function (r) {
+    return featureRow(r.label, r.by_device, r.total, top);
+  }));
+}
+
 function caption(n, total) {
   if (n === 1) return 'Today';
   return 'Last ' + n + ' days · ' + formatMinutes(total / n) + ' a day on average';
@@ -204,7 +270,7 @@ function emptyMessage(n) {
   return n === 1 ? 'No screen time today yet.' : 'No screen time in the last ' + n + ' days.';
 }
 
-function renderReport(n, byDevice, byView) {
+function renderReport(n, byDevice, byView, features) {
   const host = document.getElementById('screenTimeState');
   const report = document.getElementById('screenTimeReport');
   const total = byDevice.total_minutes;
@@ -222,6 +288,7 @@ function renderReport(n, byDevice, byView) {
   renderChart(byDevice.days_series);
   renderDevices(byDevice.by_device, total);
   renderSections(byView.by_view, total);
+  renderFeatures(features);
   setAsyncState(host, 'ready');
   report.hidden = false;
 }
@@ -234,7 +301,7 @@ async function loadSheet() {
   setAsyncState(host, 'loading', { message: 'Reading screen time…' });
   let answers;
   try {
-    answers = await Promise.all([timeReport(n, 'device'), timeReport(n, 'view')]);
+    answers = await Promise.all([timeReport(n, 'device'), timeReport(n, 'view'), featureReport(n)]);
   } catch (exc) {
     logPollFailure('screen time', exc);
     if (ticket !== request) return;
@@ -243,7 +310,7 @@ async function loadSheet() {
   }
   // A later period tap or reopen has asked again: its answer wins.
   if (ticket !== request) return;
-  renderReport(n, answers[0], answers[1]);
+  renderReport(n, answers[0], answers[1], answers[2]);
 }
 
 // "today 03:10", "yesterday 03:10", "Mon 12 Oct 03:10".

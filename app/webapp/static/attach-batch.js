@@ -83,7 +83,7 @@ export function cancelledSummary(ok, total) {
 // opts:
 //   upload(file, signal, kind)  → the text to append, or null; a throw carries
 //                 the reason. The signal aborts when the run is cancelled.
-//   onAppend(text, kind)  each successful upload's text, in order
+//   onAppend(text, kind, file)  each successful upload's text, in order
 //   onProgress({index, total, name})  before each file; null when idle again
 //   onSettle({ok, total, failures, cancelled?})  once the queue has drained,
 //                 or at once on cancel() with `cancelled: true`
@@ -115,7 +115,7 @@ export function createAttachQueue(opts) {
         const path = await opts.upload(file, ctrl.signal, item.kind);
         if (myRun !== run) return;
         if (path) {
-          opts.onAppend(path, item.kind);
+          opts.onAppend(path, item.kind, file);
           ok++;
           log({ name: name, bytes: file.size, ms: Date.now() - started, ok: true });
           return;

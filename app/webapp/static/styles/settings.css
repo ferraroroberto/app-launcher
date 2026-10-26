@@ -226,6 +226,13 @@ button.settings-row:active { background: var(--card-2); }
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
+/* By feature: a wider label column than the sections', and the share track
+   holds one segment per device. */
+.screen-time-features { list-style: none; margin: 0 0 4px; padding: 0; }
+.screen-time-features .screen-time-row { grid-template-columns: minmax(0, 8.5em) minmax(0, 1fr) 3em; }
+.screen-time-features .screen-time-share { display: flex; }
+.screen-time-features .screen-time-share-fill { flex: none; border-radius: 0; }
+.screen-time-features .screen-time-share-fill:last-child { border-radius: 0 var(--radius-pill) var(--radius-pill) 0; }
 .settings-sheet .screen-time-note { margin: 16px 0 10px; }
 /* The last send to task-os, just above Send. */
 .settings-sheet .screen-time-sent { margin: 0 0 4px; color: var(--fg); }

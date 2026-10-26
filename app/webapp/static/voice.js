@@ -23,6 +23,7 @@ import { AuthRequiredError, apiFailToast, apiRaw, apiRawJson, readToken, toast }
 import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
+import { trackFeature } from './settings/feature-track.js';
 
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
@@ -107,6 +108,7 @@ function newDictationState(opts) {
     getTextarea: opts.getTextarea,
     onRender: opts.onRender || function () {},
     onStart: opts.onStart || function () {},
+    onTranscript: opts.onTranscript || function () {},
     // The public object createDictation returns; the one-mic-at-a-time mutex
     // compares against it.
     api: null,
@@ -246,6 +248,12 @@ function setRecordingUI(d, on) {
   button.setAttribute('aria-pressed', on ? 'true' : 'false');
   button.innerHTML = on ? icon('square') : icon('mic');
   button.title = on ? 'Stop recording' : 'Dictate (voice to text)';
+}
+
+// A take put text in the textarea: one feature use, and the owner's hook.
+function dictationLanded(d) {
+  trackFeature('feat.dictation');
+  d.onTranscript();
 }
 
 // Replace the tracked dictation span with the latest transcript, leaving
@@ -580,6 +588,7 @@ async function finishStreaming(d) {
       toast('Nothing heard — silent recording', undefined, { icon: 'mic' });
     } else if (body && typeof body.transcript === 'string') {
       renderDictation(d, body.transcript);
+      if (body.transcript) dictationLanded(d);
       if (d.chunksLost) {
         // Distinct from a failed transcription: the text is there, but
         // part of the take never reached the transcriber.
@@ -636,6 +645,7 @@ async function sendBufferedRecording(d, blob) {
     const sep = (before && !/\s$/.test(before)) ? ' ' : '';
     ta.setRangeText(sep + text, ta.selectionStart, ta.selectionEnd, 'end');
     d.onRender();
+    dictationLanded(d);
     ta.focus();
     toast('Transcribed — review, then tap Send.', 'good', { icon: 'mic' });
   } catch (exc) {
@@ -716,6 +726,7 @@ function toggleDictation(d) {
  *                  compose bar re-grows its textarea),
  *     onStart:     optional — called when recording starts (the compose
  *                  bar silences an in-flight read-aloud),
+ *     onTranscript: optional — called when a take put text in the textarea,
  *   }) → { toggle, stop, dispose, isRecording, isBusy }
  */
 export function createDictation(opts) {

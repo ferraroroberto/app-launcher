@@ -121,6 +121,7 @@ import { bindLongPressHint } from './long-press-hint.js';
 import { mountKeysPopover } from './terminal/terminal-keys.js';
 import { icon } from './_vendored/icons/icons.js';
 import { cancelledSummary, createAttachQueue, summarize } from './attach-batch.js';
+import { trackFeature } from './settings/feature-track.js';
 
 // Max visible rows before the textarea scrolls internally. Roomy enough
 // for a long dictated voice note without the bar eating the whole
@@ -244,6 +245,8 @@ function newComposerState(host, opts, el) {
     // the buffer carries an attached-file path, so the surface's send
     // may hold its submitting CR back for the path→attachment conversion.
     hasImage: false,
+    // the draft holds dictated text, so its send counts as a dictated one.
+    dictated: false,
     // Send's own gate (setSendable) — kept apart from the in-flight
     // disable an async send holds, so settling a send never re-enables a
     // button the surface gated off.
@@ -358,6 +361,7 @@ async function runOcrExtraction(c) {
     composerGrow(c);
     ta.focus();
     clearOcrStaging(c);
+    trackFeature('feat.ocr');
     // A partly read take is a 200 whose text already carries a
     // `[missing: photo N …]` line per unread photo; say so
     // up front rather than a plain success the owner might not look past.
@@ -429,9 +433,20 @@ function appendParagraph(c, text) {
 // `kind` is 'large' for a not-read large file: its line names a path
 // the agent must not open as an attachment, so it does not set hasImage
 // (which holds Send's CR back for an image conversion).
-function appendPath(c, path, kind) {
+function appendPath(c, path, kind, file) {
   appendParagraph(c, path);
   if (kind !== 'large') c.hasImage = true;
+  trackFeature(attachFeature(kind, file));
+}
+
+const _IMAGE_NAME = /\.(png|jpe?g|gif|webp|heic|heif|avif|bmp)$/i;
+
+// Which feature an upload counts as. Only its class is read from the file; the
+// name never leaves this function.
+function attachFeature(kind, file) {
+  if (kind === 'large') return 'feat.attach.large';
+  const image = file && ((file.type || '').indexOf('image/') === 0 || _IMAGE_NAME.test(file.name || ''));
+  return image ? 'feat.attach.image' : 'feat.attach.file';
 }
 
 function labelImage(c, text) {
@@ -466,7 +481,7 @@ function showUploadProgress(c, p) {
 function createComposerAttachQueue(c) {
   return createAttachQueue({
     upload: function (file, signal, kind) { return c.opts.upload(file, signal, kind); },
-    onAppend: function (path, kind) { appendPath(c, path, kind); },
+    onAppend: function (path, kind, file) { appendPath(c, path, kind, file); },
     onProgress: function (p) { showUploadProgress(c, p); },
     onSettle: function (r) {
       if (!r.total) return;
@@ -579,7 +594,9 @@ function mountImageMenu(c) {
 
 // ---- send --------------------------------------------------------------
 function finishSend(c) {
+  trackFeature(c.dictated ? 'feat.send.dictated' : 'feat.send.typed');
   c.hasImage = false;
+  c.dictated = false;
   c.el.textarea.value = '';
   c.el.textarea.style.height = '';
   c.el.textarea.focus();
@@ -711,6 +728,7 @@ function resetComposer(c) {
   c.el.textarea.value = '';
   c.el.textarea.style.height = '';
   c.hasImage = false;
+  c.dictated = false;
   clearOcrStaging(c);
   c.dictation.dispose();
   closePopovers(c);
@@ -740,6 +758,7 @@ export function mountComposer(host, opts) {
     getTextarea: function () { return el.textarea; },
     onRender: function () { composerGrow(c); },
     onStart: opts.onDictationStart || function () {},
+    onTranscript: function () { c.dictated = true; },
   });
   el.mic.addEventListener('click', c.dictation.toggle);
 
