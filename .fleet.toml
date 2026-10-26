@@ -777,12 +777,14 @@ paths    = [
     "app/webapp/static/life-os/life-os-content.js",
     "app/webapp/static/life-os/life-os-convos.js",
     "app/webapp/static/settings/telegram-setup.js",
+    "app/webapp/static/settings/telegram-bots.js",
     "app/webapp/routers/life_os.py",
     "app/webapp/routers/life_os_conversations.py",
     "app/webapp/routers/life_os_files.py",
     "app/webapp/routers/life_os_spawn.py",
     "app/webapp/routers/life_os_channels.py",
     "tests/e2e/life_os/test_life_tab_glance.py",
+    "tests/e2e/settings/test_telegram_bots.py",
     "tests/e2e/shell/test_markdown_link_rendering.py",
 ]
 prefixes = ["tests/e2e/life_os/"]
@@ -806,6 +808,7 @@ pytest_targets = [
     "tests/e2e/shell/test_vendored_empty_and_select.py",
     "tests/e2e/shell/test_touch_targets.py",
     "tests/e2e/settings/test_settings_sheets.py",
+    "tests/e2e/settings/test_telegram_bots.py",
     "tests/e2e/shell/test_async_list_states.py",
     "tests/e2e/screens/test_screen_shots.py",
     "tests/e2e/shell/test_dialog_title_focus.py",

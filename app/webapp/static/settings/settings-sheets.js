@@ -48,7 +48,7 @@ function closeTop() {
 
 // Show the sheet path `ids` (a top-level sheet, or Launch defaults then the
 // agent sheet): the current top closes and the path's last sheet opens.
-function showPath(ids) {
+export function showPath(ids) {
   const target = ids[ids.length - 1];
   if (stack[stack.length - 1] !== target) closeTop();
   stack.splice(0, stack.length, ...ids);

@@ -237,3 +237,54 @@ button.settings-row:active { background: var(--card-2); }
 /* The last send to task-os, just above Send. */
 .settings-sheet .screen-time-sent { margin: 0 0 4px; color: var(--fg); }
 
+
+/* Settings › Telegram › Bots (telegram-bots.js): each bot is a settings row
+   with an avatar (the send glyph, a green dot while it runs), its name over a
+   one-line summary, and a Restart-to-apply chip when it needs one. */
+.bot-row { min-height: var(--row-lg); }
+.bot-avatar {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--neutral-soft);
+  color: var(--fg);
+}
+.bot-avatar-icon { width: var(--icon-title); height: var(--icon-title); }
+.bot-avatar-badge {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--card);
+  background: var(--success);
+}
+.bot-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bot-row-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bot-row-meta { font-weight: 400; }
+/* The banner above a bot's Restart button: what changed since it started. */
+.bot-banner {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: rgb(from var(--attention) r g b / 0.16);
+  color: var(--attention-text);
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+}
+.bot-banner .icon { flex: none; margin-top: 1px; }
+.bot-banner strong { display: block; }

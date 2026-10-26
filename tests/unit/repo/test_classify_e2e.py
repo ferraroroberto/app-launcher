@@ -278,7 +278,8 @@ _LIFEOS_TARGETS = (
     "tests/e2e/shell/test_smoke.py "
     "tests/e2e/shell/test_row_name_typography.py tests/e2e/shell/test_icon_sizes.py "
     "tests/e2e/shell/test_vendored_empty_and_select.py tests/e2e/shell/test_touch_targets.py"
-    " tests/e2e/settings/test_settings_sheets.py tests/e2e/shell/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
+    " tests/e2e/settings/test_settings_sheets.py tests/e2e/settings/test_telegram_bots.py"
+    " tests/e2e/shell/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
     " tests/e2e/shell/test_dialog_title_focus.py"
 )
 

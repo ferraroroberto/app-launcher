@@ -234,6 +234,7 @@ export async function fetchConfig(shouldApply) {
   if (els.autostartChannelSessionsToggle) {
     setSwitch(els.autostartChannelSessionsToggle, body.autostart_channel_sessions === true);
   }
+  renderChannelModel(body.channel_model);
   renderClaudeOptions();
   renderSettingsValues();
   return true;
@@ -294,6 +295,20 @@ function renderChiefAutoCompact(body) {
   setSwitch(els.chiefAutoCompactToggle, value > 0);
   setFieldValue(field, String(value > 0 ? value : _DEFAULT_CHIEF_AUTO_COMPACT));
   field.disabled = value === 0;
+}
+
+// Telegram's shared model select: a stored value the list doesn't offer (an
+// older config) still shows, never a silent swap to the first option.
+function renderChannelModel(model) {
+  const select = els.channelModelSelect;
+  if (!select || !model) return;
+  if (!Array.from(select.options).some(function (o) { return o.value === model; })) {
+    const extra = document.createElement('option');
+    extra.value = model;
+    extra.textContent = model;
+    select.appendChild(extra);
+  }
+  select.value = model;
 }
 
 export function renderClaudeOptions() {

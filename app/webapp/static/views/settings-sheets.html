@@ -344,6 +344,11 @@
           </button>
         </div>
         <div class="settings-sheet-body">
+          <h4 class="context-filter-subhead">Bots</h4>
+          <div id="channelBots" class="settings-group--nested" aria-label="Telegram bots"></div>
+          <p id="channelBotsEmpty" class="empty muted small" hidden>No bots yet — step 4 below adds them.</p>
+          <p class="field-help">A green dot: the bot is running. Tap a bot to change its settings.</p>
+          <h4 class="context-filter-subhead">Sessions</h4>
           <div class="switch-row settings-switch-row">
             <span>Hide Telegram sessions from the Board and session list</span>
             <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
@@ -354,7 +359,16 @@
             <button type="button" id="autostartChannelSessionsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start Telegram sessions automatically" aria-describedby="autostartChannelSessionsHelp" title="Start Telegram sessions automatically"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="autostartChannelSessionsHelp" class="field-help">After a restart of the PC every Telegram session is gone, and its bot stays silent until someone starts it. On, the launcher starts each ready profile when it starts itself — a fresh session in the profile's skill, with the Claude model from Settings. A profile that is already running, or not ready, is left alone.</p>
-          <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; on the Life tab its skill then wears a send glyph, green while the bot runs, and the skill's menu starts or opens it. Nothing here edits files — it shows what is ready and what is missing.</p>
+          <label class="row">
+            <span>Model</span>
+            <select id="channelModelSelect" class="select-native" aria-describedby="channelModelHelp">
+              <option value="sonnet">Sonnet</option>
+              <option value="opus">Opus</option>
+              <option value="fable">Fable</option>
+            </select>
+          </label>
+          <p id="channelModelHelp" class="field-help">The Claude model a bot starts on when it has none of its own. Applies the next time a bot starts.</p>
+          <p class="muted small">Give a life-os skill its own Telegram bot, so a chat can talk to that skill. Each bot needs its own profile; on the Life tab its skill then wears a send glyph, green while the bot runs, and the skill's menu starts or opens it. A bot's settings change above; adding or removing a bot stays a file edit (step 4 below).</p>
           <h4 class="context-filter-subhead">Checks</h4>
           <ul id="channelChecks" class="card-list channel-check-list" aria-label="Telegram setup checks"></ul>
           <h4 class="context-filter-subhead">Profiles</h4>
@@ -383,6 +397,81 @@
           <div class="row settings-actions">
             <button id="channelRecheck" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Re-check</button>
           </div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
+    <!-- One Telegram bot's settings (#1904), opened from the Bots group above.
+         telegram-bots.js fills it from the same GET /api/life-os/channels
+         payload and saves each field through PATCH /api/life-os/channels/{id}.
+         Names and booleans only: never a path or a token. -->
+    <dialog id="channelBotSheet" class="detail-dialog settings-sheet" aria-labelledby="channelBotSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Telegram" title="Back to Telegram"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="channelBotSheetTitle" tabindex="-1" autofocus>Bot</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div id="botRestartBanner" class="bot-banner" role="status" hidden>
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg>
+            <div><strong>Restart to apply</strong><span id="botRestartText"></span></div>
+          </div>
+          <div id="botRestartRow" class="row settings-actions" hidden>
+            <button id="botRestartBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Restart bot</button>
+          </div>
+          <p id="botRestartHelp" class="field-help" hidden>The bot quits and starts again with its current settings, in a fresh conversation. It restarts only when you tap this.</p>
+
+          <h4 class="context-filter-subhead">Bot</h4>
+          <label class="row">
+            <span>Name</span>
+            <input id="botNameInput" type="text" class="input-native" maxlength="60" autocomplete="off" aria-describedby="botNameHelp">
+          </label>
+          <p id="botNameError" class="field-error" role="alert" hidden></p>
+          <label class="row">
+            <span>Skill</span>
+            <select id="botSkillSelect" class="select-native" aria-describedby="botNameHelp"></select>
+          </label>
+          <p id="botSkillError" class="field-error" role="alert" hidden></p>
+          <label class="row">
+            <span>Model</span>
+            <select id="botModelSelect" class="select-native" aria-describedby="botNameHelp"></select>
+          </label>
+          <p id="botModelError" class="field-error" role="alert" hidden></p>
+          <p id="botNameHelp" class="field-help">The name saves now. A running bot picks up a new skill or model when it restarts.</p>
+
+          <h4 class="context-filter-subhead">Earlier conversations</h4>
+          <div class="row">
+            <span>Relay</span>
+            <button type="button" id="botRelayToggle" class="toggle" role="switch" aria-checked="false" aria-label="Relay" aria-describedby="botRelayHelp" title="Let the bot find, reopen and message this skill's earlier conversations"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="botRelayHelp" class="field-help">Lets the bot find, reopen and message this skill's earlier conversations. A running bot picks it up when it restarts.</p>
+          <p id="botRelayError" class="field-error" role="alert" hidden></p>
+          <div class="row">
+            <span>Offer a resume when a chat starts</span>
+            <button type="button" id="botResumeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Offer a resume when a chat starts" aria-describedby="botResumeHelp" title="Offer a resume when a chat starts"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="botResumeHelp" class="field-help">Takes effect now.</p>
+          <p id="botResumeError" class="field-error" role="alert" hidden></p>
+          <div class="stacked">
+            <span id="botIdleLabel">Close a reopened conversation after no activity for</span>
+            <div id="botIdleSeg" class="segmented" role="group" aria-labelledby="botIdleLabel" aria-describedby="botIdleHelp">
+              <button type="button" class="segmented-item" aria-pressed="false" data-value="0">Off</button>
+              <button type="button" class="segmented-item" aria-pressed="false" data-value="30">30 min</button>
+              <button type="button" class="segmented-item" aria-pressed="false" data-value="60">1 h</button>
+              <button type="button" class="segmented-item" aria-pressed="false" data-value="120">2 h</button>
+            </div>
+          </div>
+          <p id="botIdleHelp" class="field-help">Takes effect now, no restart.</p>
+          <p id="botIdleError" class="field-error" role="alert" hidden></p>
+
+          <h4 class="context-filter-subhead">Status</h4>
+          <ul id="botStatus" class="card-list channel-check-list" aria-label="Bot status"></ul>
         </div>
         <div class="detail-actions">
           <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
