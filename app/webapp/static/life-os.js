@@ -37,6 +37,7 @@ import { mountLaunchToolbar } from './launch-toolbar.js';
 import { listFilter } from './list-filter.js';
 import { openSettingsAt } from './tabs.js';
 import { renderChannelSetup } from './settings/telegram-setup.js';
+import { renderBots } from './settings/telegram-bots.js';
 import { renderSettingsValues } from './settings/settings-sheets.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { terminalJsonApi } from './webauthn.js';
@@ -159,6 +160,7 @@ export async function fetchChannels() {
     state.lifeOsChannelsFailed = false;
     renderSkills();
     renderChannelSetup();
+    renderBots();
     renderSettingsValues();
   } catch (exc) {
     logPollFailure('life-os channels fetch failed', exc);

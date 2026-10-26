@@ -25,7 +25,7 @@ const CHIP = {
 
 // `value` is the healthy word ("Found"): status 'ok' shows it plain, any
 // other status its chip (`chipLabel` overriding the chip's word).
-function checkRow(title, detail, status, value, chipLabel) {
+export function checkRow(title, detail, status, value, chipLabel) {
   const li = document.createElement('li');
   li.className = 'row channel-check';
   const meta = document.createElement('span');

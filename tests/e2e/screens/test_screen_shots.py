@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e._shot import PINNED_NOW, shot, variant_page, variants
-from tests.e2e.fixtures.ui import open_session_row, open_settings, stub_session_mirror
+from tests.e2e.fixtures.ui import open_session_row, open_settings, open_settings_sheet, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 
@@ -248,3 +248,34 @@ def test_settings_shots(browser: Browser, base_url: str) -> None:
             expect(toggle).to_have_attribute("aria-checked", "true")
             toggle.scroll_into_view_if_needed()
             shot(page, SHOTS_DIR / f"settings-{variant.slug}.png")
+
+
+_BOT_PROFILES = [
+    {"id": "garden", "label": "Garden", "skill": "garden-notes", "relay": True, "resume_offer": True,
+     "idle_close_minutes": 60, "model": "", "skill_found": True, "env_present": True, "running": True,
+     "session_id": "s-garden", "restart_due": False, "restart_needed": True, "restart_fields": ["relay", "model"]},
+    {"id": "reading", "label": "Reading", "skill": "reading-list", "relay": False, "resume_offer": True,
+     "idle_close_minutes": 60, "model": "opus", "skill_found": True, "env_present": True, "running": False,
+     "session_id": "", "restart_due": None, "restart_needed": None, "restart_fields": []},
+]
+
+
+def test_telegram_bot_shots(browser: Browser, base_url: str) -> None:
+    """Settings › Telegram › one bot's sheet, with its restart banner showing."""
+    for variant in variants():
+        with variant_page(browser, variant) as page:
+            page.add_init_script(f"localStorage.setItem('app-launcher.theme', '{variant.theme}');")
+            _mock_data(page)
+            page.route(re.compile(r".*/api/config$"), _json_route(
+                {**_CONFIG, "channel_model": "sonnet"}))
+            page.route(re.compile(r".*/api/life-os/channels$"), _json_route(
+                {"profiles": _BOT_PROFILES, "problems": [], "setup": {
+                    "file_present": True, "life_os_found": True, "bun": True, "plugin": True,
+                    "skills": [{"id": "garden-notes", "name": "garden-notes"},
+                               {"id": "reading-list", "name": "reading-list"}]}}))
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            page.locator("#tabClaude").click()
+            open_settings_sheet(page, "channelsSheet")
+            page.locator('#channelBots [data-bot-id="garden"]').click()
+            expect(page.locator("#botRestartBanner")).to_be_visible()
+            shot(page, SHOTS_DIR / f"telegram-bot-{variant.slug}.png")
