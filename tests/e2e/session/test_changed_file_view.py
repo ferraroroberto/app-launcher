@@ -275,6 +275,11 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
     expect(rendered).to_contain_text("<script>window.__ran = true</script>")
     assert page.evaluate("() => window.__ran === undefined")
     assert len(seen["content"]) == 1, f"Preview refetched the file: {seen}"
+    # Rendered text sits on the theme's own canvas, not the white an HTML page gets.
+    for theme, canvas in (("light", "rgb(255, 255, 255)"), ("dark", "rgb(13, 17, 23)")):
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        expect(rendered).to_have_css("background-color", canvas)
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
     viewer.locator("#htmlViewerClose").click()
     expect(viewer).to_be_hidden()
 
