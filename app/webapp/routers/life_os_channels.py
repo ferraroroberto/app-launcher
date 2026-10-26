@@ -535,6 +535,29 @@ async def _wait_until_gone(port: int, sid: str, wait_s: float) -> bool:
         await asyncio.sleep(RESTART_POLL_SECONDS)
 
 
+async def stop_until_gone(
+    port: int, sid: str, mode: str, wait_s: float, what: str
+) -> bool:
+    """Send one stop of ``mode`` (``quit`` or ``kill``) and poll until the
+    session is gone, at most ``wait_s``. ``True`` when it is gone (or already
+    was), ``False`` when still alive at the deadline; raises
+    ``SessionHostError`` when the host stops answering while it is polled.
+    Shared by the bot restart and the relay's stop, which only ever quits."""
+    try:
+        await asyncio.to_thread(session_client.stop, port, sid, mode)
+    except session_client.SessionHostError as exc:
+        if exc.status == 404:
+            logger.info(f"ℹ️ {what}: session {sid[:8]} already gone at {mode}")
+            return True
+        # The poll below decides: a stop that timed out may still land.
+        logger.info(
+            f"ℹ️ {what}: {mode} of {sid[:8]} answered {exc.status} ({exc}); checking"
+        )
+    else:
+        logger.info(f"ℹ️ {what}: {mode} sent to {sid[:8]}")
+    return await _wait_until_gone(port, sid, wait_s)
+
+
 async def _quit_and_confirm_gone(
     cfg: WebappConfig, profile: ChannelProfile, sid: str
 ) -> None:
@@ -547,6 +570,7 @@ async def _quit_and_confirm_gone(
     except Exception as exc:  # noqa: BLE001
         logger.warning(f"⚠️ mirror window close raised for {sid[:8]}: {exc}")
     started = time.monotonic()
+    what = f"channel profile {profile.id} restart"
     failed = (
         f"Couldn't confirm {profile.label} stopped; it was not started again."
     )
@@ -554,31 +578,11 @@ async def _quit_and_confirm_gone(
         ("quit", RESTART_QUIT_WAIT_SECONDS), ("kill", RESTART_KILL_WAIT_SECONDS),
     ):
         try:
-            await asyncio.to_thread(session_client.stop, port, sid, mode)
-        except session_client.SessionHostError as exc:
-            if exc.status == 404:
-                logger.info(
-                    f"ℹ️ channel profile {profile.id} restart: session "
-                    f"{sid[:8]} already gone at {mode}"
-                )
-                return
-            # The poll below decides: a stop that timed out may still land.
-            logger.info(
-                f"ℹ️ channel profile {profile.id} restart: {mode} of "
-                f"{sid[:8]} answered {exc.status} ({exc}); checking"
-            )
-        else:
-            logger.info(
-                f"ℹ️ channel profile {profile.id} restart: {mode} sent to "
-                f"{sid[:8]}"
-            )
-        try:
-            gone = await _wait_until_gone(port, sid, wait_s)
+            gone = await stop_until_gone(port, sid, mode, wait_s, what)
         except session_client.SessionHostError as exc:
             logger.warning(
-                f"⚠️ channel profile {profile.id} restart: session-host "
-                f"stopped answering while {sid[:8]} was stopping ({exc}); "
-                "not starting"
+                f"⚠️ {what}: session-host stopped answering while {sid[:8]} "
+                f"was stopping ({exc}); not starting"
             )
             raise HTTPException(
                 status_code=502,
@@ -586,19 +590,16 @@ async def _quit_and_confirm_gone(
             )
         if gone:
             logger.info(
-                f"ℹ️ channel profile {profile.id} restart: {sid[:8]} confirmed "
-                f"gone after {time.monotonic() - started:.1f}s"
+                f"ℹ️ {what}: {sid[:8]} confirmed gone after "
+                f"{time.monotonic() - started:.1f}s"
             )
             return
         if mode == "quit":
             logger.info(
-                f"ℹ️ channel profile {profile.id} restart: {sid[:8]} still "
-                f"alive after {wait_s:.0f}s; kill escalated"
+                f"ℹ️ {what}: {sid[:8]} still alive after {wait_s:.0f}s; "
+                "kill escalated"
             )
-    logger.warning(
-        f"⚠️ channel profile {profile.id} restart: {sid[:8]} still alive "
-        "after the kill; not starting"
-    )
+    logger.warning(f"⚠️ {what}: {sid[:8]} still alive after the kill; not starting")
     raise HTTPException(
         status_code=502, detail=f"{failed} It is still running after a kill."
     )

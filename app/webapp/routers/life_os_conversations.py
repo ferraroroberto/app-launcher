@@ -190,6 +190,9 @@ def _conversation_rows(
             "handoff_available": "body" in source,
             "handoff_truncated": len(source.get("body", "")) > MAX_HANDOFF_CHARS,
             "handoff_limit": MAX_HANDOFF_CHARS,
+            # A search hit's match tier, when the search sends one; index rows have none.
+            **({"tier": row["tier"]} if isinstance(row.get("tier"), int)
+               and not isinstance(row.get("tier"), bool) else {}),
         })
     return result
 

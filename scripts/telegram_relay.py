@@ -10,15 +10,22 @@ command must be typed as that text plus a subcommand, with no pipe,
 redirection or ``cd`` around it.
 
     find [QUERY ...] [--limit N]   the skill's conversations, newest first, or the hits for QUERY
-    resume [PATH]                  resume PATH (from find), or the newest resumable one
+    resume [PATH] [--chat KEY]     resume PATH (from find), or the newest resumable one
     steer SESSION_ID TEXT ...      send TEXT once (or --file FILE)
     read SESSION_ID                the session's last reply
     ask SESSION_ID TEXT ...        steer, then wait for the reply (--timeout SECS)
+    stop SESSION_ID                close a conversation resume reopened, once the chat is done
+    status [--chat KEY]            what is open for this bot, and what was closed since last asked
+
+``--chat`` is the chat's own key (the Telegram chat id): each chat keeps one
+reopened conversation, and ``resume`` in a chat that has one answers with it.
 
 Output: the first line is always ``STATE=<state>``, then ``KEY=value`` lines,
-then (for a reply) a ``---`` line and the reply text. Exit 0 for an outcome
-(found, none, resumed, opened, delivered, queued, unconfirmed, reply), 1 for a
-refusal or failure, 2 when the relay is not set up in this session. The
+``CONVERSATION`` and ``STOP`` rows, then (for a reply) a ``---`` line and the
+reply text. A found row carries ``tier`` (0 title, 1 topic, 2 digest, 3 full
+text only) when the search reports it. Exit 0 for an outcome (found, none,
+resumed, opened, open_in_chat, delivered, queued, unconfirmed, reply, stopped,
+open), 1 for a refusal or failure, 2 when the relay is not set up in this session. The
 states, and what each means for the chat:
 
     not_found         no such session or conversation
@@ -32,6 +39,13 @@ states, and what each means for the chat:
     unknown           the launcher could not be reached; delivery is unknown
     unavailable       the reply could not be read (REASON says why); not old text
     no_reply_yet      sent, but no reply within the wait; read again later
+    open_in_chat      this chat already has a reopened conversation (SESSION_ID); nothing launched
+    stopped           the conversation was closed, its capture already saved
+    not_relay_owned   stop: the relay did not reopen that session for this bot; left alone
+    busy              stop: the conversation is mid-turn or waiting on an answer; nothing done
+    capture_unconfirmed  stop: its last turn is not confirmed saved yet; nothing done, try later
+    stop_unconfirmed  stop: quit sent but not confirmed closed; status says whether it is still open
+    open / none       status: whether this bot has reopened conversations running
 
 Stdlib only, so it runs on the launcher's venv interpreter with no imports
 from the repo.
@@ -52,8 +66,12 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 _OK_STATES = frozenset({
-    "found", "none", "resumed", "opened", "delivered", "queued", "unconfirmed", "reply",
+    "found", "none", "resumed", "opened", "open_in_chat", "delivered", "queued",
+    "unconfirmed", "reply", "stopped", "open",
 })
+_ROW_FIELDS = ("path", "conversation", "title", "topic", "last_interaction", "resumable",
+               "tier", "session_id", "chat", "idle_minutes", "minutes_to_close")
+_STOP_FIELDS = ("session_id", "conversation", "title", "chat", "reason", "stopped_at")
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _POLL_SECONDS = 2.0
 # Output still arriving this recently means the reply may be mid-stream, when
@@ -121,15 +139,15 @@ def _call(method: str, path: str, *, query: Optional[Dict[str, str]] = None,
 def _print(result: Dict[str, Any], *, text: Optional[str] = None) -> int:
     print(f"STATE={result['state']}")
     for key, value in result.items():
-        if key in ("state", "text", "conversations") or value in (None, ""):
+        if key in ("state", "text", "conversations", "stops") or value in (None, ""):
             continue
         print(f"{key.upper()}={value}")
-    for row in result.get("conversations") or []:
-        fields = " | ".join(
-            f"{key}={str(row.get(key)).strip()}" for key in
-            ("path", "title", "topic", "last_interaction", "resumable", "session_id")
-            if row.get(key) not in (None, ""))
-        print(f"CONVERSATION {fields}")
+    for label, rows, keys in (("CONVERSATION", result.get("conversations"), _ROW_FIELDS),
+                              ("STOP", result.get("stops"), _STOP_FIELDS)):
+        for row in rows or []:
+            fields = " | ".join(f"{key}={str(row.get(key)).strip()}" for key in keys
+                                if row.get(key) not in (None, ""))
+            print(f"{label} {fields}")
     reply = text if text is not None else result.get("text")
     if reply is not None:
         print("---")
@@ -173,7 +191,17 @@ def cmd_find(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    return _print(_call("POST", "resume", body={"path": args.path} if args.path else {}))
+    body = {key: value for key, value in (("path", args.path), ("chat", args.chat)) if value}
+    return _print(_call("POST", "resume", body=body))
+
+
+def cmd_stop(args: argparse.Namespace) -> int:
+    # The launcher waits up to 15 s for the quit to land before it answers.
+    return _print(_call("POST", "stop", body={"session_id": args.session_id}, timeout=60.0))
+
+
+def cmd_status(args: argparse.Namespace) -> int:
+    return _print(_call("GET", "status", query={"chat": args.chat} if args.chat else None))
 
 
 def cmd_steer(args: argparse.Namespace) -> int:
@@ -230,7 +258,14 @@ def _parser() -> argparse.ArgumentParser:
     find.set_defaults(func=cmd_find)
     resume = sub.add_parser("resume")
     resume.add_argument("path", nargs="?", default="")
+    resume.add_argument("--chat", default="")
     resume.set_defaults(func=cmd_resume)
+    stop = sub.add_parser("stop")
+    stop.add_argument("session_id")
+    stop.set_defaults(func=cmd_stop)
+    status = sub.add_parser("status")
+    status.add_argument("--chat", default="")
+    status.set_defaults(func=cmd_status)
     for name, func in (("steer", cmd_steer), ("ask", cmd_ask)):
         cmd = sub.add_parser(name)
         cmd.add_argument("session_id")

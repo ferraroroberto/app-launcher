@@ -8,6 +8,8 @@ Mounted from ``life_os.py`` via ``include_router``, like
                                                                session that has it open)
     POST /api/life-os/channels/{id}/relay/steer             → type a message into one
     GET  /api/life-os/channels/{id}/relay/read?session_id=  → its last reply
+    POST /api/life-os/channels/{id}/relay/stop              → quit one it reopened
+    GET  /api/life-os/channels/{id}/relay/status?chat=      → what it has open, and closed
 
 A relay-enabled profile's bot (``"relay": true`` in ``channel_profiles.json``)
 calls these through ``scripts/telegram_relay.py``. The bot stays the only
@@ -36,13 +38,22 @@ adds the identity and scope checks, and names every outcome.
 happened and never fold a failure into "ok". Refusals are HTTP errors whose
 ``detail`` is ``{"state", "message"}``. The bot's own wording for each state
 is life-os's to write.
+
+**What it may close.** Only a session in this profile's
+:mod:`src.life_os.relay_registry`, the conversations ``resume`` itself
+launched for the bot, and only while it still passes the steer checks above.
+A conversation resume found already open, a Life OS session started from the
+app, a bot and the chief are never there. A stop quits gracefully once the
+turn has ended and its capture is current, and never escalates to a kill.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, NoReturn
 
@@ -50,6 +61,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 
 from src import audit, board
 from src.clients import session as session_client
+from src.life_os import relay_registry
 from src.launching.channel_profiles import (
     ChannelProfile,
     LABEL_PREFIX,
@@ -63,7 +75,9 @@ from src.webapp_config import WebappConfig
 from app.webapp.middleware import is_pc_itself
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.board import session_exchange
+from app.webapp.routers.life_os_channels import RESTART_QUIT_WAIT_SECONDS, stop_until_gone
 from app.webapp.routers.life_os_conversations import (
+    _capture_mtime,
     _group_by_conversation,
     resume_or_open,
     skill_conversations,
@@ -85,10 +99,28 @@ _PREFIX = "/api/life-os/channels/{profile_id}/relay"
 # one and say which, nothing about where the files live.
 _FOUND_FIELDS = ("path", "title", "topic", "summary", "date", "last_interaction",
                  "resumable", "resume_reason")
+# The bot's per-chat key is opaque (it passes the Telegram chat id); the cap
+# only bounds what one call can store.
+_CHAT_MAX_CHARS = 64
+# HTTP status for each stop outcome that did nothing.
+_STOP_STATUS = {"not_relay_owned": 403, "gone": 409, "busy": 409,
+                "capture_unconfirmed": 409, "stop_unconfirmed": 502}
 
 
 def _refuse(status: int, state: str, message: str) -> NoReturn:
     raise HTTPException(status_code=status, detail={"state": state, "message": message})
+
+
+def _chat(value: Any) -> str:
+    """The bot's opaque chat key, ``""`` when it passed none."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        _refuse(400, "refused", "The chat key must be a string or a number.")
+    text = str(value).strip()
+    if len(text) > _CHAT_MAX_CHARS:
+        _refuse(400, "refused", "The chat key is too long.")
+    return text
 
 
 @dataclass(frozen=True)
@@ -138,6 +170,29 @@ async def _caller(profile_id: str, request: Request) -> _Caller:
     if not any(s.get("label") == label and s.get("alive", True) for s in sessions):
         _refuse(403, "refused", f"{profile.label}'s bot session is not running.")
     return _Caller(cfg=cfg, profile=profile, skill=skill, sessions=sessions)
+
+
+def _live_ids(caller: _Caller) -> List[str]:
+    return [str(s.get("session_id")) for s in caller.sessions if s.get("alive", True)]
+
+
+async def _turn_facts(caller: _Caller) -> Dict[str, Dict[str, Any]]:
+    """Per live session id: its Board ``status`` (``None`` when not known)
+    and ``last_turn_at``, the newest real conversation line in its
+    transcript (``None`` when that cannot be read). The PTY's own
+    ``last_output_at`` is no measure here: a footer repaint moves it after
+    the turn, and the capture, have ended."""
+    state = await asyncio.to_thread(
+        board.read_sessions_state, Path(caller.cfg.sessions_state_file))
+    turned = await asyncio.to_thread(board.attach_last_turn, caller.sessions, state["rows"])
+    facts = {}
+    for sess in turned:
+        sid = str(sess.get("session_id"))
+        row = board.state_row_for_session(caller.sessions, state["rows"], sid) or {}
+        status = row.get("status")
+        facts[sid] = {"status": status if isinstance(status, str) else None,
+                      "last_turn_at": sess.get("last_turn_at")}
+    return facts
 
 
 async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
@@ -197,6 +252,8 @@ async def relay_find(profile_id: str, request: Request) -> Dict[str, Any]:
         owners = groups.get(str(row.get("sid") or "").lower(), [])
         found.append({
             **{key: row.get(key) for key in _FOUND_FIELDS},
+            # The search's match tier (0 title .. 3 full text), only when it sent one.
+            **({"tier": row["tier"]} if "tier" in row else {}),
             "session_id": str(owners[-1].get("session_id")) if owners else "",
         })
     await _audit(caller, request, "find", searched=bool(query), hits=len(found))
@@ -211,11 +268,28 @@ async def relay_resume(profile_id: str, request: Request) -> Dict[str, Any]:
     the newest resumable one, on its own model and with no PC mirror window.
 
     ``state`` is ``resumed`` or ``opened`` (already open: that session is the
-    one to steer, nothing new was launched).
+    one to steer, nothing new was launched). With ``"chat"``, the bot's key
+    for one chat, a chat that already has a reopened conversation running
+    gets that one back as ``open_in_chat`` and nothing is launched: one per
+    chat. Only a ``resumed`` session joins the registry the relay may stop.
     """
     caller = await _caller(profile_id, request)
     body = await maybe_json(request)
     path = str(body.get("path") or "")
+    chat = _chat(body.get("chat"))
+    if chat:
+        held = await asyncio.to_thread(
+            relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
+        if held:
+            entry = held[-1]
+            sid = str(entry.get("session_id"))
+            await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
+            await _audit(caller, request, "resume", session=sid, outcome="open_in_chat")
+            logger.info(f"ℹ️ relay {caller.profile.id}: this chat already has "
+                        f"{sid[:8]} open; nothing launched")
+            return {"state": "open_in_chat", "session_id": sid,
+                    "conversation": entry.get("conversation", ""),
+                    "title": entry.get("title", "")}
     rows = await skill_conversations(caller.cfg, caller.skill)
     if path:
         row = next((r for r in rows if r["path"] == path), None)
@@ -241,10 +315,33 @@ async def relay_resume(profile_id: str, request: Request) -> Dict[str, Any]:
     action = result.get("conversation_action")
     state = "opened" if action == "open" else "resumed"
     sid = str(session.get("session_id") or "")
+    title = row.get("title") or row.get("topic") or ""
+    registered = await _register(caller, state, sid, chat, row["path"], title)
     await _audit(caller, request, "resume", session=sid, outcome=state)
     logger.info(f"✅ relay {caller.profile.id}: conversation {state} in session {sid[:8]}")
     return {"state": state, "session_id": sid, "conversation": row["path"],
-            "title": row.get("title") or row.get("topic") or ""}
+            "title": title, "registered": registered}
+
+
+async def _register(caller: _Caller, state: str, sid: str, chat: str,
+                    conversation: str, title: str) -> bool:
+    """Record a session ``resume`` launched; an ``opened`` one is only
+    touched when the relay already owns it, never added.
+
+    Whether ``sid`` is in the registry now (the relay may stop it). A failed
+    write leaves the session running and unowned, so never stoppable by the
+    relay: the safe side."""
+    try:
+        if state == "resumed" and sid:
+            await asyncio.to_thread(relay_registry.add, caller.profile.id, chat, sid,
+                                    conversation, title, time.time())
+            return True
+        return await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid,
+                                       time.time())
+    except OSError as exc:
+        logger.warning(f"⚠️ relay {caller.profile.id}: registry write failed for "
+                       f"{sid[:8]} ({exc.__class__.__name__}); the relay can't stop it")
+        return False
 
 
 @router.post(f"{_PREFIX}/steer")
@@ -277,6 +374,7 @@ async def relay_steer(profile_id: str, request: Request) -> Dict[str, Any]:
         logger.warning(f"⚠️ relay {caller.profile.id}: steer to {sid[:8]} {state} "
                        f"({exc.status_code})")
         _refuse(exc.status_code, state, str(exc.detail))
+    await asyncio.to_thread(relay_registry.touch, caller.profile.id, sid, time.time())
     reason = verdict.get("reason")
     if reason == session_client.INPUT_DEFERRED:
         state = "queued"
@@ -317,3 +415,133 @@ async def relay_read(profile_id: str, request: Request) -> Dict[str, Any]:
     assistant = exchange.get("assistant") or {}
     return {**base, "state": "reply", "text": str(assistant.get("text") or ""),
             "timestamp": assistant.get("timestamp")}
+
+
+# ------------------------------------------------- closing what it reopened
+async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str, str]:
+    """Quit ``sid`` when the relay reopened it for this profile and it is
+    safe to close; ``{"state", "message"}`` either way.
+
+    ``stopped`` (confirmed gone, moved to the unreported stops with
+    ``reason``); otherwise nothing was done: ``not_relay_owned``, ``gone``,
+    ``busy`` (mid-turn, waiting on an answer, or not known which),
+    ``capture_unconfirmed`` (the capture is older than the last turn, or
+    either is unknown) or ``stop_unconfirmed`` (quit sent, not confirmed
+    gone: the entry is kept). Only ever a graceful quit, never a kill, so the
+    capture hook's delayed index can finish. Shared with the idle close.
+    """
+    entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) if sid else None
+    if entry is None:
+        return {"state": "not_relay_owned",
+                "message": f"The relay did not reopen that session for "
+                           f"{caller.profile.label}; it was left alone."}
+    if sid not in _live_ids(caller):
+        await asyncio.to_thread(relay_registry.forget, caller.profile.id, sid)
+        return {"state": "gone", "message": "That conversation's session already ended."}
+    try:
+        await _target(caller, sid)
+    except HTTPException as exc:
+        logger.warning(f"⚠️ relay {caller.profile.id}: stop of {sid[:8]} refused, it no "
+                       f"longer passes the relay's checks ({exc.detail})")
+        return {"state": "not_relay_owned",
+                "message": f"That session is no longer one of {caller.skill.name}'s "
+                           "conversations; it was left alone."}
+    facts = (await _turn_facts(caller)).get(sid, {})
+    status = facts.get("status")
+    if status != "idle":
+        why = {"working": "it is mid-turn", "needs-you": "it is waiting on an answer"}.get(
+            status or "", "whether it is mid-turn is not known")
+        return {"state": "busy", "message": f"Not stopped: {why}. Nothing was done."}
+    captured = await asyncio.to_thread(
+        _capture_mtime, Path(caller.cfg.life_os_dir), str(entry.get("conversation") or ""))
+    last_turn = facts.get("last_turn_at")
+    if not captured or last_turn is None or captured < last_turn:
+        logger.info(f"ℹ️ relay {caller.profile.id}: stop of {sid[:8]} waits, capture at "
+                    f"{captured or 'none'} vs last turn at {last_turn}")
+        return {"state": "capture_unconfirmed",
+                "message": "Not stopped: its last turn is not confirmed saved yet. "
+                           "Nothing was done."}
+    what = f"relay {caller.profile.id} stop"
+    try:
+        gone = await stop_until_gone(caller.cfg.session_host_port, sid, "quit",
+                                     RESTART_QUIT_WAIT_SECONDS, what)
+    except session_client.SessionHostError as exc:
+        logger.warning(f"⚠️ {what}: session-host stopped answering ({exc}); entry kept")
+        return {"state": "stop_unconfirmed",
+                "message": "Quit sent, but the session host stopped answering, so it is "
+                           "not confirmed closed."}
+    if not gone:
+        logger.warning(f"⚠️ {what}: {sid[:8]} still alive after the quit; entry kept, "
+                       "no kill")
+        return {"state": "stop_unconfirmed",
+                "message": "Quit sent, but the session is still running."}
+    try:
+        await asyncio.to_thread(relay_registry.record_stop, caller.profile.id, sid,
+                                reason, time.time())
+    except OSError as exc:
+        logger.warning(f"⚠️ {what}: closed, but the stop was not recorded "
+                       f"({exc.__class__.__name__})")
+    logger.info(f"✅ {what}: {sid[:8]} closed ({reason})")
+    return {"state": "stopped",
+            "message": f"Closed {entry.get('title') or 'the conversation'}."}
+
+
+@router.post(f"{_PREFIX}/stop")
+async def relay_stop(profile_id: str, request: Request) -> Dict[str, Any]:
+    """Close ``{"session_id"}``, a conversation the relay reopened for this
+    bot, because the owner said the chat is done. ``state`` is ``stopped``;
+    every other outcome is a refusal that did nothing (see
+    :func:`stop_conversation`)."""
+    caller = await _caller(profile_id, request)
+    body = await maybe_json(request)
+    sid = str(body.get("session_id") or "")
+    result = await stop_conversation(caller, sid, "done")
+    await _audit(caller, request, "relay_stop", session=sid, outcome=result["state"])
+    if result["state"] != "stopped":
+        logger.info(f"ℹ️ relay {caller.profile.id}: stop of {sid[:8]} {result['state']}")
+        _refuse(_STOP_STATUS[result["state"]], result["state"], result["message"])
+    return {**result, "session_id": sid}
+
+
+def _iso(stamp: Any) -> str:
+    if not isinstance(stamp, (int, float)) or isinstance(stamp, bool):
+        return ""
+    return datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat(timespec="seconds")
+
+
+@router.get(f"{_PREFIX}/status")
+async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
+    """This profile's reopened conversations still running (one chat's with
+    ``?chat=``), each with ``idle_minutes`` and ``minutes_to_close`` (``None``
+    when idle close is off or the idle time is unknown), plus the ``stops``
+    recorded since the previous status call, each with its ``reason``
+    (``done`` or ``idle``). ``state`` is ``open`` or ``none``; stops are
+    reported either way, and each is reported once."""
+    caller = await _caller(profile_id, request)
+    chat = _chat(request.query_params.get("chat")) or None
+    held = await asyncio.to_thread(
+        relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
+    facts = await _turn_facts(caller) if held else {}
+    now = time.time()
+    limit = caller.profile.idle_close_minutes
+    open_rows = []
+    for entry in held:
+        sid = str(entry.get("session_id"))
+        stamps = [t for t in (entry.get("last_activity"), facts.get(sid, {}).get("last_turn_at"))
+                  if isinstance(t, (int, float)) and not isinstance(t, bool)]
+        idle = int((now - max(stamps)) // 60) if stamps else None
+        open_rows.append({
+            "session_id": sid, "conversation": entry.get("conversation", ""),
+            "title": entry.get("title", ""), "chat": entry.get("chat", ""),
+            "idle_minutes": idle,
+            "minutes_to_close": max(0, limit - idle) if limit and idle is not None else None,
+        })
+    stops = await asyncio.to_thread(relay_registry.take_stops, caller.profile.id, chat=chat)
+    await _audit(caller, request, "status", open=len(open_rows), stops=len(stops))
+    return {
+        "state": "open" if open_rows else "none",
+        "conversations": open_rows,
+        "stops": [{**{key: stop.get(key, "") for key in
+                      ("session_id", "conversation", "title", "chat", "reason")},
+                   "stopped_at": _iso(stop.get("stopped_at"))} for stop in stops],
+    }

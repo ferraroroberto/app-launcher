@@ -159,3 +159,18 @@ def test_the_token_rides_a_header_never_the_url(env, monkeypatch):
     assert seen["token"] == "fictional-token" and "fictional-token" not in seen["url"]
     assert seen["url"].startswith(
         "https://127.0.0.1:8445/api/life-os/channels/health/relay/conversations?")
+
+
+def test_stop_status_and_chat_keys_reach_the_launcher(env, monkeypatch, capsys):
+    calls = _script(monkeypatch, {
+        ("POST", "stop"): [{"state": "busy", "message": "mid-turn"}],
+        ("GET", "status"): [{"state": "none", "conversations": [], "stops": [
+            {"session_id": "conv-1", "title": "Garden", "reason": "idle",
+             "stopped_at": "2026-10-17T10:00:00+00:00"}]}],
+        ("POST", "resume"): [{"state": "open_in_chat", "session_id": "conv-2"}],
+    })
+    assert relay.main(["stop", "conv-1"]) == 1
+    assert relay.main(["status", "--chat", "42"]) == 0
+    assert "STOP session_id=conv-1 | title=Garden | reason=idle" in capsys.readouterr().out
+    assert relay.main(["resume", "--chat", "42"]) == 0
+    assert [c[2] for c in calls] == [{"session_id": "conv-1"}, None, {"chat": "42"}]
