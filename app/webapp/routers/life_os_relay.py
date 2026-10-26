@@ -55,7 +55,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, NoReturn
+from typing import Any, Dict, List, NoReturn, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
@@ -509,6 +509,29 @@ def _iso(stamp: Any) -> str:
     return datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat(timespec="seconds")
 
 
+def _stamp(value: Any) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def last_active_at(entry: Dict[str, Any], sess: Dict[str, Any],
+                   facts: Dict[str, Any]) -> Optional[float]:
+    """When a reopened conversation was last used, ``None`` when nothing says.
+
+    The newest of the relay's own last call on it, its transcript's last
+    turn, its PTY's last output, the last input written to it and its
+    composer's last keystroke, so use from the app counts as much as the
+    bot's. Shared by ``status`` and the idle close."""
+    last_input = sess.get("last_input") if isinstance(sess.get("last_input"), dict) else {}
+    stamps = [_stamp(v) for v in (
+        entry.get("last_activity"), facts.get("last_turn_at"), sess.get("last_output_at"),
+        last_input.get("at"), sess.get("composer_dirty_since"),
+    )]
+    known = [s for s in stamps if s is not None]
+    return max(known) if known else None
+
+
 @router.get(f"{_PREFIX}/status")
 async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     """This profile's reopened conversations still running (one chat's with
@@ -522,14 +545,14 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     held = await asyncio.to_thread(
         relay_registry.entries, caller.profile.id, _live_ids(caller), chat=chat)
     facts = await _turn_facts(caller) if held else {}
+    by_sid = {str(s.get("session_id")): s for s in caller.sessions}
     now = time.time()
     limit = caller.profile.idle_close_minutes
     open_rows = []
     for entry in held:
         sid = str(entry.get("session_id"))
-        stamps = [t for t in (entry.get("last_activity"), facts.get(sid, {}).get("last_turn_at"))
-                  if isinstance(t, (int, float)) and not isinstance(t, bool)]
-        idle = int((now - max(stamps)) // 60) if stamps else None
+        active = last_active_at(entry, by_sid.get(sid, {}), facts.get(sid, {}))
+        idle = int((now - active) // 60) if active is not None else None
         open_rows.append({
             "session_id": sid, "conversation": entry.get("conversation", ""),
             "title": entry.get("title", ""), "chat": entry.get("chat", ""),

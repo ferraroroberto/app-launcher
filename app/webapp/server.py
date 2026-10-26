@@ -81,7 +81,7 @@ from src.usage_log import usage_router
 from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.auth.webauthn_gate import WebAuthnGate
 
-from app.webapp import chief_doorbell
+from app.webapp import chief_doorbell, relay_idle_close
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
@@ -410,6 +410,9 @@ async def _lifespan(app: FastAPI):
         # Always started: it re-reads the chief_doorbell toggle every tick and
         # does nothing while it is off, so a Settings save arms it live.
         tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
+        # Always started: it reads each bot's idle_close_minutes every tick and
+        # touches only what the relay reopened, so a settings save applies live.
+        tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))
         if _autostart_channel_sessions_on(cfg):
             tasks.append(asyncio.create_task(_channel_autostart(app)))
         else:
@@ -426,8 +429,8 @@ async def _lifespan(app: FastAPI):
             else (_autostart_log.warning, "⚠️")
         )
         emit(
-            "%s jobs coverage + session retention ticks, the chief doorbell "
-            "and Telegram autostart skipped — non-canonical instance (%s, "
+            "%s jobs coverage + session retention ticks, the chief doorbell, "
+            "the relay idle close and Telegram autostart skipped — non-canonical instance (%s, "
             "root=%s); only the canonical checkout may alert, reap, ring or "
             "launch (#736, #902, #1542, #1645)",
             mark,
@@ -451,7 +454,7 @@ def create_app() -> FastAPI:
 
     auth.ensure_log_handler()
     ensure_slow_log_handler()
-    ensure_autostart_log_handler(_autostart_log, life_os_channels.logger)
+    ensure_autostart_log_handler(_autostart_log, life_os_channels.logger, relay_idle_close.logger)
     ensure_doorbell_log_handler(chief_doorbell.logger)
 
     app = FastAPI(
