@@ -23,6 +23,7 @@ import pytest
 
 from app.webapp.shell_html import assemble_shell
 from src.subprocess_flags import NO_WINDOW
+from src.usage.feature_counts import FEATURE_IDS
 from src.usage_log import ID_PATTERN
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -125,13 +126,16 @@ class TestMarkup:
         """Ids are developer-chosen constants in the markup, never built from
         element text or data, so no first-party script may set one.
 
-        One exception (#1581): ``voice.js`` keeps the dictation mic's id in step
-        with its state, from a closed map of literal ids (the id a tap is
-        logged under is what that tap did). The second test below pins that
-        it stays a literal map of valid ids, never anything built from data."""
+        Two exceptions: ``voice.js`` keeps the dictation mic's id in step with
+        its state, from a closed map of literal ids (the id a tap is logged
+        under is what that tap did), and ``settings/feature-track.js`` records
+        a feature use under an id from its closed list. The tests below pin that
+        each stays a literal list of valid ids, never anything built from data."""
         offenders = []
         for path in _STATIC.rglob("*.js"):
-            if path.name == "voice.js" or {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):
+            if path.name in ("voice.js", "feature-track.js") or {"_vendored", "vendor"} & set(
+                path.relative_to(_STATIC).parts
+            ):
                 continue
             text = path.read_text(encoding="utf-8")
             if re.search(r"data-track|dataset\.track|dataset\[['\"]track", text):
@@ -154,6 +158,34 @@ class TestMarkup:
         ids = re.findall(r"^\s*\w+: '([^']*)',?$", block.group(1), flags=re.M)
         assert len(ids) == 4 and len(block.group(1).strip().splitlines()) == 4, block.group(1)
         assert all(ID_PATTERN.fullmatch(i) for i in ids), ids
+
+
+    def test_the_feature_ids_are_a_closed_list_of_literals(self):
+        """``feature-track.js`` sets ``data-track`` once, from an id it found in
+        its own literal list; every ``feat.*`` string any script names is on it."""
+        tracker = _STATIC / "settings" / "feature-track.js"
+        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", tracker.read_text(encoding="utf-8"), flags=re.S)
+        sets = [ln.strip() for ln in code.splitlines() if "data-track" in ln and "Attribute" in ln]
+        assert sets == [
+            "probe.setAttribute('data-track', id);",
+            "probe.removeAttribute('data-track');",
+        ], sets
+        assert "FEATURE_IDS.indexOf(id) === -1) return;" in code
+        listed = re.findall(r"^\s*'(feat\.[^']*)',$", code, flags=re.M)
+        assert listed == list(FEATURE_IDS), "the page's list drifted from src/usage/feature_counts.py"
+        assert all(ID_PATTERN.fullmatch(i) for i in listed), listed
+
+        named: set[str] = set()
+        for path in _STATIC.rglob("*.js"):
+            if {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts) or path in (
+                tracker, _STATIC / "screen" / "screen-time.js",
+            ):
+                continue
+            named.update(re.findall(r"'(feat\.[^']*)'", path.read_text(encoding="utf-8")))
+        assert named == set(FEATURE_IDS), f"ids named but unlisted, or listed but never recorded: {named ^ set(FEATURE_IDS)}"
+
+        sheet = (_STATIC / "screen" / "screen-time.js").read_text(encoding="utf-8")
+        assert re.findall(r"\{ id: '(feat\.[^']*)', label:", sheet) == list(FEATURE_IDS)
 
 
 class TestOnlyTheOwnOrigin:

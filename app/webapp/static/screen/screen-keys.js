@@ -17,6 +17,7 @@
 import { allowKeyRepeat, comboKey, hardwareKey } from './screen-gestures.js';
 import { applyZoom, canSend, sendInput } from './screen-control.js';
 import { $, view } from './screen-state.js';
+import { trackFeature } from '../settings/feature-track.js';
 
 // The sentinel the hidden input holds, so Backspace on an "empty" field
 // still fires an input event to forward.
@@ -353,6 +354,7 @@ export function onClipboard(msg) {
     showNotice(CLIPBOARD_FAILURES[msg.reason] || CLIPBOARD_FAILURES.error, true);
     return;
   }
+  trackFeature('feat.paste-pc');
   // Ctrl+V only after the copy landed: a failed copy must never paste what
   // the PC's clipboard held before. Exactly Ctrl, like a macro: held sticky
   // modifiers let go with it.
