@@ -21,7 +21,8 @@
  * An opened session file has a Diff | File switch: File is the
  * file as it is on disk now, drawn for its type by file-view.js, read through
  * a route that serves only files the session edited. Beside it, Download
- * and a ⋮ menu: Copy content in File view, Copy diff in Diff view,
+ * and a ⋮ menu: Copy content in File view, Copy diff in Diff view, Preview
+ * (an HTML or Markdown file, rendered in the viewer a sent file opens in),
  * Copy path, and on the PC itself Open on PC (VS Code, else Explorer). Still
  * read-only: nothing edits, stages or discards.
  */
@@ -34,7 +35,8 @@ import { tintDiffLines } from './syntax-tint.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { fileBadge, fileCounts, fileKey, fileName } from '../chat/edited-card.js';
-import { renderFileView, windowsPath } from './file-view.js';
+import { previewKind, renderFileView, windowsPath } from './file-view.js';
+import { openTextPreview } from '../lightbox.js';
 import { onThePc } from '../chat/transcript-render.js';
 
 // Why a session's Changed files could not be read, in the panel's words.
@@ -236,7 +238,7 @@ function renderTurnDiff(file, body) {
   noteLargeDiff(body);
 }
 
-// --- a session file's tools: Diff | File, Copy path, Open on PC -----
+// --- a session file's tools: Diff | File, Preview, Copy path, Open on PC -----
 
 // The path the session's routes know a file by: a turn row's recorded path,
 // else the list's key (the recorded path, made absolute by the fold).
@@ -312,6 +314,35 @@ function saveAs(name, text) {
   a.click();
   a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+}
+
+// Preview: an HTML or Markdown file rendered in the sent-file viewer. The
+// read and its refusals are the File view's, so a file it can't show says why.
+async function previewFile(file, read, returnTo) {
+  const res = await read();
+  if (!res || !res.available) {
+    toast(fileReasonText(res), 'error');
+    return;
+  }
+  const path = requestPath(file);
+  openTextPreview(path.split(/[\\/]/).pop() || 'file', res.text || '', previewKind(path), returnTo);
+}
+
+// The ⋮ menu's Preview item: only for a file that has a rendered page.
+function previewItem(file, read, kebab) {
+  return {
+    dataset: { item: 'chg-preview' }, glyph: 'eye', label: 'Preview',
+    hidden: function () { return !previewKind(requestPath(file)); },
+    onTap: function () { previewFile(file, read, kebab); },
+  };
+}
+
+// The file's absolute path as text you can select.
+function fullPathLine(full) {
+  const where = document.createElement('div');
+  where.className = 'chg-fullpath';
+  where.textContent = full;
+  return where;
 }
 
 async function openOnPc(file) {
@@ -435,6 +466,7 @@ function sessionFileBody(file, body) {
       hidden: function () { return active !== 'diff' || !diffText(panes.diff); },
       onTap: function () { copyText(diffText(panes.diff), 'Diff copied', 'Couldn’t copy the diff'); },
     },
+    previewItem(file, read, kebab),
     {
       dataset: { item: 'chg-copy-path' }, glyph: 'copy', label: 'Copy path',
       hidden: function () { return !full; },
@@ -450,12 +482,7 @@ function sessionFileBody(file, body) {
   ]);
   tools.appendChild(acts);
   body.appendChild(tools);
-  if (full) {
-    const where = document.createElement('div');
-    where.className = 'chg-fullpath';
-    where.textContent = full;
-    body.appendChild(where);
-  }
+  if (full) body.appendChild(fullPathLine(full));
   body.append(panes.diff, panes.file);
   if (file.edits) {
     renderTurnDiff(file, panes.diff);
