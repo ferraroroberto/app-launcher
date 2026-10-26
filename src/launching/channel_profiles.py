@@ -30,6 +30,11 @@ command. The same file turns the fleet context filter off for that one session:
 its PreToolUse rewrite re-encodes every Bash command, so the allow rule never
 matches and the auto-mode classifier decides instead (the read-back refusal
 #1639's Probe 2 hit). Without the flag the file is exactly as before.
+
+**Editing.** :func:`update_channel_profile` is the only writer of the profile
+file, and it changes only :data:`EDITABLE_FIELDS`. The fields a running bot reads
+once, at its start (:data:`RESTART_FIELDS`), are recorded by every launch so
+:func:`restart_fields` can tell the app a restart would change something.
 """
 
 from __future__ import annotations
@@ -37,14 +42,17 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import shutil
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Tuple
+from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from src.launching.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.runtime_data import runtime_data_dir
 
 logger = logging.getLogger(__name__)
@@ -63,6 +71,21 @@ _ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 # location that would not survive that, rather than launch a broken command.
 _SETTINGS_PATH_RE = re.compile(r"^[A-Za-z0-9_.:/\-]+$")
 
+# Idle close: minutes without activity before a relay-reopened conversation is
+# closed; ``0`` switches it off.
+IDLE_CLOSE_STEPS = (0, 30, 60, 120)
+DEFAULT_IDLE_CLOSE_MINUTES = 60
+# A profile's own model; the empty string means the shared ``channel_model``.
+PROFILE_MODELS = available_values(CLAUDE_MODEL_SPECS)
+# The only keys an edit may change: ``id`` keys the session label, settings
+# file and relay routes, and ``state_dir`` holds the token, so neither is ever
+# writable. Fields in ``RESTART_FIELDS`` are read once, at the bot's start.
+EDITABLE_FIELDS = (
+    "label", "skill", "relay", "resume_offer", "idle_close_minutes", "model",
+)
+RESTART_FIELDS = ("skill", "relay", "model")
+_LABEL_MAX = 60
+
 
 @dataclass(frozen=True)
 class ChannelProfile:
@@ -71,6 +94,9 @@ class ChannelProfile:
     skill: str
     state_dir: str
     relay: bool = False
+    resume_offer: bool = True
+    idle_close_minutes: int = DEFAULT_IDLE_CLOSE_MINUTES
+    model: str = ""
 
 
 def profile_session_label(profile_id: str) -> str:
@@ -150,6 +176,7 @@ def load_channel_profiles(
                 state_dir=state_dir,
                 # Only a JSON true switches it on: "yes" or 1 is not consent.
                 relay=row.get("relay") is True,
+                **_row_options(row, where, problems),
             )
         )
     return profiles, problems
@@ -157,6 +184,166 @@ def load_channel_profiles(
 
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _idle_close_ok(value: Any) -> bool:
+    # ``True == 1`` in Python, so a bool must be turned away by type first.
+    return isinstance(value, int) and not isinstance(value, bool) and value in IDLE_CLOSE_STEPS
+
+
+def _model_ok(value: Any) -> bool:
+    return isinstance(value, str) and value.strip().lower() in ("", *PROFILE_MODELS)
+
+
+def _row_options(row: Dict[str, Any], where: str, problems: List[str]) -> Dict[str, Any]:
+    """The optional fields of one row. A bad value falls back to its default
+    and is reported in ``problems`` naming the field, so a hand-edit never
+    takes a bot down but an edit through the API (which refuses new problems)
+    can't introduce one."""
+    options: Dict[str, Any] = {}
+    if "resume_offer" in row:
+        if isinstance(row["resume_offer"], bool):
+            options["resume_offer"] = row["resume_offer"]
+        else:
+            problems.append(f"{where}: resume_offer must be true or false")
+    if "idle_close_minutes" in row:
+        if _idle_close_ok(row["idle_close_minutes"]):
+            options["idle_close_minutes"] = row["idle_close_minutes"]
+        else:
+            problems.append(
+                f"{where}: idle_close_minutes must be one of "
+                + ", ".join(str(step) for step in IDLE_CLOSE_STEPS)
+            )
+    if "model" in row:
+        if _model_ok(row["model"]):
+            options["model"] = row["model"].strip().lower()
+        else:
+            problems.append(
+                f"{where}: model must be empty or one of " + ", ".join(PROFILE_MODELS)
+            )
+    return options
+
+
+# ------------------------------------------------------------------- edits
+class ProfileEditError(ValueError):
+    """A refused edit; ``status`` is the HTTP code the route answers with."""
+
+    def __init__(self, message: str, status: int = 400) -> None:
+        super().__init__(message)
+        self.status = status
+
+
+# One lock for every read-modify-write of the file: two edits to different
+# profiles each re-read it under the lock, so neither loses the other's change.
+_write_lock = threading.Lock()
+
+
+def _validate_changes(
+    changes: Dict[str, Any], skill_ids: Optional[Collection[str]]
+) -> Dict[str, Any]:
+    """The cleaned changes, or the 400 naming the offending field."""
+    if not changes:
+        raise ProfileEditError("nothing to change")
+    for key in changes:
+        if key not in EDITABLE_FIELDS:
+            raise ProfileEditError(f"{str(key)[:40]!r} cannot be changed here")
+    clean: Dict[str, Any] = {}
+    for key, value in changes.items():
+        if key in ("relay", "resume_offer"):
+            if not isinstance(value, bool):
+                raise ProfileEditError(f"{key} must be true or false")
+            clean[key] = value
+        elif key == "idle_close_minutes":
+            if not _idle_close_ok(value):
+                raise ProfileEditError(
+                    "idle_close_minutes must be one of "
+                    + ", ".join(str(step) for step in IDLE_CLOSE_STEPS)
+                )
+            clean[key] = value
+        elif key == "model":
+            if not _model_ok(value):
+                raise ProfileEditError(
+                    "model must be empty or one of " + ", ".join(PROFILE_MODELS)
+                )
+            clean[key] = value.strip().lower()
+        elif key == "label":
+            text = _text(value)
+            if not text or len(text) > _LABEL_MAX:
+                raise ProfileEditError(f"label must be 1 to {_LABEL_MAX} characters")
+            clean[key] = text
+        else:  # skill
+            text = _text(value)
+            if not text or skill_ids is None or text not in skill_ids:
+                raise ProfileEditError("skill is not a life-os skill")
+            clean[key] = text
+    return clean
+
+
+def update_channel_profile(
+    profile_id: str,
+    changes: Dict[str, Any],
+    *,
+    skill_ids: Optional[Collection[str]] = None,
+    path: Optional[Path] = None,
+) -> Tuple[ChannelProfile, List[str]]:
+    """Apply ``changes`` to one profile row; return it and the keys that differ.
+
+    Only :data:`EDITABLE_FIELDS` are accepted. The file is re-read, edited and
+    replaced under one lock: unknown keys and the other rows keep their order
+    and content, the candidate is written to a temp file beside it and loaded
+    with :func:`load_channel_profiles`, and an edit that adds a problem is
+    refused with the file untouched. Raises :class:`ProfileEditError`.
+    """
+    clean = _validate_changes(changes, skill_ids)
+    target = Path(path) if path is not None else DEFAULT_PROFILES_PATH
+    with _write_lock:
+        try:
+            text = target.read_text(encoding="utf-8")
+            raw = json.loads(text)
+        except (OSError, ValueError) as exc:
+            raise ProfileEditError(
+                f"{target.name} could not be read ({type(exc).__name__})", 500
+            )
+        rows = raw.get("profiles") if isinstance(raw, dict) else None
+        index = next(
+            (i for i, row in enumerate(rows or [])
+             if isinstance(row, dict) and row.get("id") == profile_id),
+            None,
+        )
+        if index is None:
+            raise ProfileEditError(f"unknown channel profile: {profile_id}", 404)
+        row = rows[index]
+        changed = [key for key, value in clean.items() if key not in row or row[key] != value]
+        if changed:
+            rows[index] = {**row, **clean}
+            _replace_checked(
+                target, raw, text.endswith("\n"), load_channel_profiles(target)[1]
+            )
+        profile = next(p for p in load_channel_profiles(target)[0] if p.id == profile_id)
+    return profile, changed
+
+
+def _replace_checked(
+    target: Path, data: Dict[str, Any], trailing_newline: bool, before_problems: List[str]
+) -> None:
+    """Write ``data`` over ``target`` through a temp file in the same folder,
+    after checking it loads with no problem the current file lacks."""
+    temp = target.with_name(f".{target.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        temp.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + ("\n" if trailing_newline else ""),
+            encoding="utf-8",
+        )
+        added = [p for p in load_channel_profiles(temp)[1] if p not in before_problems]
+        if added:
+            raise ProfileEditError("; ".join(added))
+        os.replace(temp, target)
+    except OSError as exc:
+        raise ProfileEditError(
+            f"{target.name} could not be written ({type(exc).__name__})", 500
+        )
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 # The relay's per-session environment. The CLI reads the first three;
@@ -186,7 +373,34 @@ def relay_command() -> str:
     return f"{interpreter.as_posix()} {RELAY_SCRIPT.as_posix()}"
 
 
-def write_channel_settings(profile: ChannelProfile, relay_url: str = "") -> str:
+def _start_record_path(profile_id: str) -> Path:
+    return _settings_dir() / f"{profile_id}.start.json"
+
+
+def _start_record(profile: ChannelProfile, model: str) -> Dict[str, Any]:
+    return {"skill": profile.skill, "relay": profile.relay, "model": model}
+
+
+def restart_fields(profile: ChannelProfile, model: str) -> Optional[List[str]]:
+    """The start-time fields (:data:`RESTART_FIELDS`) that differ between the
+    last launch and ``profile`` / ``model`` (the model it would launch on now).
+
+    ``[]`` means nothing changed since the start; ``None`` means the launch's
+    record cannot be read, which is never folded into ``[]``.
+    """
+    try:
+        recorded = json.loads(_start_record_path(profile.id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(recorded, dict) or any(key not in recorded for key in RESTART_FIELDS):
+        return None
+    current = _start_record(profile, model)
+    return [key for key in RESTART_FIELDS if recorded[key] != current[key]]
+
+
+def write_channel_settings(
+    profile: ChannelProfile, relay_url: str = "", model: str = ""
+) -> str:
     """Write the profile's per-session settings file; return its flag-safe path.
 
     Without relay the file holds only the state directory's path (a settings
@@ -194,7 +408,10 @@ def write_channel_settings(profile: ChannelProfile, relay_url: str = "") -> str:
     minted on every launch so a relaunch retires the previous one, the relay's
     URL and command, and the allow rule for that command. It lives under the
     app's runtime-data directory and is rewritten on every launch, so a profile
-    edit takes effect on the next start.
+    edit takes effect on the next start. Beside it, ``<id>.start.json`` records
+    the start-time fields (:data:`RESTART_FIELDS`, with ``model`` the one the
+    session launches on) for :func:`restart_fields`; it is kept out of the
+    settings file so that file stays exactly what Claude reads.
     """
     target = _settings_dir() / f"{profile.id}.json"
     env = {"TELEGRAM_STATE_DIR": Path(profile.state_dir).as_posix()}
@@ -217,6 +434,9 @@ def write_channel_settings(profile: ChannelProfile, relay_url: str = "") -> str:
         })
         payload["permissions"] = {"allow": [f"Bash({command}:*)"]}
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    _start_record_path(profile.id).write_text(
+        json.dumps(_start_record(profile, model)) + "\n", encoding="utf-8"
+    )
     flag_path = target.resolve().as_posix()
     if not _SETTINGS_PATH_RE.match(flag_path):
         raise ValueError(

@@ -700,3 +700,279 @@ class TestSetupChecks:
         body = client.get("/api/life-os/channels").json()
         assert body["profiles"] == [] and body["problems"] == []
         assert body["setup"]["file_present"] is False
+
+
+# ------------------------------------------------------- optional fields
+class TestProfileOptions:
+    """``resume_offer``, ``idle_close_minutes`` and ``model`` (#1902): safe
+    defaults, and a bad value is reported by field name without losing the bot."""
+
+    def _load(self, tmp_path, **extra):
+        row = {"id": "health", "skill": "health",
+               "state_dir": _state_dir(tmp_path, "h"), **extra}
+        return load_channel_profiles(_write_profiles(tmp_path / "p.json", [row]))
+
+    def test_absent_fields_take_their_defaults(self, tmp_path):
+        (profile,), problems = self._load(tmp_path)
+        assert problems == []
+        assert (profile.resume_offer, profile.idle_close_minutes, profile.model) == (
+            True, 60, ""
+        )
+
+    def test_values_are_read(self, tmp_path):
+        (profile,), problems = self._load(
+            tmp_path, resume_offer=False, idle_close_minutes=120, model="Opus"
+        )
+        assert problems == []
+        assert (profile.resume_offer, profile.idle_close_minutes, profile.model) == (
+            False, 120, "opus"
+        )
+
+    @pytest.mark.parametrize("field, value", [
+        ("resume_offer", "yes"),
+        ("idle_close_minutes", 45),
+        ("idle_close_minutes", True),
+        ("model", "gpt-9"),
+        ("model", 3),
+    ])
+    def test_a_bad_value_keeps_the_bot_and_names_the_field(self, tmp_path, field, value):
+        (profile,), problems = self._load(tmp_path, **{field: value})
+        assert profile.id == "health"
+        assert (profile.resume_offer, profile.idle_close_minutes, profile.model) == (
+            True, 60, ""
+        )
+        assert len(problems) == 1 and field in problems[0]
+
+
+# ------------------------------------------------------------------ edits
+class TestProfileEdit:
+    """PATCH /api/life-os/channels/{id} (#1902)."""
+
+    @pytest.fixture
+    def edit(self, channels):
+        path = channels.app.state.channel_profiles_path
+        rows = [
+            {"id": "health", "label": "Health", "skill": "journal-daily",
+             "state_dir": channels.health, "note": {"kept": [1, 2]}},
+            {"id": "school", "label": "School", "skill": "journal-daily",
+             "state_dir": channels.school, "relay": True},
+        ]
+        _write_profiles(path, rows)
+        text = json.dumps({"profiles": rows}, indent=2) + "\n"
+        path.write_text(text, encoding="utf-8")
+        life_os = Path(channels.app.state.webapp_config.life_os_dir)
+        other = life_os / ".claude" / "skills" / "other-skill"
+        other.mkdir(parents=True)
+        (other / "SKILL.md").write_text(
+            "---\nname: other-skill\ndescription: Another.\n---\n# other\n",
+            encoding="utf-8",
+        )
+
+        def patch(profile_id, body):
+            return channels.client.patch(f"/api/life-os/channels/{profile_id}", json=body)
+
+        return SimpleNamespace(channels=channels, path=path, rows=rows,
+                               text=text, patch=patch)
+
+    def test_an_allowed_key_changes_only_that_key(self, edit):
+        resp = edit.patch("health", {"label": "Health bot"})
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["changed"] == ["label"]
+        assert resp.json()["profile"]["label"] == "Health bot"
+        rows = [dict(r) for r in edit.rows]
+        rows[0]["label"] = "Health bot"
+        assert edit.path.read_text(encoding="utf-8") == (
+            json.dumps({"profiles": rows}, indent=2) + "\n"
+        )
+
+    def test_every_editable_key_lands(self, edit):
+        body = {"label": "H", "skill": "other-skill", "relay": True,
+                "resume_offer": False, "idle_close_minutes": 30, "model": "opus"}
+        assert edit.patch("health", body).status_code == 200
+        saved = json.loads(edit.path.read_text(encoding="utf-8"))["profiles"][0]
+        assert {k: saved[k] for k in body} == body
+        assert saved["note"] == {"kept": [1, 2]}
+        assert list(saved)[:5] == ["id", "label", "skill", "state_dir", "note"]
+
+    def test_the_same_value_writes_nothing(self, edit):
+        before = edit.path.stat().st_mtime_ns
+        resp = edit.patch("school", {"relay": True})
+        assert resp.status_code == 200 and resp.json()["changed"] == []
+        assert edit.path.stat().st_mtime_ns == before
+
+    @pytest.mark.parametrize("key", ["id", "state_dir", "token", "bot_token", "note"])
+    def test_another_key_is_refused_and_the_file_is_untouched(self, edit, key):
+        resp = edit.patch("health", {"label": "X", key: "x"})
+        assert resp.status_code == 400
+        assert key in resp.json()["detail"]
+        assert edit.path.read_text(encoding="utf-8") == edit.text
+
+    @pytest.mark.parametrize("field, value", [
+        ("skill", "no-such-skill"),
+        ("skill", ""),
+        ("idle_close_minutes", 45),
+        ("idle_close_minutes", True),
+        ("model", "gpt-9"),
+        ("relay", "yes"),
+        ("resume_offer", 1),
+        ("label", ""),
+        ("label", 5),
+    ])
+    def test_a_bad_value_names_the_field_and_leaves_the_file(self, edit, field, value):
+        resp = edit.patch("health", {field: value})
+        assert resp.status_code == 400
+        assert field in resp.json()["detail"]
+        assert edit.path.read_text(encoding="utf-8") == edit.text
+        assert list(edit.path.parent.glob("*.tmp")) == []
+
+    def test_an_edit_that_would_add_a_problem_is_refused(self, edit, monkeypatch):
+        """The loader is the backstop behind the field checks."""
+        monkeypatch.setattr(channel_profiles, "_validate_changes", lambda changes, skills: changes)
+        resp = edit.patch("health", {"idle_close_minutes": 45})
+        assert resp.status_code == 400
+        assert "idle_close_minutes" in resp.json()["detail"]
+        assert edit.path.read_text(encoding="utf-8") == edit.text
+        assert list(edit.path.parent.glob("*.tmp")) == []
+
+    def test_no_body_and_unknown_profile(self, edit):
+        assert edit.patch("health", {}).status_code == 400
+        assert edit.patch("nope", {"label": "X"}).status_code == 404
+        assert edit.path.read_text(encoding="utf-8") == edit.text
+
+    def test_two_concurrent_edits_to_different_profiles_both_land(self, edit, monkeypatch):
+        import threading
+        real_load = channel_profiles.load_channel_profiles
+
+        def slow_load(*args, **kwargs):
+            time.sleep(0.05)  # widens the read-to-replace window the lock closes
+            return real_load(*args, **kwargs)
+
+        monkeypatch.setattr(channel_profiles, "load_channel_profiles", slow_load)
+        errors: list = []
+
+        def run(pid, label):
+            try:
+                channel_profiles.update_channel_profile(
+                    pid, {"label": label}, path=edit.path
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=run, args=a)
+                   for a in (("health", "A"), ("school", "B"))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert errors == []
+        labels = [r["label"] for r in json.loads(
+            edit.path.read_text(encoding="utf-8"))["profiles"]]
+        assert labels == ["A", "B"]
+
+    def test_the_audit_line_names_keys_and_never_values(self, edit):
+        from app.webapp.routers import life_os_channels
+        resp = edit.patch("health", {"label": "Secret-ish Label", "relay": True})
+        assert resp.status_code == 200, resp.text
+        (call,) = [c for c in life_os_channels.audit.audit_event.call_args_list
+                   if c.args[:1] == ("channel_profile_update",)]
+        assert call.kwargs["profile"] == "health"
+        assert call.kwargs["keys"] == "label,relay"
+        assert "Secret-ish" not in repr(call)
+
+    def test_the_list_carries_the_new_fields(self, edit):
+        edit.patch("health", {"resume_offer": False, "idle_close_minutes": 0,
+                              "model": "opus"})
+        body = edit.channels.client.get("/api/life-os/channels").json()
+        row = {p["id"]: p for p in body["profiles"]}["health"]
+        assert (row["resume_offer"], row["idle_close_minutes"], row["model"]) == (
+            False, 0, "opus"
+        )
+
+
+# ----------------------------------------------------------- restart needed
+class TestRestartNeeded:
+    """``restart_needed`` / ``restart_fields`` (#1902) and the profile model."""
+
+    @pytest.fixture
+    def run(self, channels):
+        life_os = Path(channels.app.state.webapp_config.life_os_dir)
+        other = life_os / ".claude" / "skills" / "other-skill"
+        other.mkdir(parents=True)
+        (other / "SKILL.md").write_text(
+            "---\nname: other-skill\ndescription: Another.\n---\n# other\n",
+            encoding="utf-8",
+        )
+
+        def row(pid="health"):
+            body = channels.client.get("/api/life-os/channels").json()
+            return {p["id"]: p for p in body["profiles"]}[pid]
+
+        def patch(body, pid="health"):
+            resp = channels.client.patch(f"/api/life-os/channels/{pid}", json=body)
+            assert resp.status_code == 200, resp.text
+
+        assert channels.client.post(
+            "/api/life-os/channels/health/launch", json={}
+        ).status_code == 200
+        return SimpleNamespace(channels=channels, row=row, patch=patch)
+
+    def test_nothing_changed_since_the_launch_is_false(self, run):
+        assert run.row()["restart_needed"] is False
+        assert run.row()["restart_fields"] == []
+
+    @pytest.mark.parametrize("field, value", [
+        ("relay", True), ("skill", "other-skill"), ("model", "opus"),
+    ])
+    def test_a_start_time_field_needs_a_restart_and_is_named(self, run, field, value):
+        run.patch({field: value})
+        assert run.row()["restart_needed"] is True
+        assert run.row()["restart_fields"] == [field]
+
+    @pytest.mark.parametrize("body", [
+        {"label": "Renamed"}, {"resume_offer": False}, {"idle_close_minutes": 120},
+    ])
+    def test_a_live_field_never_does(self, run, body):
+        run.patch(body)
+        assert run.row()["restart_needed"] is False
+        assert run.row()["restart_fields"] == []
+
+    def test_a_change_back_clears_it(self, run):
+        run.patch({"model": "opus"})
+        run.patch({"model": ""})
+        assert run.row()["restart_needed"] is False
+
+    def test_the_shared_channel_model_counts_for_a_bot_without_its_own(self, run):
+        run.channels.app.state.webapp_config.channel_model = "opus"
+        assert run.row()["restart_fields"] == ["model"]
+
+    def test_a_stopped_bot_is_unknown(self, run):
+        assert run.row("school")["restart_needed"] is None
+        assert run.row("school")["restart_fields"] == []
+
+    def test_an_unreadable_record_is_unknown_not_false(self, run, tmp_path):
+        for record in (tmp_path / "data").rglob("health.start.json"):
+            record.unlink()
+        assert run.row()["restart_needed"] is None
+
+    def test_host_down_is_unknown(self, run):
+        from app.webapp.routers import life_os_channels
+        err = life_os_channels.session_client.SessionHostError
+        life_os_channels.session_client.list_sessions.side_effect = err("down")
+        assert run.row()["restart_needed"] is None
+
+    def test_a_profile_model_launches_on_it(self, run):
+        run.channels.live.clear()
+        run.patch({"model": "opus"})
+        assert run.channels.client.post(
+            "/api/life-os/channels/health/launch", json={}
+        ).status_code == 200
+        assert "--model opus" in run.channels.spawned[-1].flags
+        assert run.row()["restart_needed"] is False
+
+    def test_an_empty_model_launches_on_the_channel_model(self, run):
+        assert "--model sonnet" in run.channels.spawned[-1].flags
+
+    def test_the_settings_file_is_unchanged(self, run, tmp_path):
+        """The fingerprint lives beside the settings file, never in it."""
+        (settings,) = (tmp_path / "data").rglob("health.json")
+        assert set(json.loads(settings.read_text(encoding="utf-8"))) == {"env"}

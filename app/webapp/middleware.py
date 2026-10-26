@@ -345,6 +345,15 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "secret and stays token-gated.",
     ),
     (
+        lambda p: p.startswith("/api/life-os/channels/") and p.count("/") == 4,
+        "passkey",
+        "Life OS Telegram bot settings (#1902): PATCH rewrites a bot's profile "
+        "(its skill, relay switch and model), which steers what the next "
+        "launch hands the bot, so it is as terminal-grade as the launch. Exactly "
+        "/channels/{id}; the launch, restart and relay rows beside it keep "
+        "their own suffix.",
+    ),
+    (
         lambda p: p.startswith("/api/life-os/channels/") and "/relay/" in p,
         "passkey",
         "Life OS Telegram relay (#1639): finds, resumes and steers a skill's "
