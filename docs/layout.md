@@ -76,7 +76,7 @@ app-launcher/
 │   │                           #   the plan and `/resume` pickers, transcript-file location, the working-tree diff
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser
-│   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup
+│   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry
 │   ├── usage/                  # usage meter: providers.py, auto_switch.py (the Grok fallback for Sonnet lanes),
 │   │                           #   quota.py, export.py (Send to task-os)
 │   └── jobs/, jobs_kinds/      # Jobs backend: the facade (__init__.py), config chain, scheduling/trigger/queue/reap,
