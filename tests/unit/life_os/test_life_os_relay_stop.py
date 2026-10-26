@@ -226,6 +226,22 @@ class TestChats:
         assert row["session_id"] == body["session_id"]
         assert row["idle_minutes"] == 0 and row["minutes_to_close"] == 60
 
+    def test_status_reports_the_resume_offer_setting_on_every_call(self, stop_host):
+        path = stop_host.client.app.state.channel_profiles_path
+
+        def set_offer(value):
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["profiles"][0]["resume_offer"] = value
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+        assert _status(stop_host)["resume_offer"] is True
+        assert _status(stop_host, chat="chat-a")["resume_offer"] is True
+        set_offer(False)
+        assert _status(stop_host)["resume_offer"] is False
+        assert _status(stop_host, chat="chat-a")["resume_offer"] is False
+        set_offer(True)
+        assert _status(stop_host)["resume_offer"] is True
+
     def test_a_bad_chat_key_is_refused(self, stop_host):
         assert _resume(stop_host, chat={"x": 1}).status_code == 400
         assert _resume(stop_host, chat="x" * 65).status_code == 400

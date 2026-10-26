@@ -644,7 +644,9 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     when idle close is off or the idle time is unknown), plus the ``stops``
     recorded since the previous status call, each with its ``reason``
     (``done`` or ``idle``). ``state`` is ``open`` or ``none``; stops are
-    reported either way, and each is reported once."""
+    reported either way, and each is reported once. ``resume_offer`` is the
+    profile's setting, read from the profile file on this call, so the bot
+    learns a change without a restart."""
     caller = await _caller(profile_id, request)
     chat = _chat(request.query_params.get("chat")) or None
     held = await asyncio.to_thread(
@@ -669,6 +671,7 @@ async def relay_status(profile_id: str, request: Request) -> Dict[str, Any]:
     return {
         "state": "open" if open_rows else "none",
         "conversations": open_rows,
+        "resume_offer": caller.profile.resume_offer,
         "stops": [{**{key: stop.get(key, "") for key in
                       ("session_id", "conversation", "title", "chat", "reason")},
                    "stopped_at": _iso(stop.get("stopped_at"))} for stop in stops],
