@@ -159,13 +159,14 @@ def test_every_header_shows_the_reading_and_its_four_states(
 
 
 @pytest.mark.parametrize("width", [390, 1280])
-def test_a_quiet_reading_yields_to_the_header_exceptions_only_where_room_is_missing(
+def test_the_reading_never_hides_and_the_status_shortens_instead(
     authed_page: Page, base_url: str, width: int
 ) -> None:
-    """At 390px the header line's two exception parts need the reading's
-    room, and no ellipsis may cut them (design.md page-header). A quiet
-    reading steps aside there; a hot one is itself the exception and stays.
-    At 1280px both fit, so the quiet one stays (no flash-then-hide)."""
+    """The reading shows at every width with every tone (owner decision on
+    #1838). Where the two exception parts no longer fit beside it (390px),
+    the line wears each part's compact form, whole and uncut (design.md
+    page-header: no ellipsis may cut the exception). At 1280px both fit, so
+    the full words stay."""
     page = authed_page
     page.set_viewport_size({"width": width, "height": 844})
     current = {"body": _reading("normal", 30.0)}
@@ -175,9 +176,11 @@ def test_a_quiet_reading_yields_to_the_header_exceptions_only_where_room_is_miss
 
     status = page.locator("#homeHeadStatus")
     reading = page.locator("#paneClaude > .home-head .cpu-reading")
-    expect(status).to_have_text("1 stalled · 1 needs you")
+    expect(status).to_have_text(
+        "1 stalled · 1 needs you" if width > 500 else "1 stalled · 1 you"
+    )
     expect(reading).to_have_text("30%")
-    (expect(reading).to_be_hidden if width < 500 else expect(reading).to_be_visible)()
+    expect(reading).to_be_visible()
     assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0
 
     current["body"] = _reading("danger", 96.0)
@@ -185,6 +188,26 @@ def test_a_quiet_reading_yields_to_the_header_exceptions_only_where_room_is_miss
         _set_hidden(page, False)  # a foreground return reads at once
     expect(reading).to_have_text("96%")
     expect(reading).to_be_visible()
+
+
+def test_a_short_toned_status_keeps_its_words_beside_the_reading_on_the_phone(
+    authed_page: Page, base_url: str
+) -> None:
+    """A phone header is always narrow, but "1 needs you" leaves room beside
+    the reading, so both show in full: the compact form is worn only when the
+    measured line would be cut, never on the width alone."""
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    _route_load(page, {"body": _reading("normal", 30.0)}, [])
+    _mock_sessions(page, [_WAITING])
+    _boot(page, base_url)
+
+    status = page.locator("#homeHeadStatus")
+    reading = page.locator("#paneClaude > .home-head .cpu-reading")
+    expect(status).to_have_text("1 needs you")
+    expect(reading).to_have_text("30%")
+    expect(reading).to_be_visible()
+    assert stable_eval(status, "(el) => el.scrollWidth - el.clientWidth") <= 0
 
 
 def test_the_tap_sheet_lists_cpu_memory_and_the_top_three(

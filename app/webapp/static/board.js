@@ -56,8 +56,7 @@ import {
 import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
-import { renderBoardBadge } from './home-head.js';
-import { renderHeadStatus } from './_vendored/home-head/home-head.js';
+import { renderBoardBadge, renderFittedHeadStatus } from './home-head.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import {
   boardRepoFilter, getBoardDispatchModel, isChiefCard, matchesRepoFilter, syncDispatchBar,
@@ -590,13 +589,13 @@ function renderBoardHead(body, ghLoaded, liveRead) {
   const yours = sessions('your_turn');
   const failing = (columns.other || []).filter(jobFailing).length;
   const exceptions = [];
-  if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), tone: 'attention' });
-  if (yours) exceptions.push({ text: yours + ' needs you', tone: 'attention' });
-  if (failing) exceptions.push({ text: failing + ' failing', tone: 'danger' });
+  if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), short: questions + ' Q', tone: 'attention' });
+  if (yours) exceptions.push({ text: yours + ' needs you', short: yours + ' you', tone: 'attention' });
+  if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
   const live = yours + sessions('claude_turn');
   const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
   if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
-  renderHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
+  renderFittedHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
 }
 
 

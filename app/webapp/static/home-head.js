@@ -26,6 +26,46 @@ function plural(n, one, many) {
   return n + ' ' + (n === 1 ? one : many);
 }
 
+// The CPU reading never hides, so a line that no longer fits beside it gets
+// shorter instead: each part may carry a `short` form that still reads whole
+// ("1 you" for "1 needs you"), worn only when the full line, measured at its
+// natural width, would be cut by the slot's ellipsis (design.md page-header).
+const fitted = new WeakSet();
+
+function fitHeadStatus(el) {
+  const parts = el.querySelectorAll('.head-exception[data-short]');
+  if (!parts.length) return;
+  const wear = function (compact) {
+    parts.forEach(function (p) { p.textContent = compact ? p.dataset.short : p.dataset.full; });
+  };
+  wear(false);
+  // A hidden pane measures nothing; its observer refits once it is shown.
+  if (!el.clientWidth) return;
+  const text = document.createRange();
+  text.selectNodeContents(el);
+  if (text.getBoundingClientRect().width > el.clientWidth + 0.5) wear(true);
+}
+
+// renderHeadStatus plus the compact forms. The slot's own size depends on its
+// siblings, never on its text, so refitting on a resize cannot loop.
+export function renderFittedHeadStatus(el, exceptions, fallback) {
+  renderHeadStatus(el, exceptions, fallback);
+  if (!el) return;
+  const shorts = new Map();
+  (exceptions || []).forEach(function (x) { if (x && x.short) shorts.set(x.text, x.short); });
+  el.querySelectorAll('.head-exception').forEach(function (part) {
+    const short = shorts.get(part.textContent);
+    if (!short) return;
+    part.dataset.full = part.textContent;
+    part.dataset.short = short;
+  });
+  fitHeadStatus(el);
+  if (!fitted.has(el)) {
+    fitted.add(el);
+    new ResizeObserver(function () { fitHeadStatus(el); }).observe(el);
+  }
+}
+
 // Code: "N needs you" / "N stalled" from the Board's own column routing
 // (glance.js sessionAttention), else "N sessions". The running-apps count
 // is the Apps tab's, and git lives in the Projects card.
@@ -39,9 +79,9 @@ export function renderHomeHead() {
     else if (att === 'needs-you') needsYou += 1;
   });
   const exceptions = [];
-  if (needsYou) exceptions.push({ text: needsYou + ' needs you', tone: 'attention' });
+  if (needsYou) exceptions.push({ text: needsYou + ' needs you', short: needsYou + ' you', tone: 'attention' });
   if (stalled) exceptions.push({ text: stalled + ' stalled', tone: 'danger' });
-  renderHeadStatus(els.homeHeadStatus, exceptions, plural(shown.length, 'session', 'sessions'));
+  renderFittedHeadStatus(els.homeHeadStatus, exceptions, plural(shown.length, 'session', 'sessions'));
   renderOtherHeads();
   renderBoardBadge();
 }
@@ -106,9 +146,9 @@ function renderJobsHead() {
     if (j.coverage && j.coverage.state === 'problem') notFiring += 1;
   });
   const exceptions = [];
-  if (failing) exceptions.push({ text: failing + ' failing', tone: 'danger' });
-  if (notFiring) exceptions.push({ text: notFiring + ' not firing', tone: 'attention' });
-  renderHeadStatus(els.jobsHeadStatus, exceptions, plural(state.jobs.length, 'job', 'jobs'));
+  if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
+  if (notFiring) exceptions.push({ text: notFiring + ' not firing', short: notFiring + ' idle', tone: 'attention' });
+  renderFittedHeadStatus(els.jobsHeadStatus, exceptions, plural(state.jobs.length, 'job', 'jobs'));
 }
 
 // Life: "recap overdue" / "recap due" while the weekly recap wants a
@@ -132,11 +172,11 @@ export function renderSettingsHead() {
   const ch = state.lifeOsChannels;
   const exceptions = [];
   const missing = (ch.profiles || []).filter(profileNeedsSetup).length;
-  if (missing) exceptions.push({ text: 'Telegram: ' + missing + ' missing', tone: 'attention' });
+  if (missing) exceptions.push({ text: 'Telegram: ' + missing + ' missing', short: missing + ' missing', tone: 'attention' });
   if (!ch.setup && state.lifeOsChannelsFailed) {
-    exceptions.push({ text: 'Telegram unreadable', tone: 'neutral' });
+    exceptions.push({ text: 'Telegram unreadable', short: 'no data', tone: 'neutral' });
   }
-  renderHeadStatus(els.settingsHeadStatus, exceptions,
+  renderFittedHeadStatus(els.settingsHeadStatus, exceptions,
     state.buildSha ? 'Build ' + state.buildSha : '');
 }
 
