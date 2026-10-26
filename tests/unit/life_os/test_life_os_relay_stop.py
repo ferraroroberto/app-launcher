@@ -211,7 +211,7 @@ class TestChats:
         assert (a["state"], b["state"]) == ("resumed", "resumed")
 
         again = _resume(stop_host, chat="chat-a", path=path_b).json()
-        assert again["state"] == "open_in_chat" and again["session_id"] == "new-a"
+        assert again["state"] == "already_open" and again["session_id"] == "new-a"
         assert [r["session_id"] for r in _status(stop_host, chat="chat-a")["conversations"]] \
             == ["new-a"]
         assert {r["session_id"] for r in _status(stop_host)["conversations"]} == {"new-a", "new-b"}

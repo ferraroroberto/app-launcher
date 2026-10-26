@@ -11,20 +11,22 @@ redirection or ``cd`` around it.
 
     find [QUERY ...] [--limit N]   the skill's conversations, newest first, or the hits for QUERY
     resume [PATH] [--chat KEY]     resume PATH (from find), or the newest resumable one
+    new [--chat KEY]               start a fresh saved conversation of the skill (then ask it)
     steer SESSION_ID TEXT ...      send TEXT once (or --file FILE)
     read SESSION_ID                the session's last reply
     ask SESSION_ID TEXT ...        steer, then wait for the reply (--timeout SECS)
-    stop SESSION_ID                close a conversation resume reopened, once the chat is done
+    stop SESSION_ID                close a conversation resume or new opened, once the chat is done
     status [--chat KEY]            what is open for this bot, and what was closed since last asked
 
 ``--chat`` is the chat's own key (the Telegram chat id): each chat keeps one
-reopened conversation, and ``resume`` in a chat that has one answers with it.
+conversation the relay opened (reopened or new), and ``resume`` or ``new`` in a
+chat that has one answers ``already_open`` with it instead of starting another.
 
 Output: the first line is always ``STATE=<state>``, then ``KEY=value`` lines,
 ``CONVERSATION`` and ``STOP`` rows, then (for a reply) a ``---`` line and the
 reply text. A found row carries ``tier`` (0 title, 1 topic, 2 digest, 3 full
 text only) when the search reports it. Exit 0 for an outcome (found, none,
-resumed, opened, open_in_chat, delivered, queued, unconfirmed, reply, stopped,
+resumed, opened, started, already_open, delivered, queued, unconfirmed, reply, stopped,
 open), 1 for a refusal or failure, 2 when the relay is not set up in this session. The
 states, and what each means for the chat:
 
@@ -39,7 +41,8 @@ states, and what each means for the chat:
     unknown           the launcher could not be reached; delivery is unknown
     unavailable       the reply could not be read (REASON says why); not old text
     no_reply_yet      sent, but no reply within the wait; read again later
-    open_in_chat      this chat already has a reopened conversation (SESSION_ID); nothing launched
+    started           new: a fresh conversation is running (SESSION_ID); send the opening message with ask
+    already_open      this chat already has a conversation the relay opened (SESSION_ID); nothing launched
     stopped           the conversation was closed, its capture already saved
     not_relay_owned   stop: the relay did not reopen that session for this bot; left alone
     busy              stop: the conversation is mid-turn or waiting on an answer; nothing done
@@ -66,7 +69,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 _OK_STATES = frozenset({
-    "found", "none", "resumed", "opened", "open_in_chat", "delivered", "queued",
+    "found", "none", "resumed", "opened", "started", "already_open", "delivered", "queued",
     "unconfirmed", "reply", "stopped", "open",
 })
 _ROW_FIELDS = ("path", "conversation", "title", "topic", "last_interaction", "resumable",
@@ -195,6 +198,11 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return _print(_call("POST", "resume", body=body))
 
 
+def cmd_new(args: argparse.Namespace) -> int:
+    return _print(_call("POST", "new", body={"chat": args.chat} if args.chat else {},
+                        timeout=60.0))
+
+
 def cmd_stop(args: argparse.Namespace) -> int:
     # The launcher waits up to 15 s for the quit to land before it answers.
     return _print(_call("POST", "stop", body={"session_id": args.session_id}, timeout=60.0))
@@ -260,6 +268,9 @@ def _parser() -> argparse.ArgumentParser:
     resume.add_argument("path", nargs="?", default="")
     resume.add_argument("--chat", default="")
     resume.set_defaults(func=cmd_resume)
+    new = sub.add_parser("new")
+    new.add_argument("--chat", default="")
+    new.set_defaults(func=cmd_new)
     stop = sub.add_parser("stop")
     stop.add_argument("session_id")
     stop.set_defaults(func=cmd_stop)

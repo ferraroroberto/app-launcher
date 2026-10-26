@@ -1,9 +1,10 @@
-"""Conversations the Telegram relay reopened for a bot, and the ones it closed.
+"""Conversations the Telegram relay opened for a bot, and the ones it closed.
 
 The relay's ``stop`` (and the idle close built on it) may act only on a
-session listed here, so this file is the line between "the relay reopened
+session listed here, so this file is the line between "the relay opened
 this for a bot" and every other session on the PC. ``resume`` adds a session
-only when it actually launched one (state ``resumed``). A conversation found
+only when it actually launched one (state ``resumed``), and ``new`` adds the
+fresh session it started (origin ``new``). A conversation found
 already open (``opened``), for instance one the owner has open in the app, is
 never added, so the relay never closes what it did not open. Life OS sessions
 started from the app never pass through here at all.
@@ -13,11 +14,13 @@ atomically replaced, every read-modify-write under one lock (the webapp is the
 only writer, in one process). Shape::
 
     {"entries": [{"profile", "chat", "session_id", "conversation", "title",
-                  "opened_at", "last_activity"}, ...],
+                  "opened_at", "last_activity", "origin"}, ...],
      "stops":   [{"profile", "chat", "session_id", "conversation", "title",
                   "reason", "stopped_at"}, ...]}
 
-Times are epoch seconds. ``chat`` is the bot's opaque per-chat key, ``""``
+Times are epoch seconds. ``origin`` is ``resume`` (a row without one is a
+resume) or ``new``: a ``new`` entry has an empty ``conversation`` until its
+first turn is captured and :func:`bind` fills it in. ``chat`` is the bot's opaque per-chat key, ``""``
 when the bot passed none. An entry whose session is no longer live is pruned
 whenever a caller hands in the live session ids. ``stops`` holds the closes
 not yet reported to the bot: :func:`take_stops` returns and drops them.
@@ -41,6 +44,8 @@ from src.runtime_data import runtime_data_dir
 logger = logging.getLogger(__name__)
 
 REGISTRY_NAME = "relay-registry.json"
+ORIGIN_RESUME = "resume"
+ORIGIN_NEW = "new"
 # Unreported stops are a short backlog between two status calls; the cap
 # keeps a bot that never asks from growing the file without bound.
 MAX_STOPS = 50
@@ -100,7 +105,7 @@ def find(profile: str, session_id: str) -> Optional[Dict[str, Any]]:
 
 
 def add(profile: str, chat: str, session_id: str, conversation: str, title: str,
-        now: float) -> None:
+        now: float, *, origin: str = ORIGIN_RESUME) -> None:
     """Record a conversation the relay just launched for ``profile``."""
     with _lock:
         path = registry_path()
@@ -110,9 +115,31 @@ def add(profile: str, chat: str, session_id: str, conversation: str, title: str,
         data["entries"].append({
             "profile": profile, "chat": chat, "session_id": session_id,
             "conversation": conversation, "title": title,
-            "opened_at": now, "last_activity": now,
+            "opened_at": now, "last_activity": now, "origin": origin,
         })
         atomic_write_json(path, data)
+
+
+def is_unbound_new(entry: Optional[Dict[str, Any]]) -> bool:
+    """Whether ``entry`` is a ``new`` session whose conversation is not captured yet."""
+    return bool(entry) and entry.get("origin") == ORIGIN_NEW and not entry.get("conversation")
+
+
+def bind(profile: str, session_id: str, conversation: str, title: str) -> bool:
+    """Point a ``new`` entry at the conversation its first turn was captured
+    to; ``False`` when it has no such unbound entry."""
+    with _lock:
+        path = registry_path()
+        data = _read(path)
+        for entry in data["entries"]:
+            if (entry.get("profile") == profile and str(entry.get("session_id")) == session_id
+                    and is_unbound_new(entry)):
+                entry["conversation"] = conversation
+                if title:
+                    entry["title"] = title
+                _write_best_effort(path, data, "bind")
+                return True
+    return False
 
 
 def _write_best_effort(path: Path, data: Dict[str, List[Dict[str, Any]]], what: str) -> None:

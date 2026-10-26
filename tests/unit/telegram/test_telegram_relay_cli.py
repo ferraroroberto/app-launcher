@@ -167,10 +167,20 @@ def test_stop_status_and_chat_keys_reach_the_launcher(env, monkeypatch, capsys):
         ("GET", "status"): [{"state": "none", "conversations": [], "stops": [
             {"session_id": "conv-1", "title": "Garden", "reason": "idle",
              "stopped_at": "2026-10-17T10:00:00+00:00"}]}],
-        ("POST", "resume"): [{"state": "open_in_chat", "session_id": "conv-2"}],
+        ("POST", "resume"): [{"state": "already_open", "session_id": "conv-2"}],
+        ("POST", "new"): [{"state": "started", "session_id": "conv-3"}],
     })
     assert relay.main(["stop", "conv-1"]) == 1
     assert relay.main(["status", "--chat", "42"]) == 0
     assert "STOP session_id=conv-1 | title=Garden | reason=idle" in capsys.readouterr().out
     assert relay.main(["resume", "--chat", "42"]) == 0
     assert [c[2] for c in calls] == [{"session_id": "conv-1"}, None, {"chat": "42"}]
+
+
+def test_new_starts_a_conversation_for_the_chat(env, monkeypatch, capsys):
+    calls = _script(monkeypatch, {("POST", "new"): [
+        {"state": "started", "session_id": "conv-3", "title": "New Garden conversation"}]})
+    assert relay.main(["new", "--chat", "42"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("STATE=started") and "SESSION_ID=conv-3" in out
+    assert [c[2] for c in calls] == [{"chat": "42"}]
