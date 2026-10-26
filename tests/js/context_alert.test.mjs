@@ -1,6 +1,6 @@
 // Unit pin for the Telegram sessions' context alert threshold (#1402). Runs
 // under plain Node against the real ES module channel-sessions.js's summary
-// line and popup read it from. Invoked by tests/test_context_alert.py.
+// line and popup read it from. Invoked by tests/unit/board/test_context_alert.py.
 
 import assert from 'node:assert/strict';
 import { CONTEXT_ALERT_PCT, contextAlert } from '../../app/webapp/static/dom-utils.js';

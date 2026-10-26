@@ -8,7 +8,7 @@ seam beside the input one:
   touches the Windows clipboard; tests and the pre-ship gate's disposable
   webapp (``LAUNCHER_SCREEN_FAKE_INPUT=1``, the same switch as the input
   seam) use :class:`RecordingClipboard`, which keeps the text in memory and
-  never touches the real one. ``tests/test_desktop_clipboard.py`` fails if a
+  never touches the real one. ``tests/unit/desktop/test_desktop_clipboard.py`` fails if a
   clipboard API appears anywhere else.
 * **Reached through the socket only.** Only the input module imports
   this module, and only the gated Screen socket reaches that.

@@ -12,10 +12,8 @@ from playwright.sync_api import Page, expect
 
 from scripts import synthetic_gh
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.conftest import (
-    _autoboot_enabled, flush_requests,
-    stable_eval, wait_until,
-)
+from tests.e2e.fixtures.env import autoboot_enabled
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 from tests.e2e.board._support import (
     _FAKE_BOARD,
@@ -168,7 +166,7 @@ def test_the_disposable_webapp_refreshes_github_from_the_synthetic_gh(
     gate run before), so autoboot points the disposable webapp's
     ``LAUNCHER_GH_CMD`` at ``scripts/synthetic_gh.py``. A refresh the real
     ``gh`` answered would carry the owner's real repositories."""
-    if not _autoboot_enabled(request.config):
+    if not autoboot_enabled(request.config):
         pytest.skip("live-tray run: the live webapp reads the real gh by design")
     refresh = authed_page.request.post(f"{base_url}/api/board/github/refresh")
     assert refresh.ok, refresh.status

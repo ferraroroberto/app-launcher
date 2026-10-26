@@ -5,7 +5,7 @@
 # hold the machine-wide dual-projection mutex -- plus, from Get-E2EWorkerArgs
 # at the bottom, how many parallel workers it runs on, and from
 # Get-UnitWorkerArgs how many the non-browser phase runs on. Dot-sourced by
-# the gate and kept free of side effects so tests/test_verify_gate_route.py
+# the gate and kept free of side effects so tests/unit/repo/test_verify_gate_route.py
 # can drive it with fake classifier output.
 #
 # Fail-safe: anything the gate can't use -- no verdict, an unknown tier, a
@@ -45,7 +45,7 @@ function Get-E2ERoute {
     #
     # Deliberately decided here, not in the workflow: this is a routing
     # decision, it is the only place that already knows it is on CI, and
-    # tests/test_verify_gate_route.py pins it.
+    # tests/unit/repo/test_verify_gate_route.py pins it.
     if ($IsCI) {
         return [pscustomobject]@{
             Tier      = "skip"
@@ -121,7 +121,7 @@ function Get-E2ERoute {
 # Why 3 (re-measured 2026-10-12): it was held at 2 because the live
 # webapp's /api/board slowed to ~10 s at 3 or 4 workers. That load turned out
 # to be the gate's own: every test's page boot ran `git status` across the
-# whole projects folder until tests/e2e/conftest.py::pin_launch_target scoped
+# whole projects folder until tests/e2e/fixtures/launch_target.py::pin_launch_target scoped
 # the disposable webapp to the launch target. Since then the live /api/board
 # median stays 0.06 s, the same as idle, at 3 and 4 workers. Full gate:
 # 2 workers ~17 min, 3 workers ~11 min at 63% mean box CPU, 4 workers ~10 min

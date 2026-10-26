@@ -2,7 +2,7 @@
 // both the Board's session rows and the Code tab's rows print their status and
 // last-activity age through. Runs under plain Node against the real ES module;
 // the browser globals glance.js's import graph touches at load are stubbed
-// first. Invoked by tests/test_session_status.py.
+// first. Invoked by tests/unit/sessions/test_session_status.py.
 
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';

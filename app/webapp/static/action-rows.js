@@ -38,7 +38,7 @@ import { attachSwipe } from './swipe-row.js';
 //                 the route for a mouse and for assistive tech
 // Each of the last four is optional: a row built without them is
 // byte-identical to one built before they existed (the golden in
-// tests/e2e/test_life_tab_glance.py).
+// tests/e2e/life_os/test_life_tab_glance.py).
 // Returns { li, main, title, meta, kebab } for the caller to finish.
 export function actionRow(opts) {
   const li = document.createElement('li');

@@ -1,6 +1,6 @@
 """The lightweight PTY stub the e2e gate launches instead of the real Claude CLI.
 
-Moved out of ``tests/e2e/conftest.py`` unchanged (app-launcher#1227) so the
+Moved out of the e2e conftest unchanged (app-launcher#1227) so the
 design-review synthetic instance (``scripts/design_review_synthetic.py``)
 launches the same deterministic child the gate does, rather than a copy.
 No pytest import: a plain script can use it.
@@ -47,7 +47,7 @@ while True:
     print(text, flush=True)
 '''
 
-# Drift guard: the e2e conftest's `_leaked_stub_sessions` identifies a harness-written transcript
+# Drift guard: the e2e fixtures' `leaked_stub_sessions` identifies a harness-written transcript
 # by this banner, so the child it comes from must actually print it.
 assert STUB_BANNER in STUB_CHILD_SOURCE
 

@@ -1,6 +1,6 @@
 // Unit pin for the quota rows' weekly linear pace (#1330). Runs under plain
 // Node against the real ES module both the Coding and Board quota rows
-// render through. Invoked by tests/test_quota_pace.py.
+// render through. Invoked by tests/unit/usage/test_quota_pace.py.
 
 import assert from 'node:assert/strict';
 import { quotaPace } from '../../app/webapp/static/dom-utils.js';

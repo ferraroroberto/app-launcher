@@ -8,10 +8,7 @@ import re
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import (
-    open_session_row,
-    stub_session_mirror,
-)
+from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 
 
 _SID = "sid-live-1050"

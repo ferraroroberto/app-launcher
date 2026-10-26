@@ -10,9 +10,8 @@ from playwright.sync_api import Page, expect
 
 from src.chief import plan as chief_plan
 from tests.e2e import _fake_clock
-from tests.e2e.conftest import (
-    _seed_token_init_script, stable_eval, stable_read, wait_until,
-)
+from tests.e2e.fixtures.pages import seed_token_init_script
+from tests.e2e.fixtures.waits import stable_eval, stable_read, wait_until
 
 from tests.e2e.board._chief_support import (
     _QUESTIONS,
@@ -231,7 +230,7 @@ def test_answered_marks_show_on_every_device_until_the_plan_moves(
     server = _SharedPlanServer(tmp_path, _QUESTIONS)
     context_b = browser.new_context(**browser_context_args)
     if auth_token:
-        context_b.add_init_script(_seed_token_init_script(auth_token))
+        context_b.add_init_script(seed_token_init_script(auth_token))
     page_b = context_b.new_page()
     try:
         pages = (authed_page, page_b)

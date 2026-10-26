@@ -9,9 +9,9 @@
 
 | Sub-feature | Surface name | Driving test node(s) |
 | --- | --- | --- |
-| summary-modal | `readback.summary-modal` | `tests/e2e/test_summarize_readback.py::test_summary_modal_tap_dismisses` |
+| summary-modal | `readback.summary-modal` | `tests/e2e/compose/test_summarize_readback.py::test_summary_modal_tap_dismisses` |
 
-**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/test_summarize_readback.py::test_summary_modal_tap_dismisses -q --browser chromium` (the suite boots its own disposable instance).
+**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/compose/test_summarize_readback.py::test_summary_modal_tap_dismisses -q --browser chromium` (the suite boots its own disposable instance).
 <!-- gen:end feature -->
 
 ## Gotchas

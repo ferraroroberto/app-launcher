@@ -9,10 +9,10 @@
 
 | Sub-feature | Surface name | Driving test node(s) |
 | --- | --- | --- |
-| other-ports-sheet | `apps.other-ports-sheet` | `tests/e2e/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports` |
-| tab | `apps.tab` | `tests/e2e/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports` |
+| other-ports-sheet | `apps.other-ports-sheet` | `tests/e2e/apps/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports` |
+| tab | `apps.tab` | `tests/e2e/apps/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports` |
 
-**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports -q --browser chromium` (the suite boots its own disposable instance).
+**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/apps/test_apps_tab_glance.py::test_running_card_badges_header_and_other_ports -q --browser chromium` (the suite boots its own disposable instance).
 <!-- gen:end feature -->
 
 ## Gotchas

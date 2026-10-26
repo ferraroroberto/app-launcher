@@ -1,7 +1,7 @@
 // Unit pin for the swipe gesture's decisions (#1503): swipe-row.js keeps
 // them as plain functions of numbers, because Playwright's touch emulation
 // only taps, so thresholds, the angle lock, the edge zone, commit and cancel
-// are pinned here under plain Node. Invoked by tests/test_swipe_row.py.
+// are pinned here under plain Node. Invoked by tests/unit/static_ui/test_swipe_row.py.
 
 import assert from 'node:assert/strict';
 

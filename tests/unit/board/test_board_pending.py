@@ -389,7 +389,7 @@ def picker_screen(tmp_path: Path, monkeypatch):
     from src import audit
     from src.board import sessions as board_sessions
     from src.session_view import plan_picker
-    from tests.test_plan_picker import PLAN_MODE, _screen
+    from tests.unit.board.test_plan_picker import PLAN_MODE, _screen
 
     monkeypatch.setattr(audit, "transcript_path", lambda sid: tmp_path / f"{sid}.transcript")
     monkeypatch.setattr(board_sessions, "_PICKER_SCREEN_CACHE", {}, raising=False)

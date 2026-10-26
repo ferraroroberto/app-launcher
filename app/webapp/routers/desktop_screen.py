@@ -20,7 +20,7 @@ message (click, down/move/up, scroll, text, key), handed to a
 :class:`src.desktop.input.InputSession` for this socket's monitor. The reader
 that receives them only starts after the gate above has passed, so input
 rides the same socket and the same gate as the picture; there is no other
-input path (``tests/test_desktop_input.py`` fails if one appears). When the
+input path (``tests/unit/desktop/test_desktop_input.py`` fails if one appears). When the
 socket goes away, every key and button the session still holds is released.
 
 Clipboard (#1719): a ``clipboard_set`` input message puts its text on the PC's

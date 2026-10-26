@@ -1,6 +1,6 @@
 // Unit pin for the shared markdown renderer's GFM table block (#1141). Runs
 // under plain Node — no browser — against the real ES module both the Chat
-// pane and Life OS import. Invoked by tests/test_markdown_tables.py.
+// pane and Life OS import. Invoked by tests/unit/static_ui/test_markdown_tables.py.
 
 import assert from 'node:assert/strict';
 import { renderMarkdown } from '../../app/webapp/static/markdown.js';

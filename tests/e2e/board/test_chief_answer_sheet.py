@@ -9,9 +9,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._surface import surface
-from tests.e2e.conftest import (
-    HeldUploads, stable_eval, stable_read,
-)
+from tests.e2e.fixtures.ui import HeldUploads
+from tests.e2e.fixtures.waits import stable_eval, stable_read
 
 from tests.e2e.board._chief_support import (
     _CHIEF_UPLOAD,

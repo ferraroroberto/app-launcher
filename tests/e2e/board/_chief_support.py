@@ -278,7 +278,7 @@ class _SharedPlanServer:
     ``src/chief_answers`` store under ``tmp_path``. Both pages read and write
     this one state, as two devices on one launcher do; recording follows the
     route's rule (only while that is still the plan), which
-    tests/test_chief_answers.py pins on the route itself."""
+    tests/unit/chief/test_chief_answers.py pins on the route itself."""
 
     def __init__(self, tmp_path, waiting: list) -> None:
         self.tmp_path = tmp_path

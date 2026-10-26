@@ -1,7 +1,7 @@
 // Unit pin for the keys-popover byte table (issue #986). Runs under plain
 // Node — no browser — against the pure data module the popover imports, so
 // the WS-`input` byte mapping is verified without booting the webapp or
-// Playwright. Invoked by tests/test_terminal_keys_bytes.py.
+// Playwright. Invoked by tests/unit/static_ui/test_terminal_keys_bytes.py.
 
 import assert from 'node:assert/strict';
 import {

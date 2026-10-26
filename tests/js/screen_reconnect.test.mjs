@@ -1,7 +1,7 @@
 // Unit pin for the Screen view's reconnect decisions (#1603): the backoff
 // steps and their bound, and which monitor reopens. screen-reconnect.js keeps
 // them as plain functions; the timers and the socket are pinned by the e2e
-// test with a fake clock. Invoked by tests/test_screen_reconnect.py.
+// test with a fake clock. Invoked by tests/unit/desktop/test_screen_reconnect.py.
 
 import assert from 'node:assert/strict';
 

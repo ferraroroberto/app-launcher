@@ -1,6 +1,6 @@
 // Unit pin for the Changed files panel's File view (#1689). Runs under plain
 // Node against the real ES module (it imports only dom-utils.js and
-// markdown.js, neither DOM-bound). Invoked by tests/test_file_view.py.
+// markdown.js, neither DOM-bound). Invoked by tests/unit/transcript/test_file_view.py.
 
 import assert from 'node:assert/strict';
 import { fileKind, renderFileView, tintJson, windowsPath } from '../../app/webapp/static/changes/file-view.js';

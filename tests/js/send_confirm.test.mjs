@@ -1,7 +1,7 @@
 // Unit pin for the Chat send confirmation (#1744): the outcome mapping in
 // sessions.js::sendOutcome and the evidence judge in send-confirm.js. Plain
 // Node against the real ES modules; the browser globals sessions.js's import
-// graph touches at load are stubbed first. Invoked by tests/test_send_confirm.py.
+// graph touches at load are stubbed first. Invoked by tests/unit/board/test_send_confirm.py.
 
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';

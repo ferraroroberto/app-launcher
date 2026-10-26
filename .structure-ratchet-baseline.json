@@ -1,9 +1,4 @@
 {
   "version": 1,
-  "entries": [
-    {"key": "dir:tests", "modules": 238},
-    {"key": "dir:tests/e2e", "modules": 135},
-    {"key": "fn:tests/e2e/conftest.py:_autoboot_server", "lines": 258},
-    {"key": "size:tests/e2e/conftest.py", "lines": 1736}
-  ]
+  "entries": []
 }

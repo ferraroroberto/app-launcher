@@ -749,7 +749,7 @@ A `deferred` run is neither success nor failure:
 - **Board:** no attention card, because a designed deferral needs nobody.
 - **Chaining:** unaffected. `on_success` / `on_failure` still key on the persisted `status`.
 
-**The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. A second test, `test_exit_code_outcomes_match_scheduled_runner_verdicts`, pins each row's *outcome* too: it reads the `❓`/`❌` glyph `ProgressFormatter.finish` prints for every code-keyed verdict rung, so a row whose class drifts from the adapter's own verdict fails (as when 118 sat here as `failed` under 123's wording while the adapter printed `❓ not confirmed`). Rungs keyed on a formatter flag rather than the code are classified by constant name in the test. Both skip where the checkout is absent (CI, a fresh clone).
+**The exit-code table is a reader's copy.** Those constants are *authored* in another repo, and app-launcher must not depend on fleet-config being installed, so there is no importable single source across the two. Instead `tests/unit/jobs/test_jobs_outcome.py::test_exit_code_table_matches_scheduled_runner` parses `scheduled_runner.py` whenever the sibling checkout is present and fails if it defines a code this repo cannot name — without it, a seventh detector added upstream would land here as a silent generic `failed` and nobody would notice until a card lied again. A second test, `test_exit_code_outcomes_match_scheduled_runner_verdicts`, pins each row's *outcome* too: it reads the `❓`/`❌` glyph `ProgressFormatter.finish` prints for every code-keyed verdict rung, so a row whose class drifts from the adapter's own verdict fails (as when 118 sat here as `failed` under 123's wording while the adapter printed `❓ not confirmed`). Rungs keyed on a formatter flag rather than the code are classified by constant name in the test. Both skip where the checkout is absent (CI, a fresh clone).
 
 ### Stuck-run kill
 
@@ -955,7 +955,7 @@ Mint the token in **Settings → API tokens**, scoped to exactly this job — th
 
 ## Verification
 
-The pre-ship gate (`pwsh -File scripts/verify-before-ship.ps1`) runs the unit suite (`tests/unit/jobs/`, `tests/api/jobs/`) plus the e2e Jobs-tab smoke check in `tests/e2e/test_smoke.py::test_tabs_switch`. All schtasks calls are mocked at the runner-callable seam (`src.jobs._run_schtasks`) so the unit suite never invokes real Task Scheduler.
+The pre-ship gate (`pwsh -File scripts/verify-before-ship.ps1`) runs the unit suite (`tests/unit/jobs/`, `tests/api/jobs/`) plus the e2e Jobs-tab smoke check in `tests/e2e/shell/test_smoke.py::test_tabs_switch`. All schtasks calls are mocked at the runner-callable seam (`src.jobs._run_schtasks`) so the unit suite never invokes real Task Scheduler.
 
 Live verification after restart of `:8445`:
 

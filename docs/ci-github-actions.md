@@ -29,7 +29,7 @@ Nothing about the gate script itself changed. CI just runs it for you, somewhere
 
 ### What CI runs, and what it deliberately does not
 
-CI runs steps 1 and 2 above and stops. It does **not** run step 3, the Playwright browser suite. That is a decision, not an accident: `scripts/e2e-gate-route.ps1` routes any run that sets `CI=true` to tier `skip`, and `tests/test_verify_gate_route.py` pins it.
+CI runs steps 1 and 2 above and stops. It does **not** run step 3, the Playwright browser suite. That is a decision, not an accident: `scripts/e2e-gate-route.ps1` routes any run that sets `CI=true` to tier `skip`, and `tests/unit/repo/test_verify_gate_route.py` pins it.
 
 The reasoning is the whole of §4 below, read backwards. CI's unique value is the *clean machine* — a fresh `.venv`, committed files only, at the commit rather than somebody's working tree. That value is fully delivered by the install and the non-browser suite, in the first few minutes. The browser leg, by contrast, was a **second** run of a suite that had already passed locally on the same script before the PR was opened, and it needed three separate timeout widenings (`E2E_LOG_POLL_DEADLINE_MS`, `E2E_STOP_OVERLAY_HIDE_MS`, `E2E_REAL_AGENT_ECHO_MS`) purely to survive the hosted runner. A test that needs its clock loosened to survive the environment is testing the environment.
 

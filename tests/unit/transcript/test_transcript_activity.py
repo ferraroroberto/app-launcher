@@ -42,7 +42,7 @@ def test_tool_action_covers_the_probed_tools_of_every_harness():
     assert act("exec", "git status", raw_text=True) == {"verb": "ran", "command": "git status"}
     # A JSON argument string is never mistaken for a raw command.
     assert act("exec", '{"cmd": "ls"}') is None
-    # Edits and writes also carry their diff (#1349): tests/test_transcript_diffs.py.
+    # Edits and writes also carry their diff (#1349): tests/unit/transcript/test_transcript_diffs.py.
     def plain(action):
         return {k: v for k, v in action.items() if k != "diff"}
 

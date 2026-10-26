@@ -5,7 +5,7 @@
 // here under plain Node, as are the PC cursor's placement (stagePoint, the
 // inverse of the frame mapping) and its shape fallback (#1598), and the
 // trackpad's cursor step, zoom follow and remembered style (#1599). Invoked by
-// tests/test_screen_gestures.py.
+// tests/unit/desktop/test_screen_gestures.py.
 
 import assert from 'node:assert/strict';
 

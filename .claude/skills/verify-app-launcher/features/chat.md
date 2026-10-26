@@ -9,9 +9,9 @@
 
 | Sub-feature | Surface name | Driving test node(s) |
 | --- | --- | --- |
-| overlay | `chat.overlay` | `tests/e2e/test_session_mode_toggle.py::test_toggle_keeps_terminal_scrollback_and_socket` |
+| overlay | `chat.overlay` | `tests/e2e/session/test_session_mode_toggle.py::test_toggle_keeps_terminal_scrollback_and_socket` |
 
-**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/test_session_mode_toggle.py::test_toggle_keeps_terminal_scrollback_and_socket -q --browser chromium` (the suite boots its own disposable instance).
+**Drive:** `.\.venv\Scripts\python.exe -m pytest tests/e2e/session/test_session_mode_toggle.py::test_toggle_keeps_terminal_scrollback_and_socket -q --browser chromium` (the suite boots its own disposable instance).
 <!-- gen:end feature -->
 
 ## Gotchas

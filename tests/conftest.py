@@ -187,7 +187,7 @@ def _no_real_mirror_window(request, monkeypatch):
     place.
 
     The ``launcher`` module's own function is intentionally left intact so
-    ``tests/test_launcher_mirror_hwnd.py`` can still exercise it directly with
+    ``tests/unit/launching/test_launcher_mirror_hwnd.py`` can still exercise it directly with
     the inner spawn stubbed. Skipped for the live-tray e2e (``smoke``) suite,
     which drives a separate webapp process this in-process patch can't reach.
     """

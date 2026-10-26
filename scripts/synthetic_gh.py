@@ -9,7 +9,7 @@ throwaway walk's screenshots and report. It answers the three searches
 with the fields they ask for, and refuses anything else with a non-zero exit,
 which the Board shows as a refresh error rather than as real data.
 
-The e2e gate's disposable webapp uses it too (``tests/e2e/conftest.py``,
+The e2e gate's disposable webapp uses it too (``tests/e2e/fixtures/autoboot.py``,
 #1516), so no gate run reaches real GitHub.
 
 Run as ``python synthetic_gh.py <gh args>``; stdlib only, no network.
