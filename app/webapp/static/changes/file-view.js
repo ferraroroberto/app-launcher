@@ -1,11 +1,11 @@
 /* A changed file, drawn for its type: the Changed files panel's File
  * view, beside its Diff.
  *
- * Markdown goes through the shared sanitising renderer (markdown.js), JSON is
- * pretty-printed and tinted, code is a monospace listing with a line-number
- * gutter (CSS counters) and, for the main languages, token colours from
- * syntax-tint.js, and anything else is plain text. Every byte of the file is escaped before any
- * markup is put around it, so a file holding HTML or a `<script>` reads as
+ * JSON is pretty-printed and tinted, code (Markdown included: its rendered
+ * page is the panel's Preview, not this view) is a monospace listing with a
+ * line-number gutter (CSS counters) and, for the main languages, token colours
+ * from syntax-tint.js, and anything else is plain text. Every byte of the file
+ * is escaped before any markup is put around it, so a file holding HTML or a `<script>` reads as
  * exactly that text and never runs.
  *
  * DOM-free on purpose, like markdown.js: it builds HTML strings and imports
@@ -14,7 +14,6 @@
  */
 
 import { escapeHtml } from '../dom-utils.js';
-import { renderMarkdown } from '../markdown.js';
 import { tintLanguage, tintLines, tintable } from './syntax-tint.js';
 
 const MARKDOWN = new Set(['md', 'markdown', 'mdx']);
@@ -42,6 +41,13 @@ export function fileKind(name) {
   if (JSON_EXT.has(ext)) return 'json';
   if (CODE.has(ext)) return 'code';
   return 'text';
+}
+
+// 'html' | 'markdown' for a file that has a rendered Preview, else null.
+export function previewKind(name) {
+  const ext = extension(name);
+  if (ext === 'html' || ext === 'htm') return 'html';
+  return MARKDOWN.has(ext) ? 'markdown' : null;
 }
 
 // Drop the empty line a final newline leaves behind.
@@ -116,7 +122,7 @@ function renderCode(name, text) {
 export function renderFileView(name, text, kind) {
   const k = kind || fileKind(name);
   const body = String(text == null ? '' : text);
-  if (k === 'markdown') return '<div class="fv-md tr-md">' + renderMarkdown(body) + '</div>';
+  if (k === 'markdown') return listing('fv-code', lines(body).map(escapeHtml));
   if (k === 'json') return renderJson(body);
   if (k === 'code') return renderCode(name, body);
   return '<pre class="fv-text">' + escapeHtml(body) + '</pre>';

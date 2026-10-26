@@ -7,10 +7,13 @@
  * through `srcdoc` in a frame whose sandbox attribute is empty (an opaque
  * origin, no script, popup, form, modal or top navigation), and its blob
  * stays application/octet-stream, so no same-origin text/html URL exists.
+ * The Changes panel's Preview feeds the same viewer a file's text: HTML in
+ * that frame, Markdown as the sanitising renderer's output.
  */
 
 import { els } from './state.js';
 import { icon } from './_vendored/icons/icons.js';
+import { renderMarkdown } from './markdown.js';
 
 export function openImageLightbox(url, alt) {
   if (!url || !els.imageLightbox) return;
@@ -73,7 +76,7 @@ export async function fillHtmlCard(card, got, name) {
   btn.setAttribute('aria-label', 'Open ' + name);
   const show = function (ev) {
     ev.stopPropagation();
-    openHtmlViewer(name, got, btn);
+    openHtmlViewer(name, got, btn, 'html');
   };
   btn.addEventListener('click', show);
   // Wired before the await: the head's Open is already showing.
@@ -101,11 +104,27 @@ export async function fillHtmlCard(card, got, name) {
 }
 
 // The element focus goes back to on close (Safari does not restore it from a
-// showModal() on its own), and whether the back-gesture marker is ours.
+// showModal() on its own), whether the back-gesture marker is ours, and the
+// download URL a text-fed viewer made for itself and so must revoke.
 let viewerReturn = null;
 let viewerPushed = false;
+let viewerOwnUrl = null;
 
-function openHtmlViewer(name, got, returnTo) {
+// The viewer's body for a document: a frame carrying its srcdoc (HTML), or the
+// renderer's escaped output in a scrolling box (Markdown).
+function viewerNode(kind, name, text) {
+  if (kind === 'markdown') {
+    const box = document.createElement('div');
+    box.className = 'html-viewer-md tr-md';
+    box.innerHTML = renderMarkdown(text);
+    return box;
+  }
+  const frame = sandboxedFrame('html-viewer-frame', name);
+  frame.srcdoc = withCsp(text);
+  return frame;
+}
+
+function openHtmlViewer(name, got, returnTo, kind) {
   const dlg = els.htmlViewer;
   if (!dlg || dlg.open) return;
   viewerReturn = returnTo;
@@ -121,15 +140,26 @@ function openHtmlViewer(name, got, returnTo) {
   // step through instead of closing the viewer.
   got.blob.text().then(function (text) {
     if (!dlg.open || viewerReturn !== returnTo) return;
-    const frame = sandboxedFrame('html-viewer-frame', name);
-    frame.srcdoc = withCsp(text);
-    els.htmlViewerBody.replaceChildren(frame);
+    els.htmlViewerBody.replaceChildren(viewerNode(kind, name, text));
   });
+}
+
+// Preview a file's text in the viewer: `kind` is 'html' or 'markdown'. The
+// download is the source as octet-stream, so it saves rather than renders.
+export function openTextPreview(name, text, kind, returnTo) {
+  if (!els.htmlViewer || els.htmlViewer.open) return;
+  const blob = new Blob([text], { type: 'application/octet-stream' });
+  viewerOwnUrl = URL.createObjectURL(blob);
+  openHtmlViewer(name, { blob: blob, objectUrl: viewerOwnUrl }, returnTo, kind);
 }
 
 function onViewerClosed() {
   els.htmlViewerBody.replaceChildren();
   els.htmlViewerDownload.removeAttribute('href');
+  if (viewerOwnUrl) {
+    URL.revokeObjectURL(viewerOwnUrl);
+    viewerOwnUrl = null;
+  }
   if (viewerPushed) {
     viewerPushed = false;
     if (history.state && history.state.htmlViewer) history.back();

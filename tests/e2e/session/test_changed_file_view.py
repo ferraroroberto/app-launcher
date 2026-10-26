@@ -1,13 +1,13 @@
-"""#1689, #1749 — a changed file's File view, Download and ⋮ menu.
+"""#1689, #1749, #1910 — a changed file's File view, Download and ⋮ menu.
 
 In a session's Changed files panel, an opened file shows a Diff | File switch
 (Diff the default), its absolute path as selectable text, a Download button
-and a ⋮ menu (Copy content in File view, Copy diff in Diff view, Copy path
-and, on the PC itself only, Open on PC). Pinned against stubbed routes (every
-path and line synthetic):
+and a ⋮ menu (Copy content in File view, Copy diff in Diff view, Preview for an
+HTML or Markdown file, Copy path and, on the PC itself only, Open on PC).
+Pinned against stubbed routes (every path and line synthetic):
 
-* on the phone: File renders the file for its type (Markdown here) through a
-  content request made once, Diff comes back without a refetch, the menu opens
+* on the phone: File shows the file's source (Markdown here, as a listing)
+  through a content request made once, Preview renders it from that same read, Diff comes back without a refetch, the menu opens
   over the panel and its item set follows the view, Copy content / Copy diff
   put exactly the raw file / the patch on the clipboard, Copy path puts the
   Windows path there, and there is no Open on PC; the tool row meets the 44px
@@ -42,6 +42,7 @@ from tests.e2e.session.test_session_changed_files import _SID, _menu, _mock, _op
 pytestmark = pytest.mark.smoke
 
 _NOTES = "# Notes\n\nOne **bold** line.\n\n<script>window.__ran = true</script>\n"
+_PAGE = '<!doctype html><title>t</title><h1>Hi page</h1><script>window.parent.__ran = true</script>\n'
 _CODE = "def f():\n    return 1\n\n\nprint(f())\n"
 # iOS lets a page write the clipboard only inside the user's tap. Every click
 # listener runs inside a flag that is up only while its synchronous body runs,
@@ -102,6 +103,9 @@ def _mock_file_routes(page: Page) -> dict:
             text = _TINT_PY if path.endswith("tool.py") else _TINT_JSON
             body = {**base, "available": True, "reason": None,
                     "path": path.replace("/", "\\"), "text": text}
+        elif path.endswith("page.html"):
+            body = {**base, "available": True, "reason": None,
+                    "path": path.replace("/", "\\"), "text": _PAGE}
         elif path.endswith("long.py"):
             body = {**base, "available": True, "reason": None,
                     "path": path.replace("/", "\\"), "text": _CODE}
@@ -214,7 +218,7 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
 
     # Diff view: Copy diff and Copy path, no Copy content, no Open on PC (phone).
     menu = _open_kebab(page, row)
-    assert _items(menu) == ["Copy diff", "Copy path"], _items(menu)
+    assert _items(menu) == ["Copy diff", "Preview", "Copy path"], _items(menu)
     for theme in ("light", "dark"):
         page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
         reach = page.evaluate(_MENU_ON_TOP)
@@ -229,11 +233,12 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
     segs.nth(1).click()
     expect(segs.nth(1)).to_have_attribute("aria-pressed", "true")
     expect(row.locator(".chg-pane-diff")).to_be_hidden()
-    md = row.locator(".chg-pane-file .fv-md")
-    expect(md.locator("h1")).to_have_text("Notes")
-    expect(md.locator("strong")).to_have_text("bold")
-    # The file's own <script> is text on the page, never run.
-    expect(md).to_contain_text("<script>window.__ran = true</script>")
+    src = row.locator(".chg-pane-file .fv-listing")
+    # The File view is the source: the heading marker and the file's own
+    # <script> are text on the page, never rendered or run.
+    expect(src).to_contain_text("# Notes")
+    expect(src).to_contain_text("<script>window.__ran = true</script>")
+    expect(row.locator(".chg-pane-file h1")).to_have_count(0)
     assert page.evaluate("() => window.__ran === undefined")
     assert seen["content"] == ["E:/work/proj/docs/notes.md"], seen
 
@@ -241,12 +246,12 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
     expect(row.locator(".chg-pane-diff")).to_be_visible()
     expect(row.locator(".chg-pane-file")).to_be_hidden()
     segs.nth(1).click()
-    expect(md.locator("h1")).to_be_visible()
+    expect(src).to_be_visible()
     assert len(seen["content"]) == 1, f"switching back refetched the file: {seen}"
 
     # File view: Copy content (the raw text, not the rendered HTML) and Copy path.
     menu = _open_kebab(page, row)
-    assert _items(menu) == ["Copy content", "Copy path"], _items(menu)
+    assert _items(menu) == ["Copy content", "Preview", "Copy path"], _items(menu)
     menu.locator("[data-item='chg-copy-content']").click()
     expect(page.locator("#toast")).to_contain_text("Content copied")
     assert page.evaluate("() => window.__copied")[-1] == _NOTES
@@ -258,6 +263,21 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
     # Every copy wrote the clipboard inside its tap, with no await before it.
     assert page.evaluate("() => window.__tapSync") == [True, True, True]
 
+    # Preview: the rendered page in the sent-file viewer, from the read already
+    # made; the file's own <script> is escaped text there too.
+    _open_kebab(page, row).locator("[data-item='chg-preview']").click()
+    viewer = page.locator("#htmlViewer")
+    expect(viewer).to_be_visible()
+    expect(page.locator("#htmlViewerName")).to_have_text("notes.md")
+    rendered = viewer.locator(".html-viewer-md")
+    expect(rendered.locator("h1")).to_have_text("Notes")
+    expect(rendered.locator("strong")).to_have_text("bold")
+    expect(rendered).to_contain_text("<script>window.__ran = true</script>")
+    assert page.evaluate("() => window.__ran === undefined")
+    assert len(seen["content"]) == 1, f"Preview refetched the file: {seen}"
+    viewer.locator("#htmlViewerClose").click()
+    expect(viewer).to_be_hidden()
+
     for theme in ("light", "dark"):
         page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
         fit = stable_eval(row, _TOOLS_FIT)
@@ -265,6 +285,47 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
             f"a tool target is under 44px ({theme}): {fit}"
         assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px ({theme}): {fit}"
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+
+@pytest.mark.iphone
+def test_preview_renders_html_in_the_sandboxed_frame_and_only_for_html_and_markdown(
+    authed_page: Page, base_url: str,
+) -> None:
+    page = authed_page
+    files = {**_TINT_FILES, "files": [
+        {"path": "page.html", "key": "E:/work/proj/page.html", "status": "M",
+         "additions": 1, "deletions": 0, "steps": 1},
+        _TINT_FILES["files"][0],
+    ]}
+    _mock(page, files=files)
+    _mock_file_routes(page)
+    _as_phone(page)
+    row = _open_file(page, base_url, 0)
+
+    # An HTML file reads as source in File; Preview opens the page in the empty
+    # sandbox the sent-file viewer uses, so its script cannot reach the app.
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    expect(row.locator(".chg-pane-file .fv-listing")).to_contain_text("<h1>Hi page</h1>")
+    _open_kebab(page, row).locator("[data-item='chg-preview']").click()
+    frame = page.locator("#htmlViewer iframe.html-viewer-frame")
+    expect(frame).to_have_count(1)
+    assert frame.get_attribute("sandbox") == ""
+    expect(page.frame_locator("#htmlViewer iframe").locator("h1")).to_have_text("Hi page")
+    assert page.evaluate("() => window.__ran === undefined")
+    for theme in ("light", "dark"):
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        width = page.evaluate(
+            "() => document.querySelector('#htmlViewer .html-viewer-body').getBoundingClientRect().width")
+        assert width <= 390, f"viewer wider than the phone ({theme}): {width}"
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    page.locator("#htmlViewerClose").click()
+    expect(page.locator("#htmlViewer")).to_be_hidden()
+
+    # A Python file has no Preview.
+    row2 = page.locator("#changesList .chg-file").nth(1)
+    row2.locator("summary").click()
+    menu = _open_kebab(page, row2)
+    assert "Preview" not in _items(menu), _items(menu)
 
 
 def test_download_saves_the_file_and_refuses_what_the_file_view_refuses(

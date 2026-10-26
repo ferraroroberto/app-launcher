@@ -3,7 +3,7 @@
 // markdown.js, neither DOM-bound). Invoked by tests/unit/transcript/test_file_view.py.
 
 import assert from 'node:assert/strict';
-import { fileKind, renderFileView, tintJson, windowsPath } from '../../app/webapp/static/changes/file-view.js';
+import { fileKind, previewKind, renderFileView, tintJson, windowsPath } from '../../app/webapp/static/changes/file-view.js';
 
 const SCRIPT = '<script>alert(1)</script>';
 // Escaped text may still read "onerror=": only a live tag is a fault.
@@ -23,12 +23,25 @@ const noRawTags = (html) => !/<script|<img|<b>/i.test(html);
   assert.equal(fileKind('.gitignore'), 'text');
 }
 
-// Markdown renders through the sanitising renderer.
+// Markdown is shown as source, like any other code: the rendered page is Preview.
 {
-  const html = renderFileView('a.md', '# Title\n\nSome **bold** text.\n');
-  assert.ok(html.startsWith('<div class="fv-md tr-md">'), html);
-  assert.match(html, /<h1>Title<\/h1>/);
-  assert.match(html, /<strong>bold<\/strong>/);
+  const html = renderFileView('a.md', '# Title\n\nSome **bold** <b>x</b>\n');
+  assert.ok(html.startsWith('<pre class="fv-listing fv-code">'), html);
+  assert.match(html, /# Title/);
+  assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
+  assert.doesNotMatch(html, /<h1>|<strong>/);
+}
+
+// Preview exists for HTML and Markdown files only.
+{
+  assert.equal(previewKind('page.html'), 'html');
+  assert.equal(previewKind('E:\\work\\Page.HTM'), 'html');
+  assert.equal(previewKind('docs/notes.md'), 'markdown');
+  assert.equal(previewKind('a.markdown'), 'markdown');
+  assert.equal(previewKind('a.mdx'), 'markdown');
+  assert.equal(previewKind('app.js'), null);
+  assert.equal(previewKind('page.svg'), null);
+  assert.equal(previewKind('LICENSE'), null);
 }
 
 // Code: one line span per line (the CSS counter's gutter), the final newline
