@@ -91,12 +91,13 @@ def test_header_falls_back_to_the_plain_count(
 
 @pytest.mark.iphone
 def test_header_exceptions_fit_at_390px(authed_page: Page, base_url: str) -> None:
-    """The header rule's two parts fit the phone's header line uncut."""
+    """The header rule's two parts fit the phone's header line uncut, in their
+    compact form beside the CPU reading, which never hides."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _mock(authed_page, [_CHIEF, _WAITING, _STALLED])
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     head = authed_page.locator("#homeHeadStatus")
-    expect(head).to_have_text("1 stalled · 1 needs you")
+    expect(head).to_have_text("1 stalled · 1 you")
     widths = stable_eval(
         head, "el => el.isConnected && el.clientWidth ? [el.clientWidth, el.scrollWidth] : null"
     )
