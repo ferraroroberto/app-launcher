@@ -113,8 +113,9 @@ def ensure_autostart_log_handler(*targets: logging.Logger) -> None:
     ``pythonw`` there is no stderr and these loggers have no file handler, so
     the "autostart is off" / per-profile started-or-skipped lines (and the
     unreachable-session-host warning, which falls to ``logging.lastResort``
-    and its ``None`` stderr) would otherwise vanish. Pass the autostart
-    loggers only, never the root: other modules' INFO stays out."""
+    and its ``None`` stderr) would otherwise vanish. The relay idle close's
+    lines join them, for the same reason. Pass these channel loggers only,
+    never the root: other modules' INFO stays out."""
     ensure_file_log_handler(
         _AUTOSTART_LOG_PATH, *targets,
         fmt="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

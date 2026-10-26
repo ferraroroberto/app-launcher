@@ -44,6 +44,7 @@ flowchart TB
     MGR["manager.py\nWebappManager (start/stop/status)"]
     SHELLHTML["shell_html.py\nsplices static/views/*.html into index.html"]
     DOORBELL["chief_doorbell.py\nrings an idle chief with pending mail (#1645)"]
+    RELAYIDLE["relay_idle_close.py\ncloses relay-reopened conversations after the bot's idle timeout"]
     subgraph routers["routers/"]
       R_MISC["misc.py — /, /healthz, /api/version, /api/system/load"]
       R_AUTH["auth.py — /api/login"]
@@ -204,6 +205,9 @@ reached through the input session, never logged (#1719)"]
   WSERVER -->|"lifespan 3 s doorbell tick, canonical only,\nno-op while chief_doorbell is off (#1645)"| DOORBELL
   DOORBELL -->|"chief status, Board's own overlay"| BOARD
   DOORBELL -->|"fixed line via /input"| SESSCLIENT
+  WSERVER -->|"lifespan 60 s idle-close tick, canonical only"| RELAYIDLE
+  RELAYIDLE -->|"the relay's own stop, registry entries only"| R_LIFEOS
+  RELAYIDLE -->|"fixed notice line into the bot's session"| SESSCLIENT
   SESSRETENTION --> AUDIT
   SESSRETENTION -->|"live session list"| SESSCLIENT
   JOBSFACADE --> JOBSCFG
