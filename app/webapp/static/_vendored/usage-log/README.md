@@ -4,7 +4,7 @@ Records which views and controls a fleet web app's owner actually uses, and on w
 
 ## Privacy is the contract
 
-Never log message contents, document text, transcripts, names, file names, search queries, form values, URLs with query strings, IP addresses, or the raw user-agent. Only: event kind, view id, control id, a random per-visit session id, device class, and timestamps. Control ids are developer-chosen constants in `data-track`, never derived from element text or user data.
+Never log message contents, document text, transcripts, names, file names, search queries, form values, URLs with query strings, IP addresses, or the raw user-agent. Only: event kind, view id, control id, a random per-visit session id, device class, and timestamps. Control ids are developer-chosen constants in `data-track` and in `usage.track(id)` calls, never derived from element text or user data.
 
 The server enforces it again: unknown kinds, ids outside the bounded id pattern and unknown device/OS classes are dropped, and the table has no column for anything else.
 
@@ -12,7 +12,7 @@ The server enforces it again: unknown kinds, ids outside the bounded id pattern 
 
 | File | Role |
 | --- | --- |
-| `usage-log.js` | `initUsageLog(opts?)` → `{ trackView, flush, currentView }`; also exports `deviceClass()` / `osClass()`. Batches events and sends them with `fetch` (`keepalive`) or `navigator.sendBeacon` when the page is hidden (a `keepalive` fetch instead when the `headers` option is set). No dependencies. |
+| `usage-log.js` | `initUsageLog(opts?)` → `{ trackView, track, flush, currentView }`; also exports `deviceClass()` / `osClass()`. Batches events and sends them with `fetch` (`keepalive`) or `navigator.sendBeacon` when the page is hidden (a `keepalive` fetch instead when the `headers` option is set). No dependencies. |
 
 The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, because it lives in `src/`, not in this static tree).
 
@@ -57,6 +57,7 @@ const usage = initUsageLog({
 
 - `data-track="<id>"` on a control records a `tap` with that id when the control (or anything inside it) is clicked. One delegated capture-phase listener on `document` handles every control; nothing scrapes element text.
 - An id is a developer-chosen constant matching `^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$`: no spaces, no `/`, at most 64 characters. `refresh-all`, `job:cancel`, `settings.theme` pass; a sentence, a path or a URL does not, and is dropped on both sides.
+- `usage.track(id)` records the same `tap` (same id pattern, same current view, same batch) with no click, for a feature counted when it **succeeded**: an upload finished, a transcript landed, a send was acknowledged. The id is a string literal in the call, never built from element text, a file name, a message or any user data; an id outside the pattern queues nothing. When the logger is disabled (off-origin `endpoint`) the call is a no-op, so callers need no guard. Never fake a click on a probe element with a runtime-set `data-track` instead.
 - `trackView(id)` records a `view`. The nav's `onChange(tab)` calls it on every tab switch (including the initial restore), using the tab's `data-tab` value. Call it yourself for a sheet or dialog that deserves its own id.
 
 ## Event schema
@@ -81,7 +82,7 @@ The client posts `POST /api/usage/events` (same-origin path; an absolute or prot
 | --- | --- |
 | `session_start` | Page load, and each return to the foreground. |
 | `view` | `trackView(id)`: a tab switch, or a sheet/dialog the app tracks. |
-| `tap` | A click on a `[data-track]` control; carries the current view. |
+| `tap` | A click on a `[data-track]` control, or a `usage.track(id)` call; carries the current view. |
 | `session_end` | The page goes hidden (sent with `sendBeacon`). |
 
 The server stamps the timestamp (UTC) on receipt and stores one row per event: `ts`, `session_id`, `kind`, `view_id`, `control_id`, `device_class`, `os_class`. Device class comes from the pointer type and the short side of the screen; OS class from a coarse match on the user-agent, which is never sent.

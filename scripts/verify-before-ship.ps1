@@ -125,6 +125,8 @@ if (-not (Test-Path $python)) {
 }
 
 Push-Location $repoRoot
+
+. (Join-Path $PSScriptRoot "box_lock_gate.ps1"); Enter-BoxLockGate
 try {
     Phase "py_compile (app, src, tests)..."
     & $python -m compileall -q app src tests

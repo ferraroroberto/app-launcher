@@ -619,9 +619,11 @@ def usage_router(
 
     ``GET /api/usage/time?days=7&by=day|device|view`` is :func:`foreground_time`
     over the last ``days`` (1..366) host-local days; ``by`` picks the
-    breakdown kept (``day`` keeps totals only). It reads the file read-only and
-    never creates it: an absent file answers the zero report with
-    ``"log_exists": false``, so "no data yet" stays distinct from zero usage.
+    breakdown kept (``day`` keeps totals only). Both ``/summary`` and
+    ``/time`` read the file read-only and never create it: an absent file
+    answers the zero report with ``"log_exists": false``, so "no data yet"
+    stays distinct from zero usage, and a locked file answers 503 rather
+    than 500.
     """
     from fastapi import APIRouter, Query, Request
     from fastapi.responses import JSONResponse
@@ -654,8 +656,22 @@ def usage_router(
         return JSONResponse({"accepted": accepted, "rejected": batch.rejected})
 
     @router.get("/summary")
-    def get_summary(days: int = Query(30, ge=1, le=3650)) -> dict[str, Any]:
-        return log.summary(days)
+    def get_summary(days: int = Query(30, ge=1, le=3650)) -> JSONResponse:
+        exists = log.db_path.is_file()
+        try:
+            if exists:
+                conn = open_read_only(log.db_path)
+            else:
+                conn = sqlite3.connect(":memory:")
+                conn.executescript(_SCHEMA)
+            try:
+                report = summarize(conn, days)
+            finally:
+                conn.close()
+        except sqlite3.Error as exc:
+            logger.info("ℹ️ usage log: summary unavailable (%s)", exc)
+            return JSONResponse({"detail": "usage log unavailable"}, status_code=503)
+        return JSONResponse({**report, "log_exists": exists})
 
     @router.get("/time")
     def get_time(
