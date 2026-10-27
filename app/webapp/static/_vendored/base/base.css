@@ -8,7 +8,7 @@
  * Windows Chrome; the system font on iOS and Android, which is why it only
  * shows on desktop) and a system text color. An app that sets its font stack
  * on `body` alone renders every bare control, and every row built as a
- * <button>, in a second typeface (project-scaffolding#266). This pulls the
+ * <button>, in a second typeface. This pulls the
  * app's font (family, size, weight, style) and text color onto every
  * control, classed or bare.
  *

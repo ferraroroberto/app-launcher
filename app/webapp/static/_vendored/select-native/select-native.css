@@ -18,9 +18,9 @@
  *
  * `font: inherit` pulls the app's type system onto the control — UA
  * stylesheets otherwise give form controls their own platform font (Arial on
- * Windows Chrome), the off-brand-control root cause (home-automation#359).
+ * Windows Chrome), the off-brand-control root cause.
  * It sits before `font-size` (the shorthand resets it) and is paired with
- * `line-height: normal` so the control keeps its UA box (#319).
+ * `line-height: normal` so the control keeps its UA box.
  * `.input-native` (the text input in a modal row) shares this one recipe so
  * a select and an input line up on one line; the modal component links this
  * file rather than re-declaring it.

@@ -1,17 +1,10 @@
-"""Where an always-on service's SQLite state lives (project-scaffolding#243).
+"""Where an always-on service's SQLite state lives.
 
-A fleet app's runtime database has, historically, landed wherever the repo
-happened to be checked out — ``<repo>/webapp/telemetry.sqlite3``,
-``<repo>/data/tasks.db``. That is fine on one machine and wrong on the next:
-on ``tower`` the checkouts live on a spinning 4TB HDD, and seven always-on
-services each ``fsync``-ing small writes at a poll interval kept the drive
-audibly clicking around the clock (the drive itself measured healthy; the
-noise was pure aggregate write pressure).
-
-This module resolves that path instead of hardcoding it, so the physical
-drive is a machine-level decision rather than a consequence of where someone
-cloned the repo. Every app gets its own subdirectory under one root, so two
-apps can both own a ``telemetry.sqlite3`` without colliding.
+This module resolves the runtime-database path instead of letting a service
+hardcode it, so the physical drive is a machine-level decision rather than a
+consequence of where someone cloned the repo. Every app gets its own
+subdirectory under one root, so two apps can both own a
+``telemetry.sqlite3`` without colliding.
 
 Resolution order for a single database file, highest precedence first:
 
@@ -57,6 +50,7 @@ FLEET_DATA_ROOT_ENV = "FLEET_DATA_ROOT"
 
 #: Windows default. Top-level and unabbreviated on purpose: someone finding
 #: this directory on a strange machine should not have to guess what it holds.
+# no-drive-path-exempt: the fleet-wide runtime-data root is one fixed, documented location
 WINDOWS_DEFAULT_ROOT = Path("C:/sqlite")
 
 
