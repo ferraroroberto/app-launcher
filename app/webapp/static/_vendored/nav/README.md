@@ -98,12 +98,23 @@ That is 21 + 61 + 21 + 12 = 115px with no safe area, plus the home-indicator ins
 
 Above the end, rows scroll under the floating pill by design, so the pill must win every tap in each tab's rectangle. Tabs are rectangles, but the bar's corners are rounded (`--radius-nav`), and a rounded corner takes no taps outside its curve. A transparent `.tabs::before` layer fills the bar's square padding box under the tabs, so a tap in an outer tab's corner sliver lands on the nav, not on the row beneath. It is never painted and exists only on the phone pill: the desktop control and the wide rail have no such layer (#348, design rubric TOUCH-02). The layer is the nav's own `::before`, so don't put an app rule on `.tabs::before`.
 
+## Status-bar scrim and pill fade (installed app)
+
+An installed app runs under the translucent status bar (How to vendor, step 4), so content scrolled to the top would show through the clock and battery, and rows would run sharply under the floating pill. In `@media (display-mode: standalone)` on the phone pill, `nav-tabs.css` adds one inert, full-screen `body::before` layer above the `.app` scroller and below the pill (`z-index: 110`, `pointer-events: none`), painted in the page background `--bg`:
+
+- **Top:** a solid band exactly `env(safe-area-inset-top)` tall, then a tail of up to `--gap` fading to transparent. The tail is capped at the inset itself, so without a notch (inset 0) the layer paints nothing at the top.
+- **Bottom:** transparent from 32px above the pill's top edge, the full page background from the pill's midline to the screen edge, so content dims as it reaches the pill. The bottom reserve still scrolls the last row fully clear of the fade, and every tap passes through the layer.
+- **Reduce Transparency** (`prefers-reduced-transparency: reduce`) keeps the solid status-bar band and drops both gradients.
+
+It is CSS only, with no transform on the nav. Desktop, the wide rail and the phone browser tab carry no such layer. The layer is the nav's own `body::before`, so don't put an app rule on `body::before`. Desktop engines can't render the iOS standalone web view: `tests/e2e/test_vendored_nav.py` checks the layer's geometry and colours with the standalone query forced on and a CDP safe-area inset, and the real look is confirmed on an iPhone.
+
 ## Required design tokens
 
 `nav-tabs.css` references these CSS custom properties — define them in your app's `:root` / `[data-theme="dark"]` blocks, **wired to `~/.claude/design.md` (+ `design.dark.md`)**. Don't copy the spec; point your tokens at it. Reference values (light) from the canonical implementation. The mobile geometry below is the phone-validated standard promoted from `home-automation` issue #118: measured from 1290px-wide iPhone screenshots of the GitHub/VLC apps (~3x CSS pixels), then validated live on Roberto's iPhone.
 
 | Token | Light value | Used for |
 | --- | --- | --- |
+| `--bg` | `#ffffff` (dark `#0d1117`) | status-bar scrim and pill fade (installed app only) |
 | `--card` | `#ffffff` | tab bar surface (desktop) |
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active-tab fill, desktop and mobile (fleet-config#963) |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | active-tab border (mobile) |
