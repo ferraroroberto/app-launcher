@@ -24,6 +24,8 @@
  *   const usage = initUsageLog();
  *   initNavTabs({ storageKey: 'app.tab', onChange: usage.trackView });
  *   usage.trackView('settings-sheet');             // a sheet/dialog opening
+ *   usage.track('upload.done');                    // a feature that succeeded,
+ *                                                  // where no click carries it
  *
  * An app whose API sits behind a token passes it through `opts.headers`
  * (an object, or a function called per send), never by wrapping `fetch`.
@@ -90,9 +92,11 @@ function noop() {}
  *   `keepalive` fetch instead. Omitted, sends are unchanged.
  * @param {Document|HTMLElement} [opts.root=document]  where the delegated
  *   `data-track` tap listener is attached.
- * @returns {{ trackView: (id: string) => void, flush: () => void,
- *   currentView: () => string|null }}  `trackView` is safe to pass straight
- *   to initNavTabs's `onChange`; `flush` sends the queue now.
+ * @returns {{ trackView: (id: string) => void, track: (id: string) => void,
+ *   flush: () => void, currentView: () => string|null }}  `trackView` is safe
+ *   to pass straight to initNavTabs's `onChange`; `track` records a `tap` for
+ *   a developer-chosen constant id without a click (the same event a click on
+ *   `data-track="<id>"` produces); `flush` sends the queue now.
  */
 export function initUsageLog(opts = {}) {
   const {
@@ -105,7 +109,7 @@ export function initUsageLog(opts = {}) {
 
   if (typeof endpoint !== 'string' || endpoint[0] !== '/' || endpoint[1] === '/') {
     console.warn('usage-log: endpoint must be a same-origin path like "/api/usage/events"; logging disabled');
-    return { trackView: noop, flush: noop, currentView: function () { return null; } };
+    return { trackView: noop, track: noop, flush: noop, currentView: function () { return null; } };
   }
 
   const envelope = {
@@ -157,14 +161,17 @@ export function initUsageLog(opts = {}) {
     push({ kind: 'view', id: id });
   }
 
-  function onTap(e) {
-    const target = e.target && e.target.closest ? e.target.closest('[data-track]') : null;
-    if (!target) return;
-    const id = target.getAttribute('data-track');
-    if (!ID_PATTERN.test(id || '')) return;
+  function track(id) {
+    if (typeof id !== 'string' || !ID_PATTERN.test(id)) return;
     const event = { kind: 'tap', id: id };
     if (view) event.view = view;
     push(event);
+  }
+
+  function onTap(e) {
+    const target = e.target && e.target.closest ? e.target.closest('[data-track]') : null;
+    if (!target) return;
+    track(target.getAttribute('data-track'));
   }
 
   try {
@@ -184,6 +191,7 @@ export function initUsageLog(opts = {}) {
 
   return {
     trackView: trackView,
+    track: track,
     flush: function () { flush(false); },
     currentView: function () { return view; },
   };
