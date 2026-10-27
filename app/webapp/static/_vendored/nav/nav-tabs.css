@@ -402,9 +402,12 @@
        above the .app scroller (z-index under the bar's 120) paints both in
        the page background, so content fades out before the status bar and
        dims into the pill, as in native apps.
-       - Top: a solid band of exactly the safe area, then a tail of up to
-         --gap. The tail is min()'d against the inset, so where the inset is
-         0 (no notch) the layer paints nothing.
+       - Top: solid for the upper 55% of the safe area (the clock and
+         battery sit there), then an eased fade that reaches transparent at
+         the inset itself. The .app top padding is that same inset, so the
+         first card at scroll-top starts where the fade ends and is never
+         dimmed, with no extra top padding reserved. Where the inset is 0
+         (no notch) the layer paints nothing.
        - Bottom: transparent 32px above the pill's top edge, the page
          background from the pill's midline down, so a row is gone before it
          reaches the screen edge. The .app bottom reserve still scrolls the
@@ -424,8 +427,13 @@
       z-index: 110;
       pointer-events: none;
       background:
-        linear-gradient(var(--bg) env(safe-area-inset-top, 0px), transparent)
-          top / 100% calc(env(safe-area-inset-top, 0px) + min(var(--gap), env(safe-area-inset-top, 0px))) no-repeat,
+        linear-gradient(
+            var(--bg) calc(env(safe-area-inset-top, 0px) * 0.55),
+            color-mix(in srgb, var(--bg) 78%, transparent) calc(env(safe-area-inset-top, 0px) * 0.7),
+            color-mix(in srgb, var(--bg) 35%, transparent) calc(env(safe-area-inset-top, 0px) * 0.86),
+            transparent env(safe-area-inset-top, 0px)
+          )
+          top / 100% env(safe-area-inset-top, 0px) no-repeat,
         linear-gradient(transparent, var(--bg) calc(32px + var(--bottom-tabs-height, 61px) / 2))
           bottom / 100% calc(32px + var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px)) no-repeat;
     }
