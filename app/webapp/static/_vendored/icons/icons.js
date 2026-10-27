@@ -5,7 +5,7 @@
  * <symbol> sprite you paste into your page) — this file owns only the tiny
  * convenience of building the <use> markup from JS.
  *
- * Normalized from home-automation's app/webapp/static/icons.js (issue #77 — the
+ * Normalized from home-automation's app/webapp/static/icons.js (the
  * fleet's first Lucide adopter).
  *
  * One icon source for the whole PWA: the inline <svg> sprite from

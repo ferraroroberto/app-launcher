@@ -33,20 +33,20 @@ extra_roots = ["webapp"]
 extra_junctions = ["webapp/certificates"]
 
 [vendored]
-icons = { src = "app/webapp/static/_vendored/icons", sha = "7d9b824bfc2dd4f3ec8a9d7424208bb36d42c556", dest = "app/webapp/static/_vendored/icons" }
-switch = { src = "app/webapp/static/_vendored/switch", sha = "7e1433c70cac1bdcdbd160e874d3f486ba9e2a08", dest = "app/webapp/static/_vendored/switch" }
-button = { src = "app/webapp/static/_vendored/button", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/button" }
-card = { src = "app/webapp/static/_vendored/card", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/card" }
-disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "4aae91930bfb85879e0718673c01dc800227583a", dest = "app/webapp/static/_vendored/disclosure" }
-home-head = { src = "app/webapp/static/_vendored/home-head", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/home-head" }
+icons = { src = "app/webapp/static/_vendored/icons", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icons" }
+switch = { src = "app/webapp/static/_vendored/switch", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/switch" }
+button = { src = "app/webapp/static/_vendored/button", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/button" }
+card = { src = "app/webapp/static/_vendored/card", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/card" }
+disclosure = { src = "app/webapp/static/_vendored/disclosure", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/disclosure" }
+home-head = { src = "app/webapp/static/_vendored/home-head", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/home-head" }
 nav = { src = "app/webapp/static/_vendored/nav", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/nav" }
-select-native = { src = "app/webapp/static/_vendored/select-native", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "app/webapp/static/_vendored/select-native" }
-empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "69351311c9c4d6500c79f45ddd3c4441b1e90fa4", dest = "app/webapp/static/_vendored/empty-state" }
-modal = { src = "app/webapp/static/_vendored/modal", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/modal" }
-text-size = { src = "app/webapp/static/_vendored/text-size", sha = "4c699636afecd5cae5e966bc2bcb17fa49744390", dest = "app/webapp/static/_vendored/text-size" }
-segmented = { src = "app/webapp/static/_vendored/segmented", sha = "f52eb75625cbfd8dcef8a71731390a47b795508d", dest = "app/webapp/static/_vendored/segmented" }
-base = { src = "app/webapp/static/_vendored/base", sha = "8f4941925503b5a0c81c20fb6074b23b98cec8c7", dest = "app/webapp/static/_vendored/base" }
-action-row = { src = "app/webapp/static/_vendored/action-row", sha = "59ae763c4dea588aef07a66c236ee3e57c8459ac", dest = "app/webapp/static/_vendored/action-row" }
+select-native = { src = "app/webapp/static/_vendored/select-native", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/select-native" }
+empty-state = { src = "app/webapp/static/_vendored/empty-state", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/empty-state" }
+modal = { src = "app/webapp/static/_vendored/modal", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/modal" }
+text-size = { src = "app/webapp/static/_vendored/text-size", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/text-size" }
+segmented = { src = "app/webapp/static/_vendored/segmented", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/segmented" }
+base = { src = "app/webapp/static/_vendored/base", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/base" }
+action-row = { src = "app/webapp/static/_vendored/action-row", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/action-row" }
 row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a858193e5b83ade533bf94468eb81", dest = "app/webapp/static/_vendored/row-menu" }
 # Every vendored web component above is byte-identical to the scaffold and declared;
 # tests/unit/repo/test_vendored_manifest.py pins that. icons joined on 2026-10-15 (the owner's
@@ -58,9 +58,9 @@ row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a85
 # scaffold's copy, and the app-side extras live in src/git_utils.py.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_browser_sweep.py" }
 geometry = { src = "tests/e2e/_geometry.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_geometry.py" }
-runtime_data = { src = "src/runtime_data.py", sha = "346765f7c14af0ec61e960333c055974e4e9e1db", dest = "src/runtime_data.py" }
-classify_e2e = { src = "scripts/classify_e2e.py", sha = "bede95f00aee0b17d5007246a29fa881a71f24f4", dest = "scripts/classify_e2e.py" }
-icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "f52eb75625cbfd8dcef8a71731390a47b795508d", dest = "app/webapp/static/_vendored/icon-button" }
+runtime_data = { src = "src/runtime_data.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "src/runtime_data.py" }
+classify_e2e = { src = "scripts/classify_e2e.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "scripts/classify_e2e.py" }
+icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icon-button" }
 notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "src/notify" }
 usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "98cdb1b7727d12a5c233580478e6fae40d98e6f3", dest = "app/webapp/static/_vendored/usage-log" }
 usage_log = { src = "src/usage_log.py", sha = "98cdb1b7727d12a5c233580478e6fae40d98e6f3", dest = "src/usage_log.py" }
@@ -75,7 +75,7 @@ instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "60fdd0350
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "23dbefa46635c952d3c871bda4e80b740e7f2859", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "0eb0da42298e391fc614b3fe550bd6cf2d07c693", dest = "scripts/dead_code_ratchet.py" }
 conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "0eb0da42298e391fc614b3fe550bd6cf2d07c693", dest = "scripts/conventions_ratchet.py" }
-single_instance = { src = "app/tray/single_instance.py", sha = "dadbc3c127e8b7214151defb43d563e0ef82d9f7", dest = "app/tray/single_instance.py" }
+single_instance = { src = "app/tray/single_instance.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/tray/single_instance.py" }
 shot_capture = { src = "tests/e2e/_shot.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "scripts/shot_baseline.py" }
 

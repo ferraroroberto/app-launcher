@@ -62,9 +62,8 @@
 
 /* Icon-only trailing actions: the theme toggle and the Settings gear, pinned
  * right (the first one's margin-left:auto holds the pair there even when no
- * .status is present). Each is an `.icon-button` (icon-button/, design.md,
- * fleet-config#1259) — the markup carries both classes, and icon-button.css
- * owns the unpainted box, the glyph colour states and the invisible 44px
+ * .status is present). Each is an `.icon-button` (icon-button/, design.md) — the
+ * markup carries both classes, and icon-button.css owns the unpainted box, the glyph colour states and the invisible 44px
  * target. This file keeps only the home-head specifics: the 34px box, the
  * placement and the title-size glyph. Neither carries a button tier:
  * `.button-surface` is the labelled utility button, never a glyph.
