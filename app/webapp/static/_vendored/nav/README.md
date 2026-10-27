@@ -102,9 +102,9 @@ Above the end, rows scroll under the floating pill by design, so the pill must w
 
 An installed app runs under the translucent status bar (How to vendor, step 4), so content scrolled to the top would show through the clock and battery, and rows would run sharply under the floating pill. In `@media (display-mode: standalone)` on the phone pill, `nav-tabs.css` adds one inert, full-screen `body::before` layer above the `.app` scroller and below the pill (`z-index: 110`, `pointer-events: none`), painted in the page background `--bg`:
 
-- **Top:** a solid band exactly `env(safe-area-inset-top)` tall, then a tail of up to `--gap` fading to transparent. The tail is capped at the inset itself, so without a notch (inset 0) the layer paints nothing at the top.
+- **Top:** solid for the upper 55% of `env(safe-area-inset-top)` (where the clock and battery sit), then an eased fade that reaches transparent at the inset. The phone `.app` top padding is that same inset, so the first card at scroll-top starts where the fade ends and is never dimmed, and no extra top padding is reserved. Without a notch (inset 0) the layer paints nothing at the top.
 - **Bottom:** transparent from 32px above the pill's top edge, the full page background from the pill's midline to the screen edge, so content dims as it reaches the pill. The bottom reserve still scrolls the last row fully clear of the fade, and every tap passes through the layer.
-- **Reduce Transparency** (`prefers-reduced-transparency: reduce`) keeps the solid status-bar band and drops both gradients.
+- **Reduce Transparency** (`prefers-reduced-transparency: reduce`) keeps a solid status-bar band exactly the inset tall and drops both gradients.
 
 It is CSS only, with no transform on the nav. Desktop, the wide rail and the phone browser tab carry no such layer. The layer is the nav's own `body::before`, so don't put an app rule on `body::before`. Desktop engines can't render the iOS standalone web view: `tests/e2e/test_vendored_nav.py` checks the layer's geometry and colours with the standalone query forced on and a CDP safe-area inset, and the real look is confirmed on an iPhone.
 
