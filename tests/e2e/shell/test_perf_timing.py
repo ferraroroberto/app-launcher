@@ -12,7 +12,10 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
 from playwright.sync_api import Page
+
+pytestmark = pytest.mark.smoke
 
 _HIDE = """() => {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
