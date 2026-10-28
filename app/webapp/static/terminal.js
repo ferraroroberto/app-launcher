@@ -329,7 +329,9 @@ export function openTerminal(session) {
 }
 
 // The terminal token, once the xterm stack is loaded too; null (after a
-// toast naming which one failed) when either cannot be had.
+// toast naming which one failed) when either cannot be had. The status
+// reads "Connecting…" while xterm downloads, so the open overlay is never
+// a blank pane on a first open.
 async function terminalPrereqs() {
   let tt = '';
   try {
@@ -338,9 +340,11 @@ async function terminalPrereqs() {
     apiFailToast('Passkey unlock failed', exc);
     return null;
   }
+  setTerminalStatus('Connecting…');
   try {
     await loadXterm();
   } catch (exc) {
+    setTerminalStatus('Terminal failed to load');
     apiFailToast('Terminal failed to load', exc);
     return null;
   }
