@@ -67,6 +67,7 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from src import instance_role, system_load
+from src.compression import StreamSafeGZipMiddleware
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
 from src.clients import session as session_client
@@ -82,7 +83,6 @@ from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.auth.webauthn_gate import WebAuthnGate
 
 from app.webapp import chief_doorbell, relay_idle_close
-from app.webapp.compression import MINIMUM_SIZE, TextGZipMiddleware
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
@@ -464,15 +464,16 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
-    # Added first → innermost, under the auth gate (see compression.py).
-    app.add_middleware(TextGZipMiddleware, minimum_size=MINIMUM_SIZE)
     app.add_middleware(
         BearerTokenMiddleware,
         get_config=lambda: app.state.webapp_config,
     )
-    # Added last → outermost, so the timing covers the whole stack including
-    # the auth middleware.
+    # Outside the auth middleware, so the timing covers it.
     app.add_middleware(SlowRequestLogMiddleware)
+    # Added last → outermost, so an auth failure or a bodyless 304 passes
+    # through it unchanged. No bypass path: the TTS proxy is `audio/L16` and
+    # the SSE stream is `text/event-stream`, both skipped by content type.
+    app.add_middleware(StreamSafeGZipMiddleware, bypass_paths=())
 
     app.state.app_config = app_config
     app.state.webapp_config = webapp_cfg
