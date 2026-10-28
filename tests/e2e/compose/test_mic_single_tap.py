@@ -49,6 +49,13 @@ def _open_composer(page: Page, base_url: str, sid: str, hold_gum: bool = False) 
     )
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    # Wait for the pane to attach: until it does, a later attach step resets
+    # the compose bar and undoes the unhide below.
+    page.wait_for_function(
+        "() => document.getElementById('terminalStatus') "
+        "&& document.getElementById('terminalStatus').hidden === true",
+        timeout=OVERLAY_OPEN_MS,
+    )
     page.evaluate("document.getElementById('terminalComposeBar').hidden = false")
     page.evaluate(
         "document.querySelector('#terminalComposeBar .composer-mic').disabled = false"

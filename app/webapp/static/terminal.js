@@ -29,6 +29,7 @@ import { els, state, SESSIONS_POLL_MS } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal/terminal-touch.js';
+import { loadXterm } from './terminal/xterm-loader.js';
 import {
   announceMirrorWindow,
   dropEarlyMirrorMarker,
@@ -327,6 +328,29 @@ export function openTerminal(session) {
   openSessionOverlay(session, 'terminal');
 }
 
+// The terminal token, once the xterm stack is loaded too; null (after a
+// toast naming which one failed) when either cannot be had. The status
+// reads "Connecting…" while xterm downloads, so the open overlay is never
+// a blank pane on a first open.
+async function terminalPrereqs() {
+  let tt = '';
+  try {
+    tt = await ensureTerminalToken();
+  } catch (exc) {
+    apiFailToast('Passkey unlock failed', exc);
+    return null;
+  }
+  setTerminalStatus('Connecting…');
+  try {
+    await loadXterm();
+  } catch (exc) {
+    setTerminalStatus('Terminal failed to load');
+    apiFailToast('Terminal failed to load', exc);
+    return null;
+  }
+  return tt;
+}
+
 // Connect (or warm-resume) the terminal pane for `session` inside the
 // already-shown overlay shell.
 export async function attachTerminalPane(session) {
@@ -342,13 +366,8 @@ export async function attachTerminalPane(session) {
     return;
   }
 
-  let tt = '';
-  try {
-    tt = await ensureTerminalToken();
-  } catch (exc) {
-    apiFailToast('Passkey unlock failed', exc);
-    return;
-  }
+  const tt = await terminalPrereqs();
+  if (tt === null) return;
   stashActiveTerminal();
   pruneTermCache();
   showSessionShell(session);

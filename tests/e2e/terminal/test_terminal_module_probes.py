@@ -512,6 +512,7 @@ def _probe_reconnect_closes_the_previous_socket(page: Page) -> None:
 _NATIVE_SCROLL_PROBE = r"""
 async () => {
   const { enableNativeTouchScroll } = await import('/static/terminal/terminal-touch.js');
+  await (await import('/static/terminal/xterm-loader.js')).loadXterm();
 
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:240px;';
@@ -599,9 +600,6 @@ def _probe_native_touch_scroll_routing(page: Page) -> None:
     * A stationary tap re-focuses the terminal; a travelled touch does not.
     * `dispose()` restores `.xterm-screen` and stops swallowing.
     """
-    page.wait_for_function(
-        "() => typeof window.Terminal === 'function'", timeout=5_000
-    )
     r = page.evaluate(_NATIVE_SCROLL_PROBE)
 
     assert r["screenPE_wired"] == "none", (
