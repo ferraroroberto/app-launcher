@@ -6,9 +6,10 @@
  */
 
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, SYSTEM_LOAD_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { AuthRequiredError, apiFailToast, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
+import { AuthRequiredError, apiFailToast, authHeaders, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
 import { setTab, wireTabs } from './tabs.js';
 import { wireUsageLog } from './usage.js';
+import { initPerfTiming } from './perf-timing.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
 import { fetchConfig, patchConfig, wireClaudeOptions } from './settings/claude-options.js';
 import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
@@ -299,6 +300,7 @@ async function boot() {
   // safe() never rejects, so neither does this: boot() resolves once every
   // boot fetch has settled.
   await Promise.all([lists, skills, status, webauthn, git, usage, listeners, running, load].concat(others));
+  perfTiming.bootDone();
 }
 
 // Cache the URL's tokens and read its session links: ?terminal=<sid> (the
@@ -398,6 +400,7 @@ function armPolls(first) {
 // --------------------------------------------------------- wire + go
 wireLoginForm(boot);
 wireUsageLog();
+const perfTiming = initPerfTiming({ headers: function () { return authHeaders(); } });
 wireTabs();
 wireClaudeOptions();
 wireChannelHide();

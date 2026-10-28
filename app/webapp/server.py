@@ -102,6 +102,7 @@ from app.webapp.routers import (
     jobs,
     life_os,
     misc,
+    perf_timings,
     screen_time,
     session_screen,
     session_transcript,
@@ -521,6 +522,8 @@ def create_app() -> FastAPI:
     # The Screen time sheet's Send to task-os: drives the same
     # src/usage/export.py the usage-export CLI and the nightly Job run.
     app.include_router(screen_time.router)
+    # Real-phone load and slow-API timings (static/perf-timing.js).
+    app.include_router(perf_timings.router)
 
     return app
 
