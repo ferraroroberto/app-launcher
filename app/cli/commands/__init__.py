@@ -2,6 +2,7 @@
 
 from .base import BaseCommand
 from .life_os_zombie_cmd import LifeOsZombieCommand
+from .perf_summary_cmd import PerfSummaryCommand
 from .run_job_cmd import RunJobCommand
 from .scan_cmd import ScanCommand
 from .session_host_cmd import SessionHostCommand
@@ -16,6 +17,7 @@ COMMANDS = {
     "session-host": SessionHostCommand,
     "run-job": RunJobCommand,
     "usage-export": UsageExportCommand,
+    "perf-summary": PerfSummaryCommand,
     "life-os-zombie-cleanup": LifeOsZombieCommand,
 }
 

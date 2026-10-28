@@ -129,8 +129,18 @@ def ensure_doorbell_log_handler(target: logging.Logger) -> None:
     ensure_file_log_handler(_DOORBELL_LOG_PATH, target)
 
 
+def _with_server_timing(message: dict, elapsed_s: float) -> dict:
+    """The response-start message plus ``Server-Timing: app;dur=<ms>``: the
+    server's own time to headers, so the phone's timing rows can subtract it
+    from their wait and see the network round trip
+    (``src/usage/perf_timings.py``)."""
+    header = (b"server-timing", f"app;dur={elapsed_s * 1000:.1f}".encode("ascii"))
+    return {**message, "headers": [*message.get("headers", []), header]}
+
+
 class SlowRequestLogMiddleware:
-    """ASGI middleware: log slow requests + high in-flight counts."""
+    """ASGI middleware: log slow requests + high in-flight counts, and stamp
+    ``Server-Timing`` on every ``/api/`` response."""
 
     def __init__(
         self,
@@ -168,9 +178,13 @@ class SlowRequestLogMiddleware:
 
         status_holder = {"status": 0}
 
+        timed = path.startswith("/api/")
+
         async def send_wrapper(message) -> None:
             if message["type"] == "http.response.start":
                 status_holder["status"] = message.get("status", 0)
+                if timed:
+                    message = _with_server_timing(message, time.monotonic() - start)
             await send(message)
 
         try:

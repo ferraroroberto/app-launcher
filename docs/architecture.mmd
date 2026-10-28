@@ -70,7 +70,10 @@ reads the PTY screen + types keystrokes (#1424)"]
       R_BOARD["board.py — /api/board (Board tab) + issue start\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
       R_USAGE["src/usage_log.py (vendored) — /api/usage\nlocal view/tap log, runtime-data SQLite (#1524)"]
-      R_SCREENTIME["screen_time.py — /api/screen-time/export\nSend to task-os via src/usage/export.py\n(also the usage-export CLI + nightly Job, #1678)"]    end
+      R_SCREENTIME["screen_time.py — /api/screen-time/export\nSend to task-os via src/usage/export.py\n(also the usage-export CLI + nightly Job, #1678)"]
+      R_PERF["perf_timings.py — /api/perf/timings + /api/perf/summary
+real-device load + slow-API timings via src/usage/perf_timings.py
+(also the perf-summary CLI)"]    end
   end
   WEBAPPCMD --> MGR
   WEBAPPPROC --> WSERVER
