@@ -225,6 +225,51 @@ function syncTrackId(d) {
   if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);
 }
 
+// A touch that ended on the mic with no click after it. iOS can withhold the
+// click (its hover heuristics), and a withheld click reaches neither toggle()
+// nor the usage log's click listener, so a "the mic needed two taps" report
+// would leave no row at all. This records that case under its own id.
+const _NO_CLICK_ID = 'mic.no-click';
+// iOS fires the click within a few hundred ms of touchend; a second is well past it.
+const _NO_CLICK_MS = 1000;
+let _noClickProbe = null;
+
+// The usage log has no direct record call, only its click listener, so a
+// hidden probe carrying the id is clicked (as feature-track.js does).
+function trackNoClick() {
+  try {
+    if (!_noClickProbe) {
+      _noClickProbe = document.createElement('span');
+      _noClickProbe.hidden = true;
+      document.body.appendChild(_noClickProbe);
+    }
+    _noClickProbe.setAttribute('data-track', _NO_CLICK_ID);
+    _noClickProbe.click();
+    _noClickProbe.removeAttribute('data-track');
+  } catch (_) { /* instrumentation never breaks the app */ }
+}
+
+function watchWithheldClick(button) {
+  let timer = null;
+  button.addEventListener('pointerup', function (ev) {
+    if (ev.pointerType !== 'touch' || button.disabled) return;
+    // A touch pointer stays captured by the button, so a finger that slid off
+    // still ends here; no click is due then.
+    const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+    if (!hit || !button.contains(hit)) return;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      timer = null;
+      console.info('[dictation] tap ignored: the touch ended on the mic but the browser sent no click');
+      trackNoClick();
+    }, _NO_CLICK_MS);
+  });
+  button.addEventListener('click', function () {
+    clearTimeout(timer);
+    timer = null;
+  }, true);
+}
+
 function setArmingUI(d) {
   const button = d.button;
   d.arming = true;
@@ -446,10 +491,12 @@ function handleRecorderStop(d, stream, mime) {
 async function startRecording(d) {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia ||
       !window.MediaRecorder) {
+    console.info('[dictation] tap ignored: this browser cannot record');
     toast('Recording not supported on this browser', 'error');
     return;
   }
   if (_activeInstance && _activeInstance !== d.api) {
+    console.info('[dictation] tap ignored: another dictation holds the mic');
     toast('Another dictation is already recording', 'error');
     return;
   }
@@ -732,6 +779,7 @@ function toggleDictation(d) {
 export function createDictation(opts) {
   const d = newDictationState(opts);
   syncTrackId(d);
+  if (d.button) watchWithheldClick(d.button);
   d.api = {
     toggle: function () { toggleDictation(d); },
     stop: function () { stopRecording(d); },

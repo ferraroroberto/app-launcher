@@ -148,11 +148,18 @@ class TestMarkup:
 
     def test_the_mic_ids_are_a_closed_map_of_literals(self):
         """The one script allowed to set ``data-track`` (#1581) sets it only
-        from a literal id map: valid constants, no id built at runtime."""
+        from a literal id map, plus one literal id for a withheld click (#1922):
+        valid constants, no id built at runtime."""
         text = (_STATIC / "voice.js").read_text(encoding="utf-8")
         code = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
-        sets = [ln for ln in code.splitlines() if "data-track" in ln]
-        assert sets == ["  if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);"], sets
+        sets = [ln.strip() for ln in code.splitlines() if "data-track" in ln]
+        assert sets == [
+            "if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);",
+            "_noClickProbe.setAttribute('data-track', _NO_CLICK_ID);",
+            "_noClickProbe.removeAttribute('data-track');",
+        ], sets
+        no_click = re.search(r"^const _NO_CLICK_ID = '([^']*)';$", code, flags=re.M)
+        assert no_click and ID_PATTERN.fullmatch(no_click.group(1)), "the withheld-click id is not a literal"
         block = re.search(r"const _TAP_IDS = \{(.*?)\};", code, flags=re.S)
         assert block, "voice.js lost its _TAP_IDS map"
         ids = re.findall(r"^\s*\w+: '([^']*)',?$", block.group(1), flags=re.M)
