@@ -29,6 +29,7 @@
 /scripts/static_ratchet.py
 /scripts/structure_ratchet.py
 /src/build_info.py
+/src/compression.py
 /src/notify
 /src/runtime_data.py
 /src/usage_log.py
