@@ -1,4 +1,4 @@
-"""Event-loop shim for uvicorn: Windows selector loop (issue #388) and the GIL
+"""Event-loop shim for the webapp server: Windows selector loop (issue #388) and the GIL
 switch interval (issue #1492).
 
 On Windows, asyncio's default proactor event loop closes its listening
@@ -19,23 +19,10 @@ no asyncio subprocesses in-process (``WebappManager`` shells out via plain
 ``subprocess.Popen``, never ``asyncio.create_subprocess_*``), so the
 selector loop's lack of subprocess support is a non-issue here.
 
-Wired into every place that spawns ``app.webapp.server:app`` under
-uvicorn -- ``--loop app.webapp.event_loop:selector_loop_factory`` for CLI
-invocations (``WebappManager._build_command``, ``webapp.bat``, the e2e
-autoboot spawn in ``tests/e2e/fixtures/autoboot.py``, and the named-tunnel boot in
-``scripts/run_named_tunnel.py``) or
-``loop="app.webapp.event_loop:selector_loop_factory"`` for the
-programmatic ``uvicorn.run()`` call in ``app/cli/commands/webapp_cmd.py``.
-Keep all of them pointed at the same dotted path below.
-
-For a *custom* ``--loop``/``loop=`` value (anything outside uvicorn's
-built-in ``none``/``auto``/``asyncio``/``uvloop`` names), uvicorn imports
-the target and uses it directly as the final zero-arg
-``Callable[[], asyncio.AbstractEventLoop]`` passed to ``asyncio.run`` --
-unlike the built-in names, it is *not* called with a ``use_subprocess=``
-kwarg first (that indirection only applies to the built-in factories in
-``uvicorn.config.LOOP_FACTORIES``). So ``selector_loop_factory`` below
-must itself return an *instantiated* loop, not a loop class.
+Every launch of ``app.webapp.server:app`` goes through ``app.webapp.serve``,
+which runs the server under ``asyncio.Runner(loop_factory=selector_loop_factory)``.
+The runner calls the factory with no arguments and needs an *instantiated*
+loop back, not a loop class.
 """
 
 from __future__ import annotations
@@ -83,5 +70,3 @@ def selector_loop_factory() -> asyncio.AbstractEventLoop:
         return asyncio.SelectorEventLoop()
     return asyncio.new_event_loop()
 
-
-LOOP_FACTORY = "app.webapp.event_loop:selector_loop_factory"

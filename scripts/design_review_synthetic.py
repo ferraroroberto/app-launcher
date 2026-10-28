@@ -62,7 +62,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
 from scripts import synthetic_gh  # noqa: E402
 from src.clients.github import GH_CMD_ENV  # noqa: E402
 from src.git_utils import run_git  # noqa: E402
@@ -343,8 +342,8 @@ def run() -> int:
         _json(p.state_file, state_rows(p, sid))
         logger.info("ℹ️ stub session %s on the session-host at :%s", sid, session_host_port)
 
-        webapp = _spawn([sys.executable, "-m", "uvicorn", "app.webapp.server:app", "--host", "127.0.0.1",
-                         "--port", str(webapp_port), "--log-level", "warning", "--loop", LOOP_FACTORY],
+        webapp = _spawn([sys.executable, "-m", "app.webapp.serve", "--host", "127.0.0.1",
+                         "--port", str(webapp_port), "--log-level", "warning"],
                         app, env, p.logs / "webapp.log")
         procs.append((webapp, "webapp"))
         base = f"http://127.0.0.1:{webapp_port}"

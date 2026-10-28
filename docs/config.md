@@ -20,7 +20,7 @@ Cross-surface settings (read by tray, CLI, server):
 
 The `webapp` section also accepts three optional tuning knobs, omitted
 above because the defaults are almost always right:
-`startup_timeout_seconds` (`15.0`) — how long the tray waits for uvicorn
+`startup_timeout_seconds` (`15.0`) — how long the tray waits for the webapp
 to answer on `:8445` before declaring the boot failed; raise it on a
 loaded box that boots slowly. `request_timeout_seconds` (`1.0`) — per
 health-probe HTTP timeout. `poll_interval_seconds` (`0.4`) — gap between
@@ -40,8 +40,8 @@ UI prefs + secrets, authored from the web UI:
 
 | Key | Default | What it controls |
 |---|---|---|
-| `host` | `"0.0.0.0"` | uvicorn bind host |
-| `port` | `8445` | uvicorn bind port |
+| `host` | `"0.0.0.0"` | webapp bind host |
+| `port` | `8445` | webapp bind port |
 | `projects_dir` | parent of this repo | Master folder whose direct child directories the Coding tab lists as projects |
 | `projects_ignore` | `[]` | gitignore-style folder-name patterns (case-insensitive, `*`/`?` globs) hidden from the Coding tab |
 | `coding_favorites` | `[]` | Project ids (scanner slugs) starred as favorites in the Coding tab. Managed by the per-tile ★ — favorites pin to the top of the list and the header **★ Favorites** toggle filters to just these. Not normally hand-edited. |

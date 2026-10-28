@@ -13,7 +13,8 @@ app-launcher/
 │   ├── session_host/          # loopback PTY host — owns every claude ConPTY
 │   └── webapp/
 │       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
-│       ├── manager.py         # adopt-or-spawn uvicorn lifecycle
+│       ├── manager.py         # adopt-or-spawn webapp lifecycle
+│       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js

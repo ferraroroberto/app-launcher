@@ -67,10 +67,11 @@ def is_pc_itself(client_host: str, headers: Mapping[str, str]) -> bool:
     and it skips *everything* — bearer token, Tailscale check, passkey. What
     keeps public-tunnel traffic out of it is that cloudflared runs on this
     host and dials the webapp over loopback, so the request only looks
-    non-loopback once uvicorn's proxy-header handling rewrites the client
-    address from the edge's ``X-Forwarded-For``. That rewrite is an uvicorn
-    default we neither pass explicitly nor pin, and it does not apply at all
-    when the webapp is bound dual-stack and cloudflared resolves ``::1``.
+    non-loopback once the proxy-header middleware ``app.webapp.serve`` wraps
+    the app in rewrites the client address from the edge's
+    ``X-Forwarded-For``. That rewrite trusts ``127.0.0.1`` only, so it does
+    not apply at all when the webapp is bound dual-stack and cloudflared
+    resolves ``::1``.
 
     The edge stamps its own headers on every request it forwards and a
     caller cannot remove them, so they are the one signal that survives

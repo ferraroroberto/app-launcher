@@ -31,12 +31,21 @@ def _navigate_collecting_errors(page: Page, base_url: str) -> list[str]:
     return errors
 
 
-def test_page_loads_without_console_errors(authed_page: Page, base_url: str) -> None:
+def test_page_loads_without_console_errors(
+    authed_page: Page, base_url: str, browser_name: str
+) -> None:
     errors = _navigate_collecting_errors(authed_page, base_url)
     # Give the boot script a beat to settle: fetchConfig, sessions poll,
     # listeners poll. Anything thrown during that fans out as pageerror.
     authed_page.wait_for_timeout(500)
     assert errors == [], f"JS errors during boot:\n  - " + "\n  - ".join(errors)
+    if base_url.startswith("https") and browser_name == "chromium":
+        # A cold boot is ~130 requests; over HTTP/1.1 they queue behind six
+        # connections, so the page must arrive over HTTP/2.
+        protocol = authed_page.evaluate(
+            "performance.getEntriesByType('navigation')[0].nextHopProtocol"
+        )
+        assert protocol == "h2", f"page served over {protocol!r}, not HTTP/2"
 
 
 def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
