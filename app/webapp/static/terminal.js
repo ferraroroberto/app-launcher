@@ -328,6 +328,25 @@ export function openTerminal(session) {
   openSessionOverlay(session, 'terminal');
 }
 
+// The terminal token, once the xterm stack is loaded too; null (after a
+// toast naming which one failed) when either cannot be had.
+async function terminalPrereqs() {
+  let tt = '';
+  try {
+    tt = await ensureTerminalToken();
+  } catch (exc) {
+    apiFailToast('Passkey unlock failed', exc);
+    return null;
+  }
+  try {
+    await loadXterm();
+  } catch (exc) {
+    apiFailToast('Terminal failed to load', exc);
+    return null;
+  }
+  return tt;
+}
+
 // Connect (or warm-resume) the terminal pane for `session` inside the
 // already-shown overlay shell.
 export async function attachTerminalPane(session) {
@@ -343,19 +362,8 @@ export async function attachTerminalPane(session) {
     return;
   }
 
-  let tt = '';
-  try {
-    tt = await ensureTerminalToken();
-  } catch (exc) {
-    apiFailToast('Passkey unlock failed', exc);
-    return;
-  }
-  try {
-    await loadXterm();
-  } catch (exc) {
-    apiFailToast('Terminal failed to load', exc);
-    return;
-  }
+  const tt = await terminalPrereqs();
+  if (tt === null) return;
   stashActiveTerminal();
   pruneTermCache();
   showSessionShell(session);
