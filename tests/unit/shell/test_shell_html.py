@@ -33,6 +33,12 @@ def test_shell_holds_no_view_markup() -> None:
         assert view_markup not in shell, f"{view_markup} belongs in views/"
 
 
+def test_the_served_page_loads_no_xterm_asset_at_boot() -> None:
+    # The terminal stack loads on first terminal open (terminal/xterm-loader.js);
+    # a <script> or <link> for it here would put it back on every cold launch.
+    assert "/static/vendor/" not in assemble_shell(_INDEX)
+
+
 def test_every_marker_resolves_and_none_survives_assembly() -> None:
     shell = _INDEX.read_text(encoding="utf-8")
     fragments = {p.name for p in (_STATIC / "views").glob("*.html")}

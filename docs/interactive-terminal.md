@@ -36,7 +36,7 @@ curl -k -X POST https://127.0.0.1:8445/api/claude-code/sessions/$APP_LAUNCHER_SE
 
 - A separate long-lived **session-host** process (loopback-only, port `8446`) owns every `claude` ConPTY. The tray starts and owns it like it owns `cloudflared`. Because it's its own process, a *Restart webapp* doesn't kill running sessions (a PC reboot still does).
 - The webapp proxies a WebSocket from the phone through to the session-host. The webapp is the single auth choke point.
-- `xterm.js` renders the terminal in the SPA — no build step, vendored under `app/webapp/static/vendor/`.
+- `xterm.js` renders the terminal in the SPA — no build step, vendored under `app/webapp/static/vendor/`. It and its addons and stylesheet load on the first terminal open (`terminal/xterm-loader.js`), not at boot, so a launch that never opens a terminal neither downloads nor parses them.
 
 **Security model — the terminal is not the same as the launcher**
 

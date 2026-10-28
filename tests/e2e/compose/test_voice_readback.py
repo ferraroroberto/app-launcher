@@ -246,13 +246,20 @@ def test_toast_sits_above_terminal_overlay(
     assert z["toast"] > z["overlay"], z
 
 
+_LOAD_XTERM = (
+    "async () => (await import('/static/terminal/xterm-loader.js')).loadXterm()"
+)
+
+
 def _load_readback(page: Page, base_url: str) -> None:
     """Land on the SPA until the ``window.__readback`` seam and xterm's global
     ``Terminal`` exist. The extraction tests below feed synthetic rows or write
     into their own Terminal, so they need the page's modules, not a live PTY
-    session or the terminal overlay (#954)."""
+    session or the terminal overlay (#954). xterm loads on first terminal
+    open, so the page's own loader is called for it here."""
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.wait_for_function("() => window.__readback && window.Terminal")
+    page.wait_for_function("() => window.__readback")
+    page.evaluate(_LOAD_XTERM)
 
 
 def _last_reply(page: Page, rows) -> str:

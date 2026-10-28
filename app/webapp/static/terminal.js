@@ -29,6 +29,7 @@ import { els, state, SESSIONS_POLL_MS } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal/terminal-touch.js';
+import { loadXterm } from './terminal/xterm-loader.js';
 import {
   announceMirrorWindow,
   dropEarlyMirrorMarker,
@@ -347,6 +348,12 @@ export async function attachTerminalPane(session) {
     tt = await ensureTerminalToken();
   } catch (exc) {
     apiFailToast('Passkey unlock failed', exc);
+    return;
+  }
+  try {
+    await loadXterm();
+  } catch (exc) {
+    apiFailToast('Terminal failed to load', exc);
     return;
   }
   stashActiveTerminal();
