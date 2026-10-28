@@ -238,12 +238,9 @@ async def _read_screen(
         return "detached", session, None
 
     def read() -> Optional[List[str]]:
-        text = plan_picker.read_capture_tail(audit.transcript_path(sid))
-        if text is None:
-            return None
         rows = int(session.get("rows") or 40)
         cols = int(session.get("cols") or 120)
-        return plan_picker.screen_lines(text, rows, cols)
+        return plan_picker.read_screen(audit.transcript_path(sid), rows, cols)
 
     lines = await run("read_capture_tail", read)
     if lines is None:

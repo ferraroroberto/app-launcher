@@ -40,14 +40,20 @@ recognise reads as "not showing", and then Chat sends nothing.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
+import threading
+import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pyte
 
 from src.ask_user_question import FREE_TEXT_MAX, Keystroke
+
+logger = logging.getLogger(__name__)
 
 # Enough capture to hold the picker and a long plan above it. The tail is
 # rendered at the PTY's own size, so only its last screenful counts; 96 KB
@@ -109,6 +115,63 @@ def screen_lines(text: str, rows: int, cols: int) -> List[str]:
     screen = pyte.Screen(max(20, int(cols)), max(5, int(rows)))
     pyte.Stream(screen).feed(text)
     return [line.rstrip() for line in screen.display]
+
+
+# Rendered screens by capture state. ``/context`` and ``/plan-picker`` poll
+# every few seconds per open session and each render is ~85 ms of GIL-bound
+# pyte work, so an idle capture is rendered once and served from memory until
+# the file's size or mtime moves. Sized for the live sessions of one box.
+_SCREEN_CACHE_MAX = 64
+_SLOW_RENDER_S = 0.2
+_screens: "OrderedDict[Tuple[str, int, int], Tuple[Tuple[int, int], List[str]]]" = OrderedDict()
+# One render at a time: renders are CPU-bound and hold the GIL, so running
+# them side by side only slows each. The file read stays outside the lock, so
+# a stalled read holds its own thread and never other sessions' renders.
+_render_lock = threading.Lock()
+
+
+def _cached_screen(key: Tuple[str, int, int], stamp: Tuple[int, int]) -> Optional[List[str]]:
+    hit = _screens.get(key)
+    if hit is None or hit[0] != stamp:
+        return None
+    _screens.move_to_end(key)
+    return list(hit[1])
+
+
+def read_screen(path: Path, rows: int, cols: int) -> Optional[List[str]]:
+    """The capture's tail rendered on a ``cols`` x ``rows`` screen, or ``None``
+    when it can't be read. Unchanged since the last call (same size and mtime)
+    it comes from memory; the caller gets its own copy of the lines."""
+    key = (str(path), rows, cols)
+    try:
+        st = os.stat(path)
+    except OSError:
+        text = read_capture_tail(path)
+        return None if text is None else screen_lines(text, rows, cols)
+    stamp = (st.st_size, st.st_mtime_ns)
+    cached = _cached_screen(key, stamp)
+    if cached is not None:
+        return cached
+    text = read_capture_tail(path)
+    if text is None:
+        return None
+    with _render_lock:
+        # Another poll may have rendered this state while this one read.
+        cached = _cached_screen(key, stamp)
+        if cached is not None:
+            return cached
+        started = time.perf_counter()
+        lines = screen_lines(text, rows, cols)
+        took = time.perf_counter() - started
+        _screens[key] = (stamp, lines)
+        while len(_screens) > _SCREEN_CACHE_MAX:
+            _screens.popitem(last=False)
+    if took >= _SLOW_RENDER_S:
+        logger.info(
+            "⏱️ screen render %s took %.2fs (%d bytes, %dx%d)",
+            Path(path).stem[:8], took, len(text), cols, rows,
+        )
+    return list(lines)
 
 
 def _is_rule(line: str) -> bool:
