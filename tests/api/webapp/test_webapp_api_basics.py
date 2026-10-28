@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from tests._css import STATIC
+
 
 class TestHealthz:
     def test_healthz_ok(self, webapp_client):
@@ -39,7 +41,7 @@ class TestIndex:
         client, _, _ = webapp_client
         resp = client.get("/")
         body = resp.text
-        assert "/static/styles/base.css?v=" in body
+        assert "/static/bundle.css?v=" in body
         assert "/static/main.js?v=" in body
         # No literal ?v=18 left over from the manual era. Match the complete
         # legacy stamp (the closing quote) — a substring "?v=18" also matches
@@ -53,13 +55,25 @@ class TestIndex:
         for stamp in stamps:
             assert re.fullmatch(r"[a-f0-9]{8}", stamp), stamp
 
-    def test_index_stamps_vendored_subdir_css(self, webapp_client):
-        # Regression net for issue #395: /static/_vendored/**/*.css hrefs
-        # must get ?v=<hash> too, not just root-level /static/<file> ones.
+    def test_index_links_one_stylesheet(self, webapp_client):
+        # The 31 sheets are one request: the served page links only the bundle.
         client, _, _ = webapp_client
-        resp = client.get("/")
-        body = resp.text
-        assert "/static/_vendored/nav/nav-tabs.css?v=" in body
+        body = client.get("/").text
+        links = re.findall(r'<link rel="stylesheet" href="([^"]+)"', body)
+        assert len(links) == 1
+        assert re.fullmatch(r"/static/bundle\.css\?v=[a-f0-9]{8}", links[0])
+
+    def test_bundle_is_the_sheets_in_link_order(self, webapp_client):
+        client, _, _ = webapp_client
+        resp = client.get("/static/bundle.css")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("text/css")
+        assert "immutable" in resp.headers.get("cache-control", "")
+        banners = re.findall(r"^/\* ([\w\-./]+\.css) \*/$", resp.text, re.MULTILINE)
+        source = (STATIC / "index.html").read_text(encoding="utf-8")
+        assert banners == re.findall(r'<link rel="stylesheet" href="/static/([^"?]+)"', source)
+        assert "_vendored/nav/nav-tabs.css" in banners
+        assert (STATIC / "styles/base.css").read_text(encoding="utf-8") in resp.text
 
 
 class TestStaticCaching:

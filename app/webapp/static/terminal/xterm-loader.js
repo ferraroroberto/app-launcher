@@ -41,16 +41,14 @@ function whenLoaded(el, what) {
   });
 }
 
-// xterm.css sits right after the vendored base.css, where the index used
-// to link it, so the app's own terminal rules still override it.
+// xterm.css goes first in the head, ahead of the app's bundled stylesheet, so
+// the app's own terminal rules still override it.
 function addStylesheet() {
   const link = document.createElement('link');
   link.rel = 'stylesheet';
   link.href = STYLESHEET;
   const loaded = whenLoaded(link, 'xterm.css');
-  const base = document.querySelector('link[href^="/static/_vendored/base/base.css"]');
-  if (base) base.after(link);
-  else document.head.prepend(link);
+  document.head.prepend(link);
   return loaded;
 }
 

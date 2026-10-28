@@ -48,6 +48,7 @@ app-launcher/
 │   ├── session_retention.py    # daily webapp/sessions retention sweep (session_retention_days)
 │   ├── diagnostics.py          # log ring buffer + port-owner introspection
 │   ├── static_versioning.py    # content-hash query strings for asset cache-busting
+│   ├── stylesheet_bundle.py    # the linked stylesheets concatenated into the one /static/bundle.css
 │   ├── subprocess_flags.py     # NO_WINDOW spawn-flag convention (single source)
 │   ├── env_path.py             # effective-PATH resolution for coding-agent detection
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`
@@ -140,7 +141,8 @@ app-launcher/
 - **A view's rules go in that view's file**: `settings.css`, `jobs.css`, `lifeos.css`, `board.css`, `code.css`, `apps.css`, `terminal.css`, and `chat.css` / `chat-cards.css` for the transcript pane. Rules several views share go in `shared.css` (toasts, dialogs, the Glance kit, row menus) or `lists.css` (collapsible cards, option rows, card lists).
 - **A rule that overrides another stays after it.** The `wide.css` desktop media blocks restyle the views above, so they sit below those views' files; a new file goes where its rules must win, not alphabetically.
 - **A file that would pass 1,000 lines splits at a section comment**, never inside a block, and its link goes right after the file it was cut from.
-- **Cache-busting is automatic**: `src/static_versioning.py` stamps every `href="/static/styles/*.css"` with the fleet hash, so a new file needs only its `<link>`.
+- **The browser fetches one stylesheet.** The source files stay separate, but at server start `src/stylesheet_bundle.py` concatenates every sheet `index.html` links, vendored ones included, in link order into `/static/bundle.css`, and the served page links only that: over HTTP/1.1 a phone queues behind six connections per origin, so 31 requests cost far more than one. A new file needs only its `<link>` in `index.html`; the bundle sheets must use no `@import`, `@charset` or relative `url()`, which `tests/unit/static_ui/test_stylesheet_bundle.py` pins. `xterm.css` loads lazily and goes first in the head, ahead of the bundle, so the app's terminal rules still override it.
+- **Cache-busting is automatic**: `src/static_versioning.py` stamps the bundle URL with the fleet hash, which also covers `index.html`'s link order, so a reorder busts the immutable cache.
 - **Tests read the sheets through `tests/_css.py`**, which concatenates them in `index.html`'s link order.
 
 ## Page shell
