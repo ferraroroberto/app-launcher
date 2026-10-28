@@ -33,7 +33,7 @@ def test_git_refresh_button_rechecks_without_a_popover(
         route.fulfill(status=200, content_type="application/json",
                       body=json.dumps({"projects": []}))
 
-    authed_page.route("**/api/claude-code/git-status", _fulfill)
+    authed_page.route("**/api/claude-code/git-status*", _fulfill)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     wait_until(authed_page, lambda: len(calls) >= 1, "the boot git-status fetch")
 
@@ -47,5 +47,6 @@ def test_git_refresh_button_rechecks_without_a_popover(
     before = len(calls)
     refresh.click()
     wait_until(authed_page, lambda: len(calls) > before, "the refresh's git-status fetch")
+    assert calls[-1].endswith("?fresh=true"), "the refresh button must ask for a scan that starts now"
     expect(authed_page.locator("#gitCheckedFooter")).to_have_text("Git checked just now")
     expect(refresh).to_be_enabled()

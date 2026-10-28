@@ -495,15 +495,18 @@ function checkedAgo(ms) {
 // that reads it (Coding rows, the Projects summary and footer; the Board's
 // Backlog stopped drawing git state). Called at boot and on the
 // GIT_STATUS_POLL_MS interval in main.js (quiet — poll failures log, never
-// toast), and by the Projects toolbar's refresh button below (loud).
+// toast), and by the Projects toolbar's refresh button below (loud). The server
+// answers from memory with the answer's age; only the button asks for a scan
+// that starts now (`fresh`).
 export async function refreshGitStatus(options) {
   const quiet = !!(options && options.quiet);
+  const fresh = !!(options && options.fresh);
   try {
-    const body = await jsonApi('/api/claude-code/git-status');
+    const body = await jsonApi('/api/claude-code/git-status' + (fresh ? '?fresh=true' : ''));
     const map = {};
     (body.projects || []).forEach(function (p) { map[p.id] = p; });
     state.gitStatus = map;
-    state.gitStatusAt = Date.now();
+    state.gitStatusAt = Date.now() - (Number(body.age_seconds) || 0) * 1000;
     renderApps();
   } catch (exc) {
     if (!quiet) throw exc;
@@ -518,7 +521,7 @@ async function checkGitNow() {
   const btn = els.gitRefreshBtn;
   if (btn) btn.disabled = true;
   try {
-    await refreshGitStatus();
+    await refreshGitStatus({ fresh: true });
   } catch (exc) {
     apiFailToast('Git status check failed', exc);
   } finally {

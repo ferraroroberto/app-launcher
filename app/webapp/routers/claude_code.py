@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, Tuple
@@ -30,6 +32,7 @@ from app.webapp.hot_poll import start_or_join
 from app.webapp.routers._helpers import maybe_json
 
 router = APIRouter()
+slow_logger = logging.getLogger("launcher.slowreq")
 
 
 def _project_or_404(request: Request, project_id: str) -> ProjectDir:
@@ -177,38 +180,95 @@ _GIT_STATUS_RUNNING: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str,
 _GIT_STATUS_NEXT: Dict[Tuple[str, Tuple[str, ...]], "asyncio.Future[Dict[str, Any]]"] = {}
 
 
-async def _scan_git_status(projects_dir: str, ignore: Tuple[str, ...]) -> Dict[str, Any]:
+# Served from memory while younger than this; the SPA's ~45 s poll and every
+# page-load boot read it without spawning git. 120 s is several polls, so a
+# phone that keeps polling never meets a blocking scan.
+GIT_STATUS_FRESH_S = 10.0
+GIT_STATUS_STALE_MAX_S = 120.0
+# A scan this slow leaves a breadcrumb in slow-requests.log (the live app's
+# INFO logs for app.webapp.* are dropped, that file persists).
+_SLOW_SCAN_S = 1.0
+
+_GitStatusCache = Dict[Tuple[str, Tuple[str, ...]], Tuple[float, Dict[str, Any]]]
+
+
+def _timed_git_status(project_dir: Path) -> Tuple[Any, float]:
+    started = time.perf_counter()
+    status = git_status(project_dir)
+    return status, time.perf_counter() - started
+
+
+async def _scan_git_status(
+    projects_dir: str, ignore: Tuple[str, ...], cache: _GitStatusCache
+) -> Dict[str, Any]:
+    started_at = time.monotonic()
     projects = scan_project_dirs(Path(projects_dir), list(ignore))
     loop = asyncio.get_running_loop()
-    statuses = await asyncio.gather(
-        *(loop.run_in_executor(_GIT_STATUS_POOL, git_status, p.project_dir) for p in projects)
+    timed = await asyncio.gather(
+        *(loop.run_in_executor(_GIT_STATUS_POOL, _timed_git_status, p.project_dir) for p in projects)
     )
-    return {
+    payload = {
         "projects": [
-            {"id": p.id, **gs.to_dict()} for p, gs in zip(projects, statuses)
+            {"id": p.id, **gs.to_dict()} for p, (gs, _) in zip(projects, timed)
         ]
     }
+    # Stamped with the scan's start: it reflects git at or after that moment.
+    cache[(projects_dir, ignore)] = (started_at, payload)
+    elapsed = time.monotonic() - started_at
+    if elapsed >= _SLOW_SCAN_S and projects:
+        slowest_s, slowest = max((secs, p.name) for p, (_, secs) in zip(projects, timed))
+        slow_logger.info(
+            "⏱️ git-status scan: %d repos in %.1fs (git time summed %.1fs, slowest %s %.2fs)",
+            len(projects), elapsed, sum(secs for _, secs in timed), slowest, slowest_s,
+        )
+    return payload
+
+
+def _git_status_cache(request: Request) -> _GitStatusCache:
+    """The app's last scan per key — on app.state so each app instance (each test's) has its own."""
+    state = request.app.state
+    cache = getattr(state, "git_status_cache", None)
+    if cache is None:
+        cache = state.git_status_cache = {}
+    return cache
+
+
+def _consume(future: "asyncio.Future[Any]") -> None:
+    """Mark a background scan's outcome as retrieved; a failed one keeps the older cache."""
+    if not future.cancelled():
+        future.exception()
 
 
 @router.get("/api/claude-code/git-status")
-async def claude_git_status(request: Request) -> Dict[str, Any]:
+async def claude_git_status(request: Request, fresh: bool = False) -> Dict[str, Any]:
     """Per-project git state for the Coding tiles + Board backlog flags.
 
     Runs ``git`` once per project (branch + clean/dirty + default
-    branch) — fanned out across worker threads so a fleet of repos
-    resolves in well under a second. Always-on since #496 (reversing
-    #115's tap-only contract): the SPA calls this once at boot and on a
-    slow (~45 s) poll while the Coding or Board tab is visible in a
-    foreground page, plus a fresh fetch when the header status button
-    opens the off-main popover (#139). A call that overlaps a running scan
-    waits for the next one, shared with every call from that window
-    (#1268); ``shield`` keeps one caller's disconnect from cancelling it
-    for the rest.
+    branch) — fanned out across worker threads. That is ~700 ms of process
+    spawns for a fleet of repos, so the last scan is kept in memory: younger
+    than :data:`GIT_STATUS_FRESH_S` it is served as is; up to
+    :data:`GIT_STATUS_STALE_MAX_S` it is served at once while one scan
+    refreshes it behind the response; older (or none yet) the call waits for
+    a scan. Every answer carries ``age_seconds``, so the SPA states how old
+    the git state it shows is. A commit or branch switch therefore shows by
+    the next poll after the refresh it triggered, about one ~45 s poll
+    interval; ``?fresh=true`` (the Projects toolbar's refresh) always waits
+    for a scan that starts after the call. A call that waits and overlaps a
+    running scan waits for the next one, shared with every call from that
+    window (#1268); ``shield`` keeps one caller's disconnect from cancelling
+    it for the rest.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     key = (str(cfg.projects_dir), tuple(cfg.projects_ignore))
-    future = start_or_join(
-        key, _GIT_STATUS_RUNNING, _GIT_STATUS_NEXT,
-        functools.partial(_scan_git_status, *key),
-    )
-    return await asyncio.shield(future)
+    cache = _git_status_cache(request)
+    scan = functools.partial(_scan_git_status, *key, cache)
+    cached = None if fresh else cache.get(key)
+    if cached is not None:
+        age = time.monotonic() - cached[0]
+        if age < GIT_STATUS_STALE_MAX_S:
+            running = _GIT_STATUS_RUNNING.get(key)
+            if age >= GIT_STATUS_FRESH_S and (running is None or running.done()):
+                start_or_join(key, _GIT_STATUS_RUNNING, _GIT_STATUS_NEXT, scan).add_done_callback(_consume)
+            return {**cached[1], "age_seconds": round(age, 1)}
+    future = start_or_join(key, _GIT_STATUS_RUNNING, _GIT_STATUS_NEXT, scan)
+    return {**await asyncio.shield(future), "age_seconds": 0.0}

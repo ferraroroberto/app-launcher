@@ -147,7 +147,7 @@ def test_route_concurrent_callers_share_one_scan(webapp_client, monkeypatch):
     """#1268: every page load's boot fetches git-status, and each call used to
     run its own fleet-wide scan, so concurrent callers queued behind N scans.
     Calls that arrive while a scan runs share ONE follow-up scan; a call after
-    both finished starts a fresh one (no stale cache)."""
+    both finished and asks ``?fresh=true`` starts a fresh one."""
     import asyncio
     import time
 
@@ -172,7 +172,7 @@ def test_route_concurrent_callers_share_one_scan(webapp_client, monkeypatch):
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             together = await asyncio.gather(*(client.get("/api/claude-code/git-status") for _ in range(4)))
-            after = await client.get("/api/claude-code/git-status")
+            after = await client.get("/api/claude-code/git-status", params={"fresh": "true"})
             return [r.json()["projects"] for r in together], after.json()["projects"]
 
     together, after = asyncio.run(run())
@@ -243,3 +243,107 @@ def test_route_a_caller_never_gets_a_scan_older_than_its_arrival(webapp_client, 
         release_first_scan.set()      # never strand a pool thread on a failed run
     assert before["dirty"] is False
     assert after["dirty"] is True, "a call after the change was served the scan that began before it"
+
+
+def _git_status_scan_counter(monkeypatch):
+    """Fake one repo and count how many times git is asked about it."""
+    from app.webapp.routers import claude_code
+    from src.scanner import ProjectDir
+
+    repos = [ProjectDir(id="alpha", name="alpha", project_dir="C:/fake/alpha")]
+    monkeypatch.setattr(claude_code, "scan_project_dirs", lambda *a, **k: repos)
+    scanned: list = []
+    state = {"branch": "main"}
+
+    def status(path):
+        scanned.append(path)
+        return GitStatus(is_git=True, branch=state["branch"], default_branch="main", dirty=False)
+
+    monkeypatch.setattr(claude_code, "git_status", status)
+    return scanned, state
+
+
+def test_route_second_call_is_served_from_memory_without_spawning_git(webapp_client, monkeypatch):
+    """#1926: a scan is ~700 ms of git spawns; the poll and every page-load
+    boot used to pay it. A call right after a scan answers from memory, marked
+    with its age, and runs no git."""
+    import httpx
+
+    from app.webapp.routers import claude_code  # noqa: F401  (patched by the helper)
+
+    _, app, _ = webapp_client
+    scanned, _ = _git_status_scan_counter(monkeypatch)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.get("/api/claude-code/git-status")
+            second = await client.get("/api/claude-code/git-status")
+            return first.json(), second.json()
+
+    import asyncio
+
+    first, second = asyncio.run(run())
+    assert len(scanned) == 1, f"{len(scanned)} git scans for two calls, wanted 1"
+    assert second["projects"] == first["projects"]
+    assert first["age_seconds"] == 0.0 and 0.0 <= second["age_seconds"] < 5.0
+
+
+def test_route_a_stale_cache_answers_at_once_and_refreshes_behind_it(webapp_client, monkeypatch):
+    """#1926: past the fresh window the call still answers from memory (the
+    phone never waits on git), and one background scan makes the next call right."""
+    import asyncio
+
+    import httpx
+
+    from app.webapp.routers import claude_code
+
+    _, app, _ = webapp_client
+    scanned, repo = _git_status_scan_counter(monkeypatch)
+    monkeypatch.setattr(claude_code, "GIT_STATUS_FRESH_S", 0.0)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.get("/api/claude-code/git-status")
+            repo["branch"] = "feat/x"        # a branch switch after the first scan
+            stale = await client.get("/api/claude-code/git-status")
+            while claude_code._GIT_STATUS_RUNNING:
+                await asyncio.sleep(0.01)
+            monkeypatch.setattr(claude_code, "GIT_STATUS_FRESH_S", 10.0)
+            refreshed = await client.get("/api/claude-code/git-status")
+            return stale.json(), refreshed.json()
+
+    stale, refreshed = asyncio.run(run())
+    assert stale["projects"][0]["branch"] == "main", "the stale answer waited for a scan"
+    assert refreshed["projects"][0]["branch"] == "feat/x", "the background scan never landed"
+    assert len(scanned) == 2
+
+
+def test_route_fresh_param_and_an_expired_cache_wait_for_a_new_scan(webapp_client, monkeypatch):
+    """#1926: ``?fresh=true`` (the toolbar refresh) and a cache past its stated
+    bound both read git again before answering."""
+    import asyncio
+
+    import httpx
+
+    from app.webapp.routers import claude_code
+
+    _, app, _ = webapp_client
+    scanned, repo = _git_status_scan_counter(monkeypatch)
+
+    async def run():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            await client.get("/api/claude-code/git-status")
+            repo["branch"] = "feat/x"
+            forced = await client.get("/api/claude-code/git-status", params={"fresh": "true"})
+            monkeypatch.setattr(claude_code, "GIT_STATUS_STALE_MAX_S", 0.0)
+            repo["branch"] = "feat/y"
+            expired = await client.get("/api/claude-code/git-status")
+            return forced.json(), expired.json()
+
+    forced, expired = asyncio.run(run())
+    assert forced["projects"][0]["branch"] == "feat/x"
+    assert expired["projects"][0]["branch"] == "feat/y"
+    assert len(scanned) == 3
