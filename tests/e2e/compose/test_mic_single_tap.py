@@ -1,4 +1,4 @@
-"""Regression pin for #1581: the composer mic starts dictation on ONE tap.
+"""Regression pins for #1581 and #1922: the composer mic starts dictation on ONE tap.
 
 The report (iPhone): the mic "sometimes needs two taps" -- the first only
 seems to focus/highlight it, the second records. Keys, attach and Send start on
@@ -16,6 +16,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e import _fake_clock as fake_clock
 from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, flush_requests, wait_until
 
@@ -148,3 +149,37 @@ def test_tap_cancelling_a_finalizing_take_leaves_a_breadcrumb(
     assert _mic_taps(authed_page, usage) == [
         "mic.start", "mic.stop", "mic.cancel-finalizing",
     ]
+
+
+_WITHHELD_CLICK = """() => {
+  // What iOS does when it withholds the click: the touch ends on the mic and
+  // no click follows. Desktop WebKit never withholds one, so the touch is
+  // synthesized here instead of tapped.
+  const mic = document.querySelector('#terminalComposeBar .composer-mic');
+  const r = mic.getBoundingClientRect();
+  mic.dispatchEvent(new PointerEvent('pointerup', {
+    pointerType: 'touch', bubbles: true,
+    clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
+  }));
+}"""
+
+
+def test_a_withheld_click_leaves_a_breadcrumb(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A touch on the mic that iOS sends no click for is logged, so a two-tap
+    report shows whether the first tap was withheld or missed the button."""
+    if not authed_page.evaluate("'ontouchstart' in window"):
+        pytest.skip("needs a touch-emulating projection (WebKit/iPhone)")
+    fake_clock.install(authed_page)
+    lines = _info_lines(authed_page)
+    usage = _usage_capture(authed_page)
+    _open_composer(authed_page, base_url, launched_pty_session)
+    mic = authed_page.locator("#terminalComposeBar .composer-mic")
+    mic.tap()  # a tap that clicks records no withheld click
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    fake_clock.advance(authed_page, 2000)
+    authed_page.evaluate(_WITHHELD_CLICK)
+    fake_clock.advance(authed_page, 2000)
+    assert any("no click" in t for t in lines), lines
+    assert _mic_taps(authed_page, usage) == ["mic.start", "mic.no-click"]
