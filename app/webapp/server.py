@@ -82,6 +82,7 @@ from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.auth.webauthn_gate import WebAuthnGate
 
 from app.webapp import chief_doorbell, relay_idle_close
+from app.webapp.compression import MINIMUM_SIZE, TextGZipMiddleware
 from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
@@ -463,6 +464,8 @@ def create_app() -> FastAPI:
         lifespan=_lifespan,
     )
 
+    # Added first → innermost, under the auth gate (see compression.py).
+    app.add_middleware(TextGZipMiddleware, minimum_size=MINIMUM_SIZE)
     app.add_middleware(
         BearerTokenMiddleware,
         get_config=lambda: app.state.webapp_config,
