@@ -543,7 +543,7 @@ function openXterm(isMirror) {
 // on any failure (no WebGL2, driver bug, OS reclaiming the context
 // under memory pressure). Without the fallback the terminal would
 // freeze; with it, worst case is same perf as before.
-function loadWebgl(term) {
+export function loadWebgl(term) {
   let webgl = null;
   try {
     if (window.WebglAddon && window.WebglAddon.WebglAddon) {

@@ -503,6 +503,51 @@ def _probe_reconnect_closes_the_previous_socket(page: Page) -> None:
     assert result["oldReadyStateAfter"] != 1
 
 
+# ------------------------------------------------------------------ #1937
+
+# Runs the real `loadWebgl` against a throwaway terminal. A vendored addon
+# that does not match the vendored core throws inside `term.loadAddon`, which
+# `loadWebgl` swallows into the DOM renderer, so the only visible symptom is
+# a null return — pin that where a webgl2 context exists.
+_WEBGL_RENDERER_PROBE = r"""
+async () => {
+  const { loadWebgl } = await import('/static/terminal.js');
+  await (await import('/static/terminal/xterm-loader.js')).loadXterm();
+  const hasGl2 = !!document.createElement('canvas').getContext('webgl2');
+
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:240px;';
+  document.body.appendChild(host);
+  const term = new window.Terminal({ scrollback: 100, fontSize: 13 });
+  term.open(host);
+  const canvasesBefore = host.querySelectorAll('.xterm-screen canvas').length;
+  const addon = loadWebgl(term);
+  const canvasesAfter = host.querySelectorAll('.xterm-screen canvas').length;
+  const loaded = !!addon;
+  if (addon) addon.dispose();
+  term.dispose();
+  host.remove();
+  return { hasGl2, loaded, canvasesBefore, canvasesAfter };
+}
+"""
+
+
+def _probe_webgl_renderer_loads(page: Page) -> None:
+    """The WebGL addon loads on the vendored core wherever WebGL2 exists.
+
+    Where the engine has no webgl2 context the DOM fallback is the contract,
+    so there is nothing to pin.
+    """
+    r = page.evaluate(_WEBGL_RENDERER_PROBE)
+    if not r["hasGl2"]:
+        return
+    assert r["loaded"], (
+        "loadWebgl() fell back to the DOM renderer although webgl2 is "
+        "available: the vendored addon-webgl.js does not match xterm.js"
+    )
+    assert r["canvasesAfter"] > r["canvasesBefore"], r
+
+
 # ------------------------------------------------------------------- #23
 
 # Builds a standalone xterm, wires the real module, and runs the probes.
@@ -655,4 +700,5 @@ def test_terminal_module_contracts(authed_page: Page, base_url: str) -> None:
     _probe_reconnect_repaint_batch_discards_stale_state(page)
     _probe_reconnect_closes_the_previous_socket(page)
     _probe_native_touch_scroll_routing(page)
+    _probe_webgl_renderer_loads(page)
     _probe_terminal_tokens_follow_app_theme(page)
