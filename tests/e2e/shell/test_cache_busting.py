@@ -26,7 +26,8 @@ from pathlib import Path
 import pytest
 import requests
 
-from src.static_versioning import compute_asset_hashes
+from src.static_versioning import compute_asset_hashes, fleet_hash_of
+from src.stylesheet_bundle import BUNDLE_RELPATH
 
 pytestmark = pytest.mark.smoke
 
@@ -46,6 +47,9 @@ def test_served_index_hashes_match_disk(base_url: str) -> None:
     )
     assert served, "no hashed /static/*.{css,js} references found in served index.html"
     on_disk = compute_asset_hashes(_STATIC_DIR)
+    # The stylesheet bundle is built in memory, so it has no file of its own;
+    # it carries the fleet hash like every file does.
+    on_disk[BUNDLE_RELPATH] = fleet_hash_of(on_disk)
     for name, stamp in served.items():
         expected = on_disk.get(name)
         assert expected is not None, f"served index references {name} but it isn't on disk"

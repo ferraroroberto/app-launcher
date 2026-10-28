@@ -30,6 +30,8 @@ import re
 from pathlib import Path
 from typing import Dict, Iterable, Optional
 
+from src.stylesheet_bundle import linked_stylesheets
+
 _HASH_LEN = 8
 
 # Files under static/ whose content feeds the fleet hash. .js/.css get
@@ -97,9 +99,15 @@ def compute_asset_hashes(static_dir: Path) -> Dict[str, str]:
         per_file[relpath] = _short_hash(path.read_bytes())
     if not per_file:
         return {}
-    fleet_input = "\n".join(
-        f"{name}:{per_file[name]}" for name in sorted(per_file)
-    ).encode("utf-8")
+    lines = [f"{name}:{per_file[name]}" for name in sorted(per_file)]
+    # The served stylesheet bundle is the sheets in index.html's link order, and
+    # index.html is not hashed: reordering the links must move the hash, or a
+    # device holding the immutable bundle would keep the old cascade.
+    index = static_dir / "index.html"
+    if index.is_file():
+        order = linked_stylesheets(index.read_text(encoding="utf-8"))
+        lines.append("stylesheets:" + ",".join(order))
+    fleet_input = "\n".join(lines).encode("utf-8")
     fleet_hash = _short_hash(fleet_input)
     return {name: fleet_hash for name in per_file}
 

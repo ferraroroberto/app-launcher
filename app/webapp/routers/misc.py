@@ -29,6 +29,7 @@ from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between
 from app.webapp.shell_html import assemble_shell, shell_stat_key
 from src.static_versioning import asset_hash_for, rewrite_index_html
+from src.stylesheet_bundle import link_bundle
 from src.launching.vscode_workspace import is_vscode_installed
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
@@ -65,6 +66,8 @@ def _stamped_index(app: Any) -> Tuple[str, str]:
         _log.exception("❌ could not assemble index.html")
         raise HTTPException(status_code=500, detail="index.html missing")
     asset_hashes = getattr(app.state, "asset_hashes", {}) or {}
+    if getattr(app.state, "stylesheet_bundle", None) is not None:
+        shell = link_bundle(shell)
     stamped = rewrite_index_html(shell, asset_hashes)
     etag = '"' + hashlib.sha256(stamped.encode("utf-8")).hexdigest()[:20] + '"'
     app.state.index_cache = (key, stamped, etag)

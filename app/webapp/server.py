@@ -59,7 +59,7 @@ import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -78,6 +78,7 @@ from src.static_versioning import (
     fleet_hash_of,
     rewrite_js_imports,
 )
+from src.stylesheet_bundle import BUNDLE_RELPATH, build_bundle
 from src.usage_log import usage_router
 from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
 from src.auth.webauthn_gate import WebAuthnGate
@@ -180,6 +181,33 @@ class _VersionedStatic(StaticFiles):
         elif suffix in _DAY_CACHE_SUFFIXES:
             response.headers["Cache-Control"] = _DAY_CACHE
         return response
+
+
+def _load_stylesheet_bundle(app: FastAPI, asset_hashes: Dict[str, str]) -> Optional[str]:
+    """Build the one-response stylesheet and register its route, or ``None``.
+
+    The route is added ahead of the ``/static`` mount, which would otherwise
+    answer ``/static/bundle.css`` with a 404. The bundle takes the fleet hash
+    like every other asset so the index stamps its URL. On ``None`` the index
+    keeps its separate links, so a failed build costs speed, not styling.
+    """
+    if not asset_hashes:
+        return None
+    try:
+        bundle = build_bundle(STATIC_DIR)
+    except OSError:
+        _log.exception("❌ could not build the stylesheet bundle; serving separate sheets")
+        return None
+    if bundle is None:
+        return None
+    asset_hashes[BUNDLE_RELPATH] = app.state.asset_fleet_hash
+
+    def _serve_bundle() -> Response:
+        return Response(bundle, media_type="text/css", headers={"Cache-Control": _LONG_CACHE})
+
+    app.add_api_route(f"/static/{BUNDLE_RELPATH}", _serve_bundle, include_in_schema=False)
+    _log.info("ℹ️ Stylesheets bundled into /static/%s (%d bytes)", BUNDLE_RELPATH, len(bundle))
+    return bundle
 
 
 async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
@@ -489,6 +517,8 @@ def create_app() -> FastAPI:
             app.state.asset_fleet_hash,
             len(asset_hashes),
         )
+
+    app.state.stylesheet_bundle = _load_stylesheet_bundle(app, asset_hashes)
 
     if STATIC_DIR.exists():
         app.mount(
