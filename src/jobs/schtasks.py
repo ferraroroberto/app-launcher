@@ -125,7 +125,7 @@ def _apply_power_policy(
     names: List[str],
     runner: Callable[[List[str]], subprocess.CompletedProcess],
 ) -> None:
-    """Flip the on-battery power policy for every task in ``names`` (issue #746).
+    """Flip the on-battery power policy for every task in ``names``.
 
     ``schtasks /Create`` has no CLI flags for ``DisallowStartIfOnBatteries``,
     ``StopIfGoingOnBatteries`` or ``StartWhenAvailable`` — Windows applies its
@@ -138,13 +138,14 @@ def _apply_power_policy(
     monthly — which is why this guard stays.
 
     It is a guard against a hazard, **not** a fix for a diagnosed incident:
-    no observed job failure on this host has been traced to this mechanism.
-    #746 originally attributed two to it and both attributions were wrong
-    (a Windows Update reboot and a logged-out session respectively; see the
-    correction on #746 for the evidence). **A silently-skipped scheduled
-    task is far more likely to be #757** — every ``\\AppLauncher\\`` task is
-    registered ``LogonType=InteractiveToken``, so none of them run at all
-    while the machine sits logged out. Check that before suspecting power.
+    no observed job failure on this host has been traced to this mechanism,
+    and a Windows Update reboot or a logged-out session both look the same
+    as a battery skip from the job history alone — don't attribute a missed
+    run to power policy on that evidence. **A silently-skipped scheduled
+    task is far more likely to be the logon-type gap**: every
+    ``\\AppLauncher\\`` task is registered ``LogonType=InteractiveToken``,
+    so none of them run at all while the machine sits logged out. Check
+    that before suspecting power.
 
     ``schtasks /Change`` has no equivalent flags either, so this is a
     follow-up ``Set-ScheduledTask`` write per created task — batched into a

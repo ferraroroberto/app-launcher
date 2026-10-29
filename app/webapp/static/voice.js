@@ -1,4 +1,4 @@
-/* Shared voice dictation (extracted verbatim from terminal.js).
+/* Shared voice dictation — one implementation, every mic.
  *
  * One module, many mics: the compose bar, the Board
  * dispatch bar and the shared composer (terminal, Chat, Board drawer) each mount a
@@ -135,10 +135,10 @@ function newDictationState(opts) {
     voiceEvents: null,
     chunkQueue: [],
     // The drain in flight: one promise, settled only once the queue is
-    // empty, so /finish can wait for the whole take. It used to be a boolean,
-    // and a second caller — finishStreaming — returned at once while the
-    // first drain still had chunks queued, so /finish closed the session
-    // before the tail of the take was sent.
+    // empty, so /finish can wait for the whole take. Must stay a promise,
+    // not a boolean — a boolean lets a second caller (finishStreaming)
+    // return at once while the first drain still has chunks queued, so
+    // /finish would close the session before the tail of the take is sent.
     drain: null,
     // Chunks that could not be delivered even after retries, this take.
     chunksLost: 0,
@@ -156,9 +156,9 @@ function newDictationState(opts) {
     finishing: false,
     // True from the tap until the recorder is actually capturing:
     // the permission prompt and the streamed-session POST take a
-    // moment, and a tap used to give no feedback, so the operator tapped
-    // again — and that second tap started a second recorder, since the
-    // mutex above only refuses *another* instance. While arming the button
+    // moment, and giving no feedback during that window invites a second
+    // tap, which would start a second recorder since the mutex above only
+    // refuses *another* instance. While arming the button
     // shows a pending hourglass and toggle() ignores taps.
     arming: false,
     // The button's own accessible label and title, put back when a busy state
@@ -318,9 +318,10 @@ function closeVoiceEvents(d) {
   }
 }
 
-// POST one chunk, retrying a failure. A non-2xx answer is a failure too:
-// api() throws only on 401, so a 502 from a loaded proxy used to count as
-// delivered. Resolves true once the server accepted the chunk.
+// POST one chunk, retrying a failure. A non-2xx answer must count as a
+// failure too: api() throws only on 401, so without this check a 502 from
+// a loaded proxy would count as delivered. Resolves true once the server
+// accepted the chunk.
 async function sendChunk(sid, blob, signal) {
   for (let attempt = 1; attempt <= _CHUNK_ATTEMPTS; attempt++) {
     if (signal.aborted) return false;
@@ -568,7 +569,8 @@ function stopRecording(d) {
 // The finalizing phase: from stop until the transcript has settled. The
 // button stays tappable — a tap now cancels — so it is aria-busy
 // with a Cancel label, never `disabled`: iOS fires no tap on a disabled
-// button, which is how a hung request used to strand it for good.
+// button, so a `disabled` button would strand a hung request for good
+// with no way to cancel it.
 function beginFinishing(d) {
   d.finishing = true;
   holdLabel(d, 'Cancel dictation');

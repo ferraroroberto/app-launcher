@@ -4,13 +4,13 @@
  * and centred against the full row height, which opens the row's floating
  * action menu (Terminal · Chat · Rename · Stop).
  *
- * The kebab replaced the gear, not the action set. A first attempt removed the gear and kept the
- * disclosure chevron, which deleted the row's entire action set instead of
- * relocating it — the actions were reachable only by opening the overlay
- * first. The requirement was the other way round: the *chevron* goes, and
- * the gear becomes a kebab in the same 52px slot carrying the same menu.
- * So the menu is back, unchanged in contents, order and behaviour; only the
- * anchor's glyph differs, and no chevron is rendered anywhere on the row.
+ * The kebab replaces the gear, not the action set: the gear becomes a
+ * kebab (⋮) in the same 52px slot, carrying the same menu — contents,
+ * order and behaviour unchanged, only the anchor's glyph differs. No
+ * disclosure chevron is rendered anywhere on the row; a chevron in place
+ * of the kebab deletes the row's whole action set instead of relocating
+ * it, since the actions would then be reachable only by opening the
+ * overlay first.
  *
  * stopSession() below is still the one "Stop and kill" path,
  * same for both kinds, called from this menu, the overlay's ⋮ menu and the

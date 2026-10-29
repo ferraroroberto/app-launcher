@@ -1,10 +1,10 @@
-"""Read the cloudflared config's first ingress hostname (issue #1003).
+"""Read the cloudflared config's first ingress hostname.
 
-``app/tray/tray.py`` and ``scripts/run_named_tunnel.py`` each carried a copy
-of this: same ``yaml.safe_load``, same walk over ``ingress[]``, same "a
-missing or unparseable file means no tunnel" contract. The script exists for
-headless / no-tray use, so it must **not** import the tray module to share
-one function — hence a leaf both can depend on instead.
+The one place ``app/tray/tray.py`` and ``scripts/run_named_tunnel.py`` both
+read this from: same ``yaml.safe_load``, same walk over ``ingress[]``, same
+"a missing or unparseable file means no tunnel" contract. The script exists
+for headless / no-tray use, so it must **not** import the tray module to
+share one function — hence a leaf both can depend on instead.
 """
 
 from __future__ import annotations

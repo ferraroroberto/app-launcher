@@ -36,10 +36,10 @@ def _parse_osc_title(buffer: str) -> Tuple[str, str]:
 
     ``remaining`` is only ever an unterminated trailing OSC-title fragment
     carried forward to the next read — never previously-scanned plain
-    text. (Issue #796: the previous implementation returned the *entire*
-    scanned buffer here, so ``PtySession._osc_buffer`` grew without bound
-    for the life of the session and every read re-scanned it from index 0,
-    quadratic in total bytes read.)
+    text. Returning the entire scanned buffer instead would let
+    ``PtySession._osc_buffer`` grow without bound for the life of the
+    session, with every read re-scanning it from index 0 — quadratic in
+    total bytes read.
     """
     extracted = ""
     remaining = buffer

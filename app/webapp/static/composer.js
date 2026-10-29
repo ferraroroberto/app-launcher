@@ -10,7 +10,7 @@
  *
  * The 2×2 grid keeps today's shape on every surface (an owner decision): mic · keys on row 1,
   * attach · send on row 2. The 📎 button
- * (it was a photo glyph) opens a menu — the same row-menu component
+ * opens a menu — the same row-menu component
  * as the session ⚙️ gear — of everything that puts something into the
  * message: Photo, Extract text (OCR), Attach file (to context) and Attach
  * large file (not read). The OCR row hides with photo-ocr unconfigured; the
@@ -136,9 +136,9 @@ const _TITLE_KEYS_OFF = 'No terminal keys — this session has no PTY';
 const _TITLE_ATTACH = 'Attach';
 // The button's own title. The plain one is the honest default: on a phone,
 // and on the surfaces that don't opt into `sendOnModEnter`, ➤ is the only way
-// to deliver. The shortcut variant names the binding that actually exists
-// — it replaced 'Send (with Enter)', which promised a shortcut no
-// code implemented and described the opposite of what the return key does.
+// to deliver. The shortcut variant names the binding that actually exists,
+// never a label like 'Send (with Enter)' that promises a shortcut no code
+// implements or describes the opposite of what the return key does.
 const _TITLE_SEND = 'Send';
 const _TITLE_SEND_MOD_ENTER = 'Send (Ctrl/Cmd+Enter)';
 const _TITLE_CANCEL_UPLOAD = 'Cancel upload';

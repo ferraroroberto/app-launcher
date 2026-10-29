@@ -1,4 +1,4 @@
-"""Missed-fire coverage for scheduled jobs (issue #697).
+"""Missed-fire coverage for scheduled jobs.
 
 ``alert_on_failure`` catches a run that *fails*; ``src.jobs.stats.is_stuck``
 catches a run that never *ends*. Nothing caught a run that never **starts** —
@@ -19,7 +19,7 @@ Two independent halves, both answered from data the Jobs tab already reads:
   one batched query per cycle, never an N+1 shell-out storm.
 * **Behavioural** — expand the schedule across a recent window and check
   each expected fire against the on-disk run history.
-* **Principal** (``session_less`` jobs only, issue #757) — an entry that
+* **Principal** (``session_less`` jobs only) — an entry that
   exists, is enabled, and is *still* registered ``Interactive only`` passes
   both halves above and silently does nothing whenever the machine sits
   logged out. Read from the same cached bulk query as the structural half.
@@ -45,17 +45,15 @@ normal week"), all enforced in :func:`behavioural_coverage` /
   unestablished fact gets its own state and is never folded into the
   passing *or* the failing one.
 * A job with **no run records at all** yields ``unknown``, never
-  "missed fire" (issue #737). :func:`src.jobs.history.list_runs` returns
+  "missed fire". :func:`src.jobs.history.list_runs` returns
   ``[]`` both for a job that genuinely never ran and for a checkout with no
   run history to read, and the behavioural half cannot tell those apart —
   so it says so. Run history counts as evidence only where some exists;
-  a job with *some* history that skipped a slot is still a ``problem``,
-  which is the case #697 exists for. The same rule as the ``schtasks`` one
-  above, applied to the other half. This is not hypothetical: a stray webapp
-  booted out of a git worktree (tracked files only, hence an empty
-  ``webapp/jobs/``) while holding a full real ``jobs.json`` flagged seven
-  jobs and pushed three false "never fired" alerts to the phone on
-  2026-08-10.
+  a job with *some* history that skipped a slot is still a ``problem``. The
+  same rule as the ``schtasks`` one above, applied to the other half: a
+  checkout that holds a real ``jobs.json`` but an incomplete or empty run
+  history (e.g. a worktree that tracks no run files) must read as
+  ``unknown``, not as a job that silently never fires.
 
 Alerting reuses the exact channels the failure path uses
 (:func:`src.notifications.notify_failure`): global Pushover
@@ -63,13 +61,12 @@ gated by ``WebappConfig.notify_on_failure``, per-job Telegram gated by
 ``Job.alert_on_failure``. De-duplicated through a small on-disk state file so
 a standing problem pings once, not once per check cycle.
 
-**Each problem class is announced in its own words** (issue #778, table in
-:data:`PROBLEM_ANNOUNCEMENTS`). All four used to share one hardcoded title —
-"scheduled run never fired" — which reads as an observed failure and is only
-true of ``missed_fire``; the other three are structural risks about whether
-the entry *could* fire. A ``session_less`` backup that had run on time for six
-straight days was announced daily as never having fired, which is precisely
-how a reader learns to dismiss the channel. Severity and re-ping cadence
+**Each problem class is announced in its own words** (table in
+:data:`PROBLEM_ANNOUNCEMENTS`) rather than a single shared title — "scheduled
+run never fired" reads as an observed failure and is only true of
+``missed_fire``; the other three are structural risks about whether the
+entry *could* fire, and a ``session_less`` backup that is in fact running on
+time must never be announced as never having fired. Severity and re-ping cadence
 follow the class too: a hard failure stays ``error`` at
 :data:`COVERAGE_ALERT_REPEAT_SECONDS`, while a conditional risk that needs a
 human at an elevated shell drops to ``warning`` at

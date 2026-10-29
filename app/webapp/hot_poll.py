@@ -1,14 +1,14 @@
-"""Bounded answers for the phone's two busiest polls (#1597).
+"""Bounded answers for the phone's two busiest polls.
 
 ``GET /api/claude-code/sessions`` and ``GET /api/board`` stat and read every
 live session's PTY transcript (``webapp/sessions/<sid>.transcript``) on each
 5 s poll. A file-system call on a transcript the session-host is still
-appending to can stall below Python: on 2026-10-14 one ``os.stat`` of a 31 MB
-transcript took 17.9 s in a separate probe process, in the same second the
-live webapp's polls stalled (the box runs on-access antivirus scanning). Each
-stalled poll held one of the loop's 20 default-executor threads, the phones
-kept polling, and the pool filled. Both endpoints then answered in 29-57 s,
-and every other ``asyncio.to_thread`` caller queued behind them.
+appending to can stall below Python for many seconds under on-access
+antivirus scanning, regardless of transcript size. Each stalled poll holds
+one of the loop's 20 default-executor threads; if the phones keep polling
+while enough calls stall, the pool fills, both endpoints end up answering
+tens of seconds late, and every other ``asyncio.to_thread`` caller queues
+behind them.
 
 So each endpoint builds its payload through a :class:`HotPoll`:
 
@@ -17,8 +17,8 @@ So each endpoint builds its payload through a :class:`HotPoll`:
   these polls can't starve them;
 * single-flight: one build per endpoint at a time. A request that arrives
   while one runs waits for the *next* build, which every caller from that
-  window shares (the git-status rule, #1268), so a stuck file holds one
-  build's threads, not one thread per poll;
+  window shares, so a stuck file holds one build's threads, not one thread
+  per poll;
 * bounded: past :data:`DEADLINE_S` the request gets the last good payload,
   marked ``stale: true`` with its ``age_seconds``, while the build carries on
   and refreshes it for the next poll. A fresh answer is ``stale: false``.

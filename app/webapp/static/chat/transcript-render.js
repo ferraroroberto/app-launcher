@@ -1,4 +1,4 @@
-/* Transcript entry renderer (split out of session-transcript.js).
+/* Transcript entry renderer.
  *
  * Turns a transcript's entries into list nodes: prompt bubbles, agent turns
  * with their replies, step lines and the items under them, sent-file cards,
@@ -146,7 +146,7 @@ async function copyTurn(entries, kind, sid) {
 // everything the agent does until the next prompt (each reply fragment, the
 // step lines between them, a question or plan card) sits in ONE block under
 // one header: the agent's mark and name, the time, copy for the whole turn,
-// and collapse. It used to be one card per text fragment, each with its own
+// and collapse — never one card per text fragment, each with its own
 // "Agent · time" and copy. The prompt is plain text
 // (pre-wrap); a reply goes through the same escape-first markdown renderer
 // the Life OS doc browser uses — never raw HTML from a transcript.

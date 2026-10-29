@@ -39,9 +39,9 @@ logger = logging.getLogger(__name__)
 # terminal can take input, so can the API"). A *working* agent repaints its
 # spinner every few tens of ms, so InputProtocol's settle wait can never see a quiet
 # window for as long as it works: it runs out to _BULK_CAP_MS with the payload
-# ingested but still sitting unsent in the composer. Firing the CR there —
-# what submit_input used to do — is the 2026-08-14 stall shape exactly:
-# mid-repaint, Claude Code absorbs a CR as a literal newline.
+# ingested but still sitting unsent in the composer. Firing the CR there,
+# mid-repaint, is the stall shape to avoid: Claude Code absorbs a CR as a
+# literal newline when it lands there.
 #
 # A human at the keyboard does not hit this. They see the stranded
 # "[Pasted text #N]" chip, wait for the agent to settle, and press Enter. The
@@ -60,11 +60,11 @@ _DEFER_QUIET_MS = 1500
 # Sized against the thing actually being waited on rather than against
 # a guess at "a while". A lane running scripts/verify-before-ship.ps1 sits
 # inside *one* tool call for the gate's whole ~19 min (CLAUDE.md's re-baselined
-# full-tier runtime), repainting its spinner throughout, so the original
-# 120_000 could never reach the end of that turn: a steer sent to a lane
-# mid-gate stranded essentially every time (three on 2026-09-19 alone,
-# `reason=defer_timeout` each time, each unstuck by a human POSTing a bare CR).
-# 30 min covers a gate run plus the agent's own wrap-up before it goes quiet.
+# full-tier runtime), repainting its spinner throughout, so a timeout shorter
+# than that can never reach the end of the turn: a steer sent to a lane
+# mid-gate would strand with `reason=defer_timeout`, recoverable only by a
+# human POSTing a bare CR. 30 min covers a gate run plus the agent's own
+# wrap-up before it goes quiet.
 #
 # Lengthening the window is only safe because the pre-fire re-check identifies
 # *this* payload rather than merely some payload — see _chip_visible and

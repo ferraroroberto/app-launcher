@@ -73,18 +73,19 @@ SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
 # subtree) and adopted on start by its own port, and that port is excluded
 # from tray.bat's reclaim sweep. 8446 is only the *default* — the real,
 # user-editable value is ``load_webapp_config().session_host_port``
-# (README.md "session_host_port"); it used to be hardcoded here as a third
-# definition alongside ``src/webapp_config.py``'s ``DEFAULT_SESSION_HOST_PORT``
-# and ``app/session_host/server.py``'s ``DEFAULT_PORT``, so setting the knob
-# left the tray adopting/reclaiming the wrong port and silently spawning a
-# duplicate session-host on every start. Always call
+# (README.md "session_host_port"). Never hardcode the port value as a
+# separate definition here alongside ``src/webapp_config.py``'s
+# ``DEFAULT_SESSION_HOST_PORT`` and ``app/session_host/server.py``'s
+# ``DEFAULT_PORT`` — a second definition can drift from the configured
+# value, leaving the tray adopting/reclaiming the wrong port and silently
+# spawning a duplicate session-host on every start. Always call
 # :func:`_session_host_port` fresh rather than caching a module constant.
 
 
 def _session_host_port() -> int:
     """The configured session-host port — read fresh, never cached, so a
     change to the ``session_host_port`` setting takes effect on the tray's
-    very next start/stop of the process (issue #796)."""
+    very next start/stop of the process."""
     return load_webapp_config().session_host_port
 
 

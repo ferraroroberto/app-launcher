@@ -1,4 +1,4 @@
-/* Screen time (step 1/2): how long the launcher was on screen, like
+/* Screen time: how long the launcher was on screen, like
  * the phone's Screen Time, in Settings › Activity.
  *
  * The minutes are nothing new to record. The vendored usage log already stores
@@ -17,7 +17,7 @@
  * counts: the time route keeps one breakdown per answer. A failed feature
  * read hides only that block. No poll: it reads on open and on a period change.
  *
- * Step 2/2: the sheet's primary, Send to task-os, sends the last 7 completed
+ * The sheet's primary, Send to task-os, sends the last 7 completed
  * days now (POST /api/screen-time/export, the same code as the nightly
  * usage-export Job), and the line above it says when that last worked, or
  * why the newest try failed (GET /api/screen-time/export, read on open).

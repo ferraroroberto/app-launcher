@@ -1,8 +1,8 @@
 /* Board — the lane controls and the fleet chief's plumbing.
  *
- * Split off `board.js` (a `/codebase-audit` maintainability
- * finding) the same way `jobs.js` became jobs-row/jobs-dialog/jobs-agenda and
- * `terminal.js` became eight feature-split modules. `board.js` keeps card
+ * Kept separate from `board.js` the same way `jobs.js` is split into
+ * jobs-row/jobs-dialog/jobs-agenda and `terminal.js` into its own
+ * feature-split modules. `board.js` keeps card
  * rendering, the drill-down drawer, one-tap issue-start and the lanes; this
  * module holds:
  *
@@ -109,7 +109,7 @@ export async function ensureChief(fresh, resume, restart) {
 }
 
 // One shape for every chief lifecycle button — the Coding tab's chief row
-// Start/Resume/Restart (duplication audit) — disable →
+// Start/Resume/Restart — disable →
 // ensureChief → toast → onDone → re-enable, always in a `finally`. `label`
 // drives both the work-timer text (when `useTimer`) and the error toast
 // ("Chief <label.toLowerCase()> failed"); `resume` drives the success

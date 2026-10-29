@@ -97,18 +97,18 @@ async def index(request: Request) -> Response:
 @router.get("/api/version")
 async def version(request: Request) -> Dict[str, Any]:
     """Build identity: this webapp process's own (stable, cached at module
-    load) plus a live staleness check of the session-host on ``:8446``
-    (#615).
+    load) plus a live staleness check of the session-host on ``:8446``.
 
     The session-host is deliberately excluded from ``tray.bat --restart``'s
     reclaim sweep (project-scaffolding#35, to protect live PTYs), so it can
     keep running code that is days old with nothing else surfacing that —
-    exactly what happened to #611's fix on 2026-07-27. ``session_host.stale``
+    a merged fix can sit unapplied on the live session-host indefinitely
+    unless something checks for it. ``session_host.stale``
     compares the session-host's own loaded ``git_sha`` (captured once, at
     *its* process start) against ``deployed_sha`` — the repo's resolved
     default remote branch (``origin/HEAD``, normally ``origin/main``),
-    resolved fresh on every call. This is **not** ``head_sha`` (below): #641
-    found that comparing against the *live checkout's current branch tip*
+    resolved fresh on every call. This is **not** ``head_sha`` (below):
+    comparing against the *live checkout's current branch tip* instead
     reports a false ``stale_relevant=false`` whenever the primary checkout
     transiently sits on an unrelated feature branch (e.g. a worker occupying
     the tree mid-issue) that never contained the merged fix being checked
@@ -116,7 +116,7 @@ async def version(request: Request) -> Dict[str, Any]:
     regardless of what the on-disk checkout happens to be doing right now.
     ``session_host.stale`` is a raw fact — it flips ``true`` after *any* merge
     anywhere in the repo, even one that never touched the paths the
-    session-host actually loads (#635). ``session_host.stale_relevant`` scopes
+    session-host actually loads. ``session_host.stale_relevant`` scopes
     that: ``true`` only when a declared session-host path (``CLAUDE.md``'s
     ``## session-host`` block) was touched between the loaded sha and
     ``deployed_sha`` — this is the field that should actually drive a restart
