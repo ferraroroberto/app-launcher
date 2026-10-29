@@ -483,6 +483,12 @@ const CHANNEL_LABEL_PREFIX = 'telegram:';
 export function isChannelSession(s) {
   return !!s && typeof s.label === 'string' && s.label.indexOf(CHANNEL_LABEL_PREFIX) === 0;
 }
+// A Life OS conversation the Telegram relay opened for a bot: label
+// `relay:<profile id>`. The label itself is the chip, so a Board card reads as
+// the bot's rather than the owner's own interactive session.
+export function isRelaySession(s) {
+  return !!s && typeof s.label === 'string' && s.label.indexOf('relay:') === 0;
+}
 // A managed session has its conversation somewhere else (a Telegram chat, the
 // Board chat bar), so it never counts as work waiting on the owner. Adding a
 // managed kind is one more clause here.

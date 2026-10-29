@@ -51,7 +51,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isOffBoard } from './channel-sessions.js';
 import {
-  brandIconEl, channelSessionName, fmtCardStamp, fmtDuration, isChannelSession,
+  brandIconEl, channelSessionName, fmtCardStamp, fmtDuration, isChannelSession, isRelaySession,
 } from './dom-utils.js';
 import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
@@ -164,6 +164,7 @@ function renderSessionCard(card, openItem) {
   const stalled = card.status === 'stalled';
   const chips = [];
   if (isChannelSession(card)) chips.push(chip(channelSessionName(card), 'neutral', 'session-channel-tag'));
+  if (isRelaySession(card)) chips.push(chip(card.label, 'neutral', 'session-relay-tag'));
   if (stalled) chips.push(chip('stalled', 'danger', 'board-stalled-chip'));
   if (card.kind === 'remote') chips.push(chip('detached', 'neutral', 'session-detached'));
   const bits = [card.project || ''].concat(

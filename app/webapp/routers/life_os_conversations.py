@@ -216,7 +216,7 @@ async def launch_conversation(skill_id: str, request: Request) -> Dict[str, Any]
 
 async def _launch_conversation(
     skill: Skill, request: Request, body: Dict[str, Any], *, legacy: bool = False,
-    mirror: bool = True,
+    mirror: bool = True, label: str = "",
 ) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     root = Path(cfg.life_os_dir)
@@ -275,7 +275,7 @@ async def _launch_conversation(
         result = await _spawn_skill_session(
             cfg, request, root, flags=flags, name=skill.name, kind=kind,
             agent=agent, model=model, resume=action == "resume", audit_skill=skill.id,
-            body=body, resume_sid=resume_sid, mirror=mirror,
+            body=body, resume_sid=resume_sid, label=label, mirror=mirror,
         )
     except Exception:
         if handoff_path:
@@ -560,7 +560,7 @@ async def skill_conversations(cfg: WebappConfig, skill: Skill) -> List[Dict[str,
 
 async def resume_or_open(
     skill: Skill, request: Request, body: Dict[str, Any], row: Dict[str, Any],
-    *, mirror: bool = True,
+    *, mirror: bool = True, label: str = "",
 ) -> Dict[str, Any]:
     """Resume one resumable conversation row on its own model, or return the
     session that already has it open (``conversation_action: "open"``).
@@ -591,7 +591,7 @@ async def resume_or_open(
     launch = {key: value for key, value in body.items() if key != "model"}
     launch.update(action="resume", keep_model=True, capture={
         key: row[key] for key in ("path", "revision", "agent", "sid")})
-    return await _launch_conversation(skill, request, launch, mirror=mirror)
+    return await _launch_conversation(skill, request, launch, mirror=mirror, label=label)
 
 
 # ------------------------------------------- a skill's last use

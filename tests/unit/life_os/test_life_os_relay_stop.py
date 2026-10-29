@@ -150,13 +150,57 @@ class TestStop:
         assert stop_host.stops == []
         assert any(s["session_id"] == sid for s in stop_host.sessions)
 
-    @pytest.mark.parametrize("status", ["working", "needs-you", None])
+    @pytest.mark.parametrize("status", ["working", None])
     def test_a_turn_in_flight_or_unknown_is_busy(self, stop_host, status):
         body = _reopen(stop_host)
         stop_host.facts[body["session_id"]]["status"] = status
         resp = _stop(stop_host, body["session_id"])
         assert resp.status_code == 409
         assert resp.json()["detail"]["state"] == "busy"
+        assert stop_host.stops == []
+
+    def test_a_finished_turn_waiting_on_a_question_is_stopped(self, stop_host, monkeypatch):
+        from app.webapp.routers import life_os_relay
+
+        async def finished(caller, sid):
+            return True
+
+        monkeypatch.setattr(life_os_relay, "_turn_finished", finished)
+        body = _reopen(stop_host)
+        stop_host.facts[body["session_id"]]["status"] = "needs-you"
+        resp = _stop(stop_host, body["session_id"])
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["state"] == "stopped"
+        assert stop_host.stops == [(body["session_id"], "quit")]
+
+    def test_a_needs_you_that_is_not_a_finished_turn_is_busy(self, stop_host, monkeypatch):
+        from app.webapp.routers import life_os_relay
+
+        async def not_finished(caller, sid):
+            return False
+
+        monkeypatch.setattr(life_os_relay, "_turn_finished", not_finished)
+        body = _reopen(stop_host)
+        stop_host.facts[body["session_id"]]["status"] = "needs-you"
+        resp = _stop(stop_host, body["session_id"])
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["state"] == "busy"
+        assert stop_host.stops == []
+
+    def test_a_finished_question_still_waits_for_its_capture(self, stop_host, monkeypatch):
+        from app.webapp.routers import life_os_relay
+
+        async def finished(caller, sid):
+            return True
+
+        monkeypatch.setattr(life_os_relay, "_turn_finished", finished)
+        body = _reopen(stop_host)
+        facts = stop_host.facts[body["session_id"]]
+        facts["status"] = "needs-you"
+        facts["last_turn_at"] = None
+        resp = _stop(stop_host, body["session_id"])
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["state"] == "capture_unconfirmed"
         assert stop_host.stops == []
 
     @pytest.mark.parametrize("case", ["older_capture", "unknown_turn", "missing_capture"])
@@ -182,6 +226,46 @@ class TestStop:
         (line,) = [r.getMessage() for r in caplog.records
                    if "action='relay_stop'" in r.getMessage()]
         assert "outcome='stopped'" in line and "profile='health'" in line
+
+
+class TestTurnFinished:
+    """The real Board split behind ``stop`` on a ``needs-you`` row."""
+
+    @pytest.mark.parametrize("tail,expected", [
+        ("text", True),
+        ("tool_use", False),
+        ("AskUserQuestion", False),
+        ("none", False),
+    ])
+    def test_only_a_clean_text_stop_is_a_finished_turn(self, tmp_path, monkeypatch, tail, expected):
+        import asyncio
+        from datetime import timedelta
+        from types import SimpleNamespace
+
+        from app.webapp.routers import life_os_relay
+        from src import board
+        from tests.unit.board._support import (
+            NOW, _bash_tool_use_line, _live, _msg_line, _state_row, _transcript_file)
+
+        stamp = NOW - timedelta(minutes=10) + timedelta(seconds=5)
+        row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
+        content = {
+            "text": _msg_line("assistant", stamp),
+            "tool_use": _bash_tool_use_line(stamp, "toolu_1", run_in_background=False),
+            "AskUserQuestion": _bash_tool_use_line(
+                stamp, "toolu_1", run_in_background=False, tool_name="AskUserQuestion"),
+            "none": None,
+        }[tail]
+        row["transcript_path"] = (
+            _transcript_file(tmp_path, stamp, content) if tail != "none" else None)
+        real_merge = board.merge_sessions
+        monkeypatch.setattr(board, "read_sessions_state", lambda path: {"rows": {"t": row}})
+        monkeypatch.setattr(board, "merge_sessions",
+                            lambda live, rows: real_merge(live, rows, now=NOW))
+        caller = SimpleNamespace(
+            cfg=SimpleNamespace(sessions_state_file=(tmp_path / "state.json").as_posix()),
+            sessions=[_live("aaa", "E:/x/y", 30)])
+        assert asyncio.run(life_os_relay._turn_finished(caller, "aaa")) is expected
 
 
 class TestChats:

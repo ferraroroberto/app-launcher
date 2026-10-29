@@ -225,9 +225,10 @@ class TestActions:
         assert resp.json()["state"] == "resumed" and resp.json()["session_id"] == "new-1"
         (spawn,) = relay.spawned
         assert f"--resume {RESUMABLE_SID}" in spawn.flags
-        # The target never gets the plugin, the settings file or the bot's label.
+        # The target never gets the plugin, the settings file or the bot's label;
+        # it is marked as the relay's so the Board does not read it as the owner's.
         assert "--channels" not in spawn.flags and "--settings" not in spawn.flags
-        assert spawn.label == ""
+        assert spawn.label == "relay:health"
         assert mirrored == []
 
     def test_resume_of_an_open_conversation_opens_it(self, relay):

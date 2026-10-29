@@ -54,7 +54,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, NoReturn, Optional
@@ -70,6 +70,7 @@ from src.launching.channel_profiles import (
     LABEL_PREFIX,
     load_channel_profiles,
     profile_session_label,
+    relay_session_label,
     relay_token_matches,
 )
 from src.scanner import Skill
@@ -115,6 +116,13 @@ _NEW_LOCKS: Dict[str, asyncio.Lock] = {}
 # HTTP status for each stop outcome that did nothing.
 _STOP_STATUS = {"not_relay_owned": 403, "gone": 409, "busy": 409,
                 "capture_unconfirmed": 409, "stop_unconfirmed": 502}
+# How long ``new`` waits for the session's first turn to end before answering
+# ``started`` anyway; under the bot's 60 s call timeout, which also covers the launch.
+NEW_READY_WAIT_SECONDS = 40.0
+NEW_READY_POLL_SECONDS = 1.0
+# A turn that ended this far before the launch is not the first one: absorbs
+# the gap between this clock and the transcript's timestamps.
+_NEW_READY_CLOCK_SLACK_SECONDS = 2.0
 
 
 def _refuse(status: int, state: str, message: str) -> NoReturn:
@@ -203,6 +211,20 @@ async def _turn_facts(caller: _Caller) -> Dict[str, Dict[str, Any]]:
         facts[sid] = {"status": status if isinstance(status, str) else None,
                       "last_turn_at": sess.get("last_turn_at")}
     return facts
+
+
+async def _turn_finished(caller: _Caller, sid: str) -> bool:
+    """Whether the Board reads ``sid``'s ``needs-you`` as a turn that ended
+    clean with nothing pending (its ``idle-finished``): the agent only asked
+    something in text, nothing is running and nothing is blocked on a prompt.
+    A pending tool permission, a decision question, a background dispatch or
+    a transcript that cannot be read is not that, so the caller keeps it
+    ``busy``."""
+    state = await asyncio.to_thread(
+        board.read_sessions_state, Path(caller.cfg.sessions_state_file))
+    cards = await asyncio.to_thread(board.merge_sessions, caller.sessions, state["rows"])
+    card = next((c for c in cards if str(c.get("session_id")) == sid), None)
+    return card is not None and card.get("status") == "idle-finished"
 
 
 async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
@@ -316,7 +338,9 @@ async def relay_resume(profile_id: str, request: Request) -> Dict[str, Any]:
         if row is None:
             _refuse(409, "not_resumable", f"None of {caller.skill.name}'s conversations can be resumed.")
     try:
-        result = await resume_or_open(caller.skill, request, {}, row, mirror=False)
+        result = await resume_or_open(
+            caller.skill, request, {}, row, mirror=False,
+            label=relay_session_label(caller.profile.id))
     except HTTPException as exc:
         state = {409: "not_resumable", 404: "not_found", 503: "host_unreachable"}.get(
             exc.status_code, "unknown")
@@ -403,6 +427,7 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
             return held
         agent, model = _resolve_launch_choice({})
         title = f"New {caller.skill.name} conversation"
+        launched_at = time.time()
         try:
             result = await _spawn_skill_session(
                 caller.cfg, request, life_os_dir,
@@ -410,6 +435,7 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
                       f"/{caller.skill.command}",
                 name=caller.skill.name, kind="pty", agent=agent, model=model, resume=False,
                 audit_skill=caller.skill.id, body={}, mirror=False,
+                label=relay_session_label(caller.profile.id),
             )
         except HTTPException as exc:
             logger.warning(f"⚠️ relay {caller.profile.id}: new failed ({exc.status_code})")
@@ -426,9 +452,46 @@ async def relay_new(profile_id: str, request: Request) -> Dict[str, Any]:
             await _audit(caller, request, "relay_new", session=sid, outcome="unregistered")
             _refuse(500, "unknown", "The new conversation could not be recorded, so it was "
                                     "ended. Nothing is left running.")
-    await _audit(caller, request, "relay_new", session=sid, outcome="started")
-    logger.info(f"✅ relay {caller.profile.id}: new conversation started in session {sid[:8]}")
-    return {"state": "started", "session_id": sid, "title": title}
+    ready = await _await_first_idle(caller, sid, launched_at - _NEW_READY_CLOCK_SLACK_SECONDS)
+    await _audit(caller, request, "relay_new", session=sid, outcome="started", ready=ready)
+    logger.info(f"✅ relay {caller.profile.id}: new conversation started in session "
+                f"{sid[:8]} (ready={ready})")
+    reply = {"state": "started", "session_id": sid, "title": title}
+    return reply if ready else {**reply, "ready": "unconfirmed"}
+
+
+async def _await_first_idle(caller: _Caller, sid: str, since: float) -> bool:
+    """Whether ``sid``'s first turn ended within :data:`NEW_READY_WAIT_SECONDS`.
+
+    The skill's opening command runs as that first turn, and a message typed
+    into the session before it ends is queued behind it. The turn counts only
+    when its transcript line is newer than ``since`` and the Board's hook row
+    says the session stopped (``idle`` or ``needs-you``), so a row left by an
+    older session in the same folder never reads as ready. ``False`` is not
+    known: the wait ran out, the session ended, or the host or the Board's
+    state could not be read."""
+    deadline = time.monotonic() + NEW_READY_WAIT_SECONDS
+    while True:
+        try:
+            sessions = await asyncio.to_thread(
+                session_client.list_sessions, caller.cfg.session_host_port)
+            facts = (await _turn_facts(replace(caller, sessions=sessions))).get(sid)
+        except (session_client.SessionHostError, OSError) as exc:
+            logger.info(f"ℹ️ relay {caller.profile.id}: ready wait for {sid[:8]} could not "
+                        f"read the session state ({exc.__class__.__name__})")
+            return False
+        live = next((s for s in sessions if str(s.get("session_id")) == sid), None)
+        if live is None or not live.get("alive", True):
+            return False
+        turned = (facts or {}).get("last_turn_at")
+        if (facts or {}).get("status") in ("idle", "needs-you") \
+                and isinstance(turned, (int, float)) and turned >= since:
+            return True
+        if time.monotonic() >= deadline:
+            logger.info(f"ℹ️ relay {caller.profile.id}: {sid[:8]} showed no finished first "
+                        f"turn within {NEW_READY_WAIT_SECONDS:.0f}s")
+            return False
+        await asyncio.sleep(NEW_READY_POLL_SECONDS)
 
 
 async def _end_unregistered(caller: _Caller, sid: str) -> None:
@@ -525,7 +588,8 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
 
     ``stopped`` (confirmed gone, moved to the unreported stops with
     ``reason``); otherwise nothing was done: ``not_relay_owned``, ``gone``,
-    ``busy`` (mid-turn, waiting on an answer, or not known which),
+    ``busy`` (mid-turn, blocked on a prompt or decision, or not known which; a
+    turn that ended on a question in plain text is not busy),
     ``capture_unconfirmed`` (the capture is older than the last turn, or
     either is unknown) or ``stop_unconfirmed`` (quit sent, not confirmed
     gone: the entry is kept). Only ever a graceful quit, never a kill, so the
@@ -550,7 +614,7 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) or entry
     facts = (await _turn_facts(caller)).get(sid, {})
     status = facts.get("status")
-    if status != "idle":
+    if status != "idle" and not (status == "needs-you" and await _turn_finished(caller, sid)):
         why = {"working": "it is mid-turn", "needs-you": "it is waiting on an answer"}.get(
             status or "", "whether it is mid-turn is not known")
         return {"state": "busy", "message": f"Not stopped: {why}. Nothing was done."}
