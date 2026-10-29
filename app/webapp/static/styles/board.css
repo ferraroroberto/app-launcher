@@ -534,6 +534,20 @@ span.chief-answer-ref { color: var(--muted); }
 .board-agent-icon { width: 16px; height: 16px; }
 .board-empty { margin: 0; }
 
+/* The Done lane's day headers ("Today", "Yesterday", "Tue 27 Oct") and its
+   "Show earlier" control; the rows under a header are the lane's ordinary ones. */
+.board-day-head {
+  margin: 12px 0 4px;
+  padding: 0 var(--board-card-inset, 14px);
+  color: var(--muted);
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+}
+.board-day-head[hidden] { display: none; }
+.board-day-none { margin: 0; padding: 4px var(--board-card-inset, 14px); }
+.board-done-more { margin-top: 12px; }
+.board-done-more[hidden] { display: none; }
+
 /* Telegram sessions hidden from the lists: the Coding tab's
    Telegram row (.channel-row) stands in for them and opens a read-only list;
    the Board has none. */
@@ -837,6 +851,10 @@ span.chief-answer-ref { color: var(--muted); }
     min-width: 0;
     padding: 0 14px 0 0;
   }
+  /* Done's "Show earlier" sits inline after the sentence, in the same line. */
+  .board-col.is-empty > .collapse-body { display: flex; align-items: center; gap: 12px; }
+  .board-col.is-empty .board-empty { flex: 1; min-width: 0; }
+  .board-col.is-empty .board-done-more { flex: none; width: auto; margin: 0; }
   .board-col.is-empty .board-lane-toolbar,
   .board-col.is-empty .board-lane-foot,
   .board-col.is-empty .empty-state-icon { display: none; }

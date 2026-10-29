@@ -50,7 +50,7 @@ import asyncio
 import functools
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -211,6 +211,33 @@ async def get_board(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     poll = hot_poll(request.app.state, "GET /api/board")
     return await poll.get(functools.partial(_build_board_payload, cfg))
+
+
+# How far back "Show earlier" reaches: a week of catching up, one ``gh`` search per day.
+_DONE_DAYS_BACK_MAX = 7
+
+
+@router.get("/api/board/done")
+async def get_board_done(request: Request, days_back: int = 1) -> Dict[str, Any]:
+    """Issues closed on one earlier local day, for the Done lane's "Show earlier".
+
+    ``days_back=1`` is yesterday on this host's clock. One ``gh`` search per
+    request, run only when the user taps, so it never rides the 5 s poll. The
+    day is a local calendar day (see :func:`github_client.local_day_window`).
+    """
+    if not 1 <= days_back <= _DONE_DAYS_BACK_MAX:
+        raise HTTPException(
+            status_code=400,
+            detail=f"days_back must be between 1 and {_DONE_DAYS_BACK_MAX}",
+        )
+    cfg: WebappConfig = request.app.state.webapp_config
+    day = date.today() - timedelta(days=days_back)
+    try:
+        items = await asyncio.to_thread(github_client.search_done_on, cfg.github_owner, day)
+    except github_client.GhError as exc:
+        logger.warning(f"⚠️ gh done search for {day.isoformat()} failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"gh could not read that day: {exc}")
+    return {"days_back": days_back, "day": day.isoformat(), "items": items}
 
 
 async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str, Any]:
