@@ -193,10 +193,10 @@ same mechanism most other auto-starting desktop apps use. Untoggling removes
 the file. `tray.bat` is idempotent, so a Startup-folder run racing an
 already-running tray is a safe no-op.
 
-(A Task Scheduler "At log on" trigger was tried first and reverted —
-`schtasks /Create /SC ONLOGON` returns Access Denied from the launcher's own
-unelevated process, the same reason `elevated` Jobs already require a manual
-elevated-shell registration. The Startup folder needs no such privilege.)
+(Not a Task Scheduler "At log on" trigger: `schtasks /Create /SC ONLOGON`
+returns Access Denied from the launcher's own unelevated process, the same
+reason `elevated` Jobs already require a manual elevated-shell registration.
+The Startup folder needs no such privilege.)
 
 ### Manual fallback (Task Scheduler)
 

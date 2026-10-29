@@ -2,9 +2,9 @@
 
 The architecture, security model, and hard-won gotchas behind the launcher-owned ConPTY terminal — a full interactive terminal on the phone, and why each piece is shaped the way it is. Read this before extending the terminal feature.
 
-## 1. What we set out to do
+## 1. What this replaces
 
-Replace the fire-and-forget "detached CMD window the launcher can't see" model with **launcher-owned ConPTY sessions**, and put a **full interactive terminal on the phone** on top — live output, scrollback, typing, `Ctrl+C`, `/quit`, image paste. Non-negotiable: it had to be at least as safe as the existing cloud surface, ideally safer.
+**Launcher-owned ConPTY sessions** replace a fire-and-forget "detached CMD window the launcher can't see" model, with a **full interactive terminal on the phone** on top — live output, scrollback, typing, `Ctrl+C`, `/quit`, image paste. Non-negotiable: it is at least as safe as the existing cloud surface, ideally safer.
 
 ## 2. The architecture, and why each piece exists
 
@@ -62,14 +62,10 @@ The original "remote" launch orphaned a CMD window the launcher kept no handle t
 
 The PC mirror window (an Edge/Chrome `--app` window over `https://127.0.0.1`) tripped the cert error: the cert's SAN is the `.ts.net` hostname, not `127.0.0.1`, and the CA isn't trusted on the PC. Fix: `--ignore-certificate-errors --test-type`, **safe specifically because that window only ever points at our own loopback origin**. **Lesson: "ignore cert errors" is a scoped tool, not a sin — the question is always *which* origin.**
 
-## 5. Practices that held up
+## 5. Operating notes
 
-- **Plan mode first, sharp questions before code.** The two `AskUserQuestion` rounds (terminal reachability scope, device-binding method, sizing authority) each prevented a rewrite. One good question beats a day of rework.
-- **Phased execution with verification gates.** Backend (5 files) → `py_compile` + import smoke test → frontend (4 files) → `node --check` + boot check. Each phase provably green before the next.
-- **Cheap gates, every time.** `py_compile`, `node --check`, an import-and-`create_app()` smoke test, `curl /healthz`. None take more than seconds; together they catch most "it doesn't even start" bugs.
-- **Cache-busting is automatic.** Static asset URLs carry a content hash (`?v=<hash>`) stamped at serve time, so any edit busts the phone's cache with no manual step — see `docs/cache-hygiene-asset-hashing.md` (and do **not** reintroduce hand-bumped `?v=N` query strings). Mobile Safari caches aggressively, so "the user is testing stale code" used to be a costly confusion; the content hash removes it.
-- **The reference doc lives next to the code.** `docs/` captures durable design rationale; updating it in the same change as the code keeps it honest.
-- **Diagnose from the audit log.** The "Disconnected" bug was solved by reading the client IP out of the audit log — `188.x` = public tunnel. The logging we built for security paid for itself as debugging.
+- **Cache-busting is automatic.** Static asset URLs carry a content hash (`?v=<hash>`) stamped at serve time, so any edit busts the phone's cache with no manual step — see [`docs/cache-hygiene-asset-hashing.md`](cache-hygiene-asset-hashing.md) (and do **not** reintroduce hand-bumped `?v=N` query strings). Mobile Safari caches aggressively, which is why this matters more here than on a desktop browser.
+- **Diagnose from the audit log.** The audit log records each session's client IP, so a "Disconnected" report that turns out to be a public-tunnel client (not Tailscale, per the security model above) is readable straight out of it, without reproducing the bug.
 
 ## 6. If you extend this
 
