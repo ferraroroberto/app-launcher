@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+import os
 import re
 
 import pytest
@@ -27,6 +28,12 @@ from tests.e2e.life_os._support import (
 
 
 pytestmark = pytest.mark.smoke
+
+
+def _selection(page: Page) -> tuple:
+    """The rename input's selected range, as (start, end)."""
+    return tuple(page.locator("#lifeOsRenameInput").evaluate(
+        "el => [el.selectionStart, el.selectionEnd]"))
 
 
 def _mock_renamable_conversations(page: Page):
@@ -86,13 +93,21 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     rename.click()
     expect(dialog).to_be_visible()
     expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
-    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("")
-    expect(authed_page.locator("#lifeOsRenameInput")).to_have_attribute(
-        "placeholder", "booking the ferry")
+    # An untitled conversation opens on its topic, selected (#1953).
+    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("booking the ferry")
+    expect(authed_page.locator("#lifeOsRenameInput")).to_be_focused()
+    assert _selection(authed_page) == (0, len("booking the ferry"))
     # The header ✕ cancels without a request, back on the sheet.
     authed_page.locator("#lifeOsRenameClose").click()
     expect(dialog).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoSheet")).to_be_visible()
+    flush_requests(authed_page)
+    assert patches == []
+
+    # Saving the untouched topic writes nothing: it is already the shown name.
+    rename.click()
+    authed_page.locator("#lifeOsRenameSave").click()
+    expect(dialog).to_be_hidden()
     flush_requests(authed_page)
     assert patches == []
 
@@ -130,6 +145,40 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
     assert native == [], native
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_life_os_rename_sheet_prefill_fits_at_phone_width(
+    authed_page: Page, base_url: str, theme: str
+) -> None:
+    """#1953: at 390 px the pre-filled topic sits whole inside the input and
+    the input inside the sheet's card, in both themes. Set E2E_SHOT_DIR to
+    keep a screenshot of each (local review only; stubbed data)."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.emulate_media(color_scheme=theme)
+    _mock_skills(authed_page)
+    _mock_renamable_conversations(authed_page)
+    _open_conversations(authed_page, base_url)
+    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
+    field = authed_page.locator("#lifeOsRenameInput")
+    expect(field).to_have_value("booking the ferry")
+    assert _selection(authed_page) == (0, len("booking the ferry"))
+    fit = field.evaluate("""el => {
+        const box = el.getBoundingClientRect();
+        const card = el.closest('.detail-card').getBoundingClientRect();
+        return {
+            textFits: el.scrollWidth <= el.clientWidth,
+            insideCard: box.left >= card.left && box.right <= card.right,
+            insideViewport: box.left >= 0 && box.right <= window.innerWidth,
+        };
+    }""")
+    assert fit == {"textFits": True, "insideCard": True, "insideViewport": True}, fit
+    shot_dir = os.environ.get("E2E_SHOT_DIR")
+    if shot_dir:
+        authed_page.screenshot(
+            path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
 
 
 def test_life_os_rename_refusal_keeps_the_row_and_says_why(

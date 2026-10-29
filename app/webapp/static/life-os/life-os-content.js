@@ -162,7 +162,7 @@ const RENAME_LOG_SHEET = {
 export const RENAME_TITLE_SHEET = {
   heading: 'Rename conversation', action: 'Save', required: false,
   help: 'Leave it empty to go back to the topic.',
-  maxLength: 120, typing: 'sentences',
+  maxLength: 120, typing: 'sentences', selectAll: true,
 };
 
 export function askName(current, sheet) {
@@ -183,6 +183,9 @@ export function askName(current, sheet) {
   return new Promise(function (resolve) {
     renameSettle = resolve;
     d.showModal();
+    // A pre-filled starting point is selected, so typing replaces it and the
+    // arrow keys edit it.
+    if (sheet.selectAll) { input.focus(); input.select(); }
   });
 }
 
