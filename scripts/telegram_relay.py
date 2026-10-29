@@ -45,7 +45,7 @@ states, and what each means for the chat:
     already_open      this chat already has a conversation the relay opened (SESSION_ID); nothing launched
     stopped           the conversation was closed, its capture already saved
     not_relay_owned   stop: the relay did not reopen that session for this bot; left alone
-    busy              stop: the conversation is mid-turn or waiting on an answer; nothing done
+    busy              stop: the conversation is mid-turn or blocked on a prompt; nothing done
     capture_unconfirmed  stop: its last turn is not confirmed saved yet; nothing done, try later
     stop_unconfirmed  stop: quit sent but not confirmed closed; status says whether it is still open
     open / none       status: whether this bot has reopened conversations running

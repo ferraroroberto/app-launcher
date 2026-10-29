@@ -63,6 +63,9 @@ DEFAULT_PROFILES_PATH = PROJECT_ROOT / "config" / "channel_profiles.json"
 # The session-host tags a session with this label (``telegram:<profile id>``);
 # the Board, the Coding tab and the one-live-session-per-profile guard key on it.
 LABEL_PREFIX = "telegram:"
+# A conversation the relay opened for a profile carries this label, so the Board
+# does not read it as the owner's own interactive session.
+RELAY_LABEL_PREFIX = "relay:"
 
 _ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,31}$")
 
@@ -102,6 +105,11 @@ class ChannelProfile:
 def profile_session_label(profile_id: str) -> str:
     """The session-host ``label`` a profile's session carries."""
     return f"{LABEL_PREFIX}{profile_id}"
+
+
+def relay_session_label(profile_id: str) -> str:
+    """The session-host ``label`` of a conversation the relay opened for a profile."""
+    return f"{RELAY_LABEL_PREFIX}{profile_id}"
 
 
 def label_profile_id(label: Optional[str]) -> str:

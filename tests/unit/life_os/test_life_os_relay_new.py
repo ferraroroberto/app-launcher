@@ -24,7 +24,7 @@ def _new(relay, **body):
 @pytest.fixture
 def new_host(stop_host, monkeypatch):  # noqa: F811
     """``stop_host`` whose spawn hands out ``new-1``, ``new-2``, ..."""
-    from app.webapp.routers import life_os_spawn
+    from app.webapp.routers import life_os_relay, life_os_spawn
     ids = iter(f"new-{n}" for n in range(1, 9))
 
     def fake_spawn(project_dir, name, flags, port, kind, agent, rows=40, cols=120,
@@ -34,6 +34,9 @@ def new_host(stop_host, monkeypatch):  # noqa: F811
         return {"session_id": next(ids), "kind": kind}
 
     monkeypatch.setattr(life_os_spawn, "spawn_claude_session", fake_spawn)
+    # The ready wait is bounded at 40 s; a test that never reports idle must not sit that long.
+    monkeypatch.setattr(life_os_relay, "NEW_READY_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(life_os_relay, "NEW_READY_POLL_SECONDS", 0.01)
     return stop_host
 
 
@@ -49,7 +52,7 @@ class TestNew:
         body = resp.json()
         assert body["state"] == "started" and body["session_id"] == "new-1"
         (spawn,) = new_host.spawned
-        assert spawn.label == "" and spawn.kind == "pty"
+        assert spawn.label == "relay:health" and spawn.kind == "pty"
         assert "--channels" not in spawn.flags and "--settings" not in spawn.flags
         assert spawn.flags.rstrip().endswith("/journal-daily")
         (entry,) = relay_registry.entries("health", ["new-1"], chat="chat-a")
@@ -90,6 +93,57 @@ class TestNew:
         resp = new_host.client.post("/api/life-os/skills/journal-daily/launch", json={})
         assert resp.status_code == 200, resp.text
         assert relay_registry.entries("health", ["new-1"]) == []
+
+
+class TestReadyWait:
+    """``new`` answers once the session's first turn has ended, or says it is unconfirmed."""
+
+    @staticmethod
+    def _scripted(monkeypatch, replies):
+        """Make ``_turn_facts`` answer ``replies`` in turn (the last one repeats)."""
+        from app.webapp.routers import life_os_relay
+        calls = []
+
+        async def facts(caller):
+            calls.append(1)
+            return replies[min(len(calls), len(replies)) - 1]
+
+        monkeypatch.setattr(life_os_relay, "_turn_facts", facts)
+        return calls
+
+    def test_returns_only_after_the_session_reports_idle(self, new_host, monkeypatch):
+        from app.webapp.routers import life_os_relay
+        monkeypatch.setattr(life_os_relay, "NEW_READY_WAIT_SECONDS", 5.0)
+        turned = {"new-1": {"status": "needs-you", "last_turn_at": time.time() + 30}}
+        calls = self._scripted(monkeypatch, [{}, {"new-1": {"status": "working", "last_turn_at": None}},
+                                             turned])
+        _live(new_host, "new-1")
+        body = _new(new_host, chat="chat-a").json()
+        assert body["state"] == "started" and body["session_id"] == "new-1"
+        assert "ready" not in body
+        assert len(calls) == 3
+
+    @pytest.mark.parametrize("facts", [
+        {},
+        {"new-1": {"status": "working", "last_turn_at": None}},
+        {"new-1": {"status": None, "last_turn_at": time.time() + 30}},
+        # An idle row whose last turn is older than the launch belongs to an earlier session.
+        {"new-1": {"status": "idle", "last_turn_at": 0.0}},
+    ])
+    def test_a_first_turn_that_never_ends_is_unconfirmed(self, new_host, monkeypatch, facts):
+        self._scripted(monkeypatch, [facts])
+        _live(new_host, "new-1")
+        resp = _new(new_host, chat="chat-a")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["state"] == "started" and body["session_id"] == "new-1"
+        assert body["ready"] == "unconfirmed"
+        assert relay_registry.find("health", "new-1") is not None
+
+    def test_a_session_that_ended_while_waiting_is_unconfirmed(self, new_host, monkeypatch):
+        self._scripted(monkeypatch, [{"new-1": {"status": "idle", "last_turn_at": time.time() + 30}}])
+        body = _new(new_host, chat="chat-a").json()
+        assert body["state"] == "started" and body["ready"] == "unconfirmed"
 
 
 class TestOwnedBeforeItsFirstCapture:
