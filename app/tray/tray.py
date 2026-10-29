@@ -42,10 +42,13 @@ from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 from src.webapp_config import append_auth_token, load_webapp_config
 
 from app.tray import registered_trays, tailscale
+from app.tray.self_heal import RestartBudget, SelfHealer, should_heal_webapp
 from app.tray.single_instance import SingleInstance
-from app.tray.watchdog import HealthWatchdog
+from app.tray.watchdog import DEFAULT_FAILURES_TO_ALERT, HealthWatchdog
 from app.webapp.manager import (
+    HEALTH_ANSWERING,
     HEALTH_BOUND_NOT_ANSWERING,
+    OWNERSHIP_OURS,
     WebappManager,
     cert_paths,
     load_config,
@@ -66,6 +69,10 @@ WATCHDOG_LOG = PROJECT_ROOT / "webapp" / "watchdog.log"
 # spawned re-parented out of this tray's subtree and has no console, so this
 # file is the only place its logging can go.
 SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
+# Two missed 60 s probes before the session-host counts as gone: a tray
+# restart or an operator's deliberate reclaim-then-start is over well inside
+# that, so the watchdog never races a human respawning it.
+SESSION_HOST_FAILURES_TO_ALERT = 2
 
 # The loopback PTY session-host. It is a *linked-but-independent* child:
 # it hosts the user's Coding PTYs and MUST survive a
@@ -178,19 +185,37 @@ class TrayApp:
         self.starter_exc: Optional[Exception] = None
 
         # Health watchdog: a wedged uvicorn still LISTENs, so
-        # only a real /healthz round-trip can tell "up" from "hung".
-        # Alerting only — recovery stays manual (tray.bat --restart) until
-        # the failure mode is understood; no improvised process kills.
+        # only a real /healthz round-trip can tell "up" from "hung". A
+        # webapp that stays failing is restarted by the bounded self-heal;
+        # a one-shot start that found the port held would otherwise leave it
+        # dead until someone ran tray.bat --restart by hand.
         self.watchdog_stop = threading.Event()
+        self.webapp_healer = SelfHealer(
+            "webapp", self._restart_webapp_for_heal, RestartBudget(), _wd_log
+        )
         self.watchdog = HealthWatchdog(
             probe=self.manager.is_reachable,
             on_wedge=self._on_webapp_wedge,
             on_recover=self._on_webapp_recover,
+            on_failing=self._heal_webapp,
+        )
+        # The session-host is watched for "nothing listening" only. A
+        # listening session-host may be holding live PTYs however slowly it
+        # answers, so this never kills one: it only respawns a dead one.
+        self.session_host_healer = SelfHealer(
+            "session-host", self._start_session_host, RestartBudget(), _wd_log
+        )
+        self.session_host_watchdog = HealthWatchdog(
+            probe=lambda: registered_trays.port_listening(_session_host_port()),
+            on_wedge=self._on_session_host_down,
+            on_recover=self._on_session_host_recover,
+            failures_to_alert=SESSION_HOST_FAILURES_TO_ALERT,
+            on_failing=self._heal_session_host,
         )
 
     # -- session-host lifecycle -------------------------------------------
 
-    def _start_session_host(self) -> None:
+    def _start_session_host(self) -> str:
         """Bring up the loopback PTY session-host, ADOPTING one that already
         survived a tray restart instead of spawning a duplicate.
 
@@ -203,17 +228,20 @@ class TrayApp:
         excluded from tray.bat's reclaim sweep. We keep no Popen handle — the
         session-host is managed by port identity (adopt on start, reclaim on
         Quit), not by parentage.
+
+        Returns a short outcome line for the watchdog log.
         """
         port = _session_host_port()
         if registered_trays.port_listening(port):
             logger.info(f"🔗 Adopting running session-host on :{port}")
-            return
+            return f"adopted the session-host already listening on :{port}"
         # `start` launches the child and cmd exits, orphaning it out of this
         # tray's subtree; /b keeps it windowless (the pythonw child is windowless
         # anyway). CREATE_NO_WINDOW hides the transient cmd.
         cmd = [
             "cmd", "/c", "start", "", "/b",
             sys.executable, str(PROJECT_ROOT / "launcher.py"), "session-host",
+            "--port", str(port),
         ]
         # Log to a file, not DEVNULL. The CLI configures logging with a
         # bare `logging.basicConfig()` — default handler, stderr — so pointing
@@ -241,38 +269,45 @@ class TrayApp:
         except OSError as exc:
             logger.warning(f"⚠️  session-host failed to launch: {exc}")
             _notify("Session host", f"Failed to start: {exc}")
-            return
+            return f"failed to launch the session-host: {exc}"
         finally:
             # The child inherited its own duplicate of the handle; close the
             # tray's copy so this long-lived process isn't pinning the file.
             if log_handle is not None:
                 log_handle.close()
         logger.info(f"🧩 session-host spawned detached on :{port} (log: {SESSION_HOST_LOG})")
+        return f"spawned a detached session-host on :{port}"
 
     def _stop_session_host(self) -> None:
         """Stop the session-host on an explicit Quit. It is detached (no Popen
-        handle), so reclaim it by its owned port, scoped to this repo's .venv so
-        a sibling app's process is never touched. Reuses the canonical
-        tray_lifecycle.ps1 `reclaim` action (same one tray.bat --restart uses
-        for the webapp port) instead of hand-rolling the venv-scoped kill.
-
-        tray_lifecycle.ps1 is the ONE shared, machine-local copy owned by
-        fleet-config (project-scaffolding#153) — junctioned by fleet-config's
-        install.ps1 into %USERPROFILE%\\.claude\\tray, never vendored per-app.
-        Same resolved path as tray.bat's TRAY_PS (#433: this used to point at
-        a nonexistent repo-local path and silently no-op).
-        """
+        handle), so reclaim it by its owned port (see :meth:`_reclaim_port`)."""
         port = _session_host_port()
         if not registered_trays.port_listening(port):
             return
-        tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
-        if not tray_ps.exists():
-            msg = f"missing shared tray helper {tray_ps} — session-host on :{port} left running"
+        logger.info(f"🛑 Stopping session-host on :{port}")
+        error = self._reclaim_port(port)
+        if error is not None:
+            msg = f"{error} — session-host on :{port} may still be running"
             logger.warning(f"⚠️  {msg}")
             _notify("Session host stop failed", msg)
-            return
+
+    @staticmethod
+    def _reclaim_port(port: int) -> Optional[str]:
+        """Kill whatever process of THIS repo's .venv listens on ``port``.
+        Returns ``None`` on success, else why it could not.
+
+        Reuses the canonical tray_lifecycle.ps1 `reclaim` action (the same
+        one tray.bat --restart uses for the webapp port) instead of
+        hand-rolling the venv-scoped kill, so a sibling app's process is never
+        touched. tray_lifecycle.ps1 is the ONE shared, machine-local copy
+        owned by fleet-config, junctioned by fleet-config's install.ps1 into
+        %USERPROFILE%\\.claude\\tray and never vendored per-app, at the
+        same resolved path as tray.bat's TRAY_PS.
+        """
+        tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
+        if not tray_ps.exists():
+            return f"missing shared tray helper {tray_ps}"
         try:
-            logger.info(f"🛑 Stopping session-host on :{port}")
             result = subprocess.run(
                 [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
                  "-NoProfile", "-NonInteractive", "-File",
@@ -284,14 +319,11 @@ class TrayApp:
                 timeout=10,
                 check=False,
             )
-            if result.returncode != 0:
-                msg = f"tray_lifecycle.ps1 reclaim exited {result.returncode} — session-host on :{port} may still be running"
-                logger.warning(f"⚠️  {msg}")
-                _notify("Session host stop failed", msg)
         except Exception as exc:  # noqa: BLE001
-            msg = f"session-host stop failed: {exc}"
-            logger.warning(f"⚠️  {msg}")
-            _notify("Session host stop failed", msg)
+            return f"reclaim of :{port} failed: {exc}"
+        if result.returncode != 0:
+            return f"tray_lifecycle.ps1 reclaim exited {result.returncode}"
+        return None
 
     # -- webapp lifecycle ----------------------------------------------------
 
@@ -320,17 +352,74 @@ class TrayApp:
     def _on_webapp_wedge(self, failures: int) -> None:
         msg = (
             f"webapp on :{self.manager.config.port} stopped answering /healthz "
-            f"({failures} consecutive probes) — restart with tray.bat --restart"
+            f"({failures} consecutive probes, health={self.manager.probe_health()}, "
+            f"{self._webapp_exit_detail()}) — self-heal restarts it if it stays down"
         )
         logger.error(f"❌ {msg}")
         _wd_log(f"WEDGE {msg}")
         _notify("Launcher webapp unresponsive", msg)
 
     def _on_webapp_recover(self) -> None:
+        self.webapp_healer.recovered()
         msg = f"webapp on :{self.manager.config.port} answering /healthz again"
         logger.info(f"✅ {msg}")
         _wd_log(f"RECOVERED {msg}")
         _notify("Launcher webapp recovered", msg)
+
+    def _webapp_exit_detail(self) -> str:
+        code = self.manager.child_exit_code()
+        if code is not None:
+            return f"spawned webapp process exited with code {code}"
+        if self.manager.status().ownership == OWNERSHIP_OURS:
+            return "spawned webapp process still running"
+        return "exit code unknown (no live child of this tray)"
+
+    def _heal_webapp(self, failures: int) -> None:
+        """Watchdog ``on_failing``: restart the webapp once it is due."""
+        if not self.manager.config.enabled:
+            return
+        health = self.manager.probe_health()
+        if not should_heal_webapp(health, failures, DEFAULT_FAILURES_TO_ALERT):
+            return
+        self.webapp_healer.attempt(
+            f"{failures} failed probes, health={health}, {self._webapp_exit_detail()}"
+        )
+
+    def _restart_webapp_for_heal(self) -> str:
+        """Free the webapp port the way tray.bat --restart does, then start fresh."""
+        port = self.manager.config.port
+        if self.manager.probe_health() == HEALTH_BOUND_NOT_ANSWERING:
+            self.manager.stop()  # terminates a wedge this tray spawned
+        if self.manager.probe_health() == HEALTH_BOUND_NOT_ANSWERING:
+            error = self._reclaim_port(port)
+            if error is not None:
+                raise RuntimeError(f"could not reclaim :{port}: {error}")
+        status = self.manager.start(wait=True)
+        if status.health != HEALTH_ANSWERING:
+            raise RuntimeError(f"webapp started but {status.detail}")
+        return f"done: {status.detail}"
+
+    def _on_session_host_down(self, failures: int) -> None:
+        msg = (
+            f"session-host on :{_session_host_port()} not listening "
+            f"({failures} consecutive probes; detached, so its exit code is "
+            f"unknown here, see {SESSION_HOST_LOG.name}) — self-heal will respawn it"
+        )
+        logger.error(f"❌ {msg}")
+        _wd_log(f"DOWN {msg}")
+        _notify("Session host down", msg)
+
+    def _on_session_host_recover(self) -> None:
+        self.session_host_healer.recovered()
+        msg = f"session-host on :{_session_host_port()} listening again"
+        logger.info(f"✅ {msg}")
+        _wd_log(f"RECOVERED {msg}")
+
+    def _heal_session_host(self, failures: int) -> None:
+        """Watchdog ``on_failing``: respawn a session-host that is gone.
+        :meth:`_start_session_host` re-checks the port and adopts instead
+        when one came back in the meantime, so a live one is never doubled."""
+        self.session_host_healer.attempt(f"{failures} probes found nothing listening")
 
     # -- Cloudflare tunnel lifecycle ------------------------------------------
 
@@ -540,9 +629,10 @@ class TrayApp:
 
         threading.Thread(target=self._start_session_host, daemon=True).start()
         threading.Thread(target=self._start, daemon=True).start()
-        threading.Thread(
-            target=self.watchdog.run, args=(self.watchdog_stop,), daemon=True
-        ).start()
+        for watchdog in (self.watchdog, self.session_host_watchdog):
+            threading.Thread(
+                target=watchdog.run, args=(self.watchdog_stop,), daemon=True
+            ).start()
         if self.tunnel_hostname is not None:
             threading.Thread(target=self._start_tunnel, daemon=True).start()
 

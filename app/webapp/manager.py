@@ -156,6 +156,13 @@ class WebappManager:
                 continue
         return False
 
+    def child_exit_code(self) -> Optional[int]:
+        """Exit code of the webapp process this manager spawned, once it has exited.
+
+        ``None`` while it runs, and when this manager spawned nothing (an
+        adopted webapp's exit is not observable from here)."""
+        return None if self._proc is None else self._proc.poll()
+
     def is_port_in_use(self) -> bool:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.2)

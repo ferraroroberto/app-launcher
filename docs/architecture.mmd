@@ -29,10 +29,13 @@ flowchart TB
     TRAY["tray.py\nmenu: open/copy URL, restart, status, quit"]
     TRAYTS["tailscale.py\nCLI discovery + hostname resolution"]
     TRAYREGTRAYS["registered_trays.py\nautostart boot sequence (#456)"]
+    TRAYHEAL["watchdog.py + self_heal.py
+health probes, bounded restart"]
   end
   TRAYCMD --> TRAY
   TRAY --> TRAYTS
   TRAY --> TRAYREGTRAYS
+  TRAY --> TRAYHEAL
 
   TRAY -->|spawns, owns subtree :T kill/T restart| WEBAPPPROC["webapp process :8445"]
   TRAY -->|spawns DETACHED, re-adopts on start\nexcluded from tray reclaim sweep| HOSTPROC["session-host process :8446"]
