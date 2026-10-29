@@ -93,6 +93,11 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "reads over loopback. No session, transcript or terminal access, "
         "and the issue asks for the same auth as the rest of /api/board."
     ),
+    "/api/board/done": (
+        "An earlier day's closed-issue titles for the Done lane: the same "
+        "GitHub metadata /api/board already serves token-gated, one more day "
+        "of it. No session, transcript or terminal access."
+    ),
     "/api/board/github/refresh": (
         "Forces a refresh of the cached GitHub issue/PR metadata the board "
         "already serves token-gated — no session or transcript access."
