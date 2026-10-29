@@ -106,6 +106,32 @@ class TestRouter:
         assert report["api"]["phone"]["legs"]["network"]["median"] == 780
 
 
+def test_templater_names_included_routes_and_prefers_literals():
+    """Routes added through ``include_router`` must be found whichever
+    FastAPI version is installed (newer ones wrap them in a lazy router that a
+    walk of ``app.routes`` cannot read), and ``/runs/latest`` must beat
+    ``/runs/{run_id}``."""
+    from types import SimpleNamespace
+
+    from fastapi import APIRouter, FastAPI
+
+    from app.webapp.routers import perf_timings as router_mod
+
+    inner = APIRouter(prefix="/api/runs")
+    inner.add_api_route("/{run_id}", lambda run_id: {}, methods=["GET"])
+    inner.add_api_route("/latest", lambda: {}, methods=["GET"])
+    outer = APIRouter()
+    outer.include_router(inner)
+    app = FastAPI()
+    app.include_router(outer)
+
+    template = router_mod._templater(SimpleNamespace(app=app))
+    assert template("/api/runs/abc123") == "/api/runs/{run_id}"
+    assert template("/api/runs/latest") == "/api/runs/latest"
+    assert template("/api/runs/abc/extra") is None
+    assert template("/api/nothing") is None
+
+
 def test_server_timing_on_api_responses_only(webapp_client):
     client, _, _ = webapp_client
     header = client.get("/api/version").headers.get("server-timing", "")
