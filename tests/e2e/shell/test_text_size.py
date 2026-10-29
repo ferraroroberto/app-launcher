@@ -13,6 +13,8 @@ PWA relaunch never paints at the wrong size first.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -325,3 +327,31 @@ def test_selected_segment_is_raised_above_the_track(
     assert got["selected"] > got["track"], got
     if scheme == "light":
         assert got["selected"] == got["card"], got
+
+
+def test_channels_setup_hint_wraps_at_large_320px(
+    authed_page: Page, base_url: str
+) -> None:
+    """A missing profiles file shows its fix-it hint, whose file path is one
+    unbreakable word: it must wrap inside its column, not push the card
+    sideways. The channels payload is stubbed so the hint shows on any host."""
+    page = authed_page
+    page.add_init_script("localStorage.setItem('app-launcher.textsize', 'large')")
+    page.route(
+        "**/api/life-os/channels",
+        lambda route: route.fulfill(
+            content_type="application/json",
+            body=json.dumps({
+                "profiles": [], "problems": [],
+                "setup": {"file_present": False, "life_os_found": True,
+                          "bun": True, "plugin": True, "skills": []},
+            }),
+        ) if route.request.method == "GET" else route.fallback(),
+    )
+    page.set_viewport_size({"width": 320, "height": 700})
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    open_settings_sheet(page, "channelsSheet")
+    hint = page.locator("#channelChecks .channel-check-meta .muted").first
+    expect(hint).to_contain_text("channel_profiles.sample.json")
+    got = stable_eval(hint, "el => ({sw: el.scrollWidth, cw: el.clientWidth})")
+    assert got["sw"] <= got["cw"], got

@@ -612,6 +612,9 @@ span.chief-answer-ref { color: var(--muted); }
   flex-direction: column;
   min-width: 0;
   flex: 1;
+  /* A fix-it hint names a file path, one unbreakable word that outruns the
+     column at Large text on a 320px screen. */
+  overflow-wrap: anywhere;
 }
 .channel-check-chip {
   flex-shrink: 0;
