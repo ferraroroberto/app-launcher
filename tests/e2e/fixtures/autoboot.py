@@ -230,7 +230,6 @@ def boot_webapp(iso: Isolation, servers: Servers, sh_port: int) -> str:
     HTTPS when the cert pair exists (mirrors the real phone path); plain HTTP
     otherwise so a cert-less checkout still runs the gate.
     """
-    from app.webapp.event_loop import LOOP_FACTORY
     from app.webapp.manager import cert_paths
 
     certs = cert_paths()
@@ -240,9 +239,9 @@ def boot_webapp(iso: Isolation, servers: Servers, sh_port: int) -> str:
 
     def _spawn_webapp(port: int) -> subprocess.Popen:
         wa_cmd = [
-            sys.executable, "-m", "uvicorn", "app.webapp.server:app",
+            sys.executable, "-m", "app.webapp.serve",
             "--host", "127.0.0.1", "--port", str(port),
-            "--log-level", "warning", "--loop", LOOP_FACTORY,
+            "--log-level", "warning",
         ]
         if certs:
             cert, key = certs

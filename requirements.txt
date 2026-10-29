@@ -25,6 +25,7 @@ resvg-py>=0.3.0
 # Webapp
 fastapi>=0.110
 uvicorn[standard]>=0.27
+hypercorn>=0.18
 # Multipart form parsing — image uploads to the interactive terminal
 python-multipart>=0.0.9
 

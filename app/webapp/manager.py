@@ -36,7 +36,6 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.tray.single_instance import cross_process_lock
-from app.webapp.event_loop import LOOP_FACTORY
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 
 logger = logging.getLogger(__name__)
@@ -371,16 +370,13 @@ class WebappManager:
         cmd: List[str] = [
             py,
             "-m",
-            "uvicorn",
-            "app.webapp.server:app",
+            "app.webapp.serve",
             "--host",
             self.config.host,
             "--port",
             str(self.config.port),
             "--log-level",
             "warning",
-            "--loop",
-            LOOP_FACTORY,
         ]
         certs = cert_paths()
         if certs is not None:

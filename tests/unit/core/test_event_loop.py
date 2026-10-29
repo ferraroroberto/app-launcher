@@ -2,9 +2,9 @@
 
 asyncio's default Windows proactor event loop closes its listening socket
 on any aborted client connection (WinError 64); the selector loop's accept
-path doesn't. These tests cover the wiring (every uvicorn spawn of
-``app.webapp.server:app`` picks the shim) and the actual accept-loop
-resilience the shim buys.
+path doesn't. These tests cover the wiring (every launch of
+``app.webapp.server:app`` goes through ``app.webapp.serve``, which runs on the
+shim) and the actual accept-loop resilience the shim buys.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ import pytest
 
 from app.webapp.event_loop import (
     GIL_SWITCH_INTERVAL_S,
-    LOOP_FACTORY,
     selector_loop_factory,
     tune_gil_switch_interval,
 )
@@ -46,10 +45,10 @@ def test_selector_loop_factory_defers_on_other_platforms(monkeypatch):
 
 
 def test_selector_loop_factory_is_zero_arg_and_returns_an_instance():
-    """Regression pin: uvicorn imports a *custom* --loop target and calls
-    it as a bare Callable[[], AbstractEventLoop] -- no use_subprocess kwarg,
-    and it must return an instantiated loop, not a loop class (#388's
-    original bug: returning the class left Runner calling unbound methods)."""
+    """Regression pin: ``asyncio.Runner(loop_factory=...)`` calls it as a bare
+    Callable[[], AbstractEventLoop], and it must return an instantiated loop,
+    not a loop class (#388's original bug: returning the class left Runner
+    calling unbound methods)."""
     loop = selector_loop_factory()
     try:
         assert isinstance(loop, asyncio.AbstractEventLoop)
@@ -132,24 +131,27 @@ def test_request_hops_stay_fast_beside_cpu_bound_threads(default_switch_interval
     )
 
 
-def test_manager_build_command_passes_loop_factory():
+SERVE_ARGV = ["-m", "app.webapp.serve"]
+
+
+def test_manager_build_command_launches_serve():
     mgr = WebappManager(WebappManagerConfig(port=18445))
     cmd = mgr._build_command()
-    assert "--loop" in cmd
-    assert cmd[cmd.index("--loop") + 1] == LOOP_FACTORY
+    assert cmd[1:3] == SERVE_ARGV
+    assert "uvicorn" not in cmd
 
 
-def test_webapp_cmd_passes_loop_factory(monkeypatch):
+def test_webapp_cmd_runs_serve(monkeypatch):
     import argparse
 
     from app.cli.commands.webapp_cmd import WebappCommand
 
     captured = {}
 
-    def fake_run(app, **kwargs):
-        captured.update(kwargs)
+    def fake_run(host, port, **kwargs):
+        captured.update(host=host, port=port, **kwargs)
 
-    monkeypatch.setattr("uvicorn.run", fake_run)
+    monkeypatch.setattr("app.webapp.serve.run", fake_run)
     monkeypatch.setattr(
         "app.webapp.manager.cert_paths", lambda *a, **k: None
     )
@@ -159,53 +161,49 @@ def test_webapp_cmd_passes_loop_factory(monkeypatch):
     )
 
     WebappCommand(config=None).execute(argparse.Namespace(host=None, port=None))
-    assert captured.get("loop") == LOOP_FACTORY
+    assert captured == {"host": "127.0.0.1", "port": 18445, "log_level": "info"}
 
 
-def test_e2e_autoboot_wires_loop_factory():
-    """conftest.py's disposable-webapp spawn isn't independently importable
-    (module-scoped fixture with subprocess side effects) — a static check
-    that its wa_cmd references the same shim is enough to catch drift."""
-    src = (_REPO_ROOT / "tests" / "e2e" / "fixtures" / "autoboot.py").read_text(encoding="utf-8")
-    assert "from app.webapp.event_loop import LOOP_FACTORY" in src
-    # Whitespace-insensitive: the flag must be followed by the shim, however
-    # the command list is wrapped (#1231 reflowed it into a spawn helper).
-    assert re.search(r'"--loop",\s*LOOP_FACTORY\b', src)
+@pytest.mark.parametrize(
+    "relpath",
+    ["tests/e2e/fixtures/autoboot.py", "scripts/design_review_synthetic.py"],
+)
+def test_disposable_webapp_spawns_launch_serve(relpath):
+    """The e2e autoboot and the design-review boot spawn the webapp inside
+    modules with subprocess side effects, so a static check of their argv
+    catches drift: each launches ``app.webapp.serve``, never uvicorn."""
+    src = (_REPO_ROOT / relpath).read_text(encoding="utf-8")
+    assert re.search(r'"-m",\s*"app\.webapp\.serve"', src), relpath
+    assert '"uvicorn"' not in src, relpath
 
 
-def test_webapp_bat_wires_loop_factory():
+def test_webapp_bat_launches_serve():
     src = (_REPO_ROOT / "webapp.bat").read_text(encoding="utf-8")
-    assert "app.webapp.event_loop:selector_loop_factory" in src
-    assert "--loop" in src
+    assert src.count("-m app.webapp.serve") == 2
+    assert "uvicorn" not in src
 
 
-def test_documented_uvicorn_commands_pass_the_loop_flag():
-    """A command a reader copies is a spawn site too (#1008).
-
-    Every *code* spawn site is pinned above, but README's Verify snippet
-    booted `app.webapp.server:app` with no `--loop` - on the Windows proactor
-    loop, whose accept path closes the listening socket on a single aborted
-    client (WinError 64, #388) - 400 lines after the same README states that
-    every invocation now runs on the selector loop. The file contradicted
-    itself and the copy-pasteable half was the wrong one.
-    """
+def test_documented_webapp_commands_launch_serve():
+    """A command a reader copies is a spawn site too (#1008). A documented
+    ``uvicorn app.webapp.server:app`` would skip the selector loop, HTTP/2
+    and the loopback-only proxy-header trust that ``app.webapp.serve`` owns."""
     docs = [_REPO_ROOT / "README.md", *sorted((_REPO_ROOT / "docs").glob("*.md"))]
     offenders = []
     for doc in docs:
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
-            if "uvicorn app.webapp.server:app" in line and "--loop" not in line:
+            if "uvicorn app.webapp.server:app" in line:
                 offenders.append(f"{doc.name}:{lineno}")
     assert not offenders, (
-        "these documented uvicorn commands would boot on the proactor loop: "
+        "these documented commands bypass app.webapp.serve: "
         f"{offenders}"
     )
 
 
-def test_named_tunnel_script_wires_loop_factory(monkeypatch):
-    """The documented no-tray path (``webapp_tunnel_named.bat``) was the one
-    spawn site that never passed ``--loop`` (#1007), so it booted on the
-    proactor loop the shim exists to avoid. Unlike conftest.py this script
-    imports cleanly, so pin the real argv rather than its source text."""
+def test_named_tunnel_script_builds_the_managers_argv(monkeypatch):
+    """The documented no-tray path (``webapp_tunnel_named.bat``) once composed
+    its own argv and drifted from the app's (#1003, #1007). Unlike conftest.py
+    this script imports cleanly, so pin the real argv rather than its source
+    text."""
     spec = importlib.util.spec_from_file_location(
         "_rnt_under_test", _REPO_ROOT / "scripts" / "run_named_tunnel.py"
     )
@@ -224,11 +222,7 @@ def test_named_tunnel_script_wires_loop_factory(monkeypatch):
     module._spawn_uvicorn(18445)
 
     cmd = captured["cmd"]
-    assert "--loop" in cmd, "named-tunnel uvicorn spawn is missing --loop (#388/#1007)"
-    assert cmd[cmd.index("--loop") + 1] == LOOP_FACTORY
-    # Stronger than "contains --loop": since #1003 the script builds its argv
-    # through the app's own builder, so it cannot drift from it again in any
-    # flag — which is how --loop went missing here in the first place.
+    assert cmd[1:3] == SERVE_ARGV
     expected = WebappManager(
         WebappManagerConfig(host="127.0.0.1", port=18445)
     )._build_command()
@@ -296,7 +290,7 @@ def test_selector_loop_survives_aborted_connections():
 @pytest.mark.skipif(sys.platform != "win32", reason="proactor-loop bug is Windows-only")
 def test_proactor_loop_dies_on_aborted_connections():
     """Documents the bug this issue fixes — the shim exists because this
-    fails. If a future CPython/uvicorn release fixes the proactor loop
+    fails. If a future CPython release fixes the proactor loop
     itself, this test (not the shim) is what should be revisited."""
     with pytest.raises(AssertionError):
         asyncio.run(

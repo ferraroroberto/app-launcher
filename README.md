@@ -52,7 +52,7 @@ Each coding agent has its own CLI to install (Codex, Antigravity, Copilot, Pi, G
 
 ```powershell
 .\tray.bat           # tray icon + webapp (normal use, no console window)
-.\webapp.bat         # uvicorn standalone, no tray (dev / headless)
+.\webapp.bat         # webapp standalone, no tray (dev / headless)
 ```
 
 Both bind `0.0.0.0:8445`. If `webapp/certificates/cert.pem` is present, the server is HTTPS — otherwise plain HTTP (fine for a fresh loopback-only clone). The cert pair is written by `scripts/gen_tailscale_cert.py` — a real Let's Encrypt cert for the tailnet name, zero per-device trust; see [HTTPS certificate](#https-certificate-tailscale).
@@ -97,7 +97,7 @@ Fleet standard (set in the `ferraroroberto/project-scaffolding` repo). Provision
 
 One-time prereq: enable **DNS → HTTPS Certificates** in the [Tailscale admin console](https://login.tailscale.com/admin/dns). The script auto-detects the MagicDNS name and writes `webapp/certificates/cert.pem` + `key.pem`. Every device on the tailnet then trusts `https://<host>.<tailnet>.ts.net:8445` natively — no CA install, no profile, no Certificate Trust toggle.
 
-**Renewal is automatic.** The LE leaf lives ~90 days, so every uvicorn-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
+**Renewal is automatic.** The LE leaf lives ~90 days, so every webapp-boot path (`tray.bat` via the webapp manager, `webapp.bat`, `run_named_tunnel.py`) runs `gen_tailscale_cert.py --check` first, which renews only a `.ts.net` cert expiring within 30 days and no-ops on any other cert. No calendar entry needed.
 
 > **Loopback and LAN URLs:** the Tailscale cert is issued *only* for the ts.net name, so `https://127.0.0.1:8445` and LAN-IP URLs show a hostname-mismatch warning by design — open the launcher via the ts.net URL on the PC too. The **PC mirror windows adapt automatically**: with a Tailscale cert active they open the ts.net URL carrying their own credentials (`?token=` bearer bootstrap + a server-minted `?tt=` terminal token when the passkey gate is configured); with no Tailscale cert they keep the loopback URL and its auth bypass. The Cloudflare tunnel (`noTLSVerify`) and the e2e suite are unaffected either way. With no cert at all the server runs plain HTTP on loopback — fine for a fresh clone, but iOS Safari needs HTTPS for the PWA + mic features, so provision the Tailscale cert before phone use.
 
@@ -130,7 +130,7 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 
 - The generated value is written to `config/webapp_config.json` and is **not** printed unless you pass `--show`. The tray bakes it into the URL it copies (`Tray → Copy Cloudflare URL`), so the normal flow never needs to read it off the console — and a run inside a launcher PTY session has its whole stdout captured to a transcript kept for `session_retention_days`.
 
-- Loopback callers still bypass — *unless* the request carries Cloudflare's own edge headers. cloudflared runs on this PC and dials the webapp over loopback, so a tunnelled request only looks remote once uvicorn rewrites the client address from `X-Forwarded-For`; the edge headers are the signal that survives however that address resolves.
+- Loopback callers still bypass — *unless* the request carries Cloudflare's own edge headers. cloudflared runs on this PC and dials the webapp over loopback, so a tunnelled request only looks remote once the server rewrites the client address from `X-Forwarded-For`; the edge headers are the signal that survives however that address resolves.
 - Remote (tailnet, Cloudflare) callers must present `Authorization: Bearer <token>` *or* `?token=…`. This includes the terminal WebSocket, which re-applies the same gate by hand (Starlette middleware never sees a WS handshake) — a full-scope minted token works there exactly as it does on HTTP, and a job-scoped one is refused there exactly as it is on HTTP.
 - The tray menu's **Copy …** items bake the token into the copied URL automatically. Paste once on the phone, the page stashes it in `localStorage`, strips it from the visible URL, you're in.
 - **Settings → API tokens** mints additional *job-scoped* bearer tokens: each can only fire its chosen Jobs-tab job (`POST /api/jobs/<id>/run`) and is rejected everywhere else, so the URL baked into a Stream Deck button no longer carries full-SPA access. The raw token is shown once at mint; revoke + re-mint to rotate without touching `auth_token`. See `docs/jobs-tab.md` → "Scoped API tokens".
@@ -225,7 +225,7 @@ Settings-tab toggle from using this mechanism itself.
 - The session-host binds `127.0.0.1` only — the PTYs are never directly reachable; the webapp is the sole way in.
 - The launcher only ever runs bats from the registered list (id is checked against `config/apps.json`) or `claude` in a registered project_dir — it can't be coerced into running an arbitrary path.
 - The smart-kill endpoint accepts any port in range but only acts on PIDs LISTENing on that port — a port no one is using is a no-op.
-- Local TLS is the Tailscale LE cert, issued for the ts.net name only. Cloudflare terminates public TLS at the edge; the tunnel handshake to uvicorn uses `noTLSVerify: true` because the origin cert doesn't cover the public hostname.
+- Local TLS is the Tailscale LE cert, issued for the ts.net name only. Cloudflare terminates public TLS at the edge; the tunnel handshake to the webapp uses `noTLSVerify: true` because the origin cert doesn't cover the public hostname.
 
 ## Usage log
 
@@ -259,7 +259,7 @@ A nightly Job finds Life OS skill sessions opened by mistake and removes them, s
 
 ```powershell
 & .\.venv\Scripts\python.exe -m py_compile launcher.py
-& .\.venv\Scripts\python.exe -m uvicorn app.webapp.server:app --host 127.0.0.1 --port 8445 --loop app.webapp.event_loop:selector_loop_factory
+& .\.venv\Scripts\python.exe -m app.webapp.serve --host 127.0.0.1 --port 8445
 # then in another terminal:
 curl http://127.0.0.1:8445/healthz
 ```
