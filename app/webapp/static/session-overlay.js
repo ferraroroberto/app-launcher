@@ -19,13 +19,13 @@
  * and a tap on it toasts the reason. A detached session opens in Chat; a
  * PTY session of an agent with no reader opens in Terminal; otherwise the
  * mode the session was last viewed in wins (remembered per session id in
- * localStorage), defaulting to Terminal. A session that can offer *neither*
+ * localStorage), defaulting to Chat (Terminal with the Settings switch off). A session that can offer *neither*
  * (detached, no reader) still opens, in Chat, on the reader's reason line
  * — the overlay is the only place its Rename and Stop live.
  */
 
 import { els, state } from './state.js';
-import { isDesktopClient, toast } from './api.js';
+import { opensInChatFirst, toast } from './api.js';
 import {
   attachTerminalPane,
   hideTerminal,
@@ -205,15 +205,15 @@ export function markSelectedSession(sid) {
 }
 
 // The mode a session opens in: an explicit choice, else the one it was last
-// viewed in (per session, remembered), else Chat on a desktop browser
-// and Terminal on the phone — clamped to the panes this session has. The
-// row-tap's desktop mirror gate (sessions.js) resolves through this too, so
-// only a session that resolves to Terminal leaves for the PC window.
+// viewed in (per session, remembered), else Chat — or Terminal with the
+// "Open in Chat" setting off — clamped to the panes this session has. The
+// row-tap's PC-window gate (sessions.js) resolves through this too, so
+// only a session that resolves to Terminal can leave for the PC window.
 export function resolveSessionMode(session, wantMode) {
   const termOK = terminalAvailable(session);
   const chatOK = chatAvailable(session);
   let mode = wantMode || lastMode(session.session_id) ||
-    (chatOK && isDesktopClient() ? 'chat' : (termOK ? 'terminal' : 'chat'));
+    (chatOK && opensInChatFirst() ? 'chat' : (termOK ? 'terminal' : 'chat'));
   if (mode === 'chat' && !chatOK) mode = 'terminal';
   if (mode === 'terminal' && !termOK) mode = 'chat';
   return mode;

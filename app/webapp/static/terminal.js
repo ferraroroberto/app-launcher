@@ -26,7 +26,7 @@
  */
 
 import { els, state, SESSIONS_POLL_MS } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi } from './api.js';
+import { apiFailToast, jsonApi, opensInPcWindow } from './api.js';
 import { fetchSessions, sessionTitle } from './sessions.js';
 import { enableNativeTouchScroll } from './terminal/terminal-touch.js';
 import { loadXterm } from './terminal/xterm-loader.js';
@@ -132,10 +132,11 @@ export function estimateTermSize() {
   }
 }
 
-// Desktop-vs-phone launch-size contract, shared by every PTY-launch call
+// PC-window-vs-in-page launch-size contract, shared by every PTY-launch call
 // site (Coding tab, Board issue-start/dispatch, Life OS recap/skill launch): a desktop browser
-// gets the dedicated PC mirror window sized
-// to its own default, a phone carries its real terminal size so the PTY's
+// with "Open sessions in a new window" on gets the dedicated PC mirror window
+// sized to its own default; anything else renders the session in the page, and
+// carries its real terminal size so the PTY's
 // first frame is painted at the right width. Mutates `payload` in place —
 // callers apply their own outer gate (e.g. "only for a streamed/pty launch")
 // before calling this.
@@ -148,7 +149,7 @@ export function estimateTermSize() {
 // phone sets it too, but it's moot there: the server already mirrors any
 // non-loopback caller before this flag is ever consulted.
 export function applyLaunchSizePayload(payload) {
-  if (isDesktopClient()) {
+  if (opensInPcWindow()) {
     payload.desktop = true;
   } else {
     payload.in_page = true;
@@ -162,12 +163,12 @@ export function applyLaunchSizePayload(payload) {
 // tab's launchApp, Life OS's launchRecap/launchSkill): refresh the sessions
 // list, then drop straight into the in-page terminal for a full-control
 // (non-'remote') session on a phone — a desktop browser already got its
-// dedicated PC Edge window instead, so it stays on the SPA.
+// dedicated PC Edge window instead (the setting is on), so it stays on the SPA.
 // No-op when the launch produced no session (a non-claude-code app launch).
 export function handleLaunchResponse(session) {
   if (!session) return;
   fetchSessions().catch(function () {});
-  if (session.kind !== 'remote' && !isDesktopClient()) {
+  if (session.kind !== 'remote' && !opensInPcWindow()) {
     openTerminal(session);
   }
 }

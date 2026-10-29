@@ -498,6 +498,8 @@ export const els = {
   chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),
   grokAutoSwitchToggle: document.getElementById('grokAutoSwitchToggle'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),
+  openSessionsInWindowToggle: document.getElementById('openSessionsInWindowToggle'),
+  openSessionsInChatToggle: document.getElementById('openSessionsInChatToggle'),
   autostartChannelSessionsToggle: document.getElementById('autostartChannelSessionsToggle'),
   sessionsChannelSummary: document.getElementById('sessionsChannelSummary'),
   channelListDialog: document.getElementById('channelListDialog'),

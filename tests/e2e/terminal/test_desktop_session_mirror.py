@@ -1,4 +1,7 @@
-"""Desktop row-tap: Chat in-page by default, the mirror window for Terminal.
+"""Desktop row-tap with "Open sessions in a new window" on: Terminal mirrors out.
+
+With the switch on (it is off by default, #1955; the in-page default is pinned by
+``tests/e2e/session/test_open_session_settings.py``) the behaviour below holds.
 
 #282: on a desktop browser (``pointer: fine``) a session's *terminal* is the
 dedicated PC Edge ``--app`` mirror window a new-session launch opens, so it
@@ -25,6 +28,8 @@ pinned by ``test_session_mode_toggle.py::test_row_tap_reopens_last_mode`` and
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -43,6 +48,13 @@ def test_desktop_row_tap_opens_chat_then_mirrors_once_terminal_is_chosen(
             "opens the terminal in-page — see test_inpage_terminal_not_mirror.py"
         )
     sid = launched_pty_session
+    # The window switch is off by default: turn it on for this page.
+    def _window_on(route):
+        resp = route.fetch()
+        route.fulfill(response=resp, json={**resp.json(), "open_sessions_in_window": True,
+                                           "open_sessions_in_chat": True})
+
+    authed_page.route(re.compile(r".*/api/config$"), _window_on)
     mirror_posts: list = []
     authed_page.on(
         "request",

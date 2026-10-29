@@ -15,7 +15,7 @@ The Code tab's Sessions card lists running sessions, the chief's row first, on t
 
 Tapping the kebab opens the menu and never the session. **Tap the row itself** to open the session view in the mode it was last viewed in:
 
-- A full-control row starts in Terminal on the phone and in Chat on a desktop browser (the desktop's Terminal, its PC window, is one tap away on the mode toggle).
+- A row opens in the view it was last in; one never opened starts in Chat wherever its agent has a transcript reader, or in Terminal when **Settings › Sessions › Open in Chat** is off (`open_sessions_in_chat`, on by default). On a desktop browser, Terminal is in the page, or the PC window with **Open in a new window** on (`open_sessions_in_window`, off by default); the row's ⋮ menu **Open in new window** opens that window on demand, on a desktop browser only.
 - A detached row whose agent has a transcript reader — Claude, Codex, Grok Build, Pi, Antigravity CLI and GitHub Copilot CLI — opens in Chat.
 - **Every** row opens, including a detached one of an agent with no reader: both mode segments are greyed and Chat shows the reason, because the view is where that session's Rename and Stop live.
 

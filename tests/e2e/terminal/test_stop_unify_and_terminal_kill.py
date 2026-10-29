@@ -29,7 +29,8 @@ import os
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import BUILD_READOUT_MS, OVERLAY_OPEN_MS
+from tests.e2e.fixtures.ui import open_session_row
+from tests.e2e.fixtures.waits import BUILD_READOUT_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -81,10 +82,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     expect(pty_row.locator(".action-stop:not([data-item=action-stop-close])")).to_have_count(0)
     expect(pty_row.locator(".row-actions > [data-item=action-stop-close]")).to_have_count(0)
 
-    pty_row.locator(".session-open").click()
-    authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
-    )
+    open_session_row(authed_page, pty_row, "terminal")
 
     # One tap stops — stopSession() no longer guards with a confirm() dialog
     # (issue #253 follow-up); a stray dialog would mean the guard came back.

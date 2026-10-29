@@ -66,6 +66,21 @@ export function isDesktopClient() {
   }
 }
 
+// Settings > Sessions: a desktop browser opens a session's terminal in the
+// dedicated PC Edge window only when the owner turned that on (off by
+// default). The phone never does. Before the config lands this reads off,
+// so a boot-time tap renders in the page rather than spawning a window.
+export function opensInPcWindow() {
+  return isDesktopClient() &&
+    !!(state.config && state.config.open_sessions_in_window === true);
+}
+
+// Settings > Sessions: a session with no remembered view opens in Chat
+// (default on). Reads on before the config lands, matching the default.
+export function opensInChatFirst() {
+  return !state.config || state.config.open_sessions_in_chat !== false;
+}
+
 // A 401 means the login overlay just went up — callers that merely want to
 // swallow "not logged in yet" (rather than toast it as a real failure) check
 // `exc instanceof AuthRequiredError`, not a string message that a future

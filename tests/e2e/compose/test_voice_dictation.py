@@ -28,6 +28,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._audio_mock import RECORDER_BASE_JS
+from tests.e2e.fixtures.ui import open_session_row
 from tests.e2e.fixtures.waits import BUILD_READOUT_MS, OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -497,8 +498,7 @@ def test_leaving_terminal_mid_recording_releases_mic(
         f'#sessionsList li.session-item[data-session-id="{sid}"]'
     )
     expect(row).to_be_visible(timeout=8_000)
-    row.locator(".session-open").click()
-    authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    open_session_row(authed_page, row, "terminal")
 
     _open_compose_with_record(authed_page)
     record = authed_page.locator("#terminalComposeBar .composer-mic")

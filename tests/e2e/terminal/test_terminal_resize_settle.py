@@ -28,6 +28,7 @@ import pytest
 from playwright.sync_api import Page
 
 from tests.e2e import _fake_clock
+from tests.e2e.fixtures.ui import open_session_row
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -98,8 +99,7 @@ def test_keyboard_sweep_settles_to_one_floored_resize(
     row = page.locator(
         f'#sessionsList li.session-item[data-session-id="{launched_pty_session}"]'
     )
-    row.locator(".session-open").click()
-    page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    open_session_row(page, row, "terminal")
     # The phone's authoritative first size goes out on WS open, unsettled.
     page.wait_for_function(
         "window.__resizeFrames.length >= 1", timeout=OVERLAY_OPEN_MS

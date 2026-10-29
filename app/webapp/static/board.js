@@ -42,7 +42,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, escapeHtml, isDesktopClient, jsonApi, toast } from './api.js';
+import { apiFailToast, escapeHtml, jsonApi, opensInPcWindow, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { sessionTitle } from './sessions.js';
 import { applyLaunchSizePayload, openTerminal } from './terminal.js';
@@ -257,7 +257,7 @@ async function startIssue(card, mode, btn) {
       'good',
       { icon: mode === 'yolo' ? 'zap' : 'play' }
     );
-    if (body.session && body.session.kind !== 'remote' && !isDesktopClient()) {
+    if (body.session && body.session.kind !== 'remote' && !opensInPcWindow()) {
       openTerminal(body.session);
     }
   } catch (exc) {
