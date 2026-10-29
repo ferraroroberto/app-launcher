@@ -26,7 +26,7 @@ import { els, state } from './state.js';
 import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
-import { isHiddenChannel, renderChannelSummaries } from './channel-sessions.js';
+import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-sessions.js';
 // The session overlay's two modes. Circular with this module by
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
@@ -330,7 +330,8 @@ function sessionOpenButton(s, isChief, remote) {
   // What the Board says it needs from you: "needs you" or
   // "stalled", from the Board's own routing on this poll. No chip when
   // the placement is unknown.
-  const attention = attentionChip(s);
+  // The chief is out of the Board's lanes, so its row never claims it needs you.
+  const attention = isOffBoard(s) ? null : attentionChip(s);
   if (attention) chips.push(attention);
   if (isChannelSession(s)) chips.push(chip(channelSessionName(s), 'neutral', 'session-channel-tag'));
   if (remote) chips.push(chip('detached', 'neutral', 'session-detached'));

@@ -82,6 +82,12 @@ def _mock(page: Page) -> None:
     json_route(r".*/api/claude-code/git-status$", {"projects": []})
     json_route(r".*/api/board/github/refresh$", {"fetched_at": None, "error": None})
     json_route(r".*/api/rate-limits$", {"quota_lines": []})
+    # The chief's Board card is part of what this measures; it is hidden by
+    # default (a managed session), so the setting is switched off here.
+    def config(route):
+        resp = route.fetch()
+        route.fulfill(response=resp, json={**resp.json(), "hide_channel_sessions": False})
+    page.route(re.compile(r".*/api/config$"), config)
 
 
 # One read per row (#1346): the row, its title and meta, and every chip, so a

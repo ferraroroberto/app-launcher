@@ -37,7 +37,7 @@
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast } from './api.js';
 import {
-  channelSessionName, contextAlert, fmtDuration, isChannelSession, usageTier,
+  channelSessionName, contextAlert, fmtDuration, isChannelSession, isManagedSession, usageTier,
 } from './dom-utils.js';
 import { icon } from './_vendored/icons/icons.js';
 import { chip } from './glance.js';
@@ -64,6 +64,12 @@ export function channelSessionsHidden() {
 // True for a session the lists must leave out right now.
 export function isHiddenChannel(item) {
   return channelSessionsHidden() && isChannelSession(item);
+}
+
+// True for a card the Board's lanes and every waiting count must leave out:
+// any managed session, the chief included (it keeps its Coding tab row).
+export function isOffBoard(item) {
+  return channelSessionsHidden() && isManagedSession(item);
 }
 
 function channelSessions() {
