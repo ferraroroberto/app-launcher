@@ -373,6 +373,18 @@ _PS_WEEKDAYS = {
 }
 
 
+#: ``New-ScheduledTaskTrigger`` stamps ``StartBoundary`` as an absolute instant
+#: (``…Z`` or ``…+01:00``), and Task Scheduler honours that instant, so the
+#: task keeps firing at the UTC hour it was registered under when daylight
+#: saving flips. Re-rendering the same instant as an offset-free local string
+#: makes the trigger follow the wall clock, like a ``schtasks /Create`` task.
+#: Applies to every schedule shape and leaves ``Repetition`` untouched.
+_PS_LOCAL_START_BOUNDARY = (
+    "$trigger.StartBoundary = ([datetime]$trigger.StartBoundary).ToString("
+    "'yyyy-MM-ddTHH:mm:ss', [Globalization.CultureInfo]::InvariantCulture)"
+)
+
+
 def _ps_trigger_exprs(sched: Schedule) -> List[str]:
     """``New-ScheduledTaskTrigger`` expressions — one per task in
     :func:`task_names_for` order.
@@ -478,12 +490,16 @@ def registration_script(job: Job) -> Optional[str]:
     ]
     for name, trigger in zip(names, triggers):
         task_name = name[len(TASK_FOLDER_PREFIX):]
-        lines.append(
-            "Register-ScheduledTask "
-            f"-TaskPath '{_ps_quote(TASK_FOLDER_PREFIX)}' "
-            f"-TaskName '{_ps_quote(task_name)}' "
-            f"-Action $action -Trigger ({trigger}) "
-            "-Principal $principal -Settings $settings -Force | Out-Null"
+        lines.extend(
+            [
+                f"$trigger = {trigger}",
+                _PS_LOCAL_START_BOUNDARY,
+                "Register-ScheduledTask "
+                f"-TaskPath '{_ps_quote(TASK_FOLDER_PREFIX)}' "
+                f"-TaskName '{_ps_quote(task_name)}' "
+                "-Action $action -Trigger $trigger "
+                "-Principal $principal -Settings $settings -Force | Out-Null",
+            ]
         )
     return "\n".join(lines)
 
@@ -912,7 +928,9 @@ def invalidate_next_run_cache() -> None:
     # Local import breaks the jobs_coverage -> jobs_schtasks module cycle,
     # same pattern as jobs_reap's local jobs_queue import.
     from src.jobs.coverage import invalidate_coverage_cache
+    from src.jobs.schtasks_offsets import invalidate_offset_pin_cache
 
+    invalidate_offset_pin_cache()
     invalidate_coverage_cache()
 
 

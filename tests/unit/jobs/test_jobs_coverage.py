@@ -381,7 +381,8 @@ class TestScanCoverage:
             _daily_job(id="c", name="C"),
         ]
         results = cov.scan_coverage(jobs, now=NOW)
-        assert len(calls) == 1
+        # One LIST query and one XML query for the whole scan, however many jobs.
+        assert [c[-1] for c in calls] == ["/V", "/XML"]
         assert set(results) == {"a", "b", "c"}
         assert cov.PROBLEM_TASK_MISSING in results["c"]["problems"]
         assert cov.PROBLEM_TASK_MISSING not in results["a"]["problems"]
@@ -689,6 +690,7 @@ class TestAlertTitles:
             cov.PROBLEM_TASK_MISSING,
             cov.PROBLEM_TASK_DISABLED,
             cov.PROBLEM_PRINCIPAL_INTERACTIVE,
+            cov.PROBLEM_OFFSET_PINNED_TRIGGER,
             cov.PROBLEM_MISSED_FIRE,
         }
 

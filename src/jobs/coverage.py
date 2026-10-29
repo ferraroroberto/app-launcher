@@ -95,6 +95,7 @@ from src.jobs.schtasks import (
     registered_task_states,
     task_names_for,
 )
+from src.jobs.schtasks_offsets import registered_task_offset_pins
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,12 @@ PROBLEM_MISSED_FIRE = "missed_fire"
 #: Either it was never hand-registered from an elevated shell, or something
 #: re-registered it with Windows' default principal.
 PROBLEM_PRINCIPAL_INTERACTIVE = "principal_interactive"
+#: An entry whose trigger ``StartBoundary`` carries a UTC offset. It fires at a
+#: fixed UTC instant, so it drifts an hour off the wall clock at every
+#: daylight-saving change, and the run history then disagrees with the
+#: schedule on every slot. Reported as itself rather than as the missed fires
+#: it causes.
+PROBLEM_OFFSET_PINNED_TRIGGER = "offset_pinned_trigger"
 
 
 class Announcement(NamedTuple):
@@ -191,6 +198,14 @@ PROBLEM_ANNOUNCEMENTS: Tuple[Tuple[str, Announcement], ...] = (
         Announcement(
             "🚫 {name} — Task Scheduler entry disabled",
             "error",
+            COVERAGE_ALERT_REPEAT_SECONDS,
+        ),
+    ),
+    (
+        PROBLEM_OFFSET_PINNED_TRIGGER,
+        Announcement(
+            "🕐 {name} — trigger pinned to a UTC offset (drifts at DST)",
+            "warning",
             COVERAGE_ALERT_REPEAT_SECONDS,
         ),
     ),
@@ -252,6 +267,7 @@ def _result(
     missing_tasks: Optional[List[str]] = None,
     disabled_tasks: Optional[List[str]] = None,
     interactive_tasks: Optional[List[str]] = None,
+    offset_pinned_tasks: Optional[List[str]] = None,
     missed: Optional[List[datetime]] = None,
 ) -> Dict[str, Any]:
     """The JSON-serialisable coverage payload attached to a job row."""
@@ -263,6 +279,7 @@ def _result(
         "missing_tasks": missing_tasks or [],
         "disabled_tasks": disabled_tasks or [],
         "interactive_tasks": interactive_tasks or [],
+        "offset_pinned_tasks": offset_pinned_tasks or [],
         "missed_count": len(missed),
         "missed_fires": [
             f.isoformat(timespec="minutes")
@@ -375,6 +392,7 @@ def coverage_for(
     task_states: Optional[Dict[str, Optional[bool]]],
     *,
     principals: Optional[Dict[str, Optional[bool]]] = None,
+    offset_pins: Any = _MISSING,
     now: Optional[datetime] = None,
 ) -> Dict[str, Any]:
     """Coverage verdict for one job.
@@ -400,6 +418,11 @@ def coverage_for(
     its fact, then ``ok``. So a job whose Task Scheduler entry is missing is
     still a ``problem`` even with no run history to read (issue #737), which
     is the shape of both incidents #697 was built for.
+
+    ``offset_pins`` is :func:`src.jobs.schtasks.registered_task_offset_pins`'
+    output. Left out, the pinned-offset check is skipped; passed as ``None``
+    (the XML query failed) it yields ``unknown`` for a ``session_less`` job,
+    the only kind whose registration script could have pinned an offset.
     """
     if job.is_paused or job.schedule.type == "none":
         return _result(STATE_EXEMPT, detail="no active schedule")
@@ -407,10 +430,15 @@ def coverage_for(
     structural_unknown = task_states is None
     missing, disabled = _structural_gaps(job, task_states)
     interactive, principal_unknown = _interactive_principals(job, principals)
+    pinned, pin_unknown = _offset_pinned_tasks(job, offset_pins)
 
     missed, behavioural_unknown = behavioural_coverage(job, now=now)
+    if pinned:
+        # A pinned trigger fires at the wrong wall-clock hour, so every slot
+        # looks missed; the pin is the cause and the only thing to report.
+        missed = []
 
-    problems, bits = _problem_bits(missing, disabled, interactive, missed)
+    problems, bits = _problem_bits(missing, disabled, interactive, pinned, missed)
     if problems:
         return _result(
             STATE_PROBLEM,
@@ -419,11 +447,17 @@ def coverage_for(
             missing_tasks=missing,
             disabled_tasks=disabled,
             interactive_tasks=interactive,
+            offset_pinned_tasks=pinned,
             missed=missed,
         )
     unresolved: List[str] = []
     if structural_unknown:
         unresolved.append("Task Scheduler query failed — coverage not established")
+    if pin_unknown:
+        unresolved.append(
+            "Task Scheduler trigger times unreadable — pinned UTC offset "
+            "not established"
+        )
     if principal_unknown:
         unresolved.append(
             "Task Scheduler logon mode unreadable — session-less principal "
@@ -477,8 +511,21 @@ def _interactive_principals(
     return interactive, principal_unknown
 
 
+def _offset_pinned_tasks(job: Job, offset_pins: Any) -> Tuple[List[str], bool]:
+    """``(entries whose trigger carries a UTC offset, pin unknown)`` for ``job``."""
+    if offset_pins is _MISSING:
+        return [], False
+    if offset_pins is None:
+        return [], job.session_less
+    return [n for n in task_names_for(job) if offset_pins.get(n) is True], False
+
+
 def _problem_bits(
-    missing: List[str], disabled: List[str], interactive: List[str], missed: List[datetime],
+    missing: List[str],
+    disabled: List[str],
+    interactive: List[str],
+    pinned: List[str],
+    missed: List[datetime],
 ) -> Tuple[List[str], List[str]]:
     """``(problem classes, detail phrases)`` for the gaps found, in order."""
     problems: List[str] = []
@@ -503,6 +550,14 @@ def _problem_bits(
             "'Interactive only' — will not fire while logged out; "
             "re-register from an elevated shell"
         )
+    if pinned:
+        problems.append(PROBLEM_OFFSET_PINNED_TRIGGER)
+        bits.append(
+            f"{len(pinned)} Task Scheduler entr"
+            f"{'y has' if len(pinned) == 1 else 'ies have'} a trigger pinned to "
+            "a UTC offset — fires an hour off at daylight-saving changes; "
+            "re-register from an elevated shell"
+        )
     if missed:
         problems.append(PROBLEM_MISSED_FIRE)
         bits.append(
@@ -524,12 +579,17 @@ def scan_coverage(
     task_states = registered_task_states()
     # Same cached snapshot as the line above — no second shell-out.
     principals = registered_task_principals()
+    offset_pins = registered_task_offset_pins()
     now = now or datetime.now()
     out: Dict[str, Dict[str, Any]] = {}
     for job in jobs:
         try:
             out[job.id] = coverage_for(
-                job, task_states, principals=principals, now=now
+                job,
+                task_states,
+                principals=principals,
+                offset_pins=offset_pins,
+                now=now,
             )
         except OSError as exc:
             logger.debug(f"coverage scan skipped {job.id}: {exc}")
@@ -609,6 +669,7 @@ def _signature(result: Dict[str, Any]) -> str:
             ",".join(result.get("problems", [])),
             ",".join(sorted(result.get("missing_tasks", []))),
             ",".join(sorted(result.get("disabled_tasks", []))),
+            ",".join(sorted(result.get("offset_pinned_tasks", []))),
             str(result.get("missed_count", 0)),
         ]
     )
