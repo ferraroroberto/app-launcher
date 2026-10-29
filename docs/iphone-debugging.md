@@ -1,8 +1,6 @@
 # Debugging real-iPhone Safari from the Windows PC
 
-Phone-validation part 5 of 5.
-
-Parts 1–4 of the phone-validation pipeline (cache hygiene, the WebKit/iPhone Playwright projection, the regression net, the pre-ship gate) catch the large majority of iPhone regressions on Windows before they ship. This document covers the residual ~15% that genuinely need a real iPhone — and makes that manual loop fast by giving the PC **DevTools visibility** into the live phone.
+The phone-validation pipeline — [content-hash cache stamping](cache-hygiene-asset-hashing.md), the WebKit/iPhone Playwright projection, the e2e regression net, and the pre-ship gate — catches the large majority of iPhone regressions on Windows before they ship. This document covers the residual ~15% that genuinely need a real iPhone — and makes that manual loop fast by giving the PC **DevTools visibility** into the live phone.
 
 This is reference material. There is no application code involved.
 
@@ -75,4 +73,4 @@ For completeness: [MacStadium](https://www.macstadium.com/) and [MacInCloud](htt
 
 ## Summary
 
-The automated pipeline (Parts 1–4) is the daily contract. This document is the fallback for the rare iOS-shell bug it structurally cannot catch — and its whole point is that `ios-webkit-debug-proxy` turns the "walk to the phone and guess" loop into a normal DevTools session at the PC.
+The automated pipeline above is the daily contract. This document is the fallback for the rare iOS-shell bug it structurally cannot catch — and its whole point is that `ios-webkit-debug-proxy` turns the "walk to the phone and guess" loop into a normal DevTools session at the PC.

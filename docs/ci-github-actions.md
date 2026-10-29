@@ -1,4 +1,4 @@
-# CI on GitHub Actions — what it is and why we added it
+# CI on GitHub Actions — what it is and how it's used here
 
 This document has a didactic purpose. It explains what Continuous Integration (CI) is, what this repository now does with it, why that matters, and — the part most people get wrong — how running checks *on your own machine* differs from running them *on GitHub*.
 
@@ -71,25 +71,48 @@ Your machine is *dirty* in useful and misleading ways:
 
 A GitHub runner is *pristine*: a brand-new Windows VM with only what the workflow explicitly installs. Anything your code silently assumed to be "just there" is suddenly **not there**.
 
-### The bug this surfaced immediately
+### The pitfall a bare runner exposes: a hollow green
 
-The very first CI run was **green** — and the green was a lie. The gate's e2e step reported:
+A gitignored config file (`config/webapp_config.json`, `config.json`,
+`apps.json`) exists only on a machine that created it during setup — a fresh
+CI runner has none of them. A fixture that *skips* when such a file is
+missing — e.g. the e2e `webapp_config` fixture — cascades that skip through
+anything downstream of it (`auth_token`, and every test that needs an
+authenticated page), and the suite still exits 0, because **a skip is not a
+failure**.
 
-```
-4 passed, 50 skipped in 3.78s
-```
+This is the single most important lesson about CI: **a green check that
+skipped everything is more dangerous than a red one.** A red X gets
+investigated; a hollow green gets trusted. It is the same trap the local
+gate was built to avoid — "a forgotten tray looks like a green run." The
+workflow's fix is structural: seed the three config files from their
+committed `*.sample.json` templates before running the gate (loopback access
+bypasses the bearer-token middleware, so the sample tokens are sufficient —
+see `tests/e2e/conftest.py`), so the suite genuinely runs on a bare machine
+instead of skipping its way to green.
 
-On a developer machine that same step runs ~40-60s and passes dozens of tests. The runner had no `config/webapp_config.json` (gitignored — only the sample is committed). The e2e `webapp_config` fixture *skips* when that file is missing; that skip cascades through the `auth_token` fixture and silently skips every test that needs an authenticated page — 50 of them. The suite exited 0 because **a skip is not a failure**.
+Counts and timings for a healthy run are deliberately not quoted here — they
+move with every closed bite that adds a regression pin, and a frozen number
+in a second document is how a section like this goes stale.
+**`CLAUDE.md`'s CI block is the canonical home** for what a typical green
+looks like and when to investigate.
 
-This is the single most important lesson about CI: **a green check that skipped everything is more dangerous than a red one.** A red X gets investigated; a hollow green gets trusted. It is the same trap the local gate was built to avoid — "a forgotten tray looks like a green run."
+What matters is *which* skips are honest ones. The terminal-regression tests
+do not need the real agent: `launched_pty_session` spawns a deterministic
+lightweight stub that needs only Python. The one fixture that still skips on
+a bare machine is **`launched_claude_pty_session`** — used only by the
+handful of tests whose assertions depend on the real Claude CLI's own
+rendering and lifecycle — because `claude` is not on a fresh runner's `PATH`.
+That is an honest skip: the tests it covers and the reason are both named
+here. A skip whose cause you cannot name is the failure mode this whole
+section is about.
 
-The fix was one workflow step: seed the three config files from their committed `*.sample.json` templates before running the gate (loopback access bypasses the bearer-token middleware, so the sample tokens are sufficient — see `tests/e2e/conftest.py`). After the fix:
-
-The suite genuinely ran. Counts and timings are deliberately not quoted here — they move with every closed bite that adds a regression pin, and a frozen number in a second document is how this section went stale in the first place. **`CLAUDE.md`'s CI block is the canonical home** for what a typical green looks like and when to investigate.
-
-What matters is *which* skips are honest ones. The terminal-regression tests do not need the real agent: `launched_pty_session` spawns a deterministic lightweight stub that needs only Python. The one fixture that still skips on a bare machine is **`launched_claude_pty_session`** — used only by the handful of tests whose assertions depend on the real Claude CLI's own rendering and lifecycle — because `claude` is not on a fresh runner's `PATH`. That is an honest skip: we know exactly which tests it covers and why, and it is written down. A skip whose cause you cannot name is the failure mode this whole section is about.
-
-Those fixtures are local-gate concerns — CI runs no browser suite, so it can no longer hollow out in this particular way. Read the story as the lesson it is, not as a description of what CI does today: **the shape of the bug outlived the workflow step that caused it.** A check that cannot establish its fact must say so, instead of folding the unknown into the passing state. That is exactly what the dependency-drift failure above was — two guard-coverage tests that could not see the route table, one of which passed anyway because there was nothing left to check.
+Those fixtures are local-gate concerns — CI runs no browser suite, so it
+cannot hollow out this particular way. A check that cannot establish its
+fact must say so, instead of folding the unknown into the passing state.
+That is exactly what the dependency-drift failure above is an instance of —
+a guard-coverage test that cannot see the route table should report that as
+unknown, not pass because there was nothing left to check.
 
 ### The takeaway
 
