@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json as _json
+import os
 import re
 
 import pytest
@@ -478,3 +479,32 @@ def test_life_os_sheet_delete_confirms_then_returns_to_the_refreshed_list(
     expect(sheet).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_hidden()
     assert native == [], native
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_life_os_bot_chat_row_shows_its_fixed_title_beside_a_normal_row(
+    authed_page: Page, base_url: str, theme: str
+) -> None:
+    """#1952: the server titles a bot chat ``Telegram bot - <skill>``; the list
+    shows that title where a normal row shows its digest topic, whole inside
+    the viewport at 390 px in both themes. Set E2E_SHOT_DIR to keep a
+    screenshot of each (local review only; stubbed data)."""
+    bot, normal = _FAKE_CONVERSATIONS["conversations"]
+    body = {**_FAKE_CONVERSATIONS, "conversations": [
+        {**bot, "title": "Telegram bot - journal-daily"}, normal]}
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.emulate_media(color_scheme=theme)
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page, body)
+    _open_conversations(authed_page, base_url)
+    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+    rows = _convo_rows(authed_page)
+    expect(rows).to_have_count(2)
+    titles = rows.locator(".action-row-title")
+    expect(titles.nth(0)).to_have_text("Telegram bot - journal-daily")
+    expect(titles.nth(1)).to_have_text("an early trial run")
+    assert stable_eval(titles.nth(0), "el => el.scrollWidth <= el.clientWidth + 1") is True
+    shot_dir = os.environ.get("E2E_SHOT_DIR")
+    if shot_dir:
+        authed_page.screenshot(path=os.path.join(shot_dir, f"bot-chat-row-{theme}.png"))

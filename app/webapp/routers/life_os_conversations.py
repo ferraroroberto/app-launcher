@@ -51,6 +51,7 @@ from src.clients import session as session_client
 from src.agents import is_installed
 from src.life_os.history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
 from src.life_os.delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
+from src.life_os.bot_titles import apply_bot_titles, bot_conversation_ids
 from src.life_os.title import run_title_cli as _run_title_cli
 from src.life_os.skill_refresh import plan_refresh, record_refresh
 from src.session_view.conversation_model import recorded_model
@@ -442,6 +443,7 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
         return {"skill": skill.id, "available": False, "conversations": []}
 
     conversations = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
+    await _title_bot_chats(cfg, conversations)
     # The indexer already writes newest-first; re-sorting on the date-stamped
     # filename makes that a property of this endpoint rather than a hope.
     conversations.sort(key=lambda c: c["file"], reverse=True)
@@ -450,6 +452,23 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
         "available": True,
         "conversations": conversations,
     }
+
+
+async def _title_bot_chats(cfg: WebappConfig, conversations: List[Dict[str, Any]]) -> None:
+    """Give an untitled bot chat's row its fixed ``Telegram bot - <skill>`` title.
+
+    Best-effort and read-only toward the sessions: when no row needs it the
+    session host is not asked, and when it cannot be asked the rows are left as
+    the index has them.
+    """
+    if not any(not c["title"] and c["sid"] and c["path"] for c in conversations):
+        return
+    try:
+        groups = await _conversation_sessions(cfg)
+        await asyncio.to_thread(
+            apply_bot_titles, cfg, conversations, bot_conversation_ids(groups))
+    except (session_client.SessionHostError, OSError, ValueError) as exc:
+        logger.info("ℹ️ Life OS bot chat titles skipped, sessions unavailable: %s", exc)
 
 
 async def _conversation_sessions(cfg: WebappConfig) -> Dict[str, List[Dict[str, Any]]]:
