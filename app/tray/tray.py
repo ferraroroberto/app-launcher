@@ -73,6 +73,10 @@ SESSION_HOST_LOG = PROJECT_ROOT / "webapp" / "session-host.log"
 # restart or an operator's deliberate reclaim-then-start is over well inside
 # that, so the watchdog never races a human respawning it.
 SESSION_HOST_FAILURES_TO_ALERT = 2
+# Bound on one tray_lifecycle.ps1 reclaim (a PowerShell cold start, a CIM
+# query and a Stop-Process): an admitted guess with room over the few
+# seconds it normally takes, so a hung PowerShell cannot stall the caller.
+RECLAIM_TIMEOUT_S = 10
 
 # The loopback PTY session-host. It is a *linked-but-independent* child:
 # it hosts the user's Coding PTYs and MUST survive a
@@ -94,6 +98,40 @@ def _session_host_port() -> int:
     change to the ``session_host_port`` setting takes effect on the tray's
     very next start/stop of the process."""
     return load_webapp_config().session_host_port
+
+
+def _reclaim_port(port: int) -> Optional[str]:
+    """Kill whatever process of THIS repo's .venv listens on ``port``.
+    Returns ``None`` on success, else why it could not.
+
+    Reuses the canonical tray_lifecycle.ps1 `reclaim` action (the same
+    one tray.bat --restart uses for the webapp port) instead of
+    hand-rolling the venv-scoped kill, so a sibling app's process is never
+    touched. tray_lifecycle.ps1 is the ONE shared, machine-local copy
+    owned by fleet-config, junctioned by fleet-config's install.ps1 into
+    %USERPROFILE%\\.claude\\tray and never vendored per-app, at the
+    same resolved path as tray.bat's TRAY_PS.
+    """
+    tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
+    if not tray_ps.exists():
+        return f"missing shared tray helper {tray_ps}"
+    try:
+        result = subprocess.run(
+            [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+             "-NoProfile", "-NonInteractive", "-File",
+             str(tray_ps),
+             "reclaim",
+             "-VenvDir", str(PROJECT_ROOT / ".venv"),
+             "-Ports", str(port)],
+            creationflags=NO_WINDOW,
+            timeout=RECLAIM_TIMEOUT_S,
+            check=False,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return f"reclaim of :{port} failed: {exc}"
+    if result.returncode != 0:
+        return f"tray_lifecycle.ps1 reclaim exited {result.returncode}"
+    return None
 
 
 def _build_icon():
@@ -280,50 +318,16 @@ class TrayApp:
 
     def _stop_session_host(self) -> None:
         """Stop the session-host on an explicit Quit. It is detached (no Popen
-        handle), so reclaim it by its owned port (see :meth:`_reclaim_port`)."""
+        handle), so reclaim it by its owned port (see :func:`_reclaim_port`)."""
         port = _session_host_port()
         if not registered_trays.port_listening(port):
             return
         logger.info(f"🛑 Stopping session-host on :{port}")
-        error = self._reclaim_port(port)
+        error = _reclaim_port(port)
         if error is not None:
             msg = f"{error} — session-host on :{port} may still be running"
             logger.warning(f"⚠️  {msg}")
             _notify("Session host stop failed", msg)
-
-    @staticmethod
-    def _reclaim_port(port: int) -> Optional[str]:
-        """Kill whatever process of THIS repo's .venv listens on ``port``.
-        Returns ``None`` on success, else why it could not.
-
-        Reuses the canonical tray_lifecycle.ps1 `reclaim` action (the same
-        one tray.bat --restart uses for the webapp port) instead of
-        hand-rolling the venv-scoped kill, so a sibling app's process is never
-        touched. tray_lifecycle.ps1 is the ONE shared, machine-local copy
-        owned by fleet-config, junctioned by fleet-config's install.ps1 into
-        %USERPROFILE%\\.claude\\tray and never vendored per-app, at the
-        same resolved path as tray.bat's TRAY_PS.
-        """
-        tray_ps = Path(os.environ["USERPROFILE"]) / ".claude" / "tray" / "tray_lifecycle.ps1"
-        if not tray_ps.exists():
-            return f"missing shared tray helper {tray_ps}"
-        try:
-            result = subprocess.run(
-                [r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-                 "-NoProfile", "-NonInteractive", "-File",
-                 str(tray_ps),
-                 "reclaim",
-                 "-VenvDir", str(PROJECT_ROOT / ".venv"),
-                 "-Ports", str(port)],
-                creationflags=NO_WINDOW,
-                timeout=10,
-                check=False,
-            )
-        except Exception as exc:  # noqa: BLE001
-            return f"reclaim of :{port} failed: {exc}"
-        if result.returncode != 0:
-            return f"tray_lifecycle.ps1 reclaim exited {result.returncode}"
-        return None
 
     # -- webapp lifecycle ----------------------------------------------------
 
@@ -391,7 +395,7 @@ class TrayApp:
         if self.manager.probe_health() == HEALTH_BOUND_NOT_ANSWERING:
             self.manager.stop()  # terminates a wedge this tray spawned
         if self.manager.probe_health() == HEALTH_BOUND_NOT_ANSWERING:
-            error = self._reclaim_port(port)
+            error = _reclaim_port(port)
             if error is not None:
                 raise RuntimeError(f"could not reclaim :{port}: {error}")
         status = self.manager.start(wait=True)

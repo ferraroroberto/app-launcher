@@ -131,9 +131,7 @@ def _tray(manager: _FakeManager, monkeypatch, lines: List[str]) -> tray.TrayApp:
 def test_wedged_webapp_is_stopped_then_reclaimed_then_started(monkeypatch):
     lines: List[str] = []
     reclaimed: List[int] = []
-    monkeypatch.setattr(
-        tray.TrayApp, "_reclaim_port", staticmethod(lambda port: reclaimed.append(port))
-    )
+    monkeypatch.setattr(tray, "_reclaim_port", lambda port: reclaimed.append(port))
     manager = _FakeManager([HEALTH_BOUND_NOT_ANSWERING] * 3 + [HEALTH_ANSWERING])
     app = _tray(manager, monkeypatch, lines)
     app._heal_webapp(3 + WEDGE_GRACE_PROBES)
@@ -172,7 +170,7 @@ def test_session_host_watchdog_never_kills(monkeypatch):
     """The session-host path has no stop or reclaim in it: a listening one,
     however slow, counts as up, and a dead one is only respawned."""
     called: List[str] = []
-    monkeypatch.setattr(tray.TrayApp, "_reclaim_port", staticmethod(lambda p: called.append("reclaim")))
+    monkeypatch.setattr(tray, "_reclaim_port", lambda p: called.append("reclaim"))
     monkeypatch.setattr(tray.TrayApp, "_stop_session_host", lambda self: called.append("stop"))
     app = tray.TrayApp.__new__(tray.TrayApp)
     app.session_host_healer = SelfHealer(
