@@ -301,6 +301,16 @@ class WebappConfig:
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
     claude_show_local_window: bool = True
+    # Where the SPA opens a session on a desktop browser. Off (the default),
+    # a row tap and a new launch render in the page; on, a full-control
+    # session's terminal gets the dedicated PC Edge window as before. The
+    # session kebab's "Open in new window" reaches the window either way.
+    # Chief and API launches carry no page flag and keep mirroring.
+    open_sessions_in_window: bool = False
+    # A session with no remembered view opens in Chat wherever Chat exists,
+    # on the phone too; off restores Terminal on the phone. An explicit
+    # Terminal choice and the per-session remembered view still win.
+    open_sessions_in_chat: bool = True
     # Telegram channel sessions are long-lived and serve a household
     # member, so on by default they leave the Board and the Coding tab's
     # session list for one summary line (and a read-only list) — a mis-tap

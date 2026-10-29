@@ -227,16 +227,18 @@ def test_row_menu_holds_the_full_option_set_in_order(
     menu = authed_page.locator(".session-menu")
     expect(menu).to_be_visible()
 
-    # A full-control Claude row offers all five, top to bottom. Copy path
-    # (#1238 J-10) carries the full project path the row now shortens.
+    # A full-control Claude row offers all six, top to bottom (this test runs on
+    # the desktop projection, the only one that shows Open in a new window).
+    # Copy path (#1238 J-10) carries the full project path the row now shortens.
     items = menu.get_by_role("menuitem")
-    expect(items).to_have_count(5)
+    expect(items).to_have_count(6)
     assert [
         (items.nth(i).get_attribute("aria-label") or "").strip()
-        for i in range(5)
+        for i in range(6)
     ] == [
         "Open terminal",
         "Open chat",
+        "Open in a new window",
         "Copy the project path",
         "Rename session",
         "Stop and kill session",

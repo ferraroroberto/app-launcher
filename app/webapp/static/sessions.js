@@ -23,7 +23,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, toast } from './api.js';
+import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, opensInPcWindow, toast } from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
 import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-sessions.js';
@@ -272,13 +272,16 @@ function sessionRow(s) {
   // it opens the menu and never the session, while the row's own 60px tap
   // target still opens the session. The menu holds, in order:
   //   · Terminal — full-control rows only: the session overlay in
-  //     Terminal mode (a desktop browser gets the PC mirror window, as a
-  //     row tap does).
+  //     Terminal mode (the PC mirror window instead, with that setting on
+  //     for a desktop browser, as a row tap does).
   //   · Chat — every row whose agent has a transcript reader
   //     (Claude and Codex; hasTranscriptReader mirrors the
   //     endpoint's flavour map): the same overlay in Chat mode. The reader
   //     uses the agent's native history, never the PTY capture a detached
   //     row lacks.
+  //   · Open in new window — full-control rows on a desktop browser only:
+  //     the PC Edge window, whatever the "Open sessions in a new window"
+  //     setting says.
   //   · Copy path — the full project path the row's context
   //     line now shortens to its folder name; the toast shows it on a phone.
   //   · Rename — a launcher-native override that always wins
@@ -381,6 +384,12 @@ function sessionMenuItems(s, kebab, isChief, remote) {
       onTap: function () { openSession(s, 'chat'); },
     },
     {
+      dataset: { item: 'session-open-window-btn' }, glyph: 'monitor',
+      label: 'Open in new window', ariaLabel: 'Open in a new window',
+      hidden: remote || !isDesktopClient(),
+      onTap: function () { openWindowFromMenu(s); },
+    },
+    {
       dataset: { item: 'session-copy-path-btn' }, glyph: 'copy',
       label: 'Copy path', ariaLabel: 'Copy the project path',
       hidden: !s.project_dir,
@@ -401,6 +410,15 @@ function sessionMenuItems(s, kebab, isChief, remote) {
   return items;
 }
 
+// The row menu's Open in new window. With the server's window mirroring
+// off there is no window to open, so the item says so instead of silently
+// doing nothing.
+async function openWindowFromMenu(s) {
+  if (!(await openPcWindow(s))) {
+    toast('Window mirroring is off in the server config', 'error');
+  }
+}
+
 // The row menu's Copy path: the toast names the path, so a phone (with no
 // hover) still sees the full path the row's context line now leaves out.
 async function copyProjectPath(path) {
@@ -412,41 +430,48 @@ async function copyProjectPath(path) {
   }
 }
 
+// Open (or focus) the session's PC Edge --app window through the mirror
+// route. Resolves true when a window is now showing it; false when the server
+// has window mirroring disabled, so the caller can fall back to the page. A
+// request failure toasts and resolves true: the caller must not then open a
+// second view on top of the error.
+async function openPcWindow(s) {
+  try {
+    const r = await jsonApi(
+      '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
+        '/mirror',
+      { method: 'POST' }
+    );
+    if (!(r && r.mirrored)) return false;
+    toast(
+      (r.action === 'focused' ? 'Focused ' : 'Opened ') +
+        sessionTitle(s) + ' window',
+      'good',
+      { icon: 'monitor' }
+    );
+  } catch (exc) {
+    apiFailToast('Open window failed', exc);
+  }
+  return true;
+}
+
 // Open a session when its row (or its kebab's Terminal / Chat item) is
 // tapped — the Board drawer's Chat / Terminal button calls this too.
 // `mode` forces 'terminal' or 'chat'; without it the session opens
 // in the mode it was last viewed in (session-overlay.js), a detached
-// session always in Chat, and a first open on a desktop browser in Chat
-// On a desktop browser a full-control session's terminal is a
-// dedicated PC Edge --app window — the same window a
-// new-session launch opens — instead of rendering the terminal inside the
-// user's own browser, so it can be closed without fear while the session
-// keeps running headless. A second tap focuses that window rather than
-// spawning a duplicate. Chat is in-page everywhere; the phone (and a
-// desktop with mirroring disabled) streams the terminal in-page.
+// session always in Chat, and a first open in Chat unless Settings says
+// Terminal. Everything renders in the page. The one exception is the
+// "Open sessions in a new window" setting (off by default) on a desktop
+// browser: a full-control session's terminal then opens in a dedicated PC
+// Edge --app window — the same window a new-session launch opens — so it can
+// be closed without fear while the session keeps running headless. A second
+// tap focuses that window rather than spawning a duplicate. The kebab's "Open in new
+// window" reaches the same window with the setting off.
 export async function openSession(s, mode) {
   const resolved = resolveSessionMode(s, mode);
-  if (isDesktopClient() && s.kind !== 'remote' && resolved === 'terminal') {
-    try {
-      const r = await jsonApi(
-        '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
-          '/mirror',
-        { method: 'POST' }
-      );
-      if (r && r.mirrored) {
-        toast(
-          (r.action === 'focused' ? 'Focused ' : 'Opened ') +
-            sessionTitle(s) + ' window',
-          'good',
-          { icon: 'monitor' }
-        );
-        return;
-      }
-      // Mirroring disabled server-side — fall through to the in-page terminal.
-    } catch (exc) {
-      apiFailToast('Open window failed', exc);
-      return;
-    }
+  if (opensInPcWindow() && s.kind !== 'remote' && resolved === 'terminal') {
+    // Mirroring disabled server-side falls through to the in-page terminal.
+    if (await openPcWindow(s)) return;
   }
   openSessionOverlay(s, resolved);
 }

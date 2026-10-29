@@ -29,7 +29,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
+from tests.e2e.fixtures.ui import open_session_row
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -76,11 +76,8 @@ def test_inpage_loopback_open_is_not_treated_as_mirror(
         '#sessionsList li.session-item:has(.session-open[data-kind="pty"])'
     ).first
     expect(pty_row).to_be_visible(timeout=8_000)
-    pty_row.locator(".session-open").click()
-
-    authed_page.wait_for_selector(
-        "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
-    )
+    # A first tap opens Chat now; the terminal is the explicit pick.
+    open_session_row(authed_page, pty_row, "terminal")
 
     # Non-mirror contract: the docked composer is shown (it is hidden only
     # in the PC mirror window), proving isMirror resolved false over loopback.

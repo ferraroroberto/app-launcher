@@ -268,9 +268,12 @@ def test_row_tap_reopens_last_mode(
     row = _row(authed_page, sid)
     overlay = authed_page.locator("#terminalOverlay")
 
-    # First open: a full-control row starts in Terminal.
+    # First open: a row never opened starts in Chat (the "Open in Chat" default);
+    # the Terminal segment is the explicit pick.
     row.locator(".session-open").click()
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
+    expect(overlay).to_have_attribute("data-mode", "chat")
+    authed_page.locator("#sessionModeTerminal").click()
     expect(overlay).to_have_attribute("data-mode", "terminal")
     # #1238 J-05: the phone has no hover, so holding the Chat segment names it
     # (the long-press hint) and the hold's closing click never switches mode.

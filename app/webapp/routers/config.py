@@ -83,6 +83,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "hidden_models": cfg.hidden_models,
         # Telegram channel sessions leave the Board and session list.
         "hide_channel_sessions": cfg.hide_channel_sessions,
+        # Where the SPA opens a session: the PC window, and Chat first.
+        "open_sessions_in_window": cfg.open_sessions_in_window,
+        "open_sessions_in_chat": cfg.open_sessions_in_chat,
         # ...and start by themselves when the webapp starts.
         "autostart_channel_sessions": cfg.autostart_channel_sessions,
         "channel_model": cfg.channel_model,
@@ -249,6 +252,8 @@ def _checked_usage_providers(raw: Any) -> List[str]:
 # one ("false" is truthy in Python), so patch_config refuses anything but a bool.
 _SWITCH_KEYS = (
     "hide_channel_sessions",
+    "open_sessions_in_window",
+    "open_sessions_in_chat",
     "autostart_channel_sessions",
     "chief_doorbell",
     "chief_job_failures",
@@ -267,6 +272,8 @@ _PATCH_KEYS = frozenset({
     "coding_model_choice",
     "hidden_models",
     "hide_channel_sessions",
+    "open_sessions_in_window",
+    "open_sessions_in_chat",
     "autostart_channel_sessions",
     "channel_model",
     "apps_scan_root",

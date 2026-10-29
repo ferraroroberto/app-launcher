@@ -74,6 +74,23 @@
         </button>
       </div>
 
+      <!-- Sessions: where a tapped session opens. Two inline switches, the
+           same row shape as Start at log on; they save as they change. -->
+      <h2 class="settings-overline">Sessions</h2>
+      <div class="card settings-group">
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg>
+          <span class="settings-row-label">Open in a new window</span>
+          <button type="button" id="openSessionsInWindowToggle" data-track="settings.open-sessions-in-window" class="toggle" role="switch" aria-checked="false" aria-label="Open sessions in a new window" aria-describedby="openSessionsHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+        </div>
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg>
+          <span class="settings-row-label">Open in Chat</span>
+          <button type="button" id="openSessionsInChatToggle" data-track="settings.open-sessions-in-chat" class="toggle" role="switch" aria-checked="true" aria-label="Open a session in Chat" aria-describedby="openSessionsHelp"><span class="knob"></span><span class="toggle-label">ON</span></button>
+        </div>
+      </div>
+      <p id="openSessionsHelp" class="field-help settings-footnote">Open in a new window: on a desktop browser, terminals and new launches open in a separate PC window; off, they open in the page, and a session's menu still offers Open in new window. Chief and API launches keep their window. Open in Chat: a tapped session opens its Chat; off, its Terminal. A view you picked for a session stays.</p>
+
       <!-- Life OS: an inline switch, the same row shape as Start at log on. -->
       <h2 class="settings-overline">Life OS</h2>
       <div class="card settings-group">

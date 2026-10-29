@@ -234,6 +234,12 @@ export async function fetchConfig(shouldApply) {
   if (els.autostartChannelSessionsToggle) {
     setSwitch(els.autostartChannelSessionsToggle, body.autostart_channel_sessions === true);
   }
+  if (els.openSessionsInWindowToggle) {
+    setSwitch(els.openSessionsInWindowToggle, body.open_sessions_in_window === true);
+  }
+  if (els.openSessionsInChatToggle) {
+    setSwitch(els.openSessionsInChatToggle, body.open_sessions_in_chat !== false);
+  }
   renderChannelModel(body.channel_model);
   renderClaudeOptions();
   renderSettingsValues();
@@ -580,6 +586,8 @@ export function wireClaudeOptions() {
   piModelCombo = wireModelCombo(els.piModel, function (model) {
     patchConfig({ pi_model: model });
   });
+  wireBoolSwitch(els.openSessionsInWindowToggle, 'open_sessions_in_window');
+  wireBoolSwitch(els.openSessionsInChatToggle, 'open_sessions_in_chat');
   wireBoolSwitch(els.claudeVerbose, 'claude_verbose');
   wireBoolSwitch(els.claudeDebug, 'claude_debug');
   wireBoolSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');

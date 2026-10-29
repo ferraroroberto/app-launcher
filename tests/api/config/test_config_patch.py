@@ -250,6 +250,45 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.hide_channel_sessions is True
 
+    @pytest.mark.parametrize(
+        "key, default", [("open_sessions_in_window", False), ("open_sessions_in_chat", True)]
+    )
+    def test_open_sessions_switches_default_and_round_trip(
+        self, webapp_client, key, default
+    ):
+        """The two Settings switches that choose where the SPA opens a session
+        (1955): window off, Chat on by default; each reaches disk (a switch that
+        reverts on restart would reopen the PC window the owner turned off) and
+        flipping one leaves the other alone."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        other = (
+            "open_sessions_in_chat" if key == "open_sessions_in_window"
+            else "open_sessions_in_window"
+        )
+        body = client.get("/api/config").json()
+        assert body[key] is default
+        other_before = body[other]
+
+        for value in (not default, default):
+            resp = client.post("/api/config", json={key: value})
+            assert resp.status_code == 200
+            assert getattr(app.state.webapp_config, key) is value
+            assert client.get("/api/config").json()[key] is value
+            assert getattr(load_webapp_config(overrides["tmp_webapp_cfg_path"]), key) is value
+            assert client.get("/api/config").json()[other] is other_before
+
+    @pytest.mark.parametrize("key", ["open_sessions_in_window", "open_sessions_in_chat"])
+    @pytest.mark.parametrize("junk", ["false", "no", 0, 1, None, []])
+    def test_open_sessions_switches_reject_non_booleans(self, webapp_client, key, junk):
+        """"false" is truthy in Python: a string must never flip either switch."""
+        client, app, _ = webapp_client
+        before = getattr(app.state.webapp_config, key)
+        resp = client.post("/api/config", json={key: junk})
+        assert resp.status_code == 400
+        assert getattr(app.state.webapp_config, key) is before
+
     def test_autostart_channel_sessions_defaults_off_and_round_trips(
         self, webapp_client
     ):
