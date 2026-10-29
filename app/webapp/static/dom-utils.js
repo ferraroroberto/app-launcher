@@ -570,6 +570,35 @@ export function nameLabel(value) {
   });
 }
 
+// A long descriptive line cut down to a short name: at most `max` characters,
+// ending on a whole word, with no trailing punctuation or unclosed bracket and
+// no ellipsis. Text already within `max` comes back unchanged, so a field
+// pre-filled from it never starts out over its own maxLength.
+export function fitTitle(text, max) {
+  const s = String(text || '');
+  if (s.length <= max) return s;
+  let out = s.replace(/\s+/g, ' ').trim();
+  if (out.length <= max) return out;
+  // Back up to the last space so no word is cut; one long word is cut hard.
+  if (out.charAt(max) !== ' ') {
+    const space = out.lastIndexOf(' ', max);
+    out = space > 0 ? out.slice(0, space) : out.slice(0, max);
+  } else {
+    out = out.slice(0, max);
+  }
+  for (;;) {
+    out = out.replace(/[\s.,;:!?\-–—/]+$/, '');
+    const open = [];
+    for (let i = 0; i < out.length; i++) {
+      const c = out.charAt(i);
+      if ('([{'.indexOf(c) !== -1) open.push(i);
+      else if (')]}'.indexOf(c) !== -1) open.pop();
+    }
+    if (!open.length) return out;
+    out = out.slice(0, open[open.length - 1]);
+  }
+}
+
 // Linear pace: how much of the window has elapsed, as a whole
 // percent, so weekly usage reads against it directly. Tuesday's `53%` means
 // usage under 53% is under budget. The window starts `duration_minutes`

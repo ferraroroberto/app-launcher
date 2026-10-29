@@ -19,7 +19,7 @@ import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { applyLaunchSizePayload, handleLaunchResponse } from '../terminal.js';
 import { icon } from '../_vendored/icons/icons.js';
-import { calendarDaysFromToday, nameLabel } from '../dom-utils.js';
+import { calendarDaysFromToday, fitTitle, nameLabel } from '../dom-utils.js';
 import { actionRow } from '../action-rows.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { setAsyncState } from '../async-state.js';
@@ -629,17 +629,19 @@ export async function openConvoByLink(skillId, file) {
 // Rename one conversation as the owner sees it: a title kept beside the
 // capture, shown in place of the digest topic. Empty clears it. The open
 // conversation sheet takes the new name in place. An untitled conversation
-// opens on its topic as an editable starting point; saving that untouched
-// writes nothing, since the name it would set is the one already shown.
+// opens on its topic, cut to the title limit, as an editable starting point;
+// saving that untouched writes nothing, since the name it would set is the one
+// already shown.
 async function renameConversationTitle(r) {
   const current = r.title || '';
   const topic = r.topic || '';
+  const prefill = current || fitTitle(topic, RENAME_TITLE_SHEET.maxLength);
   const typed = await askName(
-    current || topic, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: topic })
+    prefill, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: topic })
   );
   if (typed === null) return;               // cancelled
   const title = typed.trim().replace(/\s+/g, ' ');
-  if (title === current || (!current && title === topic)) return;
+  if (title === current || (!current && title === prefill)) return;
   let reply;
   try {
     reply = await jsonApi(

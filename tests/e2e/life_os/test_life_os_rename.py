@@ -181,6 +181,46 @@ def test_life_os_rename_sheet_prefill_fits_at_phone_width(
             path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
 
 
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
+    authed_page: Page, base_url: str, theme: str
+) -> None:
+    """#1972: a topic over the 120-character title limit pre-fills cut at a
+    word, so the field is valid before anything is typed (no "Use no more than
+    120 characters") and Save closes the sheet, writing nothing. Set
+    E2E_SHOT_DIR to keep a screenshot of each theme (local review only)."""
+    long_topic = " ".join(["plan the autumn trip around the lakes and book the slow ferry"] * 5)
+    first, *rest = _FAKE_CONVERSATIONS["conversations"]
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.emulate_media(color_scheme=theme)
+    _mock_skills(authed_page)
+    _mock_conversations(authed_page, {
+        **_FAKE_CONVERSATIONS, "conversations": [{**first, "topic": long_topic}, *rest]})
+    patches: list = []
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/conversations\?path=.*"),
+        lambda route: (patches.append(route.request.url), route.fallback())
+        if route.request.method == "PATCH" else route.fallback())
+    _open_conversations(authed_page, base_url)
+    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+    _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
+    field = authed_page.locator("#lifeOsRenameInput")
+    expect(field).to_be_focused()
+    value = field.input_value()
+    assert 0 < len(value) <= 120 and long_topic.startswith(value), value
+    assert long_topic[len(value)] == " ", "cut on a word boundary"
+    assert field.evaluate("el => el.validity.valid && el.validationMessage === ''")
+    shot_dir = os.environ.get("E2E_SHOT_DIR")
+    if shot_dir:
+        authed_page.screenshot(
+            path=os.path.join(shot_dir, f"rename-long-topic-{theme}.png"))
+    authed_page.locator("#lifeOsRenameSave").click()
+    expect(authed_page.locator("#lifeOsRenameDialog")).to_be_hidden()
+    flush_requests(authed_page)
+    assert patches == []
+
+
 def test_life_os_rename_refusal_keeps_the_row_and_says_why(
     authed_page: Page, base_url: str
 ) -> None:
