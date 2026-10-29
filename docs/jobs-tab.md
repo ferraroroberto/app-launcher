@@ -191,7 +191,7 @@ A job opts out with `"session_less": true`:
 
 Capability is not in question: a probe ran a real S4U token on this host and got 12/12 — same SID, `SessionId=0`, both backup destinations writable, loopback hub and outbound HTTPS reachable, `gh`'s Credential-Manager token still resolving, and headless `claude -p` working. The one measured delta is a shorter `PATH` (1429 vs 1701 chars), harmless while every job invokes absolute interpreter paths per the fleet convention — but worth a glance for a job that depends on a tool only present on the interactive `PATH`.
 
-The registration command is generated for you: `GET /api/jobs` returns it as `registration_command` on any session-less row (`null` on every other job), built from the job's own schedule by `src.jobs.schtasks.registration_script`. Paste it into an **elevated** PowerShell. It fans out `daily_times` into the same `…-1`/`…-2` task names the rest of the app expects, and re-applies the fleet-wide on-battery/`StartWhenAvailable` settings, because `Register-ScheduledTask` replaces the whole settings object instead of merging into it.
+The registration command is generated for you: `GET /api/jobs` returns it as `registration_command` on any session-less row (`null` on every other job), built from the job's own schedule by `src.jobs.schtasks.registration_script`. Paste it into an **elevated** PowerShell. It fans out `daily_times` into the same `…-1`/`…-2` task names the rest of the app expects, and re-applies the fleet-wide on-battery/`StartWhenAvailable` settings, because `Register-ScheduledTask` replaces the whole settings object instead of merging into it. Each trigger's `StartBoundary` is rewritten as an offset-free local timestamp before registering, because `New-ScheduledTaskTrigger` stamps an absolute UTC instant that would otherwise leave the job an hour off after a daylight-saving change.
 
 **Whether the entry actually carries that principal is checked, not assumed.** The missed-fire coverage scan reads `Logon Mode` out of the bulk `schtasks /Query /FO LIST /V` it already pays for, and reports a `principal_interactive` problem for a session-less job whose entry is still `Interactive only` — the failure mode where everything looks healthy (entry present, enabled, next-run populated) and nothing runs while logged out. An unreadable `Logon Mode` yields `unknown`, never a confident pass.
 
@@ -877,8 +877,11 @@ The never-flag rules are the load-bearing half — a coverage check that cries w
 | --- | --- | --- | --- |
 | `task_missing` | 🕳️ *name* — Task Scheduler entry missing | `error` | 24 h |
 | `task_disabled` | 🚫 *name* — Task Scheduler entry disabled | `error` | 24 h |
+| `offset_pinned_trigger` | 🕐 *name* — trigger pinned to a UTC offset (drifts at DST) | `warning` | 24 h |
 | `missed_fire` | 🕳️ *name* — scheduled run never fired | `error` | 24 h |
 | `principal_interactive` | 🔒 *name* — will not fire while logged out | `warning` | 7 d |
+
+`offset_pinned_trigger` names a trigger whose `StartBoundary` carries a UTC offset (`…+01:00` or `…Z`, read from one `schtasks /Query /XML` of the `\AppLauncher\` folder, cached like the bulk query). Task Scheduler honours that instant, so the job keeps running but an hour off the wall clock after every daylight-saving change. While a job has a pinned entry its missed slots are not reported separately, because the drift explains all of them. An unreadable XML query yields `unknown` for a session-less job.
 
 `principal_interactive` is the one conditional risk: the job *does* fire whenever the box is logged in, so it is a warning about a future logged-out box rather than an outage. It drops to `warning` (Pushover priority 0 — no quiet-hours bypass) and re-pings weekly rather than daily, because the remediation needs a human at an elevated shell. It is **never** silenced — quieter, not muted.
 

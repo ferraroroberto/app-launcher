@@ -222,10 +222,10 @@ class TestBulkCacheNextRun:
         resp = client.get("/api/jobs")
         assert resp.status_code == 200
         assert len(resp.json()["jobs"]) == 5
-        # First call populates the cache → exactly one schtasks shell-out
-        # for all five jobs.
+        # First call populates the caches → one bulk LIST query plus one XML
+        # query (the pinned-offset check) for all five jobs, never one each.
         first_window = list(calls)
-        assert len(first_window) == 1
+        assert [c[-1] for c in first_window] == ["/V", "/XML"]
         # A second call within the TTL must not hit schtasks again.
         client.get("/api/jobs")
         assert calls == first_window
