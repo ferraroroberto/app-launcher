@@ -29,8 +29,8 @@ import logging
 import os
 import subprocess
 import threading
-from datetime import date, datetime, timezone
-from typing import Any, Dict, List, Optional, Sequence
+from datetime import date, datetime, time, timedelta, timezone, tzinfo
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.subprocess_flags import NO_WINDOW
 
@@ -184,19 +184,46 @@ def search_open_prs(owner: str) -> List[Dict[str, Any]]:
     return [p for p in prs if _is_actionable(p["labels"])]
 
 
-def search_done_today(owner: str) -> List[Dict[str, Any]]:
-    """Closed issues since local midnight, latest close first (#399, #1638).
+def local_day_window(
+    day: date, tz: Optional[tzinfo] = None
+) -> Tuple[datetime, datetime]:
+    """The first and last second of the local calendar day ``day``, in UTC.
+
+    GitHub stamps and searches in UTC while the owner reads days on this
+    host's clock, so a "day" is converted instead of assuming 24 h from UTC
+    midnight: the window opens at local midnight and closes one second before
+    the next local midnight, which makes the day 23 h or 25 h long across a DST
+    change. ``tz`` stands in for the host's zone (tests); ``None`` is the host's.
+    """
+    def midnight_utc(d: date) -> datetime:
+        return datetime.combine(d, time.min, tzinfo=tz).astimezone(timezone.utc)
+
+    start = midnight_utc(day)
+    end = midnight_utc(day + timedelta(days=1)) - timedelta(seconds=1)
+    return start, end
+
+
+def _gh_stamp(moment: datetime) -> str:
+    return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def search_done_on(
+    owner: str, day: date, tz: Optional[tzinfo] = None
+) -> List[Dict[str, Any]]:
+    """Issues closed on the local day ``day``, latest close first (#399, #1638).
 
     Merged PRs no longer get their own Done card — a PR that closed an issue
     is already reflected by that issue showing closed, so this is just the
-    closed-issues search with no pairing/dedup step.
+    closed-issues search with no pairing/dedup step. The search is bounded by
+    the day's exact UTC window (:func:`local_day_window`), so no row from a
+    neighbouring day needs filtering out afterwards.
     """
-    since = date.today().isoformat()
+    start, end = local_day_window(day, tz)
     closed = _search_json([
         "search", "issues",
         "--owner", owner,
         "--state", "closed",
-        "--closed", f">={since}",
+        "--closed", f"{_gh_stamp(start)}..{_gh_stamp(end)}",
         "--sort", "updated",
         "--limit", str(_ISSUE_LIMIT),
         "--json", _SEARCH_FIELDS + ",closedAt,labels",
@@ -214,6 +241,11 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
         reverse=True,
     )
     return done
+
+
+def search_done_today(owner: str) -> List[Dict[str, Any]]:
+    """Issues closed since local midnight today."""
+    return search_done_on(owner, date.today())
 
 
 # ------------------------------------------------------------------ cache

@@ -68,6 +68,7 @@ import {
   buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
 } from './board/drawer.js';
 import { agoText, renderChiefPlan } from './board/chief-plan.js';
+import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -447,13 +448,15 @@ function renderJobCard(card) {
   return row.li;
 }
 
-function renderDoneCard(card) {
+// `stampRef` is the "now" the stamp is read against: the earlier days pass the
+// row's own close time, so under a day header the stamp is the clock time.
+export function renderDoneCard(card, stampRef) {
   // Done holds closed issues only — a merged PR that closed one is
   // already reflected here by the issue itself, so there's no PR/pairing
   // branch to render.
   return laneRow('board-item-done', card.title || '',
     [[card.repo, '#' + card.number].join(' '), card.state,
-      fmtCardStamp(card.closed_at || card.updated_at)].filter(Boolean).join(' · '), [],
+      fmtCardStamp(card.closed_at || card.updated_at, stampRef)].filter(Boolean).join(' · '), [],
     'Open issue #' + card.number + ' on GitHub', openUrl(card.url)).li;
 }
 
@@ -669,7 +672,9 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead) {
     if (count) count.textContent = shown;
     section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
     // At the wide query an empty lane is a one-line strip.
-    section.classList.toggle('is-empty', cards.length === 0);
+    // Done with earlier days under it is a lane, not a strip.
+    section.classList.toggle('is-empty',
+      cards.length === 0 && !(col.key === 'done' && doneEarlierLoaded()));
     // PRs and jobs, folded, says what is wrong instead of its count.
     if (col.key === 'other') {
       const failing = cards.filter(jobFailing).length;
@@ -730,6 +735,7 @@ export function renderBoard() {
   // A kept drawer keeps its menu; one rebuilt re-attached it; none, ends it.
   endDrawerRender(openItem);
   renderBacklogFoot(body, ghLoaded);
+  renderDoneEarlier(ghLoaded);
   renderChiefPlan(body, liveRead);
   renderStatusLine(body);
   renderBoardHead(body, ghLoaded, liveRead);

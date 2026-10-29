@@ -155,8 +155,14 @@
             <span class="collapse-chevron" aria-hidden="true">›</span>
           </summary>
           <div class="collapse-body">
+            <!-- Today stays the lane's own list; "Show earlier" (done-earlier.js)
+                 reads one more local day per tap, shown below it. The Today
+                 header appears only once an earlier day is there to tell it from. -->
+            <h4 class="board-day-head" data-col="done" hidden>Today</h4>
             <ul class="card-list board-list" data-col="done"></ul>
             <div class="board-empty" data-col="done" hidden></div>
+            <div class="board-done-earlier"></div>
+            <button type="button" class="button-tint board-done-more" hidden>Show earlier</button>
           </div>
         </details>
       </div>
