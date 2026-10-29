@@ -6,15 +6,16 @@ passes while the phone spins. The watchdog polls ``/healthz`` and turns "it
 stopped answering" into a loud, timestamped breadcrumb + toast at the moment
 it happens, instead of a mystery discovered hours later.
 
-Recovery stays manual (``tray.bat --restart``) until the failure mode is
-understood — this deliberately does NOT restart anything.
+The watchdog only detects; what to do about a failing service is the
+caller's ``on_failing`` callback (the tray's bounded self-heal in
+:mod:`app.tray.self_heal`), so the edge semantics stay testable on their own.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,9 @@ class HealthWatchdog:
     until a recovery re-arms it — and the first success after an alert fires
     ``on_recover()``. The threshold absorbs a normal tray-menu webapp
     restart (a few seconds of downtime) without a false alarm at the 60 s
-    cadence.
+    cadence. ``on_failing(count)``, when given, fires on *every* failed probe
+    from the alert onward, so a recovery policy can wait out a grace period
+    and retry without the watchdog knowing about either.
     """
 
     def __init__(
@@ -39,10 +42,12 @@ class HealthWatchdog:
         on_wedge: Callable[[int], None],
         on_recover: Callable[[], None],
         failures_to_alert: int = DEFAULT_FAILURES_TO_ALERT,
+        on_failing: Optional[Callable[[int], None]] = None,
     ) -> None:
         self._probe = probe
         self._on_wedge = on_wedge
         self._on_recover = on_recover
+        self._on_failing = on_failing
         self._failures_to_alert = failures_to_alert
         self._consecutive_failures = 0
         self._alerted = False
@@ -69,6 +74,8 @@ class HealthWatchdog:
         ):
             self._alerted = True
             self._on_wedge(self._consecutive_failures)
+        if self._alerted and self._on_failing is not None:
+            self._on_failing(self._consecutive_failures)
         return False
 
     def run(

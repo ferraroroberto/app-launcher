@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import itertools
 import logging
+import logging.handlers
 import os
 import time
 from pathlib import Path
@@ -45,6 +46,14 @@ _AUTOSTART_LOG_PATH = (
 _DOORBELL_LOG_PATH = (
     Path(__file__).resolve().parent.parent.parent / "webapp" / "chief-doorbell.log"
 )
+
+_WARNINGS_LOG_PATH = (
+    Path(__file__).resolve().parent.parent.parent / "webapp" / "webapp-warnings.log"
+)
+# A WARNING flood (a wedge logs one per stalled request) must not fill the
+# disk: 2 MB x 3 backups keeps days of normal history.
+_WARNINGS_LOG_MAX_BYTES = 2 * 1024 * 1024
+_WARNINGS_LOG_BACKUPS = 3
 
 DEFAULT_SLOW_REQUEST_S = 3.0
 # The SPA's boot legitimately fans out ~9 parallel fetches (observed in the
@@ -127,6 +136,39 @@ def ensure_doorbell_log_handler(target: logging.Logger) -> None:
     ``webapp/chief-doorbell.log`` at INFO, for the same reason as the
     autostart log: under the tray's ``pythonw`` they would otherwise vanish."""
     ensure_file_log_handler(_DOORBELL_LOG_PATH, target)
+
+
+def ensure_warning_log_handler() -> None:
+    """Persist every WARNING+ record the webapp logs to the rotating
+    ``webapp/webapp-warnings.log``. Idempotent — safe to call from
+    ``create_app()`` on every boot. The tray spawns the webapp with stderr
+    DEVNULL'd, so a warning from a module with no file handler of its own
+    (the server's errors included, since hypercorn's logger propagates)
+    would otherwise reach ``logging.lastResort`` and vanish. Attached to the
+    root logger at WARNING only, leaving the root level untouched, so no
+    module's INFO lands here."""
+    root = logging.getLogger()
+    resolved = _WARNINGS_LOG_PATH.resolve()
+    if any(
+        isinstance(h, logging.FileHandler)
+        and Path(h.baseFilename).resolve() == resolved
+        for h in root.handlers
+    ):
+        return
+    try:
+        _WARNINGS_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        fh = logging.handlers.RotatingFileHandler(
+            _WARNINGS_LOG_PATH,
+            maxBytes=_WARNINGS_LOG_MAX_BYTES,
+            backupCount=_WARNINGS_LOG_BACKUPS,
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.warning(f"⚠️  Could not open {_WARNINGS_LOG_PATH}: {exc}")
+        return
+    fh.setLevel(logging.WARNING)
+    fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+    root.addHandler(fh)
 
 
 def _with_server_timing(message: dict, elapsed_s: float) -> dict:

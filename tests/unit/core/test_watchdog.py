@@ -61,3 +61,18 @@ def test_probe_exception_counts_as_failure():
     assert wd.tick() is False
     assert wd.tick() is False
     assert wedges == [2]
+
+
+def test_on_failing_fires_every_failed_probe_from_the_alert_on():
+    failing: List[int] = []
+    results = iter([False, False, False, False, True, False])
+    wd = HealthWatchdog(
+        probe=lambda: next(results),
+        on_wedge=lambda _n: None,
+        on_recover=lambda: None,
+        failures_to_alert=3,
+        on_failing=failing.append,
+    )
+    for _ in range(6):
+        wd.tick()
+    assert failing == [3, 4]  # nothing before the alert, nothing after recovery

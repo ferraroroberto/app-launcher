@@ -90,6 +90,7 @@ from app.webapp.observability import (
     ensure_autostart_log_handler,
     ensure_doorbell_log_handler,
     ensure_slow_log_handler,
+    ensure_warning_log_handler,
 )
 from app.webapp.routers import (
     apps,
@@ -486,6 +487,7 @@ def create_app() -> FastAPI:
     ensure_slow_log_handler()
     ensure_autostart_log_handler(_autostart_log, life_os_channels.logger, relay_idle_close.logger)
     ensure_doorbell_log_handler(chief_doorbell.logger)
+    ensure_warning_log_handler()
 
     app = FastAPI(
         title="Launcher",
