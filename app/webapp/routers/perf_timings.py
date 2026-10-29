@@ -12,13 +12,13 @@ the matching route's template and stamps the build this process loaded.
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from typing import Optional
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
-from starlette.routing import Match
 
 from src.build_info import resolve_git_sha
 from src.runtime_data import runtime_db_path
@@ -36,21 +36,41 @@ def _store() -> perf.PerfTimings:
     return perf.PerfTimings(runtime_db_path("app-launcher", "perf.sqlite3", create=True))
 
 
+def _route_patterns(app: FastAPI) -> list[tuple[str, re.Pattern[str]]]:
+    """Every ``/api`` template the app serves, fewest parameters first so a
+    literal route wins over a ``{param}`` sibling.
+
+    Read from the OpenAPI paths, not ``app.routes``: newer FastAPI hides an
+    included router behind a lazy wrapper with no ``path_format``, so walking
+    ``app.routes`` finds almost none of them. Websocket routes carry no fetch
+    timing and are not in the schema.
+    """
+    cached = getattr(app.state, "perf_route_patterns", None)
+    if cached is None:
+        templates = sorted(
+            (path for path in app.openapi().get("paths", {}) if path.startswith("/api/")),
+            key=lambda path: (path.count("{"), path),
+        )
+        cached = [
+            (path, re.compile("".join(
+                "[^/]+" if part.startswith("{") else re.escape(part)
+                for part in re.split(r"(\{[^}]+\})", path)
+            )))
+            for path in templates
+        ]
+        app.state.perf_route_patterns = cached
+    return cached
+
+
 def _templater(request: Request) -> perf.Templater:
     """Map a raw path to the template of the route that serves it, so only
     route names, never ids or file names, reach the table."""
+    patterns = _route_patterns(request.app)
+
     def template(path: str) -> Optional[str]:
-        # Resource Timing carries no method; a method mismatch is a partial
-        # match, which still names the route.
-        scope = {"type": "http", "method": "GET", "path": path, "root_path": ""}
-        for route in request.app.routes:
-            matches = getattr(route, "matches", None)
-            path_format = getattr(route, "path_format", None)
-            if matches is None or path_format is None or not path_format.startswith("/api/"):
-                continue
-            match, _ = matches(scope)
-            if match is not Match.NONE:
-                return path_format
+        for route_template, pattern in patterns:
+            if pattern.fullmatch(path):
+                return route_template
         return None
     return template
 
