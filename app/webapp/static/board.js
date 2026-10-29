@@ -49,7 +49,7 @@ import { applyLaunchSizePayload, openTerminal } from './terminal.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
-import { isHiddenChannel } from './channel-sessions.js';
+import { isOffBoard } from './channel-sessions.js';
 import {
   brandIconEl, channelSessionName, fmtCardStamp, fmtDuration, isChannelSession,
 } from './dom-utils.js';
@@ -583,7 +583,7 @@ export function plural(n, one, many) {
 function renderBoardHead(body, ghLoaded, liveRead) {
   const columns = body.columns || {};
   const sessions = function (key) {
-    return (columns[key] || []).filter(function (c) { return !isHiddenChannel(c); }).length;
+    return (columns[key] || []).filter(function (c) { return !isOffBoard(c); }).length;
   };
   const questions = openQuestionCount(state.chiefPlan);
   const yours = sessions('your_turn');
@@ -610,14 +610,14 @@ function sizeLaneGrid() {
   els.boardColumns.parentElement.style.setProperty('--board-lanes', String(Math.max(1, cells)));
 }
 
-// Each lane's cards as drawn: Telegram channel sessions leave the columns
-// for the summary line, and the project filter narrows the rest.
+// Each lane's cards as drawn: managed sessions (Telegram, the chief) leave the
+// columns, and the project filter narrows the rest.
 function visibleCards(columns) {
   const repoFilter = boardRepoFilter();
   const visible = {};
   COLUMNS.forEach(function (col) {
     visible[col.key] = (columns[col.key] || []).filter(function (card) {
-      return !isHiddenChannel(card) && matchesRepoFilter(card, repoFilter);
+      return !isOffBoard(card) && matchesRepoFilter(card, repoFilter);
     });
   });
   return visible;

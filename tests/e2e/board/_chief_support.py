@@ -85,9 +85,23 @@ _PLAN = {
 }
 
 
+def _show_managed_sessions(route) -> None:
+    """GET /api/config with ``hide_channel_sessions`` off; writes pass through."""
+    if route.request.method != "GET":
+        route.continue_()
+        return
+    resp = route.fetch()
+    body = resp.json()
+    body["hide_channel_sessions"] = False
+    route.fulfill(response=resp, json=body)
+
+
 def _mock_board_side_routes(page: Page) -> None:
     """Everything _mock_board stubs besides /api/board itself, for a test
     that serves a payload it changes mid-test."""
+    # These tests drive the chief's card, so the managed-session filter that
+    # hides it from the Board by default is switched off for them.
+    page.route(re.compile(r".*/api/config$"), _show_managed_sessions)
     # The chief's plan (#1279), which rides the Board poll.
     page.route(
         re.compile(r".*/api/board/chief-plan$"),

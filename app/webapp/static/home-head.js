@@ -16,7 +16,7 @@
 
 import { BOARD_POLL_MS, els, state } from './state.js';
 import { renderHeadStatus } from './_vendored/home-head/home-head.js';
-import { isHiddenChannel } from './channel-sessions.js';
+import { isHiddenChannel, isOffBoard } from './channel-sessions.js';
 import { openQuestionCount } from './board/chief-keys.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
@@ -73,7 +73,8 @@ export function renderHomeHead() {
   const shown = state.sessions.filter(function (s) { return !isHiddenChannel(s); });
   let needsYou = 0;
   let stalled = 0;
-  shown.forEach(function (s) {
+  // The chief is listed but never waits on the owner (its chat bar is the way in).
+  shown.filter(function (s) { return !isOffBoard(s); }).forEach(function (s) {
     const att = sessionAttention(s);
     if (att === 'stalled') stalled += 1;
     else if (att === 'needs-you') needsYou += 1;
@@ -105,11 +106,11 @@ export function renderBoardBadge() {
   let questions;
   if (state.board && Date.now() - state.boardFetchedAt < BOARD_BADGE_FRESH_MS) {
     sessions = ((state.board.columns || {}).your_turn || [])
-      .filter(function (c) { return !isHiddenChannel(c); }).length;
+      .filter(function (c) { return !isOffBoard(c); }).length;
     questions = openQuestionCount(state.chiefPlan);
   } else {
     sessions = state.sessions.filter(function (s) {
-      return !isHiddenChannel(s) && s.board_column === 'your_turn';
+      return !isOffBoard(s) && s.board_column === 'your_turn';
     }).length;
     questions = state.chiefQuestions;
   }

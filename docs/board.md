@@ -217,6 +217,10 @@ A Telegram channel session (label `telegram:<profile>`) serves a household membe
 
 It is display filtering only — `state.sessions` and `state.board` still hold every session, so the overlay, deep links and the title poll are unaffected. Nothing may stop a hidden channel session: its card and row are not rendered, the overlay's ⋮ menu drops *Stop and kill* for it, and `stopSession()` (the one kill path) refuses with a toast naming the setting. Switched off, both lists render exactly as before, Stop included. Auto-compacting channel sessions is a separate decision and is not part of this.
 
+### The chief is a managed session too
+
+The chief's conversation lives in the Board chat bar, so its card is never work waiting on the owner. With the same `hide_channel_sessions` setting on, `isOffBoard()` (`channel-sessions.js`, over `isManagedSession()` in `dom-utils.js`) drops it from the Board's lanes, the lane counts, the Board header, the home header's "needs you" tally and the tab badge. The Coding tab still lists the chief's row (open, stop, restart, with the crown) but never gives it a "needs you" chip, and the Stop guard above stays for a channel session only. A new managed kind is one more clause in `isManagedSession()`. Off, the chief renders on the Board as described above.
+
 ## The chief's plan card
 
 A card directly under *Claude's turn* (not a column; `index.html` wraps the two in one `.board-col-stack`, so it sits in the same desktop grid cell and next in the phone's stack) shows what the fleet chief is doing and intends to do next. The chief records it in a plan file, and the app only reads it.
