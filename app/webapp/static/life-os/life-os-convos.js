@@ -628,15 +628,18 @@ export async function openConvoByLink(skillId, file) {
 
 // Rename one conversation as the owner sees it: a title kept beside the
 // capture, shown in place of the digest topic. Empty clears it. The open
-// conversation sheet takes the new name in place.
+// conversation sheet takes the new name in place. An untitled conversation
+// opens on its topic as an editable starting point; saving that untouched
+// writes nothing, since the name it would set is the one already shown.
 async function renameConversationTitle(r) {
   const current = r.title || '';
+  const topic = r.topic || '';
   const typed = await askName(
-    current, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: r.topic || '' })
+    current || topic, Object.assign({}, RENAME_TITLE_SHEET, { placeholder: topic })
   );
   if (typed === null) return;               // cancelled
   const title = typed.trim().replace(/\s+/g, ' ');
-  if (title === current) return;
+  if (title === current || (!current && title === topic)) return;
   let reply;
   try {
     reply = await jsonApi(
