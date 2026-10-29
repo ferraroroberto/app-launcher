@@ -29,12 +29,13 @@ def _typed_user_kind(obj: Dict[str, Any], stripped: str) -> str:
     ``<system-reminder>``…), else ``"typed"``.
 
     The one classification :func:`last_exchange`, :func:`has_typed_user_prompt`
-    (both this module) and ``session_transcript.claude_entries`` all apply.
-    Previously duplicated rather than shared (#1310): the two functions here
-    never checked ``isMeta`` at all, so a string-content ``isMeta`` line that
-    no :data:`_SKIP_USER_PREFIXES` entry catches — an ``[Image: original
-    1290x2217, …]`` placeholder, a ``(Re-invocation of /issue-add — …)``
-    note — read as a genuine typed human prompt in the Board drawer.
+    (both this module) and ``session_transcript.claude_entries`` all apply —
+    kept here as the single shared check, not reimplemented per caller, so
+    every caller agrees on ``isMeta``. Skipping that check lets a
+    string-content ``isMeta`` line that no :data:`_SKIP_USER_PREFIXES` entry
+    catches — an ``[Image: original 1290x2217, …]`` placeholder, a
+    ``(Re-invocation of /issue-add — …)`` note — read as a genuine typed
+    human prompt in the Board drawer.
     """
     if obj.get("isMeta"):
         return "injected"

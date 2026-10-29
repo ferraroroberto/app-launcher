@@ -42,9 +42,9 @@ import { icon } from './_vendored/icons/icons.js';
 import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
-// No Edit mode: Add, Edit and Remove are
-// always one tap away, so the switch and its persisted key are gone. A
-// device that still holds the key drops it here, once per boot.
+// No Edit mode: Add, Edit and Remove are always one tap away, so there is
+// no edit-mode switch or persisted key. A device that still holds the
+// stale key drops it here, once per boot.
 try { localStorage.removeItem('launcher.editMode'); } catch (_) { /* storage blocked */ }
 
 // Boot-autostart is its own dedicated endpoint, not a
@@ -137,11 +137,10 @@ async function fetchStatus() {
   try {
     const body = await jsonApi('/api/status');
     state.status = body;
-    // The TLS badge + tunnel URL used to render here too — dropped
-    // (Settings tab cleanup): needless exposure of the tunnel hostname in
-    // the UI, and not information the user needs day to day. The
-    // reachability warning stays; it's actionable (fix by switching to
-    // the Tailscale URL), not just informational.
+    // No TLS badge or tunnel URL render here: exposing the tunnel hostname
+    // in the UI is needless, and not information the user needs day to
+    // day. The reachability warning stays; it's actionable (fix by
+    // switching to the Tailscale URL), not just informational.
     els.statusReadout.innerHTML = '';
     if (body.terminal && body.terminal.reachable === false) {
       const ic = document.createElement('span');

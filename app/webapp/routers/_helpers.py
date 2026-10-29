@@ -37,13 +37,14 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
 def known_run_dir(job_id: str, run_id: str) -> Optional[Path]:
-    """A registered job's existing run dir, else ``None`` (#1791).
+    """A registered job's existing run dir, else ``None``.
 
     Shared by every Jobs route that resolves ``{job_id}/{run_id}`` into a
     directory before doing anything else — the kill, dismiss and get-one-run
     routes in ``jobs.py`` and the pin/artifact/live-output routes in
-    ``jobs_run_store_routes.py`` all used to repeat this job-exists → join
-    run dir → ``is_dir`` sequence inline.
+    ``jobs_run_store_routes.py`` all need this job-exists → join
+    run dir → ``is_dir`` sequence, so it lives here instead of inline per
+    route.
     """
     if get_by_id(load_jobs(), job_id) is None:
         return None
@@ -75,7 +76,7 @@ def claude_flags_payload(cfg: WebappConfig) -> Dict[str, Any]:
 async def audit_off_loop(
     write: Callable[..., None], *args: Any, **kwargs: Any
 ) -> None:
-    """Run one ``src.audit`` write off the event loop (#660 → #661 → #674).
+    """Run one ``src.audit`` write off the event loop.
 
     Every audit entry point does synchronous ``open``/``write``/``close``:
     ``session_log``/``session_input`` on ``webapp/sessions/<sid>.log``,
@@ -83,14 +84,13 @@ async def audit_off_loop(
     webapp runs a **single** uvicorn worker (``app/webapp/event_loop.py``), so
     a slow write — disk contention, an AV scanner walking that directory —
     freezes every other live session's in-flight WS output: the "terminal
-    opens blank and never paints" class investigated in #610, and fixed for
-    the session-host's own handler in #639.
+    opens blank and never paints" class this guards against, same as the
+    session-host's own handler.
 
-    Fixed one path at a time until it stopped being one path: #660 threaded
-    the WS proxy's writes, #661 the five remaining HTTP handlers in that same
-    router (behind a local helper), #674 the twenty sites across the four
-    *other* routers — at which point five callers made this the obvious home
-    rather than a helper copied per router.
+    Every audit call site across every router goes through this one hop off
+    the loop, rather than each router threading its own call — a helper
+    copied per router would silently drift back toward the on-loop write
+    this exists to prevent.
 
     Deliberately no try/except: ``audit.session_log``/``session_input``
     already swallow their own ``OSError``, and ``audit_event`` going bang is a
@@ -112,7 +112,7 @@ async def maybe_json(request: Request) -> Dict[str, Any]:
 
 def safe_int(body: Dict[str, Any], key: str, default: int) -> int:
     """Read an ``int``-ish field out of a decoded request body, falling
-    back to ``default`` on anything that doesn't coerce (issue #755).
+    back to ``default`` on anything that doesn't coerce.
 
     Five call sites (``board.py`` x2, ``board_chief.py``, ``apps.py``,
     ``life_os.py`` — all the PTY-launch routes' ``rows``/``cols`` phone
@@ -148,10 +148,9 @@ def tsnet_host_from_cert(cert_path: Optional[Path] = None) -> Optional[str]:
     """The .ts.net hostname the active cert is issued for, or None.
 
     Returns a hostname only for a genuine ``tailscale cert`` leaf — keyed on
-    the ISSUER (Let's Encrypt), because a legacy self-signed leaf (the
-    retired gen_ssl_cert.py) also carried the ts.net name in its SAN and
-    must keep routing mirrors over loopback (same discriminator as
-    scripts/gen_tailscale_cert.py, issue #354).
+    the ISSUER (Let's Encrypt), because a self-signed leaf also carries the
+    ts.net name in its SAN and must keep routing mirrors over loopback
+    (same discriminator as scripts/gen_tailscale_cert.py).
     """
     global _TSNET_CACHE
     path = cert_path or (PROJECT_ROOT / "webapp" / "certificates" / "cert.pem")
@@ -187,14 +186,14 @@ def tsnet_host_from_cert(cert_path: Optional[Path] = None) -> Optional[str]:
 def mirror_url(request: Request, cfg: WebappConfig, sid: str) -> str:
     """The URL a launcher-spawned PC terminal window opens for ``sid``.
 
-    Self-signed / no cert → loopback, whose auth bypass the mirror rides
-    (issue #20/#241). With a Tailscale LE cert the loopback URL would hit a
+    Self-signed / no cert → loopback, whose auth bypass the mirror rides.
+    With a Tailscale LE cert the loopback URL would hit a
     hostname-mismatch interstitial (the cert names only the ts.net host), so
     the mirror targets the ts.net URL instead and carries its credentials
     explicitly: ``?token=`` bootstraps the bearer (same mechanism as the
     tunnel URL) and ``?tt=`` a server-minted terminal token when the passkey
     gate is configured. Trust-equivalent to the loopback bypass — the window
-    is spawned by this server, on this machine, for this user (issue #356);
+    is spawned by this server, on this machine, for this user;
     the SPA strips both params from the visible URL on boot.
     """
     ts_host = tsnet_host_from_cert()
@@ -330,40 +329,39 @@ def client_ip(request: Request) -> str:
 def should_mirror_to_pc(
     show_local_window: bool, request: Request, body: Dict[str, Any]
 ) -> bool:
-    """Whether a PTY launch should open the PC mirror window (issue #20).
+    """Whether a PTY launch should open the PC mirror window.
 
     The default is to mirror; only a caller that explicitly says it will
-    render the session itself skips it (issue #609):
+    render the session itself skips it:
 
     * **Phone** — non-loopback and no ``desktop`` flag: the PC has no window
       of its own, so mirror to one.
-    * **Desktop browser** — ``desktop: true`` in the launch body (issue
-      #241): mirror to a dedicated, independently-closable Edge window rather
-      than rendering the terminal inside the user's own browser. This
-      reverses issue #159's desktop-skips-mirror optimization for the PTY
-      case — the "redundant" in-page render was the very thing that let Stop
-      & Close tear down the controlling Chrome window, so the dedicated
-      window is the fix, not the redundancy. The flag (set client-side by
-      ``isDesktopClient``) is what distinguishes a desktop from a phone
-      regardless of loopback vs tunnel.
+    * **Desktop browser** — ``desktop: true`` in the launch body: mirror to
+      a dedicated, independently-closable Edge window rather
+      than rendering the terminal inside the user's own browser. Rendering
+      the terminal in-page here too would look redundant but is not: that
+      in-page render is the very thing that lets Stop & Close tear down the
+      controlling Chrome window, so the dedicated mirror window is required.
+      The flag (set client-side by ``isDesktopClient``) is what distinguishes
+      a desktop from a phone regardless of loopback vs tunnel.
     * **Genuine in-page loopback browser** — ``in_page: true`` in the launch
-      body (issue #609): the SPA itself sets this whenever it's about to
+      body: the SPA itself sets this whenever it's about to
       render the session in-page (``applyLaunchSizePayload``'s non-desktop
       branch — a phone always takes this branch too, but the non-loopback
       check above already mirrors it before this is ever consulted). An
       *explicit* signal, not an inference from "loopback and no desktop
-      flag" — that inference used to double as "skip", which silently
-      starved every non-browser loopback API caller (a script, the fleet
-      chief orchestrator dispatching over ``127.0.0.1``) of a window at all:
-      there was no page for them to render into, so "skip" meant "renders
-      nowhere". Any other loopback caller — including one that sends neither
-      flag — now mirrors by default.
+      flag" — that inference alone cannot tell a genuine in-page browser
+      apart from every other non-browser loopback API caller (a script, the
+      fleet chief orchestrator dispatching over ``127.0.0.1``), which has no
+      page to render into and so must still get a window. Any other
+      loopback caller — including one that sends neither
+      flag — mirrors by default.
 
     A disposable e2e / verify-before-ship instance (``LAUNCHER_SESSION_HOST_PORT``
     set, which only autoboot does) never mirrors, whatever the caller sends —
     the rule ``/api/claude-code/sessions/<sid>/mirror`` and the orphan-mirror
-    sweep already follow (issue #278). Without it, every gate run's real-agent
-    launch left a real Edge window on the user's desktop (issue #938): the
+    sweep both follow. Without it, every gate run's real-agent
+    launch would leave a real Edge window on the user's desktop: the
     window loads the throwaway instance, can't authenticate, never reaches
     ``announceMirrorWindow`` to set its ``app-launcher-mirror-<sid>`` title
     marker, and so is invisible to both the Stop & Close and orphan sweeps.
@@ -387,7 +385,7 @@ async def spawn_session_or_400(
     spawn_fn: Callable[..., Dict[str, Any]], /, *args: Any, **kwargs: Any
 ) -> Dict[str, Any]:
     """Run ``spawn_claude_session`` off the event loop, mapping its two
-    failure modes onto HTTP responses (issue #689).
+    failure modes onto HTTP responses.
 
     The shared *head* of every session-launch route, the counterpart to
     :func:`audit_session_start_and_maybe_mirror`'s tail: six call sites
@@ -429,22 +427,23 @@ async def spawn_launcher_session(
 ) -> Tuple[Dict[str, Any], str]:
     """Spawn one launcher-owned session and return ``(session, sid)``.
 
-    Owns the two ``cfg``-derived arguments every launch route was repeating
+    Owns the two ``cfg``-derived arguments every launch route needs
     — ``cfg.session_host_port`` and ``history_lines=cfg.terminal_history_lines``
     — plus the ``sid = str(session.get("session_id") or "")`` line that
-    followed each one (#1003). Five call sites across four routers built the
-    same call by hand: ``apps.py``'s Coding-tab PTY launch, ``board.py``'s
+    follows each one, so the five call sites across four routers —
+    ``apps.py``'s Coding-tab PTY launch, ``board.py``'s
     issue-start and dispatch, ``board_chief.py``'s chief-ensure and
-    ``life_os_spawn.py``'s skill launch. Threading one more spawn argument
-    (as ``history_lines`` itself once was) meant editing all five.
+    ``life_os_spawn.py``'s skill launch — build the call through here,
+    not by hand. Threading one more spawn argument
+    (as ``history_lines`` itself once was) means editing this one function.
 
     This is deliberately **not** a ``spawn_and_audit`` that also runs
-    :func:`audit_session_start_and_maybe_mirror`, which is what #1003's
-    finding proposed: only ``apps.py`` runs the two back to back. The other
+    :func:`audit_session_start_and_maybe_mirror`: only ``apps.py`` runs the
+    two back to back. The other
     sites do mandatory, order-dependent work in between — ``_mark_chief_managed``,
     ``_type_into_session``, and in ``board_chief`` a ready-wait, a rename and
-    the ``/chief`` send whose ordering is load-bearing ("rename FIRST, then
-    /chief", #245). Collapsing the two halves would force that into callbacks.
+    the ``/chief`` send whose ordering is load-bearing (rename FIRST, then
+    /chief). Collapsing the two halves would force that into callbacks.
 
     ``apps.py``'s **remote** branch is not a caller: it passes no
     ``rows``/``cols``/``history_lines`` at all, and widening it to send them
@@ -492,15 +491,15 @@ async def audit_session_start_and_maybe_mirror(
     mirror: bool = True,
 ) -> None:
     """Audit a freshly spawned PTY session, then mirror it to a PC terminal
-    window if appropriate (issue #241) — the shared tail every PTY-launch
+    window if appropriate — the shared tail every PTY-launch
     call site (Coding tab ``apps.py``, Board issue-start/dispatch
-    ``board.py``) needs right after ``spawn_claude_session`` (issue #334).
+    ``board.py``) needs right after ``spawn_claude_session``.
 
-    Life OS (``routers/life_os_spawn.py``) used to carry a second, parallel
-    copy of this tail so it could cover the ``remote`` kind and its own
-    ``resume_sid`` field; since #1003 it routes through here too, passing
-    those two differences as ``kind`` / ``resume_sid``. Two copies of one
-    audit+mirror workflow had to be kept in step by hand on every change.
+    Life OS (``routers/life_os_spawn.py``) routes through here too, rather
+    than carrying its own parallel copy of this tail, passing its two
+    differences — the ``remote`` kind and its own ``resume_sid`` field — as
+    ``kind`` / ``resume_sid``. One audit+mirror workflow, not two copies
+    that would otherwise need to be kept in step by hand on every change.
 
     The three parameters that carry the difference all default to the PTY
     behaviour the other call sites already had: ``kind="pty"`` (the mirror

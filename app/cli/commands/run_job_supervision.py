@@ -293,14 +293,15 @@ def _fmt_seconds(seconds: float) -> str:
 
 
 class RunWatchdog:
-    """Last-resort thread that kills a wedged run (issue #695).
+    """Last-resort thread that kills a wedged run.
 
     Every *inner* safety net in a job's stack shares fate with the thing
     it guards — the visible-job console tee, ``claude_progress``'s own
     stall watchdog several layers downstream, whatever a future job kind
-    adds. On 2026-07-30 a run froze on a console-backpressure deadlock
-    and sat ``running`` for five hours because the inner watchdog that
-    should have caught it deadlocked on the same jammed pipe chain.
+    adds. A run can freeze on a console-backpressure deadlock that jams
+    the same pipe chain the inner watchdog depends on, so that watchdog
+    deadlocks too and the run sits ``running`` indefinitely with nothing
+    inside the stack left to catch it.
 
     The executor is the one layer whose health depends on nothing the
     child does: it needs only to keep a thread ticking and be able to

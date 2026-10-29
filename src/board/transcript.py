@@ -55,8 +55,8 @@ _RESUME_EPSILON = timedelta(seconds=10)
 # state is semantic evidence, not proof that its process still exists. Only
 # recent transcript activity lets an unmatched row render as an external
 # session. Missing cloud/bridge transcripts and quiet waiting rows otherwise
-# linger for 24 hours. Narrowed from 15 to 5 minutes — the observed
-# Codex ghost sat at 14.3 minutes, just inside the old window; this is still
+# linger for 24 hours. The window is 5 minutes, tight enough that a stale
+# ghost row still clears quickly; this is still
 # an inherently imperfect fallback (a process that writes once and exits
 # within the window is indistinguishable from one still running), not a fix
 # for that class — the two deterministic checks in
@@ -74,19 +74,16 @@ _EXTERNAL_ACTIVITY_AFTER = timedelta(minutes=5)
 # gap between a streamed text block and its own following tool_use block),
 # which is entirely a transcript-file phenomenon this field never touches.
 #
-# Two spinner families are recognized. The CLI originally painted
-# Braille Patterns (U+2800-U+28FF), which is what was live-verified and all
-# this check matched for a year. It has since moved to the circle-quadrant
-# rotation "◐◓◑◒" (U+25D0-U+25D3), and because an unrecognized glyph is
-# designed to fall through silently, the whole override went inert with no
-# error and no failing test — every live working session read as not-busy
-# (the Board misread a running tool call as needing the human).
-# Re-measured against the running Board — 40 polls of /api/board at 150ms,
-# counting each card's leading live_title character — the only glyphs seen
-# were U+2733 "✳" (idle, x160) and U+25D0 "◐" / U+25D1 "◑" (busy, x101/x19),
-# with zero Braille. "◓"/"◒" are the remaining frames of that standard
-# 4-frame rotation, included as a deliberate superset rather than an
-# observed fact; the Braille range is kept for older CLIs and costs nothing.
+# Two spinner families are recognized: Braille Patterns (U+2800-U+28FF) and
+# the circle-quadrant rotation "◐◓◑◒" (U+25D0-U+25D3). Both must stay
+# recognized together — an unrecognized glyph is designed to fall through
+# silently, so a CLI that switches spinner glyph without this set covering
+# the new one makes the whole override go inert with no error and no
+# failing test: every live working session reads as not-busy and the Board
+# misreads a running tool call as needing the human. "◓"/"◒" are the
+# remaining frames of the circle-quadrant rotation, included as a
+# deliberate superset of what has been directly observed; the Braille
+# range is kept for older CLIs and costs nothing to retain.
 #
 # This is undocumented CLI UI chrome, not a versioned contract, so a title
 # still counts as busy ONLY on a recognized glyph; anything else (a future

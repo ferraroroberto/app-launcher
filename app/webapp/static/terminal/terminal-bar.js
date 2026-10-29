@@ -1,8 +1,9 @@
 /* Terminal bar ⋮ session menu + the floating "Latest" pill.
  *
- * The bar used to carry ✕ Kill and ↓ Jump as permanent controls. They
- * left the bar so it fits a 390px phone without scrolling: ‹ Back · title
- * · context ring (context-ring.js) · Terminal⇄Chat toggle (* session-overlay.js) · 🔊 · ⋮.
+ * The bar carries only ‹ Back · title · context ring (context-ring.js) ·
+ * Terminal⇄Chat toggle (* session-overlay.js) · 🔊 · ⋮ — no permanent
+ * ✕ Kill or ↓ Jump control, so the bar fits a 390px phone without
+ * scrolling.
  *
  *   ⋮ menu — Rename · Copy link · [Hide/Show steps · Reload, Chat mode
  *   only] · [Compact, Claude sessions only] · Stop and kill. Copy link prefers the session's provider-native

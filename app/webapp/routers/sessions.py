@@ -470,60 +470,58 @@ def _classify_input_500(port: int, sid: str, detail: str) -> Tuple[int, str]:
 
 @router.post("/api/claude-code/sessions/{sid}/input")
 async def session_input(sid: str, request: Request, response: Response) -> Dict[str, Any]:
-    """Write composed text into a session's PTY (Tailscale-only + passkey, #301).
+    """Write composed text into a session's PTY (Tailscale-only + passkey).
 
     The Board drawer's reply path — chief's only way to steer a running
     worker. Body: ``{"data": str, "submit": bool}``. One call to the
-    session-host, which now owns the whole framing + settle-then-submit
-    sequence (``PtySession.submit_input``, issue #611, ported from the
-    compose bar's ``framePaste``/``sendSubmit``/``bulkSettle`` — #166/#450/
-    #499): bracketed-paste framing only when the PTY's own output says
-    bracketed-paste mode is on, the submitting CR as its own separate write,
-    and — for a bulk payload — held back until the paste's ingest visibly
-    settles instead of racing it. Previously this endpoint wrote the text and
-    the CR back-to-back with no settle logic, which is why a bulk/multi-line
-    steer could sit unsubmitted as a ``[Pasted text #N]`` chip while the API
-    reported ``{"ok": true}`` (the incident #607 was filed over).
+    session-host, which owns the whole framing + settle-then-submit
+    sequence (``PtySession.submit_input``, ported from the compose bar's
+    ``framePaste``/``sendSubmit``/``bulkSettle``): bracketed-paste framing
+    only when the PTY's own output says bracketed-paste mode is on, the
+    submitting CR as its own separate write, and — for a bulk payload —
+    held back until the paste's ingest visibly settles instead of racing
+    it. Writing the text and the CR back-to-back with no settle logic lets
+    a bulk/multi-line steer sit unsubmitted as a ``[Pasted text #N]`` chip
+    while the API reports ``{"ok": true}``, which is exactly the failure
+    this sequencing must prevent.
 
     ``data`` may be blank when ``submit`` is true — a bare submit against
     whatever is already sitting in the composer, with no text write. This is
-    the recovery path for a message already stranded by the exact race above:
-    previously the only way to release it was tapping the phone's own compose
-    Send by hand. Blank ``data`` with ``submit`` false is still a 400 — there
-    would be nothing to do.
+    the recovery path for a message stranded by the exact race above:
+    without it, the only way to release it is tapping the phone's own
+    compose Send by hand. Blank ``data`` with ``submit`` false is still a
+    400 — there would be nothing to do.
 
     ``{"ok": true}`` means the write (and, if requested, the submit) were
     actually accepted by a live session — the session-host reports a dead/
-    exited session as a 409 instead of unconditionally claiming delivery
-    (issue #607), and that propagates through the ``except`` below rather
-    than a false 200.
+    exited session as a 409 instead of unconditionally claiming delivery,
+    and that propagates through the ``except`` below rather than a false
+    200.
 
-    Issue #760 makes the rest of that promise real. A 200 now carries the
-    session-host's whole verdict (``delivered``/``ingested``/``submitted``/
-    ``submit_confirmed``/``reason``): ``reason: "unverified"`` means no
-    verification was performed (a short payload or a bare submit), and
-    anything other than ``"ok"`` means the submit was **not** confirmed.
-    A payload the terminal never echoed
-    back is a 502, not a 200 — three workers stalled on 2026-08-14 on the
-    strength of an ``{"ok": true}`` that only ever meant "the write didn't
-    raise". Callers that need certainty should treat anything other than
+    A 200 carries the session-host's whole verdict (``delivered``/
+    ``ingested``/``submitted``/``submit_confirmed``/``reason``):
+    ``reason: "unverified"`` means no verification was performed (a short
+    payload or a bare submit), and anything other than ``"ok"`` means the
+    submit was **not** confirmed. A payload the terminal never echoed back
+    is a 502, not a 200 — ``{"ok": true}`` must never mean only "the write
+    didn't raise" when the terminal's own echo is the actual proof of
+    delivery. Callers that need certainty should treat anything other than
     ``reason: "ok"`` as unconfirmed and check the exchange themselves.
 
-    Issue #763 adds one more: ``reason: "deferred"`` (HTTP **202**) means the
-    payload is in the composer but the agent was still working, so the
-    submitting CR is with a bounded background watcher that will press Enter
-    once the agent settles, or at once for an agent that queues type-ahead
-    (#1548) — the message is in flight, not stranded. It
-    replaces the former ``settle_cap``, which reported a CR already fired
-    blind mid-repaint. The watcher's own verdict (``ok``, with ``queued``
-    when the agent queued it / ``unverified`` / ``defer_timeout`` /
-    ``defer_vanished`` / ``defer_unclear`` / ``defer_failed``) lands on the
-    session's ``last_input``, readable via the session list, so a caller
-    follows it up there rather than by holding this request open.
+    ``reason: "deferred"`` (HTTP **202**) means the payload is in the
+    composer but the agent was still working, so the submitting CR is with
+    a bounded background watcher that will press Enter once the agent
+    settles, or at once for an agent that queues type-ahead — the message
+    is in flight, not stranded, and never fires a CR blind mid-repaint the
+    way a flat ``settle_cap`` would. The watcher's own verdict (``ok``, with
+    ``queued`` when the agent queued it / ``unverified`` / ``defer_timeout``
+    / ``defer_vanished`` / ``defer_unclear`` / ``defer_failed``) lands on
+    the session's ``last_input``, readable via the session list, so a
+    caller follows it up there rather than by holding this request open.
 
-    Issue #929: ``delivered`` means the input reached the *agent*, so it is
-    never ``true`` beside a requested submit that was not sent — ``deferred``
-    and every watcher give-up (``defer_timeout`` et al.) read
+    ``delivered`` means the input reached the *agent*, so it is never
+    ``true`` beside a requested submit that was not sent — ``deferred`` and
+    every watcher give-up (``defer_timeout`` et al.) read
     ``delivered: false``. ``submit_state`` names the submit's fate in one
     field: ``confirmed`` / ``unconfirmed`` (sent, nothing verified it) /
     ``pending`` (with the watcher) / ``not_submitted`` / ``not_requested``.

@@ -306,7 +306,7 @@ def _find_resumable_chief_session_id(
     now: Optional[datetime] = None,
     preferred_sid: str = "",
 ) -> str:
-    """The chief conversation worth reattaching, or ``""`` (#633, fixed #670).
+    """The chief conversation worth reattaching, or ``""``.
 
     Returns the dict key — Claude's own session UUID, exactly what
     ``claude --resume <id>`` needs. Returns ``""`` (never raises) when
@@ -314,24 +314,22 @@ def _find_resumable_chief_session_id(
     ``board_state`` reader already follows; the caller treats that as "fall
     back to a fresh spawn", not an error.
 
-    **Newest is not the same as right (#670).** The original lookup ranked
-    candidates on ``updated_at`` alone, which inverts after any event that
-    kills the chief's PTY: the real conversation's row freezes at the moment
-    of death, while the blank chief spawned seconds later by the fallback
-    path — renamed ``"chief"`` by ``ensure_chief`` itself, so indistinguishable
-    by name — keeps writing rows and always wins the recency race. Resume
-    then reattached a conversation whose entire content was ``/chief`` and
-    the handover file, and it ratcheted: with #640's stop-the-live-chief-first
-    ordering, the live blank chief won every subsequent press too, so no
-    amount of pressing Resume could get back to the real conversation
-    (observed live 2026-07-28: a 95-line, 10-minute-old conversation resumed
-    over a 6 468-line one that had been running for three days).
+    **Newest is not the same as right.** Ranking candidates on
+    ``updated_at`` alone inverts after any event that kills the chief's
+    PTY: the real conversation's row freezes at the moment of death, while
+    the blank chief spawned seconds later by the fallback path — renamed
+    ``"chief"`` by ``ensure_chief`` itself, so indistinguishable by name —
+    keeps writing rows and always wins the recency race. Resume would then
+    reattach a conversation whose entire content is ``/chief`` and the
+    handover file, and if the live blank chief is stopped first on every
+    later restart too, no amount of pressing Resume can get back to a
+    long-running real conversation buried under a short-lived blank one.
 
     So substance decides, not just recency. Candidates are ranked in tiers,
     newest-first within each:
 
     1. ``preferred_sid`` — the conversation of the live chief this resume is
-       about to stop, when it has substance. Honors #640's context-preserving
+       about to stop, when it has substance. Honors a context-preserving
        restart *and* covers a chief the launcher never spawned (its row is
        named after the project, never ``"chief"``, so the name scan below
        cannot see it at all).

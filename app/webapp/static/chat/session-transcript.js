@@ -115,9 +115,9 @@ const PAGE_LIMIT = 40;
 // One Load older tap keeps fetching until an older user or assistant turn
 // arrives. A page can hold no turn at all (the server's per-request
 // read ceiling stops it inside a run of huge tool results), and with tool
-// calls hidden such a page used to add nothing visible. Bounded by requests
-// and by wall time, so a transcript that is all tool calls back to the file
-// start costs a few round trips, not an unbounded walk.
+// calls hidden such a page would add nothing visible on its own. Bounded by
+// requests and by wall time, so a transcript that is all tool calls back to
+// the file start costs a few round trips, not an unbounded walk.
 const OLDER_CHAIN_MAX = 8;
 const OLDER_CHAIN_MS = 2500;
 const OLDER_LABEL = 'Load older';
@@ -179,8 +179,8 @@ export let view = null;
 // entries) are hidden from the list. Shown by default: one quiet
 // line per run, still folded, so a turn that edited four files says so; the
 // ⋮ menu's "Hide steps" leaves a plain user ↔ agent exchange. Turns
-// themselves render open and collapse one at a time on their own summary
-// (the bar-wide collapse-all left with the bar).
+// themselves render open and collapse one at a time on their own summary;
+// there is no bar-wide collapse-all control.
 let groupsHidden = false;
 
 // The session id the pane currently shows, or null — session-overlay.js

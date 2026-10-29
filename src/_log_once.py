@@ -1,16 +1,15 @@
-"""One log line per distinct key, with a bounded key set (issue #1003).
+"""One log line per distinct key, with a bounded key set.
 
-Three call sites had hand-rolled the same "log this key once, cap the set,
-clear it wholesale on overflow" logic: ``board_transcript`` (unrecognized
+The one "log this key once, cap the set, clear it wholesale on overflow"
+mechanism for every caller that needs it: ``board_transcript`` (unrecognized
 title glyphs), ``board_sessions`` (suppressed state rows) and
 ``active_issue_claims`` (contract failures). All three exist for the same
 reason — ``GET /api/board`` polls every five seconds, so a steady-state
 condition would otherwise write the same line forever and bury the one that
 matters.
 
-**The cap is a parameter, not a shared constant.** #1003's finding proposed
-"one helper with a shared cap"; the caps legitimately differ, because they
-bound different key spaces:
+**The cap is a parameter, not a shared constant** — the caps legitimately
+differ, because they bound different key spaces:
 
 * 64 for title glyphs — one entry per distinct leading glyph, a tiny set
   that is stable for a session's whole life;
@@ -19,9 +18,9 @@ bound different key spaces:
   without limit.
 
 Collapsing them to one number would be a behaviour change dressed as a
-cleanup, so the caller keeps its own. What was genuinely duplicated is the
-mechanism below — and ``active_issue_claims`` had no cap at all, which this
-lets it fix by passing one.
+cleanup, so each caller keeps its own cap while sharing the mechanism below,
+including ``active_issue_claims``, which must pass a cap rather than run
+unbounded.
 
 Clearing wholesale on overflow (rather than evicting one entry) is the
 existing behaviour of both capped sites, kept deliberately: these are

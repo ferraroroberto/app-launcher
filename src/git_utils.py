@@ -1,18 +1,15 @@
-"""Shared ``git`` subprocess runner (issue #794).
+"""Shared ``git`` subprocess runner.
 
-Five call sites hand-rolled their own ``git -C <repo> <args>`` subprocess
-wrapper — three raw ``subprocess.run`` blocks inline in
-:mod:`src.build_info` plus one each in :mod:`src.scanner` and
-:mod:`src.session_host_paths` — all sharing the same
+The one place every ``git -C <repo> <args>`` subprocess call under ``src/``
+or ``app/`` goes through, rather than each call site hand-rolling its own
 ``capture_output=True, stdin=DEVNULL, text=True, timeout=5,
-check=False, creationflags=NO_WINDOW`` shape and the same "empty/failed →
-``None`` / ``unknown``" tail. This module is the one place that shape lives
-now; every caller treats ``None`` as "couldn't determine", never a
-confident empty answer (same convention `fleet-config` adopted for its own
-``git_run.run_git``).
+check=False, creationflags=NO_WINDOW`` shape and its own "empty/failed →
+``None`` / ``unknown``" tail. Every caller treats ``None`` as "couldn't
+determine", never a confident empty answer (same convention `fleet-config`
+adopted for its own ``git_run.run_git``).
 
 Being that one place is also why :func:`git_env`'s ``GIT_OPTIONAL_LOCKS=0``
-belongs here and nowhere else (#1111): a hand-rolled
+belongs here and nowhere else: a hand-rolled
 ``subprocess.run(["git", ...])`` opts back out of it invisibly, still
 exiting 0 with the right answer, so the conventions ratchet's ``git-wrapper``
 rule fails the build on any ``git`` spawn under ``src/`` or ``app/`` outside

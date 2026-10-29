@@ -1,20 +1,20 @@
 /* The SPA's minimal markdown renderer — feature-agnostic, shared.
 
-Split out of `life-os.js`: living there made the module name a lie and
-coupled two unrelated tabs through it: the Coding tab's Chat pane
-(`session-transcript.js`) imported the renderer from the Life OS feature
-module. It also left a verification blind spot — `.fleet.toml`'s `lifeos`
-e2e surface narrows a `life-os.js`-only diff to the Life OS tests, which do
-NOT include `test_session_transcript.py`, so a change to the shared renderer
-was never exercised against its other consumer. As its own module it is
-unclassified, so the router escalates to the full suite and both consumers
-are covered.
+Kept separate from `life-os.js`: the Coding tab's Chat pane
+(`session-transcript.js`) imports the renderer too, so living under the
+Life OS module name would be misleading and couples two unrelated tabs
+through it. Being its own module also keeps verification honest —
+`.fleet.toml`'s `lifeos` e2e surface would otherwise narrow a
+`life-os.js`-only diff to the Life OS tests, which do NOT include
+`test_session_transcript.py`, leaving the renderer's other consumer
+unexercised. Unclassified on its own, a diff here escalates to the full
+suite and both consumers are covered.
 
-NOT in `dom-utils.js`, which the finding proposed: that module declares
-itself dependency-free and ten modules import it. A leaf of its own keeps
-that property intact. `escapeHtml` moved into `dom-utils.js` so this
-module imports nothing DOM- or storage-bound and runs under plain Node, which
-is how `tests/js/markdown.test.mjs` pins the parser without a browser.
+NOT in `dom-utils.js`: that module declares itself dependency-free and ten
+modules import it, and a leaf of its own keeps that property intact.
+`escapeHtml` lives in `dom-utils.js`; this module imports nothing DOM- or
+storage-bound and runs under plain Node, which is how
+`tests/js/markdown.test.mjs` pins the parser without a browser.
 */
 
 import { escapeHtml } from './dom-utils.js';

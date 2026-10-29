@@ -1,10 +1,10 @@
 """Shared atomic-JSON-write and interprocess-lock helpers.
 
-Six call sites across ``src/`` each hand-rolled the same
-tempfile-then-``os.replace`` dance with their own suffix bikeshed. This
-module is the single place that owns it. It also owns the msvcrt-based
-file-lock-with-retry pattern (issue #520) that both ``src.jobs.queue`` and
-``src.jobs.history`` need for their own read-modify-write critical sections.
+The single place that owns the tempfile-then-``os.replace`` atomic-write
+dance, so a call site under ``src/`` never hand-rolls its own suffix and
+cleanup. It also owns the msvcrt-based file-lock-with-retry pattern that
+both ``src.jobs.queue`` and ``src.jobs.history`` need for their own
+read-modify-write critical sections.
 """
 
 from __future__ import annotations
@@ -33,12 +33,11 @@ def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:
     responsible for ensuring ``target.parent`` exists.
 
     A write that fails *after* the temp file lands — the ``os.replace`` is
-    refused, the disk fills mid-write — used to leave that ``.tmp`` behind
-    (#1003). Only one of the eleven call sites cleaned it up, and it did so
-    by re-deriving this function's own private temp-file name, so every
-    other site leaked. The cleanup belongs here, where the name is known:
-    the ``finally`` removes the temp file if it still exists, which after a
-    successful ``os.replace`` it never does (the swap consumes it).
+    refused, the disk fills mid-write — must not leave that ``.tmp`` behind.
+    The cleanup belongs here, where the temp-file name is known, rather than
+    in each call site re-deriving it: the ``finally`` removes the temp file
+    if it still exists, which after a successful ``os.replace`` it never
+    does (the swap consumes it).
 
     A *serialization* failure leaks nothing either way — ``json.dumps`` runs
     before ``write_text`` opens the file — so the leak this closes is

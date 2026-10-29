@@ -112,11 +112,11 @@ DISPATCH_LEGACY_GRACE_S = 5.0
 # PTY input-quiescence: first-paint + a fixed
 # settle is NOT always "input ready" for a fresh --remote-control agent — a
 # CR typed while boot output (handshake, banner) is still growing gets
-# swallowed, leaving the typed text sitting unsubmitted (observed on-device
-# 2026-07-18, first on the chief's own rename, then on a chief-dispatched
-# /issue-add worker left idle with its goal typed but never submitted). Stable
-# output for PTY_QUIESCENT_STABLE_S is the strongest cheap signal the prompt
-# has settled; cap and proceed best-effort rather than failing the spawn.
+# swallowed, leaving the typed text sitting unsubmitted (e.g. a
+# chief-dispatched /issue-add worker left idle with its goal typed but
+# never submitted). Stable output for PTY_QUIESCENT_STABLE_S is the
+# strongest cheap signal the prompt has settled; cap and proceed
+# best-effort rather than failing the spawn.
 # Module-level so tests can patch them tiny.
 PTY_QUIESCENT_STABLE_S = 2.0
 PTY_QUIESCENT_CAP_S = 30.0

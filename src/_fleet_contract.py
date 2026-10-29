@@ -1,10 +1,11 @@
-"""Load a fleet-config contract module from a path (issue #1003).
+"""Load a fleet-config contract module from a path.
 
-``active_issue_claims`` and ``quota_usage`` each carried a byte-identical
-copy of this loader — same ``lru_cache``, same
-``spec_from_file_location`` / ``module_from_spec`` / ``exec_module``
-sequence, same ``ImportError`` guard — differing only in the internal
-module-name alias and the error message.
+The one loader both ``active_issue_claims`` and ``quota_usage`` must use —
+same ``lru_cache``, same ``spec_from_file_location`` /
+``module_from_spec`` / ``exec_module`` sequence, same ``ImportError``
+guard — so neither caller re-derives its own copy and silently drifts on
+the loading semantics; each only varies the internal module-name alias and
+the error message.
 
 Both import a *contract* module out of the fleet-config checkout rather
 than vendoring its logic, so the launcher and fleet-config cannot drift on

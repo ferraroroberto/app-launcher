@@ -928,7 +928,7 @@ export function wireTerminal() {
   els.terminalBack.addEventListener('click', closeSessionOverlay);
   wireSessionModeToggle();
   // ⋮ session menu + the Latest pill — terminal-bar.js. Stop and
-  // kill moved into the menu from the old in-bar ✕.
+  // kill live in the menu, not as an in-bar ✕.
   wireTerminalMenu();
   mountTerminalComposer();
   wireTerminalImage();

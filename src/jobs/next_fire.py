@@ -1,11 +1,10 @@
 """When a job fires next - pure schedule arithmetic, no Windows in sight.
 
-Split out of ``src/jobs/schtasks.py`` (a ``/codebase-audit`` maintainability
-finding, #1006). It lived there for a reason that stopped applying: it
-exists *because* schtasks' own "Next Run Time" string is locale-formatted
-and useless to sort by, so proximity to the parser was once the point. But
-nothing here touches schtasks - no subprocess, no CLI parsing, no TTL cache,
-no Windows at all. Everything is derived from the bounded
+Kept separate from ``src/jobs/schtasks.py`` on purpose: schtasks' own
+"Next Run Time" string is locale-formatted and useless to sort by, so this
+module derives the next fire itself instead. Nothing here touches schtasks -
+no subprocess, no CLI parsing, no TTL cache, no Windows at all. Everything
+is derived from the bounded
 :class:`~src.jobs.config.Schedule` shape, which made a reader of
 ``jobs_coverage.py`` chase ``upcoming_fires`` into a 1000-line Task
 Scheduler client to find pure date arithmetic, and a reader of that client
@@ -16,9 +15,8 @@ deterministic**. Same ``Schedule`` and same ``now`` give the same answer, on
 any machine, with no Task Scheduler installed. Keep it that way - a
 schtasks import here would put the seam back.
 
-Callers reach these through ``src.jobs``'s re-export facade, which is why
-this move changed no call site outside the two modules that import them
-directly.
+Callers reach these through ``src.jobs``'s re-export facade, so moving code
+between the two modules never touches a call site outside them.
 """
 
 from __future__ import annotations
