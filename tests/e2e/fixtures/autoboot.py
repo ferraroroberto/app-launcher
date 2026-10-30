@@ -103,16 +103,16 @@ def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str)
     from src import boot_autostart
 
     # Config isolation (issue #441): the disposable webapp gets its own temp
-    # config — realistic values (projects_dir, agent settings, …) without
-    # write access to the real file. Any e2e test that Saves settings mutates
-    # only this one. Snapshot the real file's bytes so the isolation can be
-    # *asserted* after the run, not just assumed.
+    # config, so any e2e test that Saves settings mutates only that one.
+    # Snapshot the real file's bytes so the isolation can be *asserted* after
+    # the run, not just assumed.
     #
-    # Credential isolation (issue #907): it is derived from the real config
-    # with every credential dropped and this run's disposable auth_token in
-    # their place — the live token must never sit in a test run's config —
-    # and it lives in pytest's temp tree, not the checkout. Loopback bypasses
-    # the bearer gate, so nothing here needs the real one.
+    # The config is hermetic (issues #907, #1991): it is built from the run's
+    # disposable auth_token and the pinned paths below and reads nothing from
+    # the real file, so neither a live credential nor a live setting (the chief
+    # doorbell on) reaches a test that assumes the defaults. It lives in
+    # pytest's temp tree, not the checkout. Loopback bypasses the bearer gate,
+    # so nothing here needs the real token.
     cfg_copy = tmp_path_factory.mktemp("webapp-config") / "webapp_config.json"
     real_cfg_bytes = WEBAPP_CONFIG.read_bytes() if WEBAPP_CONFIG.exists() else None
     #
@@ -121,7 +121,7 @@ def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str)
     # filter) are pinned into a per-run temp folder, so a capture shows
     # synthetic usage rather than the machine's real percentages.
     host_state_dir = tmp_path_factory.mktemp("host-state")
-    disposable_cfg = disposable_webapp_config(WEBAPP_CONFIG, auth_token, host_state_dir)
+    disposable_cfg = disposable_webapp_config(auth_token, host_state_dir)
     pin_launch_target(disposable_cfg, launch_target_dir() or REPO_ROOT)
     pin_ui_prefs(disposable_cfg)
     if count_leaked_credentials(WEBAPP_CONFIG, disposable_cfg):

@@ -63,9 +63,8 @@ def _scratch_checkout(tmp_path: Path) -> Path:
 def test_launch_target_resolves_without_a_runtime_config(tmp_path: Path) -> None:
     """The fresh-checkout case: no config on disk, no `app-launcher` sibling."""
     target = _scratch_checkout(tmp_path)
-    missing = tmp_path / "never-written" / "webapp_config.json"
     cfg = e2e_launch_target.pin_launch_target(
-        disposable_webapp_config(missing, "e2e-disposable-probe-token", tmp_path / "state"), target
+        disposable_webapp_config("e2e-disposable-probe-token", tmp_path / "state"), target
     )
 
     assert slugify(target.name) in _resolved_ids(cfg), (
@@ -77,17 +76,17 @@ def test_launch_target_resolves_without_a_runtime_config(tmp_path: Path) -> None
 def test_launch_target_survives_an_ignore_pattern_hiding_it(tmp_path: Path) -> None:
     """An inherited ``projects_ignore`` must not hide the launch target.
 
-    A real config may legitimately hide checkouts from the Coding tab;
-    inheriting that into the disposable config would silently take the launch
+    A config may legitimately hide checkouts from the Coding tab; keeping
+    that pattern in the disposable config would silently take the launch
     target away again.
     """
     target = _scratch_checkout(tmp_path)
-    real = tmp_path / "webapp_config.json"
-    real.write_text(
-        json.dumps({"projects_ignore": ["al-merge-*", "unrelated-*"]}), encoding="utf-8"
-    )
     cfg = e2e_launch_target.pin_launch_target(
-        disposable_webapp_config(real, "e2e-disposable-probe-token", tmp_path / "state"), target
+        {
+            **disposable_webapp_config("e2e-disposable-probe-token", tmp_path / "state"),
+            "projects_ignore": ["al-merge-*", "unrelated-*"],
+        },
+        target,
     )
 
     assert "al-merge-*" not in cfg["projects_ignore"]
@@ -97,7 +96,7 @@ def test_launch_target_survives_an_ignore_pattern_hiding_it(tmp_path: Path) -> N
 
 def test_pinning_adds_no_credential_key(tmp_path: Path) -> None:
     """#907's ban stands: pinning writes paths, never a secret."""
-    before = disposable_webapp_config(Path("does-not-exist.json"), "tok-placeholder", tmp_path / "state")
+    before = disposable_webapp_config("tok-placeholder", tmp_path / "state")
     after = e2e_launch_target.pin_launch_target(dict(before), _scratch_checkout(tmp_path))
 
     added = set(after) - set(before)
@@ -108,16 +107,16 @@ def test_pinning_adds_no_credential_key(tmp_path: Path) -> None:
 
 
 def test_ui_prefs_pin_overrides_a_live_setting(tmp_path: Path) -> None:
-    """#1458: an owner's Settings pick must not reach the e2e server's config."""
-    real = tmp_path / "webapp_config.json"
-    real.write_text(
-        json.dumps({"usage_providers": ["grok"], "claude_model": "opus"}), encoding="utf-8"
-    )
-    cfg = e2e_launch_target.pin_ui_prefs(disposable_webapp_config(real, "e2e-probe-token", tmp_path / "state"))
+    """#1458: a UI pick in the config must not reach the e2e server."""
+    picked = {
+        **disposable_webapp_config("e2e-probe-token", tmp_path / "state"),
+        "usage_providers": ["grok"],
+        "claude_model": "opus",
+    }
+    cfg = e2e_launch_target.pin_ui_prefs(picked)
 
     assert cfg["usage_providers"] == ["claude", "codex"]
     assert cfg["claude_model"] == "opus", "only the pinned keys are overwritten"
-    assert json.loads(real.read_text(encoding="utf-8"))["usage_providers"] == ["grok"]
 
 
 # ------------------------------------------------- which checkout launches
@@ -259,7 +258,7 @@ def test_pinning_scans_the_launch_target_alone(tmp_path: Path) -> None:
     for sibling in ("other-repo", "glob[x]"):
         (target.parent / sibling).mkdir()
     cfg = e2e_launch_target.pin_launch_target(
-        disposable_webapp_config(Path("does-not-exist.json"), "tok-placeholder", tmp_path / "state"), target
+        disposable_webapp_config("tok-placeholder", tmp_path / "state"), target
     )
 
     assert _resolved_ids(cfg) == [slugify(target.name)]

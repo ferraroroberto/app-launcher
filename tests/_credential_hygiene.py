@@ -2,12 +2,11 @@
 
 Two independent guards — either one alone is not enough:
 
-1. **No live credential in a disposable config.** The e2e autoboot derives its
-   disposable webapp's config from the real ``config/webapp_config.json`` so it
-   boots with realistic values, but :func:`disposable_webapp_config` drops
-   every ``CREDENTIAL_KEYS`` entry and substitutes a per-run token. CI already
-   runs against the committed sample, which carries no credential; this makes
-   a local or worktree run equivalent.
+1. **No live credential in a disposable config.** The e2e autoboot builds its
+   disposable webapp's config with :func:`disposable_webapp_config`, which
+   reads nothing from the real ``config/webapp_config.json`` (credential or
+   not, so no live setting leaks into a test either) and carries a per-run
+   token. CI's clean checkout runs the same way.
 2. **No credential in failure output.** Playwright's failure call log prints
    request headers verbatim, ``Authorization`` included, and pytest writes
    that into its report — which lands on disk wherever the run's output is
@@ -121,18 +120,6 @@ def disposable_token() -> str:
     return DISPOSABLE_TOKEN_PREFIX + secrets.token_urlsafe(24)
 
 
-def _mask(node: Any, values: Set[str]) -> Any:
-    if isinstance(node, str):
-        for value in values:
-            node = node.replace(value, REDACTED)
-        return node
-    if isinstance(node, dict):
-        return {k: _mask(v, values) for k, v in node.items()}
-    if isinstance(node, list):
-        return [_mask(item, values) for item in node]
-    return node
-
-
 #: The config keys whose default (or real-config value) is a file or directory
 #: in the owner's profile: the fleet-config hook-state directory and the
 #: context filter's home folder (#1717). A disposable webapp gets each one
@@ -176,29 +163,22 @@ def _write_synthetic_rate_limits(path: Path) -> None:
     path.write_text(json.dumps(payload), encoding="utf-8")
 
 
-def disposable_webapp_config(real_path: Path, token: str, state_dir: Path) -> dict:
-    """The real config minus every credential, with ``token`` as its ``auth_token``.
+def disposable_webapp_config(token: str, state_dir: Path) -> dict:
+    """The gate webapp's config: ``token`` as its ``auth_token`` and nothing from the live file.
 
-    Non-credential values (projects_dir, agent settings, …) carry over so a
-    disposable webapp still boots realistically — except that a credential
-    value found embedded in one (a URL carrying ``?token=``) is masked too.
-    A missing or unparseable real file yields just the token; the webapp
-    overlays defaults either way.
+    Hermetic by construction: no live setting (the chief doorbell, a model
+    pick, a folder) reaches a test that assumes the defaults, and no credential
+    can leak. The webapp overlays every other default itself, which is also what
+    CI's clean checkout runs against.
 
-    Every :data:`HOST_STATE_KEYS` entry is pinned under ``state_dir`` whatever
-    the real config says (#1717): only the rate-limits file exists, holding a
-    fixed synthetic payload; the rest are absent, which the webapp reads as
-    "nothing there yet". ``state_dir`` must be a temp folder the caller owns.
+    Every :data:`HOST_STATE_KEYS` entry is pinned under ``state_dir``: only the
+    rate-limits file exists, holding a fixed synthetic payload; the rest are
+    absent, which the webapp reads as "nothing there yet". ``state_dir`` must be
+    a temp folder the caller owns.
     """
-    loaded = _load_json(real_path)
-    raw: dict = {}
-    if isinstance(loaded, dict):
-        kept = {k: v for k, v in loaded.items() if k not in CREDENTIAL_KEYS}
-        raw = _mask(kept, credential_values(loaded))
-    raw["auth_token"] = token
-    # A disposable webapp must never write to the live task-os (#1678): with
-    # no URL, its Screen time Send answers "not set up" instead.
-    raw["task_os_url"] = ""
+    # A disposable webapp must never write to the live task-os: with no URL,
+    # its Screen time Send answers "not set up" instead.
+    raw: dict = {"auth_token": token, "task_os_url": ""}
     for key, relative in HOST_STATE_KEYS.items():
         raw[key] = str(state_dir / relative)
     rate_limits = Path(raw["rate_limits_file"])
