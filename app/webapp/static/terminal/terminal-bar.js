@@ -110,6 +110,18 @@ function hasChangedFiles(s) {
   return !!s && hasTranscriptReader(s);
 }
 
+// Background tasks: what this Claude session launched in the background,
+// running and finished, in both modes.
+const BACKGROUND_TASKS_ITEM = {
+  dataset: { item: 'overlay-tasks-btn' }, glyph: 'clipboard-list', label: 'Background tasks',
+  ariaLabel: 'Show background tasks',
+  hidden: function () { return !hasBackgroundTasks(currentSession()); },
+  onTap: function () {
+    const s = currentSession();
+    if (s) openBackgroundTasks(s);
+  },
+};
+
 // The shared ↓ Latest pill (latest-pill.js) over the xterm buffer,
 // created by wireTerminalMenu().
 let latestPill = null;
@@ -134,17 +146,7 @@ export function wireTerminalMenu() {
         if (s) openSessionChanges(s, sessionTitle(s));
       },
     },
-    // Background tasks: what this Claude session launched in the background,
-    // running and finished, in both modes.
-    {
-      dataset: { item: 'overlay-tasks-btn' }, glyph: 'clipboard-list', label: 'Background tasks',
-      ariaLabel: 'Show background tasks',
-      hidden: function () { return !hasBackgroundTasks(currentSession()); },
-      onTap: function () {
-        const s = currentSession();
-        if (s) openBackgroundTasks(s);
-      },
-    },
+    BACKGROUND_TASKS_ITEM,
     // Chat-only: the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
     // Terminal mode (function-valued `hidden`, the row menu). The step lines
