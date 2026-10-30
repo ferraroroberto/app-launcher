@@ -469,3 +469,40 @@ def test_life_os_delete_conversation_log_from_the_document_sheet(
     expect(
         authed_page.locator(".lifeos-file-btn:has-text('trial.md')")
     ).to_have_count(0)
+
+
+@pytest.mark.iphone
+def test_life_os_browser_folds_sub_folders_below_the_top_level_files(
+    authed_page: Page, base_url: str
+) -> None:
+    """A category's top-level files list first and each sub-folder is one
+    collapsed row with its file count, so a curated file is on the first
+    screen above generated output; tapping the row expands it."""
+    _mock_skills(authed_page)
+    prefix = ".claude/skills/journal-daily/context/"
+    names = ["_history/a.md", "_history/b.md", "corpus/c.md", "style-guide.md"]
+    authed_page.route(
+        re.compile(r".*/api/life-os/skills/journal-daily/files$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({"skill": {"id": "journal-daily",
+                              "name": "journal-daily"}, "files": [
+                {"path": prefix + n, "name": n, "category": "context"}
+                for n in names]}),
+        ),
+    )
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    authed_page.locator("#tabLifeOS").click()
+    _skill_menu_item(authed_page, "journal-daily", "[data-item=lifeos-browse-btn]").click()
+
+    rows = authed_page.locator("#lifeOsFileList li:not([hidden])")
+    expect(rows.nth(1)).to_have_text("style-guide.md")
+    folder = authed_page.locator(".lifeos-folder-btn:has-text('_history')")
+    expect(folder).to_contain_text("_history · 2 files")
+    expect(folder).to_have_attribute("aria-expanded", "false")
+    expect(authed_page.locator(".lifeos-file-btn:has-text('a.md')")).to_be_hidden()
+
+    folder.click()
+    expect(folder).to_have_attribute("aria-expanded", "true")
+    expect(authed_page.locator(".lifeos-file-btn:has-text('a.md')")).to_be_visible()
+    expect(authed_page.locator(".lifeos-file-btn:has-text('c.md')")).to_be_hidden()
