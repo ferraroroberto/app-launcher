@@ -227,6 +227,8 @@ It is display filtering only — `state.sessions` and `state.board` still hold e
 
 The chief's conversation lives in the Board chat bar, so its card is never work waiting on the owner. With the same `hide_channel_sessions` setting on, `isOffBoard()` (`channel-sessions.js`, over `isManagedSession()` in `dom-utils.js`) drops it from the Board's lanes, the lane counts, the Board header, the home header's "needs you" tally and the tab badge. The Coding tab still lists the chief's row (open, stop, restart, with the crown) but never gives it a "needs you" chip, and the Stop guard above stays for a channel session only. A new managed kind is one more clause in `isManagedSession()`. Off, the chief renders on the Board as described above.
 
+A scheduled job's own `claude -p` session is the same kind of managed session: the Jobs card already tracks the run, so its external card is not work waiting on the owner. The `session_state` hook writes `"job_run": true` into the session's `sessions-state.json` row when `JOB_ARTIFACT_DIR` is set (absent otherwise), `_external_card` carries it as `job_run`, and `isJobRunSession()` is one more clause in `isManagedSession()`. Only a literal `true` counts, so a row from a hook without the flag is an ordinary session, and the same `hide_channel_sessions` setting governs it.
+
 ## The chief's plan card
 
 A card directly under *Claude's turn* (not a column; `index.html` wraps the two in one `.board-col-stack`, so it sits in the same desktop grid cell and next in the phone's stack) shows what the fleet chief is doing and intends to do next. The chief records it in a plan file, and the app only reads it.

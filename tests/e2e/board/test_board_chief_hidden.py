@@ -80,6 +80,34 @@ def test_chief_is_out_of_the_lanes_and_the_waiting_count(
     expect(row.locator(".session-attention")).to_have_count(0)
 
 
+def _external_card(name: str, *, job_run: bool) -> dict:
+    return {"session_id": None, "kind": "external", "agent": "claude",
+            "project_dir": "E:/work/" + name, "name": name, "alive": None,
+            "started_at": None, "live_title": "", "prompt_title": "", "manual_title": "",
+            "project": name, "status": "awaiting-input", "age_seconds": 120,
+            "job_run": job_run}
+
+
+def test_job_run_session_is_out_of_the_lanes_and_the_waiting_count(
+    authed_page: Page, base_url: str
+) -> None:
+    payload = _board_payload(with_chief=False)
+    payload["columns"]["your_turn"] = [
+        _external_card("weekly-cleanup", job_run=True),
+        _external_card("scratch-repo", job_run=False),
+    ]
+    _mock_board(authed_page, payload)
+    authed_page.route(re.compile(r".*/api/config$"), _hide_managed_sessions)
+    _open_board(authed_page, base_url)
+
+    lanes = authed_page.locator("li.board-item")
+    expect(lanes.filter(has_text="scratch-repo")).to_have_count(1)
+    expect(lanes.filter(has_text="weekly-cleanup")).to_have_count(0)
+    # Only the ordinary external card waits on the owner; the job run is not counted.
+    expect(authed_page.locator("#boardHeadStatus")).to_contain_text("1 needs you")
+    expect(authed_page.locator("#tabBoard .tab-badge")).to_have_text("1")
+
+
 def test_setting_off_puts_the_chief_back_on_the_board(
     authed_page: Page, base_url: str
 ) -> None:
