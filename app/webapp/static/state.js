@@ -304,6 +304,12 @@ export const els = {
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),
 
+  // Background tasks sheet
+  bgTasksSheet: document.getElementById('bgTasksSheet'),
+  bgTasksClose: document.getElementById('bgTasksClose'),
+  bgTasksDone: document.getElementById('bgTasksDone'),
+  bgTasksState: document.getElementById('bgTasksState'),
+  bgTasksBody: document.getElementById('bgTasksBody'),
   // Show changes overlay
   changesOverlay: document.getElementById('changesOverlay'),
   changesClose: document.getElementById('changesClose'),

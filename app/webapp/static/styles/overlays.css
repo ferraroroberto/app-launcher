@@ -412,3 +412,56 @@
    30px, its ::before reaching the 44px floor. */
 .webauthn-devices .icon-button { --icon-btn-box: 30px; }
 
+
+/* ---------- Background tasks sheet ---------- */
+/* ⋮ → Background tasks: Running then Finished N, each task a <details> row
+   (title + "status · took 2m" meta, a chevron) opening its summary, command
+   and output tail. Hairline rows between, no per-row card. */
+.bg-tasks-sheet { width: min(480px, calc(100vw - 24px)); }
+.bg-tasks-state { margin-bottom: 8px; }
+.bg-tasks-body { max-height: 60vh; overflow-y: auto; margin-bottom: 12px; }
+.bg-tasks-group + .bg-tasks-group { margin-top: 12px; }
+.bg-tasks-group-title {
+  margin: 0;
+  padding: 0 0 4px;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--fg);
+}
+.bg-task + .bg-task { border-top: 1px solid var(--line-muted); }
+.bg-task-head {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: var(--row-md);
+  padding: 8px 0;
+  cursor: pointer;
+}
+.bg-task-head::-webkit-details-marker { display: none; }
+.bg-task-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bg-task-title {
+  font-size: var(--font-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bg-task-meta { font-size: var(--font-body-sm); color: var(--muted); }
+.bg-task-chevron { flex: none; color: var(--muted); transition: transform 0.15s; }
+.bg-task[open] .bg-task-chevron { transform: rotate(180deg); }
+.bg-task-body { padding: 0 0 12px; display: flex; flex-direction: column; gap: 8px; }
+.bg-task-note { margin: 0; font-size: var(--font-body-sm); color: var(--muted); overflow-wrap: anywhere; }
+.bg-task-command,
+.bg-task-output {
+  margin: 0;
+  padding: 8px 10px;
+  max-height: 40vh;
+  overflow: auto;
+  background: var(--card-off);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--font-code);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.bg-task-command { max-height: 8em; color: var(--muted); }

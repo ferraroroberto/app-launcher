@@ -227,17 +227,18 @@ def test_row_menu_holds_the_full_option_set_in_order(
     menu = authed_page.locator(".session-menu")
     expect(menu).to_be_visible()
 
-    # A full-control Claude row offers all six, top to bottom (this test runs on
+    # A full-control Claude row offers all seven, top to bottom (this test runs on
     # the desktop projection, the only one that shows Open in a new window).
     # Copy path (#1238 J-10) carries the full project path the row now shortens.
     items = menu.get_by_role("menuitem")
-    expect(items).to_have_count(6)
+    expect(items).to_have_count(7)
     assert [
         (items.nth(i).get_attribute("aria-label") or "").strip()
-        for i in range(6)
+        for i in range(7)
     ] == [
         "Open terminal",
         "Open chat",
+        "Show background tasks",
         "Open in a new window",
         "Copy the project path",
         "Rename session",
@@ -390,7 +391,7 @@ def _assert_step_group_folds_and_items(authed_page: Page) -> None:
     menu = authed_page.locator(".terminal-menu")
     eye = _menu_item(authed_page, "Hide steps: tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()

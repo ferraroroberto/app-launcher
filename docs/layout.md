@@ -21,6 +21,7 @@ app-launcher/
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
 │           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control
+│           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
 │           ├── changes/       # Show changes and Changed files: the overlay, a diff, a file's view and its token colours
 │           ├── chat/          # the session overlay's Chat pane: session-transcript.js, the entry renderer and its parts, the decision and resume cards
 │           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
@@ -75,7 +76,7 @@ app-launcher/
 │   ├── chief/                  # the fleet chief: identity.py (which live session is the chief), the plan card, its pointer,
 │   │                           #   answered questions, dispatch briefs, the job-failed event
 │   ├── session_view/           # a live Coding session's views: typed transcript pages, Changed files, the Chat outbox,
-│   │                           #   the plan and `/resume` pickers, transcript-file location, the working-tree diff
+│   │                           #   background tasks, the plan and `/resume` pickers, transcript-file location, the working-tree diff
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser
 │   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry
