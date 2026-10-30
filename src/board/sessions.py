@@ -581,7 +581,9 @@ def _external_card(
     project = row.get("project") or Path(str(cwd or "")).name
     status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
     tail = _ExchangeTail(row.get("transcript_path"))
-    status, anchor = _transcript_overlay(row, status, stamp, now=now, tail=tail)
+    status, anchor = _transcript_overlay(
+        row, status, stamp, now=now, tail=tail, process_confirmed=False,
+    )
     status = _refine_waiting_status(status, tail)
     if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
         status = "awaiting-input"
@@ -603,7 +605,9 @@ def _external_card(
         "agent": _row_agent(row),
         "project_dir": cwd,
         "name": str(project),
-        "alive": False,
+        # The row carries no pid and the session-host does not own the
+        # process, so liveness is unknown: ``None``, never ``False``.
+        "alive": None,
         "started_at": None,
         "live_title": "",
         "prompt_title": "",

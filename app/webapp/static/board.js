@@ -181,7 +181,7 @@ function renderSessionCard(card, openItem) {
     className: 'board-item board-item-session' + (meta.cls ? ' ' + meta.cls : ''),
     avatar: avatar(
       brandIconEl(agentId, 'session-agent-icon board-agent-icon', known ? known.label : agentId),
-      chief ? 'crown' : (card.alive === false ? 'down' : 'alive'),
+      chief ? 'crown' : (card.alive == null ? 'none' : (card.alive ? 'alive' : 'down')),
       'session-avatar'
     ),
     title: title,
