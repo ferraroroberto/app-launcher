@@ -29,8 +29,17 @@ The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle
 - **Hide steps** (or **Show steps** once hidden), **Load new** and **Reload** — while Chat is showing.
 - **Compact** — for a Claude session. One tap sends `/compact` through the same verified input route as Chat's Send, in either mode, and the toast says whether it landed.
 - **Changed files** — for any agent with a transcript reader, in either mode. See [Changed files](#changed-files).
+- **Background tasks** — for a Claude session, in either mode and in the Coding tab's row menu. See [Background tasks](#background-tasks).
 
 The phone's floating tab bar hides while the session view is open.
+
+## Background tasks
+
+The **Background tasks** sheet lists what the session launched with `run_in_background` (Bash, PowerShell) or `Monitor`, the way Claude Code's own apps do: **Running** first, newest first, each with its elapsed time, then **Finished N** with the status Claude Code reported (a `failed` or `killed` task carries a chip; `completed` none). A row opens the task's summary, its command and the end of its output. A session with none says *No background tasks*.
+
+- **Read-only.** Claude Code has no way to stop a task from outside its session, so the sheet has no stop control.
+- **Folded from the transcript.** A launch with no `<task-notification>` carrying a status is running; the first one with a status finishes it. A `Monitor` sends one notification per event, which leave it running until its stream ends. `GET /api/claude-code/sessions/{sid}/background-tasks` answers it (passkey-gated, Claude only, `unsupported_agent` otherwise), reading at most the newest 64 MiB of the transcript and listing the newest 30 finished tasks.
+- **Output tails come from the session's own task files only.** `?task=<id>` reads the last 8 KiB of `<temp>/claude/<project>/<session id>/tasks/<task id>.output`, at that exact shape for that session and task, never through a link and never from a path in the request; anything else is `output_not_found`. Terminal colour codes are stripped.
 
 ## Changed files
 

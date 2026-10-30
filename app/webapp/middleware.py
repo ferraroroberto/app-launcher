@@ -244,6 +244,13 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "folded from the transcript: the transcript's own sensitivity.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/background-tasks"),
+        "passkey",
+        "Session Background tasks (#1955): what a session launched in the background "
+        "and a task's output tail, read from its own transcript and task files: "
+        "terminal-grade content.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/changed-files/diff"),
         "passkey",
         "Session Changed files (#1349): one file's edits out of the transcript — "

@@ -160,6 +160,26 @@
       </div>
     </dialog>
 
+    <!-- A session's background tasks (⋮ → Background tasks): what it launched with
+         run_in_background or Monitor, Running first, then Finished. A row opens
+         the task's output tail. Read-only, so its one action is Done. Driven by
+         background-tasks/background-tasks-sheet.js. -->
+    <dialog id="bgTasksSheet" class="detail-dialog bg-tasks-sheet" aria-labelledby="bgTasksTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="bgTasksTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg> Background tasks</h2>
+          <button type="button" id="bgTasksClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div id="bgTasksState" class="bg-tasks-state" role="status" aria-live="polite" hidden></div>
+        <div id="bgTasksBody" class="bg-tasks-body"></div>
+        <div class="detail-actions">
+          <button type="button" id="bgTasksDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="sessionRenameDialog" class="detail-dialog">
       <form id="sessionRenameForm" class="detail-card">
         <div class="detail-header">

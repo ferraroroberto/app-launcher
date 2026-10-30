@@ -38,6 +38,7 @@ import { renderUsage } from './usage-meter.js';
 import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './chat/session-transcript.js';
+import { hasBackgroundTasks, openBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js), exported
 // for this cross-tab use, as is the chief settings dialog; board.js already imports
@@ -279,6 +280,8 @@ function sessionRow(s) {
   //     endpoint's flavour map): the same overlay in Chat mode. The reader
   //     uses the agent's native history, never the PTY capture a detached
   //     row lacks.
+  //   · Background tasks — Claude rows: the sheet of what the session launched
+  //     with run_in_background or Monitor (running and finished).
   //   · Open in new window — full-control rows on a desktop browser only:
   //     the PC Edge window, whatever the "Open sessions in a new window"
   //     setting says.
@@ -382,6 +385,12 @@ function sessionMenuItems(s, kebab, isChief, remote) {
       label: 'Chat', ariaLabel: 'Open chat',
       hidden: !hasTranscriptReader(s),
       onTap: function () { openSession(s, 'chat'); },
+    },
+    {
+      dataset: { item: 'session-tasks-btn' }, glyph: 'clipboard-list',
+      label: 'Background tasks', ariaLabel: 'Show background tasks',
+      hidden: !hasBackgroundTasks(s),
+      onTap: function () { openBackgroundTasks(s); },
     },
     {
       dataset: { item: 'session-open-window-btn' }, glyph: 'monitor',

@@ -5,7 +5,8 @@
  * ✕ Kill or ↓ Jump control, so the bar fits a 390px phone without
  * scrolling.
  *
- *   ⋮ menu — Rename · Copy link · [Hide/Show steps · Reload, Chat mode
+ *   ⋮ menu — Rename · Copy link · Changed files · [Background tasks, Claude
+ *   sessions only] · [Hide/Show steps · Reload, Chat mode
  *   only] · [Compact, Claude sessions only] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
  *   same resolution the Rename / link dialog uses (see
@@ -28,6 +29,7 @@ import {
   sendSessionMessage, sessionTitle, stopSession,
 } from '../sessions.js';
 import { openSessionChanges } from '../changes/changes-overlay.js';
+import { hasBackgroundTasks, openBackgroundTasks } from '../background-tasks/background-tasks-sheet.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { createLatestPill } from '../latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
@@ -130,6 +132,17 @@ export function wireTerminalMenu() {
       onTap: function () {
         const s = currentSession();
         if (s) openSessionChanges(s, sessionTitle(s));
+      },
+    },
+    // Background tasks: what this Claude session launched in the background,
+    // running and finished, in both modes.
+    {
+      dataset: { item: 'overlay-tasks-btn' }, glyph: 'clipboard-list', label: 'Background tasks',
+      ariaLabel: 'Show background tasks',
+      hidden: function () { return !hasBackgroundTasks(currentSession()); },
+      onTap: function () {
+        const s = currentSession();
+        if (s) openBackgroundTasks(s);
       },
     },
     // Chat-only: the transcript bar's 👁 and 🔄 moved here when the

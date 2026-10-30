@@ -89,6 +89,7 @@ from src.session_view.transcript import (
     transcript_sent_file,
     transcript_tail,
 )
+from src.session_view import background_tasks as session_tasks
 from src.session_view import outbox as session_outbox
 from src.session_view.git_changes import select_in_explorer
 from src.session_view.changes import (
@@ -497,6 +498,50 @@ async def session_transcript_diff(
         "available": True, "reason": None, "session_id": sid,
         "path": found["path"], "diff": diff,
     }
+
+
+@router.get("/api/claude-code/sessions/{sid}/background-tasks")
+async def session_background_tasks(
+    sid: str, request: Request, task: Optional[str] = Query(default=None, max_length=40),
+) -> Dict[str, Any]:
+    """The session's background tasks, or with ``task=<id>`` one task's
+    output tail (Tailscale + passkey, #1955).
+
+    Folded from the transcript like Changed files, so Claude only:
+    ``reason: "unsupported_agent"`` for any other agent, whose ⋮ menu hides
+    the item anyway. The output tail is one more query on this path rather
+    than a route of its own (the transcript's ``after`` precedent): the
+    file it reads is only ever the session's own task file, never a path
+    from the request (see :mod:`src.session_view.background_tasks`).
+    On demand only; nothing polls it.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    if agent != "claude" and reason in (None, "no_transcript"):
+        reason = "unsupported_agent"
+    if reason is not None:
+        logger.info("ℹ️ background tasks %s (%s) unavailable: %s", sid[:8], agent, reason)
+        return _unavailable(sid, reason)
+    if task is not None:
+        found, refusal = await _read_or_unavailable(
+            sid, agent, "background task output", asyncio.to_thread(session_tasks.task_output, path, task),
+        )
+        if refusal is not None:
+            return refusal
+        if found is None:
+            logger.info("ℹ️ background task output %s (%s) unavailable: output_not_found", sid[:8], agent)
+            return _unavailable(sid, "output_not_found")
+        logger.info("ℹ️ background task output %s (%s): %d bytes, truncated=%s",
+                    sid[:8], agent, found["size"], found["truncated"])
+        return {"available": True, "reason": None, "session_id": sid, "task": task, **found}
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "background tasks", asyncio.to_thread(session_tasks.background_tasks, path),
+    )
+    if refusal is not None:
+        return refusal
+    logger.info("ℹ️ background tasks %s (%s): %d running, %d finished",
+                sid[:8], agent, len(found["running"]), found["finished_total"])
+    return {"available": True, "reason": None, "session_id": sid, **found}
 
 
 @router.get("/api/claude-code/sessions/{sid}/changed-files")
