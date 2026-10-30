@@ -42,7 +42,7 @@ import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 
 SCAN_CEILING = 64 * 1024 * 1024
 # The newest finished tasks listed; the rest are counted, not sent.
