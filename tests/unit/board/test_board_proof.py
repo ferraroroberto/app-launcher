@@ -1,10 +1,11 @@
-"""Done lane proof chip: the report store, the closing-PR link and GET /api/board/proof."""
+"""Done lane actions: the per-repo .proof store, the closing-PR link and GET /api/board/proof."""
 
 from __future__ import annotations
 
 import json
 import subprocess
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -24,16 +25,26 @@ def _bypass_gate(monkeypatch):
     )
 
 
+def _write_proof(projects, repo, pr, body=REPORT):
+    """One PR's report and index row, as ``ui_proof build`` writes them."""
+    root = projects / repo / ".proof"
+    (root / str(pr)).mkdir(parents=True, exist_ok=True)
+    (root / str(pr) / "index.html").write_text(body, encoding="utf-8")
+    index_path = root / "index.json"
+    index = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
+    index[str(pr)] = {"title": "t", "branch": "b"}
+    index_path.write_text(json.dumps(index), encoding="utf-8")
+    return root
+
+
 @pytest.fixture
-def store(tmp_path, monkeypatch):
-    """A walkthrough store holding demo-app#21, as fleet-config writes it."""
-    folder = tmp_path / "walkthroughs"
-    folder.mkdir()
-    (folder / "demo-app-21.html").write_text(REPORT, encoding="utf-8")
-    (folder / "index.json").write_text(
-        json.dumps({"demo-app#21": {"path": "ignored", "sha": "abc1234", "title": "t"}}), encoding="utf-8")
-    monkeypatch.setenv(proof_reports.STORE_ENV, str(folder))
-    return folder
+def store(tmp_path, webapp_client):
+    """The configured projects dir, holding demo-app#21's report in its own .proof."""
+    projects = tmp_path / "projects"
+    _write_proof(projects, "demo-app", 21)
+    _client, app, _overrides = webapp_client
+    app.state.webapp_config.projects_dir = str(projects)
+    return str(projects)
 
 
 def _card(number, pr=None, visual_proof=None, repo="demo-app"):
@@ -41,76 +52,97 @@ def _card(number, pr=None, visual_proof=None, repo="demo-app"):
 
 
 def test_a_stored_report_marks_its_issue_available(store):
-    (card,) = proof_reports.annotate([_card(5, pr=21)])
+    (card,) = proof_reports.annotate([_card(5, pr=21)], store)
     assert (card["proof"], card["proof_pr"]) == ("available", 21)
     assert "visual_proof" not in card
 
 
 def test_a_pr_that_owes_proof_and_has_none_is_missing(store):
     for owed in ("missing", "stale", "failing", "unknown"):
-        (card,) = proof_reports.annotate([_card(6, pr=22, visual_proof=owed)])
+        (card,) = proof_reports.annotate([_card(6, pr=22, visual_proof=owed)], store)
         assert (card["proof"], card["proof_pr"]) == ("missing", 22), owed
 
 
 def test_an_index_miss_alone_says_nothing_about_a_non_ui_pr(store):
     for pr, line in ((23, None), (23, "fresh"), (23, "n/a"), (None, "missing")):
-        (card,) = proof_reports.annotate([_card(7, pr=pr, visual_proof=line)])
+        (card,) = proof_reports.annotate([_card(7, pr=pr, visual_proof=line)], store)
         assert "proof" not in card, (pr, line)
 
 
 def test_the_stored_report_wins_over_a_missing_line(store):
-    (card,) = proof_reports.annotate([_card(5, pr=21, visual_proof="missing")])
+    (card,) = proof_reports.annotate([_card(5, pr=21, visual_proof="missing")], store)
     assert card["proof"] == "available"
 
 
 def test_an_index_row_without_its_file_is_not_available(store):
-    (store / "demo-app-21.html").unlink()
-    assert proof_reports.report_path("demo-app", 21) is None
+    (Path(store) / "demo-app" / ".proof" / "21" / "index.html").unlink()
+    assert proof_reports.report_path("demo-app", 21, store) is None
 
 
-def test_no_store_at_all_is_an_empty_index(tmp_path, monkeypatch):
-    monkeypatch.setenv(proof_reports.STORE_ENV, str(tmp_path / "absent"))
-    assert proof_reports.report_path("demo-app", 21) is None
-    (card,) = proof_reports.annotate([_card(5, pr=21, visual_proof="missing")])
+def test_no_store_at_all_is_an_empty_index(tmp_path):
+    projects = str(tmp_path / "absent")
+    assert proof_reports.report_path("demo-app", 21, projects) is None
+    assert proof_reports.report_path("demo-app", 21, "") is None
+    (card,) = proof_reports.annotate([_card(5, pr=21, visual_proof="missing")], projects)
     assert card["proof"] == "missing"
 
 
-def test_the_lookup_is_jailed_to_the_store(store, tmp_path):
+def test_the_lookup_is_jailed_to_the_repos_proof_folder(store, tmp_path):
     (tmp_path / "secret.html").write_text("x", encoding="utf-8")
-    index = {f"{name}#1": {} for name in ("..", "../x", "a/b", "a\\b", "", ".")}
-    (store / "index.json").write_text(json.dumps(index), encoding="utf-8")
-    for repo in ("..", "../x", "a/b", "a\\b", "", ".", "demo-app/../.."):
-        assert proof_reports.report_path(repo, 1) is None, repo
-    assert proof_reports.report_path("demo-app", True) is None
-    assert proof_reports.report_path("demo-app", -1) is None
+    for repo in ("..", "../x", "a/b", "a\b", "", ".", "demo-app/../.."):
+        assert proof_reports.report_path(repo, 21, store) is None, repo
+    assert proof_reports.report_path("demo-app", True, store) is None
+    assert proof_reports.report_path("demo-app", -1, store) is None
 
 
-def test_an_index_path_pointing_elsewhere_is_never_followed(store, tmp_path):
-    outside = tmp_path / "outside.html"
-    outside.write_text("secret", encoding="utf-8")
-    (store / "index.json").write_text(
-        json.dumps({"demo-app#30": {"path": str(outside)}}), encoding="utf-8")
-    assert proof_reports.report_path("demo-app", 30) is None   # no demo-app-30.html in the store
+def test_a_row_for_another_pr_never_serves_this_ones_page(store):
+    root = Path(store) / "demo-app" / ".proof"
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    index["30"] = {}
+    (root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+    assert proof_reports.report_path("demo-app", 30, store) is None   # no 30/index.html
+
+
+def test_a_page_that_resolves_outside_the_proof_folder_is_refused(store, tmp_path):
+    root = Path(store) / "demo-app" / ".proof"
+    outside = tmp_path / "elsewhere" / "40"   # named like the PR, so only the jail refuses it
+    outside.mkdir(parents=True)
+    (outside / "index.html").write_text("secret", encoding="utf-8")
+    link = root / "40"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        import _winapi   # a junction needs no privilege; this branch only runs on Windows
+        _winapi.CreateJunction(str(outside), str(link))
+    index = json.loads((root / "index.json").read_text(encoding="utf-8"))
+    index["40"] = {}
+    (root / "index.json").write_text(json.dumps(index), encoding="utf-8")
+    assert proof_reports.report_path("demo-app", 40, store) is None
 
 
 def test_an_oversized_report_is_refused(store, monkeypatch):
     monkeypatch.setattr(proof_reports, "MAX_REPORT_BYTES", 5)
-    assert proof_reports.report_path("demo-app", 21) is None
+    assert proof_reports.report_path("demo-app", 21, store) is None
 
 
 def test_the_index_is_reread_when_it_changes(store):
-    assert proof_reports.report_path("demo-app", 22) is None
-    (store / "demo-app-22.html").write_text(REPORT, encoding="utf-8")
-    index = json.loads((store / "index.json").read_text(encoding="utf-8"))
-    index["demo-app#22"] = {}
-    (store / "index.json").write_text(json.dumps(index, indent=2), encoding="utf-8")
-    assert proof_reports.report_path("demo-app", 22) is not None
+    assert proof_reports.report_path("demo-app", 22, store) is None
+    _write_proof(Path(store), "demo-app", 22)
+    assert proof_reports.report_path("demo-app", 22, store) is not None
+
+
+def test_each_repo_reads_its_own_store(store):
+    _write_proof(Path(store), "other-app", 21, body="<p>other</p>")
+    mine = proof_reports.report_path("demo-app", 21, store)
+    theirs = proof_reports.report_path("other-app", 21, store)
+    assert mine != theirs and theirs.read_text(encoding="utf-8") == "<p>other</p>"
 
 
 # --- the closing-PR link -----------------------------------------------------
 
 def _pr(number, body, repo="demo-app"):
-    return {"repository": {"nameWithOwner": f"o/{repo}"}, "number": number, "body": body}
+    return {"repository": {"nameWithOwner": f"o/{repo}"}, "number": number, "body": body,
+            "url": f"https://github.com/o/{repo}/pull/{number}"}
 
 
 def _issue(number, repo="demo-app"):
@@ -140,10 +172,11 @@ def test_closing_keywords_link_an_issue_to_its_pr(monkeypatch):
         _pr(25, "Closes #5", repo="other-app"),
     ])
     got = github_client.search_merged_on("o", date(2026, 7, 1))
-    assert got[("demo-app", 5)] == {"pr": 24, "visual_proof": None}      # the later PR wins
-    assert got[("demo-app", 6)] == {"pr": 22, "visual_proof": "missing"}
-    assert got[("demo-app", 7)] == {"pr": 22, "visual_proof": "missing"}
-    assert got[("other-app", 5)] == {"pr": 25, "visual_proof": None}
+    pull = "https://github.com/o/{}/pull/{}".format
+    assert got[("demo-app", 5)] == {"pr": 24, "pr_url": pull("demo-app", 24), "visual_proof": None}  # the later PR wins
+    assert got[("demo-app", 6)] == {"pr": 22, "pr_url": pull("demo-app", 22), "visual_proof": "missing"}
+    assert got[("demo-app", 7)] == {"pr": 22, "pr_url": pull("demo-app", 22), "visual_proof": "missing"}
+    assert got[("other-app", 5)] == {"pr": 25, "pr_url": pull("other-app", 25), "visual_proof": None}
     assert ("demo-app", 8) not in got and ("demo-app", 9) not in got
 
 
@@ -153,7 +186,8 @@ def test_search_done_on_carries_each_issues_pr(monkeypatch):
     done = github_client.search_done_on("o", date(2026, 7, 1))
     by_number = {c["number"]: c for c in done}
     assert (by_number[5]["pr"], by_number[5]["visual_proof"]) == (21, "missing")
-    assert (by_number[6]["pr"], by_number[6]["visual_proof"]) == (None, None)
+    assert by_number[5]["pr_url"] == "https://github.com/o/demo-app/pull/21"
+    assert (by_number[6]["pr"], by_number[6]["visual_proof"], by_number[6]["pr_url"]) == (None, None, "")
     assert len(seen) == 2                                   # one issues search, one PR search
 
 

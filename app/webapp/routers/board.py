@@ -243,13 +243,13 @@ async def get_board_done(request: Request, days_back: int = 1) -> Dict[str, Any]
     except github_client.GhError as exc:
         logger.warning(f"⚠️ gh done search for {day.isoformat()} failed: {exc}")
         raise HTTPException(status_code=502, detail=f"gh could not read that day: {exc}")
-    items = await asyncio.to_thread(proof_reports.annotate, items)
+    items = await asyncio.to_thread(proof_reports.annotate, items, cfg.projects_dir)
     return {"days_back": days_back, "day": day.isoformat(), "items": items}
 
 
 @router.get("/api/board/proof/{repo}/{pr}")
-async def get_board_proof(repo: str, pr: int) -> Response:
-    """One merged UI PR's visual-proof report, read from the machine-local store.
+async def get_board_proof(request: Request, repo: str, pr: int) -> Response:
+    """One merged UI PR's visual-proof report, read from the repo's .proof folder.
 
     Screenshots of the real app, so it is terminal-grade content behind the
     Tailscale + passkey gate (``middleware._TERMINAL_GUARD_RULES``) and never
@@ -257,7 +257,8 @@ async def get_board_proof(repo: str, pr: int) -> Response:
     scriptless CSP the outbox uses, so opening it directly runs nothing. The
     store is read-only here. A missing report is a 404, whatever the reason.
     """
-    path = await asyncio.to_thread(proof_reports.report_path, repo, pr)
+    cfg: WebappConfig = request.app.state.webapp_config
+    path = await asyncio.to_thread(proof_reports.report_path, repo, pr, cfg.projects_dir)
     if path is None:
         raise HTTPException(status_code=404, detail="no proof report for that PR")
     try:
@@ -317,7 +318,8 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
     await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
-    columns["done"] = await steps.run("annotate_proof", proof_reports.annotate, columns["done"])
+    columns["done"] = await steps.run(
+        "annotate_proof", proof_reports.annotate, columns["done"], cfg.projects_dir)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
 
     return {

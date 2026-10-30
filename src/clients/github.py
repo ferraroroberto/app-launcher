@@ -231,7 +231,7 @@ def search_merged_on(
         "--merged",
         "--merged-at", f"{_gh_stamp(start)}..{_gh_stamp(end)}",
         "--limit", str(_ISSUE_LIMIT),
-        "--json", "repository,number,body",
+        "--json", "repository,number,body,url",
     ])
     closers: Dict[Tuple[str, int], Dict[str, Any]] = {}
     for row in merged:
@@ -243,7 +243,10 @@ def search_merged_on(
         for issue in _CLOSES.findall(body):
             key = (_repo_name(row), int(issue))
             if key not in closers or number > closers[key]["pr"]:
-                closers[key] = {"pr": number, "visual_proof": state.group(1).lower() if state else None}
+                closers[key] = {
+                    "pr": number, "pr_url": str(row.get("url") or ""),
+                    "visual_proof": state.group(1).lower() if state else None,
+                }
     return closers
 
 
@@ -287,6 +290,7 @@ def search_done_on(
         done.append({
             **issue, "state": "closed", "labels": [],
             "pr": closer["pr"] if closer else None,
+            "pr_url": closer["pr_url"] if closer else "",
             "visual_proof": closer["visual_proof"] if closer else None,
         })
     # By close time: a comment after the close bumps ``updatedAt``, so

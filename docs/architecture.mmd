@@ -143,7 +143,7 @@ read over loopback and cached behind /api/system/health"]
     JOBSTRIGGER["jobs/trigger.py\n--trigger vocabulary (scheduled/manual/webhook/chain:)"]
     BOARD["board/__init__.py\npure assembly: sessions + jobs + GitHub"]
     GHCLIENT["clients/github.py\ngh CLI reads, cached snapshot"]
-    PROOFREPORTS["board/proof_reports.py\nread-only view of the visual-proof\nwalkthrough store"]
+    PROOFREPORTS["board/proof_reports.py\nread-only view of each repo's\n.proof visual-proof store"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
     LAUNCHFLAGS["launching/flags.py\nper-agent CLI flag builders"]
@@ -229,7 +229,7 @@ read over loopback and cached behind /api/system/health"]
   BOARD --> SESSCLIENT
   BOARD --> JOBSFACADE
   BOARD --> GHCLIENT
-  R_BOARD -->|"Done proof chip + report route"| PROOFREPORTS
+  R_BOARD -->|"Done Issue/PR/Proof + report route"| PROOFREPORTS
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief/pointer.py →\nwebapp/chief-pointer.json"]

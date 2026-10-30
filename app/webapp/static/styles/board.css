@@ -551,20 +551,25 @@ span.chief-answer-ref { color: var(--muted); }
 .board-done-more { margin-top: 12px; }
 .board-done-more[hidden] { display: none; }
 
-/* A Done row's Proof chip: the chip is the look, the button around it the 44px
-   tap target (the same box as the row's other trailing controls). */
-.board-proof-open {
+/* A Done row's trailing actions (Issue, PR, Proof): each chip is the look, the
+   button around it the 44px tap target (the same box as the row's other
+   trailing controls). */
+.board-done-actions {
+  display: flex;
+  align-items: center;
+}
+.board-done-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: var(--row-sm);
   min-height: var(--row-sm);
-  padding: 0 8px;
+  padding: 0 4px;
   background: none;
   border: 0;
   cursor: pointer;
 }
-.board-proof-open:disabled { opacity: 0.6; cursor: progress; }
+.board-done-action:disabled { opacity: 0.6; cursor: progress; }
 
 /* Telegram sessions hidden from the lists: the Coding tab's
    Telegram row (.channel-row) stands in for them and opens a read-only list;

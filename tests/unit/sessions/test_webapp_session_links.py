@@ -162,6 +162,7 @@ async def test_board_cards_carry_the_same_provider_link_as_the_coding_tab(
                     sessions_state_file=str(tmp_path / "sessions-state.json"),
                     session_host_port=8446,
                     fleet_config_dir=str(tmp_path / "fleet-config"),
+                    projects_dir="",
                 )
             )
         )

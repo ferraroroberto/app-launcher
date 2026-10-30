@@ -1,4 +1,4 @@
-"""Board Done lane: a Proof chip opens a merged UI PR's stored report; a gap says "no proof"."""
+"""Board Done lane: Issue / PR / Proof actions; Proof opens a merged UI PR's stored report, a gap says "no proof"."""
 
 from __future__ import annotations
 
@@ -36,8 +36,10 @@ def test_done_rows_show_proof_no_proof_or_nothing(
     now = datetime.now(timezone.utc)
     payload = _board_payload()
     payload["columns"]["done"] = [
-        _closed(11, "ui change with a report", now - timedelta(minutes=5), proof="available", proof_pr=21),
-        _closed(12, "ui change without one", now - timedelta(minutes=10), proof="missing", proof_pr=22),
+        _closed(11, "ui change with a report", now - timedelta(minutes=5), proof="available", proof_pr=21,
+                pr=21, pr_url="https://example.invalid/pull/21"),
+        _closed(12, "ui change without one", now - timedelta(minutes=10), proof="missing", proof_pr=22,
+                pr=22, pr_url="https://example.invalid/pull/22"),
         _closed(13, "docs change", now - timedelta(minutes=15)),
     ]
     _mock_board(authed_page, payload)
@@ -58,12 +60,16 @@ def test_done_rows_show_proof_no_proof_or_nothing(
     with_report, without, plain = rows.nth(0), rows.nth(1), rows.nth(2)
     expect(with_report.locator(".board-proof-chip")).to_have_text("Proof")
     expect(without.locator(".board-proof-none")).to_have_text("no proof")
-    expect(without.locator(".board-proof-open")).to_have_count(0)
-    expect(plain.locator(".board-proof-chip, .board-proof-none")).to_have_count(0)
+    expect(without.locator(".board-proof-chip")).to_have_count(0)
+    expect(plain.locator(".board-proof-chip, .board-proof-none, .board-done-pr")).to_have_count(0)
+    # Issue on every row, PR once a merged PR is known, Proof only with a stored report.
+    expect(with_report.locator(".board-done-action .chip")).to_have_text(["Issue", "PR", "Proof"])
+    expect(without.locator(".board-done-action .chip")).to_have_text(["Issue", "PR"])
+    expect(plain.locator(".board-done-action .chip")).to_have_text(["Issue"])
     # Reading the board fetched no report: it is read on tap only.
     assert fetched == []
 
-    button = with_report.locator(".board-proof-open")
+    button = with_report.locator(".board-done-action", has=authed_page.locator(".board-proof-chip"))
     # The Board re-renders its rows on every poll: read the box off the live node.
     box = stable_eval(button, "el => { const r = el.getBoundingClientRect();"
                               " return { w: r.width, h: r.height }; }")

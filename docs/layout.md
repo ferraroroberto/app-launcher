@@ -20,7 +20,7 @@ app-launcher/
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
 │           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners
-│           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the Done lane's earlier days and Proof chip
+│           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the Done lane's earlier days and its Issue / PR / Proof actions
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
 │           ├── changes/       # Show changes and Changed files: the overlay, a diff, a file's view and its token colours
 │           ├── chat/          # the session overlay's Chat pane: session-transcript.js, the entry renderer and its parts, the decision and resume cards
@@ -73,7 +73,7 @@ app-launcher/
 │   ├── board/                  # Board backend: kanban assembly (__init__.py), session-state join (state.py),
 │   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
 │   │                           #   the transcript overlay (transcript.py, dispatch_ids.py, transcript_exchange.py)
-│   │                           #   the Done lane's proof reports (proof_reports.py: a read-only view of fleet-config's walkthrough store)
+│   │                           #   the Done lane's proof reports (proof_reports.py: a read-only view of each repo's `.proof/` store)
 │   ├── chief/                  # the fleet chief: identity.py (which live session is the chief), the plan card, its pointer,
 │   │                           #   answered questions, dispatch briefs, the job-failed event
 │   ├── session_view/           # a live Coding session's views: typed transcript pages, Changed files, the Chat outbox,
