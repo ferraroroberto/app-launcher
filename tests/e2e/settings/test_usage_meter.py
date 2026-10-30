@@ -419,10 +419,15 @@ def test_usage_shows_draws_only_the_chosen_providers(
         expect(full.locator(".um-head")).to_have_count(0)
         expect(full.locator(".um-name")).to_have_count(0)
         expect(full.locator(".um-mark")).to_have_count(0)
-    label = full.get_attribute("aria-label")
+    # The static placeholder is also a `.usage-meter-full` whose label names no
+    # provider, so the visible card may still be it when the first poll is late
+    # under load: wait for every shown name before checking the hidden ones are
+    # absent, and never read the label once.
+    for provider in providers:
+        expect(full).to_have_attribute("aria-label", re.compile(re.escape(_NAMES[provider])))
     for provider in ("claude", "codex", "grok"):
-        assert (_NAMES[provider] in label) == (provider in providers), label
         if provider not in providers:
+            expect(full).not_to_have_attribute("aria-label", re.compile(re.escape(_NAMES[provider])))
             expect(full.locator(f'use[href="#b-{provider}"]')).to_have_count(0)
     if providers == ["claude"]:
         expect(full.locator(".um-row")).to_have_count(2)
