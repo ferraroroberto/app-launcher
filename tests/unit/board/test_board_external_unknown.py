@@ -28,6 +28,22 @@ def _external_with_old_dispatch(tmp_path: Path) -> list:
     return board.merge_sessions([], {"t": row}, now=NOW)
 
 
+def _external_cards(tmp_path: Path, **extra) -> list:
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=2, **extra)
+    row["transcript_path"] = _transcript_file(tmp_path, NOW - timedelta(minutes=1), "")
+    return board.merge_sessions([], {"t": row}, now=NOW)
+
+
+def test_external_card_carries_the_job_run_flag(tmp_path: Path):
+    assert _external_cards(tmp_path, job_run=True)[0]["job_run"] is True
+
+
+def test_external_card_without_the_flag_is_not_a_job_run(tmp_path: Path):
+    assert _external_cards(tmp_path)[0]["job_run"] is False
+    # Only a literal true counts; a stray truthy value is an ordinary session.
+    assert _external_cards(tmp_path, job_run="yes")[0]["job_run"] is False
+
+
 def test_external_card_alive_is_unknown_not_false(tmp_path: Path):
     cards = _external_with_old_dispatch(tmp_path)
     assert cards[0]["kind"] == "external"

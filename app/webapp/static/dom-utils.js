@@ -490,11 +490,17 @@ export function isChannelSession(s) {
 export function isRelaySession(s) {
   return !!s && typeof s.label === 'string' && s.label.indexOf('relay:') === 0;
 }
+// A scheduled job's own claude session: the session-state hook flags it when
+// the job runner's env is present, and the Jobs card already tracks the run.
+// Strict `true`, so a card without the field is an ordinary session.
+export function isJobRunSession(s) {
+  return !!s && s.job_run === true;
+}
 // A managed session has its conversation somewhere else (a Telegram chat, the
-// Board chat bar), so it never counts as work waiting on the owner. Adding a
-// managed kind is one more clause here.
+// Board chat bar) or is a job runner's own orchestrator, so it never counts as
+// work waiting on the owner. Adding a managed kind is one more clause here.
 export function isManagedSession(s) {
-  return isChannelSession(s) || isChiefSession(s);
+  return isChannelSession(s) || isChiefSession(s) || isJobRunSession(s);
 }
 export function channelSessionName(s) {
   if (!isChannelSession(s)) return '';

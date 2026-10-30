@@ -617,4 +617,7 @@ def _external_card(
         "project": str(project),
         "status": status,
         "age_seconds": _age_seconds(anchor, now),
+        # Only a literal ``true`` counts: a row written before the hook
+        # recorded the flag, or any other value, is an ordinary session.
+        "job_run": row.get("job_run") is True,
     }
