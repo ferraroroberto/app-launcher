@@ -76,29 +76,101 @@ function renderFileList(files) {
     host.appendChild(p);
     return;
   }
-  let lastCat = null;
+  // The server sorts by category, so each category is one contiguous run.
+  const runs = [];
   files.forEach(function (f) {
-    if (f.category !== lastCat) {
-      const h = document.createElement('li');
-      h.className = 'lifeos-file-cat';
-      h.textContent = nameLabel(f.category);
-      host.appendChild(h);
-      lastCat = f.category;
-    }
-    const li = document.createElement('li');
-    li.className = 'lifeos-file-row';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'lifeos-file-btn';
-    btn.textContent = f.name;
-    btn.title = f.path;
-    btn.addEventListener('click', function () { loadFile(f); });
-    li.appendChild(btn);
-    // No delete control in the list — the list is navigation only. A
-    // disposable conversation log's Rename and Delete sit under its text
-    // in the document sheet (see loadFile below).
-    host.appendChild(li);
+    const last = runs[runs.length - 1];
+    if (last && last.category === f.category) last.files.push(f);
+    else runs.push({ category: f.category, files: [f] });
   });
+  runs.forEach(function (run) {
+    const h = document.createElement('li');
+    h.className = 'lifeos-file-cat';
+    h.textContent = nameLabel(run.category);
+    host.appendChild(h);
+    renderCategory(host, run);
+  });
+}
+
+// A category's top-level files first, then one collapsed row per sub-folder
+// (machine output such as a skill's generated history sits there), so the
+// curated files are on the first screen. A category with no sub-folder
+// renders exactly as a flat list.
+function renderCategory(host, run) {
+  const top = [];
+  const folders = new Map();
+  run.files.forEach(function (f) {
+    const name = String(f.name || '');
+    // The server labels a nested file with its OS path separator.
+    const slash = name.search(/[\\/]/);
+    if (slash <= 0) { top.push(f); return; }
+    const folder = name.slice(0, slash);
+    if (!folders.has(folder)) folders.set(folder, []);
+    folders.get(folder).push({ file: f, label: name.slice(slash + 1) });
+  });
+  top.forEach(function (f) { host.appendChild(fileRow(f, f.name, false)); });
+  folders.forEach(function (entries, folder) {
+    const key = run.category + '/' + folder;
+    const open = openFolders().has(key);
+    const rows = entries.map(function (e) {
+      const row = fileRow(e.file, e.label, true);
+      row.hidden = !open;
+      return row;
+    });
+    host.appendChild(folderRow(key, folder, rows, open));
+    rows.forEach(function (row) { host.appendChild(row); });
+  });
+}
+
+// The folders the reader has expanded, kept on the open browser so a reload
+// of the list (a log added or deleted) does not fold them again.
+function openFolders() {
+  const b = state.lifeOsBrowser;
+  if (!b.openFolders) b.openFolders = new Set();
+  return b.openFolders;
+}
+
+function folderRow(key, folder, rows, open) {
+  const li = document.createElement('li');
+  li.className = 'lifeos-file-row';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'lifeos-folder-btn';
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  const label = document.createElement('span');
+  label.className = 'lifeos-folder-label';
+  label.textContent = folder + ' · ' + rows.length + (rows.length === 1 ? ' file' : ' files');
+  const chevron = document.createElement('span');
+  chevron.className = 'lifeos-folder-chevron';
+  chevron.setAttribute('aria-hidden', 'true');
+  chevron.innerHTML =
+    '<svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>';
+  btn.appendChild(label);
+  btn.appendChild(chevron);
+  btn.addEventListener('click', function () {
+    const nowOpen = btn.getAttribute('aria-expanded') !== 'true';
+    btn.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+    if (nowOpen) openFolders().add(key); else openFolders().delete(key);
+    rows.forEach(function (row) { row.hidden = !nowOpen; });
+  });
+  li.appendChild(btn);
+  return li;
+}
+
+function fileRow(f, label, nested) {
+  const li = document.createElement('li');
+  li.className = nested ? 'lifeos-file-row lifeos-file-nested' : 'lifeos-file-row';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'lifeos-file-btn';
+  btn.textContent = label;
+  btn.title = f.path;
+  btn.addEventListener('click', function () { loadFile(f); });
+  li.appendChild(btn);
+  // No delete control in the list — the list is navigation only. A
+  // disposable conversation log's Rename and Delete sit under its text
+  // in the document sheet (see loadFile below).
+  return li;
 }
 
 async function deleteFile(f) {

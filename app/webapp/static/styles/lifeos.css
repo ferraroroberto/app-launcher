@@ -267,6 +267,35 @@
   gap: 6px;
   margin: 4px 0;
 }
+.lifeos-file-row[hidden] { display: none; }
+/* A file inside a folded sub-folder sits inset under its folder row. */
+.lifeos-file-nested { margin-inline-start: 14px; }
+/* A sub-folder row: the same card as a file row, with the chevron at the end
+   turning as the folder opens. */
+.lifeos-folder-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  background: var(--card);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: var(--font-label);
+  min-height: var(--row-sm);   /* the 44px touch floor */
+  cursor: pointer;
+}
+.lifeos-folder-label { min-width: 0; overflow-wrap: anywhere; }
+.lifeos-folder-chevron {
+  display: inline-flex;
+  flex: none;
+  transition: transform 0.15s;
+}
+.lifeos-folder-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.lifeos-folder-btn[aria-expanded="true"] .lifeos-folder-chevron { transform: rotate(90deg); }
 .lifeos-convo-list { margin: 0; }
 /* The Archived group: a quiet caption-size disclosure under the list, its
    chevron turning as the Board's parked group does. */
