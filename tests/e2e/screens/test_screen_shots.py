@@ -93,6 +93,7 @@ _MOCKS = {
     r"/api/system/load": {"level": "normal", "reason": None, "cpu_percent": 12.0, "cores": 8, "top": [],
                           "memory": {"used_bytes": 8 * 1024**3, "total_bytes": 32 * 1024**3, "percent": 25.0},
                           "age_seconds": 1.0},
+    r"/api/system/health": {"verdict": "ok", "why": None, "reason": None, "fix": None},
     r"/api/rate-limits": {"quota_lines": []},
     r"/api/context-filter": {},
     r"/api/claude-code/sessions": {"sessions": _SESSIONS},

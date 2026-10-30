@@ -176,12 +176,22 @@ def authed_page(
             status=200, content_type="application/json", body=_QUIET_SYSTEM_LOAD
         ),
     )
+    # The hub's PC verdict beside it reads the real hub: pinned to a healthy
+    # one so no test depends on what the box's hub says that minute.
+    context.route(
+        re.compile(r".*/api/system/health$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=_QUIET_SYSTEM_HEALTH
+        ),
+    )
     page = context.new_page()
     try:
         yield page
     finally:
         page.close()
 
+
+_QUIET_SYSTEM_HEALTH = json.dumps({"verdict": "ok", "why": None, "reason": None, "fix": None})
 
 _QUIET_SYSTEM_LOAD = json.dumps({
     "level": "normal", "reason": None, "cpu_percent": 12.0,

@@ -349,13 +349,16 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
 .usage-meter-full :is(.um-codex, .um-grok) .um-codex-value { margin-left: auto; white-space: nowrap; }
 
-/* The Usage sheet's label/value rows: the short label keeps its line, a long
-   value wraps beside it. */
-.usage-sheet-body .row > span { flex: none; white-space: nowrap; }
+/* The sheets' label/value rows (sheetRow): the value is a figure and keeps
+   its one line, so a long label (a process group's name) takes the rest of
+   the row and wraps instead of squeezing the figure a letter per line. */
+.usage-sheet-body .row > span { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
 .usage-sheet-body .usage-sheet-value {
+  flex: none;
   font-weight: 400;
+  font-variant-numeric: tabular-nums;
   text-align: right;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
 }
 
 /* Context-filter "saved" badge — the last consumer of the

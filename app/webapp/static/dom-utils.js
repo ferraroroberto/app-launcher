@@ -12,7 +12,8 @@ export function el(tag, cls, text) {
 
 // A settings-sheet row: a label on the left, a value (optionally toned via
 // the caller setting `.lastChild.dataset.tone`) on the right. Shared by the
-// usage sheet and the CPU/system-load sheet.
+// usage sheet and the CPU/system-load sheet; the value keeps one line and the
+// label wraps (board.css), so keep a value to a figure, not a sentence.
 export function sheetRow(label, value, key) {
   const row = el('div', 'row usage-sheet-row');
   if (key) row.dataset.row = key;

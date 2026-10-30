@@ -12,6 +12,11 @@
  * from its shared sampler's cached sample, and the poll skips while the
  * page is hidden. Coming back to the foreground reads once at once. While
  * the sampler is still taking its first sample, one short retry follows.
+ *
+ * The Code header's reading also carries a dot (data-pc-health) for the
+ * local-llm-hub's verdict on the machine, drawn only for "watch" or "act"
+ * and read on the same poll. A verdict that could not be read is "Not
+ * confirmed" in the sheet, never "OK"; the hub does the alerting.
  */
 
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
@@ -21,6 +26,9 @@ import { el, pctText, sheetRow } from './dom-utils.js';
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".
 let reading = { level: 'unknown', reason: 'warming' };
+// The hub's verdict: undefined before the first answer, null when the launcher
+// could not be asked.
+let health;
 let retryTimer = null;
 
 function readingKnown(r) {
@@ -60,10 +68,58 @@ function renderReadings() {
   });
 }
 
+// What the hub's health verdict reads as here. Anything the launcher could not
+// read (no answer yet is `pending`) is its own state and never reads "ok".
+const HEALTH_WORDS = { ok: 'OK', watch: 'Watch', act: 'Needs action', unknown: 'Not confirmed' };
+const HEALTH_TONES = { watch: 'attention', act: 'danger' };
+
+function healthView() {
+  if (health === undefined) return { verdict: 'pending' };
+  if (!health || !HEALTH_WORDS[health.verdict]) return { verdict: 'unknown', why: 'launcher' };
+  return health;
+}
+
+function unknownHealthText(h) {
+  if (h.why === 'disabled') return 'The hub is not set up in Settings';
+  if (h.why === 'unreachable') return "Couldn't reach the hub";
+  if (h.why === 'unreadable') return "The hub's answer wasn't a verdict";
+  if (h.why === 'hub') return h.reason || "The hub couldn't confirm the machine's health";
+  return "Couldn't reach the launcher";
+}
+
+// The verdict as a dot on the readings that opt in with data-pc-health (the
+// Code header's), drawn only for watch or act; the label says it in words.
+function renderHealthMark() {
+  const h = healthView();
+  const tone = HEALTH_TONES[h.verdict] || '';
+  document.querySelectorAll('.cpu-reading[data-pc-health]').forEach(function (btn) {
+    btn.dataset.pcHealth = tone;
+    btn.title = tone ? 'CPU load. PC health: ' + HEALTH_WORDS[h.verdict].toLowerCase() : 'CPU load';
+    if (!tone) return;
+    btn.setAttribute('aria-label', btn.getAttribute('aria-label').replace(/\. Show .*$/, '')
+      + '. PC health: ' + HEALTH_WORDS[h.verdict].toLowerCase()
+      + (h.reason ? ', ' + h.reason : '') + '. Show details');
+  });
+}
+
+// The hub's verdict first: the dot on the Code header's reading points here.
+function appendHealthRows(body) {
+  const h = healthView();
+  const row = sheetRow('Health', h.verdict === 'pending' ? 'Reading…' : HEALTH_WORDS[h.verdict], 'health');
+  if (HEALTH_TONES[h.verdict]) row.lastChild.dataset.tone = HEALTH_TONES[h.verdict];
+  body.appendChild(row);
+  const notes = h.verdict === 'unknown' ? [unknownHealthText(h)]
+    : [h.reason, h.fix ? 'Suggested: ' + h.fix : null];
+  notes.filter(Boolean).forEach(function (text) {
+    body.appendChild(el('p', 'cpu-sheet-note', text));
+  });
+}
+
 function renderSheet() {
   const body = document.getElementById('cpuSheetBody');
   if (!body) return;
   body.replaceChildren();
+  appendHealthRows(body);
   if (!readingKnown(reading)) {
     body.appendChild(sheetRow('CPU', unknownText(reading), 'cpu'));
     return;
@@ -108,12 +164,26 @@ function sheet() {
 
 function render() {
   renderReadings();
+  renderHealthMark();
   const dialog = sheet();
   if (dialog && dialog.open) renderSheet();
 }
 
+async function fetchHealth() {
+  try {
+    health = await jsonApi('/api/system/health');
+  } catch (exc) {
+    health = null;
+    logPollFailure('pc health poll failed', exc);
+  }
+  render();
+}
+
 export async function fetchSystemLoad() {
   if (document.hidden) return;
+  // Its own request: the verdict changes every few minutes, and a slow hub
+  // must never hold up the CPU reading.
+  fetchHealth().catch(function () {});
   try {
     reading = await jsonApi('/api/system/load');
   } catch (exc) {
@@ -149,6 +219,7 @@ function closeSheet() {
 // other poll; this wires the taps and the foreground read.
 export function wireSystemLoad() {
   renderReadings();
+  renderHealthMark();
   document.querySelectorAll('.cpu-reading').forEach(function (btn) {
     btn.addEventListener('click', openSheet);
   });
