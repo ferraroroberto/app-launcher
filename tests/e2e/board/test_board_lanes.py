@@ -187,20 +187,35 @@ def _local_stamp(dt: datetime, today: bool) -> str:
     return local.strftime("%H:%M") if today else f"{local.day} {local.strftime('%b')}"
 
 
+def _pinned_local(hour: int, minute: int) -> datetime:
+    """Today's date at ``hour:minute`` in the machine's time zone."""
+    return datetime.now().astimezone().replace(
+        hour=hour, minute=minute, second=0, microsecond=0)
+
+
 @pytest.mark.iphone
+@pytest.mark.parametrize("pinned", [(0, 30), (12, 0)], ids=["00:30", "12:00"])
 def test_board_cards_carry_their_date_and_it_is_never_cut(
-    authed_page: Page, base_url: str
+    authed_page: Page, base_url: str, pinned: tuple[int, int]
 ) -> None:
     """#1638: a Done card reads ``<repo> #<n> · closed · <close time>``; a
     Backlog issue and a PR card show their last-updated time. Today is a clock
     time, an earlier day a short date, both in the viewer's local time. At 390px
     the date must stay whole (LAYOUT-09: an ellipsis cut it) and the repo name
     must stay first. Done is listed newest close first, even when the older
-    close has the later ``updated_at`` (a comment)."""
-    now = datetime.now(timezone.utc)
+    close has the later ``updated_at`` (a comment). Run at 00:30 and at noon on a
+    pinned browser clock: the board is right that an instant 50 minutes
+    before 00:30 is yesterday, so the fixtures are built from the day's start."""
+    # The page reads the browser clock to decide "today", so the clock is
+    # pinned: just after local midnight an instant 50 minutes ago is yesterday.
+    local_now = _pinned_local(*pinned)
+    now = local_now.astimezone(timezone.utc)
+    authed_page.clock.install(time=local_now)
     earlier = now - timedelta(days=3)
-    closed_old = now - timedelta(minutes=50)
-    closed_new = now - timedelta(minutes=5)
+    # Anchored on the day's start, not on "now - N min", so both stay today at 00:30.
+    day_start = _pinned_local(0, 0).astimezone(timezone.utc)
+    closed_old = day_start + timedelta(minutes=10)
+    closed_new = day_start + timedelta(minutes=20)
     payload = _board_payload()
     cols = payload["columns"]
     cols["backlog"][0]["updated_at"] = _iso_utc(earlier)
