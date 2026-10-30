@@ -73,9 +73,8 @@ def _mock(page: Page, *, hidden: bool = True) -> dict:
     """Route-mock everything the lists read. Returns the live knobs."""
     knobs = {
         "hidden": hidden, "posts": [], "context_hits": [], "inputs": [],
-        # The autostart switch (#1542), pinned off so the box's own config
-        # (the disposable webapp reads the checkout's webapp_config.json) cannot
-        # decide the starting state (#1550); the server default is pinned by
+        # The autostart switch (#1542), pinned off so the starting state does
+        # not hang on the server default; that default is pinned by
         # tests/api/config/.
         "autostart": False,
         # session_id -> context percent; absent = "not showing" (no figure).
