@@ -24,6 +24,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
+import { inputLabel, watchInputLevel } from './voice-level.js';
 
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
@@ -109,6 +110,11 @@ function newDictationState(opts) {
     onRender: opts.onRender || function () {},
     onStart: opts.onStart || function () {},
     onTranscript: opts.onTranscript || function () {},
+    // Optional element the recorder's input name and no-sound banner render
+    // into; without one a silent input is announced by a toast instead.
+    noticeEl: opts.noticeEl || null,
+    // Stops the live input-level watch of the take in progress, or null.
+    levelStop: null,
     // The public object createDictation returns; the one-mic-at-a-time mutex
     // compares against it.
     api: null,
@@ -462,7 +468,64 @@ function startStreamedSpan(d) {
   } catch (_) { d.voiceEvents = null; }
 }
 
+// The recorder's input line ("Mic: AirPods") and, when the input carries no
+// sound, the banner under it. Both live in d.noticeEl; with none mounted only
+// the banner's news survives, as a toast.
+const _SILENT_TEXT = 'No sound from the microphone — check Bluetooth/AirPods';
+
+function showInputNotice(d, label) {
+  const box = d.noticeEl;
+  if (!box) return;
+  box.textContent = '';
+  const input = document.createElement('div');
+  input.className = 'mic-notice-input';
+  input.textContent = label ? 'Mic: ' + label : '';
+  input.hidden = !label;
+  const silent = document.createElement('div');
+  silent.className = 'mic-notice-silent';
+  silent.textContent = _SILENT_TEXT;
+  silent.hidden = true;
+  box.append(input, silent);
+  box.hidden = !label;
+}
+
+function setSilentNotice(d, silent) {
+  const box = d.noticeEl;
+  if (!box) {
+    if (silent) toast(_SILENT_TEXT, 'error', { icon: 'mic' });
+    return;
+  }
+  const line = box.querySelector('.mic-notice-silent');
+  if (line) line.hidden = !silent;
+  box.classList.toggle('is-silent', silent);
+  box.hidden = !silent && !box.querySelector('.mic-notice-input:not([hidden])');
+}
+
+function clearInputNotice(d) {
+  if (d.levelStop) { d.levelStop(); d.levelStop = null; }
+  const box = d.noticeEl;
+  if (!box) return;
+  box.textContent = '';
+  box.classList.remove('is-silent');
+  box.hidden = true;
+}
+
+// Watch the live take for sound, so a dead route (a Bluetooth headset that
+// carries nothing) is flagged within seconds, not at finish.
+function watchTakeLevel(d, stream) {
+  showInputNotice(d, inputLabel(stream));
+  d.levelStop = watchInputLevel(stream, {
+    onSilent: function () {
+      console.info('[dictation] no sound from the input after the first seconds');
+      setSilentNotice(d, true);
+      try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (_) { /* no haptic */ }
+    },
+    onSignal: function () { setSilentNotice(d, false); },
+  });
+}
+
 function handleRecorderStop(d, stream, mime) {
+  clearInputNotice(d);
   stream.getTracks().forEach(function (tr) { tr.stop(); });
   setRecordingUI(d, false);
   _activeInstance = null;
@@ -556,6 +619,7 @@ async function startRecording(d) {
   // dataavailable so chunks flow during the take.
   d.recorder.start(d.streaming ? _CHUNK_MS : undefined);
   setRecordingUI(d, true);
+  watchTakeLevel(d, stream);
 }
 
 function stopRecording(d) {
@@ -776,6 +840,8 @@ function toggleDictation(d) {
  *     onStart:     optional — called when recording starts (the compose
  *                  bar silences an in-flight read-aloud),
  *     onTranscript: optional — called when a take put text in the textarea,
+ *     noticeEl:    optional — element that shows the input name and the
+ *                  no-sound banner while recording,
  *   }) → { toggle, stop, dispose, isRecording, isBusy }
  */
 export function createDictation(opts) {
