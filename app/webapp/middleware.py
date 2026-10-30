@@ -290,6 +290,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "only ever admits the phone to read.",
     ),
     (
+        lambda p: p.startswith("/api/board/proof/"),
+        "passkey",
+        "Board Done proof chip: a merged UI PR's walkthrough, real-app screenshots "
+        "read from the machine-local store: the transcript's own sensitivity.",
+    ),
+    (
         lambda p: p == "/api/board/issues/start",
         "passkey",
         "Board drill-down (#301): issue-start spawns a coding session.",

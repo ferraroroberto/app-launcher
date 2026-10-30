@@ -235,8 +235,8 @@ def test_done_today_filters_audit_meta_issue(monkeypatch):
     }
 
     def fake_run(argv, **kwargs):
-        assert "prs" not in argv  # Done never fetches PRs (#399)
-        rows = [closed_ledger_issue, closed_real_issue]
+        # The PR search only links an issue to its proof report; it adds no card.
+        rows = [] if "prs" in argv[:3] else [closed_ledger_issue, closed_real_issue]
         return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
@@ -246,7 +246,7 @@ def test_done_today_filters_audit_meta_issue(monkeypatch):
 
 
 def test_done_today_is_closed_issues_only(monkeypatch):
-    """Done holds closed issues only (#399) — no merged-PR fetch or pairing;
+    """Done holds closed issues only (#399) — no merged-PR card or pairing;
     a PR that closed an issue is already reflected by the issue's own card."""
     closed_issue = {
         "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},
@@ -255,8 +255,8 @@ def test_done_today_is_closed_issues_only(monkeypatch):
     }
 
     def fake_run(argv, **kwargs):
-        assert "prs" not in argv
-        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([closed_issue]), stderr="")
+        rows = [] if "prs" in argv[:3] else [closed_issue]
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
     done = github_client.search_done_today("ferraroroberto")
@@ -287,8 +287,10 @@ def test_done_today_asks_for_closed_at_and_sorts_by_it(monkeypatch):
     ]
 
     def fake_run(argv, **kwargs):
-        seen["argv"] = argv
-        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+        if "issues" in argv[:3]:
+            seen["argv"] = argv
+        return subprocess.CompletedProcess(
+            argv, 0, stdout=json.dumps([] if "prs" in argv[:3] else rows), stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
     done = github_client.search_done_today("ferraroroberto")
