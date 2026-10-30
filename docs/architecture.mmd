@@ -49,7 +49,7 @@ health probes, bounded restart"]
     DOORBELL["chief_doorbell.py\nrings an idle chief with pending mail (#1645)"]
     RELAYIDLE["relay_idle_close.py\ncloses relay-reopened conversations after the bot's idle timeout"]
     subgraph routers["routers/"]
-      R_MISC["misc.py — /, /healthz, /api/version, /api/system/load"]
+      R_MISC["misc.py — /, /healthz, /api/version, /api/system/load, /api/system/health"]
       R_AUTH["auth.py — /api/login"]
       R_CONFIG["config.py — /api/config, /api/status, /api/ports"]
       R_CONTEXTFILTER["context_filter.py — /api/context-filter\nfleet filter mode + shadow stats (#713/#714)"]
@@ -134,6 +134,9 @@ Screen clipboard: the one clipboard seam, text to the PC only,
 reached through the input session, never logged (#1719)"]
     DESKCUR["desktop/cursor.py\nScreen cursor: GetCursorInfo to 0-1 + shape name,\nsent on change, never a bitmap (#1598)"]
     SYSLOAD["system_load.py\nheader CPU reading: one shared sampler,\none-syscall process snapshot,\ncached behind /api/system/load (#1522)"]
+    HUBHEALTH["clients/hub_health.py
+the hub PC health verdict (ok / watch / act / unknown),
+read over loopback and cached behind /api/system/health"]
     JOBSNEXTFIRE["jobs/next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs/preflight.py"]
     JOBSARGV["jobs/argv.py"]
@@ -200,6 +203,7 @@ reached through the input session, never logged (#1719)"]
   R_JOBS --> JOBSSNAPSHOT
   WSERVER -->|"lifespan load sampler, while polled (#1522)"| SYSLOAD
   R_MISC --> SYSLOAD
+  R_MISC --> HUBHEALTH
   R_DESKTOP -->|"capture only inside a connected WS"| DESKCAP
   R_DESKTOP -->|"input only on the gated WS"| DESKIN
   DESKIN -->|"clipboard_set, same socket"| DESKCLIP

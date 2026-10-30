@@ -9,6 +9,7 @@ full per-family surface.  Top-level families:
                  GET  /api/version              → git_sha + asset_hash
                  GET  /api/agents               → registered coding agents
                  GET  /api/system/load          → header CPU reading (cached)
+                 GET  /api/system/health        → hub's PC health verdict (cached)
 
     auth         POST /api/login                → swap password for token
 

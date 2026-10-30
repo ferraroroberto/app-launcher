@@ -108,7 +108,7 @@ UI prefs + secrets, authored from the web UI:
 | `webauthn_origin` | `""` | Full https origin the phone connects to (scheme + host + port). |
 | `voice_transcriber_url` | `https://127.0.0.1:8443` | Base URL of the sibling voice-transcriber webapp the composer's 🎤 dictation proxies to over loopback. Empty string disables dictation (the mic button stays in the grid, disabled). |
 | `photo_ocr_url` | `https://127.0.0.1:8444` | Base URL of the sibling photo-ocr webapp the composer's 📷 screenshot OCR proxies to over loopback. Empty string disables OCR (the option leaves the 🖼 Image button's menu). |
-| `llm_hub_url` | `http://127.0.0.1:8000` | Base URL of the sibling local-llm-hub the 🔊 read-aloud's Orpheus voice proxies to over loopback. Plain HTTP — the hub serves no TLS. Empty string disables the hub path (🔊 falls back to the on-device Web Speech voice). |
+| `llm_hub_url` | `http://127.0.0.1:8000` | Base URL of the sibling local-llm-hub the 🔊 read-aloud's Orpheus voice proxies to over loopback. Plain HTTP — the hub serves no TLS. Also where the Code header reads the hub's PC health verdict (`GET /admin/api/machines/health`). Empty string disables the hub path (🔊 falls back to the on-device Web Speech voice; the PC health verdict reads `Not confirmed`). |
 | `pushover_api_token` / `pushover_user_key` | `""` | Pushover credentials for Jobs-tab failure notifications. Both must be set; missing creds = no-op. |
 | `notify_on_failure` | `false` | Master switch — even with creds set, no push fires until this flips on. |
 | `notify_failure_streak` | `0` | When > 0, also fire a separate "N consecutive failures" push when the failure streak ticks to exactly this count. |

@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from src import system_load
-from src.clients import session as session_client
+from src.clients import hub_health, session as session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
 from src.desktop.browser import is_web_url, open_url
@@ -248,6 +248,15 @@ async def system_load_reading() -> Dict[str, Any]:
     """The page header's CPU reading (#1522): the shared sampler's cached
     sample, never a scan on request. A read also keeps the sampler awake."""
     return system_load.read()
+
+
+@router.get("/api/system/health")
+async def system_health_verdict(request: Request) -> Dict[str, Any]:
+    """The hub's PC health verdict beside the CPU reading: ``ok`` / ``watch``
+    / ``act`` / ``unknown``, read from local-llm-hub and cached briefly. A hub
+    that is off, down or unreadable is ``unknown``, never ``ok``."""
+    cfg: WebappConfig = request.app.state.webapp_config
+    return await asyncio.to_thread(hub_health.read, cfg.llm_hub_url)
 
 
 # Each listener's scheme, keyed by (pid, port). The TLS probe can

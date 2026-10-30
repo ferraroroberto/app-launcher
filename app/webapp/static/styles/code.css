@@ -29,6 +29,30 @@
 .home-head .cpu-reading[data-level="danger"] { color: var(--danger-text); }
 .cpu-sheet-body .usage-sheet-value[data-tone="attention"] { color: var(--attention-text); }
 .cpu-sheet-body .usage-sheet-value[data-tone="danger"] { color: var(--danger-text); }
+/* The hub's PC health verdict on the Code header's CPU reading (system-load.js
+   sets data-pc-health to the tone for watch or act): a dot on the reading's
+   corner, so it costs the header line no width. */
+.home-head .cpu-reading { position: relative; }
+.home-head .cpu-reading[data-pc-health="attention"]::after,
+.home-head .cpu-reading[data-pc-health="danger"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--attention-text);
+}
+.home-head .cpu-reading[data-pc-health="danger"]::after { background: var(--danger-text); }
+/* A reason or fix from the hub: a sentence under the Health row, wrapping. */
+.cpu-sheet-note {
+  margin: 0;
+  padding: var(--space-xs) 0 var(--space-md);
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .cpu-sheet-caption {
   margin: var(--space-md) 0 0;
   font-size: var(--font-body-sm);
