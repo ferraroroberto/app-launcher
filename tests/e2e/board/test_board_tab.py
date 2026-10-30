@@ -334,6 +334,26 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours_section).not_to_have_attribute("open", "")
 
 
+def test_board_external_card_has_no_alive_badge(authed_page: Page, base_url: str) -> None:
+    """An external card (`alive: null`) is neither Running nor Down: the Board
+    has no process evidence for it, so its avatar wears no badge."""
+    payload = _board_payload()
+    payload["columns"]["claude_turn"].append(
+        {"session_id": None, "kind": "external", "agent": "claude",
+         "project_dir": "E:/automation/reporting", "name": "reporting",
+         "alive": None, "started_at": None, "live_title": "", "prompt_title": "",
+         "project": "reporting", "status": "waiting-on-task", "age_seconds": 120},
+    )
+    _mock_board(authed_page, payload)
+    _open_board(authed_page, base_url)
+
+    live = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="life-os")
+    expect(live.locator(".avatar")).to_have_attribute("data-badge", "alive")
+    external = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="reporting")
+    expect(external.locator(".avatar")).to_have_attribute("data-badge", "none")
+    expect(external.locator(".avatar-badge")).to_have_count(0)
+
+
 @pytest.mark.parametrize("gh_age_seconds, expected_posts", [
     pytest.param(15 * 60, ["POST"], id="stale-refreshes-once"),
     pytest.param(0, [], id="fresh-not-refreshed"),

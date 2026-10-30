@@ -439,9 +439,14 @@ def _transcript_overlay(
     live_title: Optional[str] = None,
     last_output_at: Optional[float] = None,
     tail: Optional[_ExchangeTail] = None,
+    process_confirmed: bool = True,
 ) -> tuple:
     """Override a waiting status with ``working`` (or, for a long-stuck
     dispatch, ``stalled``) when the transcript says so.
+
+    ``stalled`` asserts a live process that has gone quiet, so it needs
+    ``process_confirmed``: an external row has no process evidence, and its
+    long-outstanding dispatch reads :data:`WAITING_ON_TASK` instead.
 
     Checked first (#631/#627): a busy ``live_title`` (see
     :func:`_live_title_is_busy`) short-circuits straight to ``working``,
@@ -514,7 +519,8 @@ def _transcript_overlay(
     )
     if pending_since is not None:
         if (
-            status == "needs-you"
+            process_confirmed
+            and status == "needs-you"
             and pending_since != _UNKNOWN_LAUNCH_STAMP
             and now - pending_since > _STALLED_DISPATCH_AFTER
         ):
