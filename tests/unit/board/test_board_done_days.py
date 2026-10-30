@@ -73,13 +73,15 @@ def test_search_done_on_asks_gh_for_the_days_window(monkeypatch):
     seen = {}
 
     def fake_run(argv, **kwargs):
-        seen["argv"] = argv
+        seen[argv[2]] = argv
         return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
     github_client.search_done_on("owner", date(2026, 10, 25), _Cet())
-    argv = seen["argv"]
-    assert argv[argv.index("--closed") + 1] == "2026-10-24T22:00:00Z..2026-10-25T22:59:59Z"
+    window = "2026-10-24T22:00:00Z..2026-10-25T22:59:59Z"
+    assert seen["issues"][seen["issues"].index("--closed") + 1] == window
+    # The PR search that links each issue to its proof report reads the same window.
+    assert seen["prs"][seen["prs"].index("--merged-at") + 1] == window
 
 
 def test_api_done_returns_one_earlier_local_day(webapp_client, monkeypatch):
@@ -101,7 +103,7 @@ def test_api_done_returns_one_earlier_local_day(webapp_client, monkeypatch):
     assert body["day"] == (date.today() - timedelta(days=2)).isoformat()
     assert [(i["repo"], i["number"], i["closed_at"]) for i in body["items"]] == [
         ("app-launcher", 5, "2026-07-01T09:00:00Z")]
-    assert len(calls) == 1                      # one gh search per request
+    assert [c[2] for c in calls] == ["issues", "prs"]   # a constant two gh searches per request
 
 
 def test_api_done_rejects_a_day_outside_the_week_without_calling_gh(webapp_client, monkeypatch):

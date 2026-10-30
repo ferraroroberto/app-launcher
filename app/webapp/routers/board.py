@@ -1,6 +1,10 @@
 """Board tab — the fleet kanban's data plane (issues #300, #301, #302 / #164 / #399).
 
     GET  /api/board                       → the five computed columns (token-gated)
+    GET  /api/board/done?days_back=N      → issues closed on one earlier local day
+                                            (token-gated)
+    GET  /api/board/proof/{repo}/{pr}     → a merged UI PR's stored visual-proof report
+                                            (Tailscale + passkey)
     GET  /api/board/chief-plan            → the chief's plan + answered marks (token-gated)
     POST /api/board/chief/answered        → record answered questions (#1487;
                                             Tailscale + passkey)
@@ -55,9 +59,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import Response
 
 from src import agents, audit, board
-from src.board import active_issue_claims
+from src.board import active_issue_claims, proof_reports
 from src.chief import answers as chief_answers
 from src.chief import dispatch_brief
 from src.clients import github as github_client
@@ -67,6 +72,7 @@ from src.clients import session as session_client
 from src.board.exchange import resolve_exchange, unavailable
 from src.chief import plan_prune
 from src.launching.flags import build_claude_flags
+from src.session_view.outbox import HTML_CSP, HTML_MEDIA
 from src.launching.launcher import open_local_terminal_window, spawn_claude_session
 from src.usage import auto_switch
 from src.webapp_config import WebappConfig
@@ -237,7 +243,37 @@ async def get_board_done(request: Request, days_back: int = 1) -> Dict[str, Any]
     except github_client.GhError as exc:
         logger.warning(f"⚠️ gh done search for {day.isoformat()} failed: {exc}")
         raise HTTPException(status_code=502, detail=f"gh could not read that day: {exc}")
+    items = await asyncio.to_thread(proof_reports.annotate, items)
     return {"days_back": days_back, "day": day.isoformat(), "items": items}
+
+
+@router.get("/api/board/proof/{repo}/{pr}")
+async def get_board_proof(repo: str, pr: int) -> Response:
+    """One merged UI PR's visual-proof report, read from the machine-local store.
+
+    Screenshots of the real app, so it is terminal-grade content behind the
+    Tailscale + passkey gate (``middleware._TERMINAL_GUARD_RULES``) and never
+    leaves this machine. The HTML is self-contained; it is served under the
+    scriptless CSP the outbox uses, so opening it directly runs nothing. The
+    store is read-only here. A missing report is a 404, whatever the reason.
+    """
+    path = await asyncio.to_thread(proof_reports.report_path, repo, pr)
+    if path is None:
+        raise HTTPException(status_code=404, detail="no proof report for that PR")
+    try:
+        body = await asyncio.to_thread(path.read_bytes)
+    except OSError as exc:
+        logger.warning("⚠️ proof report %s#%s unreadable: %s", repo, pr, exc)
+        raise HTTPException(status_code=404, detail="no proof report for that PR")
+    return Response(
+        content=body,
+        media_type=HTML_MEDIA,
+        headers={
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": HTML_CSP,
+        },
+    )
 
 
 async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str, Any]:
@@ -281,6 +317,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     # Board poll re-uses whatever the (identically-paced) sessions poll found.
     await steps.run("attach_provider_web_urls", attach_provider_web_urls, session_cards)
     columns = board.build_board(session_cards, github, job_cards)
+    columns["done"] = await steps.run("annotate_proof", proof_reports.annotate, columns["done"])
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
 
     return {

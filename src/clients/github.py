@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
@@ -207,6 +208,45 @@ def _gh_stamp(moment: datetime) -> str:
     return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+# GitHub's own closing keywords; "Part of #N" / "Progresses #N" do not close.
+_CLOSES = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+#(\d+)", re.IGNORECASE)
+_VISUAL_PROOF = re.compile(r"\bVISUAL_PROOF=([A-Za-z/]+)")
+
+
+def search_merged_on(
+    owner: str, day: date, tz: Optional[tzinfo] = None
+) -> Dict[Tuple[str, int], Dict[str, Any]]:
+    """The PR that closed each issue, for PRs merged on the local day ``day``.
+
+    Keyed ``(repo, issue number)``; the value is the PR's ``pr`` number and the
+    state its body gives to ``VISUAL_PROOF=`` (``None`` when it has no such
+    line). A body names an issue with a GitHub closing keyword. Where two PRs
+    close one issue the later one (higher number) wins. Reads the PR body for
+    that line and the keyword only; no report content is involved.
+    """
+    start, end = local_day_window(day, tz)
+    merged = _search_json([
+        "search", "prs",
+        "--owner", owner,
+        "--merged",
+        "--merged-at", f"{_gh_stamp(start)}..{_gh_stamp(end)}",
+        "--limit", str(_ISSUE_LIMIT),
+        "--json", "repository,number,body",
+    ])
+    closers: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    for row in merged:
+        number = row.get("number")
+        if not isinstance(number, int):
+            continue
+        body = str(row.get("body") or "")
+        state = _VISUAL_PROOF.search(body)
+        for issue in _CLOSES.findall(body):
+            key = (_repo_name(row), int(issue))
+            if key not in closers or number > closers[key]["pr"]:
+                closers[key] = {"pr": number, "visual_proof": state.group(1).lower() if state else None}
+    return closers
+
+
 def search_done_on(
     owner: str, day: date, tz: Optional[tzinfo] = None
 ) -> List[Dict[str, Any]]:
@@ -216,7 +256,9 @@ def search_done_on(
     is already reflected by that issue showing closed, so this is just the
     closed-issues search with no pairing/dedup step. The search is bounded by
     the day's exact UTC window (:func:`local_day_window`), so no row from a
-    neighbouring day needs filtering out afterwards.
+    neighbouring day needs filtering out afterwards. Each row carries the PR
+    that closed it (``pr``) and that PR's ``visual_proof`` state, from one more
+    search over the same window (:func:`search_merged_on`).
     """
     start, end = local_day_window(day, tz)
     closed = _search_json([
@@ -228,12 +270,25 @@ def search_done_on(
         "--limit", str(_ISSUE_LIMIT),
         "--json", _SEARCH_FIELDS + ",closedAt,labels",
     ])
+    # Which PR closed each issue, so the Board can link its proof report. A
+    # failed read leaves the cards without a PR: Done still shows, with no
+    # proof state to claim either way.
+    try:
+        closers = search_merged_on(owner, day, tz)
+    except GhError as exc:
+        logger.warning("⚠️ gh merged-PR search for %s failed: %s", day.isoformat(), exc)
+        closers = {}
     done: List[Dict[str, Any]] = []
     for row in closed:
         issue = _norm_issue(row)
         if not _is_actionable(issue["labels"]):
             continue
-        done.append({**issue, "state": "closed", "labels": []})
+        closer = closers.get((issue["repo"], int(issue["number"] or 0)))
+        done.append({
+            **issue, "state": "closed", "labels": [],
+            "pr": closer["pr"] if closer else None,
+            "visual_proof": closer["visual_proof"] if closer else None,
+        })
     # By close time: a comment after the close bumps ``updatedAt``, so
     # ``updated_at`` only stands in for a row that has no close time.
     done.sort(
