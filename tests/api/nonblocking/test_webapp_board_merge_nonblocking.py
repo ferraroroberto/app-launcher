@@ -54,6 +54,7 @@ async def test_slow_session_merge_does_not_stall_the_board_poll(monkeypatch, tmp
                     sessions_state_file=str(tmp_path / "sessions-state.json"),
                     session_host_port=8446,
                     fleet_config_dir=str(tmp_path / "fleet-config"),
+                    projects_dir="",
                 )
             )
         )
