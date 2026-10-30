@@ -95,13 +95,13 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     expect(authed_page.locator("#terminalKill")).to_have_count(0)
     expect(authed_page.locator("#terminalJumpEnd")).to_have_count(0)
 
-    # ⋮ opens Rename · Copy link · Changed files (#1349) · Compact (#1218) —
+    # ⋮ opens Rename · Copy link · Changed files (#1349) · Background tasks · Compact (#1218) —
     # both for a Claude session — · Stop and kill, in that order.
     authed_page.locator("#terminalMenu").click()
     menu = authed_page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Compact", "Stop and kill"]
     )
     # The overlay's own copy of the unified stop (#253) — the same path the
     # row menu's Stop calls, reached from inside the session view.
