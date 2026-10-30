@@ -69,7 +69,7 @@ import {
 } from './board/drawer.js';
 import { agoText, renderChiefPlan } from './board/chief-plan.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
-import { proofButton, proofGapChips } from './board/proof-chip.js';
+import { doneActions, proofGapChips } from './board/proof-chip.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -456,13 +456,13 @@ function renderJobCard(card) {
 export function renderDoneCard(card, stampRef) {
   // Done holds closed issues only — a merged PR that closed one is
   // already reflected here by the issue itself, so there's no PR/pairing
-  // branch to render. Its visual proof, when the server found one, rides the
-  // issue's row (board/proof-chip.js).
+  // branch to render. Its Issue / PR / Proof actions ride the issue's row
+  // (board/proof-chip.js).
   return laneRow('board-item-done', card.title || '',
     [[card.repo, '#' + card.number].join(' '), card.state,
       fmtCardStamp(card.closed_at || card.updated_at, stampRef)].filter(Boolean).join(' · '),
     proofGapChips(card),
-    'Open issue #' + card.number + ' on GitHub', openUrl(card.url), proofButton(card)).li;
+    'Open issue #' + card.number + ' on GitHub', openUrl(card.url), doneActions(card)).li;
 }
 
 function renderCard(colKey, card, openItem) {

@@ -1,9 +1,10 @@
-/* A Done row's visual proof: a "Proof" chip that opens the merged UI PR's
- * stored walkthrough, or a "no proof" chip where the PR said a UI diff shipped
- * without one. The server decides which (card.proof: 'available' | 'missing',
- * card.proof_pr); a row with neither shows nothing. The report is fetched on
- * tap, behind the passkey gate, and shown in the sandboxed HTML viewer (no
- * script, no network): it holds real-app screenshots and never touches GitHub.
+/* A Done row's actions: Issue and PR open GitHub; Proof opens the merged UI
+ * PR's stored walkthrough, or a "no proof" chip says the PR declared a UI diff
+ * shipped without one. The server decides which (card.proof: 'available' |
+ * 'missing', card.proof_pr, card.pr_url); a row with neither shows no Proof.
+ * The report is fetched on tap, behind the passkey gate, and shown in the
+ * sandboxed HTML viewer (no script, no network): it holds real-app screenshots
+ * and never touches GitHub.
  */
 
 import { api, apiFailToast, authHeaders } from '../api.js';
@@ -36,15 +37,40 @@ async function openProof(card, btn) {
   }
 }
 
-// The row's trailing Proof control: a chip inside a 44px tap target. Null when
-// the row has no stored report.
-export function proofButton(card) {
-  if (card.proof !== 'available') return null;
+function actionButton(label, aria, tone, extraClass, onClick) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'board-proof-open';
-  btn.setAttribute('aria-label', 'Open the proof report for ' + card.repo + ' PR #' + card.proof_pr);
-  btn.append(chip('Proof', 'accent', 'board-proof-chip'));
-  btn.addEventListener('click', function () { openProof(card, btn); });
+  btn.className = 'board-done-action';
+  btn.setAttribute('aria-label', aria);
+  btn.append(chip(label, tone, extraClass));
+  btn.addEventListener('click', function () { onClick(btn); });
   return btn;
+}
+
+function openGithub(url) {
+  return function () { window.open(url, '_blank', 'noopener'); };
+}
+
+// The row's trailing actions, each a chip inside a 44px tap target: Issue, PR
+// (once a merged PR is known to have closed it) and Proof (once a report is
+// stored). Null when the row has nothing to offer.
+export function doneActions(card) {
+  const buttons = [];
+  if (card.url) {
+    buttons.push(actionButton('Issue', 'Open issue #' + card.number + ' on GitHub',
+      'neutral', 'board-done-issue', openGithub(card.url)));
+  }
+  if (card.pr_url) {
+    buttons.push(actionButton('PR', 'Open PR #' + card.pr + ' on GitHub',
+      'neutral', 'board-done-pr', openGithub(card.pr_url)));
+  }
+  if (card.proof === 'available') {
+    buttons.push(actionButton('Proof', 'Open the proof report for ' + card.repo + ' PR #' + card.proof_pr,
+      'accent', 'board-proof-chip', function (btn) { openProof(card, btn); }));
+  }
+  if (!buttons.length) return null;
+  const group = document.createElement('div');
+  group.className = 'board-done-actions';
+  group.append.apply(group, buttons);
+  return group;
 }
