@@ -338,6 +338,26 @@ body.terminal-open {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* The recorder's input name while dictating, and the banner that joins it when
+   that input carries no sound (a Bluetooth headset the phone routed the mic to). */
+.composer-mic-notice {
+  padding: 4px 10px 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.composer-mic-notice .mic-notice-input {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.composer-mic-notice.is-silent .mic-notice-silent {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border: 1px solid var(--attention);
+  border-radius: 8px;
+  color: var(--attention-text);
+  font-weight: 600;
+}
 /* Compose bar: a predictive-keyboard text surface docked
    at the bottom of the overlay, between the xterm host and the status
    line. flex-shrink:0 lets it claim its height; the host (flex:1)

@@ -168,6 +168,7 @@ function render(host, placeholder) {
       '<button type="button" class="ocr-extract">' + icon('scan-text') + ' Extract text</button>' +
     '</div>' +
     '<div class="composer-upload-status" role="status" aria-live="polite" hidden></div>' +
+    '<div class="composer-mic-notice" role="status" aria-live="polite" hidden></div>' +
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +
@@ -193,6 +194,7 @@ function render(host, placeholder) {
     thumbs: host.querySelector('.ocr-thumbs'),
     extract: host.querySelector('.ocr-extract'),
     uploadStatus: host.querySelector('.composer-upload-status'),
+    micNotice: host.querySelector('.composer-mic-notice'),
     textarea: ta,
     mic: host.querySelector('.composer-mic'),
     keys: host.querySelector('.composer-keys'),
@@ -755,6 +757,7 @@ export function mountComposer(host, opts) {
 
   c.dictation = createDictation({
     button: el.mic,
+    noticeEl: el.micNotice,
     getTextarea: function () { return el.textarea; },
     onRender: function () { composerGrow(c); },
     onStart: opts.onDictationStart || function () {},
