@@ -106,6 +106,7 @@ def build_claude_flags(
     *,
     channel_settings: Optional[str] = None,
     effort_model: Optional[str] = None,
+    effort_override: Optional[str] = None,
 ) -> str:
     """Compose the `claude` CLI flags from the persisted defaults.
 
@@ -122,6 +123,10 @@ def build_claude_flags(
     effort is resolved for ``effort_model`` — the conversation's recorded
     model id — and omitted when that names none of ours, which leaves the
     model at its own default.
+
+    ``effort_override`` replaces that resolved effort for one launch (a Board
+    dispatch's ``effort``); the caller has already checked the model offers
+    it. ``None`` keeps the persisted per-model effort.
 
     ``channel_settings`` — the path of a per-profile settings file — turns the
     session into a Telegram channel session (#1366): ``--channels`` starts the
@@ -141,7 +146,7 @@ def build_claude_flags(
         parts.extend(["--model", model])
     effort_target = model if model in VALID_CLAUDE_MODELS else claude_model_family(effort_model or "")
     if effort_target:
-        effort = effective_effort("claude", effort_target, cfg)
+        effort = effort_override or effective_effort("claude", effort_target, cfg)
         if effort != "off":
             parts.extend(["--effort", effort])
     if cfg.claude_verbose:
@@ -171,12 +176,14 @@ def build_antigravity_flags(cfg: WebappConfig) -> str:
 
 
 def build_codex_flags(
-    cfg: WebappConfig, model_override: Optional[str] = None
+    cfg: WebappConfig, model_override: Optional[str] = None,
+    *, effort_override: Optional[str] = None,
 ) -> str:
     """Compose the `codex` CLI flags from the persisted Codex knobs.
 
     Three pieces: explicit model, permission mode, and a model-compatible
-    reasoning tier. The reasoning value is sent bare: it isn't valid TOML, so
+    reasoning tier (``effort_override`` for one launch, already checked
+    against the model, else the persisted per-model effort). The reasoning value is sent bare: it isn't valid TOML, so
     Codex's `-c` parser falls back to the raw string — which also dodges
     Windows ``cmd`` quote-stripping that a quoted value would suffer.
     """
@@ -191,7 +198,7 @@ def build_codex_flags(
             ["--ask-for-approval", "never", "--sandbox", "workspace-write"]
         )
     if model in VALID_CODEX_MODELS:
-        effort = effective_effort("codex", model, cfg)
+        effort = effort_override or effective_effort("codex", model, cfg)
         parts.extend(["-c", f"model_reasoning_effort={effort}"])
     return " ".join(parts)
 
@@ -267,7 +274,7 @@ def build_pi_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
-def build_grok_flags(cfg: WebappConfig) -> str:
+def build_grok_flags(cfg: WebappConfig, *, effort_override: Optional[str] = None) -> str:
     """Compose the `grok` CLI flags from the persisted Grok knobs (#626, #667).
 
     Two pieces, both verified against the running binary rather than the
@@ -284,13 +291,17 @@ def build_grok_flags(cfg: WebappConfig) -> str:
     No ``--model``: ``grok models`` lists only ``grok-4.5`` today, and a
     one-option picker is dead UI (the same call the launcher already makes
     for Antigravity). Add it when xAI ships a second model.
+
+    ``effort_override`` (one of ``VALID_GROK_EFFORTS``) replaces the
+    persisted tier for one launch.
     """
     parts = [
         "--permission-mode",
         "bypassPermissions" if cfg.grok_permission_mode == "skip" else "auto",
     ]
-    if cfg.grok_effort in VALID_GROK_EFFORTS:
-        parts.extend(["--reasoning-effort", cfg.grok_effort])
+    effort = effort_override or cfg.grok_effort
+    if effort in VALID_GROK_EFFORTS:
+        parts.extend(["--reasoning-effort", effort])
     return " ".join(parts)
 
 

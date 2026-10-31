@@ -253,6 +253,66 @@ class TestIssueStart:
         assert resp.json()["session"]["session_id"] == "spawned-1"
 
 
+class TestIssueStartEffort:
+    """A dispatch's per-launch ``effort`` overrides the Coding tab's per-model
+    effort, 400s when the model does not offer it, and is echoed only off the
+    built command line."""
+
+    _spawn = TestIssueStart._spawn
+
+    def _start(self, client, overrides, **extra):
+        (overrides["tmp_projects_dir"] / "myrepo").mkdir(exist_ok=True)
+        return client.post("/api/board/issues/start", json={
+            "repo": "myrepo", "number": 9, "mode": "start", **extra})
+
+    def test_effort_overrides_the_saved_per_model_effort_and_is_echoed(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        client, _, overrides = webapp_client
+        client.post("/api/config", json={"claude_model_efforts": {"opus": "low"}})
+        resp = self._start(client, overrides, model="claude:opus", effort="high")
+        assert resp.status_code == 200
+        assert "--model opus --effort high" in _spawn["flags"]
+        assert resp.json()["effort"] == "high"
+
+    def test_absent_effort_builds_the_same_command_and_echoes_nothing(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        from src.launching.flags import build_claude_flags
+        client, app, overrides = webapp_client
+        resp = self._start(client, overrides)
+        assert _spawn["flags"] == build_claude_flags(app.state.webapp_config) + ' "/issue-start 9"'
+        assert "effort" not in resp.json()
+
+    def test_effort_applies_to_the_persisted_model_when_none_is_sent(
+        self, webapp_client, _bypass_gate, _spawn
+    ):
+        client, _, overrides = webapp_client
+        assert self._start(client, overrides, effort="XHigh").json()["effort"] == "xhigh"
+        assert "--model opus --effort xhigh" in _spawn["flags"]
+
+    @pytest.mark.parametrize("effort", ["ultra", "off", 3])
+    def test_an_effort_the_model_does_not_offer_is_a_400_naming_the_allowed(
+        self, webapp_client, _bypass_gate, _spawn, effort
+    ):
+        client, _, overrides = webapp_client
+        resp = self._start(client, overrides, model="claude:opus", effort=effort)
+        assert resp.status_code == 400
+        if isinstance(effort, str):
+            assert resp.json()["detail"].endswith("allowed: low, medium, high, xhigh, max")
+        assert not _spawn
+
+    def test_codex_effort_rides_the_reasoning_config(
+        self, webapp_client, _bypass_gate, _spawn, monkeypatch
+    ):
+        from app.webapp.routers import board_spawn
+        monkeypatch.setattr(board_spawn.agents, "is_installed", lambda a: True)
+        client, _, overrides = webapp_client
+        resp = self._start(client, overrides, model="codex:gpt-5.6-sol", effort="ultra")
+        assert "-c model_reasoning_effort=ultra" in _spawn["flags"]
+        assert resp.json()["effort"] == "ultra"
+
+
 class TestIssueStartBrief:
     """#1114: an optional dispatch brief rides the launch command as a
     launcher-generated ``--brief <path>`` — never as client text."""
@@ -595,6 +655,18 @@ class TestGrokAutoSwitch:
         state["used"] = 99
         assert self._start(client)["auto_switch"] is None
         assert _spawn["agent"] == "claude"
+
+    def test_effort_grok_offers_rides_the_switch_and_one_it_lacks_is_dropped(
+        self, _bypass_gate, _spawn, _grok
+    ):
+        client = _grok[0]
+        body = client.post("/api/board/issues/start", json={
+            "repo": "myrepo", "number": 5, "model": "claude:sonnet", "effort": "medium"}).json()
+        assert "--reasoning-effort medium" in _spawn["flags"] and body["effort"] == "medium"
+        body = client.post("/api/board/issues/start", json={
+            "repo": "myrepo", "number": 5, "model": "claude:sonnet", "effort": "xhigh"}).json()
+        assert _spawn["agent"] == "grok" and "xhigh" not in _spawn["flags"]
+        assert "effort" not in body
 
     def test_untrusted_repo_skips_with_a_reason(self, _bypass_gate, _spawn, _grok):
         client, _, home, _ = _grok
