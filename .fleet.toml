@@ -10,6 +10,15 @@ shape       = "webapp-tray"
 # `webapp/` holds the gitignored runtime state the tray writes (briefs, verify logs,
 # certificates); the preset lists `assets/` and `config/` already.
 extra_roots = ["webapp"]
+# Contracts with the rest of the fleet (schema: fleet-config architecture/README.md).
+interfaces = [
+  { name = "jobs", kind = "http", doc = "docs/jobs-tab.md" },
+  { name = "board", kind = "http", doc = "docs/board.md" },
+  { name = "sessions", kind = "http", doc = "docs/session-view.md" },
+]
+owns       = ["launcher webapp", "agent sessions", "job scheduling", "Board"]
+not_owns   = ["LLM routing", "agent config and skills", "app code it launches"]
+depends_on = ["local-llm-hub", "voice-transcriber", "photo-ocr", "task-os", "life-os", "fleet-config"]
 
 # ---------------------------------------------------------------------------
 # [worktree] -- gitignored paths fleet-config junctions from this primary
