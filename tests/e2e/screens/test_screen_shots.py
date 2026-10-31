@@ -242,6 +242,8 @@ def test_settings_shots(browser: Browser, base_url: str) -> None:
             page.route(re.compile(r".*/api/config$"), _json_route(_CONFIG))
             page.route(re.compile(r".*/api/fleet/scope$"), _json_route(
                 {"available": True, "reason": None, "repos": [{"name": "demo-project", "status": "active"}]}))
+            page.route(re.compile(r".*/api/desktop-session$"), _json_route(
+                {"state": "local", "this_pc": True}))
             page.goto(f"{base_url}/", wait_until="domcontentloaded")
             page.locator("#tabClaude").click()
             open_settings(page)

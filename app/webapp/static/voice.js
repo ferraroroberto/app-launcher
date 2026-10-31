@@ -25,6 +25,7 @@ import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
 import { inputLabel, watchInputLevel } from './voice-level.js';
+import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
 
 const _CHUNK_MS = 1000;
 // A chunk upload that fails (network error or non-2xx) is retried this many
@@ -393,7 +394,13 @@ async function acquireStream(d) {
   } catch (exc) {
     _activeInstance = null;
     setRecordingUI(d, false);
-    apiFailToast('Microphone unavailable', exc);
+    // No device at all is what a Remote Desktop session without a redirected
+    // mic reports; any other refusal (permission, in use) keeps its own text.
+    if (exc && exc.name === 'NotFoundError' && (await inRemoteDesktopSession())) {
+      toast(REMOTE_MIC_HINT, 'error', { duration: 9000 });
+    } else {
+      apiFailToast('Microphone unavailable', exc);
+    }
     return null;
   }
   if (d.aborted) {

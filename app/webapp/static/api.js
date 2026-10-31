@@ -235,7 +235,7 @@ export function toast(msg, kind, opts) {
   clearTimeout(toastTimers.get(el));
   toastTimers.set(el, setTimeout(function () {
     el.hidden = true;
-  }, kind === 'error' ? 4500 : (opts && opts.duration) || 2200));
+  }, (opts && opts.duration) || (kind === 'error' ? 4500 : 2200)));
 }
 
 // Toast a failed API call as "<prefix>: <message>" (error styling) — unless
