@@ -309,3 +309,42 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(line).to_have_text("Not set up: fill the task-os keys in webapp_config.json.")
     send.click()
     expect(toast).to_have_text("Send failed: set task_os_person in webapp_config.json")
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [390, 430])
+def test_send_toast_stays_inside_the_sheet_above_send(
+    authed_page: Page, base_url: str, width: int, theme: str,
+) -> None:
+    """The sheet's own toast is placed against the sheet, never the viewport:
+    its whole box (border and radius included) sits inside the sheet's and
+    clear of the Send button."""
+    page = authed_page
+    page.set_viewport_size({"width": width, "height": 844})
+    _route_usage(page)
+    nothing = "Nothing new to send. Today and the last 7 days are up to date in task-os."
+    ok = {"at": _now_iso(), "first": "2026-10-11", "last": "2026-10-18", "days": 8,
+          "total_minutes": 300, "dry_run": False, "put": 0, "deleted": 0, "unchanged": 8,
+          "summary": nothing}
+    status = {"configured": True, "last_ok": None, "last_error": None}
+    post = [200, {"result": {k: v for k, v in ok.items() if k != "at"},
+                  "configured": True, "last_ok": ok, "last_error": None}]
+    _route_export(page, status, post)
+    page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
+    page.goto(base_url, wait_until="domcontentloaded")
+    page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+    open_settings_sheet(page, "screenTimeSheet")
+    page.locator("#screenTimeSend").click()
+    toast = page.locator("#screenTimeToast")
+    expect(toast).to_have_text(nothing)
+    box = stable_eval(toast, """t => {
+      const r = (el) => { const b = el.getBoundingClientRect();
+        return { l: b.left, r: b.right, t: b.top, b: b.bottom }; };
+      const sheet = t.closest('dialog');
+      return { toast: r(t), sheet: r(sheet), send: r(sheet.querySelector('#screenTimeSend')) };
+    }""")
+    toast_box, sheet_box, send_box = box["toast"], box["sheet"], box["send"]
+    assert toast_box["l"] >= sheet_box["l"] - 0.5, box
+    assert toast_box["r"] <= sheet_box["r"] + 0.5, box
+    assert toast_box["t"] >= sheet_box["t"] - 0.5, box
+    assert toast_box["b"] <= send_box["t"] + 0.5, box
