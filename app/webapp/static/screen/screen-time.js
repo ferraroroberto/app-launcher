@@ -353,16 +353,19 @@ async function loadSent() {
 
 async function sendNow() {
   const button = document.getElementById('screenTimeSend');
+  const host = document.getElementById('screenTimeToast');
   button.setAttribute('aria-busy', 'true');
   button.disabled = true;
   button.textContent = 'Sending…';
+  host.hidden = true;
   try {
     const answer = await jsonApi('/api/screen-time/export', { method: 'POST' });
-    const r = answer.result;
-    toast('Sent ' + r.days + ' days to task-os', 'ok');
+    // The server words what changed (or "Nothing new"); a long line needs
+    // longer on screen than the default confirmation.
+    toast(answer.result.summary, 'ok', { host, duration: 6000 });
     renderSent(answer);
   } catch (exc) {
-    apiFailToast('Send failed', exc);
+    apiFailToast('Send failed', exc, { host });
     await loadSent();
   } finally {
     button.removeAttribute('aria-busy');

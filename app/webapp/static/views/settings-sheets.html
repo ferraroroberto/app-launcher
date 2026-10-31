@@ -43,6 +43,9 @@
           <button type="button" id="screenTimeSend" class="button-primary detail-save-btn" data-track="screen-time.send">Send to task-os</button>
         </div>
       </div>
+      <!-- The page's toast sits under this dialog's top layer, so Send's
+           outcome is shown by the sheet's own. -->
+      <div id="screenTimeToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
     </dialog>
 
     <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">

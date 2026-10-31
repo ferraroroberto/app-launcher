@@ -212,26 +212,30 @@ export function wireLoginForm(onLoginSuccess) {
 // re-exported here so existing `from './api.js'` importers are unchanged.
 export { escapeHtml };
 
-let toastTimer = null;
+const toastTimers = new WeakMap();
 // opts.icon (a Lucide glyph name) renders a leading icon before the escaped
-// message; without it the toast stays plain text as before.
+// message; without it the toast stays plain text as before. opts.duration
+// (ms) overrides how long a non-error toast stays up. opts.host is a toast
+// element inside an open modal <dialog>: the page's own toast sits under a
+// dialog's top layer, so a sheet that must confirm an action carries one.
 export function toast(msg, kind, opts) {
+  const el = (opts && opts.host) || els.toast;
   const iconName = opts && opts.icon;
   if (iconName) {
-    els.toast.innerHTML = icon(iconName) + ' ' + escapeHtml(msg);
+    el.innerHTML = icon(iconName) + ' ' + escapeHtml(msg);
   } else {
-    els.toast.textContent = msg;
+    el.textContent = msg;
   }
-  els.toast.className = 'toast ' + (kind || '');
+  el.className = (opts && opts.host ? 'sheet-toast ' : 'toast ') + (kind || '');
   // Errors interrupt (aria-live="assertive"); everything else stays polite so
   // routine confirmations don't cut off other screen-reader speech — the
   // design.md feedback contract, same as home-automation's toast.
-  els.toast.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-  els.toast.hidden = false;
-  if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(function () {
-    els.toast.hidden = true;
-  }, kind === 'error' ? 4500 : 2200);
+  el.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
+  el.hidden = false;
+  clearTimeout(toastTimers.get(el));
+  toastTimers.set(el, setTimeout(function () {
+    el.hidden = true;
+  }, kind === 'error' ? 4500 : (opts && opts.duration) || 2200));
 }
 
 // Toast a failed API call as "<prefix>: <message>" (error styling) — unless
@@ -247,9 +251,9 @@ export function toast(msg, kind, opts) {
 // they tag `.status` on their thrown Error instead, and this is the one place
 // that turns that into the same showLogin() the rest of the app gets for
 // free through api()/jsonApi()/apiRaw().
-export function apiFailToast(prefix, exc) {
+export function apiFailToast(prefix, exc, opts) {
   if (exc instanceof AuthRequiredError) return;
   if (exc && exc.status === 401) { showLogin(); return; }
   const msg = (exc && exc.message) || exc;
-  toast(prefix ? prefix + ': ' + msg : String(msg), 'error');
+  toast(prefix ? prefix + ': ' + msg : String(msg), 'error', opts);
 }

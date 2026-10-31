@@ -1,7 +1,8 @@
 """`usage-export` subcommand — send Screen time to task-os (#1678).
 
-Resends the last 7 completed days (or every day from ``--since``) as one
-task-os Time entry per day; ``--dry-run`` prints the per-day table and sends
+Sends the last 7 completed days and today's running total (or every day from
+``--since``) as one task-os Time entry per day, skipping days that have not
+changed since the last send; ``--dry-run`` prints the per-day table and sends
 nothing. The nightly Job runs it bare. Exit codes, one per failure kind:
 2 not set up, 3 category missing, 4 task-os unreachable, 5 task-os refused,
 6 no usage log yet. The rules live in :mod:`src.usage.export`.
@@ -33,13 +34,13 @@ class UsageExportCommand(BaseCommand):
     def add_parser(cls, subparsers: argparse._SubParsersAction) -> None:
         p = subparsers.add_parser(
             "usage-export",
-            help="Send Screen time to task-os, one entry per completed day",
+            help="Send Screen time to task-os, one entry per day (today included)",
         )
         p.add_argument(
             "--since",
             type=_day,
             default=None,
-            help="First day to send (YYYY-MM-DD); default: the last 7 completed days",
+            help="First day to send (YYYY-MM-DD); default: the last 7 days and today",
         )
         p.add_argument(
             "--dry-run",
@@ -65,5 +66,5 @@ class UsageExportCommand(BaseCommand):
         if args.dry_run:
             logger.info("ℹ️ --dry-run: nothing sent.")
         else:
-            logger.info(f"✅ Sent {result.put} day(s), deleted {result.deleted} zero day(s).")
+            logger.info(f"✅ {result.summary()}")
         return 0

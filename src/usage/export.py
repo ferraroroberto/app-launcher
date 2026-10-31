@@ -11,9 +11,13 @@ numbers to task-os as one duration-only Time entry per completed local day:
   usage:app-launcher:<YYYY-MM-DD>`` (task-os#469): a resend replaces the
   entry, never duplicates it. A day that rounds to 0 minutes is a ``DELETE``
   of the same key; a 404 there means it was never sent, which is fine.
-- **The last 7 completed days by default.** Today is never sent (it is still
-  running); resending a week absorbs late events and rule changes. ``since``
+- **The last 7 completed days plus today by default.** Today goes as a running
+  total under its own day key, replaced on every send and finalised by the
+  next run; resending a week absorbs late events and rule changes. ``since``
   widens the window for a backfill.
+- **Unchanged days are skipped.** The status file keeps what each day last
+  sent (whole minutes and the device split), so a day that has not changed
+  makes no request, and every send can say what it changed.
 - **Config** lives in ``webapp_config.json``: ``task_os_url``,
   ``task_os_person`` (a task-os person id) and the target category as
   ``task_os_area`` / ``task_os_category`` slugs, resolved to an id through
@@ -27,16 +31,18 @@ for the webapp route and an exit code for the CLI and the nightly Job.
 
 A send (not a dry run) records its outcome in ``screen-time-export.json`` in
 the app's runtime-data folder, which the sheet's "Last sent" line reads. Only
-dates, counts and the error message are stored, never usage rows.
+dates, counts, the per-day sent minutes and the error message are stored,
+never usage rows.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
@@ -135,6 +141,16 @@ class DayEntry:
         return "put" if self.minutes > 0 else "delete"
 
 
+@dataclass(frozen=True)
+class DayOutcome:
+    """What a send did to one day: ``added``, ``updated``, ``removed`` or
+    ``unchanged`` (no request, or a delete of a key task-os never had)."""
+
+    day: date
+    minutes: int
+    outcome: str
+
+
 @dataclass
 class ExportResult:
     """One run's outcome; ``to_dict`` is the route's answer and the status file's record."""
@@ -145,10 +161,20 @@ class ExportResult:
     dry_run: bool
     put: int = 0
     deleted: int = 0
+    outcomes: List[DayOutcome] = field(default_factory=list)
 
     @property
     def total_minutes(self) -> int:
         return sum(e.minutes for e in self.entries)
+
+    @property
+    def unchanged(self) -> int:
+        return sum(1 for o in self.outcomes if o.outcome == "unchanged")
+
+    def summary(self) -> str:
+        """The toast after a send: what changed, or that nothing did. ``last``
+        is today, so days read as "today", "yesterday" or a date."""
+        return _summary(self.outcomes, self.last)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -159,19 +185,20 @@ class ExportResult:
             "dry_run": self.dry_run,
             "put": self.put,
             "deleted": self.deleted,
+            "unchanged": self.unchanged,
+            "summary": self.summary(),
         }
 
 
 # ------------------------------------------------------------ the numbers
 
 
-def completed_days(today: date, since: Optional[date] = None) -> List[date]:
-    """The days a send covers: ``since`` (default a week back) up to yesterday."""
-    last = today - timedelta(days=1)
+def send_days(today: date, since: Optional[date] = None) -> List[date]:
+    """The days a send covers: ``since`` (default a week back) through today."""
     first = since if since is not None else today - timedelta(days=DEFAULT_DAYS)
-    if first > last:
-        raise ValueError(f"--since must be before today ({today.isoformat()})")
-    return [first + timedelta(days=i) for i in range((last - first).days + 1)]
+    if first > today:
+        raise ValueError(f"--since must not be after today ({today.isoformat()})")
+    return [first + timedelta(days=i) for i in range((today - first).days + 1)]
 
 
 def _whole_minutes(minutes: float) -> int:
@@ -196,6 +223,60 @@ def entry_note(by_device: Mapping[str, int]) -> str:
         if by_device.get(device, 0) > 0
     ]
     return "Launcher screen time: " + ", ".join(parts) if parts else "Launcher screen time"
+
+
+def _day_label(day: date, today: date) -> str:
+    if day == today:
+        return "today"
+    if day == today - timedelta(days=1):
+        return "yesterday"
+    return f"{day:%a} {day.day} {day:%b}"
+
+
+# Older changed days listed by name before the toast folds them into a count.
+_NAMED_OLDER_CHANGES = 3
+
+
+def _summary(outcomes: List[DayOutcome], today: date) -> str:
+    """One line for the toast after a send. Today and yesterday are always
+    named; older days are named only when they changed."""
+    if not outcomes:
+        return "Nothing to send."
+    if all(o.outcome == "unchanged" for o in outcomes):
+        earlier = len(outcomes) - 1 if outcomes[-1].day == today else len(outcomes)
+        if earlier <= 0:
+            return "Nothing new to send. Today is already in task-os."
+        what = "the last day" if earlier == 1 else f"the last {earlier} days"
+        return f"Nothing new to send. Today and {what} are up to date in task-os."
+
+    parts: List[str] = []
+    older_changed: List[DayOutcome] = []
+    older_unchanged = 0
+    for o in reversed(outcomes):
+        label = _day_label(o.day, today)
+        recent = o.day >= today - timedelta(days=1)
+        if o.outcome == "unchanged":
+            if recent:
+                parts.append(f"{label} unchanged")
+            else:
+                older_unchanged += 1
+        elif recent:
+            parts.append(_changed_phrase(o, label))
+        else:
+            older_changed.append(o)
+    if len(older_changed) > _NAMED_OLDER_CHANGES:
+        parts.append(f"{len(older_changed)} earlier days changed")
+    else:
+        parts.extend(_changed_phrase(o, _day_label(o.day, today)) for o in older_changed)
+    if older_unchanged:
+        parts.append(f"{older_unchanged} earlier day{'s' if older_unchanged != 1 else ''} unchanged")
+    return "Sent: " + ", ".join(parts) + "."
+
+
+def _changed_phrase(outcome: DayOutcome, label: str) -> str:
+    if outcome.outcome == "removed":
+        return f"{label} removed"
+    return f"{label} {_format_minutes(outcome.minutes)} ({outcome.outcome})"
 
 
 def _local_midnight(day: date) -> datetime:
@@ -285,30 +366,50 @@ def resolve_category(base: str, person: str, area_slug: str, category_slug: str)
     )
 
 
-def send_entries(base: str, person: str, category_id: int, entries: List[DayEntry]) -> tuple[int, int]:
-    """PUT each day with minutes and DELETE each zero day; ``(put, deleted)``.
-    Stops at the first refusal: what went before is already stored, and a
-    resend repeats it harmlessly."""
-    put = deleted = 0
+def _sent_record(entry: DayEntry) -> Dict[str, Any]:
+    """What the ledger keeps of a day: whole minutes and the device split."""
+    return {"minutes": entry.minutes, "by_device": dict(entry.by_device)}
+
+
+def send_entries(
+    base: str,
+    person: str,
+    category_id: int,
+    entries: List[DayEntry],
+    sent: Dict[str, Dict[str, Any]],
+) -> List[DayOutcome]:
+    """Send each day that differs from ``sent`` (the ledger of what went
+    before): PUT a day with minutes, DELETE a zero day, skip an unchanged one.
+    ``sent`` is updated after every accepted day, so a refusal midway, which
+    stops the run, still leaves the ledger true to what task-os holds."""
+    outcomes = []
     for entry in entries:
+        iso = entry.day.isoformat()
         url = f"{base}/api/time/entries/by-source/{entry.source_id}"
-        if entry.action == "put":
+        record = _sent_record(entry)
+        before = sent.get(iso)
+        if before == record:
+            outcome = "unchanged"
+        elif entry.action == "put":
             resp = _call("PUT", url, json={
                 "person": person,
                 "category_id": category_id,
-                "day": entry.day.isoformat(),
+                "day": iso,
                 "minutes": entry.minutes,
                 "note": entry.note,
             })
             if resp.status_code >= 400:
-                raise _rejected(entry.day.isoformat(), resp)
-            put += 1
+                raise _rejected(iso, resp)
+            outcome = "updated" if before and before.get("minutes") else "added"
         else:
             resp = _call("DELETE", url)
             if resp.status_code >= 400 and resp.status_code != 404:
-                raise _rejected(f"the delete of {entry.day.isoformat()}", resp)
-            deleted += 1
-    return put, deleted
+                raise _rejected(f"the delete of {iso}", resp)
+            # A 404 means task-os never had the key: nothing was removed.
+            outcome = "unchanged" if resp.status_code == 404 else "removed"
+        sent[iso] = record
+        outcomes.append(DayOutcome(entry.day, entry.minutes, outcome))
+    return outcomes
 
 
 # ------------------------------------------------------------ orchestration
@@ -355,15 +456,17 @@ def run_export(
     db_path: Optional[Path] = None,
     status_path: Optional[Path] = None,
 ) -> ExportResult:
-    """Count the completed days and send them; a dry run only counts.
+    """Count the days through today and send those that changed; a dry run
+    only counts.
 
     A dry run touches neither task-os nor the status file, so it needs no
     ``task_os_*`` config. A real send records its outcome, success or
     :class:`ExportError`, in the status file before returning or raising.
     """
-    days = completed_days(today or date.today(), since)
+    days = send_days(today or date.today(), since)
     db_path = db_path or default_db_path()
     status_path = status_path or default_status_path()
+    ledger: Optional[Dict[str, Any]] = None
     try:
         if not db_path.is_file():
             raise UsageLogMissing("no usage log yet: nothing to send")
@@ -377,16 +480,20 @@ def run_export(
         if target is not None:
             base, person, area, category = target
             category_id = resolve_category(base, person, area, category)
-            result.put, result.deleted = send_entries(base, person, category_id, entries)
+            ledger = _read_ledger(status_path, _target_key(base, person, category_id))
+            result.outcomes = send_entries(base, person, category_id, entries, ledger["days"])
+            result.put = sum(1 for o in result.outcomes if o.outcome in ("added", "updated"))
+            result.deleted = sum(1 for o in result.outcomes if o.outcome == "removed")
     except ExportError as exc:
         if not dry_run:
-            _record(status_path, error=exc)
+            _record(status_path, error=exc, ledger=ledger)
         raise
     if not dry_run:
-        _record(status_path, result=result)
+        _record(status_path, result=result, ledger=ledger)
         logger.info(
-            "✅ screen time export: %s to %s, %d sent, %d deleted",
-            result.first.isoformat(), result.last.isoformat(), result.put, result.deleted,
+            "✅ screen time export: %s to %s, %d sent, %d deleted, %d unchanged",
+            result.first.isoformat(), result.last.isoformat(),
+            result.put, result.deleted, result.unchanged,
         )
     return result
 
@@ -398,9 +505,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def read_status(status_path: Optional[Path] = None) -> Dict[str, Any]:
-    """``{"last_ok": {...} | None, "last_error": {...} | None}``."""
-    path = status_path or default_status_path()
+def _read_raw(path: Path) -> Dict[str, Any]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -408,9 +513,27 @@ def read_status(status_path: Optional[Path] = None) -> Dict[str, Any]:
     except (OSError, ValueError) as exc:
         logger.info("ℹ️ screen time export: unreadable status file %s (%s)", path, exc)
         raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def read_status(status_path: Optional[Path] = None) -> Dict[str, Any]:
+    """``{"last_ok": {...} | None, "last_error": {...} | None}``."""
+    raw = _read_raw(status_path or default_status_path())
     return {"last_ok": raw.get("last_ok"), "last_error": raw.get("last_error")}
+
+
+def _target_key(base: str, person: str, category_id: int) -> str:
+    """Names where the ledger's days went: a new task-os, person or category
+    starts a fresh ledger, so nothing is skipped as "already sent" there."""
+    return hashlib.sha256(f"{base}|{person}|{category_id}".encode("utf-8")).hexdigest()[:16]
+
+
+def _read_ledger(status_path: Path, target: str) -> Dict[str, Any]:
+    """What each day last sent to ``target``: ``{"target", "days": {iso: {minutes, by_device}}}``."""
+    stored = _read_raw(status_path).get("sent")
+    if isinstance(stored, dict) and stored.get("target") == target and isinstance(stored.get("days"), dict):
+        return {"target": target, "days": dict(stored["days"])}
+    return {"target": target, "days": {}}
 
 
 def _record(
@@ -418,10 +541,14 @@ def _record(
     *,
     result: Optional[ExportResult] = None,
     error: Optional[ExportError] = None,
+    ledger: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Keep the last success and the last failure. A success clears nothing:
-    the sheet shows a failure only when it is newer than the last success."""
-    status = read_status(status_path)
+    """Keep the last success, the last failure and the per-day ledger. A
+    success clears nothing: the sheet shows a failure only when it is newer
+    than the last success."""
+    status = _read_raw(status_path)
+    if ledger is not None:
+        status["sent"] = ledger
     if result is not None:
         status["last_ok"] = {"at": _now_iso(), **result.to_dict()}
     if error is not None:
