@@ -121,7 +121,7 @@ def _assert_bottom_tab_bar_is_stable_and_low(page: Page) -> None:
     1. **No scroll drift.** The bar is promoted to its own compositing layer
        and the vendored nav-tabs.css/_vendored/nav/nav-tabs.js (issue #355)
        keep it glued to the visual viewport bottom in a browser tab
-       (standalone PWAs get no measured translate at all — CSS owns the
+       (the installed app gets no measured translate at all — CSS owns the
        position there). At a settled steady state that pin is a no-op, so
        the bar carries no residual translate — asserted via the computed
        transform being identity/none.

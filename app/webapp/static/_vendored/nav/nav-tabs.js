@@ -45,15 +45,6 @@
  *   (including the initial restore), with the active tab name.
  * @param {string|null} [opts.defaultTab=null]  tab to select when nothing is
  *   stored; defaults to the first tab in DOM order.
- * @param {(msg: string) => void} [opts.navEvent]  nav-forensics hook: called
- *   with a short breadcrumb on every pin decision (transform set/cleared,
- *   modal engaged/released). Wire it to the app's nav-debug recorder when one
- *   exists (home-automation's recordNavEvent); defaults to a no-op.
- * @param {string|null} [opts.scrollResetSelector='.app']  element scroller to
- *   reset to top on every tab switch, alongside window scroll. In the
- *   standalone-PWA shell all real scrolling lives in a fixed-inset `.app`
- *   element, so both must be reset; pass null to skip
- *   the element reset for apps without that shell.
  * @returns {{
  *   setTab: (tab: string) => void,
  *   getTab: () => string,
@@ -72,8 +63,6 @@ export function initNavTabs(opts = {}) {
     storageKey = null,
     onChange = function () {},
     defaultTab = null,
-    navEvent = function () {},
-    scrollResetSelector = '.app',
   } = opts;
 
   const nav = document.querySelector(navSelector);
@@ -83,6 +72,7 @@ export function initNavTabs(opts = {}) {
   if (!buttons.length) throw new Error('initNavTabs: nav has no .tab[data-tab] buttons');
 
   const tabs = discoverTabs(buttons);
+  const pill = mountPill(nav);
 
   const names = Array.from(tabs.keys());
   const fallback = defaultTab && tabs.has(defaultTab) ? defaultTab : names[0];
@@ -99,13 +89,8 @@ export function initNavTabs(opts = {}) {
       if (entry.pane) entry.pane.hidden = !active;
     });
     nav.dataset.activeTab = tab;
-    // Scroll the new pane to the top. The element scroller is the real one in
-    // the standalone shell; the window is the scroller everywhere else.
-    // Resetting both covers both modes.
-    if (scrollResetSelector) {
-      const scroller = document.querySelector(scrollResetSelector);
-      if (scroller) scroller.scrollTop = 0;
-    }
+    placePill(nav, pill, false);
+    // Each pane opens at its top; the document is the only scroller.
     window.scrollTo(0, 0);
     if (storageKey) {
       try { localStorage.setItem(storageKey, tab); } catch (_) { /* private mode */ }
@@ -133,9 +118,26 @@ export function initNavTabs(opts = {}) {
   });
 
   setTab(initialTab());
-  pinNavToVisualViewport(nav, navEvent);
+  expandStandaloneViewport();
+  // Rotation, a desktop↔phone width crossing or a text-size change moves the
+  // tab cells: re-place the capsule without a slide.
+  window.addEventListener('resize', function () { placePill(nav, pill, true); }, { passive: true });
 
   return { setTab: setTab, getTab: function () { return current; }, setBadge: setBadge };
+}
+
+// An installed iOS app opens with its viewport 59px short of the screen and,
+// on a cold launch, grows it 1px at a time over ~3s, painting nothing below
+// the moving edge, so the bar is revealed slowly. A 1px programmatic scroll
+// asks iOS for the full-height viewport at once; the page goes straight back
+// to the top. Once, at startup, and only when the page has not been scrolled.
+function expandStandaloneViewport() {
+  if (!window.matchMedia('(display-mode: standalone)').matches) return;
+  if (window.scrollY !== 0) return;
+  window.scrollTo(0, 1);
+  requestAnimationFrame(function () {
+    if (window.scrollY === 1) window.scrollTo(0, 0);
+  });
 }
 
 // tab name → { button, pane }. The pane is resolved from aria-controls; a tab
@@ -202,149 +204,31 @@ function paintBadge(button, count, noun, tone) {
   hidden.textContent = ', ' + n + (noun ? ' ' + noun : '');
 }
 
-// Largest slice we'll pin against in a browser tab — Safari's toolbar (~44–90px).
-// A bigger gap is the soft keyboard / a picker, which we must not chase.
-const MAX_PIN_PX = 160;
-
-// Installed PWA: no toolbar, so the transform is pure harm here — disable it
-// entirely and let CSS pin the bar.
-function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true;
+// The sliding active capsule. Inserted by the script, not the markup, so every
+// app's nav HTML stays as it is; CSS shows it only in the mobile pill. It starts
+// with .no-anim so its first placement jumps instead of sliding in.
+function mountPill(nav) {
+  const pill = document.createElement('span');
+  pill.className = 'tab-pill no-anim';
+  pill.setAttribute('aria-hidden', 'true');
+  nav.prepend(pill);
+  return pill;
 }
 
-function isEditableFocused() {
-  const a = document.activeElement;
-  if (!a) return false;
-  const tag = a.tagName;
-  // Anything that raises the iOS keyboard. SELECT opens a picker that also
-  // shrinks the viewport, so treat it the same.
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || a.isContentEditable;
-}
-
-/**
- * Keep the floating bottom-tab pill pinned to the bottom on mobile — CSS-first,
- * with a minimal browser-only transform fallback.
- *
- * Hard-won lessons (validated on a real iPhone): the JS transform is the enemy in a standalone PWA, and nav
- * placement is load-bearing. nav-tabs.css positions the bar `fixed; bottom: …`,
- * which is correct on its own in an installed PWA (no browser chrome) only when
- * the nav is a body-level sibling of the content wrapper, not nested inside a
- * scroller. The VisualViewport transform only ever existed to chase Safari's
- * collapsing *browser* toolbar — and in standalone every measured offset risks
- * stranding the bar UP because iOS's layout and rendered geometry disagree
- * there. Even a "corrective" standalone translate was proven actively
- * harmful: visualViewport.offsetTop swings continuously during momentum
- * scrolling, an rAF-scheduled correction is structurally one frame behind, and
- * with ~21px of clearance the correction pushed the bar off-screen. So the rule
- * is blunt: in a standalone PWA NEVER apply a measured translate. CSS owns the
- * position; the standalone shell removes the *cause* by moving all real
- * scrolling into a fixed-inset `.app` element scroller whose bounce cannot
- * move the visual viewport (see the app shell's CSS for that contract).
- *
- * The transform survives ONLY for a real browser tab, where the toolbar
- * genuinely collapses: translate the bar up by the hidden slice, clamped to a
- * toolbar's height and suppressed while the soft keyboard is up. A periodic
- * watchdog keeps it self-correcting. None of this runs in the PWA.
- *
- * Gated to the coarse-pointer / narrow floating-bar mode (desktop renders .tabs
- * as a sticky top control, where a transform would be wrong) and feature-gated
- * on window.visualViewport (older browsers keep the CSS-only behaviour — no error).
- *
- * @param {HTMLElement} nav  the <nav class="tabs"> element.
- * @param {(msg: string) => void} navEvent  forensics breadcrumb hook (no-op ok).
- */
-function pinNavToVisualViewport(nav, navEvent) {
-  const vv = window.visualViewport;
-  if (!vv) return;
-  const mq = window.matchMedia('(pointer: coarse) and (max-width: 520px)');
-
-  let rafPending = false;
-
-  function apply() {
-    if (!mq.matches) {
-      // Desktop / wide: CSS owns the bar. Drop any transform we may have left on.
-      if (nav.style.transform !== '') { navEvent('apply:clear(desktop)'); nav.style.transform = ''; }
-      return;
-    }
-    // Hidden behind a modal/overlay — re-pin the instant it reappears.
-    if (getComputedStyle(nav).visibility === 'hidden') return;
-    // Standalone PWA → never translate (CSS owns it; see the lessons
-    // above). Browser tab → compensate for the collapsing toolbar, but not
-    // while a field is focused (keyboard up) and never by more than a
-    // toolbar's worth.
-    let desired = '';
-    if (!isStandalone() && !isEditableFocused()) {
-      const hidden = window.innerHeight - vv.height - vv.offsetTop;
-      if (hidden > 1 && hidden <= MAX_PIN_PX) desired = 'translateY(' + -hidden + 'px)';
-    }
-    if (nav.style.transform !== desired) {
-      navEvent('apply:setTransform ' + (nav.style.transform || '(none)') + ' -> ' + (desired || '(none)'));
-      nav.style.transform = desired;
-    }
+// Move the capsule onto the active tab. `jump` places it without the spring
+// (resize, rotation); otherwise the CSS transition carries it there. Two frames
+// after a jump the transition is re-armed, so the next tap springs. .has-pill
+// hands the active tab's own capsule paint over to this element.
+function placePill(nav, pill, jump) {
+  const on = nav.querySelector('.tab.active');
+  if (!on || !on.offsetWidth) return;
+  if (jump) pill.classList.add('no-anim');
+  pill.style.setProperty('--pill-x', on.offsetLeft + 'px');
+  pill.style.setProperty('--pill-w', on.offsetWidth + 'px');
+  nav.classList.add('has-pill');
+  if (pill.classList.contains('no-anim')) {
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { pill.classList.remove('no-anim'); });
+    });
   }
-
-  // Coalesce burst events (vv scroll/resize fire rapidly) into one paint.
-  function schedule() {
-    if (rafPending) return;
-    rafPending = true;
-    requestAnimationFrame(function () { rafPending = false; apply(); });
-  }
-
-  vv.addEventListener('resize', schedule);
-  vv.addEventListener('scroll', schedule);
-  // matchMedia change covers rotation / desktop↔mobile resize crossing 520px.
-  if (mq.addEventListener) mq.addEventListener('change', apply);
-
-  watchRepinTriggers(nav, navEvent, apply);
-
-  apply();
-}
-
-// Every trigger besides the viewport's own events that re-runs `apply`: modal
-// open/close, overlay toggles, a periodic watchdog, foregrounding and load.
-function watchRepinTriggers(nav, navEvent, apply) {
-  // <dialog> open/close re-pin: react to scroll-lock.js's
-  // explicit engaged/released signals instead of an independent MutationObserver
-  // racing the same `open` attribute mutation. Two observers guessing at ordering
-  // off one DOM change is what let a stale translateY survive into the frame
-  // where CSS un-hides the bar again — clearing the transform up front (on
-  // `engaged`, before the bar is even hidden) and only recomputing once
-  // scroll-lock confirms the body restore is done (`released`) removes the race.
-  // Apps without scroll-lock.js simply never fire these events — harmless.
-  document.addEventListener('scroll-lock:engaged', function () {
-    if (nav.style.transform !== '') {
-      navEvent('engaged:clear ' + nav.style.transform + ' -> (none)');
-      nav.style.transform = '';
-    }
-  });
-  document.addEventListener('scroll-lock:released', function () {
-    requestAnimationFrame(function () { requestAnimationFrame(apply); });
-  });
-
-  // Non-<dialog> overlay re-pin (e.g. a login overlay toggled via [hidden]): it
-  // never fires the scroll-lock events above. Watches `hidden` only (not `open`,
-  // which is the <dialog> signal owned by the events above) so it can't
-  // double-fire on the same mutation. Double-rAF so we recompute after layout
-  // settles.
-  const obs = new MutationObserver(function () {
-    requestAnimationFrame(function () { requestAnimationFrame(apply); });
-  });
-  obs.observe(document.documentElement, {
-    attributes: true, attributeFilter: ['hidden'], subtree: true,
-  });
-
-  // Self-healing watchdog: the ultimate backstop. Even if every event above is
-  // missed, this re-derives the resting position and pulls a stranded bar back
-  // down within ~400ms. Paused while the page is backgrounded (no layout to fix,
-  // and timers are throttled there anyway).
-  setInterval(function () { if (!document.hidden) apply(); }, 400);
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) apply();        // re-pin immediately on foreground
-  });
-  // Startup / foreground: run after the first settled layout too, so any stale
-  // browser-tab toolbar offset is corrected before the watchdog interval.
-  window.addEventListener('load', function () {
-    requestAnimationFrame(function () { requestAnimationFrame(apply); });
-  });
 }

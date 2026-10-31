@@ -3,13 +3,11 @@
 ``#toast`` must be a body-level sibling of ``<main class="app">``, not
 nested inside it — the identical structural fix already applied to the nav
 itself in issue #355 (see the comment above ``<nav class="tabs">`` in
-index.html). A ``position: fixed`` toast nested inside ``.app`` (the
-scroller `.app` becomes on an installed iOS PWA, per nav-tabs.css's
-``display-mode: standalone`` block) can get trapped/clipped behind the
-equally body-level floating nav bar on real iOS WebKit instead of escaping
-to the physical viewport. Also pins that the toast paints above the nav in
-the ordinary (non-standalone) layout, which already worked before this fix
-and must keep working after it.
+index.html). A ``position: fixed`` toast nested inside ``.app`` (the content wrapper) can get
+trapped/clipped behind the equally
+body-level floating nav bar on real iOS WebKit instead of escaping to the
+physical viewport. Also pins that the toast paints above the nav, which
+already worked before this fix and must keep working after it.
 """
 
 from __future__ import annotations

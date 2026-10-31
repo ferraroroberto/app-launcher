@@ -154,13 +154,6 @@ def test_changed_files_lists_the_sessions_edits_and_opens_one(
     assert fit["onTop"], f"the panel is not above the session view: {fit}"
     assert fit["minRow"] >= 44, f"a file row is under the 44px floor: {fit}"
     assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px: {fit}"
-    # The installed PWA's standalone shell makes .app `position: fixed`, a
-    # stacking context no z-index escapes: a panel nested inside it would sit
-    # under the body-level session view there, whatever this tab shows.
-    authed_page.evaluate("document.querySelector('.app').style.position = 'fixed'")
-    fit = stable_read(lambda: authed_page.evaluate(_FIT))
-    assert fit["onTop"], f"under a fixed .app the panel falls below the session view: {fit}"
-    authed_page.evaluate("document.querySelector('.app').style.position = ''")
 
     first = rows.first
     first.locator("summary").click()

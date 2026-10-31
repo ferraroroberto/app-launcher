@@ -85,12 +85,15 @@ def test_board_badge_counts_your_turn_from_every_tab(
     expect(badge).to_have_text("2")
     expect(badge).to_be_visible()
     expect(tab).to_have_accessible_name("Board, 2 waiting")
-    # The badge sits on the icon's corner, inside the tab.
+    # The badge sits on the icon's corner: inside the tab sideways, and inside
+    # the bar vertically (the nav's icon sits high in the pill, so the badge
+    # may overhang the tab's own top edge by a pixel or two).
     tab_box = tab.bounding_box()
     badge_box = badge.bounding_box()
-    assert tab_box and badge_box, "nav badge not laid out"
+    bar_box = authed_page.locator("nav.tabs").bounding_box()
+    assert tab_box and badge_box and bar_box, "nav badge not laid out"
     assert tab_box["x"] <= badge_box["x"] and badge_box["x"] + badge_box["width"] <= tab_box["x"] + tab_box["width"] + 1
-    assert tab_box["y"] <= badge_box["y"] + 1, (tab_box, badge_box)
+    assert bar_box["y"] <= badge_box["y"], (bar_box, badge_box)
 
     # On the Board its own payload is the count: one session in Your turn.
     tab.click()

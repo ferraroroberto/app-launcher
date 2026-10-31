@@ -8,11 +8,6 @@ import re
 import pytest
 from playwright.sync_api import Locator, Page, expect
 
-from tests.e2e.terminal.test_overlay_standalone_scrollable import (
-    _PATCH_MATCH_MEDIA,
-    _PROJECT_STANDALONE_CSS,
-)
-
 from tests.e2e.life_os._support import (
     _FAKE_TRANSCRIPT,
     _close_sheet,
@@ -159,40 +154,33 @@ _MEASURE_PILL = """
     top: r.top, bottom: r.bottom, left: r.left, right: r.right,
     hittable: !!hit && (hit === pill || pill.contains(hit)),
     hitBy: hit ? (hit.id || hit.className || hit.tagName) : null,
-    appOverflowY: getComputedStyle(document.querySelector('main.app')).overflowY,
+    bodyOverflowY: getComputedStyle(document.body).overflowY,
   };
 }
 """
 
 
 @pytest.mark.iphone
-def test_reader_covers_the_tab_bar_in_the_standalone_shell(
+def test_reader_covers_the_tab_bar_on_a_phone(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     """#1143: in the installed PWA the floating tab bar sat on top of the
     conversation viewer and hid its ↓ Latest pill. Since #1504 the reader and
     the conversation sheet are native dialogs in the top layer, which the
-    vendored shell hides the bar for (body:has(dialog[open])): the pill must
-    be on screen and hittable, and .app locked behind them.
-
-    Neither headless engine supports display-mode: standalone, so this
-    projects the shell the way #1099's test does. A pass here doesn't replace
+    vendored nav hides the bar for (body:has(dialog[open])): the pill must
+    be on screen and hittable, and the page locked behind them. Neither
+    headless engine is the installed app, so a pass here doesn't replace
     checking on the device."""
     page = authed_page
     if browser_name == "chromium":
         # The phone rules also need a coarse pointer.
         cdp = page.context.new_cdp_session(page)
         cdp.send("Emulation.setTouchEmulationEnabled", {"enabled": True, "maxTouchPoints": 5})
-    page.add_init_script(_PATCH_MATCH_MEDIA)
     page.set_viewport_size({"width": 390, "height": 844})
     _mock_skills(page)
     _mock_conversations(page)
     _mock_transcript(page, _LONG_TRANSCRIPT)
     page.goto(f"{base_url}/", wait_until="load")
-    assert page.evaluate(_PROJECT_STANDALONE_CSS) >= 1, (
-        "no display-mode: standalone rule to project; the vendored shell "
-        "block moved and this would test the browser-tab layout instead"
-    )
     tabs = page.locator("nav.tabs")
     expect(tabs).to_be_visible()
 
@@ -210,7 +198,7 @@ def test_reader_covers_the_tab_bar_in_the_standalone_shell(
     assert m["top"] >= 0 and m["bottom"] <= m["vh"] + 0.5, f"pill off-screen vertically: {m}"
     assert m["left"] >= 0 and m["right"] <= m["vw"] + 0.5, f"pill off-screen horizontally: {m}"
     assert m["hittable"], f"the ↓ Latest pill is covered at its centre by {m['hitBy']!r}: {m}"
-    assert m["appOverflowY"] == "hidden", f".app stays scrollable behind the reader: {m}"
+    assert m["bodyOverflowY"] == "hidden", f"the page stays scrollable behind the reader: {m}"
     pill.click()
     expect(page.locator("#lifeOsViewerList .tr-turn").last).to_be_in_viewport()
 

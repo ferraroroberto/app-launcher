@@ -21,14 +21,16 @@ The fleet's canonical **primary navigation**: a top segmented control on desktop
    ```css
    /* No tab-count variable is required: the mobile grid auto-fits 4–6 tabs. */
    ```
-4. **Put the standalone page head in your `index.html` `<head>`** (#287). The installed-app anchoring below assumes the web view spans the whole screen, and iOS gives an installed app the whole screen only with the translucent status bar:
+4. **Put the standalone page head in your `index.html` `<head>`.** The installed app starts with its final viewport, and the bar is in place from the first frame of a cold launch, only with the `default` status-bar style, painted in the page colour by `theme-color`:
    ```html
    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   <meta name="apple-mobile-web-app-status-bar-style" content="default">
+   <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+   <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)">
    ```
-   Without `apple-mobile-web-app-status-bar-style: black-translucent` plus `viewport-fit=cover`, the app starts below an opaque status bar and the pill lands one status-bar height (about 59pt) too low, mostly off-screen (parking-manager#24). Desktop browsers and Playwright's WebKit don't reproduce it, so assert the pair in your e2e smoke test rather than waiting for a phone to show it:
+   `black-translucent` is the wrong value: it lets the installed app grow its viewport after launch, so the bar rides that growth, and it leaves the status bar to be hidden by an app-drawn scrim that this component no longer ships. Desktop browsers and Playwright's WebKit don't reproduce the installed app, so assert the pair in your e2e smoke test rather than waiting for a phone to show it:
    ```python
-   assert page.locator('meta[name="apple-mobile-web-app-status-bar-style"]').get_attribute("content") == "black-translucent"
+   assert page.locator('meta[name="apple-mobile-web-app-status-bar-style"]').get_attribute("content") == "default"
    assert "viewport-fit=cover" in page.locator('meta[name="viewport"]').get_attribute("content")
    ```
 5. Wire up the switcher once the DOM is ready:
@@ -98,15 +100,11 @@ That is 21 + 61 + 21 + 12 = 115px with no safe area, plus the home-indicator ins
 
 Above the end, rows scroll under the floating pill by design, so the pill must win every tap in each tab's rectangle. Tabs are rectangles, but the bar's corners are rounded (`--radius-nav`), and a rounded corner takes no taps outside its curve. A transparent `.tabs::before` layer fills the bar's square padding box under the tabs, so a tap in an outer tab's corner sliver lands on the nav, not on the row beneath. It is never painted and exists only on the phone pill: the desktop control and the wide rail have no such layer (#348, design rubric TOUCH-02). The layer is the nav's own `::before`, so don't put an app rule on `.tabs::before`.
 
-## Status-bar scrim and pill fade (installed app)
+## Pill fade
 
-An installed app runs under the translucent status bar (How to vendor, step 4), so content scrolled to the top would show through the clock and battery, and rows would run sharply under the floating pill. In `@media (display-mode: standalone)` on the phone pill, `nav-tabs.css` adds one inert, full-screen `body::before` layer above the `.app` scroller and below the pill (`z-index: 110`, `pointer-events: none`), painted in the page background `--bg`:
+Rows scroll under the floating pill, so without a fade they would show through its clear glass hard-edged. On the phone pill, `nav-tabs.css` adds one inert `body::before` band anchored to the screen bottom like the pill itself, above `.app` and below the pill (`z-index: 110`, `pointer-events: none`): transparent from 16px above the pill's top edge, the page background `--bg` from the pill's bottom edge to the screen edge. The bottom reserve still scrolls the last row fully clear of the fade, and every tap passes through the band. Reduce Transparency (`prefers-reduced-transparency: reduce`) drops both bands. A matching `body::after` band fades content out at the top, the same look as the shared nav under a translucent status bar: the opaque `default` status bar (painted in the page colour by `theme-color`) is the solid part, and the band draws only the eased 4px tail below it, inside the `.app` top padding, so the first card at scroll-top starts where the fade ends and is never dimmed.
 
-- **Top:** solid for the upper 55% of `env(safe-area-inset-top)` (where the clock and battery sit), then an eased fade that reaches transparent at the inset. The phone `.app` top padding is that same inset, so the first card at scroll-top starts where the fade ends and is never dimmed, and no extra top padding is reserved. Without a notch (inset 0) the layer paints nothing at the top.
-- **Bottom:** transparent from 32px above the pill's top edge, the full page background from the pill's midline to the screen edge, so content dims as it reaches the pill. The bottom reserve still scrolls the last row fully clear of the fade, and every tap passes through the layer.
-- **Reduce Transparency** (`prefers-reduced-transparency: reduce`) keeps a solid status-bar band exactly the inset tall and drops both gradients.
-
-It is CSS only, with no transform on the nav. Desktop, the wide rail and the phone browser tab carry no such layer. The layer is the nav's own `body::before`, so don't put an app rule on `body::before`. Desktop engines can't render the iOS standalone web view: `tests/e2e/test_vendored_nav.py` checks the layer's geometry and colours with the standalone query forced on and a CDP safe-area inset, and the real look is confirmed on an iPhone.
+It is CSS only, with no transform on the nav. Desktop and the wide rail carry no such layer. The bands are the nav's own `body::before` and `body::after`, so don't put an app rule on either. `tests/e2e/test_nav_offset.py` checks both bands' geometry on a 390x844 phone; the real look is confirmed on an iPhone.
 
 ## Required design tokens
 
@@ -114,7 +112,7 @@ It is CSS only, with no transform on the nav. Desktop, the wide rail and the pho
 
 | Token | Light value | Used for |
 | --- | --- | --- |
-| `--bg` | `#ffffff` (dark `#0d1117`) | status-bar scrim and pill fade (installed app only) |
+| `--bg` | `#ffffff` (dark `#0d1117`) | pill fade |
 | `--card` | `#ffffff` | tab bar surface (desktop) |
 | `--accent-soft` | `color-mix(in srgb, var(--accent) 16%, transparent)` | active-tab fill, desktop and mobile (fleet-config#963) |
 | `--accent-border-soft` | `color-mix(in srgb, var(--accent) 24%, transparent)` | active-tab border (mobile) |
@@ -143,8 +141,10 @@ It is CSS only, with no transform on the nav. Desktop, the wide rail and the pho
 | `--bottom-tabs-gap` | `4px` | mobile tab gap — optional, falls back to `4px` |
 | `--bottom-tabs-icon` | `20px` | mobile SVG icon size — optional, falls back to `20px` |
 | `--bottom-tabs-label` | `11px` | mobile label font size — optional, falls back to `11px` |
-| `--tabbar-bg` | `rgba(255,255,255,0.85)` | floating bar glass fill |
-| `--tabbar-border` | `rgba(31,35,40,0.12)` | floating bar border |
+| `--tabbar-bg` | `rgba(255,255,255,0.62)` (dark `rgba(42,45,52,0.55)`) | floating bar clear-glass fill |
+| `--tabbar-border` | `rgba(0,0,0,0.08)` (dark `rgba(255,255,255,0.14)`) | floating bar hairline rim |
+| `--tabbar-pill` | `rgba(0,0,0,0.07)` (dark `rgba(255,255,255,0.14)`) | the sliding capsule behind the active tab; **required**, with it undefined the active tab has no capsule |
+| `--tabbar-shadow` | `0 8px 28px -6px rgba(20,24,40,0.2), 0 1px 4px rgba(20,24,40,0.06)` (dark `0 10px 30px -6px rgba(0,0,0,0.6)`) | floating bar drop shadow |
 
 The tokens marked optional (`--icon-feature`, `--layout-measure`, `--layout-rail`, `--bottom-tabs-height`, `--bottom-tabs-margin`, `--bottom-tabs-pill-height`, `--bottom-tabs-padding`, `--bottom-tabs-gap`, `--bottom-tabs-icon`, `--bottom-tabs-label`) are optional per-context knob settings: `nav-tabs.css` reads each with an inline fallback, so an app that leaves one undefined gets the fallback named in its row and nothing renders wrong. Define one only to override it. Every unmarked token is read with no fallback and must be defined.
 
@@ -162,9 +162,10 @@ Hard-won contract, validated extensively on a real iPhone (`home-automation` #20
 - **Body-level nav is load-bearing.** `nav-tabs.html` places `<nav class="tabs">` as a direct `<body>` child before `<main class="app">`. Do not move it inside `.app`. iOS can capture a fixed-position element nested inside a momentum/content scroller and position it against the scrolled content bottom; on a short tab that makes the bar float mid-screen. A body-level sibling pins against the viewport instead.
 - **Standalone PWA → no measured JS transform.** `nav-tabs.css` positions the bar `fixed; bottom: …`, which is correct on its own in a fullscreen installed PWA (no browser chrome). The VisualViewport transform only ever existed to chase Safari's collapsing *browser* toolbar; in standalone every measured offset eventually risks stranding the bar **up** because iOS's layout and rendered geometry disagree there. So `initNavTabs` detects `display-mode: standalone` / `navigator.standalone` and never applies a measured translate.
 - **Browser tab → minimal transform.** Only in a real browser tab (where the toolbar genuinely collapses) does it translate the bar up by the hidden slice — clamped to a toolbar's height (~160px) and suppressed while the soft keyboard is up (a focused field, or a viewport shrink past a toolbar's worth). Desktop's sticky top control is untouched; feature-detected on `window.visualViewport`.
-- **Force the page scrollable (browser tab).** `nav-tabs.css` sets `.app { min-height: calc(100dvh + 1px) }`. iOS standalone can anchor a `position: fixed` bar to the *content* bottom on a non-scrolling page, so a short tab may float the bar up; the extra 1px keeps the page technically scrollable, which helps iOS anchor fixed elements at the screen bottom. (Cost: a barely-perceptible scroll on short tabs.)
-- **Standalone → the fixed-inset `.app` scroller is the contract (home-automation#303), not normal document scroll.** Document scroll is the **browser-tab** behavior above. In an *installed* standalone PWA the home-screen WKWebView's native scroll bounce moves the visual viewport itself (home-automation#300), dragging every `position: fixed` element with it — `overscroll-behavior: none` doesn't govern that native bounce the way it does in a Safari tab. So in standalone the document must never scroll at all: `nav-tabs.css` makes `.app` a `position: fixed; inset: 0` element scroller (sized `height: 100vh` → `100lvh` so it has its final geometry from the first frame of iOS's cold-launch viewport-expansion animation, `overflow-y: auto`, `overscroll-behavior: none`), and an inert `body::after` spacer (`calc(100dvh + 1px)`) keeps the *document* technically scrollable — which keeps iOS's layout viewport expanded to the full physical screen — while no touch gesture can ever reach that 1px, so nothing meaningfully unlocked is left for the bounce to move. The `.tabs` bar anchors from the stable **top** edge via `100lvh` (a bottom anchor visibly floats down for ~2s during the cold-launch expansion) and refuses pan gestures (`touch-action: none`) since it's the one fixed surface a drag could still reach the 1px-scrollable document through. This revives the inner-scroller shell an earlier fleet round (home-automation#232) rejected for leaving an unusable bottom safe-area dead band — the `100lvh` sizing (large-viewport unit, stable from the first frame while iOS animates the layout-viewport expansion) is what resolves that dead band, which is why the shell is now the accepted standalone contract rather than a fallback of last resort. `design_lint.py`'s nav-contract check (`fleet-config#282`) keys on exactly this block, so a verbatim adopter of this file passes it automatically.
-- **Standalone geometry needs the full-screen web view (#287).** Both the `100lvh` shell and the `100lvh` top anchor assume the installed app's web view spans the whole physical screen, status bar included. iOS does that only when the page sets `apple-mobile-web-app-status-bar-style: black-translucent` plus `viewport-fit=cover` (How to vendor, step 4). Without them the web view starts below an opaque status bar while `100lvh` still measures the full screen, so the pill lands one status-bar height too low. home-automation and app-launcher always set the pair; parking-manager didn't, and hit it (parking-manager#24).
+- **Force the page scrollable.** `nav-tabs.css` sets `html { min-height: calc(100dvh + 1px) }` on the phone pill. An installed iOS app shrinks its viewport 59px whenever the document can't scroll (a tab shorter than the screen, or the body pinned by `scroll-lock.js` under an open dialog) and grows it back 1px at a time over ~3s, painting nothing below the moving edge. The rule is on the root, not `.app`, so it still holds while the body is pinned. (Cost: a barely-perceptible scroll on short tabs.)
+- **Standalone anchors the bar from the top.** Document scroll is the same in a browser tab and the installed app, but in `@media (display-mode: standalone)` the bar and its bottom fade are placed with `top: calc(100lvh - …)`: iOS still grows the installed app's viewport after a cold launch, and `100lvh` is the final height from the first frame, so the bar never rides that growth. A browser tab keeps `bottom:`, since there `lvh` would put the bar under the toolbar.
+- **The page head is part of the contract.** The top anchor and the bottom fade assume the installed app's web view starts with its final height, which holds with `apple-mobile-web-app-status-bar-style: default` plus `viewport-fit=cover` (How to vendor, step 4). `tests/test_nav_standalone_head.py` pins that head in the skeleton, the gallery and this README.
+- **An app that pins its body under dialogs needs the same `scroll-lock.js` change.** Neither the nav nor `modal/` carries standalone-shell code any more, and `initNavTabs` no longer listens for `scroll-lock:engaged` / `scroll-lock:released`. An app-side `scroll-lock.js` that pins the body with `position: fixed` while a `<dialog>` is open must therefore be the plain pin (save `scrollY`, pin at `-scrollY`, restore on close) with no "standalone shell" branch and no event dispatch; it keeps working because the `html` min-height rule above leaves the document scrollable even while the body is pinned. home-automation's `scroll-lock.js` is the reference; the script is app code and is not vendored here.
 
 **Recommended app-level hardening:**
 
