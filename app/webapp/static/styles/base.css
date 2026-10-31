@@ -63,11 +63,13 @@
      a page that sets no background of its own. */
   --doc-canvas: #ffffff;
   /* elevation — cards lean on surface + hairline; popovers/toasts share one
-     shadow token, the floating bottom bar its own (the only real shadow). */
+     shadow token, the floating bottom bar its own (--tabbar-shadow, the only
+     real shadow). */
   --shadow: 0 8px 24px rgba(31, 35, 40, 0.12);
-  --shadow-nav: 0 10px 34px rgba(31, 35, 40, 0.16);
-  --tabbar-bg: rgba(255, 255, 255, 0.85);
-  --tabbar-border: rgba(31, 35, 40, 0.12);
+  --tabbar-bg: rgba(255, 255, 255, 0.62);
+  --tabbar-border: rgba(0, 0, 0, 0.08);
+  --tabbar-pill: rgba(0, 0, 0, 0.07);
+  --tabbar-shadow: 0 8px 28px -6px rgba(20, 24, 40, 0.2), 0 1px 4px rgba(20, 24, 40, 0.06);
   /* Brand-colour alpha overlays derive from the tokens above via relative
      colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
      never forks from its base colour. */
@@ -188,9 +190,10 @@
   --diff-hunk-fg: #2f81f7;
   /* Depth on a near-black canvas comes from surface lightness, not shadow. */
   --shadow: 0 8px 24px rgba(1, 4, 9, 0.6);
-  --shadow-nav: 0 10px 34px rgba(0, 0, 0, 0.5);
-  --tabbar-bg: rgba(22, 27, 34, 0.86);
-  --tabbar-border: rgba(255, 255, 255, 0.13);
+  --tabbar-bg: rgba(42, 45, 52, 0.55);
+  --tabbar-border: rgba(255, 255, 255, 0.14);
+  --tabbar-pill: rgba(255, 255, 255, 0.14);
+  --tabbar-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.6);
   --toggle-knob: var(--ink);
   color-scheme: dark;
 }
@@ -335,10 +338,9 @@ html, body {
 
 /* ---------- tabs ----------
    Nav geometry + the desktop segmented control / mobile floating pill are
-   now owned by the vendored _vendored/nav/nav-tabs.css — see
-   its <link> in index.html. `.tab.active`, `.tab-icon` sizing, the
-   standalone fixed-inset .app shell, and the visualViewport pin all live
-   there; do not re-add them here.
+   owned by the vendored _vendored/nav/nav-tabs.css — see
+   its <link> in index.html. `.tab.active`, `.tab-icon` sizing, the sliding
+   capsule and the pill's scroll fades all live there; do not re-add them here.
 
    The overlay-hide rule below is app-specific glue the vendored file
    anticipates (its README: "a non-<dialog> overlay -> add the class
@@ -347,11 +349,8 @@ html, body {
    body:has(dialog[open]). visibility (not display) matches the vendored
    technique — gentler on iOS fixed-layer repainting across show/hide.
 
-   Every such overlay goes in this rule and in the standalone .app lock below;
-   tests/unit/static_ui/test_overlay_nav_hide.py fails when one is left out. The ones
-   nested inside <main class="app"> are the ones that break: the standalone
-   shell makes .app position: fixed, a stacking context, so their z-index 300
-   stacks inside it and the body-level bar (z-index 120) paints over them. */
+   Every such overlay goes in this rule;
+   tests/unit/static_ui/test_overlay_nav_hide.py fails when one is left out. */
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
   body:has(#changesOverlay:not([hidden])) .tabs,
@@ -360,42 +359,6 @@ html, body {
   body:has(#summaryModal:not([hidden])) .tabs {
     visibility: hidden;
     pointer-events: none;
-  }
-
-  /* In the standalone shell .app (not the document) is the real scroller
-     (via nav-tabs.css). terminal.js's lockBodyScroll()
-     pins document.body during an overlay — a no-op there since body was
-     never the scroller in standalone — so without this, .app's own content
-     stays touch-scrollable behind a hand-rolled overlay. Mirrors
-     home-automation's `body:has(dialog[open]) .app { overflow: hidden }`;
-     the app-specific overlays get the same treatment as the .tabs hide
-     rule above, plus native <dialog> for completeness (this app has both).
-     Only the session overlay sets body.terminal-open, so only it needs the
-     1px-scrollable override below; the others never touch body or the
-     vendored body::after spacer. */
-  @media (display-mode: standalone) {
-    body.terminal-open .app,
-    body:has(#changesOverlay:not([hidden])) .app,
-    body:has(#loginOverlay:not([hidden])) .app,
-    body:has(#imageLightbox:not([hidden])) .app,
-    body:has(#summaryModal:not([hidden])) .app,
-    body:has(dialog[open]) .app {
-      overflow: hidden;
-    }
-
-    /* Keep the document 1px scrollable while the session overlay is open.
-       The base body.terminal-open lock below sets
-       overflow: hidden, which propagates to the viewport, and
-       lockBodyScroll() (skipped under this same query) would pin body
-       out of flow — either one zeroes the vendored body::after spacer's
-       overflow, and iOS then contracts the fixed-positioning viewport,
-       leaving a dead band under the overlay's composer. The .app rule above
-       is the lock here; the overlay's own overscroll-behavior: contain stops
-       any gesture chaining through to the 1px. */
-    body.terminal-open {
-      overflow: visible;
-      height: auto;
-    }
   }
 }
 

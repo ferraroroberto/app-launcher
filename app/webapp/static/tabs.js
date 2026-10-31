@@ -4,9 +4,9 @@
  * leaves it.
  *
  * Wraps the vendored _vendored/nav/nav-tabs.js — that file owns
- * tab/pane discovery, ARIA + roving tabindex, the standalone-PWA fixed-inset
- * .app scroller reset, and the visualViewport pin (browser-tab toolbar only;
- * never a measured translate in standalone). This module only keeps
+ * tab/pane discovery, ARIA + roving tabindex, the scroll reset on a tab
+ * switch, and the visualViewport pin (browser-tab toolbar only; never a
+ * measured translate in the installed app). This module only keeps
  * state.tab in sync (apps.js/board.js/jobs.js self-gate their polling on it)
  * and re-exports setTab for board.js's chained-job / ?board= deep-link calls.
  *

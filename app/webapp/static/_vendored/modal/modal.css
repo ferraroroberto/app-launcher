@@ -58,21 +58,6 @@
    behind it. Global, not media-gated: a centred
    desktop modal shouldn't scroll its backdrop either. */
 body:has(dialog[open]) { overflow: hidden; }
-/* Standalone PWA shell: the rule above must NOT apply —
-   body overflow propagates to the viewport, and an unscrollable standalone
-   document contracts the layout viewport, which iOS then re-expands 1px per
-   frame on dialog close, repainting the nav behind a slow "curtain". The
-   real background scroller (.app, the nav component's content wrapper) is
-   locked by the rule below instead. Placed after the hidden rule on purpose —
-   same specificity, source order decides. */
-@media (display-mode: standalone) and (pointer: coarse) and (max-width: 520px) {
-  body:has(dialog[open]) { overflow: visible; }
-}
-/* Element-scroller lock (standalone shell): overflow:hidden on an element
-   scroller IS respected for touch and preserves scrollTop, so the scroll
-   position survives the dialog round-trip. Inert when .app isn't a scroll
-   container. */
-body:has(dialog[open]) .app { overflow: hidden; }
 
 /* The card inside the dialog. */
 .detail-card {

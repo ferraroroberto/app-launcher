@@ -37,15 +37,16 @@
      mobile stylesheet reserves bottom padding on `.app` so the fixed bar never
      occludes content.
 
-     REQUIRED PAGE HEAD: put these two tags in your index.html <head>. The
-     installed-app (standalone) anchoring in nav-tabs.css assumes the web view
-     spans the whole screen, and iOS only does that with the translucent status
-     bar. Without it the app starts below an opaque status bar and the pill
-     lands one status-bar height (about 59pt) too low, mostly off-screen
-     (project-scaffolding#287, parking-manager#24):
+     REQUIRED PAGE HEAD: put these tags in your index.html <head>. The
+     installed app starts with its final viewport, and the bar is in place from
+     the first frame of a cold launch, only with the `default` status-bar
+     style; `black-translucent` lets the viewport grow after launch and the bar
+     rides that growth. theme-color paints the status bar in the page colour:
 
        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-       <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> -->
+       <meta name="apple-mobile-web-app-status-bar-style" content="default">
+       <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+       <meta name="theme-color" content="#0d1117" media="(prefers-color-scheme: dark)"> -->
 
 <nav class="tabs" role="tablist" aria-label="Sections" data-active-tab="home">
   <button id="tabHome" type="button" class="tab active" data-tab="home"

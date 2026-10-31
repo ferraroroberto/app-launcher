@@ -1,17 +1,15 @@
 """Every hand-rolled full-screen overlay hides the phone tab bar (#1143).
 
-The floating bottom tab bar is a body-level ``<nav class="tabs">`` at
-``z-index: 120``. A hand-rolled overlay (a ``[hidden]``-toggled ``<div>``, not
-a native ``<dialog>``) has to be named in two stylesheet rules: the phone
-``.tabs`` hide rule and the standalone ``.app { overflow: hidden }`` lock.
+The floating bottom tab bar is a body-level ``<nav class="tabs">``. A
+hand-rolled overlay (a ``[hidden]``-toggled ``<div>``, not a native
+``<dialog>``, which the vendored nav hides the bar for by itself) has to be
+named in the phone ``.tabs`` hide rule in ``styles/base.css``.
 
-A forgotten entry doesn't show up in Safari, so it tends to slip through. In
-the installed PWA the vendored shell makes ``.app`` ``position: fixed``, which
-is a stacking context. An overlay nested inside ``.app`` then stacks under the
-bar whatever its own z-index. That's how #1119's conversation viewer shipped
-with the bar over it. This test reads the overlays out of ``index.html`` and
-fails when either rule leaves one out, so adding an overlay means adding it
-to both rules too.
+A forgotten entry is easy to miss: the bar stays pinned over the overlay's
+bottom edge, which covers a composer or a "Latest" pill (#1119's conversation
+viewer shipped that way). This test reads the overlays out of ``index.html``
+and fails when the rule leaves one out, so adding an overlay means adding it
+to the rule too.
 """
 
 from __future__ import annotations
@@ -88,10 +86,3 @@ def test_every_overlay_hides_the_phone_tab_bar() -> None:
         "the floating bottom bar stays on top of them (#1143)"
     )
 
-
-def test_every_overlay_locks_the_standalone_app_scroller() -> None:
-    missing = _missing(".app", "overflow: hidden")
-    assert not missing, (
-        f"overlays not in the standalone .app overflow lock in styles/base.css: {missing} — "
-        ".app stays touch-scrollable behind them in the installed PWA (#1143)"
-    )

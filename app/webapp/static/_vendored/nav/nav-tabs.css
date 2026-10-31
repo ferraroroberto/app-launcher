@@ -212,24 +212,39 @@
   }
 }
 
+/* The sliding active capsule exists only in the mobile pill; desktop keeps the
+   per-tab accent-soft tint above. nav-tabs.js inserts it, so markup never
+   carries it. */
+.tabs .tab-pill { display: none; }
+
 /* ------------------------------------------- floating bottom tab bar (mobile) */
 /* Gated on touch + narrow width so desktop keeps the top segmented control
-   byte-for-byte unchanged. Colours adapt to the theme tokens so the glass bar
-   works in both light and dark. This block is the fleet navigation contract —
-   position, radius, blur, and the safe-area handling must stay identical across
-   apps (don't re-author it per-app). */
+   byte-for-byte unchanged. This block is the fleet navigation contract —
+   position, radius, glass and the safe-area handling must stay identical
+   across apps (don't re-author it per-app).
+
+   Instant on the first frame: the page head uses the `default` status-bar
+   style, so an installed iOS app starts with its final viewport and a plain
+   bottom-anchored fixed bar is in place from frame one. The bar's position
+   never derives from the viewport height and nothing on it animates on load. */
 @media (pointer: coarse) and (max-width: 520px) {
-  .app {
-    /* Keep the bar outside this content wrapper. It was proven on a
-       real iPhone PWA that putting a fixed nav inside a momentum/content scroller
-       lets iOS anchor it to short-tab content rather than the viewport. Normal
-       document scroll keeps the physical screen filled; the +1px keeps short
-       tabs technically scrollable so iOS anchors fixed to the screen bottom. */
+  /* The document is always one pixel taller than the viewport: an installed
+     iOS app shrinks its viewport 59px whenever the document can't scroll and
+     grows it back over ~3s, painting nothing below the moving edge. On the
+     root, not .app, so it still holds while scroll-lock.js pins the body
+     under an open dialog. vh first as the no-dvh fallback. */
+  html {
     min-height: calc(100vh + 1px);
     min-height: calc(100dvh + 1px);
-    /* Top is the safe area alone: the first card starts directly under
-       the status bar, as in app-launcher. Sides and bottom keep --gap. */
-    padding: env(safe-area-inset-top, 0px) var(--gap) calc(
+  }
+
+  .app {
+    /* Bottom reserve = bar + its margin above and below + the gap, so the
+       last row scrolls clear of the fixed bar. Keep the bar a body-level
+       sibling of .app: iOS captures fixed descendants of scrollers. */
+    /* Top = the safe area plus the top fade's height, so the first card at
+       scroll-top starts where the fade ends and is never dimmed. */
+    padding: calc(env(safe-area-inset-top, 0px) + 4px) var(--gap) calc(
       env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
       var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
     );
@@ -239,88 +254,15 @@
     );
   }
 
-  /* Standalone-PWA shell: in the installed app the
-     *document* was the scroller, and the home-screen WKWebView's native
-     scroll bounce moves the visual viewport itself, dragging every
-     `position: fixed` element (the floating nav) with it — `overscroll-
-     behavior: none` above does not govern that native bounce the way it does
-     in a Safari tab. So in standalone the document must never scroll at all:
-     `.app` becomes the element scroller instead, whose bounce doesn't move
-     the visual viewport (and whose overscroll-behavior IS honored), so the
-     fixed nav stays put by construction rather than by after-the-fact
-     correction.
-
-     The load-bearing subtlety (proven by on-device nav-debug forensics): iOS standalone expands the layout
-     viewport to the full physical screen ONLY WHILE THE DOCUMENT IS
-     SCROLLABLE. With every body child out of flow the document has zero
-     scrollable overflow, and the fixed-positioning viewport contracts —
-     every fixed element (nav, .app) anchors above the physical bottom: the
-     dead band again. The baseline's
-     `min-height: calc(100dvh + 1px)` forcer above exists to keep exactly this
-     expansion alive ("so position:fixed anchors to the screen rather than the
-     content"). So the shell re-creates that 1px overflow with an inert
-     body-level spacer: the document stays technically scrollable (viewport
-     expanded), but no touch can ever reach it — content gestures land on the
-     fixed .app scroller (its overscroll-behavior: none stops chaining), and
-     the nav declines pan gestures outright — so the WKWebView bounce that
-     moves `visualViewport.offsetTop` still has no entry
-     point.
-
-     Page-head dependency: this shell and the `.tabs` anchor below
-     assume the web view spans the WHOLE screen, which iOS gives an installed
-     app only when the page sets
-     `<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`
-     plus `viewport-fit=cover` in its viewport meta. Without them the app starts
-     below an opaque status bar and the pill lands one status-bar height
-     (about 59pt) too low, mostly off-screen. */
-  @media (display-mode: standalone) {
-    .app {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      /* Sized with the LARGE viewport unit, not bottom-anchored (`inset: 0`):
-         at cold launch iOS *animates* the layout-viewport expansion (1px per
-         vv:resize frame over ~2s, seen in an on-device
-         log), so a bottom edge tied to the live viewport slides down with it.
-         lvh reports the final expanded height from the very first frame, and
-         the top edge is stable, so this box has its final geometry
-         immediately. Plain vh first: on iOS it equals the large viewport too
-         (that was the historic 100vh complaint) — fallback for engines
-         without lvh. */
-      height: 100vh;
-      height: 100lvh;
-      overflow-y: auto;
-      overscroll-behavior: none;
-      /* The in-flow document-scroll forcer above (100dvh + 1px) would push a
-         fixed box 1px past the bottom edge; the spacer below carries the
-         forcer role instead. */
-      min-height: 0;
-    }
-    /* Invisible 1px-past-viewport spacer behind the fixed .app: keeps the
-       document scrollable so the layout viewport stays expanded (see the
-       shell comment above). dvh on purpose (not lvh): it tracks the live
-       viewport, so the document's scrollable range is exactly 1px in every
-       state — contracted at boot, mid-animation, expanded — never more. vh
-       first as the no-dvh fallback. */
-    body::after {
-      content: '';
-      display: block;
-      height: calc(100vh + 1px);
-      height: calc(100dvh + 1px);
-    }
-  }
-
   .tabs {
     position: fixed;
     top: auto;
-    left: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-left, 0));
-    right: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-right, 0));
+    left: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-left, 0px));
+    right: max(var(--bottom-tabs-margin, 21px), env(safe-area-inset-right, 0px));
     bottom: var(--bottom-tabs-margin, 21px);
     z-index: 120;
     display: grid;
-    /* One equal column per tab. The measured outer geometry is stable for
-       4–6 tabs; cells widen/narrow while the bar itself stays identical. */
+    /* One equal column per tab; the outer geometry is identical for 4–6 tabs. */
     grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     grid-auto-rows: var(--bottom-tabs-pill-height, 53px);
     align-content: center;
@@ -331,120 +273,109 @@
     max-width: 480px;
     margin: 0 auto;
     padding: var(--bottom-tabs-padding, 4px);
+    /* iOS 26 system tab-bar glass: clear tint + heavy blur, a hairline rim all
+       round, a soft drop shadow, no specular gradient. Blur stays on this
+       small capsule only, never on a full-screen layer. */
     background: var(--tabbar-bg);
     border: 1px solid var(--tabbar-border);
     border-radius: var(--radius-nav);
-    box-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
-    /* Keep the fixed bar on its own composited layer so iOS document scrolling is
-       less likely to repaint it a frame late after modal hide/show. Identity
-       transform only; nav-tabs.js still owns real toolbar translations in normal
-       Safari tabs and standalone PWAs receive no measured JS offset. */
+    box-shadow: var(--tabbar-shadow, 0 10px 30px -6px rgba(0, 0, 0, 0.6));
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    /* Own composited layer so iOS repaints the fixed bar on the same frame
+       after a modal hides and shows it. Identity transform only — never a
+       load-time animation or a measured offset. */
     transform: translateZ(0);
     will-change: transform;
-    backdrop-filter: blur(20px) saturate(1.25);
-    -webkit-backdrop-filter: blur(20px) saturate(1.25);
   }
-  /* Hit area only, never painted (TOUCH-02). Each tab's tap rectangle
-     is square-cornered, but the bar's rounded corners (radius-nav) take no
-     taps outside the curve, so a list row scrolled under the pill took taps
-     in the outer tabs' corner slivers. This transparent square layer below
-     the tabs (they are z-index 1) gives the bar its whole padding box, so the
-     nav wins every point of every tab rectangle. It inherits the modal-hide
-     rule's visibility and pointer-events from .tabs. */
+  /* Hit area only, never painted: the rounded corners would otherwise let a
+     row scrolled under the bar take taps in the outer tabs' corner slivers. */
   .tabs::before {
     content: '';
     position: absolute;
     inset: 0;
   }
 
-  /* Standalone-PWA nav anchoring (pairs with the shell
-     above; placed after the base rule so the cascade picks it). Two changes:
-     1. Anchor from the stable TOP edge via the large-viewport unit instead of
-        `bottom`: during the cold-launch viewport-expansion animation (see the
-        .app shell comment above) a bottom-anchored bar visibly "floats" down
-        for ~2s before locking. `100lvh` is the final height from frame one,
-        so this puts the bar at its physical-bottom resting spot immediately.
-        Same resting position as the base rule's
-        `bottom: var(--bottom-tabs-margin, 21px)` once the viewport settles —
-        geometry is unchanged, only the anchor.
-     2. Refuse pan gestures: the nav is the one fixed surface a drag could
-        still reach the 1px-scrollable document through (it sits outside
-        .app), and the standalone bounce was proven to ignore
-        overscroll-behavior. Taps are unaffected. */
+  /* Scroll-edge fade under the bar: an inert band anchored to the screen
+     bottom like the bar itself, transparent 16px above the bar's top edge and
+     the page background from its bottom edge down, so rows dim into the bar
+     instead of showing through the glass hard-edged. Above .app, below the
+     bar's 120; pointer-events: none so taps reach the row beneath. */
+  body::before {
+    content: '';
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(16px + var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px));
+    z-index: 110;
+    pointer-events: none;
+    background: linear-gradient(transparent, var(--bg) calc(16px + var(--bottom-tabs-height, 61px)));
+  }
+  /* Top fade, the same look as the shared nav under a translucent status
+     bar: there the band is solid behind the clock and eases out below it.
+     The `default` status bar is opaque in the page colour (theme-color), so
+     it is the solid part and only the eased tail is drawn, 4px tall, inside
+     the .app top padding. */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: calc(env(safe-area-inset-top, 0px) + 4px);
+    z-index: 110;
+    pointer-events: none;
+    background: linear-gradient(
+      var(--bg) env(safe-area-inset-top, 0px),
+      color-mix(in srgb, var(--bg) 78%, transparent) calc(env(safe-area-inset-top, 0px) + 1.5px),
+      color-mix(in srgb, var(--bg) 35%, transparent) calc(env(safe-area-inset-top, 0px) + 3px),
+      transparent
+    );
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    body::before,
+    body::after { display: none; }
+  }
+
+  /* Installed iOS app: the web view starts 59px short of the screen and, once
+     the page can scroll, grows to full height 1px at a time over ~3s, so a
+     bottom anchor slides down with it. 100lvh is the final height from the
+     first frame, so the bar and its fade anchor from the stable top edge.
+     Standalone only: in a browser tab lvh would hide the bar under the
+     toolbar. vh first: on iOS it equals the large viewport too. */
   @media (display-mode: standalone) {
     .tabs {
+      top: calc(100vh - var(--bottom-tabs-margin, 21px) - var(--bottom-tabs-height, 61px));
+      top: calc(100lvh - var(--bottom-tabs-margin, 21px) - var(--bottom-tabs-height, 61px));
       bottom: auto;
-      top: calc(100vh - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
-      top: calc(100lvh - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
-      touch-action: none;
-      /* Cold-launch cosmetics: iOS paints the region below the animating
-         layout-viewport edge only as the ~2s expansion sweeps past it, so the
-         bar (at its final spot from frame one) would look like it's being
-         un-curtained bottom-up. Stay transparent through the sweep, then
-         slide up into place. The bar's own strip is painted ~1.7s in, so a
-         1.8s delay clears it without waiting out the whole sweep. Pure CSS,
-         runs once per page load; `backwards` fill guarantees it always ends
-         fully visible. The translate lives only inside the animation
-         (computed, never inline style), so nav-tabs.js's
-         never-translate rule — which reads/writes nav.style.transform — is
-         untouched, and with no `forwards` fill the resting geometry after the
-         entrance is byte-identical to before. */
-      animation: nav-boot-reveal 0.35s ease-out 1.8s backwards;
     }
-    @keyframes nav-boot-reveal {
-      from { opacity: 0; transform: translateY(14px); }
-      to { opacity: 1; transform: none; }
-    }
-
-    /* Status-bar scrim and pill fade: the translucent status bar the shell
-       needs lets scrolled content show through the clock and battery, and
-       rows ran sharply under the floating pill. One inert full-screen layer
-       above the .app scroller (z-index under the bar's 120) paints both in
-       the page background, so content fades out before the status bar and
-       dims into the pill, as in native apps.
-       - Top: solid for the upper 55% of the safe area (the clock and
-         battery sit there), then an eased fade that reaches transparent at
-         the inset itself. The .app top padding is that same inset, so the
-         first card at scroll-top starts where the fade ends and is never
-         dimmed, with no extra top padding reserved. Where the inset is 0
-         (no notch) the layer paints nothing.
-       - Bottom: transparent 32px above the pill's top edge, the page
-         background from the pill's midline down, so a row is gone before it
-         reaches the screen edge. The .app bottom reserve still scrolls the
-         last row fully clear of the band.
-       pointer-events: none, so every tap reaches the row beneath, and the
-       pill's hit layer still wins over the tabs. Same 100lvh geometry and
-       top anchor as .app, so it has its final shape from the first frame.
-       Pure CSS, no transform: the bar's never-translate rule stands. */
     body::before {
-      content: '';
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 100vh;
-      height: 100lvh;
-      z-index: 110;
-      pointer-events: none;
-      background:
-        linear-gradient(
-            var(--bg) calc(env(safe-area-inset-top, 0px) * 0.55),
-            color-mix(in srgb, var(--bg) 78%, transparent) calc(env(safe-area-inset-top, 0px) * 0.7),
-            color-mix(in srgb, var(--bg) 35%, transparent) calc(env(safe-area-inset-top, 0px) * 0.86),
-            transparent env(safe-area-inset-top, 0px)
-          )
-          top / 100% env(safe-area-inset-top, 0px) no-repeat,
-        linear-gradient(transparent, var(--bg) calc(32px + var(--bottom-tabs-height, 61px) / 2))
-          bottom / 100% calc(32px + var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px)) no-repeat;
+      top: calc(100vh - 16px - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      top: calc(100lvh - 16px - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      bottom: auto;
     }
-    /* Reduced transparency: keep the status-bar band solid, drop both
-       gradients (the top tail and the whole bottom fade). */
-    @media (prefers-reduced-transparency: reduce) {
-      body::before {
-        background: linear-gradient(var(--bg), var(--bg))
-          top / 100% env(safe-area-inset-top, 0px) no-repeat;
-      }
-    }
+  }
+
+  /* One capsule behind the tabs that springs to the tapped tab: the 1.35
+     control point overshoots and settles. Its first placement (load, resize,
+     rotate) jumps via .no-anim, so launch stays instant. */
+  .tabs .tab-pill {
+    display: block;
+    position: absolute;
+    top: 50%;
+    left: 0;
+    width: var(--pill-w, 0px);
+    height: var(--bottom-tabs-pill-height, 53px);
+    transform: translate(var(--pill-x, 0px), -50%);
+    border-radius: var(--radius-pill);
+    background: var(--tabbar-pill);
+    pointer-events: none;
+    transition: transform 0.5s cubic-bezier(0.3, 1.35, 0.5, 1), width 0.5s cubic-bezier(0.3, 1.35, 0.5, 1);
+  }
+  .tabs .tab-pill.no-anim { transition: none; }
+  @media (prefers-reduced-motion: reduce) {
+    .tabs .tab-pill { transition: none; }
   }
 
   .tab {
@@ -454,32 +385,37 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
     height: var(--bottom-tabs-pill-height, 53px);
-    padding: 7px 2px 6px;
+    padding: 0 2px;
     border-radius: var(--radius-pill);
-    border: 1px solid transparent;
+    border: 0;
     font-size: var(--bottom-tabs-label, 11px);
     font-weight: 600;
-    line-height: 1.1;
-    color: var(--muted);
-    transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    /* 1.25, not tighter: .tab-label clips overflow, and below this the
+       descenders (g, y) of a semibold label are cut off. */
+    line-height: 1.25;
+    /* Inactive tabs in full ink, not muted: the iOS system bar's contrast. */
+    color: var(--ink);
+    transition: color 0.2s ease;
   }
+  /* Active: icon and label in the accent over the sliding capsule. Until
+     nav-tabs.js has placed the capsule (.has-pill), the active tab paints the
+     same capsule itself, so frame one already shows the right state. */
   .tab.active {
-    background: var(--accent-soft);
-    border-color: var(--accent-border-soft);
+    background: transparent;
     color: var(--accent-text);
     box-shadow: none;
   }
-  .tab:active { transform: scale(0.97); }
+  .tabs:not(.has-pill) .tab.active { background: var(--tabbar-pill); }
+  .tab:active { opacity: 0.6; }
 
-  /* Fixed px, not the desktop rule's `em`: the pill's label is 11px, so an
-     em-relative icon would shrink to ~11px inside it. Stroke presentation is
-     inherited from the base rule. */
+  /* 24px, the iOS tab-bar glyph size; a fixed px so the 11px label can't
+     shrink it. Stroke presentation is inherited from the base rule. */
   .tabs .tab-icon {
-    width: var(--bottom-tabs-icon, 20px);
-    height: var(--bottom-tabs-icon, 20px);
+    width: 24px;
+    height: 24px;
   }
   .tab-label {
     display: block;
@@ -487,30 +423,23 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    /* Own compositing layer so the label glyphs are NOT rasterized into the
-       pill's backdrop-filter texture (the .tabs rule above: translateZ(0) +
-       will-change + backdrop-filter). On iOS WebKit, flipping the bar
-       visibility:hidden→visible when a <dialog> closes re-composites that
-       backdrop layer without re-rasterizing text baked into it — labels come
-       back blank until a class/theme change forces a repaint. An own layer
-       keeps the glyphs out of the stale texture so they repaint on show.
-       iOS-only; desktop WebKit composites differently and never reproduces it.
-       Validated on a real iPhone PWA. */
+    /* Own compositing layer so the glyphs are not rasterized into the bar's
+       backdrop-filter texture: iOS WebKit re-composites that texture without
+       re-rasterizing baked-in text when a <dialog> closes, leaving labels
+       blank until something forces a repaint. Validated on a real iPhone PWA. */
     transform: translateZ(0);
     backface-visibility: hidden;
   }
-  /* Same own-layer rule as the label above, for the same iOS reason: keep the
-     badge digit out of the pill's stale backdrop texture. */
+  /* Same own-layer rule as the label, for the same iOS reason. */
   .tabs .tab-badge {
     transform: translateZ(0);
     backface-visibility: hidden;
   }
 
-  /* Never let the floating bar hover over a modal / overlay. Hide with
-     visibility (not display) so the fixed bar stays in the render tree across
-     modal open/close, which is gentler on iOS fixed-layer repainting. The
-     <dialog> rule covers native dialogs; add `nav-hidden` to <body> for non-
-     <dialog> overlays (e.g. a custom login screen). */
+  /* Never let the floating bar hover over a modal / overlay. visibility, not
+     display, keeps the fixed bar in the render tree across open/close, which
+     is gentler on iOS fixed-layer repainting. Add `nav-hidden` to <body> for
+     non-<dialog> overlays. */
   body:has(dialog[open]) .tabs,
   body.nav-hidden .tabs {
     visibility: hidden;

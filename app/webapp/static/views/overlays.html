@@ -98,9 +98,9 @@
 
   <!-- Body-level, after #terminalOverlay (#1349): since a session's ⋮ →
        Changed files opens this panel *over* the session view, it cannot
-       live inside <main class="app">: the standalone shell makes .app a
-       fixed stacking context, which traps any z-index inside it under the
-       body-level session overlay. Same z-index, later in the DOM: on top. -->
+       live inside <main class="app">: a z-index inside the content wrapper
+       can sit under the body-level session overlay on iOS. Same z-index,
+       later in the DOM: on top. -->
   <!-- Show changes (#977): one Coding project's working tree, read-only —
        files grouped Changes / Untracked, each row expanding to its unified
        diff (GitHub "Files changed" shape, phone-first). Opened from the

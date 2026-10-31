@@ -777,26 +777,11 @@ export function closeTerminal() {
 // stay pinned with the original scrollY.
 let _savedScrollY = 0;
 
-// Installed phone PWA: the vendored nav shell makes .app the
-// scroller and keeps the document 1px scrollable via body::after so iOS
-// holds the layout viewport expanded. Pinning body here would take that
-// spacer out of flow and strand the overlay above a dead band, so under
-// this query the pin is skipped — styles/base.css's matching block locks .app
-// instead. Same query as the vendored shell, so the two never disagree.
-const STANDALONE_SHELL_MQ = window.matchMedia(
-  '(pointer: coarse) and (max-width: 520px) and (display-mode: standalone)',
-);
-
-// Rotation can cross the 520px edge with the overlay open: re-evaluate so
-// the pin follows whichever geometry (shell or document scroll) is live.
-STANDALONE_SHELL_MQ.addEventListener('change', function () {
-  if (!document.body.classList.contains('terminal-open')) return;
-  if (STANDALONE_SHELL_MQ.matches) unlockBodyScroll();
-  else lockBodyScroll();
-});
-
+// The plain pin the vendored nav's README asks of an app that pins its body
+// under an overlay (save scrollY, pin at -scrollY, restore on close). The
+// nav's `html { min-height: calc(100dvh + 1px) }` keeps the document
+// scrollable while the body is out of flow, so no installed-app branch.
 function lockBodyScroll() {
-  if (STANDALONE_SHELL_MQ.matches) return;
   // Wide layout: the view docks beside the list, which scrolls on
   // its own; pinning the body would freeze the list it sits next to.
   if (isWideLayout()) return;

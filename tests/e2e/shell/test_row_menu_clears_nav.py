@@ -9,7 +9,7 @@ and only clamps (with an internal scroll) when neither side fits. One rule for e
 just where it was seen.
 
 The pill only renders under ``(pointer: coarse) and (max-width: 520px)``, so
-Chromium gets touch emulation like ``test_overlay_standalone_scrollable.py``.
+Chromium gets touch emulation like ``test_overlay_phone_composer.py``.
 """
 from __future__ import annotations
 
