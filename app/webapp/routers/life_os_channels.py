@@ -399,7 +399,8 @@ async def _spawn_channel(
     holds the profile's lock and has confirmed nothing is running."""
     try:
         settings_path = write_channel_settings(
-            profile, relay_url=relay_base_url(cfg), model=model
+            profile, relay_url=relay_base_url(cfg), model=model,
+            life_os_dir=life_os_dir,
         )
     except (OSError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=str(exc))

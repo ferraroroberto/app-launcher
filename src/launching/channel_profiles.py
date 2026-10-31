@@ -31,6 +31,12 @@ its PreToolUse rewrite re-encodes every Bash command, so the allow rule never
 matches and the auto-mode classifier decides instead (the read-back refusal
 #1639's Probe 2 hit). Without the flag the file is exactly as before.
 
+**Router commands.** A profile running the ``general`` skill suggests which skill
+and conversation fit a message by running two read-only commands of the skill's
+own script. Its settings file allows exactly those two shapes
+(:func:`router_allow_rules`) and, like relay, turns the context filter off so
+the rules match; every other profile's file is unchanged.
+
 **Editing.** :func:`update_channel_profile` is the only writer of the profile
 file, and it changes only :data:`EDITABLE_FIELDS`. The fields a running bot reads
 once, at its start (:data:`RESTART_FIELDS`), are recorded by every launch so
@@ -361,6 +367,8 @@ RELAY_URL_ENV = "LAUNCHER_RELAY_URL"
 RELAY_PROFILE_ENV = "LAUNCHER_RELAY_PROFILE"
 RELAY_COMMAND_ENV = "LAUNCHER_RELAY_COMMAND"
 RELAY_SCRIPT = PROJECT_ROOT / "scripts" / "telegram_relay.py"
+# The life-os skill whose bot runs two pre-approved read-only router commands.
+ROUTER_SKILL = "general"
 
 
 def _settings_dir() -> Path:
@@ -406,15 +414,47 @@ def restart_fields(profile: ChannelProfile, model: str) -> Optional[List[str]]:
     return [key for key in RESTART_FIELDS if recorded[key] != current[key]]
 
 
+def router_allow_rules(life_os_dir: Path) -> List[str]:
+    """The two ``permissions.allow`` rules of the general bot's router commands.
+
+    ``skills`` takes no argument, so its rule is the exact command. ``resume``
+    takes a skill and a query, so its rule ends at ``--skill`` and nothing
+    shorter or broader than that flag matches. The text is the command
+    ``router.md`` tells the bot to run: the script path as a forward-slash
+    absolute path, so the match is on exactly what the bot types.
+    """
+    script = (
+        Path(life_os_dir).resolve() / ".claude" / "skills" / ROUTER_SKILL
+        / "scripts" / "router_tools.py"
+    ).as_posix()
+    if " " in script:
+        # A path with a space would need quoting the bot would have to
+        # reproduce exactly for the allow rule to match.
+        raise ValueError(
+            "the life-os path has a space in it; move life-os to a plain path "
+            "so the general bot's router commands can be pre-approved"
+        )
+    return [
+        f"Bash(python {script} skills)",
+        f"Bash(python {script} resume --skill:*)",
+    ]
+
+
 def write_channel_settings(
-    profile: ChannelProfile, relay_url: str = "", model: str = ""
+    profile: ChannelProfile,
+    relay_url: str = "",
+    model: str = "",
+    life_os_dir: Optional[Path] = None,
 ) -> str:
     """Write the profile's per-session settings file; return its flag-safe path.
 
     Without relay the file holds only the state directory's path (a settings
     ``env`` block), never a token. With relay it also holds a new relay token,
     minted on every launch so a relaunch retires the previous one, the relay's
-    URL and command, and the allow rule for that command. It lives under the
+    URL and command, and the allow rule for that command. A profile running the
+    ``general`` skill (given ``life_os_dir``) gets the allow rules of its two
+    router commands (:func:`router_allow_rules`) and the context filter off,
+    for the same reason relay does; no other profile does. It lives under the
     app's runtime-data directory and is rewritten on every launch, so a profile
     edit takes effect on the next start. Beside it, ``<id>.start.json`` records
     the start-time fields (:data:`RESTART_FIELDS`, with ``model`` the one the
@@ -441,6 +481,10 @@ def write_channel_settings(
             "FLEET_CONTEXT_FILTER_MODE": "off",
         })
         payload["permissions"] = {"allow": [f"Bash({command}:*)"]}
+    if profile.skill == ROUTER_SKILL and life_os_dir is not None:
+        env["FLEET_CONTEXT_FILTER_MODE"] = "off"
+        allow = payload.setdefault("permissions", {}).setdefault("allow", [])
+        allow.extend(router_allow_rules(life_os_dir))
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     _start_record_path(profile.id).write_text(
         json.dumps(_start_record(profile, model)) + "\n", encoding="utf-8"
