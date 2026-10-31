@@ -15,6 +15,7 @@
  * label changed. Jobs, Board and Settings were added later. */
 
 import { state } from './state.js';
+import { refreshRemoteVoiceNote } from './voice-remote.js';
 import { revealSettingsField } from './settings/settings-sheets.js';
 import { initNavTabs } from './_vendored/nav/nav-tabs.js';
 
@@ -55,6 +56,7 @@ export function openSettings() {
   tabs.dataset.activeTab = 'settings';
   state.tab = 'settings';
   announceTab('settings');
+  refreshRemoteVoiceNote();
   const scroller = document.querySelector('.app');
   if (scroller) scroller.scrollTop = 0;
   window.scrollTo(0, 0);

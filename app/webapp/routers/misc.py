@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import psutil
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
@@ -21,6 +22,7 @@ from src import system_load
 from src.clients import hub_health, session as session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
+from src.desktop import session_kind
 from src.desktop.browser import is_web_url, open_url
 from src.diagnostics import detect_local_scheme, find_pids_on_port, kill_pids, list_app_listeners
 from src.git_utils import resolve_deployed_sha
@@ -33,7 +35,7 @@ from src.stylesheet_bundle import link_bundle
 from src.launching.vscode_workspace import is_vscode_installed
 from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
 
-from app.webapp.middleware import is_pc_itself
+from app.webapp.middleware import is_pc_itself, via_cloudflare
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
 
 _log = logging.getLogger(__name__)
@@ -257,6 +259,42 @@ async def system_health_verdict(request: Request) -> Dict[str, Any]:
     that is off, down or unreadable is ``unknown``, never ``ok``."""
     cfg: WebappConfig = request.app.state.webapp_config
     return await asyncio.to_thread(hub_health.read, cfg.llm_hub_url)
+
+
+def _is_this_pc(request: Request) -> bool:
+    """Is the caller a browser on this PC, over loopback or its own address?
+
+    A browser on the PC reaches the launcher by its Tailscale name as often
+    as by loopback, so the caller's address counts when it is one of this
+    host's own. Anything through the public tunnel never is.
+    """
+    host = request.client.host if request.client else ""
+    if is_pc_itself(host, request.headers):
+        return True
+    if not host or via_cloudflare(request.headers):
+        return False
+    try:
+        return any(
+            addr.address.split("%")[0] == host
+            for addrs in psutil.net_if_addrs().values()
+            for addr in addrs
+        )
+    except OSError:
+        return False
+
+
+@router.get("/api/desktop-session")
+async def desktop_session(request: Request) -> Dict[str, Any]:
+    """Whether the PC's interactive session is a Remote Desktop one (#1996).
+
+    ``state`` is ``remote`` / ``local`` / ``unknown`` (never guessed), and
+    ``this_pc`` says whether the caller is a browser on this PC: only that
+    browser's mic is the one a Remote Desktop session lacks, so a phone or
+    another computer keeps the generic message. The page shows the hint only
+    for ``remote`` plus ``this_pc``.
+    """
+    state = await asyncio.to_thread(session_kind.read)
+    return {"state": state, "this_pc": _is_this_pc(request)}
 
 
 # Each listener's scheme, keyed by (pid, port). The TLS probe can

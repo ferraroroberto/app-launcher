@@ -72,10 +72,18 @@ def test_groups_render_with_values_matching_the_saved_config(
     authed_page: Page, base_url: str, auth_token: str
 ) -> None:
     cfg = _config(base_url, auth_token)
+    # The Voice group shows only in a Remote Desktop session; pin this PC's
+    # session so the group list does not depend on how the box is reached.
+    authed_page.route(
+        "**/api/desktop-session",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body='{"state": "local", "this_pc": true}'
+        ),
+    )
     authed_page.goto(base_url, wait_until="domcontentloaded")
     open_settings(authed_page)
 
-    expect(authed_page.locator("#paneSettings .settings-overline")).to_have_text(_GROUPS)
+    expect(authed_page.locator("#paneSettings .settings-overline:visible")).to_have_text(_GROUPS)
     expect(authed_page.locator("#paneSettings button.settings-row[data-sheet]")).to_have_count(len(_SHEETS))
     # Every row is at least the one-line row height and its value sits in
     # the row (a chevron row), never wrapped below it.

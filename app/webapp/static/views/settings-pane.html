@@ -157,4 +157,16 @@
         </div>
       </div>
       <p id="bootAutostartHelp" class="field-help settings-footnote">Start at log on starts app-launcher when you sign in to Windows, from your Startup folder; no admin rights needed.</p>
+
+      <!-- Voice: one read-only line, last so its hidden elements leave the
+           spacing above untouched; shown only while the PC's session is a
+           Remote Desktop one (voice-remote.js fills and unhides them). -->
+      <h2 class="settings-overline" data-voice-remote hidden>Voice</h2>
+      <div class="card settings-group" data-voice-remote hidden>
+        <div class="settings-row settings-row--inline">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-mic"></use></svg>
+          <span class="settings-row-label">Remote Desktop session</span>
+        </div>
+      </div>
+      <p id="voiceRemoteHelp" class="field-help settings-footnote" data-voice-remote hidden></p>
     </section>
