@@ -57,7 +57,7 @@ from src.transcript_flavors.grok import _grok_line_key, grok_entries
 from src.transcript_flavors.pi import _pi_line_key, pi_entries
 
 # One backwards read step. 256 KB is the same window the Board's
-# last-exchange reader uses (`board_transcript._EXCHANGE_TAIL_BYTES`).
+# last-exchange reader uses (`src.board.transcript._EXCHANGE_TAIL_BYTES`).
 WINDOW_BYTES = 256 * 1024
 # Budget for one page, whatever the turn count: a long run of tool results
 # must not turn one request into a whole-file read. Hitting it returns a

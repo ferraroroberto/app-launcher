@@ -331,8 +331,8 @@ def reap_stranded_runs(job: Job) -> List[Dict[str, Any]]:
     """
     reaped = finalize_dead_runs(job)
     if reaped and job.mutex_group:
-        # Local import avoids a jobs_queue <-> jobs_reap import cycle
-        # (jobs_queue.mutex_collision imports finalize_dead_runs from here)
+        # Local import avoids a src.jobs.queue <-> src.jobs.reap import cycle
+        # (src.jobs.queue.mutex_collision imports finalize_dead_runs from here)
         # — same pattern as write_run_json's local jobs_index import.
         from src.jobs.queue import drain_mutex_queue
 

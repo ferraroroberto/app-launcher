@@ -1,4 +1,4 @@
-"""Claude Code hook-JSONL line grammar (#1309, split out of ``session_transcript.py``)."""
+"""Claude Code hook-JSONL line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
 
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     ``attachment`` of type ``queued_command`` (a mid-turn message, #1674).
 
     ``uncapped`` (#985) drops the ``assistant``/``user`` display caps for
-    :func:`session_transcript.entry_full_text` — the folded kinds keep their
+    :func:`src.session_view.transcript.entry_full_text` — the folded kinds keep their
     normal caps either way, since only a turn's own text is ever read back
     from an uncapped call.
     """

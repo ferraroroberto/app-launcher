@@ -361,29 +361,6 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   white-space: nowrap;
 }
 
-/* Context-filter "saved" badge — the last consumer of the
-   dotted badge row the quota rows above used to share. */
-.usage-badges {
-  display: flex;
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 6px 12px;
-  margin: 0 0 8px;
-}
-.usage-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  min-width: 0;
-  max-width: 100%;
-  font-size: var(--font-caption); color: var(--muted);
-  overflow-wrap: anywhere;
-}
-.usage-badge::before {
-  content: ''; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--muted); flex: 0 0 auto;
-}
-.usage-badge.good { color: var(--success); }
-.usage-badge.good::before { background: var(--success); }
-
 /* Columns are section cards: on the phone they stack like every
    other tab's cards; the desktop block below lays them side by side. */
 .board-col { min-width: 0; }

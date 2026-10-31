@@ -43,7 +43,7 @@
     {
       "id": "codebase-audit-fleet",
       "name": "Weekly Codebase Audit (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\skills\\audit-fleet\\run-weekly.bat",
+      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\audit-fleet\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "THU", "at": "22:00" },
       "visible": true,
@@ -53,7 +53,7 @@
     {
       "id": "design-sweep-fleet",
       "name": "Weekly Design Sweep (fleet)",
-      "script_path": "E:\\automation\\fleet-config\\skills\\design-sweep\\run-weekly.bat",
+      "script_path": "E:\\automation\\fleet-config\\.claude\\skills\\design-sweep\\run-weekly.bat",
       "args": "",
       "schedule": { "type": "weekly", "day": "SAT", "at": "22:00" },
       "visible": true,

@@ -207,7 +207,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
 
 
 # The family of statuses that still mean "a human needs to look at
-# this" after board_transcript's needs-you split. ``idle-finished`` and
+# this" after src.board.transcript's needs-you split. ``idle-finished`` and
 # ``tool-pending`` and ``waiting-on-task`` are deliberately excluded — a
 # clean-stopped session with nothing pending, one still mid-turn on an ordinary
 # tool call, and one waiting on its own background task aren't alerts; all are

@@ -1,12 +1,6 @@
 /* ---------- Life OS tab ---------- */
 /* The model combo + Detached/Resume controls live in the Skills card's
-   summary (no separate options card); the recap tile is the
-   only .card--row left on the tab. */
-/* Single-row (non-collapsible) cards inherit the disclosure closed-box:
-   zero vertical padding, a 52px .card-head (vendored card.css) owns the
-   height, so they sit pixel-identical beside collapsed disclosure cards. */
-.card--row { padding: 0 14px; }
-.card--row .card-head { min-height: 52px; }
+   summary (no separate options card). */
 /* The weekly-recap glance row: the action-row with the notebook
    avatar, glyph in the accent like the job avatars, and its ▶ verb. */
 .lifeos-recap-avatar .avatar-glyph { color: var(--accent); }

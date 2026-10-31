@@ -1,4 +1,4 @@
-"""GitHub Copilot CLI ``events.jsonl`` line grammar (#1309, split out of ``session_transcript.py``)."""
+"""GitHub Copilot CLI ``events.jsonl`` line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
 
 from __future__ import annotations
 
@@ -82,7 +82,7 @@ def _copilot_outcome(data: Dict[str, Any]) -> Tuple[str, bool]:
     **unrecorded** — the harness's own trailing
     ``<shellId: N completed with exit code 1>`` footer is the only trace,
     and reading an outcome out of result prose is a rule no reader here
-    makes (see :data:`session_transcript.FLAVORS`).
+    makes (see :data:`src.session_view.transcript.FLAVORS`).
     """
     error = data.get("error")
     if data.get("success") is False:
@@ -105,7 +105,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
     One self-contained JSON event per line — ``{"type", "data", "id",
     "parentId", "timestamp"}`` — so no entry ever needs a neighbouring line
     (:func:`_copilot_line_key`) and a line yields at most one turn, which is
-    what :func:`session_transcript.entry_full_text` resolves against.
+    what :func:`src.session_view.transcript.entry_full_text` resolves against.
     Measured on a session launched through the launcher's own API for #1015,
     plus the 37 event logs already on disk:
 
@@ -147,7 +147,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
     (written once per session here, not per turn), and a single
     ``assistant.message`` line reaches 14 KB because of its opaque blobs.
     The paging contract absorbs this exactly as designed —
-    :data:`session_transcript.REQUEST_BYTE_CAP` ends a page early and hands
+    :data:`src.session_view.transcript.REQUEST_BYTE_CAP` ends a page early and hands
     back a cursor — but a Copilot page carries fewer turns per request than
     the other flavours, so "Load older" is tapped more often. Nothing is
     lost, and the system prompt never reaches a card.

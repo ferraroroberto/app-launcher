@@ -1,8 +1,8 @@
 """One log line per distinct key, with a bounded key set.
 
 The one "log this key once, cap the set, clear it wholesale on overflow"
-mechanism for every caller that needs it: ``board_transcript`` (unrecognized
-title glyphs), ``board_sessions`` (suppressed state rows) and
+mechanism for every caller that needs it: ``src.board.transcript`` (unrecognized
+title glyphs), ``src.board.sessions`` (suppressed state rows) and
 ``active_issue_claims`` (contract failures). All three exist for the same
 reason — ``GET /api/board`` polls every five seconds, so a steady-state
 condition would otherwise write the same line forever and bury the one that

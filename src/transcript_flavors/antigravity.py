@@ -1,4 +1,4 @@
-"""Antigravity CLI conversation-log line grammar (#1309, split out of ``session_transcript.py``)."""
+"""Antigravity CLI conversation-log line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
     "created_at", "content"?, "thinking"?, "tool_calls"?}`` — so no entry
     ever needs a neighbouring line (:func:`_antigravity_line_key`) and a
     line yields at most one turn, which is what
-    :func:`session_transcript.entry_full_text` resolves against. Measured on
+    :func:`src.session_view.transcript.entry_full_text` resolves against. Measured on
     a session launched through the launcher's own API for #1014 plus the
     264 conversations already on disk:
 

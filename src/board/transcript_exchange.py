@@ -29,7 +29,7 @@ def _typed_user_kind(obj: Dict[str, Any], stripped: str) -> str:
     ``<system-reminder>``…), else ``"typed"``.
 
     The one classification :func:`last_exchange`, :func:`has_typed_user_prompt`
-    (both this module) and ``session_transcript.claude_entries`` all apply —
+    (both this module) and ``src.transcript_flavors.claude.claude_entries`` all apply —
     kept here as the single shared check, not reimplemented per caller, so
     every caller agrees on ``isMeta``. Skipping that check lets a
     string-content ``isMeta`` line that no :data:`_SKIP_USER_PREFIXES` entry
@@ -87,7 +87,7 @@ def has_typed_user_prompt(transcript_path: Any) -> Optional[bool]:
       window whose tail happened to hold no typed prompt (a long autonomous
       stretch can push the last human turn out of view). Never folded into
       ``False``: "couldn't tell" and "confirmed empty" lead to different
-      decisions in :func:`board_router._find_resumable_chief_session_id`.
+      decisions in :func:`app.webapp.routers.board_chief._find_resumable_chief_session_id`.
     """
     if not transcript_path:
         return None

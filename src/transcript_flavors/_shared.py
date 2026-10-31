@@ -1,10 +1,10 @@
 """Generic parsing primitives shared by two or more harness flavours.
 
-Split out of ``session_transcript.py`` (#1309) alongside the per-flavour
+Split out of ``src/session_view/transcript.py`` (#1309) alongside the per-flavour
 modules in this package. Everything here is either used by two or more
 flavour builders (``claude.py``, ``codex.py``, ``grok.py``, ``pi.py``,
 ``antigravity.py``, ``copilot.py``) or by the paging/image code that stays
-in ``session_transcript.py`` itself — nothing flavour-specific lives here,
+in ``src/session_view/transcript.py`` itself — nothing flavour-specific lives here,
 so no flavour module needs to import another flavour module's helpers.
 """
 
@@ -106,7 +106,7 @@ ACTION_COMMAND_CAP = 2_000
 # worked out from an edit's own old/new text has none, so they are ``None`` --
 # never invented. A builder caps at DIFF_FULL_BYTES (the viewer's cap);
 # a transcript page trims each step further, see
-# ``session_transcript._inline_diffs``.
+# ``src.session_view.transcript._inline_diffs``.
 DIFF_FULL_BYTES = 200_000
 DIFF_CONTEXT = 3
 
@@ -320,7 +320,7 @@ def _with_action(entry: Entry, action: Optional[Dict[str, Any]], description: st
 #
 # An image block rides the transcript as base64. Only the flavour-agnostic
 # extraction lives here; the byte cap, media-type sniff and the on-demand
-# read/decode route (``transcript_image``) stay in ``session_transcript.py``
+# read/decode route (``transcript_image``) stay in ``src/session_view/transcript.py``
 # since they serve the paging/image API, not a flavour builder.
 
 
@@ -404,7 +404,7 @@ def _attach_result(entries: List[Entry], calls: Dict[str, Entry], call_id: Any,
     tell a failed call from a working one at all for some or all of their
     tools, and folding that gap into the success state is the defect this
     fixes rather than a shortcut it may take. Which harness can say what is
-    declared once, per flavour, in :data:`session_transcript.FLAVORS`'
+    declared once, per flavour, in :data:`src.session_view.transcript.FLAVORS`'
     ``tool_errors`` — the client reads that to decide whether an unmarked
     call means "fine" or "nobody can tell".
 

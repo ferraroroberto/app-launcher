@@ -22,7 +22,7 @@ corrupt, or wrong-shaped file must never raise — callers get an
 file resolves to the true "off" default — see :func:`read_mode`) instead of
 an exception, so a Settings-tab render never breaks on a cold or torn state
 file. Deliberately self-contained (one module, no imports from
-``board_state`` or any other feature) — this ships once and is ported to
+``src.board.state`` or any other feature) — this ships once and is ported to
 app-launcher-lite verbatim later.
 """
 
@@ -46,7 +46,7 @@ DEFAULT_UPDATED_BY = "app-launcher"
 
 # A shadow.jsonl with no row newer than this is treated as gone-cold — the
 # hook has stopped writing (filter off for a long stretch, or unwired).
-# Mirrors board_state.py's STATE_STALE_AFTER (24h) for the same "a day with
+# Mirrors src/board/state.py's STATE_STALE_AFTER (24h) for the same "a day with
 # no update is worth flagging" horizon.
 STATS_STALE_AFTER = timedelta(hours=24)
 
@@ -183,7 +183,7 @@ def read_mode(path: Path) -> Dict[str, Any]:
         }
     try:
         # utf-8-sig: tolerate a BOM from a non-Python writer, same reasoning
-        # as board_state.read_rate_limits.
+        # as src.board.state.read_rate_limits.
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, ValueError):
         return unavailable

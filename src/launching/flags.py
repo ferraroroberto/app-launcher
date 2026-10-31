@@ -21,7 +21,7 @@ One builder per registered agent, plus the resume-launch variant:
 values it validates against (``VALID_*``, ``PI_MODEL_SPECS``) stay in
 ``webapp_config.py`` beside the dataclass field and its validator.
 
-Imports one-way (``launch_flags`` → ``webapp_config``): the config module never
+Imports one-way (``src.launching.flags`` → ``webapp_config``): the config module never
 imports this one, so there is no cycle to work around.
 """
 

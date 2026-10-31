@@ -1,10 +1,10 @@
 """Shared types for the job-kind registry (issue #70).
 
 Deliberately a leaf module — no import of :mod:`src.jobs.preflight` or
-:mod:`src.jobs_kinds` (the registry) — so that ``jobs_preflight`` can
+:mod:`src.jobs_kinds` (the registry) — so that ``src.jobs.preflight`` can
 import from here and *also* import the registry (``src.jobs_kinds``)
 without a cycle: ``jobs_kinds.<kind module>`` → ``jobs_kinds.base`` →
-``jobs_config`` only.
+``src.jobs.config`` only.
 """
 
 from __future__ import annotations

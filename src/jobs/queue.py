@@ -140,8 +140,8 @@ def mutex_collision(jobs: List[Job], job: Job) -> Optional[Job]:
     """
     if not job.mutex_group:
         return None
-    # Local import avoids a jobs_queue <-> jobs_reap import cycle
-    # (jobs_reap.reap_stranded_runs locally imports drain_mutex_queue from
+    # Local import avoids a src.jobs.queue <-> src.jobs.reap import cycle
+    # (src.jobs.reap.reap_stranded_runs locally imports drain_mutex_queue from
     # here) — same pattern as write_run_json's local jobs_index import.
     # finalize_dead_runs (not reap_stranded_runs) deliberately skips the
     # mutex-queue drain: we're still mid-sweep deciding admission for

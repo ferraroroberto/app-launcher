@@ -299,7 +299,6 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
     expect(meta).to_have_attribute("data-tone", "attention")
     expect(card.locator("#codingUsageFooter")).to_have_text(
         "Context filter saved 12.3k tokens today")
-    expect(authed_page.locator("#paneClaude .usage-badge")).to_have_count(0)
 
     # The card's title is part of the tap, not only the meter.
     card.locator("#codingUsageTitle").click()

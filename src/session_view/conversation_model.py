@@ -14,7 +14,7 @@ and this was probed rather than assumed (recorded on #1503's PR):
   explicitly, and this module is where it comes from: Codex records the model
   of every turn in its rollout's ``turn_context`` lines.
 
-Both readers follow ``life_os_transcript``'s rules: the id must be a canonical
+Both readers follow ``src.life_os.transcript``'s rules: the id must be a canonical
 UUID, the file name is built from it (never searched for by pattern text the
 caller supplied), linked folders are never entered, and every failure answers
 ``""`` — "not known" — never a guess. Blocking filesystem work: callers run it

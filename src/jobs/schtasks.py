@@ -926,8 +926,8 @@ def invalidate_next_run_cache() -> None:
     global _next_run_cache
     with _next_run_lock:
         _next_run_cache = None
-    # Local import breaks the jobs_coverage -> jobs_schtasks module cycle,
-    # same pattern as jobs_reap's local jobs_queue import.
+    # Local import breaks the src.jobs.coverage -> src.jobs.schtasks module
+    # cycle, same pattern as src.jobs.reap's local src.jobs.queue import.
     from src.jobs.coverage import invalidate_coverage_cache
     from src.jobs.schtasks_offsets import invalidate_offset_pin_cache
 
@@ -961,7 +961,3 @@ def query_next_run(
     # string verbatim either way.
     candidates.sort()
     return candidates[0] if candidates else None
-
-
-# ------------------------------------------------------- computed next fire
-#

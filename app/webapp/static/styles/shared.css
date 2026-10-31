@@ -495,32 +495,12 @@ textarea.input-native { height: auto; }
 /* The row is one button (the text column) plus a kebab in its own rail,
    centred against the row's full height. The chevron that briefly
    replaced the gear is gone: it was centred against the badge line inside
-   .session-head, not the row, which is what never lined up — and it carried
+   the row head, not the row, which is what never lined up — and it carried
    no actions. The kebab sits in the 52px slot the gear held, outside the row
    button, so tapping it opens the menu and never the session. */
 .session-item .session-open {
   width: 100%;
   text-align: left;
-}
-/* Single declaration for `.session-head` (it used to be declared
-   twice, non-adjacently, and the two halves both mattered: the earlier copy
-   carried the font, this one the gap). Emitted by `sessions.js`, `apps.js`,
-   `jobs.js` and `jobs-row.js`. */
-.session-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-body);
-  font-weight: 600;
-}
-/* A name in a row head is one line, truncated, never broken mid-word.
-   The session and job rows below refine it; the running-apps row relies on
-   this alone. */
-.session-head .name {
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 /* ---------- Glance UI kit ----------
    The shared parts every tab moves onto (glance.js, usage-meter.js). */

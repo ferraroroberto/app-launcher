@@ -1,6 +1,6 @@
 """The one place that decides whether a file's bytes prove it's an image
-(#1627): shared by ``session_transcript``'s inline transcript images and
-``session_outbox``'s sent-file outbox, so the two never disagree on what a
+(#1627): shared by ``src.session_view.transcript``'s inline transcript images and
+``src.session_view.outbox``'s sent-file outbox, so the two never disagree on what a
 served file may claim to be.
 """
 

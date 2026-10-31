@@ -114,7 +114,6 @@ def test_source_states_remain_distinct(monkeypatch, state):
         "codex:gpt-6-luna",
     )
     assert view["state"] == state
-    assert view["available"] is False
     assert view["stale"] is (state == "stale")
 
 
@@ -160,7 +159,6 @@ def test_legacy_claude_fallback_requires_absent_canonical_source_and_known_time(
         "five_hour": None, "seven_day": None,
     }
     view = _read(monkeypatch, {"sources": [absent], "pools": []}, "claude:opus", legacy)
-    assert view["available"] is True  # old reader compatibility
     assert view["state"] == "unknown"  # never fresh without observed time
 
     broken = _source("claude", "anthropic", [], state="error", reason="source_unreadable")

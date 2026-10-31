@@ -1,4 +1,4 @@
-"""Pi session-history JSONL line grammar (#1309, split out of ``session_transcript.py``)."""
+"""Pi session-history JSONL line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
 
 from __future__ import annotations
 
@@ -93,7 +93,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
       ``assistant`` entry cannot hoist a reply above the tool call that
       produced it — the trap the Grok flavour had to avoid (#1012). It also
       keeps exactly one turn entry per offset, which is what
-      :func:`session_transcript.entry_full_text` resolves against.
+      :func:`src.session_view.transcript.entry_full_text` resolves against.
 
     Timestamps come from the **outer** record's ISO string, not the inner
     ``message.timestamp`` (epoch milliseconds), so a turn renders as itself
