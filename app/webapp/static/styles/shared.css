@@ -11,8 +11,12 @@
 
 /* Neutral frosted toast — the same glass treatment as the floating bottom nav
    (not a solid block), ported from home-automation's reference recipe.
-   Sits above the nav so it's never hidden behind it. Only real errors tint. */
-.toast {
+   Sits above the nav so it's never hidden behind it. Only real errors tint.
+   .sheet-toast is the same toast raised inside a modal dialog (toast()'s
+   opts.host in api.js); it carries its own class so a `.toast` selector
+   still means the page's one toast. */
+.toast,
+.sheet-toast {
   position: fixed;
   left: 50%;
   /* --bottom-tabs-* are deliberately undefined in this app's token block
@@ -54,7 +58,8 @@
      overlay.) */
   z-index: 400;
 }
-.toast.error {
+.toast.error,
+.sheet-toast.error {
   background: color-mix(in srgb, var(--deficit) 75%, transparent);
   border-color: var(--deficit);
   color: var(--accent-fg);

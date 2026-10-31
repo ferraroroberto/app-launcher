@@ -2,7 +2,8 @@
 By feature counts.
 
     GET  /api/screen-time/export   {configured, last_ok, last_error}
-    POST /api/screen-time/export   send the last 7 completed days now
+    POST /api/screen-time/export   send the last 7 days and today now; the
+                                   answer's ``result.summary`` is the toast
     GET  /api/usage/features       uses per input feature over the last N days
 
 The minutes come from the vendored ``GET /api/usage/time``; the two export

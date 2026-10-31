@@ -261,8 +261,10 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     page.set_viewport_size({"width": 390, "height": 844})
     _route_usage(page)
     status = {"configured": True, "last_ok": None, "last_error": None}
-    ok = {"at": _now_iso(), "first": "2026-10-11", "last": "2026-10-17", "days": 7,
-          "total_minutes": 300, "dry_run": False, "put": 6, "deleted": 1}
+    sent = "Sent: today 5 h 12 m (updated), yesterday unchanged, 5 earlier days unchanged."
+    ok = {"at": _now_iso(), "first": "2026-10-11", "last": "2026-10-18", "days": 8,
+          "total_minutes": 300, "dry_run": False, "put": 1, "deleted": 0, "unchanged": 7,
+          "summary": sent}
     post = [200, {"result": {k: v for k, v in ok.items() if k != "at"},
                   "configured": True, "last_ok": ok, "last_error": None}]
     seen = _route_export(page, status, post)
@@ -270,17 +272,24 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     open_settings_sheet(page, "screenTimeSheet")
     line = page.locator("#screenTimeSent")
     send = page.locator("#screenTimeSend")
-    toast = page.locator("#toast")
+    toast = page.locator("#screenTimeToast")
     expect(line).to_have_text("Not sent to task-os yet.")
 
     # A send that works: one POST, a toast, and the line names it.
     send.click()
-    expect(toast).to_have_text("Sent 7 days to task-os")
+    expect(toast).to_have_text(sent)
     expect(line).to_have_text(re.compile(r"^Last sent to task-os today \d\d:\d\d\.$"))
     expect(send).to_have_text("Send to task-os")
     expect(send).to_be_enabled()
     assert seen.count("POST") == 1, seen
     _no_sideways_spill(page)
+
+    # An immediate second press is never silent either: it says nothing was new.
+    nothing = "Nothing new to send. Today and the last 7 days are up to date in task-os."
+    post[1]["result"]["summary"] = nothing
+    send.click()
+    expect(toast).to_have_text(nothing)
+    wait_until(page, lambda: seen.count("POST") == 2, "the second send")
 
     # task-os down: an error toast, and the line shows the newer failure.
     post[:] = [503, {"detail": "task-os is not reachable"}]
@@ -290,7 +299,7 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(toast).to_have_text("Send failed: task-os is not reachable")
     expect(line).to_have_text(re.compile(r"^Last send failed .*: task-os is not reachable$"))
     expect(send).to_be_enabled()
-    wait_until(page, lambda: seen.count("POST") == 2, "the second send")
+    wait_until(page, lambda: seen.count("POST") == 3, "the failed send")
 
     # Not set up: the line says so; Send stays tappable and toasts why.
     page.locator("#screenTimeSheet .detail-header .detail-close").click()

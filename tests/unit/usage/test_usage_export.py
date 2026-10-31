@@ -5,10 +5,12 @@ port, so the real ``requests`` path and error mapping run) and a synthetic
 usage log in ``tmp_path``. The real usage log and the live task-os are never
 touched. Pinned:
 
-  * the last 7 *completed* days by default, today never sent;
+  * the last 7 completed days plus today by default;
   * one entry per day, devices merged, the device split in the note;
-  * a rerun sends the same PUTs (idempotent by ``usage:app-launcher:<day>``);
+  * a day that has not changed since the last send makes no request, and a
+    changed day is PUT again (idempotent by ``usage:app-launcher:<day>``);
   * a day that rounds to 0 is a DELETE, and a 404 there is fine;
+  * the toast text says what changed, or that nothing did;
   * a dry run makes no HTTP call and writes no status file;
   * not set up, category missing, task-os down and task-os refusing are
     distinct errors, each recorded for the sheet's "last sent" line.
@@ -163,21 +165,22 @@ def _closed_port_url() -> str:
 # ------------------------------------------------------------ the numbers
 
 
-def test_default_window_is_the_last_seven_completed_days() -> None:
-    days = usage_export.completed_days(TODAY)
+def test_default_window_is_the_last_seven_completed_days_and_today() -> None:
+    days = usage_export.send_days(TODAY)
     assert days[0] == TODAY - timedelta(days=7)
-    assert days[-1] == TODAY - timedelta(days=1)
-    assert len(days) == 7
-    assert usage_export.completed_days(TODAY, D3) == [D3]
+    assert days[-1] == TODAY
+    assert len(days) == 8
+    assert usage_export.send_days(TODAY, D3) == [D3, TODAY]
+    assert usage_export.send_days(TODAY, TODAY) == [TODAY]
     with pytest.raises(ValueError):
-        usage_export.completed_days(TODAY, TODAY)
+        usage_export.send_days(TODAY, TODAY + timedelta(days=1))
 
 
 def test_dry_run_counts_each_day_and_sends_nothing(task_os: FakeTaskOs, usage_db: Path, tmp_path: Path) -> None:
     result = _run(_cfg(task_os.url), usage_db, tmp_path, dry_run=True)
 
     assert [(e.day, e.minutes, e.action) for e in result.entries] == [
-        (D1, 50, "put"), (D2, 0, "delete"), (D3, 45, "put"),
+        (D1, 50, "put"), (D2, 0, "delete"), (D3, 45, "put"), (TODAY, 10, "put"),
     ]
     assert result.entries[0].by_device == {"phone": 30, "desktop": 20}
     assert result.entries[0].note == "Launcher screen time: PC 20 m, Phone 30 m"
@@ -188,46 +191,191 @@ def test_dry_run_counts_each_day_and_sends_nothing(task_os: FakeTaskOs, usage_db
 
 def test_dry_run_needs_no_task_os_config(usage_db: Path, tmp_path: Path) -> None:
     result = _run(WebappConfig(task_os_person=""), usage_db, tmp_path, dry_run=True)
-    assert result.total_minutes == 95
+    assert result.total_minutes == 105
 
 
-def test_send_puts_each_day_and_a_rerun_sends_the_same_puts(
+def _put(day: date, minutes: int, note: str) -> tuple:
+    return ("PUT", f"/api/time/entries/by-source/usage:app-launcher:{day}", {
+        "person": "p1", "category_id": CATEGORY_ID, "day": day.isoformat(),
+        "minutes": minutes, "note": note,
+    })
+
+
+def _status_file(tmp_path: Path) -> Dict[str, Any]:
+    return json.loads((tmp_path / "status.json").read_text(encoding="utf-8"))
+
+
+def test_first_send_puts_each_day_today_included(
     task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
 ) -> None:
     first = _run(_cfg(task_os.url), usage_db, tmp_path)
-    first_writes = list(task_os.writes)
-    assert (first.put, first.deleted) == (2, 1)
-    assert first_writes == [
-        ("PUT", f"/api/time/entries/by-source/usage:app-launcher:{D1}", {
-            "person": "p1", "category_id": CATEGORY_ID, "day": D1.isoformat(), "minutes": 50,
-            "note": "Launcher screen time: PC 20 m, Phone 30 m",
-        }),
+
+    assert task_os.writes == [
+        _put(D1, 50, "Launcher screen time: PC 20 m, Phone 30 m"),
         ("DELETE", f"/api/time/entries/by-source/usage:app-launcher:{D2}", None),
-        ("PUT", f"/api/time/entries/by-source/usage:app-launcher:{D3}", {
-            "person": "p1", "category_id": CATEGORY_ID, "day": D3.isoformat(), "minutes": 45,
-            "note": "Launcher screen time: Phone 45 m",
-        }),
+        _put(D3, 45, "Launcher screen time: Phone 45 m"),
+        _put(TODAY, 10, "Launcher screen time: Phone 10 m"),
     ]
-    # Today is still running: never sent.
-    assert all(TODAY.isoformat() not in c[1] for c in task_os.calls)
-
-    task_os.calls.clear()
-    _run(_cfg(task_os.url), usage_db, tmp_path)
-    assert task_os.writes == first_writes
-    assert sorted(task_os.store) == [f"usage:app-launcher:{D1}", f"usage:app-launcher:{D3}"]
-
+    # D2 was never in task-os (the DELETE got a 404), so nothing was removed.
+    assert [(o.day, o.outcome) for o in first.outcomes] == [
+        (D1, "added"), (D2, "unchanged"), (D3, "added"), (TODAY, "added"),
+    ]
+    assert (first.put, first.deleted, first.unchanged) == (3, 0, 1)
+    assert sorted(task_os.store) == [
+        f"usage:app-launcher:{D1}", f"usage:app-launcher:{D3}", f"usage:app-launcher:{TODAY}",
+    ]
     status = usage_export.read_status(tmp_path / "status.json")
-    assert status["last_ok"]["put"] == 2 and status["last_ok"]["deleted"] == 1
-    assert status["last_ok"]["first"] == D1.isoformat()
+    assert status["last_ok"]["put"] == 3 and status["last_ok"]["unchanged"] == 1
+    assert status["last_ok"]["last"] == TODAY.isoformat()
     assert status["last_error"] is None
+
+
+def test_an_immediate_second_send_makes_no_write(
+    task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
+) -> None:
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    task_os.calls.clear()
+
+    second = _run(_cfg(task_os.url), usage_db, tmp_path)
+
+    assert task_os.writes == []
+    assert [o.outcome for o in second.outcomes] == ["unchanged"] * 4
+    assert (second.put, second.deleted) == (0, 0)
+    assert second.summary() == "Nothing new to send. Today and the last 3 days are up to date in task-os."
+
+
+def test_only_a_changed_day_is_sent_again(
+    task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
+) -> None:
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    task_os.calls.clear()
+    # Ten more phone minutes today: the running total grows.
+    UsageLog(usage_db).insert_rows(
+        _visit("v-ph-t2", "phone", TODAY, (9, 0), (9, 10)),
+        now=datetime.combine(TODAY, time(23, 0)).astimezone(timezone.utc),
+    )
+
+    third = _run(_cfg(task_os.url), usage_db, tmp_path)
+
+    assert task_os.writes == [_put(TODAY, 20, "Launcher screen time: Phone 20 m")]
+    assert [(o.day, o.outcome) for o in third.outcomes if o.outcome != "unchanged"] == [(TODAY, "updated")]
+    assert third.summary() == "Sent: today 20 m (updated), yesterday unchanged, 2 earlier days unchanged."
+
+
+def test_a_changed_device_split_with_the_same_total_is_sent_again(
+    task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
+) -> None:
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    status = _status_file(tmp_path)
+    status["sent"]["days"][D1.isoformat()]["by_device"] = {"desktop": 50}
+    (tmp_path / "status.json").write_text(json.dumps(status), encoding="utf-8")
+    task_os.calls.clear()
+
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+
+    assert task_os.writes == [_put(D1, 50, "Launcher screen time: PC 20 m, Phone 30 m")]
+
+
+def test_a_new_target_resends_everything(task_os: FakeTaskOs, usage_db: Path, tmp_path: Path) -> None:
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    task_os.calls.clear()
+    task_os.people.append({"id": "p2", "name": "Person 2"})
+
+    _run(_cfg(task_os.url, task_os_person="p2"), usage_db, tmp_path)
+
+    assert [c[0] for c in task_os.writes] == ["PUT", "DELETE", "PUT", "PUT"]
+
+
+def test_the_status_file_holds_per_day_integers_only(
+    task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
+) -> None:
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    ledger = _status_file(tmp_path)["sent"]
+    assert set(ledger) == {"target", "days"}
+    assert ledger["days"][D1.isoformat()] == {"minutes": 50, "by_device": {"desktop": 20, "phone": 30}}
+    assert all(isinstance(day["minutes"], int) and all(isinstance(v, int) for v in day["by_device"].values())
+               for day in ledger["days"].values())
+
+
+def test_a_refusal_midway_keeps_the_days_already_sent(
+    task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
+) -> None:
+    real_handle = task_os.handle
+
+    def refuse_today(method: str, path: str, body: Optional[dict]) -> tuple[int, Optional[dict]]:
+        if method == "PUT" and path.endswith(str(TODAY)):
+            return 422, {"error": {"code": "validation_error", "message": "no"}}
+        return real_handle(method, path, body)
+
+    task_os.handle = refuse_today  # type: ignore[method-assign]
+    with pytest.raises(usage_export.TaskOsRejected):
+        _run(_cfg(task_os.url), usage_db, tmp_path)
+    task_os.handle = real_handle  # type: ignore[method-assign]
+    task_os.calls.clear()
+
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+
+    assert task_os.writes == [_put(TODAY, 10, "Launcher screen time: Phone 10 m")]
 
 
 def test_a_day_that_drops_to_zero_deletes_what_was_sent(
     task_os: FakeTaskOs, usage_db: Path, tmp_path: Path,
 ) -> None:
-    task_os.store[f"usage:app-launcher:{D2}"] = {"minutes": 30}
     _run(_cfg(task_os.url), usage_db, tmp_path)
+    status = _status_file(tmp_path)
+    status["sent"]["days"][D2.isoformat()] = {"minutes": 30, "by_device": {"phone": 30}}
+    (tmp_path / "status.json").write_text(json.dumps(status), encoding="utf-8")
+    task_os.store[f"usage:app-launcher:{D2}"] = {"minutes": 30}
+    task_os.calls.clear()
+
+    again = _run(_cfg(task_os.url), usage_db, tmp_path)
+
     assert f"usage:app-launcher:{D2}" not in task_os.store
+    assert [c[0] for c in task_os.writes] == ["DELETE"]
+    assert [o.outcome for o in again.outcomes if o.day == D2] == ["removed"]
+    assert again.deleted == 1
+
+    # Once removed, the zero day is known and costs no further request.
+    task_os.calls.clear()
+    _run(_cfg(task_os.url), usage_db, tmp_path)
+    assert task_os.writes == []
+
+
+# ------------------------------------------------------------ the toast text
+
+
+def _outcomes(*rows: tuple) -> list:
+    """``(days ago, minutes, outcome)`` rows, oldest first."""
+    return [usage_export.DayOutcome(TODAY - timedelta(days=ago), minutes, outcome)
+            for ago, minutes, outcome in rows]
+
+
+def test_summary_names_today_and_yesterday_and_folds_older_days() -> None:
+    days = _outcomes(
+        (7, 0, "unchanged"), (6, 30, "unchanged"), (5, 20, "unchanged"), (4, 0, "unchanged"),
+        (3, 10, "unchanged"), (2, 15, "unchanged"), (1, 248, "unchanged"), (0, 312, "updated"),
+    )
+    assert usage_export._summary(days, TODAY) == (
+        "Sent: today 5 h 12 m (updated), yesterday unchanged, 6 earlier days unchanged.")
+
+
+def test_summary_names_an_older_change_and_a_removal() -> None:
+    two, three = TODAY - timedelta(days=2), TODAY - timedelta(days=3)
+    days = _outcomes((3, 45, "added"), (2, 0, "removed"), (1, 30, "updated"), (0, 5, "unchanged"))
+    assert usage_export._summary(days, TODAY) == (
+        "Sent: today unchanged, yesterday 30 m (updated), "
+        f"{two:%a} {two.day} {two:%b} removed, {three:%a} {three.day} {three:%b} 45 m (added).")
+
+
+def test_summary_counts_many_older_changes_instead_of_listing_them() -> None:
+    days = _outcomes(*[(ago, 10, "added") for ago in range(7, 0, -1)], (0, 5, "added"))
+    assert usage_export._summary(days, TODAY) == (
+        "Sent: today 5 m (added), yesterday 10 m (added), 6 earlier days changed.")
+
+
+def test_summary_when_only_today_is_in_the_window() -> None:
+    assert usage_export._summary(_outcomes((0, 5, "unchanged")), TODAY) == (
+        "Nothing new to send. Today is already in task-os.")
 
 
 def test_task_os_down_is_unreachable(usage_db: Path, tmp_path: Path) -> None:
@@ -347,7 +495,7 @@ def test_route_status_and_send(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, 
     assert "task_os_person" in answer.json()["detail"]
 
     def fake_run(cfg: WebappConfig) -> usage_export.ExportResult:
-        result = usage_export.ExportResult(D1, D3, [], dry_run=False, put=3)
+        result = usage_export.ExportResult(D1, TODAY, [], dry_run=False, put=3)
         usage_export._record(status_path, result=result)
         return result
 
@@ -356,4 +504,5 @@ def test_route_status_and_send(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, 
     assert answer.status_code == 200
     body = answer.json()
     assert body["result"]["put"] == 3 and body["configured"] is True
+    assert body["result"]["summary"] == "Nothing to send."
     assert body["last_ok"]["put"] == 3
