@@ -89,6 +89,8 @@ from app.webapp.routers._helpers import (
 from app.webapp.routers.board_spawn import (
     SESSION_HOST_UNREACHABLE,
     _agent_and_flags,
+    _applied_effort,
+    _dispatch_effort,
     _read_live_sessions,
     _resolve_repo_entry,
 )
@@ -640,6 +642,11 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     ``--brief <path>``, so the invariant above still holds. Absent (or
     ``null``) → the prompt is byte-identical to a brief-less start; empty or
     oversize → 400.
+
+    The optional ``effort`` overrides the Coding tab's per-model effort for
+    this launch; one the model does not offer is a 400 naming the allowed
+    ones. The response's ``effort`` is present only when the built command
+    line carries it. Absent → the command is built exactly as before.
     """
     cfg: WebappConfig = request.app.state.webapp_config
     body = await maybe_json(request)
@@ -655,10 +662,12 @@ async def start_issue(request: Request) -> Dict[str, Any]:
     brief = _validated_brief(body)
     entry = _resolve_repo_entry(cfg, repo)
     switch = await _auto_switch(cfg, model, Path(entry.project_dir))
+    effort = _dispatch_effort(
+        _requested_effort(body), model or cfg.claude_model, switch.model or cfg.claude_model)
     if switch.model:
-        agent, base_flags = _agent_and_flags(cfg, switch.model)
+        agent, base_flags = _agent_and_flags(cfg, switch.model, effort)
     else:
-        agent, base_flags = "claude", build_claude_flags(cfg)
+        agent, base_flags = "claude", build_claude_flags(cfg, effort_override=effort)
 
     prompt = f"/issue-{mode} {number}"
     brief_path = None
@@ -709,8 +718,12 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         name = f"{name or entry.name} · Grok fallback"
     if sid and name:
         await _auto_name_session(cfg, sid, name)
-    return {"launched": prompt, "repo": entry.name, "session": session,
-            "auto_switch": switch.payload(model)}
+    result = {"launched": prompt, "repo": entry.name, "session": session,
+              "auto_switch": switch.payload(model)}
+    applied = _applied_effort(agent, base_flags, effort)
+    if applied:
+        result["effort"] = applied
+    return result
 
 
 async def _auto_switch(
@@ -737,6 +750,16 @@ async def _auto_switch(
         decision.weekly_pct, decision.pace_pct,
     )
     return decision
+
+
+def _requested_effort(body: Dict[str, Any]) -> Optional[str]:
+    """The body's per-launch ``effort``, ``None`` when absent; 400 when not a string."""
+    effort = body.get("effort")
+    if effort is None:
+        return None
+    if not isinstance(effort, str):
+        raise HTTPException(status_code=400, detail="effort must be a string")
+    return effort.strip().lower()
 
 
 def _validated_brief(body: Dict[str, Any]) -> Optional[str]:

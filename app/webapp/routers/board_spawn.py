@@ -9,6 +9,8 @@ reused across *both* route modules:
   carrying its unknown state (#915) so no caller reads a failed list as empty.
 * :func:`_resolve_repo_entry` — bare repo name → live projects-folder entry.
 * :func:`_agent_and_flags` — the Board's per-launch model selector (#500/#505).
+* :func:`_dispatch_effort` / :func:`_applied_effort` — a dispatch's per-launch
+  ``effort``: checked against the model, then read back off the built flags.
 * :func:`_await_dispatch_ready` / :func:`_await_pty_quiescent` /
   :func:`_type_into_session` — the readiness, quiescence and framing rules for
   writing text into a freshly spawned PTY (#64/#166/#245/#302/#549/#611).
@@ -36,9 +38,11 @@ from fastapi import HTTPException
 from src import agents
 from src.clients import session as session_client
 from src.launching.flags import build_claude_flags, build_codex_flags, build_grok_flags
-from src.launching.model_catalog import CLAUDE_MODEL_SPECS, GROK_DISPATCH_MODEL_SPECS, available_values
+from src.launching.model_catalog import (
+    CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, GROK_DISPATCH_MODEL_SPECS, available_values,
+)
 from src.registry import AppEntry, live_claude_code_entries
-from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
+from src.webapp_config import VALID_CODEX_MODELS, VALID_GROK_EFFORTS, WebappConfig
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +134,9 @@ _DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 _DISPATCH_GROK_MODELS = available_values(GROK_DISPATCH_MODEL_SPECS)
 
 
-def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
+def _agent_and_flags(
+    cfg: WebappConfig, model: str, effort: Optional[str] = None
+) -> Tuple[str, str]:
     """Validated ``(agent, flags)`` for a Board per-launch ``model`` (#500/#505).
 
     The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
@@ -139,20 +145,78 @@ def _agent_and_flags(cfg: WebappConfig, model: str) -> Tuple[str, str]:
     permission mode. The ``is_installed`` check is the
     same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
     Coding tab's already-disabled button.
+
+    ``effort`` (already checked by :func:`_dispatch_effort`) replaces the
+    persisted effort for this one launch; ``None`` keeps it.
     """
-    provider, separator, model_value = model.partition(":")
-    if not separator:
-        # Preserve old Claude callers while the explicit provider values roll out.
-        provider, model_value = "claude", model
+    provider, model_value = _split_model(model)
     if provider == "claude" and model_value in _DISPATCH_CLAUDE_MODELS:
-        return "claude", build_claude_flags(cfg, model_value)
+        return "claude", build_claude_flags(cfg, model_value, effort_override=effort)
     if provider == "grok" and model_value in _DISPATCH_GROK_MODELS:
         _require_installed("grok")
-        return "grok", build_grok_flags(cfg)
+        return "grok", build_grok_flags(cfg, effort_override=effort)
     if provider != "codex" or model_value not in VALID_CODEX_MODELS:
         raise HTTPException(status_code=400, detail=f"unknown model: {model}")
     _require_installed("codex")
-    return "codex", build_codex_flags(cfg, model_value)
+    return "codex", build_codex_flags(cfg, model_value, effort_override=effort)
+
+
+def _split_model(model: str) -> Tuple[str, str]:
+    """``(provider, model)``; a bare value is a Claude tier, as old callers send."""
+    provider, separator, model_value = model.partition(":")
+    return (provider, model_value) if separator else ("claude", model)
+
+
+def _efforts_for(model: str) -> Tuple[str, ...]:
+    """The per-launch efforts ``model`` offers, ``()`` when it takes none."""
+    provider, model_value = _split_model(model)
+    if provider == "claude":
+        return tuple(CLAUDE_MODEL_SPECS.get(model_value, {}).get("efforts", ()))
+    if provider == "codex":
+        return tuple(CODEX_MODEL_SPECS.get(model_value, {}).get("efforts", ()))
+    return tuple(VALID_GROK_EFFORTS) if provider == "grok" else ()
+
+
+def _dispatch_effort(
+    effort: Optional[str], requested: str, launched: str
+) -> Optional[str]:
+    """The effort to put on a dispatch's command line, ``None`` for the persisted one.
+
+    A value the ``requested`` model does not offer is a 400 naming the allowed
+    ones. When the Grok auto-switch ``launched`` a different model, a value
+    that model does not offer is dropped rather than failing a dispatch that
+    was valid as sent; :func:`_applied_effort` then echoes nothing.
+    """
+    if effort is None:
+        return None
+    allowed = _efforts_for(requested)
+    if effort not in allowed:
+        offered = ", ".join(allowed) if allowed else "none"
+        raise HTTPException(
+            status_code=400,
+            detail=f"effort {effort!r} is not offered by {requested}; allowed: {offered}",
+        )
+    return effort if effort in _efforts_for(launched) else None
+
+
+# The flag each agent carries its effort in, as built by src.launching.flags.
+_EFFORT_FLAG = {"claude": "--effort", "grok": "--reasoning-effort"}
+
+
+def _applied_effort(agent: str, flags: str, effort: Optional[str]) -> Optional[str]:
+    """``effort`` when the built ``flags`` actually carry it, else ``None``.
+
+    Read off the command line, never assumed from the request, so the
+    dispatcher can report the effort as applied from evidence.
+    """
+    if effort is None:
+        return None
+    parts = flags.split()
+    if agent == "codex":
+        return effort if f"model_reasoning_effort={effort}" in parts else None
+    flag = _EFFORT_FLAG.get(agent)
+    pairs = zip(parts, parts[1:])
+    return effort if flag and (flag, effort) in pairs else None
 
 
 def _require_installed(agent_id: str) -> None:

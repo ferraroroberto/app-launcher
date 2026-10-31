@@ -19,6 +19,7 @@ from src.agents import resume_command_for
 from src.launching.flags import (
     build_claude_flags,
     build_codex_flags,
+    build_grok_flags,
     build_pi_flags,
     build_resume_flags,
     claude_model_family,
@@ -120,6 +121,24 @@ class TestClaudeArgv:
         cfg = _cfg(claude_model="opus")
         flags = build_claude_flags(cfg, model_override="sonnet", channel_settings="C:/x/s.json")
         assert _effort_arg(flags) == "high"
+
+
+class TestPerLaunchEffortOverride:
+    """``effort_override`` (a Board dispatch's ``effort``) beats the saved effort."""
+
+    def test_claude_override_wins_and_none_is_unchanged(self):
+        cfg = _cfg(claude_model="opus", claude_model_efforts={"opus": "low"})
+        assert _effort_arg(build_claude_flags(cfg, effort_override="high")) == "high"
+        assert build_claude_flags(cfg, effort_override=None) == build_claude_flags(cfg)
+
+    def test_codex_and_grok_overrides_win_and_none_is_unchanged(self):
+        cfg = _cfg(grok_effort="high")
+        assert "model_reasoning_effort=low" in build_codex_flags(
+            cfg, "gpt-5.6-sol", effort_override="low")
+        assert build_codex_flags(cfg, "gpt-5.6-sol", effort_override=None) == build_codex_flags(
+            cfg, "gpt-5.6-sol")
+        assert build_grok_flags(cfg, effort_override="low").endswith("--reasoning-effort low")
+        assert build_grok_flags(cfg, effort_override=None) == build_grok_flags(cfg)
 
 
 class TestResume:
