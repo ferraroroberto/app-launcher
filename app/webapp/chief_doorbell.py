@@ -6,10 +6,12 @@ its terminal (:data:`DOORBELL_LINE`):
 
 * the chief is **idle at its prompt**: its Board status, computed through the
   same overlay ``GET /api/board`` uses (:func:`src.board.merge_sessions`), is
-  ``idle-finished`` or ``awaiting-input``. ``tool-pending`` (a permission
-  prompt) and ``awaiting-decision`` (a picker) are not idle: a typed line
-  would land in the dialog, not the composer. ``waiting-on-task`` (its own
-  background work, whose notification wakes it) is not idle either;
+  ``idle-finished``, ``awaiting-input`` or ``waiting-on-task``. The last is
+  the chief's normal state while lanes run (it ends every turn with a
+  background waiter armed): its turn is over and its composer is free, so a
+  typed line starts a new turn. ``tool-pending`` (a permission prompt) and
+  ``awaiting-decision`` (a picker) are not idle: a typed line would land in
+  the dialog, not the composer;
 * its composer is **clean**: the session-host's ``composer_dirty`` (#1643) is
   ``False``. ``None`` (unknown, or a session-host too old to send it) never
   rings;
@@ -68,7 +70,10 @@ CLAIM_STALE_MS = 900_000
 _CLAIM_NAME = re.compile(r"^(\d+)-(.+)\.json$")
 
 #: Board statuses that mean "at its prompt, nothing pending on screen".
-IDLE_STATUSES = frozenset({"idle-finished", "awaiting-input"})
+#: ``waiting-on-task`` is included because the chief ends every turn with a
+#: background waiter armed: its turn is over and its composer is free, and a
+#: typed line starts a new turn while the waiter keeps running.
+IDLE_STATUSES = frozenset({"idle-finished", "awaiting-input", "waiting-on-task"})
 
 
 def doorbell_on(cfg: object) -> bool:
