@@ -40,12 +40,12 @@
           <p id="screenTimeSent" class="field-help screen-time-sent" role="status" aria-live="polite" hidden></p>
         </div>
         <div class="detail-actions">
+          <!-- The page's toast sits under this dialog's top layer, so Send's
+               outcome is shown by the sheet's own, anchored to this footer. -->
+          <div id="screenTimeToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
           <button type="button" id="screenTimeSend" class="button-primary detail-save-btn" data-track="screen-time.send">Send to task-os</button>
         </div>
       </div>
-      <!-- The page's toast sits under this dialog's top layer, so Send's
-           outcome is shown by the sheet's own. -->
-      <div id="screenTimeToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
     </dialog>
 
     <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">

@@ -58,6 +58,19 @@
      overlay.) */
   z-index: 400;
 }
+/* Inside a sheet the toast is placed against the sheet, not the viewport: it
+   lives in the sticky .detail-actions footer (the positioned ancestor), so it
+   rides just above the Send row, inset by the card's 18px padding and
+   centred, and its max width is the sheet's content box. */
+.sheet-toast {
+  position: absolute;
+  inset-inline: 18px;
+  bottom: calc(100% + 8px);
+  transform: none;
+  width: fit-content;
+  max-width: none;
+  margin-inline: auto;
+}
 .toast.error,
 .sheet-toast.error {
   background: color-mix(in srgb, var(--deficit) 75%, transparent);
