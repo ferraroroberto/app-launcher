@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from tests._css import STATIC
 
 
@@ -322,3 +324,28 @@ class TestTerminalThemes:
         monkeypatch.setattr(misc_router, "PROJECT_ROOT", tmp_path)
         client, _, _ = webapp_client
         assert client.get("/api/terminal-themes").json() == {"themes": {}}
+
+
+class TestSystemRestart:
+    """POST /api/system/restart/{id}: fakes only, nothing real is stopped."""
+
+    def test_restart_is_tailnet_gated_and_refused_off_it_without_a_scan(self, webapp_client, monkeypatch):
+        from app.webapp.middleware import _terminal_guard_level
+        from src import process_restart
+
+        monkeypatch.setattr(process_restart, "_live", lambda name: pytest.fail("scanned off-tailnet"))
+        assert _terminal_guard_level("/api/system/restart/streamdeck-hwinfo") == "tailnet"
+        assert _terminal_guard_level("/api/system/health") is None
+        client, _, _ = webapp_client
+        assert client.post("/api/system/restart/streamdeck-hwinfo").status_code == 403
+
+    def test_health_payload_carries_owner_and_restart_id(self, webapp_client, monkeypatch):
+        from src import process_restart
+        from src.clients import hub_health
+
+        monkeypatch.setattr(hub_health, "read", lambda url: {
+            "verdict": "watch", "why": None, "reason": "r", "fix": "Restart hwinfo-plugin.exe"})
+        monkeypatch.setattr(process_restart, "_live", lambda name: [])
+        client, _, _ = webapp_client
+        body = client.get("/api/system/health").json()
+        assert body["owner"] is None and body["restart_id"] is None

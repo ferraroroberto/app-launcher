@@ -17,7 +17,7 @@ import psutil
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
-from src import instance_role, system_load
+from src import instance_role, process_restart, system_load
 from src.clients import hub_health, session as session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
@@ -257,7 +257,25 @@ async def system_health_verdict(request: Request) -> Dict[str, Any]:
     / ``act`` / ``unknown``, read from local-llm-hub and cached briefly. A hub
     that is off, down or unreadable is ``unknown``, never ``ok``."""
     cfg: WebappConfig = request.app.state.webapp_config
-    return await asyncio.to_thread(hub_health.read, cfg.llm_hub_url)
+
+    def _read() -> Dict[str, Any]:
+        return process_restart.annotate(hub_health.read(cfg.llm_hub_url))
+
+    return await asyncio.to_thread(_read)
+
+
+@router.post("/api/system/restart/{restart_id}")
+async def system_restart(restart_id: str) -> Dict[str, Any]:
+    """Restart one allowlisted process the PC-health row names. The id is the
+    only input: the process is found by exact name and folder on this side, and
+    anything off the allowlist is refused."""
+    try:
+        result = await asyncio.to_thread(process_restart.restart, restart_id)
+    except process_restart.RestartError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    # The hub's cached verdict predates the restart: the next read asks again.
+    hub_health.invalidate()
+    return result
 
 
 def _is_this_pc(request: Request) -> bool:

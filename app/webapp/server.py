@@ -10,6 +10,7 @@ full per-family surface.  Top-level families:
                  GET  /api/agents               → registered coding agents
                  GET  /api/system/load          → header CPU reading (cached)
                  GET  /api/system/health        → hub's PC health verdict (cached)
+                 POST /api/system/restart/{id}  → restart one allowlisted process
 
     auth         POST /api/login                → swap password for token
 

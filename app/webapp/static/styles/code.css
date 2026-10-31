@@ -53,6 +53,9 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+/* Restart for the process the Health row names: a full-width action under the
+   notes, set apart from the rows above it. */
+.cpu-sheet-restart { margin-bottom: var(--space-md); }
 .cpu-sheet-caption {
   margin: var(--space-md) 0 0;
   font-size: var(--font-body-sm);

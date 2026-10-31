@@ -20,7 +20,8 @@
  */
 
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
-import { jsonApi, logPollFailure } from './api.js';
+import { jsonApi, logPollFailure, toast, apiFailToast } from './api.js';
+import { confirmDialog } from './confirm-dialog.js';
 import { el, sheetRow } from './dom-utils.js';
 import { pctText } from './shared/format.js';
 
@@ -109,11 +110,36 @@ function appendHealthRows(body) {
   const row = sheetRow('Health', h.verdict === 'pending' ? 'Reading…' : HEALTH_WORDS[h.verdict], 'health');
   if (HEALTH_TONES[h.verdict]) row.lastChild.dataset.tone = HEALTH_TONES[h.verdict];
   body.appendChild(row);
+  if (h.owner && h.verdict !== 'unknown') body.appendChild(sheetRow('Owner', h.owner, 'owner'));
   const notes = h.verdict === 'unknown' ? [unknownHealthText(h)]
     : [h.reason, h.fix ? 'Suggested: ' + h.fix : null];
   notes.filter(Boolean).forEach(function (text) {
     body.appendChild(el('p', 'cpu-sheet-note', text));
   });
+  // Only an allowlisted process gets the button; the server decides which.
+  if (h.restart_id && h.verdict !== 'unknown') {
+    const btn = el('button', 'button-tint cpu-sheet-restart', 'Restart');
+    btn.type = 'button';
+    btn.addEventListener('click', function () { restartOwner(h); });
+    body.appendChild(btn);
+  }
+}
+
+async function restartOwner(h) {
+  const ok = await confirmDialog({
+    title: 'Restart ' + h.owner + '?',
+    message: 'This stops it on the PC; its host relaunches it. The hub re-checks within ten minutes.',
+    action: 'Restart',
+  });
+  if (!ok) return;
+  const host = document.getElementById('cpuSheetToast');
+  try {
+    const r = await jsonApi('/api/system/restart/' + encodeURIComponent(h.restart_id), { method: 'POST' });
+    toast('Stopped ' + r.stopped.join(', ') + '.', 'good', { host });
+  } catch (exc) {
+    apiFailToast('Restart failed', exc, { host });
+  }
+  await fetchHealth();
 }
 
 function renderSheet() {

@@ -422,6 +422,14 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "No passkey — /api/ports/probe stays token-only so the Apps tab can "
         "still render the listeners panel off-tailnet, like /api/tts/health.",
     ),
+    (
+        lambda p: p.startswith("/api/system/restart/"),
+        "tailnet",
+        "PC load Restart: stops one allowlisted process (src/process_restart.py) "
+        "by its id alone, resolved to pids server side. Far narrower than the "
+        "listener kill above, so the same tailnet reachability without a passkey; "
+        "the phone's health read (/api/system/health) stays token-only.",
+    ),
 )
 
 

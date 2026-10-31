@@ -123,6 +123,14 @@ def read(base_url: str, now: Optional[float] = None) -> Dict[str, Any]:
     return dict(reading)
 
 
+def invalidate() -> None:
+    """Drop the cached verdict so the next read asks the hub again."""
+    global _cached, _cached_until
+    with _lock:
+        _cached = None
+        _cached_until = 0.0
+
+
 def reset() -> None:
     """Drop all state. Tests only."""
     global _cached, _cached_until, _was_unknown
