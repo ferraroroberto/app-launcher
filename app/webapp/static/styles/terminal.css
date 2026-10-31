@@ -350,6 +350,10 @@ body.terminal-open {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* The live level strip under the input name; it takes the notice's muted text colour. */
+.composer-mic-notice .mic-notice-wave {
+  padding-top: 4px;
+}
 .composer-mic-notice.is-silent .mic-notice-silent {
   margin-top: 4px;
   padding: 6px 8px;

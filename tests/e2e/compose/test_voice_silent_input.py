@@ -93,23 +93,39 @@ def test_silent_input_shows_banner_and_names_the_mic(
     notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
     expect(notice).to_contain_text(f"Mic: {_LABEL}")
     expect(notice.locator(".mic-notice-silent")).to_be_hidden()
+    # The level strip is up for the whole take, flat until the verdict.
+    expect(notice.locator(".rec-wave")).to_be_visible()
     # The verdict lands 3 s into the take; the expect polls for it.
     expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
     expect(notice.locator(".mic-notice-silent")).to_contain_text("No sound")
+    expect(notice.locator(".rec-wave")).to_have_attribute("data-state", "silent")
 
     authed_page.locator("#terminalComposeBar .composer-mic").click()
     expect(notice).to_be_hidden()
+    expect(notice.locator(".rec-wave")).to_have_count(0)
 
 
-def test_real_signal_never_shows_the_banner(
+def test_real_signal_moves_the_wave_and_never_shows_the_banner(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """A tone is heard at once, the watch ends, and no banner ever shows."""
+    """A tone is heard at once: the strip goes live and no banner ever shows.
+    Stopping the take removes the strip and closes the one listening context."""
     _start_take(authed_page, base_url, launched_pty_session, tone=True)
 
     notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
     expect(notice).to_contain_text(f"Mic: {_LABEL}")
-    # The page closes its listening context once it has heard sound.
-    authed_page.wait_for_function("window.__watchClosed >= 1", timeout=6_000)
+    wave = notice.locator(".rec-wave")
+    expect(wave).to_have_attribute("data-state", "live")
+    # A tone lifts the bars off their resting sliver.
+    authed_page.wait_for_function(
+        "[...document.querySelectorAll('.composer-mic-notice .rec-wave-bars > i')]"
+        ".some(i => i.style.transform !== 'scaleY(0.08)')",
+        timeout=6_000,
+    )
     expect(notice.locator(".mic-notice-silent")).to_be_hidden()
     expect(notice).not_to_have_class("is-silent")
+
+    authed_page.locator("#terminalComposeBar .composer-mic").click()
+    expect(wave).to_have_count(0)
+    # The page closes the context it opened for the strip when the take ends.
+    authed_page.wait_for_function("window.__watchClosed >= 1", timeout=6_000)
