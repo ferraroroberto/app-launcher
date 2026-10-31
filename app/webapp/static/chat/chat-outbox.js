@@ -3,6 +3,7 @@
  * agent reply's full text for read-aloud.
  */
 
+import { sessionRoute } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { isTurn } from './transcript-render.js';
 import { view } from './session-transcript.js';
@@ -90,8 +91,7 @@ export async function lastAssistantEntryFullText() {
   const sid = view.session.session_id;
   try {
     const body = await terminalJsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-        '/transcript/entry?offset=' + encodeURIComponent(e.offset)
+      sessionRoute(sid, '/transcript/entry?offset=' + encodeURIComponent(e.offset))
     );
     if (body && body.available) return body.text || '';
   } catch (exc) { /* fall through to the capped text already loaded */ }

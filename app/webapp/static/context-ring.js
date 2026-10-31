@@ -20,7 +20,7 @@
  */
 
 import { els, state } from './state.js';
-import { jsonApi, toast } from './api.js';
+import { jsonApi, sessionRoute, toast } from './api.js';
 import { usageTier } from './dom-utils.js';
 import { bindLongPressHint } from './long-press-hint.js';
 
@@ -101,7 +101,7 @@ async function tick() {
   inflightSid = sid;
   let body = null;
   try {
-    body = await jsonApi('/api/claude-code/sessions/' + encodeURIComponent(sid) + '/context');
+    body = await jsonApi(sessionRoute(sid, '/context'));
   } catch (_) {
     body = null;   // unknown is not 0%: the ring hides, the next tick asks again
   }

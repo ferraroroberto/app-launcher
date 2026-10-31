@@ -11,7 +11,7 @@ import { setTab, wireTabs } from './tabs.js';
 import { wireUsageLog } from './usage.js';
 import { initPerfTiming } from './perf-timing.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
-import { fetchConfig, patchConfig, wireClaudeOptions } from './settings/claude-options.js';
+import { fetchConfig, wireClaudeOptions, wireConfigSwitch } from './settings/claude-options.js';
 import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
 import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './settings/context-filter.js';
@@ -40,7 +40,6 @@ import { fetchWebauthnStatus, wireWebauthn, writeTerminalToken } from './webauth
 import { renderSettingsHead } from './home-head.js';
 import { isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
-import { setSwitch } from './_vendored/switch/switch.js';
 
 // --------------------------------------------------------- settings panel
 // No Edit mode: Add, Edit and Remove are always one tap away, so there is
@@ -83,32 +82,18 @@ function wireSettings() {
 // Telegram channel sessions: the switch saves at once like every other
 // Settings switch, then both lists repaint under the new setting.
 function wireChannelHide() {
-  const el = els.hideChannelSessionsToggle;
-  if (!el) return;
-  el.addEventListener('click', async function () {
-    const next = el.getAttribute('aria-checked') !== 'true';
-    setSwitch(el, next);
-    if (await patchConfig({ hide_channel_sessions: next })) {
+  wireConfigSwitch(els.hideChannelSessionsToggle, 'hide_channel_sessions', {
+    after: function () {
       renderSessions();
       renderBoard();
-    } else {
-      setSwitch(el, !next);   // patchConfig already fired the failure toast
-    }
+    },
   });
 }
 
 // Start Telegram sessions automatically: saves at once; the server
 // reads it when the webapp next starts, so nothing here repaints.
 function wireChannelAutostart() {
-  const el = els.autostartChannelSessionsToggle;
-  if (!el) return;
-  el.addEventListener('click', async function () {
-    const next = el.getAttribute('aria-checked') !== 'true';
-    setSwitch(el, next);
-    if (!(await patchConfig({ autostart_channel_sessions: next }))) {
-      setSwitch(el, !next);   // patchConfig already fired the failure toast
-    }
-  });
+  wireConfigSwitch(els.autostartChannelSessionsToggle, 'autostart_channel_sessions');
 }
 
 // --------------------------------------------------------- theme toggle

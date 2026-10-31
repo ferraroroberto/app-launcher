@@ -85,7 +85,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, sessionRoute, toast } from '../api.js';
 import { detachedSendRefused } from '../sessions.js';
 import { mountComposer } from '../composer.js';
 import { stopReading } from '../terminal/terminal-readaloud.js';
@@ -479,8 +479,7 @@ export async function forwardRead(target, manual) {
   let body;
   try {
     body = await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) +
-        '/transcript?' + q.toString()
+      sessionRoute(target.session.session_id, '/transcript?' + q.toString())
     );
   } catch (exc) {
     target.ticking = false;
@@ -550,8 +549,7 @@ function fetchPage(before) {
   const q = new URLSearchParams({ limit: String(PAGE_LIMIT) });
   if (before != null) q.set('before', String(before));
   return jsonApi(
-    '/api/claude-code/sessions/' + encodeURIComponent(view.session.session_id) +
-      '/transcript?' + q.toString()
+    sessionRoute(view.session.session_id, '/transcript?' + q.toString())
   );
 }
 

@@ -12,7 +12,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, jsonApi } from '../api.js';
+import { apiFailToast, jsonApi, toast } from '../api.js';
 import { wireModelCombo } from '../dom-utils.js';
 import { setBoardDispatchModelOptions } from '../board/board-dispatch.js';
 import { setLifeOsModelOptions } from '../life-os.js';
@@ -266,15 +266,12 @@ function wireUsageShows() {
   if (!els.usageShows || els.usageShows.dataset.wired) return;
   els.usageShows.dataset.wired = 'true';
   usageSwitches().forEach(function (sw) {
-    sw.addEventListener('click', async function () {
-      const next = sw.getAttribute('aria-checked') !== 'true';
-      setSwitch(sw, next);
-      const providers = usageSwitches()
-        .filter(function (s) { return s.getAttribute('aria-checked') === 'true'; })
-        .map(function (s) { return s.dataset.provider; });
-      if (!(await patchConfig({ usage_providers: providers }))) {
-        setSwitch(sw, !next);   // patchConfig already fired the failure toast
-      }
+    wireConfigSwitch(sw, 'usage_providers', {
+      value: function () {
+        return usageSwitches()
+          .filter(function (s) { return s.getAttribute('aria-checked') === 'true'; })
+          .map(function (s) { return s.dataset.provider; });
+      },
     });
   });
 }
@@ -561,14 +558,27 @@ export async function patchConfig(patch) {
   }
 }
 
-// role="switch" buttons: click reads the current aria-checked,
-// flips it, applies it optimistically, then patchConfig() round-trips
-// through GET /api/config, which re-renders from server truth anyway.
-function wireBoolSwitch(el, patchKey) {
-  el.addEventListener('click', function () {
+// role="switch" buttons: click reads the current aria-checked, flips it
+// optimistically, then patchConfig() round-trips through GET /api/config,
+// which re-renders from server truth. A failed save puts the switch back
+// (patchConfig already fired the failure toast). A config switch is saved at
+// once and re-read by the server on its next use, so off is also the phone's
+// kill switch.
+//   opts.label  toasts "<label> on." / "<label> off." once saved
+//   opts.value  (next) => the value to save, when it is not `next` itself
+//   opts.after  (next) => runs once saved
+export function wireConfigSwitch(el, key, opts) {
+  if (!el) return;
+  const o = opts || {};
+  el.addEventListener('click', async function () {
     const next = el.getAttribute('aria-checked') !== 'true';
     setSwitch(el, next);
-    patchConfig({ [patchKey]: next });
+    if (await patchConfig({ [key]: o.value ? o.value(next) : next })) {
+      if (o.label) toast(o.label + (next ? ' on.' : ' off.'), 'good');
+      if (o.after) o.after(next);
+    } else {
+      setSwitch(el, !next);
+    }
   });
 }
 
@@ -586,13 +596,13 @@ export function wireClaudeOptions() {
   piModelCombo = wireModelCombo(els.piModel, function (model) {
     patchConfig({ pi_model: model });
   });
-  wireBoolSwitch(els.openSessionsInWindowToggle, 'open_sessions_in_window');
-  wireBoolSwitch(els.openSessionsInChatToggle, 'open_sessions_in_chat');
-  wireBoolSwitch(els.claudeVerbose, 'claude_verbose');
-  wireBoolSwitch(els.claudeDebug, 'claude_debug');
-  wireBoolSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');
-  wireBoolSwitch(els.antigravitySandbox, 'antigravity_sandbox');
-  wireBoolSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
+  wireConfigSwitch(els.openSessionsInWindowToggle, 'open_sessions_in_window');
+  wireConfigSwitch(els.openSessionsInChatToggle, 'open_sessions_in_chat');
+  wireConfigSwitch(els.claudeVerbose, 'claude_verbose');
+  wireConfigSwitch(els.claudeDebug, 'claude_debug');
+  wireConfigSwitch(els.antigravitySkipPerms, 'antigravity_skip_permissions');
+  wireConfigSwitch(els.antigravitySandbox, 'antigravity_sandbox');
+  wireConfigSwitch(els.copilotSkipPerms, 'copilot_skip_permissions');
   // Pi's effort select and trust control wire their own handlers in
   // renderPiSubsection(), so there are no static listeners for those controls.
   // The Detached and Resume switches wire themselves: they are part of the

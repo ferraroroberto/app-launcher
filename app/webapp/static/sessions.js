@@ -23,7 +23,9 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, isDesktopClient, jsonApi, logPollFailure, opensInPcWindow, toast } from './api.js';
+import {
+  apiFailToast, isDesktopClient, jsonApi, logPollFailure, opensInPcWindow, sessionRoute, toast,
+} from './api.js';
 import { terminalJsonApi } from './webauthn.js';
 import { renderHomeHead } from './home-head.js';
 import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-sessions.js';
@@ -447,8 +449,7 @@ async function copyProjectPath(path) {
 async function openPcWindow(s) {
   try {
     const r = await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
-        '/mirror',
+      sessionRoute(s.session_id, '/mirror'),
       { method: 'POST' }
     );
     if (!(r && r.mirrored)) return false;
@@ -508,8 +509,7 @@ export async function stopSession(s) {
   if (isChannelSession(s) && !(await confirmDialog(channelKillConfirm(s)))) return;
   try {
     await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(s.session_id) +
-        '/stop',
+      sessionRoute(s.session_id, '/stop'),
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -639,7 +639,7 @@ export function canCompact(s) {
 // and an unconfigured gate resolve '' and the header is simply left off.
 export async function sendSessionMessage(sid, text) {
   return terminalJsonApi(
-    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/input',
+    sessionRoute(sid, '/input'),
     { method: 'POST', body: { data: text, submit: true } }
   );
 }
@@ -712,8 +712,7 @@ function wireSessionRenameDialog() {
     const title = els.sessionRenameInput.value.trim();
     try {
       const reply = await jsonApi(
-        '/api/claude-code/sessions/' +
-          encodeURIComponent(renameSessionTarget.session_id) + '/rename',
+        sessionRoute(renameSessionTarget.session_id, '/rename'),
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

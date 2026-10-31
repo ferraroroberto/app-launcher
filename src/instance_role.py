@@ -77,6 +77,16 @@ def _override() -> Optional[bool]:
     return None
 
 
+def is_disposable() -> bool:
+    """True for the e2e / verify-before-ship autoboot instance.
+
+    The one definition of "disposable": the autoboot sets
+    ``LAUNCHER_SESSION_HOST_PORT`` and nothing in production does. Read at
+    call time so a test can set the variable per case.
+    """
+    return bool(os.environ.get(SESSION_HOST_PORT_ENV, "").strip())
+
+
 def canonical_instance(
     project_root: Optional[Path] = None,
 ) -> Tuple[bool, str]:
@@ -93,7 +103,7 @@ def canonical_instance(
     """
     root = PROJECT_ROOT if project_root is None else project_root
 
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    if is_disposable():
         return False, REASON_DISPOSABLE
 
     forced = _override()

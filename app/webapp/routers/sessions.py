@@ -19,7 +19,6 @@ import asyncio
 import functools
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,13 +36,13 @@ from starlette.websockets import WebSocketDisconnect
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
-from src import audit, board
+from src import audit, board, instance_role
 from src.chief import answers as chief_answers
 from src.launching import launcher
 from src.clients import session as session_client
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
-from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
+from src.webapp_config import WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, hot_poll
 from app.webapp.middleware import LOOPBACK_HOSTS, ws_terminal_gate
@@ -291,12 +290,10 @@ async def mirror_claude_session(sid: str, request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
     if not cfg.claude_show_local_window:
         return {"mirrored": False, "reason": "local window mirroring disabled"}
-    # A disposable e2e / verify-before-ship instance (identified by the
-    # session-host port override, set only by autoboot) must never spawn a real
-    # Edge window or focus the canonical instance's desktop windows — the same
-    # rule the orphan-mirror sweep follows. Report ``mirrored`` so
-    # the desktop client still skips the in-page terminal, but touch no window.
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    # A disposable instance must never spawn an Edge window or focus the
+    # canonical instance's windows. Report ``mirrored`` so the desktop client
+    # still skips the in-page terminal, but touch no window.
+    if instance_role.is_disposable():
         return {"mirrored": True, "action": "skipped"}
     pc_url = mirror_url(request, cfg, sid)
     # Runs the win32 focus/spawn off the event loop; the spawn returns as soon

@@ -4,6 +4,7 @@
  * them between a turn's replies.
  */
 
+import { sessionRoute } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { renderHunks } from '../changes/diff-view.js';
@@ -262,9 +263,11 @@ function fullDiffControl(wrap, diff, path, sid) {
     let body = null;
     try {
       body = await terminalJsonApi(
-        '/api/claude-code/sessions/' + encodeURIComponent(sid) +
+        sessionRoute(
+          sid,
           '/transcript/diff?offset=' + encodeURIComponent(diff.offset) +
-          '&n=' + encodeURIComponent(diff.n || 0)
+            '&n=' + encodeURIComponent(diff.n || 0)
+        )
       );
     } catch (exc) {
       body = null;

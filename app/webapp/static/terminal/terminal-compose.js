@@ -14,7 +14,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiRawJson } from '../api.js';
+import { apiRawJson, sessionRoute } from '../api.js';
 import { readTerminalToken } from '../webauthn.js';
 import { mountComposer } from '../composer.js';
 import { largeFileLine, oversizeReason } from '../attach-batch.js';
@@ -153,7 +153,7 @@ export async function uploadSessionFile(sid, file, signal, kind) {
   const fd = new FormData();
   fd.append('file', file, file.name || 'image.png');
   const body = await apiRawJson(
-    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/image?inline=1',
+    sessionRoute(sid, '/image?inline=1'),
     { method: 'POST', terminalToken: readTerminalToken(), body: fd, signal: signal }
   );
   const path = body && body.path;
@@ -172,8 +172,7 @@ async function uploadLargeFile(sid, file, signal) {
   const tooBig = maxMb ? oversizeReason(file, maxMb * 1024 * 1024) : '';
   if (tooBig) throw new Error(tooBig);
   const body = await apiRawJson(
-    '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/large-file?name=' +
-      encodeURIComponent(file.name || 'file'),
+    sessionRoute(sid, '/large-file?name=' + encodeURIComponent(file.name || 'file')),
     {
       method: 'POST', terminalToken: readTerminalToken(), body: file, signal: signal,
       contentType: 'application/octet-stream',

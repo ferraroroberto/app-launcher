@@ -17,7 +17,7 @@
  */
 
 import { els } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, sessionRoute, toast } from '../api.js';
 import { renderMarkdown } from '../markdown.js';
 import { detachedSendRefused } from '../sessions.js';
 import { terminalJsonApi } from '../webauthn.js';
@@ -420,7 +420,7 @@ async function submitAnswer(li, answers) {
   syncDecisionCards();
   try {
     await terminalJsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/answer',
+      sessionRoute(target.session.session_id, '/answer'),
       { method: 'POST', body: { tool_use_id: e.call_id, answers: answers } }
     );
   } catch (exc) {
@@ -617,7 +617,7 @@ export async function pollPicker() {
   let body = null;
   try {
     body = await jsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/plan-picker'
+      sessionRoute(target.session.session_id, '/plan-picker')
     );
   } catch (exc) {
     // Quietly, like a failed live tick: the next one asks again. Until a
@@ -774,7 +774,7 @@ async function sendPlanAnswer(o, feedback) {
   lockPicker('Sending…');
   try {
     await terminalJsonApi(
-      '/api/claude-code/sessions/' + encodeURIComponent(target.session.session_id) + '/plan-answer',
+      sessionRoute(target.session.session_id, '/plan-answer'),
       { method: 'POST', body: { option: o.n, label: o.label, feedback: feedback } }
     );
   } catch (exc) {

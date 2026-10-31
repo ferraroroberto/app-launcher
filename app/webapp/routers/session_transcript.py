@@ -69,7 +69,7 @@ from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
-from src import board
+from src import board, instance_role
 from src.board.transcript import _live_title_is_busy, _pty_output_is_fresh
 from src.session_view.transcript_locate import (
     find_antigravity_transcript,
@@ -100,7 +100,7 @@ from src.session_view.changes import (
     read_text_file,
 )
 from src.launching.vscode_workspace import is_vscode_installed, open_file
-from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
+from src.webapp_config import WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
 from app.webapp.middleware import is_pc_itself
@@ -687,7 +687,7 @@ async def session_changed_file_open(sid: str, request: Request) -> Dict[str, Any
     if not await asyncio.to_thread(os.path.isfile, target):
         logger.info("ℹ️ changed file open %s (%s): deleted", sid[:8], agent)
         return {**_unavailable(sid, "deleted"), "opened": False}
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    if instance_role.is_disposable():
         logger.info("ℹ️ changed file open %s (%s): disposable instance, not opening", sid[:8], agent)
         return {"available": True, "reason": None, "session_id": sid, "opened": False, "with": "none"}
     opener = "vscode"

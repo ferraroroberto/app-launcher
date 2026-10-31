@@ -81,7 +81,7 @@ from src.static_versioning import (
 )
 from src.stylesheet_bundle import BUNDLE_RELPATH, build_bundle
 from src.usage_log import usage_router
-from src.webapp_config import SESSION_HOST_PORT_ENV, load_webapp_config
+from src.webapp_config import load_webapp_config
 from src.auth.webauthn_gate import WebAuthnGate
 
 from app.webapp import chief_doorbell, relay_idle_close
@@ -229,16 +229,14 @@ async def _reconcile_orphan_mirror_windows(app: FastAPI) -> None:
     killing the user's live session mirrors while the sessions survive headless
     on the real ``:8446`` (issue #278). ``#260`` isolated the session-host but
     left this window sweep machine-wide. Only the canonical instance owns the
-    desktop, so a disposable instance — identified by the
-    ``LAUNCHER_SESSION_HOST_PORT`` override, which is set *only* by autoboot and
-    never in production — skips the sweep entirely.
+    desktop, so a disposable instance (``instance_role.is_disposable``) skips
+    the sweep entirely.
     """
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    if instance_role.is_disposable():
         _log.debug(
             "ℹ️ orphan mirror reconcile skipped — disposable instance "
-            "(%s set, e.g. e2e/verify autoboot); the machine-global sweep must "
-            "not close the canonical instance's desktop windows (#278)",
-            SESSION_HOST_PORT_ENV,
+            "(e2e/verify autoboot); the machine-global sweep must "
+            "not close the canonical instance's desktop windows (#278)"
         )
         return
     cfg = getattr(app.state, "webapp_config", None)

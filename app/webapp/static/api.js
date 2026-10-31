@@ -85,6 +85,12 @@ export function opensInChatFirst() {
 // swallow "not logged in yet" (rather than toast it as a real failure) check
 // `exc instanceof AuthRequiredError`, not a string message that a future
 // reword would silently break.
+// The one place the `/api/claude-code/sessions/<sid>` prefix is built. `tail`
+// is appended verbatim and starts with `/` or `?`.
+export function sessionRoute(sid, tail) {
+  return '/api/claude-code/sessions/' + encodeURIComponent(sid) + (tail || '');
+}
+
 export class AuthRequiredError extends Error {
   constructor() {
     super('auth required');

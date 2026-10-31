@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -18,7 +17,7 @@ import psutil
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
-from src import system_load
+from src import instance_role, system_load
 from src.clients import hub_health, session as session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
@@ -33,7 +32,7 @@ from app.webapp.shell_html import assemble_shell, shell_stat_key
 from src.static_versioning import asset_hash_for, rewrite_index_html
 from src.stylesheet_bundle import link_bundle
 from src.launching.vscode_workspace import is_vscode_installed
-from src.webapp_config import SESSION_HOST_PORT_ENV, WebappConfig
+from src.webapp_config import WebappConfig
 
 from app.webapp.middleware import is_pc_itself, via_cloudflare
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
@@ -335,9 +334,8 @@ async def open_link_on_pc(request: Request) -> Dict[str, Any]:
     url = str((body or {}).get("url") or "").strip()
     if not is_web_url(url):
         raise HTTPException(status_code=400, detail="only http(s) links")
-    # A disposable e2e / verify instance never opens anything on the desktop,
-    # the rule the mirror window follows.
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    # A disposable instance never opens anything on the desktop.
+    if instance_role.is_disposable():
         _log.info("ℹ️ open-url: disposable instance, not opening a browser")
         return {"opened": False, "browser": "none"}
     cfg: WebappConfig = request.app.state.webapp_config

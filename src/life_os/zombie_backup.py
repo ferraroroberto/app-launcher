@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -34,6 +33,7 @@ from typing import Any, Dict, List, Optional
 
 from src._json_io import atomic_write_json
 from src.life_os.index import resync_search_index, restore_index_entry
+from src.life_os.links import is_link
 from src.life_os.title import run_title_cli
 from src.life_os.transcript import SESSION_ID_RE, claude_projects_dir
 from src.runtime_data import runtime_data_dir
@@ -62,10 +62,6 @@ STATUS_FAILED = "failed"
 def backup_root() -> Path:
     """``<runtime data>/app-launcher/life-os-zombie-backup``, resolved per call."""
     return runtime_data_dir("app-launcher") / BACKUP_DIRNAME
-
-
-def _is_link(path: Path) -> bool:
-    return path.is_symlink() or bool(getattr(os.path, "isjunction", lambda _p: False)(path))
 
 
 @dataclass(frozen=True)
@@ -147,15 +143,15 @@ def find_backups(root: Path, selector: str) -> List[tuple[str, str, str]]:
     """``(date, skill, capture)`` for every manifest the selector covers, oldest first."""
     day, skill, capture = _parse_selector(selector)
     day_dir = root / day
-    if not day_dir.is_dir() or _is_link(day_dir):
+    if not day_dir.is_dir() or is_link(day_dir):
         return []
     found: List[tuple[str, str, str]] = []
     for skill_dir in sorted(day_dir.iterdir()):
-        if not skill_dir.is_dir() or _is_link(skill_dir) or (skill and skill_dir.name != skill):
+        if not skill_dir.is_dir() or is_link(skill_dir) or (skill and skill_dir.name != skill):
             continue
         for manifest in sorted(skill_dir.glob(f"*{MANIFEST_SUFFIX}")):
             name = manifest.name[: -len(MANIFEST_SUFFIX)]
-            if not manifest.is_file() or _is_link(manifest) or (capture and name != capture):
+            if not manifest.is_file() or is_link(manifest) or (capture and name != capture):
                 continue
             found.append((day, skill_dir.name, name))
     return found
@@ -201,7 +197,7 @@ def list_archived(root: Path, query: str = "", skill: str = "") -> List[Dict[str
 
 
 def _capture_head(path: Path) -> str:
-    if not path.is_file() or _is_link(path):
+    if not path.is_file() or is_link(path):
         return ""
     try:
         with path.open("rb") as handle:
@@ -228,11 +224,11 @@ def restore_one(cfg: WebappConfig, root: Path, day: str, skill: str, capture: st
             or (sid and not SESSION_ID_RE.fullmatch(sid))):
         return _refuse(day, skill, capture, "manifest does not match its location")
     backed_capture = folder / capture
-    if not backed_capture.is_file() or _is_link(backed_capture):
+    if not backed_capture.is_file() or is_link(backed_capture):
         return _refuse(day, skill, capture, "capture missing from the backup")
 
     conv_dir = skills_dir_for(Path(cfg.life_os_dir)) / skill / "conversations"
-    if not conv_dir.is_dir() or _is_link(conv_dir):
+    if not conv_dir.is_dir() or is_link(conv_dir):
         return _refuse(day, skill, capture, "the skill's conversations folder is missing")
     target_capture = conv_dir / capture
     if target_capture.exists() or target_capture.is_symlink():
@@ -246,10 +242,10 @@ def restore_one(cfg: WebappConfig, root: Path, day: str, skill: str, capture: st
         if not project or Path(project).name != project or project in (".", ".."):
             return _refuse(day, skill, capture, "the manifest does not say which project folder to restore into")
         project_dir = claude_projects_dir() / project
-        if project_dir.exists() and (not project_dir.is_dir() or _is_link(project_dir)):
+        if project_dir.exists() and (not project_dir.is_dir() or is_link(project_dir)):
             return _refuse(day, skill, capture, "the project folder is a link or not a folder")
         for part in transcript_parts:
-            if _is_link(part):
+            if is_link(part):
                 return _refuse(day, skill, capture, "a backed-up transcript entry is a link")
             landing = project_dir / part.name
             if landing.exists() or landing.is_symlink():
@@ -302,7 +298,7 @@ def purge_old_backups(root: Path, retention_days: int, today: Optional[date] = N
     except OSError:
         return 0
     for child in children:
-        if not _DATE_RE.match(child.name) or _is_link(child) or not child.is_dir():
+        if not _DATE_RE.match(child.name) or is_link(child) or not child.is_dir():
             continue
         try:
             day = date.fromisoformat(child.name)

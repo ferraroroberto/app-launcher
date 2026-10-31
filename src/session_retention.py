@@ -51,6 +51,7 @@ from typing import Iterable, List, Optional, Set, Tuple
 
 from src import audit
 from src.clients import session as session_client
+from src.life_os.links import is_link
 
 logger = logging.getLogger(__name__)
 
@@ -115,12 +116,6 @@ class SweepReport:
         )
 
 
-def _is_link(path: Path) -> bool:
-    """True for a symlink *or* an NTFS junction — either can point out of
-    the place it appears to be."""
-    return path.is_symlink() or path.is_junction()
-
-
 def sweep(
     sessions_dir: Path,
     retention_days: int,
@@ -150,7 +145,7 @@ def sweep(
     cutoff = now - retention_days * _SECONDS_PER_DAY
 
     try:
-        if _is_link(sessions_dir):
+        if is_link(sessions_dir):
             report.stood_down = STOOD_DOWN_DIR_IS_LINK
             return report
         entries = list(os.scandir(sessions_dir))

@@ -23,7 +23,7 @@
  */
 
 import { els } from '../state.js';
-import { apiFailToast, jsonApi, toast } from '../api.js';
+import { apiFailToast, jsonApi, sessionRoute, toast } from '../api.js';
 import { fmtAgo } from '../sessions.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
@@ -43,10 +43,6 @@ const OUTCOME_TOASTS = {
   not_found: ['Claude Code could not find that session: ', 'error'],
   cancelled: ['The resume was cancelled on the terminal: ', 'error'],
 };
-
-function sessionPath(sid, tail) {
-  return '/api/claude-code/sessions/' + encodeURIComponent(sid) + '/' + tail;
-}
 
 function openSid() {
   const s = hooks && hooks.session();
@@ -85,7 +81,7 @@ export async function openResumeCard(via) {
   render();
   let body = null;
   try {
-    body = await jsonApi(sessionPath(sid, 'resume-sessions'));
+    body = await jsonApi(sessionRoute(sid, '/resume-sessions'));
   } catch (exc) {
     if (card !== mine) return;
     apiFailToast('Sessions not loaded', exc);
@@ -205,7 +201,7 @@ async function pick(s) {
   render();
   let res;
   try {
-    res = await terminalJsonApi(sessionPath(mine.sid, 'resume'), {
+    res = await terminalJsonApi(sessionRoute(mine.sid, '/resume'), {
       method: 'POST',
       body: { session_id: s.id, via: mine.via },
     });

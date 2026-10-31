@@ -28,7 +28,7 @@
  */
 
 import { els } from '../state.js';
-import { apiFailToast, escapeHtml, jsonApi, toast } from '../api.js';
+import { apiFailToast, escapeHtml, jsonApi, sessionRoute, toast } from '../api.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { diffTint, renderHunks } from './diff-view.js';
 import { tintDiffLines } from './syntax-tint.js';
@@ -94,7 +94,7 @@ function noteLargeDiff(body) {
 // The session routes are terminal-grade (passkey); the project ones ride
 // the bearer token like the rest of the Coding tab.
 async function sessionApi(path, opts) {
-  return terminalJsonApi('/api/claude-code/sessions/' + encodeURIComponent(view.sid) + path, opts);
+  return terminalJsonApi(sessionRoute(view.sid, path), opts);
 }
 
 // `diff --git` and `index` headers repeat what the row already says; every

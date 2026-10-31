@@ -13,7 +13,7 @@
 
 import { els } from '../state.js';
 import { terminalJsonApi } from '../webauthn.js';
-import { AuthRequiredError } from '../api.js';
+import { AuthRequiredError, sessionRoute } from '../api.js';
 import { setAsyncState } from '../async-state.js';
 import { chip } from '../glance.js';
 import { fmtDuration } from '../dom-utils.js';
@@ -40,7 +40,7 @@ export function hasBackgroundTasks(s) {
 }
 
 function tasksPath(query) {
-  return '/api/claude-code/sessions/' + encodeURIComponent(view.sid) + '/background-tasks' + (query || '');
+  return sessionRoute(view.sid, '/background-tasks' + (query || ''));
 }
 
 function elapsedText(task) {

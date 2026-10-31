@@ -3,7 +3,7 @@
  * cache, owned by whichever session `resetBlobs` last named.
  */
 
-import { api, authHeaders } from '../api.js';
+import { api, authHeaders, sessionRoute } from '../api.js';
 import { fillHtmlCard, openImageLightbox } from '../lightbox.js';
 import { ensureTerminalToken } from '../webauthn.js';
 
@@ -25,8 +25,7 @@ let thumbObserver = null;
 let blobOwner = null;
 
 function imageUrl(sid, ref) {
-  return '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-    '/transcript/image?offset=' + ref.offset + '&n=' + ref.n;
+  return sessionRoute(sid, '/transcript/image?offset=' + ref.offset + '&n=' + ref.n);
 }
 
 async function loadThumb(btn) {
@@ -128,16 +127,12 @@ export function resetBlobs(sid) {
 const fileBlobs = new Map();
 const FILE_PREVIEW_CHARS = 3000;
 
-function sessionPath(sid) {
-  return '/api/claude-code/sessions/' + encodeURIComponent(sid);
-}
-
 function sentFileUrl(sid, ref) {
-  return sessionPath(sid) + '/transcript/file?offset=' + ref.offset + '&n=' + ref.n;
+  return sessionRoute(sid, '/transcript/file?offset=' + ref.offset + '&n=' + ref.n);
 }
 
 function outboxFileUrl(sid, id) {
-  return sessionPath(sid) + '/outbox/' + encodeURIComponent(id);
+  return sessionRoute(sid, '/outbox/' + encodeURIComponent(id));
 }
 
 export function isSentFile(e) {

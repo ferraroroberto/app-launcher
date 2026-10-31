@@ -21,7 +21,6 @@ and file name, the Telegram summary carries counts only.
 from __future__ import annotations
 
 import logging
-import os
 import subprocess
 import time
 from collections import Counter
@@ -34,6 +33,7 @@ from src.clients import session as session_client
 from src.life_os.capture import parse_capture
 from src.life_os.delete import ConversationDeleteError, delete_conversation, live_conversations
 from src.life_os.history import read_captures
+from src.life_os.links import is_link
 from src.life_os.zombie_backup import Stash, backup_root, purge_old_backups
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.webapp_config import WebappConfig
@@ -147,20 +147,16 @@ class _Candidate:
     revision: str
 
 
-def _is_link(path: Path) -> bool:
-    return path.is_symlink() or bool(getattr(os.path, "isjunction", lambda _p: False)(path))
-
-
 def _skill_captures(root: Path, skill: Skill) -> List[Path]:
     """The flat ``.md`` captures in one skill's ``conversations/`` folder."""
     folder = skills_dir_for(root) / skill.id / "conversations"
     try:
-        if not folder.is_dir() or _is_link(folder):
+        if not folder.is_dir() or is_link(folder):
             return []
         children = sorted(folder.glob("*.md"))
     except OSError:
         return []
-    return [p for p in children if p.name != "index.md" and not _is_link(p) and p.is_file()]
+    return [p for p in children if p.name != "index.md" and not is_link(p) and p.is_file()]
 
 
 def _mtime(path: Path) -> Optional[float]:
