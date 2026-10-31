@@ -101,7 +101,7 @@ ARCHIVE_MAGIC: Dict[str, bytes] = {
 }
 
 # Every media type a sent file is ever served as. The image types come from
-# session_transcript.IMAGE_MAGIC — one magic-byte table for both the
+# src.session_view.image_sniff.IMAGE_MAGIC — one magic-byte table for both the
 # transcript's inline images and this outbox.
 SERVED_MEDIA = frozenset(
     [media for _, media in IMAGE_MAGIC] + ["image/webp", PDF_MEDIA, TEXT_MEDIA, HTML_MEDIA, ARCHIVE_MEDIA]

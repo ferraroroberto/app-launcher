@@ -109,7 +109,7 @@ DEFAULT_CLAUDE_MODEL = "opus"
 # not the global Claude model.
 DEFAULT_CHANNEL_MODEL = "sonnet"
 # The effort of last resort: what a model with no override and no
-# catalog default resolves to. ``launch_flags.effective_effort`` owns the rule.
+# catalog default resolves to. ``src.launching.flags.effective_effort`` owns the rule.
 DEFAULT_CLAUDE_EFFORT = "high"
 
 

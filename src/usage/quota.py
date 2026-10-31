@@ -79,23 +79,9 @@ def _empty_view(route: QuotaRoute, state: str, reason: str) -> Dict[str, Any]:
         "reason": reason,
         "checked_at": None,
         "observations": [],
-        # Legacy keys remain during the Claude-only client migration.
-        "available": False,
         "stale": state == "stale",
         "updated_at": None,
-        "five_hour": None,
-        "seven_day": None,
     }
-
-
-def _legacy_window(window: Dict[str, Any]) -> Dict[str, Any]:
-    reset = window.get("resets_at")
-    if isinstance(reset, str):
-        try:
-            reset = int(datetime.fromisoformat(reset.replace("Z", "+00:00")).timestamp())
-        except ValueError:
-            reset = None
-    return {"used_percentage": window.get("used_percentage"), "resets_at": reset}
 
 
 def _source_view(
@@ -141,35 +127,21 @@ def _source_view(
     view.update(
         checked_at=source.get("checked_at"),
         observations=observations,
-        available=state == "available",
         stale=state == "stale",
     )
     observed = [item.get("observed_at") for item in observations if item.get("observed_at")]
     view["updated_at"] = max(observed) if observed else source.get("checked_at")
-
-    if route.harness == "claude":
-        windows = {
-            window.get("id"): window
-            for item in observations
-            for window in item.get("windows", [])
-        }
-        for name in ("five_hour", "seven_day"):
-            if isinstance(windows.get(name), dict):
-                view[name] = _legacy_window(windows[name])
     return view
 
 
 def _legacy_view(
     route: QuotaRoute, legacy: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Adapt only an absent canonical Claude shard, preserving old API keys."""
+    """Adapt only an absent canonical Claude shard from the rate-limits file."""
     view = _empty_view(route, "unknown", "legacy_observation_time_missing")
     view.update(
-        available=bool(legacy.get("available")),
         stale=bool(legacy.get("stale")),
         updated_at=legacy.get("updated_at"),
-        five_hour=legacy.get("five_hour"),
-        seven_day=legacy.get("seven_day"),
     )
     if not legacy.get("available"):
         view["reason"] = "source_absent"

@@ -716,8 +716,8 @@ class PtySession(DeferredSubmit):
             # Raw PTY-activity timestamp: lets a reader tell
             # "still genuinely producing output" apart from "live_title frozen
             # on a busy glyph because the PTY wedged". Consumed by
-            # board_transcript's _pty_output_is_fresh (via board_sessions and
-            # the session_transcript router).
+            # src.board.transcript's _pty_output_is_fresh (via src.board.sessions
+            # and the session_transcript router).
             "last_output_at": self._last_output_at,
             # The most recent server-initiated write's verdict,
             # or None if nothing has been sent through /input yet. This is

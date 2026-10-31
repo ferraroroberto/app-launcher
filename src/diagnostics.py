@@ -322,7 +322,7 @@ def is_pid_alive(
 ) -> bool:
     """True when ``pid`` is a live process, guarded against Windows PID reuse.
 
-    The one implementation of this check: ``src.jobs_reap`` calls it on run
+    The one implementation of this check: ``src.jobs.reap`` calls it on run
     records and ``src.app_runtime._is_alive`` on spawned-app instances,
     rather than each keeping its own copy. When
     ``create_time_hint`` (an epoch float captured right after the process was

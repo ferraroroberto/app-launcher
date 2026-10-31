@@ -42,8 +42,6 @@ full per-family surface.  Top-level families:
                  GET  /api/claude-code/changes/{id}       → working-tree file list (#977)
                  GET  /api/claude-code/changes/{id}/diff  → one file's unified diff
                  POST /api/claude-code/folder/{id}        → open in Explorer
-                 GET  /api/claude-code/generate           → preview workspace↔bat
-                 POST /api/claude-code/generate           → workspace↔bat sync
 
     jobs         /api/jobs/*                   → Jobs tab (~30 routes)
 

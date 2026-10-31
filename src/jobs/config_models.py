@@ -544,7 +544,7 @@ class Job:
         Explicit ``self.kind`` wins; otherwise inferred from
         ``script_path``'s suffix. See :func:`src.jobs_kinds.resolve_kind`
         for the exact fallback rule — imported locally to avoid a
-        ``jobs_config`` ↔ ``jobs_kinds`` import cycle (every kind module
+        ``src.jobs.config`` ↔ ``src.jobs_kinds`` import cycle (every kind module
         imports :class:`Job` from here).
         """
         from src.jobs_kinds import resolve_kind  # local import avoids a cycle

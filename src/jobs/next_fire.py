@@ -6,7 +6,7 @@ module derives the next fire itself instead. Nothing here touches schtasks -
 no subprocess, no CLI parsing, no TTL cache, no Windows at all. Everything
 is derived from the bounded
 :class:`~src.jobs.config.Schedule` shape, which made a reader of
-``jobs_coverage.py`` chase ``upcoming_fires`` into a 1000-line Task
+``src/jobs/coverage.py`` chase ``upcoming_fires`` into a 1000-line Task
 Scheduler client to find pure date arithmetic, and a reader of that client
 carry 100 lines of calendar maths that could not affect it.
 

@@ -1,10 +1,8 @@
 """Coding-tab endpoints that are about a *project row* rather than a session.
 
-Favorites, the launch-flag preview (a small read of webapp_config's `claude`
-subtree, surfaced on its own path for the options card), the per-project git
-status the tiles colour themselves from, and the row's ``⋯`` project menu —
-VS Code, the read-only changes viewer, Explorer (#802, #977) — none of which
-spawn or track a PTY session.
+Favorites, the per-project git status the tiles colour themselves from, and
+the row's ``⋯`` project menu — VS Code, the read-only changes viewer,
+Explorer (#802, #977) — none of which spawn or track a PTY session.
 """
 
 from __future__ import annotations

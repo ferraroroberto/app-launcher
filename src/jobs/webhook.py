@@ -7,7 +7,7 @@ provider-specific signature computed here — never the SPA bearer token — so
 the hook URL itself is safe to hand to a third party in plaintext.
 
 Deliberately a leaf module — no import of :mod:`src.jobs.config` — so
-``jobs_config`` can import :class:`WebhookConfig` from here without a cycle
+``src.jobs.config`` can import :class:`WebhookConfig` from here without a cycle
 (same pattern as ``src.jobs_kinds.base``).
 
 Secrets: a job's ``webhook.secret`` is either a literal string or a

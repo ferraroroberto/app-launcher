@@ -1,4 +1,4 @@
-"""Grok Build ACP-style ``updates.jsonl`` line grammar (#1309, split out of ``session_transcript.py``)."""
+"""Grok Build ACP-style ``updates.jsonl`` line grammar (#1309, split out of ``src/session_view/transcript.py``)."""
 
 from __future__ import annotations
 

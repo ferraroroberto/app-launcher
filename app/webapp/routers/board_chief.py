@@ -96,7 +96,7 @@ CHIEF_STOP_POLL_S = 0.25
 _CHIEF_ENSURE_LOCK = asyncio.Lock()
 
 # The directory-name grain every "is this fleet-config?" check in this repo
-# already uses (board_state.py's project fallback, the state-row `project`
+# already uses (src/board/state.py's project fallback, the state-row `project`
 # field) — cheap and consistent, no registry scan needed.
 _CHIEF_PROJECT_DIR_NAME = chief_identity.CHIEF_PROJECT_DIR_NAME
 
@@ -278,7 +278,7 @@ def _fresh_fleet_config_stamp(row: Any, now: datetime) -> Optional[datetime]:
     live-enough fleet-config row — else ``None``.
 
     Qualifying means: in the fleet-config checkout (``project``, falling back
-    to ``Path(cwd).name`` — the same fallback ``board_sessions._external_row``
+    to ``Path(cwd).name`` — the same fallback ``src.board.sessions._external_card``
     already applies) and stamped within ``board.STATE_STALE_AFTER``. The 24h
     window is applied **per row** rather than trusting the file-level
     ``stale`` flag some *other* row could keep looking fresh: a chief
@@ -311,7 +311,7 @@ def _find_resumable_chief_session_id(
     Returns the dict key — Claude's own session UUID, exactly what
     ``claude --resume <id>`` needs. Returns ``""`` (never raises) when
     nothing qualifies — same degradation contract every other
-    ``board_state`` reader already follows; the caller treats that as "fall
+    ``src.board.state`` reader already follows; the caller treats that as "fall
     back to a fresh spawn", not an error.
 
     **Newest is not the same as right.** Ranking candidates on

@@ -1,11 +1,11 @@
 """Filesystem correlation of a live session to its harness transcript.
 
-Split out of ``board_exchange.py`` (#1309): that module resolves *what to
+Split out of ``src/board/exchange.py`` (#1309): that module resolves *what to
 show* for the Board drawer's conversation preview, while this one answers a
 narrower, reusable question — *which file on disk belongs to this live
 session* — for every harness that writes the launcher no exact id at all
 (Codex, Pi, Antigravity, Copilot) plus Claude's own filesystem fallback
-(#1023) and its ``--resume <id>`` correlation (#1155). ``board_exchange``
+(#1023) and its ``--resume <id>`` correlation (#1155). ``src.board.exchange``
 and ``app/webapp/routers/session_transcript.py`` both call into this module
 rather than duplicating the correlation logic; neither owns it.
 
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 # file — measured across the 8 newest conversations in three project folders
 # on this box, the last naming record sat at most 22.7 KB from EOF, including
 # in a 67.8 MB chief conversation. 256 KB is a ~11x margin on that worst case
-# and the same window `board_transcript._EXCHANGE_TAIL_BYTES` already uses for
+# and the same window `src.board.transcript._EXCHANGE_TAIL_BYTES` already uses for
 # this file. `_ACTIVITY_TAIL_BYTES` (8 KB) is deliberately *not* reused: it
 # would have missed the record in 6 of those 8 files.
 _TITLE_TAIL_BYTES = 256 * 1024
@@ -57,7 +57,7 @@ _TITLE_CHECK_NOT_CHECKED = "not_checked"
 # One info line per session whose scan the title disproved. The drawer
 # re-polls every 5s while open and a title is stable for a session's life, so
 # an unkeyed log would bury the line that matters — same shape as
-# board_transcript.py's glyph breadcrumb.
+# src/board/transcript.py's glyph breadcrumb.
 _LOGGED_DISPROVED_SCANS: "set[str]" = set()
 _DISPROVED_SCAN_LOG_CAP = 64
 _CODEX_START_SLOP_SECONDS = 120

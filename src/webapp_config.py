@@ -237,7 +237,7 @@ class WebappConfig:
     # only one: there is deliberately no model setting, because Copilot
     # resolves `--model` against the account at launch and silently
     # substitutes when it refuses (see
-    # `launch_flags.build_copilot_flags`). Model choice belongs to the
+    # `src.launching.flags.build_copilot_flags`). Model choice belongs to the
     # CLI's own `/model` and `/config model`.
     copilot_skip_permissions: bool = False
     # Grok Build launch settings. `grok_effort` is the

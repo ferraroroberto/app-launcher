@@ -112,7 +112,7 @@ _IDLE_LIVE_TITLE_GLYPH = "✳"  # U+2733
 # glyph is stable for a session's whole life, so logging every rejection
 # would bury the one line that matters. One info line per distinct glyph,
 # capped and cleared wholesale on overflow — the same shape as
-# board_sessions.py's _LOGGED_SUPPRESSED_ROWS.
+# src/board/sessions.py's _LOGGED_SUPPRESSED_ROWS.
 _LOGGED_UNKNOWN_TITLE_GLYPHS: "set[str]" = set()
 _UNKNOWN_TITLE_GLYPH_LOG_CAP = 64
 
@@ -256,7 +256,7 @@ def _read_tail_bytes(path: Any, n_bytes: int) -> bytes:
 
     Best-effort: any OSError (missing file, read failure) returns ``b""`` —
     callers degrade to "no signal" the same way a parse failure would.
-    Shared with :func:`board_exchange._read_tail`, which differs only in
+    Shared with :func:`src.board.exchange._read_tail`, which differs only in
     decoding the result to ``str`` instead of splitting it into lines.
     """
     try:

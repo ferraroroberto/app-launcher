@@ -13,7 +13,7 @@ real credential. Two consumers:
   delegates here.
 
 Deliberately a leaf module — no imports from the jobs/webapp packages —
-so both ``jobs_webhook`` and the executor can use it without cycles.
+so both ``src.jobs.webhook`` and the executor can use it without cycles.
 """
 
 from __future__ import annotations
