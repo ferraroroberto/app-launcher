@@ -114,9 +114,23 @@ class TestDecide:
         bell.decide(_obs(status="awaiting-input"), 0.0)
         assert bell.decide(_obs(status="awaiting-input"), DEBOUNCE_SECONDS) == "ring"
 
+    def test_rings_a_chief_waiting_on_its_own_background_task(self):
+        """The chief ends every turn with a waiter armed, so it is
+        ``waiting-on-task`` exactly when lanes finish: its composer is free
+        and a typed line starts a new turn."""
+        bell = Doorbell()
+        assert bell.decide(_obs(status="waiting-on-task"), 0.0) == "debouncing"
+        assert bell.decide(_obs(status="waiting-on-task"), DEBOUNCE_SECONDS) == "ring"
+
+    @pytest.mark.parametrize("dirty, reason", [(True, "composer dirty"), (None, "composer unknown")])
+    def test_a_waiting_chief_still_needs_a_clean_known_composer(self, dirty, reason):
+        bell = Doorbell()
+        for t in range(0, 300, 3):
+            assert bell.decide(_obs(status="waiting-on-task", dirty=dirty), float(t)) == reason
+
     @pytest.mark.parametrize(
         "status",
-        ["working", "tool-pending", "waiting-on-task", "awaiting-decision", "stalled", "unknown"],
+        ["working", "tool-pending", "awaiting-decision", "stalled", "unknown"],
     )
     def test_never_rings_a_chief_that_is_not_idle(self, status):
         """``tool-pending`` is a permission prompt and ``awaiting-decision`` a
