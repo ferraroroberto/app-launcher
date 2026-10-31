@@ -115,7 +115,7 @@ async function copyTurn(entries, kind, sid) {
   }
   toast(label + ' copied — loading the full text…', '', { icon: 'copy' });
   const fail = function () {
-    toast(label + ' copy is truncated — the full text didn’t load', 'bad', { icon: 'copy' });
+    toast(label + ' copy is truncated — the full text didn’t load', 'error', { icon: 'copy' });
   };
   if (!sid || capped.some(function (e) { return e.offset == null; })) {
     fail();

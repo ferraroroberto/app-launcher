@@ -281,3 +281,34 @@ class TestHarnessSupport:
         assert by_id["pi"]["status"] == "active"  # fleet-config#545 shipped
         assert by_id["copilot"]["status"] == "active"  # fleet-config#547 shipped (TUI caveat in note)
         assert by_id["antigravity"]["status"] == "active"  # fleet-config#546 shipped
+
+
+class TestReadStatsClockRollover:
+    """An idle log keeps its (mtime, size) key while the clock moves on."""
+
+    def test_day_windows_and_stale_follow_the_clock_on_an_unchanged_file(
+        self, tmp_path: Path, monkeypatch
+    ):
+        from datetime import datetime, timezone
+
+        import src.context_filter_state as cfs
+
+        path = tmp_path / "shadow.jsonl"
+        row = {"ts": "2026-08-02T23:30:00Z", "raw_tokens": 100, "compressed_tokens": 40}
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+        monkeypatch.setattr(cfs, "_now", lambda: datetime(2026, 8, 2, 23, 45, tzinfo=timezone.utc))
+        evening = read_stats(path)
+        assert evening["today"]["tokens_saved"] == 60
+        assert evening["stale"] is False
+
+        monkeypatch.setattr(cfs, "_now", lambda: datetime(2026, 8, 3, 9, 0, tzinfo=timezone.utc))
+        morning = read_stats(path)
+        assert morning["today"]["rows"] == 0
+        assert morning["last_7_days"]["tokens_saved"] == 60
+        assert morning["stale"] is False
+
+        monkeypatch.setattr(cfs, "_now", lambda: datetime(2026, 8, 5, 9, 0, tzinfo=timezone.utc))
+        cold = read_stats(path)
+        assert cold["stale"] is True
+        assert cold["totals"]["rows"] == 1

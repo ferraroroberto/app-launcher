@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any, Dict, List, Optional
 
+from src.auth.api_tokens import constant_time_equals
 from src.jobs.secrets import resolve_secret_value
 
 PROVIDERS = frozenset({"github", "stripe", "generic"})
@@ -135,7 +136,7 @@ def verify_github(secret: str, body: bytes, header: Optional[str]) -> bool:
     if not header or not header.startswith("sha256="):
         return False
     expected = hmac.new(secret.encode("utf-8"), body, sha256).hexdigest()
-    return hmac.compare_digest(header[len("sha256="):], expected)
+    return constant_time_equals(header[len("sha256="):], expected)
 
 
 def _parse_stripe_header(header: str) -> Optional[Dict[str, str]]:
@@ -179,14 +180,14 @@ def verify_stripe(
         return False
     signed_payload = f"{timestamp}.".encode("utf-8") + body
     expected = hmac.new(secret.encode("utf-8"), signed_payload, sha256).hexdigest()
-    return hmac.compare_digest(parsed["v1"], expected)
+    return constant_time_equals(parsed["v1"], expected)
 
 
 def verify_generic(secret: str, header: Optional[str]) -> bool:
     """``X-Webhook-Token: <secret>`` — plain constant-time compare."""
     if not header:
         return False
-    return hmac.compare_digest(header, secret)
+    return constant_time_equals(header, secret)
 
 
 def verify_webhook(

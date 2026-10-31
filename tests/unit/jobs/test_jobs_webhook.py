@@ -213,3 +213,17 @@ class TestWebhookFromDict:
         job = job_from_dict(raw)
         assert job.webhook.provider == "github"
         assert job.to_dict()["webhook"]["events"] == ["push"]
+
+
+class TestNonAsciiSignatureHeader:
+    """A header byte >= 0x80 is a mismatch (401), never a TypeError (500)."""
+
+    def test_github(self):
+        assert verify_github("s3cr3t", b"{}", "sha256=caf\xe9") is False
+
+    def test_stripe(self):
+        header = "t=1700000000,v1=caf\xe9"
+        assert verify_stripe("whsec", b"{}", header, now=1_700_000_000) is False
+
+    def test_generic(self):
+        assert verify_generic("tok123", "tok\xe9") is False

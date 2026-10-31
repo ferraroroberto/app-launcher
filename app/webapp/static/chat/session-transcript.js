@@ -701,7 +701,7 @@ export async function loadOlder() {
       els.transcriptOlder.disabled = false;
     }
   }
-  if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'bad');
+  if (unavailable) toast(REASON_COPY[unavailable] || 'Transcript unavailable', 'error');
   const files = releaseHeld(cursor == null ? -Infinity : oldestTime(older));
   if (older.length || files.length) {
     const frag = document.createDocumentFragment();
