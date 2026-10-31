@@ -12,7 +12,6 @@ because Starlette middleware doesn't see WebSocket handshakes.
 
 from __future__ import annotations
 
-import hmac
 import ipaddress
 import logging
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
@@ -22,6 +21,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.auth import api_tokens
+from src.auth.api_tokens import constant_time_equals
 from src.auth import delegate_token
 from src.auth.webauthn_gate import WebAuthnGate
 
@@ -105,7 +105,7 @@ def credential_accepted(cfg: Any, presented: str, method: str, path: str) -> boo
     endpoint — reach anything else that shares this check.
     """
     token = (getattr(cfg, "auth_token", "") or "").strip()
-    if presented and token and hmac.compare_digest(presented, token):
+    if presented and token and constant_time_equals(presented, token):
         return True
     minted = getattr(cfg, "api_tokens", None) or []
     match = api_tokens.find_match(presented, minted)
@@ -603,7 +603,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         presented = _presented_credential(request)
-        if presented and token and hmac.compare_digest(presented, token):
+        if presented and token and constant_time_equals(presented, token):
             return await call_next(request)
 
         match = api_tokens.find_match(presented, minted)

@@ -34,7 +34,7 @@ from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from src._json_io import atomic_write_json
 
@@ -50,11 +50,14 @@ DEFAULT_UPDATED_BY = "app-launcher"
 # no update is worth flagging" horizon.
 STATS_STALE_AFTER = timedelta(hours=24)
 
-# Process-local cache keyed by (path, (st_mtime_ns, st_size)) — recomputed
-# only when the log file itself changes, never on a wall-clock TTL (unlike
-# src/jobs/stats.py's 30s TTL precedent: here the mtime/size key already
+# Process-local cache of the parsed log keyed by (path, (st_mtime_ns, st_size))
+# — re-parsed only when the log file itself changes, never on a wall-clock TTL
+# (unlike src/jobs/stats.py's 30s TTL precedent: here the mtime/size key already
 # guarantees "unchanged file never re-parses", so no TTL is needed on top).
-_stats_cache: Dict[str, Tuple[Tuple[int, int], Dict[str, Any]]] = {}
+# Only the clock-independent aggregate is memoized; ``today`` / ``last_7_days``
+# / ``stale`` are derived on every read, since an idle file keeps its key while
+# the day rolls over.
+_stats_cache: Dict[str, Tuple[Tuple[int, int], "_ParsedLog"]] = {}
 _stats_lock = Lock()
 
 # The harness applicability matrix — the Settings-tab panel's source of
@@ -252,22 +255,28 @@ def _empty_stats() -> Dict[str, Any]:
     }
 
 
-def _compute_stats(path: Path) -> Dict[str, Any]:
+class _ParsedLog(NamedTuple):
+    """The clock-independent part of a ``shadow.jsonl`` aggregate."""
+
+    totals: Dict[str, int]
+    per_agent: Dict[str, Dict[str, int]]
+    top_commands: List[Dict[str, Any]]
+    newest_ts: Optional[datetime]
+    # Newest first, so a window sum stops at its first row past the edge.
+    timed_rows: List[Tuple[datetime, Any, Any]]
+
+
+def _compute_stats(path: Path) -> Optional[_ParsedLog]:
     try:
         raw_text = path.read_text(encoding="utf-8-sig")
     except OSError:
-        return _empty_stats()
-
-    now = _now()
-    seven_days_ago = now - timedelta(days=7)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        return None
 
     totals = _empty_bucket()
-    last_7_days = _empty_bucket()
-    today = _empty_bucket()
     per_agent: Dict[str, Dict[str, int]] = {}
     command_counter: "Counter[str]" = Counter()
     newest_ts: Optional[datetime] = None
+    timed_rows: List[Tuple[datetime, Any, Any]] = []
 
     for line in raw_text.splitlines():
         line = line.strip()
@@ -297,25 +306,39 @@ def _compute_stats(path: Path) -> Dict[str, Any]:
         if ts is not None:
             if newest_ts is None or ts > newest_ts:
                 newest_ts = ts
-            if ts >= seven_days_ago:
-                _accumulate(last_7_days, raw_tokens, compressed_tokens)
-            if ts >= today_start:
-                _accumulate(today, raw_tokens, compressed_tokens)
+            timed_rows.append((ts, raw_tokens, compressed_tokens))
 
+    timed_rows.sort(key=lambda entry: entry[0], reverse=True)
     top_commands = [
         {"command": cmd, "count": count}
         for cmd, count in sorted(command_counter.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
     ]
+    return _ParsedLog(totals, per_agent, top_commands, newest_ts, timed_rows)
 
+
+def _stats_at(parsed: _ParsedLog, now: datetime) -> Dict[str, Any]:
+    """Apply the clock to a parsed log: the day windows and the stale flag."""
+    seven_days_ago = now - timedelta(days=7)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    last_7_days = _empty_bucket()
+    today = _empty_bucket()
+    for ts, raw_tokens, compressed_tokens in parsed.timed_rows:
+        if ts < seven_days_ago:
+            break
+        _accumulate(last_7_days, raw_tokens, compressed_tokens)
+        if ts >= today_start:
+            _accumulate(today, raw_tokens, compressed_tokens)
+
+    newest_ts = parsed.newest_ts
     return {
         "available": True,
         "stale": bool(newest_ts is not None and now - newest_ts > STATS_STALE_AFTER),
         "updated_at": _iso_z(newest_ts) if newest_ts else None,
-        "totals": totals,
+        "totals": parsed.totals,
         "last_7_days": last_7_days,
         "today": today,
-        "per_agent": per_agent,
-        "top_commands": top_commands,
+        "per_agent": parsed.per_agent,
+        "top_commands": parsed.top_commands,
     }
 
 
@@ -323,10 +346,12 @@ def read_stats(path: Path) -> Dict[str, Any]:
     """Aggregate ``shadow.jsonl`` — totals, last-7-days, today, per-agent,
     top command families.
 
-    Cached module-locally keyed by ``(st_mtime_ns, st_size)``: unchanged
-    file never re-parses, so this is safe to call on every
+    The parse is cached module-locally keyed by ``(st_mtime_ns, st_size)``:
+    an unchanged file never re-parses, so this is safe to call on every
     ``GET /api/context-filter`` without re-reading a potentially large
-    telemetry log each time. Absent/unreadable file -> ``available: False``;
+    telemetry log each time. The day windows and ``stale`` are applied to the
+    clock on every call, so an idle file still rolls over at midnight.
+    Absent/unreadable file -> ``available: False``;
     individual malformed lines are skipped rather than failing the whole
     read (fleet-config's writer is external and best-effort).
     """
@@ -339,8 +364,10 @@ def read_stats(path: Path) -> Dict[str, Any]:
     with _stats_lock:
         cached = _stats_cache.get(key)
         if cached is not None and cached[0] == stat_key:
-            return cached[1]
-    result = _compute_stats(path)
+            return _stats_at(cached[1], _now())
+    parsed = _compute_stats(path)
+    if parsed is None:
+        return _empty_stats()
     with _stats_lock:
-        _stats_cache[key] = (stat_key, result)
-    return result
+        _stats_cache[key] = (stat_key, parsed)
+    return _stats_at(parsed, _now())

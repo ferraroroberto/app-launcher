@@ -411,7 +411,7 @@ async function submitAnswer(li, answers) {
   const target = view;
   const e = li._trAsk;
   if (currentDecisionId() !== e.call_id) {
-    toast(ASK_NOT_WAITING, 'bad');
+    toast(ASK_NOT_WAITING, 'error');
     syncDecisionCards();
     return;
   }
@@ -432,7 +432,7 @@ async function submitAnswer(li, answers) {
     } else {
       delete target.askSent[e.call_id];
       if (exc && exc.status === 409) {
-        toast(exc.message || ASK_NOT_WAITING, 'bad');
+        toast(exc.message || ASK_NOT_WAITING, 'error');
         target.askRefused = target.askRefused || {};
         target.askRefused[e.call_id] = true;
       } else {
@@ -786,7 +786,7 @@ async function sendPlanAnswer(o, feedback) {
       toast(exc.message, 'error');
       return;
     }
-    if (exc && exc.status === 409) toast(exc.message || 'The plan is no longer waiting', 'bad');
+    if (exc && exc.status === 409) toast(exc.message || 'The plan is no longer waiting', 'error');
     else apiFailToast('Answer failed', exc);
     // Nothing was typed: re-render from a fresh read of the screen.
     target.pickerSent = null;

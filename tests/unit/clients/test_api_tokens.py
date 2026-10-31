@@ -101,3 +101,22 @@ class TestTouchLastUsed:
         record, _ = _mint()
         public = api_tokens.parse_tokens([record])[0].public_dict()
         assert "hash" not in public and "salt" not in public
+
+
+class TestConstantTimeEquals:
+    def test_match_and_mismatch(self):
+        assert api_tokens.constant_time_equals("tok123", "tok123") is True
+        assert api_tokens.constant_time_equals("tok123", "tok124") is False
+
+    def test_non_ascii_is_a_mismatch_not_a_typeerror(self):
+        assert api_tokens.constant_time_equals("caf\xe9", "cafe") is False
+        assert api_tokens.constant_time_equals("caf\xe9", "caf\xe9") is True
+
+    def test_bearer_gate_rejects_non_ascii_credential(self):
+        from types import SimpleNamespace
+
+        from app.webapp.middleware import credential_accepted
+
+        cfg = SimpleNamespace(auth_token="secret", api_tokens=[])
+        assert credential_accepted(cfg, "sec\xe9ret", "GET", "/api/x") is False
+        assert credential_accepted(cfg, "secret", "GET", "/api/x") is True

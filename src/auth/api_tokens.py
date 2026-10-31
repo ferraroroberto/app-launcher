@@ -59,6 +59,19 @@ class ApiToken:
         }
 
 
+def constant_time_equals(presented: str, expected: str) -> bool:
+    """Constant-time ``==`` for two credential strings.
+
+    ``hmac.compare_digest`` raises ``TypeError`` on a non-ASCII ``str``, and a
+    request header or ``?token=`` value is attacker-controlled, so compare the
+    UTF-8 bytes instead — a hostile value is a mismatch, not a 500.
+    """
+    return hmac.compare_digest(
+        presented.encode("utf-8", "surrogatepass"),
+        expected.encode("utf-8", "surrogatepass"),
+    )
+
+
 def hash_token(raw: str, salt_hex: str) -> str:
     return hashlib.sha256(bytes.fromhex(salt_hex) + raw.encode("utf-8")).hexdigest()
 
