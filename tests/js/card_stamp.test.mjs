@@ -13,7 +13,7 @@ const stub = () => new Proxy(function () {}, {
 globalThis.document = stub();
 globalThis.window = stub();
 
-const { fmtCardStamp } = await import('../../app/webapp/static/format.js');
+const { fmtCardStamp } = await import('../../app/webapp/static/shared/format.js');
 
 const now = new Date(2026, 9, 17, 18, 30);            // local 17 Oct 2026 18:30
 

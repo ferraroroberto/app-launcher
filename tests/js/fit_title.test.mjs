@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';
 
-const { fitTitle } = await import('../../app/webapp/static/format.js');
+const { fitTitle } = await import('../../app/webapp/static/shared/format.js');
 
 const MAX = 120;
 const words = 'plan the autumn trip around the lakes and book the slow ferry before the timetable changes';

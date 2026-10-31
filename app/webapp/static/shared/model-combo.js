@@ -1,6 +1,6 @@
 /* The model-picker dropdown shared by every launch surface. */
 
-import { bindOutsideClickToClose } from './dom-utils.js';
+import { bindOutsideClickToClose } from '../dom-utils.js';
 
 function comboOptions(menu) {
   return Array.from(menu.querySelectorAll('[role="option"]'));

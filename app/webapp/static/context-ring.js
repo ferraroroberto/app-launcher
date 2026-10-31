@@ -21,7 +21,7 @@
 
 import { els, state } from './state.js';
 import { jsonApi, sessionRoute, toast } from './api.js';
-import { usageTier } from './format.js';
+import { usageTier } from './shared/format.js';
 import { bindLongPressHint } from './long-press-hint.js';
 
 const CONTEXT_POLL_MS = 10000;

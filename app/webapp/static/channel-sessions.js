@@ -36,8 +36,8 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, sessionRoute, toast } from './api.js';
-import { channelSessionName, isChannelSession, isManagedSession } from './session-kinds.js';
-import { contextAlert, fmtDuration, usageTier } from './format.js';
+import { channelSessionName, isChannelSession, isManagedSession } from './shared/session-kinds.js';
+import { contextAlert, fmtDuration, usageTier } from './shared/format.js';
 import { icon } from './_vendored/icons/icons.js';
 import { chip } from './glance.js';
 import { openSessionOverlay } from './session-overlay.js';

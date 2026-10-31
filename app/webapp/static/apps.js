@@ -14,7 +14,7 @@ import { els, state } from './state.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
 import { renderHomeHead } from './home-head.js';
 import { fmtAgo } from './sessions.js';
-import { applyLaunchSizePayload } from './launch-size.js';
+import { applyLaunchSizePayload } from './shared/launch-size.js';
 import { handleLaunchResponse } from './terminal.js';
 import { switchEl } from './_vendored/switch/switch.js';
 import {
@@ -24,7 +24,7 @@ import {
 import { openRename, wireRenameDialog, wireScanDialog } from './apps/apps-dialogs.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { listFilter } from './list-filter.js';
-import { nameLabel } from './format.js';
+import { nameLabel } from './shared/format.js';
 import {
   copyText, copyUrl, fetchListeners, renderOtherPortsRow, wireListeners,
 } from './apps/apps-listeners.js';

@@ -22,7 +22,7 @@
 import { SYSTEM_LOAD_WARMING_RETRY_MS } from './state.js';
 import { jsonApi, logPollFailure } from './api.js';
 import { el, sheetRow } from './dom-utils.js';
-import { pctText } from './format.js';
+import { pctText } from './shared/format.js';
 
 // The last payload; null when the fetch itself failed. Before the first
 // answer it reads as the server's own "still taking the first sample".

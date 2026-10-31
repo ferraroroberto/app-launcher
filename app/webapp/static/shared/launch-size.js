@@ -2,7 +2,7 @@
    in-page terminal will be, or that a PC mirror window opens instead. Kept
    free of the terminal module graph so a launch path does not load it. */
 
-import { opensInPcWindow } from './api.js';
+import { opensInPcWindow } from '../api.js';
 
 // Estimate the phone's terminal size (rows × cols) BEFORE a session
 // exists, so the launch request can spawn the PTY at the right width and

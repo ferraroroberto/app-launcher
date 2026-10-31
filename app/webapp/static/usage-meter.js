@@ -24,7 +24,7 @@
 
 import { icon } from './_vendored/icons/icons.js';
 import { brandIconEl, el, sheetRow } from './dom-utils.js';
-import { fmtResetFull, nameLabel, pctText, quotaPace } from './format.js';
+import { fmtResetFull, nameLabel, pctText, quotaPace } from './shared/format.js';
 import { chip } from './glance.js';
 
 export const DANGER_PCT = 90;

@@ -34,8 +34,8 @@ import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-s
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
 import { revealInCard } from './dom-utils.js';
-import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, isChiefSession } from './session-kinds.js';
-import { fmtDuration } from './format.js';
+import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, isChiefSession } from './shared/session-kinds.js';
+import { fmtDuration } from './shared/format.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
 import { renderUsage } from './usage-meter.js';

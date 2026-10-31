@@ -1,6 +1,6 @@
 """Unit pin for the Telegram sessions' context alert threshold (issue #1402).
 
-``app/webapp/static/format.js``'s ``contextAlert`` decides whether a
+``app/webapp/static/shared/format.js``'s ``contextAlert`` decides whether a
 context figure is high enough to raise the alert icon on the summary line and
 to highlight a popup row's Compact button. Pinned without a browser: this
 module shells out to plain Node to import the real ES module, in

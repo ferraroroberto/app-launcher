@@ -11,7 +11,7 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, logPollFailure, toast } from '../api.js';
-import { fmtDuration } from '../format.js';
+import { fmtDuration } from '../shared/format.js';
 import { chip } from '../glance.js';
 import { mountLaunchToolbar } from '../launch-toolbar.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';

@@ -26,11 +26,11 @@
 import { els, state } from './state.js';
 import { renderHomeHead, renderSettingsHead } from './home-head.js';
 import { apiFailToast, jsonApi, toast, logPollFailure } from './api.js';
-import { applyLaunchSizePayload } from './launch-size.js';
+import { applyLaunchSizePayload } from './shared/launch-size.js';
 import { handleLaunchResponse } from './terminal.js';
 import { icon } from './_vendored/icons/icons.js';
-import { wireModelCombo } from './model-combo.js';
-import { calendarDaysFromToday } from './format.js';
+import { wireModelCombo } from './shared/model-combo.js';
+import { calendarDaysFromToday } from './shared/format.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { avatar, chip } from './glance.js';
 import { confirmDialog } from './confirm-dialog.js';

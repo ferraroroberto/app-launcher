@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';
 
-const { fmtDuration } = await import('../../app/webapp/static/format.js');
+const { fmtDuration } = await import('../../app/webapp/static/shared/format.js');
 const { formatDuration } = await import('../../app/webapp/static/jobs/jobs-row.js');
 
 const H = 3600;

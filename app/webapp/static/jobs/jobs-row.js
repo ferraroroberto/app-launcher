@@ -10,7 +10,7 @@
  */
 
 import { fmtAgo } from '../sessions.js';
-import { daysAndHours } from '../format.js';
+import { daysAndHours } from '../shared/format.js';
 import { ACTION_ROW_MENU, actionRow } from '../action-rows.js';
 import { avatar, chip } from '../glance.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';

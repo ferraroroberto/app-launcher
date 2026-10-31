@@ -27,6 +27,7 @@ app-launcher/
 │           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
 │           ├── life-os/       # Life OS tab modules beside life-os.js: conversations, the doc browser, the conversation viewer
 │           ├── screen/        # the Screen view: the socket and lifecycle (screen-view.js), control, keys, quality, and their pure helpers
+│           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract
 │           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope
 │           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order

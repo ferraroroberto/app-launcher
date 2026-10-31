@@ -29,12 +29,12 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, toast } from '../api.js';
-import { applyLaunchSizePayload } from '../launch-size.js';
+import { applyLaunchSizePayload } from '../shared/launch-size.js';
 import { startWorkTimer } from '../voice.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { sendSessionMessage } from '../sessions.js';
-import { wireModelCombo } from '../model-combo.js';
-import { isChiefSession } from '../session-kinds.js';
+import { wireModelCombo } from '../shared/model-combo.js';
+import { isChiefSession } from '../shared/session-kinds.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { renderBoard } from '../board.js';
 
