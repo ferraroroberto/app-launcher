@@ -27,7 +27,8 @@ import logging
 import re
 from pathlib import Path
 
-from src.life_os.transcript import SESSION_ID_RE, _is_link, _project_folders, claude_projects_dir
+from src.life_os.links import is_link
+from src.life_os.transcript import SESSION_ID_RE, _project_folders, claude_projects_dir
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ def codex_sessions_dir() -> Path:
 def _claude_model(sid: str) -> str:
     for folder in _project_folders(claude_projects_dir()):
         path = folder / f"{sid}.jsonl"
-        if _is_link(path) or not path.is_file():
+        if is_link(path) or not path.is_file():
             continue
         try:
             with path.open("rb") as handle:
@@ -68,7 +69,7 @@ def _claude_model(sid: str) -> str:
 def _codex_model(sid: str) -> str:
     root = codex_sessions_dir()
     try:
-        paths = [p for p in root.rglob(f"rollout-*-{sid}.jsonl") if not _is_link(p)]
+        paths = [p for p in root.rglob(f"rollout-*-{sid}.jsonl") if not is_link(p)]
     except OSError:
         return ""
     if len(paths) != 1:

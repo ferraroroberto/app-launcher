@@ -20,11 +20,12 @@ Blocking filesystem work: callers run it off the event loop.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from src.life_os.links import is_link
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +46,11 @@ def claude_projects_dir() -> Path:
     return Path.home() / ".claude" / "projects"
 
 
-def _is_link(path: Path) -> bool:
-    """A symlink or a Windows junction — neither is ever followed or removed through."""
-    return path.is_symlink() or bool(getattr(os.path, "isjunction", lambda _p: False)(path))
-
-
 def _project_folders(projects_dir: Path) -> List[Path]:
     """Real (non-link) directories directly under ``projects_dir``."""
     try:
         return [child for child in projects_dir.iterdir()
-                if child.is_dir() and not _is_link(child)]
+                if child.is_dir() and not is_link(child)]
     except OSError:
         return []
 
@@ -108,7 +104,7 @@ def remove_claude_transcript(
         for target in (transcript, sidecar):
             if not (target.exists() or target.is_symlink()):
                 continue
-            if _is_link(target) or root not in target.resolve().parents:
+            if is_link(target) or root not in target.resolve().parents:
                 logger.warning("⚠️ Life OS delete: not removing a linked or escaping entry")
                 continue
             if target is transcript and target.is_file():

@@ -35,7 +35,7 @@
  */
 
 import { els, state } from './state.js';
-import { apiFailToast, jsonApi, toast } from './api.js';
+import { apiFailToast, jsonApi, sessionRoute, toast } from './api.js';
 import {
   channelSessionName, contextAlert, fmtDuration, isChannelSession, isManagedSession, usageTier,
 } from './dom-utils.js';
@@ -283,7 +283,7 @@ async function pollContext() {
       await Promise.all(contextTargets().map(async function (s) {
         let body = null;
         try {
-          body = await jsonApi('/api/claude-code/sessions/' + encodeURIComponent(s.session_id) + '/context');
+          body = await jsonApi(sessionRoute(s.session_id, '/context'));
         } catch (_) {
           body = null;
         }

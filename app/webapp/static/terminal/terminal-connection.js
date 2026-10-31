@@ -6,7 +6,7 @@
  */
 
 import { els, state } from '../state.js';
-import { apiFailToast, escapeHtml, readToken } from '../api.js';
+import { apiFailToast, escapeHtml, readToken, sessionRoute } from '../api.js';
 import { clearTerminalToken, ensureTerminalToken } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { createRepaintClearer } from './repaint-scrollback.js';
@@ -164,8 +164,7 @@ function termWsUrl(sid, terminalToken) {
   if (bearerToken) params.set('token', bearerToken);
   if (terminalToken) params.set('tt', terminalToken);
   const query = params.toString();
-  return proto + '//' + location.host + '/api/claude-code/sessions/' +
-    encodeURIComponent(sid) + '/ws' + (query ? '?' + query : '');
+  return proto + '//' + location.host + sessionRoute(sid, '/ws' + (query ? '?' + query : ''));
 }
 
 // opts.icon (a Lucide glyph name) renders a leading icon before the escaped

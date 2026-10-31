@@ -13,19 +13,14 @@
  * showModal() stacks it in the top layer.
  */
 
-let settle = null;
+import { createSettler } from './modal-settle.js';
 
 function dialogEl() {
   return document.getElementById('confirmDialog');
 }
 
-function finish(answer) {
-  const d = dialogEl();
-  const resolve = settle;
-  settle = null;
-  if (d && d.open) d.close();
-  if (resolve) resolve(answer);
-}
+const settler = createSettler(dialogEl, false);
+const finish = settler.finish;
 
 let wired = false;
 
@@ -44,16 +39,7 @@ function wire(d) {
     ev.preventDefault();
     finish(true);
   });
-  // Escape closes the dialog natively; any close that was not the action
-  // is a "no". The event is queued, so one from an earlier answer can land
-  // after the next confirm has opened: an open dialog ignores it.
-  d.addEventListener('close', function () {
-    if (!d.open) finish(false);
-  });
-  // A tap on the backdrop lands on the <dialog> itself, outside the card.
-  d.addEventListener('click', function (ev) {
-    if (ev.target === d) finish(false);
-  });
+  settler.wireDismiss(d);
 }
 
 // The action's look: the danger tint for a destructive step (the default),
@@ -68,7 +54,7 @@ function open(opts, field) {
   const d = dialogEl();
   if (!d) return Promise.resolve(false);
   wire(d);
-  if (settle) finish(false);
+  settler.cancelPending();
   d.querySelector('#confirmDialogTitle').textContent = opts.title;
   const message = d.querySelector('#confirmDialogMessage');
   message.textContent = opts.message || '';
@@ -80,9 +66,7 @@ function open(opts, field) {
   input.hidden = !field;
   input.value = field ? field.value || '' : '';
   input.setAttribute('aria-label', field ? field.label : '');
-  return new Promise(function (resolve) {
-    settle = resolve;
-    d.showModal();
+  return settler.show(d, function () {
     if (field) input.select();
   });
 }

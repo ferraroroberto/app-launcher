@@ -25,13 +25,12 @@
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { revealInCard, wireModelCombo } from '../dom-utils.js';
-import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS } from './claude-options.js';
+import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS, wireConfigSwitch } from './claude-options.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { fetchApps } from '../apps.js';
 import { fetchSkills } from '../life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
 import { formatMinutes } from '../screen/screen-time.js';
-import { setSwitch } from '../_vendored/switch/switch.js';
 
 // ------------------------------------------------------------ navigation
 // The open sheets, the shown one last.
@@ -492,32 +491,18 @@ function wireChief() {
   });
 }
 
-// A config switch saves at once and is re-read by the server on its next use,
-// so off is also the phone's kill switch: the doorbell by
-// its 3 s tick, the job-failure event by the next failed run, the Life OS
-// skill refresh by the next resume.
-function wireConfigSwitch(el, key, label) {
-  if (!el) return;
-  el.addEventListener('click', async function () {
-    const next = el.getAttribute('aria-checked') !== 'true';
-    setSwitch(el, next);
-    if (await patchConfig({ [key]: next })) {
-      toast(label + (next ? ' on.' : ' off.'), 'good');
-    } else {
-      setSwitch(el, !next);   // patchConfig already fired the failure toast
-    }
-  });
-}
+// The doorbell is read by its 3 s tick, the job-failure event by the next
+// failed run, the Life OS skill refresh by the next resume.
 function wireChiefDoorbell() {
-  wireConfigSwitch(els.chiefDoorbellToggle, 'chief_doorbell', 'Chief doorbell');
-  wireConfigSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', 'Chief job failures');
-  wireConfigSwitch(els.grokAutoSwitchToggle, 'grok_auto_switch', 'Grok auto-switch');
+  wireConfigSwitch(els.chiefDoorbellToggle, 'chief_doorbell', { label: 'Chief doorbell' });
+  wireConfigSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', { label: 'Chief job failures' });
+  wireConfigSwitch(els.grokAutoSwitchToggle, 'grok_auto_switch', { label: 'Grok auto-switch' });
 }
 
 // ------------------------------------------------------------------- wire
 export function wireSettingsSheets() {
   wireConfigSwitch(els.lifeOsRefreshSkillToggle, 'life_os_refresh_skill_instructions',
-    'Skill refresh on resume');
+    { label: 'Skill refresh on resume' });
   document.querySelectorAll('#paneSettings [data-sheet]').forEach(function (btn) {
     btn.addEventListener('click', function () { showPath([btn.dataset.sheet]); });
   });

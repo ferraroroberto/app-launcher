@@ -14,14 +14,13 @@ from urllib.parse import urlencode
 
 from fastapi import HTTPException, Request, WebSocket
 
-from src import audit
+from src import audit, instance_role
 from src import jobs as jobs_mod
 from src.jobs.config import get_by_id, load_jobs
 from src.launching.flags import build_claude_flags, default_effort, effective_effort
 from src.clients.session import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
-    SESSION_HOST_PORT_ENV,
     VALID_CLAUDE_EFFORTS,
     VALID_CLAUDE_MODELS,
     VALID_CLAUDE_PERMISSION_MODES,
@@ -372,7 +371,7 @@ def should_mirror_to_pc(
 
     if not show_local_window:
         return False
-    if os.environ.get(SESSION_HOST_PORT_ENV, "").strip():
+    if instance_role.is_disposable():
         return False
     if bool(body.get("desktop")):
         return True

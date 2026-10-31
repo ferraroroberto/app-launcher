@@ -15,6 +15,7 @@ import { apiFailToast, jsonApi, toast } from '../api.js';
 import { nameLabel } from '../dom-utils.js';
 import { renderMarkdown } from '../markdown.js';
 import { confirmDialog } from '../confirm-dialog.js';
+import { createSettler } from '../modal-settle.js';
 import { refreshAfterLogChange, wireSheet } from '../life-os.js';
 import { closeConvoLayersForPath } from './life-os-convos.js';
 
@@ -213,15 +214,8 @@ function logSlug(name) {
 
 // The rename sheet, in place of a native prompt(), resolves the name
 // typed, or null when ✕, Escape or a backdrop tap cancels it.
-let renameSettle = null;
-
-function finishRename(value) {
-  const d = els.lifeOsRenameDialog;
-  const resolve = renameSettle;
-  renameSettle = null;
-  if (d && d.open) d.close();
-  if (resolve) resolve(value);
-}
+const renameSettler = createSettler(function () { return els.lifeOsRenameDialog; }, null);
+const finishRename = renameSettler.finish;
 
 // The one sheet serves both renames; each fills in its own wording. The log
 // rename (a file name, always required) is the original; the conversation
@@ -240,7 +234,7 @@ export const RENAME_TITLE_SHEET = {
 export function askName(current, sheet) {
   const d = els.lifeOsRenameDialog;
   if (!d) return Promise.resolve(null);
-  if (renameSettle) finishRename(null);
+  renameSettler.cancelPending();
   const input = els.lifeOsRenameInput;
   els.lifeOsRenameHeading.textContent = sheet.heading;
   els.lifeOsRenameHelp.textContent = sheet.help;
@@ -252,9 +246,7 @@ export function askName(current, sheet) {
   input.setAttribute('autocapitalize', sheet.typing);
   input.spellcheck = sheet.typing !== 'none';
   input.value = current;
-  return new Promise(function (resolve) {
-    renameSettle = resolve;
-    d.showModal();
+  return renameSettler.show(d, function () {
     // A pre-filled starting point is selected, so typing replaces it and the
     // arrow keys edit it.
     if (sheet.selectAll) { input.focus(); input.select(); }
@@ -269,15 +261,7 @@ function wireRenameDialog() {
     ev.preventDefault();
     finishRename(els.lifeOsRenameInput.value);
   });
-  // Escape closes the dialog natively, so any close that was not a submit
-  // is a cancel; an open dialog ignores a close event queued by the last one.
-  d.addEventListener('close', function () {
-    if (!d.open) finishRename(null);
-  });
-  // A tap on the backdrop lands on the <dialog> itself, outside the card.
-  d.addEventListener('click', function (ev) {
-    if (ev.target === d) finishRename(null);
-  });
+  renameSettler.wireDismiss(d);
 }
 
 async function renameFile(f) {

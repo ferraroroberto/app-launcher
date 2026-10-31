@@ -24,7 +24,7 @@
  */
 
 import { state } from '../state.js';
-import { jsonApi, toast } from '../api.js';
+import { jsonApi, sessionRoute, toast } from '../api.js';
 import { renderMarkdown } from '../markdown.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
@@ -203,8 +203,7 @@ function plainTruncNote() {
 // when the entry is unavailable (a rotated source, a bad offset).
 async function fetchEntryText(sid, e) {
   const body = await terminalJsonApi(
-    '/api/claude-code/sessions/' + encodeURIComponent(sid) +
-      '/transcript/entry?offset=' + encodeURIComponent(e.offset)
+    sessionRoute(sid, '/transcript/entry?offset=' + encodeURIComponent(e.offset))
   );
   if (!body || !body.available) throw new Error('entry unavailable');
   return body;
