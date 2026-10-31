@@ -89,8 +89,8 @@ from app.webapp.routers._helpers import (
 from app.webapp.routers.board_spawn import (
     SESSION_HOST_UNREACHABLE,
     _agent_and_flags,
-    _applied_effort,
-    _dispatch_effort,
+    applied_effort,
+    dispatch_effort,
     _read_live_sessions,
     _resolve_repo_entry,
 )
@@ -711,7 +711,7 @@ async def start_issue(request: Request) -> Dict[str, Any]:
         name = f"{name or entry.name} · Grok fallback"
     if sid and name:
         await _auto_name_session(cfg, sid, name)
-    applied = _applied_effort(agent, base_flags, effort)
+    applied = applied_effort(agent, base_flags, effort)
     return {"launched": prompt, "repo": entry.name, "session": session,
             "auto_switch": switch.payload(model), **({"effort": applied} if applied else {})}
 
@@ -725,7 +725,7 @@ def _launch_flags(
     effort: one the requested model does not offer is a 400 naming the
     allowed ones, and ``None`` (absent) builds the command exactly as before.
     """
-    effort = _dispatch_effort(
+    effort = dispatch_effort(
         _requested_effort(body), model or cfg.claude_model, switch.model or cfg.claude_model)
     if switch.model:
         return (*_agent_and_flags(cfg, switch.model, effort), effort)

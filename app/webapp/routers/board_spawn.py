@@ -9,7 +9,7 @@ reused across *both* route modules:
   carrying its unknown state (#915) so no caller reads a failed list as empty.
 * :func:`_resolve_repo_entry` — bare repo name → live projects-folder entry.
 * :func:`_agent_and_flags` — the Board's per-launch model selector (#500/#505).
-* :func:`_dispatch_effort` / :func:`_applied_effort` — a dispatch's per-launch
+* :func:`dispatch_effort` / :func:`applied_effort` — a dispatch's per-launch
   ``effort``: checked against the model, then read back off the built flags.
 * :func:`_await_dispatch_ready` / :func:`_await_pty_quiescent` /
   :func:`_type_into_session` — the readiness, quiescence and framing rules for
@@ -146,7 +146,7 @@ def _agent_and_flags(
     same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
     Coding tab's already-disabled button.
 
-    ``effort`` (already checked by :func:`_dispatch_effort`) replaces the
+    ``effort`` (already checked by :func:`dispatch_effort`) replaces the
     persisted effort for this one launch; ``None`` keeps it.
     """
     provider, model_value = _split_model(model)
@@ -177,7 +177,7 @@ def _efforts_for(model: str) -> Tuple[str, ...]:
     return tuple(VALID_GROK_EFFORTS) if provider == "grok" else ()
 
 
-def _dispatch_effort(
+def dispatch_effort(
     effort: Optional[str], requested: str, launched: str
 ) -> Optional[str]:
     """The effort to put on a dispatch's command line, ``None`` for the persisted one.
@@ -185,7 +185,7 @@ def _dispatch_effort(
     A value the ``requested`` model does not offer is a 400 naming the allowed
     ones. When the Grok auto-switch ``launched`` a different model, a value
     that model does not offer is dropped rather than failing a dispatch that
-    was valid as sent; :func:`_applied_effort` then echoes nothing.
+    was valid as sent; :func:`applied_effort` then echoes nothing.
     """
     if effort is None:
         return None
@@ -203,7 +203,7 @@ def _dispatch_effort(
 _EFFORT_FLAG = {"claude": "--effort", "grok": "--reasoning-effort"}
 
 
-def _applied_effort(agent: str, flags: str, effort: Optional[str]) -> Optional[str]:
+def applied_effort(agent: str, flags: str, effort: Optional[str]) -> Optional[str]:
     """``effort`` when the built ``flags`` actually carry it, else ``None``.
 
     Read off the command line, never assumed from the request, so the
