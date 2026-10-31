@@ -8,7 +8,7 @@ import { sessionRoute } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { renderHunks } from '../changes/diff-view.js';
-import { baseName, deltaEl, fileParts, firstLine, pre } from './transcript-text.js';
+import { baseName, deltaEl, fileParts, firstLine, fmtTime, pre } from './transcript-text.js';
 import { thumbs } from './transcript-media.js';
 
 // How far the open session's harness can be trusted to mark a failed tool
@@ -517,6 +517,45 @@ function runSpan(li) {
   return fmtSpan(Date.parse(end.timestamp) - Date.parse(run[0].timestamp));
 }
 
+// "07:30", or "Oct 30, 07:30" when the day is not today.
+function fmtWhen(ts) {
+  const d = new Date(ts);
+  const time = fmtTime(ts);
+  if (!time) return '';
+  if (d.toDateString() === new Date().toDateString()) return time;
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time;
+}
+
+// Where an opened run sits: when it started, how long it ran, and how far
+// into the session that was. Each part is left out when its timestamps don't
+// parse, so the line never reads "NaN" or a made-up zero. `opts.sessionStart`
+// (ms, or null) is the open session's; the Life OS viewer has none, and its
+// line carries no offset.
+function runWhen(li) {
+  const first = li._trRun[0];
+  const start = Date.parse(first.timestamp);
+  if (Number.isNaN(start)) return '';
+  const parts = [fmtWhen(first.timestamp)];
+  const span = runSpan(li);
+  if (span) parts.push('lasted ' + span);
+  const origin = li._trSessionStart ? li._trSessionStart() : null;
+  if (origin != null && start >= origin) {
+    const into = fmtSpan(start - origin);
+    parts.push(into ? '+' + into + ' into the session' : 'at the session start');
+  }
+  return parts.join(' · ');
+}
+
+// Filled only while the run is open: the session start it measures from can
+// move (older pages joining the list), and a folded run shows nothing anyway.
+function syncRunWhen(li) {
+  const d = li.querySelector(':scope > .tr-step');
+  const el = d.querySelector(':scope > .tr-step-items > .tr-run-when');
+  const text = d.open ? runWhen(li) : '';
+  el.textContent = text;
+  el.hidden = !text;
+}
+
 // A run of consecutive folded entries → one quiet step line: a
 // chevron, the label, then the parts no ellipsis may cut. Open, its items
 // hang off a rail beneath it.
@@ -526,6 +565,7 @@ export function renderRun(run, opts) {
   // The entries this line holds, kept on the node so a later tick can merge
   // more into it and recompute the summary.
   li._trRun = run.slice();
+  li._trSessionStart = opts.sessionStart || null;
   const d = document.createElement('details');
   d.className = 'tr-step';
   tagKey(d, run[0], 'step');
@@ -538,8 +578,13 @@ export function renderRun(run, opts) {
   d.appendChild(s);
   const body = document.createElement('div');
   body.className = 'tr-step-items';
+  const when = document.createElement('div');
+  when.className = 'tr-run-when';
+  when.hidden = true;
+  body.appendChild(when);
   run.forEach(function (e) { body.appendChild(renderItem(e, opts)); });
   d.appendChild(body);
+  d.addEventListener('toggle', function () { syncRunWhen(li); });
   li.appendChild(d);
   syncRunSummary(li, opts.live);
   return li;
@@ -571,6 +616,7 @@ export function tagKey(el, entry, kind) {
 export function syncRunSummary(li, live) {
   const run = li._trRun || [];
   const line = li.querySelector('.tr-step-line');
+  syncRunWhen(li);
   const sum = runSummary(run);
   const latest = latestCall(run);
   fillStepLabel(line.querySelector('.tr-step-label'), latest && run.length < 2 ? [] : sum.parts, latest);

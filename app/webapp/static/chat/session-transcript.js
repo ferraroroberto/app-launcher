@@ -302,8 +302,21 @@ function restoreOpen(root, open) {
 // absent field (a ?session= deep link's bare {session_id, name}) is Claude,
 // as the endpoint assumes. The renderer is handed the session it draws for
 // and the step in progress (appendEntries, transcript-render.js).
+// Where an opened run measures its offset from, read when the run opens: the
+// first entry once the list reaches the start of the transcript, else the
+// session's own start (older pages are still unloaded), else nothing.
+function sessionStartMs() {
+  if (!view) return null;
+  const first = view.cursor == null && view.settled && view.settled[0];
+  const fromEntry = first ? Date.parse(first.timestamp) : NaN;
+  if (!Number.isNaN(fromEntry)) return fromEntry;
+  const fromSession = Date.parse(view.session && view.session.started_at);
+  return Number.isNaN(fromSession) ? null : fromSession;
+}
+
 function chatOpts(toolErrors, pending) {
   return {
+    sessionStart: sessionStartMs,
     toolErrors: toolErrors,
     answering: CHAT_ANSWERING,
     agent: String((view && view.session.agent) || 'claude').toLowerCase(),
