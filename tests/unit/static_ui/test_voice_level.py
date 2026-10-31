@@ -1,9 +1,7 @@
-"""Unit pin for the dictation input-level watch.
+"""Unit pin for the dictation input name.
 
-A recording whose mic carries no sound (iOS routing to a Bluetooth headset)
-used to be noticed only at finish. ``app/webapp/static/voice-level.js`` now
-judges the live stream within seconds. Like ``test_swipe_row``, this shells out
-to plain Node to import the real ES module and assert against a fake Web Audio
+``app/webapp/static/voice-level.js`` names the input the recorder opened. Like
+``test_swipe_row``, this shells out to plain Node to import the real ES module
 in ``tests/js/voice_level.test.mjs``; machines without Node skip cleanly.
 """
 
@@ -22,7 +20,7 @@ _TEST_SCRIPT = _REPO_ROOT / "tests" / "js" / "voice_level.test.mjs"
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required")
-def test_silent_input_is_flagged_and_a_tone_is_not():
+def test_input_label_is_the_first_track_name():
     result = subprocess.run(
         ["node", str(_TEST_SCRIPT)],
         cwd=_REPO_ROOT,

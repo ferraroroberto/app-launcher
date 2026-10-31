@@ -77,6 +77,7 @@ instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "9d0fd2777
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "baac1ed97388a3545bd1e52544821ec20f1dc77a", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "baac1ed97388a3545bd1e52544821ec20f1dc77a", dest = "scripts/dead_code_ratchet.py" }
 conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "scripts/conventions_ratchet.py" }
+rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "app/webapp/static/_vendored/rec-wave" }
 single_instance = { src = "app/tray/single_instance.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/tray/single_instance.py" }
 shot_capture = { src = "tests/e2e/_shot.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "tests/e2e/_shot.py" }
 shot_baseline = { src = "scripts/shot_baseline.py", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "scripts/shot_baseline.py" }

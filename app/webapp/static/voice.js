@@ -24,7 +24,8 @@ import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
-import { inputLabel, watchInputLevel } from './voice-level.js';
+import { attachRecWave } from './_vendored/rec-wave/rec-wave.js';
+import { inputLabel } from './voice-level.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
 
 const _CHUNK_MS = 1000;
@@ -475,25 +476,35 @@ function startStreamedSpan(d) {
   } catch (_) { d.voiceEvents = null; }
 }
 
-// The recorder's input line ("Mic: AirPods") and, when the input carries no
-// sound, the banner under it. Both live in d.noticeEl; with none mounted only
-// the banner's news survives, as a toast.
+// The recorder's input line ("Mic: AirPods"), the live level strip and, when
+// the input carries no sound, the banner under them. All three live in
+// d.noticeEl; with none mounted only the banner's news survives, as a toast.
 const _SILENT_TEXT = 'No sound from the microphone — check Bluetooth/AirPods';
+// How long the take may carry no sound before it is flagged. iOS routes the
+// mic to a Bluetooth headset that can carry nothing, and the strip stays flat.
+const _SILENT_MS = 3000;
 
+// Builds the notice and returns the element the level strip mounts into, or
+// null when this mic has no notice line.
 function showInputNotice(d, label) {
   const box = d.noticeEl;
-  if (!box) return;
+  if (!box) return null;
   box.textContent = '';
   const input = document.createElement('div');
   input.className = 'mic-notice-input';
   input.textContent = label ? 'Mic: ' + label : '';
   input.hidden = !label;
+  const wave = document.createElement('div');
+  wave.className = 'mic-notice-wave';
   const silent = document.createElement('div');
   silent.className = 'mic-notice-silent';
   silent.textContent = _SILENT_TEXT;
   silent.hidden = true;
-  box.append(input, silent);
-  box.hidden = !label;
+  box.append(input, wave, silent);
+  // The strip is on for the whole take, so the notice shows even when the
+  // browser withholds the input's name.
+  box.hidden = false;
+  return wave;
 }
 
 function setSilentNotice(d, silent) {
@@ -505,7 +516,6 @@ function setSilentNotice(d, silent) {
   const line = box.querySelector('.mic-notice-silent');
   if (line) line.hidden = !silent;
   box.classList.toggle('is-silent', silent);
-  box.hidden = !silent && !box.querySelector('.mic-notice-input:not([hidden])');
 }
 
 function clearInputNotice(d) {
@@ -517,11 +527,15 @@ function clearInputNotice(d) {
   box.hidden = true;
 }
 
-// Watch the live take for sound, so a dead route (a Bluetooth headset that
-// carries nothing) is flagged within seconds, not at finish.
+// Show the take's live level and flag a dead route within seconds, not at
+// finish. One level reader on the stream the recorder already holds serves
+// both. A mic with no notice line has no strip to show, so a detached host
+// still runs the reader for the silent-input toast.
 function watchTakeLevel(d, stream) {
-  showInputNotice(d, inputLabel(stream));
-  d.levelStop = watchInputLevel(stream, {
+  const host = showInputNotice(d, inputLabel(stream)) || document.createElement('div');
+  d.levelStop = attachRecWave(host, stream, {
+    silenceMs: _SILENT_MS,
+    height: 20,
     onSilent: function () {
       console.info('[dictation] no sound from the input after the first seconds');
       setSilentNotice(d, true);
