@@ -476,19 +476,19 @@ def test_rename_goes_through_the_dialog(life) -> None:
     garden.locator(".action-row-kebab").click()
     open_row_menu(page).locator("[data-item=lifeos-browse-btn]").click()
     page.locator(".lifeos-file-btn").first.click()
-    dialog = page.locator("#lifeOsRenameDialog")
+    dialog = page.locator("#confirmDialog")
 
     page.locator("#lifeOsDocRename").click()
     expect(dialog).to_be_visible()
-    expect(page.locator("#lifeOsRenameInput")).to_have_value("seed-order")
-    page.locator("#lifeOsRenameClose").click()
+    expect(page.locator("#confirmDialogInput")).to_have_value("seed-order")
+    page.locator("#confirmDialogClose").click()
     expect(dialog).to_be_hidden()
     flush_requests(page)
     assert renames == []
 
     page.locator("#lifeOsDocRename").click()
-    page.locator("#lifeOsRenameInput").fill("Bulb Order")
-    page.locator("#lifeOsRenameSave").click()
+    page.locator("#confirmDialogInput").fill("Bulb Order")
+    page.locator("#confirmDialogOk").click()
     wait_until(page, lambda: len(renames) == 1, "the rename POST")
     assert renames[0] == {"path": log["path"], "slug": "bulb-order"}
     expect(dialog).to_be_hidden()

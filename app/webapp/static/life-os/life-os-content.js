@@ -14,8 +14,7 @@ import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { nameLabel } from '../shared/format.js';
 import { renderMarkdown } from '../markdown.js';
-import { confirmDialog } from '../confirm-dialog.js';
-import { createSettler } from '../modal-settle.js';
+import { confirmDialog, promptDialog } from '../confirm-dialog.js';
 import { refreshAfterLogChange, wireSheet } from '../life-os.js';
 import { closeConvoLayersForPath } from './life-os-convos.js';
 
@@ -212,56 +211,23 @@ function logSlug(name) {
     .replace(/^\d{4}-\d{2}-\d{2}-\d{4}-/, '');
 }
 
-// The rename sheet, in place of a native prompt(), resolves the name
-// typed, or null when ✕, Escape or a backdrop tap cancels it.
-const renameSettler = createSettler(function () { return els.lifeOsRenameDialog; }, null);
-const finishRename = renameSettler.finish;
-
-// The one sheet serves both renames; each fills in its own wording. The log
-// rename (a file name, always required) is the original; the conversation
-// title (set from life-os-convos.js) may be left empty, which clears it.
+// The two renames share the confirm sheet's field (promptDialog); each fills
+// in its own wording. The log rename (a file name, always required) is the
+// original; the conversation title (set from life-os-convos.js) may be left
+// empty, which clears it.
 const RENAME_LOG_SHEET = {
-  heading: 'Rename log', action: 'Rename', placeholder: '', required: true,
-  help: 'The date stays. Spaces become dashes, lower-cased.',
-  maxLength: null, typing: 'none',
+  title: 'Rename log', action: 'Rename', required: true, label: 'New name',
+  message: 'The date stays. Spaces become dashes, lower-cased.',
 };
 export const RENAME_TITLE_SHEET = {
-  heading: 'Rename conversation', action: 'Save', required: false,
-  help: 'Leave it empty to go back to the topic.',
-  maxLength: 120, typing: 'sentences', selectAll: true,
+  title: 'Rename conversation', action: 'Save', required: false, label: 'New name',
+  message: 'Leave it empty to go back to the topic.',
+  maxLength: 120, typing: 'sentences',
 };
 
+// Resolves the name typed, or null when ✕, Escape or a backdrop tap cancels.
 export function askName(current, sheet) {
-  const d = els.lifeOsRenameDialog;
-  if (!d) return Promise.resolve(null);
-  renameSettler.cancelPending();
-  const input = els.lifeOsRenameInput;
-  els.lifeOsRenameHeading.textContent = sheet.heading;
-  els.lifeOsRenameHelp.textContent = sheet.help;
-  els.lifeOsRenameSave.textContent = sheet.action;
-  input.required = sheet.required;
-  input.placeholder = sheet.placeholder;
-  if (sheet.maxLength) input.maxLength = sheet.maxLength;
-  else input.removeAttribute('maxlength');
-  input.setAttribute('autocapitalize', sheet.typing);
-  input.spellcheck = sheet.typing !== 'none';
-  input.value = current;
-  return renameSettler.show(d, function () {
-    // A pre-filled starting point is selected, so typing replaces it and the
-    // arrow keys edit it.
-    if (sheet.selectAll) { input.focus(); input.select(); }
-  });
-}
-
-function wireRenameDialog() {
-  const d = els.lifeOsRenameDialog;
-  if (!d) return;
-  els.lifeOsRenameClose.addEventListener('click', function () { finishRename(null); });
-  els.lifeOsRenameForm.addEventListener('submit', function (ev) {
-    ev.preventDefault();
-    finishRename(els.lifeOsRenameInput.value);
-  });
-  renameSettler.wireDismiss(d);
+  return promptDialog(Object.assign({ tone: 'primary', value: current }, sheet));
 }
 
 async function renameFile(f) {
@@ -354,5 +320,4 @@ export function wireContentBrowser() {
       if (openDocFile) renameFile(openDocFile);
     });
   }
-  wireRenameDialog();
 }
