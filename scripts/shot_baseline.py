@@ -334,22 +334,25 @@ def check_tree(root: Path, cfg: Config, since: float) -> int:
     report = Report()
     recaptured: list[str] = []
     rewritten: list[str] = []
-    with tempfile.TemporaryDirectory(prefix="shot-baseline-") as tmp:
-        for rel in tracked:
-            name = Path(rel).name
-            current = root / rel
-            if not current.is_file():
-                report.drifted.append((name, "git holds it, the tree has no such file"))
-                continue
-            if current.stat().st_mtime < since:
-                continue
-            recaptured.append(rel)
-            reference = Path(tmp) / name
-            reference.write_bytes(_git(root, "show", f":{rel}"))
-            if _digest(reference) != _digest(current):
-                rewritten.append(rel)
-            _judge(name, reference, current, cfg, report)
-    _restore(root, rewritten)
+    try:
+        with tempfile.TemporaryDirectory(prefix="shot-baseline-") as tmp:
+            for rel in tracked:
+                name = Path(rel).name
+                current = root / rel
+                if not current.is_file():
+                    report.drifted.append((name, "git holds it, the tree has no such file"))
+                    continue
+                if current.stat().st_mtime < since:
+                    continue
+                recaptured.append(rel)
+                rewritten.append(rel)  # provisional: a failure below must still restore it
+                reference = Path(tmp) / name
+                reference.write_bytes(_git(root, "show", f":{rel}"))
+                if _digest(reference) == _digest(current):
+                    rewritten.pop()
+                _judge(name, reference, current, cfg, report)
+    finally:
+        _restore(root, rewritten)  # also on NotConfirmed, OSError or Ctrl+C: never leave a new baseline unreviewed
 
     print(_summary_line(len(tracked), len(recaptured), report, len(untracked)))
     _print_details(report, cfg)
