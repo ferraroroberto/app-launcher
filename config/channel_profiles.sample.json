@@ -17,6 +17,12 @@
       "label": "Finance",
       "skill": "finance",
       "state_dir": "C:/Users/you/.claude/channels/telegram-finance"
+    },
+    {
+      "id": "general",
+      "label": "General",
+      "skill": "general",
+      "state_dir": "C:/Users/you/.claude/channels/telegram-general"
     }
   ]
 }

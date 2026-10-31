@@ -81,6 +81,7 @@ class TestLoadProfiles:
             assert set(row) == {"id", "label", "skill", "state_dir"}
             # Only paths and names: nothing that could be a credential.
             assert "token" not in json.dumps(row).lower()
+        assert "general" in {row["id"] for row in sample["profiles"]}
 
     def test_valid_profiles_load(self, tmp_path):
         path = _write_profiles(tmp_path / "p.json", [
