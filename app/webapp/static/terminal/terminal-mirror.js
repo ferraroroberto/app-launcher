@@ -16,7 +16,7 @@
 
 import { els, state } from '../state.js';
 import { sessionTitle } from '../sessions.js';
-import { isChiefSession } from '../dom-utils.js';
+import { isChiefSession } from '../session-kinds.js';
 import { icon } from '../_vendored/icons/icons.js';
 
 // The PC mirror window's OS title: the human session title first (so it shows

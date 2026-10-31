@@ -222,5 +222,5 @@ async def stream_cursor(
             await send(message)
             sent += 1
             last = message
-        await desktop_capture._sleep_or_stop(stopped, retry if unavailable else interval)
+        await desktop_capture.sleep_or_stop(stopped, retry if unavailable else interval)
     return sent

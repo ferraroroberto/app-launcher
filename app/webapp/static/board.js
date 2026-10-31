@@ -45,14 +45,15 @@ import { els, state } from './state.js';
 import { apiFailToast, escapeHtml, jsonApi, opensInPcWindow, toast } from './api.js';
 import { setTab } from './tabs.js';
 import { sessionTitle } from './sessions.js';
-import { applyLaunchSizePayload, openTerminal } from './terminal.js';
+import { applyLaunchSizePayload } from './launch-size.js';
+import { openTerminal } from './terminal.js';
 import { emptyStateEl } from './_vendored/empty-state/empty-state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { terminalJsonApi } from './webauthn.js';
 import { isOffBoard } from './channel-sessions.js';
-import {
-  brandIconEl, channelSessionName, fmtCardStamp, fmtDuration, isChannelSession, isRelaySession,
-} from './dom-utils.js';
+import { brandIconEl } from './dom-utils.js';
+import { channelSessionName, isChannelSession, isRelaySession } from './session-kinds.js';
+import { fmtCardStamp, fmtDuration } from './format.js';
 import { avatar, chip, sessionStatusBits, sessionStatusMeta } from './glance.js';
 import { ACTION_ROW_MENU, actionRow } from './action-rows.js';
 import { failedFetchState, setAsyncState } from './async-state.js';

@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src._json_io import atomic_write_json
-from src.board.state import _iso_z, _now, _parse_iso
+from src.board.state import iso_z, utc_now, parse_iso
 
 logger = logging.getLogger(__name__)
 
@@ -83,8 +83,8 @@ def read_chief_pointer(
     session_id = str(raw.get("session_id") or "").strip()
     if not session_id:
         return {}
-    seen_at = _parse_iso(raw.get("seen_at"))
-    if seen_at is None or (now or _now()) - seen_at > POINTER_STALE_AFTER:
+    seen_at = parse_iso(raw.get("seen_at"))
+    if seen_at is None or (now or utc_now()) - seen_at > POINTER_STALE_AFTER:
         return {}
     transcript_path = str(raw.get("transcript_path") or "").strip()
     if not transcript_path or not Path(transcript_path).exists():
@@ -117,7 +117,7 @@ def write_chief_pointer(
     payload = {
         "session_id": str(session_id),
         "transcript_path": str(transcript_path or ""),
-        "seen_at": _iso_z(_now()),
+        "seen_at": iso_z(utc_now()),
         "source": str(source),
     }
     try:

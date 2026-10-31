@@ -1,6 +1,6 @@
 """Unit pin for the Telegram sessions' context alert threshold (issue #1402).
 
-``app/webapp/static/dom-utils.js``'s ``contextAlert`` decides whether a
+``app/webapp/static/format.js``'s ``contextAlert`` decides whether a
 context figure is high enough to raise the alert icon on the summary line and
 to highlight a popup row's Compact button. Pinned without a browser: this
 module shells out to plain Node to import the real ES module, in
@@ -35,7 +35,7 @@ def test_context_alert():
         creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
-        "dom-utils.js contextAlert failed its Node-side pin:\n"
+        "format.js contextAlert failed its Node-side pin:\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "OK" in result.stdout

@@ -59,9 +59,9 @@ from src.jobs import dismissed as jobs_dismissed
 from src.board.state import (  # noqa: F401 — re-exported for board.<name> callers
     RATE_LIMITS_STALE_AFTER,
     STATE_STALE_AFTER,
-    _age_seconds,
-    _now,
-    _parse_iso,
+    age_seconds,
+    utc_now,
+    parse_iso,
     read_active_issues,
     read_rate_limits,
     read_sessions_state,
@@ -116,7 +116,7 @@ def jobs_attention(*, now: Optional[datetime] = None) -> List[Dict[str, Any]]:
     from src.jobs import snapshot as jobs_snapshot
     from src.jobs.config import load_jobs
 
-    now_local = (now or _now()).astimezone()
+    now_local = (now or utc_now()).astimezone()
     cards: List[Dict[str, Any]] = []
 
     jobs = load_jobs().jobs
@@ -161,7 +161,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
     if not latest:
         return None
     if latest.get("status") == "running" and runtime.stuck:
-        started = _parse_iso(latest.get("started_at"))
+        started = parse_iso(latest.get("started_at"))
         return {
             "kind": "job",
             "job_id": job.id,
@@ -169,7 +169,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
             "state": "stuck",
             "run_id": latest.get("run_id"),
             "finished_at": None,
-            "age_seconds": _age_seconds(started, now_local),
+            "age_seconds": age_seconds(started, now_local),
         }
     # A deferral the job itself declared is by design, so nothing
     # here needs a human. Its state is shown on the job card, not here.
@@ -177,7 +177,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
         latest.get("status") == "failed"
         and latest.get("outcome") != OUTCOME_DEFERRED
     ):
-        finished = _parse_iso(latest.get("finished_at"))
+        finished = parse_iso(latest.get("finished_at"))
         if (
             finished is not None
             and finished.astimezone().date() == now_local.date()
@@ -200,7 +200,7 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
                 ),
                 "run_id": latest.get("run_id"),
                 "finished_at": latest.get("finished_at"),
-                "age_seconds": _age_seconds(finished, now_local),
+                "age_seconds": age_seconds(finished, now_local),
                 "error": latest.get("outcome_reason"),
             }
     return None
@@ -216,7 +216,7 @@ _NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input
 
 
 def _is_chief_card(card: Dict[str, Any]) -> bool:
-    """Board-side mirror of the frontend's ``isChiefSession`` (dom-utils.js) —
+    """Board-side mirror of the frontend's ``isChiefSession`` (session-kinds.js) —
     label-first, ``kind``/``name`` fallback for a session-host predating the
     label field. Kept in lockstep with that JS predicate (#575)."""
     return bool(

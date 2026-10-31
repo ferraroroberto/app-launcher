@@ -203,7 +203,7 @@ def grok_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     return entries
 
 
-def _grok_line_key(raw: str) -> Optional[str]:
+def grok_line_key(raw: str) -> Optional[str]:
     """Grok records are self-contained: one line is one whole segment
     (see :func:`grok_entries`), so no line ever needs another to be read."""
     return None

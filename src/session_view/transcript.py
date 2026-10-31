@@ -49,12 +49,12 @@ from src.session_view.image_sniff import sniff_image
 from src.transcript_flavors._shared import (
     Entry, EntryBuilder, Line, _loads, _line_image_blocks, _image_data, cap_diff,
 )
-from src.transcript_flavors.antigravity import _antigravity_line_key, antigravity_entries
-from src.transcript_flavors.claude import _claude_line_key, claude_entries, sent_file_at
-from src.transcript_flavors.codex import _codex_line_key, codex_entries
-from src.transcript_flavors.copilot import _copilot_line_key, copilot_entries
-from src.transcript_flavors.grok import _grok_line_key, grok_entries
-from src.transcript_flavors.pi import _pi_line_key, pi_entries
+from src.transcript_flavors.antigravity import antigravity_line_key, antigravity_entries
+from src.transcript_flavors.claude import claude_line_key, claude_entries, sent_file_at
+from src.transcript_flavors.codex import codex_line_key, codex_entries
+from src.transcript_flavors.copilot import copilot_line_key, copilot_entries
+from src.transcript_flavors.grok import grok_line_key, grok_entries
+from src.transcript_flavors.pi import pi_line_key, pi_entries
 
 # One backwards read step. 256 KB is the same window the Board's
 # last-exchange reader uses (`src.board.transcript._EXCHANGE_TAIL_BYTES`).
@@ -846,21 +846,21 @@ TOOL_ERRORS_NONE = "none"
 # (app/webapp/routers/session_transcript.py).
 FLAVORS: Dict[str, Tuple[EntryBuilder, LineKey, str]] = {
     # `is_error` on every `tool_result` block.
-    "claude": (claude_entries, _claude_line_key, TOOL_ERRORS_REPORTED),
+    "claude": (claude_entries, claude_line_key, TOOL_ERRORS_REPORTED),
     # No success/error field at any level — see the reader's own comment; a
     # rejected `apply_patch` states so in its fixed tool message.
-    "codex": (codex_entries, _codex_line_key, TOOL_ERRORS_PARTIAL),
+    "codex": (codex_entries, codex_line_key, TOOL_ERRORS_PARTIAL),
     # `status: "failed"` on the `tool_call_update` that carries the result.
-    "grok": (grok_entries, _grok_line_key, TOOL_ERRORS_REPORTED),
+    "grok": (grok_entries, grok_line_key, TOOL_ERRORS_REPORTED),
     # `isError` on every `toolResult` message.
-    "pi": (pi_entries, _pi_line_key, TOOL_ERRORS_REPORTED),
+    "pi": (pi_entries, pi_line_key, TOOL_ERRORS_REPORTED),
     # `status: "ERROR"` catches a tool that could not run; a shell command
     # exiting non-zero is still `DONE`, with the code only in prose.
-    "antigravity": (antigravity_entries, _antigravity_line_key, TOOL_ERRORS_PARTIAL),
+    "antigravity": (antigravity_entries, antigravity_line_key, TOOL_ERRORS_PARTIAL),
     # `success: false` catches a tool-level failure and
     # `shellExecution.exitCode` a command-level one — but the latter key is
     # absent from most completions on disk, leaving those exits unrecorded.
-    "copilot": (copilot_entries, _copilot_line_key, TOOL_ERRORS_PARTIAL),
+    "copilot": (copilot_entries, copilot_line_key, TOOL_ERRORS_PARTIAL),
 }
 
 

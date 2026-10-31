@@ -36,7 +36,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # How long to wait for the terminal overlay to hide after a kill (issue #286).
 # stopSession() awaits the *entire* /stop POST, which on the host runs the
-# graceful quit's grace window (``_STOP_GRACE_SECONDS`` = 5 s) then the
+# graceful quit's grace window (``STOP_GRACE_SECONDS`` = 5 s) then the
 # force-fallback before responding; only then does the client hide the overlay.
 # So the hide budget is network + up to 5 s grace + force + shutdown signal +
 # network — a fixed 12 s could be exceeded on a loaded WebKit/iPhone projection,

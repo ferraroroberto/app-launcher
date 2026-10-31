@@ -37,7 +37,7 @@ from src.session_host_input import touches_composer
 from src.session_hosting.child_env import agent_child_env
 from src.session_hosting.deferred_submit import DeferredSubmit
 from src.session_hosting.kinds import (
-    _STOP_GRACE_SECONDS,
+    STOP_GRACE_SECONDS,
     KIND_PTY,
     STOP_INTERRUPT,
     STOP_KILL,
@@ -287,7 +287,7 @@ class PtySession(DeferredSubmit):
     # That re-check is what carries the weight now the watcher's window is long
     # enough to outlast a gate run, so it identifies *which* payload is
     # sitting there rather than merely that one is — see
-    # ``session_host_input._chip_visible``.
+    # ``session_host_input.chip_visible``.
     _defer_seq: int = 0
     # Set by _submit_input_locked when it hands a submit to the watcher, read
     # (and cleared) by submit_input once the ``deferred`` verdict is recorded,
@@ -583,7 +583,7 @@ class PtySession(DeferredSubmit):
     def stop(
         self,
         mode: str = STOP_QUIT,
-        grace_seconds: float = _STOP_GRACE_SECONDS,
+        grace_seconds: float = STOP_GRACE_SECONDS,
         key_settle_seconds: float = _STOP_KEY_SETTLE_SECONDS,
     ) -> None:
         """Stop the session: graceful agent-own quit, then force-fallback.
@@ -896,7 +896,7 @@ class SessionManager:
 
     def stop(
         self, session_id: str, mode: str = STOP_QUIT,
-        grace_seconds: float = _STOP_GRACE_SECONDS,
+        grace_seconds: float = STOP_GRACE_SECONDS,
     ) -> bool:
         session = self.get(session_id)
         if session is None:

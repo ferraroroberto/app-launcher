@@ -24,7 +24,8 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
-import { revealInCard, wireModelCombo } from '../dom-utils.js';
+import { revealInCard } from '../dom-utils.js';
+import { wireModelCombo } from '../model-combo.js';
 import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS, wireConfigSwitch } from './claude-options.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { fetchApps } from '../apps.js';

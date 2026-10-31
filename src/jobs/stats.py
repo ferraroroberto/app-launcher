@@ -233,6 +233,12 @@ def invalidate_stats_cache(job_id: Optional[str] = None) -> None:
 # explicitly to give it one.
 WATCHDOG_MIN_COMPLETED_RUNS = 5
 
+# A run looks stuck once it outlasts three times the job's own p95 (tail
+# jitter alone rarely does), and never before the floor (a job with a tiny or
+# missing p95 would otherwise flag within seconds).
+STUCK_P95_FACTOR = 3.0
+STUCK_FLOOR_SECONDS = 300.0
+
 
 def _threshold_from_stats(
     stats: Dict[str, Any], p95_factor: float, floor_seconds: float
@@ -243,7 +249,10 @@ def _threshold_from_stats(
 
 
 def stuck_threshold_seconds(
-    job_id: str, *, p95_factor: float = 3.0, floor_seconds: float = 300.0
+    job_id: str,
+    *,
+    p95_factor: float = STUCK_P95_FACTOR,
+    floor_seconds: float = STUCK_FLOOR_SECONDS,
 ) -> float:
     """Seconds a run may sit ``running`` before it looks stuck.
 
@@ -260,8 +269,8 @@ def stuck_threshold_seconds(
 def derived_runtime_ceiling_seconds(
     job_id: str,
     *,
-    p95_factor: float = 3.0,
-    floor_seconds: float = 300.0,
+    p95_factor: float = STUCK_P95_FACTOR,
+    floor_seconds: float = STUCK_FLOOR_SECONDS,
     min_completed: int = WATCHDOG_MIN_COMPLETED_RUNS,
 ) -> Optional[float]:
     """The watchdog's runtime ceiling for a job that sets none explicitly.
@@ -282,8 +291,8 @@ def is_stuck(
     job_id: str,
     *,
     latest: Optional[Dict[str, Any]] = None,
-    p95_factor: float = 3.0,
-    floor_seconds: float = 300.0,
+    p95_factor: float = STUCK_P95_FACTOR,
+    floor_seconds: float = STUCK_FLOOR_SECONDS,
 ) -> bool:
     """``True`` when the latest run is ``running`` past a sane threshold.
 

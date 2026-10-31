@@ -83,13 +83,12 @@ from src.jobs.schtasks import (
     query_next_run,
     registered_task_principals,
     registration_script,
-    resolve_venv_python,
     schedule_argv_parts,
-    spawn_run_job_detached,
     sync_schtasks,
     task_names_for,
     task_run_command,
 )
+from src.jobs.spawn import resolve_venv_python, spawn_run_job_detached
 from src.jobs.next_fire import (
     FREQUENT_SCHEDULE_TYPES,
     next_fire,

@@ -345,7 +345,7 @@ def should_mirror_to_pc(
       a desktop from a phone regardless of loopback vs tunnel.
     * **Genuine in-page loopback browser** — ``in_page: true`` in the launch
       body: the SPA itself sets this whenever it's about to
-      render the session in-page (``applyLaunchSizePayload``'s non-desktop
+      render the session in-page (``launch-size.js``'s ``applyLaunchSizePayload`` non-desktop
       branch — a phone always takes this branch too, but the non-loopback
       check above already mirrors it before this is ever consulted). An
       *explicit* signal, not an inference from "loopback and no desktop

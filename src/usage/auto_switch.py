@@ -4,7 +4,7 @@ With Settings' ``grok_auto_switch`` on, a dispatch asking for the Sonnet
 tier is launched as Grok Build when Claude's weekly use is within
 :data:`SWITCH_MARGIN_POINTS` of the week's pace or above it. Pace is the
 share of the week elapsed, the same figure the usage meter's pace tick
-shows (``quotaPace`` in ``dom-utils.js``).
+shows (``quotaPace`` in ``format.js``).
 
 Every doubt keeps the lane on Claude: an Opus or Codex request, a Claude
 reading that is not fresh, a week with no computable pace, Grok not

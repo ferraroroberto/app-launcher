@@ -27,7 +27,7 @@ import { apiFailToast, jsonApi, logPollFailure, toast } from '../api.js';
 import { state } from '../state.js';
 import { setAsyncState } from '../async-state.js';
 import { renderSettingsValues } from '../settings/settings-sheets.js';
-import { calendarDaysFromToday } from '../dom-utils.js';
+import { calendarDaysFromToday } from '../format.js';
 
 // Device classes in drawing order. Each fill differs by pattern as well as
 // tone (design.md Charts: a non-colour second channel); styles/settings.css draws

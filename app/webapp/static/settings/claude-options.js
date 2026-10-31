@@ -13,7 +13,7 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
-import { wireModelCombo } from '../dom-utils.js';
+import { wireModelCombo } from '../model-combo.js';
 import { setBoardDispatchModelOptions } from '../board/board-dispatch.js';
 import { setLifeOsModelOptions } from '../life-os.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';

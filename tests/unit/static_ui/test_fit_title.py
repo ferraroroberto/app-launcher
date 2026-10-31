@@ -1,4 +1,4 @@
-"""Unit pin for the Rename sheet's pre-fill trim (``fitTitle`` in dom-utils.js).
+"""Unit pin for the Rename sheet's pre-fill trim (``fitTitle`` in format.js).
 
 A Life OS conversation's topic is often longer than the 120-character title
 limit, so the pre-fill is cut at a word boundary. Like ``test_swipe_row``, this

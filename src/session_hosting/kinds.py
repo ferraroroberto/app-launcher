@@ -9,7 +9,7 @@ STOP_KILL = "kill"            # force-terminate the ConPTY
 # on its own quit command before force-terminating as a fallback.
 # A clean /quit exits in ~0.7 s empirically; 5 s is generous headroom and
 # stays under the session-client stop timeout.
-_STOP_GRACE_SECONDS = 5.0
+STOP_GRACE_SECONDS = 5.0
 
 # Session kinds. "pty" is a launcher-owned ConPTY streamed to the phone;
 # "remote" is a detached console window the launcher only tracks (no PTY,

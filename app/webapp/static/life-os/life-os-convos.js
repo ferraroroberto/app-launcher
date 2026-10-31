@@ -17,9 +17,10 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
-import { applyLaunchSizePayload, handleLaunchResponse } from '../terminal.js';
+import { applyLaunchSizePayload } from '../launch-size.js';
+import { handleLaunchResponse } from '../terminal.js';
 import { icon } from '../_vendored/icons/icons.js';
-import { calendarDaysFromToday, fitTitle, nameLabel } from '../dom-utils.js';
+import { calendarDaysFromToday, fitTitle, nameLabel } from '../format.js';
 import { actionRow } from '../action-rows.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { setAsyncState } from '../async-state.js';

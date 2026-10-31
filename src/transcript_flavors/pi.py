@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.board.transcript_exchange import _SKIP_USER_PREFIXES
+from src.board.transcript_exchange import SKIP_USER_PREFIXES
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
     Entry,
@@ -38,7 +38,7 @@ _PI_DROP_TYPES = frozenset({"session", "session_info", "custom"})
 # Pi user messages that are harness plumbing rather than something typed:
 # its skill loader injects a whole SKILL.md as a user turn. Joined with the
 # Claude-side prefixes, which Pi's own harness emits too.
-_PI_SKIP_USER_PREFIXES = _SKIP_USER_PREFIXES + ("<skill name=",)
+_PI_SKIP_USER_PREFIXES = SKIP_USER_PREFIXES + ("<skill name=",)
 
 # Settings records, folded into `system` so the model a session actually ran
 # on is visible without unfolding a wall of plumbing.
@@ -86,7 +86,7 @@ def pi_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
       a separate message with ``role: "toolResult"``, paired by
       ``toolCallId`` (which may itself contain a ``|``).
     * Message ids are unique per line — no message ever spans two lines
-      (0 duplicates across the corpus) — so :func:`_pi_line_key` returns
+      (0 duplicates across the corpus) — so :func:`pi_line_key` returns
       ``None`` and nothing here needs a neighbouring line to be read.
     * A message's ``text`` blocks are never separated by a ``toolCall``
       (0 of 1490 assistant messages), so merging them into one
@@ -222,7 +222,7 @@ def _pi_assistant_blocks(
                 open_calls[str(block["id"])] = call
 
 
-def _pi_line_key(raw: str) -> Optional[str]:
+def pi_line_key(raw: str) -> Optional[str]:
     """Pi records are self-contained: one line carries a message's whole
     content list (see :func:`pi_entries`), so no line ever needs another."""
     return None

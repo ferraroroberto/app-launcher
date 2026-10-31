@@ -2,7 +2,7 @@
 
 One job executor (:class:`~app.cli.commands.run_job_cmd.RunJobCommand`)
 serves four callers, each of which mints a trigger string and forwards it
-onto argv via :func:`src.jobs.schtasks.spawn_run_job_detached`:
+onto argv via :func:`src.jobs.spawn.spawn_run_job_detached`:
 
 * ``"scheduled"`` — Windows Task Scheduler.
 * ``"manual"``    — ``POST /api/jobs/<id>/run`` (phone tap / Stream Deck),

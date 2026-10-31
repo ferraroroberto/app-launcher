@@ -19,7 +19,8 @@
  */
 
 import { icon } from './_vendored/icons/icons.js';
-import { brandIconEl, fmtDuration } from './dom-utils.js';
+import { brandIconEl } from './dom-utils.js';
+import { fmtDuration } from './format.js';
 
 export const CHIP_TONES = ['neutral', 'accent', 'attention', 'danger'];
 

@@ -64,7 +64,7 @@ A job's `kind` field selects the module. **`kind` is optional** — when absent,
 | `inline-shell` | must be empty | `{script_body, ext}` | body written to `webapp/jobs/<id>/<run>/_inline<ext>`, then dispatched through whichever of the three shapes above matches `ext` (`.ps1`/`.bat`/`.sh`) | matches the delegated kind |
 | `http-check` | must be empty | `{url, method?, expect_status?, timeout?}` | `python -m src.jobs_kinds.http_check_probe --url … --method … --expect-status … --timeout …` — a tiny built-in probe, no external script | project root |
 
-`python`'s venv walk-up (`src.jobs.schtasks.resolve_venv_python`) starts from `script_path.parent` and falls back to `sys.executable` if no ancestor `.venv\Scripts\python.exe` is found — the PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha (see global CLAUDE.md). `shell-wsl` is opt-in: pre-flight surfaces a warning (not a blocking error) when `wsl.exe` isn't resolvable on PATH.
+`python`'s venv walk-up (`src.jobs.spawn.resolve_venv_python`) starts from `script_path.parent` and falls back to `sys.executable` if no ancestor `.venv\Scripts\python.exe` is found — the PYTHONPATH bit fixes the "out-of-tree script imports project packages" gotcha (see global CLAUDE.md). `shell-wsl` is opt-in: pre-flight surfaces a warning (not a blocking error) when `wsl.exe` isn't resolvable on PATH.
 
 `args` is split on whitespace and appended to every kind's argv tail except `http-check` (its probe takes fixed flags only). If you need an argument containing spaces, put it inside the script/wrapper rather than relying on shell quoting.
 
@@ -141,7 +141,7 @@ A job can carry `"visible": true` (omitted / `false` is the default). It changes
 }
 ```
 
-- **Interpreter.** The scheduled task's `/TR` runs under `python.exe` (console subsystem) instead of the default silent `pythonw.exe`, so a console window appears when the task fires in the logged-on session. `src.jobs.task_run_command(job_id, visible=…)` picks the interpreter via `src.jobs._launcher_python(visible=…)`, which resolves the launcher venv's `python.exe`/`pythonw.exe` with a PATH fallback.
+- **Interpreter.** The scheduled task's `/TR` runs under `python.exe` (console subsystem) instead of the default silent `pythonw.exe`, so a console window appears when the task fires in the logged-on session. `src.jobs.task_run_command(job_id, visible=…)` picks the interpreter via `src.jobs.spawn.launcher_python(visible=…)`, which resolves the launcher venv's `python.exe`/`pythonw.exe` with a PATH fallback.
 - **Output tee.** The executor spawns the child with `stdout=PIPE` and streams its combined output to **both** `output.log` (the remote run-history record, unchanged) and the launcher's own console (`sys.stdout.buffer`, guarded). A pythonw / detached fire has no console, so the console half is never started while the file half always works. A non-visible job keeps the original direct-to-file spawn — no pipe, no reader, byte-for-byte unchanged.
 - **The console half is best-effort and lossy; the file half is the record.** The thread reading the child's pipe writes to `output.log` and nothing else — console chunks go onto a bounded queue (`_CONSOLE_QUEUE_MAX_CHUNKS`, ~256 KB) drained by a separate daemon thread, and a full queue **drops** the chunk. That is deliberate: a console that stops *draining* — a Windows console put into mark/select mode by a click is the classic trigger — blocks `write()` indefinitely with no exception and no timeout. When that write sits on the reader thread it stops the child's pipe being drained, the pipe fills, and the whole process tree deadlocks — the symptom is a `running` job that never progresses, with `output.log` frozen mid-write. At EOF the reader waits `_CONSOLE_DRAIN_TIMEOUT_SECONDS` for the console writer and then moves on regardless. Dropping is never silent — a run that drops emits a `console tee fell behind — dropped N chunk(s)` warning, from a throwaway thread because the root logger's `StreamHandler` writes to `stderr`, i.e. that same wedged console. So: watch the console for live progress, read `output.log` for what actually happened.
 
@@ -349,7 +349,7 @@ Bool params require either `flag` or `env` — they have no useful positional en
 #### cmd.exe-unsafe values
 
 A param value bound for a `.bat` dispatch or the `cmd /c start` re-parent hop
-(`src.jobs.schtasks.spawn_run_job_detached`) is tokenized a second time by
+(`src.jobs.spawn.spawn_run_job_detached`) is tokenized a second time by
 `cmd.exe`, which doesn't honour Python's argv-quoting convention. `src.jobs.argv.reject_cmd_unsafe`
 (the single source for both hops) refuses:
 

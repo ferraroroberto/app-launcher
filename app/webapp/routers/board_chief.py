@@ -294,7 +294,7 @@ def _fresh_fleet_config_stamp(row: Any, now: datetime) -> Optional[datetime]:
     project = str(row.get("project") or Path(str(cwd or "")).name)
     if project != _CHIEF_PROJECT_DIR_NAME:
         return None
-    stamp = board._parse_iso(row.get("updated_at"))
+    stamp = board.parse_iso(row.get("updated_at"))
     if stamp is None or now - stamp > board.STATE_STALE_AFTER:
         return None
     return stamp
@@ -361,7 +361,7 @@ def _find_resumable_chief_session_id(
     (a live conversation's true recency) and by the pointer's own ``seen_at``
     when it doesn't.
     """
-    now = now or board._now()
+    now = now or board.utc_now()
     if preferred_sid and _preferred_is_resumable(state_rows.get(preferred_sid), now):
         logger.info(
             "↩️ chief resume: reattaching the stopped PTY's own conversation %s",
@@ -438,9 +438,9 @@ def _pointer_candidate(state_rows: Dict[str, Any], now: datetime) -> Optional[Tu
     pointer_sid = str(pointer.get("session_id") or "")
     pointer_row = state_rows.get(pointer_sid)
     pointer_row = pointer_row if isinstance(pointer_row, dict) else {}
-    pointer_stamp = board._parse_iso(
+    pointer_stamp = board.parse_iso(
         pointer_row.get("updated_at")
-    ) or board._parse_iso(pointer.get("seen_at"))
+    ) or board.parse_iso(pointer.get("seen_at"))
     if pointer_stamp is None:
         return None
     return pointer_sid, pointer_stamp, pointer.get("transcript_path")

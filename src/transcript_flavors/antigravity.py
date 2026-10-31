@@ -95,7 +95,7 @@ def antigravity_entries(lines: List[Line], *, uncapped: bool = False) -> List[En
 
     One JSON step per line — ``{"step_index", "source", "type", "status",
     "created_at", "content"?, "thinking"?, "tool_calls"?}`` — so no entry
-    ever needs a neighbouring line (:func:`_antigravity_line_key`) and a
+    ever needs a neighbouring line (:func:`antigravity_line_key`) and a
     line yields at most one turn, which is what
     :func:`src.session_view.transcript.entry_full_text` resolves against. Measured on
     a session launched through the launcher's own API for #1014 plus the
@@ -219,7 +219,7 @@ def _agy_planner_response(
         unanswered.append(key)
 
 
-def _antigravity_line_key(raw: str) -> Optional[str]:
+def antigravity_line_key(raw: str) -> Optional[str]:
     """Antigravity writes one self-contained step per line (see
     :func:`antigravity_entries`), so no line ever needs another."""
     return None

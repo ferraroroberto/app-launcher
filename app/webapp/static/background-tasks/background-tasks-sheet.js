@@ -16,7 +16,7 @@ import { terminalJsonApi } from '../webauthn.js';
 import { AuthRequiredError, sessionRoute } from '../api.js';
 import { setAsyncState } from '../async-state.js';
 import { chip } from '../glance.js';
-import { fmtDuration } from '../dom-utils.js';
+import { fmtDuration } from '../format.js';
 import { icon } from '../_vendored/icons/icons.js';
 
 // Why the server could not read, in the words the sheet shows.

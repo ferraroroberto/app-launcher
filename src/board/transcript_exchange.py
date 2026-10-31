@@ -14,32 +14,32 @@ from src.board.transcript import _EXCHANGE_TAIL_BYTES, _tail_lines
 
 # User lines whose string content is harness plumbing, not a typed prompt:
 # slash-command wrappers, local-command output, background-task events.
-_SKIP_USER_PREFIXES = (
+SKIP_USER_PREFIXES = (
     "<command-", "<local-command-", "<task-notification", "<system-reminder",
 )
 
 
-def _typed_user_kind(obj: Dict[str, Any], stripped: str) -> str:
+def typed_user_kind(obj: Dict[str, Any], stripped: str) -> str:
     """Classify an already-stripped, string-content ``user`` line's text:
     ``"injected"`` for an ``isMeta`` line (Claude's own harness-injected
     content — hook output, background-task events, an image's
     ``[Image: ...]`` placeholder — never something a person typed, whatever
     the placeholder text happens to look like), ``"harness"`` for one of
-    :data:`_SKIP_USER_PREFIXES`'s wrappers (``<command-…>``,
+    :data:`SKIP_USER_PREFIXES`'s wrappers (``<command-…>``,
     ``<system-reminder>``…), else ``"typed"``.
 
     The one classification :func:`last_exchange`, :func:`has_typed_user_prompt`
     (both this module) and ``src.transcript_flavors.claude.claude_entries`` all apply —
     kept here as the single shared check, not reimplemented per caller, so
     every caller agrees on ``isMeta``. Skipping that check lets a
-    string-content ``isMeta`` line that no :data:`_SKIP_USER_PREFIXES` entry
+    string-content ``isMeta`` line that no :data:`SKIP_USER_PREFIXES` entry
     catches — an ``[Image: original 1290x2217, …]`` placeholder, a
     ``(Re-invocation of /issue-add — …)`` note — read as a genuine typed
     human prompt in the Board drawer.
     """
     if obj.get("isMeta"):
         return "injected"
-    if any(stripped.startswith(p) for p in _SKIP_USER_PREFIXES):
+    if any(stripped.startswith(p) for p in SKIP_USER_PREFIXES):
         return "harness"
     return "typed"
 
@@ -72,7 +72,7 @@ def has_typed_user_prompt(transcript_path: Any) -> Optional[bool]:
     an ``isMeta`` line Claude injects itself. Only a line whose content is a
     plain string, not ``isMeta``, and not one of those wrappers was actually
     typed by a person (or pasted in by the dispatch bar, which is the same
-    thing from the transcript's side) — :func:`_typed_user_kind`, the same
+    thing from the transcript's side) — :func:`typed_user_kind`, the same
     classification :func:`last_exchange` already uses to pick the ``user``
     half of an exchange, applied as a yes/no over the tail.
 
@@ -111,7 +111,7 @@ def has_typed_user_prompt(transcript_path: Any) -> Optional[bool]:
         if not isinstance(content, str):
             continue  # tool results ride as content lists
         stripped = content.strip()
-        if not stripped or _typed_user_kind(obj, stripped) != "typed":
+        if not stripped or typed_user_kind(obj, stripped) != "typed":
             continue
         return True
     return None if truncated else False
@@ -126,7 +126,7 @@ def last_exchange(transcript_path: Any) -> Dict[str, Any]:
     line per content block); the nearest preceding user line whose content is
     a plain string is the prompt (list-shaped user content is tool results;
     harness wrappers like ``<command-…>`` and ``isMeta`` lines are skipped —
-    see :func:`_typed_user_kind`). Missing file, no assistant text in the
+    see :func:`typed_user_kind`). Missing file, no assistant text in the
     tail → ``{"available": False}`` — never an error.
     """
     unavailable: Dict[str, Any] = {"available": False, "user": None, "assistant": None}
@@ -178,7 +178,7 @@ def last_exchange(transcript_path: Any) -> Dict[str, Any]:
             if not isinstance(content, str):
                 continue  # tool results ride as content lists
             stripped = content.strip()
-            if not stripped or _typed_user_kind(obj, stripped) != "typed":
+            if not stripped or typed_user_kind(obj, stripped) != "typed":
                 continue
             user = {
                 "text": stripped[:_USER_TEXT_CAP],

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 from src import jobs as jobs_mod
 from src.jobs import schtasks as jobs_schtasks_mod
+from src.jobs import spawn as jobs_spawn_mod
 from src.jobs.config import (
     Job,
     Schedule,
@@ -98,9 +99,9 @@ class TestSpawnRunJobDetached:
             captured["kwargs"] = kwargs
             return _FakeProc()
 
-        monkeypatch.setattr(jobs_schtasks_mod.subprocess, "Popen", fake_popen)
+        monkeypatch.setattr(jobs_spawn_mod.subprocess, "Popen", fake_popen)
 
-        pid = jobs_schtasks_mod.spawn_run_job_detached("demo", "run-1", "manual")
+        pid = jobs_spawn_mod.spawn_run_job_detached("demo", "run-1", "manual")
 
         assert pid == 4242
         argv = captured["argv"]
@@ -128,9 +129,9 @@ class TestSpawnRunJobDetached:
             captured["argv"] = argv
             return _FakeProc()
 
-        monkeypatch.setattr(jobs_schtasks_mod.subprocess, "Popen", fake_popen)
+        monkeypatch.setattr(jobs_spawn_mod.subprocess, "Popen", fake_popen)
 
-        jobs_schtasks_mod.spawn_run_job_detached(
+        jobs_spawn_mod.spawn_run_job_detached(
             "demo", "run-2", "manual", params={"x": 1}, dry_run=True
         )
 

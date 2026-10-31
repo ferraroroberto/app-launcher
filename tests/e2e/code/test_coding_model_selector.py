@@ -189,7 +189,7 @@ def _assert_haiku_hidden_and_trigger_keys(authed_page: Page, trigger) -> None:
 
 def _assert_long_pi_menu_stays_reachable(authed_page: Page) -> None:
     """Check a long Pi model menu stays reachable inside a short viewport."""
-    # A long menu is held to the viewport (dom-utils.js positionMenu caps its
+    # A long menu is held to the viewport (model-combo.js positionMenu caps its
     # height at the room beside the trigger). Whether 15 options (480px) need
     # capping depends on where the trigger sits, and that used to be wherever
     # the steps above left the scroll: with the trigger high in a 739px
@@ -206,7 +206,7 @@ def _assert_long_pi_menu_stays_reachable(authed_page: Page) -> None:
     expect(pi_menu.locator("[role='option']")).to_have_count(15)
     # The picker now lives in a modal Settings sheet (#1435), and the shared
     # controller deliberately leaves a menu inside a native <dialog> in that
-    # dialog's top layer instead of portaling it to <body> (dom-utils.js
+    # dialog's top layer instead of portaling it to <body> (model-combo.js
     # open()). So the menu is not height-capped itself; the sheet is the
     # scroll container. The original intent still holds in that shape: the
     # sheet fits the short viewport, and the long menu stays reachable by

@@ -7,7 +7,7 @@
  *
  *   model     the provider-qualified model combo. The toolbar
  *             only builds its markup; the caller wires it with
- *             wireModelCombo (dom-utils.js), as each surface owns its own
+ *             wireModelCombo (model-combo.js), as each surface owns its own
  *             option list and saves its choice its own way.
  *   Detached  launch in a console window on the PC, listed and killable here
  *             but with no phone terminal ('remote' mode).

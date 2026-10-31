@@ -1,6 +1,6 @@
 """Unit pin for the quota rows' weekly linear pace (issue #1330).
 
-``app/webapp/static/dom-utils.js``'s ``quotaPace`` turns a weekly window's
+``app/webapp/static/format.js``'s ``quotaPace`` turns a weekly window's
 ``resets_at`` into the share of the window already elapsed, which the quota
 rows print after the reset day. Pinned without a browser: this module shells
 out to plain Node to import the real ES module, in
@@ -37,7 +37,7 @@ def test_quota_pace():
         creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, (
-        "dom-utils.js quotaPace failed its Node-side pin:\n"
+        "format.js quotaPace failed its Node-side pin:\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
     assert "OK" in result.stdout

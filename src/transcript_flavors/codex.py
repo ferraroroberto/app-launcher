@@ -27,7 +27,7 @@ from src.transcript_flavors._shared import (
 )
 
 # Codex user-role messages that are harness plumbing, not a typed prompt —
-# the Codex counterpart of `src.board.transcript_exchange._SKIP_USER_PREFIXES`.
+# the Codex counterpart of `src.board.transcript_exchange.SKIP_USER_PREFIXES`.
 _CODEX_SKIP_USER_PREFIXES = (
     "<environment_context>", "<user_instructions>", "<recommended_plugins>",
     "<skills_instructions>", "<turn_aborted>", "<permissions_instructions>",
@@ -321,6 +321,6 @@ def _codex_tool_output(
             step["action"].pop("diff", None)
 
 
-def _codex_line_key(raw: str) -> Optional[str]:
+def codex_line_key(raw: str) -> Optional[str]:
     """Codex rollout records are self-contained: never grouped."""
     return None

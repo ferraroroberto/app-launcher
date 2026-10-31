@@ -351,7 +351,7 @@ async def _wait_or_stop(event: asyncio.Event, stopped: asyncio.Event) -> bool:
     return event.is_set() and not stopped.is_set()
 
 
-async def _sleep_or_stop(stopped: asyncio.Event, seconds: float) -> None:
+async def sleep_or_stop(stopped: asyncio.Event, seconds: float) -> None:
     try:
         await asyncio.wait_for(stopped.wait(), timeout=seconds)
     except asyncio.TimeoutError:
@@ -415,7 +415,7 @@ async def stream_frames(
                 unavailable = True
                 logger.info("ℹ️ Screen: desktop unreadable, retrying: %s", exc)
                 await send_status("unavailable")
-            await _sleep_or_stop(stopped, retry)
+            await sleep_or_stop(stopped, retry)
             continue
         if unavailable:
             unavailable = False
@@ -429,5 +429,5 @@ async def stream_frames(
             await send_frame(data)
             frames += 1
             last_digest = digest
-        await _sleep_or_stop(stopped, interval)
+        await sleep_or_stop(stopped, interval)
     return frames
