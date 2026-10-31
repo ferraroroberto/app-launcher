@@ -12,7 +12,7 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
-import { nameLabel } from '../dom-utils.js';
+import { nameLabel } from '../shared/format.js';
 import { renderMarkdown } from '../markdown.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { createSettler } from '../modal-settle.js';

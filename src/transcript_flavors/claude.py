@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
-from src.board.transcript_exchange import _typed_user_kind
+from src.board.transcript_exchange import typed_user_kind
 from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
 from src.session_view.outbox import clean_name, kind_of
 from src.transcript_flavors import _shared
@@ -109,7 +109,7 @@ def claude_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]:
     the same ``message.id`` merge into one ``assistant`` entry (the same rule
     :func:`src.board.transcript_exchange.last_exchange` applies). A ``user`` line is a
     typed prompt when it is a plain string outside
-    :data:`src.board.transcript_exchange._SKIP_USER_PREFIXES` and not ``isMeta`` — or a
+    :data:`src.board.transcript_exchange.SKIP_USER_PREFIXES` and not ``isMeta`` — or a
     list of ``text``/``image`` blocks (an image-paste prompt) with no tool
     result. Tool results pair with their call by ``tool_use_id``. Lines on a
     sidechain (a sub-agent's traffic) keep their kind but carry
@@ -251,11 +251,11 @@ def _user_line(
     stripped = text.strip()
     if not stripped and not refs:
         return
-    # `_typed_user_kind` (src/board/transcript_exchange.py) is the one
+    # `typed_user_kind` (src/board/transcript_exchange.py) is the one
     # classification shared with `last_exchange`/`has_typed_user_prompt`
     # so the Board drawer's "typed prompt" reading never drifts from
     # this reader's own.
-    user_kind = _typed_user_kind(obj, stripped)
+    user_kind = typed_user_kind(obj, stripped)
     if user_kind == "injected":
         entries.append(_text_entry("system", offset, ts, stripped, SYSTEM_TEXT_CAP,
                                    label="injected", sidechain=sidechain))
@@ -335,7 +335,7 @@ def _queued_command(
     if attachment.get("type") != "queued_command" or attachment.get("commandMode", "prompt") != "prompt":
         return
     text = _blocks_text(attachment.get("prompt")).strip()
-    if text and _typed_user_kind(attachment, text) == "typed":
+    if text and typed_user_kind(attachment, text) == "typed":
         entries.append(_text_entry("user", offset, ts, text, user_cap, sidechain=sidechain))
 
 
@@ -361,7 +361,7 @@ def sent_file_at(raw: str, n: int) -> Optional[Tuple[str, Optional[str]]]:
     return paths[n], (cwd if isinstance(cwd, str) and cwd else None)
 
 
-def _claude_line_key(raw: str) -> Optional[str]:
+def claude_line_key(raw: str) -> Optional[str]:
     """The ``message.id`` of an assistant line — the key that groups one
     message's one-line-per-block records — else None (self-contained line)."""
     obj = _loads(raw)

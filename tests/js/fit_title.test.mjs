@@ -1,11 +1,11 @@
-// Unit pin for dom-utils.js fitTitle: the Life OS Rename sheet pre-fills a
+// Unit pin for format.js fitTitle: the Life OS Rename sheet pre-fills a
 // conversation's long topic cut to the 120-character title limit. Runs under
 // plain Node. Invoked by tests/unit/static_ui/test_fit_title.py.
 
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';
 
-const { fitTitle } = await import('../../app/webapp/static/dom-utils.js');
+const { fitTitle } = await import('../../app/webapp/static/shared/format.js');
 
 const MAX = 120;
 const words = 'plan the autumn trip around the lakes and book the slow ferry before the timetable changes';

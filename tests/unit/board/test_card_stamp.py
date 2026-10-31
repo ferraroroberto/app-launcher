@@ -1,6 +1,6 @@
 """Unit pin for the Board card's date stamp (issue #1638).
 
-``dom-utils.js``'s ``fmtCardStamp`` gives the date on a Board card's second
+``format.js``'s ``fmtCardStamp`` gives the date on a Board card's second
 line: a clock time for today, a short date for any other day, in the viewer's
 local time. Pinned without a browser by shelling out to plain Node
 (``tests/js/card_stamp.test.mjs``, same pattern as ``test_duration_days``).

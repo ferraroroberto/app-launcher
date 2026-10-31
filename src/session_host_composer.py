@@ -52,7 +52,7 @@ import time
 from typing import Optional, Tuple
 
 from src.agents import SESSION_HOST_AGENTS
-from src.session_host_input import _TERMINAL_REPLY_RE
+from src.session_host_input import TERMINAL_REPLY_RE
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class ComposerTracker:
             self.mark_unknown()
 
     def _feed(self, data: str) -> None:
-        data = _TERMINAL_REPLY_RE.sub("", data)
+        data = TERMINAL_REPLY_RE.sub("", data)
         with self._lock:
             i = 0
             while i < len(data):

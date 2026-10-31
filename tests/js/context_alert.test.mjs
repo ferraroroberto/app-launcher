@@ -3,7 +3,7 @@
 // line and popup read it from. Invoked by tests/unit/board/test_context_alert.py.
 
 import assert from 'node:assert/strict';
-import { CONTEXT_ALERT_PCT, contextAlert } from '../../app/webapp/static/dom-utils.js';
+import { CONTEXT_ALERT_PCT, contextAlert } from '../../app/webapp/static/shared/format.js';
 
 assert.equal(CONTEXT_ALERT_PCT, 50);
 

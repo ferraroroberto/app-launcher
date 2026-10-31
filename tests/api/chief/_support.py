@@ -72,7 +72,7 @@ def _transcript(tmp_path: Path, stem: str, *, typed: bool) -> str:
 def _recent_iso(**delta_kwargs) -> str:
     """An ISO-8601 UTC stamp ``delta_kwargs`` in the past from the *real*
     current time (issue #658) — for rows exercised through the HTTP-level
-    ``/api/board/chief/ensure`` endpoint, which calls ``board._now()``
+    ``/api/board/chief/ensure`` endpoint, which calls ``board.utc_now()``
     internally with no way to inject a frozen clock. A hardcoded calendar
     date here goes permanently stale the moment real wall-clock time
     crosses ``board.STATE_STALE_AFTER`` (24h) past it — this stays valid

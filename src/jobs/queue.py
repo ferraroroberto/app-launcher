@@ -7,8 +7,9 @@ detached. Queue file lives at :data:`JOBS_QUEUE_PATH` (one JSON document,
 keyed by group → FIFO list of pending entries).
 
 Split out of :mod:`src.jobs` (issue #315) — run-history file storage lives
-in :mod:`src.jobs.history`, schtasks sync + spawn helpers in
-:mod:`src.jobs.schtasks`, and percentiles/health in :mod:`src.jobs.stats`.
+in :mod:`src.jobs.history`, schtasks sync in
+:mod:`src.jobs.schtasks`, the detached spawner in :mod:`src.jobs.spawn`, and
+percentiles/health in :mod:`src.jobs.stats`.
 """
 
 from __future__ import annotations
@@ -33,7 +34,7 @@ from src.jobs.history import (
     runs_dir,
     write_run_json,
 )
-from src.jobs.schtasks import spawn_run_job_detached
+from src.jobs.spawn import spawn_run_job_detached
 from src.jobs.trigger import chain_trigger
 
 logger = logging.getLogger(__name__)

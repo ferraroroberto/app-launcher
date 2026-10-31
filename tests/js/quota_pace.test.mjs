@@ -3,7 +3,7 @@
 // render through. Invoked by tests/unit/usage/test_quota_pace.py.
 
 import assert from 'node:assert/strict';
-import { quotaPace } from '../../app/webapp/static/dom-utils.js';
+import { quotaPace } from '../../app/webapp/static/shared/format.js';
 
 const DAY = 24 * 60 * 60 * 1000;
 const WEEK = 7 * DAY;

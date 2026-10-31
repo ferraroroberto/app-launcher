@@ -33,7 +33,9 @@ import { isHiddenChannel, isOffBoard, renderChannelSummaries } from './channel-s
 // design (session-overlay.js → terminal.js / session-transcript.js → here
 // for sessionTitle and the send helpers); nothing runs at import time.
 import { closeSessionOverlay, openSessionOverlay, resolveSessionMode } from './session-overlay.js';
-import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, fmtDuration, isChiefSession, revealInCard } from './dom-utils.js';
+import { revealInCard } from './dom-utils.js';
+import { CHIEF_KILL_CONFIRM, CHIEF_RESTART_CONFIRM, channelKillConfirm, channelSessionName, isChannelSession, isChiefSession } from './shared/session-kinds.js';
+import { fmtDuration } from './shared/format.js';
 import { confirmDialog } from './confirm-dialog.js';
 import { attentionChip, chip, sessionRowBody, sessionStatusBits } from './glance.js';
 import { renderUsage } from './usage-meter.js';
@@ -52,7 +54,7 @@ import { openSettingsAt } from './tabs.js';
 
 // Kept as a named re-export (apps.js, jobs.js, jobs-row.js, and this
 // module's own row render all import it) over the shared formatter in
-// dom-utils.js — same "3h 24m" elapsed-time granularity as before.
+// format.js — same "3h 24m" elapsed-time granularity as before.
 export function fmtAgo(epochSeconds) {
   return fmtDuration(epochSeconds, { fromEpoch: true, granular: true });
 }

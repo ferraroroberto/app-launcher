@@ -23,7 +23,7 @@
  *     of the alert icon; there is no fast poll behind a closed popup.
  *   - list open: every CONTEXT_POLL_MS (10 s), so a figure on screen is live.
  *   - setting off, no running session, or the page hidden: no reads.
- * At >= CONTEXT_ALERT_PCT (dom-utils.js) any session raises the "context N%"
+ * At >= CONTEXT_ALERT_PCT (format.js) any session raises the "context N%"
  * chip on the Coding tab's row, and its popup row's Compact button is
  * highlighted.
  *
@@ -36,9 +36,8 @@
 
 import { els, state } from './state.js';
 import { apiFailToast, jsonApi, sessionRoute, toast } from './api.js';
-import {
-  channelSessionName, contextAlert, fmtDuration, isChannelSession, isManagedSession, usageTier,
-} from './dom-utils.js';
+import { channelSessionName, isChannelSession, isManagedSession } from './shared/session-kinds.js';
+import { contextAlert, fmtDuration, usageTier } from './shared/format.js';
 import { icon } from './_vendored/icons/icons.js';
 import { chip } from './glance.js';
 import { openSessionOverlay } from './session-overlay.js';

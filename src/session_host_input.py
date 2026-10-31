@@ -42,7 +42,7 @@ _BULK_QUIET_MS = 350
 _BULK_CAP_MS = 3000
 # Poll interval while waiting for the bulk-settle condition — matches the
 # 50ms setInterval terminal-compose.js polls at.
-_BULK_POLL_S = 0.05
+BULK_POLL_S = 0.05
 
 # Attachment settle — the /input half of terminal-compose.js's
 # fix. Claude Code turns a pasted image path into an attachment
@@ -160,7 +160,7 @@ _OSC_TAIL_RE = re.compile(r"\x1b\][^\x07\x1b]*$")
 # strings — since an attached xterm sends those without anybody typing. An
 # unrecognised sequence counts as a touch: the watcher then falls back to
 # reading the screen, which is the earlier rule, never something riskier.
-_TERMINAL_REPLY_RE = re.compile(
+TERMINAL_REPLY_RE = re.compile(
     r"\x1b\[(?:[IO]|[?>][\d;]*[cu]|\?[\d;]*\$y|\d+;\d+R)"
     r"|\x1b[\]P][^\x07\x1b]*(?:\x07|\x1b\\)"
 )
@@ -173,7 +173,7 @@ def touches_composer(data: str) -> bool:
     Plain typed text cannot remove a payload already there, so it does not
     count — consistent with a human typing never superseding the watcher.
     """
-    return _CONTROL_KEY_RE.search(_TERMINAL_REPLY_RE.sub("", data)) is not None
+    return _CONTROL_KEY_RE.search(TERMINAL_REPLY_RE.sub("", data)) is not None
 
 
 # Outcome reasons for a server-initiated write. Distinct
@@ -352,7 +352,7 @@ def _carries_image_path(data: str) -> bool:
     return _IMAGE_PATH_RE.search(data) is not None
 
 
-def _attach_converting(normalized: str) -> bool:
+def attach_converting(normalized: str) -> bool:
     """Is an image conversion still in flight in ``normalized`` output?
 
     True while the newest "Pasting…" has no image chip painted after it —
@@ -403,7 +403,7 @@ def _scan_turn_state(chunk: str) -> Optional[bool]:
     return wait_at > spin_at
 
 
-def _chip_visible(normalized: str, chip_id: str) -> bool:
+def chip_visible(normalized: str, chip_id: str) -> bool:
     """Is *this* chip (a :func:`_chip_id_in` token) showing in ``normalized``
     terminal output?
 
@@ -583,7 +583,7 @@ class InputProtocol:
                 scanned_at = self._output_total
                 normalized = self._normalized_since(mark)
                 ingested = ingested or self._payload_visible(normalized, needles, image)
-                converting = image and _attach_converting(normalized)
+                converting = image and attach_converting(normalized)
             now = time.time()
             settled = (
                 now >= floor_at
@@ -598,7 +598,7 @@ class InputProtocol:
             # but never past the ingest cap.
             if now >= ingest_deadline:
                 return ingested, settled, False
-            time.sleep(_BULK_POLL_S)
+            time.sleep(BULK_POLL_S)
 
     def _submit_input_locked(self, data: str, submit: bool) -> "InputOutcome":
         """:meth:`submit_input`'s body, assuming ``_write_lock`` is held."""

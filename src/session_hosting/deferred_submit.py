@@ -18,7 +18,7 @@ from typing import List, Optional
 
 from src.agents import supports_type_ahead
 from src.session_host_input import (
-    _BULK_POLL_S,
+    BULK_POLL_S,
     INPUT_DEFER_FAILED,
     INPUT_DEFER_TIMEOUT,
     INPUT_DEFER_UNCLEAR,
@@ -29,8 +29,8 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
     InputOutcome,
     InputProtocol,
-    _attach_converting,
-    _chip_visible,
+    attach_converting,
+    chip_visible,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ _DEFER_QUIET_MS = 1500
 # wrap-up before it goes quiet.
 #
 # Lengthening the window is only safe because the pre-fire re-check identifies
-# *this* payload rather than merely some payload — see _chip_visible and
+# *this* payload rather than merely some payload — see chip_visible and
 # DeferredSubmit._payload_still_visible. Every other guard the watcher applies
 # (supersession, the quiet window, the dialog scan) is evaluated at fire time,
 # so none of them cares how long the wait was. The one hazard that genuinely
@@ -225,7 +225,7 @@ class DeferredSubmit(InputProtocol):
         chip is not evidence, and the watcher declining costs nothing worse
         than a steer that stays stranded and honestly reported.
         """
-        if chip_id is not None and _chip_visible(normalized, chip_id):
+        if chip_id is not None and chip_visible(normalized, chip_id):
             return True
         return any(needle in normalized for needle in needles)
 
@@ -413,13 +413,13 @@ class DeferredSubmit(InputProtocol):
                 type_ahead
                 and not self._bg_waiting
                 and now - self._main_turn_seen_at <= live_s
-                and not _attach_converting(self._normalized_since(mark))
+                and not attach_converting(self._normalized_since(mark))
             ):
                 return _DEFER_MODE_TYPEAHEAD
             last_out = self._last_output_at
             if last_out and (now - last_out) >= quiet_s:
                 return _DEFER_MODE_QUIET
-            if self._bg_waiting and not _attach_converting(self._normalized_since(mark)):
+            if self._bg_waiting and not attach_converting(self._normalized_since(mark)):
                 return _DEFER_MODE_BG
             if now >= deadline:
                 return InputOutcome(
@@ -559,7 +559,7 @@ class DeferredSubmit(InputProtocol):
                     deferred=True,
                     waited_ms=waited_ms,
                 )
-            time.sleep(_BULK_POLL_S)
+            time.sleep(BULK_POLL_S)
 
     def _confirm_bg_submit(
         self, seq: int, cr_mark: int, waited_ms: int
@@ -597,7 +597,7 @@ class DeferredSubmit(InputProtocol):
                     deferred=True,
                     waited_ms=waited_ms,
                 )
-            time.sleep(_BULK_POLL_S)
+            time.sleep(BULK_POLL_S)
         return InputOutcome(
             reason=INPUT_OK,
             ingested=True,

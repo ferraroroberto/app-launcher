@@ -29,11 +29,12 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, toast } from '../api.js';
-import { applyLaunchSizePayload } from '../terminal.js';
+import { applyLaunchSizePayload } from '../shared/launch-size.js';
 import { startWorkTimer } from '../voice.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { sendSessionMessage } from '../sessions.js';
-import { isChiefSession, wireModelCombo } from '../dom-utils.js';
+import { wireModelCombo } from '../shared/model-combo.js';
+import { isChiefSession } from '../shared/session-kinds.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { renderBoard } from '../board.js';
 
@@ -42,7 +43,7 @@ import { renderBoard } from '../board.js';
 // Server-side plumbing in routers/board.py; the brain is fleet-config's
 // /chief skill.
 
-// isChiefCard is the board-card-shaped alias of the shared dom-utils.js
+// isChiefCard is the board-card-shaped alias of the shared session-kinds.js
 // predicate — board cards carry the same label/kind/name fields the
 // Coding tab's session rows do, so no board-specific logic is needed here.
 // Exported so board.js's card rendering reads the same predicate rather than

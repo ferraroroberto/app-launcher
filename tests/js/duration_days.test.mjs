@@ -1,5 +1,5 @@
 // Unit pin for the days rollover in the two duration formatters (#1523):
-// dom-utils.js fmtDuration's granular mode (Coding tab session age) and
+// format.js fmtDuration's granular mode (Coding tab session age) and
 // jobs-row.js formatDuration (Jobs tab run duration). Runs under plain Node;
 // jobs-row.js pulls in the DOM-bound module graph, so the browser globals it
 // touches at import time are stubbed first. Invoked by
@@ -8,7 +8,7 @@
 import assert from 'node:assert/strict';
 import './_browser_stubs.mjs';
 
-const { fmtDuration } = await import('../../app/webapp/static/dom-utils.js');
+const { fmtDuration } = await import('../../app/webapp/static/shared/format.js');
 const { formatDuration } = await import('../../app/webapp/static/jobs/jobs-row.js');
 
 const H = 3600;

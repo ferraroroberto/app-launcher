@@ -24,7 +24,7 @@ import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { voiceDictationAvailable } from '../voice.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { terminalJsonApi } from '../webauthn.js';
-import { CHIEF_KILL_CONFIRM, channelKillConfirm, isChannelSession } from '../dom-utils.js';
+import { CHIEF_KILL_CONFIRM, channelKillConfirm, isChannelSession } from '../shared/session-kinds.js';
 import { renderMarkdown } from '../markdown.js';
 import { confirmDialog } from '../confirm-dialog.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';

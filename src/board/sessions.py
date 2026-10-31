@@ -29,7 +29,7 @@ from src import audit
 from src.session_view import plan_picker
 from src._log_once import log_once
 from src.board.active_issue_claims import CLAIM_DEAD
-from src.board.state import STATE_STALE_AFTER, _age_seconds, _now, _parse_iso
+from src.board.state import STATE_STALE_AFTER, age_seconds, utc_now, parse_iso
 from src.session_model import session_model_label
 from src.board.transcript import (
     _ExchangeTail,
@@ -223,7 +223,7 @@ def _match_state_row(
     for sid, row in unmatched.items():
         launcher_sid = str(row.get("launcher_session_id") or "")
         if launcher_sid and launcher_sid == session_id and _row_agent(row) == agent:
-            stamp = _parse_iso(row.get("updated_at")) or _EPOCH
+            stamp = parse_iso(row.get("updated_at")) or _EPOCH
             if exact_sid is None or stamp > exact_stamp:
                 exact_sid, exact_stamp = sid, stamp
     if exact_sid is not None:
@@ -235,7 +235,7 @@ def _match_state_row(
     project_dir_norm = _normalize_dir(session.get("project_dir"))
     if not project_dir_norm:
         return None
-    session_started = _parse_iso(session.get("started_at")) or _EPOCH
+    session_started = parse_iso(session.get("started_at")) or _EPOCH
     best_sid: Optional[str] = None
     best_stamp = _EPOCH
     for sid, row in unmatched.items():
@@ -244,7 +244,7 @@ def _match_state_row(
         row_cwd = _normalize_dir(row.get("cwd"))
         if row_cwd != project_dir_norm and not row_cwd.startswith(project_dir_norm + "/"):
             continue
-        stamp = _parse_iso(row.get("updated_at")) or _EPOCH
+        stamp = parse_iso(row.get("updated_at")) or _EPOCH
         if stamp < session_started:
             continue
         if best_sid is None or stamp > best_stamp:
@@ -269,7 +269,7 @@ def _claim_walk(
     pairs: List[tuple] = []
 
     def started(sess: Dict[str, Any]) -> datetime:
-        return _parse_iso(sess.get("started_at")) or _EPOCH
+        return parse_iso(sess.get("started_at")) or _EPOCH
 
     # Counted over the FULL live list (not the shrinking unmatched-rows
     # walk) — the ambiguity is about how many live sessions are competing
@@ -490,7 +490,7 @@ def merge_sessions(
     card, a capture stat plus a render when the capture changed) — callers wrap in
     ``asyncio.to_thread`` (#881).
     """
-    now = now or _now()
+    now = now or utc_now()
     active_repos = active_issue_repos or frozenset()
     cards: List[Dict[str, Any]] = []
     pairs, unmatched = _claim_walk(live, state_rows)
@@ -526,8 +526,8 @@ def _live_card(
 
     raw_status = (row or {}).get("status")
     status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-    anchor = (_parse_iso(row.get("updated_at")) if row else None) or (
-        _parse_iso(sess.get("started_at"))
+    anchor = (parse_iso(row.get("updated_at")) if row else None) or (
+        parse_iso(sess.get("started_at"))
     )
     tail = _ExchangeTail((row or {}).get("transcript_path"))
     status, anchor = _transcript_overlay(
@@ -563,7 +563,7 @@ def _live_card(
         "shared_name_source": (row or {}).get("name_source"),
         "project": project,
         "status": status,
-        "age_seconds": _age_seconds(anchor, now),
+        "age_seconds": age_seconds(anchor, now),
     }
 
 
@@ -573,7 +573,7 @@ def _external_card(
 ) -> Optional[Dict[str, Any]]:
     """The external card for an unclaimed state row, or ``None`` when it is
     cold or its process cannot be shown to still exist."""
-    stamp = _parse_iso(row.get("updated_at"))
+    stamp = parse_iso(row.get("updated_at"))
     if stamp is None or now - stamp > STATE_STALE_AFTER:
         return None  # cold leftovers: not worth a card
     raw_status = row.get("status")
@@ -616,7 +616,7 @@ def _external_card(
         "shared_name_source": row.get("name_source"),
         "project": str(project),
         "status": status,
-        "age_seconds": _age_seconds(anchor, now),
+        "age_seconds": age_seconds(anchor, now),
         # Only a literal ``true`` counts: a row written before the hook
         # recorded the flag, or any other value, is an ordinary session.
         "job_run": row.get("job_run") is True,

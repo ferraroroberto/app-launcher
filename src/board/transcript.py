@@ -41,7 +41,7 @@ from src.board.dispatch_ids import (
     _notified_background_ids,
     _notified_bash_dispatch_ids,
 )
-from src.board.state import _now, _parse_iso
+from src.board.state import utc_now, parse_iso
 
 logger = logging.getLogger(__name__)
 
@@ -358,7 +358,7 @@ def _last_activity(transcript_path: Any) -> Optional[datetime]:
             continue
         if not isinstance(obj.get("message"), dict):
             continue
-        stamp = _parse_iso(obj.get("timestamp"))
+        stamp = parse_iso(obj.get("timestamp"))
         if stamp is not None:
             return stamp
     return None
@@ -498,12 +498,12 @@ def _transcript_overlay(
     """
     if row is None or status not in ("needs-you", "idle"):
         return status, anchor
-    now = now or _now()
+    now = now or utc_now()
     if _live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
         # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
         # this override only proves busy as of this instant, not since when.
         return "working", now
-    updated = _parse_iso(row.get("updated_at"))
+    updated = parse_iso(row.get("updated_at"))
     transcript = row.get("transcript_path")
     if updated is None or not transcript:
         return status, anchor
@@ -565,7 +565,7 @@ def _outstanding_dispatch_stamps(tail: _ExchangeTail) -> Tuple[List[Optional[dat
             count = obj.get("pendingBackgroundAgentCount")
             if isinstance(count, int):
                 last_turn_pending_agent_count = count
-        stamp = _parse_iso(obj.get("timestamp"))
+        stamp = parse_iso(obj.get("timestamp"))
         for tid in _launched_background_ids(obj):
             launched.setdefault(tid, stamp)
         for tid in _launched_bash_dispatch_ids(obj):

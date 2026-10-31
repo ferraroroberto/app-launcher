@@ -1,6 +1,6 @@
 """Unit pin for the days rollover in the duration formatters (issue #1523).
 
-``dom-utils.js``'s ``fmtDuration`` (granular mode, the Coding tab's session
+``format.js``'s ``fmtDuration`` (granular mode, the Coding tab's session
 age) and ``jobs-row.js``'s ``formatDuration`` (the Jobs tab's run duration)
 used to keep counting hours past a day ("268h 12m"); they now read "11d 4h".
 Pinned without a browser: this module shells out to plain Node to import the

@@ -22,7 +22,7 @@ import { cadenceText } from './jobs-row.js';
 import { openJobDialog } from './jobs-dialog.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { emptyStateEl } from '../_vendored/empty-state/empty-state.js';
-import { calendarDaysFromToday } from '../dom-utils.js';
+import { calendarDaysFromToday } from '../shared/format.js';
 
 const NEXT_UP_COUNT = 3;
 const AGENDA_DAYS = 7;

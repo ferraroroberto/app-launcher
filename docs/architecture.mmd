@@ -119,6 +119,9 @@ life-os.js + life-os/, screen/, settings/, voice.js"]
     JOBSFACADE["jobs/__init__.py (facade)"]
     JOBSCFG["jobs/config.py"]
     JOBSSCHTASKS["jobs/schtasks.py\nWindows Task Scheduler sync"]
+    JOBSSPAWN["jobs/spawn.py
+detached run-job spawner + launcher
+interpreter and venv lookup"]
     JOBSQUEUE["jobs/queue.py\ncross-job mutex queue"]
     JOBSHISTORY["jobs/history.py\nrun.json / output.log per run"]
     JOBSINDEX["jobs/index.py\nderived SQLite + FTS5 run mirror"]
@@ -184,6 +187,9 @@ read over loopback and cached behind /api/system/health"]
   RUNJOBCMD --> NOTIFY
   JOBSFACADE --> JOBSSCHTASKS
   JOBSFACADE --> JOBSQUEUE
+  JOBSFACADE --> JOBSSPAWN
+  JOBSSCHTASKS --> JOBSSPAWN
+  JOBSQUEUE --> JOBSSPAWN
   JOBSFACADE --> JOBSHISTORY
   R_JOBS --> JOBSINDEX
   JOBSINDEX --> JOBSHISTORY

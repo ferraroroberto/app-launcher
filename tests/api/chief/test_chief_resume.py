@@ -523,7 +523,7 @@ class TestEnsureRefreshesThePointer:
         # Restamped: it was 6 days old going in, and would expire in one more.
         assert (
             datetime.now(timezone.utc)
-            - chief_router.board._parse_iso(pointer["seen_at"])
+            - chief_router.board.parse_iso(pointer["seen_at"])
         ) < timedelta(minutes=5)
 
     def test_fresh_spawn_does_not_touch_the_pointer(

@@ -104,7 +104,7 @@ def copilot_entries(lines: List[Line], *, uncapped: bool = False) -> List[Entry]
 
     One self-contained JSON event per line — ``{"type", "data", "id",
     "parentId", "timestamp"}`` — so no entry ever needs a neighbouring line
-    (:func:`_copilot_line_key`) and a line yields at most one turn, which is
+    (:func:`copilot_line_key`) and a line yields at most one turn, which is
     what :func:`src.session_view.transcript.entry_full_text` resolves against.
     Measured on a session launched through the launcher's own API for #1015,
     plus the 37 event logs already on disk:
@@ -229,7 +229,7 @@ def _copilot_event(
                 label=str(data.get("errorType") or "error"), sidechain=False))
 
 
-def _copilot_line_key(raw: str) -> Optional[str]:
+def copilot_line_key(raw: str) -> Optional[str]:
     """Copilot writes one self-contained event per line (see
     :func:`copilot_entries`), so no line ever needs another."""
     return None

@@ -16,8 +16,8 @@ missing/corrupt/stale file must never error — callers get an
 ``available: False`` shape with empty/``None`` fields instead of an
 exception, so a board render never breaks on a cold or torn state file.
 
-Also home to the small time/parse helpers (:func:`_now`, :func:`_parse_iso`,
-:func:`_iso_z`, :func:`_age_seconds`) shared by :mod:`src.board.sessions` and
+Also home to the small time/parse helpers (:func:`utc_now`, :func:`parse_iso`,
+:func:`iso_z`, :func:`age_seconds`) shared by :mod:`src.board.sessions` and
 :mod:`src.board.transcript` — every board-side timestamp flows through these
 same two tolerant parsers.
 """
@@ -43,11 +43,11 @@ STATE_STALE_AFTER = timedelta(hours=24)
 RATE_LIMITS_STALE_AFTER = timedelta(minutes=10)
 
 
-def _now() -> datetime:
+def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _parse_iso(raw: Any) -> Optional[datetime]:
+def parse_iso(raw: Any) -> Optional[datetime]:
     """Tolerant ISO-8601 parse; naive stamps are assumed local (job records)."""
     if not isinstance(raw, str) or not raw:
         return None
@@ -60,11 +60,11 @@ def _parse_iso(raw: Any) -> Optional[datetime]:
     return parsed
 
 
-def _iso_z(moment: datetime) -> str:
+def iso_z(moment: datetime) -> str:
     return moment.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _age_seconds(anchor: Optional[datetime], now: datetime) -> Optional[int]:
+def age_seconds(anchor: Optional[datetime], now: datetime) -> Optional[int]:
     if anchor is None:
         return None
     return max(0, int((now - anchor).total_seconds()))
@@ -78,7 +78,7 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
     ``stale`` is true when the newest row is older than
     :data:`STATE_STALE_AFTER` — the hooks have stopped writing.
     """
-    now = now or _now()
+    now = now or utc_now()
     empty: Dict[str, Any] = {"available": False, "stale": False, "updated_at": None, "rows": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -92,14 +92,14 @@ def read_sessions_state(path: Path, *, now: Optional[datetime] = None) -> Dict[s
     }
     stamps = [
         stamp
-        for stamp in (_parse_iso(row.get("updated_at")) for row in rows.values())
+        for stamp in (parse_iso(row.get("updated_at")) for row in rows.values())
         if stamp is not None
     ]
     newest = max(stamps) if stamps else None
     return {
         "available": True,
         "stale": bool(newest is not None and now - newest > STATE_STALE_AFTER),
-        "updated_at": _iso_z(newest) if newest else None,
+        "updated_at": iso_z(newest) if newest else None,
         "rows": rows,
     }
 
@@ -112,7 +112,7 @@ def read_active_issues(path: Path, *, now: Optional[datetime] = None) -> Dict[st
     unavailable; malformed and older-than-24h rows are omitted individually so
     an abandoned workflow can never disable a backlog card forever.
     """
-    now = now or _now()
+    now = now or utc_now()
     empty: Dict[str, Any] = {"available": False, "updated_at": None, "rows": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -129,7 +129,7 @@ def read_active_issues(path: Path, *, now: Optional[datetime] = None) -> Dict[st
             continue
         repo = row.get("repo")
         number = row.get("number")
-        started_at = _parse_iso(row.get("started_at"))
+        started_at = parse_iso(row.get("started_at"))
         if (
             not isinstance(repo, str)
             or not repo.strip()
@@ -146,7 +146,7 @@ def read_active_issues(path: Path, *, now: Optional[datetime] = None) -> Dict[st
     newest = max(stamps) if stamps else None
     return {
         "available": True,
-        "updated_at": _iso_z(newest) if newest else None,
+        "updated_at": iso_z(newest) if newest else None,
         "rows": rows,
     }
 
@@ -181,7 +181,7 @@ def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str,
     :data:`RATE_LIMITS_STALE_AFTER` — *not* by either window's ``resets_at``,
     which is the reset moment, not a freshness signal.
     """
-    now = now or _now()
+    now = now or utc_now()
     empty: Dict[str, Any] = {
         "available": False,
         "stale": False,
@@ -201,13 +201,13 @@ def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str,
     if not isinstance(data, dict):
         return empty
 
-    captured_at = _parse_iso(data.get("captured_at"))
+    captured_at = parse_iso(data.get("captured_at"))
     return {
         "available": True,
         "stale": bool(
             captured_at is not None and now - captured_at > RATE_LIMITS_STALE_AFTER
         ),
-        "updated_at": _iso_z(captured_at) if captured_at else None,
+        "updated_at": iso_z(captured_at) if captured_at else None,
         "five_hour": _rate_limit_window(data.get("five_hour")),
         "seven_day": _rate_limit_window(data.get("seven_day")),
     }

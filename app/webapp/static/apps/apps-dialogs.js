@@ -10,7 +10,7 @@ import { els, state } from '../state.js';
 import { apiFailToast, jsonApi, toast } from '../api.js';
 import { setSwitch, switchEl } from '../_vendored/switch/switch.js';
 import { fetchApps } from '../apps.js';
-import { nameLabel } from '../dom-utils.js';
+import { nameLabel } from '../shared/format.js';
 
 // ----------------------------------------------------------- rename dialog
 let renameTargetId = null;

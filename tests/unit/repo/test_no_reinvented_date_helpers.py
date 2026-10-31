@@ -4,8 +4,8 @@ A `/codebase-audit` duplication bucket flagged, two audits running (recurring):
 the "whole local calendar days between a date and today" scan written four
 times (life-os.js's ``daysSince``/``convoWhen``, screen-time.js's ``whenText``,
 jobs-agenda.js's ``_dayOffset``) instead of calling one
-``calendarDaysFromToday`` in ``dom-utils.js``, and usage-meter.js's own
-``fmtResetFull`` duplicating ``dom-utils.js``'s ``fmtResetClock``/
+``calendarDaysFromToday`` in ``format.js``, and usage-meter.js's own
+``fmtResetFull`` duplicating ``format.js``'s ``fmtResetClock``/
 ``fmtResetDay`` three ways over.
 
 Both reinventions share one tell: a literal the shared helper already owns,
@@ -20,21 +20,21 @@ import re
 from pathlib import Path
 
 _STATIC = Path(__file__).resolve().parents[3] / "app" / "webapp" / "static"
-_OWNER = "dom-utils.js"
+_OWNER = "format.js"
 
 # The day-in-milliseconds divisor: the one arithmetic constant a "days
 # between two calendar dates" scan needs. It has no other legitimate use in
-# this codebase's front end, so its mere presence outside dom-utils.js is a
+# this codebase's front end, so its mere presence outside format.js is a
 # re-implementation of calendarDaysFromToday, not a coincidence.
 _DAY_MS_RE = re.compile(r"86400000")
 
-# A second ``fmtReset*`` formatter: the family dom-utils.js's fmtResetFull
+# A second ``fmtReset*`` formatter: the family format.js's fmtResetFull
 # owns. A new one elsewhere is usage-meter.js's old fmtResetFull/fmtResetClock/
 # fmtResetDay trio happening again.
 _FMT_RESET_RE = re.compile(r"\bfunction\s+fmtReset\w*\s*\(")
 
 
-def test_calendar_day_math_and_reset_formatters_stay_in_dom_utils() -> None:
+def test_calendar_day_math_and_reset_formatters_stay_in_format_js() -> None:
     offenders = []
     for path in sorted(_STATIC.rglob("*.js")):
         if path.name == _OWNER or {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):

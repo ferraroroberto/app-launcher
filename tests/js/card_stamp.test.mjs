@@ -1,4 +1,4 @@
-// Unit pin for the Board card's date stamp (#1638): dom-utils.js fmtCardStamp.
+// Unit pin for the Board card's date stamp (#1638): format.js fmtCardStamp.
 // A clock time for today, a short date for any other day, always the viewer's
 // local time, '' for a value that can't be read. Runs under plain Node;
 // invoked by tests/unit/board/test_card_stamp.py.
@@ -13,7 +13,7 @@ const stub = () => new Proxy(function () {}, {
 globalThis.document = stub();
 globalThis.window = stub();
 
-const { fmtCardStamp } = await import('../../app/webapp/static/dom-utils.js');
+const { fmtCardStamp } = await import('../../app/webapp/static/shared/format.js');
 
 const now = new Date(2026, 9, 17, 18, 30);            // local 17 Oct 2026 18:30
 

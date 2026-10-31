@@ -552,5 +552,5 @@ def test_a_pinned_chip_number_is_not_matched_by_a_longer_one(clock):
         "\x1b[2m> [Pasted text #12 +4 lines]\x1b[0m"
     )
 
-    assert session_host_input._chip_visible(normalized, "[pastedtext#12") is True
-    assert session_host_input._chip_visible(normalized, "[pastedtext#1") is False
+    assert session_host_input.chip_visible(normalized, "[pastedtext#12") is True
+    assert session_host_input.chip_visible(normalized, "[pastedtext#1") is False

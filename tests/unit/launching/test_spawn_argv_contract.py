@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.jobs import schtasks as jobs_schtasks
+from src.jobs import spawn as jobs_spawn
 
 
 @pytest.fixture
@@ -32,9 +32,9 @@ def captured_spawn(monkeypatch):
         seen["cmd"] = list(cmd)
         return _FakeProc()
 
-    monkeypatch.setattr(jobs_schtasks.subprocess, "Popen", _fake_popen)
-    monkeypatch.setattr(jobs_schtasks, "_launcher_python", lambda: "py.exe")
-    monkeypatch.setattr(jobs_schtasks, "_launcher_py", lambda: "launcher.py")
+    monkeypatch.setattr(jobs_spawn.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(jobs_spawn, "launcher_python", lambda: "py.exe")
+    monkeypatch.setattr(jobs_spawn, "launcher_py", lambda: "launcher.py")
     return seen
 
 
@@ -57,7 +57,7 @@ def test_param_value_with_cmd_metacharacter_is_refused(
     """A param value that cannot survive the second tokenization is refused
     loudly rather than being handed to ``cmd`` in a broken quote state."""
     with pytest.raises(ValueError):
-        jobs_schtasks.spawn_run_job_detached(
+        jobs_spawn.spawn_run_job_detached(
             "demo-job",
             "run-1",
             trigger="manual",
@@ -70,7 +70,7 @@ def test_param_value_with_cmd_metacharacter_is_refused(
 
 def test_ordinary_param_values_still_spawn(captured_spawn):
     """Regression guard: the refusal above must not block normal params."""
-    pid = jobs_schtasks.spawn_run_job_detached(
+    pid = jobs_spawn.spawn_run_job_detached(
         "demo-job",
         "run-1",
         trigger="manual",
@@ -85,7 +85,7 @@ def test_ordinary_param_values_still_spawn(captured_spawn):
 def test_percent_encoded_param_value_still_spawns(captured_spawn):
     """Regression guard (issue #810): a lone `%` (URL-encoding) must not be
     swept up by the `%name%` env-var-expansion refusal."""
-    pid = jobs_schtasks.spawn_run_job_detached(
+    pid = jobs_spawn.spawn_run_job_detached(
         "demo-job",
         "run-1",
         trigger="manual",
@@ -97,7 +97,7 @@ def test_percent_encoded_param_value_still_spawns(captured_spawn):
 
 def test_no_params_path_is_unaffected(captured_spawn):
     """Schedule / Stream-Deck callers omit params entirely."""
-    jobs_schtasks.spawn_run_job_detached("demo-job", "run-1", trigger="schedule")
+    jobs_spawn.spawn_run_job_detached("demo-job", "run-1", trigger="schedule")
     assert "--params" not in captured_spawn["cmd"]
 
 

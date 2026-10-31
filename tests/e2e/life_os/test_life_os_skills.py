@@ -182,7 +182,7 @@ def test_life_os_pty_launch_carries_terminal_size(
     the PTY at spawn. Skills stream output the moment the PTY exists, so a
     40×120 spawn poured 120-col text that re-wrapped into first-paint
     garble when the overlay's fit() shrank the PTY to phone width. A phone
-    launch must carry rows/cols (estimateTermSize, same contract as the
+    launch must carry rows/cols (launch-size.js estimateTermSize, same contract as the
     Coding tab, #126); a desktop client sends the mirror flag instead and
     keeps the Edge-window default."""
     # Detached stays OFF — this is the streamed pty path #374 is about.
