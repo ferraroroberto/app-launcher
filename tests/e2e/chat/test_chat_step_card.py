@@ -232,3 +232,89 @@ def test_an_opened_command_is_a_clean_card_and_never_markup(
         assert fit["cmd"][0] <= fit["cmd"][1] and fit["pane"][0] <= fit["pane"][1], (theme, fit)
         assert fit["lines"] >= 2, (theme, fit)
     assert seen["light"] != seen["dark"], seen
+
+
+def _read(offset: int, ts: str | None, path: str) -> dict:
+    return {"kind": "tool_call", "timestamp": ts, "name": "Read", "summary": path,
+            "label": path, "result": "ok", "result_truncated": False, "sidechain": False,
+            "offset": offset, "action": {"verb": "read", "path": path}}
+
+
+@pytest.mark.iphone
+def test_an_opened_run_says_when_it_ran_and_where_it_sits_in_the_session(
+    authed_page: Page, base_url: str
+) -> None:
+    """#2006: nothing in the folded row; opened, one muted line with the run's
+    start, its duration and its offset from the session's first entry."""
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    tr = _boot(page, base_url)
+    start = 5 * 3600
+    tr.entries = [
+        _turn("user", "work on it", 100, _since(page, start)),
+        # Two steps, 4h 12m in, ending at the reply 30 minutes later.
+        _bash(200, _since(page, start - 15_120), "pytest -q", label="Run the tests", result="ok"),
+        _bash(300, _since(page, start - 15_120 - 600), "npm test", label="Run the JS tests", result="ok"),
+        _turn("assistant", "Done.", 400, _since(page, start - 15_120 - 1_800)),
+        _turn("user", "now read it", 500, _since(page, start - 17_000)),
+        # One step, no reply later than it by more than a second.
+        _read(600, _since(page, start - 17_100), "E:/automation/modeproj/notes.md"),
+        _turn("assistant", "Read.", 700, _since(page, start - 17_100)),
+    ]
+    _open_chat(page)
+
+    runs = page.locator("#transcriptList .tr-run")
+    expect(runs).to_have_count(2)
+    multi, single = runs.nth(0), runs.nth(1)
+    # Folded: the line is as quiet as it was.
+    for run in (multi, single):
+        expect(run.locator(".tr-run-when")).to_be_hidden()
+        expect(run.locator("summary.tr-step-line")).not_to_contain_text("into the session")
+
+    multi.locator("summary.tr-step-line").click()
+    when = multi.locator(".tr-run-when")
+    expect(when).to_be_visible()
+    expect(when).to_have_text(re.compile(r"^.+ · lasted 30m 0s · \+4h 12m into the session$"))
+
+    single.locator("summary.tr-step-line").click()
+    expect(single.locator(".tr-run-when")).to_have_text(
+        re.compile(r"^.+ · \+4h 45m into the session$")
+    )
+
+    # Closing hides it again.
+    multi.locator("summary.tr-step-line").click()
+    expect(when).to_be_hidden()
+
+    # Phone width, both themes: the muted line resolves and nothing pans.
+    single_when = single.locator(".tr-run-when")
+    colors = {}
+    for theme in ("light", "dark"):
+        page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
+        expect(single_when).not_to_have_css("color", "rgba(0, 0, 0, 0)")
+        colors[theme] = single_when.evaluate("el => getComputedStyle(el).color")
+        fit = stable_eval(single_when, """el => {
+            const r = el.getBoundingClientRect();
+            if (!r.width) return null;
+            const pane = document.getElementById('transcriptBody');
+            return {pane: [pane.scrollWidth, pane.clientWidth]};
+        }""")
+        assert fit["pane"][0] <= fit["pane"][1], (theme, fit)
+    assert colors["light"] != colors["dark"], colors
+
+
+def test_an_opened_run_without_timestamps_shows_no_line(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    tr = _boot(page, base_url)
+    tr.entries = [
+        _turn("user", "hello", 100, _since(page, 60)),
+        _read(200, None, "E:/automation/modeproj/notes.md"),
+        _turn("assistant", "Done.", 300, _since(page, 10)),
+    ]
+    _open_chat(page)
+    run = page.locator("#transcriptList .tr-run")
+    run.locator("summary.tr-step-line").click()
+    expect(run.locator(".tr-item")).to_be_visible()
+    expect(run.locator(".tr-run-when")).to_be_hidden()
+    expect(run).not_to_contain_text("NaN")

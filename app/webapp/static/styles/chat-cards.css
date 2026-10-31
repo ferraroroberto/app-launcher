@@ -102,6 +102,15 @@
   padding-left: 12px;
   border-left: 2px solid var(--line-muted);
 }
+/* Where the opened run sits in the session: one muted line above its items,
+   so the folded row stays as quiet as it was. */
+.tr-run-when {
+  padding: 6px 0 2px;
+  color: var(--muted);
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 .tr-item + .tr-item { border-top: 1px solid var(--line-muted); }
 .tr-item > summary {
   list-style: none;
