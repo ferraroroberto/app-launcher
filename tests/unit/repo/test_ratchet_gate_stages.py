@@ -27,13 +27,13 @@ _EXTRA_KEYS = {"conventions": 'rules = ["logging-not-print"]\n'}
 
 
 def _stage(name: str) -> str:
+    """The gate's real handler and stage table, then a call for the one named stage."""
     phase = name.replace("_", " ")
-    head, *tail = name.split("_")
-    exit_var = head + "".join(word.capitalize() for word in tail) + "Exit"
-    lines = GATE_PS1.read_text(encoding="utf-8").splitlines()
-    start = next(i for i, line in enumerate(lines) if f'Phase "{phase} ratchet..."' in line)
-    end = max(i for i, line in enumerate(lines) if f"${exit_var}" in line)
-    return "\n".join(lines[start:end + 1])
+    text = GATE_PS1.read_text(encoding="utf-8")
+    start = text.index("function Invoke-RatchetStage")
+    end = text.index("# ratchet-stages:end")
+    return (f"{text[start:end]}\n"
+            f"Invoke-RatchetStage ($ratchetStages | Where-Object {{ $_.Name -eq '{phase}' }})")
 
 
 @pytest.mark.parametrize("name, files, code, expected", [

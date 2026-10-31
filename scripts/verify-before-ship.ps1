@@ -120,6 +120,57 @@ function Fail($message) {
     exit 1
 }
 
+# Every ratchet stage reads the whole tree, so none is path-routed. Exit 3 means
+# the count could not be established, which is its own failure and never a pass;
+# one handler owns that rule so a stage added to the table cannot get it wrong.
+function Invoke-RatchetStage($stage) {
+    Phase "$($stage.Name) ratchet..."
+    & $python @($stage.Argv)
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -eq 3) { Fail "$($stage.Name) ratchet NOT CONFIRMED ($($stage.NotConfirmed))." }
+    if ($exitCode -ne 0) { Fail "$($stage.Name) ratchet failed (exit $exitCode): $($stage.Failed)" }
+}
+
+# ratchet-stages:begin
+$ratchetStages = @(
+    @{ Name = "comment"; Argv = @("scripts/comment_ratchet.py")
+       NotConfirmed = "a file could not be scanned or git was unusable"
+       Failed = "a file has more #NNN comment references than .comment-ratchet-baseline.json." }
+    # tests/ lines over src/ + app/ lines may not rise above .fleet.toml [test_weight] ratio_ceiling.
+    @{ Name = "suite weight"; Argv = @("-m", "scripts.suite_weight_ratchet")
+       NotConfirmed = "git was unusable or a file could not be read"
+       Failed = "the test-to-code ratio is above .fleet.toml [test_weight] ratio_ceiling, or the table is malformed." }
+    # Duplicate blocks (jscpd via npx) and unused imports/variables (ruff).
+    @{ Name = "static"; Argv = @("scripts/static_ratchet.py")
+       NotConfirmed = "a detector could not run: Node/npx or ruff missing, or output unparseable"
+       Failed = "a new duplicate block or unused import/variable, or a baseline problem; see .static-ratchet-baseline.json." }
+    # README size and history markers (issue references, dated and changelog headings).
+    @{ Name = "docs"; Argv = @("scripts/docs_ratchet.py")
+       NotConfirmed = "git was unusable, or a doc is not UTF-8 or has a fence/comment that never closes"
+       Failed = "README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .docs-ratchet-baseline.json." }
+    # File size, function length, flat directories, the src -> app layer contract and the root layout.
+    @{ Name = "structure"; Argv = @("scripts/structure_ratchet.py")
+       NotConfirmed = "git was unusable, a file could not be read or parsed, or the declared shape is unknown"
+       Failed = "a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .structure-ratchet-baseline.json." }
+    # Lint rules over CLAUDE.md, AGENTS.md and every SKILL.md: AGENTS.md decides how CLAUDE.md is read.
+    @{ Name = "instruction"; Argv = @("scripts/instruction_ratchet.py")
+       NotConfirmed = "git was unusable, or an instruction file is not UTF-8, has a fence that never closes, or a skill description that cannot be read"
+       Failed = "an instruction file gained a lint hit or passed its size cap beyond .instruction-ratchet-baseline.json; see the named rule and lines above." }
+    # A code change can strand a doc reference without touching the doc.
+    @{ Name = "doc refs"; Argv = @("scripts/doc_refs_ratchet.py")
+       NotConfirmed = "git was unusable, or a doc is not UTF-8 or has a fence or HTML comment that never closes"
+       Failed = "a doc names a repo path, module, link or port that does not exist beyond .doc-refs-ratchet-baseline.json; see the named reference above." }
+    # Deleting the last caller in one file strands a definition in another.
+    @{ Name = "dead code"; Argv = @("scripts/dead_code_ratchet.py")
+       NotConfirmed = "git was unusable, or a tracked .py file cannot be read or does not parse"
+       Failed = "a function, class or method nothing refers to is not in .dead-code-ratchet-baseline.json; see the named definition above." }
+    # A rule added to .fleet.toml must see every file.
+    @{ Name = "conventions"; Argv = @("scripts/conventions_ratchet.py")
+       NotConfirmed = "git was unusable, or a tracked .py file cannot be read or does not parse"
+       Failed = "a file's count for a convention rule rose above .conventions-ratchet-baseline.json; see the named rule and lines above." }
+)
+# ratchet-stages:end
+
 if (-not (Test-Path $python)) {
     Fail ".venv missing -- run setup.bat first."
 }
@@ -132,103 +183,7 @@ try {
     & $python -m compileall -q app src tests
     if ($LASTEXITCODE -ne 0) { Fail "byte-compile failed." }
 
-    # Comment ratchet (scaffold docs/comment-ratchet.md): the whole tree is
-    # counted, so it is never path-routed. Exit 3 means the count could not be
-    # established, which is its own failure and never a pass.
-    Phase "comment ratchet..."
-    & $python scripts/comment_ratchet.py
-    $ratchetExit = $LASTEXITCODE
-    if ($ratchetExit -eq 3) { Fail "comment ratchet NOT CONFIRMED (a file could not be scanned or git was unusable)." }
-    if ($ratchetExit -ne 0) { Fail "comment ratchet failed (exit $ratchetExit): a file has more #NNN comment references than .comment-ratchet-baseline.json." }
-
-    # Test-to-code ratchet: tests/ lines over src/ + app/ lines may not rise
-    # above .fleet.toml [test_weight] ratio_ceiling. Whole tree, never routed;
-    # exit 3 means a count could not be established, a failure and never a pass.
-    Phase "suite weight ratchet..."
-    & $python -m scripts.suite_weight_ratchet
-    $weightExit = $LASTEXITCODE
-    if ($weightExit -eq 3) { Fail "suite weight ratchet NOT CONFIRMED (git was unusable or a file could not be read)." }
-    if ($weightExit -ne 0) { Fail "suite weight ratchet failed (exit $weightExit): the test-to-code ratio is above .fleet.toml [test_weight] ratio_ceiling, or the table is malformed." }
-
-    # Static ratchet (scaffold docs/static-ratchet.md): duplicate blocks (jscpd
-    # via npx) and unused imports/variables (ruff) may not rise above
-    # .static-ratchet-baseline.json. Needs the whole tree, so it is never
-    # path-routed; exit 3 means a detector could not run, a failure and never a pass.
-    Phase "static ratchet..."
-    & $python scripts/static_ratchet.py
-    $staticExit = $LASTEXITCODE
-    if ($staticExit -eq 3) { Fail "static ratchet NOT CONFIRMED (a detector could not run: Node/npx or ruff missing, or output unparseable)." }
-    if ($staticExit -ne 0) { Fail "static ratchet failed (exit $staticExit): a new duplicate block or unused import/variable, or a baseline problem; see .static-ratchet-baseline.json." }
-
-    # Docs ratchet (scaffold docs/docs-ratchet.md): README size and history
-    # markers (issue references, dated and changelog headings) in README.md and
-    # docs/**/*.md may not rise above .docs-ratchet-baseline.json. Whole tree,
-    # never path-routed; exit 3 means a file could not be scanned or git was
-    # unusable, a failure and never a pass.
-    Phase "docs ratchet..."
-    & $python scripts/docs_ratchet.py
-    $docsExit = $LASTEXITCODE
-    if ($docsExit -eq 3) { Fail "docs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence/comment that never closes)." }
-    if ($docsExit -ne 0) { Fail "docs ratchet failed (exit $docsExit): README.md grew past its size budget, or a doc gained an issue reference or dated/changelog heading; see .docs-ratchet-baseline.json." }
-
-    # Structure ratchet (scaffold docs/structure-ratchet.md): file size, function
-    # length, flat directories, the src -> app layer contract and the root layout
-    # may not rise above .structure-ratchet-baseline.json. Whole tree, never
-    # path-routed; exit 3 means git was unusable, a file could not be read or parsed,
-    # or the declared shape is unknown, a failure and never a pass.
-    Phase "structure ratchet..."
-    & $python scripts/structure_ratchet.py
-    $structureExit = $LASTEXITCODE
-    if ($structureExit -eq 3) { Fail "structure ratchet NOT CONFIRMED (git was unusable, a file could not be read or parsed, or the declared shape is unknown)." }
-    if ($structureExit -ne 0) { Fail "structure ratchet failed (exit $structureExit): a new or grown file, function or directory, a src -> app import, or a root folder the shape does not list; see docs/layout.md and .structure-ratchet-baseline.json." }
-
-    # Instruction ratchet (scaffold docs/instruction-ratchet.md): the prompt
-    # audit's lint rules over CLAUDE.md, AGENTS.md and every SKILL.md (plus the
-    # docs a skill links to) may not rise above .instruction-ratchet-baseline.json.
-    # Whole tree, never path-routed: AGENTS.md decides how CLAUDE.md is read; exit 3
-    # means git was unusable or an instruction file could not be read, a failure
-    # and never a pass.
-    Phase "instruction ratchet..."
-    & $python scripts/instruction_ratchet.py
-    $instructionExit = $LASTEXITCODE
-    if ($instructionExit -eq 3) { Fail "instruction ratchet NOT CONFIRMED (git was unusable, or an instruction file is not UTF-8, has a fence that never closes, or a skill description that cannot be read)." }
-    if ($instructionExit -ne 0) { Fail "instruction ratchet failed (exit $instructionExit): an instruction file gained a lint hit or passed its size cap beyond .instruction-ratchet-baseline.json; see the named rule and lines above." }
-
-    # Doc references ratchet (scaffold docs/doc-refs-ratchet.md): a repo path,
-    # `python -m` module, relative link or loopback port that README.md, CLAUDE.md or
-    # docs/**/*.md names and the tree does not have may not rise above
-    # .doc-refs-ratchet-baseline.json. Whole tree, never path-routed: a code change
-    # can strand a doc reference without touching the doc; exit 3 means git was
-    # unusable or a doc could not be read, a failure and never a pass.
-    Phase "doc refs ratchet..."
-    & $python scripts/doc_refs_ratchet.py
-    $docRefsExit = $LASTEXITCODE
-    if ($docRefsExit -eq 3) { Fail "doc refs ratchet NOT CONFIRMED (git was unusable, or a doc is not UTF-8 or has a fence or HTML comment that never closes)." }
-    if ($docRefsExit -ne 0) { Fail "doc refs ratchet failed (exit $docRefsExit): a doc names a repo path, module, link or port that does not exist beyond .doc-refs-ratchet-baseline.json; see the named reference above." }
-
-    # Dead code ratchet (scaffold docs/dead-code-ratchet.md): a Python function,
-    # class or method that nothing in the repo refers to may not appear beyond
-    # .dead-code-ratchet-baseline.json. Whole tree, never path-routed: deleting the
-    # last caller in one file strands a definition in another; exit 3 means git was
-    # unusable or a tracked .py file could not be read or parsed, a failure and never
-    # a pass.
-    Phase "dead code ratchet..."
-    & $python scripts/dead_code_ratchet.py
-    $deadCodeExit = $LASTEXITCODE
-    if ($deadCodeExit -eq 3) { Fail "dead code ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
-    if ($deadCodeExit -ne 0) { Fail "dead code ratchet failed (exit $deadCodeExit): a function, class or method nothing refers to is not in .dead-code-ratchet-baseline.json; see the named definition above." }
-
-    # Conventions ratchet (scaffold docs/conventions-ratchet.md): a subprocess spawn
-    # without a console-window flag, a diagnostic print() in library code, a
-    # hardcoded drive path or a raw git spawn may not rise above
-    # .conventions-ratchet-baseline.json. Whole tree, never path-routed: a rule added
-    # to .fleet.toml must see every file; exit 3 means git was unusable or a tracked
-    # .py file could not be read or parsed, a failure and never a pass.
-    Phase "conventions ratchet..."
-    & $python scripts/conventions_ratchet.py
-    $conventionsExit = $LASTEXITCODE
-    if ($conventionsExit -eq 3) { Fail "conventions ratchet NOT CONFIRMED (git was unusable, or a tracked .py file cannot be read or does not parse)." }
-    if ($conventionsExit -ne 0) { Fail "conventions ratchet failed (exit $conventionsExit): a file's count for a convention rule rose above .conventions-ratchet-baseline.json; see the named rule and lines above." }
+    foreach ($stage in $ratchetStages) { Invoke-RatchetStage $stage }
 
     # Worker counts for both pytest phases live in e2e-gate-route.ps1;
     # a bad override fails here, before any phase runs.
