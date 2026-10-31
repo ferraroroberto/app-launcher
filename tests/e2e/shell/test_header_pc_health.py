@@ -162,3 +162,65 @@ def test_a_long_process_label_wraps_and_the_figure_keeps_its_line(
     assert geometry["labelH"] > geometry["valueH"], "the long label did not wrap"
     assert geometry["spill"] <= 0, f"the row spills by {geometry['spill']}px"
     assert geometry["valueRight"] <= geometry["rowRight"] + 0.5
+
+
+_OWNED = {
+    "verdict": "watch", "why": None, "reason": "hwinfo-plugin.exe at 349 k handles",
+    "fix": "Restart hwinfo-plugin.exe", "owner": "Stream Deck · HWiNFO plugin",
+    "restart_id": "streamdeck-hwinfo",
+}
+
+
+def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    _route_load(page, {"body": _reading("normal", 20.0)}, [])
+    posts: list[str] = []
+    state = {"body": _OWNED}
+
+    def health(route):
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(state["body"]))
+
+    def restart(route):
+        posts.append(route.request.url)
+        state["body"] = _verdict("ok")
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"restart_id": "streamdeck-hwinfo", "stopped": ["hwinfo-plugin.exe"], "errors": []}),
+        )
+
+    page.route(re.compile(r".*/api/system/health$"), health)
+    page.route(re.compile(r".*/api/system/restart/.*"), restart)
+    _boot(page, base_url)
+    body = _open_sheet(page)
+    expect(body.locator("[data-row='owner']")).to_contain_text("Stream Deck · HWiNFO plugin")
+    restart_btn = body.get_by_role("button", name="Restart")
+    expect(restart_btn).to_be_visible()
+
+    # Cancelling the confirm posts nothing.
+    restart_btn.click()
+    confirm = page.locator("#confirmDialog")
+    expect(confirm).to_be_visible()
+    page.locator("#confirmDialogClose").click()
+    expect(confirm).to_be_hidden()
+    assert posts == []
+
+    # Confirming posts the id alone, then the row is read again.
+    restart_btn.click()
+    page.locator("#confirmDialogOk").click()
+    expect(page.locator("#cpuSheetToast")).to_contain_text("Stopped hwinfo-plugin.exe")
+    expect(body.locator("[data-row='health']")).to_contain_text("OK")
+    expect(restart_btn).to_have_count(0)
+    assert len(posts) == 1 and posts[0].endswith("/api/system/restart/streamdeck-hwinfo")
+
+
+def test_no_restart_button_without_a_restart_id(authed_page: Page, base_url: str) -> None:
+    page = authed_page
+    _route_load(page, {"body": _reading("normal", 20.0)}, [])
+    _route_health(page, {**_OWNED, "restart_id": None})
+    _boot(page, base_url)
+    body = _open_sheet(page)
+    expect(body.locator("[data-row='owner']")).to_be_visible()
+    expect(body.get_by_role("button", name="Restart")).to_have_count(0)
