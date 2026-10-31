@@ -7,7 +7,8 @@
  * Escape and a backdrop tap all answer "no".
  *
  * promptDialog() is the same sheet with one text field (in place of
- * native prompt()): it resolves the trimmed text, or null on a "no".
+ * native prompt()): it resolves the trimmed text, or null on a "no". The Life
+ * OS renames use it too, so every sheet that asks for a name looks one way.
  *
  * Opens over another dialog too (Stop process from the Other ports sheet):
  * showModal() stacks it in the top layer.
@@ -22,6 +23,14 @@ function dialogEl() {
 const settler = createSettler(dialogEl, false);
 const finish = settler.finish;
 
+// The action. A required field that is empty keeps the sheet open on the
+// browser's own "fill out this field" bubble.
+function accept() {
+  const input = dialogEl().querySelector('#confirmDialogInput');
+  if (!input.hidden && !input.reportValidity()) return;
+  finish(true);
+}
+
 let wired = false;
 
 function wire(d) {
@@ -30,14 +39,12 @@ function wire(d) {
   d.querySelector('#confirmDialogClose').addEventListener('click', function () {
     finish(false);
   });
-  d.querySelector('#confirmDialogOk').addEventListener('click', function () {
-    finish(true);
-  });
+  d.querySelector('#confirmDialogOk').addEventListener('click', accept);
   // Enter in the text field is the action, as it was in the native prompt.
   d.querySelector('#confirmDialogInput').addEventListener('keydown', function (ev) {
     if (ev.key !== 'Enter') return;
     ev.preventDefault();
-    finish(true);
+    accept();
   });
   settler.wireDismiss(d);
 }
@@ -66,8 +73,18 @@ function open(opts, field) {
   input.hidden = !field;
   input.value = field ? field.value || '' : '';
   input.setAttribute('aria-label', field ? field.label : '');
+  input.required = !!(field && field.required);
+  input.placeholder = (field && field.placeholder) || '';
+  if (field && field.maxLength) input.maxLength = field.maxLength;
+  else input.removeAttribute('maxlength');
+  // 'none' keeps the keyboard from capitalising or correcting a file name.
+  const typing = (field && field.typing) || 'none';
+  input.setAttribute('autocapitalize', typing);
+  input.spellcheck = typing !== 'none';
   return settler.show(d, function () {
-    if (field) input.select();
+    // The starting text is selected, so typing replaces it and the arrow
+    // keys edit it.
+    if (field) { input.focus(); input.select(); }
   });
 }
 
@@ -77,10 +94,16 @@ export function confirmDialog(opts) {
   return open(opts, null);
 }
 
-// opts: as confirmDialog's, plus value (the field's starting text) and
-// label (its accessible name). Resolves the trimmed text, or null.
+// opts: as confirmDialog's (message is the help line under the title), plus
+// value (the field's starting text), label (its accessible name) and
+// optionally placeholder, maxLength, required (an empty field is refused) and
+// typing ('none' for a name, 'sentences' for prose). Resolves the trimmed
+// text, or null.
 export function promptDialog(opts) {
-  return open(opts, { value: opts.value, label: opts.label }).then(function (ok) {
+  return open(opts, {
+    value: opts.value, label: opts.label, placeholder: opts.placeholder,
+    maxLength: opts.maxLength, required: opts.required, typing: opts.typing,
+  }).then(function (ok) {
     if (!ok) return null;
     return dialogEl().querySelector('#confirmDialogInput').value.trim();
   });

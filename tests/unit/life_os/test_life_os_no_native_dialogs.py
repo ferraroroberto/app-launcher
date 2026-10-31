@@ -43,4 +43,4 @@ def test_the_search_finds_a_native_call() -> None:
     assert _NATIVE.search("if (!confirm('x')) return;")
     assert _NATIVE.search("const v = window.prompt('x', '');")
     assert not _NATIVE.search("await confirmDialog({ title: 'x' });")
-    assert not _NATIVE.search("els.lifeOsRenameDialog.showModal();")
+    assert not _NATIVE.search("d.showModal();")

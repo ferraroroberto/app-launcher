@@ -32,7 +32,7 @@ pytestmark = pytest.mark.smoke
 
 def _selection(page: Page) -> tuple:
     """The rename input's selected range, as (start, end)."""
-    return tuple(page.locator("#lifeOsRenameInput").evaluate(
+    return tuple(page.locator("#confirmDialogInput").evaluate(
         "el => [el.selectionStart, el.selectionEnd]"))
 
 
@@ -88,17 +88,17 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
     first = rows.first
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
 
-    dialog = authed_page.locator("#lifeOsRenameDialog")
+    dialog = authed_page.locator("#confirmDialog")
     rename = _open_sheet(authed_page, 0).locator(".lifeos-convo-rename")
     rename.click()
     expect(dialog).to_be_visible()
-    expect(authed_page.locator("#lifeOsRenameHeading")).to_have_text("Rename conversation")
+    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Rename conversation")
     # An untitled conversation opens on its topic, selected (#1953).
-    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("booking the ferry")
-    expect(authed_page.locator("#lifeOsRenameInput")).to_be_focused()
+    expect(authed_page.locator("#confirmDialogInput")).to_have_value("booking the ferry")
+    expect(authed_page.locator("#confirmDialogInput")).to_be_focused()
     assert _selection(authed_page) == (0, len("booking the ferry"))
     # The header ✕ cancels without a request, back on the sheet.
-    authed_page.locator("#lifeOsRenameClose").click()
+    authed_page.locator("#confirmDialogClose").click()
     expect(dialog).to_be_hidden()
     expect(authed_page.locator("#lifeOsConvoSheet")).to_be_visible()
     flush_requests(authed_page)
@@ -106,14 +106,14 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
 
     # Saving the untouched topic writes nothing: it is already the shown name.
     rename.click()
-    authed_page.locator("#lifeOsRenameSave").click()
+    authed_page.locator("#confirmDialogOk").click()
     expect(dialog).to_be_hidden()
     flush_requests(authed_page)
     assert patches == []
 
     rename.click()
-    authed_page.locator("#lifeOsRenameInput").fill("  Ferry  to the island ")
-    authed_page.locator("#lifeOsRenameSave").click()
+    authed_page.locator("#confirmDialogInput").fill("  Ferry  to the island ")
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(patches) == 1, "the rename PATCH")
     assert patches[0][1] == {"title": "Ferry to the island"}
     assert "path=.claude%2Fskills%2Fjournal-daily%2Fconversations%2F" \
@@ -136,9 +136,9 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
 
     # The dialog opens on the current title; saving it empty clears it.
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    expect(authed_page.locator("#lifeOsRenameInput")).to_have_value("Ferry to the island")
-    authed_page.locator("#lifeOsRenameInput").fill("")
-    authed_page.locator("#lifeOsRenameSave").click()
+    expect(authed_page.locator("#confirmDialogInput")).to_have_value("Ferry to the island")
+    authed_page.locator("#confirmDialogInput").fill("")
+    authed_page.locator("#confirmDialogOk").click()
     wait_until(authed_page, lambda: len(patches) == 2, "the clearing PATCH")
     assert patches[1][1] == {"title": ""}
     assert titles == {}
@@ -162,7 +162,7 @@ def test_life_os_rename_sheet_prefill_fits_at_phone_width(
     _open_conversations(authed_page, base_url)
     authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    field = authed_page.locator("#lifeOsRenameInput")
+    field = authed_page.locator("#confirmDialogInput")
     expect(field).to_have_value("booking the ferry")
     assert _selection(authed_page) == (0, len("booking the ferry"))
     fit = field.evaluate("""el => {
@@ -205,7 +205,7 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
     _open_conversations(authed_page, base_url)
     authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    field = authed_page.locator("#lifeOsRenameInput")
+    field = authed_page.locator("#confirmDialogInput")
     expect(field).to_be_focused()
     value = field.input_value()
     assert 0 < len(value) <= 120 and long_topic.startswith(value), value
@@ -215,8 +215,8 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
     if shot_dir:
         authed_page.screenshot(
             path=os.path.join(shot_dir, f"rename-long-topic-{theme}.png"))
-    authed_page.locator("#lifeOsRenameSave").click()
-    expect(authed_page.locator("#lifeOsRenameDialog")).to_be_hidden()
+    authed_page.locator("#confirmDialogOk").click()
+    expect(authed_page.locator("#confirmDialog")).to_be_hidden()
     flush_requests(authed_page)
     assert patches == []
 
@@ -237,8 +237,8 @@ def test_life_os_rename_refusal_keeps_the_row_and_says_why(
     _open_conversations(authed_page, base_url)
     first = _convo_rows(authed_page).first
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
-    authed_page.locator("#lifeOsRenameInput").fill("Nope")
-    authed_page.locator("#lifeOsRenameSave").click()
+    authed_page.locator("#confirmDialogInput").fill("Nope")
+    authed_page.locator("#confirmDialogOk").click()
     expect(authed_page.locator("#toast")).to_contain_text("no longer in the index")
     expect(authed_page.locator("#lifeOsConvoSheetTitle")).to_have_text("booking the ferry")
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
