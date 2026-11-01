@@ -714,7 +714,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
     empty.dataset.sig = sig;
     empty.replaceChildren(emptyStateEl(col.glyph, text, action));
   }
-  empty.hidden = cards.length > 0;
+  empty.hidden = total > 0;
 }
 
 export function renderBoard() {

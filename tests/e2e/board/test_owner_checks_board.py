@@ -71,6 +71,8 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
 
     lane = authed_page.locator("#boardColYours")
     expect(lane.locator(".board-count")).to_have_text("3")
+    # Owner checks are something that needs you: no "Nothing needs you" above them.
+    expect(lane.locator('.board-empty[data-col="your_turn"]')).to_be_hidden()
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("3")
     groups = lane.locator(".board-owner-group")
     expect(groups).to_have_count(2)

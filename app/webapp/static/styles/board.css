@@ -440,12 +440,23 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
    card's headings, a row's tap unfolding its detail (why, what to try, the
    links as reference pills in 44px targets, Answer). */
 .board-owner:empty { display: none; }
+/* Headings, the freshness line, the detail and the group's button take the
+   rows' inset, as the Done lane's day headers do, so they line up with the
+   row text on the phone and on the inset-less desktop grid alike. */
+.board-owner-group > .board-plan-heading,
+.board-owner-state,
+.board-owner-detail { padding-inline: var(--board-card-inset, 14px); }
+.board-owner-answer-all {
+  width: calc(100% - 2 * var(--board-card-inset, 14px));
+  margin-inline: var(--board-card-inset, 14px);
+}
 .board-owner-detail {
+  flex: 0 0 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 6px;
-  padding: 0 0 12px;
+  padding-bottom: 12px;
 }
 .board-owner-line,
 .owner-answer-line { margin: 0; overflow-wrap: anywhere; }
