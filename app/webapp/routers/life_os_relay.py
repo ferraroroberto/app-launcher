@@ -89,7 +89,7 @@ from app.webapp.routers.life_os_conversations import (
 )
 from app.webapp.routers.life_os_search import (
     _MAX_QUERY_CHARS,
-    _SEARCH_LIMIT_MAX,
+    SEARCH_LIMIT_MAX,
     _search_limit,
     run_conversation_search,
 )
@@ -293,9 +293,9 @@ async def _search_offerable(caller: _Caller, query: str, limit: int,
             return reply
         hits = reply["results"]
         kept = _offerable(hits, groups)
-        if len(kept) >= limit or len(hits) < fetch or fetch >= _SEARCH_LIMIT_MAX:
+        if len(kept) >= limit or len(hits) < fetch or fetch >= SEARCH_LIMIT_MAX:
             return {**reply, "results": kept[:limit], "excluded": len(hits) - len(kept)}
-        fetch = min(fetch + len(hits) - len(kept), _SEARCH_LIMIT_MAX)
+        fetch = min(fetch + len(hits) - len(kept), SEARCH_LIMIT_MAX)
 
 
 @router.get(f"{_PREFIX}/conversations")

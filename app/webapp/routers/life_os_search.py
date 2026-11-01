@@ -35,7 +35,7 @@ _SEARCH_TIMEOUT_S = 15
 # injection guard.
 _MAX_QUERY_CHARS = 200
 _SEARCH_LIMIT_DEFAULT = 20
-_SEARCH_LIMIT_MAX = 100
+SEARCH_LIMIT_MAX = 100
 
 
 def _search_unavailable(reason: str) -> Dict[str, Any]:
@@ -54,7 +54,7 @@ def _search_limit(raw: Optional[str]) -> int:
         limit = int(raw) if raw else _SEARCH_LIMIT_DEFAULT
     except (TypeError, ValueError):
         return _SEARCH_LIMIT_DEFAULT
-    return max(1, min(limit, _SEARCH_LIMIT_MAX))
+    return max(1, min(limit, SEARCH_LIMIT_MAX))
 
 
 @router.get("/api/life-os/conversations/search")
