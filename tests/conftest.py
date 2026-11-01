@@ -358,7 +358,7 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     monkeypatch.setattr(
         owner_checks_mod, "MARKS_FILE", tmp_path / "owner-check-marks.json"
     )
-    owner_checks_mod.reset_cache()
+    owner_checks_mod.reset_owner_cache()
 
     # A GitHub refresh starts the owner-check list; in a test it must never
     # reach the real CLI (and GitHub). Tests that read it fake _run_cli.

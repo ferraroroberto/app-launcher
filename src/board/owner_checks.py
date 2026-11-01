@@ -270,7 +270,7 @@ def snapshot(*, now: Optional[datetime] = None, marks_path: Optional[Path] = Non
     }
 
 
-def reset_cache() -> None:
+def reset_owner_cache() -> None:
     """Test helper: the pristine never-fetched cache."""
     global _last_refresh_started
     with _lock:

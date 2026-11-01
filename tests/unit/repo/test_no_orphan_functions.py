@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent.parent
 PROD_SUFFIXES = {".py", ".js", ".mjs", ".html", ".css", ".ps1", ".bat", ".json", ".toml", ".yml", ".mmd"}
 ALLOWED_ORPHANS = {  # ``path:name`` -> why production not naming it is fine
     "src/clients/github.py:reset_cache": "test seam: empties the module-level cache between tests",
+    "src/board/owner_checks.py:reset_owner_cache": "test seam: empties the owner-check cache between tests",
 }
 
 
