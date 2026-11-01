@@ -414,6 +414,14 @@ def create_issue(owner: str, repo: str, title: str, body: str) -> str:
     return lines[-1]
 
 
+def comment_issue(owner: str, repo: str, number: int, body: str) -> None:
+    """Post one comment on ``owner/repo#number``; the body travels on stdin."""
+    _run_gh(
+        ["issue", "comment", str(number), "--repo", f"{owner}/{repo}", "--body-file", "-"],
+        stdin_text=body,
+    )
+
+
 def snapshot() -> Dict[str, Any]:
     """The cached GitHub view — a pure memory read, safe on every poll."""
     with _lock:

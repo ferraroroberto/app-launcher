@@ -24,7 +24,7 @@ Five tabs, plus **Settings** behind the **⚙ gear** in every page header:
 - **Apps** — the registered Streamlit / FastAPI / tunnel / tray launchers, plus a Port-listeners panel with one-tap smart-kill.
 - **Jobs** — one-shot Python scripts and scheduled jobs, fired from the phone, the Stream Deck or Task Scheduler through one shared trigger surface.
 - **Life OS** — one row per [`life-os`](https://github.com/ferraroroberto/life-os) skill, its conversations, the weekly recap and Telegram channels.
-- **Board** — a read-only kanban of what needs you now across the fleet.
+- **Board** — a read-only kanban of what needs you now across the fleet, owner checks (work to validate, steps owed before a start) included.
 
 Every behaviour, per tab, is in [docs/features.md](docs/features.md); the deep references are [Session view](docs/session-view.md), [Jobs tab](docs/jobs-tab.md) and [Board](docs/board.md).
 

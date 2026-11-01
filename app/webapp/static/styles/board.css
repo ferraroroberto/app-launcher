@@ -436,6 +436,56 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   padding-block: 0;
 }
 
+/* Owner checks, under Your turn's sessions: one group per kind on the plan
+   card's headings, a row's tap unfolding its detail (why, what to try, the
+   links as reference pills in 44px targets, Answer). */
+.board-owner:empty { display: none; }
+/* Headings, the freshness line, the detail and the group's button take the
+   rows' inset, as the Done lane's day headers do, so they line up with the
+   row text on the phone and on the inset-less desktop grid alike. */
+.board-owner-group > .board-plan-heading,
+.board-owner-state,
+.board-owner-detail { padding-inline: var(--board-card-inset, 14px); }
+.board-owner-answer-all {
+  width: calc(100% - 2 * var(--board-card-inset, 14px));
+  margin-inline: var(--board-card-inset, 14px);
+}
+.board-owner-detail {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 12px;
+}
+.board-owner-line,
+.owner-answer-line { margin: 0; overflow-wrap: anywhere; }
+.board-owner-line { font-size: var(--font-body-sm); }
+.board-owner-links { display: flex; flex-wrap: wrap; column-gap: 4px; }
+.board-owner-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--row-sm);
+  text-decoration: none;
+}
+.board-owner-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.board-owner-pill .icon { width: var(--icon-inline); height: var(--icon-inline); }
+.board-owner-row.is-answered .action-row-title { color: var(--muted); }
+.board-owner-answer { padding-block: 0; }
+
 /* The chief's answer sheet: the modal shell, full-screen on the
    phone. Each question borrows the transcript AskUserQuestion card's parts
    (.tr-ask-*), so options, marks and the Other field look as they do in

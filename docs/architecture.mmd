@@ -71,7 +71,8 @@ reads the PTY screen + types keystrokes (#1424)"]
 + life_os_relay.py (a profile's bot finds, resumes, steers its skill's conversations, #1639)
 (its Delete runs src/life_os/delete.py, shared with the life-os-zombie-cleanup CLI + nightly Job, #1738)
 + life_os_archived.py (the zombie cleanup's archive: list, read, restore)"]
-      R_BOARD["board.py — /api/board (Board tab) + issue start\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)"]
+      R_BOARD["board.py — /api/board (Board tab) + issue start\n+ board_chief.py (fleet-chief ensure/settings, #245)\n+ board_spawn.py (shared spawn-then-type)
++ board_owner.py (owner-check answers)"]
       R_WEBAUTHN["webauthn.py — passkey ceremonies"]
       R_USAGE["src/usage_log.py (vendored) — /api/usage\nlocal view/tap log, runtime-data SQLite (#1524)"]
       R_SCREENTIME["screen_time.py — /api/screen-time/export\nSend to task-os via src/usage/export.py\n(also the usage-export CLI + nightly Job, #1678)"]
@@ -148,6 +149,7 @@ read over loopback and cached behind /api/system/health"]
     BOARD["board/__init__.py\npure assembly: sessions + jobs + GitHub"]
     GHCLIENT["clients/github.py\ngh CLI reads, cached snapshot"]
     PROOFREPORTS["board/proof_reports.py\nread-only view of each repo's\n.proof visual-proof store"]
+    OWNERCHECKS["board/owner_checks.py\nowner-check list cache + Later/Problem marks,\nvia fleet-config's owner_check CLI"]
     NOTIFY["notifications.py\nPushover/Telegram on job failure"]
     WEBAPPCFG["webapp_config.py\nconfig/webapp_config.json"]
     LAUNCHFLAGS["launching/flags.py\nper-agent CLI flag builders"]
@@ -237,6 +239,7 @@ read over loopback and cached behind /api/system/health"]
   BOARD --> JOBSFACADE
   BOARD --> GHCLIENT
   R_BOARD -->|"Done Issue/PR/Proof + report route"| PROOFREPORTS
+  R_BOARD -->|"Your turn owner checks + answers"| OWNERCHECKS
   BOARD -->|reads| SESSSTATE["~/.claude/hooks/state/sessions-state.json\n(fleet-config session_state hook)"]
   BOARD -->|reads| ACTIVEISSUES["~/.claude/hooks/state/active-issues.json\n(fleet-config issue workflows)"]
   R_BOARD -->|"reads + writes\n(which conversation the chief is, #675)"| CHIEFPTR["src/chief/pointer.py →\nwebapp/chief-pointer.json"]

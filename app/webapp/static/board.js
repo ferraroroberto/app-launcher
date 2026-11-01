@@ -4,9 +4,10 @@
  * lanes in this order: Backlog (open issues), the chief's plan over
  * Claude's turn (sessions working/unknown/idle/idle-finished/tool-pending/
  * waiting-on-task),
- * Your turn (stalled/awaiting-decision/awaiting-input sessions only — a split
+ * Your turn (stalled/awaiting-decision/awaiting-input sessions — a split
  * of the old undifferentiated needs-you, sharpened by a
- * tool-pending carve-out), PRs and jobs (open PRs + failed/unconfirmed/stuck
+ * tool-pending carve-out — then the owner checks, board/owner-checks.js),
+ * PRs and jobs (open PRs + failed/unconfirmed/stuck
  * jobs), Done today (closed issues today). Each lane
  * is a collapsible section card like every other tab's — stacked on
  * the phone, side by side on the desktop grid — with its count in the
@@ -68,7 +69,8 @@ import { openQuestionCount } from './board/chief-keys.js';
 import {
   buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
 } from './board/drawer.js';
-import { agoText, renderChiefPlan } from './board/chief-plan.js';
+import { agoText, openAnswersAt, renderChiefPlan } from './board/chief-plan.js';
+import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
 
@@ -509,7 +511,11 @@ function liveSessionsRead(body) {
 // right now." is reachable only from a session list actually read.
 function emptyText(col, body, ghLoaded, liveRead) {
   if (col.live) {
-    return liveRead ? col.empty : 'Session-host unreachable — sessions unknown.';
+    if (!liveRead) return 'Session-host unreachable — sessions unknown.';
+    // Your turn also holds the owner checks: until their list has landed,
+    // only the sessions are known to need nothing.
+    if (col.key === 'your_turn' && ownerNeedsCount(body) === null) return 'No sessions need you right now.';
+    return col.empty;
   }
   if (!col.gh || ghLoaded) return col.empty;
   const failed = !!(body.github && body.github.error);
@@ -595,13 +601,13 @@ function renderBoardHead(body, ghLoaded, liveRead) {
     return (columns[key] || []).filter(function (c) { return !isOffBoard(c); }).length;
   };
   const questions = openQuestionCount(state.chiefPlan);
-  const yours = sessions('your_turn');
+  const yours = sessions('your_turn') + (ownerNeedsCount(body) || 0);
   const failing = (columns.other || []).filter(jobFailing).length;
   const exceptions = [];
   if (questions) exceptions.push({ text: plural(questions, 'question', 'questions'), short: questions + ' Q', tone: 'attention' });
   if (yours) exceptions.push({ text: yours + ' needs you', short: yours + ' you', tone: 'attention' });
   if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
-  const live = yours + sessions('claude_turn');
+  const live = sessions('your_turn') + sessions('claude_turn');
   const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
   if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
   renderFittedHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
@@ -665,22 +671,24 @@ function revealDrawerSection(visible, expandedCard) {
 }
 
 // One lane: its section's count and flags, its rows, its empty state.
-function renderLane(col, cards, openItem, body, ghLoaded, liveRead) {
+// `extra` is rows drawn outside the lane's list: Your turn's owner checks.
+function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
+  const total = cards.length + (extra || 0);
   // A live column can still hold external cards (hook state + fresh
   // transcript) with the session-host down; those make a real lower bound,
   // so only an empty one reads as unknown.
   const unknown = (col.gh === 'all' && !ghLoaded)
-    || (col.live && !liveRead && cards.length === 0);
-  const shown = unknown ? '—' : String(cards.length);
+    || (col.live && !liveRead && total === 0);
+  const shown = unknown ? '—' : String(total);
   const section = els[col.section];
   if (section) {
     const count = section.querySelector('.board-count');
     if (count) count.textContent = shown;
-    section.classList.toggle('attention', col.key === 'your_turn' && cards.length > 0);
+    section.classList.toggle('attention', col.key === 'your_turn' && total > 0);
     // At the wide query an empty lane is a one-line strip.
     // Done with earlier days under it is a lane, not a strip.
     section.classList.toggle('is-empty',
-      cards.length === 0 && !(col.key === 'done' && doneEarlierLoaded()));
+      total === 0 && !(col.key === 'done' && doneEarlierLoaded()));
     // PRs and jobs, folded, says what is wrong instead of its count.
     if (col.key === 'other') {
       const failing = cards.filter(jobFailing).length;
@@ -706,7 +714,7 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead) {
     empty.dataset.sig = sig;
     empty.replaceChildren(emptyStateEl(col.glyph, text, action));
   }
-  empty.hidden = cards.length > 0;
+  empty.hidden = total > 0;
 }
 
 export function renderBoard() {
@@ -725,8 +733,10 @@ export function renderBoard() {
   const liveRead = liveSessionsRead(body);
 
   revealDrawerSection(visible, expandedCard);
+  const owner = renderOwnerChecks(body, openAnswersAt);
   COLUMNS.forEach(function (col) {
-    renderLane(col, visible[col.key], openItem, body, ghLoaded, liveRead);
+    renderLane(col, visible[col.key], openItem, body, ghLoaded, liveRead,
+      col.key === 'your_turn' ? owner : 0);
   });
   sizeLaneGrid();
 
