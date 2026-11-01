@@ -31,6 +31,18 @@ _PARSE_CAPTURES_TIMEOUT_S = 15
 OVERSIZED_HANDOFF_REASON = "Capture exceeds the launch size limit; it can be resumed but not handed off."
 MAX_HANDOFF_CHARS = 24_000
 HANDOFF_TTL_SECONDS = 24 * 3600
+# The Telegram plugin delivers each message as a ``<channel source=...>`` tag,
+# which the capture keeps verbatim (its tag strip only removes attribute-less
+# tags), so a bot's own chat is the one whose first user turn opens with it.
+_USER_TURN = "**You**: "
+_CHANNEL_TURN = _USER_TURN + '<channel source="plugin:telegram:'
+
+
+def opens_on_channel(text: str) -> bool:
+    """Whether a capture's first user turn is a Telegram channel message,
+    which makes the conversation a bot's own chat."""
+    first = next((line for line in text.splitlines() if line.startswith(_USER_TURN)), "")
+    return first.startswith(_CHANNEL_TURN)
 # Only shared, versioned helpers interpret identity. Source text travels via
 # stdin, never command arguments, stderr logs, or an executable command string.
 _CONTRACT_PROBE = (
@@ -78,6 +90,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
     A capture over :data:`MAX_CAPTURE_BYTES` gets header identity only (agent,
     sid, provenance, a streamed ``revision``) and ``oversized: True``; it carries
     no ``body``, so resume works while a handoff stays unavailable (#1739).
+    Every readable capture carries ``bot_chat`` (:func:`opens_on_channel`),
+    read from the same prefix when oversized.
     """
     results: list[dict[str, Any]] = []
     texts: list[str] = []
@@ -101,12 +115,13 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
             continue
         item["readable"] = True
         try:
-            # A prefix can end mid-character; only the header is read from it.
+            # A prefix can end mid-character; only the header and first turn are read from it.
             text = (raw[:MAX_HEADER_BYTES].decode("utf-8", errors="ignore") if oversized
                     else raw.decode("utf-8"))
         except UnicodeError:
             item["reason"] = "Capture encoding is unreadable."
             continue
+        item["bot_chat"] = opens_on_channel(text)
         item["revision"] = streamed if oversized else hashlib.sha256(raw).hexdigest()
         item["oversized"] = oversized
         positions.append(len(results) - 1)
@@ -136,7 +151,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError):
         logger.warning("Life OS shared capture reader unavailable")
         for index in positions:
-            results[index] = {"readable": True, "reason": "Shared capture reader is unavailable.", "native": False}
+            results[index] = {"readable": True, "reason": "Shared capture reader is unavailable.",
+                              "native": False, "bot_chat": results[index]["bot_chat"]}
     return results
 
 

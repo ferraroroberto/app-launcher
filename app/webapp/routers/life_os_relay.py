@@ -65,6 +65,7 @@ from src import audit, board
 from src.clients import session as session_client
 from src.launching.flags import build_claude_flags
 from src.life_os import relay_registry
+from src.life_os.bot_titles import bot_conversation_ids
 from src.launching.channel_profiles import (
     ChannelProfile,
     LABEL_PREFIX,
@@ -88,6 +89,7 @@ from app.webapp.routers.life_os_conversations import (
 )
 from app.webapp.routers.life_os_search import (
     _MAX_QUERY_CHARS,
+    SEARCH_LIMIT_MAX,
     _search_limit,
     run_conversation_search,
 )
@@ -268,28 +270,61 @@ async def _audit(caller: _Caller, request: Request, action: str, **fields: Any) 
     )
 
 
+def _offerable(rows: List[Dict[str, Any]],
+               groups: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    """``rows`` without any Telegram bot's own conversation: one a live
+    ``telegram:*`` session holds, or one whose capture opens on a channel
+    message (a bot chat that is no longer running). Resuming either would
+    attach a second session to the bot's channel transcript."""
+    bots = bot_conversation_ids(groups)
+    return [row for row in rows
+            if not row.get("bot_chat") and str(row.get("sid") or "").lower() not in bots]
+
+
+async def _search_offerable(caller: _Caller, query: str, limit: int,
+                            groups: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """The search reply with the bot chats left out, still up to ``limit``
+    hits: when leaving some out falls short and the search had more, it is
+    asked again for as many more as were left out. Adds ``excluded``."""
+    fetch = limit
+    while True:
+        reply = await run_conversation_search(caller.cfg, query, caller.skill.id, fetch)
+        if not reply["available"]:
+            return reply
+        hits = reply["results"]
+        kept = _offerable(hits, groups)
+        if len(kept) >= limit or len(hits) < fetch or fetch >= SEARCH_LIMIT_MAX:
+            return {**reply, "results": kept[:limit], "excluded": len(hits) - len(kept)}
+        fetch = min(fetch + len(hits) - len(kept), SEARCH_LIMIT_MAX)
+
+
 @router.get(f"{_PREFIX}/conversations")
 async def relay_find(profile_id: str, request: Request) -> Dict[str, Any]:
     """The skill's conversations, newest first, or the search hits for ``q``.
 
     Each row says whether it can be resumed and, when a session already has
-    it open, that ``session_id`` (steer that one instead of resuming).
-    ``state`` is ``found``, ``none`` or ``unavailable`` (search not working,
-    with a ``reason``).
+    it open, that ``session_id`` (steer that one instead of resuming). A
+    Telegram bot's own conversation is never listed (:func:`_offerable`), and
+    is left out before ``limit`` applies. ``state`` is ``found``, ``none`` or
+    ``unavailable`` (search not working, with a ``reason``).
     """
     caller = await _caller(profile_id, request)
     query = (request.query_params.get("q") or "").strip()
     limit = _search_limit(request.query_params.get("limit"))
     if len(query) > _MAX_QUERY_CHARS:
         _refuse(400, "refused", "The search text is too long.")
+    groups = await _group_by_conversation(caller.cfg, caller.sessions)
     if query:
-        reply = await run_conversation_search(caller.cfg, query, caller.skill.id, limit)
+        reply = await _search_offerable(caller, query, limit, groups)
         if not reply["available"]:
             return {"state": "unavailable", "reason": reply["reason"], "conversations": []}
-        rows = reply["results"]
+        rows, excluded = reply["results"], reply["excluded"]
     else:
-        rows = (await skill_conversations(caller.cfg, caller.skill))[:limit]
-    groups = await _group_by_conversation(caller.cfg, caller.sessions)
+        everything = await skill_conversations(caller.cfg, caller.skill)
+        offerable = _offerable(everything, groups)
+        rows, excluded = offerable[:limit], len(everything) - len(offerable)
+    if excluded:
+        logger.info(f"ℹ️ relay {caller.profile.id}: find left out {excluded} bot conversation(s)")
     found = []
     for row in rows:
         owners = groups.get(str(row.get("sid") or "").lower(), [])
@@ -323,16 +358,20 @@ async def relay_resume(profile_id: str, request: Request) -> Dict[str, Any]:
     held = await _open_in_chat(caller, request, chat, "resume")
     if held:
         return held
-    rows = await skill_conversations(caller.cfg, caller.skill)
+    everything = await skill_conversations(caller.cfg, caller.skill)
+    rows = _offerable(everything, await _group_by_conversation(caller.cfg, caller.sessions))
     if path:
-        row = next((r for r in rows if r["path"] == path), None)
+        row = next((r for r in everything if r["path"] == path), None)
         if row is None:
             _refuse(404, "not_found", f"No conversation of {caller.skill.name} at that path.")
+        if row not in rows:
+            _refuse(409, "not_resumable",
+                    "That is a Telegram bot's own conversation; the relay never resumes it.")
         if not (row["resumable"] and row["path"]):
             _refuse(409, "not_resumable",
                     row["resume_reason"] or "That conversation can't be resumed.")
     else:
-        if not rows:
+        if not everything:
             _refuse(409, "not_resumable", f"{caller.skill.name} has no conversation yet.")
         row = next((r for r in rows if r["resumable"] and r["path"]), None)
         if row is None:

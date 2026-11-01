@@ -188,6 +188,7 @@ def _conversation_rows(
             "revision": source.get("revision", ""),
             "resumable": bool(source.get("native")) and not reason,
             "resume_reason": reason,
+            "bot_chat": bool(source.get("bot_chat")),
             "handoff_available": "body" in source,
             "handoff_truncated": len(source.get("body", "")) > MAX_HANDOFF_CHARS,
             "handoff_limit": MAX_HANDOFF_CHARS,
