@@ -22,14 +22,15 @@ from tests.e2e.fixtures.waits import stable_eval
 
 pytestmark = pytest.mark.smoke
 
-_NOW = int(time.time())
-_UP = 100_000  # 1d 3h
+# 27h30m: half an hour clear of the 1d 3h / 1d 4h boundary, and stamped per
+# request in ``_mock`` so the label never depends on when the module loaded.
+_UP = 99_000  # 1d 3h
 
 
 def _session(sid: str, folder: str, status, age, **extra) -> dict:
     s = {"session_id": sid, "kind": "pty", "agent": "claude", "label": "",
          "project_dir": "E:/work/" + folder, "name": sid, "flags": "",
-         "started_at": _NOW - _UP, "alive": True, "rows": 40, "cols": 120,
+         "started_at": None, "alive": True, "rows": 40, "cols": 120,
          "live_title": "", "prompt_title": sid + " title", "manual_title": "",
          "output_chars": 10,
          "board_column": None if status is None else "claude_turn",
@@ -70,7 +71,10 @@ def _mock(page: Page, sessions: list[dict]) -> None:
     def json_route(pattern: str, body: dict) -> None:
         page.route(re.compile(pattern), lambda route: route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)))
-    json_route(r".*/api/claude-code/sessions$", {"sessions": sessions})
+    page.route(re.compile(r".*/api/claude-code/sessions$"), lambda route: route.fulfill(
+        status=200, content_type="application/json",
+        body=_json.dumps({"sessions": [
+            {**s, "started_at": int(time.time()) - _UP} for s in sessions]})))
     json_route(r".*/api/board(\?.*)?$", _BOARD)
     json_route(r".*/api/board/chief-plan$", {"state": "empty"})
     json_route(r".*/api/claude-code/git-status$", {"projects": []})
