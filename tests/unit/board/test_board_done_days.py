@@ -103,7 +103,7 @@ def test_api_done_returns_one_earlier_local_day(webapp_client, monkeypatch):
     assert body["day"] == (date.today() - timedelta(days=2)).isoformat()
     assert [(i["repo"], i["number"], i["closed_at"]) for i in body["items"]] == [
         ("app-launcher", 5, "2026-07-01T09:00:00Z")]
-    assert [c[2] for c in calls] == ["issues", "prs"]   # a constant two gh searches per request
+    assert [c[2] for c in calls] == ["issues", "prs", "graphql"]   # a constant three gh calls per request
 
 
 def test_api_done_rejects_a_day_outside_the_week_without_calling_gh(webapp_client, monkeypatch):

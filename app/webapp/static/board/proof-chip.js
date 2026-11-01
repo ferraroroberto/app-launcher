@@ -12,9 +12,13 @@ import { ensureTerminalToken } from '../webauthn.js';
 import { openTextPreview } from '../lightbox.js';
 import { chip } from '../glance.js';
 
-// The "no proof" chip, for the row's meta line; none for any other state.
+// The row's meta-line chips: "no proof" when a UI PR shipped without a report,
+// "Not planned" for an issue closed as not planned; none for any other state.
 export function proofGapChips(card) {
-  return card.proof === 'missing' ? [chip('no proof', 'attention', 'board-proof-none')] : [];
+  const chips = [];
+  if (card.not_planned) chips.push(chip('Not planned', 'neutral', 'board-done-not-planned'));
+  if (card.proof === 'missing') chips.push(chip('no proof', 'attention', 'board-proof-none'));
+  return chips;
 }
 
 async function openProof(card, btn) {

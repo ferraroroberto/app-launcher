@@ -250,6 +250,71 @@ def search_merged_on(
     return closers
 
 
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9_.-]+$")
+# A PR body names an issue it only contributes to ("Part of #N") as well as
+# the ones it closes; either links the PR to a hand-closed issue.
+_REFERENCES = (
+    r"\b(?:part\s+of|progress(?:es|ed)?|close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+#{n}\b"
+)
+_NOT_PLANNED = "NOT_PLANNED"
+
+
+def _lookup_query(owner: str, issues: Sequence[Tuple[str, int]]) -> str:
+    """One GraphQL document asking close reason and referencing PRs per issue."""
+    blocks = []
+    for idx, (repo, number) in enumerate(issues):
+        blocks.append(
+            f'i{idx}: repository(owner: "{owner}", name: "{repo}") {{ issue(number: {number}) {{ '
+            "stateReason timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], last: 30) { nodes { "
+            "... on CrossReferencedEvent { source { ... on PullRequest { "
+            "number url merged mergedAt body repository { name } } } } } } } }"
+        )
+    return "query { " + " ".join(blocks) + " }"
+
+
+def lookup_unpaired(
+    owner: str, issues: Sequence[Tuple[str, int]]
+) -> Dict[Tuple[str, int], Dict[str, Any]]:
+    """Close reason and latest referencing merged PR for closed issues, in one call.
+
+    ``issues`` are ``(repo, number)`` pairs no same-day closing PR paired.
+    The value holds ``not_planned`` and, when a merged PR of the same repo
+    names the issue in its body with "Part of"/"Progresses"/a closing keyword
+    (on any merge day), ``pr``/``pr_url`` of the latest such PR. One GraphQL
+    request covers the whole page, so Done costs no per-card ``gh`` call.
+    """
+    safe = [(r, n) for r, n in issues if _SAFE_NAME.match(r) and n > 0]
+    if not safe or not _SAFE_NAME.match(owner):
+        return {}
+    out = _run_gh(["api", "graphql", "-f", f"query={_lookup_query(owner, safe)}"])
+    try:
+        data = (json.loads(out or "{}").get("data")) or {}
+    except (ValueError, AttributeError) as exc:
+        raise GhError(f"gh returned unparseable JSON: {exc}") from exc
+    found: Dict[Tuple[str, int], Dict[str, Any]] = {}
+    for idx, (repo, number) in enumerate(safe):
+        issue = ((data.get(f"i{idx}") or {}).get("issue")) or {}
+        if not issue:
+            continue
+        mention = re.compile(_REFERENCES.format(n=number), re.IGNORECASE)
+        best: Optional[Dict[str, Any]] = None
+        for node in (issue.get("timelineItems") or {}).get("nodes") or []:
+            pr = (node or {}).get("source") or {}
+            if not (pr.get("merged") and isinstance(pr.get("number"), int)):
+                continue
+            if str((pr.get("repository") or {}).get("name") or "") != repo:
+                continue
+            if not mention.search(str(pr.get("body") or "")):
+                continue
+            if best is None or str(pr.get("mergedAt") or "") > str(best.get("mergedAt") or ""):
+                best = pr
+        row: Dict[str, Any] = {"not_planned": issue.get("stateReason") == _NOT_PLANNED}
+        if best:
+            row.update(pr=best["number"], pr_url=str(best.get("url") or ""))
+        found[(repo, number)] = row
+    return found
+
+
 def search_done_on(
     owner: str, day: date, tz: Optional[tzinfo] = None
 ) -> List[Dict[str, Any]]:
@@ -261,7 +326,8 @@ def search_done_on(
     the day's exact UTC window (:func:`local_day_window`), so no row from a
     neighbouring day needs filtering out afterwards. Each row carries the PR
     that closed it (``pr``) and that PR's ``visual_proof`` state, from one more
-    search over the same window (:func:`search_merged_on`).
+    search over the same window (:func:`search_merged_on`); issues that search
+    leaves unpaired are resolved by :func:`lookup_unpaired`.
     """
     start, end = local_day_window(day, tz)
     closed = _search_json([
@@ -281,17 +347,29 @@ def search_done_on(
     except GhError as exc:
         logger.warning("⚠️ gh merged-PR search for %s failed: %s", day.isoformat(), exc)
         closers = {}
+    issues = [i for i in map(_norm_issue, closed) if _is_actionable(i["labels"])]
+    # Issues no same-day closer paired (a "Part of" PR, an earlier merge, a
+    # not-planned close) get one batched lookup; a failure leaves them bare.
+    unpaired = [
+        (i["repo"], int(i["number"] or 0)) for i in issues
+        if (i["repo"], int(i["number"] or 0)) not in closers
+    ]
+    try:
+        extra = lookup_unpaired(owner, unpaired)
+    except GhError as exc:
+        logger.warning("⚠️ gh PR lookup for %s failed: %s", day.isoformat(), exc)
+        extra = {}
     done: List[Dict[str, Any]] = []
-    for row in closed:
-        issue = _norm_issue(row)
-        if not _is_actionable(issue["labels"]):
-            continue
-        closer = closers.get((issue["repo"], int(issue["number"] or 0)))
+    for issue in issues:
+        key = (issue["repo"], int(issue["number"] or 0))
+        closer = closers.get(key)
+        found = extra.get(key) or {}
         done.append({
             **issue, "state": "closed", "labels": [],
-            "pr": closer["pr"] if closer else None,
-            "pr_url": closer["pr_url"] if closer else "",
+            "pr": closer["pr"] if closer else found.get("pr"),
+            "pr_url": closer["pr_url"] if closer else found.get("pr_url", ""),
             "visual_proof": closer["visual_proof"] if closer else None,
+            "not_planned": bool(found.get("not_planned")),
         })
     # By close time: a comment after the close bumps ``updatedAt``, so
     # ``updated_at`` only stands in for a row that has no close time.
