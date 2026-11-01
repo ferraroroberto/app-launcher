@@ -177,7 +177,7 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
     # files (#1349) follows Copy link in both modes; Compact (#1218) sits
     # last in the safe group, above the destructive divider.
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 
@@ -198,14 +198,14 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="terminal")
 
-    # Terminal mode: Rename · Copy link · Changed files · Background tasks · Compact · Stop and
+    # Terminal mode: Rename · Copy link · Changed files · Background tasks · Links · Compact · Stop and
     # kill (the chat-only rows are detached from the DOM, not hidden — #982;
     # Changed files and Compact show in both modes for a Claude session —
     # #1349, #1218).
     buttons = menu.locator("button")
-    expect(buttons).to_have_count(6)
+    expect(buttons).to_have_count(7)
     labels = menu.locator(".row-menu-label")
-    expect(labels).to_have_text(["Rename", "Copy link", "Changed files", "Background tasks", "Compact", "Stop and kill"])
+    expect(labels).to_have_text(["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Compact", "Stop and kill"])
     for i in range(6):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()

@@ -314,6 +314,12 @@ export const els = {
   bgTasksDone: document.getElementById('bgTasksDone'),
   bgTasksState: document.getElementById('bgTasksState'),
   bgTasksBody: document.getElementById('bgTasksBody'),
+  // Links sheet (links/links-sheet.js)
+  linksSheet: document.getElementById('linksSheet'),
+  linksClose: document.getElementById('linksClose'),
+  linksDone: document.getElementById('linksDone'),
+  linksState: document.getElementById('linksState'),
+  linksBody: document.getElementById('linksBody'),
   // Show changes overlay
   changesOverlay: document.getElementById('changesOverlay'),
   changesClose: document.getElementById('changesClose'),

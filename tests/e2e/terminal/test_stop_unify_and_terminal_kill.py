@@ -101,7 +101,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     menu = authed_page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Compact", "Stop and kill"]
     )
     # The overlay's own copy of the unified stop (#253) — the same path the
     # row menu's Stop calls, reached from inside the session view.

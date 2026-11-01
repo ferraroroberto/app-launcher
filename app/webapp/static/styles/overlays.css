@@ -413,6 +413,42 @@
 .webauthn-devices .icon-button { --icon-btn-box: 30px; }
 
 
+/* ---------- Links sheet ---------- */
+/* ⋮ → Links: a group per kind, hairline rows; the row body is the link (a 44px
+   tap target), the copy button sits at its end. */
+.links-sheet { width: min(480px, calc(100vw - 24px)); }
+.links-body { max-height: 60vh; overflow-y: auto; margin-bottom: 12px; }
+.links-group + .links-group { margin-top: 12px; }
+.links-group-title {
+  margin: 0;
+  padding: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-label);
+  font-weight: 700;
+  color: var(--fg);
+}
+.link-row { display: flex; align-items: center; gap: 8px; min-width: 0; border-top: 1px solid var(--line-muted); }
+.link-open {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--row-md);
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  color: inherit;
+  text-decoration: none;
+}
+.link-title,
+.link-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.link-title { font-size: var(--font-label); }
+.link-meta { font-size: var(--font-body-sm); color: var(--muted); }
+.link-copy { flex: none; --icon-btn-box: var(--hit-min); }
+.links-note { margin: 4px 0 0; font-size: var(--font-body-sm); color: var(--muted); }
+
 /* ---------- Background tasks sheet ---------- */
 /* ⋮ → Background tasks: Running then Finished N, each task a <details> row
    (title + "status · took 2m" meta, a chevron) opening its summary, command

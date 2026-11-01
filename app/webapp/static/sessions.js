@@ -43,6 +43,7 @@ import { createRowMenu } from './_vendored/row-menu/row-menu.js';
 import { icon } from './_vendored/icons/icons.js';
 import { hasTranscriptReader } from './chat/session-transcript.js';
 import { hasBackgroundTasks, openBackgroundTasks } from './background-tasks/background-tasks-sheet.js';
+import { hasLinks, openLinks } from './links/links-sheet.js';
 // runChiefAction (and the ensureChief it wraps) lives in board-dispatch.js
 // (split off board.js), exported
 // for this cross-tab use, as is the chief settings dialog; board.js already imports
@@ -395,6 +396,12 @@ function sessionMenuItems(s, kebab, isChief, remote) {
       label: 'Background tasks', ariaLabel: 'Show background tasks',
       hidden: !hasBackgroundTasks(s),
       onTap: function () { openBackgroundTasks(s); },
+    },
+    {
+      dataset: { item: 'session-links-btn' }, glyph: 'link',
+      label: 'Links', ariaLabel: 'Show links',
+      hidden: !hasLinks(s),
+      onTap: function () { openLinks(s); },
     },
     {
       dataset: { item: 'session-open-window-btn' }, glyph: 'monitor',
