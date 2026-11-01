@@ -26,7 +26,7 @@ class TestConversationSearch:
     def _bypass_gate(self, monkeypatch):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
@@ -260,7 +260,7 @@ class TestSourceHistoryRegression:
     def test_unknown_uuid_cannot_resume(self, life_os_client, monkeypatch):
         from app.webapp import middleware
         from app.webapp.routers import life_os_spawn
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_spawn, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
         client, _, _ = life_os_client
         response = client.post("/api/life-os/skills/journal-daily/launch", json={
@@ -283,7 +283,7 @@ class TestSourceHistory:
         from app.webapp import middleware
         from app.webapp.routers import life_os_conversations
         from src.life_os import history as life_os_history
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
         monkeypatch.setattr(life_os_history, "runtime_data_dir", lambda *a, **k: tmp_path)
 
@@ -522,7 +522,7 @@ def test_history_launch_private_gate(life_os_client, monkeypatch, action):
     endpoint = "/api/life-os/skills/journal-daily/conversations/launch"
     assert client.post(endpoint, json={"action": action}, headers={"Cf-Ray": "synthetic"}).status_code == 403
     assert client.post(endpoint, json={"action": action}).status_code == 403
-    monkeypatch.setattr(middleware, "client_in_tailnet", lambda *a: True)
+    monkeypatch.setattr(middleware.trust, "client_in_tailnet", lambda *a: True)
     monkeypatch.setattr(WebAuthnGate, "configured", lambda *a: True)
     monkeypatch.setattr(app.state.webauthn_gate, "valid_terminal_token", lambda token: token == "synthetic-unlock")
     assert client.post(endpoint, json={"action": action}).status_code == 401
@@ -546,7 +546,7 @@ def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, 
     assert middleware._terminal_guard_level(endpoint) == "passkey"
     assert client.post(endpoint, json={}, headers={"Cf-Ray": "synthetic"}).status_code == 403
     assert client.post(endpoint, json={}).status_code == 403
-    monkeypatch.setattr(middleware, "client_in_tailnet", lambda *a: True)
+    monkeypatch.setattr(middleware.trust, "client_in_tailnet", lambda *a: True)
     monkeypatch.setattr(WebAuthnGate, "configured", lambda *a: True)
     monkeypatch.setattr(app.state.webauthn_gate, "valid_terminal_token", lambda token: token == "synthetic-unlock")
     assert client.post(endpoint, json={}).status_code == 401

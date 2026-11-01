@@ -464,7 +464,7 @@ def test_a_sent_file_name_loses_its_bidi_override(tmp_path: Path):
 def _bypass_gate(monkeypatch):
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
 

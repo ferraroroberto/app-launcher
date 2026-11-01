@@ -129,7 +129,7 @@ class TestFreeTextDispatchIsGone:
 
         # Loopback, so the answer is the router's own and not the tailnet gate's.
         monkeypatch.setattr(
-            middleware, "LOOPBACK_HOSTS",
+            middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
         client, app, _ = webapp_client

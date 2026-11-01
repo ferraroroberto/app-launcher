@@ -23,7 +23,7 @@ class TestConversationsList:
     def _bypass_gate(self, monkeypatch):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
@@ -178,7 +178,7 @@ class TestTargetedResume:
     @pytest.fixture(autouse=True)
     def _bypass_gate(self, monkeypatch):
         from app.webapp import middleware
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
 
     """Resume one exact conversation — ``--resume <sid>``, not the picker."""
 
@@ -367,7 +367,7 @@ class TestConversationTranscript:
     def _loopback(self, monkeypatch):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware, "LOOPBACK_HOSTS",
+            middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
 

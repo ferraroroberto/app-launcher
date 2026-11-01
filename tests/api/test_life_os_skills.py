@@ -86,7 +86,7 @@ class TestLaunchSkill:
         test_launch_routes_are_passkey_gated."""
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )

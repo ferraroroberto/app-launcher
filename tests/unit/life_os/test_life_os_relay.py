@@ -51,7 +51,7 @@ def relay(life_os_client, tmp_path, monkeypatch):
     from src.clients import session as session_client
 
     client, app, overrides = life_os_client
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
     monkeypatch.setenv("APP_LAUNCHER_DATA_DIR", (tmp_path / "data").as_posix())
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))

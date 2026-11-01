@@ -68,7 +68,7 @@ def prune(webapp_client, tmp_path, monkeypatch):
     # The passkey gate is pinned by test_prune_route_is_passkey_gated; here the
     # TestClient host counts as loopback so the route logic runs.
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
     client, app, _ = webapp_client

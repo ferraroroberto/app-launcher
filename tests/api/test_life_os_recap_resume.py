@@ -87,7 +87,7 @@ class TestLaunchRecap:
         test_launch_routes_are_passkey_gated."""
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
@@ -252,7 +252,7 @@ class TestResumeLatest:
         from app.webapp import middleware
         from src.clients import session as session_client
         from src.life_os.transcript import claude_projects_dir
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("USERPROFILE", str(home))
@@ -389,7 +389,7 @@ class TestKeepModel:
     def test_absent_model_still_means_sonnet(self, life_os_client, monkeypatch):
         """An old cached client sends no model and no keep_model: unchanged."""
         from app.webapp import middleware
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         client, _, _ = life_os_client
         captured = _TargetedResume()._spawn_capture(monkeypatch)
         resp = client.post("/api/life-os/skills/journal-daily/conversations/launch", json={
@@ -402,7 +402,7 @@ class TestKeepModel:
         """The conversation row's Resume: a Codex model in the bar no longer blocks
         resuming a Claude conversation, and the bar's model is not applied."""
         from app.webapp import middleware
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
         client, _, _ = life_os_client

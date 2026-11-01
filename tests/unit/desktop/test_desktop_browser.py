@@ -82,7 +82,7 @@ def test_route_opens_only_for_the_pc_and_only_web_links(webapp_client, monkeypat
     refused = client.post("/api/open-url", json={"url": "https://example.test/"})
     assert refused.status_code == 403 and opened == []
 
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", middleware.LOOPBACK_HOSTS | {"testclient"})
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", middleware.LOOPBACK_HOSTS | {"testclient"})
     assert client.post("/api/open-url", json={"url": "file:///C:/x"}).status_code == 400
     app.state.webapp_config = replace(app.state.webapp_config, desktop_browser="system")
     ok = client.post("/api/open-url", json={"url": "https://example.test/pr"})

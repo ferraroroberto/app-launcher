@@ -159,7 +159,7 @@ class TestSettingsFile:
 def _bypass_gate(monkeypatch):
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware,
+        middleware.trust,
         "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
@@ -657,7 +657,7 @@ class TestSetupChecks:
     ):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware, "LOOPBACK_HOSTS",
+            middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
         client, app, _ = life_os_client
@@ -693,7 +693,7 @@ class TestSetupChecks:
     ):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware, "LOOPBACK_HOSTS",
+            middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
         client, app, _ = life_os_client

@@ -38,7 +38,7 @@ def _bypass_gate(monkeypatch):
     passkey gate itself is pinned by test_answered_route_is_passkey_gated)."""
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
 

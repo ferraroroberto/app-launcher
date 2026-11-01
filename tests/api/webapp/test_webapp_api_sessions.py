@@ -563,7 +563,7 @@ class TestProxySessionWS:
         from app.webapp import middleware
 
         hosts = frozenset({"testclient", "127.0.0.1", "::1", "localhost"})
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", hosts)
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", hosts)
         monkeypatch.setattr(sessions_router, "LOOPBACK_HOSTS", hosts)
 
     def test_upstream_handshake_rejection_closes_4502(

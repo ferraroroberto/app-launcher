@@ -347,7 +347,7 @@ def test_a_transcript_of_no_edits_is_an_empty_fold(tmp_path):
 def _bypass_gate(monkeypatch):
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
 

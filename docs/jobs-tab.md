@@ -380,8 +380,8 @@ turned into the same typed `params` a manual run would supply.
 
 ### Security boundary — no bearer, ever
 
-`/hook` sits **outside** the bearer-token gate entirely (`app/webapp/middleware.py`'s
-`_is_webhook_hook_path`) — an external service can't be handed the SPA's
+`/hook` sits **outside** the bearer-token gate entirely (`app/webapp/middleware/routes.py`'s
+`is_webhook_hook_path`) — an external service can't be handed the SPA's
 all-powerful bearer, and baking it into a third-party integration's URL store
 would be the same blast radius as leaking the token outright. Instead the
 route trusts **only** the job's own provider-specific signature:

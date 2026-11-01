@@ -91,7 +91,7 @@ _ENDPOINTS: Dict[str, tuple] = {
 def chat_app(webapp_client, monkeypatch):
     from app.webapp import middleware
 
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS",
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))
     _, app, overrides = webapp_client
     session = overrides["session"]

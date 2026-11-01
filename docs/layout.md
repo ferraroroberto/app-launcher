@@ -14,6 +14,7 @@ app-launcher/
 │   └── webapp/
 │       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
 │       ├── manager.py         # adopt-or-spawn webapp lifecycle
+│       ├── middleware/        # auth: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer
 │       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)

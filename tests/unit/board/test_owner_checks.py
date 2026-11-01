@@ -173,7 +173,7 @@ def test_no_fleet_config_is_its_own_error():
 def _bypass_gate(monkeypatch):
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
 

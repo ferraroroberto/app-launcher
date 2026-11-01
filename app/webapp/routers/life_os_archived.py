@@ -6,7 +6,7 @@
 
 Everything is read from the backup (src/life_os/zombie_backup.py), never from
 the live search index, so the capture pipeline keeps not seeing it. Gated like
-the captures it holds (passkey, ``app/webapp/middleware.py``). A URL's three
+the captures it holds (passkey, ``app/webapp/middleware/routes.py``). A URL's three
 parts must name an entry ``find_backups`` itself lists before anything is read
 or moved: nothing from the URL is joined onto a path unchecked.
 """
