@@ -887,6 +887,12 @@ span.chief-answer-ref { color: var(--muted); }
      row's own inset left the drawer's actions too little room for one row.
      The rows carry an inset already, so the grid's bodies drop the sides. */
   .board-col > .collapse-body { padding: 4px 0 8px; }
+  /* The body's sides are gone here, so the button takes the rows' inset
+     itself (sized to the lane minus both insets). */
+  .board-col .board-done-more {
+    width: calc(100% - 2 * var(--board-card-inset, 14px));
+    margin-inline: var(--board-card-inset, 14px);
+  }
   /* A full-bleed pane makes a full-width filter absurdly long: it is exactly
      one lane wide (the toolbar and the grid share the pane's content box and
      --board-lanes), so its edges line up with the first column's, ↻ beside

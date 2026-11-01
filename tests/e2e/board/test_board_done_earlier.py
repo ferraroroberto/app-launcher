@@ -103,3 +103,37 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
     assert authed_page.evaluate(
         "() => { const el = document.getElementById('boardColDone');"
         " return el.scrollWidth <= el.clientWidth; }")
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("width", [390, 1600])
+def test_show_earlier_button_lines_up_with_the_cards(
+    authed_page: Page, base_url: str, theme: str, width: int
+) -> None:
+    payload = _board_payload()
+    payload["columns"]["done"] = [_closed(7, "closed today", datetime.now(timezone.utc))]
+    _mock_board(authed_page, payload)
+    _serve_days(authed_page, [])
+    authed_page.set_viewport_size({"width": width, "height": 900})
+    _open_board(authed_page, base_url)
+    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+    _unfold(authed_page, "boardColDone")
+
+    done = authed_page.locator("#boardColDone")
+    more = done.locator(".board-done-more")
+    expect(more).to_be_visible()
+    # On the desktop grid the lane body has no sides, so the button takes the
+    # card inset itself; the phone's body already supplies it.
+    edges = authed_page.evaluate(
+        """() => {
+            const b = document.querySelector('#boardColDone .board-done-more').getBoundingClientRect();
+            const r = document.querySelector('#boardColDone li.board-item').getBoundingClientRect();
+            return {left: b.left - r.left, right: r.right - b.right};
+        }""")
+    # The grid layout is what drops the body's sides; the iPhone projection
+    # keeps the phone layout whatever its viewport width.
+    grid = authed_page.evaluate(
+        "() => getComputedStyle(document.querySelector('#boardColDone > .collapse-body')).paddingLeft === '0px'")
+    inset = 14 if grid else 0
+    assert abs(edges["left"] - inset) <= 1 and abs(edges["right"] - inset) <= 1, edges
