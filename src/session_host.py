@@ -35,7 +35,8 @@ from src.audit import transcript_path
 from src.session_host_composer import ComposerTracker, composer_tracker_for
 from src.session_host_input import touches_composer
 from src.session_hosting.child_env import agent_child_env
-from src.session_hosting.deferred_submit import DeferredSubmit
+from src.session_hosting.pending_discard import PendingInputProtocol
+from src.session_hosting.pending_input import PendingInputs
 from src.session_hosting.kinds import (
     STOP_GRACE_SECONDS,
     KIND_PTY,
@@ -104,10 +105,11 @@ PTY_MIN_COLS = 20
 # The server-initiated input-delivery protocol — bracketed-paste framing,
 # bulk settle-then-submit and ingest/echo verification — lives in
 # :mod:`src.session_host_input`, and the deferred-submit watcher that extends
-# it in :mod:`src.session_hosting.deferred_submit`. Only
-# :class:`DeferredSubmit` is imported here (as ``PtySession``'s base);
-# callers/tests needing the protocol's constants or :class:`InputOutcome`
-# import them from those modules directly.
+# it in :mod:`src.session_hosting.deferred_submit`, and pending-message
+# tracking and discard on top of both in :mod:`src.session_hosting.pending_discard`.
+# Only :class:`PendingInputProtocol` is imported here (as ``PtySession``'s
+# base); callers/tests needing the protocol's constants or
+# :class:`InputOutcome` import them from those modules directly.
 
 # First-prompt session title: how much un-submitted input we
 # buffer while waiting for the first submit — a line the user never sends
@@ -200,14 +202,16 @@ def _trim_ring_head(ring: str) -> str:
 
 
 @dataclass
-class PtySession(DeferredSubmit):
+class PtySession(PendingInputProtocol):
     """One ``claude`` process running inside a launcher-owned ConPTY.
 
     The server-initiated input-delivery protocol (``submit_input`` and
     everything downstream of it — settle-then-submit, ingest/echo
-    verification, the deferred-submit watcher) is supplied by
-    :class:`~src.session_host_input.InputProtocol` and
-    :class:`~src.session_hosting.deferred_submit.DeferredSubmit`, not defined here; this
+    verification, the deferred-submit watcher, pending messages and their
+    discard) is supplied by
+    :class:`~src.session_host_input.InputProtocol`,
+    :class:`~src.session_hosting.deferred_submit.DeferredSubmit` and
+    :class:`~src.session_hosting.pending_discard.PendingInputProtocol`, not defined here; this
     class keeps only the raw PTY-lifecycle concerns plus ``write``/
     ``_write_locked``, the chunk-and-pace write path the protocol builds on.
     """
@@ -323,6 +327,9 @@ class PtySession(DeferredSubmit):
     # every write in ``_write_locked``. None for an agent whose composer was
     # never probed, which reports ``composer_dirty: None``.
     _composer: Optional[ComposerTracker] = field(default=None, init=False)
+    # Messages accepted through ``/input`` that the agent has not taken yet:
+    # waiting in the composer for the watcher, or queued by the agent mid-turn.
+    _pending: PendingInputs = field(default_factory=PendingInputs, init=False)
 
     def __post_init__(self) -> None:
         self._composer = composer_tracker_for(self.agent)
@@ -614,6 +621,9 @@ class PtySession(DeferredSubmit):
         # CR landing in the middle of an interrupt or a "/quit" sequence
         # would be answering a terminal state it never verified.
         self._defer_seq += 1
+        # Every stop ends the turn the listed messages were waiting on, so what
+        # the list says about them no longer holds.
+        self._pending.clear()
         if mode == STOP_INTERRUPT:
             if self._composer is not None:
                 # An interrupt never went through write(), and an interrupted
@@ -731,6 +741,9 @@ class PtySession(DeferredSubmit):
             # None alike.
             "composer_dirty": composer_dirty,
             "composer_dirty_since": composer_dirty_since,
+            # Messages the agent has not taken yet, oldest first: what the
+            # Chat view's queued chip lists and can discard.
+            "pending_input": self.pending_input_api(),
         }
 
 

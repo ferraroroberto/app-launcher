@@ -74,3 +74,42 @@ export function judgeWatch(watch, entries, working, now) {
   if (working && !watch.wasWorking) return 'picked-up';
   return now >= watch.deadline ? 'not-picked-up' : 'waiting';
 }
+
+// --- messages still pending ----------------------------------------------
+//
+// A transcript response carries the session's `pending_input`: what the
+// session-host holds that the agent has not taken. The host only learns a
+// queued message went in once the agent goes idle, while the transcript
+// records it the moment the agent takes it, mid-turn included, so a pending
+// message with a matching user turn since it was sent is already taken.
+
+// Clock skew allowed between the host's send time and the agent's own
+// timestamp on the turn: both come from this PC, so a few seconds is plenty.
+const TAKEN_SKEW_MS = 5000;
+
+function turnTime(e) {
+  const t = Date.parse(e && e.timestamp);
+  return Number.isNaN(t) ? null : t;
+}
+
+// The pending messages not yet visible as taken, oldest first. A slash
+// command is recorded as a command entry, never as its text, so only the
+// host can say it went in.
+export function pendingNotTaken(pending, entries) {
+  if (!Array.isArray(pending)) return [];
+  const turns = (entries || []).filter(isUserTurn);
+  return pending.filter(function (p) {
+    if (isSlashCommand(p.text)) return true;
+    const since = Number(p.at) * 1000 - TAKEN_SKEW_MS;
+    return !turns.some(function (e) {
+      const t = turnTime(e);
+      return t != null && t >= since && sameMessage(e.text, p.text);
+    });
+  });
+}
+
+// Is this exact text already waiting? The check before a second send.
+export function alreadyPending(pending, text) {
+  const sent = normalize(text);
+  return !!sent && (pending || []).some(function (p) { return normalize(p.text) === sent; });
+}

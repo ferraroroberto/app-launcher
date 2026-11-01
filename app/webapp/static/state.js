@@ -296,6 +296,17 @@ export const els = {
   transcriptResumeLive: document.getElementById('transcriptResumeLive'),
   transcriptState: document.getElementById('transcriptState'),
   chatComposeBar: document.getElementById('chatComposeBar'),
+  chatQueued: document.getElementById('chatQueued'),
+  chatQueuedChip: document.getElementById('chatQueuedChip'),
+  chatQueuedCount: document.getElementById('chatQueuedCount'),
+
+  // Queued messages sheet (chat/chat-pending.js)
+  pendingInputDialog: document.getElementById('pendingInputDialog'),
+  pendingInputClose: document.getElementById('pendingInputClose'),
+  pendingInputNote: document.getElementById('pendingInputNote'),
+  pendingInputList: document.getElementById('pendingInputList'),
+  pendingInputEmpty: document.getElementById('pendingInputEmpty'),
+  pendingInputDone: document.getElementById('pendingInputDone'),
 
   // Background tasks sheet
   bgTasksSheet: document.getElementById('bgTasksSheet'),

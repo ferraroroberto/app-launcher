@@ -197,6 +197,12 @@ INPUT_DEFER_UNCLEAR = "defer_unclear"  # payload there, but a dialog too
 # a broken watcher ends on a verdict instead of leaving ``last_input`` at
 # ``pending`` for good.
 INPUT_DEFER_FAILED = "defer_failed"
+# The owner discarded the payload while it waited in the composer: the
+# watcher cleared it with Ctrl-U instead of pressing Enter.
+INPUT_DISCARDED = "discarded"
+# Refused before anything was written: a discarded payload is still waiting
+# to be cleared, and a new write would land behind it and carry it along.
+INPUT_DISCARD_PENDING = "discard_pending"
 # Detached (console) targets only — RemoteSession.submit_input:
 # the console-input helper could not attach/type (a distinct 502 from
 # ``not_ingested``: nothing was written, the console may be gone).
@@ -544,11 +550,19 @@ class InputProtocol:
         on the failing path, so a keyboard writer is never blocked for long.
         """
         with self._write_lock:
+            clean_before = self._composer_known_empty()
+            mark = self._output_total
+            # Refused before the write and its supersede: the watcher that
+            # clears a discarded payload must keep running.
             outcome = replace(
-                self._submit_input_locked(data, submit), submit_requested=submit
+                InputOutcome(reason=INPUT_DISCARD_PENDING)
+                if self._discard_pending()
+                else self._submit_input_locked(data, submit),
+                submit_requested=submit,
             )
             defer_args = self._defer_args
             self._defer_args = None
+            self._track_pending(data, outcome, mark, clean_before)
         self._record_input(outcome, len(data), submit)
         # Armed only after the ``deferred`` verdict is already on the session,
         # so the watcher can never overwrite ``last_input`` with its own

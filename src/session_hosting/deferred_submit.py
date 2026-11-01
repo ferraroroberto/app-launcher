@@ -148,7 +148,9 @@ _DEFER_MODE_TYPEAHEAD = "type_ahead"
 class DeferredSubmit(InputProtocol):
     """``InputProtocol`` plus the deferred-submit watcher and the verdict
     recorder both halves share. Like its base, it supplies behaviour only;
-    the state lives on the ``PtySession`` dataclass."""
+    the state lives on the ``PtySession`` dataclass. The watcher's discard
+    branch (``_discard_pending``, ``_clear_discarded_locked``) comes from
+    :class:`~src.session_hosting.pending_discard.PendingInputProtocol`."""
 
     def _record_input(
         self, outcome: "InputOutcome", nbytes: int, submit: bool
@@ -293,6 +295,8 @@ class DeferredSubmit(InputProtocol):
                 f"stop — the verdict on record is that write's"
             )
             return
+        # Whatever the composer still holds got no Enter from this watcher.
+        self._pending.drop_composer()
         self._record_input(outcome, nbytes, True)
 
     def _await_deferred_submit(
@@ -376,7 +380,7 @@ class DeferredSubmit(InputProtocol):
             if refusal is not None:
                 return refusal
             cr_mark = self._output_total
-            if not self._write_locked("\r"):
+            if not self._write_watcher_cr_locked(mode, cr_mark):
                 return InputOutcome(
                     reason=INPUT_DROPPED,
                     ingested=True,
@@ -443,7 +447,9 @@ class DeferredSubmit(InputProtocol):
     ) -> Optional["InputOutcome"]:
         """The two pre-fire checks of :meth:`_await_deferred_submit`, run
         under ``_write_lock``: the verdict that withholds the CR, or ``None``
-        (after a breadcrumb for a screen-read release) when it may go in."""
+        (after a breadcrumb for a screen-read release) when it may go in. A
+        discarded payload withholds it too, once both checks pass: it is
+        cleared from the composer instead."""
         sid = self.session_id[:8]
         normalized = self._normalized_since(since)
         untouched = touches is not None and self._composer_touches == touches
@@ -471,6 +477,8 @@ class DeferredSubmit(InputProtocol):
                 submit_confirmed=False,
                 waited_ms=waited_ms,
             )
+        if self._discard_pending():
+            return self._clear_discarded_locked(waited_ms)
         composer = "untouched" if untouched else "touched, payload on screen"
         if mode == _DEFER_MODE_BG:
             # Breadcrumb for the next occurrence: the state is

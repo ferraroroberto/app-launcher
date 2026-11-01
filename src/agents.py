@@ -103,6 +103,16 @@ class Agent:
     probed*, and the session reports ``None``. ``backslash_newline`` is the
     one difference the probe found: a backslash right before Enter inserts a
     newline (Claude Code, Pi) instead of being submitted (Codex).
+
+    ``queue_edit`` records whether a message the agent queued mid-turn was
+    shown to come back out of its queue from the keyboard. A throwaway probe
+    on Claude Code v2.1.316 (2026-11-01) found Up moves every queued message
+    back into the composer as one block, and Ctrl-U then clears it. Neither
+    key submits anything, and with nothing queued both do nothing. The
+    session-host's pending-input discard uses that sequence, and also clears
+    a payload still waiting in the composer with Ctrl-U. ``False`` means
+    *not probed*: the session lists its pending messages but cannot remove
+    them.
     """
 
     id: str
@@ -117,6 +127,7 @@ class Agent:
     type_ahead: bool = False
     composer_tracked: bool = False
     backslash_newline: bool = False
+    queue_edit: bool = False
 
 
 # id → Agent. The order here is the order the Coding tab renders the
@@ -127,6 +138,7 @@ AGENTS: Dict[str, Agent] = {
         quit_command="/quit", fullscreen=False, resume_token="--resume",
         native_name_flag="--name", per_launch_model=True, console_input=True,
         type_ahead=True, composer_tracked=True, backslash_newline=True,
+        queue_edit=True,
     ),
     "codex": Agent(
         id="codex", label="Codex CLI", command="codex",
@@ -319,6 +331,14 @@ def supports_type_ahead(agent_id: str) -> bool:
     (``Agent.type_ahead``, issue #1548). Unknown ids are ``False``."""
     agent = SESSION_HOST_AGENTS.get(agent_id)
     return bool(agent is not None and agent.type_ahead)
+
+
+def supports_queue_edit(agent_id: str) -> bool:
+    """Whether ``agent_id``'s queued and composer-held messages can be
+    removed from the keyboard (``Agent.queue_edit``). Unknown ids are
+    ``False``."""
+    agent = SESSION_HOST_AGENTS.get(agent_id)
+    return bool(agent is not None and agent.queue_edit)
 
 
 def is_installed(agent_id: str) -> bool:

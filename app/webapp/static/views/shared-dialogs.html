@@ -17,6 +17,26 @@
       </div>
     </dialog>
 
+    <!-- Queued messages: what a session holds that the agent has not taken
+         yet, each discardable where the session-host can remove it.
+         Filled by chat/chat-pending.js. -->
+    <dialog id="pendingInputDialog" class="detail-dialog pending-dialog" aria-labelledby="pendingInputTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="pendingInputTitle" tabindex="-1" autofocus>Queued messages</h2>
+          <button type="button" id="pendingInputClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p id="pendingInputNote" class="pending-note" hidden></p>
+        <ol id="pendingInputList" class="pending-list"></ol>
+        <p id="pendingInputEmpty" class="pending-note" hidden>The agent has taken everything.</p>
+        <div class="detail-actions">
+          <button type="button" id="pendingInputDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="renameDialog" class="detail-dialog">
       <form id="renameForm" class="detail-card">
         <div class="detail-header">

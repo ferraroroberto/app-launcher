@@ -497,3 +497,88 @@
 .md-table .md-al-left { text-align: left; }
 .md-table .md-al-center { text-align: center; }
 .md-table .md-al-right { text-align: right; }
+
+/* The queued chip (chat/chat-pending.js): messages the agent has not taken
+   yet, docked just above the composer so it is in view while typing the
+   next one. A 44px row for the touch target around the design system's
+   neutral chip (neutral-soft fill, fg text, pill, caption). */
+.chat-queued {
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.chat-queued[hidden] { display: none; }
+.chat-queued-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--gap);
+  background: none;
+  border: 0;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.chat-queued-chip span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.chat-queued-chip .icon {
+  width: var(--icon-inline);
+  height: var(--icon-inline);
+  color: var(--muted);
+}
+
+/* The queued-messages sheet: one flat row per message on a top hairline
+   (the design system's list-row), the text as typed, and its Discard. */
+.pending-note {
+  margin: 0 0 12px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.pending-note[hidden] { display: none; }
+.pending-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+}
+.pending-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line-muted);
+}
+.pending-meta {
+  font-size: var(--font-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.pending-text {
+  margin: 0;
+  font-size: var(--font-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 9.5em;
+  overflow-y: auto;
+}
+.pending-fixed {
+  margin: 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+/* Sized to its word: the sheet's one full-width action is Done. */
+.pending-discard {
+  align-self: flex-start;
+  width: auto;
+  min-height: 44px;
+  padding: 0 20px;
+}

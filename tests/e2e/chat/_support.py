@@ -193,6 +193,8 @@ class _Transcript:
         self.unavailable: str | None = None
         # The `activity` the server rides on every page/tail answer (#1387).
         self.activity: dict | None = None
+        # The session's messages the agent has not taken yet, ridden the same way.
+        self.pending_input: list | None = None
         self._page = page
         page.route(
             re.compile(r".*/api/claude-code/sessions/" + sid + r"/transcript(\?.*)?$"),
@@ -228,7 +230,7 @@ class _Transcript:
                 "session_id": _SID, "next_cursor": None,
                 "entries": list(self.entries), "tail": self.tail,
                 "size": self.size, "tool_errors": "reported",
-                "activity": self.activity,
+                "activity": self.activity, "pending_input": self.pending_input,
             }
         else:
             after = int(m.group(1))
@@ -242,6 +244,7 @@ class _Transcript:
                 "pending": fresh[-1:] if changed else [],
                 "tail": self.tail, "size": self.size,
                 "tool_errors": "reported", "activity": self.activity,
+                "pending_input": self.pending_input,
             }
         route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)

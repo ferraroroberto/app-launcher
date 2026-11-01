@@ -8,7 +8,7 @@ import './_browser_stubs.mjs';
 
 const { sendOutcome, NOT_PICKED_UP } = await import('../../app/webapp/static/sessions.js');
 const {
-  CONFIRM_WINDOW_MS, countMatchingTurns, judgeWatch, startWatch,
+  CONFIRM_WINDOW_MS, alreadyPending, countMatchingTurns, judgeWatch, pendingNotTaken, startWatch,
 } = await import('../../app/webapp/static/chat/send-confirm.js');
 
 // --- the outcome mapping -------------------------------------------------
@@ -79,5 +79,29 @@ w = startWatch('next', before, true, T0);
 assert.equal(judgeWatch(w, before, true, T0 + 3000), 'waiting');
 assert.equal(judgeWatch(w, before, true, T0 + CONFIRM_WINDOW_MS), 'not-picked-up');
 assert.equal(judgeWatch(w, [...before, user('next')], true, T0 + 3000), 'picked-up');
+
+// --- messages still pending ----------------------------------------------
+
+const AT = 1_800_000_000;  // epoch seconds, as the session-host stamps them
+const iso = (sec) => new Date(sec * 1000).toISOString();
+const queued = { id: 'a', text: 'also check  the ferry\ntimes', at: AT };
+const slash = { id: 'b', text: '/compact', at: AT };
+const turn = (text, sec) => ({ kind: 'user', text, timestamp: iso(sec) });
+
+// Not taken until a matching user turn appears after it was sent.
+assert.deepEqual(pendingNotTaken([queued], []), [queued]);
+assert.deepEqual(pendingNotTaken([queued], [turn('also check the ferry times', AT + 20)]), []);
+// The same words said well before the send are a different message.
+assert.deepEqual(pendingNotTaken([queued], [turn('also check the ferry times', AT - 600)]), [queued]);
+// A slash command is recorded as a command, never as its text: only the host can clear it.
+assert.deepEqual(pendingNotTaken([slash], [turn('/compact', AT + 5)]), [slash]);
+// A session that does not track pending messages has none to show.
+assert.deepEqual(pendingNotTaken(null, []), []);
+
+// The double-send check compares the whole text, whitespace aside.
+assert.equal(alreadyPending([queued], 'also check the ferry times'), true);
+assert.equal(alreadyPending([queued], 'also check the ferry'), false);
+assert.equal(alreadyPending([queued], '   '), false);
+assert.equal(alreadyPending(null, 'x'), false);
 
 console.log('OK');
