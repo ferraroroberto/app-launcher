@@ -362,6 +362,7 @@ async def _build_transcript(
     if before is None:
         # The newest page is the chat's first read: its activity line starts here.
         body["activity"] = await _activity(session, flavor, path, steps)
+        body["pending_input"] = _pending_input(session)
         body.update(await steps.run("outbox_fields", session_outbox_routes.outbox_fields, sid, ob))
     return body
 
@@ -401,7 +402,18 @@ async def _tail_response(
         "session_id": sid,
         **tail,
         "activity": await _activity(session, flavor, path, steps),
+        "pending_input": _pending_input(session),
     }
+
+
+def _pending_input(session: Optional[Dict[str, Any]]) -> Optional[List[Dict[str, Any]]]:
+    """The messages the agent has not taken yet, as the session-host's row
+    reports them, for the Chat view's queued chip. Rides the responses the
+    chat already polls, like ``activity``. ``None`` when the row does not
+    track them (a detached console, or a session-host predating the field),
+    which the chip reads as "unknown", not as "nothing pending"."""
+    pending = (session or {}).get("pending_input")
+    return pending if isinstance(pending, list) else None
 
 
 async def _activity(

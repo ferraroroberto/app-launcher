@@ -166,6 +166,22 @@ def send_input(port: int, session_id: str, data: str, submit: bool = True) -> Di
     )
 
 
+def discard_pending_input(port: int, session_id: str, entry_id: str) -> Dict[str, Any]:
+    """Discard one of a session's ``pending_input`` messages.
+
+    The body's ``reason`` is the verdict on a success: ``discarded`` (the
+    queue-edit keys went in) or ``discarding`` (the watcher clears the
+    composer at its next safe moment). Already taken (404) and not possible
+    now (409, the detail says why) raise ``SessionHostError``. The keys are
+    pressed with pauses under the session's write lock, hence the input
+    call's timeout.
+    """
+    return _request(
+        "DELETE", port, f"/sessions/{session_id}/pending-input/{entry_id}",
+        timeout=_INPUT_TIMEOUT,
+    )
+
+
 def stop(port: int, session_id: str, mode: str = "quit") -> Dict[str, Any]:
     return _request(
         "POST", port, f"/sessions/{session_id}/stop",

@@ -59,6 +59,7 @@ from src.session_host import _EOF, PTY_MIN_COLS, SessionManager
 from src.session_host_input import (
     INPUT_CONSOLE_FAILED,
     INPUT_DEFERRED,
+    INPUT_DISCARD_PENDING,
     INPUT_DROPPED,
     INPUT_NOT_INGESTED,
 )
@@ -270,6 +271,17 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
         raise HTTPException(
             status_code=409, detail=f"session {sid} not accepting input (exited)"
         )
+    if outcome.reason == INPUT_DISCARD_PENDING:
+        # Nothing was written: a discarded payload is still waiting in the
+        # composer to be cleared, and this one would land behind it and be
+        # submitted with it. Retry once the discard has gone through.
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"session {sid} is still clearing a discarded message from "
+                f"its input box — nothing was sent, try again in a moment"
+            ),
+        )
     if outcome.reason == INPUT_NOT_INGESTED:
         # Written, but the terminal never painted it back — the silent
         # drop the ingest check exists for. A distinct status from the 409 above:
@@ -311,6 +323,25 @@ async def session_input(sid: str, request: Request) -> Dict[str, Any]:
     # (submit_state="unconfirmed") rather than imply a confirmed landing.
     # ``delivered`` is never true for a submit that was not sent.
     return {"ok": True, **outcome.to_api()}
+
+
+@router.delete("/sessions/{sid}/pending-input/{entry_id}")
+async def session_discard_pending_input(sid: str, entry_id: str) -> JSONResponse:
+    """Discard one message the agent has not taken yet (the session's
+    ``pending_input``). The status is the verdict: 200 removed, 202 being
+    cleared from the composer, 404 already taken, 409 not possible now (the
+    body's ``reason`` says why), 502 a key write failed."""
+    session = manager.get(sid)
+    if session is None:
+        raise HTTPException(status_code=404, detail=f"unknown session {sid}")
+    discard = getattr(session, "discard_pending_input", None)
+    if discard is None:
+        # A detached console session tracks no pending messages.
+        raise HTTPException(status_code=409, detail="this session tracks no pending messages")
+    # The queue edit holds the write lock across timed key presses, so it
+    # runs off the loop like /input.
+    status, body = await asyncio.to_thread(discard, entry_id)
+    return JSONResponse(status_code=status, content=body)
 
 
 @router.post("/sessions/{sid}/resize")

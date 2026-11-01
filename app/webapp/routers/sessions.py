@@ -555,6 +555,41 @@ async def session_input(sid: str, request: Request, response: Response) -> Dict[
     }
 
 
+@router.delete("/api/claude-code/sessions/{sid}/pending-input/{entry_id}")
+async def session_discard_pending_input(
+    sid: str, entry_id: str, response: Response, request: Request
+) -> Dict[str, Any]:
+    """Discard a message the agent has not taken yet (Tailscale-only + passkey).
+
+    ``entry_id`` is one of the ``pending_input`` entries the Chat view reads
+    off the transcript response. The session-host decides whether the keys
+    can go in now and presses them; nothing here touches the PTY. 200 means
+    it is gone (``ids`` names every entry that went with it: a queue comes
+    out of the agent as one block), 202 that the composer is cleared at the
+    watcher's next safe moment. Already taken is a 404 and not possible now
+    a 409, each with the session-host's own detail.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    try:
+        result = await asyncio.to_thread(
+            session_client.discard_pending_input, cfg.session_host_port, sid, entry_id
+        )
+    except session_client.SessionHostError as exc:
+        await audit_off_loop(
+            audit.session_log, sid, "discard_pending", entry=entry_id,
+            reason="refused", status=exc.status, detail=str(exc)[:200],
+        )
+        raise HTTPException(status_code=exc.status, detail=str(exc))
+    body = result if isinstance(result, dict) else {}
+    await audit_off_loop(
+        audit.session_log, sid, "discard_pending", entry=entry_id,
+        reason=body.get("reason"), ids=body.get("ids"),
+    )
+    if body.get("reason") == "discarding":
+        response.status_code = 202
+    return {"ok": True, **body}
+
+
 def _input_payload(body: Dict[str, Any]) -> Tuple[str, bool]:
     """``(text, submit)`` from an input body; blank text means a bare submit."""
     data = body.get("data")

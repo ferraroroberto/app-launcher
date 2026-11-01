@@ -357,4 +357,7 @@ class RemoteSession:
             # No PTY to read keystrokes from: always unknown.
             "composer_dirty": None,
             "composer_dirty_since": None,
+            # A console shows nothing to read a queue off: not tracked,
+            # which is not the same as nothing pending.
+            "pending_input": None,
         }

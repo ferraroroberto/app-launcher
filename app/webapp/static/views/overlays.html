@@ -67,6 +67,11 @@
       <!-- The shared composer (#980), second mount (#983): every session
            kind sends from Chat through the /input route. Rendered by
            composer.js, bound in session-transcript.js. -->
+      <!-- Messages the agent has not taken yet: a chip that opens the
+           queued-messages sheet. Driven by chat/chat-pending.js. -->
+      <div id="chatQueued" class="chat-queued" hidden>
+        <button id="chatQueuedChip" type="button" class="chat-queued-chip"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg><span id="chatQueuedCount"></span></button>
+      </div>
       <div id="chatComposeBar" class="composer"></div>
     </div>
     <div id="terminalHost" class="terminal-host">

@@ -162,6 +162,16 @@ class ComposerTracker:
             self._unknown()
             self._publish()
 
+    def mark_empty(self) -> None:
+        """A key sequence observed on the agent's own screen to empty the
+        composer just went in: a pending-message discard's Up and Ctrl-U
+        presses (Claude Code, 2026-11-01). The Up alone reads as unknown,
+        so the sequence as a whole is reported here."""
+        with self._lock:
+            self._clear()
+            self._stashed = False
+            self._publish()
+
     # ------------------------------------------------------------ transitions
     def _insert(self, text: str) -> None:
         self._typed += text

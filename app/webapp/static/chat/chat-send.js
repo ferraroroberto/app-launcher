@@ -6,7 +6,9 @@
 import { els, state } from '../state.js';
 import { apiFailToast, toast } from '../api.js';
 import { NOT_PICKED_UP, sendOutcome, sendSessionMessage } from '../sessions.js';
-import { CONFIRM_WINDOW_MS, judgeWatch, startWatch } from './send-confirm.js';
+import { CONFIRM_WINDOW_MS, alreadyPending, judgeWatch, startWatch } from './send-confirm.js';
+import { visiblePending } from './chat-pending.js';
+import { confirmDialog } from '../confirm-dialog.js';
 import { keyboardOverlayHeight } from '../terminal.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { openResumeCard } from './chat-resume.js';
@@ -55,6 +57,17 @@ export async function sendFromChat(text) {
     return true;
   }
   const target = view;
+  // The same text already waiting is the double send the queued chip exists
+  // to prevent: ask before it goes twice. A "no" keeps the draft.
+  if (alreadyPending(visiblePending(), text)) {
+    const again = await confirmDialog({
+      title: 'Already queued',
+      message: 'This message is already waiting for the agent. Send it again?',
+      action: 'Send again',
+      tone: 'primary',
+    });
+    if (!again || view !== target) return false;
+  }
   // Counted before the request: an agent quick enough to log the turn while
   // the answer is still on the wire must not be mistaken for an older one.
   const watch = startWatch(

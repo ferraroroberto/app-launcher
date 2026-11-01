@@ -102,6 +102,7 @@ import { checkSendWatch, liveTerminalFor, pinChatToKeyboard, sendFromChat, uploa
 import { liveStep, renderStripLine, syncLiveStep } from './chat-activity.js';
 import { mergeFiles, oldestTime, releaseHeld, takeOutbox } from './chat-outbox.js';
 import { syncEditedCards, syncFileChips } from './chat-turn-cards.js';
+import { closePendingSheet, syncPendingChip, wirePendingChip } from './chat-pending.js';
 
 // Whether Chat can read `s`'s history (TRANSCRIPT_AGENTS, transcript-render.js).
 export function hasTranscriptReader(s) {
@@ -531,6 +532,7 @@ export async function forwardRead(target, manual) {
     target.activity = body.activity;
     renderStripLine();
   }
+  if (body.pending_input !== undefined) target.pendingInput = body.pending_input;
   // A file sent since the last read is the newest thing there is: it lands
   // after whatever settled this tick, never back in time.
   const files = takeOutbox(body, -Infinity);
@@ -543,6 +545,7 @@ export async function forwardRead(target, manual) {
     if (files.length) applyLive([], target.pending || [], target.toolErrors, files);
   }
   syncFileChips();
+  syncPendingChip();
   if (syncEditedCards() && stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
   // A tick that got an answer clears any reason line an earlier failed one
   // left on screen, so a condition that cleared by itself looks like it.
@@ -607,6 +610,7 @@ async function loadNewest() {
     return;
   }
   view.activity = body.activity || null;
+  view.pendingInput = body.pending_input || null;
   renderStripLine();
   // The page is one complete list, as it has always been. It also carries `tail`
   // — the offset where its newest, still-growing message begins — and keys
@@ -628,6 +632,7 @@ async function loadNewest() {
   view.size = body.size;
   // Sent files older than this page wait for the page that reaches them.
   const files = takeOutbox(body, body.next_cursor == null ? -Infinity : oldestTime(all));
+  syncPendingChip();
   if (!view.entries.length && !files.length && body.next_cursor == null) {
     showState('Nothing in the transcript yet');
     // Still live: an empty transcript is the normal state of a session that
@@ -811,6 +816,9 @@ export function openChatPane(s) {
     inflight: null, forcing: false, newerTimer: null, note: null,
     // The turn in progress, as the last read described it.
     activity: null,
+    // Messages the agent has not taken yet (`pending_input`), or null
+    // when the session does not track them.
+    pendingInput: null,
     settled: [], pending: [], pendingNodes: [],
     // The plan panel: the last screen read, its render signature,
     // and when an answer was sent from it.
@@ -820,6 +828,7 @@ export function openChatPane(s) {
   syncGroups();
   bindComposer(s);
   els.chatNote.hidden = s.kind !== 'remote';
+  closePendingSheet();
   loadNewest();
 }
 
@@ -838,6 +847,7 @@ export function closeChatPane() {
   clearPicker();
   closeResumeCard();
   els.chatNote.hidden = true;
+  closePendingSheet();
   if (chatComposer) chatComposer.reset();
   pinChatToKeyboard();
   hideState();
@@ -854,6 +864,7 @@ export function wireChatPane() {
   openLinksOnThePc(els.transcriptList);
   els.transcriptOlder.addEventListener('click', function () { loadOlder(); });
   mountScrollerPill(els.chatLatest, els.transcriptBody);
+  wirePendingChip();
   chatComposer = mountComposer(els.chatComposeBar, {
     placeholder: 'Message',
     send: sendFromChat,

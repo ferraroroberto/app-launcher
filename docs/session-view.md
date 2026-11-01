@@ -204,6 +204,17 @@ The toast reports what actually happened rather than just "sent":
 | *Not submitted* (red) | The text reached the agent but Enter never did. |
 | *Send failed* | The terminal never echoed it, the console did not take it, or the session exited. The text is kept to retry. |
 
+### Queued messages
+
+A message sent while the agent works is not lost, but it is not answered yet either: it waits in the agent's input box while the session-host waits for the moment to press Enter, or in the agent's own queue once Enter went in mid-turn. A **N queued** chip above the composer counts those messages, so it is visible from Chat without opening Terminal. Tapping it opens a sheet with each message as typed, when it was sent and where it waits. The list rides the transcript reads Chat already makes (`pending_input`). A message drops off as soon as the transcript shows the agent took it, or when the session-host sees the agent idle at its prompt, since an idle agent has submitted its queue.
+
+**Discard** removes a message the agent has not taken. It never presses Enter. It is offered only for an agent whose queue was probed (Claude Code: `queue_edit` in `src/agents.py`), and only when the keys can reach nothing but the composer:
+
+- **Queued in the agent:** the session-host presses Up, which pulls every queued message back into the composer, then Ctrl-U until it is empty. That needs the turn visibly running (a spinner in the last second, which a dialog stops), an input box with nothing else typed in it and no dialog on screen. Otherwise nothing is pressed and the toast says which condition stopped it. Up takes the whole queue, so discarding one queued message discards all of them, and the sheet says so when there are several.
+- **In the input box:** the deferred watcher clears it with Ctrl-U instead of pressing Enter, at the moment and after the checks Enter would have needed. While it waits, a new send is refused (`409`, nothing written), since it would land behind the discarded text and be submitted with it.
+
+A message an agent without the probe holds, or one pasted over somebody's half-typed text, is listed as *can't be removed from here*. Sending text identical to a message still pending asks first (*Already queued*), and a "no" keeps the draft.
+
 ### Keyboard, attachments and keys
 
 - **Ctrl+Enter sends** on a desktop browser with a real keyboard (⌘+Enter on a Mac). The plain return key still inserts a newline everywhere — multi-line prompts are the normal case, and a phone's on-screen keyboard has no Ctrl or Cmd key, so nothing about the soft keyboard changes. The shortcut goes through the same Send as a tap, so on a session whose Send is greyed out it says why rather than sneaking the message through. Chat mode only; the terminal keeps its own input path.

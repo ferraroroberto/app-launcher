@@ -179,6 +179,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board drill-down (#301): reply proxy writes into a live PTY.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and "/pending-input/" in p,
+        "passkey",
+        "Chat queued chip: discarding a pending message presses keys in a live "
+        "PTY, the same write power as /input.",
+    ),
+    (
         lambda p: p.startswith("/api/board/sessions/") and p.endswith("/exchange"),
         "passkey",
         "Board drill-down (#301): last-exchange surfaces transcript text (terminal-grade content).",
