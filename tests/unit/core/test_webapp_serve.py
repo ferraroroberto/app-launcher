@@ -69,9 +69,14 @@ def test_run_serves_the_app_on_the_selector_loop(monkeypatch):
         seen["loop"] = type(asyncio.get_running_loop())
         seen["bind"] = cfg.bind
 
+    from hypercorn.protocol.h2 import H2Protocol
+
     monkeypatch.setitem(sys.modules, "app.webapp.server", types.SimpleNamespace(app=stub_app))
     monkeypatch.setattr(serve, "_serve_until_signalled", fake_serve)
+    monkeypatch.setattr(H2Protocol, "handle", serve._HYPERCORN_H2_HANDLE)
     serve.run("127.0.0.1", 18445)
+    assert H2Protocol.handle is serve._handle_then_release_streams, (
+        "every launch must serve with abandoned h2 streams released")
 
     loop = selector_loop_factory()
     try:
@@ -95,3 +100,73 @@ def test_cli_passes_uvicorn_style_flags_through(monkeypatch):
 def test_cli_requires_a_port():
     with pytest.raises(SystemExit):
         serve.main(["--host", "127.0.0.1"])
+
+
+async def _abandoned_h2_responses_that_finished(clients: int) -> int:
+    """Serve over h2c, let each client read part of a large body and vanish
+    without opening its flow-control window; count the ASGI calls that end."""
+    import socket
+
+    import h2.config
+    import h2.connection
+    from hypercorn.config import Config
+
+    finished = []
+
+    async def app(scope, receive, send):
+        if scope["type"] != "http":
+            return
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        # Past the 65,535-byte initial window, so the end of it can never be sent.
+        await send({"type": "http.response.body", "body": b"x" * 300_000})
+        finished.append(scope["path"])
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    cfg = Config()
+    cfg.bind = [f"127.0.0.1:{port}"]
+    cfg.loglevel = "WARNING"
+    stop = asyncio.Event()
+    server = asyncio.create_task(serve.serve(app, cfg, shutdown_trigger=stop.wait))
+    try:
+        for _ in range(100):
+            try:
+                reader, writer = await asyncio.open_connection("127.0.0.1", port)
+                break
+            except OSError:
+                await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("hypercorn never listened")
+        writer.close()
+        for n in range(clients):
+            reader, writer = await asyncio.open_connection("127.0.0.1", port)
+            conn = h2.connection.H2Connection(h2.config.H2Configuration(client_side=True))
+            conn.initiate_connection()
+            conn.send_headers(1, [(":method", "GET"), (":path", f"/{n}"),
+                                  (":scheme", "http"), (":authority", "t")], end_stream=True)
+            writer.write(conn.data_to_send())
+            await writer.drain()
+            await reader.read(70_000)
+            writer.close()
+        deadline = asyncio.get_running_loop().time() + 5
+        while len(finished) < clients and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.05)
+        return len(finished)
+    finally:
+        stop.set()
+        server.cancel()
+        try:
+            await server
+        except BaseException:
+            pass
+
+
+def test_a_response_whose_h2_client_vanished_still_finishes(monkeypatch):
+    """A client that leaves mid-response must not leave its ASGI call waiting
+    forever, or every closed tab leaks a task and its connection."""
+    from hypercorn.protocol.h2 import H2Protocol
+
+    monkeypatch.setattr(H2Protocol, "handle", serve._HYPERCORN_H2_HANDLE)
+    serve.release_h2_streams_on_disconnect()
+    assert asyncio.run(_abandoned_h2_responses_that_finished(3)) == 3

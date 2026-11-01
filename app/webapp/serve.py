@@ -24,6 +24,8 @@ from typing import Any, List, Optional
 
 from hypercorn.asyncio import serve
 from hypercorn.config import Config
+from hypercorn.events import Closed
+from hypercorn.protocol.h2 import H2Protocol
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.webapp.event_loop import selector_loop_factory
@@ -60,6 +62,30 @@ def build_config(
     return cfg
 
 
+_HYPERCORN_H2_HANDLE = H2Protocol.handle
+
+
+async def _handle_then_release_streams(self: H2Protocol, event: Any) -> None:
+    await _HYPERCORN_H2_HANDLE(self, event)
+    if isinstance(event, Closed):
+        for buffer in list(self.stream_buffers.values()):
+            await buffer.close()
+
+
+def release_h2_streams_on_disconnect() -> None:
+    """Let a response finish when its HTTP/2 client has gone.
+
+    Hypercorn 0.18 stops its send task when a connection closes but never
+    closes the stream buffers still holding unsent data, so every response
+    the client abandoned mid-send waits in ``drain()`` forever: its ASGI call
+    and the connection's tasks never end. A closed browser tab or a phone
+    that drops mid-load leaks one each; the e2e gate, which closes a browser
+    context per test, piled up ~600 per webapp in a run. Closing the buffers
+    on ``Closed`` wakes those waits so the call returns. Idempotent.
+    """
+    H2Protocol.handle = _handle_then_release_streams
+
+
 def wrap_app(app: Any) -> Any:
     """The ASGI app as served: client address taken from X-Forwarded-For only
     when the peer is loopback, which the bearer and terminal gates read."""
@@ -91,6 +117,7 @@ def run(
 ) -> None:
     """Serve ``app.webapp.server:app`` on the selector loop until signalled."""
     cfg = build_config(host, port, certfile, keyfile, log_level)
+    release_h2_streams_on_disconnect()
     with asyncio.Runner(loop_factory=selector_loop_factory) as runner:
         # The loop exists, and the factory's GIL tuning is in force, before
         # the app's module-level setup runs.
