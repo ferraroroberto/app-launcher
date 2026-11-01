@@ -269,16 +269,16 @@ def test_an_opened_run_says_when_it_ran_and_where_it_sits_in_the_session(
     # Folded: the line is as quiet as it was.
     for run in (multi, single):
         expect(run.locator(".tr-run-when")).to_be_hidden()
-        expect(run.locator("summary.tr-step-line")).not_to_contain_text("into the session")
+        expect(run.locator("summary.tr-step-line")).not_to_contain_text("session ")
 
     multi.locator("summary.tr-step-line").click()
     when = multi.locator(".tr-run-when")
     expect(when).to_be_visible()
-    expect(when).to_have_text(re.compile(r"^.+ · lasted 30m 0s · \+4h 12m into the session$"))
+    expect(when).to_have_text(re.compile(r"^finished .+ · took 30m 0s · session 4h 42m$"))
 
     single.locator("summary.tr-step-line").click()
     expect(single.locator(".tr-run-when")).to_have_text(
-        re.compile(r"^.+ · \+4h 45m into the session$")
+        re.compile(r"^finished .+ · session 4h 45m$")
     )
 
     # Closing hides it again.
@@ -300,6 +300,35 @@ def test_an_opened_run_says_when_it_ran_and_where_it_sits_in_the_session(
         }""")
         assert fit["pane"][0] <= fit["pane"][1], (theme, fit)
     assert colors["light"] != colors["dark"], colors
+
+
+@pytest.mark.iphone
+def test_an_opened_run_in_a_multi_day_session_rolls_up_to_days_and_a_live_one_reads_started(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    tr = _boot(page, base_url)
+    age = 53 * 3600 + 12 * 60
+    tr.entries = [
+        _turn("user", "work on it", 100, _since(page, age)),
+        _read(200, _since(page, 3600), "E:/automation/modeproj/notes.md"),
+        _read(300, _since(page, 3600 - 4), "E:/automation/modeproj/a.md"),
+        _turn("assistant", "Done.", 400, _since(page, 3600 - 9)),
+        _turn("user", "again", 500, _since(page, 120)),
+        _read(600, _since(page, 100), "E:/automation/modeproj/notes.md"),
+    ]
+    _open_chat(page)
+    runs = page.locator("#transcriptList .tr-run")
+    expect(runs).to_have_count(2)
+    done, live = runs.nth(0), runs.nth(1)
+    done.locator("summary.tr-step-line").click()
+    expect(done.locator(".tr-run-when")).to_have_text(
+        re.compile(r"^finished .+ · took 9s · session 2d 4h$")
+    )
+    live.locator("summary.tr-step-line").click()
+    expect(live.locator(".tr-run-when")).to_have_text(re.compile(r"^started [^·]+$"))
+    expect(live.locator(".tr-run-when")).not_to_contain_text("finished")
 
 
 def test_an_opened_run_without_timestamps_shows_no_line(

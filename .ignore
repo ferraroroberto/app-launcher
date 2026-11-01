@@ -11,6 +11,7 @@
 /app/webapp/static/_vendored/icons
 /app/webapp/static/_vendored/modal
 /app/webapp/static/_vendored/nav
+/app/webapp/static/_vendored/rec-wave
 /app/webapp/static/_vendored/row-menu
 /app/webapp/static/_vendored/segmented
 /app/webapp/static/_vendored/select-native
@@ -27,6 +28,7 @@
 /scripts/instruction_ratchet.py
 /scripts/shot_baseline.py
 /scripts/static_ratchet.py
+/scripts/structure_band.py
 /scripts/structure_layout.py
 /scripts/structure_ratchet.py
 /src/build_info.py
