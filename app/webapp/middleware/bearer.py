@@ -9,11 +9,11 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.webapp.middleware import trust
-from app.webapp.middleware.credentials import _presented_credential, credential_required
+from app.webapp.middleware.credentials import presented_credential, credential_required
 from app.webapp.middleware.routes import (
     AUTH_EXEMPT_EXACT,
     AUTH_EXEMPT_PREFIXES,
-    _is_webhook_hook_path,
+    is_webhook_hook_path,
 )
 from app.webapp.middleware.terminal_gate import terminal_http_gate
 from src.auth import api_tokens
@@ -50,7 +50,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         # gate included, so a delegate caller on the tailnet is still held to
         # its allow-list. Loopback never reaches it and keeps its bypass.
         if not is_loopback:
-            presented = _presented_credential(request)
+            presented = presented_credential(request)
             if delegate_token.matches(presented, getattr(cfg, "delegate_token", None)):
                 return await _delegate_dispatch(request, call_next, client_host)
 
@@ -62,7 +62,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
             if gate_err is not None:
                 return gate_err
 
-        if _is_webhook_hook_path(path):
+        if is_webhook_hook_path(path):
             return await call_next(request)
 
         token = (getattr(cfg, "auth_token", "") or "").strip()
@@ -80,7 +80,7 @@ class BearerTokenMiddleware(BaseHTTPMiddleware):
         ):
             return await call_next(request)
 
-        presented = _presented_credential(request)
+        presented = presented_credential(request)
         if presented and token and constant_time_equals(presented, token):
             return await call_next(request)
 

@@ -54,7 +54,7 @@ def credential_required(cfg: Any) -> bool:
     return bool(token or minted)
 
 
-def _presented_credential(request: Request) -> str:
+def presented_credential(request: Request) -> str:
     """The bearer the caller sent: the ``Authorization`` header, else ``?token=``."""
     auth_header = request.headers.get("authorization", "")
     if auth_header.lower().startswith("bearer "):

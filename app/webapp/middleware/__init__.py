@@ -20,11 +20,10 @@ from app.webapp.middleware import trust
 from app.webapp.middleware.bearer import BearerTokenMiddleware
 from app.webapp.middleware.credentials import credential_accepted, credential_required
 from app.webapp.middleware.routes import (
-    _TERMINAL_GUARD_RULES,
     AUTH_EXEMPT_EXACT,
     AUTH_EXEMPT_PREFIXES,
-    _is_webhook_hook_path,
-    _terminal_guard_level,
+    is_webhook_hook_path,
+    terminal_guard_level,
 )
 from app.webapp.middleware.terminal_gate import (
     terminal_http_gate,
@@ -38,18 +37,22 @@ from app.webapp.middleware.trust import (
     via_cloudflare,
 )
 
+# Tests and docstrings across the repo name the guard as
+# ``middleware._terminal_guard_level``; the alias keeps that import working.
+_terminal_guard_level = terminal_guard_level
+
 __all__ = [
     "AUTH_EXEMPT_EXACT",
     "AUTH_EXEMPT_PREFIXES",
     "BearerTokenMiddleware",
     "LOOPBACK_HOSTS",
-    "_TERMINAL_GUARD_RULES",
-    "_is_webhook_hook_path",
     "_terminal_guard_level",
     "client_in_tailnet",
     "credential_accepted",
     "credential_required",
     "is_pc_itself",
+    "is_webhook_hook_path",
+    "terminal_guard_level",
     "terminal_http_gate",
     "terminal_reachability",
     "trust",

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.webapp.middleware import trust
 from app.webapp.middleware.credentials import credential_accepted, credential_required
-from app.webapp.middleware.routes import _terminal_guard_level
+from app.webapp.middleware.routes import terminal_guard_level
 from src.auth.webauthn_gate import WebAuthnGate
 
 
@@ -21,7 +21,7 @@ def terminal_http_gate(
     Returns an error response to short-circuit with, or ``None`` to allow.
     Loopback callers are handled by the middleware before this runs.
     """
-    level = level or _terminal_guard_level(request.url.path)
+    level = level or terminal_guard_level(request.url.path)
     if level is None:
         return None
     if trust.via_cloudflare(request.headers):

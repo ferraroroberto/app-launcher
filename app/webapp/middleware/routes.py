@@ -8,7 +8,7 @@ AUTH_EXEMPT_PREFIXES = ("/static/", "/healthz")
 AUTH_EXEMPT_EXACT = frozenset({"/", "/healthz", "/api/login"})
 
 
-def _is_webhook_hook_path(path: str) -> bool:
+def is_webhook_hook_path(path: str) -> bool:
     """``POST /api/jobs/<id>/hook`` (issue #73) authenticates itself via the
     job's provider-specific signature, never the bearer token — an external
     service (GitHub, Stripe, …) can't carry it, and the whole point is a URL
@@ -16,7 +16,7 @@ def _is_webhook_hook_path(path: str) -> bool:
     """
     return path.startswith("/api/jobs/") and path.endswith("/hook")
 
-# Gated-endpoint inventory driving _terminal_guard_level, as a table of
+# Gated-endpoint inventory driving terminal_guard_level, as a table of
 # ``(predicate, level, comment)`` instead of an accreting if-chain (one check
 # per feature/issue number) — a new gated endpoint is one row here, and the
 # full inventory stays scannable in one place instead of spread across prose
@@ -324,7 +324,7 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
 )
 
 
-def _terminal_guard_level(path: str) -> Optional[str]:
+def terminal_guard_level(path: str) -> Optional[str]:
     """Classify a request path's terminal-gating requirement.
 
     ``"passkey"`` — Tailscale-only **and** a valid passkey terminal token.

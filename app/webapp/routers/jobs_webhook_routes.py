@@ -36,7 +36,7 @@ async def run_job_webhook(job_id: str, request: Request) -> Response:
     """Fire a job from an external service (issue #73).
 
     Authenticated by the job's own ``webhook.provider`` signature — never
-    the bearer token (see ``app.webapp.middleware._is_webhook_hook_path``),
+    the bearer token (see ``app.webapp.middleware.is_webhook_hook_path``),
     so this URL is safe to hand to a third party in plaintext. Anything
     that fails signature/shape verification writes **no run record** — only
     a verified fire ever touches disk.
