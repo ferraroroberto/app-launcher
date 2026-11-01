@@ -66,7 +66,8 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
     (tmp_path / "scripts").mkdir()
     shutil.copy2(REPO_ROOT / "scripts" / f"{name}_ratchet.py", tmp_path / "scripts")
     if name == "structure":
-        shutil.copy2(REPO_ROOT / "scripts" / "structure_layout.py", tmp_path / "scripts")
+        for sibling in ("structure_layout.py", "structure_band.py"):
+            shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
     files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
     files[".fleet.toml"] = files.get(".fleet.toml", "") + f"[{name}_ratchet]\nenabled = true\n{_EXTRA_KEYS.get(name, '')}"
     for path, text in files.items():
