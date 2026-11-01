@@ -31,7 +31,17 @@ The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle
 - **Changed files** — for any agent with a transcript reader, in either mode. See [Changed files](#changed-files).
 - **Background tasks** — for a Claude session, in either mode and in the Coding tab's row menu. See [Background tasks](#background-tasks).
 
+- **Links** — for any agent with a transcript reader, in either mode and in the Coding tab's row menu. See [Links](#links).
+
 The phone's floating tab bar hides while the session view is open.
+
+## Links
+
+The **Links** sheet lists every URL the session's transcript mentioned (assistant text, tool results, your own turns), so a published artifact, a pull request or a phone preview from an hour ago is one tap away instead of a scroll through Chat. Rows are grouped **Artifacts**, **GitHub**, **Servers & previews** (localhost, LAN, tailnet hosts, with `host:port` as the label) and **Other**, newest first within a group. A row opens in a new tab; its copy button puts the URL on the clipboard.
+
+- **Deduplicated.** A link mentioned ten times is one row; the trailing slash and any fragment do not make a second one. A published artifact is labelled with the title (or page file name) it was published with; a pull request or issue reads `owner/repo#N`.
+- **Folded from the transcript**, like Changed files, so it still answers after the session ends. `GET /api/claude-code/sessions/{sid}/links` answers it (passkey-gated), reading at most the newest 64 MiB and listing the newest 100 per group.
+- **Nothing credential-shaped is shown.** A URL with `user:password@` is skipped; a query string holding a key-like parameter name (`token`, `key`, `sig`, `auth`, `code` …) or a long opaque value is dropped, so the link shows and copies without it.
 
 ## Background tasks
 

@@ -90,6 +90,7 @@ from src.session_view.transcript import (
     transcript_tail,
 )
 from src.session_view import background_tasks as session_tasks
+from src.session_view import links as session_links
 from src.session_view import outbox as session_outbox
 from src.session_view.git_changes import select_in_explorer
 from src.session_view.changes import (
@@ -553,6 +554,28 @@ async def session_background_tasks(
         return refusal
     logger.info("ℹ️ background tasks %s (%s): %d running, %d finished",
                 sid[:8], agent, len(found["running"]), found["finished_total"])
+    return {"available": True, "reason": None, "session_id": sid, **found}
+
+
+@router.get("/api/claude-code/sessions/{sid}/links")
+async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
+    """Every artifact and URL this session mentioned, grouped (Tailscale +
+    passkey). Folded from the transcript like Changed files, so it
+    answers after the session ends; every agent with a transcript reader.
+    On demand only; nothing polls it.
+    """
+    cfg: WebappConfig = request.app.state.webapp_config
+    reason, _flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    if reason is not None:
+        logger.info("ℹ️ session links %s (%s) unavailable: %s", sid[:8], agent, reason)
+        return _unavailable(sid, reason)
+    found, refusal = await _read_or_unavailable(
+        sid, agent, "session links", asyncio.to_thread(session_links.fold_links, path),
+    )
+    if refusal is not None:
+        return refusal
+    logger.info("ℹ️ session links %s (%s): %d links in %d groups, partial=%s",
+                sid[:8], agent, found["total"], len(found["groups"]), found["partial"])
     return {"available": True, "reason": None, "session_id": sid, **found}
 
 

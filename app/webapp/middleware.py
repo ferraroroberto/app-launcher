@@ -250,6 +250,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "folded from the transcript: the transcript's own sensitivity.",
     ),
     (
+        lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/links"),
+        "passkey",
+        "Session Links: every URL a session's transcript mentioned, "
+        "credential-looking query strings removed: the transcript's own sensitivity.",
+    ),
+    (
         lambda p: p.startswith("/api/claude-code/sessions/") and p.endswith("/background-tasks"),
         "passkey",
         "Session Background tasks (#1955): what a session launched in the background "

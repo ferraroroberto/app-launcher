@@ -21,6 +21,7 @@ app-launcher/
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
 │           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the Done lane's earlier days and its Issue / PR / Proof actions
+│           ├── links/         # the session ⋮ menus' Links sheet: every artifact and URL a session mentioned, grouped
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
 │           ├── changes/       # Show changes and Changed files: the overlay, a diff, a file's view and its token colours
 │           ├── chat/          # the session overlay's Chat pane: session-transcript.js, the entry renderer and its parts, the decision and resume cards

@@ -30,6 +30,7 @@ import {
 } from '../sessions.js';
 import { openSessionChanges } from '../changes/changes-overlay.js';
 import { hasBackgroundTasks, openBackgroundTasks } from '../background-tasks/background-tasks-sheet.js';
+import { hasLinks, openLinks } from '../links/links-sheet.js';
 import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { createLatestPill } from '../latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
@@ -122,6 +123,17 @@ const BACKGROUND_TASKS_ITEM = {
   },
 };
 
+// Links: every artifact and URL the transcript mentioned, in both modes.
+const LINKS_ITEM = {
+  dataset: { item: 'overlay-links-btn' }, glyph: 'link', label: 'Links',
+  ariaLabel: 'Show links',
+  hidden: function () { return !hasLinks(currentSession()); },
+  onTap: function () {
+    const s = currentSession();
+    if (s) openLinks(s);
+  },
+};
+
 // The shared ↓ Latest pill (latest-pill.js) over the xterm buffer,
 // created by wireTerminalMenu().
 let latestPill = null;
@@ -147,6 +159,7 @@ export function wireTerminalMenu() {
       },
     },
     BACKGROUND_TASKS_ITEM,
+    LINKS_ITEM,
     // Chat-only: the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
     // Terminal mode (function-valued `hidden`, the row menu). The step lines
