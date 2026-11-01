@@ -8,6 +8,7 @@ and the PTY write are stubs, and the Board exchange is a fake.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -302,6 +303,88 @@ class TestActions:
         assert "text" not in get()
         relay.exchange = {"available": False, "reason": "capture_unparseable"}
         assert get()["reason"] == "capture_unparseable"
+
+
+# ------------------------------------------------------------ bot chats
+CHANNEL_TURN = ('<channel source="plugin:telegram:telegram" chat_id="1" user="someone">'
+                "an invented message</channel>")
+HELD_SID = "1a7b3c5d-8e2f-4a6b-9c0d-3e5f7a9b1c2d"
+PAST_BOT_SID = "9d1e6c3a-2b4f-4e8a-b7c1-5f0a3d9e2c64"
+LATER_SID = "5b8c2d4e-7f1a-4c3b-8d2e-6a9f0b1c3d5e"
+
+
+def _add_journal_conversation(root: Path, file: str, sid: str, turns: list, newer_by: int) -> dict:
+    """A capture whose user turns are ``turns``, made the newest by ``newer_by`` seconds."""
+    folder = root / ".claude" / "skills" / "journal-daily" / "conversations"
+    body = "".join(f"**You**: {turn}\n\n**Claude**: an invented reply\n\n" for turn in turns)
+    capture = folder / file
+    capture.write_text(f'<!-- capture sid="{sid}" agent="claude" updated="synthetic" -->\n\n'
+                       f"{body}", encoding="utf-8")
+    stamp = capture.stat().st_mtime + newer_by
+    os.utime(capture, (stamp, stamp))
+    row = {"skill": "journal-daily", "file": file, "date": file[:10], "slug": "x",
+           "sid": sid, "agent": "claude", "topic": "an invented topic"}
+    index = folder / "index.json"
+    index.write_text(json.dumps([*json.loads(index.read_text(encoding="utf-8")), row]),
+                     encoding="utf-8")
+    return row
+
+
+class TestBotChatsNeverOffered:
+    """A bot's own chat (live, or one whose capture opens on a channel
+    message) is never found or resumed: resuming it would attach a second
+    session to the bot's channel transcript."""
+
+    @pytest.fixture
+    def bots(self, relay, life_os_client):
+        root = life_os_client[2]["life_os_dir"]
+        relay.sessions[0]["flags"] = f"--resume {HELD_SID}"  # the running bot's own chat
+        relay.rows = [
+            _add_journal_conversation(root, "2026-10-31-0900-held.md", HELD_SID,
+                                      ["a plain invented opening"], 300),
+            _add_journal_conversation(root, "2026-10-30-0900-past-bot.md", PAST_BOT_SID,
+                                      [CHANNEL_TURN], 200),
+            # Only the first user turn decides: a later channel message does not.
+            _add_journal_conversation(root, "2026-10-29-0900-later.md", LATER_SID,
+                                      ["a plain invented opening", CHANNEL_TURN], 100),
+        ]
+        return relay
+
+    def _names(self, body):
+        return [Path(c["path"]).name for c in body["conversations"]]
+
+    def test_find_leaves_them_out_before_its_limit(self, bots):
+        get = lambda **q: bots.client.get(  # noqa: E731
+            f"{PREFIX}/conversations", headers=bots.headers, params=q).json()
+        names = self._names(get())
+        assert "2026-10-31-0900-held.md" not in names
+        assert "2026-10-30-0900-past-bot.md" not in names
+        assert names[0] == "2026-10-29-0900-later.md" and len(names) == 4
+        assert self._names(get(limit="1")) == ["2026-10-29-0900-later.md"]
+
+    def test_search_leaves_them_out_and_still_fills_its_limit(self, bots, monkeypatch):
+        from app.webapp.routers import life_os_conversations, life_os_relay
+        ranked = [*bots.rows, {"skill": "journal-daily", "file": "2026-08-01-0900-ferry-booking.md"}]
+
+        async def fake_search(cfg, query, skill, limit):
+            hits = life_os_conversations._conversation_rows(cfg, ranked[:limit])
+            return {"available": True, "results": hits}
+
+        monkeypatch.setattr(life_os_relay, "run_conversation_search", fake_search)
+        body = bots.client.get(f"{PREFIX}/conversations", headers=bots.headers,
+                               params={"q": "invented", "limit": "2"}).json()
+        assert self._names(body) == ["2026-10-29-0900-later.md",
+                                     "2026-08-01-0900-ferry-booking.md"]
+
+    def test_resume_skips_them_and_refuses_their_path(self, bots):
+        resp = bots.client.post(f"{PREFIX}/resume", headers=bots.headers, json={})
+        assert resp.json()["state"] == "resumed", resp.text
+        assert f"--resume {LATER_SID}" in bots.spawned[0].flags
+        past = str(Path(".claude/skills/journal-daily/conversations/2026-10-30-0900-past-bot.md"))
+        resp = bots.client.post(f"{PREFIX}/resume", headers=bots.headers, json={"path": past})
+        assert resp.status_code == 409
+        assert resp.json()["detail"]["state"] == "not_resumable"
+        assert len(bots.spawned) == 1
 
 
 # ------------------------------------------------------------ settings file
