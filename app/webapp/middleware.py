@@ -313,6 +313,12 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "Board drill-down (#301): issue-start spawns a coding session.",
     ),
     (
+        lambda p: p == "/api/board/owner-checks/answer",
+        "passkey",
+        "Board owner checks: removes labels and posts comments on GitHub with "
+        "the owner's own gh account.",
+    ),
+    (
         lambda p: p.startswith("/api/board/chief/") or p == "/api/board/chief-plan/prune",
         "passkey",
         "Fleet chief (#245): ensure spawns + types into a PTY, settings steer "

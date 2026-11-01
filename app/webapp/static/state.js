@@ -192,6 +192,7 @@ export const els = {
   chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
   chiefAnswersClose: document.getElementById('chiefAnswersClose'),
   chiefAnswersList: document.getElementById('chiefAnswersList'),
+  chiefAnswersTitleText: document.getElementById('chiefAnswersTitleText'),
   chiefAnswersAlso: document.getElementById('chiefAnswersAlso'),
   chiefAnswersNote: document.getElementById('chiefAnswersNote'),
   chiefAnswersDone: document.getElementById('chiefAnswersDone'),

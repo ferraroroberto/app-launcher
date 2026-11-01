@@ -10,7 +10,10 @@
                                             Tailscale + passkey)
     POST /api/board/chief-plan/prune      → clear the plan's merged rows through
                                             fleet-config's writer (Tailscale + passkey)
-    POST /api/board/github/refresh        → run the gh searches now (token-gated)
+    POST /api/board/github/refresh        → run the gh searches now, and start the
+                                            owner-check list's refresh (token-gated)
+    POST /api/board/owner-checks/answer   → answer owner checks (board_owner.py;
+                                            Tailscale + passkey)
     POST /api/board/issues/file           → file a GitHub issue, nothing spawned
                                             (token-gated; the delegate token's one write)
     GET  /api/board/sessions/{sid}/exchange → last user↔assistant exchange
@@ -62,7 +65,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from src import agents, audit, board
-from src.board import active_issue_claims, proof_reports
+from src.board import active_issue_claims, owner_checks, proof_reports
 from src.chief import answers as chief_answers
 from src.chief import dispatch_brief
 from src.clients import github as github_client
@@ -78,7 +81,7 @@ from src.usage import auto_switch
 from src.webapp_config import WebappConfig
 
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
-from app.webapp.routers import board_chief
+from app.webapp.routers import board_chief, board_owner
 from app.webapp.routers._helpers import (
     attach_provider_web_urls,
     audit_session_start_and_maybe_mirror,
@@ -98,6 +101,7 @@ from app.webapp.routers.board_spawn import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 router.include_router(board_chief.router)
+router.include_router(board_owner.router)
 
 _quota_refresh_gate = quota_usage.RefreshGate()
 _quota_refresh_task: asyncio.Task[str] | None = None
@@ -350,6 +354,9 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         # Age of the jobs runtime snapshot the job cards came from,
         # so a stale one can never pass for current.
         "jobs_snapshot": jobs_snapshot.latest_description(),
+        # Issues waiting on the owner (owner_check labels), from their own
+        # cache: ``available: false`` until a list has landed, never "none".
+        "owner_checks": owner_checks.snapshot(),
     }
 
 
@@ -451,8 +458,13 @@ async def get_rate_limits(request: Request) -> Dict[str, Any]:
 
 @router.post("/api/board/github/refresh")
 async def refresh_github(request: Request) -> Dict[str, Any]:
-    """Run the fleet-wide gh searches now (subprocess-heavy, on demand only)."""
+    """Run the fleet-wide gh searches now (subprocess-heavy, on demand only).
+
+    The owner-check list (two ``gh`` calls per repo) refreshes beside it in a
+    background thread, so the ↻ never waits on it; the poll shows it landing.
+    """
     cfg: WebappConfig = request.app.state.webapp_config
+    owner_checks.start_refresh(cfg.fleet_config_dir)
     snap = await asyncio.to_thread(github_client.refresh, cfg.github_owner)
     return _github_section(snap)
 

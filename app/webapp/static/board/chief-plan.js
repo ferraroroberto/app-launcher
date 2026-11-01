@@ -290,6 +290,24 @@ function moreRow(n) {
   }).li;
 }
 
+// The answer sheet from an owner-check row (owner-checks.js): the chief's
+// open questions the filter shows come too, so it stays one sheet; `ownerRef`
+// is the item to scroll to.
+export function openAnswersAt(ownerRef) {
+  const body = state.board;
+  const liveRead = !(body && body.live_sessions && body.live_sessions.available === false);
+  const plan = state.chiefPlan;
+  let open = [];
+  if (plan && plan.state === 'ok') {
+    const answered = answeredKeys(plan);
+    const filter = boardRepoFilter();
+    (plan.waiting_on_roberto || []).forEach(function (w, i) {
+      if (planRowShown(w, filter) && answered.indexOf(itemKey(w, i)) === -1) open.push(i);
+    });
+  }
+  openChiefAnswers(plan, chiefRunState(body, liveRead), open, null, ownerRef);
+}
+
 export function renderChiefPlan(body, liveRead) {
   const host = els.boardColumns && els.boardColumns.querySelector('.board-plan-body');
   if (!host) return;

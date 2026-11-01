@@ -54,6 +54,8 @@ webapp/chief-pointer.json
 webapp/chief-answered.json
 # Failed job runs the owner dismissed from the Board (issue #1669) — machine-written state
 webapp/jobs-dismissed.json
+# The Board's Later and Problem marks on owner checks — machine-written state
+webapp/owner-check-marks.json
 # Skill-instruction fingerprints of resumed Life OS conversations — machine-written state
 webapp/life-os-skill-hashes.json
 # Former e2e-gate config path (issue #441). No longer written — the gate's

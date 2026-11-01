@@ -353,6 +353,19 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
     monkeypatch.setattr(
         chief_answers_mod, "CHIEF_ANSWERED_FILE", tmp_path / "chief-answered.json"
     )
+    # And the Board's owner-check marks, whose cache is module memory too.
+    from src.board import owner_checks as owner_checks_mod
+    monkeypatch.setattr(
+        owner_checks_mod, "MARKS_FILE", tmp_path / "owner-check-marks.json"
+    )
+    owner_checks_mod.reset_cache()
+
+    # A GitHub refresh starts the owner-check list; in a test it must never
+    # reach the real CLI (and GitHub). Tests that read it fake _run_cli.
+    def _no_real_cli(*_args, **_kwargs):
+        raise owner_checks_mod.OwnerCheckError("tests never run the real owner_check CLI")
+
+    monkeypatch.setattr(owner_checks_mod, "_run_cli", _no_real_cli)
     # The write-side memo is module-level and would otherwise leak one test's
     # chief into the next (a second test would then observe "no write").
     monkeypatch.setattr(chief_router, "_last_noted_chief_conversation", "")
