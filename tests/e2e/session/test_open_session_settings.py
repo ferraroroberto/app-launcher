@@ -21,6 +21,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.fixtures.routes import fulfill_edited_json
 from tests.e2e.fixtures.ui import open_row_menu, open_settings
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, wait_until
 
@@ -42,11 +43,11 @@ def _mock_config(page: Page, *, window: bool, chat: bool) -> dict:
             route.fulfill(status=200, content_type="application/json",
                           body=json.dumps({"ok": True}))
             return
-        resp = route.fetch()
-        body = resp.json()
-        body["open_sessions_in_window"] = knobs["window"]
-        body["open_sessions_in_chat"] = knobs["chat"]
-        route.fulfill(response=resp, json=body)
+        def _overlay(body: dict) -> None:
+            body["open_sessions_in_window"] = knobs["window"]
+            body["open_sessions_in_chat"] = knobs["chat"]
+
+        fulfill_edited_json(route, _overlay)
 
     page.route(_CONFIG, _route)
     return knobs

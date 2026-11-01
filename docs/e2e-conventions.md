@@ -31,3 +31,7 @@ Auto-retrying `expect()` assertions re-resolve and are immune: prefer `expect(..
 ## Self-naming hangs
 
 The suite caps the **default Playwright action + navigation timeout** at 15s (`tests/e2e/fixtures/waits.py`, `E2E_DEFAULT_TIMEOUT_MS`-tunable) vs Playwright's 30s default, so a single auto-waiting `.click()`/`goto`/`wait_for_selector` with no explicit `timeout=` fails fast with a `TimeoutError` that *names the locator*, instead of stacking opaque 30s waits toward the 120s `pytest-timeout` black box. `expect()` assertions keep their own 5s default. A red here is still a flake on a loaded box — but a diagnosable, named one.
+
+## A `route.fetch()` handler goes through `fulfill_edited_json`
+
+A handler still mid-fetch when its test ends reads a response the context close has disposed. Playwright keeps that error and rethrows it from the *next* API call on the connection, which is the following test's fixture setup (`BrowserContext.route: Response has been disposed`), far from the handler that caused it. `tests/e2e/fixtures/routes.py::fulfill_edited_json` fetches, edits the JSON body and fulfills, and a handler that finds its context torn down stops quietly; any other error still raises. `tests/e2e/shell/test_route_teardown.py` holds a handler open across the close to pin the ordering. A page-level `unroute_all` is no substitute: `wait` blocks on handlers a test holds open on purpose, and `ignoreErrors` lets the request fall through to the context routes.
