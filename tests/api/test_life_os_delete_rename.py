@@ -33,7 +33,7 @@ class TestDeleteConversation:
         from src.clients import session as session_client
         from src.life_os.transcript import claude_projects_dir
 
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         home = tmp_path / "home"
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("USERPROFILE", str(home))
@@ -209,7 +209,7 @@ class TestDeleteConversation:
 
     def test_route_is_passkey_gated(self, monkeypatch):
         from app.webapp import middleware
-        monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset())
+        monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset())
         jsonl = self._transcript()
         resp = self._delete()
         assert resp.status_code in (401, 403), resp.text
@@ -276,7 +276,7 @@ def _stub_title_cli(tmp_path, monkeypatch, calls: list) -> None:
     from app.webapp import middleware
     from app.webapp.routers import life_os_conversations as router
 
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
     script = tmp_path / "conversation_title_stub.py"
     script.write_text(_TITLE_STUB, encoding="utf-8")
     real_run = subprocess.run
@@ -417,7 +417,7 @@ class TestRenameConversation:
     def test_same_auth_as_delete(self):
         from app.webapp import middleware
         assert middleware._terminal_guard_level(self.ENDPOINT) == "passkey"
-        self.monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset())
+        self.monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset())
         resp = self._rename("Ferry")
         assert resp.status_code in (401, 403), resp.text
         assert self.calls == []

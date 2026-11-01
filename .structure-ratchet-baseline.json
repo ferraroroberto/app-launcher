@@ -3,6 +3,7 @@
   "band": {"files": 15, "functions": 44},
   "root_extras": [],
   "entries": [
-    {"key": "place:app/session_host", "files": 2}
+    {"key": "place:app/session_host", "files": 2},
+    {"key": "place:app/webapp/middleware", "files": 6}
   ]
 }

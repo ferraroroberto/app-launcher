@@ -43,7 +43,7 @@ health probes, bounded restart"]
 
   subgraph webapp["app/webapp/ — FastAPI, :8445"]
     WSERVER["server.py\nlifespan, static mount, asset hashing"]
-    MW["middleware.py\nBearerTokenMiddleware"]
+    MW["middleware/\nBearerTokenMiddleware, trust boundary"]
     MGR["manager.py\nWebappManager (start/stop/status)"]
     SHELLHTML["shell_html.py\nsplices static/views/*.html into index.html"]
     DOORBELL["chief_doorbell.py\nrings an idle chief with pending mail (#1645)"]

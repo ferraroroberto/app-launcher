@@ -168,7 +168,7 @@ def test_a_transcript_past_the_ceiling_reads_its_newest_part(tmp_path, monkeypat
 def _bypass_gate(monkeypatch):
     from app.webapp import middleware
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS",
+        middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
     )
 

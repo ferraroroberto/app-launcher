@@ -132,10 +132,10 @@ async def _mark_chief_managed(
     window from it (#1283). False when either can't be established.
     """
     # Imported here, not at module load, so a test's `monkeypatch.setattr
-    # (middleware, "LOOPBACK_HOSTS", ...)` is actually observed -- a
+    # (middleware.trust, "LOOPBACK_HOSTS", ...)` is actually observed -- a
     # module-level import would bind this router's own stale copy at import
     # time instead (same reasoning as `_helpers.should_mirror_to_pc`).
-    from app.webapp.middleware import LOOPBACK_HOSTS
+    from app.webapp.middleware.trust import LOOPBACK_HOSTS
 
     if not sid or client_ip(request) not in LOOPBACK_HOSTS:
         return False

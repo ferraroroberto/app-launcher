@@ -30,7 +30,7 @@ working directory (Grok does, including for directories that no longer
 exist) can never show another session's text. None of them read the
 launcher's PTY capture, so detached rows are served the same way (#966).
 Terminal-grade content, so it sits behind the Tailscale + passkey gate like
-``/exchange`` — and so does its sibling below (``middleware.py``'s
+``/exchange`` — and so does its sibling below (``middleware``'s
 ``_TERMINAL_GUARD_RULES`` needs its own row per path shape; ``/transcript``'s
 rule matches on a ``.../transcript`` suffix, which a ``/transcript/entry``
 request does not, so it is a separate row, not covered for free).

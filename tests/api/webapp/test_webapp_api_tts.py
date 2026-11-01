@@ -46,7 +46,7 @@ class TestTtsSummarize:
     def _bypass_gate(self, monkeypatch):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )
@@ -114,7 +114,7 @@ class TestTtsSpeak:
     def _bypass_gate(self, monkeypatch):
         from app.webapp import middleware
         monkeypatch.setattr(
-            middleware,
+            middleware.trust,
             "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
         )

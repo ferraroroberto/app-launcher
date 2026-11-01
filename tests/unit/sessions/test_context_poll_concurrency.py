@@ -45,7 +45,7 @@ def screens(webapp_client, monkeypatch, tmp_path):
     from app.webapp import middleware
     from src import audit
 
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS",
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))
     _, app, overrides = webapp_client
     sids = [f"sess{n:04d}" for n in range(_SESSIONS)]

@@ -367,7 +367,7 @@ def should_mirror_to_pc(
     """
     # Imported here to avoid a module-load cycle (middleware imports nothing
     # from the routers package, but keep the dependency edge one-directional).
-    from app.webapp.middleware import LOOPBACK_HOSTS
+    from app.webapp.middleware.trust import LOOPBACK_HOSTS
 
     if not show_local_window:
         return False

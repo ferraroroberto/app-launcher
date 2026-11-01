@@ -13,7 +13,7 @@ pin the two invariants the HTTP half already states in its own comments:
 
 1. A credential is required whenever *either* credential class is configured
    (``auth_token`` or minted ``api_tokens``) — "a config with only minted
-   tokens must not be an open gate" (``middleware.py``).
+   tokens must not be an open gate" (``middleware.bearer``).
 2. A request that arrived over the public Cloudflare edge is never treated as
    the PC itself, whatever client address it presents.
 """
@@ -49,10 +49,10 @@ def _force_remote_tailnet(monkeypatch):
     from app.webapp import middleware
 
     monkeypatch.setattr(
-        middleware, "LOOPBACK_HOSTS", frozenset({"127.0.0.1", "::1"})
+        middleware.trust, "LOOPBACK_HOSTS", frozenset({"127.0.0.1", "::1"})
     )
     monkeypatch.setattr(
-        middleware, "client_in_tailnet", lambda host, allow: True
+        middleware.trust, "client_in_tailnet", lambda host, allow: True
     )
 
 
@@ -206,7 +206,7 @@ def test_run_stream_edge_request_is_not_treated_as_the_pc(
     app.state.webapp_config.auth_token = "the-real-token"
     app.state.webapp_config.api_tokens = []
     monkeypatch.setattr(
-        mw, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1"})
+        mw.trust, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1"})
     )
 
     with pytest.raises(WebSocketDisconnect) as excinfo:
@@ -261,7 +261,7 @@ def test_edge_request_is_not_treated_as_the_pc(webapp_client, monkeypatch):
 
     app.state.webapp_config.auth_token = "the-real-token"
     monkeypatch.setattr(
-        mw, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1"})
+        mw.trust, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1"})
     )
 
     # Same request, same (loopback-shaped) client — only the edge header differs.

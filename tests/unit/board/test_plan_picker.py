@@ -239,7 +239,7 @@ def picker_client(webapp_client, monkeypatch, tmp_path):
     from app.webapp.routers import session_screen as router
     from src import audit
 
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS",
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))
     client, _, overrides = webapp_client
     session = overrides["session"]

@@ -35,7 +35,7 @@ def _archive(root: Path, capture: str, title: str, day: str = DAY) -> None:
 @pytest.fixture
 def archive(life_os_client, tmp_path, monkeypatch):
     from app.webapp import middleware
-    monkeypatch.setattr(middleware, "LOOPBACK_HOSTS", frozenset({"testclient"}))
+    monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     root = tmp_path / "zombie-backup"
