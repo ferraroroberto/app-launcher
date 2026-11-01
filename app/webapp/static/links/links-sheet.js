@@ -27,7 +27,7 @@ const REASON = {
 };
 
 const GROUP_GLYPH = {
-  artifacts: 'layout', github: 'git-pull-request', servers: 'globe', other: 'link',
+  artifacts: 'layout-grid', github: 'git-pull-request', servers: 'globe', other: 'link',
 };
 
 let view = null;   // { sid, seq } while the sheet is open
