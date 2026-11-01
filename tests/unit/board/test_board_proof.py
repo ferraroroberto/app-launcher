@@ -188,7 +188,7 @@ def test_search_done_on_carries_each_issues_pr(monkeypatch):
     assert (by_number[5]["pr"], by_number[5]["visual_proof"]) == (21, "missing")
     assert by_number[5]["pr_url"] == "https://github.com/o/demo-app/pull/21"
     assert (by_number[6]["pr"], by_number[6]["visual_proof"], by_number[6]["pr_url"]) == (None, None, "")
-    assert len(seen) == 2                                   # one issues search, one PR search
+    assert len(seen) == 3          # an issues search, a PR search, one batched lookup for the unpaired
 
 
 def test_a_failed_pr_search_keeps_done_and_claims_no_proof_state(monkeypatch):
@@ -239,3 +239,61 @@ def test_api_done_annotates_the_days_cards(webapp_client, store, monkeypatch):
     items = client.get("/api/board/done?days_back=2").json()["items"]
     assert {i["number"]: i.get("proof") for i in items} == {5: "available", 6: "missing", 7: None}
     assert {i["number"]: i.get("proof_pr") for i in items}[5] == 21
+
+
+# --- Part-of, earlier-day merges and not-planned closes ------------------------
+
+def _timeline(*prs, reason="COMPLETED"):
+    nodes = [{"source": {"number": n, "url": f"https://github.com/o/{repo}/pull/{n}", "merged": merged,
+                         "mergedAt": at, "body": body, "repository": {"name": repo}}}
+             for n, repo, merged, at, body in prs]
+    return {"stateReason": reason, "timelineItems": {"nodes": nodes}}
+
+
+def _gh_with_lookup(monkeypatch, *, issues, graphql):
+    seen = []
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        if argv[:2] == ["gh", "api"]:
+            if graphql is None:
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="boom")
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"data": graphql}), stderr="")
+        rows = [] if "prs" in argv[:3] else issues
+        return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(rows), stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    return seen
+
+
+def test_part_of_and_earlier_merges_link_and_not_planned_is_marked(monkeypatch):
+    seen = _gh_with_lookup(monkeypatch, issues=[_issue(5), _issue(6), _issue(7), _issue(8)], graphql={
+        "i0": {"issue": _timeline((50, "demo-app", True, "2026-06-01T00:00:00Z", "Part of #5"))},
+        "i1": {"issue": _timeline(
+            (60, "demo-app", True, "2026-05-01T00:00:00Z", "Progresses #6"),
+            (61, "demo-app", True, "2026-06-01T00:00:00Z", "Closes #6"),
+            (62, "demo-app", False, "2026-07-01T00:00:00Z", "Part of #6"),      # unmerged
+            (63, "other", True, "2026-07-02T00:00:00Z", "Part of #6"),          # another repo
+            (64, "demo-app", True, "2026-07-03T00:00:00Z", "mentions #6 only"))},  # no reference
+        "i2": {"issue": _timeline(reason="NOT_PLANNED")},
+        "i3": {"issue": _timeline()},
+    })
+    by = {c["number"]: c for c in github_client.search_done_on("o", date(2026, 7, 1))}
+    assert (by[5]["pr"], by[5]["pr_url"]) == (50, "https://github.com/o/demo-app/pull/50")
+    assert by[6]["pr"] == 61                                  # latest merged, real reference, same repo
+    assert (by[7]["pr"], by[7]["not_planned"]) == (None, True)
+    assert (by[8]["pr"], by[8]["not_planned"]) == (None, False)
+    assert sum(a[:2] == ["gh", "api"] for a in seen) == 1     # one call for the page, not per card
+
+
+def test_same_day_closer_is_unchanged_and_skips_the_lookup(monkeypatch):
+    seen = _gh_answering(monkeypatch, issues=[_issue(5)], prs=[_pr(21, "Closes #5")])
+    (card,) = github_client.search_done_on("o", date(2026, 7, 1))
+    assert (card["pr"], card["not_planned"]) == (21, False)
+    assert not any(a[:2] == ["gh", "api"] for a in seen)
+
+
+def test_a_failed_lookup_leaves_the_pr_slot_empty(monkeypatch):
+    _gh_with_lookup(monkeypatch, issues=[_issue(5)], graphql=None)
+    (card,) = github_client.search_done_on("o", date(2026, 7, 1))
+    assert (card["pr"], card["pr_url"], card["not_planned"]) == (None, "", False)
