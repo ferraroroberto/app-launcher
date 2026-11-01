@@ -239,19 +239,21 @@
   }
 
   .app {
-    /* Bottom reserve = bar + its margin above and below + the gap, so the
-       last row scrolls clear of the fixed bar. Keep the bar a body-level
-       sibling of .app: iOS captures fixed descendants of scrollers. */
-    /* Top = the safe area plus the top fade's height, so the first card at
-       scroll-top starts where the fade ends and is never dimmed. */
-    padding: calc(env(safe-area-inset-top, 0px) + 4px) var(--gap) calc(
-      env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
+    /* Bottom reserve = the bottom fade's full height (the bar, its bottom
+       margin, and whichever reaches higher above the bar: the fade's tail or
+       the bar's top margin) + the gap, so scrolled to the end the last row
+       and the build footer sit a gap above the fade, never dimmed, and clear
+       of the bar's taps. Keep the bar a body-level sibling of .app: iOS
+       captures fixed descendants of scrollers. */
+    --nav-bottom-reserve: calc(
+      env(safe-area-inset-bottom, 0px) +
+      max(var(--nav-fade-tail, 24px), var(--bottom-tabs-margin, 21px)) +
       var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
     );
-    scroll-padding-bottom: calc(
-      env(safe-area-inset-bottom, 0px) + var(--bottom-tabs-margin, 21px) +
-      var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px) + var(--gap)
-    );
+    /* Top = the safe area only: the top fade is off at scroll-top, so the
+       first card sits right under the status bar. */
+    padding: env(safe-area-inset-top, 0px) var(--gap) var(--nav-bottom-reserve);
+    scroll-padding-bottom: var(--nav-bottom-reserve);
   }
 
   .tabs {
@@ -296,41 +298,65 @@
     inset: 0;
   }
 
-  /* Scroll-edge fade under the bar: an inert band anchored to the screen
-     bottom like the bar itself, transparent 16px above the bar's top edge and
-     the page background from its bottom edge down, so rows dim into the bar
-     instead of showing through the glass hard-edged. Above .app, below the
-     bar's 120; pointer-events: none so taps reach the row beneath. */
+  /* Scroll-edge fades: a gentle hint that more content lies past each edge,
+     never a wall, and no solid zone. Both edges use one eased curve: from
+     the screen edge inward the content's opacity runs 0, .25, .5, .75, .92
+     and 1 at 0, 10, 25, 50, 75 and 100% of the band, so content stays at
+     least half visible over three quarters of each band and only vanishes at
+     the edge. Drawn as page colour (--bg) over the content, coverage being
+     one minus that opacity. Inert: above .app, below the bar's 120, and
+     pointer-events: none so taps reach the row beneath.
+     Bottom: from --nav-fade-tail above the bar's top edge down to the screen
+     edge, so rows show through the bar's glass and fade out under it. */
   body::before {
     content: '';
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
-    height: calc(16px + var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px));
+    height: calc(var(--nav-fade-tail, 24px) + var(--bottom-tabs-height, 61px) + var(--bottom-tabs-margin, 21px));
     z-index: 110;
     pointer-events: none;
-    background: linear-gradient(transparent, var(--bg) calc(16px + var(--bottom-tabs-height, 61px)));
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      color-mix(in srgb, var(--bg) 8%, transparent) 25%,
+      color-mix(in srgb, var(--bg) 25%, transparent) 50%,
+      color-mix(in srgb, var(--bg) 50%, transparent) 75%,
+      color-mix(in srgb, var(--bg) 75%, transparent) 90%,
+      var(--bg) 100%
+    );
   }
-  /* Top fade, the same look as the shared nav under a translucent status
-     bar: there the band is solid behind the clock and eases out below it.
-     The `default` status bar is opaque in the page colour (theme-color), so
-     it is the solid part and only the eased tail is drawn, 4px tall, inside
-     the .app top padding. */
+  /* Top: a --nav-fade-band band from the top of the viewport, solid only
+     through the safe area. In an installed iOS app with the `default` status
+     bar the viewport starts below the status bar and no fixed layer paints in
+     that strip, so the band starts at the viewport top and stays thin.
+     Its opacity is --nav-fade-on, which nav-tabs.js raises from 0 at
+     scroll-top to 1 over the first band of scroll: at rest the first row sits
+     right under the status bar, undimmed, with no top padding past the safe
+     area. */
   body::after {
     content: '';
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: calc(env(safe-area-inset-top, 0px) + 4px);
+    height: calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px));
     z-index: 110;
     pointer-events: none;
+    opacity: var(--nav-fade-on, 0);
     background: linear-gradient(
+      to bottom,
       var(--bg) env(safe-area-inset-top, 0px),
-      color-mix(in srgb, var(--bg) 78%, transparent) calc(env(safe-area-inset-top, 0px) + 1.5px),
-      color-mix(in srgb, var(--bg) 35%, transparent) calc(env(safe-area-inset-top, 0px) + 3px),
-      transparent
+      color-mix(in srgb, var(--bg) 75%, transparent)
+        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.1),
+      color-mix(in srgb, var(--bg) 50%, transparent)
+        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.25),
+      color-mix(in srgb, var(--bg) 25%, transparent)
+        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.5),
+      color-mix(in srgb, var(--bg) 8%, transparent)
+        calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px) * 0.75),
+      transparent calc(env(safe-area-inset-top, 0px) + var(--nav-fade-band, 12px))
     );
   }
   @media (prefers-reduced-transparency: reduce) {
@@ -345,14 +371,25 @@
      Standalone only: in a browser tab lvh would hide the bar under the
      toolbar. vh first: on iOS it equals the large viewport too. */
   @media (display-mode: standalone) {
+    /* The scrollable-document floor keys to the large viewport here: iOS
+       resizes the installed app's viewport on a cold launch and again each
+       time the keyboard closes, and a dvh floor re-laid out the whole
+       document on every frame of that resize, which painted as the page
+       sliding. lvh is the final height from the first frame, so the floor
+       never moves. A browser tab keeps dvh, where lvh would make a short tab
+       scroll by the toolbar's height. */
+    html {
+      min-height: calc(100vh + 1px);
+      min-height: calc(100lvh + 1px);
+    }
     .tabs {
       top: calc(100vh - var(--bottom-tabs-margin, 21px) - var(--bottom-tabs-height, 61px));
       top: calc(100lvh - var(--bottom-tabs-margin, 21px) - var(--bottom-tabs-height, 61px));
       bottom: auto;
     }
     body::before {
-      top: calc(100vh - 16px - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
-      top: calc(100lvh - 16px - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      top: calc(100vh - var(--nav-fade-tail, 24px) - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
+      top: calc(100lvh - var(--nav-fade-tail, 24px) - var(--bottom-tabs-height, 61px) - var(--bottom-tabs-margin, 21px));
       bottom: auto;
     }
   }
