@@ -497,24 +497,32 @@ function failedCount(run) {
   return run.reduce(function (n, e) { return n + (e.error === true ? 1 : 0); }, 0);
 }
 
-// "14s", "1m 52s", "1h 5m"; empty under a second.
+// "14s", "1m 52s", "1h 5m", "2d 5h"; empty under a second.
 function fmtSpan(ms) {
   const s = Math.round(ms / 1000);
   if (!(s >= 1)) return '';
   if (s < 60) return s + 's';
   const m = Math.floor(s / 60);
   if (m < 60) return m + 'm ' + (s % 60) + 's';
-  return Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + 'h ' + (m % 60) + 'm';
+  return Math.floor(h / 24) + 'd ' + (h % 24) + 'h';
 }
 
-// How long a run took: from its first entry to the reply that follows it in
-// the turn, or, with none yet, to its own last entry. Empty when either end
-// has no usable timestamp.
-function runSpan(li) {
+// The entry a run ends at: the reply that follows it in the turn, else its own
+// last entry. `done` is true only for a following reply; without one the run
+// may still be going.
+function runEnd(li) {
   const run = li._trRun;
   const next = li.nextElementSibling;
-  const end = next && next._trEntry ? next._trEntry : run[run.length - 1];
-  return fmtSpan(Date.parse(end.timestamp) - Date.parse(run[0].timestamp));
+  if (next && next._trEntry) return { entry: next._trEntry, done: true };
+  return { entry: run[run.length - 1], done: false };
+}
+
+// How long a run took: from its first entry to its end. Empty when either end
+// has no usable timestamp.
+function runSpan(li) {
+  return fmtSpan(Date.parse(runEnd(li).entry.timestamp) - Date.parse(li._trRun[0].timestamp));
 }
 
 // "07:30", or "Oct 30, 07:30" when the day is not today.
@@ -526,22 +534,31 @@ function fmtWhen(ts) {
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + time;
 }
 
-// Where an opened run sits: when it started, how long it ran, and how far
-// into the session that was. Each part is left out when its timestamps don't
-// parse, so the line never reads "NaN" or a made-up zero. `opts.sessionStart`
-// (ms, or null) is the open session's; the Life OS viewer has none, and its
-// line carries no offset.
+// Where an opened run sits: when it finished, how long it took, and the
+// session's age at that point. A run with no reply after it yet reads as
+// started, with the time so far, rather than a false finish. Each part is left
+// out when its timestamps don't parse, so the line never reads "NaN" or a
+// made-up zero. `opts.sessionStart` (ms, or null) is the open session's; the
+// Life OS viewer has none, and its line carries no session age.
 function runWhen(li) {
   const first = li._trRun[0];
-  const start = Date.parse(first.timestamp);
-  if (Number.isNaN(start)) return '';
-  const parts = [fmtWhen(first.timestamp)];
+  const { entry, done } = runEnd(li);
+  const parts = [];
   const span = runSpan(li);
-  if (span) parts.push('lasted ' + span);
+  if (!done) {
+    const began = fmtWhen(first.timestamp);
+    if (began) parts.push('started ' + began);
+    if (span) parts.push(span);
+    return parts.join(' · ');
+  }
+  const end = Date.parse(entry.timestamp);
+  const finished = fmtWhen(entry.timestamp);
+  if (finished) parts.push('finished ' + finished);
+  if (span) parts.push('took ' + span);
   const origin = li._trSessionStart ? li._trSessionStart() : null;
-  if (origin != null && start >= origin) {
-    const into = fmtSpan(start - origin);
-    parts.push(into ? '+' + into + ' into the session' : 'at the session start');
+  if (origin != null && end >= origin) {
+    const age = fmtSpan(end - origin);
+    parts.push(age ? 'session ' + age : 'session start');
   }
   return parts.join(' · ');
 }
