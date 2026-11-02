@@ -246,12 +246,6 @@ function pendingQuestions(plan, answered, filter) {
   }).length;
 }
 
-// The first QUESTIONS_SHOWN questions, then one "N more"
-// row that unfolds the rest in place (for as long as the page lives), then
-// the one Answer button.
-const QUESTIONS_SHOWN = 3;
-let questionsUnfolded = false;
-
 // One waiting question: its one-line text (the sheet asks the full
 // question), its ref as the meta, a chevron; a tap opens the answer sheet on
 // it. One already answered says so and does nothing on tap: the sheet skips
@@ -271,22 +265,6 @@ function questionRow(plan, run, open, i, answered) {
     onMain: openSheet,
     inert: sent,
     trailing: sent ? null : chevron('chevron-right', openSheet),
-  }).li;
-}
-
-function moreRow(n) {
-  const unfold = function () {
-    questionsUnfolded = true;
-    renderBoard();
-  };
-  const text = plural(n, 'more question', 'more questions');
-  return actionRow({
-    className: 'board-item board-plan-more',
-    title: text,
-    label: 'Show ' + text,
-    density: 'one-line',
-    onMain: unfold,
-    trailing: chevron('chevron-down', unfold),
   }).li;
 }
 
@@ -315,7 +293,7 @@ export function renderChiefPlan(body, liveRead) {
     pending ? plural(pending, 'question', 'questions') + ' for you' : '',
     'attention');
   // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age, answered, filter, questionsUnfolded]);
+  const sig = JSON.stringify([plan, run, age, answered, filter]);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.dataset.state = plan.state;
@@ -341,11 +319,7 @@ export function renderChiefPlan(body, liveRead) {
       const open = shown.filter(function (i) {
         return answered.indexOf(itemKey(waiting[i], i)) === -1;
       });
-      // "1 more" would take a row to save one: fold only from two hidden.
-      const folded = !questionsUnfolded && shown.length > QUESTIONS_SHOWN + 1;
-      const listed = folded ? shown.slice(0, QUESTIONS_SHOWN) : shown;
-      const rows = listed.map(function (i) { return questionRow(plan, run, open, i, answered); });
-      if (folded) rows.push(moreRow(shown.length - listed.length));
+      const rows = shown.map(function (i) { return questionRow(plan, run, open, i, answered); });
       const group = planGroup('Waiting on you', rows, 'board-plan-group-waiting');
       if (open.length) group.appendChild(answerButton(plan, run, open));
       nodes.push(group);

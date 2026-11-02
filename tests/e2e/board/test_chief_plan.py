@@ -292,13 +292,12 @@ def test_answered_marks_show_on_every_device_until_the_plan_moves(
 
 
 @pytest.mark.iphone
-def test_questions_are_one_line_rows_three_then_more_then_one_answer(
+def test_questions_are_one_line_rows_all_shown_then_one_answer(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#1502 (decision 2 of #1500): each waiting question is one shared
     action-row, its text on one line with the ref as meta and a chevron, no
-    amber bar. The first three show, then one "N more" row that unfolds the
-    rest in place, then the one Answer button. A tap on a row opens the
+    amber bar. Every question shows (no fold), then the one Answer button. A tap on a row opens the
     answer sheet on that question."""
     waiting = [
         {"id": f"q-{i}", "ref": f"demo-repo#{i}",
@@ -306,7 +305,7 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
                  "that no row on a phone, nor a lane on the widest desktop grid, "
                  "can ever hold on one line without cutting it short?",
          "question": f"Full question {i}?"}
-        for i in range(1, 7)
+        for i in range(1, 9)
     ]
     _mock_board(authed_page, _board_payload(with_chief=True))
     _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
@@ -315,14 +314,10 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
 
     group = authed_page.locator("#boardChiefPlan .board-plan-group-waiting")
     rows = group.locator("li.board-plan-waiting")
-    more = group.locator("li.board-plan-more")
-    expect(rows).to_have_count(3)
-    expect(more).to_have_count(1)
-    expect(more.locator(".action-row-title")).to_have_text("3 more questions")
-    expect(group.locator(".board-plan-answer")).to_have_text("Answer 6 questions")
-    # Order: the rows, then "N more", then the button.
-    expect(group.locator("li")).to_have_count(4)
-    expect(group.locator("li").nth(3)).to_have_class(re.compile(r"\bboard-plan-more\b"))
+    expect(rows).to_have_count(8)
+    expect(group.locator("li.board-plan-more")).to_have_count(0)
+    expect(group.locator(".board-plan-answer")).to_have_text("Answer 8 questions")
+    expect(group.locator("li")).to_have_count(8)
 
     first = rows.nth(0)
     expect(first).to_have_class(re.compile(r"\baction-row\b"))
@@ -343,26 +338,14 @@ def test_questions_are_one_line_rows_three_then_more_then_one_answer(
     assert m["th"] <= m["lh"] + 1, f"question title wraps: {m}"
     assert m["clipped"], f"a long question should ellipsize: {m}"
 
-    # "N more" unfolds the rest in place, and stays unfolded across a poll.
-    more.locator(".action-row-main").click()
-    expect(rows).to_have_count(6)
-    expect(more).to_have_count(0)
-    with authed_page.expect_response(
-        lambda resp: resp.url.endswith("/api/board/chief-plan")
-    ):
-        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
-    authed_page.evaluate(
-        "() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
-    expect(rows).to_have_count(6)
-
     # A row opens the sheet on its own question: the last one, scrolled to.
-    rows.nth(5).locator(".action-row-main").click()
+    rows.nth(7).locator(".action-row-main").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
     expect(dialog).to_be_visible()
-    expect(dialog.locator(".chief-answer")).to_have_count(6)
-    expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_be_in_viewport()
-    expect(dialog.locator('.chief-answer[data-key="q-6"] .tr-ask-question')).to_have_text(
-        "Full question 6?")
+    expect(dialog.locator(".chief-answer")).to_have_count(8)
+    expect(dialog.locator('.chief-answer[data-key="q-8"] .tr-ask-question')).to_be_in_viewport()
+    expect(dialog.locator('.chief-answer[data-key="q-8"] .tr-ask-question')).to_have_text(
+        "Full question 8?")
 
 
 @pytest.mark.iphone
