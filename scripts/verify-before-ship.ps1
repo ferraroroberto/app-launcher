@@ -278,6 +278,12 @@ try {
             }
         }
 
+        # Every disposable server this phase boots records its pid here; the
+        # sweep in the finally below stops whichever is still running. Only
+        # pids this run recorded, never a process matched by name or command line.
+        $pidLedger = Join-Path $repoRoot "webapp\e2e-autoboot-pids.jsonl"
+        New-Item -ItemType File -Force -Path $pidLedger | Out-Null
+        $env:LAUNCHER_E2E_PID_LEDGER = $pidLedger
         try {
             $env:LAUNCHER_E2E_AUTOBOOT = "1"
             # On CI run verbose + unbuffered so a hung test (pytest-timeout aborts
@@ -358,10 +364,20 @@ try {
             if ($shotExit -ne 0) { Fail "shot baseline failed (exit $shotExit): a screen drifted from tests/e2e/shots. A deliberate UI change re-baselines (CLAUDE.md); anything else is unpinned content." }
         }
         finally {
+            Remove-Item Env:\LAUNCHER_E2E_PID_LEDGER -ErrorAction SilentlyContinue
+            # A worker that died before its teardown leaves its servers running;
+            # the job object normally takes them with it, and this is the backstop.
+            # reaped:0 is the normal outcome; an orphan reaped here is reported.
+            $sweepOut = & $python -m tests.e2e._owned_processes $pidLedger
+            $sweepExit = $LASTEXITCODE
+            $sweepOut | ForEach-Object { Write-Host "    $_" }
+            Log-Progress ("e2e orphan sweep: exit {0} {1}" -f $sweepExit, (@($sweepOut) | Select-Object -First 1))
             if ($e2eMutex) {
                 if ($e2eMutexAcquired) { $e2eMutex.ReleaseMutex() }
                 $e2eMutex.Dispose()
             }
+            if ($sweepExit -eq 1) { Fail "e2e orphan sweep: a recorded disposable server survived the kill and still pins this checkout (see ORPHANS= above)." }
+            if ($sweepExit -ne 0) { Fail "e2e orphan sweep NOT CONFIRMED (exit $sweepExit): could not establish that no disposable server outlived the run." }
         }
     }
 }
