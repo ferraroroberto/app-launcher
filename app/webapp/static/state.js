@@ -509,6 +509,8 @@ export const els = {
   largeUploadMaxMb: document.getElementById('largeUploadMaxMb'),
   usageShows: document.getElementById('usageShows'),
   bootAutostartToggle: document.getElementById('bootAutostartToggle'),
+  remotePowerGuardToggle: document.getElementById('remotePowerGuardToggle'),
+  remotePowerGuardStatus: document.getElementById('remotePowerGuardStatus'),
   voiceRemoteHelp: document.getElementById('voiceRemoteHelp'),
   lifeOsRefreshSkillToggle: document.getElementById('lifeOsRefreshSkillToggle'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),

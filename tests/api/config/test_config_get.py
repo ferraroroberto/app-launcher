@@ -1,4 +1,5 @@
-"""GET /api/config shape, the boot-autostart switch and the Chat send folders."""
+"""GET /api/config shape, the boot-autostart and remote power guard switches
+and the Chat send folders."""
 
 from __future__ import annotations
 
@@ -233,6 +234,50 @@ class TestBootAutostart:
         )
         assert resp.status_code == 200
         assert resp.json() == {"ok": True, "boot_autostart_enabled": False}
+
+
+class TestRemotePowerGuard:
+    """POST /api/settings/remote-power-guard and its /api/config block."""
+
+    def test_config_reports_live_state_and_commands(self, webapp_client, fake_guard):
+        client, _, _ = webapp_client
+        fake_guard["enabled"], fake_guard["no_close"] = None, None
+        block = client.get("/api/config").json()["remote_power_guard"]
+        assert block["state"] == "unknown"
+        assert block["no_close"] is None
+        assert block["command_enable"].endswith("remote_power_guard enable")
+        assert block["command_disable"].endswith("remote_power_guard disable")
+
+    @pytest.mark.parametrize("enabled, action", [(True, "enable"), (False, "disable")])
+    def test_unelevated_returns_409_with_the_command(
+        self, webapp_client, fake_guard, enabled, action
+    ):
+        client, _, _ = webapp_client
+        resp = client.post("/api/settings/remote-power-guard", json={"enabled": enabled})
+        assert resp.status_code == 409
+        detail = resp.json()["detail"]
+        assert detail["elevation_required"] is True
+        assert detail["command"].endswith(f"remote_power_guard {action}")
+        assert fake_guard["calls"] == [action]
+
+    def test_elevated_enable_returns_the_new_state(self, webapp_client, fake_guard):
+        client, _, _ = webapp_client
+        fake_guard["elevated"] = True
+        resp = client.post("/api/settings/remote-power-guard", json={"enabled": True})
+        assert resp.status_code == 200
+        assert resp.json()["remote_power_guard"]["state"] == "on"
+
+    def test_other_failure_returns_400(self, webapp_client, fake_guard, monkeypatch):
+        import src.remote_power_guard as guard_mod
+
+        def broken() -> None:
+            raise OSError("registered but reading it back did not find it")
+
+        monkeypatch.setattr(guard_mod, "enable", broken)
+        client, _, _ = webapp_client
+        resp = client.post("/api/settings/remote-power-guard", json={"enabled": True})
+        assert resp.status_code == 400
+        assert "reading it back" in resp.json()["detail"]
 
 
 class TestOutboxScratchRoots:

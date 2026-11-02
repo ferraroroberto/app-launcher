@@ -28,6 +28,7 @@ import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';
 import { wireFleetScope } from './settings/fleet-scope.js';
 import { showPath, wireSettingsSheets } from './settings/settings-sheets.js';
+import { wireRemotePowerGuard } from './settings/remote-power-guard.js';
 import { wireTelegramBots } from './settings/telegram-bots.js';
 import { wireScreenTime } from './screen/screen-time.js';
 import { openTerminal, wireTerminal } from './terminal.js';
@@ -75,6 +76,7 @@ function wireSettings() {
   if (els.bootAutostartToggle) {
     els.bootAutostartToggle.addEventListener('click', toggleBootAutostart);
   }
+  wireRemotePowerGuard(function () { return fetchConfig(); });
   // Every other Settings field saves as it changes: settings-sheets.js.
   wireSettingsSheets();
   wireScreenTime();

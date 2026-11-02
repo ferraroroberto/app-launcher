@@ -216,6 +216,14 @@ Note: creating this task requires an elevated (Run as administrator) Task
 Scheduler / PowerShell session — the same constraint that keeps the
 Settings-tab toggle from using this mechanism itself.
 
+## Hide shut down over Remote Desktop
+
+The **Hide shut down remotely** switch in **Settings** removes Shut
+down, Restart and Sleep from the Start menu while you are connected over Remote
+Desktop; at the PC they stay. Changing it needs an elevated terminal, so the
+switch shows the one command to run. How it works, the deliberate-shutdown
+command and the undo: [docs/remote-power-guard.md](docs/remote-power-guard.md).
+
 ---
 
 ## Security notes
@@ -286,6 +294,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/jobs-tab.md](docs/jobs-tab.md) | Jobs: schedules, run history, health |
 | [docs/board.md](docs/board.md) | The Board kanban |
 | [docs/fleet-scope.md](docs/fleet-scope.md) | Settings › Fleet scope: which repos fleet-wide runs include |
+| [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |
 | [docs/restart-and-liveness.md](docs/restart-and-liveness.md) | Restarting and proving the new build is live |

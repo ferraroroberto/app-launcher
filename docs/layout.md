@@ -58,6 +58,7 @@ app-launcher/
 │   ├── env_path.py             # effective-PATH resolution for coding-agent detection
 │   ├── build_info.py           # git-sha / build-time metadata behind `GET /api/version`
 │   ├── boot_autostart.py       # launch-on-login registration
+│   ├── remote_power_guard.py   # hide Start-menu power options over Remote Desktop
 │   ├── app_runtime.py          # process-level bootstrap shared by the CLI commands
 │   ├── _json_io.py             # shared JSON read/write helpers
 │   ├── instance_role.py        # primary-checkout vs worktree role detection

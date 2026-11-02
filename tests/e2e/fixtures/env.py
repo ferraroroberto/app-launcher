@@ -42,6 +42,14 @@ WEBAPP_CONFIG_PATH_ENV = "LAUNCHER_WEBAPP_CONFIG"
 # the real folder, so the test could only pass on a host with no
 # AppLauncher.bat installed there for real login-time autostart.
 STARTUP_DIR_ENV = "LAUNCHER_STARTUP_DIR"
+# The remote power guard's task path and policy key (src/remote_power_guard.py),
+# aimed at names that never exist so the disposable webapp reports "off"
+# whatever this machine's real guard state is, keeping the Settings
+# screenshots deterministic. Reads only: the gate is never elevated.
+GUARD_TASK_ENV = "LAUNCHER_REMOTE_POWER_GUARD_TASK"
+GUARD_KEY_ENV = "LAUNCHER_REMOTE_POWER_GUARD_KEY"
+GUARD_FAKE_TASK = r"\AppLauncher-E2E-Absent\remote-power-guard"
+GUARD_FAKE_KEY = r"Software\AppLauncher-E2E-Absent\Explorer"
 # Env var both the webapp and the session-host honour to relocate the audit
 # runtime dir (see src/audit.py:AUDIT_DIR_ENV) — the injection that stops a
 # gate run from writing its throwaway `<sid>.log` / `<sid>.transcript` pairs
