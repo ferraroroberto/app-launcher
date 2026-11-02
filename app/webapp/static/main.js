@@ -11,6 +11,7 @@ import { setTab, wireTabs } from './tabs.js';
 import { wireUsageLog } from './usage.js';
 import { initPerfTiming } from './perf-timing.js';
 import { bindTextSize } from './_vendored/text-size/text-size.js';
+import { buildReadoutText } from './_vendored/page-foot/page-foot.js';
 import { fetchConfig, wireClaudeOptions, wireConfigSwitch } from './settings/claude-options.js';
 import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './sessions.js';
 import { wireChannelSessions } from './channel-sessions.js';
@@ -155,8 +156,7 @@ async function fetchVersion() {
     try {
       const body = await jsonApi('/api/version');
       const sha = body.git_sha || 'unknown';
-      const ts = (body.built_at || '').replace('T', ' ').slice(0, 16);
-      els.buildReadout.textContent = ts ? ('Build: ' + sha + ' · ' + ts) : ('Build: ' + sha);
+      els.buildReadout.textContent = buildReadoutText(sha, body.built_at || '');
       // The Settings header carries the sha too, without the time.
       state.buildSha = sha;
       renderSettingsHead();

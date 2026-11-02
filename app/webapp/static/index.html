@@ -64,6 +64,7 @@
   <link rel="stylesheet" href="/static/_vendored/action-row/action-row.css">
   <link rel="stylesheet" href="/static/_vendored/row-menu/row-menu.css">
   <link rel="stylesheet" href="/static/_vendored/text-size/text-size.css">
+  <link rel="stylesheet" href="/static/_vendored/page-foot/page-foot.css">
   <link rel="stylesheet" href="/static/_vendored/empty-state/empty-state.css">
   <link rel="stylesheet" href="/static/_vendored/rec-wave/rec-wave.css">
   <!-- The app's own rules, in cascade order: one file per view, base first. -->
@@ -688,11 +689,6 @@
 
     <!-- @include views/jobs-dialogs.html -->
 
-    <!-- Build identity: plain footer line outside every card/block. -->
-    <div class="page-foot">
-      <p id="buildReadout" class="muted small"></p>
-    </div>
-
     <!-- @include views/apps-scan-dialog.html -->
 
     <!-- @include views/jobs-sheets.html -->
@@ -709,6 +705,12 @@
     <!-- @include views/usage-sheets.html -->
 
     <!-- @include views/coding-dialogs.html -->
+
+    <!-- Build identity: the vendored page-foot, last child of .app, outside every tab panel. -->
+    <footer class="page-foot">
+      <p id="buildReadout"></p>
+    </footer>
+  </main>
 
   <!-- Body-level toast, sibling of <main class="app"> — never nested inside
        it (issue #404, mirrors the nav's own #355 fix above). A fixed
