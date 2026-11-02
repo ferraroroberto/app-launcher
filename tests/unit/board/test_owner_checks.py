@@ -244,3 +244,45 @@ def test_sessions_poll_carries_the_owner_check_count(webapp_client, cli):
     now = datetime.now(timezone.utc)
     owner_checks._write_mark("demo#9", {"mark": "problem", "at": owner_checks._now_iso(now)}, None, now)
     assert client.get("/api/claude-code/sessions").json()["owner_checks"] == 1
+
+
+def test_validated_with_a_typed_note_keeps_it_in_the_clear(cli):
+    responses, calls = cli
+    responses["clear"] = (0, "CLEARED=demo#9 removed=needs-validation\n")
+    owner_checks.refresh("fleet")
+    ans = owner_checks.validate_answer(
+        {"ref": "demo#9", "kind": "validate-after", "answer": "validated", "text": "works  fine"})
+    owner_checks.answer("fleet", ans, comment=lambda *a: pytest.fail("no comment"), now=NOW)
+    assert ["clear", "demo#9", "--answer", "validated by owner: works fine"] in calls
+
+
+def test_answer_route_logs_each_request(webapp_client, _bypass_gate, cli, caplog):
+    owner_checks.refresh("fleet")
+    client, _, _ = webapp_client
+    with caplog.at_level("INFO", logger="app.webapp.routers.board_owner"):
+        resp = client.post("/api/board/owner-checks/answer", json={"answers": [
+            {"ref": "demo#9", "kind": "validate-after", "answer": "later"},
+        ]})
+    assert resp.status_code == 200
+    assert "owner-check answers: 1 received (later 1), 1 applied, 0 failed" in caplog.text
+
+
+def test_answer_route_refuses_and_logs_a_request_over_its_cap(webapp_client, _bypass_gate, cli, caplog):
+    from app.webapp.routers.board_owner import _MAX_ANSWERS
+    _, calls = cli
+    client, _, _ = webapp_client
+    over = [{"ref": f"demo#{n}", "kind": "validate-after", "answer": "later"} for n in range(_MAX_ANSWERS + 1)]
+    with caplog.at_level("WARNING", logger="app.webapp.routers.board_owner"):
+        resp = client.post("/api/board/owner-checks/answer", json={"answers": over})
+    assert resp.status_code == 400
+    assert calls == []
+    assert f"{_MAX_ANSWERS + 1} answers, the cap is {_MAX_ANSWERS}" in caplog.text
+
+
+def test_the_sheet_sends_fewer_answers_per_request_than_the_route_accepts():
+    import re
+    from pathlib import Path
+    from app.webapp.routers.board_owner import _MAX_ANSWERS
+    src = (Path(__file__).resolve().parents[3] / "app/webapp/static/board/owner-checks.js").read_text(encoding="utf-8")
+    per = int(re.search(r"OWNER_ANSWERS_PER_REQUEST = (\d+);", src).group(1))
+    assert 0 < per <= _MAX_ANSWERS

@@ -461,6 +461,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-owner-line,
 .owner-answer-line { margin: 0; overflow-wrap: anywhere; }
 .board-owner-line { font-size: var(--font-body-sm); }
+.owner-answer-error { color: var(--danger-text); overflow-wrap: anywhere; }
 .board-owner-links { display: flex; flex-wrap: wrap; column-gap: 4px; }
 .board-owner-link {
   display: inline-flex;

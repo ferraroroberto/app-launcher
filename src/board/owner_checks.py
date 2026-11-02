@@ -402,12 +402,12 @@ def answer(
         _write_mark(ref, {"mark": PROBLEM, "at": _now_iso(moment)}, marks_path, moment)
         logger.info("ℹ️ owner check %s: problem reported", ref)
         return
-    code, out = _run_cli(
-        fleet_config_dir, ["clear", ref, "--answer", _CLEAR_TEXT[ans["answer"]]], CLEAR_TIMEOUT_SECONDS
-    )
+    # A typed "works" validates with its text kept as the answer's note.
+    said = _CLEAR_TEXT[ans["answer"]] + (f": {ans['text']}" if ans.get("text") else "")
+    code, out = _run_cli(fleet_config_dir, ["clear", ref, "--answer", said], CLEAR_TIMEOUT_SECONDS)
     if code != 0 or "CLEARED=unknown" in out:
         line = next((ln for ln in out.splitlines() if ln.startswith("CLEARED=")), out.strip()[:200])
         raise OwnerCheckError(f"{ref}: the clear did not land ({line})")
     _write_mark(ref, None, marks_path, moment)
     _forget(ref)
-    logger.info("✅ owner check %s cleared: %s", ref, _CLEAR_TEXT[ans["answer"]])
+    logger.info("✅ owner check %s cleared: %s", ref, said)
