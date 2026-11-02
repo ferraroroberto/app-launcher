@@ -323,12 +323,31 @@ def test_live_polling_follows_the_visible_chat_only(
 _FOLLOW_SLACK_PX = 120
 
 
-# A tall pane is the case a fixed fraction of scrollHeight got wrong: at a
-# 1382px pane, 40% of the height sat 25px from the bottom, inside the follow slack.
+# The first turn in view and where it sits in the pane: what the reader is
+# looking at, independent of how far the pane has scrolled to show it.
+_ANCHOR_JS = """(el, text) => {
+  const top = el.getBoundingClientRect().top;
+  const turns = [...el.querySelectorAll('.tr-turn')];
+  const t = text ? turns.find(n => n.textContent.includes(text))
+                 : turns.find(n => n.getBoundingClientRect().bottom > top + 1);
+  return t ? {text: t.textContent.trim().slice(0, 40),
+              offset: Math.round(t.getBoundingClientRect().top - top)} : null;
+}"""
+
+
+# viewport_height: a tall pane put a fixed fraction of scrollHeight inside the
+# follow slack. shift_above: the browser keeps the visible content in place when
+# something above it grows after the baseline read (a late font or image), which
+# raised scrollTop by the same 25px the full gate runs saw (738 -> 759).
 @pytest.mark.iphone
-@pytest.mark.parametrize("viewport_height", [None, 1590], ids=["default", "tall"])
+@pytest.mark.parametrize(
+    "viewport_height, shift_above",
+    [(None, 0), (1590, 0), (None, 25)],
+    ids=["default", "tall", "late-shift-above"],
+)
 def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
-    authed_page: Page, base_url: str, browser_name: str, viewport_height: int | None
+    authed_page: Page, base_url: str, browser_name: str,
+    viewport_height: int | None, shift_above: int,
 ) -> None:
     """The #680/#958 lesson: a poll that rebuilds the DOM breaks whatever the
     reader is interacting with. Refresh is incremental precisely so an open
@@ -364,20 +383,28 @@ def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
         lambda: body.evaluate("el => el.scrollHeight - el.scrollTop - el.clientHeight")
     )
     assert below > _FOLLOW_SLACK_PX, f"parked {below}px from the bottom: inside the follow slack"
+    anchor = stable_read(lambda: body.evaluate(_ANCHOR_JS, None))
+    assert anchor, "no turn in view to anchor on"
+    if shift_above:
+        page.evaluate(
+            "px => { document.querySelector('#transcriptList .tr-turn').style.paddingTop = px + 'px'; }",
+            shift_above,
+        )
 
     tr.append(_turn("assistant", "a brand new reply", 5000))
     _tick(page, tr)
     expect(page.locator("#transcriptList")).to_contain_text(
         "a brand new reply", timeout=OVERLAY_OPEN_MS
     )
-    # The group the reader opened is still open, and they are still where
-    # they were: an append must not scroll them to the bottom.
+    # The group the reader opened is still open, and the turn they were
+    # reading is still where they left it in the pane: an append must not
+    # scroll them to the bottom or the top.
     expect(group).to_have_attribute("open", "")
     # A raw geometry read on a surface that now re-renders on a poll, so it
     # goes through stable_read (#680) — the list rebuilds only its newest
     # message, but the convention holds for any polled surface.
-    after = stable_read(lambda: body.evaluate("el => el.scrollTop"))
-    assert after == before, f"the reader was moved: {before} -> {after}"
+    after = stable_read(lambda: body.evaluate(_ANCHOR_JS, anchor["text"]))
+    assert after == anchor, f"the reader was moved: {anchor} -> {after}"
 
 
 def test_a_reply_arriving_after_tool_calls_is_unfolded_and_a_user_fold_stays(
