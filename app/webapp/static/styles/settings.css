@@ -97,6 +97,10 @@ button.settings-row:active { background: var(--card-2); }
 }
 .settings-sheet-body { flex: 1 0 auto; }
 .settings-sheet-head { justify-content: flex-start; gap: 4px; }
+/* The ✕'s invisible 44px hit area (34px box + 5px each side) reaches 5px past
+   the header's right edge; the header owns that inset as padding and gives the
+   width back with an equal negative margin, so nothing moves. */
+.settings-sheet-head { padding-right: 5px; margin-right: -5px; }
 /* A long title at Large text on a narrow phone wraps rather than clipping
    ("Launch defaults" at 320px). */
 .settings-sheet-head h2 {
