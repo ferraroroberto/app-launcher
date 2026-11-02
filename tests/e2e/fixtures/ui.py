@@ -1,14 +1,18 @@
-"""Page-driving helpers shared by the browser tests: session rows, Settings sheets, row menus."""
+"""Page-driving helpers shared by the browser tests: nav tabs, session rows, Settings sheets, row menus."""
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
+import warnings
 
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
+
+logger = logging.getLogger(__name__)
 
 
 # --------------------------------------------------- opening a session row
@@ -59,6 +63,62 @@ def open_session_row(page: Page, row, mode: str | None = None) -> None:
         seg = "#sessionModeChat" if mode == "chat" else "#sessionModeTerminal"
         page.locator(seg).click()
         expect(page.locator("#terminalOverlay")).to_have_attribute("data-mode", mode)
+
+
+# --------------------------------------------------- switching tabs
+
+# Records every trusted pointer event the page receives and whether its target
+# sits inside the tab being opened. Installed after the page is up and before
+# the tap, so the record holds this one tap and nothing from the boot.
+_TAP_RECORDER_JS = """(tabSel) => {
+  const rec = { reached: 0, events: [] };
+  const describe = (el) => el && el.tagName
+    ? el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
+      (el.getAttribute('class') ? '.' + el.getAttribute('class').trim().split(/\\s+/).join('.') : '')
+    : String(el);
+  for (const type of ['pointerdown', 'mousedown', 'mouseup', 'click']) {
+    window.addEventListener(type, (ev) => {
+      if (!ev.isTrusted) return;
+      const inTab = !!(ev.target && ev.target.closest && ev.target.closest(tabSel));
+      if (type === 'click' && inTab) rec.reached += 1;
+      if (rec.events.length < 12) rec.events.push(type + ':' + describe(ev.target) + (inTab ? '' : ' (outside the tab)'));
+    }, true);
+  }
+  window.__e2eTabTap = rec;
+}"""
+
+
+def open_tab(page: Page, base_url: str, tab: str, pane: str) -> None:
+    """Load the app and tap the nav tab ``tab`` until its ``pane`` shows.
+
+    The tap is checked on the signal that decides it: did a trusted ``click``
+    reach the tab? Playwright's ``click()`` returns once the browser has
+    handled the input, so the answer is in the page by then, with no wait.
+    Under full-suite load a WebKit tap has come back done while the default tab
+    stayed selected, the state of a ``click`` that never reached the tab
+    (nothing in the app switches it back). Such a tap is re-sent once and named
+    in a warning, with the events the page did receive. A click that
+    reached the tab while its pane stayed hidden is the app's fault, and fails
+    as such.
+    """
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.wait_for_selector(tab, state="attached", timeout=5_000)
+    page.evaluate(_TAP_RECORDER_JS, tab)
+    target = page.locator(tab)
+    target.click()
+    record = page.evaluate("() => window.__e2eTabTap")
+    if not record["reached"]:
+        note = (f"tap on {tab} never reached it (events seen: {record['events'] or 'none'}); "
+                "tapping again")
+        logger.warning("⚠️ %s", note)
+        warnings.warn(f"e2e input lost: {note}", stacklevel=2)
+        target.click()
+        record = page.evaluate("() => window.__e2eTabTap")
+        if not record["reached"]:
+            raise AssertionError(
+                f"two taps on {tab} never reached it; events seen: {record['events'] or 'none'}"
+            )
+    expect(page.locator(pane), f"a click reached {tab} but {pane} stayed hidden").to_be_visible()
 
 
 def open_settings(page: Page) -> None:
