@@ -271,18 +271,35 @@ const OPTIONS = {
 };
 
 export function emptyOwnerDraft() {
-  return { pick: null, problem: '' };
+  // `error`: why the last Done could not apply this answer, shown in its block.
+  return { pick: null, problem: '', error: '' };
 }
 
 export function ownerSheetKey(item) {
   return 'owner:' + item.ref;
 }
 
-// One item's answer, or null: a typed problem wins over a pick.
+// Words that only say an item works. Typed text made of these alone (with at
+// least one AFFIRMS word) validates the item; anything else, a negation
+// included, is a problem report.
+const AFFIRMS = ['validated', 'validate', 'works', 'working', 'worked', 'ok', 'okay', 'fine', 'good',
+  'great', 'perfect', 'lgtm', 'confirmed', 'verified', 'tested', 'yes', 'yep', 'done', 'correct'];
+const FILLER = ['it', 'all', 'looks', 'everything', 'now', 'well', 'and', 'as', 'expected',
+  'correctly', 'here', 'on', 'phone', 'desktop', 'both', 'really', 'very', 'seems', 'is'];
+
+export function affirmsItWorks(text) {
+  const words = String(text || '').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  return words.some(function (w) { return AFFIRMS.indexOf(w) !== -1; })
+    && words.every(function (w) { return AFFIRMS.indexOf(w) !== -1 || FILLER.indexOf(w) !== -1; });
+}
+
+// One item's answer, or null. Typed text wins over a pick: text that only
+// says it works validates with the text as a note, any other is a problem.
 export function ownerAnswerOf(item, draft) {
   const text = String((draft && draft.problem) || '').split(/\s+/).filter(Boolean).join(' ');
   if (item.kind === VALIDATE_AFTER && text) {
-    return { ref: item.ref, kind: item.kind, answer: 'problem', text: text };
+    const answer = affirmsItWorks(text) ? 'validated' : 'problem';
+    return { ref: item.ref, kind: item.kind, answer: answer, text: text };
   }
   if (draft && draft.pick) return { ref: item.ref, kind: item.kind, answer: draft.pick };
   return null;
@@ -292,7 +309,9 @@ export function ownerAnswerOf(item, draft) {
 // the chief has nothing to do about.
 export function ownerMessageLine(item, ans) {
   const what = item.title ? ' ' + item.title : '';
-  if (ans.answer === 'validated') return '[' + item.ref + '] Validated:' + what;
+  if (ans.answer === 'validated') {
+    return '[' + item.ref + '] Validated:' + what + (ans.text ? ' (note: ' + ans.text + ')' : '');
+  }
   if (ans.answer === 'done') return '[' + item.ref + '] Before-start step done:' + what;
   if (ans.answer === 'problem') {
     return '[' + item.ref + '] Problem found validating' + what + ': ' + ans.text + ' (please file a fix)';
@@ -347,19 +366,41 @@ export function ownerSheetBlock(item, draft, onChange, decorate) {
   });
   block.appendChild(list);
 
+  // Why the last Done could not apply this answer; any edit clears it.
+  const error = el('p', 'tr-ask-hint owner-answer-error', draft.error ? 'Not saved: ' + draft.error : '');
+  error.setAttribute('role', 'status');
+  error.hidden = !draft.error;
+  const edited = function () {
+    draft.error = '';
+    error.hidden = true;
+  };
+  list.addEventListener('click', edited);
+
   if (item.kind === VALIDATE_AFTER) {
     input = el('input', 'tr-ask-input');
     input.type = 'text';
     input.maxLength = 2000;
-    input.placeholder = 'Problem: what went wrong';
-    input.setAttribute('aria-label', 'Problem found in ' + item.ref);
+    input.placeholder = 'A problem, or a note ("works" validates)';
+    input.setAttribute('aria-label', 'Problem or note for ' + item.ref);
     input.value = draft.problem;
+    // What the typed text will send, said before Done.
+    const meaning = el('p', 'tr-ask-hint owner-answer-meaning');
+    meaning.setAttribute('aria-live', 'polite');
+    const explain = function () {
+      const ans = ownerAnswerOf(item, { problem: draft.problem });
+      meaning.hidden = !ans;
+      meaning.textContent = !ans ? ''
+        : ans.answer === 'validated' ? 'Sends Validated, with this as a note.'
+          : 'Sends a problem report: the chief files a fix.';
+    };
     const typed = function () {
       draft.problem = input.value;
       if (input.value.trim() && draft.pick) {
         draft.pick = null;
         paint(block, draft);
       }
+      edited();
+      explain();
       onChange();
     };
     input.addEventListener('input', typed);
@@ -367,13 +408,41 @@ export function ownerSheetBlock(item, draft, onChange, decorate) {
     other.appendChild(input);
     if (decorate) decorate(other, input, typed);
     block.appendChild(other);
+    block.appendChild(meaning);
+    explain();
   }
+  block.appendChild(error);
   paint(block, draft);
   return block;
 }
 
-// POST the sheet's owner-check answers (passkey-gated: GitHub writes);
-// resolves to `{results: [{ref, ok, error?}], owner_checks}`.
-export function postOwnerAnswers(answers) {
-  return terminalJsonApi('/api/board/owner-checks/answer', { method: 'POST', body: { answers: answers } });
+// Answers per request: well under the route's own cap, so one request's
+// GitHub writes (a gh call each, seconds apiece) finish within a phone's
+// patience.
+export const OWNER_ANSWERS_PER_REQUEST = 10;
+
+// POST the sheet's owner-check answers (passkey-gated: GitHub writes), one
+// request per OWNER_ANSWERS_PER_REQUEST, one after another. Never rejects: it
+// resolves to `{results: [{ref, ok, error?}], owner_checks}` with a result per
+// answer, a request that failed outright failing each of its answers with its
+// reason. `owner_checks` is the last list a request returned, else null.
+export async function postOwnerAnswers(answers) {
+  const results = [];
+  let ownerChecks = null;
+  for (let at = 0; at < answers.length; at += OWNER_ANSWERS_PER_REQUEST) {
+    const chunk = answers.slice(at, at + OWNER_ANSWERS_PER_REQUEST);
+    try {
+      const res = await terminalJsonApi('/api/board/owner-checks/answer', { method: 'POST', body: { answers: chunk } });
+      const got = (res && res.results) || [];
+      chunk.forEach(function (a) {
+        const r = got.find(function (y) { return y.ref === a.ref; });
+        results.push(r || { ref: a.ref, ok: false, error: 'no result came back' });
+      });
+      if (res && res.owner_checks) ownerChecks = res.owner_checks;
+    } catch (exc) {
+      const why = (exc && exc.message) || String(exc);
+      chunk.forEach(function (a) { results.push({ ref: a.ref, ok: false, error: why }); });
+    }
+  }
+  return { results: results, owner_checks: ownerChecks };
 }

@@ -426,25 +426,32 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
 
 // The owner-check answers go to GitHub first, each applied on its own.
 // One that landed drops its draft and becomes a line for the chief; one that
-// failed keeps its draft and is counted for the toast.
+// failed keeps its draft, with the reason its block shows, and is listed for
+// the toast. Never rejects: postOwnerAnswers reports a failed request per answer.
 async function applyOwnerAnswers(answered) {
-  if (!answered.length) return { lines: [], failed: 0 };
+  if (!answered.length) return { lines: [], failed: [] };
   const res = await postOwnerAnswers(answered.map(function (x) { return x.ans; }));
-  const results = (res && res.results) || [];
   const lines = [];
-  let failed = 0;
+  const failed = [];
   answered.forEach(function (x) {
-    const r = results.find(function (y) { return y.ref === x.ans.ref; });
+    const r = res.results.find(function (y) { return y.ref === x.ans.ref; });
     if (r && r.ok) {
       delete ownerDrafts[x.item.ref];
       const line = ownerMessageLine(x.item, x.ans);
       if (line) lines.push(line);
     } else {
-      failed += 1;
+      ownerDraft(x.item).error = (r && r.error) || 'no result came back';
+      failed.push(x.item.ref);
     }
   });
-  if (res && res.owner_checks && state.board) state.board.owner_checks = res.owner_checks;
+  if (res.owner_checks && state.board) state.board.owner_checks = res.owner_checks;
   return { lines: lines, failed: failed };
+}
+
+// "demo#7, demo#9 and 3 more": the refs a toast names.
+function refList(refs) {
+  const shown = refs.slice(0, 3).join(', ');
+  return refs.length > 3 ? shown + ' and ' + (refs.length - 3) + ' more' : shown;
 }
 
 async function submitAnswers() {
@@ -461,7 +468,7 @@ async function submitAnswers() {
   sending = true;
   syncDone();
   const stopTimer = startWorkTimer(done, DONE_LABEL);
-  let owner = { lines: [], failed: 0 };
+  let owner = { lines: [], failed: [] };
   try {
     owner = await applyOwnerAnswers(ownerAnswers());
     const keys = sheet.shown
@@ -484,10 +491,9 @@ async function submitAnswers() {
       }
     }
     renderBoard();
-    if (owner.failed) {
-      // The failed ones keep their drafts; the rebuilt sheet shows them.
-      toast(owner.failed + (owner.failed === 1 ? ' owner check was' : ' owner checks were')
-        + ' not saved on GitHub. Try again.', 'error');
+    if (owner.failed.length) {
+      // The failed ones keep their drafts; the rebuilt sheet shows each one's reason.
+      toast('Not saved on GitHub: ' + refList(owner.failed) + '. Each says why; Done tries again.', 'error');
       openOwnerAnswers(plan, chiefRun);
     } else {
       els.chiefAnswersDialog.close();

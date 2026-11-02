@@ -178,3 +178,107 @@ def test_chief_and_owner_checks_open_separate_sheets(
         "Owner checks answered on the Board:\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts
+
+
+def _many_owner_items(n: int) -> list:
+    """`n` synthetic owner checks, every third one before-start."""
+    items = []
+    for i in range(n):
+        kind = "before-start" if i % 3 == 0 else "validate-after"
+        items.append({
+            "ref": f"demo#{100 + i}", "repo": "demo", "number": 100 + i, "title": f"Synthetic check {i}",
+            "url": f"https://github.com/octo/demo/issues/{100 + i}", "state": "CLOSED", "kind": kind,
+            "block": True, "reason": "a live phone", "try": "tap it", "proof": [], "since": "2026-10-30",
+            "mark": None, "mark_at": None, "mark_until": None,
+        })
+    return items
+
+
+def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
+    authed_page: Page, base_url: str
+) -> None:
+    """Forty owner checks answered with taps and typed text all land: Done
+    posts them in requests the server's own per-request cap accepts. Typed
+    text that only says it works validates the item and keeps the text as a
+    note; any other typed text is a problem report, and the field says which
+    before Done. An answer the server could not apply keeps its draft and
+    shows why in its own block; Done again sends only that one."""
+    from app.webapp.routers.board_owner import _MAX_ANSWERS
+
+    items = _many_owner_items(40)
+    payload = _board_payload(with_chief=True)
+    payload["owner_checks"] = {
+        "available": True, "fetched_at": payload["github"]["fetched_at"], "error": None,
+        "refreshing": False, "unknown": [], "items": items,
+    }
+    _mock_board(authed_page, payload)
+    _mock_ensure(authed_page, {})
+    chief_posts = _capture_chief_input(authed_page)
+    _route_voice(authed_page, False)
+    posts: list = []
+    failing = {"demo#139"}
+
+    def _answer(route):
+        answers = route.request.post_data_json["answers"]
+        posts.append(answers)
+        # The real route's refusal: a request over its cap writes nothing.
+        if len(answers) > _MAX_ANSWERS:
+            route.fulfill(status=400, json={"detail": f"answers must be a list of 1 to {_MAX_ANSWERS}"})
+            return
+        results = [{"ref": a["ref"], "answer": a["answer"], "ok": a["ref"] not in failing,
+                    **({"error": "demo#139: the clear did not land"} if a["ref"] in failing else {})}
+                   for a in answers]
+        route.fulfill(json={"results": results, "owner_checks": payload["owner_checks"]})
+
+    authed_page.route(re.compile(r".*/api/board/owner-checks/answer$"), _answer)
+    _open_board(authed_page, base_url)
+    authed_page.locator("#boardColYours .board-owner-answer-all").click()
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    blocks = dialog.locator(".owner-answer")
+    expect(blocks).to_have_count(40)
+
+    typed = {"demo#101": "validated", "demo#102": "Works fine now.", "demo#104": "ok",
+             "demo#105": "the button does nothing", "demo#107": "not working"}
+    expected = {}
+    for i, it in enumerate(items):
+        block = blocks.nth(i)
+        ref = it["ref"]
+        if ref in typed:
+            block.locator(".tr-ask-input").fill(typed[ref])
+            continue
+        answer = "done" if it["kind"] == "before-start" else "validated"
+        block.locator(f'.tr-ask-opt[data-answer="{answer}"]').click()
+        expected[ref] = {"ref": ref, "kind": it["kind"], "answer": answer}
+    expected["demo#101"] = {"ref": "demo#101", "kind": "validate-after", "answer": "validated", "text": "validated"}
+    expected["demo#102"] = {"ref": "demo#102", "kind": "validate-after", "answer": "validated",
+                            "text": "Works fine now."}
+    expected["demo#104"] = {"ref": "demo#104", "kind": "validate-after", "answer": "validated", "text": "ok"}
+    expected["demo#105"] = {"ref": "demo#105", "kind": "validate-after", "answer": "problem",
+                            "text": "the button does nothing"}
+    expected["demo#107"] = {"ref": "demo#107", "kind": "validate-after", "answer": "problem", "text": "not working"}
+    # The field says what its text will send, before Done.
+    expect(dialog.locator('[data-key="owner:demo#101"] .owner-answer-meaning')).to_contain_text("Validated")
+    expect(dialog.locator('[data-key="owner:demo#105"] .owner-answer-meaning')).to_contain_text("problem")
+
+    done = dialog.locator("#chiefAnswersDone")
+    expect(done).to_be_enabled()
+    done.click()
+    failed_block = dialog.locator('[data-key="owner:demo#139"]')
+    expect(failed_block.locator(".owner-answer-error")).to_contain_text("did not land")
+    expect(dialog).to_be_visible()
+    assert all(len(p) <= _MAX_ANSWERS for p in posts), [len(p) for p in posts]
+    sent = {a["ref"]: a for p in posts for a in p}
+    assert sent == expected, sent
+    assert len(chief_posts) == 1, chief_posts
+    message = chief_posts[0]["data"]
+    assert "[demo#102] Validated: Synthetic check 2 (note: Works fine now.)" in message, message
+    assert "[demo#105] Problem found validating Synthetic check 5: the button does nothing" in message, message
+    assert "demo#139" not in message, message
+
+    # Done again carries only the answer that did not land.
+    failing.clear()
+    posts.clear()
+    expect(done).to_be_enabled()
+    done.click()
+    expect(dialog).to_be_hidden()
+    assert posts == [[expected["demo#139"]]], posts

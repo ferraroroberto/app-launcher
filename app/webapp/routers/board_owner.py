@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections import Counter
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
@@ -32,7 +33,8 @@ from app.webapp.routers._helpers import maybe_json
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# The sheet holds a few owner checks; this bounds one request's GitHub writes.
+# Bounds one request's GitHub writes; the sheet sends a long list in several
+# requests well under it (owner-checks.js OWNER_ANSWERS_PER_REQUEST).
 _MAX_ANSWERS = 30
 
 
@@ -59,13 +61,23 @@ async def post_owner_answers(request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     raw = body.get("answers")
     if not isinstance(raw, list) or not raw or len(raw) > _MAX_ANSWERS:
+        count = len(raw) if isinstance(raw, list) else "no"
+        logger.warning("⚠️ owner-check answers refused: %s answers, the cap is %d", count, _MAX_ANSWERS)
         raise HTTPException(status_code=400, detail=f"answers must be a list of 1 to {_MAX_ANSWERS}")
     try:
         answers = [owner_checks.validate_answer(a) for a in raw]
     except ValueError as exc:
+        logger.warning("⚠️ owner-check answers refused (%d answers): %s", len(raw), exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     cfg: WebappConfig = request.app.state.webapp_config
     results: List[Dict[str, Any]] = []
     for ans in answers:
         results.append(await asyncio.to_thread(_apply, cfg, ans))
+    failed = [r["ref"] for r in results if not r["ok"]]
+    kinds = Counter(a["answer"] for a in answers)
+    logger.info(
+        "ℹ️ owner-check answers: %d received (%s), %d applied, %d failed%s",
+        len(answers), ", ".join(f"{k} {n}" for k, n in sorted(kinds.items())),
+        len(answers) - len(failed), len(failed), f": {', '.join(failed)}" if failed else "",
+    )
     return {"results": results, "owner_checks": owner_checks.snapshot()}
