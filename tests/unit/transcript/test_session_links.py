@@ -83,10 +83,86 @@ def test_userinfo_urls_and_dotless_hosts_are_skipped(tmp_path):
     assert lk.fold_links(path)["groups"] == []
 
 
-def test_works_on_a_non_claude_shaped_line(tmp_path):
+def _tool_result(ts: str, tool_id: str, text: str) -> Dict[str, Any]:
+    return {"type": "user", "timestamp": ts, "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": tool_id, "content": text}]}}
+
+
+def test_only_prompts_and_replies_are_listed_not_tool_noise(tmp_path):
     path = _write(tmp_path / "s.jsonl", [
-        {"timestamp": "2026-10-01T10:00:00Z", "payload": {"output": "ready: http://127.0.0.1:8080/"}}])
-    assert _by_group(lk.fold_links(path))["servers"][0]["label"] == "127.0.0.1:8080"
+        _text("2026-10-01T10:00:00Z", "please open http://localhost:3000/mine", role="user"),
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:01Z", "message": {"id": "m1", "content": [
+            {"type": "thinking", "thinking": "maybe https://thinking.example/x"},
+            {"type": "tool_use", "id": "r1", "name": "Read",
+             "input": {"file_path": "/x/notes.md", "note": "https://input.example/y"}}]}},
+        _tool_result("2026-10-01T10:00:02Z", "r1", "docs at https://noise.example/readme"),
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:03Z", "message": {"id": "m2", "content": [
+            {"type": "tool_use", "id": "b1", "name": "Bash", "input": {"command": "curl https://cmd.example/z"}}]}},
+        _tool_result("2026-10-01T10:00:04Z", "b1", "HTTP/1.1 301 Location: https://log.example/out"),
+        _text("2026-10-01T10:00:05Z", "Done, see https://example.org/guide"),
+    ])
+    result = lk.fold_links(path)
+    urls = sorted(x["url"] for group in result["groups"] for x in group["links"])
+    assert urls == ["http://localhost:3000/mine", "https://example.org/guide"]
+    assert result["total"] == 2
+
+
+def test_a_sub_agents_replies_are_not_listed(tmp_path):
+    side = _text("2026-10-01T10:00:00Z", "worker found https://sub.example/a")
+    side["isSidechain"] = True
+    path = _write(tmp_path / "s.jsonl", [side, _text("2026-10-01T10:00:01Z", "ok https://main.example/b")])
+    assert [x["url"] for x in _by_group(lk.fold_links(path))["other"]] == ["https://main.example/b"]
+
+
+def test_a_published_artifact_is_listed_only_from_the_artifact_result(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:00Z", "message": {"id": "m1", "content": [
+            {"type": "tool_use", "id": "a1", "name": "Artifact",
+             "input": {"file_path": "/x/page.html", "title": "Quarterly View"}}]}},
+        _tool_result("2026-10-01T10:00:01Z", "a1",
+                     "Published https://claude.ai/artifact/ZzYyXxWw987654 (cdn https://cdn.example/lib.js)"),
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:02Z", "message": {"id": "m2", "content": [
+            {"type": "tool_use", "id": "r1", "name": "Read", "input": {"file_path": "/x/a.md"}}]}},
+        _tool_result("2026-10-01T10:00:03Z", "r1", "see https://claude.ai/artifact/NotMineNotMine1"),
+    ])
+    result = lk.fold_links(path)
+    assert [g["key"] for g in result["groups"]] == ["artifacts"]
+    only = result["groups"][0]["links"]
+    assert [(x["url"], x["label"]) for x in only] == [
+        ("https://claude.ai/artifact/ZzYyXxWw987654", "Quarterly View")]
+
+
+def test_codex_shaped_rollout_lists_messages_not_tool_output(tmp_path):
+    def item(ts, payload):
+        return {"type": "response_item", "timestamp": ts, "payload": payload}
+    path = _write(tmp_path / "s.jsonl", [
+        item("2026-10-01T10:00:00Z", {"type": "message", "role": "user", "content": [
+            {"type": "input_text", "text": "check http://127.0.0.1:8080/"}]}),
+        item("2026-10-01T10:00:01Z", {"type": "function_call", "call_id": "c1", "name": "shell",
+                                      "arguments": "{\"command\": [\"curl\", \"https://cmd.example/q\"]}"}),
+        item("2026-10-01T10:00:02Z", {"type": "function_call_output", "call_id": "c1",
+                                      "output": "fetched https://noise.example/page"}),
+        item("2026-10-01T10:00:03Z", {"type": "message", "role": "assistant", "content": [
+            {"type": "output_text", "text": "PR is https://github.com/acme/widgets/pull/7"}]}),
+    ])
+    groups = _by_group(lk.fold_links(path, "codex"))
+    assert sorted(groups) == ["github", "servers"]
+    assert groups["servers"][0]["label"] == "127.0.0.1:8080"
+
+
+def test_pi_shaped_history_lists_messages_not_tool_results(tmp_path):
+    def msg(ts, message):
+        return {"type": "message", "timestamp": ts, "message": message}
+    path = _write(tmp_path / "s.jsonl", [
+        msg("2026-10-01T10:00:00Z", {"role": "user", "content": [
+            {"type": "text", "text": "look at https://example.org/start"}]}),
+        msg("2026-10-01T10:00:01Z", {"role": "toolResult", "toolCallId": "t1", "isError": False,
+                                     "content": [{"type": "text", "text": "log https://noise.example/l"}]}),
+        msg("2026-10-01T10:00:02Z", {"role": "assistant", "content": [
+            {"type": "text", "text": "got it: https://example.org/answer"}]}),
+    ])
+    urls = [x["url"] for x in _by_group(lk.fold_links(path, "pi"))["other"]]
+    assert urls == ["https://example.org/answer", "https://example.org/start"]
 
 
 def test_empty_transcript_lists_nothing(tmp_path):

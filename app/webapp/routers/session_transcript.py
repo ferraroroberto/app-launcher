@@ -559,18 +559,19 @@ async def session_background_tasks(
 
 @router.get("/api/claude-code/sessions/{sid}/links")
 async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
-    """Every artifact and URL this session mentioned, grouped (Tailscale +
-    passkey). Folded from the transcript like Changed files, so it
-    answers after the session ends; every agent with a transcript reader.
+    """Every artifact and URL the owner or the agent wrote in this session,
+    grouped (Tailscale + passkey). Folded from the transcript like Changed
+    files, so it answers after the session ends; every agent with a
+    transcript reader. Tool output is not scanned.
     On demand only; nothing polls it.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    reason, _flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
+    reason, flavor, path, agent, _why, _session = await _resolve_source(sid, cfg)
     if reason is not None:
         logger.info("ℹ️ session links %s (%s) unavailable: %s", sid[:8], agent, reason)
         return _unavailable(sid, reason)
     found, refusal = await _read_or_unavailable(
-        sid, agent, "session links", asyncio.to_thread(session_links.fold_links, path),
+        sid, agent, "session links", asyncio.to_thread(session_links.fold_links, path, flavor or "claude"),
     )
     if refusal is not None:
         return refusal
