@@ -544,6 +544,7 @@ export async function fetchSessions() {
     state.sessions = body.sessions || [];
     // Unknown (null) unless the server said a number: never read as zero.
     state.chiefQuestions = typeof body.chief_questions === 'number' ? body.chief_questions : null;
+    state.ownerChecks = typeof body.owner_checks === 'number' ? body.owner_checks : null;
     renderSessions();
   } catch (exc) {
     // Sessions polling is best-effort — don't spam toasts.

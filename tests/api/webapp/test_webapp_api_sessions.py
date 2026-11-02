@@ -20,7 +20,7 @@ class TestListSessions:
         assert resp.status_code == 200
         body = resp.json()
         assert body.pop("age_seconds") >= 0
-        assert body == {"sessions": [], "chief_questions": 0, "stale": False}
+        assert body == {"sessions": [], "chief_questions": 0, "owner_checks": None, "stale": False}
 
     def test_lists_sessions_from_session_host(self, webapp_client):
         client, _, overrides = webapp_client
@@ -65,7 +65,7 @@ class TestListSessions:
         assert resp.status_code == 200
         body = resp.json()
         assert body.pop("age_seconds") >= 0
-        assert body == {"sessions": [], "chief_questions": 0, "stale": False}
+        assert body == {"sessions": [], "chief_questions": 0, "owner_checks": None, "stale": False}
 
 
 class TestSharedSessionName:
@@ -135,7 +135,7 @@ class TestSharedSessionName:
         assert resp.status_code == 200
         body = resp.json()
         assert body.pop("age_seconds") >= 0
-        assert body == {"sessions": [], "chief_questions": 0, "stale": False}
+        assert body == {"sessions": [], "chief_questions": 0, "owner_checks": None, "stale": False}
 
 
 class TestBoardPlacement:
