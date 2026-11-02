@@ -38,6 +38,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from src._json_io import atomic_write_json
+from src.board import owner_try
+from src.clients import github as github_client
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
@@ -87,6 +89,12 @@ _cache: Dict[str, Any] = {
 _last_refresh_started: Optional[float] = None
 # ref -> monotonic time it was cleared from here.
 _cleared: Dict[str, float] = {}
+# ref -> (monotonic time read, (section title, quoted lines) or None for "the issue has none").
+_derived: Dict[str, Tuple[float, Optional[Tuple[str, List[str]]]]] = {}
+# An issue's text is re-read after this, so an edited acceptance list shows up.
+DERIVE_TTL_SECONDS = 6 * 3600
+# Module-level so tests replace the one gh read.
+_fetch_body = github_client.issue_body
 
 
 class OwnerCheckError(RuntimeError):
@@ -159,6 +167,8 @@ def _clean_item(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not repo or not isinstance(number, int) or kind not in ANSWERS:
         return None
     proof = raw.get("proof")
+    recorded = str(raw.get("try") or "")
+    generic = owner_try.is_generic(recorded)
     return {
         "ref": f"{repo}#{number}",
         "repo": repo,
@@ -170,7 +180,13 @@ def _clean_item(raw: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # A label with no readable block: shown as "details unknown", never hidden.
         "block": bool(raw.get("block")),
         "reason": str(raw.get("reason") or ""),
-        "try": str(raw.get("try") or ""),
+        # The back-fill boilerplate never travels as a Try: "generic" says the
+        # recorded one was it, and try_lines/try_from carry what the issue itself
+        # offers instead (filled in by _apply_derived / _derive_missing).
+        "try": "" if generic else recorded,
+        "try_generic": generic,
+        "try_lines": [],
+        "try_from": "",
         "proof": [str(p) for p in proof if str(p).strip()] if isinstance(proof, list) else [],
         "since": str(raw.get("since") or ""),
     }
@@ -196,8 +212,53 @@ def read_items(fleet_config_dir: str) -> Dict[str, Any]:
 
 # ------------------------------------------------------------------ the cache
 
-def refresh(fleet_config_dir: str) -> Dict[str, Any]:
-    """Read the list now and replace the cache; a failure keeps the older items."""
+def _apply_derived(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Fill ``try_lines`` / ``try_from`` from the derive cache; the generic items
+    it has no fresh answer for are returned, to be fetched."""
+    tick = time.monotonic()
+    missing = []
+    with _lock:
+        for item in items:
+            if not item["try_generic"]:
+                continue
+            hit = _derived.get(item["ref"])
+            if hit is None or tick - hit[0] > DERIVE_TTL_SECONDS:
+                missing.append(item)
+            elif hit[1]:
+                item["try_from"], item["try_lines"] = hit[1][0], list(hit[1][1])
+    return missing
+
+
+def _derive_missing(missing: List[Dict[str, Any]], github_owner: str) -> None:
+    """Read each missing issue's body and quote its Try into the live cache.
+
+    A body that did not read is not cached and leaves the item as it was, so the
+    next refresh tries again; a body with no usable section is cached as "none".
+    """
+    for item in missing:
+        try:
+            body = _fetch_body(github_owner, item["repo"], item["number"])
+        except github_client.GhError as exc:
+            logger.warning("⚠️ owner check %s: issue body not read: %s", item["ref"], exc)
+            continue
+        found = owner_try.derive(body)
+        with _lock:
+            _derived[item["ref"]] = (time.monotonic(), found)
+            for live in _cache["items"]:
+                if live["ref"] == item["ref"] and found:
+                    live["try_from"], live["try_lines"] = found[0], list(found[1])
+        logger.info(
+            "ℹ️ owner check %s: %s", item["ref"],
+            f"Try quoted from '{found[0]}' ({len(found[1])} lines)" if found else "no Try in the issue's text",
+        )
+
+
+def refresh(fleet_config_dir: str, github_owner: str = "") -> Dict[str, Any]:
+    """Read the list now and replace the cache; a failure keeps the older items.
+
+    With ``github_owner`` set, old checks that only carry the back-fill's generic
+    Try then get a quoted one from their issue's text (see :mod:`owner_try`).
+    """
     fetched_at = _now_iso()
     try:
         result = read_items(fleet_config_dir)
@@ -213,19 +274,29 @@ def refresh(fleet_config_dir: str) -> Dict[str, Any]:
         with _lock:
             _cache.update(error=reason, refreshing=False)
         return snapshot()
+    missing = _apply_derived(result["items"])
     with _lock:
         _cache.update(
             fetched_at=fetched_at, items=result["items"], unknown=result["unknown"],
-            error=None, refreshing=False,
+            error=None, refreshing=bool(missing and github_owner),
         )
     logger.info(
-        "✅ owner checks: %d items, %d repos unreadable",
-        len(result["items"]), len(result["unknown"]),
+        "✅ owner checks: %d items, %d repos unreadable, %d need a Try read",
+        len(result["items"]), len(result["unknown"]), len(missing),
     )
+    if missing and github_owner:
+        # The list is already visible; the bodies fill in as they are read.
+        try:
+            _derive_missing(missing, github_owner)
+        finally:
+            with _lock:
+                _cache["refreshing"] = False
     return snapshot()
 
 
-def start_refresh(fleet_config_dir: str, *, now: Optional[float] = None) -> bool:
+def start_refresh(
+    fleet_config_dir: str, github_owner: str = "", *, now: Optional[float] = None
+) -> bool:
     """Refresh in a background thread unless one runs or ran within the cooldown."""
     global _last_refresh_started
     tick = time.monotonic() if now is None else now
@@ -237,7 +308,7 @@ def start_refresh(fleet_config_dir: str, *, now: Optional[float] = None) -> bool
         _cache["refreshing"] = True
         _last_refresh_started = tick
     threading.Thread(
-        target=refresh, args=(fleet_config_dir,), name="owner-checks-refresh", daemon=True
+        target=refresh, args=(fleet_config_dir, github_owner), name="owner-checks-refresh", daemon=True
     ).start()
     return True
 
@@ -290,6 +361,7 @@ def reset_owner_cache() -> None:
         _cache.update(fetched_at=None, items=[], unknown=[], error=None, refreshing=False)
         _last_refresh_started = None
         _cleared.clear()
+        _derived.clear()
 
 
 def _forget(ref: str) -> None:

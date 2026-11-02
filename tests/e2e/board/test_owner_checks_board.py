@@ -180,6 +180,40 @@ def test_chief_and_owner_checks_open_separate_sheets(
     ), "submit": True}], chief_posts
 
 
+def test_an_old_check_quotes_the_issue_or_says_it_has_no_try(
+    authed_page: Page, base_url: str
+) -> None:
+    """A check whose recorded Try was the back-fill boilerplate shows the lines
+    the issue's own checklist offers, labelled as quoted, or a muted "No specific
+    Try on record" when it offers none; a written Try is shown as it always was."""
+    payload = _payload()
+    old = {"block": True, "reason": "Shipped with no owner check on record", "try": "",
+           "try_generic": True, "try_lines": [], "try_from": ""}
+    payload["owner_checks"]["items"] = [
+        dict(_OWNER_ITEMS[1], **{**old, "try_from": "Acceptance criteria",
+                                 "try_lines": ["Open the tab", "The badge counts one"]}),
+        dict(_OWNER_ITEMS[2], **old),
+    ]
+    _mock_board(authed_page, payload)
+    _mock_ensure(authed_page, {})
+    _route_voice(authed_page, False)
+    _open_board(authed_page, base_url)
+
+    lane = authed_page.locator("#boardColYours")
+    quoted = lane.locator('.board-owner-row[data-ref="demo#9"]')
+    quoted.locator(".action-row-main").click()
+    detail = quoted.locator(".board-owner-detail")
+    expect(detail).to_contain_text("Try (from the issue's acceptance criteria):")
+    expect(detail.locator(".board-owner-try-list li")).to_have_text(["Open the tab", "The badge counts one"])
+    expect(detail).not_to_contain_text("Use what this issue shipped")
+
+    bare = lane.locator('.board-owner-row[data-ref="demo#11"]')
+    bare.locator(".action-row-main").click()
+    expect(bare.locator(".board-owner-try-none")).to_have_text(
+        "No specific Try on record. Open the issue to see what it shipped."
+    )
+
+
 def _many_owner_items(n: int) -> list:
     """`n` synthetic owner checks, every third one before-start."""
     items = []

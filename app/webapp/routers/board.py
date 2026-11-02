@@ -464,7 +464,7 @@ async def refresh_github(request: Request) -> Dict[str, Any]:
     background thread, so the ↻ never waits on it; the poll shows it landing.
     """
     cfg: WebappConfig = request.app.state.webapp_config
-    owner_checks.start_refresh(cfg.fleet_config_dir)
+    owner_checks.start_refresh(cfg.fleet_config_dir, cfg.github_owner)
     snap = await asyncio.to_thread(github_client.refresh, cfg.github_owner)
     return _github_section(snap)
 
