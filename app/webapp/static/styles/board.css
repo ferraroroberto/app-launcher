@@ -518,6 +518,7 @@ span.chief-answer-ref { color: var(--muted); }
   padding: 12px 0;
   border-top: 1px solid var(--line);
 }
+.chief-answers-also[hidden] { display: none; }
 .chief-answers-also > span { font-weight: 600; }
 /* The composer mount sits on the sheet's own surface, as the Board drawer's
    does: no docked bar padding, hairline or card fill. */

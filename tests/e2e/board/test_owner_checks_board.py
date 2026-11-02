@@ -9,7 +9,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.board._chief_support import (
-    _board_payload, _capture_chief_input, _mock_board, _mock_ensure, _open_board, _route_voice,
+    _QUESTIONS, _board_payload, _capture_chief_input, _mock_board, _mock_ensure, _open_board,
+    _plan_with, _route_plan_from, _route_voice,
 )
 
 pytestmark = pytest.mark.smoke
@@ -116,5 +117,64 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     assert chief_posts == [{"data": (
         "Owner checks answered on the Board:\n"
         "[demo#9] Validated: Read-aloud on the lock screen\n"
+        "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
+    ), "submit": True}], chief_posts
+
+
+@pytest.mark.iphone
+def test_chief_and_owner_checks_open_separate_sheets(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """The Chief's plan "Answer N questions" opens a sheet of the chief's open
+    questions alone; an owner-check row's Answer and the group's "Answer N
+    owner checks" open a sheet of owner checks alone, scrolled to the tapped
+    item, without Anything else. A Problem there still reaches the chief, in
+    the owner-checks message only. The group's state line leads its block, where
+    the plan card puts its age line."""
+    _mock_board(authed_page, _payload())
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    _mock_ensure(authed_page, {})
+    chief_posts = _capture_chief_input(authed_page)
+    _route_voice(authed_page, False)
+
+    def _answer(route):
+        results = [{"ref": a["ref"], "answer": a["answer"], "ok": True}
+                   for a in route.request.post_data_json["answers"]]
+        route.fulfill(json={"results": results, "owner_checks": _payload()["owner_checks"]})
+
+    authed_page.route(re.compile(r".*/api/board/owner-checks/answer$"), _answer)
+    with authed_page.expect_response(re.compile(r".*/api/status$")):
+        _open_board(authed_page, base_url)
+
+    owner = authed_page.locator("#boardColYours .board-owner")
+    expect(owner.locator(":scope > *").first).to_have_class(re.compile(r"\bboard-owner-state\b"))
+
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    authed_page.locator("#boardChiefPlan .board-plan-answer").click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Answer the chief")
+    expect(dialog.locator(".chief-answer")).to_have_count(3)
+    expect(dialog.locator(".owner-answer")).to_have_count(0)
+    expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
+    dialog.locator("#chiefAnswersClose").click()
+    expect(dialog).to_be_hidden()
+
+    owner.locator(".board-owner-answer-all").click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks")
+    expect(dialog.locator(".chief-answer")).to_have_count(3)
+    expect(dialog.locator(".chief-answer:not(.owner-answer)")).to_have_count(0)
+    expect(dialog.locator("#chiefAnswersAlso")).to_be_hidden()
+    dialog.locator("#chiefAnswersClose").click()
+    expect(dialog).to_be_hidden()
+
+    row = owner.locator('.board-owner-row[data-ref="demo#11"]')
+    row.locator(".action-row-main").click()
+    row.locator(".board-owner-answer").click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks")
+    expect(dialog.locator('[data-key="owner:demo#11"]')).to_be_in_viewport()
+    dialog.locator('[data-key="owner:demo#11"] .tr-ask-input').fill("the swipe does nothing")
+    dialog.locator("#chiefAnswersDone").click()
+    expect(dialog).to_be_hidden()
+    assert chief_posts == [{"data": (
+        "Owner checks answered on the Board:\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts

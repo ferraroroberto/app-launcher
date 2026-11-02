@@ -6,8 +6,8 @@
  * They sit in Your turn under the live sessions, one group per kind. A row's
  * tap unfolds its own detail in place: why it needs you, what to try, and the
  * links to the issue and its proof. The detail's Answer, like the group's
- * button, opens the one answer sheet (board-answers.js), where this module
- * draws each item's block and reads its answer back.
+ * button, opens the owner-check answer sheet (board-answers.js), where this
+ * module draws each item's block and reads its answer back.
  *
  * The list is a cached read with its age. Before one has landed it is
  * unknown, never "none"; repos the list could not read make it a lower bound,
@@ -230,7 +230,7 @@ function stateLine(sec) {
 }
 
 // Fills Your turn's owner block; returns how many waiting items it shows, for
-// the lane's count. `onAnswer(ref)` opens the answer sheet on that item.
+// the lane's count. `onAnswer(ref)` opens the owner-check sheet on that item.
 export function renderOwnerChecks(body, onAnswer) {
   const host = els.boardColumns && els.boardColumns.querySelector('.board-owner');
   if (!host) return 0;
@@ -247,7 +247,10 @@ export function renderOwnerChecks(body, onAnswer) {
     agoText(sec && sec.fetched_at), boardRepoFilter()]);
   if (host.dataset.sig === sig) return waitingCount;
   host.dataset.sig = sig;
-  const nodes = [];
+  // The state line leads, where the Chief's plan card puts its age line.
+  const line = el('p', 'board-plan-line muted small board-owner-state', stateLine(sec));
+  if (sec && sec.error) line.title = sec.error;
+  const nodes = [line];
   GROUPS.forEach(function (g) {
     const mine = items.filter(function (it) { return it.kind === g.kind; });
     if (mine.length) nodes.push(group(g, mine, onAnswer));
@@ -261,9 +264,6 @@ export function renderOwnerChecks(body, onAnswer) {
     btn.addEventListener('click', function () { onAnswer(first.ref); });
     nodes.push(btn);
   }
-  const line = el('p', 'board-plan-line muted small board-owner-state', stateLine(sec));
-  if (sec && sec.error) line.title = sec.error;
-  nodes.push(line);
   host.replaceChildren.apply(host, nodes);
   return waitingCount;
 }
