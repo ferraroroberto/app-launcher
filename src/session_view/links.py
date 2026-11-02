@@ -6,11 +6,14 @@ one mentioned an hour ago is one tap away instead of a scroll through Chat.
 Like Changed files it reads the transcript, so it still answers after the
 session ends.
 
-Agent-agnostic on purpose: a transcript line is parsed as JSON and every
-string in it is scanned, so a URL in assistant text, a tool result or a
-user turn counts for Claude, Codex, Pi and the rest alike. Only the Claude
-Artifact tool's publish gets special care: the title the call was given
-labels the artifact it returned.
+Only what was said counts: the owner's prompts and the agent's own reply
+text, read through the same per-agent entry builders the Chat pane renders
+(so Claude, Codex, Grok, Pi, Antigravity and Copilot alike). A URL inside a
+tool call, a tool result, a file read, command output or thinking is noise
+(a long session holds hundreds) and is never listed, and neither is a
+sub-agent's traffic. The one exception is a published artifact: a URL the
+Claude Artifact tool returned is listed even when the reply never repeats
+it, labelled with the title the call was given.
 
 Safety: a URL is never listed with anything credential-shaped. User-info
 (``user:pass@``) drops the whole URL; a query holding a key-like parameter
@@ -30,6 +33,9 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import parse_qsl, urlsplit, urlunsplit
+
+from src.session_view.transcript import FLAVORS
+from src.transcript_flavors._shared import Line
 
 SCAN_CEILING = 64 * 1024 * 1024
 GROUP_LIMIT = 100
@@ -158,49 +164,86 @@ def _artifact_title(inputs: Dict[str, Any]) -> str:
     return ""
 
 
-def fold_links(path: Path) -> Dict[str, Any]:
-    """``{groups: [{key, title, links: [{url, label, first_seen, last_seen,
-    count}]}], total, partial}``; links newest first within a group."""
-    size = path.stat().st_size
-    found: Dict[str, Dict[str, Any]] = {}
+# One piece of scannable text: (line index, timestamp, text, artifact title,
+# artifact_only). ``artifact_only`` text is a tool result, of which only the
+# Artifact tool's own URL counts.
+_Piece = Tuple[int, Optional[str], str, str, bool]
+
+
+def _spoken_pieces(lines: List[Line], flavor: str) -> List[_Piece]:
+    """The owner's prompts and the agent's reply text, in file order."""
+    build = FLAVORS.get(flavor, FLAVORS["claude"])[0]
+    pieces: List[_Piece] = []
+    for entry in build(lines, uncapped=True):
+        if entry.get("kind") not in ("user", "assistant") or entry.get("sidechain"):
+            continue
+        text = entry.get("text")
+        if isinstance(text, str) and "http" in text:
+            stamp = entry.get("timestamp")
+            pieces.append((int(entry["offset"]), stamp if isinstance(stamp, str) else None,
+                           text, "", False))
+    return pieces
+
+
+def _artifact_pieces(lines: List[Line]) -> List[_Piece]:
+    """What the Artifact tool returned: its result text, paired with the
+    title the call was given."""
     titles: Dict[str, str] = {}
-    seq = 0
-    for raw in _lines(path):
+    pieces: List[_Piece] = []
+    for index, text in lines:
+        if "Artifact" not in text and not (titles and "tool_use_id" in text):
+            continue
         try:
-            row = json.loads(raw)
+            row = json.loads(text)
         except ValueError:
             continue
         if not isinstance(row, dict):
             continue
         stamp = row.get("timestamp") if isinstance(row.get("timestamp"), str) else None
-        label_hint = ""
         for block in _blocks(row):
             if block.get("type") == "tool_use" and isinstance(block.get("input"), dict):
                 if str(block.get("name") or "").split("__")[-1] == "Artifact":
                     titles[str(block.get("id"))] = _artifact_title(block["input"])
-            elif block.get("type") == "tool_result":
-                label_hint = titles.get(str(block.get("tool_use_id")), "")
-        for text in _strings(row):
-            if "http" not in text:
+            elif block.get("type") == "tool_result" and str(block.get("tool_use_id")) in titles:
+                body = " ".join(_strings(block.get("content")))
+                pieces.append((index, stamp, body, titles[str(block.get("tool_use_id"))], True))
+    return pieces
+
+
+def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
+    """``{groups: [{key, title, links: [{url, label, first_seen, last_seen,
+    count}]}], total, partial}``; links newest first within a group.
+    ``flavor`` picks the agent's transcript grammar (a key of
+    :data:`FLAVORS`; unknown falls back to Claude's, like the Chat pane)."""
+    size = path.stat().st_size
+    lines: List[Line] = [
+        (index, raw.decode("utf-8", errors="replace")) for index, raw in enumerate(_lines(path))
+    ]
+    pieces = _spoken_pieces(lines, flavor) + _artifact_pieces(lines)
+    pieces.sort(key=lambda piece: piece[0])
+    found: Dict[str, Dict[str, Any]] = {}
+    seq = 0
+    for _index, stamp, text, label_hint, artifact_only in pieces:
+        for match in _URL.finditer(text):
+            clean = _sanitize(match.group(0))
+            if clean is None:
                 continue
-            for match in _URL.finditer(text):
-                clean = _sanitize(match.group(0))
-                if clean is None:
-                    continue
-                url, host, url_path, port = clean
-                seq += 1
-                entry = found.get(url)
-                if entry is None:
-                    group, label = _classify(host, url_path, port)
-                    entry = found[url] = {
-                        "url": url, "group": group, "label": label,
-                        "first_seen": stamp, "count": 0,
-                    }
-                if label_hint and entry["group"] == "artifacts":
-                    entry["label"] = label_hint
-                entry["last_seen"] = stamp
-                entry["seq"] = seq
-                entry["count"] += 1
+            url, host, url_path, port = clean
+            group, label = _classify(host, url_path, port)
+            if artifact_only and group != "artifacts":
+                continue
+            seq += 1
+            entry = found.get(url)
+            if entry is None:
+                entry = found[url] = {
+                    "url": url, "group": group, "label": label,
+                    "first_seen": stamp, "count": 0,
+                }
+            if label_hint and entry["group"] == "artifacts":
+                entry["label"] = label_hint
+            entry["last_seen"] = stamp
+            entry["seq"] = seq
+            entry["count"] += 1
     groups: List[Dict[str, Any]] = []
     for key, title in GROUPS:
         members = sorted((e for e in found.values() if e["group"] == key), key=lambda e: -e["seq"])
