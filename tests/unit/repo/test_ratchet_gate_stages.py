@@ -1,4 +1,4 @@
-"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code- and conventions-ratchet stages fail on exit 3 and on a new finding, by name.
+"""The gate's docs-, structure-, instruction-, doc-refs-, dead-code-, conventions- and runtime-write-ratchet stages fail on exit 3 and on a new finding, by name.
 
 The real stage text runs against a throwaway repo with `Fail` stubbed to exit 1; a bare
 `& $python scripts/<ratchet>.py` would let exit 3 ("not confirmed") pass."""
@@ -22,8 +22,12 @@ _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="the gate is a PowerShell script")
 
 
-# A ratchet that refuses to run without its own keys (conventions needs `rules`).
-_EXTRA_KEYS = {"conventions": 'rules = ["logging-not-print"]\n'}
+# A ratchet that refuses to run without its own keys (conventions needs `rules`); the
+# throwaway repo has no [vendored] table, so runtime write is told to skip its own copy.
+_EXTRA_KEYS = {
+    "conventions": 'rules = ["logging-not-print"]\n',
+    "runtime_write": 'exclude = ["scripts/**"]\n',
+}
 
 
 def _stage(name: str) -> str:
@@ -61,6 +65,10 @@ def _stage(name: str) -> str:
     ("conventions", {"src/a.py": "print('hi')\n"}, 1,
      ["conventions ratchet failed", "src/a.py", "[logging-not-print]"]),
     ("conventions", {"src/a.py": "import logging\n\nlogging.info('hi')\n"}, 0, ["STAGE-PASSED"]),
+    ("runtime_write", {"src/a.py": "def broken(:\n"}, 1, ["runtime write ratchet NOT CONFIRMED ("]),
+    ("runtime_write", {"src/a.py": "from pathlib import Path\n\nPath(__file__).with_name('out.txt').write_text('x')\n"}, 1,
+     ["runtime write ratchet failed", "src/a.py"]),
+    ("runtime_write", {"src/a.py": "x = 1\n"}, 0, ["STAGE-PASSED"]),
 ])
 def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, expected: list[str]) -> None:
     (tmp_path / "scripts").mkdir()
@@ -68,6 +76,8 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
     if name == "structure":
         for sibling in ("structure_layout.py", "structure_band.py"):
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
+    if name == "runtime_write":
+        shutil.copy2(REPO_ROOT / "scripts" / "runtime_write_resolve.py", tmp_path / "scripts")
     files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
     files[".fleet.toml"] = files.get(".fleet.toml", "") + f"[{name}_ratchet]\nenabled = true\n{_EXTRA_KEYS.get(name, '')}"
     for path, text in files.items():

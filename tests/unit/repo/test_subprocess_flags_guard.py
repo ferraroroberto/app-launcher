@@ -67,6 +67,7 @@ _VENDORED_VERBATIM_EXEMPT = {
     "scripts/doc_refs_ratchet.py": "The scaffold's doc references ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/dead_code_ratchet.py": "The scaffold's dead code ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/conventions_ratchet.py": "The scaffold's conventions ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
+    "scripts/runtime_write_ratchet.py": "The scaffold's runtime write ratchet, vendored byte-for-byte; git spawn uses a local _NO_WINDOW.",
     "scripts/shot_baseline.py": (
         "The scaffold's screenshot baseline, vendored byte-for-byte and declared in "
         ".fleet.toml [vendored]; it spawns git and pytest with a locally derived _NO_WINDOW."

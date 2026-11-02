@@ -87,6 +87,8 @@ instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "9d0fd2777
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "baac1ed97388a3545bd1e52544821ec20f1dc77a", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "baac1ed97388a3545bd1e52544821ec20f1dc77a", dest = "scripts/dead_code_ratchet.py" }
 conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "scripts/conventions_ratchet.py" }
+runtime_write_ratchet = { src = "scripts/runtime_write_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_ratchet.py" }
+runtime_write_resolve = { src = "scripts/runtime_write_resolve.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_resolve.py" }
 rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "app/webapp/static/_vendored/rec-wave" }
 single_instance = { src = "app/tray/single_instance.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/tray/single_instance.py" }
 shot_capture = { src = "tests/e2e/_shot.py", sha = "6b1af3b71f6db16bdfcf32c9abddbe881c72c7b0", dest = "tests/e2e/_shot.py" }
@@ -236,6 +238,17 @@ enabled      = true
 baseline     = ".conventions-ratchet-baseline.json"
 rules        = ["no-window", "logging-not-print", "no-drive-path", "git-wrapper"]
 git_wrappers = ["src/git_utils.py"]
+
+# [runtime_write_ratchet] -- scripts/runtime_write_ratchet.py fails when a tracked
+# Python file gains a write target (open for writing, Path.write_*, mkdir, a log
+# FileHandler, sqlite3.connect, a copy destination) whose path resolves under a code
+# folder, beyond .runtime-write-ratchet-baseline.json; a new target it cannot resolve
+# is "not confirmed" (exit 3), never clean. The same script brackets the test stages
+# (--snapshot before, --probe after) and fails on any untracked or ignored file the
+# run left under a code folder. Mechanism: project-scaffolding docs/runtime-write-ratchet.md.
+[runtime_write_ratchet]
+enabled  = true
+baseline = ".runtime-write-ratchet-baseline.json"
 
 [test_weight]
 ratio_ceiling = "1.1413"
@@ -684,6 +697,10 @@ label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
 path  = ".conventions-ratchet-baseline.json"
+label = "repo-meta"
+[[e2e.rule]]
+tier  = "none"
+path  = ".runtime-write-ratchet-baseline.json"
 label = "repo-meta"
 [[e2e.rule]]
 tier  = "none"
