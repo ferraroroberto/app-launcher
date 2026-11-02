@@ -179,14 +179,6 @@
 .muted { color: var(--muted); }
 .small { font-size: var(--font-body-sm); }
 
-/* Status + build identity footer: centred plain text at the
-   very bottom of the page, outside every card. */
-.page-foot {
-  margin: 16px 4px;
-  text-align: center;
-}
-.page-foot p { margin: 2px 0; }
-
 /* Port listeners are action-rows: a parent app's row folds its
    helper services behind a tap, and a helper nests under it.
    The port is the scannable datum, so it leads the context line as a
