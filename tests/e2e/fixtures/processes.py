@@ -15,6 +15,7 @@ import psutil
 import pytest
 import requests
 
+from tests.e2e._owned_processes import record_owned, spawn_owned
 from tests.e2e._process_teardown import terminate_tree as _terminate
 from tests.e2e.fixtures.env import REPO_ROOT, UPLOAD_MARKER, XDIST_WORKER
 from tests.e2e.stub_session import STUB_BANNER as _STUB_BANNER
@@ -54,7 +55,9 @@ def spawn(
         kwargs["creationflags"] = (
             subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
         )
-    return subprocess.Popen(cmd, **kwargs)
+    # Tied to this process: a worker that dies before its teardown (a
+    # pytest-timeout os._exit) still takes the server tree with it.
+    return spawn_owned(cmd, **kwargs)
 
 
 
@@ -116,6 +119,7 @@ def boot_on_free_port(
         deadline = time.time() + timeout
         while time.time() < deadline and proc.poll() is None:
             if ready(port) and _owns_listener(proc, port):
+                record_owned(proc)
                 return proc, port
             time.sleep(0.3)
         alive = proc.poll() is None

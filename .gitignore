@@ -62,6 +62,8 @@ webapp/life-os-skill-hashes.json
 # config moved to pytest's temp dir, credential-free (issue #907) — but kept
 # ignored so a file left by an older run can never be committed.
 webapp/e2e-autoboot-webapp-config.json
+# pids of the gate's disposable servers, swept at the end of the browser phase — machine-written state
+webapp/e2e-autoboot-pids.jsonl
 
 # --- Interactive-terminal scratch (image uploads land here) --------------
 .launcher-tmp/
