@@ -69,7 +69,7 @@ import { openQuestionCount } from './board/chief-keys.js';
 import {
   buildDrawer, drawerId, drawerShape, endDrawerRender, openDrawerItem, syncDrawerLifecycle,
 } from './board/drawer.js';
-import { agoText, openAnswersAt, renderChiefPlan } from './board/chief-plan.js';
+import { agoText, openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan.js';
 import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
@@ -733,7 +733,7 @@ export function renderBoard() {
   const liveRead = liveSessionsRead(body);
 
   revealDrawerSection(visible, expandedCard);
-  const owner = renderOwnerChecks(body, openAnswersAt);
+  const owner = renderOwnerChecks(body, openOwnerAnswersAt);
   COLUMNS.forEach(function (col) {
     renderLane(col, visible[col.key], openItem, body, ghLoaded, liveRead,
       col.key === 'your_turn' ? owner : 0);

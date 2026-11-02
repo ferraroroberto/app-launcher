@@ -8,7 +8,7 @@ import { els, state } from '../state.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { chip } from '../glance.js';
 import { actionRow } from '../action-rows.js';
-import { openChiefAnswers, syncChiefAnswers } from './board-answers.js';
+import { openChiefAnswers, openOwnerAnswers, syncChiefAnswers } from './board-answers.js';
 import { answeredKeys, itemKey } from './chief-keys.js';
 import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatch.js';
 import { DESKTOP_BOARD, plural, renderBoard, setLaneException } from '../board.js';
@@ -290,22 +290,13 @@ function moreRow(n) {
   }).li;
 }
 
-// The answer sheet from an owner-check row (owner-checks.js): the chief's
-// open questions the filter shows come too, so it stays one sheet; `ownerRef`
-// is the item to scroll to.
-export function openAnswersAt(ownerRef) {
+// The owner-check sheet from an owner-check row or its group's button
+// (owner-checks.js): the owner checks alone, never the chief's questions;
+// `ownerRef` is the item to scroll to.
+export function openOwnerAnswersAt(ownerRef) {
   const body = state.board;
   const liveRead = !(body && body.live_sessions && body.live_sessions.available === false);
-  const plan = state.chiefPlan;
-  let open = [];
-  if (plan && plan.state === 'ok') {
-    const answered = answeredKeys(plan);
-    const filter = boardRepoFilter();
-    (plan.waiting_on_roberto || []).forEach(function (w, i) {
-      if (planRowShown(w, filter) && answered.indexOf(itemKey(w, i)) === -1) open.push(i);
-    });
-  }
-  openChiefAnswers(plan, chiefRunState(body, liveRead), open, null, ownerRef);
+  openOwnerAnswers(state.chiefPlan, chiefRunState(body, liveRead), ownerRef);
 }
 
 export function renderChiefPlan(body, liveRead) {

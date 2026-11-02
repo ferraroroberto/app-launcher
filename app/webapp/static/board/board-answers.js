@@ -29,10 +29,12 @@
  * can't wipe an answer being typed; the poll only re-gates Done
  * (syncChiefAnswers) on whether the chief is running.
  *
- * Owner checks (owner-checks.js) are answered in the same sheet, after the
- * chief's questions. Done writes their answers to GitHub first, each on its
- * own, then tells the chief what landed in the same one message. Validated,
- * Done and Later need no chief; a Problem does, since the chief files the fix.
+ * Owner checks (owner-checks.js) have their own sheet, the same dialog in
+ * `owner` mode: the chief's questions unblock work in flight, an owner check
+ * waits on the owner's own schedule, so neither sheet lists the other's items.
+ * Done writes their answers to GitHub first, each on its own, then tells the
+ * chief what landed in one message. Validated, Done and Later need no chief;
+ * a Problem does, since the chief files the fix.
  */
 
 import { els, state } from '../state.js';
@@ -58,9 +60,11 @@ const DONE_LABEL = 'Done';
 // escape (the no-glyph guard reads raw source).
 const ANSWER_SEP = ' \u2192 ';
 
-// The open sheet: the plan it was built from, one draft per item
-// ({ picks: [option index], other: '' }), and Anything else's text while the
-// sheet is closed (the composer drops its own on close).
+// The open sheet: its mode ('chief' | 'owner'), the plan it was built from,
+// one draft per item ({ picks: [option index], other: '' }), and Anything
+// else's text while the sheet is closed (the composer drops its own on close).
+// The chief drafts stay in the sheet across an owner-mode open, so switching
+// between the two sheets never loses what was typed.
 let sheet = null;
 // Anything else: the shared composer, mounted once.
 let also = null;
@@ -160,8 +164,9 @@ export function composeAnswers(items, drafts, extra, shown, ownerLines) {
   return out.join('\n');
 }
 
+// Anything else is the chief sheet's; the owner sheet hides it and sends none.
 function alsoText() {
-  return also ? also.textarea.value : '';
+  return also && sheet && sheet.mode === 'chief' ? also.textarea.value : '';
 }
 
 function allIndices(items) {
@@ -323,7 +328,9 @@ function syncDone() {
     || owner.some(function (x) { return x.ans.answer === 'problem'; });
   let why = '';
   if (!forChief && !owner.length) {
-    why = 'Pick or type an answer first. Unanswered questions are sent as skipped.';
+    why = sheet.mode === 'owner'
+      ? 'Pick an answer or describe the problem first.'
+      : 'Pick or type an answer first. Unanswered questions are sent as skipped.';
   } else if (forChief && chiefRun !== 'running') {
     why = chiefRun === 'unknown' ? 'Chief status unknown — session-host unreachable.' : 'Chief not running.';
   }
@@ -341,28 +348,40 @@ export function syncChiefAnswers(run) {
   syncDone();
 }
 
-// `shown` is the plan positions to ask: the Board's repo filter
-// minus what is already answered; omitted, every item. Drafts stay
+// The chief sheet. `shown` is the plan positions to ask: the Board's repo
+// filter minus what is already answered; omitted, every item. Drafts stay
 // indexed by plan position, so narrowing or widening it between opens keeps
-// whatever was typed. `startAt`, a plan position among them, opens
-// the sheet scrolled to that question: a tap on its Board row.
-// `startOwner`, an owner check's ref, opens it scrolled to that owner check
-// instead. Owner checks the Board shows (owner-checks.js) follow the
-// chief's questions; with no plan to answer, the sheet asks those alone.
-export function openChiefAnswers(plan, run, shown, startAt, startOwner) {
+// whatever was typed. `startAt`, a plan position among them, opens the sheet
+// scrolled to that question: a tap on its Board row.
+export function openChiefAnswers(plan, run, shown, startAt) {
+  const ok = !!plan && plan.state === 'ok';
+  const items = ok ? plan.waiting_on_roberto || [] : [];
+  const indices = ok ? shown || allIndices(items) : [];
+  if (!indices.length) return;
+  openSheet('chief', plan, run, indices, [], startAt == null ? null : itemKey(items[startAt], startAt));
+}
+
+// The owner sheet: the owner checks the Board shows, scrolled to `startRef`
+// (the tapped item). It needs no plan; one that is there only keeps the chief
+// sheet's drafts through the open.
+export function openOwnerAnswers(plan, run, startRef) {
+  const owner = shownOwnerItems(state.board);
+  if (!owner.length) return;
+  openSheet('owner', plan, run, [], owner, startRef ? ownerSheetKey({ ref: startRef }) : null);
+}
+
+function openSheet(mode, plan, run, indices, owner, startKey) {
   const dialog = els.chiefAnswersDialog;
   if (!dialog) return;
   const ok = !!plan && plan.state === 'ok';
   const items = ok ? plan.waiting_on_roberto || [] : [];
-  const indices = ok ? shown || allIndices(items) : [];
-  const owner = shownOwnerItems(state.board);
-  if (!indices.length && !owner.length) return;
   const version = ok ? plan.updated_at || '' : null;
   // Reopening the same version of the plan keeps what was typed.
   const same = sheet && sheet.version === version
     && sheet.items.length === items.length
     && sheet.items.every(function (it, i) { return itemKey(it, i) === itemKey(items[i], i); });
   sheet = {
+    mode: mode,
     plan: ok ? plan : null,
     version: version,
     items: items,
@@ -371,12 +390,16 @@ export function openChiefAnswers(plan, run, shown, startAt, startOwner) {
     drafts: same ? sheet.drafts : items.map(function () { return { picks: [], other: '' }; }),
     also: same ? sheet.also : '',
   };
-  also.textarea.value = sheet.also;
-  growTextarea(also.textarea);
-  also.setAvailability({
-    dictate: voiceDictationAvailable(),
-    ocr: !!(state.status && state.status.screenshot_ocr),
-  });
+  const chief = mode === 'chief';
+  els.chiefAnswersAlso.parentElement.hidden = !chief;
+  if (chief) {
+    also.textarea.value = sheet.also;
+    growTextarea(also.textarea);
+    also.setAvailability({
+      dictate: voiceDictationAvailable(),
+      ocr: !!(state.status && state.status.screenshot_ocr),
+    });
+  }
   disposeOtherDictations();
   const blocks = indices.map(function (i) { return renderItem(items[i], i); });
   owner.forEach(function (item) {
@@ -385,14 +408,11 @@ export function openChiefAnswers(plan, run, shown, startAt, startOwner) {
     }));
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
-  els.chiefAnswersTitleText.textContent = indices.length ? 'Answer the chief' : 'Owner checks';
+  els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief' : 'Owner checks';
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
-  let key = null;
-  if (startOwner) key = ownerSheetKey({ ref: startOwner });
-  else if (startAt != null) key = itemKey(items[startAt], startAt);
-  const start = key == null ? null
-    : els.chiefAnswersList.querySelector('[data-key="' + CSS.escape(key) + '"]');
+  const start = startKey == null ? null
+    : els.chiefAnswersList.querySelector('[data-key="' + CSS.escape(startKey) + '"]');
   // The dialog is the scroller, scrolled by hand two frames on: in WebKit
   // the modal's autofocused title scrolls itself into view on the
   // first frame after showModal(), undoing an earlier scroll, and it ignores
@@ -458,15 +478,17 @@ async function submitAnswers() {
       // clean. One typed for an item the filter hid was not sent, and stays.
       // The close handler saves the box into `sheet.also`, so empty the box.
       sheet.shown.forEach(function (i) { sheet.drafts[i] = { picks: [], other: '' }; });
-      also.textarea.value = '';
-      sheet.also = '';
+      if (sheet.mode === 'chief') {
+        also.textarea.value = '';
+        sheet.also = '';
+      }
     }
     renderBoard();
     if (owner.failed) {
       // The failed ones keep their drafts; the rebuilt sheet shows them.
       toast(owner.failed + (owner.failed === 1 ? ' owner check was' : ' owner checks were')
         + ' not saved on GitHub. Try again.', 'error');
-      openChiefAnswers(plan, chiefRun, tell ? [] : sheet.shown);
+      openOwnerAnswers(plan, chiefRun);
     } else {
       els.chiefAnswersDialog.close();
       toast(tell ? 'Sent to chief' : 'Saved on GitHub', 'good', { icon: tell ? 'crown' : 'circle-check' });
@@ -506,7 +528,7 @@ export function wireChiefAnswers() {
   // the same plan, then reset the composer so a recording or a staged
   // screenshot never outlives the sheet.
   els.chiefAnswersDialog.addEventListener('close', function () {
-    if (sheet) sheet.also = alsoText();
+    if (sheet && sheet.mode === 'chief') sheet.also = alsoText();
     also.reset();
     disposeOtherDictations();
   });
