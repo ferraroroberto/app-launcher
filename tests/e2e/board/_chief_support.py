@@ -8,11 +8,12 @@ import json as _json
 import re
 from datetime import datetime, timezone
 
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page
 
 from src.chief import answers as chief_answers
 from src.chief import plan as chief_plan
 from tests.e2e._audio_mock import RECORDER_BASE_JS
+from tests.e2e.board._support import _open_board  # noqa: F401  (re-exported to the chief tests)
 
 
 _CHIEF_CARD = {
@@ -165,13 +166,6 @@ def _mock_ensure(
             }),
         )
     page.route(re.compile(r".*/api/board/chief/ensure$"), _capture)
-
-
-def _open_board(page: Page, base_url: str) -> None:
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.wait_for_selector("#tabBoard", state="attached", timeout=5_000)
-    page.locator("#tabBoard").click()
-    expect(page.locator("#paneBoard")).to_be_visible()
 
 
 # ------------------------------------------- chief's answer sheet (#1295)

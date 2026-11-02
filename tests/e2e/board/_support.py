@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 from playwright.sync_api import Page, expect
 
 from src.chief import plan as chief_plan
+from tests.e2e.fixtures.ui import open_tab
 
 
 def _iso_utc(dt: datetime) -> str:
@@ -152,10 +153,7 @@ def _mock_board(page: Page, payload: dict | None = None, plan: dict | None = Non
 
 
 def _open_board(page: Page, base_url: str) -> None:
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.wait_for_selector("#tabBoard", state="attached", timeout=5_000)
-    page.locator("#tabBoard").click()
-    expect(page.locator("#paneBoard")).to_be_visible()
+    open_tab(page, base_url, "#tabBoard", "#paneBoard")
 
 
 def _unfold(page: Page, *section_ids: str) -> None:
