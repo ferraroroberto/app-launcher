@@ -37,9 +37,6 @@ const GROUPS = [
   { kind: VALIDATE_AFTER, heading: 'To validate', label: 'Validate' },
 ];
 
-// Rows per group before "N more"; the backfill can list dozens.
-const SHOWN = 3;
-let unfolded = {};
 // The ref whose detail is open, across the 5 s poll's rebuilds.
 let expandedRef = null;
 
@@ -185,34 +182,12 @@ function itemRow(item, onAnswer) {
   return row.li;
 }
 
-function moreRow(kind, n) {
-  const unfold = function () {
-    unfolded[kind] = true;
-    renderBoard();
-  };
-  return actionRow({
-    className: 'board-item board-owner-more',
-    title: plural(n, 'more', 'more'),
-    label: 'Show ' + n + ' more',
-    density: 'one-line',
-    onMain: unfold,
-  }).li;
-}
-
 function group(g, items, onAnswer) {
   const wrap = el('div', 'board-plan-group board-owner-group');
   wrap.dataset.kind = g.kind;
   wrap.appendChild(el('h4', 'board-plan-heading', g.heading + ' (' + items.length + ')'));
-  const folded = !unfolded[g.kind] && items.length > SHOWN + 1;
-  const listed = folded ? items.slice(0, SHOWN) : items;
-  // The open detail's row stays listed, folded or not.
-  if (folded && expandedRef && listed.every(function (it) { return it.ref !== expandedRef; })) {
-    const open = items.find(function (it) { return it.ref === expandedRef; });
-    if (open) listed.push(open);
-  }
   const list = el('ul', 'card-list board-list');
-  listed.forEach(function (it) { list.appendChild(itemRow(it, onAnswer)); });
-  if (folded) list.appendChild(moreRow(g.kind, items.length - listed.length));
+  items.forEach(function (it) { list.appendChild(itemRow(it, onAnswer)); });
   wrap.appendChild(list);
   return wrap;
 }
@@ -248,7 +223,7 @@ export function renderOwnerChecks(body, onAnswer) {
   const items = shownOwnerItems(body);
   const waitingCount = items.filter(waiting).length;
   const sig = JSON.stringify([sec && sec.available, sec && sec.fetched_at, sec && sec.error,
-    sec && sec.refreshing, sec && sec.unknown, items, expandedRef, unfolded,
+    sec && sec.refreshing, sec && sec.unknown, items, expandedRef,
     agoText(sec && sec.fetched_at), boardRepoFilter()]);
   if (host.dataset.sig === sig) return waitingCount;
   host.dataset.sig = sig;

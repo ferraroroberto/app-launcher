@@ -228,6 +228,41 @@ def _many_owner_items(n: int) -> list:
     return items
 
 
+@pytest.mark.iphone
+def test_a_long_owner_check_group_lists_every_row_with_no_more_row(
+    authed_page: Page, base_url: str
+) -> None:
+    """Twelve checks in one group all render (no "Show N more" fold), the
+    heading keeps its count, and the last row scrolls fully above the tab bar."""
+    items = _many_owner_items(12)
+    for it in items:
+        it["kind"] = "validate-after"
+    payload = _board_payload(with_chief=True)
+    payload["owner_checks"] = {
+        "available": True, "fetched_at": payload["github"]["fetched_at"], "error": None,
+        "refreshing": False, "unknown": [], "items": items,
+    }
+    _mock_board(authed_page, payload)
+    _mock_ensure(authed_page, {})
+    _route_voice(authed_page, False)
+    _open_board(authed_page, base_url)
+
+    group = authed_page.locator('#boardColYours .board-owner-group[data-kind="validate-after"]')
+    expect(group.locator("li.board-owner-row")).to_have_count(12)
+    expect(group.locator("li")).to_have_count(12)
+    expect(group.locator("h4")).to_have_text("To validate (12)")
+    expect(authed_page.locator(".board-owner-more")).to_have_count(0)
+
+    last = group.locator("li.board-owner-row").nth(11)
+    last.scroll_into_view_if_needed()
+    expect(last).to_be_in_viewport()
+    # On a phone the tab bar is a bottom pill: the last row clears it. The desktop rail is a side column.
+    nbox = authed_page.locator("nav.tabs").bounding_box()
+    if nbox and nbox["width"] > nbox["height"]:
+        box = last.bounding_box()
+        assert box and box["y"] + box["height"] <= nbox["y"] + 1, (box, nbox)
+
+
 def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
     authed_page: Page, base_url: str
 ) -> None:
