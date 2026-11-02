@@ -129,7 +129,47 @@ def _check_question_cards_arrive_and_answer(page: Page, tr):
     expect(live).to_have_attribute("data-mode", "answered", timeout=OVERLAY_OPEN_MS)
     expect(live.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Await it")
     expect(live.locator(".tr-ask-opt:enabled")).to_have_count(0)
+    _check_multi_select_takes_typed_text(page, tr, answers)
     return live
+
+
+_FRUIT = {
+    "question": "Which fruits?", "header": "Fruits", "multiSelect": True,
+    "options": [{"label": lab, "description": ""} for lab in ("Apple", "Banana", "Cherry")],
+}
+
+
+def _check_multi_select_takes_typed_text(page: Page, tr, answers: list) -> None:
+    """Cover a multi-select card taking typed text alone or beside ticked options."""
+    # #2068 — a multi-select question has the typed-answer row too, and the
+    # text goes beside the ticked options, as the terminal picker takes them.
+    tr.append(dict(_question("toolu_multi", 720), questions=[_FRUIT]))
+    _tick(page, tr)
+    card = page.locator('#transcriptList .tr-ask-item[data-call-id="toolu_multi"]')
+    expect(card).to_have_attribute("data-mode", "live", timeout=OVERLAY_OPEN_MS)
+    submit = card.locator(".tr-ask-submit")
+    expect(submit).to_be_disabled()
+    field = card.locator(".tr-ask-input")
+    field.fill("Teal blue")
+    expect(submit).to_be_enabled()        # typed text alone is an answer
+    card.locator(".tr-ask-opt").nth(1).click()
+    expect(field).to_have_value("Teal blue")  # a tick keeps the text
+    submit.click()
+    expect(card).to_have_attribute("data-mode", "sent")
+    assert answers[-1] == {
+        "tool_use_id": "toolu_multi", "answers": [{"options": [2], "text": "Teal blue"}],
+    }, answers
+    # The agent receives the labels and the text joined, and the answered
+    # card shows each where it belongs.
+    tr.append({
+        "kind": "tool_result", "timestamp": "2026-09-19T10:01:10Z",
+        "text": "answered", "truncated": False, "tool_use_id": "toolu_multi",
+        "answers": {"Which fruits?": "Banana, Teal blue"}, "sidechain": False, "offset": 740,
+    }, _turn("assistant", "noted", 760))
+    _tick(page, tr)
+    expect(card).to_have_attribute("data-mode", "answered", timeout=OVERLAY_OPEN_MS)
+    expect(card.locator(".tr-ask-opt--picked .tr-ask-label")).to_have_text("Banana")
+    expect(card.locator(".tr-ask-typed")).to_have_text("Typed answer: “Teal blue”")
 
 
 def _check_plan_cards_arrive(page: Page, tr, live):

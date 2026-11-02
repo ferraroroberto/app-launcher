@@ -168,9 +168,9 @@ One tap always surfaces an older prompt or reply. A stretch of heavy tool output
 
 When Claude Code calls `AskUserQuestion`, Chat shows the question with its numbered options (bold label, muted description) as its own card, visible even with the steps hidden, instead of a folded `AskUserQuestion` row.
 
-- While it is the question the session is waiting on, **tap an option** to answer it. One tap sends a single-choice question; a multi-choice or several-question call takes your picks and a **Submit answers**. A single-choice question also takes a typed answer (Claude Code's *Type something*).
+- While it is the question the session is waiting on, **tap an option** to answer it. One tap sends a single-choice question; a multi-choice or several-question call takes your picks and a **Submit answers**. Every question also takes a typed answer (Claude Code's *Type something*); on a multi-choice one the text goes beside any ticked options, and text alone is an answer too.
 - The launcher re-checks against the transcript that the question is still waiting before it types anything, then types the picker's own keystrokes: raw keys over the terminal socket for a full-control session, one console-input call per key for a detached one.
-- The card locks until the agent's answer lands in the transcript, then shows what was picked.
+- The card locks until the agent's answer lands in the transcript, then shows what was picked and any typed text.
 - An older question, or one the agent has moved past, is plain history with nothing to tap. So is every card in the Life OS conversation viewer.
 
 ## Approving a plan from the phone

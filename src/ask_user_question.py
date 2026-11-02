@@ -32,6 +32,23 @@ Two halves, both pure:
     "2"). Hence a route of its own rather than ``/input``.
   - Each key in its own write: the picker reads one keystroke per input
     event, so ``"13"`` in one write is not "1 then 3".
+
+  Typed text on a **multi-select** question, probed against Claude Code
+  2.1.316 over a PTY and a detached console (evidence on the issue):
+
+  - The "Type something" digit only ticks that row: no field opens, the
+    keys typed after it are dropped, and Enter toggles whatever row the
+    cursor is on. The field takes text only with the cursor on its row.
+  - Option digits toggle without moving the cursor off row 1, so they go
+    first; then Ctrl+N (``\\x0e``) once per option walks the cursor to the
+    text row. Typing there fills the field and ticks it.
+  - Ctrl+N, not the down arrow: a detached console types each character as
+    a key, so the arrow's ``ESC [ B`` would land as an Esc that cancels the
+    picker. Ctrl+N moves the cursor the same on both paths.
+  - Tab from the field moves to the in-list Submit/Next row, and Enter there
+    goes on to the next question or the review tab. The agent receives the
+    ticked labels and the typed text joined by ``", "``, exactly as a
+    terminal answer.
 """
 
 from __future__ import annotations
@@ -53,6 +70,9 @@ ANSWER_CAP = 1_000
 # A typed answer goes to the agent as keystrokes: long enough for a real
 # answer, short enough that a stuck key loop cannot flood the picker.
 FREE_TEXT_MAX = 500
+# Ctrl+N: the picker's cursor-down that survives a detached console's
+# per-character key typing (see the module docstring).
+CURSOR_DOWN = "\x0e"
 
 # One step of an answer: ``(text, enter)`` — the text as raw keys, then an
 # Enter as its own write when ``enter`` is true.
@@ -115,9 +135,8 @@ def answer_keystrokes(questions: Any, answers: Any) -> List[Keystroke]:
     ``questions`` is the call's own input (``input["questions"]`` as the agent
     wrote it — the server's copy, never the client's); ``answers`` has one
     entry per question: ``{"option": n}`` (1-based) or ``{"text": str}`` for a
-    single-select question, ``{"options": [n, ...]}`` for a multi-select one.
-    Typed text on a multi-select question is refused: its toggle-then-type
-    sequence was not probed.
+    single-select question; ``{"options": [n, ...]}``, ``{"text": str}`` or
+    both for a multi-select one.
 
     Raises :class:`ValueError` with a user-facing reason for anything else,
     before a single key is built — a malformed answer must never become a
@@ -142,20 +161,24 @@ def answer_keystrokes(questions: Any, answers: Any) -> List[Keystroke]:
             raise ValueError(f"question {i} has too many options to pick by number")
         if q.get("multiSelect"):
             review = True
-            picks = a.get("options")
-            if not isinstance(picks, list) or not picks:
-                raise ValueError(f"pick at least one option for question {i}")
+            picks = a.get("options", [])
+            text = _typed(a, i) if "text" in a else None
+            if not isinstance(picks, list) or (not picks and text is None):
+                raise ValueError(f"pick at least one option or type an answer for question {i}")
             if any(not _valid_option(n, count) for n in picks) or len(set(picks)) != len(picks):
                 raise ValueError(f"question {i} has an option out of range")
             keys.extend((str(n), False) for n in sorted(picks))
-            keys.append(("\t", False))
+            if text is None:
+                keys.append(("\t", False))
+                continue
+            # Walk the cursor from row 1 to "Type something", type, then Tab
+            # to the Submit/Next row and Enter it.
+            keys.extend((CURSOR_DOWN, False) for _ in range(count))
+            keys.append((text, False))
+            keys.append(("\t", True))
             continue
         if "text" in a:
-            text = " ".join(str(a.get("text") or "").split())
-            if not text:
-                raise ValueError(f"the typed answer for question {i} is empty")
-            if len(text) > FREE_TEXT_MAX:
-                raise ValueError(f"the typed answer for question {i} is over {FREE_TEXT_MAX} characters")
+            text = _typed(a, i)
             keys.append((str(count + 1), False))
             keys.append((text, True))
             continue
@@ -166,6 +189,16 @@ def answer_keystrokes(questions: Any, answers: Any) -> List[Keystroke]:
     if review:
         keys.append(("1", False))
     return keys
+
+
+def _typed(answer: Dict[str, Any], i: int) -> str:
+    """Question ``i``'s typed answer, whitespace-collapsed and length-checked."""
+    text = " ".join(str(answer.get("text") or "").split())
+    if not text:
+        raise ValueError(f"the typed answer for question {i} is empty")
+    if len(text) > FREE_TEXT_MAX:
+        raise ValueError(f"the typed answer for question {i} is over {FREE_TEXT_MAX} characters")
+    return text
 
 
 def _valid_option(n: Any, count: int) -> bool:

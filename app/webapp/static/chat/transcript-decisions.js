@@ -89,6 +89,14 @@ function labelPicked(q, answer, label) {
   return (', ' + answer + ', ').indexOf(', ' + label + ', ') !== -1;
 }
 
+// What a multi-select answer holds beyond its option labels: the picker
+// joins the ticked labels and the typed text with ", ".
+function typedPart(q, answer) {
+  let rest = ', ' + answer + ', ';
+  q.options.forEach(function (opt) { rest = rest.split(', ' + opt.label + ', ').join(', '); });
+  return rest.replace(/^(, )+|(, )+$/g, '').trim();
+}
+
 // One card per call. `answering` is the Chat pane's hook; without it (the
 // Life OS viewer) the card never grows a live control.
 export function renderQuestion(e, toolErrors, answering) {
@@ -145,8 +153,8 @@ export function renderQuestion(e, toolErrors, answering) {
   return li;
 }
 
-// One question's section of the card: its header chip, text, options and,
-// single-select only, the typed-answer row.
+// One question's section of the card: its header chip, text, options and
+// the typed-answer row.
 function questionSection(li, q, qi, simple) {
   const sec = document.createElement('section');
   sec.className = 'tr-ask-q';
@@ -181,40 +189,38 @@ function questionSection(li, q, qi, simple) {
     list.appendChild(b);
   });
   sec.appendChild(list);
-  // "Type something" — single-select only: typing into a multi-select's
-  // text row was not probed (src/ask_user_question.py).
-  if (!q.multiSelect) {
-    const other = document.createElement('div');
-    other.className = 'tr-ask-other';
-    other.hidden = true;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'tr-ask-input';
-    input.placeholder = 'Or type an answer';
-    input.setAttribute('aria-label', 'Type an answer to: ' + (q.question || 'the question'));
-    input.maxLength = 500;
-    input.addEventListener('input', function () { onTextInput(li, qi, input.value); });
-    other.appendChild(input);
-    if (simple) {
-      const send = document.createElement('button');
-      send.type = 'button';
-      send.className = 'button-tint tr-ask-send';
-      send.textContent = 'Send';
-      send.disabled = true;
-      send.addEventListener('click', function () {
-        const t = input.value.trim();
-        if (t) submitAnswer(li, [{ text: t }]);
-      });
-      input.addEventListener('keydown', function (ev) {
-        if (ev.key === 'Enter' && input.value.trim()) {
-          ev.preventDefault();
-          submitAnswer(li, [{ text: input.value.trim() }]);
-        }
-      });
-      other.appendChild(send);
-    }
-    sec.appendChild(other);
+  // "Type something": on a multi-select it joins the ticked options
+  // (keystrokes in src/ask_user_question.py).
+  const other = document.createElement('div');
+  other.className = 'tr-ask-other';
+  other.hidden = true;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'tr-ask-input';
+  input.placeholder = 'Or type an answer';
+  input.setAttribute('aria-label', 'Type an answer to: ' + (q.question || 'the question'));
+  input.maxLength = 500;
+  input.addEventListener('input', function () { onTextInput(li, qi, input.value); });
+  other.appendChild(input);
+  if (simple) {
+    const send = document.createElement('button');
+    send.type = 'button';
+    send.className = 'button-tint tr-ask-send';
+    send.textContent = 'Send';
+    send.disabled = true;
+    send.addEventListener('click', function () {
+      const t = input.value.trim();
+      if (t) submitAnswer(li, [{ text: t }]);
+    });
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter' && input.value.trim()) {
+        ev.preventDefault();
+        submitAnswer(li, [{ text: input.value.trim() }]);
+      }
+    });
+    other.appendChild(send);
   }
+  sec.appendChild(other);
   const typed = document.createElement('p');
   typed.className = 'tr-ask-typed';
   typed.hidden = true;
@@ -238,7 +244,7 @@ function draftComplete(e, draft) {
   return e.questions.every(function (q, i) {
     const a = draft[i];
     if (!a) return false;
-    if (q.multiSelect) return Array.isArray(a.options) && a.options.length > 0;
+    if (q.multiSelect) return (a.options || []).length > 0 || !!(a.text && a.text.trim());
     return a.option != null || !!(a.text && a.text.trim());
   });
 }
@@ -256,7 +262,7 @@ function onOptionTap(li, qi, n) {
     const at = picks.indexOf(n);
     if (at === -1) picks.push(n);
     else picks.splice(at, 1);
-    draft[qi] = picks.length ? { options: picks } : null;
+    draft[qi] = multiDraft(picks, draft[qi] && draft[qi].text);
   } else {
     draft[qi] = { option: n };
     const input = li.querySelector('.tr-ask-q[data-q="' + qi + '"] .tr-ask-input');
@@ -272,9 +278,21 @@ function onTextInput(li, qi, value) {
   if (send) send.disabled = !value.trim();
   if (e.questions.length === 1 && !e.questions[0].multiSelect) return;
   const draft = askDraft(li);
-  if (value.trim()) draft[qi] = { text: value };
+  if (e.questions[qi].multiSelect) {
+    draft[qi] = multiDraft((draft[qi] && draft[qi].options) || [], value);
+  } else if (value.trim()) draft[qi] = { text: value };
   else if (draft[qi] && draft[qi].text != null) draft[qi] = null;
   paintDraft(li);
+}
+
+// A multi-select's answer: ticked options and typed text side by side, as
+// the terminal picker takes them. Blank text is no text, so ticks alone send
+// options only; null when there is neither.
+function multiDraft(picks, text) {
+  const a = {};
+  if (picks.length) a.options = picks;
+  if (text && text.trim()) a.text = text;
+  return (a.options || a.text) ? a : null;
 }
 
 // Reflect the draft on a live card: pressed options, typed text, Submit.
@@ -336,9 +354,10 @@ function paintQuestion(li, mode, out, statusText) {
     const other = sec.querySelector('.tr-ask-other');
     if (other) other.hidden = !live;
     const typed = sec.querySelector('.tr-ask-typed');
-    const freeText = mode === 'answered' && answer && !matched;
+    const freeText = mode === 'answered' && answer
+      ? (q.multiSelect ? typedPart(q, answer) : (matched ? '' : answer)) : '';
     typed.hidden = !freeText;
-    typed.textContent = freeText ? 'Typed answer: “' + answer + '”' : '';
+    typed.textContent = freeText ? 'Typed answer: “' + freeText + '”' : '';
   });
   const submit = li.querySelector('.tr-ask-submit');
   if (submit) submit.hidden = !live;
