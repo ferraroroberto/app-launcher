@@ -414,6 +414,18 @@ def create_issue(owner: str, repo: str, title: str, body: str) -> str:
     return lines[-1]
 
 
+def issue_body(owner: str, repo: str, number: int) -> str:
+    """The body text of ``owner/repo#number``; :class:`GhError` when it did not read."""
+    out = _run_gh(["issue", "view", str(number), "--repo", f"{owner}/{repo}", "--json", "body"])
+    try:
+        data = json.loads(out or "{}")
+    except ValueError as exc:
+        raise GhError(f"gh returned unparseable JSON: {exc}") from exc
+    if not isinstance(data, dict):
+        raise GhError("gh issue view printed no object")
+    return str(data.get("body") or "")
+
+
 def comment_issue(owner: str, repo: str, number: int, body: str) -> None:
     """Post one comment on ``owner/repo#number``; the body travels on stdin."""
     _run_gh(

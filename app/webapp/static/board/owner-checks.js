@@ -123,8 +123,24 @@ function details(item, cls) {
     return nodes;
   }
   if (item.reason) nodes.push(labelled(cls, 'Why', item.reason));
-  if (item.try) nodes.push(labelled(cls, 'Try', item.try));
+  nodes.push.apply(nodes, tryNodes(item, cls));
   return nodes;
+}
+
+// What to try: the recorded Try; else lines the issue's own checklist offers,
+// quoted and labelled as such; else a plain "none", never boilerplate.
+function tryNodes(item, cls) {
+  if (item.try) return [labelled(cls, 'Try', item.try)];
+  const lines = item.try_lines || [];
+  if (!lines.length) {
+    return [el('p', cls + ' board-owner-try-none', 'No specific Try on record. Open the issue to see what it shipped.')];
+  }
+  const head = el('p', cls);
+  head.appendChild(el('strong', null, 'Try'));
+  head.appendChild(document.createTextNode(" (from the issue's " + (item.try_from || 'checklist').toLowerCase() + '):'));
+  const list = el('ul', 'board-owner-try-list ' + cls);
+  lines.forEach(function (line) { list.appendChild(el('li', null, line)); });
+  return [head, list];
 }
 
 function labelled(cls, label, text) {

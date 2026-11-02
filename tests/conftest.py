@@ -366,6 +366,12 @@ def _isolated_chief_pointer(request, tmp_path, monkeypatch):
         raise owner_checks_mod.OwnerCheckError("tests never run the real owner_check CLI")
 
     monkeypatch.setattr(owner_checks_mod, "_run_cli", _no_real_cli)
+
+    # Nor may a refresh read an issue body from GitHub for an old check's Try.
+    def _no_real_body(*_args, **_kwargs):
+        raise owner_checks_mod.github_client.GhError("tests never read a real issue body")
+
+    monkeypatch.setattr(owner_checks_mod, "_fetch_body", _no_real_body)
     # The write-side memo is module-level and would otherwise leak one test's
     # chief into the next (a second test would then observe "no write").
     monkeypatch.setattr(chief_router, "_last_noted_chief_conversation", "")
