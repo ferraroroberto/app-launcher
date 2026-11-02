@@ -5,7 +5,9 @@ The keystroke sequences pinned here are the ones probed against a live
 Claude Code 2.1.281 picker, in both a PTY and a detached console (evidence on
 the issue): a digit jump-selects (and, for a single-select question, moves
 on), Tab leaves a multi-select question, option ``n + 1`` opens the typed
-answer, and a multi-part call ends on a review tab whose ``1`` submits.
+answer, and a multi-part call ends on a review tab whose ``1`` submits. A
+multi-select's typed answer (2.1.316) needs the cursor on its row: Ctrl+N
+per option, the text, then Tab + Enter.
 Every transcript here is synthetic.
 """
 
@@ -51,6 +53,17 @@ FRUIT = _q("Pick fruits", ["Apple", "Banana", "Cherry"], multi=True)
     # The mixed call probed end to end through the route in both kinds.
     ([FRUIT, COLOUR], [{"options": [2, 3]}, {"text": "Teal blue"}],
      [("2", False), ("3", False), ("\t", False), ("4", False), ("Teal blue", True), ("1", False)]),
+    # Multi-select typed text (2.1.316): Ctrl+N once per option walks the
+    # cursor to "Type something", the text fills it, Tab + Enter moves on.
+    ([FRUIT], [{"text": "Teal blue"}],
+     [("\x0e", False)] * 3 + [("Teal blue", False), ("\t", True), ("1", False)]),
+    ([FRUIT], [{"options": [3, 1], "text": "Teal blue"}],
+     [("1", False), ("3", False)] + [("\x0e", False)] * 3
+     + [("Teal blue", False), ("\t", True), ("1", False)]),
+    # Enter on the multi-select's "Next" row leads into the next question.
+    ([FRUIT, SIZE], [{"options": [2], "text": "Teal blue"}, {"option": 2}],
+     [("2", False)] + [("\x0e", False)] * 3
+     + [("Teal blue", False), ("\t", True), ("2", False), ("1", False)]),
 ])
 def test_keystrokes_match_the_probed_picker(questions, answers, keys):
     assert answer_keystrokes(questions, answers) == keys
@@ -71,7 +84,9 @@ def test_typed_answer_is_one_line():
     ([COLOUR], [{"text": "x" * 501}], "over 500"),
     ([FRUIT], [{"options": []}], "at least one"),
     ([FRUIT], [{"options": [1, 1]}], "out of range"),
-    ([FRUIT], [{"text": "Mango"}], "at least one"),     # typed multi-select was never probed
+    ([FRUIT], [{}], "at least one option or type"),
+    ([FRUIT], [{"options": [1], "text": "   "}], "empty"),
+    ([FRUIT], [{"text": "x" * 501}], "over 500"),
     ([COLOUR], ["2"], "not an object"),
     ([], [], "no options"),
     ([_q("Too many", [str(i) for i in range(9)])], [{"option": 1}], "too many options"),
