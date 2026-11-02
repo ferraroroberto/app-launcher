@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import boot_autostart
+from src import boot_autostart, remote_power_guard
 from src.session_view import outbox as session_outbox
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
 from src.launching.flags import (
@@ -137,6 +137,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # webapp_config.json — the Startup-folder wrapper bat's presence
         # *is* the state, so a stale cached bool can never drift from it.
         "boot_autostart_enabled": boot_autostart.is_enabled(),
+        # Remote power guard: live-queried from Task Scheduler and the
+        # registry each time, same reason as boot-autostart above.
+        "remote_power_guard": remote_power_guard.payload(),
     }
 
 
@@ -412,6 +415,31 @@ async def set_boot_autostart(request: Request) -> Dict[str, Any]:
     except OSError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"ok": True, "boot_autostart_enabled": boot_autostart.is_enabled()}
+
+
+@router.post("/api/settings/remote-power-guard")
+async def set_remote_power_guard(request: Request) -> Dict[str, Any]:
+    """Try to turn the guard on or off. This webapp normally runs unelevated,
+    so the usual answer is 409 carrying the elevated command to run instead."""
+    body = await maybe_json(request)
+    enabled = bool(body.get("enabled"))
+    try:
+        if enabled:
+            remote_power_guard.enable()
+        else:
+            remote_power_guard.disable()
+    except remote_power_guard.ElevationRequired as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "elevation_required": True,
+                "message": str(exc),
+                "command": remote_power_guard.cli_command("enable" if enabled else "disable"),
+            },
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, "remote_power_guard": remote_power_guard.payload()}
 
 
 @router.get("/api/status")

@@ -122,6 +122,24 @@ button.settings-row:active { background: var(--card-2); }
 .field-error[hidden] { display: none; }
 .input-native[aria-invalid="true"] { border-color: var(--danger); }
 
+/* The remote power guard's elevated command: wraps on a phone rather
+   than scrolling sideways, so the whole line is readable before copying. */
+.guard-command {
+  margin: 4px 2px 12px;
+  padding: 10px 12px;
+  background: var(--card-off);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-caption);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+/* The switch's unknown state: no position is claimed, so the knob sits
+   centred and dimmed. */
+.toggle[aria-checked="mixed"] { opacity: 0.6; }
+.toggle[aria-checked="mixed"] .knob { transform: translateX(9px); }
+
 /* Screen time (screen-time.js): the period, the total, daily bars by
    device and two lists of share rows (by device, by section). */
 .screen-time .segmented { margin-top: 4px; }

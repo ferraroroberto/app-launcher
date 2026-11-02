@@ -343,6 +343,46 @@ def test_boot_autostart_toggle_writes_and_removes_startup_bat(
     )
 
 
+def test_remote_power_guard_switch_opens_command_sheet_on_409(
+    authed_page: Page, base_url: str
+) -> None:
+    """The remote power guard switch shows the live state (autoboot aims it at
+    a task that never exists, so "off") and a tap that Windows refuses opens
+    the elevated-command sheet instead of a failure toast. The POST is
+    answered here, so no test run can ever reach the real guard."""
+    posts = []
+
+    def _refuse(route) -> None:
+        posts.append(route.request.post_data_json)
+        route.fulfill(
+            status=409,
+            content_type="application/json",
+            body=(
+                '{"detail": {"elevation_required": true, "message": "needs elevation",'
+                ' "command": "python -m src.remote_power_guard enable"}}'
+            ),
+        )
+
+    authed_page.route("**/api/settings/remote-power-guard", _refuse)
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(authed_page)
+    toggle = authed_page.locator("#remotePowerGuardToggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    expect(authed_page.locator("#remotePowerGuardStatus")).to_be_hidden()
+
+    toggle.click()
+    sheet = authed_page.locator("#remotePowerGuardSheet")
+    expect(sheet).to_be_visible()
+    expect(authed_page.locator("#remotePowerGuardCommand")).to_have_text(
+        "python -m src.remote_power_guard enable"
+    )
+    expect(authed_page.locator("#remotePowerGuardSheetLead")).to_contain_text("turn this on")
+    expect(authed_page.locator("#remotePowerGuardCopy")).to_be_visible()
+    assert posts == [{"enabled": True}]
+    close_settings_sheets(authed_page)
+    expect(toggle).to_have_attribute("aria-checked", "false")
+
+
 def _open_chief_sheet(page: Page, base_url: str) -> None:
     """Boot the page and open Settings' Chief sheet (#1613).
 

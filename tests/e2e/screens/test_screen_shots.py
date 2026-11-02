@@ -230,7 +230,8 @@ def test_life_archived_shots(browser: Browser, base_url: str) -> None:
 _CONFIG = {"projects_dir": "C:/stub/projects", "projects_ignore": [], "apps_scan_root": "C:/stub",
            "life_os_dir": "C:/stub/life", "fleet_config_dir": "C:/stub/fleet", "outbox_scratch_roots": [],
            "coding_hidden_agents": [], "coding_favorite_agent": "claude", "usage_providers": ["claude", "codex"],
-           "hide_channel_sessions": True, "life_os_refresh_skill_instructions": True}
+           "hide_channel_sessions": True, "life_os_refresh_skill_instructions": True,
+           "remote_power_guard": {"state": "off", "no_close": 0, "command_enable": "", "command_disable": ""}}
 
 
 def test_settings_shots(browser: Browser, base_url: str) -> None:

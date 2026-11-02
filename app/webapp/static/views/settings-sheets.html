@@ -48,6 +48,30 @@
       </div>
     </dialog>
 
+    <!-- Remote power guard: the webapp is not elevated, so a switch tap that
+         Windows refuses opens this sheet with the one command to run in an
+         elevated terminal. remote-power-guard.js fills the command. -->
+    <dialog id="remotePowerGuardSheet" class="detail-dialog settings-sheet" aria-labelledby="remotePowerGuardSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="remotePowerGuardSheetTitle" tabindex="-1" autofocus>Needs an elevated terminal</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <p id="remotePowerGuardSheetLead" class="opt-hint">Windows lets only an administrator change this. On the PC, open PowerShell with Run as administrator and paste:</p>
+          <pre class="guard-command"><code id="remotePowerGuardCommand"></code></pre>
+          <p class="opt-hint">To shut down on purpose from a Remote Desktop session while the guard is on, run <code>shutdown /s /t 0</code>.</p>
+        </div>
+        <div class="detail-actions">
+          <div id="remotePowerGuardToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
+          <button type="button" id="remotePowerGuardCopy" class="button-primary detail-save-btn" data-track="settings.remote-power-guard.copy">Copy command</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
