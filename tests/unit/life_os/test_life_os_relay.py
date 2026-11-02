@@ -313,10 +313,12 @@ PAST_BOT_SID = "9d1e6c3a-2b4f-4e8a-b7c1-5f0a3d9e2c64"
 LATER_SID = "5b8c2d4e-7f1a-4c3b-8d2e-6a9f0b1c3d5e"
 
 
-def _add_journal_conversation(root: Path, file: str, sid: str, turns: list, newer_by: int) -> dict:
-    """A capture whose user turns are ``turns``, made the newest by ``newer_by`` seconds."""
+def _add_journal_conversation(root: Path, file: str, sid: str, turns: list, newer_by: int,
+                              body: str = "") -> dict:
+    """A capture whose user turns are ``turns`` (or whose text is ``body``), made
+    the newest by ``newer_by`` seconds."""
     folder = root / ".claude" / "skills" / "journal-daily" / "conversations"
-    body = "".join(f"**You**: {turn}\n\n**Claude**: an invented reply\n\n" for turn in turns)
+    body = body or "".join(f"**You**: {turn}\n\n**Claude**: an invented reply\n\n" for turn in turns)
     capture = folder / file
     capture.write_text(f'<!-- capture sid="{sid}" agent="claude" updated="synthetic" -->\n\n'
                        f"{body}", encoding="utf-8")
@@ -385,6 +387,69 @@ class TestBotChatsNeverOffered:
         assert resp.status_code == 409
         assert resp.json()["detail"]["state"] == "not_resumable"
         assert len(bots.spawned) == 1
+
+
+BOT_FIRST_SID = "3c6e9a1b-4d7f-4a2c-8e5b-1f3d6a9c2e47"
+TITLED_SID = "7e2a5c8d-1b4f-4d6a-9c3e-8a0b2d4f6c19"
+
+
+class TestEndedBotChatsNeverOffered:
+    """A bot chat whose session ended and whose capture does not open on a
+    channel message (the bot spoke first, or the titled row) is still its bot's."""
+
+    @pytest.fixture
+    def ended(self, relay, life_os_client):
+        root = life_os_client[2]["life_os_dir"]
+        folder = root / ".claude" / "skills" / "journal-daily" / "conversations"
+        # The bot spoke first: the capture holds no user turn at all.
+        _add_journal_conversation(root, "2026-11-01-0900-bot-first.md", BOT_FIRST_SID, [], 300,
+                                  body="**Claude**: an invented scheduled message\n")
+        titled = _add_journal_conversation(root, "2026-10-31-0900-titled.md", TITLED_SID,
+                                           ["a plain invented opening"], 200)
+        titled["title"] = "Telegram bot - journal-daily"
+        index = folder / "index.json"
+        rows = [titled if r["file"] == titled["file"] else r
+                for r in json.loads(index.read_text(encoding="utf-8"))]
+        index.write_text(json.dumps(rows), encoding="utf-8")
+        _add_journal_conversation(root, "2026-10-30-0900-plain.md", LATER_SID,
+                                  ["a plain invented opening"], 100)
+        return relay
+
+    def _names(self, body):
+        return [Path(c["path"]).name for c in body["conversations"]]
+
+    def test_find_leaves_them_out_and_logs_each_rule(self, ended, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            body = ended.client.get(f"{PREFIX}/conversations", headers=ended.headers).json()
+        assert self._names(body)[0] == "2026-10-30-0900-plain.md"
+        assert "2026-11-01-0900-bot-first.md" not in self._names(body)
+        assert "2026-10-31-0900-titled.md" not in self._names(body)
+        text = caplog.text
+        assert f"{BOT_FIRST_SID[:8]} as a bot chat (rule=no-user-turn)" in text
+        assert f"{TITLED_SID[:8]} as a bot chat (rule=bot-title)" in text
+
+    def test_search_leaves_them_out_too(self, ended, monkeypatch):
+        from app.webapp.routers import life_os_conversations, life_os_relay
+        ranked = [{"skill": "journal-daily", "file": "2026-11-01-0900-bot-first.md"},
+                  {"skill": "journal-daily", "file": "2026-10-31-0900-titled.md",
+                   "title": "Telegram bot - journal-daily"},
+                  {"skill": "journal-daily", "file": "2026-10-30-0900-plain.md"}]
+
+        async def fake_search(cfg, query, skill, limit):
+            return {"available": True,
+                    "results": life_os_conversations._conversation_rows(cfg, ranked[:limit])}
+
+        monkeypatch.setattr(life_os_relay, "run_conversation_search", fake_search)
+        body = ended.client.get(f"{PREFIX}/conversations", headers=ended.headers,
+                                params={"q": "invented", "limit": "1"}).json()
+        assert self._names(body) == ["2026-10-30-0900-plain.md"]
+
+    def test_a_long_capture_is_not_called_a_bot_chat_from_its_prefix(self):
+        from src.life_os.history import bot_chat_rule
+        assert bot_chat_rule("**Claude**: a long reply", complete=False) == ""
+        assert bot_chat_rule("**Claude**: a long reply", complete=True) == "no-user-turn"
+        assert bot_chat_rule("**You**: hello\n\n**Claude**: hi", complete=True) == ""
 
 
 # ------------------------------------------------------------ settings file

@@ -35,7 +35,11 @@ HANDOFF_TTL_SECONDS = 24 * 3600
 # which the capture keeps verbatim (its tag strip only removes attribute-less
 # tags), so a bot's own chat is the one whose first user turn opens with it.
 _USER_TURN = "**You**: "
+_REPLY_TURN = "**Claude**: "
 _CHANNEL_TURN = _USER_TURN + '<channel source="plugin:telegram:'
+
+RULE_CHANNEL_OPENING = "channel-opening"
+RULE_NO_USER_TURN = "no-user-turn"
 
 
 def opens_on_channel(text: str) -> bool:
@@ -43,6 +47,25 @@ def opens_on_channel(text: str) -> bool:
     which makes the conversation a bot's own chat."""
     first = next((line for line in text.splitlines() if line.startswith(_USER_TURN)), "")
     return first.startswith(_CHANNEL_TURN)
+
+
+def bot_chat_rule(text: str, *, complete: bool) -> str:
+    """The rule that marks a capture as a bot's own chat, or ``""``.
+
+    A first user turn that is a channel message is one. So is a capture with a
+    reply but no user turn at all, which only a bot-initiated message (the bot
+    speaking first) leaves: an owner's conversation opens with their own turn.
+    ``complete`` says ``text`` is the whole capture; a prefix cannot show that no
+    user turn exists, so the second rule is not applied to one.
+    """
+    if opens_on_channel(text):
+        return RULE_CHANNEL_OPENING
+    if complete:
+        lines = text.splitlines()
+        if (any(line.startswith(_REPLY_TURN) for line in lines)
+                and not any(line.startswith(_USER_TURN) for line in lines)):
+            return RULE_NO_USER_TURN
+    return ""
 # Only shared, versioned helpers interpret identity. Source text travels via
 # stdin, never command arguments, stderr logs, or an executable command string.
 _CONTRACT_PROBE = (
@@ -90,8 +113,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
     A capture over :data:`MAX_CAPTURE_BYTES` gets header identity only (agent,
     sid, provenance, a streamed ``revision``) and ``oversized: True``; it carries
     no ``body``, so resume works while a handoff stays unavailable (#1739).
-    Every readable capture carries ``bot_chat`` (:func:`opens_on_channel`),
-    read from the same prefix when oversized.
+    Every readable capture carries ``bot_chat`` and the ``bot_chat_rule`` that
+    set it (:func:`bot_chat_rule`), read from the same prefix when oversized.
     """
     results: list[dict[str, Any]] = []
     texts: list[str] = []
@@ -121,7 +144,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
         except UnicodeError:
             item["reason"] = "Capture encoding is unreadable."
             continue
-        item["bot_chat"] = opens_on_channel(text)
+        item["bot_chat_rule"] = bot_chat_rule(text, complete=not oversized)
+        item["bot_chat"] = bool(item["bot_chat_rule"])
         item["revision"] = streamed if oversized else hashlib.sha256(raw).hexdigest()
         item["oversized"] = oversized
         positions.append(len(results) - 1)
@@ -152,7 +176,8 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
         logger.warning("Life OS shared capture reader unavailable")
         for index in positions:
             results[index] = {"readable": True, "reason": "Shared capture reader is unavailable.",
-                              "native": False, "bot_chat": results[index]["bot_chat"]}
+                              "native": False, "bot_chat": results[index]["bot_chat"],
+                              "bot_chat_rule": results[index]["bot_chat_rule"]}
     return results
 
 

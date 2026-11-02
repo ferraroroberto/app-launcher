@@ -57,7 +57,7 @@ import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, NoReturn, Optional
+from typing import Any, Dict, List, NoReturn, Optional, Set
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
@@ -65,7 +65,7 @@ from src import audit, board
 from src.clients import session as session_client
 from src.launching.flags import build_claude_flags
 from src.life_os import relay_registry
-from src.life_os.bot_titles import bot_conversation_ids
+from src.life_os.bot_titles import BOT_TITLE_PREFIX, bot_conversation_ids
 from src.launching.channel_profiles import (
     ChannelProfile,
     LABEL_PREFIX,
@@ -270,15 +270,39 @@ async def _audit(caller: _Caller, request: Request, action: str, **fields: Any) 
     )
 
 
+RULE_LIVE_LABEL = "live-label"
+RULE_BOT_TITLE = "bot-title"
+
+
+def _bot_rule(row: Dict[str, Any], bots: Set[str]) -> str:
+    """The rule that makes ``row`` a Telegram bot's own conversation, or ``""``:
+    a live ``telegram:*`` session holds it, its capture shows a bot chat
+    (``bot_chat_rule``), or it carries the fixed bot title written while the
+    chat was live (which outlives the session)."""
+    if str(row.get("sid") or "").lower() in bots:
+        return RULE_LIVE_LABEL
+    if row.get("bot_chat"):
+        return str(row.get("bot_chat_rule") or "bot-chat")
+    if str(row.get("title") or "").startswith(BOT_TITLE_PREFIX):
+        return RULE_BOT_TITLE
+    return ""
+
+
 def _offerable(rows: List[Dict[str, Any]],
                groups: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    """``rows`` without any Telegram bot's own conversation: one a live
-    ``telegram:*`` session holds, or one whose capture opens on a channel
-    message (a bot chat that is no longer running). Resuming either would
-    attach a second session to the bot's channel transcript."""
+    """``rows`` without any Telegram bot's own conversation (:func:`_bot_rule`),
+    live or no longer running. Resuming one would attach a second session to
+    the bot's channel transcript. Each row left out is logged with its rule."""
     bots = bot_conversation_ids(groups)
-    return [row for row in rows
-            if not row.get("bot_chat") and str(row.get("sid") or "").lower() not in bots]
+    kept = []
+    for row in rows:
+        rule = _bot_rule(row, bots)
+        if rule:
+            logger.info(f"ℹ️ relay: left out conversation {str(row.get('sid') or '')[:8]} "
+                        f"as a bot chat (rule={rule})")
+        else:
+            kept.append(row)
+    return kept
 
 
 async def _search_offerable(caller: _Caller, query: str, limit: int,
