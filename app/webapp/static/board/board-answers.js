@@ -448,7 +448,7 @@ async function applyOwnerAnswers(answered) {
   return { lines: lines, failed: failed };
 }
 
-// "demo#7, demo#9 and 3 more": the refs a toast names.
+// The refs a toast names: the first three, then "and N more".
 function refList(refs) {
   const shown = refs.slice(0, 3).join(', ');
   return refs.length > 3 ? shown + ' and ' + (refs.length - 3) + ' more' : shown;
