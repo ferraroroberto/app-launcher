@@ -83,7 +83,7 @@ class _Transcript:
         route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
 
 
-def _turn(kind: str, text: str, offset: int, ts: str) -> dict:
+def _turn(kind: str, text: str, offset: int, ts: str | None) -> dict:
     return {"kind": kind, "timestamp": ts, "text": text, "truncated": False,
             "sidechain": False, "offset": offset}
 
@@ -336,14 +336,27 @@ def test_an_opened_run_without_timestamps_shows_no_line(
 ) -> None:
     page = authed_page
     tr = _boot(page, base_url)
+    # No entry carries a stamp: the line takes its finish from the reply after
+    # the run and its session age from the first entry, so a stamped reply
+    # would (rightly) draw "finished … · session 50s".
     tr.entries = [
-        _turn("user", "hello", 100, _since(page, 60)),
+        _turn("user", "hello", 100, None),
         _read(200, None, "E:/automation/modeproj/notes.md"),
-        _turn("assistant", "Done.", 300, _since(page, 10)),
+        _turn("assistant", "Done.", 300, None),
     ]
     _open_chat(page)
     run = page.locator("#transcriptList .tr-run")
+    # `toggle` fires after the click's own task, so a hidden-check made straight
+    # away passes before the line is ever filled. Wait for the app's handler
+    # (registered at render, so it runs ahead of this listener) to have run.
+    run.evaluate("""el => {
+      window.__runToggled = false;
+      el.querySelector(':scope > details').addEventListener(
+        'toggle', () => { window.__runToggled = true; }, { once: true });
+    }""")
     run.locator("summary.tr-step-line").click()
+    page.wait_for_function("() => window.__runToggled === true")
     expect(run.locator(".tr-item")).to_be_visible()
     expect(run.locator(".tr-run-when")).to_be_hidden()
+    expect(run.locator(".tr-run-when")).to_have_text("")
     expect(run).not_to_contain_text("NaN")
