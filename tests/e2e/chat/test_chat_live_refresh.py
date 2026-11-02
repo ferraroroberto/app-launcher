@@ -318,14 +318,26 @@ def test_live_polling_follows_the_visible_chat_only(
     assert other_calls == [], "a session nobody opened was polled"
 
 
+# The app keeps a reader "following" within this far of the bottom
+# (latest-pill.js LATEST_SLACK_PX); parking inside it is not "scrolled up".
+_FOLLOW_SLACK_PX = 120
+
+
+# A tall pane is the case a fixed fraction of scrollHeight got wrong: at a
+# 1382px pane, 40% of the height sat 25px from the bottom, inside the follow slack.
 @pytest.mark.iphone
+@pytest.mark.parametrize("viewport_height", [None, 1590], ids=["default", "tall"])
 def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
-    authed_page: Page, base_url: str
+    authed_page: Page, base_url: str, browser_name: str, viewport_height: int | None
 ) -> None:
     """The #680/#958 lesson: a poll that rebuilds the DOM breaks whatever the
     reader is interacting with. Refresh is incremental precisely so an open
     tool-call group and a scrolled-up reader both survive a tick."""
     page = authed_page
+    if viewport_height is not None:
+        if browser_name != "chromium":
+            pytest.skip("the tall pane is a desktop-viewport case")
+        page.set_viewport_size({"width": 1280, "height": viewport_height})
     tr = _boot(page, base_url)
     tr.append(
         _tool("Bash", "pytest tests/e2e -q", "3 passed", 150),
@@ -340,11 +352,18 @@ def test_an_appended_turn_leaves_scroll_and_open_cards_alone(
     # Park the reader partway up the history — deliberately *not* at 0,
     # where a full rebuild would also land, so this position distinguishes
     # "left alone" from both failure modes: reset to the top and jump to the
-    # bottom.
+    # bottom. 40% of the scrollable range, not of scrollHeight, so the spot
+    # stays well above the follow slack whatever the pane's height.
     body = page.locator("#transcriptBody")
-    body.evaluate("el => { el.scrollTop = Math.round(el.scrollHeight * 0.4); }")
+    body.evaluate(
+        "el => { el.scrollTop = Math.round((el.scrollHeight - el.clientHeight) * 0.4); }"
+    )
     before = stable_read(lambda: body.evaluate("el => el.scrollTop"))
     assert before, "the transcript did not scroll; the fixture is too short"
+    below = stable_read(
+        lambda: body.evaluate("el => el.scrollHeight - el.scrollTop - el.clientHeight")
+    )
+    assert below > _FOLLOW_SLACK_PX, f"parked {below}px from the bottom: inside the follow slack"
 
     tr.append(_turn("assistant", "a brand new reply", 5000))
     _tick(page, tr)
