@@ -270,6 +270,19 @@ def snapshot(*, now: Optional[datetime] = None, marks_path: Optional[Path] = Non
     }
 
 
+def needs_count(snap: Optional[Dict[str, Any]] = None) -> Optional[int]:
+    """Owner checks waiting on the owner, or ``None`` before a list has landed.
+
+    Items marked Later or Problem are not waiting. The Board tab's badge reads
+    this off the sessions poll; ``None`` is unknown, never zero, and mirrors the
+    web client's ``ownerNeedsCount``.
+    """
+    snap = snapshot() if snap is None else snap
+    if not snap["available"]:
+        return None
+    return sum(1 for item in snap["items"] if not item["mark"])
+
+
 def reset_owner_cache() -> None:
     """Test helper: the pristine never-fetched cache."""
     global _last_refresh_started

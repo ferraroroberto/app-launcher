@@ -18,6 +18,7 @@ import { BOARD_POLL_MS, els, state } from './state.js';
 import { renderHeadStatus } from './_vendored/home-head/home-head.js';
 import { isHiddenChannel, isOffBoard } from './channel-sessions.js';
 import { openQuestionCount } from './board/chief-keys.js';
+import { ownerNeedsCount } from './board/owner-needs.js';
 import { sessionAttention } from './glance.js';
 import { setTabBadge } from './tabs.js';
 import { profileNeedsSetup } from './settings/telegram-setup.js';
@@ -91,30 +92,34 @@ export function renderHomeHead() {
 // response never hands the count back and forth between the two sources.
 const BOARD_BADGE_FRESH_MS = 2 * BOARD_POLL_MS;
 
-// The Board tab's badge:
-// what waits on you, visible from every tab — the chief's unanswered
-// questions, fleet-wide, plus the sessions in Your turn. While the Board is
-// up its own payload is both halves, so the badge matches the lanes,
-// external sessions included. Everywhere else the sessions poll, which runs
-// on every tab, carries each session's Board column and the
-// question count, from the server's same routing and the same key rule
-// (chief-keys.js), so the badge stays live without polling /api/board off
-// the Board. A question count that could not be read adds nothing: the
-// badge then counts sessions only, never a made-up zero.
+// The Board tab's badge: everything pending on the owner, visible from every
+// tab, the same sum the Board's own "needs you" line adds up: the sessions in
+// Your turn, the chief's unanswered questions, fleet-wide, and the owner
+// checks still waiting (both kinds; one answered Later or Problem is out).
+// While the Board is up its own payload is every part, so the badge matches
+// the lanes, external sessions included. Everywhere else the sessions poll,
+// which runs on every tab, carries each session's Board column and the
+// question and owner-check counts, from the server's same routing and the
+// same rules (chief-keys.js, owner-needs.js), so the badge stays live without
+// polling /api/board off the Board. A count that could not be read adds
+// nothing, never a made-up zero, so the badge is then a lower bound.
 export function renderBoardBadge() {
   let sessions;
   let questions;
+  let ownerChecks;
   if (state.board && Date.now() - state.boardFetchedAt < BOARD_BADGE_FRESH_MS) {
     sessions = ((state.board.columns || {}).your_turn || [])
       .filter(function (c) { return !isOffBoard(c); }).length;
     questions = openQuestionCount(state.chiefPlan);
+    ownerChecks = ownerNeedsCount(state.board);
   } else {
     sessions = state.sessions.filter(function (s) {
       return !isOffBoard(s) && s.board_column === 'your_turn';
     }).length;
     questions = state.chiefQuestions;
+    ownerChecks = state.ownerChecks;
   }
-  setTabBadge('board', sessions + (questions || 0), 'waiting');
+  setTabBadge('board', sessions + (questions || 0) + (ownerChecks || 0), 'waiting');
 }
 
 // Apps: "N down" while a tunnel's probe says down, else "N apps ·

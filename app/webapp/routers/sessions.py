@@ -37,6 +37,7 @@ from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
 from src import audit, board, instance_role
+from src.board import owner_checks
 from src.chief import answers as chief_answers
 from src.launching import launcher
 from src.clients import session as session_client
@@ -105,6 +106,16 @@ def _chief_questions(cfg: WebappConfig) -> Optional[int]:
     return chief_answers.unanswered_count(plan)
 
 
+def _owner_checks() -> Optional[int]:
+    """Owner checks waiting on the owner, fleet-wide, or ``None`` when no list
+    has landed or it can't be read: unknown, never zero."""
+    try:
+        return owner_checks.needs_count()
+    except Exception as exc:
+        logger.warning(f"⚠️ owner checks unavailable: {exc.__class__.__name__}")
+        return None
+
+
 @router.get("/api/claude-code/sessions")
 async def claude_sessions(request: Request) -> Dict[str, Any]:
     """List launcher-owned PTY sessions (public, token-gated).
@@ -136,6 +147,11 @@ async def claude_sessions(request: Request) -> Dict[str, Any]:
     device has answered yet, fleet-wide, so the Board tab's badge counts them
     from every tab; ``None`` when the plan can't be read. It is computed from
     the same plan reader and answered marks as ``/api/board/chief-plan``.
+
+    ``owner_checks`` is how many owner checks (both kinds) still wait on the
+    owner, the cached list ``/api/board`` carries minus the items answered
+    Later or Problem, so the badge counts them from every tab; ``None`` until
+    a list has landed.
 
     Built through :class:`app.webapp.hot_poll.HotPoll` (#1597): ``stale``
     is ``true`` when the build ran past its deadline and this is the last
@@ -182,7 +198,8 @@ async def _build_sessions_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[
             sess["board_status"] = placed["status"] if placed else None
             sess["board_age_seconds"] = placed.get("age_seconds") if placed else None
     questions = await steps.run("chief_questions", _chief_questions, cfg)
-    return {"sessions": sessions, "chief_questions": questions}
+    owner = await steps.run("owner_checks", _owner_checks)
+    return {"sessions": sessions, "chief_questions": questions, "owner_checks": owner}
 
 
 @router.post("/api/claude-code/sessions/{sid}/stop")

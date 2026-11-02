@@ -26,6 +26,7 @@ import { boardRepoFilter, matchesRepoFilter } from './board-dispatch.js';
 import { agoText } from './chief-plan.js';
 import { calendarDaysFromToday } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
+import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
 
 export const VALIDATE_AFTER = 'validate-after';
 export const BEFORE_START = 'before-start';
@@ -42,23 +43,11 @@ let unfolded = {};
 // The ref whose detail is open, across the 5 s poll's rebuilds.
 let expandedRef = null;
 
-function section(body) {
-  return (body && body.owner_checks) || null;
-}
+const section = ownerSection;
+const waiting = ownerItemWaiting;
 
-function waiting(item) {
-  return !item.mark;
-}
-
-// What waits on you, fleet-wide: null until a list has landed (unknown, never
-// zero), else the unmarked items. A payload without the section (a stubbed
-// test body) has none, as a payload without `live_sessions` keeps its render.
-export function ownerNeedsCount(body) {
-  const sec = section(body);
-  if (!sec) return 0;
-  if (!sec.available) return null;
-  return (sec.items || []).filter(waiting).length;
-}
+// Re-exported: the Board's head line and the nav badge share one rule.
+export { ownerNeedsCount };
 
 // The items the repo filter shows, the waiting ones first, each kind in
 // the list's own order.

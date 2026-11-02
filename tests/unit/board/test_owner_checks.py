@@ -220,3 +220,27 @@ def test_board_payload_carries_the_owner_section(webapp_client):
     section = client.get("/api/board").json()["owner_checks"]
     assert section["available"] is False
     assert section["items"] == []
+
+
+def test_needs_count_is_unknown_before_a_list_lands_and_skips_marked_items():
+    assert owner_checks.needs_count() is None
+    snap = {"available": True, "items": [
+        {"ref": "demo#7", "mark": None}, {"ref": "demo#9", "mark": "later"},
+        {"ref": "demo#11", "mark": "problem"}, {"ref": "demo#13", "mark": None},
+    ]}
+    assert owner_checks.needs_count(snap) == 2
+    assert owner_checks.needs_count({"available": True, "items": []}) == 0
+
+
+def test_sessions_poll_carries_the_owner_check_count(webapp_client, cli):
+    client, _, overrides = webapp_client
+    overrides["session"].list_sessions.return_value = []
+    # No list yet: unknown, never zero.
+    assert client.get("/api/claude-code/sessions").json()["owner_checks"] is None
+    owner_checks.refresh("fleet")
+    body = client.get("/api/claude-code/sessions").json()
+    assert body["owner_checks"] == 2
+    # A Problem report leaves the count, as it leaves the Board's head line.
+    now = datetime.now(timezone.utc)
+    owner_checks._write_mark("demo#9", {"mark": "problem", "at": owner_checks._now_iso(now)}, None, now)
+    assert client.get("/api/claude-code/sessions").json()["owner_checks"] == 1

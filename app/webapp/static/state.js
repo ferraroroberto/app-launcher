@@ -120,6 +120,9 @@ export const state = {
   // The chief's unanswered questions, fleet-wide, from the sessions poll
   // the Board tab's badge off the Board. null = unknown.
   chiefQuestions: null,
+  // Owner checks still waiting on the owner (both kinds, Later and Problem
+  // left out), from the same poll. null = unknown.
+  ownerChecks: null,
   // Session id whose drawer is open. The board poll keeps running;
   // renderBoard() keeps this drawer's node so a reply being typed survives
   // 
