@@ -1,6 +1,6 @@
 # Hide shut down over Remote Desktop
 
-**Settings › Hide shut down over Remote Desktop** removes Shut down, Restart and Sleep from the Start menu while you are connected to the PC over Windows Remote Desktop. At the PC's own keyboard and screen they stay. It exists because one mis-click in a remote session can power off an unattended host and stop everything running on it until someone is back at the machine.
+**Settings › Hide shut down remotely** removes Shut down, Restart and Sleep from the Start menu while you are connected to the PC over Windows Remote Desktop. At the PC's own keyboard and screen they stay. It exists because one mis-click in a remote session can power off an unattended host and stop everything running on it until someone is back at the machine.
 
 ## How it works
 
