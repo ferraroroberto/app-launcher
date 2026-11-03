@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import logging
 import re
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple
@@ -36,6 +37,8 @@ from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 from src.session_view.transcript import FLAVORS
 from src.transcript_flavors._shared import Line
+
+logger = logging.getLogger(__name__)
 
 SCAN_CEILING = 64 * 1024 * 1024
 GROUP_LIMIT = 100
@@ -185,10 +188,12 @@ def _spoken_pieces(lines: List[Line], flavor: str) -> List[_Piece]:
     return pieces
 
 
-def _artifact_pieces(lines: List[Line]) -> List[_Piece]:
-    """What the Artifact tool returned: its result text, paired with the
-    title the call was given."""
+def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
+    """What the Artifact tool returned (its result text, paired with the
+    title the call was given) and the earliest name the session gave each
+    artifact URL, for a URL a later reply or a title-less republish repeats."""
     titles: Dict[str, str] = {}
+    names: Dict[str, str] = {}
     pieces: List[_Piece] = []
     for index, text in lines:
         if "Artifact" not in text and not (titles and "tool_use_id" in text):
@@ -203,11 +208,20 @@ def _artifact_pieces(lines: List[Line]) -> List[_Piece]:
         for block in _blocks(row):
             if block.get("type") == "tool_use" and isinstance(block.get("input"), dict):
                 if str(block.get("name") or "").split("__")[-1] == "Artifact":
-                    titles[str(block.get("id"))] = _artifact_title(block["input"])
+                    title = titles[str(block.get("id"))] = _artifact_title(block["input"])
+                    target = block["input"].get("url")
+                    clean = _sanitize(target) if isinstance(target, str) else None
+                    if title and clean:
+                        names.setdefault(clean[0], title)
             elif block.get("type") == "tool_result" and str(block.get("tool_use_id")) in titles:
                 body = " ".join(_strings(block.get("content")))
-                pieces.append((index, stamp, body, titles[str(block.get("tool_use_id"))], True))
-    return pieces
+                title = titles[str(block.get("tool_use_id"))]
+                pieces.append((index, stamp, body, title, True))
+                for match in _URL.finditer(body if title else ""):
+                    clean = _sanitize(match.group(0))
+                    if clean and clean[1] == "claude.ai":
+                        names.setdefault(clean[0], title)
+    return pieces, names
 
 
 def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
@@ -222,7 +236,8 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
     lines: List[Line] = [
         (index, raw.decode("utf-8", errors="replace")) for index, raw in enumerate(_lines(path))
     ]
-    pieces = _spoken_pieces(lines, flavor) + _artifact_pieces(lines)
+    artifact_pieces, names = _artifact_pieces(lines)
+    pieces = _spoken_pieces(lines, flavor) + artifact_pieces
     pieces.sort(key=lambda piece: piece[0])
     found: Dict[str, Dict[str, Any]] = {}
     seq = 0
@@ -247,6 +262,20 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
             entry["last_seen"] = stamp
             entry["seq"] = seq
             entry["count"] += 1
+    sources = {"call title": 0, "transcript": 0, "short id": 0}
+    for entry in found.values():
+        if entry["group"] != "artifacts":
+            continue
+        if entry["title"]:
+            sources["call title"] += 1
+        elif entry["url"] in names:
+            entry["label"] = entry["title"] = names[entry["url"]]
+            sources["transcript"] += 1
+        else:
+            sources["short id"] += 1
+    if any(sources.values()):
+        logger.info("ℹ️ artifact row names: %d from the call, %d from earlier in the transcript, "
+                    "%d by short id", sources["call title"], sources["transcript"], sources["short id"])
     groups: List[Dict[str, Any]] = []
     for key, title in GROUPS:
         members = sorted((e for e in found.values() if e["group"] == key), key=lambda e: -e["seq"])
