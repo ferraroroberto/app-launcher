@@ -42,8 +42,9 @@ MISS_TTL = 5 * 60
 
 _TITLE = re.compile(r"<title[^>]*>(.*?)</title\s*>", re.I | re.S)
 _GH_ITEM = re.compile(r"^/([\w.-]+)/([\w.-]+)/(?:pull|issues)/(\d+)")
-# What a sign-in wall answers for a page the server cannot read: not a title.
-_WALL_TITLES = frozenset({"claude", "sign in", "log in", "login", "just a moment..."})
+# What a sign-in wall or the artifact hosting shell answers for a page the
+# server cannot read: not a title.
+_WALL_TITLES = frozenset({"claude", "claude artifact", "sign in", "log in", "login", "just a moment..."})
 
 _pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="link-title")
 _cache: Dict[str, Tuple[Optional[str], float]] = {}

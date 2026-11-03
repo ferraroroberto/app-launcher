@@ -164,3 +164,9 @@ def test_github_title_asks_gh_for_the_item_and_survives_its_failure(monkeypatch)
 
     monkeypatch.setattr(lt.github, "issue_title", fail)
     assert lt.github_title("https://github.com/acme/widgets/issues/3") is None
+
+
+def test_the_artifact_hosting_shells_generic_title_is_not_a_title(monkeypatch):
+    resp = _Resp(b"<title>Claude Artifact</title>")
+    monkeypatch.setattr(lt.requests, "get", lambda *a, **k: resp)
+    assert lt.page_title("https://claude.ai/artifact/AbCdEfGh") is None

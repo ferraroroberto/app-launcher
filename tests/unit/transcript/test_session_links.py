@@ -235,3 +235,28 @@ def test_route_says_no_transcript(webapp_client, _bypass_gate, monkeypatch, tmp_
     _serve(overrides, monkeypatch, tmp_path / "missing.jsonl")
     body = client.get(_ROUTE).json()
     assert body["available"] is False and body["reason"] == "no_transcript"
+
+
+def test_a_title_less_republish_and_a_reply_quote_keep_the_artifacts_name(tmp_path):
+    url = "https://claude.ai/artifact/QqRrSsTt112233"
+    path = _write(tmp_path / "s.jsonl", [
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:00Z", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Artifact",
+             "input": {"url": url, "title": "Sample Board"}}]}},
+        _tool_result("2026-10-01T10:00:01Z", "t1", "Updated"),
+        {"type": "assistant", "timestamp": "2026-10-01T10:01:00Z", "message": {"content": [
+            {"type": "tool_use", "id": "t2", "name": "Artifact", "input": {"url": url, "asset": True}}]}},
+        _tool_result("2026-10-01T10:01:01Z", "t2", "Uploaded to " + url),
+        _text("2026-10-01T10:02:00Z", "See " + url),
+    ])
+    links = _by_group(lk.fold_links(path))["artifacts"]
+    assert [(x["label"], x["title"]) for x in links] == [("Sample Board", "Sample Board")]
+
+
+def test_an_unnamed_artifact_row_keeps_its_short_id_never_the_shell_title(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        _text("2026-10-01T10:02:00Z", "See https://claude.ai/artifact/UuVvWwXx445566"),
+    ])
+    result = lt.attach_titles(lk.fold_links(path), web=lambda url: None)
+    link = _by_group(result)["artifacts"][0]
+    assert link["title"] is None and link["label"] == "Artifact UuVvWwXx"
