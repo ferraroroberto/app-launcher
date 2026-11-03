@@ -11,9 +11,11 @@ text, read through the same per-agent entry builders the Chat pane renders
 (so Claude, Codex, Grok, Pi, Antigravity and Copilot alike). A URL inside a
 tool call, a tool result, a file read, command output or thinking is noise
 (a long session holds hundreds) and is never listed, and neither is a
-sub-agent's traffic. The one exception is a published artifact: a URL the
-Claude Artifact tool returned is listed even when the reply never repeats
-it, labelled with the title the call was given.
+sub-agent's traffic. The one exception is a published artifact: the URL of
+a successful Claude Artifact publish is listed even when the reply never
+repeats it, labelled with the title the call was given. The tool's other
+actions (quickstart, list, read, open) and a refused publish name artifacts
+the session never published, so they add no row.
 
 Safety: a URL is never listed with anything credential-shaped. User-info
 (``user:pass@``) drops the whole URL; a query holding a key-like parameter
@@ -188,15 +190,35 @@ def _spoken_pieces(lines: List[Line], flavor: str) -> List[_Piece]:
     return pieces
 
 
+# Artifact actions that publish or update the session's own page. quickstart,
+# list, read and open return other artifacts' URLs (design systems, types,
+# someone else's page) that the session never published.
+_PUBLISH_ACTIONS = ("", "publish")
+
+
+def _published_url(call_url: Optional[str], body: str) -> Optional[str]:
+    """The one URL a successful publish stands for: the page it updated,
+    else the first claude.ai artifact URL its result names."""
+    if call_url:
+        return call_url
+    for match in _URL.finditer(body):
+        clean = _sanitize(match.group(0))
+        if clean and _classify(clean[1], clean[2], clean[3])[0] == "artifacts":
+            return clean[0]
+    return None
+
+
 def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
-    """What the Artifact tool returned (its result text, paired with the
-    title the call was given) and the earliest name the session gave each
-    artifact URL, for a URL a later reply or a title-less republish repeats."""
-    titles: Dict[str, str] = {}
+    """The URL of each successful Artifact publish (paired with the title the
+    call was given) and the earliest name the session gave each artifact URL,
+    for a URL a later reply or a title-less republish repeats. A refused
+    publish and any other action (quickstart, list, read, open) contribute
+    no row."""
+    calls: Dict[str, Tuple[str, str, Optional[str]]] = {}
     names: Dict[str, str] = {}
     pieces: List[_Piece] = []
     for index, text in lines:
-        if "Artifact" not in text and not (titles and "tool_use_id" in text):
+        if "Artifact" not in text and not (calls and "tool_use_id" in text):
             continue
         try:
             row = json.loads(text)
@@ -208,19 +230,29 @@ def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
         for block in _blocks(row):
             if block.get("type") == "tool_use" and isinstance(block.get("input"), dict):
                 if str(block.get("name") or "").split("__")[-1] == "Artifact":
-                    title = titles[str(block.get("id"))] = _artifact_title(block["input"])
-                    target = block["input"].get("url")
+                    inputs = block["input"]
+                    action = str(inputs.get("action") or "")
+                    target = inputs.get("url")
                     clean = _sanitize(target) if isinstance(target, str) else None
-                    if title and clean:
+                    title = _artifact_title(inputs)
+                    calls[str(block.get("id"))] = (action, title, clean[0] if clean else None)
+                    if title and clean and action in _PUBLISH_ACTIONS:
                         names.setdefault(clean[0], title)
-            elif block.get("type") == "tool_result" and str(block.get("tool_use_id")) in titles:
-                body = " ".join(_strings(block.get("content")))
-                title = titles[str(block.get("tool_use_id"))]
-                pieces.append((index, stamp, body, title, True))
-                for match in _URL.finditer(body if title else ""):
-                    clean = _sanitize(match.group(0))
-                    if clean and clean[1] == "claude.ai":
-                        names.setdefault(clean[0], title)
+            elif block.get("type") == "tool_result" and str(block.get("tool_use_id")) in calls:
+                action, title, call_url = calls[str(block.get("tool_use_id"))]
+                if action not in _PUBLISH_ACTIONS:
+                    logger.info("ℹ️ artifact link dropped: action %r publishes nothing", action)
+                    continue
+                if block.get("is_error"):
+                    logger.info("ℹ️ artifact link dropped: the publish failed")
+                    continue
+                url = _published_url(call_url, " ".join(_strings(block.get("content"))))
+                if url is None:
+                    logger.info("ℹ️ artifact link dropped: the publish named no artifact URL")
+                    continue
+                pieces.append((index, stamp, url, title, True))
+                if title:
+                    names.setdefault(url, title)
     return pieces, names
 
 

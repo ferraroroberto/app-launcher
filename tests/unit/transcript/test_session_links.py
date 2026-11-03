@@ -260,3 +260,40 @@ def test_an_unnamed_artifact_row_keeps_its_short_id_never_the_shell_title(tmp_pa
     result = lt.attach_titles(lk.fold_links(path), web=lambda url: None)
     link = _by_group(result)["artifacts"][0]
     assert link["title"] is None and link["label"] == "Artifact UuVvWwXx"
+
+
+def _artifact_call(ts: str, tool_id: str, **inputs: Any) -> Dict[str, Any]:
+    return {"type": "assistant", "timestamp": ts, "message": {"id": "m" + tool_id, "content": [
+        {"type": "tool_use", "id": tool_id, "name": "Artifact", "input": inputs}]}}
+
+
+def test_only_the_sessions_own_successful_publish_gets_an_artifacts_row(tmp_path):
+    mine = "https://claude.ai/artifact/MineMineMine0001"
+    listing = ("Quickstart. Design systems: https://claude.ai/artifact/DesignSys0000001 "
+               "https://claude.ai/artifact/DesignSys0000002 https://claude.ai/artifact/DesignSys0000003")
+    path = _write(tmp_path / "s.jsonl", [
+        _artifact_call("2026-10-01T10:00:00Z", "q1", action="quickstart", intent="other"),
+        _tool_result("2026-10-01T10:00:01Z", "q1", listing),
+        _artifact_call("2026-10-01T10:00:02Z", "l1", action="list"),
+        _tool_result("2026-10-01T10:00:03Z", "l1", "Published artifacts: https://claude.ai/artifact/ListedListed0001"),
+        _artifact_call("2026-10-01T10:00:04Z", "o1", action="open", url="https://claude.ai/artifact/OpenedOpened0001"),
+        _tool_result("2026-10-01T10:00:05Z", "o1", "Opened https://claude.ai/artifact/OpenedOpened0001"),
+        _artifact_call("2026-10-01T10:00:06Z", "x1", file_path="/x/page.html", icon="chart"),
+        {"type": "user", "timestamp": "2026-10-01T10:00:07Z", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "x1", "is_error": True,
+             "content": "refused, live version at https://claude.ai/artifact/RefusedRefused001"}]}},
+        _artifact_call("2026-10-01T10:00:08Z", "p1", file_path="/x/page.html", icon="chart"),
+        _tool_result("2026-10-01T10:00:09Z", "p1", "Published /x/page.html at " + mine),
+    ])
+    links = _by_group(lk.fold_links(path))["artifacts"]
+    assert [(x["url"], x["label"]) for x in links] == [(mine, "page.html")]
+
+
+def test_an_artifact_url_a_reply_wrote_still_gets_a_row_beside_the_published_one(tmp_path):
+    quoted = "https://claude.ai/artifact/QuotedQuoted00001"
+    path = _write(tmp_path / "s.jsonl", [
+        _artifact_call("2026-10-01T10:00:00Z", "q1", action="quickstart", intent="other"),
+        _tool_result("2026-10-01T10:00:01Z", "q1", "Design system https://claude.ai/artifact/DesignSys0000001"),
+        _text("2026-10-01T10:00:02Z", "Here is the one I meant: " + quoted),
+    ])
+    assert [x["url"] for x in _by_group(lk.fold_links(path))["artifacts"]] == [quoted]
