@@ -323,6 +323,7 @@ function renderIssueCard(card) {
   let start = null;
   if (startable && !isInProgress) {
     start = document.createElement('button');
+    start.dataset.track = 'board.issue-start';
     start.type = 'button';
     start.className = 'icon-button action-row-verb board-issue-btn board-issue-start';
     start.innerHTML = icon('play');
@@ -434,6 +435,7 @@ function renderJobCard(card) {
   let dismiss = null;
   if (jobDismissible(card)) {
     dismiss = document.createElement('button');
+    dismiss.dataset.track = 'board.job-dismiss';
     dismiss.type = 'button';
     dismiss.className = 'icon-button action-row-verb board-job-dismiss';
     dismiss.innerHTML = icon('circle-check');

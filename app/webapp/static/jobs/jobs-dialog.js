@@ -86,6 +86,7 @@ function renderParamRow(param) {
   head.appendChild(nameInput);
 
   const kindSel = document.createElement('select');
+  kindSel.dataset.track = 'job-edit.param-kind';
   kindSel.className = 'select-native';
   kindSel.dataset.role = 'param-kind';
   PARAM_KINDS.forEach(function (k) {
@@ -98,6 +99,7 @@ function renderParamRow(param) {
   head.appendChild(kindSel);
 
   const rmBtn = document.createElement('button');
+  rmBtn.dataset.track = 'job-edit.param-remove';
   rmBtn.type = 'button';
   rmBtn.className = 'icon-button danger';
   rmBtn.innerHTML = icon('x');
@@ -220,6 +222,7 @@ function renderMappingRow(name, path) {
   head.appendChild(pathInput);
 
   const rmBtn = document.createElement('button');
+  rmBtn.dataset.track = 'job-edit.mapping-remove';
   rmBtn.type = 'button';
   rmBtn.className = 'icon-button danger';
   rmBtn.innerHTML = icon('x');
@@ -338,6 +341,7 @@ function renderRunDialogField(param, prefill) {
   let input;
   if (param.kind === 'enum') {
     input = document.createElement('select');
+    input.dataset.track = 'job-run.param-select';
     input.className = 'select-native';
     (param.options || []).forEach(function (opt) {
       const o = document.createElement('option');

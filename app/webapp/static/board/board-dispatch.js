@@ -184,6 +184,7 @@ function renderRepoList() {
   if (!list) return;
   list.replaceChildren();
   const allLi = document.createElement('li');
+  allLi.dataset.track = 'board.dispatch-repo-option';
   allLi.textContent = ALL_PROJECTS_LABEL;
   allLi.dataset.repo = '';
   allLi.setAttribute('role', 'option');
@@ -191,6 +192,7 @@ function renderRepoList() {
   list.appendChild(allLi);
   _repoNames.forEach(function (name) {
     const li = document.createElement('li');
+    li.dataset.track = 'board.dispatch-repo-option';
     li.textContent = name;
     li.dataset.repo = name;
     li.setAttribute('role', 'option');

@@ -7,7 +7,7 @@
           Jobs
         </span>
         <span id="jobsHeadStatus" class="status"></span>
-        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -37,7 +37,7 @@
       </section>
 
       <details class="card card--collapsible action-list jobs-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="jobs.fold-jobs" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg>
             <h3 class="collapse-title">Jobs</h3>
@@ -62,7 +62,7 @@
         <div id="jobsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No jobs or run output match the search.</p>
-          <button type="button" id="jobsFilterEmptyAction" class="empty-state-action">Clear search</button>
+          <button data-track="jobs.empty-clear-search" type="button" id="jobsFilterEmptyAction" class="empty-state-action">Clear search</button>
         </div>
         <div id="jobsLoading" class="empty-state">
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
@@ -71,7 +71,7 @@
         <div id="jobsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-calendar-days"></use></svg>
           <p class="empty-state-message">No jobs registered yet.</p>
-          <button type="button" id="jobsEmptyAction" class="empty-state-action">Add job</button>
+          <button data-track="jobs.empty-add" type="button" id="jobsEmptyAction" class="empty-state-action">Add job</button>
         </div>
         </div>
       </details>

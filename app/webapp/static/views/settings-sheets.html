@@ -4,12 +4,12 @@
     <!-- Screen time (#1678): read-only, so its one primary is Done. The
          period picks the window; screen-time.js draws the total, the daily
          bars by device and the list by section from GET /api/usage/time. -->
-    <dialog id="screenTimeSheet" class="detail-dialog settings-sheet" aria-labelledby="screenTimeSheetTitle">
+    <dialog id="screenTimeSheet" class="detail-dialog settings-sheet" data-track-view="sheet.screen-time" aria-labelledby="screenTimeSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="screen-time.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="screenTimeSheetTitle" tabindex="-1" autofocus>Screen time</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="screen-time.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -51,12 +51,12 @@
     <!-- Remote power guard: the webapp is not elevated, so a switch tap that
          Windows refuses opens this sheet with the one command to run in an
          elevated terminal. remote-power-guard.js fills the command. -->
-    <dialog id="remotePowerGuardSheet" class="detail-dialog settings-sheet" aria-labelledby="remotePowerGuardSheetTitle">
+    <dialog id="remotePowerGuardSheet" class="detail-dialog settings-sheet" data-track-view="sheet.remote-power-guard" aria-labelledby="remotePowerGuardSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="remote-power-guard.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="remotePowerGuardSheetTitle" tabindex="-1" autofocus>Admin rights needed</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="remote-power-guard.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -72,12 +72,12 @@
       </div>
     </dialog>
 
-    <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" aria-labelledby="usageShowsSheetTitle">
+    <dialog id="usageShowsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.usage-shows" aria-labelledby="usageShowsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="usage-shows.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="usageShowsSheetTitle" tabindex="-1" autofocus>Usage meter</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="usage-shows.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -85,31 +85,31 @@
           <div id="usageShows" role="group" aria-label="Usage shows" aria-describedby="usageShowsHelp">
             <div class="switch-row settings-switch-row">
               <span>Claude</span>
-              <button type="button" class="toggle" role="switch" data-provider="claude" aria-checked="false" aria-label="Show Claude in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+              <button data-track="usage-shows.claude" type="button" class="toggle" role="switch" data-provider="claude" aria-checked="false" aria-label="Show Claude in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
             </div>
             <div class="switch-row settings-switch-row">
               <span>Codex</span>
-              <button type="button" class="toggle" role="switch" data-provider="codex" aria-checked="false" aria-label="Show Codex in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+              <button data-track="usage-shows.codex" type="button" class="toggle" role="switch" data-provider="codex" aria-checked="false" aria-label="Show Codex in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
             </div>
             <div class="switch-row settings-switch-row">
               <span>Grok</span>
-              <button type="button" class="toggle" role="switch" data-provider="grok" aria-checked="false" aria-label="Show Grok in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+              <button data-track="usage-shows.grok" type="button" class="toggle" role="switch" data-provider="grok" aria-checked="false" aria-label="Show Grok in the usage meter"><span class="knob"></span><span class="toggle-label">OFF</span></button>
             </div>
           </div>
           <p id="usageShowsHelp" class="field-help">Which providers the Usage card draws; all off hides the card. Grok shares no limits with scripts, so its row shows today's spend, never a bar. Each switch saves at once and applies on every device.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="usage-shows.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="launchDefaultsSheet" class="detail-dialog settings-sheet" aria-labelledby="launchDefaultsSheetTitle">
+    <dialog id="launchDefaultsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.launch-defaults" aria-labelledby="launchDefaultsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="launch-defaults.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="launchDefaultsSheetTitle" tabindex="-1" autofocus>Launch defaults</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="launch-defaults.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -119,7 +119,7 @@
           <p class="opt-hint">The one agent that keeps its own launch button on every project row. Every other visible agent moves into the row&rsquo;s <svg class="icon" aria-label="more actions" role="img" focusable="false"><use href="#i-ellipsis-vertical"></use></svg> menu, one tap deeper.</p>
           <div class="opt-row">
             <span class="opt-name">Agent</span>
-            <select id="codingFavoriteAgent" class="select-native"
+            <select data-track="launch-defaults.favorite-agent" id="codingFavoriteAgent" class="select-native"
                     aria-label="Favorite agent"></select>
           </div>
         </div>
@@ -136,37 +136,37 @@
         <div class="opt-group">
           <h3 class="opt-group-title">Per agent</h3>
           <div class="settings-group settings-group--nested">
-            <button type="button" class="settings-row" data-agent-sheet="claude" aria-haspopup="dialog">
+            <button data-track="launch-defaults.claude-code" type="button" class="settings-row" data-agent-sheet="claude" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-claude"></use></svg>
               <span class="settings-row-label" data-agent-label="claude">Claude Code</span>
               <span class="settings-row-value" data-settings-value="agent-claude"></span>
               <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
             </button>
-            <button type="button" class="settings-row" data-agent-sheet="codex" aria-haspopup="dialog">
+            <button data-track="launch-defaults.codex" type="button" class="settings-row" data-agent-sheet="codex" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-codex"></use></svg>
               <span class="settings-row-label" data-agent-label="codex">Codex</span>
               <span class="settings-row-value" data-settings-value="agent-codex"></span>
               <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
             </button>
-            <button type="button" class="settings-row" data-agent-sheet="antigravity" aria-haspopup="dialog">
+            <button data-track="launch-defaults.antigravity" type="button" class="settings-row" data-agent-sheet="antigravity" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-antigravity"></use></svg>
               <span class="settings-row-label" data-agent-label="antigravity">Antigravity</span>
               <span class="settings-row-value" data-settings-value="agent-antigravity"></span>
               <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
             </button>
-            <button type="button" class="settings-row" data-agent-sheet="copilot" aria-haspopup="dialog">
+            <button data-track="launch-defaults.github-copilot" type="button" class="settings-row" data-agent-sheet="copilot" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-copilot"></use></svg>
               <span class="settings-row-label" data-agent-label="copilot">GitHub Copilot</span>
               <span class="settings-row-value" data-settings-value="agent-copilot"></span>
               <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
             </button>
-            <button type="button" class="settings-row" data-agent-sheet="pi" aria-haspopup="dialog">
+            <button data-track="launch-defaults.pi" type="button" class="settings-row" data-agent-sheet="pi" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-pi"></use></svg>
               <span class="settings-row-label" data-agent-label="pi">Pi</span>
               <span class="settings-row-value" data-settings-value="agent-pi"></span>
               <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
             </button>
-            <button type="button" class="settings-row" data-agent-sheet="grok" aria-haspopup="dialog">
+            <button data-track="launch-defaults.grok-build" type="button" class="settings-row" data-agent-sheet="grok" aria-haspopup="dialog">
               <svg class="agent-icon settings-row-icon" aria-hidden="true"><use href="#b-grok"></use></svg>
               <span class="settings-row-label" data-agent-label="grok">Grok Build</span>
               <span class="settings-row-value" data-settings-value="agent-grok"></span>
@@ -176,19 +176,19 @@
         </div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="launch-defaults.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
     <!-- One agent's launch defaults (#1435): the Launch defaults sheet's
          rows open it with only that agent's group shown. -->
-    <dialog id="agentSheet" class="detail-dialog settings-sheet" aria-labelledby="agentSheetTitle">
+    <dialog id="agentSheet" class="detail-dialog settings-sheet" data-track-view="sheet.agent" aria-labelledby="agentSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Launch defaults" title="Back to Launch defaults"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="agent.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Launch defaults" title="Back to Launch defaults"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="agentSheetTitle" tabindex="-1" autofocus>Agent</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="agent.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -197,7 +197,7 @@
           <div class="opt-row">
             <span class="opt-name">Model</span>
             <span id="claudeModel" class="model-combo model-combo--settings" data-value="sonnet">
-              <button type="button" class="model-combo-trigger" aria-label="Claude model" aria-haspopup="listbox"
+              <button data-track="agent.claude-model" type="button" class="model-combo-trigger" aria-label="Claude model" aria-haspopup="listbox"
                       aria-expanded="false" aria-controls="claudeModelMenu">Sonnet</button>
               <span id="claudeModelMenu" class="model-combo-menu" role="listbox"
                     aria-label="Claude model" hidden></span>
@@ -205,15 +205,15 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
-            <select id="claudeEffort" class="select-native" aria-label="Effort"></select>
+            <select data-track="agent.claude-effort" id="claudeEffort" class="select-native" aria-label="Effort"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
             <div id="claudePermission" class="segmented" role="group" aria-label="Permission mode"></div>
           </div>
           <div class="toggles">
-            <span class="switch-row"><span>Verbose</span><button type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
-            <span class="switch-row"><span>Debug</span><button type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false" aria-label="Debug output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Verbose</span><button data-track="agent.claude-verbose" type="button" id="claudeVerbose" class="toggle" role="switch" aria-checked="false" aria-label="Verbose output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Debug</span><button data-track="agent.claude-debug" type="button" id="claudeDebug" class="toggle" role="switch" aria-checked="false" aria-label="Debug output"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <div id="claudeFlagsPreview" class="flags-preview">claude …</div>
         </div>
@@ -221,7 +221,7 @@
           <div class="opt-row">
             <span class="opt-name">Model</span>
             <span id="codexModel" class="model-combo model-combo--settings" data-value="gpt-6-luna">
-              <button type="button" class="model-combo-trigger" aria-label="Codex model" aria-haspopup="listbox"
+              <button data-track="agent.codex-model" type="button" class="model-combo-trigger" aria-label="Codex model" aria-haspopup="listbox"
                       aria-expanded="false" aria-controls="codexModelMenu">Luna</button>
               <span id="codexModelMenu" class="model-combo-menu" role="listbox"
                     aria-label="Codex model" hidden></span>
@@ -229,7 +229,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Reasoning</span>
-            <select id="codexEffort" class="select-native" aria-label="Codex reasoning"></select>
+            <select data-track="agent.codex-effort" id="codexEffort" class="select-native" aria-label="Codex reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
@@ -240,15 +240,15 @@
         </div>
         <div class="opt-group" data-agent-group="antigravity" hidden>
           <div class="toggles">
-            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Antigravity permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
-            <span class="switch-row"><span>Sandbox</span><button type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false" aria-label="Antigravity sandbox"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Skip permission prompts</span><button data-track="agent.antigravity-skip-permissions" type="button" id="antigravitySkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Antigravity permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Sandbox</span><button data-track="agent.antigravity-sandbox" type="button" id="antigravitySandbox" class="toggle" role="switch" aria-checked="false" aria-label="Antigravity sandbox"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <p class="opt-hint">Model is chosen with <code>/model</code> inside the session — the Antigravity CLI has no launch-time model flag.</p>
           <div id="antigravityFlagsPreview" class="flags-preview">agy</div>
         </div>
         <div class="opt-group" data-agent-group="copilot" hidden>
           <div class="toggles">
-            <span class="switch-row"><span>Skip permission prompts</span><button type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
+            <span class="switch-row"><span>Skip permission prompts</span><button data-track="agent.copilot-skip-permissions" type="button" id="copilotSkipPerms" class="toggle" role="switch" aria-checked="false" aria-label="Skip Copilot permission prompts"><span class="knob"></span><span class="toggle-label">OFF</span></button></span>
           </div>
           <p class="opt-hint">Sign in with <code>/login</code> inside the session. Model is chosen with <code>/model</code> in-session (<code>/config model</code> sets the default) — the launcher sends no model flag, because Copilot decides per launch what your account may use and quietly falls back when it refuses.</p>
           <div id="copilotFlagsPreview" class="flags-preview">copilot</div>
@@ -257,7 +257,7 @@
           <div class="opt-row">
             <span class="opt-name">Model</span>
             <span id="piModel" class="model-combo model-combo--settings" data-value="">
-              <button type="button" class="model-combo-trigger" aria-label="Pi model" aria-haspopup="listbox"
+              <button data-track="agent.pi-model" type="button" class="model-combo-trigger" aria-label="Pi model" aria-haspopup="listbox"
                       aria-expanded="false" aria-controls="piModelMenu">Model</button>
               <span id="piModelMenu" class="model-combo-menu" role="listbox"
                     aria-label="Pi model" hidden></span>
@@ -265,7 +265,7 @@
           </div>
           <div class="opt-row">
             <span class="opt-name">Effort</span>
-            <select id="piEffort" class="select-native" aria-label="Pi reasoning"></select>
+            <select data-track="agent.pi-effort" id="piEffort" class="select-native" aria-label="Pi reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Project trust</span>
@@ -277,7 +277,7 @@
         <div class="opt-group" data-agent-group="grok" hidden>
           <div class="opt-row">
             <span class="opt-name">Reasoning</span>
-            <select id="grokEffort" class="select-native" aria-label="Grok reasoning"></select>
+            <select data-track="agent.grok-effort" id="grokEffort" class="select-native" aria-label="Grok reasoning"></select>
           </div>
           <div class="opt-row">
             <span class="opt-name">Permission</span>
@@ -288,7 +288,7 @@
         </div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="agent.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -297,12 +297,12 @@
          dialog (PUT /api/board/chief/settings, passkey-gated), the
          auto-compact threshold (#1298) and the doorbell switch
          (fleet-config#1457, #1645's chief_doorbell), both POST /api/config. -->
-    <dialog id="chiefSheet" class="detail-dialog settings-sheet" aria-labelledby="chiefSheetTitle">
+    <dialog id="chiefSheet" class="detail-dialog settings-sheet" data-track-view="sheet.chief" aria-labelledby="chiefSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="chief.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="chiefSheetTitle" tabindex="-1" autofocus>Chief</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="chief.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -310,13 +310,13 @@
           <div class="row">
             <span>Model</span>
             <span id="chiefModelSelect" class="model-combo model-combo--settings" data-value="fable">
-            <button type="button" class="model-combo-trigger" aria-label="Chief model"
+            <button data-track="chief.model" type="button" class="model-combo-trigger" aria-label="Chief model"
                     aria-haspopup="listbox" aria-expanded="false" aria-controls="chiefModelMenu">Fable</button>
             <span id="chiefModelMenu" class="model-combo-menu" role="listbox"
                   aria-label="Chief model" hidden>
-              <button type="button" role="option" data-value="sonnet" aria-selected="false">Sonnet</button>
-              <button type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
-              <button type="button" role="option" data-value="fable" aria-selected="true">Fable</button>
+              <button data-track="chief.model-sonnet" type="button" role="option" data-value="sonnet" aria-selected="false">Sonnet</button>
+              <button data-track="chief.model-opus" type="button" role="option" data-value="opus" aria-selected="false">Opus</button>
+              <button data-track="chief.model-fable" type="button" role="option" data-value="fable" aria-selected="true">Fable</button>
             </span>
           </span>
           </div>
@@ -327,7 +327,7 @@
           <p id="chiefWorkerCapHelp" class="field-help">How many workers the chief runs at once, from 1 to 10.</p>
           <div class="row">
             <span>Auto-compact</span>
-            <button type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
+            <button data-track="chief.auto-compact" type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <label class="row">
             <span>Compact at context use (%)</span>
@@ -336,22 +336,22 @@
           <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
           <div class="row">
             <span>Doorbell</span>
-            <button type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            <button data-track="chief.doorbell" type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief when its mailbox has worker news, by typing one fixed line into its terminal. Off, nothing is typed and the chief arms its own waiter at its next turn.</p>
           <div class="row">
             <span>Job failures</span>
-            <button type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
+            <button data-track="chief.job-failures" type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
           <div class="row">
             <span>Grok for Sonnet lanes</span>
-            <button type="button" id="grokAutoSwitchToggle" class="toggle" role="switch" aria-checked="false" aria-label="Grok auto-switch" aria-describedby="grokAutoSwitchHelp" title="Launch Sonnet lanes on Grok when Claude's week runs short"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            <button data-track="chief.grok-auto-switch" type="button" id="grokAutoSwitchToggle" class="toggle" role="switch" aria-checked="false" aria-label="Grok auto-switch" aria-describedby="grokAutoSwitchHelp" title="Launch Sonnet lanes on Grok when Claude's week runs short"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="grokAutoSwitchHelp" class="field-help">A Board start asking for Sonnet runs on Grok Build instead when Claude's weekly use is within 5 points of the week's pace or above it. Opus lanes never switch. An unknown Claude reading, Grok not installed, or a repo Grok has not trusted (run <code>grok --trust</code> once in it) keeps the lane on Claude.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="chief.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -361,12 +361,12 @@
          profile or a profile problem is reported. telegram-setup.js renders
          it from GET /api/life-os/channels; it only reports booleans and
          names — never a path, a token or a file's content. -->
-    <dialog id="channelsSheet" class="detail-dialog settings-sheet" aria-labelledby="channelsSheetTitle">
+    <dialog id="channelsSheet" class="detail-dialog settings-sheet" data-track-view="sheet.channels" aria-labelledby="channelsSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="channels.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="channelsSheetTitle" tabindex="-1" autofocus>Telegram</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="channels.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -378,17 +378,17 @@
           <h4 class="context-filter-subhead">Sessions</h4>
           <div class="switch-row settings-switch-row">
             <span>Hide Telegram sessions from the Board and session list</span>
-            <button type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
+            <button data-track="channels.hide-sessions" type="button" id="hideChannelSessionsToggle" class="toggle" role="switch" aria-checked="true" aria-label="Hide Telegram sessions from the Board and session list" aria-describedby="hideChannelSessionsHelp" title="Hide Telegram sessions from the Board and session list"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="hideChannelSessionsHelp" class="field-help">A Telegram session serves someone through their own chat, and stopping it cuts that chat off. On, those sessions leave the Board and the session list; one line there says how many are running and opens a read-only list — no Stop, no delete. The fleet chief also stays out of the Board's lanes and its waiting count; its row stays in the session list. Off, they show and behave like any other session.</p>
           <div class="switch-row settings-switch-row">
             <span>Start Telegram sessions automatically</span>
-            <button type="button" id="autostartChannelSessionsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start Telegram sessions automatically" aria-describedby="autostartChannelSessionsHelp" title="Start Telegram sessions automatically"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            <button data-track="channels.autostart-sessions" type="button" id="autostartChannelSessionsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Start Telegram sessions automatically" aria-describedby="autostartChannelSessionsHelp" title="Start Telegram sessions automatically"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="autostartChannelSessionsHelp" class="field-help">After a restart of the PC every Telegram session is gone, and its bot stays silent until someone starts it. On, the launcher starts each ready profile when it starts itself — a fresh session in the profile's skill, with the Claude model from Settings. A profile that is already running, or not ready, is left alone.</p>
           <label class="row">
             <span>Model</span>
-            <select id="channelModelSelect" class="select-native" aria-describedby="channelModelHelp">
+            <select data-track="channels.model" id="channelModelSelect" class="select-native" aria-describedby="channelModelHelp">
               <option value="sonnet">Sonnet</option>
               <option value="opus">Opus</option>
               <option value="fable">Fable</option>
@@ -422,11 +422,11 @@
             <li><strong>No code arrives.</strong> You messaged a group instead of the bot's own chat, or it already sent the code twice (it then goes quiet; the code lasts an hour).</li>
           </ul>
           <div class="row settings-actions">
-            <button id="channelRecheck" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Re-check</button>
+            <button data-track="channels.recheck" id="channelRecheck" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Re-check</button>
           </div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="channels.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -435,12 +435,12 @@
          telegram-bots.js fills it from the same GET /api/life-os/channels
          payload and saves each field through PATCH /api/life-os/channels/{id}.
          Names and booleans only: never a path or a token. -->
-    <dialog id="channelBotSheet" class="detail-dialog settings-sheet" aria-labelledby="channelBotSheetTitle">
+    <dialog id="channelBotSheet" class="detail-dialog settings-sheet" data-track-view="sheet.channel-bot" aria-labelledby="channelBotSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Telegram" title="Back to Telegram"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="channel-bot.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Telegram" title="Back to Telegram"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="channelBotSheetTitle" tabindex="-1" autofocus>Bot</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="channel-bot.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -450,7 +450,7 @@
             <div><strong>Restart to apply</strong><span id="botRestartText"></span></div>
           </div>
           <div id="botRestartRow" class="row settings-actions" hidden>
-            <button id="botRestartBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Restart bot</button>
+            <button data-track="channel-bot.restart" id="botRestartBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Restart bot</button>
           </div>
           <p id="botRestartHelp" class="field-help" hidden>The bot quits and starts again with its current settings, in a fresh conversation. It restarts only when you tap this.</p>
 
@@ -462,12 +462,12 @@
           <p id="botNameError" class="field-error" role="alert" hidden></p>
           <label class="row">
             <span>Skill</span>
-            <select id="botSkillSelect" class="select-native" aria-describedby="botNameHelp"></select>
+            <select data-track="channel-bot.skill" id="botSkillSelect" class="select-native" aria-describedby="botNameHelp"></select>
           </label>
           <p id="botSkillError" class="field-error" role="alert" hidden></p>
           <label class="row">
             <span>Model</span>
-            <select id="botModelSelect" class="select-native" aria-describedby="botNameHelp"></select>
+            <select data-track="channel-bot.model" id="botModelSelect" class="select-native" aria-describedby="botNameHelp"></select>
           </label>
           <p id="botModelError" class="field-error" role="alert" hidden></p>
           <p id="botNameHelp" class="field-help">The name saves now. A running bot picks up a new skill or model when it restarts.</p>
@@ -475,23 +475,23 @@
           <h4 class="context-filter-subhead">Earlier conversations</h4>
           <div class="row">
             <span>Relay</span>
-            <button type="button" id="botRelayToggle" class="toggle" role="switch" aria-checked="false" aria-label="Relay" aria-describedby="botRelayHelp" title="Let the bot find, reopen and message this skill's earlier conversations"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+            <button data-track="channel-bot.relay" type="button" id="botRelayToggle" class="toggle" role="switch" aria-checked="false" aria-label="Relay" aria-describedby="botRelayHelp" title="Let the bot find, reopen and message this skill's earlier conversations"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="botRelayHelp" class="field-help">Lets the bot find, reopen and message this skill's earlier conversations. A running bot picks it up when it restarts.</p>
           <p id="botRelayError" class="field-error" role="alert" hidden></p>
           <div class="row">
             <span>Offer a resume when a chat starts</span>
-            <button type="button" id="botResumeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Offer a resume when a chat starts" aria-describedby="botResumeHelp" title="Offer a resume when a chat starts"><span class="knob"></span><span class="toggle-label">ON</span></button>
+            <button data-track="channel-bot.resume-offer" type="button" id="botResumeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Offer a resume when a chat starts" aria-describedby="botResumeHelp" title="Offer a resume when a chat starts"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="botResumeHelp" class="field-help">Takes effect now.</p>
           <p id="botResumeError" class="field-error" role="alert" hidden></p>
           <div class="stacked">
             <span id="botIdleLabel">Close a reopened conversation after no activity for</span>
             <div id="botIdleSeg" class="segmented" role="group" aria-labelledby="botIdleLabel" aria-describedby="botIdleHelp">
-              <button type="button" class="segmented-item" aria-pressed="false" data-value="0">Off</button>
-              <button type="button" class="segmented-item" aria-pressed="false" data-value="30">30 min</button>
-              <button type="button" class="segmented-item" aria-pressed="false" data-value="60">1 h</button>
-              <button type="button" class="segmented-item" aria-pressed="false" data-value="120">2 h</button>
+              <button data-track="channel-bot.resume-off" type="button" class="segmented-item" aria-pressed="false" data-value="0">Off</button>
+              <button data-track="channel-bot.resume-30m" type="button" class="segmented-item" aria-pressed="false" data-value="30">30 min</button>
+              <button data-track="channel-bot.resume-1h" type="button" class="segmented-item" aria-pressed="false" data-value="60">1 h</button>
+              <button data-track="channel-bot.resume-2h" type="button" class="segmented-item" aria-pressed="false" data-value="120">2 h</button>
             </div>
           </div>
           <p id="botIdleHelp" class="field-help">Takes effect now, no restart.</p>
@@ -501,7 +501,7 @@
           <ul id="botStatus" class="card-list channel-check-list" aria-label="Bot status"></ul>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="channel-bot.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -509,12 +509,12 @@
     <!-- Context filter (issue #713) — the fleet's PreToolUse token-reduction
          hook (fleet-config#392/#541/#544). context-filter.js owns this
          sheet's contents; #1435 only moved them out of a card. -->
-    <dialog id="contextFilterSheet" class="detail-dialog settings-sheet" aria-labelledby="contextFilterSheetTitle">
+    <dialog id="contextFilterSheet" class="detail-dialog settings-sheet" data-track-view="sheet.context-filter" aria-labelledby="contextFilterSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="context-filter.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="contextFilterSheetTitle" tabindex="-1" autofocus>Context filter</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="context-filter.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -535,7 +535,7 @@
           <p id="contextFilterStatsEmpty" class="empty muted small">No savings recorded yet.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="context-filter.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -544,12 +544,12 @@
          fills the title and body from GET /api/documents/{id}; the body is the
          same `.tr-md` box the Changed files Preview renders into, and
          shared/mermaid-render.js draws its diagrams. -->
-    <dialog id="documentSheet" class="detail-dialog settings-sheet" aria-labelledby="documentSheetTitle">
+    <dialog id="documentSheet" class="detail-dialog settings-sheet" data-track-view="sheet.document" aria-labelledby="documentSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="document.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="documentSheetTitle" tabindex="-1" autofocus>Document</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="document.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -563,7 +563,7 @@
           <div id="documentBody" class="tr-md document-body"></div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="document.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
@@ -571,12 +571,12 @@
     <!-- Fleet scope: which repos the fleet-wide runs include. fleet-scope.js
          draws the rows from GET /api/fleet/scope; fleet-config's own writer
          does the edit. -->
-    <dialog id="fleetScopeSheet" class="detail-dialog settings-sheet" aria-labelledby="fleetScopeSheetTitle">
+    <dialog id="fleetScopeSheet" class="detail-dialog settings-sheet" data-track-view="sheet.fleet-scope" aria-labelledby="fleetScopeSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="fleet-scope.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="fleetScopeSheetTitle" tabindex="-1" autofocus>Fleet scope</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="fleet-scope.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -596,21 +596,21 @@
           <div id="fleetScopeFilterEmpty" class="empty-state" hidden>
             <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
             <p class="empty-state-message">No repos match the filter.</p>
-            <button type="button" class="empty-state-action">Clear filter</button>
+            <button data-track="fleet-scope.clear-filter" type="button" class="empty-state-action">Clear filter</button>
           </div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="fleet-scope.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="tokensSheet" class="detail-dialog settings-sheet" aria-labelledby="tokensSheetTitle">
+    <dialog id="tokensSheet" class="detail-dialog settings-sheet" data-track-view="sheet.tokens" aria-labelledby="tokensSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="tokens.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="tokensSheetTitle" tabindex="-1" autofocus>API tokens</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="tokens.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -620,7 +620,7 @@
           <div id="tokensEmpty" class="empty-state" hidden>
             <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg>
             <p class="empty-state-message">No tokens yet.</p>
-            <button type="button" id="tokensEmptyAction" class="empty-state-action">Create a token</button>
+            <button data-track="tokens.empty-create" type="button" id="tokensEmptyAction" class="empty-state-action">Create a token</button>
           </div>
           <label class="stacked">
             <span>Label</span>
@@ -628,16 +628,16 @@
           </label>
           <label class="stacked">
             <span>Job it can run</span>
-            <select id="tokenJobSelect" class="select-native"></select>
+            <select data-track="tokens.job" id="tokenJobSelect" class="select-native"></select>
           </label>
           <div class="row settings-actions">
-            <button id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Create token</button>
+            <button data-track="tokens.create" id="tokenMintBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Create token</button>
           </div>
           <div id="tokenMintResult" class="stacked" hidden>
             <span class="muted small">Copy it now — it is shown only once.</span>
             <div class="row">
               <input id="tokenMintValue" type="text" class="input-native" readonly>
-              <button id="tokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+              <button data-track="tokens.copy" id="tokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
             </div>
             <span id="tokenMintUrl" class="muted small"></span>
           </div>
@@ -646,30 +646,30 @@
             <p class="opt-hint">For an outside agent. It can read the Board and the chief&rsquo;s plan and file issues for the chief to triage. Nothing else: no sessions, terminals or settings. Regenerating stops the old value at once.</p>
             <p id="delegateTokenStatus" class="muted small">Off</p>
             <div class="row settings-actions">
-              <button id="delegateTokenRegenBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> <span id="delegateTokenRegenLabel">Turn on</span></button>
-              <button id="delegateTokenOffBtn" type="button" class="button-ghost" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-power"></use></svg> Turn off</button>
+              <button data-track="tokens.delegate-on" id="delegateTokenRegenBtn" type="button" class="button-tint"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> <span id="delegateTokenRegenLabel">Turn on</span></button>
+              <button data-track="tokens.delegate-off" id="delegateTokenOffBtn" type="button" class="button-ghost" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-power"></use></svg> Turn off</button>
             </div>
             <div id="delegateTokenResult" class="stacked" hidden>
               <span id="delegateTokenValueHelp" class="field-help">Copy it now — it is shown only once.</span>
               <div class="row">
                 <input id="delegateTokenValue" type="text" class="input-native" readonly aria-label="Delegate token" aria-describedby="delegateTokenValueHelp">
-                <button id="delegateTokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
+                <button data-track="tokens.delegate-copy" id="delegateTokenCopyBtn" type="button" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Copy</button>
               </div>
             </div>
           </div>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="tokens.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="foldersSheet" class="detail-dialog settings-sheet" aria-labelledby="foldersSheetTitle">
+    <dialog id="foldersSheet" class="detail-dialog settings-sheet" data-track-view="sheet.folders" aria-labelledby="foldersSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="folders.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="foldersSheetTitle" tabindex="-1" autofocus>Folders</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="folders.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -706,22 +706,22 @@
           </div>
           <div class="row outbox-root-add">
             <input id="outboxRootInput" type="text" class="input-native" placeholder="C:\Drop or %USERPROFILE%\Drop" aria-label="Add a chat file folder" aria-describedby="outboxRootsHelp" autocomplete="off" autocapitalize="off" spellcheck="false">
-            <button id="outboxRootAdd" type="button" class="button-ghost">Add</button>
+            <button data-track="folders.outbox-add" id="outboxRootAdd" type="button" class="button-ghost">Add</button>
           </div>
           <p id="outboxRootsHelp" class="field-help">The session's own folder is always allowed. These are extra folders an agent may send files from.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="folders.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="passkeysSheet" class="detail-dialog settings-sheet" aria-labelledby="passkeysSheetTitle">
+    <dialog id="passkeysSheet" class="detail-dialog settings-sheet" data-track-view="sheet.passkeys" aria-labelledby="passkeysSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="passkeys.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="passkeysSheetTitle" tabindex="-1" autofocus>Passkeys</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="passkeys.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -729,7 +729,7 @@
           <div class="webauthn-section">
             <p id="webauthnStatus" class="muted small">Checking…</p>
             <ul id="webauthnDevices" class="webauthn-devices"></ul>
-            <button id="enrollDeviceBtn" type="button" class="button-tint" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
+            <button data-track="passkeys.enroll" id="enrollDeviceBtn" type="button" class="button-tint" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-smartphone"></use></svg> Enroll this device</button>
             <p class="muted small">
               Open the enrollment window from the tray menu
               (<strong><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Enroll device</strong>) on the PC, then tap the button above.
@@ -738,17 +738,17 @@
           <p id="statusReadout" class="muted small settings-section"></p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="passkeys.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="terminalSheet" class="detail-dialog settings-sheet" aria-labelledby="terminalSheetTitle">
+    <dialog id="terminalSheet" class="detail-dialog settings-sheet" data-track-view="sheet.terminal" aria-labelledby="terminalSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">
-          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <button data-track="terminal.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
           <h2 id="terminalSheetTitle" tabindex="-1" autofocus>Terminal</h2>
-          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+          <button data-track="terminal.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -765,7 +765,7 @@
           <p id="largeUploadMaxMbHelp" class="field-help">The biggest file Attach large file takes. It is stored on this PC for the agent to use by path, never read into its context.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+          <button data-track="terminal.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
         </div>
       </div>
     </dialog>

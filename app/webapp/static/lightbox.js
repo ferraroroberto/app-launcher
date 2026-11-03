@@ -72,6 +72,7 @@ function sandboxedFrame(className, title) {
 // {blob, objectUrl}; the blob is octet-stream, so the URL only downloads.
 export async function fillHtmlCard(card, got, name) {
   const btn = document.createElement('button');
+  btn.dataset.track = 'lightbox.html-open';
   btn.type = 'button';
   btn.className = 'tr-file-html-open';
   btn.setAttribute('aria-label', 'Open ' + name);

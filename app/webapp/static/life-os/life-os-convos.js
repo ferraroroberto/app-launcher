@@ -156,6 +156,7 @@ function openStartPicker() {
   list.replaceChildren.apply(list, state.lifeOsSkills.slice().sort(compareSkills).map(
     function (s) {
       const row = document.createElement('button');
+      row.dataset.track = 'life-os.start-pick';
       row.type = 'button';
       row.className = 'settings-row lifeos-start-pick';
       row.dataset.id = s.id;

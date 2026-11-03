@@ -2,24 +2,24 @@
          the Conversations one (#1528) — the sort as range tabs, each applying
          as it is tapped, Clear beside Done. Jobs has no filter of its own, so
          the sheet carries the one Sort row. -->
-    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" aria-labelledby="jobsSortSheetTitle">
+    <dialog id="jobsSortSheet" class="detail-dialog jobs-sort-sheet" data-track-view="sheet.jobs-sort" aria-labelledby="jobsSortSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="jobsSortSheetTitle" tabindex="-1" autofocus>Sort and filter</h2>
-          <button type="button" id="jobsSortSheetClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="jobs-sort.close" type="button" id="jobsSortSheetClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <div class="row">
           <span>Sort</span>
           <div id="jobsSortTabs" class="segmented" role="group" aria-label="Sort jobs">
-            <button type="button" class="segmented-item" data-sort="next" aria-pressed="false">Next run</button>
-            <button type="button" class="segmented-item" data-sort="name" aria-pressed="false">A–Z</button>
+            <button data-track="jobs-sort.next-run" type="button" class="segmented-item" data-sort="next" aria-pressed="false">Next run</button>
+            <button data-track="jobs-sort.name" type="button" class="segmented-item" data-sort="name" aria-pressed="false">A–Z</button>
           </div>
         </div>
         <div class="detail-actions">
-          <button type="button" id="jobsSortSheetClear" class="button-ghost">Clear</button>
-          <button type="button" id="jobsSortSheetDone" class="button-primary detail-save-btn">Done</button>
+          <button data-track="jobs-sort.clear" type="button" id="jobsSortSheetClear" class="button-ghost">Clear</button>
+          <button data-track="jobs-sort.done" type="button" id="jobsSortSheetDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
@@ -27,11 +27,11 @@
     <!-- The session transcript (#953) is no longer its own overlay: it is
          the Chat pane of #terminalOverlay below (#982). -->
 
-    <dialog id="jobDialog" class="detail-dialog">
+    <dialog id="jobDialog" class="detail-dialog" data-track-view="sheet.job-edit">
       <form id="jobForm" class="detail-card">
         <div class="detail-header">
           <h2 id="jobDialogTitle">Add job</h2>
-          <button type="button" id="jobCancel" class="icon-button detail-close" aria-label="Close">
+          <button data-track="job-edit.close" type="button" id="jobCancel" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -42,7 +42,7 @@
         </label>
         <label class="row">
           <span>Kind</span>
-          <select id="jobKindInput" class="select-native">
+          <select data-track="job-edit.kind" id="jobKindInput" class="select-native">
             <option value="">Auto (from extension)</option>
             <option value="python">Python (.py)</option>
             <option value="batch">Batch (.bat)</option>
@@ -60,7 +60,7 @@
         <div class="job-kind-group" id="jobInlineShellFields" hidden>
           <label class="row">
             <span>Script type</span>
-            <select id="jobInlineExtInput" class="select-native">
+            <select data-track="job-edit.inline-ext" id="jobInlineExtInput" class="select-native">
               <option value=".ps1">PowerShell (.ps1)</option>
               <option value=".bat">Batch (.bat)</option>
               <option value=".sh">Shell — WSL (.sh)</option>
@@ -80,7 +80,7 @@
           </label>
           <label class="row">
             <span>Method</span>
-            <select id="jobHttpMethodInput" class="select-native">
+            <select data-track="job-edit.http-method" id="jobHttpMethodInput" class="select-native">
               <option value="GET">GET</option>
               <option value="HEAD">HEAD</option>
               <option value="POST">POST</option>
@@ -103,7 +103,7 @@
         </label>
         <label class="row">
           <span>Schedule</span>
-          <select id="jobScheduleType" class="select-native">
+          <select data-track="job-edit.schedule-type" id="jobScheduleType" class="select-native">
             <option value="none">None (manual only)</option>
             <option value="minutes">Every N minutes</option>
             <option value="hourly">Every N hours</option>
@@ -131,7 +131,7 @@
         </label>
         <label class="row" id="jobScheduleDayRow" hidden>
           <span>Day</span>
-          <select id="jobScheduleDay" class="select-native">
+          <select data-track="job-edit.schedule-day" id="jobScheduleDay" class="select-native">
             <option value="MON">Monday</option>
             <option value="TUE">Tuesday</option>
             <option value="WED">Wednesday</option>
@@ -154,11 +154,11 @@
         </label>
         <div class="job-alert-row switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg> Alert to Telegram if failed</span>
-          <button type="button" id="jobAlertOnFailureInput" class="toggle" role="switch" aria-checked="false" aria-label="Alert to Telegram if failed"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button data-track="job-edit.alert-on-failure" type="button" id="jobAlertOnFailureInput" class="toggle" role="switch" aria-checked="false" aria-label="Alert to Telegram if failed"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="job-confirm-row switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-triangle-alert"></use></svg> Require confirmation before running</span>
-          <button type="button" id="jobConfirmInput" class="toggle" role="switch" aria-checked="false" aria-label="Require confirmation before running"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button data-track="job-edit.confirm" type="button" id="jobConfirmInput" class="toggle" role="switch" aria-checked="false" aria-label="Require confirmation before running"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <section class="dialog-section">
           <h3 class="dialog-section-title">Run on success (chain)</h3>
@@ -177,7 +177,7 @@
             leave it empty to run with one tap.
           </p>
           <ol id="jobParamsList" class="job-params-list"></ol>
-          <button type="button" id="jobParamsAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
+          <button data-track="job-edit.params-add" type="button" id="jobParamsAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add parameter</button>
         </section>
         <section class="dialog-section">
           <h3 class="dialog-section-title">Webhook</h3>
@@ -188,7 +188,7 @@
           </p>
           <label class="row">
             <span>Provider</span>
-            <select id="jobWebhookProvider" class="select-native">
+            <select data-track="job-edit.webhook-provider" id="jobWebhookProvider" class="select-native">
               <option value="">None (disabled)</option>
               <option value="github">GitHub</option>
               <option value="stripe">Stripe</option>
@@ -211,22 +211,22 @@
               to this job's parameter names above.
             </p>
             <ol id="jobWebhookMappingList" class="job-params-list"></ol>
-            <button type="button" id="jobWebhookMappingAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
+            <button data-track="job-edit.webhook-mapping-add" type="button" id="jobWebhookMappingAdd" class="button-ghost"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"></use></svg> Add mapping</button>
           </div>
         </section>
         <ul id="jobPreflightProblems" class="job-preflight-problems" hidden></ul>
         <div class="detail-actions">
-          <button type="button" id="jobSaveAnyway" class="button-tint warn" hidden>Save anyway</button>
-          <button type="submit" id="jobSaveBtn" class="button-primary detail-save-btn">Add and verify</button>
+          <button data-track="job-edit.save-anyway" type="button" id="jobSaveAnyway" class="button-tint warn" hidden>Save anyway</button>
+          <button data-track="job-edit.save" type="submit" id="jobSaveBtn" class="button-primary detail-save-btn">Add and verify</button>
         </div>
       </form>
     </dialog>
 
-    <dialog id="jobRunDialog" class="detail-dialog">
+    <dialog id="jobRunDialog" class="detail-dialog" data-track-view="sheet.job-run">
       <form id="jobRunForm" class="detail-card">
         <div class="detail-header">
           <h2 id="jobRunDialogTitle">Run job</h2>
-          <button type="button" id="jobRunCancel" class="icon-button detail-close" aria-label="Close">
+          <button data-track="job-run.close" type="button" id="jobRunCancel" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -234,10 +234,10 @@
         <div id="jobRunDialogFields"></div>
         <div class="job-run-dryrow switch-row">
           <span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-flask-conical"></use></svg> Dry run — scripts that support it skip their side effects</span>
-          <button type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button data-track="job-run.dry-run" type="button" id="jobRunDialogDryRun" class="toggle" role="switch" aria-checked="false" aria-label="Dry run"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <div class="detail-actions">
-          <button type="submit" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run</button>
+          <button data-track="job-run.run" type="submit" class="button-primary detail-save-btn"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg> Run</button>
         </div>
       </form>
     </dialog>

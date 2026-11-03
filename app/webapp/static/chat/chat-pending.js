@@ -80,6 +80,7 @@ function rowFor(entry) {
   li.append(meta, text);
   if (entry.removable) {
     const discard = document.createElement('button');
+    discard.dataset.track = 'pending.discard';
     discard.type = 'button';
     discard.className = 'button-tint danger pending-discard';
     discard.textContent = 'Discard';

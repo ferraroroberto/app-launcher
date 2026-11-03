@@ -36,6 +36,7 @@ function renderModeControl(mode) {
   els.contextFilterMode.innerHTML = '';
   MODES.forEach(function (m) {
     const b = document.createElement('button');
+    b.dataset.track = 'context-filter.mode';
     b.type = 'button';
     b.className = 'segmented-item';
     b.textContent = MODE_LABELS[m];

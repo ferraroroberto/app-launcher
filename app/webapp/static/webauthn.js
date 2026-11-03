@@ -130,6 +130,7 @@ function renderWebauthn() {
       (d.last_used ? 'last used ' + d.last_used : 'added ' + d.added_at);
     li.appendChild(label);
     const rm = document.createElement('button');
+    rm.dataset.track = 'passkeys.remove';
     rm.type = 'button';
     rm.className = 'icon-button danger';
     rm.innerHTML = icon('trash-2');

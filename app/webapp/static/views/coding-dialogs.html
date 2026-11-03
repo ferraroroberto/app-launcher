@@ -1,7 +1,7 @@
     <!-- The Screen view (#1520): the PC's desktop, live, full screen. Opened
          from the PC load sheet's Screen row; on a desktop browser the same
          view runs in its own pop-out window. screen-view.js drives it. -->
-    <dialog id="screenView" class="screen-view" aria-labelledby="screenViewTitle">
+    <dialog id="screenView" class="screen-view" data-track-view="sheet.screen" aria-labelledby="screenViewTitle">
       <!-- The bar and the tools row, as one block (#1601): in the flow as ever,
            except on a phone held sideways, where the handle below brings them
            up as an overlay (screen-view.js, styles/apps.css). -->
@@ -9,7 +9,7 @@
       <div class="screen-view-bar">
         <h2 id="screenViewTitle" class="screen-view-title" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-monitor"></use></svg> Screen</h2>
         <div id="screenPicker" class="segmented screen-picker" role="group" aria-label="Display" hidden></div>
-        <button type="button" id="screenViewClose" class="icon-button detail-close" aria-label="Close">
+        <button data-track="screen.close" type="button" id="screenViewClose" class="icon-button detail-close" aria-label="Close">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
         </button>
       </div>
@@ -20,19 +20,19 @@
            moves a cursor, a tap clicks at it), remembered per device. -->
       <div class="screen-view-tools">
         <div id="screenMode" class="segmented screen-mode" role="group" aria-label="Mode">
-          <button type="button" class="segmented-item" data-mode="view" aria-pressed="true">View</button>
-          <button type="button" class="segmented-item" data-mode="control" aria-pressed="false">Control</button>
+          <button data-track="screen.mode-view" type="button" class="segmented-item" data-mode="view" aria-pressed="true">View</button>
+          <button data-track="screen.mode-control" type="button" class="segmented-item" data-mode="control" aria-pressed="false">Control</button>
         </div>
         <div id="screenControl" class="segmented screen-control" role="group" aria-label="Control style" hidden>
-          <button type="button" class="segmented-item" data-control="touch" aria-pressed="true">Touch</button>
-          <button type="button" class="segmented-item" data-control="trackpad" aria-pressed="false">Trackpad</button>
+          <button data-track="screen.touch" type="button" class="segmented-item" data-control="touch" aria-pressed="true">Touch</button>
+          <button data-track="screen.trackpad" type="button" class="segmented-item" data-control="trackpad" aria-pressed="false">Trackpad</button>
         </div>
-        <button type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
+        <button data-track="screen.keyboard" type="button" id="screenKeyboard" class="icon-button screen-keyboard" aria-label="Keyboard" title="Keyboard" aria-pressed="false" aria-controls="screenKeys" hidden>
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-keyboard"></use></svg>
         </button>
         <!-- Quality and the readout (#1721): opens the sheet below. Always
              shown, View included. -->
-        <button type="button" id="screenQuality" class="icon-button screen-quality" aria-label="Quality and readout" title="Quality and readout" aria-haspopup="dialog">
+        <button data-track="screen.quality" type="button" id="screenQuality" class="icon-button screen-quality" aria-label="Quality and readout" title="Quality and readout" aria-haspopup="dialog">
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg>
         </button>
       </div>
@@ -58,7 +58,7 @@
       <!-- The handle (#1601): shown only on a phone in landscape, where the bar
            and the tools row are hidden. It names the mode (View / Control) so a
            hidden switch hides no state, and toggles the bar and tools row. -->
-      <button type="button" id="screenHandle" class="screen-handle" aria-expanded="false" aria-controls="screenChrome" title="Screen controls">
+      <button data-track="screen.handle" type="button" id="screenHandle" class="screen-handle" aria-expanded="false" aria-controls="screenChrome" title="Screen controls">
         <span class="screen-handle-view"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-eye"></use></svg>View</span>
         <span class="screen-handle-control"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-mouse-pointer-2"></use></svg>Control</span>
       </button>
@@ -73,45 +73,45 @@
            it and then presses Ctrl+V. -->
       <div id="screenKeys" class="screen-keys" role="group" aria-label="Keys" hidden>
         <div class="screen-keys-page" data-keys-page="main">
-          <button type="button" class="key-btn" data-key="esc">Esc</button>
-          <button type="button" class="key-btn" data-key="tab">Tab</button>
-          <button type="button" class="key-btn" data-mod="ctrl" aria-pressed="false">Ctrl</button>
-          <button type="button" class="key-btn" data-mod="alt" aria-pressed="false">Alt</button>
-          <button type="button" class="key-btn" data-mod="shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>
-          <button type="button" class="key-btn" data-mod="win" aria-pressed="false">Win</button>
-          <button type="button" class="key-btn" data-key="delete">Del</button>
-          <button type="button" class="key-btn" data-key="left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>
-          <button type="button" class="key-btn" data-key="up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>
-          <button type="button" class="key-btn" data-key="down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>
-          <button type="button" class="key-btn" data-key="right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>
-          <button type="button" class="key-btn" data-key="backspace" aria-label="Backspace">&#x232B;</button>
-          <button type="button" class="key-btn screen-key-enter" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>
-          <button type="button" class="key-btn key-page-toggle" data-page-to="fn" aria-label="Show F-keys and navigation keys">F-keys &#x203A;</button>
-          <button type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
-          <button type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
-          <button type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
+          <button data-track="screen.esc" type="button" class="key-btn" data-key="esc">Esc</button>
+          <button data-track="screen.tab" type="button" class="key-btn" data-key="tab">Tab</button>
+          <button data-track="screen.ctrl" type="button" class="key-btn" data-mod="ctrl" aria-pressed="false">Ctrl</button>
+          <button data-track="screen.alt" type="button" class="key-btn" data-mod="alt" aria-pressed="false">Alt</button>
+          <button data-track="screen.shift" type="button" class="key-btn" data-mod="shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>
+          <button data-track="screen.win" type="button" class="key-btn" data-mod="win" aria-pressed="false">Win</button>
+          <button data-track="screen.del" type="button" class="key-btn" data-key="delete">Del</button>
+          <button data-track="screen.left" type="button" class="key-btn" data-key="left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>
+          <button data-track="screen.up" type="button" class="key-btn" data-key="up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>
+          <button data-track="screen.down" type="button" class="key-btn" data-key="down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>
+          <button data-track="screen.right" type="button" class="key-btn" data-key="right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>
+          <button data-track="screen.backspace" type="button" class="key-btn" data-key="backspace" aria-label="Backspace">&#x232B;</button>
+          <button data-track="screen.enter" type="button" class="key-btn screen-key-enter" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>
+          <button data-track="screen.f-keys" type="button" class="key-btn key-page-toggle" data-page-to="fn" aria-label="Show F-keys and navigation keys">F-keys &#x203A;</button>
+          <button data-track="screen.task-manager" type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
+          <button data-track="screen.paste-to-pc" type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
+          <button data-track="screen.paste-ctrl-v" type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
         </div>
         <div class="screen-keys-page" data-keys-page="fn" hidden>
-          <button type="button" class="key-btn" data-key="f1">F1</button>
-          <button type="button" class="key-btn" data-key="f2">F2</button>
-          <button type="button" class="key-btn" data-key="f3">F3</button>
-          <button type="button" class="key-btn" data-key="f4">F4</button>
-          <button type="button" class="key-btn" data-key="f5">F5</button>
-          <button type="button" class="key-btn" data-key="f6">F6</button>
-          <button type="button" class="key-btn" data-key="home">Home</button>
-          <button type="button" class="key-btn" data-key="f7">F7</button>
-          <button type="button" class="key-btn" data-key="f8">F8</button>
-          <button type="button" class="key-btn" data-key="f9">F9</button>
-          <button type="button" class="key-btn" data-key="f10">F10</button>
-          <button type="button" class="key-btn" data-key="f11">F11</button>
-          <button type="button" class="key-btn" data-key="f12">F12</button>
-          <button type="button" class="key-btn" data-key="end">End</button>
-          <button type="button" class="key-btn key-page-toggle" data-page-to="main" aria-label="Back to the main keys"><span class="key-held" data-held hidden></span>&#x2039; Keys</button>
-          <button type="button" class="key-btn" data-key="pageup">PgUp</button>
-          <button type="button" class="key-btn" data-key="pagedown">PgDn</button>
-          <button type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
-          <button type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
-          <button type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
+          <button data-track="screen.f1" type="button" class="key-btn" data-key="f1">F1</button>
+          <button data-track="screen.f2" type="button" class="key-btn" data-key="f2">F2</button>
+          <button data-track="screen.f3" type="button" class="key-btn" data-key="f3">F3</button>
+          <button data-track="screen.f4" type="button" class="key-btn" data-key="f4">F4</button>
+          <button data-track="screen.f5" type="button" class="key-btn" data-key="f5">F5</button>
+          <button data-track="screen.f6" type="button" class="key-btn" data-key="f6">F6</button>
+          <button data-track="screen.home" type="button" class="key-btn" data-key="home">Home</button>
+          <button data-track="screen.f7" type="button" class="key-btn" data-key="f7">F7</button>
+          <button data-track="screen.f8" type="button" class="key-btn" data-key="f8">F8</button>
+          <button data-track="screen.f9" type="button" class="key-btn" data-key="f9">F9</button>
+          <button data-track="screen.f10" type="button" class="key-btn" data-key="f10">F10</button>
+          <button data-track="screen.f11" type="button" class="key-btn" data-key="f11">F11</button>
+          <button data-track="screen.f12" type="button" class="key-btn" data-key="f12">F12</button>
+          <button data-track="screen.end" type="button" class="key-btn" data-key="end">End</button>
+          <button data-track="screen.keys-back" type="button" class="key-btn key-page-toggle" data-page-to="main" aria-label="Back to the main keys"><span class="key-held" data-held hidden></span>&#x2039; Keys</button>
+          <button data-track="screen.pgup" type="button" class="key-btn" data-key="pageup">PgUp</button>
+          <button data-track="screen.pgdn" type="button" class="key-btn" data-key="pagedown">PgDn</button>
+          <button data-track="screen.task-manager" type="button" class="key-btn key-task" data-macro="taskmgr" aria-label="Task Manager (Ctrl+Shift+Esc)">Task Mgr</button>
+          <button data-track="screen.paste-to-pc" type="button" class="key-btn key-clip key-clip-set" data-clip="set" aria-label="Paste to PC: put the phone's clipboard text on the PC's clipboard">Paste to PC</button>
+          <button data-track="screen.paste-ctrl-v" type="button" class="key-btn key-clip key-clip-go" data-clip="paste" aria-label="Paste to PC and press Ctrl+V">Paste + Ctrl+V</button>
         </div>
         <input id="screenKeyInput" class="screen-key-input" type="text" aria-label="Type on the PC" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
       </div>
@@ -120,18 +120,18 @@
     <!-- Paste to PC by hand (#1719): shown only when the phone refuses to let
          the page read its clipboard. Header ✕ plus one full-width action (modal
          contract, #545). Whatever is pasted here goes to the PC the same way. -->
-    <dialog id="screenPasteSheet" class="detail-dialog" aria-labelledby="screenPasteTitle">
+    <dialog id="screenPasteSheet" class="detail-dialog" data-track-view="sheet.screen-paste" aria-labelledby="screenPasteTitle">
       <form id="screenPasteForm" class="detail-card">
         <div class="detail-header">
           <h2 id="screenPasteTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard"></use></svg> Paste to PC</h2>
-          <button type="button" id="screenPasteClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="screen-paste.close" type="button" id="screenPasteClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <p class="settings-footnote">The phone didn't let the page read its clipboard. Paste the text here, then send it.</p>
         <textarea id="screenPasteText" class="input-native" rows="6" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Text to send to the PC"></textarea>
         <div class="detail-actions">
-          <button type="submit" id="screenPasteSend" class="button-primary detail-save-btn">Send to PC</button>
+          <button data-track="screen-paste.send" type="submit" id="screenPasteSend" class="button-primary detail-save-btn">Send to PC</button>
         </div>
       </form>
     </dialog>
@@ -139,11 +139,11 @@
     <!-- Quality and readout (#1721): three presets, remembered per device (a
          pick reconnects), and the readout switch. Header close plus one
          full-width Done (modal contract, #545). screen-view.js drives it. -->
-    <dialog id="screenQualitySheet" class="detail-dialog" aria-labelledby="screenQualityTitle">
+    <dialog id="screenQualitySheet" class="detail-dialog" data-track-view="sheet.screen-quality" aria-labelledby="screenQualityTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="screenQualityTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sliders-horizontal"></use></svg> Quality</h2>
-          <button type="button" id="screenQualityClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="screen-quality.close" type="button" id="screenQualityClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -151,11 +151,11 @@
         <p id="screenPresetNote" class="settings-footnote" aria-live="polite"></p>
         <div class="switch-row settings-switch-row">
           <span>Readout</span>
-          <button type="button" id="screenReadoutToggle" class="toggle" role="switch" aria-checked="false" aria-label="Readout" aria-describedby="screenReadoutHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          <button data-track="screen-quality.readout-toggle" type="button" id="screenReadoutToggle" class="toggle" role="switch" aria-checked="false" aria-label="Readout" aria-describedby="screenReadoutHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
         </div>
         <p id="screenReadoutHelp" class="field-help">Shows frames a second, data a second, the average frame size and the time from confirming a frame to the next one arriving, plus how long the PC takes to grab, compare, resize and encode.</p>
         <div class="detail-actions">
-          <button type="button" id="screenQualityDone" class="button-primary detail-save-btn">Done</button>
+          <button data-track="screen-quality.done" type="button" id="screenQualityDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
@@ -164,18 +164,18 @@
          run_in_background or Monitor, Running first, then Finished. A row opens
          the task's output tail. Read-only, so its one action is Done. Driven by
          background-tasks/background-tasks-sheet.js. -->
-    <dialog id="bgTasksSheet" class="detail-dialog bg-tasks-sheet" aria-labelledby="bgTasksTitle">
+    <dialog id="bgTasksSheet" class="detail-dialog bg-tasks-sheet" data-track-view="sheet.bg-tasks" aria-labelledby="bgTasksTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="bgTasksTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clipboard-list"></use></svg> Background tasks</h2>
-          <button type="button" id="bgTasksClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="bg-tasks.close" type="button" id="bgTasksClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <div id="bgTasksState" class="bg-tasks-state" role="status" aria-live="polite" hidden></div>
         <div id="bgTasksBody" class="bg-tasks-body"></div>
         <div class="detail-actions">
-          <button type="button" id="bgTasksDone" class="button-primary detail-save-btn">Done</button>
+          <button data-track="bg-tasks.done" type="button" id="bgTasksDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
@@ -184,11 +184,11 @@
          mentioned, grouped, newest first. A row opens in a new tab; its button
          copies. Read-only, so its one action is Done. Driven by
          links/links-sheet.js. -->
-    <dialog id="linksSheet" class="detail-dialog links-sheet" aria-labelledby="linksTitle">
+    <dialog id="linksSheet" class="detail-dialog links-sheet" data-track-view="sheet.links" aria-labelledby="linksTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="linksTitle" tabindex="-1" autofocus><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg> Links</h2>
-          <button type="button" id="linksClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="links.close" type="button" id="linksClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -206,28 +206,28 @@
           </details>
         </template>
         <div class="detail-actions">
-          <button type="button" id="linksDone" class="button-primary detail-save-btn">Done</button>
+          <button data-track="links.done" type="button" id="linksDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>
 
-    <dialog id="sessionRenameDialog" class="detail-dialog">
+    <dialog id="sessionRenameDialog" class="detail-dialog" data-track-view="sheet.session-rename">
       <form id="sessionRenameForm" class="detail-card">
         <div class="detail-header">
           <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-pencil"></use></svg> <span id="sessionRenameHeading">Rename session</span></h2>
-          <button type="button" id="sessionRenameCancel" class="icon-button detail-close" aria-label="Close">
+          <button data-track="session-rename.close" type="button" id="sessionRenameCancel" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
         <input id="sessionRenameInput" type="text" class="input-native" placeholder="Leave blank for the automatic title">
         <div id="sessionLinkRow" class="session-link-row" hidden>
           <input id="sessionLinkInput" type="text" class="input-native" aria-label="Session link" readonly>
-          <button type="button" id="sessionLinkCopy" class="icon-button session-link-copy" title="Copy link" aria-label="Copy session link">
+          <button data-track="session-rename.copy-link" type="button" id="sessionLinkCopy" class="icon-button session-link-copy" title="Copy link" aria-label="Copy session link">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-link"></use></svg>
           </button>
         </div>
         <div class="detail-actions">
-          <button type="submit" class="button-primary detail-save-btn">Save</button>
+          <button data-track="session-rename.save" type="submit" class="button-primary detail-save-btn">Save</button>
         </div>
       </form>
     </dialog>

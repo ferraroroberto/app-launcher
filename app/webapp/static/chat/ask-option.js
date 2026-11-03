@@ -15,8 +15,9 @@ function span(cls, text) {
 // A button of number (when `n` is given), label, optional description and,
 // with `mark`, the picked check. `extraClass` rides after `tr-ask-opt`. The
 // caller owns `dataset`, `disabled` and any state class on the returned node.
-export function askOption({ n, label, description, mark, extraClass, onTap }) {
+export function askOption({ n, label, description, mark, extraClass, onTap, track }) {
   const b = document.createElement('button');
+  b.dataset.track = track;
   b.type = 'button';
   b.className = extraClass ? 'tr-ask-opt ' + extraClass : 'tr-ask-opt';
   const body = document.createElement('span');

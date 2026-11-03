@@ -336,6 +336,7 @@ function renderSegmented(host, items, currentValue, labelFn, onSelect, valueFn) 
   (items || []).forEach(function (item) {
     const value = valueFn ? valueFn(item) : item;
     const b = document.createElement('button');
+    b.dataset.track = 'agent.option';
     b.type = 'button';
     b.className = 'segmented-item';
     b.textContent = labelFn(item);

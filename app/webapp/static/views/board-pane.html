@@ -7,7 +7,7 @@
           Board
         </span>
         <span id="boardHeadStatus" class="status"></span>
-        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -53,7 +53,7 @@
            in the summary. -->
       <div id="boardColumns" class="board-columns">
         <details id="boardColBacklog" class="card card--collapsible board-col" data-col="backlog">
-          <summary class="collapse-summary">
+          <summary data-track="board.fold-backlog" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-branch"></use></svg>
               <h3 class="collapse-title">Backlog</h3>
@@ -69,12 +69,12 @@
             <div class="board-lane-toolbar">
               <span class="board-lane-toolbar-label" id="boardStartWithLabel">Start with</span>
               <span id="boardDispatchModel" class="model-combo" data-value="claude:sonnet">
-                <button type="button" class="model-combo-trigger" aria-label="Start with model"
+                <button data-track="board.start-model" type="button" class="model-combo-trigger" aria-label="Start with model"
                         aria-haspopup="listbox" aria-expanded="false" aria-controls="boardDispatchModelMenu"
                         title="Model for the Backlog rows' Start and YOLO (the chief's own model is in its settings)">Claude · Sonnet</button>
                 <span id="boardDispatchModelMenu" class="model-combo-menu" role="listbox"
                       aria-label="Start with model" hidden>
-                  <button type="button" role="option" data-value="claude:sonnet"
+                  <button data-track="board.start-model-option" type="button" role="option" data-value="claude:sonnet"
                           aria-selected="true">Claude · Sonnet</button>
                 </span>
               </span>
@@ -89,7 +89,7 @@
              desktop grid as it does in the phone's stack. -->
         <div class="board-col-stack">
           <details id="boardChiefPlan" class="card card--collapsible board-chief-plan" open>
-            <summary class="collapse-summary">
+            <summary data-track="board.fold-chief-plan" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-crown"></use></svg>
                 <h3 class="collapse-title">Chief's plan</h3>
@@ -102,7 +102,7 @@
             </div>
           </details>
           <details id="boardColClaude" class="card card--collapsible board-col" data-col="claude_turn" open>
-            <summary class="collapse-summary">
+            <summary data-track="board.fold-claude-turn" class="collapse-summary">
               <span class="collapse-main">
                 <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-hourglass"></use></svg>
                 <h3 class="collapse-title">Claude's turn</h3>
@@ -117,7 +117,7 @@
           </details>
         </div>
         <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
-          <summary class="collapse-summary">
+          <summary data-track="board.fold-your-turn" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-bell"></use></svg>
               <h3 class="collapse-title">Your turn</h3>
@@ -134,7 +134,7 @@
           </div>
         </details>
         <details id="boardColOther" class="card card--collapsible board-col" data-col="other">
-          <summary class="collapse-summary">
+          <summary data-track="board.fold-prs-jobs" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-pull-request"></use></svg>
               <h3 class="collapse-title">PRs and jobs</h3>
@@ -149,7 +149,7 @@
           </div>
         </details>
         <details id="boardColDone" class="card card--collapsible board-col" data-col="done">
-          <summary class="collapse-summary">
+          <summary data-track="board.fold-done-today" class="collapse-summary">
             <span class="collapse-main">
               <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-check"></use></svg>
               <h3 class="collapse-title">Done today</h3>
@@ -165,7 +165,7 @@
             <ul class="card-list board-list" data-col="done"></ul>
             <div class="board-empty" data-col="done" hidden></div>
             <div class="board-done-earlier"></div>
-            <button type="button" class="button-tint board-done-more" hidden>Show earlier</button>
+            <button data-track="board.show-earlier" type="button" class="button-tint board-done-more" hidden>Show earlier</button>
           </div>
         </details>
       </div>

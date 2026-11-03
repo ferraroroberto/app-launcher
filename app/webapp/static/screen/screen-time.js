@@ -52,8 +52,9 @@ const FEATURES = [
   { id: 'feat.attach.board', label: 'Board answer files' },
 ];
 
-// The tabs' view ids (tabs.js) and the names they show. Time before a
-// visit's first view, or under an id this list doesn't know, is Other.
+// The tabs' view ids (tabs.js) and the names they show. Time in a sheet (a view
+// id starting `sheet.`, from a dialog's data-track-view) is Sheets. Time before
+// a visit's first view, or under any other id this list doesn't know, is Other.
 const SECTIONS = [
   { id: 'claude', label: 'Coding' },
   { id: 'board', label: 'Board' },
@@ -210,14 +211,19 @@ function renderDevices(byDevice, total) {
     .map(function (d) { return shareRow(d.label, byDevice[d.id], total, d.id); }));
 }
 
-// Every section, the busiest first; Other only when it holds time.
+// Every section, the busiest first; Sheets and Other only when they hold time.
 function renderSections(byView, total) {
   const known = new Set(SECTIONS.map(function (s) { return s.id; }));
-  const other = Object.keys(byView).reduce(function (sum, id) {
-    return known.has(id) ? sum : sum + byView[id];
-  }, 0);
+  let sheets = 0;
+  let other = 0;
+  Object.keys(byView).forEach(function (id) {
+    if (known.has(id)) return;
+    if (id.indexOf('sheet.') === 0) sheets += byView[id];
+    else other += byView[id];
+  });
   const rows = SECTIONS.map(function (s) { return { label: s.label, minutes: byView[s.id] || 0 }; });
   rows.sort(function (a, b) { return b.minutes - a.minutes; });
+  if (sheets > 0) rows.push({ label: 'Sheets', minutes: sheets });
   if (other > 0) rows.push({ label: 'Other', minutes: other });
   const list = document.getElementById('screenTimeSections');
   list.replaceChildren(...rows.map(function (r) { return shareRow(r.label, r.minutes, total); }));

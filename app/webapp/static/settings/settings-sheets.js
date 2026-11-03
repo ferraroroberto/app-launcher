@@ -318,6 +318,7 @@ function renderOutboxRoots(roots) {
     path.className = 'outbox-root-path';
     path.textContent = root;
     const remove = document.createElement('button');
+    remove.dataset.track = 'folders.outbox-remove';
     remove.type = 'button';
     remove.className = 'icon-button';
     remove.setAttribute('aria-label', 'Remove ' + root);

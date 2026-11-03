@@ -7,7 +7,7 @@
           Apps
         </span>
         <span id="appsHeadStatus" class="status"></span>
-        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -30,7 +30,7 @@
            ports", which opens the listener sheet (the Port listeners card
            merged in). The note shows only when nothing is running. -->
       <details class="card card--collapsible action-list running-apps-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="apps.fold-running" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-play"></use></svg>
             <h3 class="collapse-title">Running</h3>
@@ -67,7 +67,7 @@
            back into the sheet below it, so both are the same rows and the
            same confirmed stop. -->
       <details id="otherPortsCard" class="card card--collapsible action-list other-ports-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="apps.fold-other-ports" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg>
             <h3 class="collapse-title">Other ports</h3>
@@ -79,7 +79,7 @@
       </div>
 
       <details class="card card--collapsible action-list apps-list-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="apps.fold-apps" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
             <h3 class="collapse-title">Apps</h3>
@@ -98,12 +98,12 @@
         <div id="appsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No apps match the filter.</p>
-          <button type="button" class="empty-state-action">Clear filter</button>
+          <button data-track="apps.clear-filter" type="button" class="empty-state-action">Clear filter</button>
         </div>
         <div id="appsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-layout-grid"></use></svg>
           <p class="empty-state-message">No apps registered yet.</p>
-          <button type="button" id="appsEmptyAction" class="empty-state-action">Scan for apps</button>
+          <button data-track="apps.empty-scan" type="button" id="appsEmptyAction" class="empty-state-action">Scan for apps</button>
         </div>
         <!-- The card's last row (#1437, moved from Settings › Folders): the
              same scan dialog. Hidden while the empty state offers it. -->
@@ -123,7 +123,7 @@
            set (issue #456 part 2/2). The summary says how many and how many
            start at log on (#1437). -->
       <details class="card card--collapsible action-list registered-trays-card">
-        <summary class="collapse-summary">
+        <summary data-track="apps.fold-trays" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
             <h3 class="collapse-title">Trays</h3>
@@ -137,7 +137,7 @@
         <div id="registeredTraysEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-package"></use></svg>
           <p class="empty-state-message">No sister trays found yet. Scan looks for <code>tray.bat</code> files.</p>
-          <button type="button" id="registeredTraysEmptyAction" class="empty-state-action">Scan for trays</button>
+          <button data-track="apps.trays-empty-scan" type="button" id="registeredTraysEmptyAction" class="empty-state-action">Scan for trays</button>
         </div>
         <p class="group-footer trays-footer">Trays switched on start with app-launcher.</p>
         </div>

@@ -165,17 +165,17 @@ function render(host, placeholder) {
   host.innerHTML =
     '<div class="ocr-tray" hidden>' +
       '<div class="ocr-thumbs"></div>' +
-      '<button type="button" class="ocr-extract">' + icon('scan-text') + ' Extract text</button>' +
+      '<button type="button" class="ocr-extract" data-track="composer.extract-text">' + icon('scan-text') + ' Extract text</button>' +
     '</div>' +
     '<div class="composer-upload-status" role="status" aria-live="polite" hidden></div>' +
     '<div class="composer-mic-notice" role="status" aria-live="polite" hidden></div>' +
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +
-        '<button type="button" class="icon-button compose-record composer-mic" aria-pressed="false">' + icon('mic') + '</button>' +
-        '<button type="button" class="icon-button compose-record composer-keys">' + icon('keyboard') + '</button>' +
-        '<button type="button" class="icon-button compose-record composer-image has-options">' + icon('paperclip') + '</button>' +
-        '<button type="button" class="icon-button compose-send composer-send">' + icon('send-horizontal') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-mic" aria-pressed="false" data-track="mic.start">' + icon('mic') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-keys" data-track="composer.keys">' + icon('keyboard') + '</button>' +
+        '<button type="button" class="icon-button compose-record composer-image has-options" data-track="composer.attach">' + icon('paperclip') + '</button>' +
+        '<button type="button" class="icon-button compose-send composer-send" data-track="composer.send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
     // No accept filter on the attach input: iOS then offers Photo
@@ -297,6 +297,7 @@ function renderOcrTray(c) {
     img.src = url;
     img.alt = 'staged screenshot ' + (idx + 1);
     const rm = document.createElement('button');
+    rm.dataset.track = 'composer.ocr-remove';
     rm.type = 'button';
     rm.className = 'ocr-thumb-x';
     rm.innerHTML = icon('x');

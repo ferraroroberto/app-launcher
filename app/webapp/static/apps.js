@@ -431,8 +431,9 @@ function renderIdleLine() {
 // compromise; the kebab keeps them for the phone. Open is also the row tap.
 // All three are the vendored plain verb (icon-button action-row-verb, no fill
 // or border at rest); Stop takes the quiet danger hover.
-function runningVerb(className, glyph, label, onTap, disabled, hint) {
+function runningVerb(className, glyph, label, onTap, disabled, hint, opts) {
   const btn = document.createElement('button');
+  btn.dataset.track = opts.track;
   btn.type = 'button';
   btn.className = className;
   btn.innerHTML = icon(glyph);
@@ -448,12 +449,13 @@ function runningActions(r, noUrl) {
   box.className = 'running-app-actions icon-button-group';
   box.append(
     runningVerb('icon-button action-row-verb running-app-open-inline', 'globe', 'Open ' + r.name,
-      function () { window.open(r.url, '_blank', 'noopener,noreferrer'); }, !r.url, noUrl),
+      function () { window.open(r.url, '_blank', 'noopener,noreferrer'); }, !r.url, noUrl,
+      { track: 'apps.running-open' }),
     runningVerb('icon-button action-row-verb running-app-copy-inline', 'copy', 'Copy ' + r.name + ' URL',
-      function () { copyUrl(r.url); }, !r.url, noUrl),
+      function () { copyUrl(r.url); }, !r.url, noUrl, { track: 'apps.running-copy' }),
     runningVerb('icon-button action-row-verb danger running-app-stop-inline',
       'square', 'Stop ' + r.name,
-      function () { stopAppInstance(r); }),
+      function () { stopAppInstance(r); }, false, '', { track: 'apps.running-stop' }),
   );
   return box;
 }

@@ -129,61 +129,63 @@ class TestMarkup:
         assert not bad, f"data-track ids outside the bounded pattern: {bad}"
 
     def test_no_script_derives_a_control_id_at_runtime(self):
-        """Ids are developer-chosen constants in the markup, never built from
-        element text or data, so no first-party script may set one.
-
-        Two exceptions: ``voice.js`` keeps the dictation mic's id in step with
-        its state, from a closed map of literal ids (the id a tap is logged
-        under is what that tap did), and ``settings/feature-track.js`` records
-        a feature use under an id from its closed list. The tests below pin that
-        each stays a literal list of valid ids, never anything built from data."""
+        """Ids are developer-chosen constants, never built from element text or
+        data, so every place a first-party script sets one gives a string
+        literal of a valid id. The only other right-hand sides are the one
+        parameter each declared control builder (``usage_track_ratchet``
+        ``builders`` in ``.fleet.toml``) forwards from its callers, where the
+        ratchet holds each caller to a literal."""
+        forwarded = {"opts.track", "track"}
+        builders = {
+            "apps.js", "drawer.js", "proof-chip.js", "changes-overlay.js", "ask-option.js",
+        }
+        setter = re.compile(
+            r"""(?:dataset\.track\s*=\s*|setAttribute\(\s*['"]data-track['"]\s*,\s*)([^;)]+)"""
+        )
         offenders = []
         for path in _STATIC.rglob("*.js"):
-            if path.name in ("voice.js", "feature-track.js") or {"_vendored", "vendor"} & set(
-                path.relative_to(_STATIC).parts
-            ):
+            if {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):
                 continue
-            text = path.read_text(encoding="utf-8")
-            if re.search(r"data-track|dataset\.track|dataset\[['\"]track", text):
-                # usage.js only names the attribute in prose; it must not set it.
-                code = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
-                if re.search(r"data-track|dataset\.track|dataset\[['\"]track", code):
-                    offenders.append(path.name)
-        assert not offenders, f"scripts that set data-track: {offenders}"
+            code = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
+            for rhs in setter.findall(code):
+                rhs = rhs.strip()
+                literal = re.fullmatch(r"'([^']*)'", rhs)
+                if literal and ID_PATTERN.fullmatch(literal.group(1)):
+                    continue
+                if rhs in forwarded and path.name in builders:
+                    continue
+                offenders.append(f"{path.name}: {rhs}")
+        assert not offenders, f"control ids that are not literals: {offenders}"
 
-
-    def test_the_mic_ids_are_a_closed_map_of_literals(self):
-        """The one script allowed to set ``data-track`` (#1581) sets it only
-        from a literal id map, plus one literal id for a withheld click (#1922):
-        valid constants, no id built at runtime."""
-        text = (_STATIC / "voice.js").read_text(encoding="utf-8")
-        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.S)
-        sets = [ln.strip() for ln in code.splitlines() if "data-track" in ln]
-        assert sets == [
-            "if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);",
-            "_noClickProbe.setAttribute('data-track', _NO_CLICK_ID);",
-            "_noClickProbe.removeAttribute('data-track');",
-        ], sets
-        no_click = re.search(r"^const _NO_CLICK_ID = '([^']*)';$", code, flags=re.M)
-        assert no_click and ID_PATTERN.fullmatch(no_click.group(1)), "the withheld-click id is not a literal"
-        block = re.search(r"const _TAP_IDS = \{(.*?)\};", code, flags=re.S)
-        assert block, "voice.js lost its _TAP_IDS map"
-        ids = re.findall(r"^\s*\w+: '([^']*)',?$", block.group(1), flags=re.M)
-        assert len(ids) == 4 and len(block.group(1).strip().splitlines()) == 4, block.group(1)
+    def test_the_mic_ids_are_literals_and_nothing_fakes_a_click(self):
+        """``voice.js`` keeps the dictation mic's id in step with its state from
+        literal ids only, and a withheld click is recorded through the usage
+        log's direct call: no hidden element is created and clicked."""
+        code = re.sub(r"/\*.*?\*/|//[^\n]*", "", (_STATIC / "voice.js").read_text(encoding="utf-8"), flags=re.S)
+        ids = re.findall(r"setAttribute\('data-track', '([^']*)'\)", code)
+        assert ids == ["mic.ignored-arming", "mic.cancel-finalizing", "mic.stop", "mic.start"], ids
         assert all(ID_PATTERN.fullmatch(i) for i in ids), ids
+        assert "usage.track('mic.no-click');" in code
+        assert "createElement('span')" not in code and ".click()" not in code
 
+    def test_no_script_fakes_a_click_to_record_a_use(self):
+        offenders = []
+        for path in _STATIC.rglob("*.js"):
+            if {"_vendored", "vendor"} & set(path.relative_to(_STATIC).parts):
+                continue
+            code = re.sub(r"/\*.*?\*/|//[^\n]*", "", path.read_text(encoding="utf-8"), flags=re.S)
+            if re.search(r"probe\w*\.click\(\)|dispatchEvent\(\s*new (?:Mouse|Pointer)?Event\(\s*['\"]click", code, flags=re.I):
+                offenders.append(path.name)
+        assert not offenders, f"scripts that fake a click: {offenders}"
 
     def test_the_feature_ids_are_a_closed_list_of_literals(self):
-        """``feature-track.js`` sets ``data-track`` once, from an id it found in
-        its own literal list; every ``feat.*`` string any script names is on it."""
+        """``feature-track.js`` records a use only for an id on its own literal
+        list; every ``feat.*`` string any script names is on it."""
         tracker = _STATIC / "settings" / "feature-track.js"
         code = re.sub(r"/\*.*?\*/|//[^\n]*", "", tracker.read_text(encoding="utf-8"), flags=re.S)
-        sets = [ln.strip() for ln in code.splitlines() if "data-track" in ln and "Attribute" in ln]
-        assert sets == [
-            "probe.setAttribute('data-track', id);",
-            "probe.removeAttribute('data-track');",
-        ], sets
+        assert "data-track" not in code and "dataset" not in code, "the tracker no longer touches the DOM"
         assert "FEATURE_IDS.indexOf(id) === -1) return;" in code
+        assert code.count("usage.track(id);") == 1
         listed = re.findall(r"^\s*'(feat\.[^']*)',$", code, flags=re.M)
         assert listed == list(FEATURE_IDS), "the page's list drifted from src/usage/feature_counts.py"
         assert all(ID_PATTERN.fullmatch(i) for i in listed), listed

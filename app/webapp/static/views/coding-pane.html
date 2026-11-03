@@ -10,7 +10,7 @@
           Code
         </span>
         <span id="homeHeadStatus" class="status"></span>
-        <button type="button" class="cpu-reading hit-target" data-level="unknown" data-pc-health=""
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown" data-pc-health=""
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" id="themeToggle" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -42,7 +42,7 @@
              poll replaces it in place. CSS shows the head, Codex and Grok rows
              for the providers Settings shows (html[data-usage-shows]). -->
         <div id="codingUsage" class="usage-meter-slot">
-          <button type="button" class="usage-meter usage-meter-full" data-tone="none" data-pending="true" aria-label="Usage: reading the quota. Open usage details">
+          <button data-track="coding.usage-meter" type="button" class="usage-meter usage-meter-full" data-tone="none" data-pending="true" aria-label="Usage: reading the quota. Open usage details">
             <span class="um-head">
               <svg class="agent-icon um-mark" aria-hidden="true" focusable="false"><use href="#b-claude"></use></svg>
               <span class="um-name">Claude Code</span>
@@ -72,7 +72,7 @@
            the shared session rows (#1433), then the Telegram row. Card
            controls never sit in the <summary> (#1132). -->
       <details class="card card--collapsible sessions-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="coding.fold-sessions" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
             <h3 class="collapse-title">Sessions</h3>
@@ -96,7 +96,7 @@
         <div id="sessionsEmpty" class="empty-state">
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg>
           <p class="empty-state-message">No sessions launched from here yet.</p>
-          <button type="button" id="sessionsEmptyAction" class="empty-state-action">Show projects</button>
+          <button data-track="coding.empty-show-projects" type="button" id="sessionsEmptyAction" class="empty-state-action">Show projects</button>
         </div>
         </div>
       </details>
@@ -106,7 +106,7 @@
            row, the refresh in the toolbar and when it last ran in the
            footer. Collapsed by default (#383). -->
       <details class="card card--collapsible action-list projects-card">
-        <summary class="collapse-summary">
+        <summary data-track="coding.fold-projects" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
             <h3 class="collapse-title">Projects</h3>
@@ -136,12 +136,12 @@
         <div id="claudeFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No projects match the filter.</p>
-          <button type="button" class="empty-state-action">Clear filter</button>
+          <button data-track="coding.clear-filter" type="button" class="empty-state-action">Clear filter</button>
         </div>
         <div id="claudeEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg>
           <p class="empty-state-message">No projects found — point <strong>Projects folder</strong> in Settings at a folder that has project subdirectories.</p>
-          <button type="button" id="claudeEmptyAction" class="empty-state-action">Open Settings</button>
+          <button data-track="coding.empty-open-settings" type="button" id="claudeEmptyAction" class="empty-state-action">Open Settings</button>
         </div>
         <p id="gitCheckedFooter" class="group-footer git-checked-footer" hidden></p>
         </div>

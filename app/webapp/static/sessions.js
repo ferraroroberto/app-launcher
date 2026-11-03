@@ -198,6 +198,7 @@ function stoppedChiefRow() {
       restart: true, title: 'Reattach the most recent chief conversation' },
   ].forEach(function (verb) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'sessions.chief-verb';
     btn.type = 'button';
     btn.id = verb.id;
     btn.className = 'icon-button action-row-verb chief-verb';
@@ -213,6 +214,7 @@ function stoppedChiefRow() {
     actions.appendChild(btn);
   });
   const kebab = document.createElement('button');
+  kebab.dataset.track = 'sessions.chief-menu';
   kebab.type = 'button';
   kebab.className = 'icon-button session-kebab';
   kebab.innerHTML = icon('ellipsis-vertical');
@@ -302,6 +304,7 @@ function sessionRow(s) {
   // The glyph is the kebab the Coding tile's project menu already uses;
   // the contents are the gear's, unchanged (second attempt).
   const kebab = document.createElement('button');
+  kebab.dataset.track = 'sessions.menu';
   kebab.type = 'button';
   kebab.className = 'icon-button session-kebab';
   kebab.innerHTML = icon('ellipsis-vertical');
@@ -327,6 +330,7 @@ function sessionOpenButton(s, isChief, remote) {
   // is inert and none is stranded. Kept deliberately from the first
   // attempt: restoring the kebab must not restore the dead row.
   const open = document.createElement('button');
+  open.dataset.track = 'sessions.open';
   open.className = 'launch-btn session-open';
   open.type = 'button';
 

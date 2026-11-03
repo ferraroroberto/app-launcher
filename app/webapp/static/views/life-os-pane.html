@@ -7,7 +7,7 @@
           Life
         </span>
         <span id="lifeHeadStatus" class="status"></span>
-        <button type="button" class="cpu-reading hit-target" data-level="unknown"
+        <button data-track="cpu-load" type="button" class="cpu-reading hit-target" data-level="unknown"
                 title="CPU load" aria-label="CPU load unknown. Show details">–</button>
         <button type="button" class="icon-button home-toggle hit-target theme-toggle-btn" data-track="theme-toggle"
                 title="Toggle theme" aria-label="Toggle dark mode">
@@ -24,7 +24,7 @@
            linked to wears a send glyph and starts or opens that bot from its
            kebab, and setup lives in Settings › Telegram. -->
       <details class="card card--collapsible action-list lifeos-list-card" open>
-        <summary class="collapse-summary">
+        <summary data-track="life-os.fold-skills" class="collapse-summary">
           <span class="collapse-main">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-library-big"></use></svg>
             <h3 class="collapse-title">Skills</h3>
@@ -48,7 +48,7 @@
           <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <input id="lifeOsFilterInput" type="search" autocomplete="off" autocapitalize="none" spellcheck="false"
                  placeholder="Skills and conversations" aria-label="Search skills and conversations">
-          <button id="lifeOsConvoScope" type="button" class="lifeos-convo-scope" hidden><span class="chip"><span id="lifeOsConvoScopeName"></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></span></button>
+          <button data-track="life-os.convo-scope" id="lifeOsConvoScope" type="button" class="lifeos-convo-scope" hidden><span class="chip"><span id="lifeOsConvoScopeName"></span><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg></span></button>
         </label>
         <div id="lifeOsState" class="empty-state" role="status" hidden></div>
         <h4 id="lifeOsSkillsHead" class="lifeos-group-head" hidden>Skills <span id="lifeOsSkillsCount" class="lifeos-group-count"></span></h4>
@@ -56,12 +56,12 @@
         <div id="lifeOsFilterEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-search"></use></svg>
           <p class="empty-state-message">No skills match the filter.</p>
-          <button type="button" class="empty-state-action">Clear filter</button>
+          <button data-track="life-os.clear-filter" type="button" class="empty-state-action">Clear filter</button>
         </div>
         <div id="lifeOsEmpty" class="empty-state" hidden>
           <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-sprout"></use></svg>
           <p class="empty-state-message">No life-os skills found — point <strong>Life OS folder</strong> in Settings at a life-os checkout.</p>
-          <button type="button" id="lifeOsEmptyAction" class="empty-state-action">Open Settings</button>
+          <button data-track="life-os.empty-open-settings" type="button" id="lifeOsEmptyAction" class="empty-state-action">Open Settings</button>
         </div>
         <!-- The field's second group (#1504): the conversations a search
              found, or one skill's own, newest first. A row opens the
