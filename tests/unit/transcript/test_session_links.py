@@ -12,8 +12,17 @@ from typing import Any, Dict, List
 
 import pytest
 
+from src.session_view import link_titles as lt
 from src.session_view import links as lk
 from tests.unit.transcript import test_background_tasks as bt
+
+
+@pytest.fixture(autouse=True)
+def _no_network(monkeypatch):
+    """No test reaches a real page or ``gh``; the cache starts empty."""
+    monkeypatch.setattr(lt, "page_title", lambda url: None)
+    monkeypatch.setattr(lt, "github_title", lambda url: None)
+    lt.reset_cache()
 
 
 def _write(path: Path, rows: List[Dict[str, Any]]) -> Path:
@@ -188,8 +197,37 @@ def test_route_lists_links(webapp_client, _bypass_gate, monkeypatch, tmp_path):
     client, _, overrides = webapp_client
     path = _write(tmp_path / "s.jsonl", [_text("2026-10-01T10:00:00Z", "http://localhost:9/x")])
     _serve(overrides, monkeypatch, path)
+    monkeypatch.setattr(lt, "page_title", lambda url: "Dev Preview")
     body = client.get(_ROUTE).json()
     assert body["available"] is True and body["total"] == 1
+    assert body["groups"][0]["links"][0]["title"] == "localhost:9 · Dev Preview"
+
+
+def test_a_published_artifact_carries_its_title_and_an_unpublished_one_none(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        {"type": "assistant", "timestamp": "2026-10-01T10:00:00Z", "message": {"content": [
+            {"type": "tool_use", "id": "t1", "name": "Artifact", "input": {"title": "Weekly Report"}}]}},
+        {"type": "user", "timestamp": "2026-10-01T10:00:05Z", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": "Published https://claude.ai/artifact/AbCdEfGh123456"}]}},
+        _text("2026-10-01T10:01:00Z", "Older one https://claude.ai/artifact/ZzZzZzZz987654"),
+    ])
+    links = _by_group(lk.fold_links(path))["artifacts"]
+    assert {x["url"].rsplit("/", 1)[-1]: x["title"] for x in links} == {
+        "AbCdEfGh123456": "Weekly Report", "ZzZzZzZz987654": None}
+
+
+def test_rows_run_newest_first_by_last_mention(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        _text("2026-10-01T10:00:00Z", "http://localhost:3000/a"),
+        _text("2026-10-01T10:01:00Z", "http://localhost:4000/b"),
+        _text("2026-10-01T10:02:00Z", "http://localhost:5000/c"),
+        _text("2026-10-01T10:03:00Z", "http://localhost:3000/a"),
+    ])
+    rows = _by_group(lk.fold_links(path))["servers"]
+    assert [x["url"].rsplit("/", 1)[-1] for x in rows] == ["a", "c", "b"]
+    stamps = [x["last_seen"] for x in rows]
+    assert stamps == sorted(stamps, reverse=True)
 
 
 def test_route_says_no_transcript(webapp_client, _bypass_gate, monkeypatch, tmp_path):

@@ -324,6 +324,7 @@ export const els = {
   linksDone: document.getElementById('linksDone'),
   linksState: document.getElementById('linksState'),
   linksBody: document.getElementById('linksBody'),
+  linksGroupTemplate: document.getElementById('linksGroupTemplate'),
   // Show changes overlay
   changesOverlay: document.getElementById('changesOverlay'),
   changesClose: document.getElementById('changesClose'),

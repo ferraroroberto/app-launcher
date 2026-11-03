@@ -3,8 +3,9 @@
 Every artifact and URL a session's transcript mentioned, folded server-side
 and grouped. Pinned against stubbed routes (every name and URL synthetic):
 
-* the item is in the session view's ⋮ menu and opens a sheet listing each
-  group's rows once, a row being a link that opens in a new tab;
+* the item is in the session view's ⋮ menu and opens a sheet of folded groups
+  (a name and a count); a tap unfolds one into its rows, newest first, each a
+  link that opens in a new tab under its real title with a time label;
 * a session with no links says so;
 * rows meet the 44px floor and nothing scrolls sideways at 390px.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import json as _json
 import re
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from playwright.sync_api import Page, expect
@@ -37,18 +39,27 @@ _TRANSCRIPT = {
 }
 
 
-def _link(url: str, label: str, count: int = 1) -> dict:
-    return {"url": url, "label": label, "first_seen": "2026-10-01T10:00:00Z",
-            "last_seen": "2026-10-01T10:05:00Z", "count": count}
+def _stamp(minutes_ago: int) -> str:
+    moment = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _link(url: str, label: str, count: int = 1, title=None, minutes_ago: int = 5) -> dict:
+    return {"url": url, "label": label, "title": title, "first_seen": _stamp(minutes_ago + 5),
+            "last_seen": _stamp(minutes_ago), "count": count}
 
 
 _LINKS = {
-    "available": True, "reason": None, "session_id": _SID, "total": 3, "partial": False,
+    "available": True, "reason": None, "session_id": _SID, "total": 4, "partial": False,
     "groups": [
-        {"key": "artifacts", "title": "Artifacts", "total": 1,
-         "links": [_link("https://claude.ai/artifact/AbCdEfGh123456", "Weekly Report")]},
+        {"key": "artifacts", "title": "Artifacts", "total": 2,
+         "links": [_link("https://claude.ai/artifact/AbCdEfGh123456", "Artifact AbCdEfGh",
+                         title="Weekly Report", minutes_ago=12),
+                   _link("https://claude.ai/artifact/ZzZzZzZz987654", "Artifact ZzZzZzZz",
+                         minutes_ago=300)]},
         {"key": "github", "title": "GitHub", "total": 1,
-         "links": [_link("https://github.com/acme/widgets/pull/12", "acme/widgets#12", 2)]},
+         "links": [_link("https://github.com/acme/widgets/pull/12", "acme/widgets#12", 2,
+                         title="acme/widgets#12 · Fix the widget")]},
         {"key": "servers", "title": "Servers & previews", "total": 1,
          "links": [_link("http://100.64.1.2:8123/index.html", "100.64.1.2:8123")]},
     ],
@@ -86,34 +97,58 @@ _FIT = """
   const sheet = document.getElementById('linksSheet');
   const rows = [...sheet.querySelectorAll('.link-open')];
   const copies = [...sheet.querySelectorAll('.link-copy')];
+  const heads = [...sheet.querySelectorAll('.links-group-head')];
   if (!rows.length || !rows[0].getBoundingClientRect().height) return null;
   const de = document.documentElement;
   const body = document.getElementById('linksBody');
   return {minRow: Math.min(...rows.map(x => x.getBoundingClientRect().height)),
           minCopy: Math.min(...copies.map(x => x.getBoundingClientRect().height)),
+          minHead: Math.min(...heads.map(x => x.getBoundingClientRect().height)),
           body: body.scrollWidth - body.clientWidth, doc: de.scrollWidth - de.clientWidth};
 })()
 """
 
 
-def test_links_lists_each_group_and_opens_in_a_new_tab(authed_page: Page, base_url: str) -> None:
+def test_links_groups_open_folded_and_unfold_into_titled_rows(authed_page: Page, base_url: str) -> None:
     _mock(authed_page, _LINKS)
     _open_links(authed_page, base_url)
 
     sheet = authed_page.locator("#linksSheet")
     expect(sheet).to_be_visible()
-    expect(sheet.locator(".links-group-title")).to_have_text(
-        ["Artifacts 1", "GitHub 1", "Servers & previews 1"])
+    groups = sheet.locator(".links-group")
+    expect(groups.locator(".links-group-title")).to_have_text(["Artifacts", "GitHub", "Servers & previews"])
+    expect(groups.locator(".links-group-count")).to_have_text(["2", "1", "1"])
+    # Every group opens folded: no row is on screen until its head is tapped.
+    for index in range(3):
+        expect(groups.nth(index)).not_to_have_attribute("open", re.compile(".*"))
+    expect(sheet.locator(".link-open").first).to_be_hidden()
+    # The fold toggle is a constant tracking id from the markup.
+    expect(sheet.locator(".links-group-head").first).to_have_attribute("data-track", "links.group-fold")
+
+    for index in range(3):
+        groups.nth(index).locator(".links-group-head").click()
     rows = sheet.locator(".link-open")
-    expect(rows).to_have_count(3)
-    expect(rows.first.locator(".link-title")).to_have_text("Weekly Report")
+    expect(rows).to_have_count(4)
+    # A real title, not "Artifact <id>"; the label stands in when none was found.
+    expect(rows.nth(0).locator(".link-title")).to_have_text("Weekly Report")
+    expect(rows.nth(1).locator(".link-title")).to_have_text("Artifact ZzZzZzZz")
+    expect(rows.nth(2).locator(".link-title")).to_have_text("acme/widgets#12 · Fix the widget")
+    # Newest first, each with when it was last mentioned.
+    expect(rows.nth(0).locator(".link-meta")).to_contain_text(re.compile(r"^\d+ min ago"))
+    expect(rows.nth(1).locator(".link-meta")).to_contain_text(re.compile(r"^\d+ h ago"))
     expect(rows.first).to_have_attribute("href", "https://claude.ai/artifact/AbCdEfGh123456")
     expect(rows.first).to_have_attribute("target", "_blank")
-    expect(sheet.locator(".link-copy")).to_have_count(3)
+    expect(sheet.locator(".link-copy")).to_have_count(4)
 
+    # A chevron mid-turn reaches past the edge: measure once the folds have settled.
+    authed_page.wait_for_function("document.getAnimations().length === 0")
     fit = stable_read(lambda: authed_page.evaluate(_FIT))
     assert fit["minRow"] >= 44 and fit["minCopy"] >= 44, f"a row is under the 44px floor: {fit}"
+    assert fit["minHead"] >= 52, f"a group head is under the 52px row: {fit}"
     assert fit["body"] <= 0 and fit["doc"] <= 0, f"sideways scroll at 390px: {fit}"
+
+    groups.nth(0).locator(".links-group-head").click()
+    expect(rows.first).to_be_hidden()
 
     authed_page.locator("#linksDone").click()
     expect(sheet).to_be_hidden()

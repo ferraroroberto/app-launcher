@@ -2,10 +2,12 @@
  *
  * Opens over either menu's session, reads GET .../links once per open and
  * lists every artifact and URL the transcript mentioned, grouped (Artifacts,
- * GitHub, Servers & previews, Other), newest first. A row opens the link in
- * a new tab; its copy button puts the URL on the clipboard. The server
- * already removed credential-looking query strings, so what is listed is
- * what is safe to show and copy.
+ * GitHub, Servers & previews, Other). Each group opens folded, showing its name
+ * and count; inside it the rows run newest first, each with the page's own title
+ * (the server looked it up, or the row keeps its label) and when it was last
+ * mentioned. A row opens the link in a new tab; its copy button puts the URL on
+ * the clipboard. The server already removed credential-looking query strings,
+ * so what is listed is what is safe to show and copy.
  *
  * Every agent with a transcript reader. `hasLinks` is what both ⋮ menus gate
  * the item on.
@@ -17,6 +19,7 @@ import { AuthRequiredError, apiFailToast, sessionRoute, toast } from '../api.js'
 import { setAsyncState } from '../async-state.js';
 import { hasTranscriptReader } from '../chat/session-transcript.js';
 import { icon } from '../_vendored/icons/icons.js';
+import { timeLabel } from './link-time.js';
 
 // Why the server could not read, in the words the sheet shows.
 const REASON = {
@@ -45,13 +48,6 @@ function copyUrl(url) {
   );
 }
 
-function when(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
 function linkRow(item, key) {
   const row = document.createElement('div');
   row.className = 'link-row';
@@ -64,10 +60,10 @@ function linkRow(item, key) {
   open.rel = 'noopener noreferrer';
   const title = document.createElement('span');
   title.className = 'link-title';
-  title.textContent = item.label;
+  title.textContent = item.title || item.label;
   const meta = document.createElement('span');
   meta.className = 'link-meta';
-  meta.textContent = [item.url.replace(/^https?:\/\//, ''), when(item.last_seen)].filter(Boolean).join(' · ');
+  meta.textContent = [timeLabel(item.last_seen), item.url.replace(/^https?:\/\//, '')].filter(Boolean).join(' · ');
   open.append(title, meta);
   row.appendChild(open);
 
@@ -82,21 +78,23 @@ function linkRow(item, key) {
   return row;
 }
 
+// A group is a <details> cloned from the sheet's template (its fold toggle
+// carries a constant data-track id in markup) and opens folded.
 function group(g) {
-  const section = document.createElement('section');
-  section.className = 'links-group';
+  const section = els.linksGroupTemplate.content.firstElementChild.cloneNode(true);
   section.dataset.group = g.key;
-  const h = document.createElement('h3');
-  h.className = 'links-group-title';
-  h.insertAdjacentHTML('beforeend', icon(GROUP_GLYPH[g.key] || 'link'));
-  h.append(' ' + g.title + ' ' + g.total);
-  section.appendChild(h);
-  g.links.forEach(function (item) { section.appendChild(linkRow(item, g.key)); });
+  const head = section.querySelector('.links-group-head');
+  head.insertAdjacentHTML('afterbegin', icon(GROUP_GLYPH[g.key] || 'link', 'links-group-glyph'));
+  head.insertAdjacentHTML('beforeend', icon('chevron-down', 'links-group-chevron'));
+  section.querySelector('.links-group-title').textContent = g.title;
+  section.querySelector('.links-group-count').textContent = String(g.total);
+  const body = section.querySelector('.links-group-body');
+  g.links.forEach(function (item) { body.appendChild(linkRow(item, g.key)); });
   if (g.total > g.links.length) {
     const more = document.createElement('p');
     more.className = 'links-note';
     more.textContent = 'The newest ' + g.links.length + ' of ' + g.total;
-    section.appendChild(more);
+    body.appendChild(more);
   }
   return section;
 }
