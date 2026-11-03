@@ -29,7 +29,11 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
     in a web file (`.html`, `.htm`, `.js`, `.mjs`, `.cjs`, `.ts`, `.jsx`, `.tsx`,
     `.vue`, `.svelte`, `.jinja`, `.jinja2`, `.j2`) outside a `_vendored/sign-in/`
     folder: every app's sign-in goes through the one vendored component. It is
-    the only rule that reads web files, and it reads no `.py`.
+    the only rule that reads web files, and it reads no `.py`;
+  * `login-lockout` -- a FastAPI password route (`@<x>.post(".../login")`) in a
+    module that does not import the vendored `login_lockout`, or whose handler
+    never calls `retry_after(...)`: every password route answers `429` with
+    `Retry-After` after repeated wrong passwords.
 
 Test modules (and every file under a `tests/` or `test/` folder) are skipped by
 every rule except `no-window`. A single call keeps its exception with a
@@ -84,7 +88,7 @@ BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**")
 GIT_TIMEOUT_S = 120
 
 RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
-         "password-input-vendored")
+         "password-input-vendored", "login-lockout")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
 TEST_RULES = frozenset({"no-window"})
 #: The rules read from web files rather than Python source.
@@ -118,6 +122,8 @@ _DRIVE_ROOT = re.compile(r"[A-Za-z]:[\\/]?\Z")
 _CLI_MODULES = frozenset({"argparse", "click", "typer", "fire", "optparse"})
 _PLATFORM_EXPRS = frozenset({"sys.platform", "os.name", "platform.system"})
 _GIT_PROGRAMS = frozenset({"git", "git.exe"})
+#: The vendored lock-out module's name, wherever the app copied it.
+LOCKOUT_MODULE = "login_lockout"
 
 EXIT_PASS, EXIT_RISE, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
 
@@ -390,6 +396,40 @@ def _program(call: ast.Call) -> str:
     return ""
 
 
+def _is_login_route(decorator: ast.expr) -> bool:
+    """`@<x>.post("/api/login")`, by position or `path=`: the route a password is posted to."""
+    if not (isinstance(decorator, ast.Call) and isinstance(decorator.func, ast.Attribute)
+            and decorator.func.attr == "post"):
+        return False
+    paths = [*decorator.args[:1], *(kw.value for kw in decorator.keywords if kw.arg == "path")]
+    return any(isinstance(p, ast.Constant) and isinstance(p.value, str)
+               and p.value.rstrip("/").rsplit("/", 1)[-1] == "login" for p in paths)
+
+
+def _calls_retry_after(handler: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    for node in ast.walk(handler):
+        if isinstance(node, ast.Call):
+            func = node.func
+            if (isinstance(func, ast.Attribute) and func.attr == "retry_after") or (
+                    isinstance(func, ast.Name) and func.id == "retry_after"):
+                return True
+    return False
+
+
+def _login_lockout_hits(scanner: _Scanner) -> list[tuple[ast.AST, str, str]]:
+    """A login route with no lock-out: the module never imports it, or the handler never checks it."""
+    found: list[tuple[ast.AST, str, str]] = []
+    for decorator, handler in scanner.login_routes:
+        if not scanner.imports_lockout:
+            message = f"login route `{handler.name}` in a module that does not import {LOCKOUT_MODULE}"
+        elif not _calls_retry_after(handler):
+            message = f"login route `{handler.name}` never calls retry_after() before the password check"
+        else:
+            continue
+        found.append((decorator, "login-lockout", message))
+    return found
+
+
 def _writes_to_a_file(call: ast.Call) -> bool:
     """`print(x, file=fh)` writes data, not a log line; `file=sys.stdout/stderr` is still console output."""
     for kw in call.keywords:
@@ -408,6 +448,8 @@ class _Scanner(ast.NodeVisitor):
         self.print_shadowed = False
         self.cli = False  # a `__main__` guard or a CLI-parser import: the module prints its output
         self.posix_depth = 0  # inside a branch that never runs on Windows
+        self.imports_lockout = False
+        self.login_routes: list[tuple[ast.expr, ast.FunctionDef | ast.AsyncFunctionDef]] = []
 
     def _resolve(self, func: ast.expr) -> str:
         dotted = _dotted(func)
@@ -423,11 +465,17 @@ class _Scanner(ast.NodeVisitor):
                 self.aliases[alias.asname or alias.name] = alias.name
             if alias.name.split(".")[0] in _CLI_MODULES:
                 self.cli = True
+            if alias.name.split(".")[-1] == LOCKOUT_MODULE:
+                self.imports_lockout = True
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         if (node.module or "").split(".")[0] in _CLI_MODULES:
             self.cli = True
+        if (node.module or "").split(".")[-1] == LOCKOUT_MODULE:
+            self.imports_lockout = True
         for alias in node.names:
+            if alias.name == LOCKOUT_MODULE:
+                self.imports_lockout = True
             if node.module in _TRACKED_MODULES:
                 self.aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
             if (alias.asname or alias.name) == "print":
@@ -442,6 +490,8 @@ class _Scanner(ast.NodeVisitor):
         self._visit_def(node)
 
     def _visit_def(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
+        if "login-lockout" in self.rules:
+            self.login_routes.extend((d, node) for d in node.decorator_list if _is_login_route(d))
         for expr in [*node.decorator_list, node.args, *([node.returns] if node.returns else [])]:
             self.visit(expr)
         self._visit_block(node.body, posix=False)
@@ -548,7 +598,7 @@ def scan_source(source: bytes | str, path: str, rules: frozenset[str]) -> list[H
     text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
     lines = text.splitlines()
     hits = []
-    for node, rule, message in scanner.hits:
+    for node, rule, message in [*scanner.hits, *_login_lockout_hits(scanner)]:
         if rule == "logging-not-print" and (scanner.print_shadowed or scanner.cli or is_cli_path(path)):
             continue
         if not _exempt(rule, _window(node, lines)):
