@@ -32,6 +32,8 @@ _TOKEN = "invented-bearer"
 _SESSION = "3f2b8c1e-0d4a-4b6f-9c2e-1a2b3c4d5e6f"
 _AUTH = {"Authorization": f"Bearer {_TOKEN}"}
 _COLUMNS = ["id", "ts", "session_id", "kind", "view_id", "control_id", "device_class", "os_class"]
+# The vendored table also carries the public-site columns; in a fleet app they are never filled.
+_PUBLIC_SITE_COLUMNS = ["country", "visitor", "ip"]
 
 
 @pytest.fixture
@@ -94,10 +96,14 @@ class TestRouterInThisApp:
             rows = conn.execute(
                 "SELECT kind, view_id, control_id, device_class, os_class FROM events ORDER BY id"
             ).fetchall()
+            filled = conn.execute(
+                "SELECT COUNT(*) FROM events WHERE country IS NOT NULL OR visitor IS NOT NULL OR ip IS NOT NULL"
+            ).fetchone()[0]
             everything = "\n".join(conn.iterdump())
         finally:
             conn.close()
-        assert columns == _COLUMNS
+        assert columns == _COLUMNS + _PUBLIC_SITE_COLUMNS
+        assert filled == 0, "a public-site column was filled by a fleet app"
         assert rows == [
             ("session_start", None, None, "phone", "ios"),
             ("view", "board", None, "phone", "ios"),

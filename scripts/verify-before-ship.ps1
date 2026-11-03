@@ -172,6 +172,10 @@ $ratchetStages = @(
     @{ Name = "runtime write"; Argv = @("scripts/runtime_write_ratchet.py")
        NotConfirmed = "a new write target could not be resolved, git was unusable, or a tracked .py file does not parse"
        Failed = "a file gained a write target resolving under a code folder beyond .runtime-write-ratchet-baseline.json; see the named target above." }
+    # Every UX control tracked in the usage log: a new untracked control or sheet fails the ship.
+    @{ Name = "usage track"; Argv = @("scripts/usage_track_ratchet.py")
+       NotConfirmed = "a web file could not be read or its JS never closed, so it was not checked"
+       Failed = "a rule's hits rose above .usage-track-ratchet-baseline.json, or the usage log is not wired; see the named control above." }
 )
 # ratchet-stages:end
 

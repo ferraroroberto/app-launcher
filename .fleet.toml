@@ -72,8 +72,8 @@ compression = { src = "src/compression.py", sha = "d930466848d17d47261261c490c4e
 classify_e2e = { src = "scripts/classify_e2e.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "scripts/classify_e2e.py" }
 icon-button = { src = "app/webapp/static/_vendored/icon-button", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/webapp/static/_vendored/icon-button" }
 notify = { src = "src/notify", sha = "aa820f1215151087588433f290cd2ba55b34658d", dest = "src/notify" }
-usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "98cdb1b7727d12a5c233580478e6fae40d98e6f3", dest = "app/webapp/static/_vendored/usage-log" }
-usage_log = { src = "src/usage_log.py", sha = "98cdb1b7727d12a5c233580478e6fae40d98e6f3", dest = "src/usage_log.py" }
+usage-log = { src = "app/webapp/static/_vendored/usage-log", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "app/webapp/static/_vendored/usage-log" }
+usage_log = { src = "src/usage_log.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "src/usage_log.py" }
 surface_capture = { src = "tests/e2e/_surface.py", sha = "5c4d3a7947dae8b3b4a028bf636c0f052ea3b1f7", dest = "tests/e2e/_surface.py" }
 comment_ratchet = { src = "scripts/comment_ratchet.py", sha = "baac1ed97388a3545bd1e52544821ec20f1dc77a", dest = "scripts/comment_ratchet.py" }
 static_ratchet = { src = "scripts/static_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/static_ratchet.py" }
@@ -88,6 +88,8 @@ doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "5505185c5f4b10e
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/dead_code_ratchet.py" }
 conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/conventions_ratchet.py" }
 runtime_write_ratchet = { src = "scripts/runtime_write_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_ratchet.py" }
+usage_track_ratchet = { src = "scripts/usage_track_ratchet.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "scripts/usage_track_ratchet.py" }
+usage_track_scan = { src = "scripts/usage_track_scan.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "scripts/usage_track_scan.py" }
 runtime_write_resolve = { src = "scripts/runtime_write_resolve.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_resolve.py" }
 rec-wave = { src = "app/webapp/static/_vendored/rec-wave", sha = "9d0fd2777fbae78aaffa7a0e53f62a201db5af79", dest = "app/webapp/static/_vendored/rec-wave" }
 single_instance = { src = "app/tray/single_instance.py", sha = "5d460bd1d9d44eed955c5357d1c9f622f2550ad8", dest = "app/tray/single_instance.py" }
@@ -253,6 +255,17 @@ git_wrappers = ["src/git_utils.py"]
 [runtime_write_ratchet]
 enabled  = true
 baseline = ".runtime-write-ratchet-baseline.json"
+
+# [usage_track_ratchet] -- scripts/usage_track_ratchet.py (with its reader
+# scripts/usage_track_scan.py) fails when the web app's HTML or JS gains a control with no
+# constant `data-track` id, a <dialog> with no `data-track-view`, or a tracking id built at
+# run time, beyond .usage-track-ratchet-baseline.json; `usage-log-wired` also fails, never
+# baselined, when the app does not vendor, start and mount its usage log. Exit 3 is "not
+# confirmed", never clean. Mechanism: project-scaffolding docs/usage-track-ratchet.md.
+[usage_track_ratchet]
+enabled  = true
+baseline = ".usage-track-ratchet-baseline.json"
+rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired"]
 
 [test_weight]
 ratio_ceiling = "1.1413"
