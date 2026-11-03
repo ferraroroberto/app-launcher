@@ -77,6 +77,8 @@ router = APIRouter()
 # conversation, newest-first, carrying the full resumable session id.
 _CONVERSATIONS_DIR = "conversations"
 _CONVERSATIONS_INDEX = "index.json"
+# Captures the index decay moved aside: still searchable and resumable, one level only.
+_ARCHIVE_DIR = "archive"
 
 # Owner titles. fleet-config's writer refuses over 120 characters
 # itself (exit 2); the router checks first so the phone gets a plain 400
@@ -113,16 +115,26 @@ def _capture_rel(life_os_dir: Path, capture: Path) -> str:
 
 
 def _conversation_path(root: Path, skill: Skill, rel: str) -> Optional[Path]:
-    """Accept one flat markdown capture in this skill, including reparse checks."""
+    """Accept one markdown capture in this skill's ``conversations/`` or its
+    ``conversations/archive/`` (no deeper), including reparse checks."""
     relative = Path(rel)
     if relative.is_absolute() or relative.drive or ".." in relative.parts:
         return None
     expected = skills_dir_for(root.resolve()) / skill.id / _CONVERSATIONS_DIR
     candidate = resolve_within(root, rel)
-    if (candidate is None or candidate.parent != expected or
+    if (candidate is None or candidate.parent not in (expected, expected / _ARCHIVE_DIR) or
             candidate.suffix.lower() != ".md" or candidate.name == "index.md"):
         return None
     return candidate
+
+
+def _capture_rel_for_file(root: Path, skill: Skill, filename: str) -> str:
+    """Relative path of ``filename`` in the skill's conversations, falling back
+    to ``archive/`` when the flat file is absent (an index row carries a name only)."""
+    base = skill.skill_dir / _CONVERSATIONS_DIR
+    if not (base / filename).exists() and (base / _ARCHIVE_DIR / filename).exists():
+        base = base / _ARCHIVE_DIR
+    return str((base / filename).relative_to(root))
 
 
 def _last_interaction(path: Optional[Path], created: str) -> str:
@@ -163,7 +175,7 @@ def _conversation_rows(
         if owner and Path(filename).name == filename:
             raw_path = row.get("path") if skill is None else None
             rel = (_capture_rel(root, Path(str(raw_path))) if raw_path else
-                   str((owner.skill_dir / _CONVERSATIONS_DIR / filename).relative_to(root)))
+                   _capture_rel_for_file(root, owner, filename))
             path = _conversation_path(root, owner, rel)
             if path and path.name != filename:
                 path = None
@@ -865,8 +877,7 @@ def _captures_with_sessions(
             filename = str(row.get("file") or "")
             if Path(filename).name != filename:
                 continue
-            path = _conversation_path(
-                root, skill, str((skill.skill_dir / _CONVERSATIONS_DIR / filename).relative_to(root)))
+            path = _conversation_path(root, skill, _capture_rel_for_file(root, skill, filename))
             if path is None or path.name != filename:
                 continue
             try:
