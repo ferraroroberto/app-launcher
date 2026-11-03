@@ -314,3 +314,28 @@ button.settings-row:active { background: var(--card-2); }
 }
 .bot-banner .icon { flex: none; margin-top: 1px; }
 .bot-banner strong { display: block; }
+
+/* ---------- Documents ---------- */
+/* A document row: the title over a muted line (repo, when it last changed).
+   The label keeps the group's one-line ellipsis; the sub line does the same. */
+.settings-row--doc { padding-top: 8px; padding-bottom: 8px; }
+.settings-row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-row-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+/* The reading sheet's body: wide content (a table, a diagram) scrolls inside
+   its own box (chat.css `.md-table-wrap`, `.md-diagram`), never the sheet. */
+.document-sheet-body { min-width: 0; }
+.document-body { min-width: 0; overflow-wrap: anywhere; }
+.document-body > :first-child { margin-top: 0; }

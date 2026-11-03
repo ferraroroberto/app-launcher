@@ -34,6 +34,31 @@
         </button>
       </div>
 
+      <!-- Documents: the fleet's sources of truth, read here. documents.js
+           clones one row per configured document from the template (so the
+           row carries one constant tracking id, not one per document) and
+           hides the whole group when none is configured. -->
+      <div id="documentsSection" hidden>
+        <h2 class="settings-overline">Documents</h2>
+        <div id="documentsGroup" class="card settings-group"></div>
+        <div id="documentsError" class="card settings-group" hidden>
+          <div class="settings-row">
+            <span class="settings-row-label muted">Couldn't read the documents list</span>
+            <button type="button" id="documentsRetry" class="empty-state-action" data-track="settings.documents-retry">Retry</button>
+          </div>
+        </div>
+      </div>
+      <template id="documentRowTemplate">
+        <button type="button" class="settings-row settings-row--doc" data-track="settings.document-open" aria-haspopup="dialog">
+          <svg class="icon settings-row-icon" aria-hidden="true" focusable="false"><use href="#i-book-open"></use></svg>
+          <span class="settings-row-text">
+            <span class="settings-row-label"></span>
+            <span class="settings-row-sub"></span>
+          </span>
+          <svg class="icon settings-row-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg>
+        </button>
+      </template>
+
       <h2 class="settings-overline">Appearance</h2>
       <div class="card settings-group">
         <!-- Text size (#1134): the escape from the viewport zoom lock (WCAG

@@ -143,7 +143,14 @@ function renderFence(info, codeLines) {
     + '<pre class="md-code"><code>' + codeLines.join('\n') + '</code></pre></div>';
 }
 
-export function renderMarkdown(text) {
+// A whole line that is one HTML comment, already escaped. A repo document
+// carries generated-section markers this way; they read as noise on a page.
+const COMMENT_LINE = /^\s*&lt;!--.*--&gt;\s*$/;
+
+// `opts.hideComments` drops such a line as a blank one; Chat leaves it off, so
+// a reply that quotes a comment still shows it.
+export function renderMarkdown(text, opts) {
+  const hideComments = !!(opts && opts.hideComments);
   const lines = escapeHtml(text).split('\n');
   const out = [];
   let inCode = false;
@@ -172,6 +179,7 @@ export function renderMarkdown(text) {
       continue;
     }
     if (inCode) { codeLines.push(line); continue; }
+    if (hideComments && COMMENT_LINE.test(line)) { flushPara(); flushList(); continue; }
 
     // A table needs a piped header row followed by a delimiter row with the
     // same cell count; anything short of that stays a paragraph. Body rows

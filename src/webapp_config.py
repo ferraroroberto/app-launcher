@@ -297,6 +297,11 @@ class WebappConfig:
     # folder on save; this file's load stays lenient about a folder that has
     # since gone.
     outbox_scratch_roots: list = field(default_factory=lambda: ["%TEMP%/claude"])
+    # Settings > Documents: the allowlist of files the reading sheet may show,
+    # each {id, title, repo, path} with `repo` a folder under `projects_dir`.
+    # src.documents checks a row's fields when it is used and drops a bad one,
+    # so a hand edit never stops the config from loading.
+    documents: list = field(default_factory=list)
     # When true, launching a session from the phone also opens an
     # interactive terminal window for it on the PC (over loopback, so it
     # bypasses the Tailscale + passkey gate). Input works from both sides.
@@ -503,6 +508,16 @@ def _load_api_tokens(raw: dict) -> list:
     ]
 
 
+def _load_documents(raw: dict) -> list:
+    """``documents`` — a list of *records*; a non-object entry is dropped here
+    and ``src.documents`` checks each record's fields when it is used."""
+    return [
+        dict(entry)
+        for entry in (raw.get("documents") or [])
+        if isinstance(entry, dict)
+    ]
+
+
 def _load_pi_model(raw: dict) -> str:
     """Migrate the three pre-#845 pinned ids to their current successors."""
     value = str(raw.get("pi_model") or DEFAULT_PI_MODEL)
@@ -579,6 +594,7 @@ def _load_codex_effort(raw: dict) -> str:
 _CUSTOM_LOADERS: Dict[str, Callable[[dict], Any]] = {
     "secrets": _load_secrets,
     "api_tokens": _load_api_tokens,
+    "documents": _load_documents,
     "pi_model": _load_pi_model,
     "codex_effort": _load_codex_effort,
     "codex_model_efforts": _load_codex_model_efforts,

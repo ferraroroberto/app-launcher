@@ -29,8 +29,8 @@ app-launcher/
 │           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
 │           ├── life-os/       # Life OS tab modules beside life-os.js: conversations, the doc browser, the conversation viewer
 │           ├── screen/        # the Screen view: the socket and lifecycle (screen-view.js), control, keys, quality, and their pure helpers
-│           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract
-│           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope
+│           ├── shared/        # modules several views import: the model picker, session-kind predicates, number/date formatting, the launch-size contract, the Mermaid diagram renderer (mermaid-render.js)
+│           ├── settings/      # Settings sheets and cards: launch defaults, API tokens, Telegram, the context filter, fleet scope, the Documents group and its reading sheet
 │           ├── terminal/      # the Terminal pane's modules beside terminal.js: bar, composer bytes, socket, keys, mirror, read-aloud, theme, touch
 │           └── styles/        # the app's own CSS: base.css (tokens, tabs, shell) + one file per view, linked in cascade order
 │
@@ -64,6 +64,7 @@ app-launcher/
 │   ├── instance_role.py        # primary-checkout vs worktree role detection
 │   ├── context_filter_state.py # Context-filter card's persisted UI state
 │   ├── fleet_scope.py          # Settings › Fleet scope: fleet-config's active/dormant switch, via its own writer
+│   ├── documents/              # Settings › Documents: the allowlist's validation, the path jail and the read (__init__.py)
 │   ├── git_utils.py            # shared `git` subprocess runner — every git spawn goes through it
 │   ├── notifications.py        # notify_on_failure dispatch
 │   ├── notify/                 # vendored provider package behind notifications.py (Telegram, …)

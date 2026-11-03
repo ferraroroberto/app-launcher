@@ -219,6 +219,14 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "so the SPA can decide button visibility even off-tailnet.",
     ),
     (
+        lambda p: p.startswith("/api/documents/"),
+        "passkey",
+        "Settings > Documents: one document's text, read off the fleet's repos "
+        "(the fleet guide, the decision register), which describe the home "
+        "stack's internals. The list at /api/documents carries titles and times "
+        "only and stays token-gated, so Settings can draw it without a passkey.",
+    ),
+    (
         lambda p: p == "/api/life-os/file" or p.startswith("/api/life-os/file/"),
         "passkey",
         "Life OS private-content browser (#102): file read/delete/rename, and "

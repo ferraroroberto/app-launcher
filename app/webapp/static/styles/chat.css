@@ -456,6 +456,23 @@
   font-size: inherit;
   white-space: inherit;
 }
+/* A drawn Mermaid diagram (shared/mermaid-render.js swaps it in for a
+   ```mermaid `.md-block`): the same frame as a fence, scaled to the width
+   and scrolling sideways inside its own box when still wider, so the page
+   never does. Unscoped, like the fence above: the Changed files Preview and
+   the Documents sheet both render it. */
+.md-diagram {
+  margin: 0 0 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.md-diagram svg { display: block; height: auto; max-width: 100%; margin: 0 auto; }
+.md-diagram:last-child { margin-bottom: 0; }
+.md-diagram-note { margin: -6px 0 12px; }
 /* In Chat the listing wraps rather than scrolls -- see the note on `.tr-pre`
    below for why. The Life OS viewer keeps its own scroll route. */
 .tr-md .md-block pre.md-code { white-space: pre-wrap; overflow-wrap: anywhere; }
