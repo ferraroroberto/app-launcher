@@ -110,8 +110,9 @@ function buildDrawerComposer(card) {
 // aria-disabled so a tap still reaches it and toasts the reason (a phone has
 // no hover) — the same convention as the overlay's mode segments — so
 // the row never changes shape.
-function drawerAction(cls, glyph, label, title, reason, onTap) {
+function drawerAction(cls, glyph, label, title, reason, onTap, opts) {
   const btn = document.createElement('button');
+  btn.dataset.track = opts.track;
   btn.type = 'button';
   btn.className = 'board-drawer-action ' + cls;
   btn.innerHTML = icon(glyph) + '<span class="board-drawer-action-label">' + label + '</span>';
@@ -131,6 +132,17 @@ function drawerAction(cls, glyph, label, title, reason, onTap) {
 // The open drawer's id, which its card header's aria-controls names.
 export function drawerId(card) {
   return 'board-drawer-' + card.session_id;
+}
+
+function drawerKebab() {
+  const kebab = document.createElement('button');
+  kebab.dataset.track = 'board.drawer-kebab';
+  kebab.type = 'button';
+  kebab.className = 'icon-button board-drawer-kebab';
+  kebab.innerHTML = icon('ellipsis-vertical');
+  kebab.title = 'Session actions';
+  kebab.setAttribute('aria-label', kebab.title);
+  return kebab;
 }
 
 export function buildDrawer(card) {
@@ -172,7 +184,8 @@ export function buildDrawer(card) {
     function () {
       state.boardExpanded = null;
       openSessionOverlay(session, 'chat');
-    }
+    },
+    { track: 'board.drawer-chat' }
   );
   chat.classList.add('is-primary');
   actions.appendChild(chat);
@@ -182,14 +195,10 @@ export function buildDrawer(card) {
     function () {
       state.boardExpanded = null;
       openTerminal(session);
-    }
+    },
+    { track: 'board.drawer-terminal' }
   ));
-  const kebab = document.createElement('button');
-  kebab.type = 'button';
-  kebab.className = 'icon-button board-drawer-kebab';
-  kebab.innerHTML = icon('ellipsis-vertical');
-  kebab.title = 'Session actions';
-  kebab.setAttribute('aria-label', kebab.title);
+  const kebab = drawerKebab();
   actions.appendChild(kebab);
   drawerMenu.attach(card.session_id, kebab, [
     {

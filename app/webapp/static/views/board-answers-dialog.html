@@ -2,11 +2,11 @@
          Roberto, built by board-answers.js when it opens; full-screen on
          the phone, the centred modal on desktop. Done is its one primary
          action. -->
-    <dialog id="chiefAnswersDialog" class="detail-dialog chief-answers-dialog" aria-labelledby="chiefAnswersTitle">
+    <dialog id="chiefAnswersDialog" class="detail-dialog chief-answers-dialog" data-track-view="sheet.chief-answers" aria-labelledby="chiefAnswersTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="chiefAnswersTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg> <span id="chiefAnswersTitleText">Answer the chief</span></h2>
-          <button type="button" id="chiefAnswersClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="chief-answers.close" type="button" id="chiefAnswersClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -24,7 +24,7 @@
         </div>
         <div class="detail-actions">
           <p id="chiefAnswersNote" class="muted small chief-answers-note" role="status" hidden></p>
-          <button type="button" id="chiefAnswersDone" class="button-primary detail-save-btn">Done</button>
+          <button data-track="chief-answers.done" type="button" id="chiefAnswersDone" class="button-primary detail-save-btn">Done</button>
         </div>
       </div>
     </dialog>

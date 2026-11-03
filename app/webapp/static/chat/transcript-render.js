@@ -221,6 +221,7 @@ export function truncControl(opts) {
   const note = document.createElement('div');
   note.className = 'tr-trunc';
   const btn = document.createElement('button');
+  btn.dataset.track = 'chat.trunc-more';
   btn.type = 'button';
   btn.className = 'button-ghost tr-trunc-more';
   btn.textContent = TRUNC_REST;
@@ -275,6 +276,7 @@ function agentMark(agent) {
 // `sid` is the session it came from, for a capped copy's upgrade.
 function copyButton(kind, entriesOf, sid) {
   const btn = document.createElement('button');
+  btn.dataset.track = 'chat.copy-turn';
   btn.type = 'button';
   btn.className = 'icon-button tr-turn-copy';
   btn.setAttribute('aria-label', 'Copy ' + copyLabel(kind).toLowerCase());
@@ -304,6 +306,7 @@ function renderPrompt(e, session) {
   d.open = true;
   tagKey(d, e, 'prompt');
   const s = document.createElement('summary');
+  s.dataset.track = 'chat.prompt-unfold';
   s.className = 'tr-bubble tr-prompt-folded';
   const hint = document.createElement('span');
   hint.className = 'tr-turn-hint';
@@ -339,6 +342,7 @@ function renderPrompt(e, session) {
   foot.appendChild(when);
   foot.appendChild(copyButton('user', function () { return [e]; }, sid));
   const fold = document.createElement('button');
+  fold.dataset.track = 'chat.prompt-fold';
   fold.type = 'button';
   fold.className = 'icon-button tr-prompt-fold';
   fold.setAttribute('aria-label', 'Collapse prompt');
@@ -402,6 +406,7 @@ function renderAgentTurn(first, agent, edited, sid) {
   d.open = true;
   tagKey(d, first, 'turn');
   const s = document.createElement('summary');
+  s.dataset.track = 'chat.turn-fold';
   s.className = 'tr-turn-summary';
   const mark = document.createElement('span');
   mark.className = 'tr-turn-mark';

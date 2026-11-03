@@ -42,6 +42,7 @@ function showState(glyph, message, action) {
   host.appendChild(text);
   if (action) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'life-os-convo-viewer.raw';
     btn.type = 'button';
     btn.className = 'button-ghost lifeos-viewer-raw';
     btn.textContent = action.text;

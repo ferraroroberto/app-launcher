@@ -391,7 +391,8 @@ export function ownerSheetBlock(item, draft, onChange, decorate, files) {
   list.setAttribute('role', 'group');
   list.setAttribute('aria-label', 'Answer ' + item.ref);
   OPTIONS[item.kind].forEach(function (opt, i) {
-    const b = askOption({ n: i + 1, label: opt.label, description: opt.description, mark: true });
+    const b = askOption({ n: i + 1, label: opt.label, description: opt.description, mark: true,
+      track: 'board.owner-check-option' });
     b.dataset.answer = opt.answer;
     b.addEventListener('click', function () {
       draft.pick = draft.pick === opt.answer ? null : opt.answer;

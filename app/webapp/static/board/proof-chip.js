@@ -41,8 +41,9 @@ async function openProof(card, btn) {
   }
 }
 
-function actionButton(label, aria, tone, extraClass, onClick) {
+function actionButton(label, aria, tone, extraClass, onClick, opts) {
   const btn = document.createElement('button');
+  btn.dataset.track = opts.track;
   btn.type = 'button';
   btn.className = 'board-done-action';
   btn.setAttribute('aria-label', aria);
@@ -62,15 +63,16 @@ export function doneActions(card) {
   const buttons = [];
   if (card.url) {
     buttons.push(actionButton('Issue', 'Open issue #' + card.number + ' on GitHub',
-      'neutral', 'board-done-issue', openGithub(card.url)));
+      'neutral', 'board-done-issue', openGithub(card.url), { track: 'board.done-issue' }));
   }
   if (card.pr_url) {
     buttons.push(actionButton('PR', 'Open PR #' + card.pr + ' on GitHub',
-      'neutral', 'board-done-pr', openGithub(card.pr_url)));
+      'neutral', 'board-done-pr', openGithub(card.pr_url), { track: 'board.done-pr' }));
   }
   if (card.proof === 'available') {
     buttons.push(actionButton('Proof', 'Open the proof report for ' + card.repo + ' PR #' + card.proof_pr,
-      'accent', 'board-proof-chip', function (btn) { openProof(card, btn); }));
+      'accent', 'board-proof-chip', function (btn) { openProof(card, btn); },
+      { track: 'board.done-proof' }));
   }
   if (!buttons.length) return null;
   const group = document.createElement('div');

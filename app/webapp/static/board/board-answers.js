@@ -288,6 +288,7 @@ function renderItem(item, index) {
         label: opt.label + (opt.recommended ? ' (Recommended)' : ''),
         description: opt.description,
         mark: true,
+        track: 'board.answer-option',
       });
       b.dataset.i = String(oi);
       if (opt.recommended) b.classList.add('is-recommended');

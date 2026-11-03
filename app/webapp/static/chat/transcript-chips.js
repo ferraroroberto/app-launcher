@@ -45,6 +45,7 @@ function resolveFile(text, files, bare) {
 function fileChip(hit, orig, onOpen) {
   const base = baseName(hit.file.path);
   const chip = document.createElement('button');
+  chip.dataset.track = 'chat.file-chip';
   chip.type = 'button';
   chip.className = 'tr-file-chip';
   chip.title = hit.file.path;

@@ -175,6 +175,7 @@ function renderRows() {
     li.className = 'channel-list-row';
     li.dataset.sessionId = s.session_id;
     const open = document.createElement('button');
+    open.dataset.track = 'channel-list.open';
     open.type = 'button';
     open.className = 'channel-list-open';
     open.title = 'Open a read-only look at this session';
@@ -212,6 +213,7 @@ function renderRows() {
 function compactButton(s, pct) {
   const sid = s.session_id;
   const btn = document.createElement('button');
+  btn.dataset.track = 'channel-list.compact';
   btn.type = 'button';
   btn.className = 'icon-button channel-list-compact';
   if (contextAlert(pct)) btn.dataset.high = 'true';

@@ -481,6 +481,7 @@ function foldRow(count) {
   const li = document.createElement('li');
   li.className = 'lifeos-fold';
   const btn = document.createElement('button');
+  btn.dataset.track = 'life-os.skills-fold';
   btn.type = 'button';
   btn.className = 'drill-row lifeos-fold-btn';
   btn.setAttribute('aria-expanded', skillsUnfolded ? 'true' : 'false');
@@ -575,6 +576,7 @@ function renderRecap() {
     avatar: avatar('notebook-text', 'none', 'lifeos-recap-avatar'),
   });
   const verb = document.createElement('button');
+  verb.dataset.track = 'life-os.recap-launch';
   verb.type = 'button';
   verb.id = 'lifeOsRecapLaunch';
   verb.className = 'icon-button action-row-verb lifeos-recap-launch';

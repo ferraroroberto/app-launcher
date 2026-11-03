@@ -24,6 +24,7 @@ import { icon } from './_vendored/icons/icons.js';
 import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
+import { usage } from './usage.js';
 import { attachRecWave } from './_vendored/rec-wave/rec-wave.js';
 import { inputLabel } from './voice-level.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
@@ -209,19 +210,12 @@ function releaseLabel(d) {
   d.idleLabel = null;
 }
 
-// what a tap on the mic would do right now, as the usage log's
-// `data-track` control id (usage.js). The log's click listener reads the
-// attribute when the tap lands, before toggle() runs, so the id is kept in
-// step with the state — each tap is then logged under what it did. A phone's
-// console is out of reach; the server-side log is not. Constant ids only
-// (the usage-log privacy contract): nothing about the take is recorded.
-const _TAP_IDS = {
-  start: 'mic.start',
-  stop: 'mic.stop',
-  arming: 'mic.ignored-arming',
-  finalizing: 'mic.cancel-finalizing',
-};
-
+// What a tap on the mic would do right now, as the usage log's `data-track`
+// control id. The log's click listener reads the attribute when the tap lands,
+// before toggle() runs, so the id is kept in step with the state: each tap is
+// then logged under what it did. A phone's console is out of reach; the
+// server-side log is not. Constant ids only (the usage-log privacy contract):
+// nothing about the take is recorded.
 function tapState(d) {
   if (d.arming) return 'arming';
   if (d.finishOp) return 'finalizing';
@@ -230,32 +224,22 @@ function tapState(d) {
 }
 
 function syncTrackId(d) {
-  if (d.button) d.button.setAttribute('data-track', _TAP_IDS[tapState(d)]);
+  const button = d.button;
+  if (!button) return;
+  switch (tapState(d)) {
+    case 'arming': button.setAttribute('data-track', 'mic.ignored-arming'); break;
+    case 'finalizing': button.setAttribute('data-track', 'mic.cancel-finalizing'); break;
+    case 'stop': button.setAttribute('data-track', 'mic.stop'); break;
+    default: button.setAttribute('data-track', 'mic.start');
+  }
 }
 
 // A touch that ended on the mic with no click after it. iOS can withhold the
 // click (its hover heuristics), and a withheld click reaches neither toggle()
 // nor the usage log's click listener, so a "the mic needed two taps" report
 // would leave no row at all. This records that case under its own id.
-const _NO_CLICK_ID = 'mic.no-click';
 // iOS fires the click within a few hundred ms of touchend; a second is well past it.
 const _NO_CLICK_MS = 1000;
-let _noClickProbe = null;
-
-// The usage log has no direct record call, only its click listener, so a
-// hidden probe carrying the id is clicked (as feature-track.js does).
-function trackNoClick() {
-  try {
-    if (!_noClickProbe) {
-      _noClickProbe = document.createElement('span');
-      _noClickProbe.hidden = true;
-      document.body.appendChild(_noClickProbe);
-    }
-    _noClickProbe.setAttribute('data-track', _NO_CLICK_ID);
-    _noClickProbe.click();
-    _noClickProbe.removeAttribute('data-track');
-  } catch (_) { /* instrumentation never breaks the app */ }
-}
 
 function watchWithheldClick(button) {
   let timer = null;
@@ -269,7 +253,7 @@ function watchWithheldClick(button) {
     timer = setTimeout(function () {
       timer = null;
       console.info('[dictation] tap ignored: the touch ended on the mic but the browser sent no click');
-      trackNoClick();
+      usage.track('mic.no-click');
     }, _NO_CLICK_MS);
   });
   button.addEventListener('click', function () {

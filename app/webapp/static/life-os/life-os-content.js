@@ -134,6 +134,7 @@ function folderRow(key, folder, rows, open) {
   const li = document.createElement('li');
   li.className = 'lifeos-file-row';
   const btn = document.createElement('button');
+  btn.dataset.track = 'life-os.folder-fold';
   btn.type = 'button';
   btn.className = 'lifeos-folder-btn';
   btn.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -161,6 +162,7 @@ function fileRow(f, label, nested) {
   const li = document.createElement('li');
   li.className = nested ? 'lifeos-file-row lifeos-file-nested' : 'lifeos-file-row';
   const btn = document.createElement('button');
+  btn.dataset.track = 'life-os.file-open';
   btn.type = 'button';
   btn.className = 'lifeos-file-btn';
   btn.textContent = label;

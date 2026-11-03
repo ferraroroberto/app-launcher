@@ -19,18 +19,18 @@ import { bindOutsideClickToClose } from '../dom-utils.js';
 import { KEY_BYTES, SHIFT_KEY_BYTES, CTRL_KEY_BYTES } from './terminal-keys-bytes.js';
 
 const _KEYS_MARKUP =
-  '<button type="button" class="key-btn" data-key="esc">Esc</button>' +
-  '<button type="button" class="key-btn" data-key="up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="tab">Tab</button>' +
-  '<button type="button" class="key-btn key-ctrl" data-key="ctrl" aria-pressed="false">Ctrl</button>' +
-  '<button type="button" class="key-btn" data-key="left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="c" disabled>C</button>' +
-  '<button type="button" class="key-btn key-shift" data-key="shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>' +
-  '<button type="button" class="key-btn" data-key="u" disabled>U</button>' +
-  '<button type="button" class="key-btn" data-key="x" disabled>X</button>';
+  '<button type="button" class="key-btn" data-key="esc" data-track="terminal.key-esc">Esc</button>' +
+  '<button type="button" class="key-btn" data-key="up" data-track="terminal.key-up" aria-label="Up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-up"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="tab" data-track="terminal.key-tab">Tab</button>' +
+  '<button type="button" class="key-btn key-ctrl" data-key="ctrl" data-track="terminal.key-ctrl" aria-pressed="false">Ctrl</button>' +
+  '<button type="button" class="key-btn" data-key="left" data-track="terminal.key-left" aria-label="Left"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="enter" data-track="terminal.key-enter" aria-label="Enter"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-corner-down-left"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="right" data-track="terminal.key-right" aria-label="Right"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-right"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="c" data-track="terminal.key-c" disabled>C</button>' +
+  '<button type="button" class="key-btn key-shift" data-key="shift" data-track="terminal.key-shift" aria-pressed="false" aria-label="Shift"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-big-up"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="down" data-track="terminal.key-down" aria-label="Down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-down"></use></svg></button>' +
+  '<button type="button" class="key-btn" data-key="u" data-track="terminal.key-u" disabled>U</button>' +
+  '<button type="button" class="key-btn" data-key="x" data-track="terminal.key-x" disabled>X</button>';
 
 // Mount one D-pad: `anchor` is the ⌨ button that toggles it, `container`
 // the positioned element the popover floats inside (the composer root),

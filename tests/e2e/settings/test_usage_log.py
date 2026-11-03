@@ -13,6 +13,7 @@ actually connects them.
 from __future__ import annotations
 
 import json
+import os
 import re
 from urllib.parse import urlparse
 
@@ -85,3 +86,38 @@ def test_views_and_taps_reach_the_own_origin_with_the_contract_only(
     for api in ("window.fetch", "navigator.sendBeacon"):
         assert page.evaluate(f"{api}.toString().includes('[native code]')"), f"{api} was wrapped"
     expect(page.locator("#paneSettings")).to_be_visible()
+
+
+def test_newly_tracked_sheet_and_controls_reach_the_summary(
+    authed_page: Page, base_url: str, auth_token: str,
+) -> None:
+    """A sheet's view and the taps inside it land in ``/api/usage/summary``.
+
+    Unmocked, so it writes real rows: it runs only against the disposable
+    instance, never the live tray's log."""
+    if not os.environ.get("LAUNCHER_E2E_AUTOBOOT"):
+        pytest.skip("writes real usage rows; disposable instance only")
+    page = authed_page
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.locator("#tabJobs").click()
+    page.locator('[data-track="jobs-filters"]').click()
+    sheet = page.locator("#jobsSortSheet")
+    expect(sheet).to_be_visible()
+    sheet.locator('[data-track="jobs-sort.name"]').click()
+    sheet.locator('[data-track="jobs-sort.done"]').click()
+    expect(sheet).to_be_hidden()
+    headers = {"Authorization": f"Bearer {auth_token}"} if auth_token else {}
+
+    def summary() -> dict:
+        page.evaluate(
+            "Object.defineProperty(document, 'visibilityState',"
+            " { value: 'hidden', configurable: true });"
+            " document.dispatchEvent(new Event('visibilitychange'));"
+        )
+        return page.request.get(f"{base_url}/api/usage/summary?days=1", headers=headers).json()
+
+    wait_until(page, lambda: "jobs-sort.done" in summary()["controls"], "the sheet taps in the summary",
+               interval_ms=250)
+    report = summary()
+    assert report["views"].get("sheet.jobs-sort", 0) >= 1
+    assert report["controls"].get("jobs-sort.name", 0) >= 1

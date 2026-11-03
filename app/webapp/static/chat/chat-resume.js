@@ -164,7 +164,7 @@ function render() {
   list.setAttribute('aria-label', 'Sessions, newest first');
   const buttons = card.sessions.map(function (s) {
     const b = askOption({
-      label: s.title, description: ago(s.updated_at), extraClass: 'tr-resume-opt',
+      label: s.title, description: ago(s.updated_at), extraClass: 'tr-resume-opt', track: 'chat.resume-option',
       onTap: function () { pick(s); },
     });
     b.dataset.id = s.id;

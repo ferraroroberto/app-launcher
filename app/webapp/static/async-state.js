@@ -60,6 +60,7 @@ export function setAsyncState(host, name, opts) {
   host.appendChild(msg);
   if (retry) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'async.retry';
     btn.type = 'button';
     btn.className = 'empty-state-action async-retry';
     btn.textContent = 'Retry';

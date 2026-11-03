@@ -64,6 +64,7 @@ function formatRunParams(params) {
 // The run's button: its outcome glyph and meta line; a tap shows its log.
 function runButton(jobId, r, onSelect) {
   const btn = document.createElement('button');
+  btn.dataset.track = 'jobs.run-open';
   btn.type = 'button';
   btn.className = 'jobs-run-btn';
   if (state.selectedRun && state.selectedRun.jobId === jobId
@@ -112,6 +113,7 @@ export function renderRunRow(jobId, r, job, declaredNames, handlers) {
   li.appendChild(runButton(jobId, r, handlers.onSelect));
 
   const pin = document.createElement('button');
+  pin.dataset.track = 'jobs.run-pin';
   pin.type = 'button';
   pin.className = 'icon-button jobs-pin-btn' + (r.pinned ? ' selected' : '');
   pin.innerHTML = icon('pin');
@@ -128,6 +130,7 @@ export function renderRunRow(jobId, r, job, declaredNames, handlers) {
   // params now. Opens the run dialog pre-filled with this run's values.
   if (job && declaredNames.size && r.params && typeof r.params === 'object') {
     const rerun = document.createElement('button');
+    rerun.dataset.track = 'jobs.run-rerun';
     rerun.type = 'button';
     rerun.className = 'icon-button';
     rerun.innerHTML = icon('refresh-cw');

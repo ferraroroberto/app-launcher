@@ -68,6 +68,7 @@ function linkRow(item, key) {
   row.appendChild(open);
 
   const copy = document.createElement('button');
+  copy.dataset.track = 'links.copy';
   copy.type = 'button';
   copy.className = 'icon-button link-copy';
   copy.setAttribute('aria-label', 'Copy link');

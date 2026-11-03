@@ -137,6 +137,7 @@ export function renderEditedCard(files, opts) {
   }, { a: 0, d: 0 });
 
   const head = document.createElement('button');
+  head.dataset.track = 'edited.open-changes';
   head.type = 'button';
   head.className = 'tr-edited-head';
   head.setAttribute('aria-label', 'Open Changed files for this turn');
@@ -153,6 +154,7 @@ export function renderEditedCard(files, opts) {
     const line = document.createElement('div');
     line.className = 'tr-edited-line';
     const row = document.createElement('button');
+    row.dataset.track = 'edited.file';
     row.type = 'button';
     row.className = 'tr-edited-row';
     row.dataset.path = f.path;
@@ -170,6 +172,7 @@ export function renderEditedCard(files, opts) {
   const rest = files.length - shown.length;
   if (rest > 0) {
     const more = document.createElement('button');
+    more.dataset.track = 'edited.show-more';
     more.type = 'button';
     more.className = 'tr-edited-more';
     more.textContent = 'Show ' + rest + ' more';
@@ -182,6 +185,7 @@ export function renderEditedCard(files, opts) {
     note.className = 'tr-edited-partial';
     note.append('Earlier steps not loaded · ');
     const older = document.createElement('button');
+    older.dataset.track = 'edited.load-older';
     older.type = 'button';
     older.className = 'tr-edited-older';
     older.textContent = 'Load older';

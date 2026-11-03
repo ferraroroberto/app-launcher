@@ -180,6 +180,7 @@ function renderPicker() {
   const labels = monitorLabels(view.monitors);
   view.monitors.forEach(function (m, i) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'screen.monitor';
     btn.type = 'button';
     btn.className = 'segmented-item';
     btn.textContent = labels[i];

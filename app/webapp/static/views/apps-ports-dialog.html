@@ -2,11 +2,11 @@
          folded under their parent app (#224/#480), each row's kebab holding
          Open, Copy URL and Stop process. Opened from the Running card's last
          row; Check again is its one primary action. apps-listeners.js. -->
-    <dialog id="otherPortsSheet" class="detail-dialog" aria-labelledby="otherPortsSheetTitle">
+    <dialog id="otherPortsSheet" class="detail-dialog" data-track-view="sheet.other-ports" aria-labelledby="otherPortsSheetTitle">
       <div class="detail-card">
         <div class="detail-header">
           <h2 id="otherPortsSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plug"></use></svg> Other ports</h2>
-          <button type="button" id="otherPortsSheetClose" class="icon-button detail-close" aria-label="Close">
+          <button data-track="other-ports.close" type="button" id="otherPortsSheetClose" class="icon-button detail-close" aria-label="Close">
             <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
           </button>
         </div>
@@ -22,7 +22,7 @@
         <p class="group-footer listeners-footer">The launcher itself isn't listed.</p>
         </div>
         <div class="detail-actions">
-          <button type="button" id="listenersCheckAgain" class="button-primary detail-save-btn">Check again</button>
+          <button data-track="other-ports.check-again" type="button" id="listenersCheckAgain" class="button-primary detail-save-btn">Check again</button>
         </div>
       </div>
     </dialog>

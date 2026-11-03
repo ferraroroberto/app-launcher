@@ -101,6 +101,7 @@ function parkedGroup(rows) {
   wrap.className = 'board-plan-group board-plan-parked';
   wrap.open = open;
   const sum = document.createElement('summary');
+  sum.dataset.track = 'board.plan-parked-fold';
   sum.className = 'board-plan-heading board-plan-parked-summary';
   const label = document.createElement('span');
   label.textContent = 'Parked (' + rows.length + ')';
@@ -122,6 +123,7 @@ function parkedGroup(rows) {
 function answerButton(plan, run, shown) {
   const n = shown.length;
   const btn = document.createElement('button');
+  btn.dataset.track = 'board.plan-answer';
   btn.type = 'button';
   btn.className = 'button-tint board-plan-answer';
   btn.innerHTML = icon('messages-square') + ' ';

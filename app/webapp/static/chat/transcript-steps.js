@@ -253,6 +253,7 @@ function truncNote(text) {
 function fullDiffControl(wrap, diff, path, sid) {
   if (!sid || diff.offset == null) return truncNote('Diff truncated');
   const btn = document.createElement('button');
+  btn.dataset.track = 'chat.diff-full';
   btn.type = 'button';
   btn.className = 'button-tint tr-diff-more';
   btn.textContent = 'Show full diff';
@@ -295,6 +296,7 @@ export function renderItem(e, opts) {
   // whole turn.
   if (e.error === true) d.classList.add('tr-item-failed');
   const s = document.createElement('summary');
+  s.dataset.track = 'chat.item-fold';
   s.innerHTML = icon(itemGlyph(e));
   const name = document.createElement('span');
   name.className = 'tr-item-name';
@@ -587,6 +589,7 @@ export function renderRun(run, opts) {
   d.className = 'tr-step';
   tagKey(d, run[0], 'step');
   const s = document.createElement('summary');
+  s.dataset.track = 'chat.step-fold';
   s.className = 'tr-step-line';
   s.innerHTML = icon('chevron-right', 'tr-step-chevron');
   const label = document.createElement('span');

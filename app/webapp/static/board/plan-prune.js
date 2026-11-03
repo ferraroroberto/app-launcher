@@ -46,6 +46,7 @@ async function clearMerged() {
 
 export function clearMergedButton(n) {
   const btn = document.createElement('button');
+  btn.dataset.track = 'board.plan-clear-merged';
   btn.type = 'button';
   btn.className = 'button-tint board-plan-clear-merged';
   btn.innerHTML = icon('trash-2') + ' ';

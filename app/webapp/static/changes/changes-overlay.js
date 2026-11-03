@@ -362,8 +362,9 @@ async function openOnPc(file) {
   else toast('Not opened: this is a test instance');
 }
 
-function toolButton(cls, glyph, label, onTap) {
+function toolButton(cls, glyph, label, onTap, opts) {
   const btn = document.createElement('button');
+  btn.dataset.track = opts.track;
   btn.type = 'button';
   btn.className = 'icon-button ' + cls;
   btn.setAttribute('aria-label', label);
@@ -424,6 +425,7 @@ function sessionFileBody(file, body) {
   }
   [['diff', 'Diff'], ['file', 'File']].forEach(function (opt) {
     const seg = document.createElement('button');
+    seg.dataset.track = 'changes.view-toggle';
     seg.type = 'button';
     seg.className = 'segmented-item';
     seg.dataset.view = opt[0];
@@ -452,8 +454,9 @@ function sessionFileBody(file, body) {
   tools.appendChild(sw);
   const acts = document.createElement('span');
   acts.className = 'icon-button-group chg-acts';
-  acts.appendChild(toolButton('chg-download', 'download', 'Download', function () { downloadFile(file, read); }));
-  const kebab = toolButton('chg-kebab', 'ellipsis-vertical', 'More actions', null);
+  acts.appendChild(toolButton('chg-download', 'download', 'Download', function () { downloadFile(file, read); },
+    { track: 'changes.download' }));
+  const kebab = toolButton('chg-kebab', 'ellipsis-vertical', 'More actions', null, { track: 'changes.file-menu' });
   acts.appendChild(kebab);
   fileMenu.attach(requestPath(file), kebab, [
     {
@@ -505,6 +508,7 @@ function fileRow(file) {
   det.className = 'chg-file';
   det.dataset.path = file.path;
   const sum = document.createElement('summary');
+  sum.dataset.track = 'changes.file-fold';
   sum.appendChild(fileBadge(file.status));
   const parts = file.base != null ? file : splitPath(file.path);
   sum.appendChild(fileName(parts.base, parts.dir, file.old_path ? 'renamed from ' + file.old_path : '', file.path));
@@ -581,6 +585,7 @@ function scopeSwitch() {
   wrap.setAttribute('aria-label', 'Which changes');
   [['turn', 'This turn'], ['session', 'Whole session']].forEach(function (opt) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'changes.scope-toggle';
     btn.type = 'button';
     btn.className = 'chg-scope-btn';
     btn.dataset.scope = opt[0];

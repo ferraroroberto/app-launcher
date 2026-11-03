@@ -14,12 +14,25 @@ import { authHeaders } from './api.js';
 
 export const USAGE_ENDPOINT = '/api/usage/events';
 
+let logger = null;
+
+// The page's handle on the logger for a feature counted when it succeeded,
+// where no click carries it: `usage.track('<literal id>')`. A call before the
+// logger starts, or when it is disabled, records nothing.
+export const usage = {
+  track: function (id) {
+    // dynamic-id-exempt: a pass-through, and the ratchet checks every caller's id is a literal
+    if (logger) logger.track(id);
+  },
+};
+
 // Start the logger once, before the tabs are wired so the restored tab counts
 // as the first view. tabs.js announces every switch, Settings included, as a
 // `launcher:tab` event; its tab name is the view id.
 export function wireUsageLog() {
-  const usage = initUsageLog({ headers: function () { return authHeaders(); } });
+  logger = initUsageLog({ headers: function () { return authHeaders(); } });
   document.addEventListener('launcher:tab', function (e) {
-    usage.trackView(e.detail.tab);
+    // dynamic-id-exempt: tabs.js names the tab from the closed set of data-tab values in the page's nav
+    logger.trackView(e.detail.tab);
   });
 }

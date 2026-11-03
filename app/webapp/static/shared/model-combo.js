@@ -38,6 +38,7 @@ function comboOptionEl(item) {
     ? { value: item, label: item, available: true }
     : item;
   const option = document.createElement('button');
+  option.dataset.track = 'model-combo.option';
   option.type = 'button';
   option.setAttribute('role', 'option');
   option.setAttribute('aria-selected', 'false');

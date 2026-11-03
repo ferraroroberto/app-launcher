@@ -79,6 +79,7 @@ function summary(p) {
 
 function botRow(p) {
   const row = document.createElement('button');
+  row.dataset.track = 'channels.bot-open';
   row.type = 'button';
   row.className = 'settings-row bot-row';
   row.dataset.botId = p.id;

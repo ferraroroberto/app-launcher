@@ -120,6 +120,7 @@ function renderSearchMatches(host, namedCount) {
     const li = document.createElement('li');
     li.className = 'action-row job-search-hit';
     const button = document.createElement('button');
+    button.dataset.track = 'jobs.search-hit';
     button.type = 'button';
     button.className = 'action-row-main';
     const title = document.createElement('span');
@@ -322,6 +323,7 @@ function buildSheet(job) {
   webhookDetails.dataset.role = 'webhook-payload-details';
   webhookDetails.hidden = true;
   const webhookSummary = document.createElement('summary');
+  webhookSummary.dataset.track = 'jobs.webhook-payload-fold';
   webhookSummary.innerHTML = icon('webhook') + ' Webhook payload';
   webhookDetails.appendChild(webhookSummary);
   const webhookPre = document.createElement('pre');
@@ -676,6 +678,7 @@ function renderKillButton(jobId, runId, status) {
   }
   if (!killBtn) {
     killBtn = document.createElement('button');
+    killBtn.dataset.track = 'jobs.kill-run';
     killBtn.type = 'button';
     killBtn.className = 'button-tint danger jobs-kill-btn';
     killBtn.dataset.role = 'kill-btn';

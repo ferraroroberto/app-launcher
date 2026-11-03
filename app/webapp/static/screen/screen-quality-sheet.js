@@ -132,6 +132,7 @@ export function wireQuality(opts) {
     group.replaceChildren();
     PRESETS.forEach(function (preset) {
       const btn = document.createElement('button');
+      btn.dataset.track = 'screen-quality.preset';
       btn.type = 'button';
       btn.className = 'segmented-item';
       btn.textContent = preset.label;

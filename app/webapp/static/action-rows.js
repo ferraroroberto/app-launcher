@@ -89,6 +89,7 @@ export function actionRow(opts) {
   let kebab = null;
   if (opts.kebabLabel) {
     kebab = document.createElement('button');
+    kebab.dataset.track = 'row.kebab';
     kebab.type = 'button';
     kebab.className = 'icon-button action-row-kebab' + (opts.kebabClass ? ' ' + opts.kebabClass : '');
     kebab.innerHTML = icon('ellipsis-vertical');
@@ -116,6 +117,7 @@ export function actionRow(opts) {
 // The leading favorite star: { on, onToggle }.
 function favoriteStar(favorite) {
   const fav = document.createElement('button');
+  fav.dataset.track = 'row.favorite';
   fav.type = 'button';
   // `star-btn` stays as the hook the e2e suite has always used.
   fav.className = 'icon-button action-row-fav star-btn';

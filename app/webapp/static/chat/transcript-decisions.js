@@ -128,6 +128,7 @@ export function renderQuestion(e, toolErrors, answering) {
   card.appendChild(status);
   if (!simple) {
     const submit = document.createElement('button');
+    submit.dataset.track = 'chat.ask-submit';
     submit.type = 'button';
     submit.className = 'button-primary tr-ask-submit';
     submit.textContent = 'Submit answers';
@@ -181,7 +182,7 @@ function questionSection(li, q, qi, simple) {
   list.setAttribute('aria-label', q.header || q.question || 'Options');
   q.options.forEach(function (opt, oi) {
     const b = askOption({
-      n: oi + 1, label: opt.label, description: opt.description, mark: true,
+      n: oi + 1, label: opt.label, description: opt.description, mark: true, track: 'chat.ask-option',
       onTap: function () { onOptionTap(li, qi, oi + 1); },
     });
     b.dataset.n = String(oi + 1);
@@ -204,6 +205,7 @@ function questionSection(li, q, qi, simple) {
   other.appendChild(input);
   if (simple) {
     const send = document.createElement('button');
+    send.dataset.track = 'chat.ask-send';
     send.type = 'button';
     send.className = 'button-tint tr-ask-send';
     send.textContent = 'Send';
@@ -712,7 +714,7 @@ function renderPicker(p) {
       return;
     }
     const b = askOption({
-      n: o.n, label: o.label,
+      n: o.n, label: o.label, track: 'chat.plan-option',
       onTap: function () { sendPlanAnswer(o, null); },
     });
     b.dataset.n = String(o.n);
@@ -756,6 +758,7 @@ function renderPickerFeedback(p, o) {
   input.maxLength = 500;
   input.disabled = !p.answerable;
   const send = document.createElement('button');
+  send.dataset.track = 'chat.plan-send-back';
   send.type = 'button';
   send.className = 'button-tint tr-ask-send';
   send.textContent = 'Send back';

@@ -40,7 +40,7 @@ pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 _USAGE_RE = re.compile(r".*/api/usage/time\?.*")
 _EXPORT_RE = re.compile(r".*/api/screen-time/export$")
 _TODAY = {"desktop": 60.0, "phone": 25.0}
-_VIEWS = {"claude": 50.0, "board": 20.0, "settings": 5.0, "(none)": 10.0}
+_VIEWS = {"claude": 50.0, "board": 20.0, "settings": 5.0, "sheet.job-edit": 4.0, "sheet.tokens": 2.0, "(none)": 4.0}
 
 
 def _day_row(day: date, index: int) -> dict:
@@ -158,8 +158,10 @@ def test_row_and_sheet_draw_each_period(authed_page: Page, base_url: str) -> Non
     expect(page.locator("#screenTimeDevices .screen-time-row-label")).to_have_text(["PC", "Phone"])
     expect(page.locator("#screenTimeDevices .screen-time-row-value")).to_have_text(["1 h", "25 m"])
     expect(page.locator("#screenTimeSections .screen-time-row-label")).to_have_text(
-        ["Coding", "Board", "Settings", "Life OS", "Jobs", "Apps", "Other"])
+        ["Coding", "Board", "Settings", "Life OS", "Jobs", "Apps", "Sheets", "Other"])
     expect(page.locator("#screenTimeSections .screen-time-row-value").first).to_have_text("50 m")
+    # The two sheet views fold into one Sheets row.
+    expect(page.locator("#screenTimeSections .screen-time-row-value").nth(6)).to_have_text("6 m")
     _no_sideways_spill(page)
 
     # A week: seven bars, one label each; a bar names its exact value.

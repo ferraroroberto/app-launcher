@@ -61,6 +61,7 @@ function taskRow(task, running) {
   row.dataset.status = task.status;
 
   const head = document.createElement('summary');
+  head.dataset.track = 'bg-tasks.task-fold';
   head.className = 'bg-task-head';
   const text = document.createElement('span');
   text.className = 'bg-task-text';

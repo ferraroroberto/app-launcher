@@ -92,6 +92,7 @@ function pane(side, spec) {
   el.dataset.tone = spec.tone || 'accent';
   el.setAttribute('aria-hidden', 'true');
   const btn = document.createElement('button');
+  btn.dataset.track = 'swipe.action';
   btn.type = 'button';
   btn.tabIndex = -1;
   btn.className = 'swipe-pane-btn';

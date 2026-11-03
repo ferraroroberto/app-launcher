@@ -82,6 +82,7 @@ export function thumbs(refs, session) {
   wrap.className = 'tr-thumbs';
   refs.forEach(function (ref, i) {
     const btn = document.createElement('button');
+    btn.dataset.track = 'chat.thumb';
     btn.type = 'button';
     btn.className = 'tr-thumb';
     btn.disabled = true;
@@ -211,6 +212,7 @@ async function loadFileCard(card) {
   // An archive is download-only: its head link, ready before the tap (fileCard), is the card.
   if (kind === 'image') {
     const btn = document.createElement('button');
+    btn.dataset.track = 'chat.file-image';
     btn.type = 'button';
     btn.className = 'tr-file-image';
     btn.setAttribute('aria-label', 'Open ' + name + ' full size');
