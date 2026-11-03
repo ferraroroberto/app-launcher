@@ -119,6 +119,9 @@ life-os.js + life-os/, screen/, settings/, voice.js"]
     GITCHANGES["session_view/git_changes.py\nworking-tree list + per-file diff,\nexplorer spawn (#977)"]
     SESSCHANGES["session_view/changes.py\na session's Changed files,\nfolded from its transcript (#1349)"]
     SESSOUTBOX["session_view/outbox.py\nfiles an agent sends to Chat:\nroot/type/size guards + runtime store (#1530)"]
+    SESSAUTO["session_view/automatic_turns.py
+which user turns the launcher or harness typed:
+injection ledger + doorbell line"]
     JOBSFACADE["jobs/__init__.py (facade)"]
     JOBSCFG["jobs/config.py"]
     JOBSSCHTASKS["jobs/schtasks.py\nWindows Task Scheduler sync"]
@@ -185,6 +188,7 @@ read over loopback and cached behind /api/system/health"]
   R_CC --> GITCHANGES
   R_TRANSCRIPT --> SESSCHANGES
   R_TRANSCRIPT --> SESSOUTBOX
+  R_TRANSCRIPT --> SESSAUTO
   R_SCREEN --> SESSCLIENT
   R_JOBS --> JOBSFACADE
   RUNJOBCMD --> JOBSFACADE

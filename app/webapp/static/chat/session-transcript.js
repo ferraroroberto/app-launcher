@@ -103,6 +103,8 @@ import { liveStep, renderStripLine, syncLiveStep } from './chat-activity.js';
 import { mergeFiles, oldestTime, releaseHeld, takeOutbox } from './chat-outbox.js';
 import { syncEditedCards, syncFileChips } from './chat-turn-cards.js';
 import { closePendingSheet, syncPendingChip, wirePendingChip } from './chat-pending.js';
+import { automaticDefault, rememberAutomatic, syncAutomatic } from './automatic-fold.js';
+import { isChiefSession } from '../shared/session-kinds.js';
 
 // Whether Chat can read `s`'s history (TRANSCRIPT_AGENTS, transcript-render.js).
 export function hasTranscriptReader(s) {
@@ -183,6 +185,13 @@ export let view = null;
 // themselves render open and collapse one at a time on their own summary;
 // there is no bar-wide collapse-all control.
 let groupsHidden = false;
+// Whether turns nobody typed (the chief's doorbell, a compact summary) fold
+// behind a divider (automatic-fold.js). On by default for the chief, off for
+// any other session, and remembered per session.
+let automaticHidden = false;
+// The folded groups the reader expanded, keyed by their first prompt. Outlives
+// the list's rebuilds; a new session starts empty.
+let automaticOpened = new Set();
 
 // The session id the pane currently shows, or null — session-overlay.js
 // uses it so a switch back to Chat never reloads the same session.
@@ -219,6 +228,25 @@ export function groupsAreHidden() {
 export function toggleGroups() {
   groupsHidden = !groupsHidden;
   syncGroups();
+}
+
+// Fold the list's automatic groups to the toggle. Run after every change to
+// the list, since a rendered, cleared or prepended item can start or end one.
+function syncAuto() {
+  syncAutomatic(els.transcriptList, automaticHidden, automaticOpened);
+}
+
+// ⋮ menu — the chat-only "Hide / Show automatic" item.
+export function automaticIsHidden() {
+  return automaticHidden;
+}
+
+export function toggleAutomatic() {
+  automaticHidden = !automaticHidden;
+  if (view) rememberAutomatic(view.session.session_id, automaticHidden);
+  const stick = atBottom();
+  syncAuto();
+  if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
 
 // ⋮ menu — "Reload transcript": the newest page again, from scratch.
@@ -385,6 +413,7 @@ function applyLive(settled, pending, toolErrors, files) {
   view.pendingNodes = pending.length ? renderPending(pending, toolErrors, open) : [];
   view.entries = view.settled.concat(view.pending);
   syncDecisionCards();
+  syncAuto();
   syncLiveStep();
   if (stick) els.transcriptBody.scrollTop = els.transcriptBody.scrollHeight;
 }
@@ -569,17 +598,11 @@ function fetchPage(before) {
   );
 }
 
-async function loadNewest() {
-  if (!view) return;
-  const seq = ++view.seq;
-  stopLiveTimer();
-  els.transcriptList.innerHTML = '';
-  els.transcriptOlder.hidden = true;
-  els.transcriptOlder.textContent = OLDER_LABEL;
+// What a fresh read of the newest page starts from: no cursor, no live tail,
+// no plan panel, the live tick un-latched, the outbox read from the top.
+function resetViewState() {
   view.cursor = null;
   view.pendingNodes = [];
-  newerNote(null);
-  clearPicker();
   view.picker = null;
   view.pickerSig = null;
   view.pickerSent = null;
@@ -589,6 +612,18 @@ async function loadNewest() {
   view.outboxRev = null;
   view.outboxShown = new Set();
   view.outboxHeld = [];
+}
+
+async function loadNewest() {
+  if (!view) return;
+  const seq = ++view.seq;
+  stopLiveTimer();
+  els.transcriptList.innerHTML = '';
+  els.transcriptOlder.hidden = true;
+  els.transcriptOlder.textContent = OLDER_LABEL;
+  newerNote(null);
+  clearPicker();
+  resetViewState();
   showState('Loading…');
   let body;
   try {
@@ -650,6 +685,7 @@ async function loadNewest() {
     ? renderPending(pending, view.toolErrors, null)
     : [];
   syncDecisionCards();
+  syncAuto();
   syncLiveStep();
   view.cursor = body.next_cursor;
   els.transcriptOlder.hidden = view.cursor == null;
@@ -731,6 +767,7 @@ export async function loadOlder() {
     view.settled = older.concat(view.settled || []);
     view.entries = view.settled.concat(view.pending || []);
     syncDecisionCards();
+    syncAuto();
   }
   const foundTurn = older.some(isTurn);
   view.cursor = cursor;
@@ -826,6 +863,11 @@ export function openChatPane(s) {
   };
   groupsHidden = false;
   syncGroups();
+  // A Board drill-down opens with a bare {session_id, name}: the list's row
+  // is the one that knows the chief's label.
+  const known = (state.sessions || []).find(function (x) { return x.session_id === s.session_id; });
+  automaticHidden = automaticDefault(s.session_id, isChiefSession(known || s));
+  automaticOpened = new Set();
   bindComposer(s);
   els.chatNote.hidden = s.kind !== 'remote';
   closePendingSheet();

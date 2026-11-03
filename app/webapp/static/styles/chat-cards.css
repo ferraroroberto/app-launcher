@@ -31,6 +31,46 @@
 /* The ⋮ "Hide steps" toggle: lines stay in the DOM (a tap brings them back
    exactly where they were) but leave the flow entirely, gap included. */
 .transcript-list.tr-hide-groups .tr-run { display: none; }
+/* The ⋮ "Hide automatic" fold (chat/automatic-fold.js). A group's first item
+   hosts the divider and shows nothing else while folded; the rest of the
+   group leaves the flow, gap included. Expanded, the group reads as it did and
+   the divider stays above it as the way to fold it again. */
+.tr-auto-closed.tr-auto-member { display: none; }
+.tr-auto-closed.tr-auto-host > :not(.tr-auto-divider) { display: none; }
+/* A hairline either side of a muted caption: no card, no fill, no status
+   colour, so it reads as a seam in the conversation rather than as content. */
+.tr-auto-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  cursor: pointer;
+}
+.tr-auto-divider::before,
+.tr-auto-divider::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--line-muted);
+}
+.tr-auto-divider:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius-sm); }
+.tr-auto-chevron {
+  flex: none;
+  width: 1em;
+  margin-left: -4px;
+  font-size: var(--font-body);
+  line-height: 1;
+  text-align: center;
+  transition: transform 0.15s ease;
+}
+.tr-auto-divider[aria-expanded="true"] .tr-auto-chevron { transform: rotate(90deg); }
 .tr-step-line {
   list-style: none;
   display: flex;

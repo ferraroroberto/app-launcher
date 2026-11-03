@@ -301,6 +301,9 @@ function textHint(e) {
 function renderPrompt(e, session) {
   const li = document.createElement('li');
   li.className = 'tr-turn-item tr-prompt-item';
+  // The server's origin mark for a prompt nobody typed (automatic-fold.js folds it).
+  li._trEntry = e;
+  if (e.auto) li.dataset.trAuto = e.auto;
   const d = document.createElement('details');
   d.className = 'tr-turn tr-user';
   d.open = true;
