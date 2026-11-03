@@ -311,6 +311,7 @@ CHANNEL_TURN = ('<channel source="plugin:telegram:telegram" chat_id="1" user="so
 HELD_SID = "1a7b3c5d-8e2f-4a6b-9c0d-3e5f7a9b1c2d"
 PAST_BOT_SID = "9d1e6c3a-2b4f-4e8a-b7c1-5f0a3d9e2c64"
 LATER_SID = "5b8c2d4e-7f1a-4c3b-8d2e-6a9f0b1c3d5e"
+PLAIN_SID = "2f4a6c8e-0b1d-4e3f-9a5c-7d9b1e3f5a70"
 
 
 def _add_journal_conversation(root: Path, file: str, sid: str, turns: list, newer_by: int,
@@ -346,9 +347,11 @@ class TestBotChatsNeverOffered:
                                       ["a plain invented opening"], 300),
             _add_journal_conversation(root, "2026-10-30-0900-past-bot.md", PAST_BOT_SID,
                                       [CHANNEL_TURN], 200),
-            # Only the first user turn decides: a later channel message does not.
+            # A channel session started by a plain prompt shows the tag from its second turn.
             _add_journal_conversation(root, "2026-10-29-0900-later.md", LATER_SID,
                                       ["a plain invented opening", CHANNEL_TURN], 100),
+            _add_journal_conversation(root, "2026-10-28-0900-plain.md", PLAIN_SID,
+                                      ["a plain invented opening", "another plain turn"], 50),
         ]
         return relay
 
@@ -361,8 +364,15 @@ class TestBotChatsNeverOffered:
         names = self._names(get())
         assert "2026-10-31-0900-held.md" not in names
         assert "2026-10-30-0900-past-bot.md" not in names
-        assert names[0] == "2026-10-29-0900-later.md" and len(names) == 4
-        assert self._names(get(limit="1")) == ["2026-10-29-0900-later.md"]
+        assert "2026-10-29-0900-later.md" not in names
+        assert names[0] == "2026-10-28-0900-plain.md" and len(names) == 4
+        assert self._names(get(limit="1")) == ["2026-10-28-0900-plain.md"]
+
+    def test_find_logs_the_channel_turn_rule(self, bots, caplog):
+        import logging
+        with caplog.at_level(logging.INFO):
+            bots.client.get(f"{PREFIX}/conversations", headers=bots.headers)
+        assert f"{LATER_SID[:8]} as a bot chat (rule=channel-turn)" in caplog.text
 
     def test_search_leaves_them_out_and_still_fills_its_limit(self, bots, monkeypatch):
         from app.webapp.routers import life_os_conversations, life_os_relay
@@ -375,13 +385,13 @@ class TestBotChatsNeverOffered:
         monkeypatch.setattr(life_os_relay, "run_conversation_search", fake_search)
         body = bots.client.get(f"{PREFIX}/conversations", headers=bots.headers,
                                params={"q": "invented", "limit": "2"}).json()
-        assert self._names(body) == ["2026-10-29-0900-later.md",
+        assert self._names(body) == ["2026-10-28-0900-plain.md",
                                      "2026-08-01-0900-ferry-booking.md"]
 
     def test_resume_skips_them_and_refuses_their_path(self, bots):
         resp = bots.client.post(f"{PREFIX}/resume", headers=bots.headers, json={})
         assert resp.json()["state"] == "resumed", resp.text
-        assert f"--resume {LATER_SID}" in bots.spawned[0].flags
+        assert f"--resume {PLAIN_SID}" in bots.spawned[0].flags
         past = str(Path(".claude/skills/journal-daily/conversations/2026-10-30-0900-past-bot.md"))
         resp = bots.client.post(f"{PREFIX}/resume", headers=bots.headers, json={"path": past})
         assert resp.status_code == 409
@@ -450,6 +460,15 @@ class TestEndedBotChatsNeverOffered:
         assert bot_chat_rule("**Claude**: a long reply", complete=False) == ""
         assert bot_chat_rule("**Claude**: a long reply", complete=True) == "no-user-turn"
         assert bot_chat_rule("**You**: hello\n\n**Claude**: hi", complete=True) == ""
+
+    def test_a_channel_message_after_a_plain_opening_makes_a_bot_chat(self):
+        from src.life_os.history import bot_chat_rule
+        text = f"**You**: hello\n\n**Claude**: hi\n\n**You**: {CHANNEL_TURN}\n\n**Claude**: ok"
+        assert bot_chat_rule(text, complete=True) == "channel-turn"
+        assert bot_chat_rule(text, complete=False) == "channel-turn"
+        # A quoted tag mid-turn is not a delivered message.
+        quoted = f"**You**: look at this {CHANNEL_TURN}\n\n**Claude**: hi"
+        assert bot_chat_rule(quoted, complete=True) == ""
 
 
 # ------------------------------------------------------------ settings file
