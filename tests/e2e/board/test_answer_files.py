@@ -138,16 +138,16 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     posted = bodies[0]
     assert "e2e-stub" not in posted and "launcher-tmp" not in posted, posted
     assert authed_page.evaluate("(b) => JSON.parse(b).answers", posted) == [
-        {"ref": "demo#7", "kind": "before-start", "answer": "done", "attachments": 1},
         {"ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": "blank tab",
          "attachments": 1},
+        {"ref": "demo#7", "kind": "before-start", "answer": "done", "attachments": 1},
     ]
     assert chief_posts == [{"data": (
         "Owner checks answered on the Board:\n"
-        "[demo#7] Before-start step done: Pair the kitchen speaker\n"
-        "   Attached: " + _STORED.format(n=1) + "\n"
         "[demo#9] Problem found validating Read-aloud on the lock screen: blank tab (please file a fix)\n"
-        "   Attached: " + _STORED.format(n=2)
+        "   Attached: " + _STORED.format(n=2) + "\n"
+        "[demo#7] Before-start step done: Pair the kitchen speaker\n"
+        "   Attached: " + _STORED.format(n=1)
     ), "submit": True}], chief_posts
 
 

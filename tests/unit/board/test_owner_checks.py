@@ -348,3 +348,19 @@ def test_answer_files_node_pin():
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert "OK" in result.stdout
+
+
+def test_owner_checks_newest_first_node_pin():
+    import shutil
+    import subprocess
+    from pathlib import Path
+    from src.subprocess_flags import NO_WINDOW
+    if shutil.which("node") is None:
+        pytest.skip("Node.js is required")
+    root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        ["node", str(root / "tests" / "js" / "owner_checks_order.test.mjs")],
+        cwd=root, capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "ok" in result.stdout
