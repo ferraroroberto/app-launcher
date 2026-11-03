@@ -294,6 +294,7 @@ The gate also runs a static ratchet (new duplicate blocks and unused imports fai
 | [docs/jobs-tab.md](docs/jobs-tab.md) | Jobs: schedules, run history, health |
 | [docs/board.md](docs/board.md) | The Board kanban |
 | [docs/fleet-scope.md](docs/fleet-scope.md) | Settings › Fleet scope: which repos fleet-wide runs include |
+| [docs/documents.md](docs/documents.md) | Settings › Documents: the fleet's repo documents rendered live, Mermaid included |
 | [docs/remote-power-guard.md](docs/remote-power-guard.md) | Settings › Hide shut down remotely: no power options over Remote Desktop |
 | [docs/installing-agent-clis.md](docs/installing-agent-clis.md) | Installing each coding agent's CLI |
 | [docs/run-troubleshooting.md](docs/run-troubleshooting.md) | Build identity, the watchdog, request logs |

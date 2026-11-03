@@ -540,6 +540,34 @@
       </div>
     </dialog>
 
+    <!-- Document reader: one configured document, rendered live. documents.js
+         fills the title and body from GET /api/documents/{id}; the body is the
+         same `.tr-md` box the Changed files Preview renders into, and
+         shared/mermaid-render.js draws its diagrams. -->
+    <dialog id="documentSheet" class="detail-dialog settings-sheet" aria-labelledby="documentSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="documentSheetTitle" tabindex="-1" autofocus>Document</h2>
+          <button type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body document-sheet-body">
+          <p id="documentUpdated" class="muted small" role="status" aria-live="polite"></p>
+          <div id="documentState" class="empty-state" hidden>
+            <svg class="icon empty-state-icon" aria-hidden="true" focusable="false"><use href="#i-book-open"></use></svg>
+            <p id="documentStateMessage" class="empty-state-message"></p>
+            <button type="button" id="documentRetry" class="empty-state-action" data-track="settings.document-retry" hidden>Retry</button>
+          </div>
+          <div id="documentBody" class="tr-md document-body"></div>
+        </div>
+        <div class="detail-actions">
+          <button type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <!-- Fleet scope: which repos the fleet-wide runs include. fleet-scope.js
          draws the rows from GET /api/fleet/scope; fleet-config's own writer
          does the edit. -->

@@ -157,6 +157,9 @@ baseline = ".docs-ratchet-baseline.json"
 [structure_ratchet]
 enabled  = true
 baseline = ".structure-ratchet-baseline.json"
+# The pinned third-party Mermaid build is not this repo's code to split; the
+# glob matches any pinned version of it.
+exclude  = ["app/webapp/static/vendor/mermaid-*.min.js"]
 
 # ---------------------------------------------------------------------------
 # [instruction_ratchet] -- the scaffold's baseline-and-ratchet lint of the

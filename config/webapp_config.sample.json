@@ -18,6 +18,7 @@
   "_comment_session_host_port": "Loopback port the PTY session-host binds. Never network-reachable; the webapp proxies to it. Must differ from 'port'.",
   "_comment_tailnet_allowlist": "Extra IPs / CIDRs allowed to reach the interactive terminal endpoints, on top of loopback + the Tailscale CGNAT range 100.64.0.0/10. Leave empty unless you need LAN access.",
   "_comment_outbox_scratch_roots": "Folders, besides a session's own, that an agent may send a file to the Chat pane from (issue #1530). %VAR% and ~ expand, Defaults to \"%TEMP%/claude\", Claude Code's scratch base (where its SendUserFile files live); a non-empty list here replaces it. Settings > Folders > Chat file folders edits it and checks each folder on save (issue #1748). A .zip, .gz, .tgz or .7z sent from any of these folders is shown as a download-only card (served as an attachment, never rendered).",
+  "_comment_documents": "Settings > Documents: files the reading sheet may show, rendered live with Mermaid diagrams. Each entry is {id, title, repo, path}: id a short lowercase slug unique in the list, repo the folder name of a primary checkout under projects_dir (a -wt-N worktree is refused), path a relative .md path with forward slashes. Only listed files can be read, and the text is gated like the Life OS file reader: Tailscale-only, passkey-required. An entry that fails these checks is dropped with a warning in the log; an empty list hides the group.",
   "_comment_claude_show_local_window": "When true (default), launching a session from the phone also opens an interactive terminal window for it on the PC. It connects over loopback so input works from both the phone and the PC.",
   "_comment_terminal_history_lines": "Bounded scrollback for full-screen (ratatui) agent sessions (Codex, etc.) — how many lines of history the session-host retains and replays on a (re)connect (issue #435 follow-up). Settings-tab configurable. Default 10000 is evidence-based (see src/vt_snapshot.py); bounds are 200-50000.",
   "_comment_webauthn": "Passkey gate for the interactive terminal. webauthn_rp_id is the bare tailnet hostname (e.g. 'pc.tailnet.ts.net'); webauthn_origin is the full https origin the phone connects to (e.g. 'https://pc.tailnet.ts.net:8445'). Leave both empty to disable the passkey gate.",
@@ -70,6 +71,10 @@
   "session_host_port": 8446,
   "tailnet_allowlist": [],
   "outbox_scratch_roots": ["%TEMP%/claude"],
+  "documents": [
+    {"id": "fleet-guide", "title": "Fleet guide", "repo": "fleet-config", "path": "docs/fleet-guide.md"},
+    {"id": "adr-register", "title": "Architecture decisions", "repo": "project-scaffolding", "path": "docs/architecture-decisions.md"}
+  ],
   "claude_show_local_window": true,
   "desktop_browser": "chrome",
   "terminal_history_lines": 10000,

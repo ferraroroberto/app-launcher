@@ -47,6 +47,7 @@ TERMINAL_PREFIXES = (
     "/api/webauthn",              # the ceremony that issues terminal tokens
     "/api/ports",                 # listener kill reaches :8446 and every PTY
     "/api/screen",                # the PC desktop, live (#1520)
+    "/api/documents",             # the fleet's repo documents, read on the phone
 )
 
 # Routes under a prefix above that are deliberately left on the ordinary
@@ -108,6 +109,11 @@ DELIBERATELY_TOKEN_ONLY: Dict[str, str] = {
         "chat content; the Life OS tab renders it off-tailnet like the skills "
         "list. The launch and restart beside it (/channels/{id}/launch, "
         "/channels/{id}/restart) are passkey-gated."
+    ),
+    "/api/documents": (
+        "Documents *list*: each configured document's id, title, repo name and "
+        "last-changed time, no text. Settings draws it on every visit, which a "
+        "passkey prompt would break; /api/documents/{doc_id} is passkey-gated."
     ),
     "/api/life-os/skills": (
         "Skill list — folder ids and public SKILL.md titles. The private "

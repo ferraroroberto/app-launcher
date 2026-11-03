@@ -14,6 +14,7 @@
 import { els } from './state.js';
 import { icon } from './_vendored/icons/icons.js';
 import { renderMarkdown } from './markdown.js';
+import { renderMermaidIn } from './shared/mermaid-render.js';
 
 export function openImageLightbox(url, alt) {
   if (!url || !els.imageLightbox) return;
@@ -140,7 +141,11 @@ function openHtmlViewer(name, got, returnTo, kind) {
   // step through instead of closing the viewer.
   got.blob.text().then(function (text) {
     if (!dlg.open || viewerReturn !== returnTo) return;
-    els.htmlViewerBody.replaceChildren(viewerNode(kind, name, text));
+    const node = viewerNode(kind, name, text);
+    els.htmlViewerBody.replaceChildren(node);
+    // Same renderer as the Documents sheet; a Markdown file's Mermaid fences
+    // become diagrams once the box is in the page.
+    if (kind === 'markdown') renderMermaidIn(node);
   });
 }
 

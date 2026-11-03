@@ -28,6 +28,7 @@ import { wireHtmlViewer, wireImageLightbox } from './lightbox.js';
 import { openScreenWindow, wireScreenView } from './screen/screen-view.js';
 import { wireTokens } from './settings/tokens.js';
 import { wireFleetScope } from './settings/fleet-scope.js';
+import { wireDocuments } from './settings/documents.js';
 import { showPath, wireSettingsSheets } from './settings/settings-sheets.js';
 import { wireRemotePowerGuard } from './settings/remote-power-guard.js';
 import { wireTelegramBots } from './settings/telegram-bots.js';
@@ -415,6 +416,7 @@ wireWebauthn();
 wireSettings();
 wireTokens();
 wireFleetScope();
+wireDocuments();
 wireTheme();
 // Settings → Text size: same localStorage prefix as the theme,
 // which the pre-paint boot script reads.

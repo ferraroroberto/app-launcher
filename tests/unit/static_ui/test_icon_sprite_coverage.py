@@ -30,7 +30,7 @@ _EXCLUDED_FILES = {
 def _referenced_icon_names() -> set[str]:
     names: set[str] = set()
     for path in list(_STATIC_DIR.rglob("*.js")) + list(_STATIC_DIR.rglob("*.html")):
-        if path in _EXCLUDED_FILES:
+        if path in _EXCLUDED_FILES or "vendor" in path.parts:
             continue
         text = path.read_text(encoding="utf-8")
         for call_name, href_name in _ICON_REFERENCE_RE.findall(text):
@@ -74,7 +74,9 @@ _RENDERED_REFERENCE_RE = re.compile(
 def test_every_rendered_icon_reference_resolves_in_the_inline_sprite():
     referenced: set[str] = set()
     for path in list(_STATIC_DIR.rglob("*.js")) + list(_STATIC_DIR.rglob("*.html")):
-        if "_vendored" in path.parts:
+        # `_vendored` is the fleet's components; `vendor` is third-party
+        # bundles (xterm, Mermaid), whose own strings are not this app's icons.
+        if "_vendored" in path.parts or "vendor" in path.parts:
             continue
         for groups in _RENDERED_REFERENCE_RE.findall(path.read_text(encoding="utf-8")):
             referenced.add(next(name for name in groups if name))

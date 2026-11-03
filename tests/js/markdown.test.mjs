@@ -174,3 +174,27 @@ const md = (lines) => renderMarkdown(lines.join('\n'));
 }
 
 console.log('markdown tables + lists + quotes: OK');
+
+// A whole-line HTML comment is dropped only when asked (Settings > Documents);
+// by default, and inside a fence, it renders as the text it is.
+{
+  const src = ['before', '<!-- generated: do not edit -->', 'after', '```', '<!-- kept -->', '```'].join('\n');
+  const shown = renderMarkdown(src);
+  assert.ok(shown.includes('&lt;!-- generated: do not edit --&gt;'), shown);
+  const hidden = renderMarkdown(src, { hideComments: true });
+  assert.ok(!hidden.includes('generated'), hidden);
+  assert.ok(hidden.includes('&lt;!-- kept --&gt;'), 'a fenced comment is code, kept');
+  assert.ok(hidden.includes('<p>before</p>') && hidden.includes('<p>after</p>'), hidden);
+  // Text beside a comment on the same line is not a comment line.
+  assert.ok(renderMarkdown('see <!-- x --> here', { hideComments: true }).includes('see'));
+}
+console.log('markdown hideComments: OK');
+
+// A document saved with Windows line endings renders like one saved with \n.
+{
+  const src = ['# Title', '', 'one', '- a', '- b', '', '```mermaid', 'graph TD', '```', '| h |', '|---|', '| c |'];
+  assert.equal(renderMarkdown(src.join('\r\n')), renderMarkdown(src.join('\n')));
+  assert.ok(renderMarkdown(src.join('\r\n')).includes('<h1>Title</h1>'));
+  assert.equal(renderMarkdown(src.join('\r')), renderMarkdown(src.join('\n')));
+}
+console.log('markdown CRLF: OK');
