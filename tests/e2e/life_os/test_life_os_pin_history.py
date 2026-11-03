@@ -9,7 +9,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import life_launch_switch
-from tests.e2e.fixtures.waits import flush_requests
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 from tests.e2e.life_os._support import (
     _FAKE_CONVERSATIONS,
@@ -88,7 +88,7 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     for theme in ("light", "dark"):
         page.evaluate("theme => document.documentElement.dataset.theme = theme", theme)
         expect(handoff).to_be_visible()
-        assert page.locator("#lifeOsConvoSheet").evaluate("el => el.scrollWidth <= el.clientWidth")
+        assert stable_eval(page.locator("#lifeOsConvoSheet"), "el => el.scrollWidth <= el.clientWidth")
     # The handoff asks first, in the confirm sheet stacked over this one
     # (#1439, never a native confirm()), with a primary action: it starts
     # something, deletes nothing.
@@ -99,11 +99,16 @@ def test_history_source_resume_and_explicit_new_handoff(authed_page: Page, base_
     expect(page.locator("#confirmDialogMessage")).to_contain_text(re.compile(r"24[,.]000"))
     expect(page.locator("#confirmDialogOk")).to_have_class(re.compile(r"\bbutton-primary\b"))
     page.locator("#confirmDialogClose").click()
+    # Closed for real before the next tap: a dialog still settling would take
+    # the second tap's Ok for its own.
+    expect(page.locator("#confirmDialog")).to_be_hidden()
     flush_requests(page)
     assert not launches
     handoff.click()
     page.locator("#confirmDialogOk").click()
     expect(page.locator("#lifeOsConvoSheet")).to_be_hidden()
+    # The launch POST reaches its route handler after the sheet closes.
+    wait_until(page, lambda: len(launches) == 1, "the handoff launch request")
     assert len(launches) == 1
     payload = launches[0]
     assert payload["action"] == "handoff" and payload["confirm_new"] is True

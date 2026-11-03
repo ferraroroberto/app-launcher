@@ -124,16 +124,28 @@ def test_show_earlier_button_lines_up_with_the_cards(
     more = done.locator(".board-done-more")
     expect(more).to_be_visible()
     # On the desktop grid the lane body has no sides, so the button takes the
-    # card inset itself; the phone's body already supplies it.
-    edges = authed_page.evaluate(
-        """() => {
-            const b = document.querySelector('#boardColDone .board-done-more').getBoundingClientRect();
-            const r = document.querySelector('#boardColDone li.board-item').getBoundingClientRect();
-            return {left: b.left - r.left, right: r.right - b.right};
-        }""")
-    # The grid layout is what drops the body's sides; the iPhone projection
-    # keeps the phone layout whatever its viewport width.
-    grid = authed_page.evaluate(
-        "() => getComputedStyle(document.querySelector('#boardColDone > .collapse-body')).paddingLeft === '0px'")
-    inset = 14 if grid else 0
-    assert abs(edges["left"] - inset) <= 1 and abs(edges["right"] - inset) <= 1, edges
+    # card inset itself; the phone's body already supplies it. A late boot fetch re-renders the lane (cards and button are rebuilt), so
+    # measure until the geometry is the settled one. The grid layout is what
+    # drops the body's sides; the iPhone projection keeps the phone layout
+    # whatever its viewport width.
+    def measure() -> dict:
+        return authed_page.evaluate(
+            """() => {
+                const b = document.querySelector('#boardColDone .board-done-more');
+                const r = document.querySelector('#boardColDone li.board-item');
+                const body = document.querySelector('#boardColDone > .collapse-body');
+                if (!b || !r || !body || !r.getClientRects().length) return null;
+                const bb = b.getBoundingClientRect(), rr = r.getBoundingClientRect();
+                return {left: bb.left - rr.left, right: rr.right - bb.right,
+                        grid: getComputedStyle(body).paddingLeft === '0px'};
+            }""")
+
+    def lined_up() -> bool:
+        m = measure()
+        inset = 14 if m and m["grid"] else 0
+        return bool(m) and abs(m["left"] - inset) <= 1 and abs(m["right"] - inset) <= 1
+
+    try:
+        wait_until(authed_page, lined_up, "the Show earlier button lined up with the cards")
+    except AssertionError as err:
+        raise AssertionError(f"{err}: {measure()}") from None
