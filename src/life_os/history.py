@@ -33,12 +33,13 @@ MAX_HANDOFF_CHARS = 24_000
 HANDOFF_TTL_SECONDS = 24 * 3600
 # The Telegram plugin delivers each message as a ``<channel source=...>`` tag,
 # which the capture keeps verbatim (its tag strip only removes attribute-less
-# tags), so a bot's own chat is the one whose first user turn opens with it.
+# tags), so a bot's own chat is a capture where a user turn opens with it.
 _USER_TURN = "**You**: "
 _REPLY_TURN = "**Claude**: "
 _CHANNEL_TURN = _USER_TURN + '<channel source="plugin:telegram:'
 
 RULE_CHANNEL_OPENING = "channel-opening"
+RULE_CHANNEL_TURN = "channel-turn"
 RULE_NO_USER_TURN = "no-user-turn"
 
 
@@ -49,10 +50,18 @@ def opens_on_channel(text: str) -> bool:
     return first.startswith(_CHANNEL_TURN)
 
 
+def has_channel_turn(text: str) -> bool:
+    """Whether any user turn of a capture is a Telegram channel message. A
+    channel session started by a plain prompt (a skill call, a restart) only
+    shows the tag from its second user turn on."""
+    return any(line.startswith(_CHANNEL_TURN) for line in text.splitlines())
+
+
 def bot_chat_rule(text: str, *, complete: bool) -> str:
     """The rule that marks a capture as a bot's own chat, or ``""``.
 
-    A first user turn that is a channel message is one. So is a capture with a
+    A first user turn that is a channel message is one, and so is any later user
+    turn that is (a prefix shows only the turns it holds). So is a capture with a
     reply but no user turn at all, which only a bot-initiated message (the bot
     speaking first) leaves: an owner's conversation opens with their own turn.
     ``complete`` says ``text`` is the whole capture; a prefix cannot show that no
@@ -60,6 +69,8 @@ def bot_chat_rule(text: str, *, complete: bool) -> str:
     """
     if opens_on_channel(text):
         return RULE_CHANNEL_OPENING
+    if has_channel_turn(text):
+        return RULE_CHANNEL_TURN
     if complete:
         lines = text.splitlines()
         if (any(line.startswith(_REPLY_TURN) for line in lines)
