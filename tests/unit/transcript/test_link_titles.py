@@ -15,9 +15,9 @@ from src.session_view import link_titles as lt
 
 @pytest.fixture(autouse=True)
 def _fresh_cache():
-    lt.reset_cache()
+    lt.reset_title_cache()
     yield
-    lt.reset_cache()
+    lt.reset_title_cache()
 
 
 def _row(url: str, label: str, title: Any = None) -> Dict[str, Any]:

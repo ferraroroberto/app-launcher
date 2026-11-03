@@ -122,7 +122,7 @@ def _run(url: str, fetch: Fetcher) -> Optional[str]:
     return title
 
 
-def reset_cache() -> None:
+def reset_title_cache() -> None:
     with _lock:
         _cache.clear()
 

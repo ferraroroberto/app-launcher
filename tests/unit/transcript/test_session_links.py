@@ -22,7 +22,7 @@ def _no_network(monkeypatch):
     """No test reaches a real page or ``gh``; the cache starts empty."""
     monkeypatch.setattr(lt, "page_title", lambda url: None)
     monkeypatch.setattr(lt, "github_title", lambda url: None)
-    lt.reset_cache()
+    lt.reset_title_cache()
 
 
 def _write(path: Path, rows: List[Dict[str, Any]]) -> Path:
