@@ -189,3 +189,12 @@ console.log('markdown tables + lists + quotes: OK');
   assert.ok(renderMarkdown('see <!-- x --> here', { hideComments: true }).includes('see'));
 }
 console.log('markdown hideComments: OK');
+
+// A document saved with Windows line endings renders like one saved with \n.
+{
+  const src = ['# Title', '', 'one', '- a', '- b', '', '```mermaid', 'graph TD', '```', '| h |', '|---|', '| c |'];
+  assert.equal(renderMarkdown(src.join('\r\n')), renderMarkdown(src.join('\n')));
+  assert.ok(renderMarkdown(src.join('\r\n')).includes('<h1>Title</h1>'));
+  assert.equal(renderMarkdown(src.join('\r')), renderMarkdown(src.join('\n')));
+}
+console.log('markdown CRLF: OK');

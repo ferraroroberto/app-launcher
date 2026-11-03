@@ -77,7 +77,7 @@ def _mock_documents(page: Page, *, listing=None, doc_status: int = 200, doc_deta
             return
         _json(route, 200, {
             "id": "guide", "title": "Sample guide", "repo": "alpha-repo",
-            "updated": "2020-01-01T00:00:00+00:00", "content": _DOC, "bytes": len(_DOC),
+            "updated": "2020-01-01T00:00:00+00:00", "content": _DOC.replace("\n", "\r\n"), "bytes": len(_DOC),
         })
 
     page.route(re.compile(r".*/api/documents$"), _list)

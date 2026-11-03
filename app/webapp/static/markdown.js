@@ -151,7 +151,9 @@ const COMMENT_LINE = /^\s*&lt;!--.*--&gt;\s*$/;
 // a reply that quotes a comment still shows it.
 export function renderMarkdown(text, opts) {
   const hideComments = !!(opts && opts.hideComments);
-  const lines = escapeHtml(text).split('\n');
+  // A file saved with Windows line endings must read like any other: a stray
+  // `\r` would stop every line pattern below (a heading's `.*$`) from matching.
+  const lines = escapeHtml(text).split(/\r\n|\r|\n/);
   const out = [];
   let inCode = false;
   let fenceInfo = '';
