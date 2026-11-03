@@ -141,6 +141,14 @@ class PendingInputProtocol(DeferredSubmit):
         painted = self._normalized_since(mark)
         return any(marker in painted for marker in deferred_submit._QUEUED_MARKERS)
 
+    def _queue_painted_recently(self) -> bool:
+        """Does recent output still show the agent's queue? Its footer hint
+        (``_QUEUED_MARKERS``) is the evidence a queue exists; a taken message
+        leaves none, and a slash command never appears as a user turn that
+        would retire its entry by another route."""
+        recent = self._normalized_since(self._output_total - _DIALOG_LOOKBACK_CHARS)
+        return any(marker in recent for marker in deferred_submit._QUEUED_MARKERS)
+
     def _composer_known_empty(self) -> bool:
         return self._composer is not None and self._composer.state()[0] is False
 
@@ -282,6 +290,10 @@ class PendingInputProtocol(DeferredSubmit):
             return DISCARD_EXITED
         if not entry.confirmed:
             return DISCARD_NOT_CONFIRMED
+        if not self._queue_painted_recently():
+            # Taken already: settle the list so the entry leaves it.
+            self._pending.discard_ids([entry.id])
+            return DISCARD_NOT_PENDING
         if not self._turn_running_now():
             return DISCARD_NOT_MID_TURN
         if not self._composer_known_empty():
