@@ -77,6 +77,10 @@ CLEAR_TIMEOUT_SECONDS = 90
 # Refreshes no closer than this, however often the Board's GitHub refresh runs.
 REFRESH_COOLDOWN_SECONDS = 60
 PROBLEM_TEXT_MAX = 2000
+# Files one answer may carry (the sheet caps an item at the same). The server
+# sees only this count, never a file name or path: GitHub gets one fixed line
+# built from the number.
+ATTACHMENTS_MAX = 5
 
 _lock = threading.Lock()
 _cache: Dict[str, Any] = {
@@ -442,12 +446,32 @@ def validate_answer(raw: Any) -> Dict[str, Any]:
     text = " ".join(str(raw.get("text") or "").split())[:PROBLEM_TEXT_MAX]
     if answer == PROBLEM and not text:
         raise ValueError(f"{ref}: a problem needs its description")
-    return {"ref": ref, "repo": repo, "number": number, "kind": kind, "answer": answer, "text": text}
+    return {
+        "ref": ref, "repo": repo, "number": number, "kind": kind, "answer": answer, "text": text,
+        "attachments": _attachment_count(ref, raw.get("attachments")) if answer != LATER else 0,
+    }
 
 
-def problem_comment(text: str, today: str) -> str:
+def _attachment_count(ref: str, raw: Any) -> int:
+    """How many files the answer carries: a whole number from 0 to ATTACHMENTS_MAX."""
+    if raw is None:
+        return 0
+    if isinstance(raw, bool) or not isinstance(raw, int) or not 0 <= raw <= ATTACHMENTS_MAX:
+        raise ValueError(f"{ref}: attachments must be a whole number from 0 to {ATTACHMENTS_MAX}")
+    return raw
+
+
+def attachments_line(count: int) -> str:
+    """The only trace of attached files that reaches GitHub, built from the count alone."""
+    if count <= 0:
+        return ""
+    return f"{count} attachment{'' if count == 1 else 's'} kept locally"
+
+
+def problem_comment(text: str, today: str, attachments: int = 0) -> str:
     """The comment a reported problem posts on the issue."""
-    return f"**Owner validation found a problem** ({today})\n\n{text}\n"
+    kept = attachments_line(attachments)
+    return f"**Owner validation found a problem** ({today})\n\n{text}\n" + (f"\n{kept}\n" if kept else "")
 
 
 def answer(
@@ -470,12 +494,18 @@ def answer(
         logger.info("ℹ️ owner check %s snoozed until %s", ref, _now_iso(until))
         return
     if ans["answer"] == PROBLEM:
-        comment(ans["repo"], ans["number"], problem_comment(ans["text"], moment.strftime("%Y-%m-%d")))
+        comment(
+            ans["repo"], ans["number"],
+            problem_comment(ans["text"], moment.strftime("%Y-%m-%d"), ans.get("attachments", 0)),
+        )
         _write_mark(ref, {"mark": PROBLEM, "at": _now_iso(moment)}, marks_path, moment)
         logger.info("ℹ️ owner check %s: problem reported", ref)
         return
     # A typed "works" validates with its text kept as the answer's note.
     said = _CLEAR_TEXT[ans["answer"]] + (f": {ans['text']}" if ans.get("text") else "")
+    kept = attachments_line(ans.get("attachments", 0))
+    if kept:
+        said += f" ({kept})"
     code, out = _run_cli(fleet_config_dir, ["clear", ref, "--answer", said], CLEAR_TIMEOUT_SECONDS)
     if code != 0 or "CLEARED=unknown" in out:
         line = next((ln for ln in out.splitlines() if ln.startswith("CLEARED=")), out.strip()[:200])
