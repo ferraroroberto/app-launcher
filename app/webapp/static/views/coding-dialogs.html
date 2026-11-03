@@ -194,6 +194,17 @@
         </div>
         <div id="linksState" class="bg-tasks-state" role="status" aria-live="polite" hidden></div>
         <div id="linksBody" class="links-body"></div>
+        <!-- One folded group. The fold toggle's tracking id is a constant here,
+             in markup, because no script may set a data-track id. -->
+        <template id="linksGroupTemplate">
+          <details class="links-group">
+            <summary class="links-group-head" data-track="links.group-fold">
+              <span class="links-group-title"></span>
+              <span class="chip links-group-count"></span>
+            </summary>
+            <div class="links-group-body"></div>
+          </details>
+        </template>
         <div class="detail-actions">
           <button type="button" id="linksDone" class="button-primary detail-save-btn">Done</button>
         </div>

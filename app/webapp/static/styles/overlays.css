@@ -418,17 +418,31 @@
    tap target), the copy button sits at its end. */
 .links-sheet { width: min(480px, calc(100vw - 24px)); }
 .links-body { max-height: 60vh; overflow-y: auto; margin-bottom: 12px; }
-.links-group + .links-group { margin-top: 12px; }
-.links-group-title {
-  margin: 0;
-  padding: 0 0 4px;
+.links-group + .links-group { border-top: 1px solid var(--line-muted); }
+/* A group opens folded: its name and count on a 52px head with the chevron at
+   the end, the Background tasks sheet's row geometry. */
+.links-group-head {
+  list-style: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  min-height: var(--row-md);
+  padding: 8px 0;
+  cursor: pointer;
+}
+.links-group-head::-webkit-details-marker { display: none; }
+.links-group-glyph { flex: none; color: var(--muted); }
+.links-group-title {
+  flex: 1;
+  min-width: 0;
   font-size: var(--font-label);
   font-weight: 700;
   color: var(--fg);
 }
+.links-group-count { flex: none; }
+.links-group-chevron { flex: none; color: var(--muted); transition: transform 0.15s; }
+.links-group[open] .links-group-chevron { transform: rotate(180deg); }
+.links-group-body { padding: 0 0 8px; }
 .link-row { display: flex; align-items: center; gap: 8px; min-width: 0; border-top: 1px solid var(--line-muted); }
 .link-open {
   flex: 1;

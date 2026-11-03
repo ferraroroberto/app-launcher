@@ -426,6 +426,13 @@ def issue_body(owner: str, repo: str, number: int) -> str:
     return str(data.get("body") or "")
 
 
+def issue_title(owner: str, repo: str, number: int, *, timeout: float = 4.0) -> str:
+    """The title of issue or pull request ``owner/repo#number`` (the API serves a
+    PR under its issue number); :class:`GhError` when it did not read."""
+    out = _run_gh(["api", f"repos/{owner}/{repo}/issues/{number}", "--jq", ".title"], timeout=timeout)
+    return out.strip()
+
+
 def comment_issue(owner: str, repo: str, number: int, body: str) -> None:
     """Post one comment on ``owner/repo#number``; the body travels on stdin."""
     _run_gh(

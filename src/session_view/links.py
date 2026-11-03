@@ -211,8 +211,11 @@ def _artifact_pieces(lines: List[Line]) -> List[_Piece]:
 
 
 def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
-    """``{groups: [{key, title, links: [{url, label, first_seen, last_seen,
-    count}]}], total, partial}``; links newest first within a group.
+    """``{groups: [{key, title, links: [{url, label, title, first_seen,
+    last_seen, count}]}], total, partial}``; links newest first within a group.
+    A link's ``title`` is what the transcript itself names (a published
+    artifact's title) or ``None`` for :mod:`src.session_view.link_titles` to
+    look up.
     ``flavor`` picks the agent's transcript grammar (a key of
     :data:`FLAVORS`; unknown falls back to Claude's, like the Chat pane)."""
     size = path.stat().st_size
@@ -236,11 +239,11 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
             entry = found.get(url)
             if entry is None:
                 entry = found[url] = {
-                    "url": url, "group": group, "label": label,
+                    "url": url, "group": group, "label": label, "title": None,
                     "first_seen": stamp, "count": 0,
                 }
             if label_hint and entry["group"] == "artifacts":
-                entry["label"] = label_hint
+                entry["label"] = entry["title"] = label_hint
             entry["last_seen"] = stamp
             entry["seq"] = seq
             entry["count"] += 1
@@ -252,7 +255,7 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
         groups.append({
             "key": key, "title": title, "total": len(members),
             "links": [
-                {k: e[k] for k in ("url", "label", "first_seen", "last_seen", "count")}
+                {k: e[k] for k in ("url", "label", "title", "first_seen", "last_seen", "count")}
                 for e in members[:GROUP_LIMIT]
             ],
         })

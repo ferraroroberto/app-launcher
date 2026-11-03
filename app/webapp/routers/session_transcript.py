@@ -90,6 +90,7 @@ from src.session_view.transcript import (
     transcript_tail,
 )
 from src.session_view import background_tasks as session_tasks
+from src.session_view import link_titles as session_link_titles
 from src.session_view import links as session_links
 from src.session_view import outbox as session_outbox
 from src.session_view.git_changes import select_in_explorer
@@ -557,6 +558,11 @@ async def session_background_tasks(
     return {"available": True, "reason": None, "session_id": sid, **found}
 
 
+def _folded_links_with_titles(path: Any, flavor: str) -> Dict[str, Any]:
+    """The links fold, each link carrying its page title when one answers."""
+    return session_link_titles.attach_titles(session_links.fold_links(path, flavor))
+
+
 @router.get("/api/claude-code/sessions/{sid}/links")
 async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
     """Every artifact and URL the owner or the agent wrote in this session,
@@ -571,7 +577,8 @@ async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
         logger.info("ℹ️ session links %s (%s) unavailable: %s", sid[:8], agent, reason)
         return _unavailable(sid, reason)
     found, refusal = await _read_or_unavailable(
-        sid, agent, "session links", asyncio.to_thread(session_links.fold_links, path, flavor or "claude"),
+        sid, agent, "session links",
+        asyncio.to_thread(_folded_links_with_titles, path, flavor or "claude"),
     )
     if refusal is not None:
         return refusal
