@@ -34,7 +34,7 @@ class TestGetConfig:
             <= body["terminal_history_lines_max"]
         )
         assert "claude" in body
-        # auth_password_set is what the SPA shows in the login overlay
+        # auth_password_set is what the SPA shows in the sign-in sheet
         # ("a password is required" vs not). Bool, not the password itself.
         assert isinstance(body["auth_password_set"], bool)
         assert body["auth_password_set"] is False  # default conftest config

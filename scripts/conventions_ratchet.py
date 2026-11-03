@@ -1,4 +1,4 @@
-"""Ratchet on fleet conventions that one AST rule can check in every repo.
+"""Ratchet on fleet conventions that one AST or markup rule can check in every repo.
 
 The global instructions carry a handful of rules that each repo used to guard
 with its own one-off test (no-window spawns, one constant-time secret compare,
@@ -23,11 +23,19 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
   * `secret-compare` -- a `hmac.compare_digest` / `secrets.compare_digest` call
     outside the repo's declared helper (`secret_helpers`);
   * `git-wrapper` -- a spawn whose program is literally `git` outside the
-    repo's declared wrapper (`git_wrappers`).
+    repo's declared wrapper (`git_wrappers`);
+  * `password-input-vendored` -- a password input (`type="password"`,
+    `type: 'password'`, `.type = 'password'`, `setAttribute('type', 'password')`)
+    in a web file (`.html`, `.htm`, `.js`, `.mjs`, `.cjs`, `.ts`, `.jsx`, `.tsx`,
+    `.vue`, `.svelte`, `.jinja`, `.jinja2`, `.j2`) outside a `_vendored/sign-in/`
+    folder: every app's sign-in goes through the one vendored component. It is
+    the only rule that reads web files, and it reads no `.py`.
 
-Test modules are skipped by every rule except `no-window`. A single call keeps
-its exception with a `# <rule>-exempt: <reason>` comment on its own lines or in
-the comment block right above it; a marker with no reason exempts nothing.
+Test modules (and every file under a `tests/` or `test/` folder) are skipped by
+every rule except `no-window`. A single call keeps its exception with a
+`# <rule>-exempt: <reason>` comment on its own lines or in the comment block
+right above it (in a web file the comment is `<!-- ... -->`, `// ...` or
+`/* ... */`); a marker with no reason exempts nothing.
 
 Opt-in, per adopter, in its own `.fleet.toml`:
 
@@ -42,7 +50,8 @@ Opt-in, per adopter, in its own `.fleet.toml`:
 
 Exit codes: 0 pass or not enabled; 1 a count rose, or the baseline is missing /
 a mode was refused; 2 bad configuration, baseline or arguments; 3 NOT CONFIRMED
-(`git` unusable, a tracked `.py` file that does not parse or cannot be read) --
+(`git` unusable, a tracked `.py` file that does not parse, or a scanned file
+that cannot be read) --
 the gate fails on it. Modes: `check`, `--init`, `--update-baseline` (shrink
 only), `--update-baseline --allow-additions` (shows in review).
 
@@ -74,9 +83,21 @@ DEFAULT_PRINT_PATHS = ("app/", "src/")
 BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**")
 GIT_TIMEOUT_S = 120
 
-RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper")
+RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
+         "password-input-vendored")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
 TEST_RULES = frozenset({"no-window"})
+#: The rules read from web files rather than Python source.
+WEB_RULES = frozenset({"password-input-vendored"})
+WEB_SUFFIXES = (".html", ".htm", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx", ".vue", ".svelte",
+                ".jinja", ".jinja2", ".j2")
+#: The one folder a password input may live in: the vendored sign-in component, wherever it was copied.
+SIGN_IN_DIR = "_vendored/sign-in"
+_PASSWORD_INPUT = re.compile(
+    r"""\btype\s*[=:]\s*(["'`]?)password\1(?![\w-])"""
+    r"""|setAttribute\(\s*["'`]type["'`]\s*,\s*["'`]password["'`]""",
+    re.IGNORECASE,
+)
 #: The config key a rule cannot run without, because it names the repo's own helper.
 REQUIRED_KEYS = {"secret-compare": "secret_helpers", "git-wrapper": "git_wrappers"}
 
@@ -247,12 +268,20 @@ def _under(path: str, prefix: str) -> bool:
 
 
 def in_scope(path: str, cfg: Config, vendored: tuple[str, ...]) -> bool:
-    """Is `path` a Python file this stage scans? A vendored copy's debt belongs to the repo it came from."""
-    if not path.endswith(".py"):
+    """Is `path` a Python or web file this stage scans? A vendored copy's debt belongs to the repo it came from."""
+    if not (path.endswith(".py") or is_web_file(path)):
         return False
     if any(_under(path, d) for d in vendored):
         return False
     return not matches_any(path, BUILTIN_EXCLUDES + cfg.exclude)
+
+
+def is_web_file(path: str) -> bool:
+    return path.lower().endswith(WEB_SUFFIXES)
+
+
+def in_sign_in_component(path: str) -> bool:
+    return path.startswith(SIGN_IN_DIR + "/") or f"/{SIGN_IN_DIR}/" in path
 
 
 def is_test_module(path: str) -> bool:
@@ -266,6 +295,12 @@ def is_test_module(path: str) -> bool:
 def rules_for(path: str, cfg: Config) -> frozenset[str]:
     """The enabled rules that apply to one in-scope file."""
     rules = set(cfg.rules)
+    if is_web_file(path):
+        rules &= WEB_RULES
+        if in_sign_in_component(path):
+            rules.discard("password-input-vendored")
+    else:
+        rules -= WEB_RULES
     if is_test_module(path):
         rules &= TEST_RULES
     if not any(_under(path, p) for p in cfg.print_paths):
@@ -463,10 +498,38 @@ def _window(node: ast.AST, lines: list[str]) -> list[str]:
     return lines[above:end]
 
 
-def _exempt(rule: str, window: list[str]) -> bool:
+def _exempt(rule: str, window: list[str], punct: str = " :#\t") -> bool:
     """A `# <rule>-exempt: <reason>` marker in the window; a bare marker exempts nothing."""
     marker = f"{rule}-exempt"
-    return any(line.split(marker, 1)[1].strip(" :#\t") for line in window if marker in line)
+    return any(line.split(marker, 1)[1].strip(punct) for line in window if marker in line)
+
+
+def _web_comment_line(text: str) -> bool:
+    """A line that opens a comment, or ends one it did not open (`... -->`): code with a trailing comment is not."""
+    text = text.strip()
+    if text.startswith(("//", "/*", "*", "<!--")):
+        return True
+    return text.endswith(("-->", "*/")) and "<!--" not in text and "/*" not in text
+
+
+def scan_web(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
+    """Hits of the web rules in one HTML or JS file, read line by line."""
+    if "password-input-vendored" not in rules:
+        return []
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    lines = text.splitlines()
+    hits = []
+    for number, line in enumerate(lines, start=1):
+        if not _PASSWORD_INPUT.search(line):
+            continue
+        above = number - 1
+        while above > 0 and _web_comment_line(lines[above - 1]):
+            above -= 1
+        # A web marker sits in `<!-- ... -->` or `/* ... */`: the closing punctuation is not a reason.
+        if not _exempt("password-input-vendored", lines[above:number], " :#/*-<>!\t"):
+            hits.append(Hit(path, number, "password-input-vendored",
+                            f"password input outside the vendored sign-in component ({SIGN_IN_DIR}/)"))
+    return hits
 
 
 def scan_source(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
@@ -519,10 +582,10 @@ def tracked_files(root: Path) -> list[str]:
 
 
 def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> dict[str, list[Hit]]:
-    """Hits per in-scope tracked `.py` file (only files with at least one).
+    """Hits per in-scope tracked `.py` or web file (only files with at least one).
 
-    Only Python source is read: a baseline, this stage's or any other ratchet's,
-    is JSON and never counts as a hit or as evidence against one.
+    Only Python source and web files are read: a baseline, this stage's or any
+    other ratchet's, is JSON and never counts as a hit or as evidence against one.
     """
     found: dict[str, list[Hit]] = {}
     for path in tracked_files(root):
@@ -534,7 +597,8 @@ def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> dict[str, l
             continue  # tracked but deleted in the working tree: nothing to read
         except OSError as exc:
             raise NotConfirmed(f"{path}: cannot be read: {exc}") from exc
-        hits = scan_source(source, path, rules_for(path, cfg))
+        rules = rules_for(path, cfg)
+        hits = scan_web(source, path, rules) if is_web_file(path) else scan_source(source, path, rules)
         if hits:
             found[path] = hits
     return found

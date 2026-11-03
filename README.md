@@ -143,7 +143,7 @@ Two layers, both optional. With nothing configured, the API is open (fine on a p
 .\.venv\Scripts\python.exe scripts\set_password.py --clear
 ```
 
-Companion to the token. When set, a fresh device with no token in `localStorage` (e.g. an iOS PWA whose storage is partitioned from Safari) shows a login overlay. Type the password → server hands back the bearer token → page stashes it → equivalent to opening the tokenised URL once.
+Companion to the token. When set, a fresh device with no token in `localStorage` (e.g. an iOS PWA whose storage is partitioned from Safari) shows the sign-in sheet. Type the password → server hands back the bearer token → page stashes it → equivalent to opening the tokenised URL once.
 
 Failed attempts log to `webapp/auth.log` with client IP.
 

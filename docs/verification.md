@@ -18,7 +18,7 @@ The same suite carries a few static convention guards that parse the tree rather
 
 A `pytest-playwright` suite under `tests/e2e/` covers two things:
 
-- **Boot smoke** (`test_smoke.py`) — JS error on boot, empty config form, broken tab switch, the single ✕ stop button per session row, missing login overlay.
+- **Boot smoke** (`test_smoke.py`) — JS error on boot, empty config form, broken tab switch, the single ✕ stop button per session row, missing sign-in sheet.
 - **iPhone regression net** — one focused test per closed iOS-only bite, so the next regression of any of them surfaces locally before a deploy instead of after an hour of phone-PC round-trips. `tests/e2e/` is its own index — don't re-enumerate the closed bites here; each regression test's docstring names the issue it pins and what would regress without it (e.g. `tests/e2e/compose/test_paste_framing.py:1`, `tests/e2e/shell/test_primary_nav.py:1`).
 
 Every test runs on **Chromium-desktop**, and the ones where the engine or the phone shape matters also run on **WebKit projected onto an iPhone 15 Pro Max viewport**: layout and geometry, touch targets, nav, the composer and keyboard input, safe-area, and anything that branches on the engine. That set carries the `iphone` pytest marker, and `tests/e2e/conftest.py` deselects every other test's WebKit node at collection. `tests/unit/repo/test_e2e_iphone_projection.py` fails the build when a test that measures layout, taps or reads `browser_name` is missing the marker. Real iOS-only bugs don't reproduce in desktop WebKit, so the on-device check stays the final word. Pin a single engine with `--browser chromium` (or `webkit`) for a faster dev loop.

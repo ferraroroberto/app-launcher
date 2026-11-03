@@ -2,7 +2,7 @@
 
 Tight by design: ~6 checks that catch the bugs we actually hit (JS
 exceptions on boot, empty config form, broken tab switch, wrong stop
-buttons per session kind, missing login overlay markup). Expand
+buttons per session kind, sign-in sheet not opening). Expand
 iteratively in follow-up issues; do NOT turn this file into a regression
 net for every feature.
 """
@@ -403,24 +403,22 @@ def test_parameterised_job_run_dialog_posts_values(
     assert payload == {"params": {"since": "2026-06-01", "tier": "b"}}, payload
 
 
-def test_login_overlay_dom_present(authed_page: Page, base_url: str) -> None:
-    """The login overlay markup is wired so showLogin() can reveal it.
+def test_sign_in_sheet_opens_on_401(authed_page: Page, base_url: str) -> None:
+    """A 401 opens the vendored sign-in sheet, with an editable password field.
 
-    We exercise the DOM directly rather than triggering a real 401: the
-    bearer middleware bypasses loopback (server.py:267), so a bad token
-    from 127.0.0.1 won't surface the overlay. This still catches the
-    regression we care about — overlay element + password input missing
-    or renamed.
+    The bearer middleware bypasses loopback (server.py), so a bad token from
+    127.0.0.1 never surfaces the sheet on its own; stubbing /api/config to 401
+    is the same signal the app reacts to.
     """
-    _navigate_collecting_errors(authed_page, base_url)
-    overlay = authed_page.locator("#loginOverlay")
-    expect(overlay).to_be_hidden()
-    # Flip the hidden attr the same way showLogin() does.
-    authed_page.evaluate(
-        "document.getElementById('loginOverlay').hidden = false"
+    authed_page.route(
+        "**/api/config",
+        lambda route: route.fulfill(status=401, json={"detail": "auth required"}),
     )
-    expect(overlay).to_be_visible()
-    pw = authed_page.locator("#loginPassword")
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    sheet = authed_page.locator("dialog.sign-in")
+    expect(sheet).to_be_visible()
+    pw = sheet.locator("input[type=password]")
     expect(pw).to_be_editable()
     pw.fill("dummy")
     expect(pw).to_have_value("dummy")
+    expect(sheet.locator("[data-track=sign-in-submit]")).to_be_enabled()

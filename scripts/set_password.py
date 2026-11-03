@@ -73,7 +73,7 @@ def main() -> int:
     print(f"   Stored in: {DEFAULT_CONFIG_PATH}")
     print()
     print("Restart the tray. Open the webapp on a device with no token in")
-    print("localStorage (e.g. iPhone PWA). The login overlay appears — type")
+    print("localStorage (e.g. iPhone PWA). The sign-in sheet appears — type")
     print("the password, the server hands the bearer token back, the page")
     print("stashes it, you're in.")
     print()

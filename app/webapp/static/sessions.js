@@ -649,7 +649,7 @@ export function canCompact(s) {
 
 // /input is passkey-gated (middleware `_TERMINAL_GUARD_RULES`), so the
 // request carries the terminal token — without it a phone behind a configured
-// passkey gate gets a 401, which api() turns into the login overlay. Loopback
+// passkey gate gets a 401, which api() turns into the sign-in sheet. Loopback
 // and an unconfigured gate resolve '' and the header is simply left off.
 export async function sendSessionMessage(sid, text) {
   return terminalJsonApi(

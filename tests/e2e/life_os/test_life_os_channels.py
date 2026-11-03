@@ -57,7 +57,7 @@ def test_life_os_launch_sends_terminal_token(
     """Regression for #1036: tapping a Life OS launch (a skill tile's 🚀 or
     the weekly-recap 🚀) sends the passkey terminal token, as the Board's
     issue-start does. Without it a phone behind a
-    configured WebAuthn gate gets a 401 and the login overlay (cf. #997).
+    configured WebAuthn gate gets a 401 and the sign-in sheet (cf. #997).
     The real check is still a tap on a phone with the gate configured."""
     _mock_skills(authed_page)
     _mock_recap(authed_page, staleness="fresh", age_days=1.0)
@@ -101,7 +101,7 @@ def test_life_os_launch_sends_terminal_token(
     assert "headers" in captured, f"{target} launch POST was never intercepted"
     assert captured["headers"].get("x-terminal-token") == _SEEDED_TERMINAL_TOKEN, (
         f"{target} launch sent no X-Terminal-Token — behind a configured "
-        "passkey gate this is a 401 + login overlay on the phone (#1036, #997)"
+        "passkey gate this is a 401 + sign-in sheet on the phone (#1036, #997)"
     )
 
 

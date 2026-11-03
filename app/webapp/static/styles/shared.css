@@ -456,46 +456,6 @@ textarea.input-native { height: auto; }
 }
 .job-param-row .danger { color: var(--danger, #f55); }
 
-/* ---------- login ---------- */
-.login-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.85);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-  padding: 16px;
-}
-.login-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 20px;
-  width: 100%;
-  max-width: 360px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.login-card h2 { margin: 0; font-size: var(--font-body); }
-.login-card input {
-  background: var(--input-bg);
-  color: var(--fg);
-  border: 1px solid var(--control-border);
-  border-radius: var(--radius-md);
-  padding: 12px;
-  font-size: var(--font-label);
-}
-.login-error {
-  background: rgb(from var(--danger) r g b / 0.15);
-  border: 1px solid var(--danger);
-  color: var(--danger-text);
-  padding: 8px 10px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-body-sm);
-}
-
 /* ---------- running sessions (tap to open the terminal) ---------- */
 /* The row is one button (the text column) plus a kebab in its own rail,
    centred against the row's full height. The chevron that briefly

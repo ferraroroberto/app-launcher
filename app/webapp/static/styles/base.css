@@ -354,7 +354,6 @@ html, body {
 @media (pointer: coarse) and (max-width: 520px) {
   body.terminal-open .tabs,
   body:has(#changesOverlay:not([hidden])) .tabs,
-  body:has(#loginOverlay:not([hidden])) .tabs,
   body:has(#imageLightbox:not([hidden])) .tabs,
   body:has(#summaryModal:not([hidden])) .tabs {
     visibility: hidden;

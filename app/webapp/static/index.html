@@ -61,6 +61,7 @@
   <link rel="stylesheet" href="/static/_vendored/select-native/select-native.css">
   <link rel="stylesheet" href="/static/_vendored/segmented/segmented.css">
   <link rel="stylesheet" href="/static/_vendored/modal/modal.css">
+  <link rel="stylesheet" href="/static/_vendored/sign-in/sign-in.css">
   <link rel="stylesheet" href="/static/_vendored/action-row/action-row.css">
   <link rel="stylesheet" href="/static/_vendored/row-menu/row-menu.css">
   <link rel="stylesheet" href="/static/_vendored/text-size/text-size.css">
@@ -718,16 +719,6 @@
        the equally body-level floating nav bar on real iOS WebKit instead of
        escaping to the physical viewport. -->
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-
-  <div id="loginOverlay" class="login-overlay" hidden>
-    <form id="loginForm" class="login-card" autocomplete="off">
-      <h2><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-lock"></use></svg> Sign in</h2>
-      <p class="muted small">Enter the password to use the launcher.</p>
-      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password" required>
-      <button data-track="auth.unlock" type="submit" class="button-tint">Unlock</button>
-      <div id="loginError" class="login-error" hidden></div>
-    </form>
-  </div>
 
   <!-- @include views/detail-empty-panes.html -->
 
