@@ -86,7 +86,7 @@ function renderScanResults() {
       body.appendChild(name);
       body.appendChild(meta);
       row.appendChild(body);
-      const toggleBtn = switchEl(true, {
+      const toggleBtn = switchEl(false, {
         label: 'Include ' + c.name,
         onToggle: function (next, btn) { setSwitch(btn, next); },
       });
