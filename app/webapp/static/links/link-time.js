@@ -17,3 +17,13 @@ export function timeLabel(iso, now) {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
+
+// Where the read stopped, for "Read back to Oct 31, 07:28 PM". '' for a stamp
+// the transcript did not carry.
+export function cutoffLabel(iso) {
+  const t = Date.parse(iso || '');
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}

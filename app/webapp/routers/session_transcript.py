@@ -562,17 +562,21 @@ async def session_background_tasks(
     return {"available": True, "reason": None, "session_id": sid, **found}
 
 
-def _folded_links_with_titles(path: Any, flavor: str) -> Dict[str, Any]:
+def _folded_links_with_titles(path: Any, flavor: str, before: Optional[int] = None) -> Dict[str, Any]:
     """The links fold, each link carrying its page title when one answers."""
-    return session_link_titles.attach_titles(session_links.fold_links(path, flavor))
+    return session_link_titles.attach_titles(session_links.fold_links(path, flavor, before))
 
 
 @router.get("/api/claude-code/sessions/{sid}/links")
-async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
+async def session_links_list(
+    sid: str, request: Request, before: Optional[int] = Query(default=None, ge=0),
+) -> Dict[str, Any]:
     """Every artifact and URL the owner or the agent wrote in this session,
     grouped (Tailscale + passkey). Folded from the transcript like Changed
     files, so it answers after the session ends; every agent with a
-    transcript reader. Tool output is not scanned.
+    transcript reader. Tool output is not scanned. One request reads one
+    window of the transcript; ``before`` is the ``offset`` of the previous
+    response and reads the next older window.
     On demand only; nothing polls it.
     """
     cfg: WebappConfig = request.app.state.webapp_config
@@ -582,12 +586,12 @@ async def session_links_list(sid: str, request: Request) -> Dict[str, Any]:
         return _unavailable(sid, reason)
     found, refusal = await _read_or_unavailable(
         sid, agent, "session links",
-        asyncio.to_thread(_folded_links_with_titles, path, flavor or "claude"),
+        asyncio.to_thread(_folded_links_with_titles, path, flavor or "claude", before),
     )
     if refusal is not None:
         return refusal
-    logger.info("ℹ️ session links %s (%s): %d links in %d groups, partial=%s",
-                sid[:8], agent, found["total"], len(found["groups"]), found["partial"])
+    logger.info("ℹ️ session links %s (%s): %d links in %d groups, window from byte %d, partial=%s",
+                sid[:8], agent, found["total"], len(found["groups"]), found["offset"], found["partial"])
     return {"available": True, "reason": None, "session_id": sid, **found}
 
 

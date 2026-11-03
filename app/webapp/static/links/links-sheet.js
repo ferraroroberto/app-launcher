@@ -9,6 +9,10 @@
  * the clipboard. The server already removed credential-looking query strings,
  * so what is listed is what is safe to show and copy.
  *
+ * A very long transcript is read one window at a time: the note under the
+ * groups says how far back the read reached, and Read more asks for the next
+ * older window and merges its links in, until the start is reached.
+ *
  * Every agent with a transcript reader. `hasLinks` is what both ⋮ menus gate
  * the item on.
  */
@@ -19,7 +23,8 @@ import { AuthRequiredError, apiFailToast, sessionRoute, toast } from '../api.js'
 import { setAsyncState } from '../async-state.js';
 import { hasTranscriptReader } from '../chat/session-transcript.js';
 import { icon } from '../_vendored/icons/icons.js';
-import { timeLabel } from './link-time.js';
+import { cutoffLabel, timeLabel } from './link-time.js';
+import { mergeLinks } from './links-merge.js';
 
 // Why the server could not read, in the words the sheet shows.
 const REASON = {
@@ -33,7 +38,7 @@ const GROUP_GLYPH = {
   artifacts: 'layout-grid', github: 'git-pull-request', servers: 'globe', other: 'link',
 };
 
-let view = null;   // { sid, seq } while the sheet is open
+let view = null;   // { sid, seq, data, paged } while the sheet is open
 
 export function hasLinks(s) {
   return !!s && hasTranscriptReader(s);
@@ -100,20 +105,71 @@ function group(g) {
   return section;
 }
 
+// The note under the groups: how far back the read reached and, while older
+// transcript remains, the button that reads the next window.
+function readNote(data) {
+  const note = document.createElement('div');
+  note.className = 'links-read';
+  const text = document.createElement('p');
+  text.className = 'links-note';
+  if (data.partial) {
+    const cut = cutoffLabel(data.read_from);
+    text.textContent = cut ? 'Read back to ' + cut : 'Only the newest part of a very long transcript was read';
+    note.appendChild(text);
+    const more = document.createElement('button');
+    more.dataset.track = 'links.read-more';
+    more.type = 'button';
+    more.className = 'button-tint links-read-more';
+    more.textContent = 'Read more';
+    more.addEventListener('click', function () { readMore(more); });
+    note.appendChild(more);
+  } else {
+    text.textContent = 'Whole session read';
+    note.appendChild(text);
+  }
+  return note;
+}
+
 function render(data) {
+  const open = new Set(Array.from(els.linksBody.querySelectorAll('details[open]'),
+    function (d) { return d.dataset.group; }));
   els.linksBody.replaceChildren();
-  if (!data.groups.length) {
+  if (!data.groups.length && !data.partial) {
     setAsyncState(els.linksState, 'empty', { message: 'No links in this session', glyph: 'link' });
     return;
   }
   setAsyncState(els.linksState, 'ready');
-  data.groups.forEach(function (g) { els.linksBody.appendChild(group(g)); });
-  if (data.partial) {
-    const note = document.createElement('p');
-    note.className = 'links-note';
-    note.textContent = 'Only the newest part of a very long transcript was read';
-    els.linksBody.appendChild(note);
+  data.groups.forEach(function (g) {
+    const section = group(g);
+    if (open.has(g.key)) section.open = true;
+    els.linksBody.appendChild(section);
+  });
+  if (data.partial || view.paged) els.linksBody.appendChild(readNote(data));
+}
+
+async function readMore(button) {
+  const seq = view.seq;
+  const data = view.data;
+  button.disabled = true;
+  button.textContent = 'Reading…';
+  let older = null;
+  let failure = null;
+  try {
+    older = await terminalJsonApi(sessionRoute(view.sid, '/links?before=' + data.offset));
+  } catch (exc) {
+    if (exc instanceof AuthRequiredError) return;
+    failure = exc;
   }
+  if (!view || view.seq !== seq) return;
+  if (!older || !older.available) {
+    apiFailToast('Read more failed', failure || new Error(REASON[older && older.reason] || REASON.read_failed));
+    button.disabled = false;
+    button.textContent = 'Read more';
+    return;
+  }
+  view.paged = true;
+  view.data = mergeLinks(data, older);
+  render(view.data);
 }
 
 async function load() {
@@ -135,6 +191,8 @@ async function load() {
       message: REASON[data.reason] || REASON.read_failed, glyph: 'link',
     });
   } else {
+    view.data = data;
+    view.paged = false;
     render(data);
   }
 }
@@ -142,7 +200,7 @@ async function load() {
 // `s` is a session as the list knows it (only `session_id` is read).
 export function openLinks(s) {
   if (!els.linksSheet || !s) return;
-  view = { sid: s.session_id, seq: 0 };
+  view = { sid: s.session_id, seq: 0, data: null, paged: false };
   if (!els.linksSheet.open) els.linksSheet.showModal();
   load();
 }

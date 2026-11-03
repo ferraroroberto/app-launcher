@@ -462,6 +462,8 @@
 .link-meta { font-size: var(--font-body-sm); color: var(--muted); }
 .link-copy { flex: none; --icon-btn-box: var(--hit-min); }
 .links-note { margin: 4px 0 0; font-size: var(--font-body-sm); color: var(--muted); }
+.links-read { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin-top: 8px; }
+.links-read-more { min-height: var(--hit-min); }
 
 /* ---------- Background tasks sheet ---------- */
 /* ⋮ → Background tasks: Running then Finished N, each task a <details> row

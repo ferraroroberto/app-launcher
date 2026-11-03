@@ -15,7 +15,6 @@ fold already cleaned is ever requested, so nothing credential-shaped leaves.
 
 from __future__ import annotations
 
-import html
 import logging
 import re
 import threading
@@ -27,7 +26,7 @@ from urllib.parse import urlsplit
 import requests
 
 from src.clients import github
-from src.session_view.links import LABEL_CHARS
+from src.session_view.links import TITLE_TAG, clean_title
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,6 @@ CACHE_LIMIT = 512
 HIT_TTL = 6 * 3600
 MISS_TTL = 5 * 60
 
-_TITLE = re.compile(r"<title[^>]*>(.*?)</title\s*>", re.I | re.S)
 _GH_ITEM = re.compile(r"^/([\w.-]+)/([\w.-]+)/(?:pull|issues)/(\d+)")
 # What a sign-in wall or the artifact hosting shell answers for a page the
 # server cannot read: not a title.
@@ -51,10 +49,6 @@ _cache: Dict[str, Tuple[Optional[str], float]] = {}
 _lock = threading.Lock()
 
 Fetcher = Callable[[str], Optional[str]]
-
-
-def _clean(text: str) -> str:
-    return re.sub(r"\s+", " ", html.unescape(text)).strip()[:LABEL_CHARS]
 
 
 def page_title(url: str) -> Optional[str]:
@@ -68,10 +62,10 @@ def page_title(url: str) -> Optional[str]:
             if resp.status_code >= 400 or "html" not in resp.headers.get("content-type", "").lower():
                 return None
             head = next(resp.iter_content(READ_BYTES), b"")
-            found = _TITLE.search(head.decode(resp.encoding or "utf-8", errors="replace"))
+            found = TITLE_TAG.search(head.decode(resp.encoding or "utf-8", errors="replace"))
     except (requests.RequestException, ValueError):
         return None
-    title = _clean(found.group(1)) if found else ""
+    title = clean_title(found.group(1)) if found else ""
     return title if title and title.lower() not in _WALL_TITLES else None
 
 
@@ -86,7 +80,7 @@ def github_title(url: str) -> Optional[str]:
         title = github.issue_title(found.group(1), found.group(2), int(found.group(3)), timeout=FETCH_TIMEOUT)
     except github.GhError:
         return None
-    return _clean(title) or None
+    return clean_title(title) or None
 
 
 def _compose(group: str, label: str, title: str) -> str:
