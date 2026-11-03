@@ -107,7 +107,14 @@ def _stream_revision(handle: Any, head: bytes) -> str:
     return digest.hexdigest()
 
 
-def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str, Any]]:
+REFUSAL_OUTSIDE = "Capture path is outside this skill."
+REFUSAL_PARENT_DIR = "Capture path may not contain '..'."
+REFUSAL_WRONG_FOLDER = "Capture is not in this skill's conversations or conversations/archive folder."
+REFUSAL_NOT_CAPTURE = "Only a conversation capture (.md, not index.md) can be opened."
+
+
+def read_captures(fleet_dir: Path, paths: list[Optional[Path]],
+                  refusals: Optional[list[str]] = None) -> list[dict[str, Any]]:
     """Return bounded capture data and verified shared metadata, or a reason.
 
     A capture over :data:`MAX_CAPTURE_BYTES` gets header identity only (agent,
@@ -115,12 +122,14 @@ def read_captures(fleet_dir: Path, paths: list[Optional[Path]]) -> list[dict[str
     no ``body``, so resume works while a handoff stays unavailable (#1739).
     Every readable capture carries ``bot_chat`` and the ``bot_chat_rule`` that
     set it (:func:`bot_chat_rule`), read from the same prefix when oversized.
+    ``refusals`` parallels ``paths``: the reason to show for a ``None`` path.
     """
     results: list[dict[str, Any]] = []
     texts: list[str] = []
     positions: list[int] = []
-    for path in paths:
-        item: dict[str, Any] = {"reason": "Capture path is outside this skill.", "readable": False}
+    for index, path in enumerate(paths):
+        reason = refusals[index] if refusals and index < len(refusals) and refusals[index] else REFUSAL_OUTSIDE
+        item: dict[str, Any] = {"reason": reason, "readable": False}
         results.append(item)
         if path is None:
             continue

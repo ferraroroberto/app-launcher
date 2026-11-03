@@ -49,7 +49,10 @@ from fastapi import APIRouter, HTTPException, Request
 from src import audit
 from src.clients import session as session_client
 from src.agents import is_installed
-from src.life_os.history import MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, read_captures, write_handoff
+from src.life_os.history import (
+    MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, REFUSAL_NOT_CAPTURE, REFUSAL_OUTSIDE,
+    REFUSAL_PARENT_DIR, REFUSAL_WRONG_FOLDER, read_captures, write_handoff,
+)
 from src.life_os.delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
 from src.life_os.bot_titles import apply_bot_titles, bot_conversation_ids
 from src.life_os.title import run_title_cli as _run_title_cli
@@ -114,18 +117,28 @@ def _capture_rel(life_os_dir: Path, capture: Path) -> str:
         return ""
 
 
+def _conversation_check(root: Path, skill: Skill, rel: str) -> Tuple[Optional[Path], str]:
+    """Resolve one capture path, or return ``(None, reason)`` naming why it is refused."""
+    relative = Path(rel)
+    if ".." in relative.parts:
+        return None, REFUSAL_PARENT_DIR
+    if relative.is_absolute() or relative.drive:
+        return None, REFUSAL_OUTSIDE
+    expected = skills_dir_for(root.resolve()) / skill.id / _CONVERSATIONS_DIR
+    candidate = resolve_within(root, rel)
+    if candidate is None:
+        return None, REFUSAL_OUTSIDE
+    if candidate.parent not in (expected, expected / _ARCHIVE_DIR):
+        return None, REFUSAL_WRONG_FOLDER
+    if candidate.suffix.lower() != ".md" or candidate.name == "index.md":
+        return None, REFUSAL_NOT_CAPTURE
+    return candidate, ""
+
+
 def _conversation_path(root: Path, skill: Skill, rel: str) -> Optional[Path]:
     """Accept one markdown capture in this skill's ``conversations/`` or its
     ``conversations/archive/`` (no deeper), including reparse checks."""
-    relative = Path(rel)
-    if relative.is_absolute() or relative.drive or ".." in relative.parts:
-        return None
-    expected = skills_dir_for(root.resolve()) / skill.id / _CONVERSATIONS_DIR
-    candidate = resolve_within(root, rel)
-    if (candidate is None or candidate.parent not in (expected, expected / _ARCHIVE_DIR) or
-            candidate.suffix.lower() != ".md" or candidate.name == "index.md"):
-        return None
-    return candidate
+    return _conversation_check(root, skill, rel)[0]
 
 
 def _capture_rel_for_file(root: Path, skill: Skill, filename: str) -> str:
@@ -165,6 +178,7 @@ def _conversation_rows(
     root = Path(cfg.life_os_dir)
     paths = []
     skills = []
+    refusals: List[str] = []
     for row in rows:
         try:
             owner = skill or _resolve_skill(cfg, str(row.get("skill") or ""))
@@ -172,16 +186,18 @@ def _conversation_rows(
             owner = None
         filename = str(row.get("file") or "")
         path = None
+        refusal = ""
         if owner and Path(filename).name == filename:
             raw_path = row.get("path") if skill is None else None
             rel = (_capture_rel(root, Path(str(raw_path))) if raw_path else
                    _capture_rel_for_file(root, owner, filename))
-            path = _conversation_path(root, owner, rel)
+            path, refusal = _conversation_check(root, owner, rel)
             if path and path.name != filename:
                 path = None
         paths.append(path)
+        refusals.append(refusal)
         skills.append(owner.id if owner else "")
-    sources = read_captures(Path(cfg.fleet_config_dir), paths)
+    sources = read_captures(Path(cfg.fleet_config_dir), paths, refusals)
     result = []
     for row, path, owner, source in zip(rows, paths, skills, sources):
         agent = source.get("agent", "")
