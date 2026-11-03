@@ -4,7 +4,7 @@
 
 import assert from 'node:assert/strict';
 
-const { timeLabel } = await import('../../app/webapp/static/links/link-time.js');
+const { cutoffLabel, timeLabel } = await import('../../app/webapp/static/links/link-time.js');
 
 const NOW = Date.parse('2026-11-03T12:00:00Z');
 const ago = (ms) => new Date(NOW - ms).toISOString();
@@ -31,5 +31,11 @@ assert.ok(/\d/.test(older), older);
 assert.equal(timeLabel(null, NOW), '');
 assert.equal(timeLabel('', NOW), '');
 assert.equal(timeLabel('not a date', NOW), '');
+
+// Where a read stopped: a day and time, never a relative age.
+const cut = cutoffLabel('2026-10-31T12:28:00Z');
+assert.ok(/Oct|31/.test(cut) && /\d/.test(cut) && !/ago|just now/.test(cut), cut);
+assert.equal(cutoffLabel(null), '');
+assert.equal(cutoffLabel('not a date'), '');
 
 console.log('OK');

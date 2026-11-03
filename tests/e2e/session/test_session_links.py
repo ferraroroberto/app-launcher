@@ -160,3 +160,44 @@ def test_links_empty_session_says_so(authed_page: Page, base_url: str) -> None:
     _open_links(authed_page, base_url)
     expect(authed_page.locator("#linksState")).to_contain_text("No links in this session")
     expect(authed_page.locator("#linksSheet .link-open")).to_have_count(0)
+
+
+def test_links_partial_read_names_its_cut_off_and_read_more_merges_the_older_window(
+    authed_page: Page, base_url: str,
+) -> None:
+    newest = {**_LINKS, "total": 1, "partial": True, "offset": 4096, "read_from": "2026-10-31T12:28:00Z",
+              "groups": [{"key": "artifacts", "title": "Artifacts", "total": 1, "links": [
+                  _link("https://claude.ai/artifact/AbCdEfGh123456", "Artifact AbCdEfGh")]}]}
+    older = {**_LINKS, "total": 2, "partial": False, "offset": 0, "read_from": "2026-10-01T09:00:00Z",
+             "groups": [{"key": "artifacts", "title": "Artifacts", "total": 2, "links": [
+                 _link("https://claude.ai/artifact/AbCdEfGh123456", "Weekly Report", title="Weekly Report",
+                       minutes_ago=900),
+                 _link("https://claude.ai/artifact/ZzZzZzZz987654", "Artifact ZzZzZzZz", minutes_ago=950)]}]}
+    asked: list = []
+
+    def answer(route) -> None:
+        asked.append(route.request.url)
+        body = older if "before=4096" in route.request.url else newest
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
+
+    _mock(authed_page, newest)
+    authed_page.route(re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/links(\?.*)?$"), answer)
+    _open_links(authed_page, base_url)
+
+    sheet = authed_page.locator("#linksSheet")
+    note = sheet.locator(".links-read .links-note")
+    expect(note).to_contain_text(re.compile(r"^Read back to .*\d"))
+    more = sheet.get_by_role("button", name="Read more")
+    expect(more).to_have_attribute("data-track", "links.read-more")
+    sheet.locator(".links-group-head").click()
+    expect(sheet.locator(".link-open")).to_have_count(1)
+
+    more.click()
+    expect(note).to_have_text("Whole session read")
+    expect(more).to_have_count(0)
+    # The row both windows mention is one row, now named; the group stays unfolded.
+    rows = sheet.locator(".link-open")
+    expect(rows).to_have_count(2)
+    expect(rows.nth(0).locator(".link-title")).to_have_text("Weekly Report")
+    expect(sheet.locator(".links-group-count")).to_have_text("2")
+    assert any(url.endswith("before=4096") for url in asked), asked

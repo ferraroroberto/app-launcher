@@ -22,13 +22,21 @@ Safety: a URL is never listed with anything credential-shaped. User-info
 name or a long opaque value is shown without its query string (and so
 dedupes with the bare URL).
 
-Bounded work per request: at most the newest :data:`SCAN_CEILING` bytes of
-the file, lines with neither ``http`` nor an Artifact call skipped before they are parsed, and at
-most :data:`GROUP_LIMIT` links listed per group.
+Bounded work per request: one window of at most :data:`SCAN_CEILING` bytes
+(the newest, or the one ending at the ``before`` offset a "Read more" passes
+back), lines with neither ``http`` nor an Artifact call skipped before they are
+parsed, and at most :data:`GROUP_LIMIT` links listed per group.
+
+An artifact's name comes from the publish call's ``title``, else the ``<title>``
+in the first :data:`HEAD_BYTES` of the page file when it is still on disk, else
+the file's name. A URL the session only quoted takes its name from the
+session's own ``list`` result of the owner's artifacts when that named it,
+else it keeps the short id.
 """
 
 from __future__ import annotations
 
+import html
 import ipaddress
 import json
 import logging
@@ -46,6 +54,8 @@ SCAN_CEILING = 64 * 1024 * 1024
 GROUP_LIMIT = 100
 LABEL_CHARS = 120
 URL_CHARS = 500
+# Only the head of a page file is read for its <title>, never the whole file.
+HEAD_BYTES = 8 * 1024
 
 # Lines that carry the whole system prompt and no link the session made.
 _SKIP_TYPES = (b"prompt_snapshot", b"api-request-shape")
@@ -59,6 +69,12 @@ _SECRET_NAME = re.compile(
 _OPAQUE_VALUE = re.compile(r"^[A-Za-z0-9_\-+/=.]{24,}$")
 _PR_PATH = re.compile(r"^/([^/]+)/([^/]+)/(pull|issues)/(\d+)")
 _TAILNET_SUFFIX = ".ts.net"
+TITLE_TAG = re.compile(r"<title[^>]*>(.*?)</title\s*>", re.I | re.S)
+# A line of the Artifact tool's ``list`` result: "- (kind) Title — URL — updated 2026-10-08".
+_LISTED = re.compile(r"^\s*-\s*(?:\([^)]*\)\s*)?(.+?)\s+—\s+(https://claude\.ai/\S+?)\s+—", re.M)
+_STAMP = re.compile(rb'"timestamp"\s*:\s*"([^"]+)"')
+# Lines inspected for the window's oldest timestamp (a line may carry none).
+_STAMP_PROBE_LINES = 200
 
 GROUPS: Tuple[Tuple[str, str], ...] = (
     ("artifacts", "Artifacts"),
@@ -126,15 +142,47 @@ def _classify(host: str, path: str, port: int) -> Tuple[str, str]:
     return "other", (host + path)[:LABEL_CHARS]
 
 
-def _lines(path: Path) -> Iterator[bytes]:
+def clean_title(text: str) -> str:
+    """A page title as one tidy line, cut to the label length."""
+    return re.sub(r"\s+", " ", html.unescape(text)).strip()[:LABEL_CHARS]
+
+
+class _Window:
+    """One scan window of a transcript: the lines worth parsing, the byte
+    offset it starts at, and the timestamp of its oldest line."""
+
+    def __init__(self) -> None:
+        self.lines: List[bytes] = []
+        self.offset = 0
+        self.read_from: Optional[str] = None
+
+
+def _read_window(path: Path, before: Optional[int]) -> _Window:
+    """The at most :data:`SCAN_CEILING` bytes that end at ``before`` (the end
+    of the file when ``None``), starting on a line boundary."""
     size = path.stat().st_size
+    end = size if before is None else max(0, min(before, size))
+    start = max(0, end - SCAN_CEILING)
+    window = _Window()
     with path.open("rb") as handle:
-        if size > SCAN_CEILING:
-            handle.seek(size - SCAN_CEILING)
+        if start:
+            # One byte early, so a window that starts exactly on a line keeps it.
+            handle.seek(start - 1)
             handle.readline()
-        for line in handle:
+            window.offset = handle.tell()
+        probed = 0
+        while handle.tell() < end:
+            line = handle.readline()
+            if not line:
+                break
+            if window.read_from is None and probed < _STAMP_PROBE_LINES:
+                probed += 1
+                found = _STAMP.search(line)
+                if found:
+                    window.read_from = found.group(1).decode("utf-8", errors="replace")
             if (b"http" in line or b"Artifact" in line) and not any(s in line for s in _SKIP_TYPES):
-                yield line
+                window.lines.append(line)
+    return window
 
 
 def _strings(node: Any) -> Iterator[str]:
@@ -157,15 +205,33 @@ def _blocks(row: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
                 yield block
 
 
-def _artifact_title(inputs: Dict[str, Any]) -> str:
-    """What the owner would call a published artifact: its title, else the
-    page file's name."""
+def _page_file_title(file_path: str) -> str:
+    """The ``<title>`` of a published page file still on disk ('' when it is
+    gone, is not HTML or names none). Only the head is read."""
+    page = Path(file_path)
+    if page.suffix.lower() not in (".html", ".htm") or not page.is_absolute():
+        return ""
+    try:
+        with page.open("rb") as handle:
+            head = handle.read(HEAD_BYTES)
+    except OSError:
+        return ""
+    found = TITLE_TAG.search(head.decode("utf-8", errors="replace"))
+    return clean_title(found.group(1)) if found else ""
+
+
+def _artifact_title(inputs: Dict[str, Any], page_titles: Dict[str, str]) -> str:
+    """What the owner would call a published artifact: the title the call was
+    given, else the page's own ``<title>``, else the page file's name.
+    ``page_titles`` caches one fold's disk reads."""
     title = inputs.get("title")
     if isinstance(title, str) and title.strip():
         return title.strip()[:LABEL_CHARS]
     file_path = inputs.get("file_path")
     if isinstance(file_path, str) and file_path:
-        return re.split(r"[\\/]", file_path)[-1][:LABEL_CHARS]
+        if file_path not in page_titles:
+            page_titles[file_path] = _page_file_title(file_path)
+        return page_titles[file_path] or re.split(r"[\\/]", file_path)[-1][:LABEL_CHARS]
     return ""
 
 
@@ -208,14 +274,27 @@ def _published_url(call_url: Optional[str], body: str) -> Optional[str]:
     return None
 
 
-def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
+def _listed_titles(body: str) -> Dict[str, str]:
+    """URL -> title for each line of an Artifact ``list`` result."""
+    found: Dict[str, str] = {}
+    for match in _LISTED.finditer(body):
+        clean = _sanitize(match.group(2))
+        title = clean_title(match.group(1))
+        if clean and title:
+            found.setdefault(clean[0], title)
+    return found
+
+
+def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str], Dict[str, str]]:
     """The URL of each successful Artifact publish (paired with the title the
-    call was given) and the earliest name the session gave each artifact URL,
-    for a URL a later reply or a title-less republish repeats. A refused
-    publish and any other action (quickstart, list, read, open) contribute
-    no row."""
+    call was given), the earliest name the session gave each artifact URL
+    (for a URL a later reply or a title-less republish repeats) and the titles
+    a ``list`` result gave. A refused publish and any other action
+    (quickstart, list, read, open) contribute no row."""
     calls: Dict[str, Tuple[str, str, Optional[str]]] = {}
     names: Dict[str, str] = {}
+    listed: Dict[str, str] = {}
+    page_titles: Dict[str, str] = {}
     pieces: List[_Piece] = []
     for index, text in lines:
         if "Artifact" not in text and not (calls and "tool_use_id" in text):
@@ -234,12 +313,15 @@ def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
                     action = str(inputs.get("action") or "")
                     target = inputs.get("url")
                     clean = _sanitize(target) if isinstance(target, str) else None
-                    title = _artifact_title(inputs)
+                    title = _artifact_title(inputs, page_titles)
                     calls[str(block.get("id"))] = (action, title, clean[0] if clean else None)
                     if title and clean and action in _PUBLISH_ACTIONS:
                         names.setdefault(clean[0], title)
             elif block.get("type") == "tool_result" and str(block.get("tool_use_id")) in calls:
                 action, title, call_url = calls[str(block.get("tool_use_id"))]
+                if action == "list" and not block.get("is_error"):
+                    for url, listed_title in _listed_titles(" ".join(_strings(block.get("content")))).items():
+                        listed.setdefault(url, listed_title)
                 if action not in _PUBLISH_ACTIONS:
                     logger.info("ℹ️ artifact link dropped: action %r publishes nothing", action)
                     continue
@@ -253,22 +335,26 @@ def _artifact_pieces(lines: List[Line]) -> Tuple[List[_Piece], Dict[str, str]]:
                 pieces.append((index, stamp, url, title, True))
                 if title:
                     names.setdefault(url, title)
-    return pieces, names
+    return pieces, names, listed
 
 
-def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
+def fold_links(path: Path, flavor: str = "claude", before: Optional[int] = None) -> Dict[str, Any]:
     """``{groups: [{key, title, links: [{url, label, title, first_seen,
-    last_seen, count}]}], total, partial}``; links newest first within a group.
+    last_seen, count}]}], total, partial, offset, read_from}``; links newest
+    first within a group. ``offset`` is where the scanned window starts (pass
+    it back as ``before`` for the next older window), ``read_from`` the
+    timestamp of its oldest line, and ``partial`` is true while older
+    transcript remains unread.
     A link's ``title`` is what the transcript itself names (a published
     artifact's title) or ``None`` for :mod:`src.session_view.link_titles` to
     look up.
     ``flavor`` picks the agent's transcript grammar (a key of
     :data:`FLAVORS`; unknown falls back to Claude's, like the Chat pane)."""
-    size = path.stat().st_size
+    window = _read_window(path, before)
     lines: List[Line] = [
-        (index, raw.decode("utf-8", errors="replace")) for index, raw in enumerate(_lines(path))
+        (index, raw.decode("utf-8", errors="replace")) for index, raw in enumerate(window.lines)
     ]
-    artifact_pieces, names = _artifact_pieces(lines)
+    artifact_pieces, names, listed = _artifact_pieces(lines)
     pieces = _spoken_pieces(lines, flavor) + artifact_pieces
     pieces.sort(key=lambda piece: piece[0])
     found: Dict[str, Dict[str, Any]] = {}
@@ -294,7 +380,7 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
             entry["last_seen"] = stamp
             entry["seq"] = seq
             entry["count"] += 1
-    sources = {"call title": 0, "transcript": 0, "short id": 0}
+    sources = {"call title": 0, "transcript": 0, "list result": 0, "short id": 0}
     for entry in found.values():
         if entry["group"] != "artifacts":
             continue
@@ -303,11 +389,15 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
         elif entry["url"] in names:
             entry["label"] = entry["title"] = names[entry["url"]]
             sources["transcript"] += 1
+        elif entry["url"] in listed:
+            entry["label"] = entry["title"] = listed[entry["url"]]
+            sources["list result"] += 1
         else:
             sources["short id"] += 1
     if any(sources.values()):
         logger.info("ℹ️ artifact row names: %d from the call, %d from earlier in the transcript, "
-                    "%d by short id", sources["call title"], sources["transcript"], sources["short id"])
+                    "%d from a list result, %d by short id", sources["call title"], sources["transcript"],
+                    sources["list result"], sources["short id"])
     groups: List[Dict[str, Any]] = []
     for key, title in GROUPS:
         members = sorted((e for e in found.values() if e["group"] == key), key=lambda e: -e["seq"])
@@ -322,5 +412,5 @@ def fold_links(path: Path, flavor: str = "claude") -> Dict[str, Any]:
         })
     return {
         "groups": groups, "total": len(found),
-        "partial": size > SCAN_CEILING,
+        "partial": window.offset > 0, "offset": window.offset, "read_from": window.read_from,
     }

@@ -176,7 +176,8 @@ def test_pi_shaped_history_lists_messages_not_tool_results(tmp_path):
 
 def test_empty_transcript_lists_nothing(tmp_path):
     path = _write(tmp_path / "s.jsonl", [])
-    assert lk.fold_links(path) == {"groups": [], "total": 0, "partial": False}
+    assert lk.fold_links(path) == {
+        "groups": [], "total": 0, "partial": False, "offset": 0, "read_from": None}
 
 
 _ROUTE = "/api/claude-code/sessions/s1/links"
@@ -297,3 +298,135 @@ def test_an_artifact_url_a_reply_wrote_still_gets_a_row_beside_the_published_one
         _text("2026-10-01T10:00:02Z", "Here is the one I meant: " + quoted),
     ])
     assert [x["url"] for x in _by_group(lk.fold_links(path))["artifacts"]] == [quoted]
+
+
+def _numbered(count: int) -> List[Dict[str, Any]]:
+    return [_text("2026-10-01T10:%02d:00Z" % i, "Page http://localhost:3000/p%02d" % i) for i in range(count)]
+
+
+def _urls(result: Dict[str, Any]) -> List[str]:
+    return [x["url"].rsplit("/", 1)[-1] for g in result["groups"] for x in g["links"]]
+
+
+def test_each_request_scans_one_window_and_before_pages_back_to_the_start(tmp_path, monkeypatch):
+    path = _write(tmp_path / "s.jsonl", _numbered(30))
+    line = len(path.read_bytes().splitlines(keepends=True)[0])
+    # A window of exactly ten lines: its start falls on a line boundary, which
+    # the next older window must not lose.
+    monkeypatch.setattr(lk, "SCAN_CEILING", line * 10)
+    first = lk.fold_links(path)
+    assert first["partial"] is True and first["read_from"] == "2026-10-01T10:20:00Z"
+    assert _urls(first) == ["p%02d" % i for i in range(29, 19, -1)]
+    seen, window, hops = list(_urls(first)), first, 0
+    while window["partial"]:
+        older = lk.fold_links(path, before=window["offset"])
+        assert window["offset"] - older["offset"] <= lk.SCAN_CEILING
+        assert not set(_urls(older)) & set(seen)
+        seen += _urls(older)
+        window, hops = older, hops + 1
+    assert hops == 2 and window["offset"] == 0 and window["read_from"] == "2026-10-01T10:00:00Z"
+    assert sorted(seen) == ["p%02d" % i for i in range(30)]
+
+
+def test_a_window_cut_mid_line_starts_on_the_next_whole_line(tmp_path, monkeypatch):
+    path = _write(tmp_path / "s.jsonl", _numbered(12))
+    line = len(path.read_bytes().splitlines(keepends=True)[0])
+    monkeypatch.setattr(lk, "SCAN_CEILING", line * 4 + 17)
+    first = lk.fold_links(path)
+    older = lk.fold_links(path, before=first["offset"])
+    assert _urls(first) == ["p%02d" % i for i in range(11, 7, -1)]
+    assert _urls(older) == ["p%02d" % i for i in range(7, 3, -1)]
+
+
+def test_a_small_transcript_is_whole_and_before_zero_reads_nothing(tmp_path):
+    path = _write(tmp_path / "s.jsonl", _numbered(3))
+    whole = lk.fold_links(path)
+    assert whole["partial"] is False and whole["offset"] == 0 and whole["total"] == 3
+    assert whole["read_from"] == "2026-10-01T10:00:00Z"
+    assert lk.fold_links(path, before=0)["total"] == 0
+
+
+def test_route_pages_back_with_before(webapp_client, _bypass_gate, monkeypatch, tmp_path):
+    client, _, overrides = webapp_client
+    path = _write(tmp_path / "s.jsonl", _numbered(8))
+    line = len(path.read_bytes().splitlines(keepends=True)[0])
+    monkeypatch.setattr(lk, "SCAN_CEILING", line * 4)
+    _serve(overrides, monkeypatch, path)
+    first = client.get(_ROUTE).json()
+    older = client.get(_ROUTE, params={"before": first["offset"]}).json()
+    assert first["partial"] is True and older["partial"] is False
+    assert first["total"] == 4 and older["total"] == 4
+    assert client.get(_ROUTE, params={"before": -1}).status_code == 422
+
+
+def test_an_artifacts_name_is_the_call_title_then_the_page_title_then_the_file_name(tmp_path):
+    def row(i: int, **inputs: Any) -> List[Dict[str, Any]]:
+        return [_artifact_call("2026-10-01T10:0%d:00Z" % i, "t%d" % i, **inputs),
+                _tool_result("2026-10-01T10:0%d:01Z" % i, "t%d" % i,
+                             "Published https://claude.ai/artifact/Page%02dPage%02dPage" % (i, i))]
+
+    titled = tmp_path / "titled.html"
+    titled.write_text("<html><head>\n<title> Weekend &amp;\n Plans </title></head></html>", encoding="utf-8")
+    plain = tmp_path / "plain.html"
+    plain.write_text("<html><body>no title</body></html>", encoding="utf-8")
+    late = tmp_path / "late.html"
+    late.write_text("<!-- " + "x" * lk.HEAD_BYTES + " --><title>Too far in</title>", encoding="utf-8")
+    notes = tmp_path / "notes.txt"
+    notes.write_text("<title>Not a page</title>", encoding="utf-8")
+    path = _write(tmp_path / "s.jsonl",
+                  row(1, file_path=str(titled), title="Call Title")
+                  + row(2, file_path=str(titled))
+                  + row(3, file_path=str(plain))
+                  + row(4, file_path=str(tmp_path / "gone.html"))
+                  + row(5, file_path=str(late))
+                  + row(6, file_path=str(notes))
+                  + row(7, file_path="relative/page.html"))
+    links = _by_group(lk.fold_links(path))["artifacts"]
+    assert {x["url"].split("/")[-1][4:6]: x["label"] for x in links} == {
+        "01": "Call Title", "02": "Weekend & Plans", "03": "plain.html", "04": "gone.html",
+        "05": "late.html", "06": "notes.txt", "07": "page.html"}
+
+
+def test_a_publish_call_in_an_older_window_names_the_row_once_that_window_is_read(tmp_path, monkeypatch):
+    url = "https://claude.ai/artifact/OldOldOldOld0001"
+    rows = [_artifact_call("2026-10-01T09:00:00Z", "t1", title="Early Board"),
+            _tool_result("2026-10-01T09:00:01Z", "t1", "Published " + url)]
+    rows += _numbered(10)
+    rows.append(_text("2026-10-01T11:00:00Z", "Back to " + url))
+    path = _write(tmp_path / "s.jsonl", rows)
+    line = len(path.read_bytes().splitlines(keepends=True)[3])
+    monkeypatch.setattr(lk, "SCAN_CEILING", line * 5)
+    first = lk.fold_links(path)
+    assert [(x["label"], x["title"]) for x in _by_group(first)["artifacts"]] == [("Artifact OldOldOl", None)]
+    oldest = first
+    while oldest["partial"]:
+        oldest = lk.fold_links(path, before=oldest["offset"])
+    assert [(x["label"], x["title"]) for x in _by_group(oldest)["artifacts"]] == [("Early Board", "Early Board")]
+
+
+def test_a_quoted_artifact_the_session_listed_takes_the_listed_title(tmp_path):
+    quoted = "https://claude.ai/artifact/ListedOneListed01"
+    other = "https://claude.ai/artifact/NotListedNotListd2"
+    listing = ("2 artifacts (newest first):\n"
+               "- (mine) Garden Planner — %s — updated 2026-10-08\n"
+               "- (shared) Something Else — https://claude.ai/artifact/ElseElseElse0003 — updated 2026-10-07" % quoted)
+    path = _write(tmp_path / "s.jsonl", [
+        _artifact_call("2026-10-01T10:00:00Z", "l1", action="list"),
+        _tool_result("2026-10-01T10:00:01Z", "l1", listing),
+        _text("2026-10-01T10:02:00Z", "Open %s and %s" % (quoted, other)),
+    ])
+    links = _by_group(lk.fold_links(path))["artifacts"]
+    assert {x["url"].rsplit("/", 1)[-1]: (x["label"], x["title"]) for x in links} == {
+        "ListedOneListed01": ("Garden Planner", "Garden Planner"),
+        "NotListedNotListd2": ("Artifact NotListe", None)}
+
+
+def test_a_publish_name_beats_the_listed_one(tmp_path):
+    url = "https://claude.ai/artifact/PublishedPublish01"
+    path = _write(tmp_path / "s.jsonl", [
+        _artifact_call("2026-10-01T10:00:00Z", "l1", action="list"),
+        _tool_result("2026-10-01T10:00:01Z", "l1", "- (mine) Old Name — %s — updated 2026-10-08" % url),
+        _artifact_call("2026-10-01T10:01:00Z", "p1", title="Fresh Name"),
+        _tool_result("2026-10-01T10:01:01Z", "p1", "Published " + url),
+    ])
+    assert [x["label"] for x in _by_group(lk.fold_links(path))["artifacts"]] == ["Fresh Name"]
