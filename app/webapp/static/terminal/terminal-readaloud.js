@@ -139,7 +139,7 @@ async function readTextAloud(text, handle, quiet) {
       else await speakHub(text, opts);
       return true;
     } catch (exc) {
-      // A stale session: reopen the login overlay, but still
+      // A stale session: reopen the sign-in sheet, but still
       // fall through to Web Speech below — losing the nicer hub voice is a
       // fair trade for not breaking read-aloud outright on an expired token.
       if (exc && exc.status === 401) showLogin();

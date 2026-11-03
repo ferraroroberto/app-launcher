@@ -6,7 +6,7 @@
  */
 
 import { els, state, BOARD_POLL_MS, GIT_STATUS_POLL_MS, JOBS_POLL_MS, LISTENERS_POLL_MS, RUNNING_APPS_POLL_MS, SESSIONS_POLL_MS, SYSTEM_LOAD_POLL_MS, TUNNEL_POLL_MS, WEBAUTHN_POLL_MS } from './state.js';
-import { AuthRequiredError, apiFailToast, authHeaders, consumeUrlParam, jsonApi, toast, wireLoginForm, writeToken } from './api.js';
+import { AuthRequiredError, apiFailToast, authHeaders, consumeUrlParam, jsonApi, setSignInHandler, toast, writeToken } from './api.js';
 import { setTab, wireTabs } from './tabs.js';
 import { wireUsageLog } from './usage.js';
 import { initPerfTiming } from './perf-timing.js';
@@ -179,7 +179,7 @@ async function fetchVersion() {
 // no session list, and none of the polls armed at the end of boot(), so the
 // app stayed empty until a manual reload. Non-auth failures are
 // retried on this backoff before the toast. A 401 is not retried: it has
-// already raised the login overlay, whose success handler calls boot() again.
+// already raised the sign-in sheet, whose success handler calls boot() again.
 // fetchVersion() above retries on the same backoff.
 const BOOT_RETRY_MS = [500, 1000, 2000, 4000];
 
@@ -387,7 +387,7 @@ function armPolls(first) {
 }
 
 // --------------------------------------------------------- wire + go
-wireLoginForm(boot);
+setSignInHandler(boot);
 wireUsageLog();
 const perfTiming = initPerfTiming({ headers: function () { return authHeaders(); } });
 wireTabs();

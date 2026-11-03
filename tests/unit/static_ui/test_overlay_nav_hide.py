@@ -21,8 +21,8 @@ from app.webapp.shell_html import assemble_shell
 from tests._css import STATIC, stylesheet_text
 
 # The hand-rolled overlay classes: the session overlay's chrome, which every
-# full-screen Coding / Life OS view reuses, plus the three one-off overlays.
-_OVERLAY_CLASSES = {"terminal-overlay", "login-overlay", "summary-modal", "image-lightbox"}
+# full-screen Coding / Life OS view reuses, plus the two one-off overlays.
+_OVERLAY_CLASSES = {"terminal-overlay", "summary-modal", "image-lightbox"}
 
 # The session overlay is keyed on the body class terminal.js sets, not on its
 # [hidden] state: it stays mounted while hidden for reconnects.
@@ -75,7 +75,7 @@ def test_overlay_ids_are_found() -> None:
     ids = _overlay_ids()
     # A guard on the scan itself: if it finds nothing, the checks below pass
     # without checking anything.
-    for known in ("terminalOverlay", "changesOverlay", "loginOverlay", "summaryModal"):
+    for known in ("terminalOverlay", "changesOverlay", "summaryModal"):
         assert known in ids, f"overlay scan lost #{known}: {ids}"
 
 

@@ -22,7 +22,6 @@ _CONTROLS = [
     ".tr-ask-input",
     ".compose-input",
     ".input-native",
-    ".login-card input",
     '.session-mode-btn[aria-disabled="true"]',
     ".key-btn:disabled",
     '.board-drawer-action[aria-disabled="true"],\n.board-drawer-action[aria-disabled="true"]:active',

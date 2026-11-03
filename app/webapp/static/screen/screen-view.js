@@ -108,7 +108,7 @@ async function start() {
   try {
     body = await terminalJsonApi('/api/screen/monitors');
   } catch (exc) {
-    // The login overlay just went up under this top-layer dialog: step
+    // The sign-in sheet just went up under this top-layer dialog: step
     // aside so it can be used (and keep a pop-out window open for it).
     if (exc instanceof AuthRequiredError) { hideView(); return; }
     if (!view.open) return;

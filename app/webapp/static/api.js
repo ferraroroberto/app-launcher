@@ -1,11 +1,12 @@
-/* HTTP helpers + bearer-token plumbing + login overlay + toast.
+/* HTTP helpers + bearer-token plumbing + sign-in + toast.
  *
  * Every module reaches the server through api()/jsonApi() so the
- * Authorization: Bearer header is attached once, and 401s flip the
- * login overlay open from one place.
+ * Authorization: Bearer header is attached once, and 401s open the
+ * vendored sign-in sheet from one place.
  */
 
 import { els, state, TOKEN_KEY } from './state.js';
+import { requestSignIn } from './_vendored/sign-in/sign-in.js';
 import { icon } from './_vendored/icons/icons.js';
 import { escapeHtml } from './dom-utils.js';
 
@@ -81,7 +82,7 @@ export function opensInChatFirst() {
   return !state.config || state.config.open_sessions_in_chat !== false;
 }
 
-// A 401 means the login overlay just went up — callers that merely want to
+// A 401 means the sign-in sheet just went up — callers that merely want to
 // swallow "not logged in yet" (rather than toast it as a real failure) check
 // `exc instanceof AuthRequiredError`, not a string message that a future
 // reword would silently break.
@@ -98,7 +99,7 @@ export class AuthRequiredError extends Error {
   }
 }
 
-// Log a background-poll failure, unless it's just the login overlay going
+// Log a background-poll failure, unless it's just the sign-in sheet going
 // up — every poll loop (apps, sessions, jobs, life-os, rate-limits, ...)
 // wants the exact same "warn on real failures, stay silent on 401" guard.
 export function logPollFailure(label, exc) {
@@ -170,46 +171,32 @@ export async function apiRawJson(path, opts) {
   return jsonVerdict(await apiRaw(path, opts));
 }
 
-// --------------------------------------------------------------- login
-export function showLogin() {
-  if (!els.loginOverlay) return;
-  els.loginOverlay.hidden = false;
-  els.loginPassword.value = '';
-  els.loginPassword.focus();
-}
+// --------------------------------------------------------------- sign-in
+// Called from every 401. The sheet hands every caller the same promise while
+// it is open, so the follow-up runs once per sign-in, not once per 401.
+let onSignedIn = null;
+let signInOpen = false;
 
-export function hideLogin() {
-  if (els.loginOverlay) els.loginOverlay.hidden = true;
+export function showLogin() {
+  if (signInOpen) return;
+  signInOpen = true;
+  requestSignIn({
+    endpoint: '/api/login',
+    hint: 'Enter the password to use the launcher.',
+    onToken: writeToken,
+  }).then(function () {
+    signInOpen = false;
+    if (onSignedIn) onSignedIn();
+  }, function (exc) {
+    signInOpen = false;
+    console.warn('sign-in failed to open', exc);
+  });
 }
 
 // Boot hook called from main.js — passed `onLoginSuccess` so this module
 // stays independent of the boot sequence.
-export function wireLoginForm(onLoginSuccess) {
-  els.loginForm.addEventListener('submit', async function (ev) {
-    ev.preventDefault();
-    els.loginError.hidden = true;
-    const password = els.loginPassword.value;
-    try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-      const body = await res.json().catch(function () { return null; });
-      if (!res.ok || !body || !body.token) {
-        const msg = (body && body.detail) || 'Login failed';
-        els.loginError.textContent = msg;
-        els.loginError.hidden = false;
-        return;
-      }
-      writeToken(body.token);
-      hideLogin();
-      onLoginSuccess();
-    } catch (exc) {
-      els.loginError.textContent = String(exc.message || exc);
-      els.loginError.hidden = false;
-    }
-  });
+export function setSignInHandler(onLoginSuccess) {
+  onSignedIn = onLoginSuccess;
 }
 
 // --------------------------------------------------------------- toast
@@ -245,7 +232,7 @@ export function toast(msg, kind, opts) {
 }
 
 // Toast a failed API call as "<prefix>: <message>" (error styling) — unless
-// exc is an AuthRequiredError, in which case the login overlay already went
+// exc is an AuthRequiredError, in which case the sign-in sheet already went
 // up and a red toast on top of it would double-fire. `prefix` may be falsy
 // for the few sites that just toast the raw message.
 //

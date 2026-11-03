@@ -16,7 +16,7 @@
  *
  * Auth: a bearer token is stored in localStorage. The page extracts it
  * from ?token=… on first load and strips it from the URL. On 401, the
- * login overlay shows; password → /api/login → bearer token.
+ * sign-in sheet opens; password → /api/login → bearer token.
  */
 
 export const TOKEN_KEY = 'launcher.token';
@@ -585,10 +585,6 @@ export const els = {
 
   toast: document.getElementById('toast'),
 
-  loginOverlay: document.getElementById('loginOverlay'),
-  loginForm: document.getElementById('loginForm'),
-  loginPassword: document.getElementById('loginPassword'),
-  loginError: document.getElementById('loginError'),
 
   terminalOverlay: document.getElementById('terminalOverlay'),
   terminalBack: document.getElementById('terminalBack'),

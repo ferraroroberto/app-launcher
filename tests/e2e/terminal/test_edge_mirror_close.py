@@ -96,8 +96,8 @@ def test_signed_out_mirror_still_carries_close_marker(
     authed_page.goto(
         f"{base_url}/?terminal={_SIGNED_OUT_SID}", wait_until="domcontentloaded"
     )
-    # The login overlay is what a 401 raises, so boot() has already returned.
-    expect(authed_page.locator("#loginOverlay")).to_be_visible()
+    # The sign-in sheet is what a 401 raises, so boot() has already returned.
+    expect(authed_page.locator("dialog.sign-in")).to_be_visible()
     expect(authed_page).to_have_title(f"app-launcher-mirror-{_SIGNED_OUT_SID}")
 
 
@@ -111,7 +111,7 @@ def test_signed_out_non_mirror_page_stays_unmarked(
     (#241/#877); the early marker must not land on them either."""
     authed_page.route("**/api/config", _config_401)
     authed_page.goto(f"{base_url}/{query}", wait_until="domcontentloaded")
-    expect(authed_page.locator("#loginOverlay")).to_be_visible()
+    expect(authed_page.locator("dialog.sign-in")).to_be_visible()
     expect(authed_page).to_have_title("Launcher")
 
 

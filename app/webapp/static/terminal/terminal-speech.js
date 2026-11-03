@@ -612,7 +612,7 @@ export async function speakHubInto(handle, text, opts) {
       });
       if (!res.ok) {
         // .status lets a caller that imports api.js (e.g. terminal-readaloud.js)
-        // recognise a 401 and reopen the login overlay — this
+        // recognise a 401 and reopen the sign-in sheet — this
         // module stays free of api.js imports itself (see authHeaders() above),
         // so it can only tag the Error, not call showLogin() directly.
         const err = new Error('hub tts HTTP ' + res.status);
@@ -662,7 +662,7 @@ export async function summarizeReply(text, opts) {
   });
   if (!res.ok) {
     // .status lets a caller that imports api.js recognise a 401 and reopen
-    // the login overlay — see the matching note in speakHubInto.
+    // the sign-in sheet — see the matching note in speakHubInto.
     const err = new Error('hub summarize HTTP ' + res.status);
     err.status = res.status;
     throw err;
