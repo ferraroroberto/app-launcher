@@ -29,6 +29,12 @@
  * can't wipe an answer being typed; the poll only re-gates Done
  * (syncChiefAnswers) on whether the chief is running.
  *
+ * Every item, in both sheets, also takes files (answer-files.js): a paperclip
+ * and image paste beside its text, stored on the chief's session as Chat stores
+ * them. A chief answer carries each path under its line; an owner-check answer
+ * posts to GitHub only how many files it has, and the chief gets the paths in
+ * the one message below.
+ *
  * Owner checks (owner-checks.js) have their own sheet, the same dialog in
  * `owner` mode: the chief's questions unblock work in flight, an owner check
  * waits on the owner's own schedule, so neither sheet lists the other's items.
@@ -47,6 +53,9 @@ import { createDictation, startWorkTimer, voiceDictationAvailable } from '../voi
 import { growTextarea, mountComposer } from '../composer.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
+import {
+  attachedLines, disposeAnswerFiles, emptyFiles, filesUploading, mountAnswerFiles, syncAnswerFiles,
+} from './answer-files.js';
 import { renderBoard } from '../board.js';
 import { itemKey, markSent } from './chief-keys.js';
 import {
@@ -76,6 +85,10 @@ let chiefRun = '';
 let sending = false;
 // Owner-check drafts by ref, kept across opens until their answer lands.
 const ownerDrafts = {};
+
+function emptyChiefDraft() {
+  return { picks: [], other: '', files: emptyFiles() };
+}
 
 function ownerDraft(item) {
   if (!ownerDrafts[item.ref]) ownerDrafts[item.ref] = emptyOwnerDraft();
@@ -128,6 +141,7 @@ function answerText(item, draft) {
 // gave it one — its id, so the chief can find the item to remove:
 //   Answers from the Board (2 of 3):
 //   1. [fleet-config#<n>] Approve the four plans? → Yes, all four (recommended) {id: q-plans}
+//      Attached: <path>   (one per file, under its item's line)
 //   2. [life-os#<n>] Blank the old passwords? → Other: only the transcripts
 //   Skipped: 3
 //   Also: <anything-else text>
@@ -139,22 +153,26 @@ function answerText(item, draft) {
 export function composeAnswers(items, drafts, extra, shown, ownerLines) {
   const lines = [];
   const skipped = [];
+  let answered = 0;
   const indices = shown || allIndices(items);
   const owner = ownerLines || [];
   indices.forEach(function (i) {
     const item = items[i];
     const answer = answerText(item, drafts[i]);
-    if (!answer) {
+    const files = drafts[i].files || [];
+    if (!answer && !files.length) {
       skipped.push(i + 1);
       return;
     }
+    answered++;
     const tag = item.ref || item.repo;
     lines.push((i + 1) + '. ' + (tag ? '[' + tag + '] ' : '')
-      + oneLine(item.question || item.text) + ANSWER_SEP + answer
+      + oneLine(item.question || item.text) + ANSWER_SEP + (answer || '(files only)')
       + (item.id ? ' {id: ' + item.id + '}' : ''));
+    attachedLines(files).forEach(function (line) { lines.push(line); });
   });
   const out = indices.length || !owner.length
-    ? ['Answers from the Board (' + lines.length + ' of ' + indices.length + '):'].concat(lines)
+    ? ['Answers from the Board (' + answered + ' of ' + indices.length + '):'].concat(lines)
     : [];
   if (skipped.length) out.push('Skipped: ' + skipped.join(', '));
   if (owner.length) out.push('Owner checks answered on the Board:');
@@ -173,16 +191,46 @@ function allIndices(items) {
   return items.map(function (_item, i) { return i; });
 }
 
-function answeredCount() {
-  return sheet.shown.filter(function (i) {
-    return !!answerText(sheet.items[i], sheet.drafts[i]);
-  }).length;
+// Files alone answer a chief question: they are what the owner has to say.
+function hasAnswer(item, draft) {
+  return !!answerText(item, draft) || draft.files.length > 0;
 }
 
+function answeredCount() {
+  return sheet.shown.filter(function (i) { return hasAnswer(sheet.items[i], sheet.drafts[i]); }).length;
+}
+
+// An owner answer with the files that ride to the chief. A snooze carries none,
+// and files with no answer are not here at all: they stay in their draft.
 function ownerAnswers() {
   return sheet.owner
-    .map(function (item) { return { item: item, ans: ownerAnswerOf(item, ownerDraft(item)) }; })
+    .map(function (item) {
+      const draft = ownerDraft(item);
+      const ans = ownerAnswerOf(item, draft);
+      return { item: item, ans: ans, files: ans && ans.answer !== 'later' ? draft.files.slice() : [] };
+    })
     .filter(function (x) { return !!x.ans; });
+}
+
+// Files stored in the open sheet, both modes.
+function sheetFileCount() {
+  if (!sheet) return 0;
+  return sheet.shown.reduce(function (n, i) { return n + sheet.drafts[i].files.length; }, 0)
+    + sheet.owner.reduce(function (n, item) { return n + ownerDraft(item).files.length; }, 0);
+}
+
+// One item's files control: the paperclip, its progress and chips. The chief
+// session takes the upload, so with none running it waits, with a note.
+function itemFiles(draft, label) {
+  return mountAnswerFiles({
+    template: els.boardAnswerAttachTemplate,
+    draft: draft,
+    label: label,
+    chiefOn: function () { return !!chiefSessionId(); },
+    upload: uploadToChief,
+    sheetUsed: sheetFileCount,
+    onChange: syncDone,
+  });
 }
 
 // --------------------------------------------------------------- render
@@ -269,7 +317,11 @@ function renderItem(item, index) {
   // The same dictation Anything else and the chat bar use, bound to this
   // field; the transcript lands in the field for review before Done.
   if (voiceDictationAvailable()) other.appendChild(otherMic(input, otherChanged));
+  const files = itemFiles(draft, 'question ' + (index + 1));
+  files.wirePaste(input);
+  other.appendChild(files.button);
   block.appendChild(other);
+  block.appendChild(files.extra);
   paintItem(block, draft);
   return block;
 }
@@ -325,7 +377,7 @@ function syncDone() {
   if (!done || !sheet) return;
   const owner = ownerAnswers();
   const forChief = answeredCount() > 0 || !!alsoText().trim()
-    || owner.some(function (x) { return x.ans.answer === 'problem'; });
+    || owner.some(function (x) { return x.ans.answer === 'problem' || x.files.length > 0; });
   let why = '';
   if (!forChief && !owner.length) {
     why = sheet.mode === 'owner'
@@ -345,6 +397,7 @@ function syncDone() {
 // 'unknown'); an open sheet re-gates Done on it.
 export function syncChiefAnswers(run) {
   chiefRun = run || '';
+  syncAnswerFiles();
   syncDone();
 }
 
@@ -387,7 +440,7 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
     items: items,
     owner: owner,
     shown: indices,
-    drafts: same ? sheet.drafts : items.map(function () { return { picks: [], other: '' }; }),
+    drafts: same ? sheet.drafts : items.map(emptyChiefDraft),
     also: same ? sheet.also : '',
   };
   const chief = mode === 'chief';
@@ -401,11 +454,13 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
     });
   }
   disposeOtherDictations();
+  disposeAnswerFiles();
   const blocks = indices.map(function (i) { return renderItem(items[i], i); });
   owner.forEach(function (item) {
-    blocks.push(ownerSheetBlock(item, ownerDraft(item), syncDone, function (wrap, input, typed) {
+    const draft = ownerDraft(item);
+    blocks.push(ownerSheetBlock(item, draft, syncDone, function (wrap, input, typed) {
       if (voiceDictationAvailable()) wrap.appendChild(otherMic(input, typed));
-    }));
+    }, itemFiles(draft, item.ref)));
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
   els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief' : 'Owner checks';
@@ -430,6 +485,7 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
 // the toast. Never rejects: postOwnerAnswers reports a failed request per answer.
 async function applyOwnerAnswers(answered) {
   if (!answered.length) return { lines: [], failed: [] };
+  // Only the answer goes to GitHub, and in it only a file count (ownerAnswerOf).
   const res = await postOwnerAnswers(answered.map(function (x) { return x.ans; }));
   const lines = [];
   const failed = [];
@@ -437,7 +493,7 @@ async function applyOwnerAnswers(answered) {
     const r = res.results.find(function (y) { return y.ref === x.ans.ref; });
     if (r && r.ok) {
       delete ownerDrafts[x.item.ref];
-      const line = ownerMessageLine(x.item, x.ans);
+      const line = ownerMessageLine(x.item, x.ans, x.files);
       if (line) lines.push(line);
     } else {
       ownerDraft(x.item).error = (r && r.error) || 'no result came back';
@@ -462,6 +518,10 @@ async function submitAnswers() {
     toast('Still transcribing — wait for the transcript, then tap Done', 'error', { icon: 'mic' });
     return;
   }
+  if (filesUploading()) {
+    toast('Still uploading — wait for the files, then tap Done', 'error', { icon: 'paperclip' });
+    return;
+  }
   const done = els.chiefAnswersDone;
   // A failed owner check rebuilds the sheet below; keep this one's plan.
   const plan = sheet.plan;
@@ -472,7 +532,7 @@ async function submitAnswers() {
   try {
     owner = await applyOwnerAnswers(ownerAnswers());
     const keys = sheet.shown
-      .filter(function (i) { return !!answerText(sheet.items[i], sheet.drafts[i]); })
+      .filter(function (i) { return hasAnswer(sheet.items[i], sheet.drafts[i]); })
       .map(function (i) { return itemKey(sheet.items[i], i); });
     const forChief = keys.length > 0 || !!alsoText().trim() || owner.lines.length > 0;
     // With no chief running only Validated / Done / Later get this far
@@ -484,7 +544,7 @@ async function submitAnswers() {
       // Sent: the drafts it carried are done with, so the next open starts
       // clean. One typed for an item the filter hid was not sent, and stays.
       // The close handler saves the box into `sheet.also`, so empty the box.
-      sheet.shown.forEach(function (i) { sheet.drafts[i] = { picks: [], other: '' }; });
+      sheet.shown.forEach(function (i) { sheet.drafts[i] = emptyChiefDraft(); });
       if (sheet.mode === 'chief') {
         also.textarea.value = '';
         sheet.also = '';
@@ -537,6 +597,7 @@ export function wireChiefAnswers() {
     if (sheet && sheet.mode === 'chief') sheet.also = alsoText();
     also.reset();
     disposeOtherDictations();
+    disposeAnswerFiles();
   });
   els.chiefAnswersDone.addEventListener('click', submitAnswers);
 }

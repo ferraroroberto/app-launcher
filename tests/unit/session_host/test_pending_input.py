@@ -324,3 +324,25 @@ def test_a_composer_needing_more_presses_than_the_cap_is_left_unknown(scripted, 
     assert status == 200
     assert _writes_after(pty, start).count(_CTRL_U) == 3
     assert session.to_api()["composer_dirty"] is None
+
+
+def test_a_slash_command_the_agent_already_took_reads_as_taken_not_other_text(scripted):
+    """The queue footer scrolled out of recent output: the agent took the
+    message. Discard says so and the entry leaves the list, instead of
+    blaming the input box."""
+    session, pty, _clock = scripted
+    pty.paint(_TURN_START_FRAME)
+    session.submit_input("/compact", True)
+    pty.paint(_QUEUED_FRAME)
+    pty.paint(_SPINNER_FRAME)
+    [entry] = _pending(session)
+    for _ in range(80):
+        pty.paint(_SPINNER_FRAME + "x" * 60)
+    session.write("typed after")
+    start = len(pty.writes)
+
+    status, body = session.discard_pending_input(entry["id"])
+
+    assert (status, body["reason"]) == (404, "not_pending")
+    assert _pending(session) == []
+    assert "\x1b[A" not in "".join(_writes_after(pty, start))

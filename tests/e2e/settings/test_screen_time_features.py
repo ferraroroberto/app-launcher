@@ -39,7 +39,7 @@ _UPLOAD_RE = re.compile(r".*/api/claude-code/sessions/[^/]+/image(?:\?.*)?$")
 _LARGE_RE = re.compile(r".*/api/claude-code/sessions/[^/]+/large-file(?:\?.*)?$")
 _IDS = [
     "feat.send.typed", "feat.send.dictated", "feat.dictation", "feat.attach.image",
-    "feat.attach.file", "feat.attach.large", "feat.ocr", "feat.paste-pc",
+    "feat.attach.file", "feat.attach.large", "feat.ocr", "feat.paste-pc", "feat.attach.board",
 ]
 # Uses per period: id -> {device: n}. Today is a little, a month a lot.
 _USES = {
@@ -55,7 +55,7 @@ _LABELS = {
     "feat.send.typed": "Sent typed", "feat.send.dictated": "Sent dictated",
     "feat.dictation": "Dictations", "feat.attach.image": "Images", "feat.attach.file": "Files",
     "feat.attach.large": "Large files", "feat.ocr": "Text from images",
-    "feat.paste-pc": "Paste to PC",
+    "feat.paste-pc": "Paste to PC", "feat.attach.board": "Board answer files",
 }
 
 

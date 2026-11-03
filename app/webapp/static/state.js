@@ -197,6 +197,7 @@ export const els = {
   chiefAnswersList: document.getElementById('chiefAnswersList'),
   chiefAnswersTitleText: document.getElementById('chiefAnswersTitleText'),
   chiefAnswersAlso: document.getElementById('chiefAnswersAlso'),
+  boardAnswerAttachTemplate: document.getElementById('boardAnswerAttachTemplate'),
   chiefAnswersNote: document.getElementById('chiefAnswersNote'),
   chiefAnswersDone: document.getElementById('chiefAnswersDone'),
 

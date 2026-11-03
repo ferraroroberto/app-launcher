@@ -27,6 +27,7 @@ FEATURE_IDS: Tuple[str, ...] = (
     "feat.attach.large",
     "feat.ocr",
     "feat.paste-pc",
+    "feat.attach.board",
 )
 
 
