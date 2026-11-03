@@ -16,14 +16,21 @@
  * timestamps. Control ids are developer-chosen constants in `data-track`,
  * never derived from element text or user data.
  *
+ * The one widening is identified mode (`visitorCookie`), for a public site and only
+ * once its visitor consented: a random visitor-id cookie, and an address its server
+ * half stores for a retention window. Fleet apps never use it. Importing this module
+ * does nothing; only `initUsageLog` sends, sets a cookie or adds a listener.
+ *
  * Markup contract:
  *   <button data-track="refresh-all">…</button>   a tap on it (or inside it)
  *                                                  records control id
  *                                                  "refresh-all"
+ *   <dialog data-track-view="settings">…</dialog>  opening it records view
+ *                                                  "settings"; closing it
+ *                                                  returns to the view under it
  * Wiring:
  *   const usage = initUsageLog();
  *   initNavTabs({ storageKey: 'app.tab', onChange: usage.trackView });
- *   usage.trackView('settings-sheet');             // a sheet/dialog opening
  *   usage.track('upload.done');                    // a feature that succeeded,
  *                                                  // where no click carries it
  *
@@ -41,6 +48,59 @@ const DEFAULT_ENDPOINT = '/api/usage/events';
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/;
 // Mirrors src/usage_log.py MAX_EVENTS_PER_BATCH.
 const MAX_BATCH = 50;
+
+/** The view id of a page path for the `site` option: `/` is `home`, `/a/b` is `a:b`
+ *  (lowercase, `.html` and slashes at the ends dropped, cut to fit ID_PATTERN). */
+export function pageId(path) {
+  const clean = String(path || '/').split(/[?#]/)[0].replace(/\.html$/i, '').replace(/^\/+|\/+$/g, '');
+  if (!clean) return 'home';
+  const id = clean.toLowerCase().replace(/\//g, ':').replace(/[^a-z0-9._:-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '').slice(0, 64);
+  return ID_PATTERN.test(id) ? id : 'page';
+}
+
+/** A host as an id (`linkedin.com`): lowercase, no `www.`, no port; null when it does not fit. */
+export function hostId(host) {
+  const id = String(host || '').toLowerCase().replace(/:\d+$/, '').replace(/^www\./, '').slice(0, 64);
+  return ID_PATTERN.test(id) ? id : null;
+}
+
+/** The tap id of a followed link for the `site` option: `nav:<page id>` on this host,
+ *  `out:<host>` elsewhere, `mail` / `tel`; null for an in-page anchor or anything else. */
+export function linkId(href, here) {
+  if (!href) return null;
+  if (/^mailto:/i.test(href)) return 'mail';
+  if (/^tel:/i.test(href)) return 'tel';
+  let url;
+  try { url = new URL(href, here.href); } catch (_) { return null; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  if (url.host === here.host) {
+    if (url.pathname === here.pathname && url.hash) return null;
+    return ('nav:' + pageId(url.pathname)).slice(0, 64);
+  }
+  const host = hostId(url.host);
+  return host ? ('out:' + host).slice(0, 64) : null;
+}
+
+/** `site` option: a followed link without its own `data-track` becomes a tap (`linkId`). */
+function trackLink(e, track) {
+  if (!e.target || !e.target.closest) return;
+  const link = e.target.closest('a[href]');
+  const id = link ? linkId(link.getAttribute('href'), location) : null;
+  if (id) track(id);
+}
+
+/** `site` option, on load: the external referrer's host, then the page as a view. */
+function startSite(push, trackView) {
+  try {
+    if (document.referrer) {
+      const from = new URL(document.referrer);
+      const id = from.host !== location.host ? hostId(from.host) : null;
+      if (id) push({ kind: 'referrer', id: id });
+    }
+    trackView(pageId(location.pathname));
+  } catch (_) { /* never break the app */ }
+}
 
 function randomSessionId() {
   try {
@@ -75,7 +135,140 @@ export function osClass() {
   return 'other';
 }
 
+// Mirrors src/usage_log_worker.js VISITOR_ID_PATTERN: 128 random bits as lowercase hex.
+const VISITOR_ID_PATTERN = /^[0-9a-f]{32}$/;
+// 13 months, the longest an audience-measurement cookie is commonly accepted for.
+const DEFAULT_VISITOR_COOKIE_DAYS = 396;
+
+function readCookie(name) {
+  try {
+    for (const part of String(document.cookie || '').split(';')) {
+      const at = part.indexOf('=');
+      if (at > 0 && part.slice(0, at).trim() === name) return part.slice(at + 1).trim();
+    }
+  } catch (_) { /* cookies blocked */ }
+  return null;
+}
+
+function writeCookie(name, value, maxAgeSeconds) {
+  try {
+    const secure = typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = name + '=' + value + '; Max-Age=' + maxAgeSeconds + '; Path=/; SameSite=Lax' + secure;
+  } catch (_) { /* cookies blocked */ }
+}
+
+/** `visitorCookie` option: the visitor id in that cookie, created when absent or malformed.
+ *  An existing cookie is reused and keeps its expiry: a visit never extends it. */
+function ensureVisitorCookie(name, days) {
+  if (VISITOR_ID_PATTERN.test(readCookie(name) || '')) return;
+  if (typeof days !== 'number' || !(days > 0)) days = DEFAULT_VISITOR_COOKIE_DAYS;
+  let id;
+  try {
+    id = Array.from(crypto.getRandomValues(new Uint8Array(16)), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  } catch (_) { return; }
+  writeCookie(name, id, Math.round(days * 86400));
+}
+
 function noop() {}
+
+/** Why these options must disable the logger, or null when they are usable. */
+function optionProblem(endpoint, visitorCookie) {
+  if (typeof endpoint !== 'string' || endpoint[0] !== '/' || endpoint[1] === '/') {
+    return 'endpoint must be a same-origin path like "/api/usage/events"';
+  }
+  if (visitorCookie !== null && (typeof visitorCookie !== 'string' || !ID_PATTERN.test(visitorCookie))) {
+    return 'visitorCookie must be a plain cookie name';
+  }
+  return null;
+}
+
+/** `send(events, beacon)` for one page visit: the envelope plus a batch, to the same-origin
+ *  endpoint. A beacon is used only when asked and no extra headers are configured. */
+function makeSender(endpoint, headers, envelope) {
+  const hasHeaders = typeof headers === 'function' || (headers !== null && typeof headers === 'object');
+
+  function extraHeaders() {
+    try {
+      const h = typeof headers === 'function' ? headers() : headers;
+      return h && typeof h === 'object' ? h : {};
+    } catch (_) { return {}; }
+  }
+
+  return function send(events, beacon) {
+    const body = JSON.stringify(Object.assign({}, envelope, { events: events }));
+    try {
+      if (beacon && !hasHeaders && navigator.sendBeacon) {
+        if (navigator.sendBeacon(endpoint, new Blob([body], { type: 'application/json' }))) return;
+      }
+      fetch(endpoint, {
+        method: 'POST',
+        headers: Object.assign({}, extraHeaders(), { 'Content-Type': 'application/json' }),
+        body: body,
+        credentials: 'same-origin',
+        keepalive: true,
+      }).catch(noop);
+    } catch (_) { /* never break the app */ }
+  };
+}
+
+/** Attach one visit's page listeners; returns the function that detaches them. */
+function listen(root, onTap, onVisibility, onPageHide) {
+  try {
+    root.addEventListener('click', onTap, true);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', onPageHide);
+  } catch (_) { /* never break the app */ }
+  return function detach() {
+    try {
+      root.removeEventListener('click', onTap, true);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
+    } catch (_) { /* never break the app */ }
+  };
+}
+
+function sheetView(el) {
+  const id = el.getAttribute('data-track-view');
+  return typeof id === 'string' && ID_PATTERN.test(id) ? id : null;
+}
+
+/** One visit's open-sheet stack. A `data-track-view` element whose `open` attribute appears
+ *  becomes the view (`show(id)`); when it closes or leaves the document, the sheet or tab under
+ *  it is the view again, so a sheet's minutes stop the moment it goes. `setBase(id)` records the
+ *  tab the app last set with `trackView`, the view under every sheet. */
+function watchSheets(root, show) {
+  const open = [];  // innermost last
+  let base = null;
+  let observer = null;
+  function close(at) {
+    open.splice(at, 1);
+    show(open.length ? sheetView(open[open.length - 1]) : base);
+  }
+  function onRecords(records) {
+    for (const record of records) {
+      const el = record.target;
+      if (record.type !== 'attributes' || !el.hasAttribute('data-track-view')) continue;
+      const at = open.indexOf(el);
+      const id = sheetView(el);
+      if (el.hasAttribute('open') && at < 0 && id) { open.push(el); show(id); }
+      else if (!el.hasAttribute('open') && at >= 0) close(at);
+    }
+    for (let i = open.length - 1; i >= 0; i--) {
+      if (open[i].isConnected === false) close(i);
+    }
+  }
+  try {
+    // `showModal()`, `show()` and `close()` all toggle `open`; childList catches a sheet removed while open.
+    if (typeof MutationObserver === 'function') {
+      observer = new MutationObserver(onRecords);
+      observer.observe(root, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
+    }
+  } catch (_) { /* never break the app */ }
+  return {
+    setBase: function (id) { base = id; },
+    stop: function () { open.length = 0; if (observer) observer.disconnect(); },
+  };
+}
 
 /**
  * Start recording for this page visit.
@@ -92,11 +285,24 @@ function noop() {}
  *   `keepalive` fetch instead. Omitted, sends are unchanged.
  * @param {Document|HTMLElement} [opts.root=document]  where the delegated
  *   `data-track` tap listener is attached.
+ * @param {boolean} [opts.site=false]  public-site mode: also record the page as a
+ *   `view` on load (`pageId(location.pathname)`), a `referrer` event when the
+ *   visitor came from another host, and every followed link without its own
+ *   `data-track` as a `tap` (`linkId`). Off, nothing changes.
+ * @param {string} [opts.visitorCookie]  identified mode, for a public site and only
+ *   after the visitor consented: the name of a first-party cookie holding a random
+ *   128-bit hex visitor id (`Path=/`, `SameSite=Lax`, `Secure` on https), created
+ *   when absent and never extended. The id is not in the posted body; the browser
+ *   sends the cookie to the same-origin endpoint, whose server half checks consent
+ *   again. Omitted, no cookie is read or written.
+ * @param {number} [opts.visitorCookieDays=396]  the visitor cookie's lifetime (13 months).
  * @returns {{ trackView: (id: string) => void, track: (id: string) => void,
- *   flush: () => void, currentView: () => string|null }}  `trackView` is safe
- *   to pass straight to initNavTabs's `onChange`; `track` records a `tap` for
- *   a developer-chosen constant id without a click (the same event a click on
- *   `data-track="<id>"` produces); `flush` sends the queue now.
+ *   flush: () => void, currentView: () => string|null, stop: () => void }}
+ *   `trackView` is safe to pass straight to initNavTabs's `onChange`; `track`
+ *   records a `tap` for a developer-chosen constant id without a click (the same
+ *   event a click on `data-track="<id>"` produces); `flush` sends the queue now;
+ *   `stop` (consent withdrawn) detaches every listener, drops the queue unsent,
+ *   deletes the visitor cookie and makes every later call a no-op.
  */
 export function initUsageLog(opts = {}) {
   const {
@@ -104,45 +310,27 @@ export function initUsageLog(opts = {}) {
     flushMs = 10000,
     headers = null,
     root = document,
+    site = false,
+    visitorCookie = null,
+    visitorCookieDays = DEFAULT_VISITOR_COOKIE_DAYS,
   } = opts;
-  const hasHeaders = typeof headers === 'function' || (headers !== null && typeof headers === 'object');
-
-  if (typeof endpoint !== 'string' || endpoint[0] !== '/' || endpoint[1] === '/') {
-    console.warn('usage-log: endpoint must be a same-origin path like "/api/usage/events"; logging disabled');
-    return { trackView: noop, track: noop, flush: noop, currentView: function () { return null; } };
+  const problem = optionProblem(endpoint, visitorCookie);
+  if (problem) {
+    console.warn('usage-log: ' + problem + '; logging disabled');
+    return { trackView: noop, track: noop, flush: noop, currentView: function () { return null; }, stop: noop };
   }
+  if (visitorCookie) ensureVisitorCookie(visitorCookie, visitorCookieDays);
 
-  const envelope = {
+  const send = makeSender(endpoint, headers, {
     session_id: randomSessionId(),
     device_class: deviceClass(),
     os_class: osClass(),
-  };
+  });
   let queue = [];
   let view = null;
   let timer = null;
-
-  function extraHeaders() {
-    try {
-      const h = typeof headers === 'function' ? headers() : headers;
-      return h && typeof h === 'object' ? h : {};
-    } catch (_) { return {}; }
-  }
-
-  function send(events, beacon) {
-    const body = JSON.stringify(Object.assign({}, envelope, { events: events }));
-    try {
-      if (beacon && !hasHeaders && navigator.sendBeacon) {
-        if (navigator.sendBeacon(endpoint, new Blob([body], { type: 'application/json' }))) return;
-      }
-      fetch(endpoint, {
-        method: 'POST',
-        headers: Object.assign({}, extraHeaders(), { 'Content-Type': 'application/json' }),
-        body: body,
-        credentials: 'same-origin',
-        keepalive: true,
-      }).catch(noop);
-    } catch (_) { /* never break the app */ }
-  }
+  let stopped = false;
+  const sheets = watchSheets(root, show);
 
   function flush(beacon) {
     if (timer) { clearTimeout(timer); timer = null; }
@@ -150,6 +338,7 @@ export function initUsageLog(opts = {}) {
   }
 
   function push(event) {
+    if (stopped) return;
     queue.push(event);
     if (queue.length >= MAX_BATCH) { flush(false); return; }
     if (!timer) timer = setTimeout(function () { timer = null; flush(false); }, flushMs);
@@ -157,8 +346,15 @@ export function initUsageLog(opts = {}) {
 
   function trackView(id) {
     if (typeof id !== 'string' || !ID_PATTERN.test(id)) return;
+    sheets.setBase(id);
     view = id;
     push({ kind: 'view', id: id });
+  }
+
+  /** A sheet opening or closing: `id` becomes the view (null when no view is left under it). */
+  function show(id) {
+    if (!id) view = null;
+    else if (id !== view) { view = id; push({ kind: 'view', id: id }); }
   }
 
   function track(id) {
@@ -170,29 +366,40 @@ export function initUsageLog(opts = {}) {
 
   function onTap(e) {
     const target = e.target && e.target.closest ? e.target.closest('[data-track]') : null;
-    if (!target) return;
-    track(target.getAttribute('data-track'));
+    if (target) { track(target.getAttribute('data-track')); return; }
+    if (site) trackLink(e, track);
   }
 
-  try {
-    root.addEventListener('click', onTap, true);
-    document.addEventListener('visibilitychange', function () {
-      if (document.visibilityState === 'hidden') {
-        push({ kind: 'session_end' });
-        flush(true);
-      } else {
-        push({ kind: 'session_start' });
-      }
-    });
-    window.addEventListener('pagehide', function () { flush(true); });
-  } catch (_) { /* never break the app */ }
+  function onVisibility() {
+    if (document.visibilityState === 'hidden') {
+      push({ kind: 'session_end' });
+      flush(true);
+    } else {
+      push({ kind: 'session_start' });
+    }
+  }
 
+  function onPageHide() { flush(true); }
+
+  function stop() {
+    if (stopped) return;
+    stopped = true;
+    if (timer) { clearTimeout(timer); timer = null; }
+    queue = [];
+    sheets.stop();
+    detach();
+    if (visitorCookie) writeCookie(visitorCookie, '', 0);
+  }
+
+  const detach = listen(root, onTap, onVisibility, onPageHide);
   push({ kind: 'session_start' });
+  if (site) startSite(push, trackView);
 
   return {
     trackView: trackView,
     track: track,
     flush: function () { flush(false); },
     currentView: function () { return view; },
+    stop: stop,
   };
 }
