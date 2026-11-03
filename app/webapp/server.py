@@ -508,6 +508,7 @@ def create_app() -> FastAPI:
     app.state.app_config = app_config
     app.state.webapp_config = webapp_cfg
     app.state.webauthn_gate = WebAuthnGate()
+    app.state.login_lockout = auth.build_login_lockout(lambda: app.state.webapp_config)
 
     asset_hashes = compute_asset_hashes(STATIC_DIR)
     app.state.asset_hashes = asset_hashes
