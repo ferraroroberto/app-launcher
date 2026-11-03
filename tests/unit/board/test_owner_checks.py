@@ -286,3 +286,65 @@ def test_the_sheet_sends_fewer_answers_per_request_than_the_route_accepts():
     src = (Path(__file__).resolve().parents[3] / "app/webapp/static/board/owner-checks.js").read_text(encoding="utf-8")
     per = int(re.search(r"OWNER_ANSWERS_PER_REQUEST = (\d+);", src).group(1))
     assert 0 < per <= _MAX_ANSWERS
+
+
+# --- files on an owner answer: a count goes to GitHub, never a path -----------
+
+_PATHLIKE = "C:/tmp/demo/shot.png"
+
+
+@pytest.mark.parametrize("bad", [-1, owner_checks.ATTACHMENTS_MAX + 1, 10**9, "2", 1.5, True, [1]])
+def test_a_bad_attachment_count_is_refused(bad):
+    with pytest.raises(ValueError, match="attachments"):
+        owner_checks.validate_answer(
+            {"ref": "demo#9", "kind": "validate-after", "answer": "validated", "attachments": bad})
+
+
+def test_the_attachment_count_defaults_to_zero_and_a_snooze_carries_none():
+    base = {"ref": "demo#9", "kind": "validate-after"}
+    assert owner_checks.validate_answer({**base, "answer": "validated"})["attachments"] == 0
+    assert owner_checks.validate_answer({**base, "answer": "later", "attachments": 3})["attachments"] == 0
+
+
+def test_validated_with_files_adds_only_the_fixed_line_to_the_clear(cli):
+    responses, calls = cli
+    responses["clear"] = (0, "CLEARED=demo#9 removed=needs-validation\n")
+    owner_checks.refresh("fleet")
+    ans = owner_checks.validate_answer(
+        {"ref": "demo#9", "kind": "validate-after", "answer": "validated", "text": "works", "attachments": 2})
+    owner_checks.answer("fleet", ans, comment=lambda *a: pytest.fail("no comment"), now=NOW)
+    assert ["clear", "demo#9", "--answer", "validated by owner: works (2 attachments kept locally)"] in calls
+
+
+def test_the_route_writes_a_fixed_line_even_when_the_body_carries_paths(webapp_client, _bypass_gate, cli, monkeypatch):
+    owner_checks.refresh("fleet")
+    posted: list = []
+    monkeypatch.setattr(
+        "app.webapp.routers.board_owner.github_client.comment_issue",
+        lambda owner, repo, number, body: posted.append(body),
+    )
+    client, _, _ = webapp_client
+    resp = client.post("/api/board/owner-checks/answer", json={"answers": [{
+        "ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": "blank tab", "attachments": 1,
+        "files": [_PATHLIKE], "paths": [_PATHLIKE], "attached": _PATHLIKE,
+    }]})
+    assert resp.status_code == 200
+    assert [r["ok"] for r in resp.json()["results"]] == [True]
+    assert len(posted) == 1 and posted[0].endswith("\nblank tab\n\n1 attachment kept locally\n")
+    assert "tmp" not in posted[0] and "png" not in posted[0]
+
+
+def test_answer_files_node_pin():
+    import shutil
+    import subprocess
+    from pathlib import Path
+    from src.subprocess_flags import NO_WINDOW
+    if shutil.which("node") is None:
+        pytest.skip("Node.js is required")
+    root = Path(__file__).resolve().parents[3]
+    result = subprocess.run(
+        ["node", str(root / "tests" / "js" / "answer_files.test.mjs")],
+        cwd=root, capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW,
+    )
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert "OK" in result.stdout

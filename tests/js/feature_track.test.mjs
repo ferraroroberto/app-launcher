@@ -28,7 +28,7 @@ const { FEATURE_IDS, trackFeature } = await import(
   '../../app/webapp/static/settings/feature-track.js'
 );
 
-assert.equal(FEATURE_IDS.length, 8);
+assert.equal(FEATURE_IDS.length, 9);
 assert.ok(FEATURE_IDS.every((id) => /^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(id)));
 
 // A listed id is on the probe at click time, then gone again.

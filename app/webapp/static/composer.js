@@ -209,7 +209,7 @@ function render(host, placeholder) {
 
 // A paste's files, or none when it also carries plain text (see the paste
 // listener in mountComposer).
-function pastedFiles(dt) {
+export function pastedFiles(dt) {
   if (!dt || Array.prototype.indexOf.call(dt.types || [], 'text/plain') !== -1) return [];
   const files = [];
   const items = dt.items || [];

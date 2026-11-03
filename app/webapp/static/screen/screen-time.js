@@ -49,6 +49,7 @@ const FEATURES = [
   { id: 'feat.attach.large', label: 'Large files' },
   { id: 'feat.ocr', label: 'Text from images' },
   { id: 'feat.paste-pc', label: 'Paste to PC' },
+  { id: 'feat.attach.board', label: 'Board answer files' },
 ];
 
 // The tabs' view ids (tabs.js) and the names they show. Time before a

@@ -27,6 +27,7 @@ import { agoText } from './chief-plan.js';
 import { calendarDaysFromToday } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
 import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
+import { attachedLines, emptyFiles } from './answer-files.js';
 
 export const VALIDATE_AFTER = 'validate-after';
 export const BEFORE_START = 'before-start';
@@ -263,7 +264,8 @@ const OPTIONS = {
 
 export function emptyOwnerDraft() {
   // `error`: why the last Done could not apply this answer, shown in its block.
-  return { pick: null, problem: '', error: '' };
+  // `files`: [{ name, path }] stored on the chief's session; never posted to GitHub.
+  return { pick: null, problem: '', error: '', files: emptyFiles() };
 }
 
 export function ownerSheetKey(item) {
@@ -286,28 +288,36 @@ export function affirmsItWorks(text) {
 
 // One item's answer, or null. Typed text wins over a pick: text that only
 // says it works validates with the text as a note, any other is a problem.
+// `attachments`, set only when files ride with it, is how many: a number, the
+// only thing about them that goes to GitHub. A snooze carries none, and files
+// with no answer make no answer (the draft keeps them).
 export function ownerAnswerOf(item, draft) {
   const text = String((draft && draft.problem) || '').split(/\s+/).filter(Boolean).join(' ');
+  const count = ((draft && draft.files) || []).length;
+  let ans = null;
   if (item.kind === VALIDATE_AFTER && text) {
-    const answer = affirmsItWorks(text) ? 'validated' : 'problem';
-    return { ref: item.ref, kind: item.kind, answer: answer, text: text };
+    ans = { ref: item.ref, kind: item.kind, answer: affirmsItWorks(text) ? 'validated' : 'problem', text: text };
+  } else if (draft && draft.pick) {
+    ans = { ref: item.ref, kind: item.kind, answer: draft.pick };
   }
-  if (draft && draft.pick) return { ref: item.ref, kind: item.kind, answer: draft.pick };
-  return null;
+  if (ans && count && ans.answer !== 'later') ans.attachments = count;
+  return ans;
 }
 
-// The line the chief reads for an applied answer; null for a snooze, which
+// The lines the chief reads for an applied answer, its files' paths under it
+// (this goes to the chief's terminal, never GitHub); null for a snooze, which
 // the chief has nothing to do about.
-export function ownerMessageLine(item, ans) {
+export function ownerMessageLine(item, ans, files) {
   const what = item.title ? ' ' + item.title : '';
+  let line = null;
   if (ans.answer === 'validated') {
-    return '[' + item.ref + '] Validated:' + what + (ans.text ? ' (note: ' + ans.text + ')' : '');
+    line = '[' + item.ref + '] Validated:' + what + (ans.text ? ' (note: ' + ans.text + ')' : '');
+  } else if (ans.answer === 'done') {
+    line = '[' + item.ref + '] Before-start step done:' + what;
+  } else if (ans.answer === 'problem') {
+    line = '[' + item.ref + '] Problem found validating' + what + ': ' + ans.text + ' (please file a fix)';
   }
-  if (ans.answer === 'done') return '[' + item.ref + '] Before-start step done:' + what;
-  if (ans.answer === 'problem') {
-    return '[' + item.ref + '] Problem found validating' + what + ': ' + ans.text + ' (please file a fix)';
-  }
-  return null;
+  return line === null ? null : [line].concat(attachedLines(files)).join('\n');
 }
 
 function paint(block, draft) {
@@ -316,11 +326,51 @@ function paint(block, draft) {
   });
 }
 
+// The to-validate item's text field: a problem, or a note ("works" validates),
+// with a line saying which way it will go, the item's dictation (`decorate`)
+// and its paperclip. `hooks.edited` clears the last error.
+function problemField(block, item, draft, hooks) {
+  const input = el('input', 'tr-ask-input');
+  input.type = 'text';
+  input.maxLength = 2000;
+  input.placeholder = 'A problem, or a note ("works" validates)';
+  input.setAttribute('aria-label', 'Problem or note for ' + item.ref);
+  input.value = draft.problem;
+  // What the typed text will send, said before Done.
+  const meaning = el('p', 'tr-ask-hint owner-answer-meaning');
+  meaning.setAttribute('aria-live', 'polite');
+  const explain = function () {
+    const ans = ownerAnswerOf(item, { problem: draft.problem });
+    meaning.hidden = !ans;
+    meaning.textContent = !ans ? ''
+      : ans.answer === 'validated' ? 'Sends Validated, with this as a note.'
+        : 'Sends a problem report: the chief files a fix.';
+  };
+  const typed = function () {
+    draft.problem = input.value;
+    if (input.value.trim() && draft.pick) {
+      draft.pick = null;
+      paint(block, draft);
+    }
+    hooks.edited();
+    explain();
+    hooks.onChange();
+  };
+  input.addEventListener('input', typed);
+  const other = el('div', 'tr-ask-other');
+  other.appendChild(input);
+  if (hooks.decorate) hooks.decorate(other, input, typed);
+  hooks.files.wirePaste(input);
+  other.appendChild(hooks.files.button);
+  return { input: input, other: other, meaning: meaning, explain: explain };
+}
+
 // One owner check in the answer sheet: its kind, repo and ref, the title as
 // the question, why and what to try, its links, Validated / Done and Later,
 // and (to validate) a Problem field. `decorate(input, onInput)` adds the
-// field's dictation, which the sheet owns.
-export function ownerSheetBlock(item, draft, onChange, decorate) {
+// field's dictation, which the sheet owns, as `files` (answer-files.js) adds
+// the item's paperclip and chips.
+export function ownerSheetBlock(item, draft, onChange, decorate, files) {
   const block = el('section', 'tr-ask chief-answer owner-answer');
   block.dataset.key = ownerSheetKey(item);
   const head = el('div', 'tr-ask-head chief-answer-head');
@@ -368,39 +418,18 @@ export function ownerSheetBlock(item, draft, onChange, decorate) {
   list.addEventListener('click', edited);
 
   if (item.kind === VALIDATE_AFTER) {
-    input = el('input', 'tr-ask-input');
-    input.type = 'text';
-    input.maxLength = 2000;
-    input.placeholder = 'A problem, or a note ("works" validates)';
-    input.setAttribute('aria-label', 'Problem or note for ' + item.ref);
-    input.value = draft.problem;
-    // What the typed text will send, said before Done.
-    const meaning = el('p', 'tr-ask-hint owner-answer-meaning');
-    meaning.setAttribute('aria-live', 'polite');
-    const explain = function () {
-      const ans = ownerAnswerOf(item, { problem: draft.problem });
-      meaning.hidden = !ans;
-      meaning.textContent = !ans ? ''
-        : ans.answer === 'validated' ? 'Sends Validated, with this as a note.'
-          : 'Sends a problem report: the chief files a fix.';
-    };
-    const typed = function () {
-      draft.problem = input.value;
-      if (input.value.trim() && draft.pick) {
-        draft.pick = null;
-        paint(block, draft);
-      }
-      edited();
-      explain();
-      onChange();
-    };
-    input.addEventListener('input', typed);
+    const field = problemField(block, item, draft, { onChange: onChange, edited: edited, decorate: decorate, files: files });
+    input = field.input;
+    block.appendChild(field.other);
+    block.appendChild(files.extra);
+    block.appendChild(field.meaning);
+    field.explain();
+  } else {
+    // A before-start step has no text field: its paperclip stands alone.
     const other = el('div', 'tr-ask-other');
-    other.appendChild(input);
-    if (decorate) decorate(other, input, typed);
+    other.appendChild(files.button);
     block.appendChild(other);
-    block.appendChild(meaning);
-    explain();
+    block.appendChild(files.extra);
   }
   block.appendChild(error);
   paint(block, draft);

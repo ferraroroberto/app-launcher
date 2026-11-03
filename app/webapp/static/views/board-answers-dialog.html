@@ -11,6 +11,11 @@
           </button>
         </div>
         <div id="chiefAnswersList" class="chief-answers-list"></div>
+        <!-- Every item's paperclip (answer-files.js) is cloned from this, so its
+             tracking id is a constant in markup, never set by a script. -->
+        <template id="boardAnswerAttachTemplate">
+          <button type="button" class="icon-button tr-ask-attach" data-track="board.answer-attach"></button>
+        </template>
         <!-- Anything else is the shared composer (composer.js) as a field:
              dictation and image paste as in Chat, Done its one send. -->
         <div class="chief-answers-also">

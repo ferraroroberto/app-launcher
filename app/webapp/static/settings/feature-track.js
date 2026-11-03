@@ -21,6 +21,7 @@ export const FEATURE_IDS = [
   'feat.attach.large',
   'feat.ocr',
   'feat.paste-pc',
+  'feat.attach.board',
 ];
 
 let probe = null;
