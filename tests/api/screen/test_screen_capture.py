@@ -34,7 +34,8 @@ def test_an_idle_screen_sends_one_frame_then_nothing():
         grabs.append(1)
         return Image.new("RGB", (64, 36), (1, 2, 3))
 
-    frames, statuses = _run(_drive(static_grab, ack_every_frame=True, run_for=0.3))
+    frames, statuses = _run(_drive(static_grab, ack_every_frame=True,
+                                   until=lambda _frames: len(grabs) > 5))
     assert len(grabs) > 5, "the loop kept looking"
     assert len(frames) == 1, "an unchanged screen must not be resent"
     assert statuses == []
@@ -46,7 +47,8 @@ def test_a_change_is_sent():
     def changing_grab():
         return Image.new("RGB", (64, 36), (next(shade) % 256, 0, 0))
 
-    frames, _ = _run(_drive(changing_grab, ack_every_frame=True, run_for=0.2))
+    frames, _ = _run(_drive(changing_grab, ack_every_frame=True,
+                              until=lambda sent: len(sent) > 3))
     assert len(frames) > 3
 
 

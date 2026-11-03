@@ -178,8 +178,14 @@ def _run(coro):
     return asyncio.run(coro)
 
 
-async def _drive(grab, *, ack_every_frame: bool, run_for: float, interval=0.001, retry=0.001):
-    """Run stream_frames for ``run_for`` seconds; return (frames, statuses)."""
+async def _drive(grab, *, ack_every_frame: bool, run_for: float = 0.0, until=None,
+                 timeout: float = 10.0, interval=0.001, retry=0.001):
+    """Run stream_frames; return (frames, statuses).
+
+    ``until(frames)`` stops the drive once it is true, so a test waits for an
+    event count rather than a wall-clock span a loaded box may not fill; the
+    ``timeout`` only bounds a loop that never gets there. Without ``until`` it
+    runs for ``run_for`` seconds."""
     acked, stopped = asyncio.Event(), asyncio.Event()
     acked.set()
     frames: List[bytes] = []
@@ -199,7 +205,12 @@ async def _drive(grab, *, ack_every_frame: bool, run_for: float, interval=0.001,
             width=64, interval=interval, retry=retry,
         )
     )
-    await asyncio.sleep(run_for)
+    if until is None:
+        await asyncio.sleep(run_for)
+    else:
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not until(frames) and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.005)
     stopped.set()
     returned = await asyncio.wait_for(task, timeout=2)
     assert returned == len(frames)
