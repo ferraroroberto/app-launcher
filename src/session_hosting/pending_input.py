@@ -171,6 +171,10 @@ class PendingInputs:
             self._entries = [e for e in self._entries if e.state != PENDING_QUEUED]
             return removed
 
+    def discard_ids(self, ids: List[str]) -> None:
+        with self._lock:
+            self._entries = [e for e in self._entries if e.id not in ids]
+
     def clear(self) -> None:
         with self._lock:
             self._entries = []
