@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -229,9 +230,11 @@ def _cfg(**kw):
     return SimpleNamespace(**base)
 
 
-async def _run_ticks(cfg, obs, *, ticks=3, send=None):
-    """Tick ``ticks`` times, 3 s apart; return (decisions, sends, observes)."""
+async def _run_ticks(cfg, obs, *, ticks=3, send=None, records=None):
+    """Tick ``ticks`` times, 3 s apart; return (decisions, sends, observes).
+    ``records`` collects the ledger rows a ring writes (none reach the disk)."""
     sends, observes = [], []
+    rows = records if records is not None else []
     clock = _Clock()
 
     async def fake_observe(c):
@@ -244,11 +247,16 @@ async def _run_ticks(cfg, obs, *, ticks=3, send=None):
             return send()
         return {"reason": "ok"}
 
+    def fake_record(sid, text, origin, *, now=None):
+        rows.append((sid, text, origin, now))
+        return True
+
     bell, skips = Doorbell(), _SkipLog()
     decisions = []
     for _ in range(ticks):
         decisions.append(await tick_once(
             cfg, bell, skips, now=clock, observe_fn=fake_observe, send_fn=fake_send,
+            record_fn=fake_record,
         ))
         clock.t += 3.0
     return decisions, sends, observes
@@ -279,6 +287,23 @@ class TestTickOnce:
         decisions, sends, _ = await _run_ticks(_cfg(), _obs(), ticks=5)
         assert decisions == ["debouncing", "ring"] + ["backing off after ring"] * 3
         assert sends == [(54321, CHIEF_SID, DOORBELL_LINE, True)]
+
+    async def test_a_ring_writes_one_ledger_row_stamped_before_the_send(self):
+        rows = []
+        before = time.time()
+        await _run_ticks(_cfg(), _obs(), ticks=5, records=rows)
+        assert len(rows) == 1
+        sid, text, origin, stamped = rows[0]
+        assert (sid, text, origin) == (CHIEF_SID, DOORBELL_LINE, "doorbell")
+        assert before <= stamped <= time.time()
+
+    async def test_a_refused_ring_writes_no_ledger_row(self):
+        def refuse():
+            raise session_client.SessionHostError(502, "never echoed")
+
+        rows = []
+        await _run_ticks(_cfg(), _obs(), ticks=3, send=refuse, records=rows)
+        assert rows == []
 
     async def test_never_rings_an_old_host_that_sends_no_composer_state(self):
         _decisions, sends, _ = await _run_ticks(_cfg(), _obs(dirty=None), ticks=40)

@@ -392,7 +392,7 @@ def _assert_step_group_folds_and_items(authed_page: Page) -> None:
     menu = authed_page.locator(".terminal-menu")
     eye = _menu_item(authed_page, "Hide steps: tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Hide steps", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()

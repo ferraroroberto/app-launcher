@@ -90,6 +90,7 @@ from src.session_view.transcript import (
     transcript_tail,
 )
 from src.session_view import background_tasks as session_tasks
+from src.session_view.automatic_turns import mark_automatic
 from src.session_view import link_titles as session_link_titles
 from src.session_view import links as session_links
 from src.session_view import outbox as session_outbox
@@ -348,6 +349,7 @@ async def _build_transcript(
     )
     if refusal is not None:
         return refusal
+    await steps.run("mark_automatic", mark_automatic, sid, page["entries"])
     logger.info(
         "ℹ️ transcript %s (%s) page: %d entries, source=%s, more=%s",
         sid[:8], agent, len(page["entries"]), flavor, page["next_cursor"] is not None,
@@ -392,6 +394,8 @@ async def _tail_response(
     )
     if refusal is not None:
         return refusal
+    if tail["entries"] or tail["pending"]:
+        await steps.run("mark_automatic", mark_automatic, sid, tail["entries"], tail["pending"])
     if tail["reset"]:
         logger.info(
             "ℹ️ transcript tail %s (%s): cursor reset at %d (size %d)",

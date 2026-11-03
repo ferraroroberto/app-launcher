@@ -70,6 +70,15 @@ class TestSelection:
         assert live_log.exists() and live_tx.exists()
         assert report.kept_live == 2 and report.removed == 0
 
+    def test_a_live_sessions_injection_ledger_is_kept_and_a_dead_ones_ages_out(self, sessions):
+        live_ledger = _touch(sessions / "live-sid.injected.log", 5000)
+        dead_ledger = _touch(sessions / "dead-sid.injected.log", 400)
+
+        report = _sweep(sessions, live=["live-sid"])
+
+        assert live_ledger.exists() and not dead_ledger.exists()
+        assert report.kept_live == 1 and report.removed == 1
+
     def test_dry_run_selects_but_deletes_nothing(self, sessions):
         old = _touch(sessions / "old.transcript", 400, body="abcd")
 

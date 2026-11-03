@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
 from src.board.transcript_exchange import typed_user_kind
 from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
+from src.session_view.automatic_turns import ORIGIN_COMPACT_SUMMARY
 from src.session_view.outbox import clean_name, kind_of
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
@@ -266,6 +267,10 @@ def _user_line(
         user = _text_entry("user", offset, ts, stripped, user_cap, sidechain=sidechain)
         if refs:
             user["images"] = refs
+        # Claude marks the summary it writes after a compaction itself; it is
+        # harness output, so the Chat pane may fold it like a doorbell turn.
+        if obj.get("isCompactSummary") is True:
+            user["auto"] = ORIGIN_COMPACT_SUMMARY
         entries.append(user)
 
 

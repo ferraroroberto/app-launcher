@@ -50,14 +50,12 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 
 from src import board
 from src.clients import session as session_client
+from src.session_view.automatic_turns import DOORBELL_LINE, ORIGIN_DOORBELL, record_injected
 
 from app.webapp.routers import board_chief
 from app.webapp.routers.board_spawn import _read_live_sessions
 
 logger = logging.getLogger(__name__)
-
-#: The contract's fixed line (fleet-config ``docs/chief-mailbox.md``, "Doorbell line").
-DOORBELL_LINE = "⟳ chief-inbox: pending — run chief_ops.py inbox"
 
 TICK_SECONDS = 3.0
 DEBOUNCE_SECONDS = 3.0
@@ -248,6 +246,7 @@ async def tick_once(
     now: Callable[[], float] = time.monotonic,
     observe_fn: Callable[[Any], Awaitable[Observation]] = observe,
     send_fn: Callable[..., Dict[str, Any]] = session_client.send_input,
+    record_fn: Callable[..., bool] = record_injected,
 ) -> str:
     """One tick. Returns the decision (``"ring"``, a skip reason, or ``"off"``)."""
     if cfg is None or not doorbell_on(cfg):
@@ -264,6 +263,9 @@ async def tick_once(
         skips.note(decision, obs)
         return decision
     skips.reset()
+    # Taken before the send: the transcript line can land before send_input
+    # returns, and the ledger row must not be later than the line it matches.
+    sent_at = time.time()
     try:
         result = await asyncio.to_thread(
             send_fn, cfg.session_host_port, obs.chief_sid, DOORBELL_LINE, True
@@ -273,6 +275,11 @@ async def tick_once(
         # retried in BACKOFF_SECONDS, not hammered every tick.
         logger.warning("⚠️ chief doorbell ring failed: %s (%s)", exc, obs.summary())
         return "ring failed"
+    # The Chat pane folds this turn from the row; a failed write is logged by
+    # the ledger and only leaves the turn to the fixed-line match.
+    await asyncio.to_thread(
+        record_fn, obs.chief_sid, DOORBELL_LINE, ORIGIN_DOORBELL, now=sent_at
+    )
     logger.info(
         "🔔 chief doorbell rang (%s) reason=%s",
         obs.summary(),

@@ -116,6 +116,12 @@ class SweepReport:
         )
 
 
+def _session_of(stem: str) -> str:
+    """The session a file stem belongs to: ``<sid>.injected.log`` (the Chat
+    pane's injection ledger) is its session's, and a session id has no dot."""
+    return stem.partition(".")[0]
+
+
 def sweep(
     sessions_dir: Path,
     retention_days: int,
@@ -185,7 +191,7 @@ def sweep(
             report.unknown.append((name, f"mtime {mtime:.0f} is in the future"))
             continue
         newest_mtime = mtime if newest_mtime is None else max(newest_mtime, mtime)
-        if stem in live:
+        if _session_of(stem) in live:
             report.kept_live += 1
         elif mtime < cutoff:
             candidates.append((entry, st.st_size))

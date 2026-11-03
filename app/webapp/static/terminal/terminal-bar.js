@@ -35,7 +35,8 @@ import { createRowMenu } from '../_vendored/row-menu/row-menu.js';
 import { createLatestPill } from '../latest-pill.js';
 import { refreshTerminalTitle, setTerminalTitleText } from './terminal-mirror.js';
 import {
-  groupsAreHidden, hasTranscriptReader, loadNew, reloadNewest, toggleGroups,
+  automaticIsHidden, groupsAreHidden, hasTranscriptReader, loadNew, reloadNewest,
+  toggleAutomatic, toggleGroups,
 } from '../chat/session-transcript.js';
 import { inChatMode } from '../session-overlay.js';
 import { isHiddenChannel } from '../channel-sessions.js';
@@ -134,6 +135,21 @@ const LINKS_ITEM = {
   },
 };
 
+// Chat-only: fold the turns nobody typed (the chief's doorbell, a compact
+// summary) behind a divider. Sits beside Hide steps, which it works like.
+const HIDE_AUTOMATIC_ITEM = {
+  dataset: { item: 'overlay-hide-automatic-btn', track: 'chat.hide-automatic' },
+  glyph: 'bell',
+  label: function () { return automaticIsHidden() ? 'Show automatic' : 'Hide automatic'; },
+  ariaLabel: function () {
+    return automaticIsHidden()
+      ? 'Show automatic: doorbell and compact-summary turns'
+      : 'Hide automatic: doorbell and compact-summary turns';
+  },
+  hidden: notInChat,
+  onTap: toggleAutomatic,
+};
+
 // The shared ↓ Latest pill (latest-pill.js) over the xterm buffer,
 // created by wireTerminalMenu().
 let latestPill = null;
@@ -175,6 +191,7 @@ export function wireTerminalMenu() {
       hidden: notInChat,
       onTap: toggleGroups,
     },
+    HIDE_AUTOMATIC_ITEM,
     // Load new: only what came after the newest turn shown, the
     // live tick's own read, forced now. Reload stays as the full escape hatch.
     {
