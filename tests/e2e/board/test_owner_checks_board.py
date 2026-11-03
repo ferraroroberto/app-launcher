@@ -103,15 +103,16 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     expect(blocks.nth(2)).to_contain_text("Details unknown")
     done = dialog.locator("#chiefAnswersDone")
     expect(done).to_be_disabled()
-    blocks.nth(0).locator('.tr-ask-opt[data-answer="later"]').click()
-    blocks.nth(1).locator('.tr-ask-opt[data-answer="validated"]').click()
+    # Newest first: demo#9 (filed 10-31) leads demo#7 (10-30); the undated demo#11 is last.
+    blocks.nth(0).locator('.tr-ask-opt[data-answer="validated"]').click()
+    blocks.nth(1).locator('.tr-ask-opt[data-answer="later"]').click()
     blocks.nth(2).locator(".tr-ask-input").fill("the swipe  does nothing")
     expect(done).to_be_enabled()
     done.click()
     expect(dialog).to_be_hidden()
     assert answers == [{"answers": [
-        {"ref": "demo#7", "kind": "before-start", "answer": "later"},
         {"ref": "demo#9", "kind": "validate-after", "answer": "validated"},
+        {"ref": "demo#7", "kind": "before-start", "answer": "later"},
         {"ref": "demo#11", "kind": "validate-after", "answer": "problem", "text": "the swipe does nothing"},
     ]}], answers
     assert chief_posts == [{"data": (
@@ -309,7 +310,8 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
     typed = {"demo#101": "validated", "demo#102": "Works fine now.", "demo#104": "ok",
              "demo#105": "the button does nothing", "demo#107": "not working"}
     expected = {}
-    for i, it in enumerate(items):
+    # Same `since` everywhere, so the sheet lists the higher issue number first.
+    for i, it in enumerate(reversed(items)):
         block = blocks.nth(i)
         ref = it["ref"]
         if ref in typed:

@@ -47,14 +47,28 @@ const waiting = ownerItemWaiting;
 // Re-exported: the Board's head line and the nav badge share one rule.
 export { ownerNeedsCount };
 
-// The items the repo filter shows, the waiting ones first, each kind in
-// the list's own order.
+// Newest first: `since` descending, the higher (later filed) issue number
+// breaking a tie, and an item with no readable `since` after the dated ones.
+function newestFirst(a, b) {
+  const sa = /^\d{4}-\d{2}-\d{2}$/.test(String(a.since || '')) ? a.since : '';
+  const sb = /^\d{4}-\d{2}-\d{2}$/.test(String(b.since || '')) ? b.since : '';
+  if (sa !== sb) {
+    if (!sa) return 1;
+    if (!sb) return -1;
+    return sa < sb ? 1 : -1;
+  }
+  return (Number(b.number) || 0) - (Number(a.number) || 0);
+}
+
+// The items the repo filter shows, the waiting ones first, each half newest
+// first (each group of the card filters this list, so it inherits the order).
 export function shownOwnerItems(body) {
   const sec = section(body);
   if (!sec) return [];
   const filter = boardRepoFilter();
   const items = (sec.items || []).filter(function (it) { return matchesRepoFilter(it, filter); });
-  return items.filter(waiting).concat(items.filter(function (it) { return !waiting(it); }));
+  return items.filter(waiting).sort(newestFirst)
+    .concat(items.filter(function (it) { return !waiting(it); }).sort(newestFirst));
 }
 
 function kindLabel(kind) {
