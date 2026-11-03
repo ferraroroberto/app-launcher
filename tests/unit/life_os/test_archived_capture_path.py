@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.webapp.routers.life_os_conversations import _conversation_path, _conversation_rows
+from app.webapp.routers.life_os_conversations import _conversation_check, _conversation_path, _conversation_rows
+from src.life_os import history
 
 
 @pytest.fixture
@@ -56,3 +57,35 @@ def test_row_for_archived_file_resolves_through_archive(tree):
     rows = _conversation_rows(cfg, [{"file": "2026-01-01-0900-old.md"}], skill=skill)
     assert rows[0]["resume_reason"] not in (
         "Capture path is outside this skill.", "Capture is missing.")
+
+
+@pytest.mark.parametrize("rel, reason", [
+    (f"{BASE}/../../other/conversations/a.md", history.REFUSAL_PARENT_DIR),
+    ("C:/Windows/win.md", history.REFUSAL_OUTSIDE),
+    ("/etc/passwd", history.REFUSAL_OUTSIDE),
+    (".claude/skills/other/conversations/a.md", history.REFUSAL_WRONG_FOLDER),
+    (f"{BASE}/archive/deeper/2026-01-01-0900-deep.md", history.REFUSAL_WRONG_FOLDER),
+    (f"{BASE}/archive/index.md", history.REFUSAL_NOT_CAPTURE),
+    (f"{BASE}/notes.txt", history.REFUSAL_NOT_CAPTURE),
+])
+def test_each_refusal_names_its_own_condition(tree, rel, reason):
+    root, skill = tree
+    assert _conversation_check(root, skill, rel) == (None, reason)
+
+
+def test_refusal_reasons_are_all_distinct():
+    reasons = [history.REFUSAL_OUTSIDE, history.REFUSAL_PARENT_DIR,
+               history.REFUSAL_WRONG_FOLDER, history.REFUSAL_NOT_CAPTURE, "Capture is missing."]
+    assert len(set(reasons)) == len(reasons)
+
+
+def test_missing_file_has_its_own_reason(tree):
+    root, skill = tree
+    cfg = SimpleNamespace(life_os_dir=str(root), fleet_config_dir=str(root / "nofleet"))
+    rows = _conversation_rows(cfg, [{"file": "2026-01-01-0900-gone.md"}], skill=skill)
+    assert rows[0]["resume_reason"] == "Capture is missing."
+
+
+def test_read_captures_shows_the_given_refusal_for_a_none_path(tmp_path):
+    out = history.read_captures(tmp_path, [None, None], [history.REFUSAL_PARENT_DIR, ""])
+    assert [o["reason"] for o in out] == [history.REFUSAL_PARENT_DIR, history.REFUSAL_OUTSIDE]

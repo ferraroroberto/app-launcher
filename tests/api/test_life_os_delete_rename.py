@@ -247,7 +247,7 @@ folder = Path(args.cwd) / ".claude" / "skills" / args.skill / "conversations"
 title = "" if args.clear else " ".join(args.title.split())
 if len(title) > 120:
     sys.exit(2)
-if title and not (folder / args.file).is_file():
+if title and not ((folder / args.file).is_file() or (folder / "archive" / args.file).is_file()):
     sys.exit(3)
 sidecar = folder / "titles.json"
 titles = json.loads(sidecar.read_text("utf-8")) if sidecar.exists() else {}
@@ -454,6 +454,43 @@ class TestRenameConversation:
         assert resp.status_code == 200, resp.text
         assert resp.json()["removed"]["title"] == "unavailable"
         assert not (self.conversations / self.CAPTURE).exists()
+
+    def test_renamed_archived_capture_is_found_by_search(self):
+        from types import SimpleNamespace
+
+        from app.webapp.routers import life_os_search
+        from tests.api._life_os_support import _completed
+
+        archive = self.conversations / "archive"
+        archive.mkdir()
+        name = "2026-05-01-0800-old-ferry.md"
+        (archive / name).write_text(
+            f'<!-- capture sid="{RESUMABLE_SID}" agent="claude" updated="synthetic" -->\nold log',
+            encoding="utf-8")
+        rel = f".claude/skills/journal-daily/conversations/archive/{name}"
+        resp = self._rename("Harbour crossing", rel=rel)
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["file"] == name and resp.json()["title"] == "Harbour crossing"
+
+        def fake_search(argv, **kwargs):
+            titles = json.loads((self.conversations / "titles.json").read_text("utf-8"))
+            query = argv[argv.index("--query") + 1] if "--query" in argv else ""
+            hits = [{"skill": "journal-daily", "file": f, "path": str(archive / f),
+                     "date": "2026-05-01", "slug": "old-ferry", "turns": 3, "title": t,
+                     "topic": "an old crossing", "rank": -1.0}
+                    for f, t in titles.items() if f == name and query.lower() in t.lower()]
+            return _completed(json.dumps(hits))
+
+        self.monkeypatch.setattr(life_os_search, "search_cli", lambda cfg: ["py", "search.py"])
+        self.monkeypatch.setattr(life_os_search, "subprocess", SimpleNamespace(
+            **{**vars(subprocess), "run": fake_search}))
+        found = self.client.get("/api/life-os/conversations/search?q=harbour").json()
+        assert found["available"] is True
+        assert [r["file"] for r in found["results"]] == [name]
+        row = found["results"][0]
+        assert row["title"] == "Harbour crossing"
+        assert row["path"].replace("\\", "/") == rel
+        assert self.client.get("/api/life-os/conversations/search?q=zzz").json()["results"] == []
 
     def test_search_rows_carry_the_title(self):
         from app.webapp.routers.life_os_conversations import _conversation_rows
