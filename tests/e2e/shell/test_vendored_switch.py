@@ -109,9 +109,51 @@ def test_scan_rows_use_vendored_switch(authed_page: Page, base_url: str) -> None
 
     toggle = authed_page.locator("#scanResults .scan-row .toggle")
     _assert_switch(authed_page, "#scanResults .scan-row .toggle")
-    expect(toggle).to_have_attribute("aria-checked", "true")
-    toggle.click()
     expect(toggle).to_have_attribute("aria-checked", "false")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+
+
+def test_scan_entries_start_off_and_add_only_the_switched_on(
+    authed_page: Page, base_url: str
+) -> None:
+    """#2117 - every found entry starts off; Add selected with none on adds
+    nothing and says so, with one on it saves exactly that id."""
+    entries = [
+        {"id": "app-a", "name": "App A", "kind": "webapp", "bat_path": "stub/a.bat"},
+        {"id": "app-b", "name": "App B", "kind": "webapp", "bat_path": "stub/b.bat"},
+    ]
+    saves: list[dict] = []
+    authed_page.route(
+        "**/api/apps/scan",
+        lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({"new": entries})
+        ),
+    )
+
+    def _save(route) -> None:
+        saves.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"added": ["app-b"]}),
+        )
+
+    authed_page.route("**/api/apps/save", _save)
+    _open_scan_from_apps_tab(authed_page, base_url)
+
+    toggles = authed_page.locator("#scanResults .scan-row .toggle")
+    expect(toggles).to_have_count(2)
+    for i in range(2):
+        expect(toggles.nth(i)).to_have_attribute("aria-checked", "false")
+
+    authed_page.locator("#scanSave").click()
+    expect(authed_page.locator(".toast")).to_contain_text("Nothing selected")
+    assert saves == []
+
+    toggles.nth(1).click()
+    authed_page.locator("#scanSave").click()
+    expect(authed_page.locator("#scanDialog")).to_be_hidden()
+    assert saves == [{"ids": ["app-b"]}]
 
 
 @pytest.mark.iphone
@@ -132,6 +174,7 @@ def test_on_switch_track_is_the_accent_fill_in_both_themes(
     )
     _open_scan_from_apps_tab(authed_page, base_url)
     toggle =authed_page.locator("#scanResults .scan-row .toggle")
+    toggle.click()
     expect(toggle).to_have_attribute("aria-checked", "true")
 
     for theme in ("light", "dark"):
