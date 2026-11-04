@@ -326,6 +326,11 @@
           </label>
           <p id="chiefWorkerCapHelp" class="field-help">How many workers the chief runs at once, from 1 to 10.</p>
           <div class="row">
+            <span>Count only chief-dispatched sessions</span>
+            <button data-track="chief.worker-cap-scope" type="button" id="chiefWorkerCapScopeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Count only chief-dispatched sessions" aria-describedby="chiefWorkerCapScopeHelp" title="Choose which sessions the worker cap counts"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="chiefWorkerCapScopeHelp" class="field-help">On, the cap counts only the sessions the chief started, so the ones you open yourself never use up a slot. Off, it counts every live session. The chief itself and Telegram channel sessions never count.</p>
+          <div class="row">
             <span>Auto-compact</span>
             <button data-track="chief.auto-compact" type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>

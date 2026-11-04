@@ -28,6 +28,7 @@ import { revealInCard } from '../dom-utils.js';
 import { wireModelCombo } from '../shared/model-combo.js';
 import { fetchConfig, patchConfig, USAGE_PROVIDER_LABELS, wireConfigSwitch } from './claude-options.js';
 import { terminalJsonApi } from '../webauthn.js';
+import { setSwitch } from '../_vendored/switch/switch.js';
 import { fetchApps } from '../apps.js';
 import { fetchSkills } from '../life-os.js';
 import { profileNeedsSetup } from './telegram-setup.js';
@@ -431,6 +432,10 @@ const CHIEF_MODELS = [
 
 function renderChiefFields(cfg) {
   if (chiefModelCombo && cfg.chief_model) chiefModelCombo.setValue(cfg.chief_model);
+  // On = the cap counts only the chief's own sessions; a missing value is that.
+  if (els.chiefWorkerCapScopeToggle) {
+    setSwitch(els.chiefWorkerCapScopeToggle, cfg.chief_worker_cap_scope !== 'all');
+  }
   const cap = els.chiefWorkerCap;
   if (!cap) return;
   if (cfg.chief_worker_cap_min != null) cap.min = cfg.chief_worker_cap_min;
@@ -468,6 +473,15 @@ function wireChief() {
       const value = wholeNumberIn(els.chiefWorkerCap, 'Worker cap');
       if (value === null) return;
       putChiefSettings({ worker_cap: value }, 'Worker cap saved.', els.chiefWorkerCap);
+    });
+  }
+  const scope = els.chiefWorkerCapScopeToggle;
+  if (scope) {
+    scope.addEventListener('click', function () {
+      const chiefOnly = scope.getAttribute('aria-checked') !== 'true';
+      setSwitch(scope, chiefOnly);
+      putChiefSettings({ worker_cap_scope: chiefOnly ? 'chief' : 'all' },
+        chiefOnly ? 'Worker cap counts chief sessions only.' : 'Worker cap counts every session.');
     });
   }
   wireChiefDoorbell();

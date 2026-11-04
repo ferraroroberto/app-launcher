@@ -65,6 +65,7 @@ def test_non_default_values_survive_a_round_trip(tmp_path):
         github_owner="someone-else",
         claude_verbose=False,
         chief_worker_cap=7,
+        chief_worker_cap_scope="all",
         projects_ignore=["skip-me", "and-me"],
         tailnet_allowlist=["10.0.0.0/8"],
         secrets={"api": "shh"},

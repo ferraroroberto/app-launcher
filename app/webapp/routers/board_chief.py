@@ -479,6 +479,7 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "model": cfg.chief_model,
         "worker_cap": cfg.chief_worker_cap,
+        "worker_cap_scope": cfg.chief_worker_cap_scope,
         "grokbot_enabled": cfg.grokbot_enabled,
     }
 
@@ -517,6 +518,10 @@ async def put_chief_settings(request: Request) -> Dict[str, Any]:
             raise HTTPException(
                 status_code=400, detail="worker_cap must be an integer"
             )
+    if "worker_cap_scope" in body:
+        patch["chief_worker_cap_scope"] = str(
+            body.get("worker_cap_scope") or ""
+        ).strip().lower()
     if not patch:
         raise HTTPException(status_code=400, detail="no chief settings in body")
     try:

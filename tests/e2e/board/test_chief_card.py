@@ -201,7 +201,7 @@ def test_chief_settings_sheet_roundtrip(
     disposable server) to keep the starting values deterministic."""
     _mock_board(authed_page, _board_payload(with_chief=True))
 
-    stored = {"model": "fable", "worker_cap": 3}
+    stored = {"model": "fable", "worker_cap": 3, "worker_cap_scope": "chief"}
     puts: list[dict] = []
 
     def _config(route):
@@ -212,6 +212,7 @@ def test_chief_settings_sheet_roundtrip(
         body = resp.json()
         body.update(
             chief_model=stored["model"], chief_worker_cap=stored["worker_cap"],
+            chief_worker_cap_scope=stored["worker_cap_scope"],
             chief_worker_cap_min=1, chief_worker_cap_max=10,
         )
         route.fulfill(
@@ -248,6 +249,8 @@ def test_chief_settings_sheet_roundtrip(
         "data-value", "fable"
     )
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("3")
+    scope = authed_page.locator("#chiefWorkerCapScopeToggle")
+    expect(scope).to_have_attribute("aria-checked", "true")
 
     # Model: one PUT carrying only the model.
     authed_page.locator("#chiefModelSelect .model-combo-trigger").click()
@@ -276,6 +279,19 @@ def test_chief_settings_sheet_roundtrip(
     expect(cap).to_have_attribute("aria-invalid", "true")
     flush_requests(authed_page)
     assert puts == [{"model": "opus"}, {"worker_cap": 5}], puts
+
+    # Scope switch: off counts every session ('all'), back on is 'chief'; each
+    # flip PUTs only the scope and the switch settles on what is stored.
+    scope.click()
+    wait_until(authed_page, lambda: puts[-1:] == [{"worker_cap_scope": "all"}],
+               "the worker cap scope PUT (all)")
+    expect(scope).to_have_attribute("aria-checked", "false")
+    expect(authed_page.locator("#toast")).to_contain_text("Worker cap counts every session.")
+    scope.click()
+    wait_until(authed_page, lambda: puts[-1:] == [{"worker_cap_scope": "chief"}],
+               "the worker cap scope PUT (chief)")
+    expect(scope).to_have_attribute("aria-checked", "true")
+    assert len(puts) == 4, puts
 
 
 def _capture_chief_input_post(page: Page) -> dict:
