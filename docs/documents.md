@@ -5,7 +5,8 @@ Settings › **Documents** lists the fleet's sources of truth (the fleet guide, 
 ## What the owner sees
 
 - One row per configured document: its title over the repo it comes from and when the file last changed ("fleet-config · Updated 26 h ago"). A file that cannot be read shows "Unavailable" in place of the time.
-- A tap opens the sheet: back chevron to Settings, ✕, the title, the "Updated … · repo" line, then the document. Tables scroll sideways inside their own box. A diagram is scaled to the sheet and scrolls sideways inside its box when it is still wider, so the page never does.
+- A tap opens the sheet: back chevron to Settings, ✕, the title, the "Updated … · repo" line with **Open on GitHub**, then the document. At phone width (520 px and under) the sheet is the whole screen, clear of the notch and home bar; on a wider screen it is a 900 px sheet. The header, the "Updated" line and the Done footer stay put while only the document scrolls. Tables scroll sideways inside their own box. A diagram is scaled to the sheet and scrolls sideways inside its box when it is still wider, so the page never does.
+- **Open on GitHub** opens the file's page on github.com in a new tab. It is hidden when the document's repo has no GitHub remote.
 - No document configured: the group is hidden. The list cannot be read: one muted row with Retry, never an empty group.
 - A document that cannot be read says why in the sheet ("file not found", the size limit, "Passkey unlock required") with Retry.
 
@@ -23,7 +24,9 @@ Settings › **Documents** lists the fleet's sources of truth (the fleet guide, 
 
 ## What can be read
 
-The browser never sends a path. `GET /api/documents` returns `{documents: [{id, title, repo, updated}]}` and `GET /api/documents/{id}` returns one document's text, so the only thing a request can name is an id from the configured list.
+The browser never sends a path. `GET /api/documents` returns `{documents: [{id, title, repo, updated}]}` and `GET /api/documents/{id}` returns one document's text plus `github_url`, so the only thing a request can name is an id from the configured list.
+
+`github_url` is `https://github.com/<owner>/<repo>/blob/HEAD/<path>`, built from the repo's `origin` remote (a plain read of `.git/config`, no `git` spawn) and the configured `path`, percent-encoded. `HEAD` is the ref because github.com redirects it to the default branch. A repo with no `origin`, or a non-GitHub remote, gives `null`, and no local path is ever part of the link.
 
 `src/documents/` is the only place an id becomes a file, in two layers:
 
@@ -36,7 +39,7 @@ The text is gated like the Life OS file reader: Tailscale-only, refused over the
 
 ## Rendering
 
-The sheet body is `renderMarkdown()` in a `.tr-md` box, the same renderer and styles as the Changed files Preview, with `hideComments` on so a generated-section marker line does not show.
+The sheet body is `renderMarkdown()` in a `.tr-md` box, the same renderer as the Changed files Preview, with `hideComments` on so a generated-section marker line does not show. The reader restyles that box through `.document-body` in `styles/settings.css` to read like GitHub's Markdown preview: 16 px text on a 1.5 line height, 16 px between blocks, h1 and h2 on a hairline rule, code on the subtle surface, zebra tables, and a 780 px measure on a wide sheet. It is built from the design tokens, so it follows light and dark. The rules are scoped to the reader, so the Changed files Preview keeps the shared `.tr-md` look.
 
 `app/webapp/static/shared/mermaid-render.js` is the one shared diagram renderer. `markdown.js` stays DOM-free and renders a ` ```mermaid ` fence as a code block; a view calls `renderMermaidIn(root)` once its HTML is in the page, and each such block becomes an SVG. The Documents sheet and the Changed files Preview call it; Chat does not, so a Mermaid fence in a reply stays a code block.
 
@@ -49,4 +52,4 @@ Known limits of the shared renderer: no nested lists, images or links between do
 
 ## Usage log
 
-Each row is cloned from a `<template>` that carries the one constant id `settings.document-open`; no per-document ids exist. The reading sheet is a dialog over Settings, so its time counts under the Settings view.
+Each row is cloned from a `<template>` that carries the one constant id `settings.document-open`, and Open on GitHub carries the one constant id `document.github`; no per-document ids exist. The reading sheet is a dialog over Settings, so its time counts under the Settings view.

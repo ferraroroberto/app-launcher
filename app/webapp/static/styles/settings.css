@@ -339,3 +339,120 @@ button.settings-row:active { background: var(--card-2); }
 .document-sheet-body { min-width: 0; }
 .document-body { min-width: 0; overflow-wrap: anywhere; }
 .document-body > :first-child { margin-top: 0; }
+
+/* The reader. The header, the "Updated" line with Open on GitHub, and the Done
+   footer stay put; only the document scrolls, so the card is exactly the
+   dialog's height and the body takes what is left. */
+.detail-dialog.document-sheet {
+  width: min(900px, calc(100vw - 48px));
+  overflow: hidden;
+}
+.document-sheet .detail-card { height: 100%; min-height: 0; }
+.document-sheet .detail-header,
+.document-meta,
+.document-sheet .detail-actions { flex: none; }
+.document-sheet .document-sheet-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.document-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line-muted);
+}
+.document-meta .muted { min-width: 0; margin: 0; }
+.document-github {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--hit-min);
+  font-size: var(--font-label);
+  font-weight: 600;
+}
+.document-github[hidden] { display: none; }
+.document-github .icon { width: var(--icon-inline); height: var(--icon-inline); }
+/* At phone width the sheet is the whole screen: the card loses its inset and
+   its corners, and the header and footer clear the notch and the home bar. */
+@media (max-width: 520px) {
+  .detail-dialog.document-sheet {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: none;
+    margin: 0;
+    border-radius: 0;
+  }
+  .document-sheet .detail-card {
+    border-radius: 0;
+    padding-top: calc(env(safe-area-inset-top, 0px) + 12px);
+    padding-left: calc(env(safe-area-inset-left, 0px) + 18px);
+    padding-right: calc(env(safe-area-inset-right, 0px) + 18px);
+  }
+  .document-sheet .detail-actions {
+    border-radius: 0;
+    margin-left: calc(-18px - env(safe-area-inset-left, 0px));
+    margin-right: calc(-18px - env(safe-area-inset-right, 0px));
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}
+/* GitHub's Markdown preview, from the app's tokens so it follows light and
+   dark: 16px / 1.5 text, 16px between blocks, h1 and h2 on a hairline, code on
+   the subtle surface and zebra tables. Scoped to the reader; the Changed files
+   Preview keeps the shared `.tr-md` look. The readable measure holds on a wide
+   sheet. */
+.document-body {
+  max-width: 780px;
+  margin-inline: auto;
+  padding: 16px 0 8px;
+  font-size: var(--font-body);
+  line-height: 1.5;
+}
+.document-body p,
+.document-body ul,
+.document-body ol,
+.document-body .md-block,
+.document-body .md-diagram,
+.document-body .md-quote,
+.document-body .md-table-wrap { margin: 0 0 16px; }
+.document-body :is(p, ul, ol, .md-block, .md-diagram, .md-quote, .md-table-wrap):last-child { margin-bottom: 0; }
+.document-body h1,
+.document-body h2,
+.document-body h3,
+.document-body h4,
+.document-body h5,
+.document-body h6 {
+  margin: 24px 0 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.document-body h1 { padding-bottom: 0.3em; font-size: 2em; border-bottom: 1px solid var(--line-muted); }
+.document-body h2 { padding-bottom: 0.3em; font-size: 1.5em; border-bottom: 1px solid var(--line-muted); }
+.document-body h3 { font-size: 1.25em; }
+.document-body h4 { font-size: 1em; }
+.document-body h5 { font-size: 0.875em; }
+.document-body h6 { font-size: 0.85em; color: var(--muted); }
+.document-body > :first-child { margin-top: 0; }
+.document-body ul,
+.document-body ol { padding-left: 2em; }
+.document-body li { margin: 0; padding-left: 0; }
+.document-body li + li { margin-top: 0.25em; }
+.document-body a { color: var(--accent-text); text-decoration: none; }
+.document-body a:hover { text-decoration: underline; }
+.document-body code { padding: 0.2em 0.4em; font-size: 85%; }
+.document-body .md-block { background: var(--card-2); }
+.document-body .md-block pre.md-code { padding: 16px; line-height: 1.45; }
+.document-body .md-block pre code { font-size: inherit; }
+.document-body .md-quote { padding: 0 1em; border-left: 0.25em solid var(--line); color: var(--muted); }
+.document-body .md-table { font-size: var(--font-body); line-height: 1.5; }
+.document-body .md-table th,
+.document-body .md-table td { padding: 6px 13px; }
+.document-body .md-table th { background: none; }
+.document-body .md-table tr:nth-child(2n) td { background: var(--card-2); }

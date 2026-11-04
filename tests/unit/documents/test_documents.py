@@ -107,6 +107,34 @@ class TestRead:
         assert body["updated"].endswith("+00:00")
         assert documents.last_changed(str(fleet), doc) == body["updated"]
 
+    @pytest.mark.parametrize(
+        "remote",
+        [
+            "git@github.com:acme/alpha.git",
+            "https://github.com/acme/alpha.git",
+            "ssh://git@github.com/acme/alpha",
+        ],
+    )
+    def test_the_github_url_comes_from_the_origin_remote_and_the_path(self, fleet, remote):
+        (fleet / "alpha" / "docs" / "my guide.md").write_text("x", encoding="utf-8")
+        git_dir = fleet / "alpha" / ".git"
+        git_dir.mkdir()
+        (git_dir / "config").write_text(f'[remote "origin"]\n\turl = {remote}\n', encoding="utf-8")
+        doc = Document("g", "G", "alpha", "docs/my guide.md")
+        body = documents.read_document(str(fleet), doc)
+        assert body["github_url"] == "https://github.com/acme/alpha/blob/HEAD/docs/my%20guide.md"
+        # No local path leaks into the link.
+        assert str(fleet) not in body["github_url"]
+
+    @pytest.mark.parametrize("remote", [None, "git@gitlab.com:acme/alpha.git"])
+    def test_no_github_remote_gives_no_url(self, fleet, remote):
+        if remote:
+            git_dir = fleet / "alpha" / ".git"
+            git_dir.mkdir()
+            (git_dir / "config").write_text(f'[remote "origin"]\n\turl = {remote}\n', encoding="utf-8")
+        doc = documents.parse_documents([_row()])[0]
+        assert documents.read_document(str(fleet), doc)["github_url"] is None
+
     def test_a_missing_file_says_not_found(self, fleet):
         doc = Document("nope", "Nope", "alpha", "docs/missing.md")
         with pytest.raises(DocumentError) as exc:
