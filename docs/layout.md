@@ -88,7 +88,8 @@ app-launcher/
 │   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser, session kind (Console or Remote Desktop)
 │   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry
 │   ├── progress/               # fleet progress: totals.py caches daily GitHub totals per repo (lines, PRs merged, issues opened/closed)
-│   │                           #   in webapp/progress-totals.json; snapshot() reads it with no GitHub call, refresh() is explicit
+│   │                           #   in webapp/progress-totals.json; snapshot() reads it with no GitHub call, refresh() is explicit;
+│   │                           #   history.py/tokens.py/buckets.py answer GET /api/progress (the totals + the hub's token history, bucketed)
 │   ├── usage/                  # usage meter: providers.py, auto_switch.py (the Grok fallback for Sonnet lanes),
 │   │                           #   quota.py, export.py (Send to task-os)
 │   └── jobs/, jobs_kinds/      # Jobs backend: the facade (__init__.py), config chain, scheduling/trigger/queue/reap,

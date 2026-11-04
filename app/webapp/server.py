@@ -106,6 +106,7 @@ from app.webapp.routers import (
     life_os,
     misc,
     perf_timings,
+    progress,
     screen_time,
     session_screen,
     session_transcript,
@@ -534,6 +535,7 @@ def create_app() -> FastAPI:
     app.include_router(config.router)
     app.include_router(context_filter.router)
     app.include_router(fleet_scope.router)
+    app.include_router(progress.router)
     app.include_router(documents.router)
     app.include_router(tokens.router)
     app.include_router(apps.router)
