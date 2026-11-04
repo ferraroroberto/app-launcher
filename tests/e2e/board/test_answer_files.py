@@ -115,10 +115,11 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     with authed_page.expect_response(re.compile(r".*/api/status$")):
         _open_board(authed_page, base_url)
 
-    authed_page.locator("#boardColYours .board-owner-answer-all").click()
+    owner = authed_page.locator("#boardColYours .board-owner")
     dialog = authed_page.locator("#chiefAnswersDialog")
+    # Each group is its own sheet and its own message to the chief.
+    owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
     before = dialog.locator('[data-key="owner:demo#7"]')
-    validate = dialog.locator('[data-key="owner:demo#9"]')
     # A before-start step has no text field: its paperclip stands alone.
     expect(before.locator(".tr-ask-input")).to_have_count(0)
     expect(before.locator(".tr-ask-attach")).to_be_enabled()
@@ -128,27 +129,36 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     expect(before.locator(".tr-ask-file")).to_have_count(1)
     expect(dialog.locator("#chiefAnswersDone")).to_be_disabled()
     before.locator('.tr-ask-opt[data-answer="done"]').click()
+    dialog.locator("#chiefAnswersDone").click()
+    expect(dialog).to_be_hidden()
+
+    owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group').click()
+    validate = dialog.locator('[data-key="owner:demo#9"]')
     validate.locator(".tr-ask-input").fill("blank tab")
     _attach(validate, "e2e-stub-b.png")
     expect(validate.locator(".tr-ask-file")).to_have_count(1)
     dialog.locator("#chiefAnswersDone").click()
     expect(dialog).to_be_hidden()
 
-    assert len(bodies) == 1
-    posted = bodies[0]
-    assert "e2e-stub" not in posted and "launcher-tmp" not in posted, posted
-    assert authed_page.evaluate("(b) => JSON.parse(b).answers", posted) == [
-        {"ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": "blank tab",
-         "attachments": 1},
-        {"ref": "demo#7", "kind": "before-start", "answer": "done", "attachments": 1},
+    assert len(bodies) == 2
+    assert all("e2e-stub" not in b and "launcher-tmp" not in b for b in bodies), bodies
+    assert [authed_page.evaluate("(b) => JSON.parse(b).answers", b) for b in bodies] == [
+        [{"ref": "demo#7", "kind": "before-start", "answer": "done", "attachments": 1}],
+        [{"ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": "blank tab",
+          "attachments": 1}],
     ]
-    assert chief_posts == [{"data": (
-        "Owner checks answered on the Board:\n"
-        "[demo#9] Problem found validating Read-aloud on the lock screen: blank tab (please file a fix)\n"
-        "   Attached: " + _STORED.format(n=2) + "\n"
-        "[demo#7] Before-start step done: Pair the kitchen speaker\n"
-        "   Attached: " + _STORED.format(n=1)
-    ), "submit": True}], chief_posts
+    assert chief_posts == [
+        {"data": (
+            "Owner checks answered on the Board: Before start\n"
+            "[demo#7] Before-start step done: Pair the kitchen speaker\n"
+            "   Attached: " + _STORED.format(n=1)
+        ), "submit": True},
+        {"data": (
+            "Owner checks answered on the Board: Validate\n"
+            "[demo#9] Problem found validating Read-aloud on the lock screen: blank tab (please file a fix)\n"
+            "   Attached: " + _STORED.format(n=2)
+        ), "submit": True},
+    ], chief_posts
 
 
 def test_the_paperclip_waits_for_a_running_chief_and_says_so(
@@ -160,7 +170,8 @@ def test_the_paperclip_waits_for_a_running_chief_and_says_so(
     _route_voice(authed_page, False)
     with authed_page.expect_response(re.compile(r".*/api/status$")):
         _open_board(authed_page, base_url)
-    authed_page.locator("#boardColYours .board-owner-answer-all").click()
+    authed_page.locator(
+        '#boardColYours .board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
     block = authed_page.locator('#chiefAnswersDialog [data-key="owner:demo#7"]')
     expect(block.locator(".tr-ask-attach")).to_be_disabled()
     expect(block.locator(".tr-ask-files-note")).to_have_text("Start the chief to attach files.")

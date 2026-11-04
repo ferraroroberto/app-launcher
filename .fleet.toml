@@ -271,6 +271,7 @@ baseline = ".usage-track-ratchet-baseline.json"
 rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired"]
 builders = [
   "app/webapp/static/apps.js:runningVerb",
+  "app/webapp/static/board/chief-plan.js:foldGroup",
   "app/webapp/static/board/drawer.js:drawerAction",
   "app/webapp/static/board/proof-chip.js:actionButton",
   "app/webapp/static/changes/changes-overlay.js:toolButton",

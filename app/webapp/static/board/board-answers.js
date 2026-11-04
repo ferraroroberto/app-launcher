@@ -59,7 +59,7 @@ import {
 import { renderBoard } from '../board.js';
 import { itemKey, markSent } from './chief-keys.js';
 import {
-  emptyOwnerDraft, ownerAnswerOf, ownerMessageLine, ownerSheetBlock, ownerSheetKey,
+  emptyOwnerDraft, kindLabel, ownerAnswerOf, ownerMessageLine, ownerSheetBlock, ownerSheetKey,
   postOwnerAnswers, shownOwnerItems,
 } from './owner-checks.js';
 
@@ -150,7 +150,7 @@ function answerText(item, draft) {
 // plan positions the sheet offered (a Board repo filter narrows it);
 // an item the filter hid was never asked, so it is neither answered nor
 // "Skipped", and the count is out of what was shown.
-export function composeAnswers(items, drafts, extra, shown, ownerLines) {
+export function composeAnswers(items, drafts, extra, shown, ownerLines, ownerGroup) {
   const lines = [];
   const skipped = [];
   let answered = 0;
@@ -175,7 +175,9 @@ export function composeAnswers(items, drafts, extra, shown, ownerLines) {
     ? ['Answers from the Board (' + answered + ' of ' + indices.length + '):'].concat(lines)
     : [];
   if (skipped.length) out.push('Skipped: ' + skipped.join(', '));
-  if (owner.length) out.push('Owner checks answered on the Board:');
+  // The group the answers came from, after the colon, so the heading itself
+  // stays the one the chief already reads.
+  if (owner.length) out.push('Owner checks answered on the Board:' + (ownerGroup ? ' ' + ownerGroup : ''));
   owner.forEach(function (line) { out.push(line); });
   const also = String(extra || '').trim();
   if (also) out.push('Also: ' + also);
@@ -415,16 +417,17 @@ export function openChiefAnswers(plan, run, shown, startAt) {
   openSheet('chief', plan, run, indices, [], startAt == null ? null : itemKey(items[startAt], startAt));
 }
 
-// The owner sheet: the owner checks the Board shows, scrolled to `startRef`
-// (the tapped item). It needs no plan; one that is there only keeps the chief
-// sheet's drafts through the open.
-export function openOwnerAnswers(plan, run, startRef) {
-  const owner = shownOwnerItems(state.board);
+// The owner sheet: one group's owner checks the Board shows (`kind`, Before
+// start or Validate; omitted, both), scrolled to `startRef` (the tapped item).
+// It needs no plan; one that is there only keeps the chief sheet's drafts
+// through the open.
+export function openOwnerAnswers(plan, run, startRef, kind) {
+  const owner = shownOwnerItems(state.board, kind);
   if (!owner.length) return;
-  openSheet('owner', plan, run, [], owner, startRef ? ownerSheetKey({ ref: startRef }) : null);
+  openSheet('owner', plan, run, [], owner, startRef ? ownerSheetKey({ ref: startRef }) : null, kind || null);
 }
 
-function openSheet(mode, plan, run, indices, owner, startKey) {
+function openSheet(mode, plan, run, indices, owner, startKey, ownerKind) {
   const dialog = els.chiefAnswersDialog;
   if (!dialog) return;
   const ok = !!plan && plan.state === 'ok';
@@ -440,6 +443,7 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
     version: version,
     items: items,
     owner: owner,
+    ownerKind: ownerKind || null,
     shown: indices,
     drafts: same ? sheet.drafts : items.map(emptyChiefDraft),
     also: same ? sheet.also : '',
@@ -464,7 +468,8 @@ function openSheet(mode, plan, run, indices, owner, startKey) {
     }, itemFiles(draft, item.ref)));
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
-  els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief' : 'Owner checks';
+  els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief'
+    : 'Owner checks' + (ownerKind ? ': ' + kindLabel(ownerKind) : '');
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
   const start = startKey == null ? null
@@ -540,7 +545,8 @@ async function submitAnswers() {
     // (syncDone): GitHub holds them, and the chief reads them there.
     const tell = forChief && chiefRun === 'running';
     if (tell) {
-      await sendToChief(composeAnswers(sheet.items, sheet.drafts, alsoText(), sheet.shown, owner.lines));
+      await sendToChief(composeAnswers(sheet.items, sheet.drafts, alsoText(), sheet.shown, owner.lines,
+        sheet.ownerKind ? kindLabel(sheet.ownerKind) : ''));
       if (plan) markSent(plan, keys);
       // Sent: the drafts it carried are done with, so the next open starts
       // clean. One typed for an item the filter hid was not sent, and stays.
@@ -555,7 +561,7 @@ async function submitAnswers() {
     if (owner.failed.length) {
       // The failed ones keep their drafts; the rebuilt sheet shows each one's reason.
       toast('Not saved on GitHub: ' + refList(owner.failed) + '. Each says why; Done tries again.', 'error');
-      openOwnerAnswers(plan, chiefRun);
+      openOwnerAnswers(plan, chiefRun, null, sheet.ownerKind);
     } else {
       els.chiefAnswersDialog.close();
       toast(tell ? 'Sent to chief' : 'Saved on GitHub', 'good', { icon: tell ? 'crown' : 'circle-check' });

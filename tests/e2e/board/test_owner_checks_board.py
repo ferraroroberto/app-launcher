@@ -8,6 +8,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.fixtures.waits import stable_read
 from tests.e2e.board._chief_support import (
     _QUESTIONS, _board_payload, _capture_chief_input, _mock_board, _mock_ensure, _open_board,
     _plan_with, _route_plan_from, _route_voice,
@@ -44,17 +45,9 @@ def _payload() -> dict:
     return payload
 
 
-@pytest.mark.iphone
-def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
-    authed_page: Page, base_url: str
-) -> None:
-    """Each owner check is a Your turn row (title, ref, age), grouped by
-    kind and counted in the lane and the header; its tap unfolds why, what to
-    try and the links (the artifact opens the artifact). A label without a
-    readable block is listed as "details unknown", never hidden, and an
-    unreadable repo is said. The sheet answers them: Validated, a typed
-    Problem and Later go to the owner-check route as one batch, then the chief
-    hears what landed in one message."""
+def _open_owner_board(authed_page: Page, base_url: str) -> tuple[list, list]:
+    """Open the Board on the owner-check payload with the answer route stubbed
+    to apply every answer; returns the posts it saw and the chief's input."""
     _mock_board(authed_page, _payload())
     _mock_ensure(authed_page, {})
     chief_posts = _capture_chief_input(authed_page)
@@ -69,6 +62,21 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
 
     authed_page.route(re.compile(r".*/api/board/owner-checks/answer$"), _answer)
     _open_board(authed_page, base_url)
+    return answers, chief_posts
+
+
+@pytest.mark.iphone
+def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
+    authed_page: Page, base_url: str
+) -> None:
+    """Each owner check is a Your turn row (title, ref, age), grouped by
+    kind and counted in the lane and the header; its tap unfolds why, what to
+    try and the links (the artifact opens the artifact). A label without a
+    readable block is listed as "details unknown", never hidden, and an
+    unreadable repo is said. The sheet answers them: Validated, a typed
+    Problem and Later go to the owner-check route as one batch, then the chief
+    hears what landed in one message."""
+    answers, chief_posts = _open_owner_board(authed_page, base_url)
 
     lane = authed_page.locator("#boardColYours")
     expect(lane.locator(".board-count")).to_have_text("3")
@@ -97,29 +105,45 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     detail.locator(".board-owner-answer").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
     expect(dialog).to_be_visible()
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks")
+    # A row's Answer opens its own group's sheet: Validate holds two of the three.
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
     blocks = dialog.locator(".owner-answer")
-    expect(blocks).to_have_count(3)
-    expect(blocks.nth(2)).to_contain_text("Details unknown")
+    expect(blocks).to_have_count(2)
+    expect(blocks.nth(1)).to_contain_text("Details unknown")
     done = dialog.locator("#chiefAnswersDone")
     expect(done).to_be_disabled()
-    # Newest first: demo#9 (filed 10-31) leads demo#7 (10-30); the undated demo#11 is last.
+    # Newest first: demo#9 (filed 10-31) leads the undated demo#11.
     blocks.nth(0).locator('.tr-ask-opt[data-answer="validated"]').click()
-    blocks.nth(1).locator('.tr-ask-opt[data-answer="later"]').click()
-    blocks.nth(2).locator(".tr-ask-input").fill("the swipe  does nothing")
+    blocks.nth(1).locator(".tr-ask-input").fill("the swipe  does nothing")
     expect(done).to_be_enabled()
     done.click()
     expect(dialog).to_be_hidden()
     assert answers == [{"answers": [
         {"ref": "demo#9", "kind": "validate-after", "answer": "validated"},
-        {"ref": "demo#7", "kind": "before-start", "answer": "later"},
         {"ref": "demo#11", "kind": "validate-after", "answer": "problem", "text": "the swipe does nothing"},
     ]}], answers
+    # The chief hears which group the answers came from.
     assert chief_posts == [{"data": (
-        "Owner checks answered on the Board:\n"
+        "Owner checks answered on the Board: Validate\n"
         "[demo#9] Validated: Read-aloud on the lock screen\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts
+
+
+def test_before_start_is_answered_on_its_own_sheet(authed_page: Page, base_url: str) -> None:
+    """The Before start group's button opens a sheet of that group alone; its
+    answer goes to the route by itself, and a Later needs no word to the chief."""
+    answers, chief_posts = _open_owner_board(authed_page, base_url)
+
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    authed_page.locator("#boardColYours .board-owner-answer-group").first.click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Before start")
+    expect(dialog.locator(".owner-answer")).to_have_count(1)
+    dialog.locator('.tr-ask-opt[data-answer="later"]').click()
+    dialog.locator("#chiefAnswersDone").click()
+    expect(dialog).to_be_hidden()
+    assert answers == [{"answers": [{"ref": "demo#7", "kind": "before-start", "answer": "later"}]}], answers
+    assert chief_posts == [], chief_posts
 
 
 @pytest.mark.iphone
@@ -159,9 +183,20 @@ def test_chief_and_owner_checks_open_separate_sheets(
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
 
-    owner.locator(".board-owner-answer-all").click()
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks")
-    expect(dialog.locator(".chief-answer")).to_have_count(3)
+    # Each group's button opens only that group's checks.
+    before_btn = owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group')
+    validate_btn = owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group')
+    expect(before_btn).to_have_text("Answer Before start (1)")
+    expect(validate_btn).to_have_text("Answer Validate (2)")
+    before_btn.click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Before start")
+    expect(dialog.locator(".chief-answer")).to_have_count(1)
+    expect(dialog.locator('[data-key="owner:demo#7"]')).to_be_visible()
+    dialog.locator("#chiefAnswersClose").click()
+    expect(dialog).to_be_hidden()
+    validate_btn.click()
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
+    expect(dialog.locator(".chief-answer")).to_have_count(2)
     expect(dialog.locator(".chief-answer:not(.owner-answer)")).to_have_count(0)
     expect(dialog.locator("#chiefAnswersAlso")).to_be_hidden()
     dialog.locator("#chiefAnswersClose").click()
@@ -170,15 +205,49 @@ def test_chief_and_owner_checks_open_separate_sheets(
     row = owner.locator('.board-owner-row[data-ref="demo#11"]')
     row.locator(".action-row-main").click()
     row.locator(".board-owner-answer").click()
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks")
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
     expect(dialog.locator('[data-key="owner:demo#11"]')).to_be_in_viewport()
     dialog.locator('[data-key="owner:demo#11"] .tr-ask-input').fill("the swipe does nothing")
     dialog.locator("#chiefAnswersDone").click()
     expect(dialog).to_be_hidden()
     assert chief_posts == [{"data": (
-        "Owner checks answered on the Board:\n"
+        "Owner checks answered on the Board: Validate\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts
+
+
+@pytest.mark.iphone
+def test_owner_check_groups_fold_and_keep_their_choice(
+    authed_page: Page, base_url: str
+) -> None:
+    """Both owner-check groups fold on the plan card's summary row, open by
+    default; a folded group keeps its heading and count and hides its rows and
+    answer button, and the choice survives the Board's rebuilds."""
+    _mock_board(authed_page, _payload())
+    _mock_ensure(authed_page, {})
+    _route_voice(authed_page, False)
+    _open_board(authed_page, base_url)
+
+    owner = authed_page.locator("#boardColYours .board-owner")
+    before = owner.locator('.board-owner-group[data-kind="before-start"]')
+    validate = owner.locator('.board-owner-group[data-kind="validate-after"]')
+    for group in (before, validate):
+        expect(group).to_have_attribute("open", "")
+        box = stable_read(group.locator("summary").bounding_box)
+        assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"
+    expect(before.locator("li.board-owner-row")).to_have_count(1)
+
+    before.locator("summary").click()
+    expect(before.locator("li.board-owner-row")).to_be_hidden()
+    expect(before.locator(".board-owner-answer-group")).to_be_hidden()
+    expect(before.locator("summary")).to_have_text("Before you start it (1)")
+    # The other group is untouched, and a re-render keeps the fold.
+    expect(validate.locator("li.board-owner-row").first).to_be_visible()
+    validate.locator('.board-owner-row[data-ref="demo#9"] .action-row-main').click()
+    expect(validate.locator(".board-owner-detail")).to_be_visible()
+    expect(before.locator("li.board-owner-row")).to_be_hidden()
+    before.locator("summary").click()
+    expect(before.locator("li.board-owner-row")).to_be_visible()
 
 
 def test_an_old_check_quotes_the_issue_or_says_it_has_no_try(
@@ -251,7 +320,7 @@ def test_a_long_owner_check_group_lists_every_row_with_no_more_row(
     group = authed_page.locator('#boardColYours .board-owner-group[data-kind="validate-after"]')
     expect(group.locator("li.board-owner-row")).to_have_count(12)
     expect(group.locator("li")).to_have_count(12)
-    expect(group.locator("h4")).to_have_text("To validate (12)")
+    expect(group.locator("summary")).to_have_text("To validate (12)")
     expect(authed_page.locator(".board-owner-more")).to_have_count(0)
 
     last = group.locator("li.board-owner-row").nth(11)
@@ -275,7 +344,8 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
     shows why in its own block; Done again sends only that one."""
     from app.webapp.routers.board_owner import _MAX_ANSWERS
 
-    items = _many_owner_items(40)
+    # One group per sheet: the whole batch is Validate's.
+    items = [dict(it, kind="validate-after") for it in _many_owner_items(40)]
     payload = _board_payload(with_chief=True)
     payload["owner_checks"] = {
         "available": True, "fetched_at": payload["github"]["fetched_at"], "error": None,
@@ -302,7 +372,7 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
 
     authed_page.route(re.compile(r".*/api/board/owner-checks/answer$"), _answer)
     _open_board(authed_page, base_url)
-    authed_page.locator("#boardColYours .board-owner-answer-all").click()
+    authed_page.locator("#boardColYours .board-owner-answer-group").click()
     dialog = authed_page.locator("#chiefAnswersDialog")
     blocks = dialog.locator(".owner-answer")
     expect(blocks).to_have_count(40)
@@ -317,9 +387,8 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
         if ref in typed:
             block.locator(".tr-ask-input").fill(typed[ref])
             continue
-        answer = "done" if it["kind"] == "before-start" else "validated"
-        block.locator(f'.tr-ask-opt[data-answer="{answer}"]').click()
-        expected[ref] = {"ref": ref, "kind": it["kind"], "answer": answer}
+        block.locator('.tr-ask-opt[data-answer="validated"]').click()
+        expected[ref] = {"ref": ref, "kind": it["kind"], "answer": "validated"}
     expected["demo#101"] = {"ref": "demo#101", "kind": "validate-after", "answer": "validated", "text": "validated"}
     expected["demo#102"] = {"ref": "demo#102", "kind": "validate-after", "answer": "validated",
                             "text": "Works fine now."}

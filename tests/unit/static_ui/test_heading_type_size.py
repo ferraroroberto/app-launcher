@@ -34,5 +34,5 @@ def test_sub_heading_is_body_sized(selector: str) -> None:
     assert _declaration(selector, "font-size") == "var(--font-body)"
 
 
-def test_parked_summary_control_keeps_the_caption_size() -> None:
-    assert _declaration(".board-plan-parked-summary", "font-size") == "var(--font-caption)"
+def test_fold_summary_control_keeps_the_caption_size() -> None:
+    assert _declaration(".board-plan-fold-summary", "font-size") == "var(--font-caption)"
