@@ -339,32 +339,41 @@ body.terminal-open {
   text-overflow: ellipsis;
 }
 #terminalOverlay { --status-row: calc(var(--font-body-sm) * 1.45 + 16px); }
-/* Where the vendored mic-notice sits: one row under the compose bar (input
-   name left, level strip and timer right). The vendored sheet's centred
-   column is overridden from here, never edited. The silent-mic warning wraps
-   to a line of its own under the row. */
+/* Where the vendored mic-notice sits: one row under the compose bar. The input
+   name, level strip and timer are one group centred in the row, so a phone's
+   rounded corners never cut either end; a long name takes the room left beside
+   the strip and ellipsizes on one line. The two outer columns share the free
+   space equally, which is what centres the group. The silent-mic warning takes
+   a centred line of its own under the row. The vendored sheet's centred column
+   is overridden from here, never edited. */
 .composer-mic-notice.mic-notice {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-xs) var(--space-sm);
+  row-gap: var(--space-xs);
   box-sizing: border-box;
   width: 100%;
   max-width: none;
-  padding: 4px 12px;
+  padding: 4px max(var(--space-lg), env(safe-area-inset-right, 0px))
+    4px max(var(--space-lg), env(safe-area-inset-left, 0px));
   background: var(--card);
-  text-align: left;
+  text-align: center;
 }
 .composer-mic-notice.mic-notice[hidden] { display: none; }
 .composer-mic-notice .mic-notice-input {
-  flex: 1 1 0;
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
 }
-.composer-mic-notice .mic-notice-wave { flex: none; margin-left: auto; }
+.composer-mic-notice .mic-notice-wave {
+  grid-column: 3;
+  grid-row: 1;
+  margin-left: var(--space-sm);
+}
 .composer-mic-notice .mic-notice-silent {
-  flex: 1 1 100%;
-  text-align: center;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  justify-self: center;
 }
 /* In the session overlay the notice takes the bottom status strip's place for
    the length of a take, at the strip's own height, so the compose bar above
