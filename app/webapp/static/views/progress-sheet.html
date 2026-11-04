@@ -1,0 +1,129 @@
+    <!-- The History sheet, behind the Usage card's ⋮ menu: what the fleet shipped
+         (lines, PRs, issues) and the tokens spent, by day, week or month.
+         progress/progress-sheet.js opens it on the cached GET /api/progress at
+         once, then asks for a refresh and updates in place; the toast rides
+         the footer while the refresh runs. -->
+    <dialog id="progressSheet" class="detail-dialog progress-dialog" data-track-view="sheet.progress" aria-labelledby="progressSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header">
+          <h2 id="progressSheetTitle"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-clock"></use></svg> History</h2>
+          <button data-track="progress.close" type="button" id="progressSheetClose" class="icon-button detail-close" aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <p id="progressSheetSub" class="progress-sub"></p>
+        <div class="progress-body">
+          <div class="progress-controls">
+            <div class="segmented" role="group" aria-label="Group by">
+              <button data-track="progress.bucket-day" type="button" class="segmented-item" data-bucket="day" aria-pressed="true">Day</button>
+              <button data-track="progress.bucket-week" type="button" class="segmented-item" data-bucket="week" aria-pressed="false">Week</button>
+              <button data-track="progress.bucket-month" type="button" class="segmented-item" data-bucket="month" aria-pressed="false">Month</button>
+            </div>
+            <div class="segmented" role="group" aria-label="Range">
+              <button data-track="progress.range-30" type="button" class="segmented-item" data-range="30" aria-pressed="true">30d</button>
+              <button data-track="progress.range-90" type="button" class="segmented-item" data-range="90" aria-pressed="false">90d</button>
+              <button data-track="progress.range-180" type="button" class="segmented-item" data-range="180" aria-pressed="false">6m</button>
+              <button data-track="progress.range-custom" type="button" class="segmented-item" data-range="custom" aria-pressed="false">Custom</button>
+            </div>
+            <div id="progressCustom" class="progress-custom" hidden>
+              <label>From <input id="progressFrom" type="date" aria-label="From day"></label>
+              <label>To <input id="progressTo" type="date" aria-label="To day"></label>
+            </div>
+          </div>
+
+          <!-- The five lifecycle states (design.md "Async data & feedback"):
+               loading / empty / error fill this block; stale is the one-line
+               age under the controls. -->
+          <div id="progressState" class="progress-state" role="status" aria-live="polite" hidden></div>
+
+          <div id="progressContent" class="progress-content" hidden>
+            <div id="progressTiles" class="progress-tiles"></div>
+
+            <div class="progress-charts">
+              <section class="card progress-chart-card" aria-labelledby="progressLocTitle">
+                <div class="card-head"><h3 id="progressLocTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-code-xml"></use></svg> Lines of code</h3><span id="progressLocNote" class="card-head-meta"></span></div>
+                <div class="progress-legend">
+                  <span><svg width="14" height="10" aria-hidden="true"><rect width="14" height="10" rx="2" style="fill:var(--success)"/></svg>Added</span>
+                  <span><svg width="14" height="10" aria-hidden="true"><rect width="14" height="10" rx="2" style="fill:url(#progressHatch)"/></svg>Removed</span>
+                </div>
+                <div class="progress-chart" id="progressChartLoc"></div>
+              </section>
+              <section class="card progress-chart-card" aria-labelledby="progressPrsTitle">
+                <div class="card-head"><h3 id="progressPrsTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-git-pull-request"></use></svg> PRs merged</h3><span id="progressPrsNote" class="card-head-meta"></span></div>
+                <div class="progress-legend">
+                  <span><svg width="14" height="10" aria-hidden="true"><rect width="14" height="10" rx="2" style="fill:var(--accent)"/></svg>Merged</span>
+                </div>
+                <div class="progress-chart" id="progressChartPrs"></div>
+              </section>
+              <section class="card progress-chart-card" aria-labelledby="progressIssuesTitle">
+                <div class="card-head"><h3 id="progressIssuesTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-circle-check"></use></svg> Issues</h3><span id="progressIssuesNote" class="card-head-meta"></span></div>
+                <div class="progress-legend">
+                  <span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" style="stroke:var(--accent)" stroke-width="2"/><circle cx="11" cy="5" r="3" style="fill:var(--accent)"/></svg>Opened</span>
+                  <span><svg width="22" height="10" aria-hidden="true"><line x1="0" y1="5" x2="22" y2="5" style="stroke:var(--success)" stroke-width="2" stroke-dasharray="5 3"/><rect x="8" y="2" width="6" height="6" transform="rotate(45 11 5)" style="fill:var(--success)"/></svg>Closed</span>
+                </div>
+                <div class="progress-chart" id="progressChartIssues"></div>
+              </section>
+              <section class="card progress-chart-card" aria-labelledby="progressTokensTitle">
+                <div class="card-head">
+                  <h3 id="progressTokensTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg> Tokens</h3>
+                  <div class="segmented progress-token-seg" role="group" aria-label="Token direction">
+                    <button data-track="progress.tokens-in" type="button" class="segmented-item" data-direction="in" aria-pressed="true">In</button>
+                    <button data-track="progress.tokens-out" type="button" class="segmented-item" data-direction="out" aria-pressed="false">Out</button>
+                  </div>
+                </div>
+                <div id="progressTokensLegend" class="progress-legend"></div>
+                <div class="progress-chart" id="progressChartTokens"></div>
+              </section>
+            </div>
+
+            <section class="card progress-table-card" aria-labelledby="progressReposTitle">
+              <div class="card-head"><h3 id="progressReposTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-folder"></use></svg> By repo</h3><span id="progressReposMeta" class="card-head-meta"></span></div>
+              <div class="progress-table-wrap">
+                <table id="progressRepos" class="progress-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Repo</th>
+                      <th scope="col" class="num"><button data-track="progress.sort-added" type="button" data-sort="lines_added">+ lines</button></th>
+                      <th scope="col" class="num"><button data-track="progress.sort-removed" type="button" data-sort="lines_removed">− lines</button></th>
+                      <th scope="col" class="num"><button data-track="progress.sort-prs" type="button" data-sort="prs_merged">PRs</button></th>
+                      <th scope="col" class="num"><button data-track="progress.sort-opened" type="button" data-sort="issues_opened">Opened</button></th>
+                      <th scope="col" class="num"><button data-track="progress.sort-closed" type="button" data-sort="issues_closed">Closed</button></th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="card progress-agents-card" aria-labelledby="progressAgentsTitle">
+              <div class="card-head"><h3 id="progressAgentsTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-activity"></use></svg> Tokens by agent</h3><span class="card-head-meta">in + out</span></div>
+              <div id="progressSplit" class="progress-split" role="img" aria-label="Share of tokens by agent"></div>
+              <div id="progressAgents"></div>
+            </section>
+          </div>
+
+          <section class="card progress-sources-card" aria-labelledby="progressSourcesTitle">
+            <div class="card-head">
+              <h3 id="progressSourcesTitle" class="card-title"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-info"></use></svg> Data sources</h3>
+              <button data-track="progress.refresh" type="button" id="progressRefresh" class="button-surface hit-target progress-refresh">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh-cw"></use></svg> Refresh
+              </button>
+            </div>
+            <ul id="progressSources" class="progress-sources"></ul>
+          </section>
+        </div>
+        <div class="detail-actions">
+          <div id="progressToast" class="sheet-toast" role="status" aria-live="polite" hidden></div>
+          <button data-track="progress.done" type="button" id="progressSheetDone" class="button-primary detail-save-btn">Done</button>
+        </div>
+        <!-- The hatch behind the "Removed" bars; defined once for the sheet. -->
+        <svg width="0" height="0" class="progress-defs" aria-hidden="true" focusable="false">
+          <defs>
+            <pattern id="progressHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="5" height="5" style="fill:var(--danger)" opacity=".35"/>
+              <rect width="2" height="5" style="fill:var(--danger)"/>
+            </pattern>
+          </defs>
+        </svg>
+      </div>
+    </dialog>

@@ -1,0 +1,285 @@
+/* The History sheet (progress/progress-sheet.js): what the fleet shipped and
+   the tokens it spent. A modal on the vendored detail-dialog shell; this file
+   holds only what the sheet adds: the wider measure, the controls row, the
+   tiles, the chart canvases, the repo table and the per-agent split. Colours
+   are the app's tokens; an agent's fill is its --tile-* token, shared by its
+   mark, its chart segment and its share bar. */
+
+/* Charts and tables want the room the 440px editor width does not have; the
+   sheet takes the app's own 772px measure and never more than the screen. */
+.progress-dialog { width: min(var(--layout-measure), 92vw); }
+.progress-defs { position: absolute; }
+
+.progress-sub {
+  margin: -4px 0 12px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.progress-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+.progress-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+.progress-content[hidden] { display: none; }
+
+/* Controls: the bucket and the range side by side, wrapping on a phone. */
+.progress-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+.progress-controls .segmented { flex: 0 1 auto; }
+.progress-controls .segmented-item { padding: 0 12px; min-width: 44px; }
+.progress-custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  width: 100%;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.progress-custom[hidden] { display: none; }
+.progress-custom input {
+  height: var(--control-h);
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--control-border);
+  border-radius: var(--radius-md);
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--font-body-sm);
+}
+
+/* The lifecycle block (loading / error). */
+.progress-state[hidden] { display: none; }
+
+/* ------------------------------------------------------------- tiles */
+.progress-tiles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+}
+@media (min-width: 640px) {
+  .progress-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+.progress-tile {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+.progress-tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-body-sm);
+  font-weight: 600;
+  color: var(--muted);
+}
+.progress-glyph { display: inline-flex; }
+.progress-tile-value {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--font-heading-md);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.progress-tile-value > span { white-space: nowrap; }
+.progress-sep { margin: 0 4px; color: var(--muted); font-weight: 400; }
+.progress-pos { color: var(--success-text); }
+.progress-neg { color: var(--danger-text); }
+/* A figure that was not measured is a word, quieter than a number. */
+.progress-missing {
+  font-size: var(--font-body);
+  font-weight: 600;
+  color: var(--muted);
+}
+.progress-tile-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ charts */
+.progress-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--gap);
+}
+@media (min-width: 700px) {
+  .progress-charts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.progress-chart-card { min-width: 0; padding: 14px 14px 10px; }
+.progress-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 4px 0;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.progress-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.progress-legend:empty { display: none; }
+.progress-chart {
+  position: relative;
+  height: 180px;
+  touch-action: pan-y;
+}
+.progress-chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.pg-axis text { fill: var(--muted); font-size: 11px; font-family: inherit; }
+.pg-grid line { stroke: var(--line-muted); stroke-width: 1; }
+.pg-grid line.pg-zero { stroke: var(--line); }
+.pg-guide { stroke: var(--muted); stroke-width: 1; }
+.progress-chart-empty {
+  margin: 0;
+  padding-top: 72px;
+  text-align: center;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.pg-tip {
+  position: absolute;
+  z-index: 3;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: var(--font-body-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+}
+.pg-tip b {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--font-caption);
+  color: var(--muted);
+}
+.pg-tip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.pg-tip-row[data-total] { font-weight: 700; }
+/* The In / Out switch rides the Tokens card's head. */
+.progress-token-seg { flex: none; }
+.progress-token-seg .segmented-item { min-width: 44px; padding: 0 10px; }
+
+/* ------------------------------------------------------- repo table */
+.progress-table-wrap { margin-top: 8px; overflow-x: auto; }
+.progress-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--font-body-sm);
+}
+.progress-table th {
+  padding: 0 10px 0 0;
+  border-bottom: 1px solid var(--line-muted);
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.progress-table td {
+  padding: 10px 10px 10px 0;
+  border-top: 1px solid var(--line-muted);
+  white-space: nowrap;
+}
+.progress-table tbody tr:first-child td { border-top: 0; }
+.progress-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.progress-table th:last-child, .progress-table td:last-child { padding-right: 0; }
+/* A sort header is a real 44px target (the headers sit side by side, so an
+   invisible expansion would overlap its neighbour). */
+.progress-table th button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: var(--hit-min);
+  min-height: var(--hit-min);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.progress-table th button[aria-sort] { color: var(--ink); }
+.progress-repo { font-size: var(--font-body); font-weight: 600; }
+.progress-repo .chip { margin-left: 6px; vertical-align: middle; }
+.progress-table-empty { color: var(--muted); }
+
+/* ------------------------------------------------------ agent split */
+.progress-split {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin: 10px 0 12px;
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+.progress-split[hidden] { display: none; }
+.progress-split > i { display: block; height: 100%; }
+.progress-agent-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-muted);
+}
+.progress-agent-row:first-child { border-top: 0; }
+.progress-agent-name { font-weight: 600; }
+.progress-agent-share { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.progress-agent-meta {
+  grid-column: 2 / 4;
+  margin-top: -4px;
+  font-size: var(--font-body-sm);
+  color: var(--muted);
+}
+.progress-agent-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--accent-fg);
+  font-size: var(--font-caption);
+  font-weight: 700;
+}
+.progress-agent-mark .agent-icon { width: 16px; height: 16px; }
+.progress-legend-mark { width: 16px; height: 16px; border-radius: 5px; }
+.progress-legend-mark .agent-icon { width: 10px; height: 10px; }
+.progress-note { margin: 8px 0 0; font-size: var(--font-body-sm); color: var(--muted); }
+
+/* ---------------------------------------------------- data sources */
+.progress-refresh { margin-left: auto; }
+.progress-sources { margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--font-body-sm); }
+.progress-sources li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line-muted);
+}
+.progress-sources li:first-child { border-top: 0; }
+.progress-source-what { font-size: var(--font-body); font-weight: 600; color: var(--ink); }
+.progress-source-from { grid-column: 1 / -1; color: var(--muted); }

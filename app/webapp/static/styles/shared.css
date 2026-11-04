@@ -597,7 +597,8 @@ textarea.input-native { height: auto; }
 .row-menu.project-menu,
 .row-menu.session-menu,
 .row-menu.terminal-menu,
-.row-menu.composer-menu {
+.row-menu.composer-menu,
+.row-menu.usage-menu {
   z-index: 315;
 }
 /* The Changed files panel's ⋮ menu opens inside the Changes panel

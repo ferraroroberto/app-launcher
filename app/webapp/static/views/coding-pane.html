@@ -36,6 +36,11 @@
             Usage
           </h3>
           <span id="codingUsageMeta" class="card-head-meta usage-card-meta"></span>
+          <!-- The card's menu: Usage details (the card's own tap) and History,
+               which opens the progress sheet. -->
+          <button data-track="coding.usage-menu" type="button" id="codingUsageKebab" class="icon-button usage-card-kebab" title="Usage menu" aria-label="Usage menu">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg>
+          </button>
         </div>
         <!-- The placeholder is the meter's own structure with dashes (#1657), so
              the card is its final height before usage-meter.js runs; the first

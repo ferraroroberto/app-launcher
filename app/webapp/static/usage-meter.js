@@ -499,7 +499,12 @@ function closeUsageSheet() {
 // stable card: the button inside is rebuilt whenever its reading changes.
 export function wireUsageMeter() {
   const card = document.getElementById('codingUsageCard');
-  if (card) card.addEventListener('click', openUsageSheet);
+  // The card's ⋮ opens its own menu (progress/usage-menu.js), not this sheet.
+  if (card) {
+    card.addEventListener('click', function (ev) {
+      if (!ev.target.closest('.usage-card-kebab')) openUsageSheet();
+    });
+  }
   const close = document.getElementById('usageSheetClose');
   const done = document.getElementById('usageSheetDone');
   if (close) close.addEventListener('click', closeUsageSheet);

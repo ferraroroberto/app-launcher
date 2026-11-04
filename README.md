@@ -20,7 +20,7 @@ Sister project to [`photo-ocr`](https://github.com/ferraroroberto/photo-ocr) and
 
 Five tabs, plus **Settings** behind the **⚙ gear** in every page header:
 
-- **Coding** — launch a coding agent (Claude Code, Codex CLI, Antigravity CLI, GitHub Copilot CLI, Pi or Grok Build) in a project folder, as a live terminal or detached. The tab also carries the Sessions list, the Usage card, per-project git state, favorites and the project menu; a running session opens in the **Terminal ⇄ Chat** session view.
+- **Coding** — launch a coding agent (Claude Code, Codex CLI, Antigravity CLI, GitHub Copilot CLI, Pi or Grok Build) in a project folder, as a live terminal or detached. The tab also carries the Sessions list, the Usage card, per-project git state, favorites and the project menu; the Usage card's ⋮ menu opens **History**, a progress dashboard of what the fleet shipped (lines, PRs, issues) and the tokens spent; a running session opens in the **Terminal ⇄ Chat** session view.
 - **Apps** — the registered Streamlit / FastAPI / tunnel / tray launchers, plus a Port-listeners panel with one-tap smart-kill.
 - **Jobs** — one-shot Python scripts and scheduled jobs, fired from the phone, the Stream Deck or Task Scheduler through one shared trigger surface.
 - **Life OS** — one row per [`life-os`](https://github.com/ferraroroberto/life-os) skill, its conversations, the weekly recap and Telegram channels.
