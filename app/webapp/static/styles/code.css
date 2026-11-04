@@ -79,7 +79,10 @@ html[data-usage-shows~="grok"]:is([data-usage-shows~="claude"], [data-usage-show
 html[data-usage-shows~="grok"]:is([data-usage-shows~="claude"], [data-usage-shows~="codex"]) .usage-meter-full[data-pending] .um-grok { display: flex; }
 html[data-usage-shows=""] .usage-card { display: none; }
 .usage-card .usage-meter-slot { margin: 12px 0 0; }
-.usage-card-meta { font-size: var(--font-body-sm); }
+.usage-card-meta { font-size: var(--font-body-sm); margin-left: auto; }
+/* The card's ⋮: a 36px box whose glyph sits on the card's content edge, its
+   44px target invisible, and no taller than the head row it joins. */
+.usage-card-kebab { --icon-btn-box: 36px; margin: -6px -10px -6px 0; }
 .usage-card-meta[data-tone="accent"] { color: var(--accent-text); }
 .usage-card-meta[data-tone="attention"] { color: var(--attention-text); }
 .usage-card-meta[data-tone="danger"] { color: var(--danger-text); }

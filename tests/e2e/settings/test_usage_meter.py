@@ -315,7 +315,7 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
 ) -> None:
     """#1541: the 5h / Week labels start on the card's content edge, level
     with the heading icon and the context-filter footer, and the reset column
-    ends where the heading's right-hand text ends. The meter used to inset
+    ends where the heading's right-hand control (the ⋮ glyph) ends. The meter used to inset
     its rows 4px on both sides. Read in one stable_eval (#1346)."""
     authed_page.add_init_script(_QUOTA_SHIM)
     _mock_board(authed_page)
@@ -339,7 +339,7 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
         icon: card.querySelector('#codingUsageTitle .icon').getBoundingClientRect().left,
         footer: text(card.querySelector('#codingUsageFooter')).left,
         labels: rows.map(r => text(r.querySelector('.um-label')).left),
-        meta: text(card.querySelector('#codingUsageMeta')).right,
+        kebab: card.querySelector('#codingUsageKebab .icon').getBoundingClientRect().right,
         resets: rows.map(r => r.querySelector('.um-reset').getBoundingClientRect().right),
       };
     }""")
@@ -347,7 +347,7 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
         assert abs(left - m["footer"]) <= 1, f"row label vs footer text ({theme}): {m}"
         assert abs(left - m["icon"]) <= 1, f"row label vs heading icon ({theme}): {m}"
     for right in m["resets"]:
-        assert abs(right - m["meta"]) <= 1, f"reset column vs heading text ({theme}): {m}"
+        assert abs(right - m["kebab"]) <= 1, f"reset column vs heading kebab ({theme}): {m}"
 
 
 def _serve_usage_shows(page: Page, current: dict) -> list:

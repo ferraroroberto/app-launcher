@@ -17,6 +17,8 @@ import { fetchRateLimits, fetchSessions, renderSessions, wireSessions } from './
 import { wireChannelSessions } from './channel-sessions.js';
 import { fetchContextFilter } from './settings/context-filter.js';
 import { wireUsageMeter } from './usage-meter.js';
+import { wireProgressSheet } from './progress/progress-sheet.js';
+import { wireUsageMenu } from './progress/usage-menu.js';
 import { fetchSystemLoad, wireSystemLoad } from './system-load.js';
 import { fetchAgents, fetchApps, fetchRunningApps, wireApps } from './apps.js';
 import { refreshGitStatus } from './apps/apps-coding.js';
@@ -398,6 +400,8 @@ wireTelegramBots({ refresh: fetchChannels, showSheets: showPath });
 wireChannelSessions();
 wireSessions();
 wireUsageMeter();
+wireProgressSheet();
+wireUsageMenu();
 wireSystemLoad();
 wireApps();
 wireJobs();

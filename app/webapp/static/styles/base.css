@@ -43,6 +43,13 @@
   --control-border: #818b98;
   --neutral-soft: color-mix(in srgb, var(--muted) 16%, transparent);
   --star: #bf8700;           /* favorite-star gold (spec tile-yellow) */
+  /* The spec's tile fills: the History sheet's per-agent series, so an
+     agent's mark and its chart segment share one fill. */
+  --tile-green: #1f883d;
+  --tile-blue: #0969da;
+  --tile-purple: #8250df;
+  --tile-orange: #bc4c00;
+  --tile-yellow: #bf8700;
   --code-fg: #1f2328;        /* text inside a code/output inset */
   /* Unified-diff line tints (GitHub's light diff palette): added /
      removed line background + text, hunk-header text. Status colors stay
@@ -182,6 +189,11 @@
   --attention-text: #e3b341;
   --control-border: #6e7681;
   --star: #d29922;           /* spec tile-yellow, dark value */
+  --tile-green: #238636;
+  --tile-blue: #1f6feb;
+  --tile-purple: #8957e5;
+  --tile-orange: #bd561d;
+  --tile-yellow: #9e6a03;
   --code-fg: #e6edf3;
   --diff-add-bg: rgba(46, 160, 67, 0.15);
   --diff-add-fg: #3fb950;
@@ -218,6 +230,11 @@
     --success: oklch(0.55 0.14 150);
     --danger: oklch(0.55 0.20 25);
     --attention: oklch(0.55 0.11 80);
+    --tile-green: oklch(0.57 0.15 150);
+    --tile-blue: oklch(0.52 0.18 256);
+    --tile-purple: oklch(0.55 0.22 295);
+    --tile-orange: oklch(0.56 0.16 50);
+    --tile-yellow: oklch(0.66 0.13 85);
   }
   [data-theme="dark"] {
     --accent: oklch(0.64 0.18 256);
@@ -225,6 +242,11 @@
     --success: oklch(0.72 0.18 150);
     --danger: oklch(0.68 0.20 25);
     --attention: oklch(0.77 0.13 85);
+    --tile-green: oklch(0.55 0.17 146);
+    --tile-blue: oklch(0.57 0.21 260);
+    --tile-purple: oklch(0.58 0.23 296);
+    --tile-orange: oklch(0.57 0.17 45);
+    --tile-yellow: oklch(0.57 0.13 75);
   }
 }
 

@@ -24,6 +24,7 @@ app-launcher/
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the owner checks, the Done lane's earlier days and its Issue / PR / Proof actions
 │           ├── links/         # the session ⋮ menus' Links sheet: every artifact and URL a session mentioned, grouped
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
+│           ├── progress/      # the Usage card's ⋮ menu and its History sheet: the reading of /api/progress (no DOM), the SVG charts, the sheet
 │           ├── changes/       # Show changes and Changed files: the overlay, a diff, a file's view and its token colours
 │           ├── chat/          # the session overlay's Chat pane: session-transcript.js, the entry renderer and its parts, the decision and resume cards
 │           ├── jobs/          # Jobs tab modules beside jobs.js: a job row, a Recent runs row, the agenda, the job dialog
