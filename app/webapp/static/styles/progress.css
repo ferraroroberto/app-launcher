@@ -190,7 +190,7 @@
   font-size: var(--font-body-sm);
 }
 .progress-table th {
-  padding: 6px 10px 6px 0;
+  padding: 0 10px 0 0;
   border-bottom: 1px solid var(--line-muted);
   text-align: left;
   font-weight: 600;
@@ -205,8 +205,14 @@
 .progress-table tbody tr:first-child td { border-top: 0; }
 .progress-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .progress-table th:last-child, .progress-table td:last-child { padding-right: 0; }
+/* A sort header is a real 44px target (the headers sit side by side, so an
+   invisible expansion would overlap its neighbour). */
 .progress-table th button {
-  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: var(--hit-min);
+  min-height: var(--hit-min);
   padding: 0;
   border: 0;
   background: none;
@@ -215,8 +221,6 @@
   font-weight: 600;
   cursor: pointer;
 }
-/* The 44px target around a compact header label. */
-.progress-table th button::before { content: ""; position: absolute; inset: -12px -6px; }
 .progress-table th button[aria-sort] { color: var(--ink); }
 .progress-repo { font-size: var(--font-body); font-weight: 600; }
 .progress-repo .chip { margin-left: 6px; vertical-align: middle; }
