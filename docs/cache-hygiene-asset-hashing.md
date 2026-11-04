@@ -34,7 +34,10 @@ iPhone PWA never serves a stale asset against fresh HTML, or vice versa.
   import; `head_sha` and `session_host` come from a snapshot the webapp
   rebuilds every 5 s while the route is polled (`age_seconds` is its age;
   one older than 15 s is rebuilt before it answers). Pythonw-safe subprocess
-  (`stdin=DEVNULL`, `CREATE_NO_WINDOW`, `git -C <root>`). The SPA fetches it via `jsonApi`
+  (`stdin=DEVNULL`, `CREATE_NO_WINDOW`, `git -C <root>`).
+  `GET /api/life-os/channels` and `GET /api/context-filter` are served the same
+  way (`app/webapp/demand_cache.py`): a write through their own routes marks the
+  snapshot stale, anything else shows within one tick. The SPA fetches it via `jsonApi`
   (auth-gated like every other API) and renders `Build: <sha> · <ts>` at the
   bottom of the Settings panel — visible proof of which build the phone is
   running.

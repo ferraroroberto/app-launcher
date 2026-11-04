@@ -453,6 +453,8 @@ async def _lifespan(app: FastAPI):
     tasks.append(asyncio.create_task(misc.version_cache(app).tick_forever()))
     # The Settings card's channel list, rebuilt only while it is polled.
     tasks.append(asyncio.create_task(life_os_channels.channels_cache(app).tick_forever()))
+    # The context-filter card's stats, parsed only while that route is polled.
+    tasks.append(asyncio.create_task(context_filter.context_filter_cache(app).tick_forever()))
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
     if cfg is not None and canonical:

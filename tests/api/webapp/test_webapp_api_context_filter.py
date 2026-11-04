@@ -19,7 +19,7 @@ class TestGetContextFilter:
         resp = client.get("/api/context-filter")
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body.keys()) == {"mode", "harnesses", "stats"}
+        assert set(body.keys()) == {"mode", "harnesses", "stats", "age_seconds"}
         # No mode.json yet -> absent-file semantics: available True, mode off.
         assert body["mode"] == {
             "available": True,

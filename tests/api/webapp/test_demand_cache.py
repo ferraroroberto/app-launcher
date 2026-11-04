@@ -243,3 +243,22 @@ def test_channel_list_is_read_from_the_snapshot(webapp_client, monkeypatch):
     second = client.get("/api/life-os/channels").json()
     assert scans["n"] <= 1
     assert "age_seconds" in second and first["profiles"] == second["profiles"]
+
+
+def test_context_filter_stats_are_not_re_parsed_per_poll(webapp_client, monkeypatch):
+    from app.webapp.routers import context_filter
+
+    client, _, _ = webapp_client
+    parses = {"n": 0}
+    real = context_filter.read_stats
+
+    def counting(path):
+        parses["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(context_filter, "read_stats", counting)
+    first = client.get("/api/context-filter").json()
+    for _ in range(3):
+        again = client.get("/api/context-filter").json()
+    assert parses["n"] == 1
+    assert again["stats"] == first["stats"] and isinstance(again["age_seconds"], float)
