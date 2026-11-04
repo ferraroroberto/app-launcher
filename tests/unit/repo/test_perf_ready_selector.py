@@ -1,4 +1,4 @@
-"""The perf review's "ready" element is a real card on the landing view."""
+"""The perf review's "ready" element is a real element on the landing view."""
 
 from __future__ import annotations
 
@@ -21,16 +21,21 @@ def test_a_ready_selector_is_declared() -> None:
     assert _selector().strip()
 
 
-def test_the_selector_names_the_project_list_of_the_default_tab() -> None:
-    list_id = re.match(r"#(\w+) ", _selector())
-    assert list_id, _selector()
+def test_the_selector_is_an_id_in_the_default_tab_outside_any_collapsed_section() -> None:
+    match = re.fullmatch(r"#(\w+)", _selector())
+    assert match, _selector()
     pane = (STATIC / "views" / "coding-pane.html").read_text(encoding="utf-8")
-    assert f'id="{list_id.group(1)}"' in pane
+    assert pane.count(f'id="{match.group(1)}"') == 1
     tabs = (STATIC / "tabs.js").read_text(encoding="utf-8")
     assert "defaultTab: 'claude'" in tabs and 'id="paneClaude"' in pane
+    # A <details> that is closed on load hides everything inside it; the
+    # element must come before the first one.
+    before = pane[: pane.index(f'id="{match.group(1)}"')]
+    assert before.count("<details") == before.count("</details>")
 
 
-def test_the_project_list_is_filled_with_action_rows() -> None:
-    assert _selector().endswith(".action-row")
-    coding = (STATIC / "apps" / "apps-coding.js").read_text(encoding="utf-8")
-    assert "claudeList" in coding and "actionRow(" in coding
+def test_the_selector_element_is_filled_by_the_sessions_render() -> None:
+    match = re.fullmatch(r"#(\w+)", _selector())
+    assert match
+    head = (STATIC / "home-head.js").read_text(encoding="utf-8")
+    assert f"els.{match.group(1)}" in head
