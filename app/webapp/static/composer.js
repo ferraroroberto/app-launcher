@@ -168,7 +168,6 @@ function render(host, placeholder) {
       '<button type="button" class="ocr-extract" data-track="composer.extract-text">' + icon('scan-text') + ' Extract text</button>' +
     '</div>' +
     '<div class="composer-upload-status" role="status" aria-live="polite" hidden></div>' +
-    '<div class="composer-mic-notice" hidden></div>' +
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +
@@ -178,6 +177,9 @@ function render(host, placeholder) {
         '<button type="button" class="icon-button compose-send composer-send" data-track="composer.send">' + icon('send-horizontal') + '</button>' +
       '</div>' +
     '</div>' +
+    // Under the bar, in the strip below it: the notice never sits over the
+    // conversation, and the buttons above it keep their place.
+    '<div class="composer-mic-notice" hidden></div>' +
     // No accept filter on the attach input: iOS then offers Photo
     // Library / Take Photo / Choose Files, so arbitrary files can be
     // attached. `multiple`: one gallery tap picks several photos.

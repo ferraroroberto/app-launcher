@@ -338,9 +338,46 @@ body.terminal-open {
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Where the vendored mic-notice sits in the compose bar. */
-.composer-mic-notice {
-  padding: 4px 10px 0;
+#terminalOverlay { --status-row: calc(var(--font-body-sm) * 1.45 + 16px); }
+/* Where the vendored mic-notice sits: one row under the compose bar (input
+   name left, level strip and timer right). The vendored sheet's centred
+   column is overridden from here, never edited. The silent-mic warning wraps
+   to a line of its own under the row. */
+.composer-mic-notice.mic-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-xs) var(--space-sm);
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  padding: 4px 12px;
+  background: var(--card);
+  text-align: left;
+}
+.composer-mic-notice.mic-notice[hidden] { display: none; }
+.composer-mic-notice .mic-notice-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.composer-mic-notice .mic-notice-wave { flex: none; margin-left: auto; }
+.composer-mic-notice .mic-notice-silent {
+  flex: 1 1 100%;
+  text-align: center;
+}
+/* In the session overlay the notice takes the bottom status strip's place for
+   the length of a take, at the strip's own height, so the compose bar above
+   does not move when it appears or hides. A connection message in the strip
+   keeps the strip, and the notice then stacks under it. */
+#terminalOverlay .composer-mic-notice.mic-notice {
+  min-height: max(var(--status-row), env(safe-area-inset-bottom, 0px));
+}
+#terminalOverlay[data-keyboard] .composer-mic-notice.mic-notice {
+  min-height: var(--status-row);
+}
+#terminalOverlay:has(.composer-mic-notice:not([hidden])):not(:has(.terminal-status:not([hidden]))) .terminal-status-strip {
+  display: none;
 }
 /* Compose bar: a predictive-keyboard text surface docked
    at the bottom of the overlay, between the xterm host and the status
@@ -502,7 +539,6 @@ body.terminal-open {
    No top hairline: blank, the strip reads as the composer's own bottom
    margin on the same card surface; the message is marked by its colour. */
 .terminal-status-strip {
-  --status-row: calc(var(--font-body-sm) * 1.45 + 16px);
   display: flex;
   flex-shrink: 0;
   min-height: max(var(--status-row), env(safe-area-inset-bottom, 0px));

@@ -148,3 +148,123 @@ def test_silent_remote_audio_input_names_the_remote_desktop_setting(
     expect(warning).to_be_visible(timeout=6_000)
     expect(warning).to_contain_text("check the Remote Desktop audio recording setting")
     expect(warning).not_to_contain_text("Bluetooth")
+
+
+_RECTS_JS = """
+() => {
+  const r = (el) => {
+    const b = el.getBoundingClientRect();
+    return { left: b.left, top: b.top, right: b.right, bottom: b.bottom };
+  };
+  const q = (s) => document.querySelector('#terminalComposeBar ' + s);
+  const notice = q('.composer-mic-notice');
+  const visible = notice && !notice.hidden;
+  const part = (s) => (visible && notice.querySelector(s))
+    ? r(notice.querySelector(s)) : null;
+  return {
+    bar: r(q('.compose-bar')),
+    buttons: [...document.querySelectorAll(
+      '#terminalComposeBar .compose-tools button')].map(r),
+    notice: visible ? r(notice) : null,
+    name: part('.mic-notice-input'),
+    wave: part('.rec-wave'),
+    warning: part('.mic-notice-silent:not([hidden])'),
+    viewportBottom: window.innerHeight,
+  };
+}
+"""
+
+
+def _same(a: dict, b: dict) -> bool:
+    return all(abs(a[k] - b[k]) < 0.5 for k in a)
+
+
+def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """The notice is one row under the compose box (name, level strip and
+    timer side by side), inside the screen, and the box and its buttons keep
+    their place while it shows and after it hides. The silent-mic warning then
+    takes a line of its own under that row."""
+    page = authed_page
+    page.add_init_script("window.__tone = false;")
+    page.add_init_script(_INPUT_MOCK)
+    _mock_sessions(page)
+    _open_terminal(page, base_url, launched_pty_session)
+    _open_compose_with_record(page)
+
+    before = page.evaluate(_RECTS_JS)
+    assert before["notice"] is None
+
+    page.locator("#terminalComposeBar .composer-mic").click()
+    notice = page.locator("#terminalComposeBar .composer-mic-notice")
+    expect(notice).to_contain_text(f"Mic: {_LABEL}")
+    expect(notice.locator(".rec-wave")).to_be_visible()
+    live = page.evaluate(_RECTS_JS)
+
+    # Nothing above the notice moved: not the box, not any button.
+    assert _same(before["bar"], live["bar"]), (before["bar"], live["bar"])
+    for was, now in zip(before["buttons"], live["buttons"]):
+        assert _same(was, now), (was, now)
+    # Below the box, on screen, so it covers none of the conversation.
+    assert live["notice"]["top"] >= live["bar"]["bottom"] - 0.5
+    assert live["notice"]["bottom"] <= live["viewportBottom"] + 0.5
+    # One line: the name and the strip share a row, the name on the left.
+    name, wave = live["name"], live["wave"]
+    assert name["right"] <= wave["left"] + 0.5
+    assert abs((name["top"] + name["bottom"]) / 2
+               - (wave["top"] + wave["bottom"]) / 2) < 6
+
+    # The warning takes its own line under that row.
+    expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
+    warned = page.evaluate(_RECTS_JS)
+    assert warned["warning"]["top"] >= warned["wave"]["bottom"] - 0.5
+    assert warned["notice"]["bottom"] <= warned["viewportBottom"] + 0.5
+
+    page.locator("#terminalComposeBar .composer-mic").click()
+    expect(notice).to_be_hidden()
+    after = page.evaluate(_RECTS_JS)
+    assert _same(before["bar"], after["bar"]), (before["bar"], after["bar"])
+
+
+# WebKit cannot build the fake input above, so the phone engine checks the
+# layout against the component's own markup, filled in by hand.
+_FILL_NOTICE_JS = """
+(withWarning) => {
+  const n = document.querySelector('#terminalComposeBar .composer-mic-notice');
+  n.classList.add('mic-notice');
+  n.innerHTML =
+    '<div class="mic-notice-input">Mic: ' + 'A very long input name '.repeat(6) +
+    '</div><div class="mic-notice-wave"><div class="rec-wave">' +
+    '<div class="rec-wave-bars" style="--rec-wave-height:20px"></div>' +
+    '<span class="rec-wave-time">0:07</span></div></div>' +
+    '<div class="mic-notice-silent" role="status"' +
+    (withWarning ? '' : ' hidden') + '>No sound from the microphone</div>';
+  n.hidden = false;
+}
+"""
+
+
+@pytest.mark.iphone
+def test_notice_row_layout_holds_on_the_phone_engine(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """One row under the box, on screen, a long input name ellipsized rather
+    than wrapped, the box unmoved; the warning on its own line below."""
+    page = authed_page
+    _open_terminal(page, base_url, launched_pty_session)
+    _open_compose_with_record(page)
+    before = page.evaluate(_RECTS_JS)
+
+    page.evaluate(_FILL_NOTICE_JS, False)
+    row = page.evaluate(_RECTS_JS)
+    assert _same(before["bar"], row["bar"]), (before["bar"], row["bar"])
+    assert row["notice"]["top"] >= row["bar"]["bottom"] - 0.5
+    assert row["notice"]["bottom"] <= row["viewportBottom"] + 0.5
+    assert row["name"]["right"] <= row["wave"]["left"] + 0.5
+    assert row["notice"]["bottom"] - row["notice"]["top"] < 48
+
+    page.evaluate(_FILL_NOTICE_JS, True)
+    warned = page.evaluate(_RECTS_JS)
+    assert warned["warning"]["top"] >= warned["wave"]["bottom"] - 0.5
+    assert warned["notice"]["bottom"] <= warned["viewportBottom"] + 0.5
