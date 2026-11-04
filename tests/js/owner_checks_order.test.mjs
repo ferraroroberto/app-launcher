@@ -27,4 +27,16 @@ const body = {
 
 const order = shownOwnerItems(body).map((it) => it.number);
 assert.deepEqual(order, [7, 5, 6, 1, 2, 4, 3]);
+
+// The shared date helpers behind the owner rows and the question rows.
+const { shortDate, newestDateFirst } = await import('../../app/webapp/static/shared/format.js');
+const thisYear = new Date().getFullYear();
+assert.equal(shortDate(thisYear + '-11-04'), '4 Nov');
+assert.equal(shortDate('2020-01-15'), '15 Jan 2020');
+assert.equal(shortDate(''), '');
+assert.equal(shortDate('soon'), '');
+assert.equal(shortDate('2026-13-01'), '');
+const asked = ['', '2026-11-01', 'junk', '2026-11-03'];
+assert.deepEqual(asked.slice().sort(newestDateFirst), ['2026-11-03', '2026-11-01', '', 'junk']);
+
 console.log('owner checks order: ok');

@@ -161,3 +161,27 @@ export function quotaPace(windowData, nowMs) {
   const elapsed = (nowMs - (resetMs - lengthMs)) / lengthMs;
   return Math.round(Math.min(1, Math.max(0, elapsed)) * 100);
 }
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// "4 Nov" for a `YYYY-MM-DD` string (the year is added when it is not this
+// year); '' for anything else, so a caller never shows an invented date.
+export function shortDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ''));
+  if (!m || Number(m[2]) < 1 || Number(m[2]) > 12) return '';
+  const text = Number(m[3]) + ' ' + MONTHS[Number(m[2]) - 1];
+  return Number(m[1]) === new Date().getFullYear() ? text : text + ' ' + m[1];
+}
+
+// Newest `YYYY-MM-DD` first, a blank or unreadable one after every dated one.
+// Returns 0 on a tie so the caller's own tiebreak applies.
+export function newestDateFirst(a, b) {
+  const ok = function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(String(d || '')) ? d : ''; };
+  const da = ok(a);
+  const db = ok(b);
+  if (da === db) return 0;
+  if (!da) return 1;
+  if (!db) return -1;
+  return da < db ? 1 : -1;
+}

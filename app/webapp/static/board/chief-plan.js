@@ -9,6 +9,7 @@ import { icon } from '../_vendored/icons/icons.js';
 import { chip } from '../glance.js';
 import { actionRow } from '../action-rows.js';
 import { openChiefAnswers, openOwnerAnswers, syncChiefAnswers } from './board-answers.js';
+import { newestDateFirst, shortDate } from '../shared/format.js';
 import { answeredKeys, itemKey } from './chief-keys.js';
 import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatch.js';
 import { DESKTOP_BOARD, plural, renderBoard, setLaneException } from '../board.js';
@@ -261,7 +262,7 @@ function questionRow(plan, run, open, i, answered) {
   return actionRow({
     className: 'board-item board-plan-row board-plan-waiting' + (sent ? ' is-answered' : ''),
     title: title,
-    meta: [ref, sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
+    meta: [ref, shortDate(w.asked_at), sent ? 'answered, waiting for the chief' : ''].filter(Boolean).join(' · '),
     density: 'one-line',
     label: 'Answer: ' + title,
     onMain: openSheet,
@@ -315,6 +316,10 @@ export function renderChiefPlan(body, liveRead) {
     // Positions, not items: an answer's key is its place in the whole list.
     const shown = [];
     waiting.forEach(function (w, i) { if (planRowShown(w, filter)) shown.push(i); });
+    // Newest asked first, an undated one last; the plan order breaks a tie.
+    shown.sort(function (a, b) {
+      return newestDateFirst(waiting[a].asked_at, waiting[b].asked_at) || a - b;
+    });
     const hidden = waiting.length - shown.length;
     if (shown.length) {
       // Answered from any device: not counted, not asked again.

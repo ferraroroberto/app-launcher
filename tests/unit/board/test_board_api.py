@@ -112,7 +112,7 @@ def test_chief_plan_reader_is_tolerant(tmp_path: Path):
         "waiting_on_roberto": [{
             "text": "Remember the last tab?", "ref": "app-launcher#1131", "repo": "", "detail": "",
             "recommendation": "", "id": "", "question": "Remember the last tab?", "options": [],
-            "multi": False, "ref_url": "",
+            "multi": False, "ref_url": "", "asked_at": "",
         }],
     }
 
@@ -165,7 +165,7 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
     assert first == {
         "text": "Approve the plans", "ref": "fleet-config#959", "repo": "fleet-config",
         "detail": "Each one ships alone.", "recommendation": "Yes, all four", "id": "q-plans",
-        "question": "Approve the four plans?", "multi": False,
+        "question": "Approve the four plans?", "multi": False, "asked_at": "",
         "ref_url": "https://github.com/octo/fleet-config/issues/959",
         "options": [
             {"label": "Yes, all four", "description": "Ship them in order", "recommended": True},
@@ -176,7 +176,7 @@ def test_chief_plan_questions_read_the_additive_fields_field_by_field(tmp_path: 
     }
     assert second == {
         "text": "Which days?", "ref": "", "repo": "", "detail": "", "recommendation": "",
-        "id": "", "question": "7", "options": [], "multi": False, "ref_url": "",
+        "id": "", "question": "7", "options": [], "multi": False, "ref_url": "", "asked_at": "",
     }
     assert third["id"] == "" and third["multi"] is True
     assert third["ref_url"] == "https://github.com/octo/life-os/issues/12"
@@ -479,3 +479,19 @@ def test_session_board_columns_routes_like_the_board(monkeypatch, tmp_path):
         # No age anchor on the card: carried as None (unknown), never 0.
         "s-chief": {"column": "claude_turn", "status": "awaiting-input", "age_seconds": None},
     }
+
+
+def test_chief_plan_reader_keeps_only_a_well_formed_asked_at(tmp_path: Path):
+    """`asked_at` reads through as a `YYYY-MM-DD` date; absent or malformed
+    reads blank, so the Board never shows an invented date."""
+    f = tmp_path / "chief-plan.json"
+    plan = dict(_PLAN_V1)
+    plan["waiting_on_roberto"] = [
+        {"text": "a", "asked_at": "2026-11-03"},
+        {"text": "b", "asked_at": "yesterday"},
+        {"text": "c", "asked_at": 20261103},
+        {"text": "d"},
+    ]
+    f.write_text(json.dumps(plan), encoding="utf-8")
+    got = chief_plan.read_chief_plan(f)["waiting_on_roberto"]
+    assert [w["asked_at"] for w in got] == ["2026-11-03", "", "", ""]

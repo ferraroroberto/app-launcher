@@ -496,3 +496,24 @@ def test_clear_merged_button_clears_only_merged_rows(
     expect(plan_body).to_contain_text("in flight")
     expect(plan_body.locator("li.board-plan-waiting")).to_have_count(3)
     assert posts == ["POST"], posts
+
+
+def test_questions_show_their_date_and_sort_newest_first(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """A question shows the day it was asked in its meta; the newest sits on
+    top and an undated one sorts last with no date of its own."""
+    waiting = [
+        {"id": "q-old", "ref": "demo-repo#1", "text": "Older", "asked_at": "2020-01-15"},
+        {"id": "q-none", "ref": "demo-repo#2", "text": "Undated"},
+        {"id": "q-new", "ref": "demo-repo#3", "text": "Newer", "asked_at": "2020-03-02"},
+    ]
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
+    _open_board(authed_page, base_url)
+
+    rows = authed_page.locator("#boardChiefPlan .board-plan-group-waiting li.board-plan-waiting")
+    expect(rows).to_have_count(3)
+    expect(rows.locator(".action-row-title")).to_have_text(["Newer", "Older", "Undated"])
+    expect(rows.locator(".action-row-meta")).to_have_text(
+        ["demo-repo#3 · 2 Mar 2020", "demo-repo#1 · 15 Jan 2020", "demo-repo#2"])
