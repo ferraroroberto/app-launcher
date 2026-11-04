@@ -1,7 +1,7 @@
-"""Webapp process manager — adopt-or-spawn for uvicorn.
+"""Webapp process manager — adopt-or-spawn for the webapp server.
 
 Mirrors photo-ocr's manager: status() probes /healthz and the TCP port,
-start() adopts an already-listening uvicorn or spawns one, stop() only
+start() adopts an already-listening webapp or spawns one, stop() only
 terminates a process this manager owns.
 
 Health is a THREE-state fact, not a boolean (#1005). A wedged uvicorn still
@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.tray.single_instance import cross_process_lock
+from app.webapp.serve import HYPERCORN, SERVERS
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,8 @@ class WebappManagerConfig:
     startup_timeout_seconds: float = 15.0
     request_timeout_seconds: float = 1.0
     poll_interval_seconds: float = 0.4
+    # `uvicorn` is the HTTP/1.1 fallback if HTTP/2 misbehaves.
+    server: str = HYPERCORN
 
 
 @dataclass
@@ -79,6 +82,13 @@ class WebappStatus:
 
 def load_config(raw: Optional[Dict[str, Any]] = None) -> WebappManagerConfig:
     raw = raw or {}
+    server = str(raw.get("server", HYPERCORN))
+    if server not in SERVERS:
+        # A typo must not quietly pick a server, nor surface later as a
+        # child that exits on its argv and "never answered /healthz".
+        raise ValueError(
+            f"❌ config.json webapp.server is {server!r}; expected one of {', '.join(SERVERS)}"
+        )
     return WebappManagerConfig(
         enabled=bool(raw.get("enabled", True)),
         host=str(raw.get("host", "0.0.0.0")),
@@ -86,6 +96,7 @@ def load_config(raw: Optional[Dict[str, Any]] = None) -> WebappManagerConfig:
         startup_timeout_seconds=float(raw.get("startup_timeout_seconds", 15.0)),
         request_timeout_seconds=float(raw.get("request_timeout_seconds", 1.0)),
         poll_interval_seconds=float(raw.get("poll_interval_seconds", 0.4)),
+        server=server,
     )
 
 
@@ -384,6 +395,8 @@ class WebappManager:
             str(self.config.port),
             "--log-level",
             "warning",
+            "--server",
+            self.config.server,
         ]
         certs = cert_paths()
         if certs is not None:
