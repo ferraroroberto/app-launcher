@@ -121,6 +121,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # stay on the passkey-gated PUT /api/board/chief/settings.
         "chief_model": cfg.chief_model,
         "chief_worker_cap": cfg.chief_worker_cap,
+        "chief_worker_cap_scope": cfg.chief_worker_cap_scope,
         "chief_worker_cap_min": MIN_CHIEF_WORKER_CAP,
         "chief_worker_cap_max": MAX_CHIEF_WORKER_CAP,
         "claude": claude_flags_payload(cfg),

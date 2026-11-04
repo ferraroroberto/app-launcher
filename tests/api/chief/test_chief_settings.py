@@ -67,6 +67,7 @@ class TestChiefSettings:
         assert resp.json()["settings"] == {
             "model": "fable",
             "worker_cap": 3,
+            "worker_cap_scope": "chief",
             "grokbot_enabled": True,
         }
 
@@ -85,6 +86,22 @@ class TestChiefSettings:
             "/api/board/chief/settings"
         ).json()["settings"]["worker_cap"] == 5
 
+    def test_worker_cap_scope_persists_and_survives_other_puts(self, webapp_client, _bypass_gate):
+        client, app, _ = webapp_client
+        resp = client.put("/api/board/chief/settings", json={"worker_cap_scope": "all"})
+        assert resp.status_code == 200
+        assert resp.json()["settings"]["worker_cap_scope"] == "all"
+        assert app.state.webapp_config.chief_worker_cap_scope == "all"
+        # A later PUT of another field leaves the scope alone, and the stored
+        # value is what the loopback reader gets.
+        client.put("/api/board/chief/settings", json={"worker_cap": 6})
+        assert client.get(
+            "/api/board/chief/settings"
+        ).json()["settings"]["worker_cap_scope"] == "all"
+        assert client.get("/api/config").json()["chief_worker_cap_scope"] == "all"
+        resp = client.put("/api/board/chief/settings", json={"worker_cap_scope": "chief"})
+        assert resp.json()["settings"]["worker_cap_scope"] == "chief"
+
     def test_grokbot_enabled_follows_the_config_switch(self, webapp_client, _bypass_gate):
         """The fleet-config grokbot readers poll this block over loopback, so
         a Settings flip (POST /api/config) must show here at once, and a
@@ -98,6 +115,7 @@ class TestChiefSettings:
         assert resp.json()["settings"] == {
             "model": "fable",
             "worker_cap": 4,
+            "worker_cap_scope": "chief",
             "grokbot_enabled": False,
         }
 
@@ -120,6 +138,8 @@ class TestChiefSettings:
         {"worker_cap": 0},
         {"worker_cap": 99},
         {"worker_cap": "lots"},
+        {"worker_cap_scope": "everyone"},
+        {"worker_cap_scope": ""},
         {},
     ])
     def test_put_rejects_bad_values(self, webapp_client, _bypass_gate, bad):

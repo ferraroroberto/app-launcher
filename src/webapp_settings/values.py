@@ -89,6 +89,12 @@ DEFAULT_CHIEF_MODEL = "fable"
 DEFAULT_CHIEF_WORKER_CAP = 3
 MIN_CHIEF_WORKER_CAP = 1
 MAX_CHIEF_WORKER_CAP = 10
+# What the worker cap counts: "chief" = only sessions the chief dispatched,
+# "all" = every live session but the chief's and the telegram: channels.
+# fleet-config's dispatch rail reads it over loopback and treats a missing
+# value as "chief".
+VALID_CHIEF_WORKER_CAP_SCOPES = ("chief", "all")
+DEFAULT_CHIEF_WORKER_CAP_SCOPE = "chief"
 # The context-use percent at which the chief compacts itself (read by
 # fleet-config's `chief_ops.py self-compact` from
 # GET /api/board/chief-settings). 0 turns it off; otherwise it must sit in
