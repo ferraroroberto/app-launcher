@@ -186,21 +186,9 @@ def test_stop_always_confirms_and_the_chief_keeps_its_wording(
     assert dialogs == [], f"a native dialog was raised: {dialogs}"
 
 
-def test_chief_settings_sheet_roundtrip(
-    authed_page: Page, base_url: str
-) -> None:
-    """Gear -> Settings > Chief sheet filled from GET /api/config; picking a
-    model PUTs ``{"model"}``; committing the worker cap (blur) PUTs
-    ``{"worker_cap"}``; an out-of-range cap sends nothing and says why.
-
-    The Board's chief settings dialog became Settings > Chief in #1435: no
-    Save button, each field saves on its own (#616 retired the daily-respawn
-    fields — model and worker cap are all that is left to round-trip). The
-    sheet reads the chief fields off GET /api/config now, so that read is
-    patched here (every other /api/config call passes through to the
-    disposable server) to keep the starting values deterministic."""
-    _mock_board(authed_page, _board_payload(with_chief=True))
-
+def _mock_chief_settings(authed_page: Page) -> tuple[dict, list[dict]]:
+    """Patch GET /api/config's chief fields and the chief settings endpoint with a
+    stored block; returns ``(stored, puts)`` where ``puts`` records each PUT body."""
     stored = {"model": "fable", "worker_cap": 3, "worker_cap_scope": "chief"}
     puts: list[dict] = []
 
@@ -236,6 +224,25 @@ def test_chief_settings_sheet_roundtrip(
 
     authed_page.route(re.compile(r".*/api/config$"), _config)
     authed_page.route(re.compile(r".*/api/board/chief/settings$"), _settings)
+    return stored, puts
+
+
+def test_chief_settings_sheet_roundtrip(
+    authed_page: Page, base_url: str
+) -> None:
+    """Gear -> Settings > Chief sheet filled from GET /api/config; picking a
+    model PUTs ``{"model"}``; committing the worker cap (blur) PUTs
+    ``{"worker_cap"}``; an out-of-range cap sends nothing and says why.
+
+    The Board's chief settings dialog became Settings > Chief in #1435: no
+    Save button, each field saves on its own (#616 retired the daily-respawn
+    fields — model and worker cap are all that is left to round-trip). The
+    sheet reads the chief fields off GET /api/config now, so that read is
+    patched here (every other /api/config call passes through to the
+    disposable server) to keep the starting values deterministic."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+
+    stored, puts = _mock_chief_settings(authed_page)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     # The Board has no chief card (#1436): Settings › Chief is reached from
@@ -249,8 +256,6 @@ def test_chief_settings_sheet_roundtrip(
         "data-value", "fable"
     )
     expect(authed_page.locator("#chiefWorkerCap")).to_have_value("3")
-    scope = authed_page.locator("#chiefWorkerCapScopeToggle")
-    expect(scope).to_have_attribute("aria-checked", "true")
 
     # Model: one PUT carrying only the model.
     authed_page.locator("#chiefModelSelect .model-combo-trigger").click()
@@ -280,18 +285,29 @@ def test_chief_settings_sheet_roundtrip(
     flush_requests(authed_page)
     assert puts == [{"model": "opus"}, {"worker_cap": 5}], puts
 
-    # Scope switch: off counts every session ('all'), back on is 'chief'; each
-    # flip PUTs only the scope and the switch settles on what is stored.
+
+def test_chief_worker_cap_scope_switch(authed_page: Page, base_url: str) -> None:
+    """Settings > Chief > "Count only chief-dispatched sessions": on by default
+    (scope ``chief``); each flip PUTs only ``worker_cap_scope`` and the switch
+    settles on what is stored."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _, puts = _mock_chief_settings(authed_page)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    open_settings_sheet(authed_page, "chiefSheet")
+
+    scope = authed_page.locator("#chiefWorkerCapScopeToggle")
+    expect(scope).to_have_attribute("aria-checked", "true")
+
+    # Off counts every session ('all'); back on is 'chief'.
     scope.click()
-    wait_until(authed_page, lambda: puts[-1:] == [{"worker_cap_scope": "all"}],
+    wait_until(authed_page, lambda: puts == [{"worker_cap_scope": "all"}],
                "the worker cap scope PUT (all)")
     expect(scope).to_have_attribute("aria-checked", "false")
     expect(authed_page.locator("#toast")).to_contain_text("Worker cap counts every session.")
     scope.click()
-    wait_until(authed_page, lambda: puts[-1:] == [{"worker_cap_scope": "chief"}],
+    wait_until(authed_page, lambda: puts == [{"worker_cap_scope": "all"}, {"worker_cap_scope": "chief"}],
                "the worker cap scope PUT (chief)")
     expect(scope).to_have_attribute("aria-checked", "true")
-    assert len(puts) == 4, puts
 
 
 def _capture_chief_input_post(page: Page) -> dict:
