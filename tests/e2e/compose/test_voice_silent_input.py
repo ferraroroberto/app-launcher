@@ -74,9 +74,11 @@ def _mock_sessions(page: Page) -> None:
     )
 
 
-def _start_take(page: Page, base_url: str, sid: str, tone: bool) -> None:
+def _start_take(
+    page: Page, base_url: str, sid: str, tone: bool, label: str = _LABEL
+) -> None:
     page.add_init_script(f"window.__tone = {str(tone).lower()};")
-    page.add_init_script(_INPUT_MOCK)
+    page.add_init_script(_INPUT_MOCK.replace(_LABEL, label))
     _mock_sessions(page)
     _open_terminal(page, base_url, sid)
     _open_compose_with_record(page)
@@ -129,3 +131,20 @@ def test_real_signal_moves_the_wave_and_never_shows_the_banner(
     expect(wave).to_have_count(0)
     # The page closes the context it opened for the strip when the take ends.
     authed_page.wait_for_function("window.__watchClosed >= 1", timeout=6_000)
+
+
+def test_silent_remote_audio_input_names_the_remote_desktop_setting(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A silent "Remote Audio" input (Windows' redirected Remote Desktop mic)
+    raises the Remote Desktop wording, not the Bluetooth one."""
+    _start_take(
+        authed_page, base_url, launched_pty_session, tone=False, label="Remote Audio"
+    )
+
+    notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
+    expect(notice).to_contain_text("Mic: Remote Audio")
+    warning = notice.locator(".mic-notice-silent")
+    expect(warning).to_be_visible(timeout=6_000)
+    expect(warning).to_contain_text("check the Remote Desktop audio recording setting")
+    expect(warning).not_to_contain_text("Bluetooth")

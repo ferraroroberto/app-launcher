@@ -168,7 +168,7 @@ function render(host, placeholder) {
       '<button type="button" class="ocr-extract" data-track="composer.extract-text">' + icon('scan-text') + ' Extract text</button>' +
     '</div>' +
     '<div class="composer-upload-status" role="status" aria-live="polite" hidden></div>' +
-    '<div class="composer-mic-notice" role="status" aria-live="polite" hidden></div>' +
+    '<div class="composer-mic-notice" hidden></div>' +
     '<div class="compose-bar">' +
       '<textarea class="compose-input composer-input" rows="2" enterkeyhint="enter"></textarea>' +
       '<div class="compose-tools">' +

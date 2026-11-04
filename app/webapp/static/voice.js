@@ -25,8 +25,7 @@ import { state } from './state.js';
 import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
 import { usage } from './usage.js';
-import { attachRecWave } from './_vendored/rec-wave/rec-wave.js';
-import { inputLabel, silentText } from './voice-level.js';
+import { attachMicNotice } from './_vendored/mic-notice/mic-notice.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
 
 const _CHUNK_MS = 1000;
@@ -460,73 +459,24 @@ function startStreamedSpan(d) {
   } catch (_) { d.voiceEvents = null; }
 }
 
-// The recorder's input line ("Mic: AirPods"), the live level strip and, when
-// the input carries no sound, the banner under them. All three live in
-// d.noticeEl; with none mounted only the banner's news survives, as a toast.
-// How long the take may carry no sound before it is flagged. iOS routes the
-// mic to a Bluetooth headset that can carry nothing, and the strip stays flat.
-const _SILENT_MS = 3000;
-
-// Builds the notice and returns the element the level strip mounts into, or
-// null when this mic has no notice line.
-function showInputNotice(d, label) {
-  const box = d.noticeEl;
-  if (!box) return null;
-  box.textContent = '';
-  const input = document.createElement('div');
-  input.className = 'mic-notice-input';
-  input.textContent = label ? 'Mic: ' + label : '';
-  input.hidden = !label;
-  const wave = document.createElement('div');
-  wave.className = 'mic-notice-wave';
-  const silent = document.createElement('div');
-  silent.className = 'mic-notice-silent';
-  d.silentText = silentText(label);
-  silent.textContent = d.silentText;
-  silent.hidden = true;
-  box.append(input, wave, silent);
-  // The strip is on for the whole take, so the notice shows even when the
-  // browser withholds the input's name.
-  box.hidden = false;
-  return wave;
-}
-
-function setSilentNotice(d, silent) {
-  const box = d.noticeEl;
-  if (!box) {
-    if (silent) toast(d.silentText || silentText(''), 'error', { icon: 'mic' });
-    return;
-  }
-  const line = box.querySelector('.mic-notice-silent');
-  if (line) line.hidden = !silent;
-  box.classList.toggle('is-silent', silent);
+// The recorder's input line ("Mic: AirPods"), the live level strip and, when the
+// input carries no sound, the warning under them are the vendored mic-notice,
+// mounted in d.noticeEl. With none mounted it runs in a detached container
+// (the reader still serves the verdict) and only the warning's news survives,
+// as a toast. One reader on the stream the recorder already holds flags a dead
+// route within seconds, not at finish.
+function watchTakeLevel(d, stream) {
+  d.levelStop = attachMicNotice(d.noticeEl || document.createElement('div'), stream, {
+    onSilent: function (text) {
+      console.info('[dictation] no sound from the input after the first seconds');
+      if (!d.noticeEl) toast(text, 'error', { icon: 'mic' });
+      try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (_) { /* no haptic */ }
+    },
+  });
 }
 
 function clearInputNotice(d) {
   if (d.levelStop) { d.levelStop(); d.levelStop = null; }
-  const box = d.noticeEl;
-  if (!box) return;
-  box.textContent = '';
-  box.classList.remove('is-silent');
-  box.hidden = true;
-}
-
-// Show the take's live level and flag a dead route within seconds, not at
-// finish. One level reader on the stream the recorder already holds serves
-// both. A mic with no notice line has no strip to show, so a detached host
-// still runs the reader for the silent-input toast.
-function watchTakeLevel(d, stream) {
-  const host = showInputNotice(d, inputLabel(stream)) || document.createElement('div');
-  d.levelStop = attachRecWave(host, stream, {
-    silenceMs: _SILENT_MS,
-    height: 20,
-    onSilent: function () {
-      console.info('[dictation] no sound from the input after the first seconds');
-      setSilentNotice(d, true);
-      try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (_) { /* no haptic */ }
-    },
-    onSignal: function () { setSilentNotice(d, false); },
-  });
 }
 
 function handleRecorderStop(d, stream, mime) {
