@@ -51,6 +51,8 @@ this is not a diagram ((
 Closing paragraph.
 """
 
+_GITHUB = "https://github.com/acme/alpha-repo/blob/HEAD/docs/guide.md"
+
 _LIST = [
     {"id": "guide", "title": "Sample guide", "repo": "alpha-repo",
      "updated": "2020-01-01T00:00:00+00:00"},
@@ -62,7 +64,8 @@ def _json(route, status: int, body) -> None:
     route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
 
 
-def _mock_documents(page: Page, *, listing=None, doc_status: int = 200, doc_detail: str = "") -> list:
+def _mock_documents(page: Page, *, listing=None, doc_status: int = 200, doc_detail: str = "",
+                    github_url: str | None = _GITHUB) -> list:
     """Route-mock the two document routes; returns the document ids requested."""
     asked: list = []
     rows = _LIST if listing is None else listing
@@ -78,6 +81,7 @@ def _mock_documents(page: Page, *, listing=None, doc_status: int = 200, doc_deta
         _json(route, 200, {
             "id": "guide", "title": "Sample guide", "repo": "alpha-repo",
             "updated": "2020-01-01T00:00:00+00:00", "content": _DOC.replace("\n", "\r\n"), "bytes": len(_DOC),
+            "github_url": github_url,
         })
 
     page.route(re.compile(r".*/api/documents$"), _list)
@@ -146,6 +150,55 @@ def test_group_lists_the_documents_and_a_tap_opens_one_rendered(authed_page: Pag
     sheet.locator("[data-sheet-back]").click()
     expect(sheet).to_be_hidden()
     expect(page.locator("#documentBody")).to_be_empty()
+
+
+@pytest.mark.iphone
+def test_the_reader_pins_its_header_and_fills_the_phone(authed_page: Page, base_url: str) -> None:
+    page = authed_page
+    _mock_documents(page)
+    _open_sheet(page, base_url)
+    sheet = page.locator("#documentSheet")
+    head = sheet.locator(".detail-header")
+    for theme in ("light", "dark"):
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        if page.viewport_size["width"] <= 520:
+            box = sheet.bounding_box()
+            assert box["width"] >= page.viewport_size["width"] - 1, f"the sheet is inset ({theme}): {box}"
+            assert box["height"] >= page.viewport_size["height"] - 1, f"the sheet is inset ({theme}): {box}"
+        # The body scrolls on its own and the header does not move with it.
+        top = head.bounding_box()["y"]
+        page.evaluate("document.querySelector('#documentSheet .document-sheet-body').scrollTop = 400")
+        assert page.evaluate("document.querySelector('#documentSheet .document-sheet-body').scrollTop") > 0
+        assert head.bounding_box()["y"] == top
+        page.evaluate("document.querySelector('#documentSheet .document-sheet-body').scrollTop = 0")
+        h1 = page.locator("#documentBody h1")
+        assert h1.evaluate("e => getComputedStyle(e).borderBottomWidth") == "1px"
+        expect(page.locator("#documentBody code").first).to_have_css("border-radius", "6px")
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+
+def test_open_on_github_opens_the_documents_page_and_hides_without_a_remote(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    _mock_documents(page)
+    _open_sheet(page, base_url)
+    button = page.locator("#documentGithub")
+    expect(button).to_be_visible()
+    expect(button).to_have_attribute("data-track", "document.github")
+    # The popup lands on a stub: a test never reaches the real github.com.
+    page.context.route("https://github.com/**", lambda r: r.fulfill(status=200, body="stub"))
+    with page.expect_popup() as popup:
+        button.click()
+    assert popup.value.url.startswith("https://github.com/acme/alpha-repo/blob/HEAD/docs/guide.md")
+    popup.value.close()
+
+    page.unroute_all()
+    _mock_documents(page, github_url=None)
+    page.locator("#documentSheet [data-sheet-back]").click()
+    page.locator("#documentsGroup [data-doc-id='guide']").click()
+    expect(page.locator("#documentBody h1")).to_have_text("Sample guide")
+    expect(button).to_be_hidden()
 
 
 @pytest.mark.iphone

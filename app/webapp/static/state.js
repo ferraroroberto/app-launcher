@@ -512,6 +512,7 @@ export const els = {
   documentSheet: document.getElementById('documentSheet'),
   documentSheetTitle: document.getElementById('documentSheetTitle'),
   documentUpdated: document.getElementById('documentUpdated'),
+  documentGithub: document.getElementById('documentGithub'),
   documentState: document.getElementById('documentState'),
   documentStateMessage: document.getElementById('documentStateMessage'),
   documentRetry: document.getElementById('documentRetry'),

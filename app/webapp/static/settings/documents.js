@@ -25,6 +25,9 @@ let listed = false;
 // for a sheet since closed, is ignored.
 let openSeq = 0;
 let openId = null;
+// The open document's page on github.com, or null when its repo has no GitHub
+// remote (the button is then hidden). Only https://github.com links are kept.
+let githubUrl = null;
 
 function changedText(iso) {
   const ago = agoText(iso);
@@ -62,6 +65,11 @@ async function fetchList(quiet) {
   }
 }
 
+function setGithub(url) {
+  githubUrl = typeof url === 'string' && url.startsWith('https://github.com/') ? url : null;
+  els.documentGithub.hidden = !githubUrl;
+}
+
 function showState(message, withRetry) {
   els.documentBody.replaceChildren();
   els.documentState.hidden = false;
@@ -75,6 +83,7 @@ async function loadDocument(id) {
   const doc = documents.find(function (d) { return d.id === id; });
   els.documentSheetTitle.textContent = doc ? doc.title : 'Document';
   els.documentUpdated.textContent = '';
+  setGithub(null);
   showState('Loading…', false);
   let body;
   try {
@@ -88,6 +97,7 @@ async function loadDocument(id) {
   els.documentState.hidden = true;
   els.documentSheetTitle.textContent = body.title || els.documentSheetTitle.textContent;
   els.documentUpdated.textContent = changedText(body.updated) + ' · ' + body.repo;
+  setGithub(body.github_url);
   els.documentBody.innerHTML = renderMarkdown(body.content || '', { hideComments: true });
   els.documentBody.scrollTop = 0;
   await renderMermaidIn(els.documentBody);
@@ -96,6 +106,7 @@ async function loadDocument(id) {
 function closeDocument() {
   openSeq += 1;
   openId = null;
+  setGithub(null);
   els.documentBody.replaceChildren();
 }
 
@@ -109,6 +120,9 @@ export function wireDocuments() {
   });
   els.documentRetry.addEventListener('click', function () {
     if (openId) loadDocument(openId);
+  });
+  els.documentGithub.addEventListener('click', function () {
+    if (githubUrl) window.open(githubUrl, '_blank', 'noopener,noreferrer');
   });
   els.documentsRetry.addEventListener('click', function () { fetchList(false); });
   els.documentSheet.addEventListener('close', closeDocument);

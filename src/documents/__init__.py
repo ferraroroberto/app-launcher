@@ -24,6 +24,9 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+from urllib.parse import quote
+
+from src.scanner import github_repo_url
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +176,20 @@ def list_documents(projects_dir: str, documents: Iterable[Document]) -> List[Dic
     ]
 
 
+def github_file_url(projects_dir: str, doc: Document) -> Optional[str]:
+    """The document's page on github.com, or ``None`` without a GitHub remote.
+
+    Built from the repo's ``origin`` remote and the configured ``path`` only,
+    so no local path leaves the host. ``HEAD`` is the ref because github.com
+    redirects it to the repo's default branch, which spares a ``git`` spawn
+    per read.
+    """
+    base = github_repo_url(Path(projects_dir).resolve() / doc.repo)
+    if base is None:
+        return None
+    return f"{base}/blob/HEAD/{quote(doc.path, safe='/')}"
+
+
 def read_document(projects_dir: str, doc: Document) -> Dict[str, Any]:
     """The document's text and metadata, or a :class:`DocumentError`."""
     target = _resolve(projects_dir, doc)
@@ -194,4 +211,5 @@ def read_document(projects_dir: str, doc: Document) -> Dict[str, Any]:
         "updated": updated,
         "content": raw.decode("utf-8", errors="replace"),
         "bytes": len(raw),
+        "github_url": github_file_url(projects_dir, doc),
     }
