@@ -165,6 +165,8 @@ class TestLifespanGate:
                 self.snapshot_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module == "src.system_load":
                 self.load_ticks.append(task)
+            elif coro.__qualname__ == "DemandCache.tick_forever":
+                self.demand_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module in (
                     "app.webapp.chief_doorbell", "app.webapp.relay_idle_close"):
                 self.doorbell_ticks.append(task)
@@ -174,6 +176,7 @@ class TestLifespanGate:
 
         self.snapshot_ticks = []
         self.load_ticks = []
+        self.demand_ticks = []
         self.doorbell_ticks = []
         monkeypatch.setattr(server.asyncio, "create_task", _spy)
         # Never let the real tick body run — it would sleep two minutes and
@@ -206,6 +209,15 @@ class TestLifespanGate:
         await self._run_lifespan(_app(), monkeypatch)
         assert len(self.load_ticks) == 1
         assert self.load_ticks[0].cancelled()
+
+    async def test_polled_snapshots_refresh_on_every_instance(self, monkeypatch):
+        """/api/version and the channel list are read on every instance, so
+        their snapshots tick on every instance (each only rebuilds while its
+        route is polled) and are cancelled with the lifespan."""
+        monkeypatch.setenv(SESSION_HOST_PORT_ENV, "54321")  # disposable
+        await self._run_lifespan(_app(), monkeypatch)
+        assert len(self.demand_ticks) == 2
+        assert all(task.cancelled() for task in self.demand_ticks)
 
     async def test_disposable_instance_never_starts_the_tick(
         self, monkeypatch

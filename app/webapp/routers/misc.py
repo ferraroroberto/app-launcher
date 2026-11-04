@@ -34,6 +34,7 @@ from src.stylesheet_bundle import link_bundle
 from src.launching.vscode_workspace import is_vscode_installed
 from src.webapp_config import WebappConfig
 
+from app.webapp.demand_cache import DemandCache
 from app.webapp.middleware import is_pc_itself, via_cloudflare
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
 
@@ -45,6 +46,9 @@ _IDENTITY = build_identity()
 _GIT_SHA = _IDENTITY["git_sha"]
 _BUILT_AT = _IDENTITY["built_at"]
 _CLAUDE_MD_PATH = PROJECT_ROOT / "CLAUDE.md"
+# How often the snapshot behind /api/version is rebuilt while it is polled. The
+# restart recipes poll this route for a changed sha, so the delay stays small.
+VERSION_TICK_S = 5.0
 
 
 def _stamped_index(app: Any) -> Tuple[str, str]:
@@ -126,22 +130,49 @@ async def version(request: Request) -> Dict[str, Any]:
     ``None`` (never a confident answer) whenever either sha, or the scoped
     diff itself, can't be resolved — e.g. a non-repo test env, an unknown
     host sha, or no resolvable ``origin`` remote.
+
+    The live part (``head_sha`` and ``session_host``) costs git spawns and a
+    session-host round trip, so it is read from a snapshot that the lifespan
+    rebuilds every :data:`VERSION_TICK_S` while this route is polled
+    (:class:`app.webapp.demand_cache.DemandCache`); an older one is rebuilt
+    before it answers. ``age_seconds`` is the snapshot's age.
     """
-    cfg: WebappConfig = request.app.state.webapp_config
     asset_hashes = getattr(request.app.state, "asset_hashes", {}) or {}
-    head_sha, deployed_sha, host_identity = await asyncio.gather(
-        asyncio.to_thread(resolve_git_sha),
-        asyncio.to_thread(resolve_deployed_sha),
-        asyncio.to_thread(session_client.identity, cfg.session_host_port),
-    )
-    session_host = _session_host_freshness(host_identity, deployed_sha)
+    facts, age_seconds = await version_cache(request.app).get()
     return {
         "git_sha": _GIT_SHA,
         "built_at": _BUILT_AT,
         "asset_hash": asset_hash_for(asset_hashes, "styles/base.css") or "",
-        "head_sha": head_sha,
-        "session_host": session_host,
+        "head_sha": facts["head_sha"],
+        "session_host": facts["session_host"],
+        "age_seconds": age_seconds,
     }
+
+
+async def _build_version_facts(port: int) -> Dict[str, Any]:
+    """The live part of ``/api/version``: the checkout's HEAD, the deployed
+    sha and the session-host's identity. The staleness verdict can spawn
+    ``git diff``, so it runs off the loop with the rest."""
+    head_sha, deployed_sha, host_identity = await asyncio.gather(
+        asyncio.to_thread(resolve_git_sha),
+        asyncio.to_thread(resolve_deployed_sha),
+        asyncio.to_thread(session_client.identity, port),
+    )
+    session_host = await asyncio.to_thread(_session_host_freshness, host_identity, deployed_sha)
+    return {"head_sha": head_sha, "session_host": session_host}
+
+
+def version_cache(app: Any) -> DemandCache[Dict[str, Any]]:
+    """The app's ``/api/version`` snapshot (its lifespan keeps it fresh while polled)."""
+    cache = getattr(app.state, "version_cache", None)
+    if cache is None:
+        cache = app.state.version_cache = DemandCache(
+            "GET /api/version",
+            lambda: _build_version_facts(app.state.webapp_config.session_host_port),
+            tick_s=VERSION_TICK_S,
+            max_age_s=3 * VERSION_TICK_S,
+        )
+    return cache
 
 
 def _session_host_freshness(
