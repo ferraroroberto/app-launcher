@@ -1,5 +1,6 @@
 # BEGIN vendored-copies (generated from .fleet.toml [vendored]; edit the manifest, not this block)
 /app/tray/single_instance.py
+/app/webapp/serve.py
 /app/webapp/static/_vendored/action-row
 /app/webapp/static/_vendored/base
 /app/webapp/static/_vendored/button
