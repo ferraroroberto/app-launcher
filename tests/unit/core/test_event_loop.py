@@ -3,8 +3,8 @@
 asyncio's default Windows proactor event loop closes its listening socket
 on any aborted client connection (WinError 64); the selector loop's accept
 path doesn't. These tests cover the wiring (every launch of
-``app.webapp.server:app`` goes through ``app.webapp.serve``, which runs on the
-shim) and the actual accept-loop resilience the shim buys.
+``app.webapp.server:app`` goes through ``app.webapp.serve`` with ``--loop``
+naming the shim) and the actual accept-loop resilience the shim buys.
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ import pytest
 
 from app.webapp.event_loop import (
     GIL_SWITCH_INTERVAL_S,
+    LOOP_FACTORY,
     selector_loop_factory,
     tune_gil_switch_interval,
 )
@@ -139,6 +140,7 @@ def test_manager_build_command_launches_serve():
     cmd = mgr._build_command()
     assert cmd[1:3] == SERVE_ARGV
     assert "uvicorn" not in cmd
+    assert cmd[cmd.index("--loop") + 1] == LOOP_FACTORY
 
 
 def test_webapp_cmd_runs_serve(monkeypatch):
@@ -161,7 +163,10 @@ def test_webapp_cmd_runs_serve(monkeypatch):
     )
 
     WebappCommand(config=None).execute(argparse.Namespace(host=None, port=None))
-    assert captured == {"host": "127.0.0.1", "port": 18445, "log_level": "info"}
+    assert captured == {
+        "host": "127.0.0.1", "port": 18445, "log_level": "info",
+        "loop_factory": selector_loop_factory,
+    }
 
 
 @pytest.mark.parametrize(
@@ -174,12 +179,14 @@ def test_disposable_webapp_spawns_launch_serve(relpath):
     catches drift: each launches ``app.webapp.serve``, never uvicorn."""
     src = (_REPO_ROOT / relpath).read_text(encoding="utf-8")
     assert re.search(r'"-m",\s*"app\.webapp\.serve"', src), relpath
+    assert re.search(r'"--loop",\s*LOOP_FACTORY', src), relpath
     assert '"uvicorn"' not in src, relpath
 
 
 def test_webapp_bat_launches_serve():
     src = (_REPO_ROOT / "webapp.bat").read_text(encoding="utf-8")
     assert src.count("-m app.webapp.serve") == 2
+    assert src.count(f"--loop {LOOP_FACTORY}") == 2
     assert "uvicorn" not in src
 
 
@@ -193,6 +200,8 @@ def test_documented_webapp_commands_launch_serve():
         for lineno, line in enumerate(doc.read_text(encoding="utf-8").splitlines(), 1):
             if "uvicorn app.webapp.server:app" in line:
                 offenders.append(f"{doc.name}:{lineno}")
+            elif "-m app.webapp.serve " in line and f"--loop {LOOP_FACTORY}" not in line:
+                offenders.append(f"{doc.name}:{lineno} (no --loop)")
     assert not offenders, (
         "these documented commands bypass app.webapp.serve: "
         f"{offenders}"

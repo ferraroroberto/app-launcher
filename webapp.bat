@@ -28,14 +28,15 @@ REM self-signed cert or when no cert exists) — project-scaffolding#89.
 
 REM app.webapp.serve is the one launch entry: HTTP/2 over TLS, on the selector
 REM event loop (the proactor loop's accept path dies on one aborted client).
+REM --loop adds the GIL switch-interval tuning (app\webapp\event_loop.py).
 
 if not exist "%CERT%" (
     echo [INFO] No HTTPS cert found, running HTTP-only on :8445.
     echo        Run scripts\gen_tailscale_cert.py to enable HTTPS.
-    "%VENV_PY%" -m app.webapp.serve --host 0.0.0.0 --port 8445
+    "%VENV_PY%" -m app.webapp.serve --host 0.0.0.0 --port 8445 --loop app.webapp.event_loop:selector_loop_factory
 ) else (
     echo [INFO] HTTPS via %CERT%
-    "%VENV_PY%" -m app.webapp.serve --host 0.0.0.0 --port 8445 --ssl-keyfile "%KEY%" --ssl-certfile "%CERT%"
+    "%VENV_PY%" -m app.webapp.serve --host 0.0.0.0 --port 8445 --loop app.webapp.event_loop:selector_loop_factory --ssl-keyfile "%KEY%" --ssl-certfile "%CERT%"
 )
 
 exit /b %ERRORLEVEL%

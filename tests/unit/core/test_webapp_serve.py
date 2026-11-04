@@ -1,5 +1,6 @@
 """``app.webapp.serve``, the one launch entry: HTTP/2 over TLS, the selector
-loop, and proxy headers trusted from loopback only."""
+loop, and proxy headers trusted from loopback only. The module is the
+scaffold's vendored copy; these pin how this app runs it."""
 
 from __future__ import annotations
 
@@ -9,8 +10,11 @@ import types
 
 import pytest
 
+from hypercorn.protocol.h2 import H2Protocol
+
 from app.webapp import serve
-from app.webapp.event_loop import selector_loop_factory
+from app.webapp import event_loop
+from app.webapp.event_loop import LOOP_FACTORY, selector_loop_factory
 
 
 def test_tls_config_offers_http2_first_then_http11():
@@ -69,13 +73,14 @@ def test_run_serves_the_app_on_the_selector_loop(monkeypatch):
         seen["loop"] = type(asyncio.get_running_loop())
         seen["bind"] = cfg.bind
 
-    from hypercorn.protocol.h2 import H2Protocol
+    async def unpatched_handle(self, event):
+        return None
 
     monkeypatch.setitem(sys.modules, "app.webapp.server", types.SimpleNamespace(app=stub_app))
     monkeypatch.setattr(serve, "_serve_until_signalled", fake_serve)
-    monkeypatch.setattr(H2Protocol, "handle", serve._HYPERCORN_H2_HANDLE)
-    serve.run("127.0.0.1", 18445)
-    assert H2Protocol.handle is serve._handle_then_release_streams, (
+    monkeypatch.setattr(H2Protocol, "handle", unpatched_handle)
+    serve.run("127.0.0.1", 18445, loop_factory=selector_loop_factory)
+    assert getattr(H2Protocol.handle, "_releases_streams", False), (
         "every launch must serve with abandoned h2 streams released")
 
     loop = selector_loop_factory()
@@ -94,14 +99,26 @@ def test_cli_passes_uvicorn_style_flags_through(monkeypatch):
         "--host", "0.0.0.0", "--port", "8445",
         "--ssl-keyfile", "k.pem", "--ssl-certfile", "c.pem", "--log-level", "info",
     ]) == 0
-    assert seen["args"] == ("0.0.0.0", 8445, "c.pem", "k.pem", "info", "hypercorn")
+    assert seen["args"] == (
+        "0.0.0.0", 8445, "c.pem", "k.pem", "info", "hypercorn",
+        "app.webapp.server:app", serve.selector_loop_factory,
+    )
+
+
+def test_cli_loop_flag_resolves_to_the_gil_tuned_factory(monkeypatch):
+    """The launch paths pass ``--loop LOOP_FACTORY``; it must name the factory
+    that tunes the GIL switch interval, not the vendored module's bare one."""
+    seen = {}
+    monkeypatch.setattr(serve, "run", lambda *a: seen.setdefault("args", a))
+    assert serve.main(["--port", "8445", "--loop", LOOP_FACTORY]) == 0
+    assert seen["args"][-1] is event_loop.selector_loop_factory
 
 
 def test_cli_selects_the_uvicorn_fallback(monkeypatch):
     seen = {}
     monkeypatch.setattr(serve, "run", lambda *a: seen.setdefault("args", a))
     assert serve.main(["--port", "8445", "--server", "uvicorn"]) == 0
-    assert seen["args"][-1] == "uvicorn"
+    assert seen["args"][5] == "uvicorn"
 
 
 def test_cli_rejects_an_unknown_server():
@@ -134,7 +151,7 @@ def test_run_serves_the_uvicorn_fallback_on_the_selector_loop(monkeypatch):
     monkeypatch.setitem(sys.modules, "app.webapp.server", types.SimpleNamespace(app=stub_app))
     monkeypatch.setattr(serve, "_serve_uvicorn", fake_uvicorn)
     monkeypatch.setattr(serve, "_serve_until_signalled", no_hypercorn)
-    serve.run("127.0.0.1", 18445, server="uvicorn")
+    serve.run("127.0.0.1", 18445, server="uvicorn", loop_factory=selector_loop_factory)
 
     loop = selector_loop_factory()
     try:
@@ -162,6 +179,7 @@ async def _abandoned_h2_responses_that_finished(clients: int) -> int:
 
     import h2.config
     import h2.connection
+    from hypercorn.asyncio import serve as hypercorn_serve
     from hypercorn.config import Config
 
     finished = []
@@ -181,7 +199,7 @@ async def _abandoned_h2_responses_that_finished(clients: int) -> int:
     cfg.bind = [f"127.0.0.1:{port}"]
     cfg.loglevel = "WARNING"
     stop = asyncio.Event()
-    server = asyncio.create_task(serve.serve(app, cfg, shutdown_trigger=stop.wait))
+    server = asyncio.create_task(hypercorn_serve(app, cfg, shutdown_trigger=stop.wait))
     try:
         for _ in range(100):
             try:
@@ -218,8 +236,7 @@ async def _abandoned_h2_responses_that_finished(clients: int) -> int:
 def test_a_response_whose_h2_client_vanished_still_finishes(monkeypatch):
     """A client that leaves mid-response must not leave its ASGI call waiting
     forever, or every closed tab leaks a task and its connection."""
-    from hypercorn.protocol.h2 import H2Protocol
-
-    monkeypatch.setattr(H2Protocol, "handle", serve._HYPERCORN_H2_HANDLE)
+    # Registered so the patch below is undone after the test.
+    monkeypatch.setattr(H2Protocol, "handle", H2Protocol.handle)
     serve.release_h2_streams_on_disconnect()
     assert asyncio.run(_abandoned_h2_responses_that_finished(3)) == 3

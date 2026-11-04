@@ -36,6 +36,7 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.tray.single_instance import cross_process_lock
+from app.webapp.event_loop import LOOP_FACTORY
 from app.webapp.serve import HYPERCORN, SERVERS
 from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
 
@@ -397,6 +398,8 @@ class WebappManager:
             "warning",
             "--server",
             self.config.server,
+            "--loop",
+            LOOP_FACTORY,
         ]
         certs = cert_paths()
         if certs is not None:
