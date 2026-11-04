@@ -26,7 +26,7 @@ import { readTerminalToken } from './webauthn.js';
 import { trackFeature } from './settings/feature-track.js';
 import { usage } from './usage.js';
 import { attachRecWave } from './_vendored/rec-wave/rec-wave.js';
-import { inputLabel } from './voice-level.js';
+import { inputLabel, silentText } from './voice-level.js';
 import { REMOTE_MIC_HINT, inRemoteDesktopSession } from './voice-remote.js';
 
 const _CHUNK_MS = 1000;
@@ -463,7 +463,6 @@ function startStreamedSpan(d) {
 // The recorder's input line ("Mic: AirPods"), the live level strip and, when
 // the input carries no sound, the banner under them. All three live in
 // d.noticeEl; with none mounted only the banner's news survives, as a toast.
-const _SILENT_TEXT = 'No sound from the microphone — check Bluetooth/AirPods';
 // How long the take may carry no sound before it is flagged. iOS routes the
 // mic to a Bluetooth headset that can carry nothing, and the strip stays flat.
 const _SILENT_MS = 3000;
@@ -482,7 +481,8 @@ function showInputNotice(d, label) {
   wave.className = 'mic-notice-wave';
   const silent = document.createElement('div');
   silent.className = 'mic-notice-silent';
-  silent.textContent = _SILENT_TEXT;
+  d.silentText = silentText(label);
+  silent.textContent = d.silentText;
   silent.hidden = true;
   box.append(input, wave, silent);
   // The strip is on for the whole take, so the notice shows even when the
@@ -494,7 +494,7 @@ function showInputNotice(d, label) {
 function setSilentNotice(d, silent) {
   const box = d.noticeEl;
   if (!box) {
-    if (silent) toast(_SILENT_TEXT, 'error', { icon: 'mic' });
+    if (silent) toast(d.silentText || silentText(''), 'error', { icon: 'mic' });
     return;
   }
   const line = box.querySelector('.mic-notice-silent');

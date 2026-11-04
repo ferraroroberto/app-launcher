@@ -13,3 +13,14 @@ export function inputLabel(stream) {
     return '';
   }
 }
+
+const _SILENT_DEFAULT = 'No sound from the microphone — check Bluetooth/AirPods';
+const _SILENT_REMOTE =
+  'No sound from the microphone — check the Remote Desktop audio recording setting ' +
+  "('Record from this computer')";
+
+// Windows names the redirected Remote Desktop input "Remote Audio"; a flat
+// strip there is the RDP client's recording setting, not a Bluetooth headset.
+export function silentText(label) {
+  return /remote audio/i.test(label || '') ? _SILENT_REMOTE : _SILENT_DEFAULT;
+}

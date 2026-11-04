@@ -15,3 +15,10 @@ assert.equal(inputLabel({}), '');
 assert.equal(inputLabel(null), '');
 
 console.log('OK');
+
+const { silentText } = await import('../../app/webapp/static/voice-level.js');
+assert.match(silentText('Default - Remote Audio'), /Remote Desktop/);
+assert.doesNotMatch(silentText('Default - Remote Audio'), /Bluetooth|AirPods/);
+assert.match(silentText('AirPods'), /Bluetooth\/AirPods/);
+assert.match(silentText(''), /Bluetooth\/AirPods/);
+assert.match(silentText(undefined), /Bluetooth\/AirPods/);
