@@ -23,6 +23,7 @@ class WebappCommand(BaseCommand):
     def execute(self, args: argparse.Namespace) -> int:
         # Lazy imports so a plain `webapp` subcommand doesn't drag pystray in.
         from app.webapp import serve
+        from app.webapp.event_loop import selector_loop_factory
         from app.webapp.manager import cert_paths
         from src.webapp_config import load_webapp_config
 
@@ -31,7 +32,7 @@ class WebappCommand(BaseCommand):
         port = args.port or cfg.port
 
         certs = cert_paths()
-        kwargs = {"log_level": "info"}
+        kwargs = {"log_level": "info", "loop_factory": selector_loop_factory}
         if certs is not None:
             cert, key = certs
             kwargs["certfile"] = str(cert)

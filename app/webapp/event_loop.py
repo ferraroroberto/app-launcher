@@ -19,10 +19,11 @@ no asyncio subprocesses in-process (``WebappManager`` shells out via plain
 ``subprocess.Popen``, never ``asyncio.create_subprocess_*``), so the
 selector loop's lack of subprocess support is a non-issue here.
 
-Every launch of ``app.webapp.server:app`` goes through ``app.webapp.serve``,
-which runs the server under ``asyncio.Runner(loop_factory=selector_loop_factory)``.
-The runner calls the factory with no arguments and needs an *instantiated*
-loop back, not a loop class.
+Every launch of ``app.webapp.server:app`` goes through the scaffold's vendored
+``app.webapp.serve``, which takes its event-loop factory as ``--loop``; each
+launch path passes :data:`LOOP_FACTORY` so the GIL tuning below is in force
+before the app imports. The runner calls the factory with no arguments and
+needs an *instantiated* loop back, not a loop class.
 """
 
 from __future__ import annotations
@@ -32,6 +33,10 @@ import logging
 import sys
 
 logger = logging.getLogger(__name__)
+
+# ``app.webapp.serve --loop`` target: the vendored launcher's own default is a
+# bare selector loop with no GIL tuning.
+LOOP_FACTORY = "app.webapp.event_loop:selector_loop_factory"
 
 # GIL hand-off latency. The webapp renders terminals with pure-
 # Python ``pyte`` in worker threads (``src.board.exchange._terminal_rows`` is

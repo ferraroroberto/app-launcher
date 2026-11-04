@@ -275,7 +275,7 @@ A nightly Job finds Life OS skill sessions opened by mistake and removes them, s
 
 ```powershell
 & .\.venv\Scripts\python.exe -m py_compile launcher.py
-& .\.venv\Scripts\python.exe -m app.webapp.serve --host 127.0.0.1 --port 8445
+& .\.venv\Scripts\python.exe -m app.webapp.serve --host 127.0.0.1 --port 8445 --loop app.webapp.event_loop:selector_loop_factory
 # then in another terminal:
 curl http://127.0.0.1:8445/healthz
 ```
