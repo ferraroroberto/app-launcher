@@ -385,6 +385,133 @@ def search_done_today(owner: str) -> List[Dict[str, Any]]:
     return search_done_on(owner, date.today())
 
 
+# ----------------------------------------------------------- repo history
+
+_HISTORY_PAGE = 100
+# A guard against a connection that never reports its last page: 400 pages is
+# 40,000 commits, far past any repo of the fleet.
+_HISTORY_MAX_PAGES = 400
+
+# One GraphQL connection per kind of event. ``c`` commits, ``p`` merged PRs,
+# ``i`` issues; the alias doubles as the prefix of its cursor variable.
+_HISTORY_BLOCKS = {
+    "c": (
+        "$csince: GitTimestamp, $cafter: String",
+        "c: defaultBranchRef { target { ... on Commit { history("
+        f"first: {_HISTORY_PAGE}, since: $csince, after: $cafter) {{ "
+        "pageInfo { hasNextPage endCursor } nodes { committedDate additions deletions } } } } }",
+    ),
+    "p": (
+        "$pafter: String",
+        f"p: pullRequests(first: {_HISTORY_PAGE}, states: MERGED, "
+        "orderBy: {field: UPDATED_AT, direction: DESC}, after: $pafter) { "
+        "pageInfo { hasNextPage endCursor } nodes { mergedAt updatedAt } }",
+    ),
+    "i": (
+        "$isince: DateTime, $iafter: String",
+        f"i: issues(first: {_HISTORY_PAGE}, orderBy: {{field: UPDATED_AT, direction: DESC}}, "
+        "filterBy: {since: $isince}, after: $iafter) { "
+        "pageInfo { hasNextPage endCursor } nodes { createdAt closedAt } }",
+    ),
+}
+
+
+def _history_query(active: Sequence[str]) -> str:
+    """One GraphQL document for ``owner/name`` asking only the connections in ``active``.
+
+    An unused variable is a GraphQL error, so the declarations follow the
+    blocks that are present.
+    """
+    decls = ["$owner: String!", "$name: String!"]
+    blocks = []
+    for key in active:
+        decl, block = _HISTORY_BLOCKS[key]
+        decls.append(decl)
+        blocks.append(block)
+    return (
+        f"query({', '.join(decls)}) {{ rateLimit {{ cost remaining }} "
+        f"repository(owner: $owner, name: $name) {{ {' '.join(blocks)} }} }}"
+    )
+
+
+def _connection_page(connection: Any) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """``(nodes, next cursor)`` of a GraphQL connection; the cursor is None on the last page."""
+    conn = connection if isinstance(connection, dict) else {}
+    nodes = [n for n in (conn.get("nodes") or []) if isinstance(n, dict)]
+    info = conn.get("pageInfo") or {}
+    cursor = info.get("endCursor") if info.get("hasNextPage") else None
+    return nodes, (str(cursor) if cursor else None)
+
+
+def repo_history(
+    owner: str, name: str, since: Optional[datetime] = None
+) -> Dict[str, Any]:
+    """Every commit, merged PR and issue event of ``owner/name`` since ``since``.
+
+    ``since=None`` reads the whole history (the backfill). Returns timestamps
+    in GitHub's UTC form, ungrouped: ``commits`` as ``(committed, additions,
+    deletions)``, ``merged`` PR merge times, ``opened`` and ``closed`` issue
+    times, plus ``remaining`` (GraphQL points left, or None when unreported).
+    Issues and PRs are read most-recently-updated first and stop at ``since``,
+    so a refresh costs about one point per kind however old the repo is.
+    Never ``gh search``: its index lags behind a merge. :class:`GhError` on any
+    failure; a partial read is never returned.
+    """
+    if not (_SAFE_NAME.match(owner) and _SAFE_NAME.match(name)):
+        raise GhError(f"unsafe repository name {owner}/{name}")
+    since_text = _gh_stamp(since) if since else None
+    result: Dict[str, Any] = {
+        "commits": [], "merged": [], "opened": [], "closed": [], "remaining": None,
+    }
+    cursors: Dict[str, Optional[str]] = {"c": None, "p": None, "i": None}
+    active = ["c", "p", "i"]
+    for _ in range(_HISTORY_MAX_PAGES):
+        if not active:
+            return result
+        args = ["api", "graphql", "-f", f"query={_history_query(active)}",
+                "-f", f"owner={owner}", "-f", f"name={name}"]
+        if since_text and "c" in active:
+            args += ["-f", f"csince={since_text}"]
+        if since_text and "i" in active:
+            args += ["-f", f"isince={since_text}"]
+        for key in active:
+            if cursors[key]:
+                args += ["-f", f"{key}after={cursors[key]}"]
+        try:
+            body = json.loads(_run_gh(args) or "{}")
+        except ValueError as exc:
+            raise GhError(f"gh returned unparseable JSON: {exc}") from exc
+        data = (body.get("data") if isinstance(body, dict) else None) or {}
+        repo = data.get("repository")
+        if not isinstance(repo, dict):
+            raise GhError(f"{owner}/{name} is not readable with this token")
+        points = (data.get("rateLimit") or {}).get("remaining")
+        result["remaining"] = points if isinstance(points, int) else result["remaining"]
+        still: List[str] = []
+        for key in active:
+            if key == "c":
+                head = (((repo.get("c") or {}).get("target")) or {}).get("history")
+                nodes, cursors["c"] = _connection_page(head)
+                result["commits"] += [
+                    (n["committedDate"], int(n.get("additions") or 0), int(n.get("deletions") or 0))
+                    for n in nodes if n.get("committedDate")
+                ]
+            elif key == "p":
+                nodes, cursors["p"] = _connection_page(repo.get("p"))
+                result["merged"] += [n["mergedAt"] for n in nodes if n.get("mergedAt")]
+                # Newest-updated first: a page ending before ``since`` is the last that matters.
+                if since_text and nodes and str(nodes[-1].get("updatedAt") or "") < since_text:
+                    cursors["p"] = None
+            else:
+                nodes, cursors["i"] = _connection_page(repo.get("i"))
+                result["opened"] += [n["createdAt"] for n in nodes if n.get("createdAt")]
+                result["closed"] += [n["closedAt"] for n in nodes if n.get("closedAt")]
+            if cursors[key]:
+                still.append(key)
+        active = still
+    raise GhError(f"{owner}/{name}: history exceeded {_HISTORY_MAX_PAGES} pages")
+
+
 # ------------------------------------------------------------------ cache
 
 _lock = threading.Lock()
