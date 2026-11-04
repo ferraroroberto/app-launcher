@@ -167,6 +167,13 @@ _RECTS_JS = """
       '#terminalComposeBar .compose-tools button')].map(r),
     notice: visible ? r(notice) : null,
     name: part('.mic-notice-input'),
+    nameText: (() => {
+      const el = visible && notice.querySelector('.mic-notice-input');
+      if (!el) return null;
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return r(range);
+    })(),
     wave: part('.rec-wave'),
     warning: part('.mic-notice-silent:not([hidden])'),
     viewportBottom: window.innerHeight,
@@ -177,6 +184,23 @@ _RECTS_JS = """
 
 def _same(a: dict, b: dict) -> bool:
     return all(abs(a[k] - b[k]) < 0.5 for k in a)
+
+
+# A phone's rounded corner cuts about this much off a row's outer ends.
+_CORNER_CLEARANCE = 12
+
+
+def _assert_group_centred(rects: dict) -> None:
+    """Name, strip and timer sit as one group in the middle of the row: equal
+    room either side, neither end near the row's edge, a small gap between.
+    The name is measured by its text, not its box: a box stretched over the free
+    space would hide text pinned to the row's left edge."""
+    notice, name, wave = rects["notice"], rects["nameText"], rects["wave"]
+    left_room = name["left"] - notice["left"]
+    right_room = notice["right"] - wave["right"]
+    assert abs(left_room - right_room) < 1.5, (left_room, right_room)
+    assert min(left_room, right_room) >= _CORNER_CLEARANCE, (left_room, right_room)
+    assert wave["left"] - name["right"] < 16, (name, wave)
 
 
 def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
@@ -214,6 +238,7 @@ def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
     assert name["right"] <= wave["left"] + 0.5
     assert abs((name["top"] + name["bottom"]) / 2
                - (wave["top"] + wave["bottom"]) / 2) < 6
+    _assert_group_centred(live)
 
     # The warning takes its own line under that row.
     expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
@@ -230,11 +255,11 @@ def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
 # WebKit cannot build the fake input above, so the phone engine checks the
 # layout against the component's own markup, filled in by hand.
 _FILL_NOTICE_JS = """
-(withWarning) => {
+([withWarning, name]) => {
   const n = document.querySelector('#terminalComposeBar .composer-mic-notice');
   n.classList.add('mic-notice');
   n.innerHTML =
-    '<div class="mic-notice-input">Mic: ' + 'A very long input name '.repeat(6) +
+    '<div class="mic-notice-input">Mic: ' + name +
     '</div><div class="mic-notice-wave"><div class="rec-wave">' +
     '<div class="rec-wave-bars" style="--rec-wave-height:20px"></div>' +
     '<span class="rec-wave-time">0:07</span></div></div>' +
@@ -243,6 +268,9 @@ _FILL_NOTICE_JS = """
   n.hidden = false;
 }
 """
+
+
+_LONG_NAME = "A very long input name " * 6
 
 
 @pytest.mark.iphone
@@ -256,15 +284,31 @@ def test_notice_row_layout_holds_on_the_phone_engine(
     _open_compose_with_record(page)
     before = page.evaluate(_RECTS_JS)
 
-    page.evaluate(_FILL_NOTICE_JS, False)
+    page.evaluate(_FILL_NOTICE_JS, [False, _LONG_NAME])
     row = page.evaluate(_RECTS_JS)
     assert _same(before["bar"], row["bar"]), (before["bar"], row["bar"])
     assert row["notice"]["top"] >= row["bar"]["bottom"] - 0.5
     assert row["notice"]["bottom"] <= row["viewportBottom"] + 0.5
     assert row["name"]["right"] <= row["wave"]["left"] + 0.5
     assert row["notice"]["bottom"] - row["notice"]["top"] < 48
+    # A long name still fills the row between the two clearances, ellipsized
+    # on one line, with the strip and timer kept inside the edge.
+    assert row["wave"]["right"] <= row["notice"]["right"] - _CORNER_CLEARANCE + 0.5
+    assert row["name"]["left"] >= row["notice"]["left"] + _CORNER_CLEARANCE - 0.5
+    assert page.evaluate(
+        "(() => { const n = document.querySelector("
+        "'#terminalComposeBar .mic-notice-input');"
+        " return n.scrollWidth > n.clientWidth"
+        " && getComputedStyle(n).textOverflow === 'ellipsis'; })()"
+    )
+    assert row["name"]["bottom"] - row["name"]["top"] < 28
 
-    page.evaluate(_FILL_NOTICE_JS, True)
+    # A short name is the centred group, however wide the screen.
+    page.evaluate(_FILL_NOTICE_JS, [False, "iPhone Microphone"])
+    short = page.evaluate(_RECTS_JS)
+    _assert_group_centred(short)
+
+    page.evaluate(_FILL_NOTICE_JS, [True, _LONG_NAME])
     warned = page.evaluate(_RECTS_JS)
     assert warned["warning"]["top"] >= warned["wave"]["bottom"] - 0.5
     assert warned["notice"]["bottom"] <= warned["viewportBottom"] + 0.5
