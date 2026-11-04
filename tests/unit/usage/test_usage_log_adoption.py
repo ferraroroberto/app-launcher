@@ -137,7 +137,7 @@ class TestMarkup:
         ratchet holds each caller to a literal."""
         forwarded = {"opts.track", "track"}
         builders = {
-            "apps.js", "drawer.js", "proof-chip.js", "changes-overlay.js", "ask-option.js",
+            "apps.js", "chief-plan.js", "drawer.js", "proof-chip.js", "changes-overlay.js", "ask-option.js",
         }
         setter = re.compile(
             r"""(?:dataset\.track\s*=\s*|setAttribute\(\s*['"]data-track['"]\s*,\s*)([^;)]+)"""

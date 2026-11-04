@@ -517,3 +517,48 @@ def test_questions_show_their_date_and_sort_newest_first(
     expect(rows.locator(".action-row-title")).to_have_text(["Newer", "Older", "Undated"])
     expect(rows.locator(".action-row-meta")).to_have_text(
         ["demo-repo#3 · 2 Mar 2020", "demo-repo#1 · 15 Jan 2020", "demo-repo#2"])
+
+
+@pytest.mark.iphone
+def test_lanes_queue_and_parked_each_fold_on_their_own(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """Lanes and Queue fold on the Parked row's summary and start open; folding
+    one hides its rows (and the Queue's note) and leaves the others alone."""
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    f = tmp_path / "chief-plan.json"
+    f.write_text(_json.dumps({
+        "version": 1, "updated_at": "2026-09-27T09:00:00Z",
+        "lanes": [{"repo": "app-launcher", "session": "s-a", "item": "#1578", "status": "building"}],
+        "queue": [
+            {"repo": "app-launcher", "ref": "#1500", "title": "In the queue", "status": "queued"},
+            {"repo": "app-launcher", "ref": "#1400", "title": "Set aside", "status": "parked"},
+        ],
+    }), encoding="utf-8")
+    _route_plan_from(authed_page, {"plan": chief_plan.read_chief_plan(f, "octo")})
+    _open_board(authed_page, base_url)
+
+    body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    lanes = body.locator("details.board-plan-fold").nth(0)
+    queue = body.locator("details.board-plan-fold").nth(1)
+    parked = body.locator("details.board-plan-parked")
+    expect(lanes.locator("summary")).to_have_text("Lanes (1)")
+    expect(queue.locator("summary")).to_have_text("Queue (1)")
+    expect(lanes).to_have_attribute("open", "")
+    expect(queue).to_have_attribute("open", "")
+    expect(lanes.locator("li.board-plan-row")).to_be_visible()
+    expect(queue.locator(".board-plan-section-note")).to_be_visible()
+    for group in (lanes, queue):
+        box = stable_read(group.locator("summary").bounding_box)
+        assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"
+
+    lanes.locator("summary").click()
+    expect(lanes.locator("li.board-plan-row")).to_be_hidden()
+    expect(queue.locator("li.board-plan-row")).to_be_visible()
+    queue.locator("summary").click()
+    expect(queue.locator("li.board-plan-row")).to_be_hidden()
+    expect(queue.locator(".board-plan-section-note")).to_be_hidden()
+    expect(queue.locator("summary")).to_have_text("Queue (1)")
+    lanes.locator("summary").click()
+    expect(lanes.locator("li.board-plan-row")).to_be_visible()
+    expect(parked.locator("summary")).to_have_text("Parked (1)")

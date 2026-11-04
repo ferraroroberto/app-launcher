@@ -3,10 +3,10 @@
  * Two kinds, from fleet-config's owner_check labels (GET /api/board's
  * `owner_checks` section): shipped work to validate as a user
  * (`validate-after`) and a step owed before work can start (`before-start`).
- * They sit in Your turn under the live sessions, one group per kind. A row's
+ * They sit in Your turn under the live sessions, one fold per kind. A row's
  * tap unfolds its own detail in place: why it needs you, what to try, and the
- * links to the issue and its proof. The detail's Answer, like the group's
- * button, opens the owner-check answer sheet (board-answers.js), where this
+ * links to the issue and its proof. The detail's Answer, like its group's
+ * own button, opens that group's owner-check answer sheet (board-answers.js), where this
  * module draws each item's block and reads its answer back.
  *
  * The list is a cached read with its age. Before one has landed it is
@@ -23,7 +23,7 @@ import { askOption } from '../chat/ask-option.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { boardRepoFilter, matchesRepoFilter } from './board-dispatch.js';
-import { agoText } from './chief-plan.js';
+import { agoText, foldGroup } from './chief-plan.js';
 import { calendarDaysFromToday, newestDateFirst, shortDate } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
 import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
@@ -57,16 +57,19 @@ function newestFirst(a, b) {
 
 // The items the repo filter shows, the waiting ones first, each half newest
 // first (each group of the card filters this list, so it inherits the order).
-export function shownOwnerItems(body) {
+// `kind`, when given, keeps one group's items: the sheet a group opens.
+export function shownOwnerItems(body, kind) {
   const sec = section(body);
   if (!sec) return [];
   const filter = boardRepoFilter();
-  const items = (sec.items || []).filter(function (it) { return matchesRepoFilter(it, filter); });
+  const items = (sec.items || []).filter(function (it) {
+    return matchesRepoFilter(it, filter) && (!kind || it.kind === kind);
+  });
   return items.filter(waiting).sort(newestFirst)
     .concat(items.filter(function (it) { return !waiting(it); }).sort(newestFirst));
 }
 
-function kindLabel(kind) {
+export function kindLabel(kind) {
   const g = GROUPS.find(function (x) { return x.kind === kind; });
   return g ? g.label : kind;
 }
@@ -186,19 +189,34 @@ function itemRow(item, onAnswer) {
   detail.appendChild(links(item));
   const answer = el('button', 'button-tint board-owner-answer', 'Answer');
   answer.type = 'button';
-  answer.addEventListener('click', function () { onAnswer(item.ref); });
+  answer.addEventListener('click', function () { onAnswer(item.ref, item.kind); });
   detail.appendChild(answer);
   row.li.appendChild(detail);
   return row.li;
 }
 
+// One kind's fold: its rows, then its own answer button (inside the fold, so
+// a folded group carries nothing but its heading and count). Open by default.
 function group(g, items, onAnswer) {
-  const wrap = el('div', 'board-plan-group board-owner-group');
+  const rows = items.map(function (it) { return itemRow(it, onAnswer); });
+  const waitingItems = items.filter(waiting);
+  const after = [];
+  if (waitingItems.length) {
+    const btn = el('button', 'button-tint board-plan-answer board-owner-answer-group');
+    btn.type = 'button';
+    btn.innerHTML = icon('messages-square') + ' ';
+    btn.appendChild(document.createTextNode('Answer ' + g.label + ' (' + waitingItems.length + ')'));
+    if (g.kind === BEFORE_START) btn.dataset.track = 'board.owner-answer-before-start';
+    else btn.dataset.track = 'board.owner-answer-validate';
+    btn.addEventListener('click', function () { onAnswer(waitingItems[0].ref, g.kind); });
+    after.push(btn);
+  }
+  const fold = { key: 'owner:' + g.kind, heading: g.heading + ' (' + items.length + ')', rows: rows,
+    after: after, cls: 'board-owner-group' };
+  const wrap = g.kind === BEFORE_START
+    ? foldGroup({ ...fold, track: 'board.owner-before-start-fold' })
+    : foldGroup({ ...fold, track: 'board.owner-validate-fold' });
   wrap.dataset.kind = g.kind;
-  wrap.appendChild(el('h4', 'board-plan-heading', g.heading + ' (' + items.length + ')'));
-  const list = el('ul', 'card-list board-list');
-  items.forEach(function (it) { list.appendChild(itemRow(it, onAnswer)); });
-  wrap.appendChild(list);
   return wrap;
 }
 
@@ -220,7 +238,7 @@ function stateLine(sec) {
 }
 
 // Fills Your turn's owner block; returns how many waiting items it shows, for
-// the lane's count. `onAnswer(ref)` opens the owner-check sheet on that item.
+// the lane's count. `onAnswer(ref, kind)` opens that group's owner-check sheet on that item.
 export function renderOwnerChecks(body, onAnswer) {
   const host = els.boardColumns && els.boardColumns.querySelector('.board-owner');
   if (!host) return 0;
@@ -245,15 +263,6 @@ export function renderOwnerChecks(body, onAnswer) {
     const mine = items.filter(function (it) { return it.kind === g.kind; });
     if (mine.length) nodes.push(group(g, mine, onAnswer));
   });
-  if (waitingCount) {
-    const btn = el('button', 'button-tint board-plan-answer board-owner-answer-all');
-    btn.type = 'button';
-    btn.innerHTML = icon('messages-square') + ' ';
-    btn.appendChild(document.createTextNode('Answer ' + plural(waitingCount, 'owner check', 'owner checks')));
-    const first = items.find(waiting);
-    btn.addEventListener('click', function () { onAnswer(first.ref); });
-    nodes.push(btn);
-  }
   host.replaceChildren.apply(host, nodes);
   return waitingCount;
 }

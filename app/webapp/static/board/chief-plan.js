@@ -72,16 +72,15 @@ function planLine(cls, text) {
   return p;
 }
 
-// A plan section: its heading carries the row count, "Lanes (2)", and
-// an optional muted line under it (`note`) says what the number counts.
-function planGroup(heading, rows, cls, note) {
+// The "Waiting on you" section: its heading carries the row count and the
+// rows follow. The folding groups are foldGroup's.
+function planGroup(heading, rows, cls) {
   const wrap = document.createElement('div');
   wrap.className = 'board-plan-group' + (cls ? ' ' + cls : '');
   const h = document.createElement('h4');
   h.className = 'board-plan-heading';
   h.textContent = heading;
   wrap.appendChild(h);
-  if (note) wrap.appendChild(planLine('board-plan-section-note', note));
   const list = document.createElement('ul');
   list.className = 'card-list board-list';
   rows.forEach(function (row) { list.appendChild(row); });
@@ -89,34 +88,53 @@ function planGroup(heading, rows, cls, note) {
   return wrap;
 }
 
-// Parked: the same section as a <details>, so a long parked list does
-// not push the queue off a phone. Collapsed by default on a phone, open on the
-// desktop board; once the reader toggles it the choice holds across rebuilds.
-let parkedOpen = null;
+// A foldable group: the section as a <details> whose heading is the summary,
+// so a long list does not push the next group off a phone. `defaultOpen` (a
+// boolean or a function of nothing) applies until the reader toggles it, after
+// which the choice holds across rebuilds. `opts.track` is the usage-log id of the
+// summary; `opts.rows` the list's items, `opts.note` an optional muted line under the
+// heading, `opts.after` nodes that follow the list inside the fold, `opts.cls` the
+// group's extra classes.
+const foldOpen = {};
 
-function parkedGroup(rows) {
-  const open = parkedOpen === null
-    ? !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches)
-    : parkedOpen;
+export function foldGroup(opts) {
+  const open = Object.prototype.hasOwnProperty.call(foldOpen, opts.key)
+    ? foldOpen[opts.key]
+    : (typeof opts.defaultOpen === 'function' ? opts.defaultOpen() : opts.defaultOpen !== false);
   const wrap = document.createElement('details');
-  wrap.className = 'board-plan-group board-plan-parked';
+  wrap.className = 'board-plan-group board-plan-fold' + (opts.cls ? ' ' + opts.cls : '');
   wrap.open = open;
   const sum = document.createElement('summary');
-  sum.dataset.track = 'board.plan-parked-fold';
-  sum.className = 'board-plan-heading board-plan-parked-summary';
+  sum.dataset.track = opts.track;
+  sum.className = 'board-plan-heading board-plan-fold-summary';
   const label = document.createElement('span');
-  label.textContent = 'Parked (' + rows.length + ')';
+  label.textContent = opts.heading;
   const mark = document.createElement('span');
-  mark.className = 'board-plan-parked-chevron';
+  mark.className = 'board-plan-fold-chevron';
   mark.setAttribute('aria-hidden', 'true');
   mark.innerHTML = icon('chevron-right');
   sum.append(label, mark);
+  wrap.appendChild(sum);
+  if (opts.note) wrap.appendChild(planLine('board-plan-section-note', opts.note));
   const list = document.createElement('ul');
   list.className = 'card-list board-list';
-  rows.forEach(function (row) { list.appendChild(row); });
-  wrap.append(sum, list);
-  wrap.addEventListener('toggle', function () { parkedOpen = wrap.open; });
+  opts.rows.forEach(function (row) { list.appendChild(row); });
+  wrap.appendChild(list);
+  (opts.after || []).forEach(function (node) { wrap.appendChild(node); });
+  wrap.addEventListener('toggle', function () { foldOpen[opts.key] = wrap.open; });
   return wrap;
+}
+
+// Parked folds shut on a phone and opens on the desktop board.
+function parkedGroup(rows) {
+  return foldGroup({
+    key: 'plan:parked',
+    track: 'board.plan-parked-fold',
+    heading: 'Parked (' + rows.length + ')',
+    rows: rows,
+    cls: 'board-plan-parked',
+    defaultOpen: function () { return !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches); },
+  });
 }
 
 // `shown` is the plan positions the repo filter keeps that no
@@ -272,12 +290,12 @@ function questionRow(plan, run, open, i, answered) {
 }
 
 // The owner-check sheet from an owner-check row or its group's button
-// (owner-checks.js): the owner checks alone, never the chief's questions;
-// `ownerRef` is the item to scroll to.
-export function openOwnerAnswersAt(ownerRef) {
+// (owner-checks.js): one group's owner checks (`kind`), never the chief's
+// questions or the other group's; `ownerRef` is the item to scroll to.
+export function openOwnerAnswersAt(ownerRef, kind) {
   const body = state.board;
   const liveRead = !(body && body.live_sessions && body.live_sessions.available === false);
-  openOwnerAnswers(state.chiefPlan, chiefRunState(body, liveRead), ownerRef);
+  openOwnerAnswers(state.chiefPlan, chiefRunState(body, liveRead), ownerRef, kind);
 }
 
 export function renderChiefPlan(body, liveRead) {
@@ -338,7 +356,12 @@ export function renderChiefPlan(body, liveRead) {
     }
     const lanes = (plan.lanes || []).filter(function (l) { return planRowShown(l, filter); });
     if (lanes.length) {
-      nodes.push(planGroup('Lanes (' + lanes.length + ')', lanes.map(planLaneRow)));
+      nodes.push(foldGroup({
+        key: 'plan:lanes',
+        track: 'board.plan-lanes-fold',
+        heading: 'Lanes (' + lanes.length + ')',
+        rows: lanes.map(planLaneRow),
+      }));
     }
     // Unfiltered, the Queue heading shows even when empty, as it always has;
     // a filter that empties it hides it, as the columns do. Parked items
@@ -347,8 +370,13 @@ export function renderChiefPlan(body, liveRead) {
     const queue = planned.filter(function (q) { return !isParked(q); });
     const parked = planned.filter(isParked);
     if (queue.length || !filter) {
-      nodes.push(planGroup('Queue (' + queue.length + ')', queue.map(queueRow), '',
-        'Only what the chief has scheduled; the Backlog counts every open issue.'));
+      nodes.push(foldGroup({
+        key: 'plan:queue',
+        track: 'board.plan-queue-fold',
+        heading: 'Queue (' + queue.length + ')',
+        rows: queue.map(queueRow),
+        note: 'Only what the chief has scheduled; the Backlog counts every open issue.',
+      }));
     }
     if (parked.length) nodes.push(parkedGroup(parked.map(queueRow)));
     const merged = mergedCount(plan);
