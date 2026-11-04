@@ -11,8 +11,9 @@ unvalidated; the card shows an unknown one as a neutral chip.
 A ``waiting_on_roberto`` item is one of the chief's questions for the Board's
 answer sheet (#1295). Beyond v1's ``text`` and ``ref`` it may carry the
 additive fields ``id``, ``repo``, ``question``, ``detail``, ``recommendation``,
-``options`` and ``multi``. A field of the wrong type is dropped on its own,
-never failing the item, and an old text-only item reads as a free-text
+``options``, ``multi`` and ``asked_at`` (a ``YYYY-MM-DD`` date, blank when
+absent or malformed so no date is invented). A field of the wrong type is
+dropped on its own, never failing the item, and an old text-only item reads as a free-text
 question. A ``ref`` shaped ``repo#N`` (or ``#N`` beside a ``repo``) gains a
 ``ref_url`` on the configured GitHub owner; any other ref stays plain text.
 Queue rows gain a ``ref_url`` the same way, and lanes from their ``item``
@@ -37,6 +38,7 @@ SUPPORTED_VERSION = 1
 
 _LANE_FIELDS = ("repo", "session", "item", "status", "model")
 _QUEUE_FIELDS = ("repo", "ref", "title", "status", "note", "model")
+_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _WAITING_FIELDS = ("text", "ref", "repo", "detail", "recommendation")
 # Read only when the chief wrote a string: a number here is a wrong type, not
 # a label to show.
@@ -111,6 +113,8 @@ def _waiting(value: Any, owner: str) -> List[Dict[str, Any]]:
             continue
         item: Dict[str, Any] = {name: _text(entry.get(name)) for name in _WAITING_FIELDS}
         item["id"] = _text(entry.get("id"))
+        asked_at = _text(entry.get("asked_at"))
+        item["asked_at"] = asked_at if _DATE.fullmatch(asked_at) else ""
         item["question"] = _text(entry.get("question")) or item["text"]
         item["options"] = _options(entry.get("options"))
         item["multi"] = entry.get("multi") is True

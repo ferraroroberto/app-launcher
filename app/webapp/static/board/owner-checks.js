@@ -24,7 +24,7 @@ import { icon } from '../_vendored/icons/icons.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { boardRepoFilter, matchesRepoFilter } from './board-dispatch.js';
 import { agoText } from './chief-plan.js';
-import { calendarDaysFromToday } from '../shared/format.js';
+import { calendarDaysFromToday, newestDateFirst, shortDate } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
 import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
 import { attachedLines, emptyFiles } from './answer-files.js';
@@ -50,13 +50,8 @@ export { ownerNeedsCount };
 // Newest first: `since` descending, the higher (later filed) issue number
 // breaking a tie, and an item with no readable `since` after the dated ones.
 function newestFirst(a, b) {
-  const sa = /^\d{4}-\d{2}-\d{2}$/.test(String(a.since || '')) ? a.since : '';
-  const sb = /^\d{4}-\d{2}-\d{2}$/.test(String(b.since || '')) ? b.since : '';
-  if (sa !== sb) {
-    if (!sa) return 1;
-    if (!sb) return -1;
-    return sa < sb ? 1 : -1;
-  }
+  const byDate = newestDateFirst(a.since, b.since);
+  if (byDate) return byDate;
   return (Number(b.number) || 0) - (Number(a.number) || 0);
 }
 
@@ -76,12 +71,12 @@ function kindLabel(kind) {
   return g ? g.label : kind;
 }
 
-// "waiting 3 d" from the block's `since` date; '' when there is none.
+// "3 Nov · waiting 3 d" from the block's `since` date; '' when there is none.
 function sinceText(since) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(since || ''));
   if (!m) return '';
   const days = Math.max(0, calendarDaysFromToday(new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))));
-  return days ? 'waiting ' + days + ' d' : 'since today';
+  return shortDate(since) + (days ? ' · waiting ' + days + ' d' : ' · since today');
 }
 
 function markText(item) {
