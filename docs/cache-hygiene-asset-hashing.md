@@ -21,9 +21,20 @@ iPhone PWA never serves a stale asset against fresh HTML, or vice versa.
   proxy's `audio/L16` and every SSE stream must reach the phone chunk by
   chunk, which gzip's buffering would stall. Websockets never pass through
   it.
-- `GET /api/version` returns `{git_sha, built_at, asset_hash}`. Cached at
-  module import; pythonw-safe subprocess (`stdin=DEVNULL`,
-  `CREATE_NO_WINDOW`, `git -C <root>`). The SPA fetches it via `jsonApi`
+- Served `.js` modules (not `vendor/`) go out without their comments
+  (`app/webapp/static_trim.py`): the explanatory comments were about 45% of the
+  gzipped module graph a cold launch fetches. The files on disk are untouched,
+  the fleet hash is computed from them, and the trimmed copy is kept in memory
+  until the file changes. Strings, template literals, regex literals and
+  `/*! */` banners are copied verbatim, and a source the scanner cannot follow
+  to its end is sent unchanged. `tests/unit/static_ui/test_static_trim.py` runs
+  every shipped module through `node --check`.
+- `GET /api/version` returns `{git_sha, built_at, asset_hash, head_sha,
+  session_host, age_seconds}`. `git_sha`/`built_at` are cached at module
+  import; `head_sha` and `session_host` come from a snapshot the webapp
+  rebuilds every 5 s while the route is polled (`age_seconds` is its age;
+  one older than 15 s is rebuilt before it answers). Pythonw-safe subprocess
+  (`stdin=DEVNULL`, `CREATE_NO_WINDOW`, `git -C <root>`). The SPA fetches it via `jsonApi`
   (auth-gated like every other API) and renders `Build: <sha> · <ts>` at the
   bottom of the Settings panel — visible proof of which build the phone is
   running.

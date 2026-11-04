@@ -17,6 +17,8 @@ app-launcher/
 │       ├── middleware/        # auth: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer
 │       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
+│       ├── static_trim.py     # strips comments from the JS modules the static mount serves
+│       ├── demand_cache.py    # a slow read kept in memory and rebuilt in the background while it is polled (/api/version, the channel list)
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served

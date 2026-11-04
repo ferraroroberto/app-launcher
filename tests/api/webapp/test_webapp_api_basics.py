@@ -121,7 +121,7 @@ class TestVersion:
         assert resp.status_code == 200
         body = resp.json()
         assert set(body.keys()) == {
-            "git_sha", "built_at", "asset_hash", "head_sha", "session_host",
+            "git_sha", "built_at", "asset_hash", "head_sha", "session_host", "age_seconds",
         }
         assert isinstance(body["git_sha"], str) and body["git_sha"]
         # The footer stamp is the identity this process captured at import, not a fresh read.

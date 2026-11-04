@@ -59,7 +59,7 @@ import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -116,6 +116,7 @@ from app.webapp.routers import (
 )
 from app.webapp.routers import life_os_channels
 from app.webapp.routers._helpers import STATIC_DIR
+from app.webapp.static_trim import trim_js
 
 _log = logging.getLogger(__name__)
 # The lifespan's Telegram autostart lines: a child so the file handler
@@ -133,6 +134,8 @@ _HASHED_SUFFIXES = {".js", ".css"}
 # only bounds an unstamped fetch; without it Safari's heuristic cache
 # held the previous icons past the deploy.
 _DAY_CACHE_SUFFIXES = {".webmanifest", ".png", ".ico", ".svg"}
+# Third-party bundles under static/: served as they are on disk.
+_VENDOR_DIRS = ("vendor",)
 
 
 class _VersionedStatic(StaticFiles):
@@ -148,6 +151,27 @@ class _VersionedStatic(StaticFiles):
         super().__init__(directory=directory)
         self._asset_hashes = asset_hashes
         self._static_dir = Path(directory)
+        self._js_cache: Dict[str, Tuple[Tuple[int, int], str]] = {}
+
+    def _served_js(self, path: Path, stat_result: os.stat_result) -> str:
+        """The module as sent: comments stripped (vendored bundles are already
+        minified and keep their licence text), imports stamped. Kept per file
+        until it changes on disk, so a repeat request does no scan."""
+        signature = (stat_result.st_mtime_ns, stat_result.st_size)
+        cached = self._js_cache.get(str(path))
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        body = path.read_text(encoding="utf-8")
+        try:
+            rel_parent = path.resolve().relative_to(self._static_dir.resolve()).parent
+        except ValueError:
+            rel_parent = Path(".")
+        if rel_parent.parts[:1] != _VENDOR_DIRS:
+            body = trim_js(body)
+        from_dir = "" if rel_parent == Path(".") else rel_parent.as_posix()
+        served = rewrite_js_imports(body, self._asset_hashes, from_dir)
+        self._js_cache[str(path)] = (signature, served)
+        return served
 
     def file_response(
         self,
@@ -161,18 +185,12 @@ class _VersionedStatic(StaticFiles):
 
         if suffix == ".js":
             try:
-                body = path.read_text(encoding="utf-8")
+                body = self._served_js(path, stat_result)
             except OSError:
                 return super().file_response(full_path, stat_result, scope, status_code)
-            try:
-                rel_parent = path.resolve().relative_to(self._static_dir.resolve()).parent
-            except ValueError:
-                rel_parent = Path(".")
-            from_dir = "" if rel_parent == Path(".") else rel_parent.as_posix()
-            rewritten = rewrite_js_imports(body, self._asset_hashes, from_dir)
             media_type, _ = mimetypes.guess_type(str(path))
             return Response(
-                content=rewritten,
+                content=body,
                 status_code=status_code,
                 media_type=media_type or "text/javascript",
                 headers={"Cache-Control": _LONG_CACHE},
@@ -431,6 +449,10 @@ async def _lifespan(app: FastAPI):
     # The header's CPU reading: one shared sampler, awake only while
     # a page polls /api/system/load.
     tasks.append(asyncio.create_task(system_load.tick_forever()))
+    # The snapshot behind /api/version, rebuilt only while that route is polled.
+    tasks.append(asyncio.create_task(misc.version_cache(app).tick_forever()))
+    # The Settings card's channel list, rebuilt only while it is polled.
+    tasks.append(asyncio.create_task(life_os_channels.channels_cache(app).tick_forever()))
     cfg = getattr(app.state, "webapp_config", None)
     canonical, role_reason = instance_role.canonical_instance()
     if cfg is not None and canonical:

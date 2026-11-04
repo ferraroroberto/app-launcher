@@ -71,6 +71,7 @@ from src.launching.launcher import close_mirror_window
 from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
 
+from app.webapp.demand_cache import DemandCache
 from app.webapp.routers._helpers import (
     audit_off_loop,
     cert_present,
@@ -94,13 +95,18 @@ RESTART_QUIT_WAIT_SECONDS = 15.0
 RESTART_KILL_WAIT_SECONDS = 5.0
 RESTART_POLL_SECONDS = 0.5
 
+# How often the channel list is rebuilt while the Settings card is open.
+CHANNELS_TICK_S = 5.0
+
 
 def _profiles(request: Request) -> tuple[List[ChannelProfile], List[str]]:
     """Load the profiles; ``app.state.channel_profiles_path`` overrides the
     default file (tests point it at a temp file)."""
-    return load_channel_profiles(
-        getattr(request.app.state, "channel_profiles_path", None)
-    )
+    return _profiles_of(request.app)
+
+
+def _profiles_of(app: Any) -> tuple[List[ChannelProfile], List[str]]:
+    return load_channel_profiles(getattr(app.state, "channel_profiles_path", None))
 
 
 def _profile_model(cfg: WebappConfig, profile: ChannelProfile) -> str:
@@ -159,18 +165,57 @@ async def list_channels(request: Request) -> Dict[str, Any]:
     booleans and names leave here: no state directory, no path, no file
     content — ``env_present`` is a stat of the token file, which is never
     opened.
+
+    Built off the request path: the session-host's live list and the skills
+    scan can each stall, and the Settings card polls this. The answer is a
+    snapshot (:class:`app.webapp.demand_cache.DemandCache`) that the lifespan
+    keeps fresh while the route is read and every write below marks stale;
+    ``age_seconds`` says how old it is.
     """
-    cfg: WebappConfig = request.app.state.webapp_config
-    profiles, problems = _profiles(request)
-    life_os_dir = Path(cfg.life_os_dir)
-    skills = scan_skills(life_os_dir) if life_os_dir.is_dir() else []
-    skills_by_id = {s.id: s for s in skills}
+    answer, age_seconds = await channels_cache(request.app).get()
+    return {**answer, "age_seconds": age_seconds}
+
+
+def channels_cache(app: Any) -> DemandCache[Dict[str, Any]]:
+    """The app's channel-list snapshot."""
+    cache = getattr(app.state, "channels_cache", None)
+    if cache is None:
+        cache = app.state.channels_cache = DemandCache(
+            "GET /api/life-os/channels", lambda: _build_channels(app), tick_s=CHANNELS_TICK_S,
+            max_age_s=3 * CHANNELS_TICK_S,
+        )
+    return cache
+
+
+def _mark_channels_stale(request: Request) -> None:
+    """A write here changed what the list shows: its next read rebuilds."""
+    channels_cache(request.app).mark_dirty()
+
+
+async def _build_channels(app: Any) -> Dict[str, Any]:
+    """The list's answer. File reads, the skills scan and the ``PATH`` lookup
+    run on a worker thread; only the session-host call is awaited."""
+    cfg: WebappConfig = app.state.webapp_config
+    profiles, problems = await asyncio.to_thread(_profiles_of, app)
     live: Optional[Dict[str, Dict[str, Any]]] = None
     if profiles:
         try:
             live = await _live_profile_sessions(cfg)
         except session_client.SessionHostError as exc:
             logger.debug(f"channel profile session lookup failed: {exc}")
+    return await asyncio.to_thread(_channels_answer, app, cfg, profiles, problems, live)
+
+
+def _channels_answer(
+    app: Any,
+    cfg: WebappConfig,
+    profiles: List[ChannelProfile],
+    problems: List[str],
+    live: Optional[Dict[str, Dict[str, Any]]],
+) -> Dict[str, Any]:
+    life_os_dir = Path(cfg.life_os_dir)
+    skills = scan_skills(life_os_dir) if life_os_dir.is_dir() else []
+    skills_by_id = {s.id: s for s in skills}
     rows = []
     for profile in profiles:
         sess = (live or {}).get(profile.id)
@@ -192,13 +237,13 @@ async def list_channels(request: Request) -> Dict[str, Any]:
         "problems": problems,
         "setup": {
             "file_present": profiles_file_present(
-                getattr(request.app.state, "channel_profiles_path", None)
+                getattr(app.state, "channel_profiles_path", None)
             ),
             "life_os_found": life_os_dir.is_dir(),
             "bun": bun_available(),
             "plugin": plugin_installed_for(
                 life_os_dir,
-                getattr(request.app.state, "installed_plugins_path", None),
+                getattr(app.state, "installed_plugins_path", None),
             ),
             "skills": [{"id": s.id, "name": s.name} for s in skills],
         },
@@ -297,10 +342,13 @@ async def launch_channel(profile_id: str, request: Request) -> Dict[str, Any]:
             status_code=400,
             detail="Telegram channel sessions run on Claude only",
         )
-    return await start_channel_session(
-        cfg, profile, model=model, resume=bool(body.get("resume", False)),
-        body=body, request=request,
-    )
+    try:
+        return await start_channel_session(
+            cfg, profile, model=model, resume=bool(body.get("resume", False)),
+            body=body, request=request,
+        )
+    finally:
+        _mark_channels_stale(request)
 
 
 async def start_channel_session(
@@ -450,6 +498,7 @@ async def update_channel(profile_id: str, request: Request) -> Dict[str, Any]:
         )
     except ProfileEditError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc))
+    _mark_channels_stale(request)
     await audit_off_loop(
         audit.audit_event, "channel_profile_update",
         profile=profile_id, keys=",".join(sorted(body)),
@@ -487,19 +536,22 @@ async def restart_channel(profile_id: str, request: Request) -> Dict[str, Any]:
     body = await maybe_json(request)
     _agent, model = _resolve_launch_choice({"model": _profile_model(cfg, profile)})
     life_os_dir, skill = _profile_skill(cfg, profile)
-    async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
-        running = (await _live_or_503(cfg, profile)).get(profile.id)
-        old_sid = str((running or {}).get("session_id") or "")
-        if old_sid:
-            await _quit_and_confirm_gone(cfg, profile, old_sid)
-            # The old session is gone; anything still live on this profile
-            # is another session, and a start would make two.
-            _refuse_if_running(profile, await _live_or_503(cfg, profile))
-        logger.info(f"ℹ️ channel profile {profile.id} restart: starting fresh")
-        result = await _spawn_channel(
-            cfg, profile, skill, life_os_dir,
-            model=model, resume=False, body=body, request=request,
-        )
+    try:
+        async with _launch_locks.setdefault(profile.id, asyncio.Lock()):
+            running = (await _live_or_503(cfg, profile)).get(profile.id)
+            old_sid = str((running or {}).get("session_id") or "")
+            if old_sid:
+                await _quit_and_confirm_gone(cfg, profile, old_sid)
+                # The old session is gone; anything still live on this profile
+                # is another session, and a start would make two.
+                _refuse_if_running(profile, await _live_or_503(cfg, profile))
+            logger.info(f"ℹ️ channel profile {profile.id} restart: starting fresh")
+            result = await _spawn_channel(
+                cfg, profile, skill, life_os_dir,
+                model=model, resume=False, body=body, request=request,
+            )
+    finally:
+        _mark_channels_stale(request)
     new_sid = str((result.get("session") or {}).get("session_id") or "")
     await audit_off_loop(
         audit.audit_event, "channel_restart",

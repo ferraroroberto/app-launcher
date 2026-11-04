@@ -111,6 +111,13 @@ boot           = "tests/e2e/conftest.py::_autoboot_server"
 live_optin_env = "LAUNCHER_E2E_LIVE"
 
 # ---------------------------------------------------------------------------
+# [perf.review] -- what /perf-review times (fleet-config skills/perf-review).
+# "Ready" is the first project row on the landing (Code) tab: it needs the
+# /api/apps answer, so a painted shell with no data does not count as loaded.
+[perf.review]
+ready_selector = "#claudeList .action-row"
+
+# ---------------------------------------------------------------------------
 # [comment_ratchet] -- the scaffold's no-history-comments ratchet (#1751,
 # project-scaffolding#411). scripts/verify-before-ship.ps1 runs
 # scripts/comment_ratchet.py, which fails when a file's count of `#NNN` issue
