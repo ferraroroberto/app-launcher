@@ -465,6 +465,44 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
 
+def test_chief_grokbot_switch_is_on_by_default_and_saves(
+    authed_page: Page, base_url: str
+) -> None:
+    """The Grok Bot switch sits on Settings' Chief sheet, on until the owner
+    turns it off. It saves at once through the ordinary /api/config POST and
+    survives a reload; the fleet-config readers see it on the chief settings
+    endpoint."""
+    page = authed_page
+    posts: list = []
+    page.on("request", lambda req: posts.append(req.post_data_json)
+            if _is_config_post(req) else None)
+
+    def saving(act) -> None:
+        with page.expect_response(
+            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
+        ):
+            act()
+
+    _open_chief_sheet(page, base_url)
+    switch = page.locator("#grokbotEnabledToggle")
+    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(page.locator("#grokbotEnabledHelp")).to_contain_text("relay")
+
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(page.locator("#toast")).to_contain_text("Grok Bot off")
+    assert posts[-1] == {"grokbot_enabled": False}, posts
+
+    _open_chief_sheet(page, base_url)
+    expect(switch).to_have_attribute("aria-checked", "false")
+
+    # Back on at the default, so the shared webapp is left as found.
+    saving(switch.click)
+    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(page.locator("#toast")).to_contain_text("Grok Bot on")
+    assert posts[-1] == {"grokbot_enabled": True}, posts
+
+
 @pytest.mark.parametrize(("toggle", "key", "label", "help_word"), [
     ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox"),
     ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch"),

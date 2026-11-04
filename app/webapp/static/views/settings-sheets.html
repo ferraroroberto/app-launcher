@@ -345,6 +345,11 @@
           </div>
           <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
           <div class="row">
+            <span>Grok Bot</span>
+            <button data-track="chief.grokbot-enabled" type="button" id="grokbotEnabledToggle" class="toggle" role="switch" aria-checked="true" aria-label="Grok Bot" aria-describedby="grokbotEnabledHelp" title="Turn the Grok Bot ensure Job and relay on or off"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="grokbotEnabledHelp" class="field-help">Lets the Grok Bot ensure Job keep it running and lets its relay send. Off, the Job does nothing, the digest says disabled and the relay refuses to send; reads still work.</p>
+          <div class="row">
             <span>Grok for Sonnet lanes</span>
             <button data-track="chief.grok-auto-switch" type="button" id="grokAutoSwitchToggle" class="toggle" role="switch" aria-checked="false" aria-label="Grok auto-switch" aria-describedby="grokAutoSwitchHelp" title="Launch Sonnet lanes on Grok when Claude's week runs short"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>

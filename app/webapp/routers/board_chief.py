@@ -479,6 +479,7 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
     return {
         "model": cfg.chief_model,
         "worker_cap": cfg.chief_worker_cap,
+        "grokbot_enabled": cfg.grokbot_enabled,
     }
 
 

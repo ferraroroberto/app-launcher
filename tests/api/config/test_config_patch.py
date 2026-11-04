@@ -355,6 +355,28 @@ class TestPatchConfig:
         assert load_webapp_config(cfg_path).chief_job_failures is False
         assert client.get("/api/config").json()["chief_job_failures"] is False
 
+    def test_grokbot_enabled_defaults_on_and_round_trips(self, webapp_client):
+        """grokbot_enabled: the Grok Bot switch is on until the owner turns it
+        off, and the save reaches disk."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["grokbot_enabled"] is True
+
+        resp = client.post("/api/config", json={"grokbot_enabled": False})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.grokbot_enabled is False
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).grokbot_enabled is False
+        assert client.get("/api/config").json()["grokbot_enabled"] is False
+
+    @pytest.mark.parametrize("junk", ["false", 0, None])
+    def test_grokbot_enabled_rejects_non_booleans(self, webapp_client, junk):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"grokbot_enabled": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.grokbot_enabled is True
+
     def test_grok_auto_switch_defaults_off_and_round_trips(self, webapp_client):
         from src.webapp_config import load_webapp_config
 

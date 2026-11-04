@@ -113,6 +113,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_doorbell": cfg.chief_doorbell,
         # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
+        # The Grok Bot on/off switch; on by default.
+        "grokbot_enabled": cfg.grokbot_enabled,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
         # The chief's model and worker cap, read-only here so the
         # Settings > Chief row can show them without a passkey prompt. Writes
@@ -260,6 +262,7 @@ _SWITCH_KEYS = (
     "autostart_channel_sessions",
     "chief_doorbell",
     "chief_job_failures",
+    "grokbot_enabled",
     "life_os_refresh_skill_instructions",
     "grok_auto_switch",
 )
@@ -289,6 +292,7 @@ _PATCH_KEYS = frozenset({
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_job_failures",
+    "grokbot_enabled",
     "life_os_refresh_skill_instructions",
     "claude_model",
     "claude_effort",

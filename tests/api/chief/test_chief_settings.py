@@ -67,6 +67,7 @@ class TestChiefSettings:
         assert resp.json()["settings"] == {
             "model": "fable",
             "worker_cap": 3,
+            "grokbot_enabled": True,
         }
 
     def test_put_persists_and_reloads(self, webapp_client, _bypass_gate):
@@ -83,6 +84,22 @@ class TestChiefSettings:
         assert client.get(
             "/api/board/chief/settings"
         ).json()["settings"]["worker_cap"] == 5
+
+    def test_grokbot_enabled_follows_the_config_switch(self, webapp_client, _bypass_gate):
+        """The fleet-config grokbot readers poll this block over loopback, so
+        a Settings flip (POST /api/config) must show here at once, and a
+        chief PUT of other fields must not reset it."""
+        client, _, _ = webapp_client
+        assert client.post("/api/config", json={"grokbot_enabled": False}).status_code == 200
+        assert client.get(
+            "/api/board/chief/settings"
+        ).json()["settings"]["grokbot_enabled"] is False
+        resp = client.put("/api/board/chief/settings", json={"worker_cap": 4})
+        assert resp.json()["settings"] == {
+            "model": "fable",
+            "worker_cap": 4,
+            "grokbot_enabled": False,
+        }
 
     def test_put_ignores_unknown_keys(self, webapp_client, _bypass_gate):
         """#616: a stale client still sending the retired respawn keys must

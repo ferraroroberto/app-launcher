@@ -275,6 +275,11 @@ class WebappConfig:
     # run. On by default: the event only lands while a chief is live, and
     # the doorbell above decides whether the chief is woken for it.
     chief_job_failures: bool = True
+    # The Grok Bot feature switch. fleet-config's grokbot readers (the
+    # ensure Job, the digest line, the relay) read it over loopback from
+    # GET /api/board/chief/settings. On by default: the owner approved the
+    # Job and the relay, and this is how he turns them off.
+    grokbot_enabled: bool = True
     # Bearer token enforced when the request did NOT come from a
     # loopback IP. Empty string disables enforcement entirely.
     auth_token: str = ""
