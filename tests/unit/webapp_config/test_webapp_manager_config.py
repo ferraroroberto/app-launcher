@@ -9,7 +9,9 @@ boot on a loaded box was a silent no-op.
 
 from __future__ import annotations
 
-from app.webapp.manager import WebappManagerConfig, load_config
+import pytest
+
+from app.webapp.manager import WebappManager, WebappManagerConfig, load_config
 
 
 class TestLoadConfig:
@@ -26,6 +28,7 @@ class TestLoadConfig:
                 "startup_timeout_seconds": 45,
                 "request_timeout_seconds": 2.5,
                 "poll_interval_seconds": 1.25,
+                "server": "uvicorn",
             }
         )
         assert cfg == WebappManagerConfig(
@@ -35,6 +38,7 @@ class TestLoadConfig:
             startup_timeout_seconds=45.0,
             request_timeout_seconds=2.5,
             poll_interval_seconds=1.25,
+            server="uvicorn",
         )
 
     def test_partial_section_keeps_defaults_for_the_rest(self):
@@ -43,3 +47,19 @@ class TestLoadConfig:
         assert cfg.request_timeout_seconds == WebappManagerConfig().request_timeout_seconds
         assert cfg.poll_interval_seconds == WebappManagerConfig().poll_interval_seconds
         assert cfg.port == WebappManagerConfig().port
+
+    def test_server_defaults_to_hypercorn(self):
+        assert load_config({}).server == "hypercorn"
+
+    def test_unknown_server_fails_loud(self):
+        with pytest.raises(ValueError, match="webapp.server"):
+            load_config({"server": "uvicron"})
+
+
+def test_launch_command_names_the_configured_server():
+    """The tray's spawn carries the server, so the fallback is one config
+    edit plus `tray.bat --restart`."""
+    for server in ("hypercorn", "uvicorn"):
+        cmd = WebappManager(WebappManagerConfig(server=server))._build_command()
+        assert cmd[1:3] == ["-m", "app.webapp.serve"]
+        assert cmd[cmd.index("--server") + 1] == server

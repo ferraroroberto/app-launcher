@@ -94,7 +94,60 @@ def test_cli_passes_uvicorn_style_flags_through(monkeypatch):
         "--host", "0.0.0.0", "--port", "8445",
         "--ssl-keyfile", "k.pem", "--ssl-certfile", "c.pem", "--log-level", "info",
     ]) == 0
-    assert seen["args"] == ("0.0.0.0", 8445, "c.pem", "k.pem", "info")
+    assert seen["args"] == ("0.0.0.0", 8445, "c.pem", "k.pem", "info", "hypercorn")
+
+
+def test_cli_selects_the_uvicorn_fallback(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(serve, "run", lambda *a: seen.setdefault("args", a))
+    assert serve.main(["--port", "8445", "--server", "uvicorn"]) == 0
+    assert seen["args"][-1] == "uvicorn"
+
+
+def test_cli_rejects_an_unknown_server():
+    with pytest.raises(SystemExit):
+        serve.main(["--port", "8445", "--server", "daphne"])
+
+
+def test_uvicorn_fallback_config_matches_the_hypercorn_one():
+    ucfg = serve.build_uvicorn_config(object(), "127.0.0.1", 18445, "cert.pem", "key.pem", "WARNING")
+    assert (ucfg.host, ucfg.port) == ("127.0.0.1", 18445)
+    assert (ucfg.ssl_certfile, ucfg.ssl_keyfile) == ("cert.pem", "key.pem")
+    assert ucfg.ws_ping_interval == serve.WS_PING_INTERVAL_S
+    assert ucfg.log_level == "warning"
+    # wrap_app already trusts loopback only; uvicorn's own pass would apply it twice.
+    assert ucfg.proxy_headers is False
+
+
+def test_run_serves_the_uvicorn_fallback_on_the_selector_loop(monkeypatch):
+    stub_app = object()
+    seen = {}
+
+    async def fake_uvicorn(ucfg):
+        seen["app"] = ucfg.app
+        seen["loop"] = type(asyncio.get_running_loop())
+        seen["bind"] = (ucfg.host, ucfg.port)
+
+    async def no_hypercorn(*_a):
+        raise AssertionError("the uvicorn fallback must not start hypercorn")
+
+    monkeypatch.setitem(sys.modules, "app.webapp.server", types.SimpleNamespace(app=stub_app))
+    monkeypatch.setattr(serve, "_serve_uvicorn", fake_uvicorn)
+    monkeypatch.setattr(serve, "_serve_until_signalled", no_hypercorn)
+    serve.run("127.0.0.1", 18445, server="uvicorn")
+
+    loop = selector_loop_factory()
+    try:
+        assert seen["loop"] is type(loop)
+    finally:
+        loop.close()
+    assert seen["bind"] == ("127.0.0.1", 18445)
+    assert seen["app"].app is stub_app, "the fallback must serve behind the proxy-header wrapper"
+
+
+def test_run_rejects_an_unknown_server():
+    with pytest.raises(ValueError, match="daphne"):
+        serve.run("127.0.0.1", 18445, server="daphne")
 
 
 def test_cli_requires_a_port():

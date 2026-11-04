@@ -26,6 +26,17 @@ loaded box that boots slowly. `request_timeout_seconds` (`1.0`) — per
 health-probe HTTP timeout. `poll_interval_seconds` (`0.4`) — gap between
 those probes while waiting for startup.
 
+`server` (`"hypercorn"`) picks the server `app.webapp.serve` runs:
+`"hypercorn"` speaks HTTP/2 to browsers over TLS (and HTTP/1.1 to clients
+that offer only that, such as cloudflared and the tray's probes);
+`"uvicorn"` is the HTTP/1.1-only fallback, with the same event loop, TLS,
+loopback-only proxy trust and 20 s websocket pings. Any other value stops
+the tray at boot with an error naming the key. It takes effect on
+`tray.bat --restart`. `webapp.bat`, the `webapp` CLI command and
+`scripts/run_named_tunnel.py` always use hypercorn; run
+`python -m app.webapp.serve --server uvicorn ...` by hand for the fallback
+without the tray.
+
 `tailnet_host` is the Tailscale (MagicDNS) hostname of this PC. The Apps
 tab's **Running** card uses it to build each launched app's
 remote URL (`<scheme>://<tailnet_host>:<port>/`) so you can tap its row

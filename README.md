@@ -66,6 +66,14 @@ The tray icon menu has:
 - **🔄 Restart webapp** — pick up code changes without losing the tunnel
 - **ℹ️ Status** — quick popup with running state + base URL
 
+### Restart matrix
+
+| You changed | Restart | Notes |
+|---|---|---|
+| webapp code, static assets, `config/config.json` | `tray.bat --restart` | Reclaims `:8445`, keeps the `:8446` sessions; confirm `/api/version`'s `git_sha` ([procedure](docs/restart-and-liveness.md)) |
+| a session-host path (`CLAUDE.md`'s `## session-host`) | `scripts/restart-session-host.ps1 -Confirm` | Operator only: it ends every live terminal |
+| HTTP/2 misbehaving (fallback) | set `"server": "uvicorn"` in `config/config.json`'s `webapp`, then `tray.bat --restart` | The HTTP/1.1 server the webapp ran on before; same TLS, proxy trust and auth. Delete the key and restart to go back to HTTP/2 |
+
 
 The build line, `/api/version`, the health watchdog and the request logs are in [docs/run-troubleshooting.md](docs/run-troubleshooting.md).
 
