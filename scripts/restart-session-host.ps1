@@ -2,7 +2,7 @@
 #
 # tray.bat --restart deliberately EXCLUDES :8446 to protect live PTY
 # sessions -- so a change under src/session_host.py
-# or app/session_host/ is not live until this process restarts, and nothing
+# or app/webapp/session_host/ is not live until this process restarts, and nothing
 # else restarts it automatically. This script is the one supported,
 # documented way to do that: an explicit, operator-initiated action, never
 # a side effect of a normal ship.

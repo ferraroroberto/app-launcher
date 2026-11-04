@@ -2,7 +2,7 @@
   "version": 1,
   "entries": [
     {"key": "app/cli/commands/run_job_cmd.py", "counts": {"unresolved": 5}},
-    {"key": "app/session_host/server.py", "counts": {"unresolved": 2}},
+    {"key": "app/webapp/session_host/server.py", "counts": {"unresolved": 2}},
     {"key": "app/tray/registered_trays.py", "counts": {"unresolved": 2}},
     {"key": "app/tray/tray.py", "counts": {"unresolved": 2}},
     {"key": "app/webapp/observability.py", "counts": {"unresolved": 2}},

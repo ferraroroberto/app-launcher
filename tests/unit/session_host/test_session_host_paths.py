@@ -23,7 +23,7 @@ class TestDeclaredSessionHostPaths:
     def test_real_claude_md_declares_the_known_session_host_paths(self):
         paths = session_host_paths.declared_session_host_paths(_CLAUDE_MD)
         assert "src/session_host.py" in paths
-        assert "app/session_host/" in paths
+        assert "app/webapp/session_host/" in paths
 
     def test_declaration_covers_the_whole_import_closure(self):
         """The declaration must name every module the session-host loads.
@@ -42,7 +42,7 @@ class TestDeclaredSessionHostPaths:
         """
         closure = session_host_paths.session_host_import_closure(_REPO_ROOT)
         assert closure is not None, "session-host import closure could not be computed"
-        assert "app/session_host/server.py" in closure, "sanity: entry point missing"
+        assert "app/webapp/session_host/server.py" in closure, "sanity: entry point missing"
         assert "src/session_host.py" in closure, "sanity: closure did not follow imports"
 
         declared = session_host_paths.declared_session_host_paths(_CLAUDE_MD)
@@ -100,26 +100,27 @@ class TestDeclaredSessionHostPaths:
         md.write_text(
             "## session-host\n"
             "- what/why: no paths here\n"
-            "- not restarted/deployed by: `tray.bat --restart` reclaim of `app/session_host/`\n",
+            "- not restarted/deployed by: `tray.bat --restart` reclaim of `app/webapp/session_host/`\n",
             encoding="utf-8",
         )
-        assert session_host_paths.declared_session_host_paths(md) == ["app/session_host/"]
+        assert session_host_paths.declared_session_host_paths(md) == ["app/webapp/session_host/"]
 
 
 class TestSessionHostImportClosure:
     """``session_host_import_closure`` — #923's drift check on the declaration."""
 
     def _tree(self, tmp_path: Path) -> Path:
-        (tmp_path / "app" / "session_host").mkdir(parents=True)
+        (tmp_path / "app" / "webapp" / "session_host").mkdir(parents=True)
         (tmp_path / "src").mkdir()
         (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
-        (tmp_path / "app" / "session_host" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "app" / "webapp" / "__init__.py").write_text("", encoding="utf-8")
+        (tmp_path / "app" / "webapp" / "session_host" / "__init__.py").write_text("", encoding="utf-8")
         (tmp_path / "src" / "__init__.py").write_text("", encoding="utf-8")
         return tmp_path
 
     def test_follows_transitive_first_party_imports(self, tmp_path):
         repo = self._tree(tmp_path)
-        (repo / "app" / "session_host" / "server.py").write_text(
+        (repo / "app" / "webapp" / "session_host" / "server.py").write_text(
             "import json\nfrom src.host import Manager\n", encoding="utf-8"
         )
         (repo / "src" / "host.py").write_text(
@@ -131,8 +132,9 @@ class TestSessionHostImportClosure:
         closure = session_host_paths.session_host_import_closure(repo)
         assert closure == [
             "app/__init__.py",
-            "app/session_host/__init__.py",
-            "app/session_host/server.py",
+            "app/webapp/__init__.py",
+            "app/webapp/session_host/__init__.py",
+            "app/webapp/session_host/server.py",
             "src/__init__.py",
             "src/deep.py",
             "src/host.py",
@@ -141,7 +143,7 @@ class TestSessionHostImportClosure:
     def test_follows_imports_nested_in_functions(self, tmp_path):
         """A lazy import inside a function still loads the module at runtime."""
         repo = self._tree(tmp_path)
-        (repo / "app" / "session_host" / "server.py").write_text(
+        (repo / "app" / "webapp" / "session_host" / "server.py").write_text(
             "def run():\n    from src.late import go\n    return go\n", encoding="utf-8"
         )
         (repo / "src" / "late.py").write_text("go = 1\n", encoding="utf-8")
@@ -150,16 +152,16 @@ class TestSessionHostImportClosure:
 
     def test_resolves_relative_imports(self, tmp_path):
         repo = self._tree(tmp_path)
-        (repo / "app" / "session_host" / "server.py").write_text(
+        (repo / "app" / "webapp" / "session_host" / "server.py").write_text(
             "from .helper import h\n", encoding="utf-8"
         )
-        (repo / "app" / "session_host" / "helper.py").write_text("h = 1\n", encoding="utf-8")
+        (repo / "app" / "webapp" / "session_host" / "helper.py").write_text("h = 1\n", encoding="utf-8")
         closure = session_host_paths.session_host_import_closure(repo)
-        assert "app/session_host/helper.py" in closure
+        assert "app/webapp/session_host/helper.py" in closure
 
     def test_survives_an_import_cycle(self, tmp_path):
         repo = self._tree(tmp_path)
-        (repo / "app" / "session_host" / "server.py").write_text(
+        (repo / "app" / "webapp" / "session_host" / "server.py").write_text(
             "from src.a import x\n", encoding="utf-8"
         )
         (repo / "src" / "a.py").write_text("from src.b import y\n", encoding="utf-8")
@@ -178,7 +180,7 @@ class TestSessionHostImportClosure:
         state" constraint).
         """
         repo = self._tree(tmp_path)
-        (repo / "app" / "session_host" / "server.py").write_text(
+        (repo / "app" / "webapp" / "session_host" / "server.py").write_text(
             "from src.broken import x\n", encoding="utf-8"
         )
         (repo / "src" / "broken.py").write_text("def (:\n", encoding="utf-8")
@@ -232,7 +234,7 @@ class TestPathsTouchedBetween:
         head_sha = commit(f"touch {changed}")
 
         result = session_host_paths.paths_touched_between(
-            repo, base_sha, head_sha, ["src/session_host.py", "app/session_host/"]
+            repo, base_sha, head_sha, ["src/session_host.py", "app/webapp/session_host/"]
         )
         assert result is expected
 

@@ -5,7 +5,7 @@ re-emits its **entire transcript** on any winsize change (empirical probe,
 issue #430: ~65 KB for a long conversation, on a same-shape resize toggle).
 The session-host used to serve a (re)connecting client by toggling the PTY
 width by one column and back (``_force_repaint`` in
-``app/session_host/server.py``) so the agent would repaint at the current
+``app/webapp/session_host/server.py``) so the agent would repaint at the current
 size — but that SIGWINCH is exactly what triggers the full re-emission,
 visible to every subscriber (issue #432).
 

@@ -54,7 +54,7 @@ def test_real_fleet_toml_declares_usable_e2e_table(cfg: E2EConfig) -> None:
         ("app/webapp/static/_vendored/nav/nav.css", Category.FULL),  # vendored CSS is layout
         ("app/webapp/server.py", Category.FULL),
         ("app/webapp/routers/board.py", Category.FULL),
-        ("app/session_host/server.py", Category.FULL),
+        ("app/webapp/session_host/server.py", Category.FULL),
         ("src/session_host.py", Category.FULL),
         ("src/session_host_pty.py", Category.FULL),  # future split, not on disk yet
         ("src/vt_snapshot.py", Category.FULL),  # declared session-host path (#881)
@@ -153,7 +153,7 @@ def test_session_host_reason_keeps_the_label_the_gate_warns_on(cfg: E2EConfig) -
     """verify-before-ship.ps1 prints its "not live after tray.bat --restart"
     warning when E2E_REASON matches "session-host" (#615), so the rules' labels
     are part of that contract, not decoration."""
-    for path in ("src/session_host.py", "app/session_host/server.py", "src/audit.py", "launcher.py"):
+    for path in ("src/session_host.py", "app/webapp/session_host/server.py", "src/audit.py", "launcher.py"):
         r = classify([path], cfg)
         assert any("session-host" in reason for reason in r.reasons), (path, r.reasons)
 
@@ -341,7 +341,7 @@ def test_surface_diff_with_backend_python_still_narrows(cfg: E2EConfig) -> None:
         "app/webapp/routers/_helpers.py",
         "src/session_host.py",
         "src/launching/launcher.py",
-        "app/session_host/server.py",
+        "app/webapp/session_host/server.py",
         "tests/e2e/conftest.py",
         "tests/conftest.py",
         "app/webapp/static/icon-512.png",   # static, owned by no surface

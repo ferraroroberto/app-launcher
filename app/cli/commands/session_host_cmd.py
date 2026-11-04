@@ -25,7 +25,7 @@ class SessionHostCommand(BaseCommand):
         p.add_argument("--port", type=int, default=None, help="Override port")
 
     def execute(self, args: argparse.Namespace) -> int:
-        from app.session_host.server import DEFAULT_PORT, run_session_host
+        from app.webapp.session_host.server import DEFAULT_PORT, run_session_host
         from src.webapp_config import load_webapp_config
 
         port = args.port or load_webapp_config().session_host_port or DEFAULT_PORT

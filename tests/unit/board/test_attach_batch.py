@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from app.session_host import server as session_host_server
+from app.webapp.session_host import server as session_host_server
 from src.subprocess_flags import NO_WINDOW
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent

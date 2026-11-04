@@ -27,7 +27,7 @@ from unittest.mock import MagicMock
 
 import httpx
 
-from app.session_host import server
+from app.webapp.session_host import server
 
 _SLOW_CREATE_S = 0.3
 _TICK_INTERVAL_S = 0.02

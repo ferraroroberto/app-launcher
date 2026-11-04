@@ -102,7 +102,7 @@ life-os.js + life-os/, screen/, settings/, voice.js"]
   end
   R_MISC --> STATICJS
 
-  subgraph sessionhost["app/session_host/ — loopback-only, :8446"]
+  subgraph sessionhost["app/webapp/session_host/ — loopback-only, :8446"]
     HOSTSERVER["server.py\nHTTP + WebSocket surface\nPOST/GET /sessions, WS /sessions/{sid}/ws"]
   end
   HOSTCMD --> HOSTSERVER

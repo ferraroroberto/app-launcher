@@ -1,6 +1,6 @@
 """Issue #128: full-screen TUI (re)connect handling.
 
-Two halves of the fix live in ``app/session_host/server.py``:
+Two halves of the fix live in ``app/webapp/session_host/server.py``:
 
 - the WS handler **skips the raw scrollback-ring replay** for a
   full-screen differential-TUI agent (Codex/ratatui) — replaying its
@@ -21,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
-from app.session_host import server
+from app.webapp.session_host import server
 from src.session_host import _EOF, PTY_MIN_COLS, PtySession
 
 

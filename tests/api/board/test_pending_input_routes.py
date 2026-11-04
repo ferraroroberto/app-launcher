@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from app.session_host import server
+from app.webapp.session_host import server
 from app.webapp.middleware import _terminal_guard_level
 from src.clients import session as session_client
 

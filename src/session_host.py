@@ -7,7 +7,7 @@ bounded ring buffer (so a reconnecting client gets scrollback) and to
 every live subscriber queue. :class:`SessionManager` owns the set of
 live sessions.
 
-This module has no web-framework imports — ``app/session_host/server.py``
+This module has no web-framework imports — ``app/webapp/session_host/server.py``
 is the HTTP + WebSocket surface layered on top of it. It is Windows-only
 (ConPTY); the ``winpty`` import is guarded so the module still imports for
 ``py_compile`` on other platforms.

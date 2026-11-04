@@ -61,7 +61,7 @@ GUARD_FAKE_KEY = r"Software\AppLauncher-E2E-Absent\Explorer"
 # never moved their session files.
 AUDIT_DIR_ENV = "LAUNCHER_AUDIT_DIR"
 # Env var the session-host honours to relocate the root uploaded files hang
-# off (see app/session_host/server.py:UPLOAD_ROOT_ENV) — the same defect as
+# off (see app/webapp/session_host/server.py:UPLOAD_ROOT_ENV) — the same defect as
 # #913 in a different directory (issue #922). The disposable session-host
 # runs its sessions with `project_dir` set to this checkout, so every
 # compose-bar upload test wrote a file into the checkout's own

@@ -1,4 +1,4 @@
-"""``POST /sessions/{sid}/rename`` (app/session_host/server.py) — issue #458.
+"""``POST /sessions/{sid}/rename`` (app/webapp/session_host/server.py) — issue #458.
 
 The session-host HTTP surface for the manual title override: forwards the
 body's ``title`` to ``SessionManager.rename`` and returns the session's
@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from app.session_host import server
+from app.webapp.session_host import server
 
 
 def test_rename_forwards_title_and_returns_session(monkeypatch):

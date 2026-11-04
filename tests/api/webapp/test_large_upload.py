@@ -21,7 +21,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from app.session_host import server as sh_server
+from app.webapp.session_host import server as sh_server
 from src.clients import session as real_session_client
 
 _SID = "abc123"

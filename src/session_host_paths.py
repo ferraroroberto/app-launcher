@@ -46,7 +46,7 @@ _SCOPED_BULLET_PREFIXES = ("- what/why:", "- not restarted/deployed by:")
 #: to the session-host's own code; the shared CLI bootstrap above it is loaded
 #: identically by the tray and webapp processes and is deliberately out of
 #: scope (see ``CLAUDE.md``'s ``## session-host`` "path list" bullet).
-SESSION_HOST_ENTRY_MODULE = "app.session_host.server"
+SESSION_HOST_ENTRY_MODULE = "app.webapp.session_host.server"
 
 
 def declared_session_host_paths(claude_md_path: Path) -> List[str]:
