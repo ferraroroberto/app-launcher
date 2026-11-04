@@ -283,9 +283,10 @@ class TestRetentionTick:
 
         def _spy(coro, *a, **k):
             task = real_create_task(coro, *a, **k)
-            # The ungated jobs snapshot tick (#1324) is pinned elsewhere
-            # (test_server_coverage_tick); only the gated ticks count here.
-            if coro.__qualname__ != "tick_forever":
+            # The ungated snapshot ticks (jobs, /api/version, the channel list)
+            # are pinned in test_server_coverage_tick; only the gated ticks
+            # count here.
+            if not coro.__qualname__.endswith("tick_forever"):
                 created.append(task)
             return task
 
