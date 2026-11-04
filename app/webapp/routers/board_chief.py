@@ -56,6 +56,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from src import audit, board
 from src.chief import identity as chief_identity
+from src.chief.cap_raised import publish_cap_raised
 from src.chief import pointer as chief_pointer
 from src.clients import session as session_client
 from src.launching.flags import build_resume_flags
@@ -528,7 +529,11 @@ async def put_chief_settings(request: Request) -> Dict[str, Any]:
         new_cfg = await asyncio.to_thread(update_webapp_config, **patch)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    old_cfg: WebappConfig = request.app.state.webapp_config
     request.app.state.webapp_config = new_cfg
+    # Freed lane slots wake the chief through its mailbox; the writer logs and
+    # swallows its own failure, so the save below never depends on it.
+    await asyncio.to_thread(publish_cap_raised, old_cfg, new_cfg)
     return {"settings": _chief_settings_payload(new_cfg)}
 
 

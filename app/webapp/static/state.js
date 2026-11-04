@@ -192,6 +192,7 @@ export const els = {
   boardDispatchModel: document.getElementById('boardDispatchModel'),
   chiefModelSelect: document.getElementById('chiefModelSelect'),
   chiefWorkerCap: document.getElementById('chiefWorkerCap'),
+  chiefWorkerCapHelp: document.getElementById('chiefWorkerCapHelp'),
   chiefWorkerCapScopeToggle: document.getElementById('chiefWorkerCapScopeToggle'),
   chiefAnswersDialog: document.getElementById('chiefAnswersDialog'),
   chiefAnswersClose: document.getElementById('chiefAnswersClose'),

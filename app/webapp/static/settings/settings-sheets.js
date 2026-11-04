@@ -440,6 +440,10 @@ function renderChiefFields(cfg) {
   if (!cap) return;
   if (cfg.chief_worker_cap_min != null) cap.min = cfg.chief_worker_cap_min;
   if (cfg.chief_worker_cap_max != null) cap.max = cfg.chief_worker_cap_max;
+  if (els.chiefWorkerCapHelp && cfg.chief_worker_cap_min != null && cfg.chief_worker_cap_max != null) {
+    els.chiefWorkerCapHelp.textContent = 'The only limit on how many workers the chief runs at once, from '
+      + cfg.chief_worker_cap_min + ' to ' + cfg.chief_worker_cap_max + '.';
+  }
   if (cap !== document.activeElement && cfg.chief_worker_cap != null) {
     cap.value = String(cfg.chief_worker_cap);
   }

@@ -161,3 +161,68 @@ class TestChiefSettings:
         assert client.put(
             "/api/board/chief/settings", json={"worker_cap": 11}
         ).status_code == 400
+
+
+class TestChiefCapRaisedEvent:
+    """Saving a higher worker cap (or freeing slots by switching the scope to
+    the chief's own sessions) drops one cap-raised event in the chief mailbox;
+    a lower or unchanged save drops nothing, and a failed write never fails
+    the save."""
+
+    @pytest.fixture
+    def inbox(self, webapp_client, _bypass_gate, monkeypatch, tmp_path):
+        from src import instance_role
+
+        monkeypatch.setattr(
+            instance_role, "canonical_instance", lambda *a, **k: (True, "canonical")
+        )
+        return tmp_path / "chief-inbox"
+
+    @staticmethod
+    def _events(inbox):
+        import json
+
+        return [json.loads(p.read_text("utf-8")) for p in sorted(inbox.glob("*.json"))]
+
+    def test_a_higher_cap_writes_one_event_and_rings_the_doorbell(self, webapp_client, inbox):
+        import time
+
+        from app.webapp.chief_doorbell import count_pending
+
+        client, _, _ = webapp_client
+        assert client.put("/api/board/chief/settings", json={"worker_cap": 5}).status_code == 200
+        (event,) = self._events(inbox)
+        assert (event["kind"], event["event"], event["old"], event["new"]) == (
+            "cap-raised", "CapRaised", 3, 5,
+        )
+        assert count_pending(inbox, int(time.time() * 1000)) == 1
+
+    @pytest.mark.parametrize("cap", [3, 2])
+    def test_an_unchanged_or_lower_cap_writes_nothing(self, webapp_client, inbox, cap):
+        client, app, _ = webapp_client
+        assert client.put("/api/board/chief/settings", json={"worker_cap": cap}).status_code == 200
+        assert app.state.webapp_config.chief_worker_cap == cap
+        assert self._events(inbox) == []
+
+    def test_a_scope_switch_to_chief_writes_one_event(self, webapp_client, inbox):
+        client, _, _ = webapp_client
+        client.put("/api/board/chief/settings", json={"worker_cap_scope": "all"})
+        assert self._events(inbox) == []
+        client.put("/api/board/chief/settings", json={"worker_cap_scope": "chief"})
+        (event,) = self._events(inbox)
+        assert (event["old"], event["new"]) == (3, 3)
+
+    def test_a_failed_mailbox_write_does_not_fail_the_save(
+        self, webapp_client, inbox, monkeypatch
+    ):
+        from src.chief import cap_raised
+
+        def boom(*a, **k):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(cap_raised, "publish_event", boom)
+        client, app, _ = webapp_client
+        resp = client.put("/api/board/chief/settings", json={"worker_cap": 6})
+        assert resp.status_code == 200
+        assert resp.json()["settings"]["worker_cap"] == 6
+        assert app.state.webapp_config.chief_worker_cap == 6
