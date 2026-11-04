@@ -19,6 +19,13 @@ grepping source lines:
   * `.ps1` `.psm1`        `#` line comments and `<# #>` blocks; single- and
                           double-quoted strings (with `$( )`) and here-strings
                           are skipped
+  * `.yml` `.yaml`        `#` line comments (must start the line or follow
+                          whitespace, per the YAML spec); single- and
+                          double-quoted scalars are skipped. A block scalar
+                          (`|`/`>`, e.g. a GitHub Actions `run:` step) is not
+                          special-cased -- a `#` inside one is scanned like any
+                          other, which is correct for an embedded shell/script
+                          comment and conservative for anything else.
 
 A reference is `#` plus one to five digits, not preceded by `&` or `#` and ending
 on a word boundary; `https://...` URLs inside a comment are blanked first so an
@@ -101,7 +108,23 @@ LANGUAGES = {
     ".js": "js", ".mjs": "js", ".cjs": "js",
     ".css": "css",
     ".ps1": "ps", ".psm1": "ps",
+    ".yml": "yaml", ".yaml": "yaml",
 }
+#: A `.yml.template`/`.yaml.template` copy-to-adapt source (this repo's own
+#: convention for keeping a GitHub Actions workflow inert until an adopter
+#: copies it -- see `.github/workflows/*.yml.template`) is still YAML text
+#: that comments live in; the trailing `.template` just hides it from
+#: `LANGUAGES`' plain single-suffix lookup.
+_TEMPLATE_LANGUAGE_SUFFIXES = {".yml.template": "yaml", ".yaml.template": "yaml"}
+
+
+def language_for(path: str) -> str | None:
+    """The scanner key for `path`, or None if it is out of scope."""
+    lower = path.lower()
+    for suffix, language in _TEMPLATE_LANGUAGE_SUFFIXES.items():
+        if lower.endswith(suffix):
+            return language
+    return LANGUAGES.get(PurePosixPath(path).suffix.lower())
 
 EXIT_PASS, EXIT_RISE, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
 
@@ -232,7 +255,7 @@ def _under(path: str, prefix: str) -> bool:
 
 def in_scope(path: str, cfg: Config, vendored: tuple[str, ...]) -> bool:
     """Is `path` a product-code file this stage counts?"""
-    if PurePosixPath(path).suffix.lower() not in LANGUAGES:
+    if language_for(path) is None:
         return False
     if cfg.include and not any(_under(path, p) for p in cfg.include):
         return False
@@ -556,7 +579,111 @@ def comments_ps(text: str) -> list[tuple[int, str]]:
     return out
 
 
-_SCANNERS = {"py": comments_py, "js": comments_js, "css": comments_css, "ps": comments_ps}
+def _yaml_scalar_close(text: str, i: int, quote: str) -> int:
+    """`text[i]` opens a quoted scalar; return the index of its closing quote.
+
+    A single-quoted scalar escapes a quote by doubling it, a double-quoted one with a backslash.
+    """
+    j = i + 1
+    if quote == "'":
+        while True:
+            j = text.find("'", j)
+            if j == -1:
+                raise NotConfirmed("unterminated single-quoted scalar")
+            if not text.startswith("''", j):
+                return j
+            j += 2
+    while j < len(text) and text[j] != '"':
+        j += 2 if text[j] == "\\" else 1
+    if j >= len(text):
+        raise NotConfirmed("unterminated double-quoted scalar")
+    return j
+
+
+def comments_yaml(text: str) -> list[tuple[int, str]]:
+    """`#` line comments in YAML -- must start the line or follow whitespace
+    (YAML comment grammar; `a#b` is a plain scalar, `a #b` is a comment).
+    Single- and double-quoted scalars are skipped so a `#` inside one never
+    counts; a `''` inside a single-quoted scalar is YAML's own escape for a
+    literal quote, so it does not end the scalar. A quote opens a scalar only
+    where a value can start (line start, after `- `, `? `, `: `, or `[`, `{`, `,`
+    in a flow collection, optionally after an anchor or tag); anywhere else it
+    is a plain-scalar character such as an apostrophe in `the customer's store`.
+    """
+    out: list[tuple[int, str]] = []
+    n = len(text)
+    i = 0
+    line = 1
+    prev_char = "\n"  # start-of-text counts as start-of-line
+    comment_start: int | None = None
+    value_start = True  # a quote here opens a quoted scalar
+    flow_depth = 0
+    while i < n:
+        c = text[i]
+        if comment_start is not None:
+            if c == "\n":
+                out.append((line, text[comment_start:i]))
+                comment_start = None
+            else:
+                i += 1
+                continue
+        nxt = text[i + 1] if i + 1 < n else "\n"
+        if c == "\n":
+            line += 1
+            prev_char = c
+            value_start = True
+            i += 1
+        elif c in " \t":
+            prev_char = c
+            i += 1
+        elif c == "#" and prev_char in (" ", "\t", "\n"):
+            comment_start = i
+            i += 1
+        elif c in "'\"" and not value_start:
+            prev_char = c
+            i += 1
+        elif c in "-?" and value_start:
+            value_start = nxt in " \t\n"
+            prev_char = c
+            i += 1
+        elif c == ":" and (nxt in " \t\n" or (flow_depth > 0 and nxt in ",]}")):
+            value_start = True
+            prev_char = c
+            i += 1
+        elif c in "[{" and (value_start or flow_depth > 0):
+            flow_depth += 1
+            value_start = True
+            prev_char = c
+            i += 1
+        elif c in "]}" and flow_depth > 0:
+            flow_depth -= 1
+            value_start = False
+            prev_char = c
+            i += 1
+        elif c == "," and flow_depth > 0:
+            value_start = True
+            prev_char = c
+            i += 1
+        elif c in "&!" and value_start:
+            while i < n and text[i] not in " \t\n":
+                i += 1
+            prev_char = text[i - 1]
+        elif c in "'\"":
+            j = _yaml_scalar_close(text, i, c)
+            line += text.count("\n", i, j)
+            prev_char = c
+            value_start = False
+            i = j + 1
+        else:
+            prev_char = c
+            value_start = False
+            i += 1
+    if comment_start is not None:
+        out.append((line, text[comment_start:]))
+    return out
+
+
+_SCANNERS = {"py": comments_py, "js": comments_js, "css": comments_css, "ps": comments_ps, "yaml": comments_yaml}
 
 
 def scan_text(text: str, language: str) -> list[Ref]:
@@ -606,8 +733,10 @@ def count_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> dict[str, 
             raise NotConfirmed(f"{path}: is not valid UTF-8: {exc}") from exc
         if is_generated(text):
             continue
+        language = language_for(path)
+        assert language is not None  # in_scope() above already confirmed it
         try:
-            refs = scan_text(text, LANGUAGES[PurePosixPath(path).suffix.lower()])
+            refs = scan_text(text, language)
         except NotConfirmed as exc:
             raise NotConfirmed(f"{path}: {exc}") from exc
         if refs:
@@ -754,4 +883,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    # Reports contain non-ASCII (e.g. "→"); a cp1252 console would otherwise crash after the verdict.
+    for _stream in (sys.stdout, sys.stderr):
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]  # real console streams are TextIOWrapper
     sys.exit(main())
