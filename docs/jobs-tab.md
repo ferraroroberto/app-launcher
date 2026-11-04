@@ -201,6 +201,18 @@ The Jobs tab marks the job's sheet with a `🌙 logged-out` flag. Pause/resume a
 
 **So the exposure of a default-principal `\AppLauncher\` task is loss, not delay.** Every trigger that comes due while the box sits logged out is dropped outright and silently, and `StartWhenAvailable` buys nothing against it — the flag stays worth having for genuine machine-down windows, but it is not a mitigation for this loss. The only fix is the S4U principal (`session_less: true`), decided per job against the `visible` trade, never as a blanket change.
 
+### Grok Bot ensure (every 10 minutes)
+
+The sample `grokbot-ensure` row runs fleet-config's `skills/_lib/grokbot/status.py ensure` every 10 minutes (`minutes` schedule). It is a `.py` job, so the venv walk-up from the script finds fleet-config's own `.venv`. `ensure` runs synchronously, finishes well inside a minute, never kills a process, and starts the Grok Bot desktop app minimized when it is down. Its exit code is the run's outcome:
+
+| Exit | Meaning | Run |
+| --- | --- | --- |
+| `0` | App is up and signed in | success |
+| `1` | App is down (and was started) or signed out | failed |
+| `3` | State could not be established; nothing was started | failed |
+
+The row sets no `alert_on_failure` and declares no `exit_outcomes`: `1` and `3` show as failed runs on the Board, and the helper sends its own single attention ping per outage after two failed checks, so a second alert from the launcher would only double it. The sample is committed; enabling it on a machine is an add through the Jobs tab or `POST /api/jobs`, never a hand edit of `config/jobs.json`.
+
 ### Cooldown
 
 A job can declare a per-job `cooldown_seconds`: a debounce window that prevents rapid manual fires (phone double-tap, Stream Deck button mash) from spawning overlapping runs of the same script.
