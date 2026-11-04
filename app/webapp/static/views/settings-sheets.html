@@ -322,9 +322,9 @@
           </div>
           <label class="row">
             <span>Worker cap</span>
-            <input id="chiefWorkerCap" type="number" class="input-native" inputmode="numeric" min="1" max="10" step="1" aria-describedby="chiefWorkerCapHelp">
+            <input id="chiefWorkerCap" type="number" class="input-native" inputmode="numeric" step="1" aria-describedby="chiefWorkerCapHelp">
           </label>
-          <p id="chiefWorkerCapHelp" class="field-help">How many workers the chief runs at once, from 1 to 10.</p>
+          <p id="chiefWorkerCapHelp" class="field-help">The only limit on how many workers the chief runs at once.</p>
           <div class="row">
             <span>Count only chief-dispatched sessions</span>
             <button data-track="chief.worker-cap-scope" type="button" id="chiefWorkerCapScopeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Count only chief-dispatched sessions" aria-describedby="chiefWorkerCapScopeHelp" title="Choose which sessions the worker cap counts"><span class="knob"></span><span class="toggle-label">ON</span></button>

@@ -428,6 +428,9 @@ def _isolate_webapp_files(tmp_path: Path, monkeypatch) -> Dict[str, Path]:
                 "context_filter_mode_file": str(tmp_path / "context-filter-mode.json"),
                 "context_filter_log_file": str(tmp_path / "context-filter-shadow.jsonl"),
                 "github_owner": "testowner",
+                # The chief mailbox: a cap raise writes an event here, so a
+                # test must never reach ~/.claude/hooks/state/chief-inbox.
+                "chief_inbox_dir": str(tmp_path / "chief-inbox"),
             }
         ),
         encoding="utf-8",
