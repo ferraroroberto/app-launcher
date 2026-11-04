@@ -104,7 +104,7 @@ Adding an agent changes `src/agents.py`, which is imported by **both** the
 webapp (`:8445`) **and** the session-host (`:8446`). `tray.bat --restart`
 restarts only the webapp and deliberately **preserves `:8446`** (to keep open
 PTY sessions alive), so after a plain `--restart` the session-host still
-rejects `pi` with `unknown agent: pi` (`app/session_host/server.py`). Pi only
+rejects `pi` with `unknown agent: pi` (`app/webapp/session_host/server.py`). Pi only
 becomes launchable after a **full restart that also cycles the
 session-host** — which ends every open Coding/PTY session. The pre-ship gate
 sidesteps this by spawning its own disposable session-host.

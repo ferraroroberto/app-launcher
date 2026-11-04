@@ -1,4 +1,4 @@
-"""``GET /healthz`` (app/session_host/server.py) — issue #615.
+"""``GET /healthz`` (app/webapp/session_host/server.py) — issue #615.
 
 The session-host is excluded from ``tray.bat --restart``'s reclaim sweep
 (project-scaffolding#35, to protect live PTYs), so it can keep running code
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.session_host import server
+from app.webapp.session_host import server
 
 
 def test_healthz_reports_build_identity():

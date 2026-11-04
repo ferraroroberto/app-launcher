@@ -178,7 +178,7 @@ def _assert_not_cross_wired(results: list[dict[str, Any]], diagnosis: str) -> No
 async def test_five_concurrent_sessions_each_paint_their_own_first_frame(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.session_host import server as server_mod
+    from app.webapp.session_host import server as server_mod
 
     # Transcripts and audit logs land in tmp, never in the repo's
     # webapp/sessions/ (which the live tray is using).

@@ -208,7 +208,7 @@ def test_resolve_paths_matches_webapp_config() -> None:
 def test_reap_loop_hook_never_raises_and_uses_resolved_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from app.session_host import server
+    from app.webapp.session_host import server
 
     registry = _registry(tmp_path, {SID: {"repo": "r", "number": 3}})
     inbox = tmp_path / "chief-inbox"
@@ -228,7 +228,7 @@ def test_reap_loop_publishes_for_what_the_reaper_dropped(
 ) -> None:
     import asyncio
 
-    from app.session_host import server
+    from app.webapp.session_host import server
 
     registry = _registry(tmp_path, {SID: {"repo": "r", "number": 9}})
     inbox = tmp_path / "chief-inbox"

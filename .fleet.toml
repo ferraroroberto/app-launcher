@@ -515,6 +515,12 @@ label      = "static-asset"
 tier   = "full"
 prefix = "app/webapp/static/"
 label  = "webapp-static-code"
+# The session-host package sits inside app/webapp/, so its rule comes first
+# and its diff keeps the "session-host" label the gate warns on.
+[[e2e.rule]]
+tier   = "full"
+prefix = "app/webapp/session_host/"
+label  = "session-host"
 [[e2e.rule]]
 tier   = "full"
 prefix = "app/webapp/"
@@ -527,10 +533,6 @@ label  = "webapp"
 # from CLAUDE.md at classify time on purpose -- a parse failure would narrow
 # routing silently. tests/unit/repo/test_classify_e2e.py walks that CLAUDE.md block and
 # fails when a declared path stops routing full.
-[[e2e.rule]]
-tier   = "full"
-prefix = "app/session_host/"
-label  = "session-host"
 [[e2e.rule]]
 tier = "full"
 path = "src/clients/session.py"

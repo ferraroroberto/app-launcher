@@ -1,7 +1,7 @@
 """Thin HTTP client for the loopback PTY session-host.
 
 The webapp owns all auth, Tailscale gating, and WebAuthn; it talks to the
-session-host (``app/session_host/server.py``) purely over loopback. These
+session-host (``app/webapp/session_host/server.py``) purely over loopback. These
 are blocking ``requests`` calls — webapp routes wrap them in
 ``asyncio.to_thread`` so the event loop never stalls. The WebSocket proxy
 is handled separately in ``app/webapp/server.py``.

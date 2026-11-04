@@ -86,7 +86,7 @@ RECLAIM_TIMEOUT_S = 10
 # user-editable value is ``load_webapp_config().session_host_port``
 # (README.md "session_host_port"). Never hardcode the port value as a
 # separate definition here alongside ``src/webapp_config.py``'s
-# ``DEFAULT_SESSION_HOST_PORT`` and ``app/session_host/server.py``'s
+# ``DEFAULT_SESSION_HOST_PORT`` and ``app/webapp/session_host/server.py``'s
 # ``DEFAULT_PORT`` — a second definition can drift from the configured
 # value, leaving the tray adopting/reclaiming the wrong port and silently
 # spawning a duplicate session-host on every start. Always call

@@ -4,7 +4,7 @@
 hardcoded ``SESSION_HOST_PORT = 8446`` module constant instead of the
 user-editable ``session_host_port`` webapp-config setting — a third
 definition alongside ``src/webapp_config.py``'s ``DEFAULT_SESSION_HOST_PORT``
-and ``app/session_host/server.py``'s ``DEFAULT_PORT``. Setting the knob left
+and ``app/webapp/session_host/server.py``'s ``DEFAULT_PORT``. Setting the knob left
 the tray adopting/reclaiming the wrong port and silently spawning a
 duplicate session-host on every start.
 

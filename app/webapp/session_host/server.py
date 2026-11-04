@@ -30,7 +30,7 @@ WebSocket protocol — server→client frames are raw terminal output;
 client→server frames are JSON: ``{"type":"input","data":"…"}`` or
 ``{"type":"resize","rows":N,"cols":N}``.
 
-Run standalone: ``python -m app.session_host.server`` (or the
+Run standalone: ``python -m app.webapp.session_host.server`` (or the
 ``session-host`` CLI subcommand).
 """
 

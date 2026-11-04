@@ -30,7 +30,7 @@ process is restarted.
 
 ## A session-host change is not live until `:8446` itself restarts
 
-A diff touching `src/session_host.py` or `app/session_host/` can merge, pass a
+A diff touching `src/session_host.py` or `app/webapp/session_host/` can merge, pass a
 fully green gate, and go through a correct `tray.bat --restart` while the
 running session-host keeps executing days-old code, silently.
 

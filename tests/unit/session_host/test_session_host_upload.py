@@ -15,7 +15,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.session_host import server as sh_server
+from app.webapp.session_host import server as sh_server
 
 
 @pytest.fixture()

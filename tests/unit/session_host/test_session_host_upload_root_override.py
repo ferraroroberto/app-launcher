@@ -1,7 +1,7 @@
 """`LAUNCHER_UPLOAD_ROOT` relocates where uploaded files land (issue #922).
 
 Same defect as #913, a different directory and a different writer:
-`app/session_host/server.py::_save_image` resolved `<project>/.launcher-tmp`
+`app/webapp/session_host/server.py::_save_image` resolved `<project>/.launcher-tmp`
 from the session's own project dir, and the e2e autoboot runs its disposable
 session-host with `project_dir` pointing at this checkout — so every
 compose-bar attach test wrote a real file into the checkout's own
@@ -22,7 +22,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from app.session_host import server as sh_server
+from app.webapp.session_host import server as sh_server
 
 # The env var spelled as a literal rather than read off the module. The two
 # route-level tests below have to fail on the *behaviour* when run against

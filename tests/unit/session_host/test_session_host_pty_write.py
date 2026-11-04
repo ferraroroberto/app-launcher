@@ -173,7 +173,7 @@ async def test_write_swallows_pty_exception_but_reports_failure():
 # Issue #721: two concurrent writers on one PTY.
 #
 # Since #611 the session-host has had two independent write paths — the
-# WebSocket pump (``app/session_host/server.py`` per-message
+# WebSocket pump (``app/webapp/session_host/server.py`` per-message
 # ``asyncio.to_thread(session.write, …)``) and the HTTP ``/input`` route
 # (``asyncio.to_thread(session.submit_input, …)``) — and a PC mirror plus a
 # phone attached to the same session at once is the documented, intended

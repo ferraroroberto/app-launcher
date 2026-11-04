@@ -1,4 +1,4 @@
-"""``POST /sessions`` (app/session_host/server.py) — request-body wiring.
+"""``POST /sessions`` (app/webapp/session_host/server.py) — request-body wiring.
 
 Focused on ``history_lines`` (issue #435 follow-up, Settings-tab
 configurable scrollback depth): the endpoint must forward it to
@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from app.session_host import server
+from app.webapp.session_host import server
 
 
 def _stub_manager(monkeypatch):
