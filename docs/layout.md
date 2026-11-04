@@ -87,6 +87,8 @@ app-launcher/
 │   ├── transcript_flavors/     # per-harness transcript-line grammars (claude/codex/grok/pi/antigravity/copilot)
 │   ├── desktop/                # the Screen view's PC side: capture, input, cursor, clipboard, browser, session kind (Console or Remote Desktop)
 │   ├── life_os/                # Life OS: capture, history, title, the delete routine, the index, zombie sweep + backup, the relay registry
+│   ├── progress/               # fleet progress: totals.py caches daily GitHub totals per repo (lines, PRs merged, issues opened/closed)
+│   │                           #   in webapp/progress-totals.json; snapshot() reads it with no GitHub call, refresh() is explicit
 │   ├── usage/                  # usage meter: providers.py, auto_switch.py (the Grok fallback for Sonnet lanes),
 │   │                           #   quota.py, export.py (Send to task-os)
 │   └── jobs/, jobs_kinds/      # Jobs backend: the facade (__init__.py), config chain, scheduling/trigger/queue/reap,
@@ -112,7 +114,7 @@ app-launcher/
 │
 ├── tests/                      # pytest suite; shared helpers and the root conftest sit here, every test module in a folder below
 │   ├── unit/                   # unit tests by domain: board/ chief/ clients/ core/ desktop/ jobs/ launching/ life_os/ pty/ repo/
-│   │                           #   scanner/ session_host/ sessions/ shell/ static_ui/ telegram/ transcript/ tray/ usage/ webapp_config/
+│   │                           #   progress/ scanner/ session_host/ sessions/ shell/ static_ui/ telegram/ transcript/ tray/ usage/ webapp_config/
 │   ├── api/                    # API tests by router, with a shared-support module per tab (Life OS); webapp/ and nonblocking/ hold the webapp suite
 │   ├── e2e/                    # Playwright browser suite (chromium + iPhone projections): one folder per tab (apps/ board/ chat/ code/
 │   │                           #   compose/ jobs/ life_os/ screens/ session/ settings/ shell/ terminal/), fixtures/ for the conftest's parts
