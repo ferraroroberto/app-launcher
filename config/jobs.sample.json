@@ -98,6 +98,13 @@
       "exit_outcomes": { "4": "deferred" }
     },
     {
+      "id": "grokbot-ensure",
+      "name": "Grok Bot ensure (every 10 minutes)",
+      "script_path": "E:\\automation\\fleet-config\\skills\\_lib\\grokbot\\status.py",
+      "args": "ensure",
+      "schedule": { "type": "minutes", "every": 10 }
+    },
+    {
       "id": "hwinfo-refresh",
       "name": "HWiNFO refresh (sample, powershell kind)",
       "script_path": "E:\\automation\\automation\\system\\hwinfo_refresh.ps1",
