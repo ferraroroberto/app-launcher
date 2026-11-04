@@ -112,10 +112,11 @@ live_optin_env = "LAUNCHER_E2E_LIVE"
 
 # ---------------------------------------------------------------------------
 # [perf.review] -- what /perf-review times (fleet-config skills/perf-review).
-# "Ready" is the first project row on the landing (Code) tab: it needs the
-# /api/apps answer, so a painted shell with no data does not count as loaded.
+# "Ready" is the Code tab's header status ("5 sessions"): it is empty until the
+# sessions answer lands, so a painted shell with no data does not count as
+# loaded. The project list is not used: it sits in a section collapsed on load.
 [perf.review]
-ready_selector = "#claudeList .action-row"
+ready_selector = "#homeHeadStatus"
 
 # ---------------------------------------------------------------------------
 # [comment_ratchet] -- the scaffold's no-history-comments ratchet (#1751,
