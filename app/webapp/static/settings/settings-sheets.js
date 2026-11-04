@@ -498,6 +498,7 @@ function wireChief() {
 function wireChiefDoorbell() {
   wireConfigSwitch(els.chiefDoorbellToggle, 'chief_doorbell', { label: 'Chief doorbell' });
   wireConfigSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', { label: 'Chief job failures' });
+  wireConfigSwitch(els.grokbotEnabledToggle, 'grokbot_enabled', { label: 'Grok Bot' });
   wireConfigSwitch(els.grokAutoSwitchToggle, 'grok_auto_switch', { label: 'Grok auto-switch' });
 }
 

@@ -533,6 +533,7 @@ export const els = {
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   chiefDoorbellToggle: document.getElementById('chiefDoorbellToggle'),
   chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),
+  grokbotEnabledToggle: document.getElementById('grokbotEnabledToggle'),
   grokAutoSwitchToggle: document.getElementById('grokAutoSwitchToggle'),
   hideChannelSessionsToggle: document.getElementById('hideChannelSessionsToggle'),
   openSessionsInWindowToggle: document.getElementById('openSessionsInWindowToggle'),

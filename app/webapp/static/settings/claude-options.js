@@ -223,6 +223,9 @@ export async function fetchConfig(shouldApply) {
   if (els.chiefJobFailuresToggle) {
     setSwitch(els.chiefJobFailuresToggle, body.chief_job_failures !== false);
   }
+  if (els.grokbotEnabledToggle) {
+    setSwitch(els.grokbotEnabledToggle, body.grokbot_enabled !== false);
+  }
   if (els.grokAutoSwitchToggle) {
     setSwitch(els.grokAutoSwitchToggle, body.grok_auto_switch === true);
   }
