@@ -72,7 +72,7 @@ Define these CSS custom properties in your app's `:root` / `[data-theme="dark"]`
 | `--deficit` | `#cf222e` (dark `#f85149`) | danger border (outlined destructive button) |
 | `--danger-text` | `#a40e26` (dark `#ff7b72`) | danger label (7.87:1 light / 6.86:1 dark on the card) |
 | `--radius-md` | `12px` | corners (`rounded.md`), all tiers |
-| `--control-h` | `36px` | surface tier height |
+| `--control-h` | `36px` | ghost and surface tier height; their `::before` grows the tap target to 44px vertically (36 + 2x4), so a stack needs a gap of at least 8px |
 | `--font-body` | `1rem` | tint text |
 | `--font-label` | `0.875rem` | surface text |
 | `--font-caption` | `0.75rem` | ghost text |

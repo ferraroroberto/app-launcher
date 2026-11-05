@@ -73,7 +73,71 @@ While the sheet is open, every further call returns the **same promise** and ign
 | any other status, or `200` with no token | Sign-in failed (HTTP *status*) |
 | `onToken` threw | Sign-in failed — try again |
 
-The server's own `detail` text is never shown. The sheet only reports a lock-out the server enforces; it adds none of its own.
+The server's own `detail` text is never shown. The sheet only reports a lock-out the server enforces; it adds none of its own. The server half is below.
+
+## Server side — `src/login_lockout.py`
+
+The login route enforces the lock-out with the vendored, stdlib-only `src/login_lockout.py` (manifest key `login_lockout`; copy it byte-for-byte with `/propagate-vendored login_lockout`). The conventions ratchet's `login-lockout` rule ([docs/conventions-ratchet.md](../../../../../docs/conventions-ratchet.md)) fails a `@<x>.post(".../login")` route that does not use it.
+
+**Policy** (the defaults; each is a keyword argument): 5 wrong passwords per client are free; each further one makes the client wait 2 s, doubling to a 300 s cap; a client with no failure for 1 hour starts over; a correct password clears the count. A locked client is refused before its password is read and without adding to its count. There is no limit across all clients, so nobody can lock the owner out. At most 1,024 clients are tracked. State is in memory, so a restart clears it.
+
+**Wiring.** One instance per app, three calls in front of the existing handler. The password check, the `503` replies and the token are unchanged:
+
+```python
+from src.login_lockout import LoginLockout, retry_after_header
+
+lockout = LoginLockout(on_alert=alert_owner)      # once, in create_app(); see "The alert"
+
+@router.post("/api/login")
+async def login(request: Request) -> dict[str, str]:
+    client = request.client.host if request.client else "?"   # the address the app already logs
+    exempt = is_pc_itself(request)                             # the app's own loopback trust check
+    wait = 0.0 if exempt else lockout.retry_after(client)
+    if wait > 0:
+        raise HTTPException(429, "too many attempts", headers=retry_after_header(wait))
+    ...                                                        # the app's own 503 checks
+    if not secrets_equal(presented, password):
+        if not exempt:
+            lockout.record_failure(client)
+        raise HTTPException(401, "bad password")
+    lockout.reset(client)
+    return {"token": token}
+```
+
+- **The key** is the client address the app already resolves and writes to its auth log. The module never reads addresses or headers.
+- **The exemption** is the app's call, with the check it already uses to skip the token for the PC itself (app-launcher: `trust.is_pc_itself`). Do not exempt a raw `127.0.0.1` or `::1`: a local tunnel delivers every public request over loopback.
+- **The log**: the module writes one info line per lock (`🔒 login locked for N s after K failures`) that names no client or password. The app's own auth-log lines stay as they are.
+- **The test**: each app adds one route test. Six wrong passwords get five `401`s and then a `429` with a `Retry-After` header; a correct password after the wait gets the token.
+
+### The alert — three wrong passwords in a row
+
+`on_alert` is called once per failure streak, when a client reaches 3 consecutive wrong passwords (`alert_after`). The streak ends on a correct password or after the hour of quiet; until then the client raises no second alert, however many more times it fails. A global `alert_cooldown` (300 s) limits alerts across all clients. Alerts it holds back are counted and reported in the next one, so an attacker who rotates addresses sends one message, not hundreds. The callback receives a `LockoutAlert(key, failures, suppressed)`, which never holds a password or a token. It runs inside the login request, so it must return at once: hand the send to a thread. If it raises, the module logs the exception type and the login carries on.
+
+The alert goes to the fleet's **`coding alerts`** Telegram chat: the act-now chat, which `fleet-config` routes as the `attention` category (`telegram_chat_attention`; chat table in `fleet-config`'s `docs/telegram-workflow.md`). Like the app's other machine alerts, the app sends it with its own vendored [`src/notify`](../../../../../src/notify/README.md) notifier, its bot token and the `coding alerts` chat id read from its own ignored config:
+
+```python
+import threading
+
+from src.notify import NotifierError, TelegramConfig, build_notifier
+
+notifier = build_notifier(cfg.notifier, TelegramConfig(cfg.telegram_bot_token, cfg.telegram_alert_chat_id))
+
+def alert_owner(alert: LockoutAlert) -> None:
+    if notifier is None:          # notifier = "none": no alert channel configured
+        return
+    held = f" (+{alert.suppressed} more held back)" if alert.suppressed else ""
+    text = f"🚨 {APP_NAME}: {alert.failures} wrong passwords in a row from {alert.key}{held}"
+
+    def send() -> None:
+        try:
+            notifier.send_text(text)
+        except NotifierError as exc:
+            logger.warning(f"⚠️ login alert not delivered: {type(exc).__name__}")
+
+    threading.Thread(target=send, daemon=True).start()
+```
+
+The message carries the app, the client address and the failure count, and nothing else. An app that has no notifier config of its own can send the same text through `fleet-config`'s Telegram transport instead: `notify_send.py --category attention --text "..."` from its `hooks/` folder, spawned with `CREATE_NO_WINDOW`. That transport resolves the `coding alerts` chat itself.
 
 ## Usage log
 

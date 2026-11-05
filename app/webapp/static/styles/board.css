@@ -346,7 +346,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
   gap: 2px;
   font-size: var(--font-caption);
 }
-.usage-meter-full .um-reset .icon { width: 12px; height: 12px; }
+.usage-meter-full .um-reset .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .usage-meter-full :is(.um-codex, .um-grok) .um-codex-value { margin-left: auto; white-space: nowrap; }
 
 /* The sheets' label/value rows (sheetRow): the value is a figure and keeps

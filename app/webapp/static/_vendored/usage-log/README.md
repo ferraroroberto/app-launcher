@@ -16,7 +16,7 @@ The server enforces it again: unknown kinds, ids outside the bounded id pattern 
 | --- | --- |
 | `usage-log.js` | `initUsageLog(opts?)` → `{ trackView, track, flush, currentView, stop }`; also exports `deviceClass()` / `osClass()`. Batches events and sends them with `fetch` (`keepalive`) or `navigator.sendBeacon` when the page is hidden (a `keepalive` fetch instead when the `headers` option is set). No dependencies. |
 
-The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, because it lives in `src/`, not in this static tree).
+The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, because it lives in `src/`, not in this static tree). A Starlette app with no FastAPI of its own adds `src/usage_log_starlette.py` (manifest key `usage_log_starlette`); see "Starlette apps" below.
 
 ## How to vendor
 
@@ -40,6 +40,36 @@ The server half is `src/usage_log.py` (a separate manifest key, `usage_log`, bec
    initNavTabs({ storageKey: 'my-app.tab', onChange: usage.trackView });
    ```
 4. Give **every** interactive control a constant `data-track="<id>"` and every `<dialog>` a `data-track-view="<id>"`. The usage track ratchet (`scripts/usage_track_ratchet.py` in `project-scaffolding`, manifest key `usage_track_ratchet`) fails the gate on a new control or sheet without one; vendor it with this component.
+
+## Starlette apps
+
+`usage_router` is a FastAPI router. An app built on bare Starlette vendors `src/usage_log_starlette.py` verbatim beside `src/usage_log.py` (manifest key `usage_log_starlette`; FastAPI must be installed, as `usage_router` needs it) and mounts one route instead of calling `include_router`:
+
+```python
+from src.runtime_data import runtime_db_path
+from src.usage_log_starlette import usage_route
+
+routes = [
+    usage_route(runtime_db_path("my-app", "usage.sqlite3", create=True)),
+    ...,  # the app's other routes, catch-alls and `/api/{token}`-style routes included
+]
+```
+
+The route hands every `/api/usage/{rest:path}` request to a small FastAPI app that holds the router, with interactive docs and the OpenAPI document switched off. Declare it **before** any parameterised or catch-all `/api/...` route, so a usage request is never read as something else.
+
+**Reads are owner-only.** `POST /api/usage/events` is open to every caller of the page, guests included, because the page's controls are what the log counts. `GET /api/usage/summary` and `/time` show how the owner uses the tool, so they answer `403 {"detail": "owner only"}` to anyone else. The route takes no `dependencies` argument; an app that wants its own auth in front of the events endpoint puts it in a middleware.
+
+Who the owner is cannot come from the peer address alone: a server bound to loopback is reached by a guest through Tailscale Funnel, which connects from the machine itself. So the headers Tailscale's proxy sets decide:
+
+| Request | Owner? |
+| --- | --- |
+| Peer on loopback or the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), no proxy header | yes |
+| Peer on loopback with `Tailscale-Funnel-Request` | no |
+| Peer on loopback with `X-Forwarded-For` whose last address is loopback or on the tailnet | yes |
+| Peer on loopback with `X-Forwarded-For` that is public, empty or does not parse | no |
+| Any other peer (LAN, public, missing, unparsable) | no |
+
+The last address of `X-Forwarded-For` decides, because Tailscale's proxy replaces the header with the caller's address, so a spoofed leading entry cannot promote a guest. An app fronted by some other proxy must not rely on this check.
 
 ## Authenticated endpoints
 

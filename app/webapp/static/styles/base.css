@@ -77,15 +77,15 @@
   --tabbar-border: rgba(0, 0, 0, 0.08);
   --tabbar-pill: rgba(0, 0, 0, 0.07);
   --tabbar-shadow: 0 8px 28px -6px rgba(20, 24, 40, 0.2), 0 1px 4px rgba(20, 24, 40, 0.06);
-  /* Brand-colour alpha overlays derive from the tokens above via relative
-     colour syntax — e.g. rgb(from var(--accent) r g b / 0.18) — so a tint
-     never forks from its base colour. */
+  /* Brand-colour alpha overlays derive from the tokens above (color-mix
+     against transparent, the spec's form) so a tint never forks from its
+     base colour. */
   /* Accent-ghost button recipe (home-automation's Net-tab .big-btn):
      soft accent tint + accent text + soft accent border — no solid fills.
      Derived from --accent so both themes ride. */
-  --accent-soft: rgb(from var(--accent) r g b / 0.16);
-  --accent-border-soft: rgb(from var(--accent) r g b / 0.24);
-  --accent-border-strong: rgb(from var(--accent) r g b / 0.28);
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-border-soft: color-mix(in srgb, var(--accent) 24%, transparent);
+  --accent-border-strong: color-mix(in srgb, var(--accent) 28%, transparent);
   /* Vendored button.css's danger-tier token names — this app's
      equivalent status color is --danger, so alias rather than fork a second
      red. Lazily re-resolves per theme same as the accent-soft trio above. */
@@ -158,11 +158,14 @@
      is --control-border and its on-track is --accent-fill. */
   --toggle-knob: #ffffff;
   color-scheme: light;
-  /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/icon/
-     label) is intentionally undefined here — nav-tabs.css's
-     own canonical var(..., fallback) defaults (61/21/53/4/4/20/11px) are
-     the fleet-standard floating-bar geometry, phone-validated on
-     home-automation. Define one here only to deliberately diverge. */
+  /* --bottom-tabs-* geometry (height/margin/pill-height/padding/gap/label)
+     is intentionally undefined here — nav-tabs.css's own canonical
+     var(..., fallback) defaults (61/21/53/4/4/11px) are the fleet-standard
+     floating-bar geometry, phone-validated on home-automation. Define one
+     here only to deliberately diverge. The icon size is the exception: the
+     vendored action-row avatar reads it too, so it is declared at the
+     icons.size.nav-tab step rather than left to a fallback. */
+  --bottom-tabs-icon: 20px;
 }
 
 [data-theme="dark"] {

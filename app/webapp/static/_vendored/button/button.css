@@ -97,9 +97,11 @@
 }
 
 .button-ghost {
+  position: relative;
   background: transparent;
   color: var(--muted);
   border: 1px solid var(--line);
+  min-height: var(--control-h);
   padding: 6px 10px;
   font: inherit;
   line-height: normal;
@@ -110,6 +112,7 @@
 }
 
 .button-surface {
+  position: relative;
   /* The control fill (--input-bg): card-off in light, border-muted (#21262d)
      in dark, never true black on a dark card. */
   background: var(--input-bg, var(--card-off));
@@ -127,6 +130,12 @@
 /* Dark label is fg (12.88:1 on the control fill); fg-muted would be 4.08:1
    Sits before the disabled rule so that stays muted. */
 [data-theme="dark"] .button-surface { color: var(--ink); }
+
+/* Both sit at the 36px control height; this grows the tap target to 44px
+ * vertically (36 + 2x4) without inflating the visual button. Vertical only, so
+ * side-by-side buttons never overlap. */
+.button-ghost::before,
+.button-surface::before { content: ""; position: absolute; inset: -4px 0; }
 
 /* One disabled recipe for every tier, both themes:
    opacity on a solid fill blends sub-AA either way; the flat card-off/line/

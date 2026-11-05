@@ -121,7 +121,7 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.tr-step-live-icon { width: 14px; height: 14px; flex: none; }
+.tr-step-live-icon { width: var(--icon-inline); height: var(--icon-inline); flex: none; }
 .tr-step-delta,
 .tr-item-delta {
   flex: none;
