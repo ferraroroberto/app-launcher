@@ -380,14 +380,16 @@ def test_a_bad_tap_is_a_400_and_a_failed_write_says_how_far_it_got(picker_client
 # rendered off live captures at 120 and 46 columns: usage first, then the
 # model family, then the folder; at 120 columns Claude Code can print its
 # own text further along the same row.
-FOOTER = "  27%c 10%s 79%w | opus | fleet-config (main)"
+FOOTER = "  27%c 79%w | opus | fleet-config (main)"
 FOOTER_WIDE = (
-    "  32%c 4%s 78%w | opus | fleet-config (main)"
+    "  32%c 78%w | opus | fleet-config (main)"
     "                                                             316677 tokens"
 )
 # used_percentage is null early in a session and right after /compact: the
-# script omits %c and the row starts at the 5-hour figure.
-FOOTER_AFTER_COMPACT = "  5%s 10%w | opus | app-launcher (main)"
+# script omits %c and the row starts at the weekly figure.
+FOOTER_AFTER_COMPACT = "  10%w | opus | app-launcher (main)"
+# A session started before the statusline dropped the 5-hour figure.
+FOOTER_WITH_RETIRED_5H = "  5%s 10%w | opus | app-launcher (main)"
 PROMPT = [RULE, f"{CUR} ", RULE]
 MODE_LINE = "  ⏵⏵ bypass permissions on (shift+tab to cycle)"
 
@@ -405,7 +407,9 @@ def _write_capture(path: Path, lines: List[str]) -> None:
 @pytest.mark.parametrize("lines,expected", [
     (_footer_screen(FOOTER), 27),
     (_footer_screen(FOOTER_WIDE), 32),
+    (_footer_screen("  6%c 76%w | Fable 5.1 | project"), 6),
     (_footer_screen("  6%c 6%s 76%w | Fable 5.1 | project"), 6),
+    (_footer_screen(FOOTER_WITH_RETIRED_5H), None),
     (_footer_screen("  100%c | opus | proj"), 100),
     (_footer_screen(FOOTER_AFTER_COMPACT), None),
     (_footer_screen("  opus | proj (main)"), None),
@@ -420,7 +424,7 @@ def test_only_the_bottom_most_statusline_counts():
     """An older footer higher on the screen (or one quoted in a reply) says
     nothing about now: the newest row wins, and one without %c is None
     rather than the stale figure above it."""
-    older = ["  71%c 10%s 79%w | opus | proj", ""]
+    older = ["  71%c 79%w | opus | proj", ""]
     assert context_percent(older + _footer_screen(FOOTER)) == 27
     assert context_percent(older + _footer_screen(FOOTER_AFTER_COMPACT)) is None
 
@@ -435,7 +439,7 @@ def test_context_reads_off_the_rendered_capture():
     ``NN%c`` (green/yellow/red) are gone once pyte has drawn the row."""
     raw = "\r\n".join([
         "● Done.", "", *PROMPT,
-        "  \x1b[33m64%c\x1b[0m 10%s 79%w | opus | proj (main)", MODE_LINE,
+        "  \x1b[33m64%c\x1b[0m 79%w | opus | proj (main)", MODE_LINE,
     ])
     assert context_percent(pp.screen_lines(raw, rows=12, cols=60)) == 64
 

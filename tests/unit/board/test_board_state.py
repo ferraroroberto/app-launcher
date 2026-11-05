@@ -84,7 +84,7 @@ def test_active_issues_keeps_fresh_and_expires_orphans(tmp_path: Path):
 
 _EMPTY_RATE_LIMITS = {
     "available": False, "stale": False, "updated_at": None,
-    "five_hour": None, "seven_day": None,
+    "seven_day": None,
 }
 
 
@@ -99,49 +99,46 @@ def test_rate_limits_corrupt_file_unavailable(tmp_path: Path):
     assert board.read_rate_limits(target, now=NOW)["available"] is False
 
 
-def test_rate_limits_fresh_both_windows(tmp_path: Path):
+def test_rate_limits_fresh_window(tmp_path: Path):
     target = tmp_path / "rate-limits.json"
     target.write_text(json.dumps({
-        "five_hour": {"used_percentage": 42, "resets_at": 1751640000},
         "seven_day": {"used_percentage": 77, "resets_at": 1751900000},
         "captured_at": _iso(NOW - timedelta(minutes=2)),
     }), encoding="utf-8")
     result = board.read_rate_limits(target, now=NOW)
     assert result["available"] is True
     assert result["stale"] is False
-    assert result["five_hour"] == {"used_percentage": 42, "resets_at": 1751640000}
     assert result["seven_day"] == {"used_percentage": 77, "resets_at": 1751900000}
 
 
 def test_rate_limits_stale_when_captured_at_old(tmp_path: Path):
     target = tmp_path / "rate-limits.json"
     target.write_text(json.dumps({
-        "five_hour": {"used_percentage": 10, "resets_at": 1751640000},
+        "seven_day": {"used_percentage": 10, "resets_at": 1751900000},
         "captured_at": _iso(NOW - timedelta(minutes=45)),
     }), encoding="utf-8")
     assert board.read_rate_limits(target, now=NOW)["stale"] is True
 
 
-def test_rate_limits_one_window_absent(tmp_path: Path):
+def test_rate_limits_week_absent_is_unknown_not_zero(tmp_path: Path):
+    """A retired ``five_hour`` key is ignored and never stands in for the week."""
     target = tmp_path / "rate-limits.json"
     target.write_text(json.dumps({
         "five_hour": {"used_percentage": 10, "resets_at": 1751640000},
         "captured_at": _iso(NOW),
     }), encoding="utf-8")
     result = board.read_rate_limits(target, now=NOW)
-    assert result["five_hour"] == {"used_percentage": 10, "resets_at": 1751640000}
+    assert "five_hour" not in result
     assert result["seven_day"] is None
 
 
-def test_rate_limits_window_is_null(tmp_path: Path):
+def test_rate_limits_week_is_null(tmp_path: Path):
     target = tmp_path / "rate-limits.json"
     target.write_text(json.dumps({
-        "five_hour": None,
         "seven_day": {"used_percentage": 5, "resets_at": 1751900000},
         "captured_at": _iso(NOW),
     }), encoding="utf-8")
     result = board.read_rate_limits(target, now=NOW)
-    assert result["five_hour"] is None
     assert result["seven_day"] == {"used_percentage": 5, "resets_at": 1751900000}
 
 
@@ -152,21 +149,21 @@ def test_rate_limits_tolerates_utf8_bom(tmp_path: Path):
     # corrupt.
     target = tmp_path / "rate-limits.json"
     payload = json.dumps({
-        "five_hour": {"used_percentage": 41.7, "resets_at": 1751640000},
+        "seven_day": {"used_percentage": 41.7, "resets_at": 1751900000},
         "captured_at": _iso(NOW),
     })
     target.write_bytes(b"\xef\xbb\xbf" + payload.encode("utf-8"))
     result = board.read_rate_limits(target, now=NOW)
     assert result["available"] is True
-    assert result["five_hour"] == {"used_percentage": 41.7, "resets_at": 1751640000}
+    assert result["seven_day"] == {"used_percentage": 41.7, "resets_at": 1751900000}
 
 
 def test_rate_limits_window_present_but_null_fields(tmp_path: Path):
     target = tmp_path / "rate-limits.json"
     target.write_text(json.dumps({
-        "five_hour": {"used_percentage": None, "resets_at": None},
+        "seven_day": {"used_percentage": None, "resets_at": None},
         "captured_at": _iso(NOW),
     }), encoding="utf-8")
     result = board.read_rate_limits(target, now=NOW)
     assert result["available"] is True
-    assert result["five_hour"] == {"used_percentage": None, "resets_at": None}
+    assert result["seven_day"] == {"used_percentage": None, "resets_at": None}

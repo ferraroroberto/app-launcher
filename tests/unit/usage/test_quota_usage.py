@@ -156,7 +156,7 @@ def test_legacy_claude_fallback_requires_absent_canonical_source_and_known_time(
     absent = _source("claude", "anthropic", [], state="unknown", reason="source_absent")
     legacy = {
         "available": True, "stale": False, "updated_at": None,
-        "five_hour": None, "seven_day": None,
+        "seven_day": None,
     }
     view = _read(monkeypatch, {"sources": [absent], "pools": []}, "claude:opus", legacy)
     assert view["state"] == "unknown"  # never fresh without observed time
@@ -174,8 +174,7 @@ def test_canonical_reader_failure_never_falls_back_to_legacy(monkeypatch):
     monkeypatch.setattr(quota_usage, "_read_snapshot", broken_reader)
     legacy = {
         "available": True, "stale": False, "updated_at": "2026-09-09T17:00:00Z",
-        "five_hour": {"used_percentage": 12, "resets_at": 1788976800},
-        "seven_day": None,
+        "seven_day": {"used_percentage": 12, "resets_at": 1788976800},
     }
     # Through the live entry point since #1004 removed the unreachable
     # ``read_quota_view`` wrapper this used to call. Asserting on the lines
@@ -263,7 +262,8 @@ def test_lines_always_list_both_agents_in_fixed_order(monkeypatch):
     assert [line["label"] for line in lines] == ["Claude Code", "Codex"]
     for line in lines:
         assert line["state"] == "unknown"
-        assert line["five_hour"] is None and line["weekly"] is None
+        assert line["weekly"] is None
+        assert (line["harness"] == "claude") == ("five_hour" not in line)
 
 
 def test_lines_collapse_codex_buckets_to_the_fullest_window_per_duration(monkeypatch):
@@ -286,7 +286,19 @@ def test_lines_collapse_codex_buckets_to_the_fullest_window_per_duration(monkeyp
     assert codex["weekly"]["used_percentage"] == 36
 
 
-def test_lines_map_claude_native_window_ids_by_duration(monkeypatch):
+def test_lines_map_claude_native_window_id_by_duration(monkeypatch):
+    observations = [_observation("claude-code", [_window("seven_day", 10080, 19)])]
+    claude = _lines(
+        monkeypatch,
+        {"sources": [_source("claude", "anthropic", observations)], "pools": []},
+    )[0]
+
+    assert claude["weekly"]["used_percentage"] == 19
+    assert claude["weekly"]["duration_minutes"] == 10080
+
+
+def test_claude_line_never_carries_a_five_hour_window(monkeypatch):
+    """Claude Code has no 5h limit; a leftover 5h shard window is not shown."""
     observations = [_observation("claude-code", [
         _window("five_hour", 300, 39),
         _window("seven_day", 10080, 19),
@@ -295,24 +307,19 @@ def test_lines_map_claude_native_window_ids_by_duration(monkeypatch):
         monkeypatch,
         {"sources": [_source("claude", "anthropic", observations)], "pools": []},
     )[0]
-
-    assert claude["five_hour"] == {
-        "used_percentage": 39, "resets_at": "2026-09-09T18:00:00.000000Z",
-        "duration_minutes": 300,
-    }
+    assert "five_hour" not in claude
     assert claude["weekly"]["used_percentage"] == 19
-    assert claude["weekly"]["duration_minutes"] == 10080
 
 
 def test_lines_never_promote_an_unmeasured_window_to_zero(monkeypatch):
     observations = [_observation(
-        "claude-code", [_window("five_hour", 300, None, state="unknown")],
+        "claude-code", [_window("seven_day", 10080, None, state="unknown")],
     )]
     claude = _lines(
         monkeypatch,
         {"sources": [_source("claude", "anthropic", observations)], "pools": []},
     )[0]
-    assert claude["five_hour"] is None
+    assert claude["weekly"] is None
 
 
 def test_lines_ignore_a_duration_the_row_does_not_show(monkeypatch):

@@ -134,3 +134,22 @@ assert.equal(grokText(meterReading(grokLine({ state: 'unknown', usd: null }), no
 assert.equal(grokText(meterReading(grokLine(null), now)), 'limits not exposed by Grok');
 
 console.log('OK');
+
+// Claude reports only a week: its row has no five_hour key, shows no 5h
+// window, and a missing week reads as the state word, never as 0% or fine.
+const claudeWeek = { harness: 'claude', label: 'Claude Code', state: 'available', stale: false,
+  weekly: { used_percentage: 64, resets_at: weekReset, duration_minutes: 10080 } };
+r = meterReading(claudeWeek, now);
+assert.equal(r.five, null);
+assert.equal(r.week.pct, 64);
+assert.equal(r.weekTone, 'attention');
+assert.equal(r.tone, 'attention');
+r = meterReading({ harness: 'claude', label: 'Claude Code', state: 'available', stale: false, weekly: null }, now);
+assert.equal(r.week, null);
+assert.equal(r.tone, 'none');
+assert.equal(r.note, 'unknown');
+// An idle stretch keeps the last week, dimmed and chipped, with no 5h.
+r = meterReading({ harness: 'claude', label: 'Claude Code', state: 'unknown' }, now, [undefined, claudeWeek.weekly]);
+assert.equal(r.five, null);
+assert.equal(r.week.pct, 64);
+assert.equal(r.chip, 'unknown');

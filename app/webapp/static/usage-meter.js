@@ -1,10 +1,11 @@
 /* Usage meter: one component and one sheet. It
  * replaced the coloured quota sentences.
  *
- *   The Code tab's Usage card: a "Claude Code" row, then 5h and Week rows
- *   (label, 6px bar, %, reset time) with a 2px pace tick on the week bar at
- *   the week-elapsed %, then one-line Codex and Grok rows, each only while
- *   Settings shows that provider. (Usage stays on Code.)
+ *   The Code tab's Usage card: a "Claude Code" row, then its Week row (label,
+ *   6px bar, %, reset time) with a 2px pace tick on the bar at the
+ *   week-elapsed %, then one-line Codex and Grok rows, each only while
+ *   Settings shows that provider. (Usage stays on Code.) A harness shows only
+ *   the windows it reports: Claude has no 5h window, Codex still has one.
  *
  * Tapping it opens the Usage sheet: exact resets, week elapsed, Codex state
  * and the context filter's savings.
@@ -13,7 +14,7 @@
  *
  * Colour follows pace, not raw percent: a bar is accent
  * while its window is on or under pace, attention when the week is ahead of
- * the week elapsed, and danger at 90% or more in either window. The 5h
+ * the week elapsed, and danger at 90% or more in either window. Codex's 5h
  * window has no pace of its own, so it is accent or danger. A stale reading
  * dims and carries a "stale" chip; with nothing measured, the state word
  * ("unknown", "unsupported", "unavailable") is kept as text.
@@ -206,7 +207,7 @@ function bar(win, tone) {
   return track;
 }
 
-// Compact reset stamps for these rows: the 5-hour window always resets
+// Compact reset stamps for these rows: Codex's 5-hour window always resets
 // today or tomorrow, so the clock alone is enough; the weekly one needs
 // the day, not the time.
 const ROW_RESET_CLOCK = { hour: 'numeric', minute: '2-digit' };
@@ -419,8 +420,8 @@ function sheetOpen() {
   return !!(dialog && dialog.open);
 }
 
-// The sheet's exact resets: the 5h window resets today or tomorrow, so its
-// weekday is enough; the week's needs the date.
+// The sheet's exact resets: Codex's 5h window resets today or tomorrow, so
+// its weekday is enough; the week's needs the date.
 const SHEET_RESET_5H = { weekday: 'short', hour: 'numeric', minute: '2-digit' };
 const SHEET_RESET_WEEK = { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' };
 
@@ -437,7 +438,7 @@ function windowValue(win, format) {
   return pctText(win.pct) + (reset ? ' · resets ' + reset : '');
 }
 
-// Short labels ("Claude 5h"), so a phone-width row keeps label and value
+// Short labels ("Codex 5h"), so a phone-width row keeps label and value
 // side by side.
 function harnessRows(body, r, harness, name) {
   if (!r || r.note) {

@@ -276,7 +276,6 @@ def test_quota_reading_is_served_by_one_endpoint(webapp_client):
     client, app, _overrides = webapp_client
     rate_limits_file = Path(app.state.webapp_config.rate_limits_file)
     rate_limits_file.write_text(json.dumps({
-        "five_hour": {"used_percentage": 42, "resets_at": 1751640000},
         "seven_day": {"used_percentage": 88, "resets_at": 1751900000},
         "captured_at": _iso(datetime.now(timezone.utc) - timedelta(minutes=1)),
     }), encoding="utf-8")
@@ -285,7 +284,7 @@ def test_quota_reading_is_served_by_one_endpoint(webapp_client):
     claude = client.get("/api/rate-limits").json()["quota_lines"][0]
     assert claude["label"] == "Claude Code"
     assert claude["state"] == "available"
-    assert claude["five_hour"]["used_percentage"] == 42
+    assert "five_hour" not in claude
     assert claude["weekly"]["used_percentage"] == 88
 
 
@@ -296,7 +295,9 @@ def test_api_rate_limits_standalone_endpoint_absent(webapp_client):
     assert [line["label"] for line in lines] == ["Claude Code", "Codex"]
     for line in lines:
         assert line["state"] == "unknown"
-        assert line["five_hour"] is None and line["weekly"] is None
+        assert line["weekly"] is None
+    assert "five_hour" not in lines[0]            # Claude has no 5h window
+    assert lines[1]["five_hour"] is None          # Codex does
 
 
 def test_api_rate_limits_adds_grok_only_while_the_meter_shows_it(webapp_client, monkeypatch):
@@ -319,14 +320,28 @@ def test_api_rate_limits_standalone_endpoint_present(webapp_client):
     rate_limits_file = Path(app.state.webapp_config.rate_limits_file)
     rate_limits_file.write_text(json.dumps({
         "five_hour": {"used_percentage": 10, "resets_at": 1751640000},
+        "seven_day": {"used_percentage": 20, "resets_at": 1751900000},
         "captured_at": _iso(datetime.now(timezone.utc)),
     }), encoding="utf-8")
 
     claude = client.get("/api/rate-limits").json()["quota_lines"][0]
     assert claude["state"] == "available"
-    assert claude["five_hour"] == {
-        "used_percentage": 10, "resets_at": 1751640000, "duration_minutes": 300,
+    # A cache an older statusline wrote still carries a 5h figure: never shown.
+    assert "five_hour" not in claude
+    assert claude["weekly"] == {
+        "used_percentage": 20, "resets_at": 1751900000, "duration_minutes": 10080,
     }
+
+
+def test_api_rate_limits_missing_week_is_unknown_not_fine(webapp_client):
+    client, app, _overrides = webapp_client
+    Path(app.state.webapp_config.rate_limits_file).write_text(json.dumps({
+        "five_hour": {"used_percentage": 10, "resets_at": 1751640000},
+        "captured_at": _iso(datetime.now(timezone.utc)),
+    }), encoding="utf-8")
+
+    claude = client.get("/api/rate-limits").json()["quota_lines"][0]
+    assert "five_hour" not in claude
     assert claude["weekly"] is None
 
 

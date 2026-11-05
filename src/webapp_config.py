@@ -106,7 +106,7 @@ def _default_chief_inbox_dir() -> str:
 
 
 def _default_rate_limits_file() -> str:
-    """Where fleet-config's statusline writer caches 5h/7d usage % (issue #326)."""
+    """Where fleet-config's statusline writer caches the 7d usage % (issue #326)."""
     return str(Path.home() / ".claude" / "hooks" / "state" / "rate-limits.json")
 
 
@@ -182,7 +182,7 @@ class WebappConfig:
     # degrades to unknown session status, never an error.
     sessions_state_file: str = field(default_factory=_default_sessions_state_file)
     # The rate-limits cache a fleet-config statusline writer maintains
-    # — 5h/7d Claude usage % + reset times.
+    # — 7d Claude usage % + reset time.
     # Read defensively like sessions_state_file: absent/corrupt/stale hides
     # the Board's usage badges, never an error.
     rate_limits_file: str = field(default_factory=_default_rate_limits_file)

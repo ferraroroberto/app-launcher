@@ -153,13 +153,11 @@ def _legacy_view(
     state = "stale" if legacy.get("stale") else "available"
     observations = []
     windows = []
-    for name, minutes in (("five_hour", 300), ("seven_day", 10080)):
-        item = legacy.get(name)
-        if not isinstance(item, dict):
-            continue
+    item = legacy.get("seven_day")
+    if isinstance(item, dict):
         windows.append({
-            "id": name,
-            "duration_minutes": minutes,
+            "id": "seven_day",
+            "duration_minutes": 10080,
             "used_percentage": item.get("used_percentage"),
             "resets_at": item.get("resets_at"),
             "state": state if item.get("used_percentage") is not None else "unknown",
@@ -215,9 +213,12 @@ def _view_from_snapshot(
 QUOTA_LINE_HARNESSES = (("claude", "Claude Code"), ("codex", "Codex"))
 
 # Duration classes shown on a compact line. Native window *ids* differ per
-# harness (Claude: five_hour/seven_day, Codex: primary/secondary), so match
-# on the duration the provider itself reports, never on the id.
+# harness (Claude: seven_day, Codex: primary/secondary), so match on the
+# duration the provider itself reports, never on the id.
 _LINE_WINDOWS = (("five_hour", 300), ("weekly", 10080))
+# Claude Code has no five-hour limit on the owner's plan, so its row never
+# carries that window: a harness shows only the windows it reports.
+_NO_FIVE_HOUR = frozenset({"claude"})
 
 
 def _worst_window(observations: list, minutes: int) -> Optional[Dict[str, Any]]:
@@ -262,6 +263,8 @@ def _quota_line(view: Dict[str, Any], label: str) -> Dict[str, Any]:
         "updated_at": view.get("updated_at"),
     }
     for name, minutes in _LINE_WINDOWS:
+        if name == "five_hour" and line["harness"] in _NO_FIVE_HOUR:
+            continue
         line[name] = _worst_window(observations, minutes)
     return line
 

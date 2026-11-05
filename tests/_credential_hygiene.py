@@ -135,7 +135,6 @@ HOST_STATE_KEYS = {
     "context_filter_log_file": "context-filter/shadow.jsonl",
 }
 
-_SYNTHETIC_FIVE_HOUR_PCT = 37
 _SYNTHETIC_SEVEN_DAY_PCT = 12
 
 
@@ -151,10 +150,6 @@ def _write_synthetic_rate_limits(path: Path) -> None:
     now = datetime.now(timezone.utc)
     payload = {
         "captured_at": (now + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "five_hour": {
-            "used_percentage": _SYNTHETIC_FIVE_HOUR_PCT,
-            "resets_at": int((now + timedelta(hours=3)).timestamp()),
-        },
         "seven_day": {
             "used_percentage": _SYNTHETIC_SEVEN_DAY_PCT,
             "resets_at": int((now + timedelta(days=3)).timestamp()),
