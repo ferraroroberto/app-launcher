@@ -275,10 +275,7 @@ export async function loadNew() {
   stopLiveTimer();
   newerNote('Checking for new messages…');
   try {
-    if (target.ticking && target.inflight) await target.inflight;
-    if (view !== target) return;
-    target.inflight = forwardRead(target, true);
-    const found = await target.inflight;
+    const found = await forwardRead(target, true);
     if (view !== target) return;
     newerNote(found === 'unchanged' ? 'No new messages' : null, NEWER_NOTE_MS);
   } finally {
@@ -500,8 +497,7 @@ function liveUnavailable(reason) {
 
 async function liveTick() {
   if (!view || !liveAllowed()) return;
-  view.inflight = forwardRead(view, false);
-  await view.inflight;
+  await forwardRead(view, false);
 }
 
 // One forward-cursor read, the background tick's or a forced one
@@ -509,8 +505,27 @@ async function liveTick() {
 // 'unavailable', 'reset', 'failed', or 'stale' when the pane moved on — so
 // a forced read can say it. A failed forced read toasts, as a tapped action
 // does; a failed tick backs off quietly, as it always has.
+//
+// Reads run one at a time. Two started from the same cursor would both be
+// answered with the same turns and both append them, so a nudge (a send, an
+// answer, a discard) landing while a slow tick is on the wire waits for it,
+// then reads on from the cursor it left.
 export async function forwardRead(target, manual) {
+  while (target.inflight) await target.inflight;
+  if (view !== target) return 'stale';
+  const run = readForward(target, manual);
+  target.inflight = run;
+  try {
+    return await run;
+  } finally {
+    if (target.inflight === run) target.inflight = null;
+  }
+}
+
+async function readForward(target, manual) {
   const seq = target.seq;
+  // The read before this one re-armed the tick; this read re-arms it again.
+  window.clearTimeout(target.liveTimer);
   target.liveTimer = null;
   target.ticking = true;
   // Not awaited: the screen read is independent of the transcript, and a

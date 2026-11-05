@@ -14,7 +14,7 @@ import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { openResumeCard } from './chat-resume.js';
 import { pickerAllowed } from './transcript-decisions.js';
 import {
-  SENT_REFRESH_MS, chatComposer, forwardRead, hasTranscriptReader, liveAllowed, scheduleLive, stopLiveTimer, view,
+  SENT_REFRESH_MS, chatComposer, forwardRead, hasTranscriptReader, liveAllowed, scheduleLive, view,
 } from './session-transcript.js';
 
 // iOS shrinks the visual viewport for the software keyboard but not the
@@ -111,9 +111,8 @@ function armSendWatch(target, watch) {
 
 async function closeSendWatch(target) {
   if (view !== target || !target.sendWatch) return;
-  if (target.ticking && target.inflight) await target.inflight;
+  while (target.inflight) await target.inflight;
   if (view !== target || !target.sendWatch || !liveAllowed()) return;
-  stopLiveTimer();
   await forwardRead(target, false);
 }
 
