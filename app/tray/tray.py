@@ -77,6 +77,9 @@ SESSION_HOST_FAILURES_TO_ALERT = 2
 # query and a Stop-Process): an admitted guess with room over the few
 # seconds it normally takes, so a hung PowerShell cannot stall the caller.
 RECLAIM_TIMEOUT_S = 10
+# Bound on `clip` copying a short URL or token into the clipboard: it returns in
+# milliseconds, so a wedged clipboard owner must not freeze the tray menu thread.
+CLIP_TIMEOUT_S = 10
 
 # The loopback PTY session-host. It is a *linked-but-independent* child:
 # it hosts the user's Coding PTYs and MUST survive a
@@ -158,8 +161,11 @@ def _clipboard_copy(text: str) -> bool:
                 check=False,
                 encoding="utf-8",
                 creationflags=NO_WINDOW,
+                timeout=CLIP_TIMEOUT_S,
             )
             return p.returncode == 0
+        except subprocess.TimeoutExpired:
+            logger.warning(f"⚠️ clip did not finish within {CLIP_TIMEOUT_S}s; nothing was copied")
         except OSError as exc:
             logger.debug(f"clip failed: {exc}")
     return False

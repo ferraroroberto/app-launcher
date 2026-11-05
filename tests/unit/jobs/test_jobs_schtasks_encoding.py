@@ -123,3 +123,21 @@ def _repo_root():
     from pathlib import Path
 
     return Path(jobs_schtasks.__file__).resolve().parents[2]
+
+
+class TestRunSchtasksTimeout:
+    def test_hung_schtasks_returns_its_own_failed_result(self, monkeypatch, caplog):
+        seen = {}
+
+        def _hang(argv, **kwargs):
+            seen.update(kwargs)
+            raise subprocess.TimeoutExpired(argv, kwargs["timeout"])
+
+        monkeypatch.setattr(jobs_schtasks.subprocess, "run", _hang)
+        with caplog.at_level(logging.WARNING):
+            proc = jobs_schtasks._run_schtasks(["schtasks", "/Query"])
+
+        assert seen["timeout"] == jobs_schtasks.SCHTASKS_TIMEOUT_S
+        assert proc.returncode == jobs_schtasks.SCHTASKS_TIMEOUT_RC
+        assert "timed out" in proc.stderr
+        assert any("timed out" in r.getMessage() for r in caplog.records)
