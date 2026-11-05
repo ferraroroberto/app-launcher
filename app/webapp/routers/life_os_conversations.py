@@ -566,7 +566,8 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
     always keeps the conversation's (see :func:`_kept_model`). Runs the same
     validated :func:`_launch_conversation` path as a Resume picked from the
     list, so the capture identity checks are unchanged. 409 with a plain
-    reason when nothing is resumable. A conversation already open in a running
+    reason when nothing is resumable. A Telegram bot chat is never the newest
+    (``split_system_chats``). A conversation already open in a running
     session is not resumed a second time: the reply is that session
     (``conversation_action: "open"``) for the phone to open. When the session
     host can't be asked, that is not known, and nothing is launched (503).
@@ -577,6 +578,9 @@ async def resume_latest_conversation(skill_id: str, request: Request) -> Dict[st
     candidates = await skill_conversations(cfg, skill)
     if not candidates:
         raise HTTPException(409, "No conversation with this skill yet.")
+    # The owner's own conversations only: a Telegram bot chat is the channel's,
+    # and the relay (which shares skill_conversations) still needs those rows.
+    candidates, _bot_chats = await split_system_chats(cfg, candidates)
     resumable = [r for r in candidates if r["resumable"] and r["path"]]
     if not resumable:
         raise HTTPException(409, "None of this skill's conversations can be resumed; "
