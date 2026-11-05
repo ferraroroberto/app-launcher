@@ -26,6 +26,7 @@ from urllib.parse import urlsplit
 import requests
 
 from src.clients import github
+from src.clients._loopback_http import pooled_request
 from src.session_view.links import TITLE_TAG, clean_title
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ def page_title(url: str) -> Optional[str]:
     """The ``<title>`` of an HTML page, or ``None`` when it has none or the
     server did not answer in time."""
     try:
-        with requests.get(
-            url, timeout=FETCH_TIMEOUT, stream=True, allow_redirects=True,
+        with pooled_request(
+            "GET", url, timeout=FETCH_TIMEOUT, stream=True, allow_redirects=True,
             headers={"User-Agent": "Mozilla/5.0 (compatible; link-titles)", "Accept": "text/html"},
         ) as resp:
             if resp.status_code >= 400 or "html" not in resp.headers.get("content-type", "").lower():

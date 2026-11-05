@@ -140,7 +140,7 @@ class _Resp:
     (_Resp(b"<title>Data</title>", ctype="application/json"), None),
 ])
 def test_page_title_reads_a_title_and_refuses_the_rest(monkeypatch, resp, expected):
-    monkeypatch.setattr(lt.requests, "get", lambda *a, **k: resp)
+    monkeypatch.setattr(lt, "pooled_request", lambda *a, **k: resp)
     assert lt.page_title("https://example.org/") == expected
 
 
@@ -148,7 +148,7 @@ def test_page_title_gives_up_quietly_on_a_network_error(monkeypatch):
     def refuse(*a, **k):
         raise lt.requests.ConnectionError("refused")
 
-    monkeypatch.setattr(lt.requests, "get", refuse)
+    monkeypatch.setattr(lt, "pooled_request", refuse)
     assert lt.page_title("http://localhost:9/") is None
 
 
@@ -168,5 +168,5 @@ def test_github_title_asks_gh_for_the_item_and_survives_its_failure(monkeypatch)
 
 def test_the_artifact_hosting_shells_generic_title_is_not_a_title(monkeypatch):
     resp = _Resp(b"<title>Claude Artifact</title>")
-    monkeypatch.setattr(lt.requests, "get", lambda *a, **k: resp)
+    monkeypatch.setattr(lt, "pooled_request", lambda *a, **k: resp)
     assert lt.page_title("https://claude.ai/artifact/AbCdEfGh") is None

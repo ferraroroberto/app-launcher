@@ -87,7 +87,8 @@ box_lock_gate = { src = "scripts/box_lock_gate.ps1", sha = "98cdb1b7727d12a5c233
 instruction_ratchet = { src = "scripts/instruction_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/instruction_ratchet.py" }
 doc_refs_ratchet = { src = "scripts/doc_refs_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/doc_refs_ratchet.py" }
 dead_code_ratchet = { src = "scripts/dead_code_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/dead_code_ratchet.py" }
-conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "6e2158935c46875d16be593b898dba3309855c1c", dest = "scripts/conventions_ratchet.py" }
+conventions_ratchet = { src = "scripts/conventions_ratchet.py", sha = "8e66d3f9565ce79eaaa64ec006ed3283dad06a69", dest = "scripts/conventions_ratchet.py" }
+conventions_readers = { src = "scripts/conventions_readers.py", sha = "8e66d3f9565ce79eaaa64ec006ed3283dad06a69", dest = "scripts/conventions_readers.py" }
 runtime_write_ratchet = { src = "scripts/runtime_write_ratchet.py", sha = "5505185c5f4b10eea5ab268e7b6676c6c54340c4", dest = "scripts/runtime_write_ratchet.py" }
 usage_track_ratchet = { src = "scripts/usage_track_ratchet.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "scripts/usage_track_ratchet.py" }
 usage_track_scan = { src = "scripts/usage_track_scan.py", sha = "ea11037a42f9f99ea8e728f574c6bb89480f3aa2", dest = "scripts/usage_track_scan.py" }
@@ -249,7 +250,9 @@ allow            = ["tests/_credential_hygiene.py:_RedactedRepr.toterminal"]
 # Windows), logging-not-print and no-drive-path (src/ and app/ are library code),
 # git-wrapper (src/git_utils.py is the one run_git), login-lockout (the /api/login
 # route enforces the vendored src/login_lockout.py; baseline zero), no-pwsh-stub (pwsh is a
-# 0-byte stub here; text files name the absolute powershell.exe; baseline zero). Skipped: secret-compare, since
+# 0-byte stub here; text files name the absolute powershell.exe; baseline zero), and
+# must_use (every outbound requests call goes through the pooled session in
+# src/clients/_loopback_http.py; baseline zero). Skipped: secret-compare, since
 # hmac.compare_digest is called from six modules and no single helper owns it.
 # Exit 3 (git unusable, a .py file that does not parse) fails the gate. Procedure
 # and limits: project-scaffolding docs/conventions-ratchet.md.
@@ -258,6 +261,12 @@ enabled      = true
 baseline     = ".conventions-ratchet-baseline.json"
 rules        = ["no-window", "logging-not-print", "no-drive-path", "git-wrapper", "password-input-vendored", "login-lockout", "no-pwsh-stub"]
 git_wrappers = ["src/git_utils.py"]
+
+[[conventions_ratchet.must_use]]
+call   = ["requests.get", "requests.post", "requests.put", "requests.patch", "requests.delete", "requests.head", "requests.request"]
+helper = ["src/clients/_loopback_http.py"]
+why    = "CLAUDE.md: outbound-connection discipline, one pooled session (src/clients/_loopback_http.py is this repo's pooled session)"
+paths  = ["app/", "src/"]
 
 # [runtime_write_ratchet] -- scripts/runtime_write_ratchet.py fails when a tracked
 # Python file gains a write target (open for writing, Path.write_*, mkdir, a log

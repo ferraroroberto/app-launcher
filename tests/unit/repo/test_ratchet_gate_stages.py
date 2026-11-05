@@ -76,6 +76,8 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
     if name == "structure":
         for sibling in ("structure_layout.py", "structure_band.py"):
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
+    if name == "conventions":
+        shutil.copy2(REPO_ROOT / "scripts" / "conventions_readers.py", tmp_path / "scripts")
     if name == "runtime_write":
         shutil.copy2(REPO_ROOT / "scripts" / "runtime_write_resolve.py", tmp_path / "scripts")
     files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
