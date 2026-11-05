@@ -54,7 +54,7 @@ from src.life_os.history import (
     REFUSAL_PARENT_DIR, REFUSAL_WRONG_FOLDER, read_captures, write_handoff,
 )
 from src.life_os.delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
-from src.life_os.bot_titles import apply_bot_titles, bot_conversation_ids
+from src.life_os.bot_titles import apply_bot_titles, bot_conversation_ids, split_system_rows
 from src.life_os.title import run_title_cli as _run_title_cli
 from src.life_os.skill_refresh import plan_refresh, record_refresh
 from src.session_view.conversation_model import recorded_model
@@ -473,32 +473,42 @@ async def list_skill_conversations(skill_id: str, request: Request) -> Dict[str,
         return {"skill": skill.id, "available": False, "conversations": []}
 
     conversations = await asyncio.to_thread(_conversation_rows, cfg, rows, skill=skill)
-    await _title_bot_chats(cfg, conversations)
+    conversations, system = await split_system_chats(cfg, conversations, title=True)
     # The indexer already writes newest-first; re-sorting on the date-stamped
     # filename makes that a property of this endpoint rather than a hope.
     conversations.sort(key=lambda c: c["file"], reverse=True)
+    system.sort(key=lambda c: c["file"], reverse=True)
     return {
         "skill": skill.id,
         "available": True,
         "conversations": conversations,
+        "system": system,
     }
 
 
-async def _title_bot_chats(cfg: WebappConfig, conversations: List[Dict[str, Any]]) -> None:
-    """Give an untitled bot chat's row its fixed ``Telegram bot - <skill>`` title.
+async def split_system_chats(
+    cfg: WebappConfig, conversations: List[Dict[str, Any]], *, title: bool = False,
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """``(normal, system)``: the Telegram bot chats apart from the owner's own.
 
-    Best-effort and read-only toward the sessions: when no row needs it the
-    session host is not asked, and when it cannot be asked the rows are left as
-    the index has them.
+    A bot chat is one a live ``telegram:*`` session holds, whose capture shows
+    channel turns, or that carries the fixed bot title (``bot_rule``); the last
+    two outlive the session, so a restarted bot's old conversation stays
+    system. Nothing is deleted or relabelled: the rows only land in the second
+    list. ``title`` also gives an untitled live bot row its fixed title.
+
+    When the session host cannot be asked, the live marker is unknown, not
+    absent: the other two still classify, and a chat only a live label marks
+    stays in the normal list for that one read.
     """
-    if not any(not c["title"] and c["sid"] and c["path"] for c in conversations):
-        return
+    bots: set[str] = set()
     try:
-        groups = await _conversation_sessions(cfg)
-        await asyncio.to_thread(
-            apply_bot_titles, cfg, conversations, bot_conversation_ids(groups))
+        bots = bot_conversation_ids(await _conversation_sessions(cfg))
     except (session_client.SessionHostError, OSError, ValueError) as exc:
-        logger.info("ℹ️ Life OS bot chat titles skipped, sessions unavailable: %s", exc)
+        logger.info("ℹ️ Life OS bot chats classified without live sessions: %s", exc)
+    if title and any(not c["title"] and c["sid"] and c["path"] for c in conversations):
+        await asyncio.to_thread(apply_bot_titles, cfg, conversations, bots)
+    return split_system_rows(conversations, bots)
 
 
 async def _conversation_sessions(cfg: WebappConfig) -> Dict[str, List[Dict[str, Any]]]:

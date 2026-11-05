@@ -19,10 +19,12 @@ from tests.e2e.life_os._support import (
     _close_sheet,
     _convo_rows,
     _mock_conversations,
+    _mock_search,
     _mock_skills,
     _mock_transcript,
     _month_day,
     _open_conversations,
+    _open_life,
     _open_sheet,
 )
 
@@ -481,30 +483,66 @@ def test_life_os_sheet_delete_confirms_then_returns_to_the_refreshed_list(
     assert native == [], native
 
 
+_BOT_TITLE = "Telegram bot - journal-daily"
+
+
 @pytest.mark.iphone
 @pytest.mark.parametrize("theme", ["light", "dark"])
-def test_life_os_bot_chat_row_shows_its_fixed_title_beside_a_normal_row(
+def test_life_os_bot_chat_is_listed_under_system_apart_from_the_list(
     authed_page: Page, base_url: str, theme: str
 ) -> None:
-    """#1952: the server titles a bot chat ``Telegram bot - <skill>``; the list
-    shows that title where a normal row shows its digest topic, whole inside
+    """The server sends a bot chat apart: the list holds only the owner's own
+    conversation, and a collapsed "System (1)" under it opens the bot chat
+    read-only (the reader and its Done, no sheet, so no Resume), whole inside
     the viewport at 390 px in both themes. Set E2E_SHOT_DIR to keep a
     screenshot of each (local review only; stubbed data)."""
     bot, normal = _FAKE_CONVERSATIONS["conversations"]
-    body = {**_FAKE_CONVERSATIONS, "conversations": [
-        {**bot, "title": "Telegram bot - journal-daily"}, normal]}
+    body = {**_FAKE_CONVERSATIONS, "conversations": [normal],
+            "system": [{**bot, "title": _BOT_TITLE}]}
     authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.emulate_media(color_scheme=theme)
     _mock_skills(authed_page)
     _mock_conversations(authed_page, body)
+    _mock_transcript(authed_page)
     _open_conversations(authed_page, base_url)
     authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     rows = _convo_rows(authed_page)
-    expect(rows).to_have_count(2)
-    titles = rows.locator(".action-row-title")
-    expect(titles.nth(0)).to_have_text("Telegram bot - journal-daily")
-    expect(titles.nth(1)).to_have_text("an early trial run")
-    assert stable_eval(titles.nth(0), "el => el.scrollWidth <= el.clientWidth + 1") is True
+    expect(rows).to_have_count(1)
+    expect(rows.locator(".action-row-title")).to_have_text("an early trial run")
+    system = authed_page.locator("#lifeOsSystem")
+    expect(system).to_be_visible()
+    expect(authed_page.locator("#lifeOsSystemCount")).to_have_text("(1)")
+    system_rows = authed_page.locator("#lifeOsSystemList .lifeos-system-row")
+    expect(system_rows.first).to_be_hidden()        # collapsed until asked for
+    authed_page.locator(".lifeos-system-summary").click()
+    expect(system_rows).to_have_count(1)
+    title = system_rows.first.locator(".action-row-title")
+    expect(title).to_have_text(_BOT_TITLE)
+    assert stable_eval(title, "el => el.scrollWidth <= el.clientWidth + 1") is True
     shot_dir = os.environ.get("E2E_SHOT_DIR")
     if shot_dir:
-        authed_page.screenshot(path=os.path.join(shot_dir, f"bot-chat-row-{theme}.png"))
+        authed_page.screenshot(path=os.path.join(shot_dir, f"system-group-{theme}.png"))
+    system_rows.first.locator(".action-row-main").click()
+    expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
+    expect(authed_page.locator("#lifeOsViewerList")).to_contain_text("book the ferry for Friday")
+    expect(authed_page.locator("#lifeOsViewerDone")).to_have_text("Done")
+    expect(authed_page.locator("#lifeOsConvoSheet")).to_be_hidden()
+
+
+def test_life_os_search_leaves_a_bot_chat_out_of_the_hits_and_under_system(
+    authed_page: Page, base_url: str
+) -> None:
+    """A search lists the owner's own hits as Conversations and the bot chats
+    it matched under System, so a bot chat is neither a hit nor lost."""
+    bot, normal = _FAKE_CONVERSATIONS["conversations"]
+    _mock_skills(authed_page)
+    _mock_search(authed_page, [normal], system=[{**bot, "title": _BOT_TITLE}])
+    _open_life(authed_page, base_url)
+    expect(authed_page.locator("#lifeOsSystem")).to_be_hidden()    # nothing typed
+    authed_page.locator("#lifeOsFilterInput").fill("ferry")
+    expect(_convo_rows(authed_page)).to_have_count(1, timeout=5_000)
+    expect(authed_page.locator("#lifeOsConvoHead")).to_have_text("Conversations (1)")
+    expect(authed_page.locator("#lifeOsSystem")).to_be_visible()
+    expect(authed_page.locator("#lifeOsSystemCount")).to_have_text("(1)")
+    authed_page.locator("#lifeOsFilterInput").fill("")
+    expect(authed_page.locator("#lifeOsSystem")).to_be_hidden(timeout=5_000)

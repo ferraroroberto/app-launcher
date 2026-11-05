@@ -9,6 +9,8 @@ ever named here).
 A conversation is a bot chat when a live session holding it carries a
 ``telegram:<profile>`` label; that label is the one marker the session host
 stamps at spawn. Normal sessions, launcher-started ones included, carry none.
+The label ends with the session, so :func:`bot_rule` also reads two markers that
+outlive it: the capture's own channel turns and the fixed title written here.
 
 Blocking work: callers run it off the event loop.
 """
@@ -29,6 +31,9 @@ logger = logging.getLogger(__name__)
 
 BOT_TITLE_PREFIX = "Telegram bot - "
 
+RULE_LIVE_LABEL = "live-label"
+RULE_BOT_TITLE = "bot-title"
+
 
 def bot_title(skill_id: str) -> str:
     """The fixed owner title of a bot chat in ``skill_id``."""
@@ -42,6 +47,35 @@ def bot_conversation_ids(groups: Dict[str, List[Dict[str, Any]]]) -> Set[str]:
     """
     return {conversation for conversation, owners in groups.items()
             if any(label_profile_id(owner.get("label")) for owner in owners)}
+
+
+def bot_rule(row: Dict[str, Any], bots: Set[str]) -> str:
+    """The rule that makes ``row`` a Telegram bot's own conversation, or ``""``:
+    a live ``telegram:*`` session holds it, its capture shows a bot chat
+    (``bot_chat_rule``), or it carries the fixed bot title written while the
+    chat was live (which outlives the session)."""
+    if str(row.get("sid") or "").lower() in bots:
+        return RULE_LIVE_LABEL
+    if row.get("bot_chat"):
+        return str(row.get("bot_chat_rule") or "bot-chat")
+    if str(row.get("title") or "").startswith(BOT_TITLE_PREFIX):
+        return RULE_BOT_TITLE
+    return ""
+
+
+def split_system_rows(
+    rows: Iterable[Dict[str, Any]], bots: Set[str],
+) -> tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """``(normal, system)``: ``rows`` apart by whether :func:`bot_rule` names one.
+
+    Order is kept in both lists. Nothing is dropped: the system rows are the
+    bot chats the Life tab lists under System instead of among the owner's own.
+    """
+    normal: List[Dict[str, Any]] = []
+    system: List[Dict[str, Any]] = []
+    for row in rows:
+        (system if bot_rule(row, bots) else normal).append(row)
+    return normal, system
 
 
 def pending_bot_rows(

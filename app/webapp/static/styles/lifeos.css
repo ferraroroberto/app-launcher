@@ -167,8 +167,10 @@
 @media (max-width: 520px) {
   .lifeos-convo-group > :not(.action-rows) { margin-inline: calc(14px + var(--gap)); }
   #lifeOsConvoList > .action-row,
-  #lifeOsArchivedList > .action-row { padding-inline: calc(4px + var(--gap)); }
-  .lifeos-convo-group .lifeos-archived-summary { margin-inline: calc(14px + var(--gap)); }
+  #lifeOsArchivedList > .action-row,
+  #lifeOsSystemList > .action-row { padding-inline: calc(4px + var(--gap)); }
+  .lifeos-convo-group .lifeos-archived-summary,
+  .lifeos-convo-group .lifeos-system-summary { margin-inline: calc(14px + var(--gap)); }
 }
 .lifeos-group-count { font-weight: 400; }
 /* The Conversations head with the search's Start new at its end. */
@@ -291,13 +293,15 @@
 .lifeos-folder-chevron .icon { width: var(--icon-inline); height: var(--icon-inline); }
 .lifeos-folder-btn[aria-expanded="true"] .lifeos-folder-chevron { transform: rotate(90deg); }
 .lifeos-convo-list { margin: 0; }
-/* The Archived group: a quiet caption-size disclosure under the list, its
-   chevron turning as the Board's parked group does. */
+/* The Archived and System groups: a quiet caption-size disclosure under the
+   list, its chevron turning as the Board's parked group does. */
 /* Rows run full-bleed like the list above; only the header is inset. */
 .lifeos-convo-group > .lifeos-archived { margin: var(--space-sm) 0 0; }
 .lifeos-archived[hidden] { display: none; }
-.lifeos-archived-summary { min-height: var(--row-sm); margin: 0 14px; cursor: pointer; list-style: none; }
-.lifeos-archived-summary::-webkit-details-marker { display: none; }
+.lifeos-archived-summary,
+.lifeos-system-summary { min-height: var(--row-sm); margin: 0 14px; cursor: pointer; list-style: none; }
+.lifeos-archived-summary::-webkit-details-marker,
+.lifeos-system-summary::-webkit-details-marker { display: none; }
 .lifeos-archived-chevron {
   display: inline-flex;
   width: var(--row-sm);
