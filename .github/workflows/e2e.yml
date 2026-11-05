@@ -71,6 +71,7 @@ jobs:
           Copy-Item config/apps.sample.json config/apps.json
 
       - name: Run pre-ship gate
+        # no-pwsh-stub-exempt: hosted GitHub runner, where pwsh is a real install
         run: pwsh -File scripts/verify-before-ship.ps1
 
       - name: Upload gate progress log
