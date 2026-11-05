@@ -2,6 +2,11 @@
   "version": 1,
   "band": {"files": 15, "functions": 43},
   "root_extras": [],
+  "shape_contract": {
+    "root_files": [],
+    "redundant": ["webapp/"],
+    "folder_types": {}
+  },
   "entries": [
     {"key": "place:app/webapp/middleware", "files": 6}
   ]
