@@ -24,7 +24,7 @@ from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig
 
 from app.webapp.routers._helpers import audit_off_loop, client_ip
-from app.webapp.routers.life_os_conversations import _conversation_rows
+from app.webapp.routers.life_os_conversations import _conversation_rows, split_system_chats
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -86,6 +86,10 @@ async def search_conversations(request: Request) -> Dict[str, Any]:
     reply = await run_conversation_search(cfg, query, skill, limit)
     if not reply["available"]:
         return reply
+    # The owner's own conversations rank as hits; the Telegram bot chats the
+    # search also matched ride apart, for the Life tab's System group.
+    results, system = await split_system_chats(cfg, reply["results"])
+    reply = {**reply, "results": results, "system": system}
     # Audited like every other private-content read, but the query text is
     # deliberately not recorded: it is the user's own words about their own
     # life, and the hit count is all an audit trail needs to be useful here.

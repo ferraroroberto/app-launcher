@@ -86,6 +86,23 @@ class TestConversationSearch:
         # The CLI's ready-made shell command is deliberately not forwarded.
         assert "resume" not in row
 
+    def test_a_bot_chat_is_a_system_row_and_not_a_hit(
+        self, life_os_client, stub_cli, monkeypatch
+    ):
+        client, _, overrides = life_os_client
+        life_os = overrides["life_os_dir"]
+        hits = [
+            self._hit(life_os, "2026-08-01-0900-ferry-booking.md"),
+            self._hit(life_os, "2026-07-02-1030-notion-schema.md",
+                      title="Telegram bot - journal-daily"),
+        ]
+        monkeypatch.setattr(
+            stub_cli.subprocess, "run", lambda *a, **k: _completed(json.dumps(hits)),
+        )
+        body = client.get("/api/life-os/conversations/search?q=ferry").json()
+        assert [r["file"] for r in body["results"]] == ["2026-08-01-0900-ferry-booking.md"]
+        assert [r["file"] for r in body["system"]] == ["2026-07-02-1030-notion-schema.md"]
+
     def test_passes_cwd_query_and_skill(
         self, life_os_client, stub_cli, monkeypatch
     ):

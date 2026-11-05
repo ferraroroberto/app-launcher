@@ -97,6 +97,17 @@
             </summary>
             <ul id="lifeOsArchivedList" class="card-list action-rows lifeos-convo-list" aria-label="Archived conversations"></ul>
           </details>
+          <!-- The Telegram bot chats the list and the search leave out: the
+               same quiet disclosure as Archived, absent when there are none.
+               A row opens the reader alone (a bot chat is never resumed
+               from here). -->
+          <details id="lifeOsSystem" class="lifeos-archived lifeos-system" hidden>
+            <summary class="lifeos-group-bar lifeos-system-summary" data-track="life-system-toggle">
+              <span class="lifeos-group-head">System <span id="lifeOsSystemCount" class="lifeos-group-count"></span></span>
+              <span class="lifeos-archived-chevron" aria-hidden="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-right"></use></svg></span>
+            </summary>
+            <ul id="lifeOsSystemList" class="card-list action-rows lifeos-convo-list" aria-label="System conversations"></ul>
+          </details>
         </section>
         </div>
       </details>

@@ -12,7 +12,8 @@
  * other action as a link row, Delete last in danger. Opened from a row and
  * from a ?convo= link; the reader (life-os-viewer.js), a raw capture, the
  * rename and the confirms all stack over it. What the zombie cleanup
- * archived shows apart, under the list (the archived section below).
+ * archived and the Telegram bot chats show apart, under the list (the
+ * archived and system sections below).
  */
 
 import { els, state } from '../state.js';
@@ -87,7 +88,7 @@ function onFieldInput() {
 
 function setConvoMode(mode) {
   convoMode = mode;
-  if (mode !== 'browse' && mode !== 'search') hideArchived();
+  if (mode !== 'browse' && mode !== 'search') { hideArchived(); hideSystem(); }
   if (mode === 'off') {
     convoSeq += 1;
     convoSourceRows = [];
@@ -222,6 +223,7 @@ async function loadConvos() {
   if (!scope) return null;
   const mine = ++convoSeq;
   setConvoMode('browse');
+  hideSystem();
   loadArchived('', scope.id);
   showConvoState('loading', 'Reading conversations…');
   try {
@@ -235,6 +237,7 @@ async function loadConvos() {
     }
     const rows = body.conversations || [];
     renderConvoRows(rows);
+    renderSystem(body.system || [], true);
     return rows;
   } catch (exc) {
     if (mine !== convoSeq) return null;
@@ -251,6 +254,7 @@ async function runConvoSearch(query) {
   const scope = convoScope;
   const mine = ++convoSeq;
   setConvoMode('search');
+  hideSystem();
   loadArchived(query, scope ? scope.id : '');
   showConvoState('loading', 'Searching conversations…');
   let url = '/api/life-os/conversations/search?q=' + encodeURIComponent(query);
@@ -263,6 +267,9 @@ async function runConvoSearch(query) {
       return null;
     }
     const rows = body.results || [];
+    // The bot chats the search matched show under System even when no
+    // conversation of the owner's did.
+    renderSystem(body.system || [], !!scope);
     if (!rows.length) {
       showConvoState('empty', 'Nothing matched “' + query + '”.');
       return null;
@@ -619,6 +626,12 @@ export async function openConvoByLink(skillId, file) {
   const rows = await openConvos(skill, { quiet: true });
   if (!rows || !convoScope || convoScope.id !== skill.id) return;
   const row = rows.find(function (r) { return r.file === file; });
+  // A bot chat is not in the list, but its link still reads it.
+  const bot = !row && systemRows.find(function (r) { return r.file === file; });
+  if (bot) {
+    if (bot.path) openConvoViewer(bot, openCapture);
+    return;
+  }
   if (!row) {
     showConvoState('error',
       'This link no longer matches a conversation — it may have been renamed or deleted.');
@@ -878,6 +891,49 @@ async function loadArchived(query, skillId) {
   els.lifeOsArchivedList.replaceChildren.apply(els.lifeOsArchivedList,
     rows.map(function (r) { return archivedRow(r, !!skillId); }));
   els.lifeOsArchived.hidden = false;
+}
+
+// ------------------------------------------------------------ system
+// The Telegram bot chats. The server leaves them out of the list and the
+// search (a bot chat is independent and always fresh, so a row to resume it
+// by mistake is noise) and sends them apart; they show in a collapsed
+// "System (n)" disclosure under the list, absent when there are none. A row
+// opens the reader and nothing else: no sheet, so no Resume, Rename or Delete.
+
+let systemRows = [];
+
+function systemRow(r, scoped) {
+  const name = convoName(r);
+  const open = function () { openConvoViewer(r, openCapture); };
+  return actionRow({
+    id: 'system/' + (r.skill || '') + '/' + (r.file || ''),
+    className: 'lifeos-convo-row lifeos-system-row',
+    title: name,
+    meta: [convoWhen(r.last_interaction || r.date), scoped ? '' : r.skill]
+      .filter(Boolean).join(' · '),
+    avatar: convoAvatar(r),
+    label: 'Read ' + name,
+    onMain: open,
+    trailing: rowChevron(open),
+  }).li;
+}
+
+function hideSystem() {
+  systemRows = [];
+  if (!els.lifeOsSystem) return;
+  els.lifeOsSystem.hidden = true;
+  els.lifeOsSystem.open = false;
+  els.lifeOsSystemList.replaceChildren();
+}
+
+function renderSystem(rows, scoped) {
+  hideSystem();
+  if (!els.lifeOsSystem || !rows.length) return;
+  systemRows = rows.slice();
+  els.lifeOsSystemCount.textContent = '(' + rows.length + ')';
+  els.lifeOsSystemList.replaceChildren.apply(els.lifeOsSystemList,
+    rows.map(function (r) { return systemRow(r, scoped); }));
+  els.lifeOsSystem.hidden = false;
 }
 
 // Every DOM wire for the search field, its chip/sort/start-new controls, the
