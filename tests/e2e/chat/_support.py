@@ -195,6 +195,10 @@ class _Transcript:
         self.activity: dict | None = None
         # The session's messages the agent has not taken yet, ridden the same way.
         self.pending_input: list | None = None
+        # While set, forward reads are answered later, by ``release``, so a
+        # test can hold one read open and see whether a second one starts.
+        self.hold = False
+        self.held: list = []
         self._page = page
         page.route(
             re.compile(r".*/api/claude-code/sessions/" + sid + r"/transcript(\?.*)?$"),
@@ -246,9 +250,19 @@ class _Transcript:
                 "tool_errors": "reported", "activity": self.activity,
                 "pending_input": self.pending_input,
             }
+            if self.hold:
+                self.held.append((route, body))
+                return
         route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)
         )
+
+    def release(self) -> None:
+        """Answer every held forward read, oldest first, and stop holding."""
+        self.hold = False
+        held, self.held = self.held, []
+        for route, body in held:
+            route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
 
     # -- driving it --------------------------------------------------------
     def append(self, *entries: dict) -> None:
