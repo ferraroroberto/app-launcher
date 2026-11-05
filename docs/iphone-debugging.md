@@ -46,7 +46,7 @@ The launcher is normally used as a **Home-Screen PWA**, and the PWA container is
 
 When a phone-only bug turns up — reported or self-spotted — work the loop:
 
-1. **Confirm the gate is green** on the failing change: `pwsh -File scripts/verify-before-ship.ps1`. A green gate is what tells you this is a shell issue and not app logic.
+1. **Confirm the gate is green** on the failing change: `C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/verify-before-ship.ps1`. A green gate is what tells you this is a shell issue and not app logic.
 2. **Attach DevTools** to the live phone per Section A.
 3. **Reproduce and capture:**
    - Console errors.

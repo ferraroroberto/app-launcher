@@ -14,7 +14,7 @@
 # session-host change itself.
 #
 # Usage:
-#   pwsh -File scripts/restart-session-host.ps1 -Confirm
+#   C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/restart-session-host.ps1 -Confirm
 #   (bare, with no -Confirm, prints the warning and exits 1 -- does nothing)
 
 param(
@@ -33,7 +33,7 @@ if (-not $Confirm) {
     Write-Host "There is no drain and no idle check. Only proceed at a clean boundary." -ForegroundColor Red
     Write-Host ""
     Write-Host "Re-run with -Confirm to proceed:" -ForegroundColor Yellow
-    Write-Host "  pwsh -File scripts/restart-session-host.ps1 -Confirm"
+    Write-Host "  C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/restart-session-host.ps1 -Confirm"
     exit 1
 }
 

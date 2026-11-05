@@ -6,7 +6,7 @@
 # the script boots itself on a free port.
 #
 # Usage:
-#   pwsh -File scripts/verify-before-ship.ps1
+#   C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/verify-before-ship.ps1
 #   powershell -File scripts\verify-before-ship.ps1   # Windows PowerShell 5.1 works too
 #
 # A tray on :8445 may be running or not -- autoboot always picks a free port
@@ -17,7 +17,7 @@
 # Never pipe this script when its exit code matters -- a
 # pipeline's status is its last command's, so `... | tail -40` reports 0 for a
 # failed gate. Redirect and read the file:
-#   pwsh -File scripts/verify-before-ship.ps1 > gate.log 2>&1; echo "exit=$?"
+#   C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -File scripts/verify-before-ship.ps1 > gate.log 2>&1; echo "exit=$?"
 # A caller that cannot avoid a pipe asserts on the final `GATE-RESULT: PASS`
 # / `GATE-RESULT: FAIL` line, which a pipe cannot rewrite.
 

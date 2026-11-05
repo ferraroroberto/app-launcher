@@ -33,7 +33,14 @@ The rules (each one quotes its global-instruction line in docs/conventions-ratch
   * `login-lockout` -- a FastAPI password route (`@<x>.post(".../login")`) in a
     module that does not import the vendored `login_lockout`, or whose handler
     never calls `retry_after(...)`: every password route answers `429` with
-    `Retry-After` after repeated wrong passwords.
+    `Retry-After` after repeated wrong passwords;
+  * `no-pwsh-stub` -- the `pwsh` stub run as a command (`pwsh` / `pwsh.exe` followed
+    by a switch, or the first quoted item of an argv list) in a `.md`, `.ps1`, `.bat`, `.cmd`,
+    `.toml`, `.json`, `.yml`, `.yaml` or `.py` file: on the fleet's main machine
+    `pwsh` is a 0-byte alias, so a gate or restart command written with it never
+    runs. An absolute path to a real install, and `shell: pwsh`, are not hits.
+    It reads text lines, so a line that only names the stub to forbid it carries
+    the marker on the same line or the line right above.
 
 Test modules (and every file under a `tests/` or `test/` folder) are skipped by
 every rule except `no-window`. A single call keeps its exception with a
@@ -88,7 +95,7 @@ BUILTIN_EXCLUDES = ("**/node_modules/**", "**/.venv/**", "**/venv/**")
 GIT_TIMEOUT_S = 120
 
 RULES = ("no-window", "logging-not-print", "no-drive-path", "secret-compare", "git-wrapper",
-         "password-input-vendored", "login-lockout")
+         "password-input-vendored", "login-lockout", "no-pwsh-stub")
 #: The rules a test module is held to; fixtures legitimately spell drive paths, raw compares and raw git.
 TEST_RULES = frozenset({"no-window"})
 #: The rules read from web files rather than Python source.
@@ -100,6 +107,17 @@ SIGN_IN_DIR = "_vendored/sign-in"
 _PASSWORD_INPUT = re.compile(
     r"""\btype\s*[=:]\s*(["'`]?)password\1(?![\w-])"""
     r"""|setAttribute\(\s*["'`]type["'`]\s*,\s*["'`]password["'`]""",
+    re.IGNORECASE,
+)
+#: The rule that reads plain text lines, in `.py` files and in the non-Python files below.
+TEXT_RULES = frozenset({"no-pwsh-stub"})
+TEXT_SUFFIXES = (".md", ".ps1", ".bat", ".cmd", ".toml", ".json", ".yml", ".yaml")
+#: `pwsh` run as a command: followed by a switch, or the first quoted item of an argv list (a
+#: shell name in the middle of a list is a name, not a command). A preceding path character
+#: means an absolute path to a real install, which is not the stub.
+_PWSH_STUB = re.compile(
+    r"""(?<![\w./\\-])pwsh(?:\.exe)?(?=\s+-{1,2}[A-Za-z])"""
+    r"""|[\[(]\s*(["'])pwsh(?:\.exe)?\1\s*,""",
     re.IGNORECASE,
 )
 #: The config key a rule cannot run without, because it names the repo's own helper.
@@ -275,15 +293,22 @@ def _under(path: str, prefix: str) -> bool:
 
 def in_scope(path: str, cfg: Config, vendored: tuple[str, ...]) -> bool:
     """Is `path` a Python or web file this stage scans? A vendored copy's debt belongs to the repo it came from."""
-    if not (path.endswith(".py") or is_web_file(path)):
+    if not (path.endswith(".py") or is_web_file(path) or is_text_file(path, cfg)):
         return False
     if any(_under(path, d) for d in vendored):
         return False
+    if path == cfg.baseline or path.endswith("-ratchet-baseline.json"):
+        return False  # a baseline is data about hits, never a hit
     return not matches_any(path, BUILTIN_EXCLUDES + cfg.exclude)
 
 
 def is_web_file(path: str) -> bool:
     return path.lower().endswith(WEB_SUFFIXES)
+
+
+def is_text_file(path: str, cfg: Config) -> bool:
+    """A non-Python text file, read only when the repo enabled a rule that reads text."""
+    return path.lower().endswith(TEXT_SUFFIXES) and bool(TEXT_RULES & set(cfg.rules))
 
 
 def in_sign_in_component(path: str) -> bool:
@@ -305,8 +330,10 @@ def rules_for(path: str, cfg: Config) -> frozenset[str]:
         rules &= WEB_RULES
         if in_sign_in_component(path):
             rules.discard("password-input-vendored")
-    else:
+    elif path.endswith(".py"):
         rules -= WEB_RULES
+    else:
+        rules &= TEXT_RULES
     if is_test_module(path):
         rules &= TEST_RULES
     if not any(_under(path, p) for p in cfg.print_paths):
@@ -582,6 +609,27 @@ def scan_web(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]
     return hits
 
 
+def scan_text(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
+    """Hits of the text rules in one file, read line by line (any file type, comments and strings alike)."""
+    if "no-pwsh-stub" not in rules:
+        return []
+    text = source.decode("utf-8", "replace") if isinstance(source, bytes) else source
+    lines = text.splitlines()
+    hits = []
+    for number, line in enumerate(lines, start=1):
+        if not _PWSH_STUB.search(line):
+            continue
+        # The marker sits on the line or the line right above it, unless that line is a hit of its own.
+        window = lines[number - 1:number]
+        if number > 1 and not _PWSH_STUB.search(lines[number - 2]):
+            window = lines[number - 2:number]
+        if not _exempt("no-pwsh-stub", window, " :#/*-<>!\t"):
+            hits.append(Hit(path, number, "no-pwsh-stub",
+                            "`pwsh` is a 0-byte stub on the fleet's main machine; "
+                            "use C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"))
+    return hits
+
+
 def scan_source(source: bytes | str, path: str, rules: frozenset[str]) -> list[Hit]:
     """Hits of the given rules in one module; raises `NotConfirmed` when it does not parse."""
     try:
@@ -603,6 +651,7 @@ def scan_source(source: bytes | str, path: str, rules: frozenset[str]) -> list[H
             continue
         if not _exempt(rule, _window(node, lines)):
             hits.append(Hit(path, getattr(node, "lineno", 0), rule, message))
+    hits.extend(scan_text(source, path, rules))
     return sorted(hits, key=lambda h: (h.line, h.rule))
 
 
@@ -632,10 +681,10 @@ def tracked_files(root: Path) -> list[str]:
 
 
 def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> dict[str, list[Hit]]:
-    """Hits per in-scope tracked `.py` or web file (only files with at least one).
+    """Hits per in-scope tracked `.py`, web or (with a text rule on) text file; only files with a hit.
 
-    Only Python source and web files are read: a baseline, this stage's or any
-    other ratchet's, is JSON and never counts as a hit or as evidence against one.
+    A baseline, this stage's or any other ratchet's, is JSON and never counts as
+    a hit or as evidence against one, even when `.json` files are read.
     """
     found: dict[str, list[Hit]] = {}
     for path in tracked_files(root):
@@ -648,7 +697,12 @@ def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> dict[str, l
         except OSError as exc:
             raise NotConfirmed(f"{path}: cannot be read: {exc}") from exc
         rules = rules_for(path, cfg)
-        hits = scan_web(source, path, rules) if is_web_file(path) else scan_source(source, path, rules)
+        if is_web_file(path):
+            hits = scan_web(source, path, rules)
+        elif path.endswith(".py"):
+            hits = scan_source(source, path, rules)
+        else:
+            hits = scan_text(source, path, rules)
         if hits:
             found[path] = hits
     return found
