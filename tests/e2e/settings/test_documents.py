@@ -50,6 +50,9 @@ this is not a diagram ((
 
 Closing paragraph.
 """
+# Once the diagrams are drawn the document above is shorter than a phone-height
+# reader, so the scroll test needs a body that overflows in its final state.
+_DOC += "".join(f"\nFiller paragraph {n} so the reader has something to scroll.\n" for n in range(1, 41))
 
 _GITHUB = "https://github.com/acme/alpha-repo/blob/HEAD/docs/guide.md"
 
@@ -159,6 +162,13 @@ def test_the_reader_pins_its_header_and_fills_the_phone(authed_page: Page, base_
     _open_sheet(page, base_url)
     sheet = page.locator("#documentSheet")
     head = sheet.locator(".detail-header")
+    # The sheet opens before its fetch lands and Mermaid redraws nodes after the
+    # content does: scrolling earlier reads 0 because there is nothing to scroll.
+    expect(page.locator("#documentBody h1")).to_have_text("Sample guide")
+    expect(page.locator("#documentBody .md-diagram svg")).to_have_count(1)
+    page.wait_for_function(
+        "() => { const b = document.querySelector('#documentSheet .document-sheet-body');"
+        " return b.scrollHeight > b.clientHeight; }")
     for theme in ("light", "dark"):
         page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
         if page.viewport_size["width"] <= 520:
