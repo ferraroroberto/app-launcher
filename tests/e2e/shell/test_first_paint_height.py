@@ -37,7 +37,7 @@ def _win(pct: int, reset_s: float, minutes: int) -> dict:
 _QUOTA = {"quota_lines": [
     {"harness": "claude", "provider": "anthropic", "label": "Claude Code",
      "state": "available", "reason": "native_observation", "stale": False,
-     "five_hour": _win(39, _NOW + 7200, 300), "weekly": _win(64, _NOW + 302400, 10080)},
+     "weekly": _win(64, _NOW + 302400, 10080)},
     {"harness": "codex", "provider": "openai", "label": "Codex",
      "state": "available", "reason": "native_observation", "stale": False,
      "five_hour": _win(0, _NOW + 9000, 300), "weekly": _win(36, _NOW + 302400, 10080)},
@@ -189,8 +189,8 @@ def _assert_stable(page: Page, selector: str, held: List[_Held], settled: callab
 @pytest.mark.parametrize(
     ("shows", "quota"),
     [(["claude"], _QUOTA_CODEX_UNSUPPORTED), (["claude", "codex"], _QUOTA),
-     (["claude", "codex", "grok"], _QUOTA_WITH_GROK)],
-    ids=["claude-only-live-shape", "both-agents", "with-grok"],
+     (["claude", "codex", "grok"], _QUOTA_WITH_GROK), (["codex"], _QUOTA)],
+    ids=["claude-only-live-shape", "both-agents", "with-grok", "codex-only"],
 )
 def test_usage_card_keeps_its_height_when_the_quota_arrives(
     authed_page: Page, base_url: str, shows: list, quota: dict
@@ -231,9 +231,13 @@ def test_usage_card_keeps_its_height_when_the_quota_arrives(
     heights["the setting landed"] = _height(page, card)
     for h in data:
         h.release()
-    expect(page.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
+    # Claude Code reports a week only; Codex leading alone shows its 5h and week.
+    expect(page.locator("#codingUsage .um-row")).to_have_count(
+        1 if "claude" in shows else 2, timeout=10_000)
     expect(page.locator("#codingUsage:not(:has([data-pending]))")).to_be_attached(timeout=10_000)
-    expect(page.locator("#codingUsage .um-codex")).to_have_count(1 if "codex" in shows else 0)
+    # Codex is a side row only under Claude; alone it leads.
+    expect(page.locator("#codingUsage .um-codex")).to_have_count(
+        1 if "codex" in shows and "claude" in shows else 0)
     expect(page.locator("#codingUsage .um-grok")).to_have_count(1 if "grok" in shows else 0)
     expect(page.locator("#codingUsageFooter")).to_be_visible(timeout=10_000)
     settled = _height(page, card)

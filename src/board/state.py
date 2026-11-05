@@ -5,8 +5,8 @@ Reads the three files fleet-config's hooks/statusline/workflows write:
 * the **sessions-state file** (``session_state`` hook —
   ``~/.claude/hooks/state/sessions-state.json``): ``working`` / ``needs-you``
   / ``idle`` rows per recent Claude Code session.
-* the **rate-limits cache** (a statusline writer): the 5h/7d Claude usage
-  percentages.
+* the **rate-limits cache** (a statusline writer): the 7d Claude usage
+  percentage.
 * the **active-issues file** (the shared issue workflows —
   ``~/.claude/hooks/state/active-issues.json``): issue branches currently in
   flight across the fleet.
@@ -152,7 +152,7 @@ def read_active_issues(path: Path, *, now: Optional[datetime] = None) -> Dict[st
 
 
 def _rate_limit_window(raw: Any) -> Optional[Dict[str, Any]]:
-    """One ``five_hour``/``seven_day`` window, tolerant field-by-field.
+    """One ``seven_day`` window, tolerant field-by-field.
 
     ``raw`` may be absent, ``null``, or a dict with either sub-field missing
     or ``null`` — a future writer may report a window before it has learned
@@ -172,10 +172,10 @@ def _rate_limit_window(raw: Any) -> Optional[Dict[str, Any]]:
 
 
 def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str, Any]:
-    """The cached 5h/7d Claude usage percentages a statusline writer maintains.
+    """The cached 7d Claude usage percentage a statusline writer maintains.
 
     Mirrors :func:`read_sessions_state`'s degradation contract exactly:
-    absent/corrupt/non-dict file → ``available: False`` with both windows
+    absent/corrupt/non-dict file → ``available: False`` with the window
     ``None``, never an error. ``stale`` is driven by the file's own
     ``captured_at`` stamp (when the writer last ran) against
     :data:`RATE_LIMITS_STALE_AFTER` — *not* by either window's ``resets_at``,
@@ -186,7 +186,6 @@ def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str,
         "available": False,
         "stale": False,
         "updated_at": None,
-        "five_hour": None,
         "seven_day": None,
     }
     try:
@@ -208,6 +207,5 @@ def read_rate_limits(path: Path, *, now: Optional[datetime] = None) -> Dict[str,
             captured_at is not None and now - captured_at > RATE_LIMITS_STALE_AFTER
         ),
         "updated_at": iso_z(captured_at) if captured_at else None,
-        "five_hour": _rate_limit_window(data.get("five_hour")),
         "seven_day": _rate_limit_window(data.get("seven_day")),
     }

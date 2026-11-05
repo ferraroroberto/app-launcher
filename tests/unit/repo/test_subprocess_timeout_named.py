@@ -38,7 +38,7 @@ BASELINE = {
     ("src/session_hosting/remote.py", 332),  # taskkill on a detached session's kill
     ("app/webapp/manager.py", 126),     # tray subprocess readiness probe
     ("app/tray/tailscale.py", 58),
-    ("src/usage/quota.py", 531),
+    ("src/usage/quota.py", 534),
 }
 
 

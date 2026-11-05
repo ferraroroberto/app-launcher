@@ -315,7 +315,7 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .usage-meter[data-stale="true"] .um-windows,
 .usage-meter .um-codex-value[data-stale="true"] { opacity: 0.55; }
 
-/* Full (Code): the head row, the 5h and Week rows, the Codex row. */
+/* Full (Code): the head row, the window rows, the Codex row. */
 .usage-meter-full {
   flex-direction: column;
   gap: 6px;

@@ -37,8 +37,8 @@ _NEVER_ANSWER_RATE_LIMITS = """
 })();
 """
 
-# Claude: 5h 39% (no pace, accent), week 64% at 50% elapsed (ahead of pace,
-# attention). Codex: 5h 0%, week 36% (under pace, accent).
+# Claude: week 64% at 50% elapsed (ahead of pace, attention), no 5h window.
+# Codex: 5h 0%, week 36% (under pace, accent).
 _QUOTA_SHIM = """
 (() => {
   const nativeFetch = window.fetch.bind(window);
@@ -49,7 +49,7 @@ _QUOTA_SHIM = """
   const lines = [
     {harness: 'claude', provider: 'anthropic', label: 'Claude Code',
      state: 'available', reason: 'native_observation', stale: false,
-     five_hour: win(39, nowS + 7200, 300), weekly: win(64, nowS + halfWeek, 10080)},
+     weekly: win(64, nowS + halfWeek, 10080)},
     {harness: 'codex', provider: 'openai', label: 'Codex',
      state: 'available', reason: 'native_observation', stale: false,
      five_hour: win(0, nowS + 9000, 300), weekly: win(36, nowS + halfWeek, 10080)},
@@ -123,21 +123,18 @@ def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
     full = authed_page.locator("#codingUsage .usage-meter-full")
     expect(full).to_be_visible(timeout=10_000)
     expect(full).to_have_attribute("data-tone", "attention")
+    # Claude Code has no 5h window: its one row is the week.
     rows = full.locator(".um-row")
-    expect(rows).to_have_count(2)
-    expect(rows.nth(0).locator(".um-label")).to_have_text("5h")
-    expect(rows.nth(0).locator(".um-pct")).to_have_text("39%")
-    expect(rows.nth(0).locator(".um-fill")).to_have_attribute("data-tone", "accent")
-    expect(rows.nth(1).locator(".um-label")).to_have_text("Week")
-    expect(rows.nth(1).locator(".um-pct")).to_have_text("64%")
-    expect(rows.nth(1).locator(".um-fill")).to_have_attribute("data-tone", "attention")
-    # The pace tick rides the week bar only, at the week elapsed.
-    expect(rows.nth(0).locator(".um-tick")).to_have_count(0)
-    expect(rows.nth(1).locator(".um-tick")).to_have_attribute("style", re.compile(r"left: 50%"))
+    expect(rows).to_have_count(1)
+    expect(rows.nth(0).locator(".um-label")).to_have_text("Week")
+    expect(rows.nth(0).locator(".um-pct")).to_have_text("64%")
+    expect(rows.nth(0).locator(".um-fill")).to_have_attribute("data-tone", "attention")
+    # The pace tick rides the week bar, at the week elapsed.
+    expect(rows.nth(0).locator(".um-tick")).to_have_attribute("style", re.compile(r"left: 50%"))
     expect(full.locator(".um-codex .um-codex-value")).to_have_text("5h 0% · wk 36%")
     expect(full.locator(".um-codex .um-codex-value")).to_have_attribute("data-tone", "accent")
     # The 6px bar, and a phone-width page the meter never widens.
-    bar = stable_eval(rows.nth(1).locator(".um-bar"),
+    bar = stable_eval(rows.nth(0).locator(".um-bar"),
                       "el => el.isConnected ? el.getBoundingClientRect().height : null")
     assert bar == 6, f"week bar is {bar}px tall"
     _no_page_overflow(authed_page)
@@ -147,7 +144,7 @@ def test_usage_meter_on_code_opens_the_sheet_and_is_not_on_the_board(
     sheet = authed_page.locator("#usageSheet")
     expect(sheet).to_be_visible()
     body = sheet.locator("#usageSheetBody")
-    expect(body.locator('[data-row="claude-5h"] .usage-sheet-value')).to_contain_text("39% · resets ")
+    expect(body.locator('[data-row="claude-5h"]')).to_have_count(0)
     expect(body.locator('[data-row="claude-week"] .usage-sheet-value')).to_contain_text("64% · resets ")
     expect(body.locator('[data-row="elapsed"] .usage-sheet-value')).to_have_text("50%")
     expect(body.locator('[data-row="claude-week"] > span')).to_have_text("Claude week")
@@ -204,12 +201,12 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
       const out = {};
       m.renderUsage([
         {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
-         five_hour: win(91), weekly: win(20)},
+         weekly: win(91)},
         {harness: 'codex', label: 'Codex', state: 'unsupported', five_hour: null, weekly: null},
       ]);
       out.stale = snap();
       m.renderUsage([
-        {harness: 'claude', label: 'Claude Code', state: 'unknown', five_hour: null, weekly: null},
+        {harness: 'claude', label: 'Claude Code', state: 'unknown', weekly: null},
         {harness: 'codex', label: 'Codex', state: 'unsupported', five_hour: null, weekly: null},
       ]);
       out.fallback = snap();
@@ -217,16 +214,16 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     }""")
 
     stale = read["stale"]
-    assert stale["tone"] == "danger", stale            # 91% in the 5h window
+    assert stale["tone"] == "danger", stale            # 91% in the week
     assert stale["stale"] == "true"
     assert stale["chips"] == [["stale", "neutral"]]
     assert float(stale["dim"]) < 1
-    assert stale["pcts"] == ["91%", "20%"]
+    assert stale["pcts"] == ["91%"]
     assert stale["codex"] == "unsupported"
 
     # Unknown now, with the stale reading behind it: kept, dimmed, chipped.
     fallback = read["fallback"]
-    assert fallback["pcts"] == ["91%", "20%"]
+    assert fallback["pcts"] == ["91%"]
     assert fallback["chips"] == [["unknown", "neutral"]]
     assert fallback["stale"] == "true"
     assert fallback["note"] == ""
@@ -236,7 +233,7 @@ def test_usage_meter_dims_stale_and_keeps_unknown_text(
     never = authed_page.evaluate("""async () => {
       const m = await import('/static/usage-meter.js?fresh=1');
       m.renderUsage([
-        {harness: 'claude', label: 'Claude Code', state: 'unknown', five_hour: null, weekly: null},
+        {harness: 'claude', label: 'Claude Code', state: 'unknown', weekly: null},
         {harness: 'codex', label: 'Codex', state: 'error', five_hour: null, weekly: null},
       ]);
       const full = document.querySelector('#codingUsage .usage-meter');
@@ -267,7 +264,7 @@ def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
       m.setUsageShows([shown]);
       m.renderUsage([
         {harness: 'claude', label: 'Claude Code', state: 'stale', stale: true,
-         five_hour: win(40), weekly: win(20)},
+         weekly: win(20)},
         {harness: 'codex', label: 'Codex', state: 'stale', stale: true,
          five_hour: win(40), weekly: win(20)},
       ]);
@@ -277,7 +274,8 @@ def test_usage_meter_single_harness_keeps_its_chip_without_the_heading(
     expect(full.locator(".um-head .chip")).to_have_text("stale")
     expect(full.locator(".um-name")).to_have_count(0)
     expect(full.locator(".um-mark")).to_have_count(0)
-    expect(full.locator(".um-row")).to_have_count(2)
+    # Codex reports a 5h and a week window; Claude only a week.
+    expect(full.locator(".um-row")).to_have_count(2 if shown == "codex" else 1)
     _no_page_overflow(authed_page)
 
 
@@ -313,7 +311,7 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
 def test_usage_rows_share_the_cards_left_and_right_edges(
     authed_page: Page, base_url: str, theme: str
 ) -> None:
-    """#1541: the 5h / Week labels start on the card's content edge, level
+    """#1541: the Week label starts on the card's content edge, level
     with the heading icon and the context-filter footer, and the reset column
     ends where the heading's right-hand control (the ⋮ glyph) ends. The meter used to inset
     its rows 4px on both sides. Read in one stable_eval (#1346)."""
@@ -323,8 +321,8 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     card = authed_page.locator("#codingUsageCard")
-    expect(card.locator("#codingUsage .um-row")).to_have_count(2, timeout=10_000)
-    # The static placeholder has both rows but an empty heading until the first poll.
+    expect(card.locator("#codingUsage .um-row")).to_have_count(1, timeout=10_000)
+    # The static placeholder has the row but an empty heading until the first poll.
     expect(card.locator("#codingUsageMeta")).to_have_text(re.compile(r"\S"))
     expect(card.locator("#codingUsageFooter")).to_be_visible()
     m = stable_eval(card, """card => {
@@ -429,8 +427,8 @@ def test_usage_shows_draws_only_the_chosen_providers(
             expect(full).not_to_have_attribute("aria-label", re.compile(re.escape(_NAMES[provider])))
             expect(full.locator(f'use[href="#b-{provider}"]')).to_have_count(0)
     if providers == ["claude"]:
-        expect(full.locator(".um-row")).to_have_count(2)
-        expect(full.locator(".um-row").nth(1).locator(".um-pct")).to_have_text("64%")
+        expect(full.locator(".um-row")).to_have_count(1)
+        expect(full.locator(".um-row").nth(0).locator(".um-pct")).to_have_text("64%")
     elif providers == ["codex"]:
         # Codex leads: its own two windows, no Claude row or mark.
         rows = full.locator(".um-row")
@@ -453,7 +451,7 @@ def test_usage_shows_draws_only_the_chosen_providers(
     # The sheet follows: a provider switched off has no rows in it.
     full.click()
     body = authed_page.locator("#usageSheetBody")
-    expect(body.locator('[data-row^="claude-"]')).to_have_count(2 if "claude" in providers else 0)
+    expect(body.locator('[data-row^="claude-"]')).to_have_count(1 if "claude" in providers else 0)
     expect(body.locator('[data-row^="codex-"]')).to_have_count(2 if "codex" in providers else 0)
     expect(body.locator('[data-row^="grok-"]')).to_have_count(2 if "grok" in providers else 0)
     authed_page.locator("#usageSheetClose").click()

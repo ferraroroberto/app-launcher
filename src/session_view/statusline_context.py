@@ -9,10 +9,9 @@ its prompt, from its own ``context_window.used_percentage``
 
       27%c 10%s 79%w | opus | fleet-config (main)
 
-``%c`` is the context window, ``%s`` the 5-hour window, ``%w`` the weekly
-one, always in that order, each omitted when its value is null. Context use
-is null early in a session and right after ``/compact``, so the footer then
-starts at ``%s``. Probed on live captures rendered at 120 and 46 columns:
+``%c`` is the context window and ``%w`` the weekly usage, in that order,
+each omitted when its value is null. Context use is null early in a session
+and right after ``/compact``, so the footer then starts at ``%w``. Probed on live captures rendered at 120 and 46 columns:
 the footer keeps its leading usage segment at both widths (the script puts
 usage first so it survives a narrow PTY), and at 120 columns Claude Code may
 print its own text on the same row to the right (``... 316677 tokens``).
@@ -30,9 +29,11 @@ from __future__ import annotations
 import re
 from typing import List, Optional
 
-# A statusline row: its first token is one of the three usage figures. The
-# lookahead stops "5%status" or "12%cache" in ordinary text from reading as
-# a footer.
+# A statusline row: its first token is one of the usage figures. ``s`` is the
+# retired 5-hour figure, still painted by a session started before the
+# statusline dropped it, and it must still read as a footer rather than let
+# an older row above it supply a stale ``%c``. The lookahead stops
+# "5%status" or "12%cache" in ordinary text from reading as a footer.
 _FOOTER_RE = re.compile(r"^\s*(\d{1,3})%([csw])(?![\w%])")
 
 

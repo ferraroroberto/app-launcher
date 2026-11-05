@@ -142,10 +142,8 @@ def test_disposable_usage_meter_is_a_fixed_synthetic_value(tmp_path: Path) -> No
         cfg = hygiene.disposable_webapp_config("tok-12345678", tmp_path / run)
         got = read_rate_limits(Path(cfg["rate_limits_file"]))
         assert got["available"] is True and got["stale"] is False
-        readings.append(
-            (got["five_hour"]["used_percentage"], got["seven_day"]["used_percentage"])
-        )
-    assert readings[0] == readings[1] == (37, 12)
+        readings.append(got["seven_day"]["used_percentage"])
+    assert readings[0] == readings[1] == 12
 
 
 def test_leak_check_counts_a_credential_the_builder_let_through(tmp_path: Path) -> None:
