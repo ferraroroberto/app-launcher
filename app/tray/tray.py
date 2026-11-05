@@ -578,10 +578,10 @@ class TrayApp:
                 "/api/webauthn/enroll/window"
             )
             try:
-                import requests
+                from src.clients._loopback_http import pooled_request
 
-                resp = requests.post(
-                    url, json={"seconds": 300}, timeout=5, verify=False
+                resp = pooled_request(
+                    "POST", url, json={"seconds": 300}, timeout=5, verify=False
                 )
                 if resp.status_code == 200:
                     _notify(
