@@ -41,6 +41,10 @@ from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
 
+# taskkill of one image in this session returns in well under a second; 30 s is
+# room for a loaded box without letting a wedged call stall disable().
+TASKKILL_TIMEOUT_S = 30
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Its own folder, outside the Jobs tab's ``\AppLauncher\`` namespace, so the
@@ -268,12 +272,21 @@ def _restart_start_menu() -> None:
     relaunches Explorer by itself, unelevated."""
     session = str(_session_id())
     for image in ("explorer.exe", "StartMenuExperienceHost.exe"):
-        subprocess.run(
-            ["taskkill", "/F", "/IM", image, "/FI", f"SESSION eq {session}"],
-            capture_output=True,
-            creationflags=NO_WINDOW,
-            check=False,
-        )
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/IM", image, "/FI", f"SESSION eq {session}"],
+                capture_output=True,
+                creationflags=NO_WINDOW,
+                check=False,
+                timeout=TASKKILL_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "⚠️ remote power guard: taskkill of %s did not finish within %ss; "
+                "the Start menu may still show the old power options",
+                image,
+                TASKKILL_TIMEOUT_S,
+            )
 
 
 def _session_id() -> int:

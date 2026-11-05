@@ -71,17 +71,36 @@ _MAX_DAILY_TIMES_VARIANTS = 24
 SCHTASKS_ENCODING = "oem"
 SCHTASKS_ENCODING_ERRORS = "replace"
 
+#: One schtasks call (query, create, delete, or the PowerShell power-policy
+#: update) finishes in a second or two; a bulk query over ~20 jobs on a loaded
+#: box stays well inside 60 s, and a wedged Task Scheduler must not hold the
+#: jobs API thread forever.
+SCHTASKS_TIMEOUT_S = 60
+#: The conventional "timed out" exit status (GNU ``timeout``), so a log reader
+#: can tell it from a real schtasks failure code.
+SCHTASKS_TIMEOUT_RC = 124
+
 
 def _run_schtasks(argv: List[str]) -> subprocess.CompletedProcess:
-    """Invoke ``schtasks.exe`` with ``argv``. Module-level so tests can mock it."""
-    return subprocess.run(
-        argv,
-        capture_output=True,
-        check=False,
-        creationflags=NO_WINDOW,
-        encoding=SCHTASKS_ENCODING,
-        errors=SCHTASKS_ENCODING_ERRORS,
-    )
+    """Invoke ``schtasks.exe`` with ``argv``. Module-level so tests can mock it.
+
+    A call that outlives ``SCHTASKS_TIMEOUT_S`` comes back as a failed result
+    (rc ``SCHTASKS_TIMEOUT_RC``, stderr naming the timeout), so every caller's
+    existing non-zero handling reports it as its own condition."""
+    try:
+        return subprocess.run(
+            argv,
+            capture_output=True,
+            check=False,
+            creationflags=NO_WINDOW,
+            encoding=SCHTASKS_ENCODING,
+            errors=SCHTASKS_ENCODING_ERRORS,
+            timeout=SCHTASKS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        message = f"schtasks timed out after {SCHTASKS_TIMEOUT_S}s"
+        logger.warning("⚠️  %s: %s", message, " ".join(argv[:3]))
+        return subprocess.CompletedProcess(argv, SCHTASKS_TIMEOUT_RC, stdout="", stderr=message)
 
 
 #: Absolute Windows PowerShell 5.1 — never the bare ``pwsh`` execution-alias

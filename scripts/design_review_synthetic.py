@@ -75,6 +75,9 @@ CLOSED_URL = "http://127.0.0.1:9"      # sibling services: a port nothing listen
 STARTUP_TIMEOUT_S = 60.0
 HEARTBEAT_S = 60.0                     # keeps the synthetic Board row fresh while the walk runs
 STOP_GRACE_S = 10.0
+# taskkill walks a process tree and returns in well under a second; 30 s is room
+# for a loaded box without letting a wedged call stall the harness teardown.
+TASKKILL_TIMEOUT_S = 30
 STATE_KEY = "synthetic-demo-conversation"
 PROJECT_NAME = "demo-project"
 SKILL_NAME = "demo-journal"
@@ -304,7 +307,15 @@ def stop_process(proc: subprocess.Popen, what: str) -> None:
         pass
     logger.warning("⚠️ %s (pid %s) did not stop; killing its process tree", what, proc.pid)
     if sys.platform == "win32":
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, creationflags=NO_WINDOW)
+        try:
+            subprocess.run(
+                ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                capture_output=True,
+                creationflags=NO_WINDOW,
+                timeout=TASKKILL_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.error("❌ taskkill of %s (pid %s) did not finish within %ss", what, proc.pid, TASKKILL_TIMEOUT_S)
     else:
         proc.kill()
     try:
