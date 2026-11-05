@@ -264,14 +264,15 @@ class TestResumeLatest:
         self.folder = overrides["life_os_dir"] / SKILL_CONVOS
         self.captured = _TargetedResume()._spawn_capture(monkeypatch)
 
-    def _add_capture(self, name, sid, *, agent="claude", mtime=None):
+    def _add_capture(self, name, sid, *, agent="claude", mtime=None, title=None):
         path = self.folder / name
         path.write_text(f'<!-- capture sid="{sid}" agent="{agent}" updated="synthetic" -->\nlog',
                         encoding="utf-8")
         index = self.folder / "index.json"
         rows = json.loads(index.read_text(encoding="utf-8"))
         rows.append({"skill": "journal-daily", "file": name, "date": name[:10],
-                     "slug": "synthetic", "sid": sid, "agent": agent, "topic": "a fictional topic"})
+                     "slug": "synthetic", "sid": sid, "agent": agent, "topic": "a fictional topic",
+                     **({"title": title} if title else {})})
         index.write_text(json.dumps(rows), encoding="utf-8")
         if mtime is not None:
             os.utime(path, (mtime, mtime))
@@ -298,6 +299,24 @@ class TestResumeLatest:
         assert body["model_kept"] is True
         assert body["model"] == "claude-opus-5-5"
         assert body["conversation_action"] == "resume"
+
+    def test_a_newer_bot_chat_is_skipped_for_the_newest_own_conversation(self):
+        self._add_capture("2026-09-03-0800-seed-order.md", OTHER_SID, mtime=time.time() + 60,
+                          title="Telegram bot - journal-daily")
+        resp = self.client.post(self.ENDPOINT, json={"mode": "pty"})
+        assert resp.status_code == 200, resp.text
+        assert f"--resume {RESUMABLE_SID}" in self.captured["flags"]
+        assert OTHER_SID not in self.captured["flags"]
+
+    def test_only_bot_chats_left_is_a_plain_409(self):
+        (self.folder / "2026-08-01-0900-ferry-booking.md").unlink()
+        index = self.folder / "index.json"
+        index.write_text("[]", encoding="utf-8")
+        self._add_capture("2026-09-03-0800-seed-order.md", OTHER_SID,
+                          title="Telegram bot - journal-daily")
+        resp = self.client.post(self.ENDPOINT, json={})
+        assert resp.status_code == 409
+        assert self.captured == {}
 
     def test_detached_is_honoured(self):
         resp = self.client.post(self.ENDPOINT, json={"mode": "remote"})
