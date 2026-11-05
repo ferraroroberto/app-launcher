@@ -44,6 +44,8 @@ export function renderHeadStatus(el, exceptions, fallback) {
     .sort(function (a, b) { return toneRank(a.tone) - toneRank(b.tone); })
     .slice(0, HEAD_MAX_PARTS);
   el.textContent = '';
+  // The slot ellipsizes, so the full line rides along as the tooltip.
+  el.title = shown.length ? shown.map(function (x) { return x.text; }).join(' · ') : (fallback || '');
   if (!shown.length) {
     el.textContent = fallback || '';
     delete el.dataset.tone;

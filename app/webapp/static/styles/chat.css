@@ -333,7 +333,7 @@
   overflow-wrap: anywhere;
 }
 .tr-reply > .tr-trunc { margin-top: 8px; }
-.tr-text a, .tr-pre a { color: var(--accent); word-break: break-all; }
+.tr-text a, .tr-pre a { color: var(--accent); overflow-wrap: anywhere; }
 .tr-md { white-space: normal; }
 /* Reply typography. Headings used to render at the
    14px label size -- smaller than the 16px body, so a bold line out-ranked an

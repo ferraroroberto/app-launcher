@@ -38,3 +38,11 @@
   background: var(--input-bg);
   color: var(--ink);
 }
+
+/* On a touch device the select takes real 44px height (design.md "Touch
+ * targets"): a native <select> has no ::before to grow its hit area. Explicit
+ * `height`, as above, because iOS ignores `min-height` on one. */
+@media (pointer: coarse) {
+  .input-native,
+  .select-native { height: var(--row-sm, 44px); }
+}

@@ -31,3 +31,22 @@ textarea {
   line-height: normal;
   color: inherit;
 }
+
+/* A bare control (no class) is a tap target on a touch device, so it takes the
+ * 44px floor with real height: an <input> or <select> has no ::before to grow.
+ * A classed control owns its own geometry, and `:where()` keeps this at zero
+ * specificity. A <select> takes `height` because iOS ignores `min-height` on
+ * one; a checkbox, radio, range and the like keep their native size. */
+@media (pointer: coarse) {
+  :where(
+    button:not([class]),
+    input:not([class]):not([type="checkbox"], [type="radio"], [type="range"], [type="hidden"], [type="file"], [type="color"])
+  ) {
+    box-sizing: border-box;
+    min-height: var(--row-sm, 44px);
+  }
+  :where(select:not([class])) {
+    box-sizing: border-box;
+    height: var(--row-sm, 44px);
+  }
+}

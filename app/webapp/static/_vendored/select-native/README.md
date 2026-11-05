@@ -29,6 +29,7 @@ The fleet's canonical **native `<select>`**: sized to the `control` token (36px)
 
 - The `.select-native` class is the whole contract — a bare native `<select>`, no wrapper required.
 - Height comes from an explicit `height: var(--control-h)` (36px). **Never** give a `<select>` its height via `min-height` or padding: iOS Safari ignores `min-height` on a bare `<select>` and renders it at its stubby intrinsic height, and a padding-derived height drifts off the 36px `control` lockstep. This gotcha — encoded once here — is why per-app selects kept rendering stubby.
+- **On a touch device (`pointer: coarse`) the height is `--row-sm` (44px)**, real geometry rather than a hit-area expansion, because a native `<select>` or `<input>` has no `::before` to grow. Inline controls beside it centre on the taller box.
 - Width is unconstrained (a bare `<select>` sizes to content); set `width: 100%` in your own layout context (e.g. a stacked field or a grid cell) when you want it to fill.
 - `.input-native` (a text input at the same control height) shares this one rule. The **modal** component (`_vendored/modal/`) links this file for its row controls instead of re-declaring them, so an app vendoring `modal/` must vendor `select-native/` too.
 
@@ -37,6 +38,7 @@ The fleet's canonical **native `<select>`**: sized to the `control` token (36px)
 | Token | Light value | Used for |
 | --- | --- | --- |
 | `--control-h` | `36px` | select height (the `control` lockstep) |
+| `--row-sm` | `44px` | select height on a touch device (`hit-target.min`) |
 | `--font-label` | `0.875rem` | option/label text |
 | `--radius-md` | `12px` | corners |
 | `--control-border` | `#818b98` (dark `#6e7681`) | border (WCAG 1.4.11 control boundary) |
