@@ -129,8 +129,9 @@ PTY_QUIESCENT_POLL_S = 0.5
 # Provider-qualified choices come from the shared model catalog.
 _DISPATCH_CLAUDE_MODELS = available_values(CLAUDE_MODEL_SPECS)
 
-# The id only gates the provider-qualified value; flags carry the Coding tab's
-# effort and permission mode.
+# The id only gates the provider-qualified value. Flags carry the Coding tab's
+# effort. A Grok launch from here is unattended, so its permission flag is
+# bypassPermissions rather than the saved auto mode.
 _DISPATCH_GROK_MODELS = available_values(GROK_DISPATCH_MODEL_SPECS)
 
 
@@ -141,8 +142,10 @@ def _agent_and_flags(
 
     The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
     Codex values select an exact model with the Coding tab's remembered
-    compatible effort; ``grok:grok-4.5`` takes the Coding tab's Grok effort and
-    permission mode. The ``is_installed`` check is the
+    compatible effort; ``grok:grok-4.5`` takes the Coding tab's Grok effort.
+    Its permission flag is bypassPermissions even when the saved mode is
+    auto: nobody is at the keyboard to answer the prompt auto still opens.
+    The ``is_installed`` check is the
     same defence-in-depth 400 as ``apps.py`` — Board launches bypass the
     Coding tab's already-disabled button.
 
@@ -154,7 +157,9 @@ def _agent_and_flags(
         return "claude", build_claude_flags(cfg, model_value, effort_override=effort)
     if provider == "grok" and model_value in _DISPATCH_GROK_MODELS:
         _require_installed("grok")
-        return "grok", build_grok_flags(cfg, effort_override=effort)
+        return "grok", build_grok_flags(
+            cfg, effort_override=effort, unattended=True
+        )
     if provider != "codex" or model_value not in VALID_CODEX_MODELS:
         raise HTTPException(status_code=400, detail=f"unknown model: {model}")
     _require_installed("codex")

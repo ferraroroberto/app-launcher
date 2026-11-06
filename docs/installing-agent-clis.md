@@ -151,8 +151,12 @@ self-updates thereafter. Verify with `grok --version`.
 > Settings › Launch defaults carries a **Grok Build** sheet:
 > **Reasoning** (`low`/`medium`/`high` → `--reasoning-effort`) and
 > **Permission** (Auto mode → `--permission-mode auto`; Skip permissions →
-> `--permission-mode bypassPermissions`). Both persist as `grok_effort` /
-> `grok_permission_mode` and ride a Resume launch too. There is deliberately
+> `--permission-mode bypassPermissions`). Auto still opens a prompt in the
+> interactive session when its check will not pass a call. Both persist as
+> `grok_effort` / `grok_permission_mode` and ride a Resume launch too. A
+> Board or chief dispatch does not use the saved permission mode: it always
+> sends bypassPermissions, because nobody is there to answer the prompt. A
+> PreToolUse deny hook still refuses a blocked command either way. There is deliberately
 > **no model picker** while `grok models` lists only `grok-4.5` — the same
 > call the launcher makes for Antigravity — so the model stays the account
 > default, switchable in-TUI with `/model`. Resume reopens the folder's
