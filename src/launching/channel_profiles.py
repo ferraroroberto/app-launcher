@@ -351,6 +351,8 @@ def _replace_checked(
         added = [p for p in load_channel_profiles(temp)[1] if p not in before_problems]
         if added:
             raise ProfileEditError("; ".join(added))
+        # must-use-exempt: the temp file is validated before the swap, a step
+        # atomic_write_json has no place for
         os.replace(temp, target)
     except OSError as exc:
         raise ProfileEditError(

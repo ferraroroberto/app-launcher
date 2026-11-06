@@ -252,7 +252,9 @@ allow            = ["tests/_credential_hygiene.py:_RedactedRepr.toterminal"]
 # route enforces the vendored src/login_lockout.py; baseline zero), no-pwsh-stub (pwsh is a
 # 0-byte stub here; text files name the absolute powershell.exe; baseline zero), and
 # must_use (every outbound requests call goes through the pooled session in
-# src/clients/_loopback_http.py; baseline zero). Skipped: secret-compare, since
+# src/clients/_loopback_http.py; sqlite3.connect through each store's
+# connection helper; os.replace through src/_json_io.py or the chief mailbox's
+# writer; baseline zero). Skipped: secret-compare, since
 # hmac.compare_digest is called from six modules and no single helper owns it.
 # Exit 3 (git unusable, a .py file that does not parse) fails the gate. Procedure
 # and limits: project-scaffolding docs/conventions-ratchet.md.
@@ -267,6 +269,21 @@ call   = ["requests.get", "requests.post", "requests.put", "requests.patch", "re
 helper = ["src/clients/_loopback_http.py"]
 why    = "CLAUDE.md: outbound-connection discipline, one pooled session (src/clients/_loopback_http.py is this repo's pooled session)"
 paths  = ["app/", "src/"]
+
+# Each SQLite store owns one connection helper with its own pragmas: the run
+# index (WAL, foreign keys, row factory) and the perf-timings store (WAL,
+# synchronous=NORMAL, schema). The vendored src/usage_log.py is not scanned.
+[[conventions_ratchet.must_use]]
+call   = "sqlite3.connect"
+helper = ["src/jobs/index.py", "src/usage/perf_timings.py"]
+why    = "each store opens through its own connection helper (src/jobs/index.py, src/usage/perf_timings.py)"
+
+# src/chief_session_end.py publish() is the chief mailbox's own atomic writer:
+# a new event staged under a hidden, unique temp name.
+[[conventions_ratchet.must_use]]
+call   = "os.replace"
+helper = ["src/_json_io.py", "src/chief_session_end.py"]
+why    = "atomic writes go through src/_json_io.py (or the chief mailbox's publish() in src/chief_session_end.py)"
 
 # [runtime_write_ratchet] -- scripts/runtime_write_ratchet.py fails when a tracked
 # Python file gains a write target (open for writing, Path.write_*, mkdir, a log
