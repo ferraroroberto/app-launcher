@@ -151,6 +151,15 @@
   background: var(--neutral-soft);
   color: var(--ink);
 }
+/* The invisible 44px target (design.md "Touch targets"): the 36px squircle
+ * grows outward on every side by (36 - hit-min) / 2, clamped at 0, without
+ * changing what is painted. It sits inside the main button, so it never
+ * competes with a sibling accessory. */
+.action-row-avatar::before {
+  content: "";
+  position: absolute;
+  inset: min(0px, calc((36px - var(--hit-min, 44px)) / 2));
+}
 .action-row-avatar .icon {
   width: var(--bottom-tabs-icon, 20px);    /* icons.size.nav-tab */
   height: var(--bottom-tabs-icon, 20px);

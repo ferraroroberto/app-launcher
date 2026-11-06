@@ -77,15 +77,15 @@
 
 /* Silent: flat (the bars hold at their sliver) and dimmed, so "it is not
    hearing me" is visible without a colour. */
-.rec-wave[data-state="silent"] .rec-wave-bars,
-.rec-wave[data-state="silent"] .rec-wave-meter {
+.rec-wave[data-signal="silent"] .rec-wave-bars,
+.rec-wave[data-signal="silent"] .rec-wave-meter {
   opacity: 0.4;
 }
 
 /* Unmeasured (no Web Audio, or a context that is not running): the timer
    alone. A flat strip here would read as a silent mic, which was not measured. */
-.rec-wave[data-state="unmeasured"] .rec-wave-bars,
-.rec-wave[data-state="unmeasured"] .rec-wave-meter {
+.rec-wave[data-signal="unmeasured"] .rec-wave-bars,
+.rec-wave[data-signal="unmeasured"] .rec-wave-meter {
   display: none;
 }
 
