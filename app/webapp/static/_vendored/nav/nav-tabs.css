@@ -157,6 +157,14 @@
     text-overflow: ellipsis;
   }
 }
+/* A touch device wider than the phone pill (a tablet, a large phone in
+   landscape) keeps the inline segmented control, whose padding alone is 37px
+   tall. The 44px floor is a min-height, so the tab grows by 7px and the icon
+   and label stay centred; the pill (max-width 520px) and the rail's own
+   --row-lg are untouched. */
+@media (pointer: coarse) and (min-width: 521px) {
+  .tab { min-height: var(--row-sm); }
+}
 
 /* ------------------------------------------------- wide layout: left rail */
 /* design.md Layout, "Wide layout": on a wide, fine-pointer
