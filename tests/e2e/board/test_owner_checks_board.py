@@ -8,10 +8,10 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import stable_read
+from tests.e2e.fixtures.waits import stable_eval, stable_read
 from tests.e2e.board._chief_support import (
     _QUESTIONS, _board_payload, _capture_chief_input, _mock_board, _mock_ensure, _open_board,
-    _plan_with, _route_plan_from, _route_voice,
+    _RECORDER_MOCK, _plan_with, _route_plan_from, _route_voice,
 )
 
 pytestmark = pytest.mark.smoke
@@ -73,8 +73,8 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     kind and counted in the lane and the header; its tap unfolds why, what to
     try and the links (the artifact opens the artifact). A label without a
     readable block is listed as "details unknown", never hidden, and an
-    unreadable repo is said. The sheet answers them: Validated, a typed
-    Problem and Later go to the owner-check route as one batch, then the chief
+    unreadable repo is said. The sheet answers them: Validated and a typed
+    Problem go to the owner-check route as one batch, then the chief
     hears what landed in one message."""
     answers, chief_posts = _open_owner_board(authed_page, base_url)
 
@@ -132,18 +132,21 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
 
 def test_before_start_is_answered_on_its_own_sheet(authed_page: Page, base_url: str) -> None:
     """The Before start group's button opens a sheet of that group alone; its
-    answer goes to the route by itself, and a Later needs no word to the chief."""
+    answer goes to the route by itself, and the running chief hears a Pending as a line."""
     answers, chief_posts = _open_owner_board(authed_page, base_url)
 
     dialog = authed_page.locator("#chiefAnswersDialog")
     authed_page.locator("#boardColYours .board-owner-answer-group").first.click()
     expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Before start")
     expect(dialog.locator(".owner-answer")).to_have_count(1)
-    dialog.locator('.tr-ask-opt[data-answer="later"]').click()
+    dialog.locator('.tr-ask-opt[data-answer="pending"]').click()
     dialog.locator("#chiefAnswersDone").click()
     expect(dialog).to_be_hidden()
-    assert answers == [{"answers": [{"ref": "demo#7", "kind": "before-start", "answer": "later"}]}], answers
-    assert chief_posts == [], chief_posts
+    assert answers == [{"answers": [{"ref": "demo#7", "kind": "before-start", "answer": "pending"}]}], answers
+    assert chief_posts == [{"data": (
+        "Owner checks answered on the Board: Before start\n"
+        "[demo#7] Before-start: pending - Pair the kitchen speaker"
+    ), "submit": True}], chief_posts
 
 
 @pytest.mark.iphone
@@ -153,7 +156,7 @@ def test_chief_and_owner_checks_open_separate_sheets(
     """The Chief's plan "Answer N questions" opens a sheet of the chief's open
     questions alone; an owner-check row's Answer and the group's "Answer N
     owner checks" open a sheet of owner checks alone, scrolled to the tapped
-    item, without Anything else. A Problem there still reaches the chief, in
+    item, with Anything else under it. A Problem there still reaches the chief, in
     the owner-checks message only. The group's state line leads its block, where
     the plan card puts its age line."""
     _mock_board(authed_page, _payload())
@@ -198,7 +201,7 @@ def test_chief_and_owner_checks_open_separate_sheets(
     expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
     expect(dialog.locator(".chief-answer")).to_have_count(2)
     expect(dialog.locator(".chief-answer:not(.owner-answer)")).to_have_count(0)
-    expect(dialog.locator("#chiefAnswersAlso")).to_be_hidden()
+    expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
 
@@ -422,3 +425,83 @@ def test_done_applies_a_large_sheet_of_tapped_and_typed_answers(
     done.click()
     expect(dialog).to_be_hidden()
     assert posts == [[expected["demo#139"]]], posts
+
+
+@pytest.mark.iphone
+def test_owner_checks_use_the_chief_answer_form_at_phone_width(
+    authed_page: Page, base_url: str
+) -> None:
+    """A before-start step and a step to validate are answered on the form a
+    chief question has: the option rows of their kind, an Other field with its
+    mic and paperclip, and Anything else under them. Each choice sends its own
+    answer, a note rides with it, and a Problem found waits for its description."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    authed_page.add_init_script(_RECORDER_MOCK)
+    _route_voice(authed_page, True)
+    _mock_board(authed_page, _payload())
+    _mock_ensure(authed_page, {})
+    chief_posts = _capture_chief_input(authed_page)
+    answers: list = []
+
+    def _answer(route):
+        answers.append(route.request.post_data_json["answers"])
+        results = [{"ref": a["ref"], "answer": a["answer"], "ok": True}
+                   for a in route.request.post_data_json["answers"]]
+        route.fulfill(json={"results": results, "owner_checks": _payload()["owner_checks"]})
+
+    authed_page.route(re.compile(r".*/api/board/owner-checks/answer$"), _answer)
+    _open_board(authed_page, base_url)
+    # The sheet reads dictation availability when it opens.
+    authed_page.evaluate("async () => { window.__e2eVoice = await import('/static/voice.js'); }")
+    authed_page.wait_for_function(
+        "() => window.__e2eVoice.voiceDictationAvailable()", timeout=15_000)
+
+    owner = authed_page.locator("#boardColYours .board-owner")
+    dialog = authed_page.locator("#chiefAnswersDialog")
+    done = dialog.locator("#chiefAnswersDone")
+
+    owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
+    step = dialog.locator('[data-key="owner:demo#7"]')
+    labels = step.locator(".tr-ask-opt .tr-ask-label")
+    expect(labels).to_have_text(["Done", "Pending", "Pause", "Close (won't do)"])
+    expect(step.locator(".tr-ask-other .tr-ask-input")).to_have_count(1)
+    expect(step.locator(".tr-ask-other .tr-ask-mic")).to_have_count(1)
+    expect(step.locator(".tr-ask-other .tr-ask-attach")).to_have_count(1)
+    expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
+    overflow = stable_eval(dialog, "el => el.scrollWidth - el.clientWidth")
+    assert overflow <= 0, f"the sheet scrolls sideways by {overflow}px"
+
+    step.locator('.tr-ask-opt[data-answer="pause"]').click()
+    step.locator(".tr-ask-input").fill("after the move")
+    expect(step.locator(".owner-answer-meaning")).to_have_text("Sends Pause, with this as a note.")
+    dialog.locator("#chiefAnswersAlso .composer-input").fill("thanks")
+    done.click()
+    expect(dialog).to_be_hidden()
+    assert answers == [[{"ref": "demo#7", "kind": "before-start", "answer": "pause", "text": "after the move"}]]
+    assert chief_posts == [{"data": (
+        "Owner checks answered on the Board: Before start\n"
+        "[demo#7] Before-start: pause - Pair the kitchen speaker (note: after the move)\n"
+        "Also: thanks"
+    ), "submit": True}], chief_posts
+
+    answers.clear()
+    chief_posts.clear()
+    owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group').click()
+    check = dialog.locator('[data-key="owner:demo#9"]')
+    expect(check.locator(".tr-ask-opt .tr-ask-label")).to_have_text(["Validated", "Problem found"])
+    expect(check.locator(".tr-ask-other .tr-ask-mic")).to_have_count(1)
+    # Problem found alone is no answer yet: it needs its description.
+    check.locator('.tr-ask-opt[data-answer="problem"]').click()
+    expect(check.locator(".owner-answer-meaning")).to_have_text("Problem found needs a description in Other.")
+    expect(done).to_be_disabled()
+    check.locator(".tr-ask-input").fill("it stops after a minute")
+    expect(done).to_be_enabled()
+    done.click()
+    expect(dialog).to_be_hidden()
+    assert answers == [[{"ref": "demo#9", "kind": "validate-after", "answer": "problem",
+                         "text": "it stops after a minute"}]]
+    assert chief_posts == [{"data": (
+        "Owner checks answered on the Board: Validate\n"
+        "[demo#9] Problem found validating Read-aloud on the lock screen: it stops after a minute"
+        " (please file a fix)"
+    ), "submit": True}], chief_posts

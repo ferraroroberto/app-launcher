@@ -11,6 +11,8 @@ Board router.
 
 Writes reach GitHub with the owner's own ``gh`` account: Validated and Done
 through fleet-config's ``owner_check clear``, a Problem as a plain comment.
+Pending, Pause and Close write no GitHub state: a launcher mark, and the sheet's
+message tells the chief.
 Each answer is applied on its own and reported on its own, so one failed write
 never hides the ones that landed.
 """
@@ -54,9 +56,9 @@ def _apply(cfg: WebappConfig, ans: Dict[str, Any]) -> Dict[str, Any]:
 async def post_owner_answers(request: Request) -> Dict[str, Any]:
     """Body ``{"answers": [{ref, kind, answer, text?}]}``; one result per answer.
 
-    ``answer`` is ``validated`` / ``problem`` / ``later`` for a validate-after
-    item and ``done`` / ``later`` for a before-start one; a problem carries its
-    ``text``. A malformed answer fails the whole request (400) before any write.
+    ``answer`` is ``validated`` / ``problem`` for a validate-after item and
+    ``done`` / ``pending`` / ``pause`` / ``close`` for a before-start one; a
+    problem carries its ``text``. A malformed answer fails the whole request (400) before any write.
     """
     body = await maybe_json(request)
     raw = body.get("answers")

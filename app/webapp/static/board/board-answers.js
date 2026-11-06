@@ -36,31 +36,33 @@
  * the one message below.
  *
  * Owner checks (owner-checks.js) have their own sheet, the same dialog in
- * `owner` mode: the chief's questions unblock work in flight, an owner check
- * waits on the owner's own schedule, so neither sheet lists the other's items.
- * Done writes their answers to GitHub first, each on its own, then tells the
- * chief what landed in one message. Validated, Done and Later need no chief;
- * a Problem does, since the chief files the fix.
+ * `owner` mode, its items drawn from the same option and Other parts as a chief
+ * question (answer-item.js) and Anything else under them: the chief's
+ * questions unblock work in flight, an owner check waits on the owner's own
+ * schedule, so neither sheet lists the other's items. Done applies their
+ * answers first, each on its own (GitHub, or the launcher's own mark), then
+ * tells the chief what landed in one message. Validated, Done and Pending need
+ * no chief; a Problem, a Pause or a Close does, since the chief acts on it.
  */
 
 import { els, state } from '../state.js';
 import { apiFailToast, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
-import { askOption } from '../chat/ask-option.js';
 import { icon } from '../_vendored/icons/icons.js';
 import { el } from '../dom-utils.js';
 import { createDictation, startWorkTimer, voiceDictationAvailable } from '../voice.js';
 import { growTextarea, mountComposer } from '../composer.js';
 import { uploadSessionFile } from '../terminal/terminal-compose.js';
 import { chiefSessionId, sendToChief } from './board-dispatch.js';
+import { optionList, otherRow, paintOptions } from './answer-item.js';
 import {
   attachedLines, disposeAnswerFiles, emptyFiles, filesUploading, mountAnswerFiles, syncAnswerFiles,
 } from './answer-files.js';
 import { renderBoard } from '../board.js';
 import { itemKey, markSent } from './chief-keys.js';
 import {
-  emptyOwnerDraft, kindLabel, ownerAnswerOf, ownerMessageLine, ownerSheetBlock, ownerSheetKey,
-  postOwnerAnswers, shownOwnerItems,
+  emptyOwnerDraft, kindLabel, ownerAnswerOf, ownerMessageLine, ownerNeedsChief, ownerSheetBlock,
+  ownerSheetKey, postOwnerAnswers, shownOwnerItems,
 } from './owner-checks.js';
 
 const DONE_LABEL = 'Done';
@@ -184,9 +186,9 @@ export function composeAnswers(items, drafts, extra, shown, ownerLines, ownerGro
   return out.join('\n');
 }
 
-// Anything else is the chief sheet's; the owner sheet hides it and sends none.
+// Anything else, in either sheet: the owner's word to the chief beyond the items.
 function alsoText() {
-  return also && sheet && sheet.mode === 'chief' ? also.textarea.value : '';
+  return also && sheet ? also.textarea.value : '';
 }
 
 function allIndices(items) {
@@ -202,14 +204,14 @@ function answeredCount() {
   return sheet.shown.filter(function (i) { return hasAnswer(sheet.items[i], sheet.drafts[i]); }).length;
 }
 
-// An owner answer with the files that ride to the chief. A snooze carries none,
-// and files with no answer are not here at all: they stay in their draft.
+// An owner answer with the files that ride to the chief. Files with no answer
+// are not here at all: they stay in their draft.
 function ownerAnswers() {
   return sheet.owner
     .map(function (item) {
       const draft = ownerDraft(item);
       const ans = ownerAnswerOf(item, draft);
-      return { item: item, ans: ans, files: ans && ans.answer !== 'later' ? draft.files.slice() : [] };
+      return { item: item, ans: ans, files: ans ? draft.files.slice() : [] };
     })
     .filter(function (x) { return !!x.ans; });
 }
@@ -237,12 +239,6 @@ function itemFiles(draft, label) {
 
 // --------------------------------------------------------------- render
 
-function paintItem(block, draft) {
-  block.querySelectorAll('.tr-ask-opt').forEach(function (b) {
-    b.setAttribute('aria-pressed', draft.picks.indexOf(Number(b.dataset.i)) !== -1 ? 'true' : 'false');
-  });
-}
-
 function renderItem(item, index) {
   const draft = sheet.drafts[index];
   const block = el('section', 'tr-ask chief-answer');
@@ -260,41 +256,41 @@ function renderItem(item, index) {
     block.appendChild(el('p', 'tr-ask-hint chief-answer-rec', 'Recommended: ' + item.recommendation));
   }
 
-  // Other, on every item; an item with no options is answered here alone.
-  const input = el('input', 'tr-ask-input');
-  input.type = 'text';
-  input.maxLength = 500;
-  input.placeholder = options.length ? 'Other' : 'Your answer';
-  input.setAttribute('aria-label', (options.length ? 'Other answer to: ' : 'Answer to: ') + (question || 'the question'));
-  input.value = draft.other;
-  // Typed or dictated: the field's text is the draft.
-  function otherChanged() {
-    draft.other = input.value;
-    // Single-select: typing is the answer, so it drops a pick.
-    if (!item.multi && input.value.trim() && draft.picks.length) {
-      draft.picks = [];
-      paintItem(block, draft);
-    }
-    syncDone();
-  }
-  input.addEventListener('input', otherChanged);
+  const paint = function () {
+    paintOptions(block, function (i) { return draft.picks.indexOf(i) !== -1; });
+  };
+  // Other, on every item; an item with no options is answered here alone. The
+  // field's text, typed or dictated, is the draft (the dictation is the one
+  // Anything else and the chat bar use, its transcript landing in the field for
+  // review before Done).
+  const other = otherRow({
+    value: draft.other,
+    maxLength: 500,
+    placeholder: options.length ? 'Other' : 'Your answer',
+    ariaLabel: (options.length ? 'Other answer to: ' : 'Answer to: ') + (question || 'the question'),
+    files: itemFiles(draft, 'question ' + (index + 1)),
+    mic: voiceDictationAvailable() ? otherMic : null,
+    onInput: function (field) {
+      draft.other = field.value;
+      // Single-select: typing is the answer, so it drops a pick.
+      if (!item.multi && field.value.trim() && draft.picks.length) {
+        draft.picks = [];
+        paint();
+      }
+      syncDone();
+    },
+  });
 
   if (options.length) {
     if (item.multi) block.appendChild(el('p', 'tr-ask-hint', 'Pick any number'));
-    const list = el('div', 'tr-ask-options');
-    list.setAttribute('role', 'group');
-    list.setAttribute('aria-label', question || 'Options');
-    options.forEach(function (opt, oi) {
-      const b = askOption({
-        n: oi + 1,
-        label: opt.label + (opt.recommended ? ' (Recommended)' : ''),
-        description: opt.description,
-        mark: true,
-        track: 'board.answer-option',
-      });
-      b.dataset.i = String(oi);
-      if (opt.recommended) b.classList.add('is-recommended');
-      b.addEventListener('click', function () {
+    block.appendChild(optionList({
+      groupLabel: question || 'Options',
+      options: options.map(function (opt) {
+        return { label: opt.label + (opt.recommended ? ' (Recommended)' : ''), description: opt.description,
+          recommended: opt.recommended };
+      }),
+      track: 'board.answer-option',
+      onPick: function (oi) {
         const at = draft.picks.indexOf(oi);
         if (item.multi) {
           if (at === -1) draft.picks.push(oi); else draft.picks.splice(at, 1);
@@ -304,28 +300,18 @@ function renderItem(item, index) {
           draft.picks = at === -1 ? [oi] : [];
           if (draft.picks.length) {
             draft.other = '';
-            input.value = '';
+            other.input.value = '';
           }
         }
-        paintItem(block, draft);
+        paint();
         syncDone();
-      });
-      list.appendChild(b);
-    });
-    block.appendChild(list);
+      },
+    }));
   }
 
-  const other = el('div', 'tr-ask-other');
-  other.appendChild(input);
-  // The same dictation Anything else and the chat bar use, bound to this
-  // field; the transcript lands in the field for review before Done.
-  if (voiceDictationAvailable()) other.appendChild(otherMic(input, otherChanged));
-  const files = itemFiles(draft, 'question ' + (index + 1));
-  files.wirePaste(input);
-  other.appendChild(files.button);
-  block.appendChild(other);
-  block.appendChild(files.extra);
-  paintItem(block, draft);
+  block.appendChild(other.row);
+  block.appendChild(other.files.extra);
+  paint();
   return block;
 }
 
@@ -380,11 +366,11 @@ function syncDone() {
   if (!done || !sheet) return;
   const owner = ownerAnswers();
   const forChief = answeredCount() > 0 || !!alsoText().trim()
-    || owner.some(function (x) { return x.ans.answer === 'problem' || x.files.length > 0; });
+    || owner.some(function (x) { return ownerNeedsChief(x.ans, x.files); });
   let why = '';
   if (!forChief && !owner.length) {
     why = sheet.mode === 'owner'
-      ? 'Pick an answer or describe the problem first.'
+      ? 'Pick an answer or type one in Other first.'
       : 'Pick or type an answer first. Unanswered questions are sent as skipped.';
   } else if (forChief && chiefRun !== 'running') {
     why = chiefRun === 'unknown' ? 'Chief status unknown — session-host unreachable.' : 'Chief not running.';
@@ -449,23 +435,19 @@ function openSheet(mode, plan, run, indices, owner, startKey, ownerKind) {
     also: same ? sheet.also : '',
   };
   const chief = mode === 'chief';
-  els.chiefAnswersAlso.parentElement.hidden = !chief;
-  if (chief) {
-    also.textarea.value = sheet.also;
-    growTextarea(also.textarea);
-    also.setAvailability({
-      dictate: voiceDictationAvailable(),
-      ocr: !!(state.status && state.status.screenshot_ocr),
-    });
-  }
+  also.textarea.value = sheet.also;
+  growTextarea(also.textarea);
+  also.setAvailability({
+    dictate: voiceDictationAvailable(),
+    ocr: !!(state.status && state.status.screenshot_ocr),
+  });
   disposeOtherDictations();
   disposeAnswerFiles();
   const blocks = indices.map(function (i) { return renderItem(items[i], i); });
   owner.forEach(function (item) {
     const draft = ownerDraft(item);
-    blocks.push(ownerSheetBlock(item, draft, syncDone, function (wrap, input, typed) {
-      if (voiceDictationAvailable()) wrap.appendChild(otherMic(input, typed));
-    }, itemFiles(draft, item.ref)));
+    blocks.push(ownerSheetBlock(item, draft, syncDone, voiceDictationAvailable() ? otherMic : null,
+      itemFiles(draft, item.ref)));
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
   els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief'
@@ -552,10 +534,8 @@ async function submitAnswers() {
       // clean. One typed for an item the filter hid was not sent, and stays.
       // The close handler saves the box into `sheet.also`, so empty the box.
       sheet.shown.forEach(function (i) { sheet.drafts[i] = emptyChiefDraft(); });
-      if (sheet.mode === 'chief') {
-        also.textarea.value = '';
-        sheet.also = '';
-      }
+      also.textarea.value = '';
+      sheet.also = '';
     }
     renderBoard();
     if (owner.failed.length) {
@@ -601,7 +581,7 @@ export function wireChiefAnswers() {
   // the same plan, then reset the composer so a recording or a staged
   // screenshot never outlives the sheet.
   els.chiefAnswersDialog.addEventListener('close', function () {
-    if (sheet && sheet.mode === 'chief') sheet.also = alsoText();
+    if (sheet) sheet.also = alsoText();
     also.reset();
     disposeOtherDictations();
     disposeAnswerFiles();

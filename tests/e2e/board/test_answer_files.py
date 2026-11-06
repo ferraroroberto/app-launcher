@@ -120,8 +120,8 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     # Each group is its own sheet and its own message to the chief.
     owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
     before = dialog.locator('[data-key="owner:demo#7"]')
-    # A before-start step has no text field: its paperclip stands alone.
-    expect(before.locator(".tr-ask-input")).to_have_count(0)
+    # A before-start step has the Other field a chief question has, its paperclip beside it.
+    expect(before.locator(".tr-ask-other .tr-ask-input")).to_have_count(1)
     expect(before.locator(".tr-ask-attach")).to_be_enabled()
 
     # Files with no answer send nothing: Done waits for the pick.
@@ -176,5 +176,5 @@ def test_the_paperclip_waits_for_a_running_chief_and_says_so(
     expect(block.locator(".tr-ask-attach")).to_be_disabled()
     expect(block.locator(".tr-ask-files-note")).to_have_text("Start the chief to attach files.")
     # Answers that need no file still go without a chief.
-    block.locator('.tr-ask-opt[data-answer="later"]').click()
+    block.locator('.tr-ask-opt[data-answer="pending"]').click()
     expect(authed_page.locator("#chiefAnswersDone")).to_be_enabled()
