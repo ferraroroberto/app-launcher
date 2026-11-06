@@ -482,6 +482,7 @@ def _chief_settings_payload(cfg: WebappConfig) -> Dict[str, Any]:
         "worker_cap": cfg.chief_worker_cap,
         "worker_cap_scope": cfg.chief_worker_cap_scope,
         "grokbot_enabled": cfg.grokbot_enabled,
+        "auto_drain": cfg.chief_auto_drain,
     }
 
 

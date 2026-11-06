@@ -465,13 +465,16 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
 
-def test_chief_grokbot_switch_is_on_by_default_and_saves(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize(("toggle", "key", "label", "help_word"), [
+    ("grokbotEnabled", "grokbot_enabled", "Grok Bot", "relay"),
+    ("chiefAutoDrain", "chief_auto_drain", "Auto-drain queue", "worker slot"),
+], ids=["grokbot", "auto-drain"])
+def test_chief_on_by_default_switch_saves_and_reloads(
+    authed_page: Page, base_url: str, toggle: str, key: str, label: str, help_word: str
 ) -> None:
-    """The Grok Bot switch sits on Settings' Chief sheet, on until the owner
-    turns it off. It saves at once through the ordinary /api/config POST and
-    survives a reload; the fleet-config readers see it on the chief settings
-    endpoint."""
+    """An on-by-default Chief switch saves at once through the ordinary
+    /api/config POST and survives a reload. Grok Bot is one; Auto-drain
+    queue is the other, and the chief reads that one as auto_drain."""
     page = authed_page
     posts: list = []
     page.on("request", lambda req: posts.append(req.post_data_json)
@@ -484,14 +487,14 @@ def test_chief_grokbot_switch_is_on_by_default_and_saves(
             act()
 
     _open_chief_sheet(page, base_url)
-    switch = page.locator("#grokbotEnabledToggle")
+    switch = page.locator(f"#{toggle}Toggle")
     expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#grokbotEnabledHelp")).to_contain_text("relay")
+    expect(page.locator(f"#{toggle}Help")).to_contain_text(help_word)
 
     saving(switch.click)
     expect(switch).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#toast")).to_contain_text("Grok Bot off")
-    assert posts[-1] == {"grokbot_enabled": False}, posts
+    expect(page.locator("#toast")).to_contain_text(f"{label} off")
+    assert posts[-1] == {key: False}, posts
 
     _open_chief_sheet(page, base_url)
     expect(switch).to_have_attribute("aria-checked", "false")
@@ -499,8 +502,8 @@ def test_chief_grokbot_switch_is_on_by_default_and_saves(
     # Back on at the default, so the shared webapp is left as found.
     saving(switch.click)
     expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#toast")).to_contain_text("Grok Bot on")
-    assert posts[-1] == {"grokbot_enabled": True}, posts
+    expect(page.locator("#toast")).to_contain_text(f"{label} on")
+    assert posts[-1] == {key: True}, posts
 
 
 @pytest.mark.parametrize(("toggle", "key", "label", "help_word"), [

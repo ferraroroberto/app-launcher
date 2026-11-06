@@ -69,6 +69,7 @@ class TestChiefSettings:
             "worker_cap": 3,
             "worker_cap_scope": "chief",
             "grokbot_enabled": True,
+            "auto_drain": True,
         }
 
     def test_put_persists_and_reloads(self, webapp_client, _bypass_gate):
@@ -117,7 +118,24 @@ class TestChiefSettings:
             "worker_cap": 4,
             "worker_cap_scope": "chief",
             "grokbot_enabled": False,
+            "auto_drain": True,
         }
+
+    def test_auto_drain_follows_the_config_switch(self, webapp_client, _bypass_gate):
+        """A fresh config reports auto_drain true. Turning the switch off
+        persists, and a later cap save does not turn it back on."""
+        client, _, _ = webapp_client
+        assert client.get(
+            "/api/board/chief/settings"
+        ).json()["settings"]["auto_drain"] is True
+        assert client.post(
+            "/api/config", json={"chief_auto_drain": False}
+        ).status_code == 200
+        assert client.get(
+            "/api/board/chief/settings"
+        ).json()["settings"]["auto_drain"] is False
+        resp = client.put("/api/board/chief/settings", json={"worker_cap": 4})
+        assert resp.json()["settings"]["auto_drain"] is False
 
     def test_put_ignores_unknown_keys(self, webapp_client, _bypass_gate):
         """#616: a stale client still sending the retired respawn keys must

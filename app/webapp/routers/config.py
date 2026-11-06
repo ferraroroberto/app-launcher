@@ -111,6 +111,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # The chief doorbell, off by default; Settings > Chief's
         # Doorbell switch saves it here.
         "chief_doorbell": cfg.chief_doorbell,
+        # Queue drain, on by default; Settings > Chief's Auto-drain switch.
+        "chief_auto_drain": cfg.chief_auto_drain,
         # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
         # The Grok Bot on/off switch; on by default.
@@ -262,6 +264,7 @@ _SWITCH_KEYS = (
     "open_sessions_in_chat",
     "autostart_channel_sessions",
     "chief_doorbell",
+    "chief_auto_drain",
     "chief_job_failures",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
@@ -292,6 +295,7 @@ _PATCH_KEYS = frozenset({
     "grok_auto_switch",
     "chief_auto_compact_threshold",
     "chief_doorbell",
+    "chief_auto_drain",
     "chief_job_failures",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",

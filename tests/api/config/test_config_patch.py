@@ -377,6 +377,28 @@ class TestPatchConfig:
         assert resp.status_code == 400
         assert app.state.webapp_config.grokbot_enabled is True
 
+    def test_chief_auto_drain_defaults_on_and_round_trips(self, webapp_client):
+        """The queue drain is on until the owner turns it off, and the save
+        reaches disk so a restart keeps it."""
+        from src.webapp_config import load_webapp_config
+
+        client, app, overrides = webapp_client
+        assert client.get("/api/config").json()["chief_auto_drain"] is True
+
+        resp = client.post("/api/config", json={"chief_auto_drain": False})
+        assert resp.status_code == 200
+        assert app.state.webapp_config.chief_auto_drain is False
+        cfg_path = overrides["tmp_webapp_cfg_path"]
+        assert load_webapp_config(cfg_path).chief_auto_drain is False
+        assert client.get("/api/config").json()["chief_auto_drain"] is False
+
+    @pytest.mark.parametrize("junk", ["false", 0, None])
+    def test_chief_auto_drain_rejects_non_booleans(self, webapp_client, junk):
+        client, app, _ = webapp_client
+        resp = client.post("/api/config", json={"chief_auto_drain": junk})
+        assert resp.status_code == 400
+        assert app.state.webapp_config.chief_auto_drain is True
+
     def test_grok_auto_switch_defaults_off_and_round_trips(self, webapp_client):
         from src.webapp_config import load_webapp_config
 

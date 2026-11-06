@@ -273,6 +273,11 @@ class WebappConfig:
     # session, and the chief only understands the line once fleet-config
     # ships its side, which is what turns this on.
     chief_doorbell: bool = False
+    # Queue drain for unattended audit issues. On by default: the chief
+    # adds them to its plan and dispatches into a free worker slot.
+    # Settings > Chief turns it off; readers take auto_drain from the
+    # chief settings payload.
+    chief_auto_drain: bool = True
     # Publish one job-failed event into the chief mailbox per failed Job run
     # run. On by default: the event only lands while a chief is live, and
     # the doorbell above decides whether the chief is woken for it.

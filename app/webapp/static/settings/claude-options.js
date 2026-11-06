@@ -220,6 +220,9 @@ export async function fetchConfig(shouldApply) {
   if (els.chiefDoorbellToggle) {
     setSwitch(els.chiefDoorbellToggle, body.chief_doorbell === true);
   }
+  if (els.chiefAutoDrainToggle) {
+    setSwitch(els.chiefAutoDrainToggle, body.chief_auto_drain !== false);
+  }
   if (els.chiefJobFailuresToggle) {
     setSwitch(els.chiefJobFailuresToggle, body.chief_job_failures !== false);
   }
