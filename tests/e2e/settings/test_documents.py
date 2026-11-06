@@ -21,7 +21,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.ui import open_settings
+from tests.e2e.fixtures.ui import open_settings, open_settings_sheet
 from tests.e2e.session.test_changed_file_view import _as_phone, _mock_file_routes, _open_file
 from tests.e2e.session.test_session_changed_files import _mock
 
@@ -288,3 +288,41 @@ def test_changed_files_preview_draws_the_same_diagrams(authed_page: Page, base_u
     expect(viewer.locator(".md-diagram svg")).to_have_count(1)
     expect(viewer.locator(".md-diagram-note")).to_have_text("Diagram couldn't be drawn")
     expect(viewer.locator("h1")).to_have_text("Sample guide")
+
+
+def test_chief_sheet_opens_the_grok_bot_directive_and_copies_the_raw_file(
+    authed_page: Page, base_url: str
+) -> None:
+    page = authed_page
+    asked = _mock_documents(page)
+    # iOS and Playwright's WebKit gate the real clipboard; the contract here is
+    # the text handed to writeText, so capture it in both engines.
+    page.add_init_script(
+        "window.__copied = [];"
+        "Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {"
+        " writeText: t => { window.__copied.push(t); return Promise.resolve(); } } });"
+    )
+    page.goto(base_url, wait_until="domcontentloaded")
+    open_settings_sheet(page, "chiefSheet")
+
+    opener = page.locator("#chiefSheet [data-open-document='grok-bot-skill-pack']")
+    expect(opener).to_have_attribute("data-track", "chief.grokbot-directive")
+    opener.click()
+    sheet = page.locator("#documentSheet")
+    expect(sheet).to_be_visible()
+    expect(page.locator("#documentBody h1")).to_have_text("Sample guide")
+    assert asked == ["grok-bot-skill-pack"]
+    expect(page.locator("#documentUpdated")).to_contain_text("Updated")
+
+    copy = page.locator("#documentCopy")
+    expect(copy).to_be_visible()
+    copy.click()
+    expect(page.locator("#toast")).to_contain_text("Markdown copied")
+    assert page.evaluate("window.__copied") == [_DOC.replace("\n", "\r\n")]
+
+    # Back returns to the Chief sheet it was opened from, and the next open
+    # starts without a stale copy button.
+    sheet.locator("[data-sheet-back]").click()
+    expect(sheet).to_be_hidden()
+    expect(page.locator("#chiefSheet")).to_be_visible()
+    expect(copy).to_be_hidden()

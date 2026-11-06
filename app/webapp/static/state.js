@@ -518,6 +518,7 @@ export const els = {
   documentSheetTitle: document.getElementById('documentSheetTitle'),
   documentUpdated: document.getElementById('documentUpdated'),
   documentGithub: document.getElementById('documentGithub'),
+  documentCopy: document.getElementById('documentCopy'),
   documentState: document.getElementById('documentState'),
   documentStateMessage: document.getElementById('documentStateMessage'),
   documentRetry: document.getElementById('documentRetry'),
