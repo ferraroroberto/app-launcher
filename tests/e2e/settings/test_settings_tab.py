@@ -470,7 +470,9 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     ("chiefAutoDrain", "chief_auto_drain", "Auto-drain queue", "worker slot", True),
     ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox", False),
     ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch", False),
-], ids=["grokbot", "auto-drain", "doorbell", "grok-auto-switch"])
+    ("chiefJobSelfHeal", "chief_job_self_heal", "Job self-heal", "repair a Job", False),
+    ("chiefWeeklyProposals", "chief_weekly_proposals", "Weekly proposals", "weekly proposals", False),
+], ids=["grokbot", "auto-drain", "doorbell", "grok-auto-switch", "job-self-heal", "weekly-proposals"])
 def test_chief_switch_saves_flips_and_reloads(
     authed_page: Page, base_url: str, toggle: str, key: str, label: str,
     help_word: str, default: bool,

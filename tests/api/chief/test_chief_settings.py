@@ -70,7 +70,21 @@ class TestChiefSettings:
             "worker_cap_scope": "chief",
             "grokbot_enabled": True,
             "auto_drain": True,
+            "chief_job_self_heal": False,
+            "chief_weekly_proposals": False,
         }
+
+    @pytest.mark.parametrize("key", ["chief_job_self_heal", "chief_weekly_proposals"])
+    def test_automation_switches_follow_the_config_and_survive_a_put(
+        self, webapp_client, _bypass_gate, key,
+    ):
+        """fleet-config reads each Automations switch from this block, so a
+        Settings flip shows here at once and a chief PUT does not reset it."""
+        client, _, _ = webapp_client
+        assert client.post("/api/config", json={key: True}).status_code == 200
+        assert client.get("/api/board/chief/settings").json()["settings"][key] is True
+        resp = client.put("/api/board/chief/settings", json={"worker_cap": 4})
+        assert resp.json()["settings"][key] is True
 
     def test_put_persists_and_reloads(self, webapp_client, _bypass_gate):
         client, app, _ = webapp_client
@@ -119,6 +133,8 @@ class TestChiefSettings:
             "worker_cap_scope": "chief",
             "grokbot_enabled": False,
             "auto_drain": True,
+            "chief_job_self_heal": False,
+            "chief_weekly_proposals": False,
         }
 
     def test_auto_drain_follows_the_config_switch(self, webapp_client, _bypass_gate):
