@@ -84,6 +84,7 @@ JOB_OPTIONAL_FIELDS = (
     "on_success",
     "on_failure",
     "confirm",
+    "rerun_safe",
     "alert_on_failure",
     "visible",
     "elevated",
@@ -126,6 +127,9 @@ def _decorate_job(
     error, walks inline as before (and raises as before).
     """
     payload = job.to_dict()
+    # Always present (``to_dict`` omits a False): the chief reads this key
+    # from every row and treats only a literal ``true`` as safe to re-run.
+    payload["rerun_safe"] = job.rerun_safe
     # Paused jobs render with a "paused — was X" chip so the user sees
     # both that the schedule isn't ticking AND what it will restore to.
     if job.is_paused and job.paused_schedule is not None:

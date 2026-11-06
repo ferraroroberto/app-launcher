@@ -92,6 +92,30 @@ class TestListJobs:
         assert names == ["Alpha", "Bravo"]
 
 
+class TestRerunSafe:
+    def test_listed_per_job_false_by_default(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        _seed_one_job(client, name="Alpha")
+        rows = client.get("/api/jobs").json()["jobs"]
+        assert [r["rerun_safe"] for r in rows] == [False]
+
+    def test_set_via_put_and_listed(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        job_id = _seed_one_job(client, name="Alpha").json()["job"]["id"]
+        assert client.put(f"/api/jobs/{job_id}", json={"rerun_safe": True}).status_code == 200
+        rows = client.get("/api/jobs").json()["jobs"]
+        assert [r["rerun_safe"] for r in rows] == [True]
+
+    def test_refused_with_confirm_and_for_non_bool(self, webapp_client, mocked_jobs_side_effects):
+        client, _, _ = webapp_client
+        job_id = _seed_one_job(client, name="Alpha").json()["job"]["id"]
+        both = client.put(f"/api/jobs/{job_id}", json={"rerun_safe": True, "confirm": True})
+        assert both.status_code == 400
+        loose = client.put(f"/api/jobs/{job_id}", json={"rerun_safe": "true"})
+        assert loose.status_code == 400
+        assert client.get("/api/jobs").json()["jobs"][0]["rerun_safe"] is False
+
+
 class TestEditJob:
     def test_404_on_unknown(self, webapp_client, mocked_jobs_side_effects):
         client, _, _ = webapp_client

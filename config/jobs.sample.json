@@ -102,7 +102,8 @@
       "name": "Grok Bot ensure (every 10 minutes)",
       "script_path": "E:\\automation\\fleet-config\\skills\\_lib\\grokbot\\status.py",
       "args": "ensure",
-      "schedule": { "type": "minutes", "every": 10 }
+      "schedule": { "type": "minutes", "every": 10 },
+      "rerun_safe": true
     },
     {
       "id": "hwinfo-refresh",

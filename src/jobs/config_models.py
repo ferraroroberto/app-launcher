@@ -20,6 +20,11 @@ from pathlib import Path
 from re import compile as _re_compile
 from typing import Any, Dict, List, Optional, Union
 
+from src.jobs.config_rules import (
+    validate_principal_shape,
+    validate_rerun_safe,
+    validate_rerun_safe_shape,
+)
 from src.jobs.outcome import DECLARABLE_OUTCOMES
 from src.jobs.webhook import WebhookConfig, webhook_from_dict
 from src.scanner import slugify
@@ -393,6 +398,11 @@ class Job:
     # so a fat-fingered tap or stray Stream Deck press can't execute a
     # destructive job by accident.
     confirm: bool = False
+    # Owner-set: this job may be re-run unattended by the fleet chief's
+    # self-heal after a fix lands. Default False is the safe state; a job
+    # that needs a confirm tap or cannot be run manually can never be
+    # True (see :func:`validate_rerun_safe_shape`). Agents only read it.
+    rerun_safe: bool = False
     # When True, a failed run pushes a Telegram alert via the vendored
     # notifier (``src.notify``), independent of the global Pushover
     # ``notify_on_failure`` switch in webapp_config.json. Opt-in per job
@@ -499,6 +509,8 @@ class Job:
             payload["on_failure"] = list(self.on_failure)
         if self.confirm:
             payload["confirm"] = True
+        if self.rerun_safe:
+            payload["rerun_safe"] = True
         if self.alert_on_failure:
             payload["alert_on_failure"] = True
         if self.exit_outcomes:
@@ -801,27 +813,6 @@ def validate_kind_shape(
         raise ValueError(f"kind {kind!r} requires script_path")
 
 
-def validate_principal_shape(visible: bool, session_less: bool) -> None:
-    """Raise ``ValueError`` if ``visible`` and ``session_less`` are both set.
-
-    An S4U ("run whether logged on or not") task runs in session 0 with no
-    interactive desktop, so ``visible``'s whole point — a console window the
-    user can watch on the PC — has nowhere to render. Combining them is not
-    a smaller version of either behaviour, it is a silently futile config:
-    the job would run logged-out *and* show nothing when it ran logged-in.
-
-    Enforced here rather than resolved by precedence because which one the
-    owner wants is a real trade, not a default (issue #757). Shared by
-    :func:`job_from_dict` and :func:`src.jobs.config.update_job` so the two
-    write paths can't drift.
-    """
-    if visible and session_less:
-        raise ValueError(
-            "visible and session_less are mutually exclusive: a session-less "
-            "(S4U) task has no desktop to show a console window on"
-        )
-
-
 def job_from_dict(raw: Dict[str, Any]) -> Job:
     """Build a :class:`Job` from one JSON row. Raises on invalid input."""
     kind = str(raw.get("kind") or "").strip()
@@ -830,6 +821,12 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
     validate_kind_shape(kind, script_path, kind_config)
     validate_principal_shape(
         bool(raw.get("visible", False)), bool(raw.get("session_less", False))
+    )
+    rerun_safe = validate_rerun_safe(raw.get("rerun_safe"))
+    validate_rerun_safe_shape(
+        rerun_safe,
+        bool(raw.get("confirm", False)),
+        bool(raw.get("elevated", False)),
     )
     job = Job(
         id=str(raw.get("id") or "").strip(),
@@ -844,6 +841,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
+        rerun_safe=rerun_safe,
         alert_on_failure=bool(raw.get("alert_on_failure", False)),
         exit_outcomes=exit_outcomes_from_dict(raw.get("exit_outcomes")),
         visible=bool(raw.get("visible", False)),
