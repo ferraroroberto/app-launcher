@@ -393,6 +393,11 @@ class Job:
     # so a fat-fingered tap or stray Stream Deck press can't execute a
     # destructive job by accident.
     confirm: bool = False
+    # Owner-set: this job may be re-run unattended by the fleet chief's
+    # self-heal after a fix lands. Default False is the safe state; a job
+    # that needs a confirm tap or cannot be run manually can never be
+    # True (see :func:`validate_rerun_safe_shape`). Agents only read it.
+    rerun_safe: bool = False
     # When True, a failed run pushes a Telegram alert via the vendored
     # notifier (``src.notify``), independent of the global Pushover
     # ``notify_on_failure`` switch in webapp_config.json. Opt-in per job
@@ -499,6 +504,8 @@ class Job:
             payload["on_failure"] = list(self.on_failure)
         if self.confirm:
             payload["confirm"] = True
+        if self.rerun_safe:
+            payload["rerun_safe"] = True
         if self.alert_on_failure:
             payload["alert_on_failure"] = True
         if self.exit_outcomes:
@@ -822,6 +829,49 @@ def validate_principal_shape(visible: bool, session_less: bool) -> None:
         )
 
 
+def validate_rerun_safe(raw: Any) -> bool:
+    """Return ``raw`` as the ``rerun_safe`` flag; only a real boolean passes.
+
+    ``None`` means "not supplied" (the create route forwards every optional
+    field, absent ones as ``None``) and reads as the safe default ``False``.
+    Anything else that is not a ``bool`` — ``"true"``, ``1``, ``"yes"`` — is
+    refused rather than coerced, because the fleet chief re-runs a job
+    unattended on exactly this flag and a truthy string must not grant it.
+    """
+    if raw is None:
+        return False
+    if not isinstance(raw, bool):
+        raise ValueError(
+            f"rerun_safe must be true or false, got {type(raw).__name__}"
+        )
+    return raw
+
+
+def validate_rerun_safe_shape(
+    rerun_safe: bool, confirm: bool, elevated: bool
+) -> None:
+    """Raise ``ValueError`` if ``rerun_safe`` is set alongside ``confirm`` or
+    ``elevated``.
+
+    A job that needs a confirm tap, or that cannot be run manually at all,
+    is by definition not safe to re-run unattended. Shared by
+    :func:`job_from_dict` and :func:`src.jobs.config.update_job` so the two
+    write paths can't drift.
+    """
+    if not rerun_safe:
+        return
+    if confirm:
+        raise ValueError(
+            "rerun_safe cannot be combined with confirm: a job that needs a "
+            "confirm tap is not safe to re-run unattended"
+        )
+    if elevated:
+        raise ValueError(
+            "rerun_safe cannot be combined with elevated: an elevated job "
+            "cannot be run manually, so it cannot be re-run unattended"
+        )
+
+
 def job_from_dict(raw: Dict[str, Any]) -> Job:
     """Build a :class:`Job` from one JSON row. Raises on invalid input."""
     kind = str(raw.get("kind") or "").strip()
@@ -830,6 +880,12 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
     validate_kind_shape(kind, script_path, kind_config)
     validate_principal_shape(
         bool(raw.get("visible", False)), bool(raw.get("session_less", False))
+    )
+    rerun_safe = validate_rerun_safe(raw.get("rerun_safe"))
+    validate_rerun_safe_shape(
+        rerun_safe,
+        bool(raw.get("confirm", False)),
+        bool(raw.get("elevated", False)),
     )
     job = Job(
         id=str(raw.get("id") or "").strip(),
@@ -844,6 +900,7 @@ def job_from_dict(raw: Dict[str, Any]) -> Job:
         on_success=_validate_chain_list("on_success", raw.get("on_success")),
         on_failure=_validate_chain_list("on_failure", raw.get("on_failure")),
         confirm=bool(raw.get("confirm", False)),
+        rerun_safe=rerun_safe,
         alert_on_failure=bool(raw.get("alert_on_failure", False)),
         exit_outcomes=exit_outcomes_from_dict(raw.get("exit_outcomes")),
         visible=bool(raw.get("visible", False)),

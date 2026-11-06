@@ -625,6 +625,15 @@ A job can carry an optional `confirm: true` flag (the **⚠️ Require confirmat
 
 The flag round-trips through `POST` / `PUT` and is omitted from the stored row when false (like the other optional fields).
 
+## Rerun-safe jobs
+
+A job can carry `rerun_safe: true`, the owner's statement that the fleet chief may re-run it once, unattended, after it files and lands a fix for a failed run. It defaults to `false`, which is the safe state: the chief's `heal rerun` refuses every job that does not carry a literal `true`.
+
+- **Owner-set, agent-read.** No agent-facing endpoint sets it. The owner sets it through `PUT /api/jobs/<id>` or in `config/jobs.json`; the code only reads it. The committed `config/jobs.sample.json` shows it on one idempotent job (`grokbot-ensure`) and leaves it off everywhere else.
+- **Strict boolean.** Only a real JSON `true`/`false` is accepted. `"true"`, `1` or any other type is a validation error (`400` on `POST`/`PUT`, a load error in the file), never coerced.
+- **Never with `confirm` or `elevated`.** A job that needs a confirm tap, or that cannot be run manually at all, is not safe to re-run unattended, so the combination is refused at load and on save. A `PUT` is checked against the job's effective post-edit state, so turning `confirm` on for a `rerun_safe` job is refused too.
+- **Always on the wire.** `GET /api/jobs` carries `rerun_safe` on every row, `false` included; the stored row omits it when false, like the other optional flags.
+
 ## API surface
 
 | Route | Auth | Purpose |

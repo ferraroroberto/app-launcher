@@ -95,6 +95,8 @@ from src.jobs.config_models import (
     schedule_from_dict,
     validate_kind_shape,
     validate_principal_shape,
+    validate_rerun_safe,
+    validate_rerun_safe_shape,
 )
 from src.jobs.webhook import webhook_from_dict
 
@@ -119,6 +121,8 @@ __all__ = [
     "kind_config_from_dict",
     "validate_kind_shape",
     "validate_principal_shape",
+    "validate_rerun_safe",
+    "validate_rerun_safe_shape",
     "JobsConfig",
     # chain (src.jobs.config_chain)
     "detect_chain_cycle",
@@ -310,6 +314,7 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
     ("no_output_seconds", _validate_no_output, False),
     ("mutex_group", _validate_mutex_group, False),
     ("confirm", bool, False),
+    ("rerun_safe", validate_rerun_safe, False),
     ("alert_on_failure", bool, False),
     ("visible", bool, False),
     ("elevated", bool, False),
@@ -349,6 +354,18 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
                 bool(fields["session_less"])
                 if "session_less" in fields
                 else job.session_less,
+            )
+
+        # rerun_safe is checked against the *effective* post-edit confirm /
+        # elevated, before any mutation, so turning on confirm for a
+        # rerun_safe job is refused just like setting both at once.
+        if "rerun_safe" in fields or "confirm" in fields or "elevated" in fields:
+            validate_rerun_safe_shape(
+                validate_rerun_safe(fields["rerun_safe"])
+                if "rerun_safe" in fields
+                else job.rerun_safe,
+                bool(fields["confirm"]) if "confirm" in fields else job.confirm,
+                bool(fields["elevated"]) if "elevated" in fields else job.elevated,
             )
 
         for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
