@@ -274,17 +274,24 @@ def build_pi_flags(cfg: WebappConfig) -> str:
     return " ".join(parts)
 
 
-def build_grok_flags(cfg: WebappConfig, *, effort_override: Optional[str] = None) -> str:
+def build_grok_flags(
+    cfg: WebappConfig,
+    *,
+    effort_override: Optional[str] = None,
+    unattended: bool = False,
+) -> str:
     """Compose the `grok` CLI flags from the persisted Grok knobs (#626, #667).
 
     Two pieces, both verified against the running binary rather than the
     docs (0.2.114) — #626's premise was that Grok's properties get probed,
     not assumed:
 
-    - **permission mode** — ``--permission-mode auto`` (no prompts, guard
-      rails intact) or ``--permission-mode bypassPermissions`` for "skip".
-      Grok's own flag takes six values; the launcher presents the same
-      two-state auto/skip shape as Claude and Codex.
+    - **permission mode** — ``--permission-mode auto`` or
+      ``--permission-mode bypassPermissions`` for "skip". Auto still opens a
+      prompt in an interactive session when its check will not pass a call,
+      so an unattended launch (nobody there to answer) always sends
+      bypassPermissions. Deny hooks still refuse a blocked command. The
+      Coding tab and Resume keep the saved mode.
     - **reasoning tier** — ``--reasoning-effort <low|medium|high>``, the
       exact set the CLI's own rejection message names.
 
@@ -293,11 +300,13 @@ def build_grok_flags(cfg: WebappConfig, *, effort_override: Optional[str] = None
     for Antigravity). Add it when xAI ships a second model.
 
     ``effort_override`` (one of ``VALID_GROK_EFFORTS``) replaces the
-    persisted tier for one launch.
+    persisted tier for one launch. ``unattended`` forces bypassPermissions
+    for that one launch.
     """
+    skipped = unattended or cfg.grok_permission_mode == "skip"
     parts = [
         "--permission-mode",
-        "bypassPermissions" if cfg.grok_permission_mode == "skip" else "auto",
+        "bypassPermissions" if skipped else "auto",
     ]
     effort = effort_override or cfg.grok_effort
     if effort in VALID_GROK_EFFORTS:

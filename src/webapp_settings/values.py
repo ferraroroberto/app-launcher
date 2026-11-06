@@ -218,10 +218,12 @@ DEFAULT_GROK_EFFORT = "high"
 # Permission mode for the `grok` launch, mirroring Claude's and Codex's
 # auto/skip rather than exposing grok's own six-value `--permission-mode`
 # space (default|acceptEdits|auto|dontAsk|bypassPermissions|plan). "auto" →
-# `--permission-mode auto` (no prompts, guard rails intact); "skip" →
-# `--permission-mode bypassPermissions`. `--always-approve` is deliberately
-# not surfaced — it is a third spelling of the same idea, so it would add
-# surface without adding capability.
+# `--permission-mode auto` (an interactive session still prompts when the
+# check will not pass a call); "skip" → `--permission-mode bypassPermissions`
+# (no prompt; a deny hook still refuses). An unattended Board launch forces
+# skip. `--always-approve` is deliberately not surfaced — it is a third
+# spelling of bypassPermissions, so it would add surface without adding
+# capability.
 VALID_GROK_PERMISSION_MODES = ("auto", "skip")
 DEFAULT_GROK_PERMISSION_MODE = "auto"
 

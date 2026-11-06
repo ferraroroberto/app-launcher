@@ -64,10 +64,17 @@ class TestBoardModelResolution:
     def test_grok_uses_the_coding_tab_grok_settings(self, webapp_client, monkeypatch):
         monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: True)
         cfg = self._cfg(webapp_client)
+        cfg.grok_permission_mode = "auto"
+        cfg.grok_effort = "high"
         agent, flags = board_spawn._agent_and_flags(cfg, "grok:grok-4.5")
         assert agent == "grok"
-        assert flags == board_spawn.build_grok_flags(cfg)
-        assert "--permission-mode" in flags
+        assert flags == "--permission-mode bypassPermissions --reasoning-effort high"
+        assert flags == board_spawn.build_grok_flags(cfg, unattended=True)
+        # The Coding tab keeps the saved mode. Auto still prompts there,
+        # and an attended session has someone to answer.
+        assert board_spawn.build_grok_flags(cfg) == (
+            "--permission-mode auto --reasoning-effort high"
+        )
 
     def test_grok_not_installed_is_a_distinct_400(self, webapp_client, monkeypatch):
         monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: False)
