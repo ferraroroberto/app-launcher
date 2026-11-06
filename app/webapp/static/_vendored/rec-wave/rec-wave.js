@@ -136,7 +136,8 @@ function prefersReducedMotion() {
   }
 }
 
-function formatElapsed(ms) {
+/** Milliseconds as `m:ss` (65000 -> `1:05`); minutes do not roll into hours (`60:05`). */
+export function formatElapsed(ms) {
   const total = Math.floor(ms / 1000);
   const seconds = String(total % 60).padStart(2, '0');
   return `${Math.floor(total / 60)}:${seconds}`;

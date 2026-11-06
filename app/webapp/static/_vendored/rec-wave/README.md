@@ -7,7 +7,7 @@ The level strip every record button shows while the mic is open: bars that follo
 | File | Role |
 | --- | --- |
 | `rec-wave.css` | Visual contract — bars, reduced-motion meter, silent and unmeasured states. References design tokens only. |
-| `rec-wave.js` | `attachRecWave(host, stream, opts)` → `stop()`, and `createLevelSource(stream?)`, the level reader it uses. |
+| `rec-wave.js` | `attachRecWave(host, stream, opts)` → `stop()`, `createLevelSource(stream?)`, the level reader it uses, and `formatElapsed(ms)`, the timer's `m:ss` formatter. |
 
 ## How to vendor
 
@@ -33,6 +33,10 @@ stopWave();
 - **No second permission prompt.** The wave reads the stream you already have. It never calls `getUserMedia`, and `stop()` never stops the stream's tracks: the recorder owns them.
 - **`stop()` releases.** It clears the timers, removes the wave and closes the `AudioContext` it opened, so no extra audio graph outlives the take. It is safe to call twice.
 - **The strip takes the host's text colour** (`currentColor`), so it reads on a danger Stop button or a plain row in light and dark with no second palette.
+
+### One elapsed format
+
+`formatElapsed(ms)` takes **milliseconds** and returns `m:ss` (`0` → `0:00`, `65000` → `1:05`); minutes do not roll into hours, so an hour and five seconds reads `60:05`. Import it wherever the app shows an elapsed time next to a recording instead of keeping a local copy, and convert seconds with `formatElapsed(seconds * 1000)`.
 
 ### Options
 
