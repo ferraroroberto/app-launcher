@@ -130,7 +130,7 @@ Reduce Transparency (`prefers-reduced-transparency: reduce`) drops both bands. I
 | `--gap` | `12px` | last term of the phone bottom reserve (see "Bottom reserve and hit area"); phone `.app` side padding (the phone top padding is `env(safe-area-inset-top)` only) |
 | `--font-label` | `0.875rem` | tab label (desktop) |
 | `--font-caption` | `0.75rem` | tab label (narrow desktop) |
-| `--row-sm` | `44px` | stacked narrow-desktop tab min-height (`hit-target.min`) |
+| `--row-sm` | `44px` | tab min-height on a narrow fine pointer and on any coarse pointer wider than the pill (`hit-target.min`) |
 | `--row-lg` | `60px` | rail tab min-height |
 | `--space-sm` | `8px` | rail tab padding |
 | `--icon-feature` | `24px` | rail icon size (`icons.size.feature`) — optional, falls back to `24px` |
