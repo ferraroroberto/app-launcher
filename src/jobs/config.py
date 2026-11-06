@@ -324,6 +324,22 @@ _SIMPLE_UPDATE_FIELDS: Tuple[Tuple[str, Callable[[Any], Any], bool], ...] = (
 )
 
 
+def _check_rerun_safe_edit(job: Job, fields: Dict[str, Any]) -> None:
+    """Refuse an edit whose effective post-edit ``rerun_safe`` is not a bool or
+    sits beside ``confirm`` / ``elevated``, before any field is mutated, so
+    turning ``confirm`` on for a rerun-safe job fails like setting both at once.
+    """
+    if not {"rerun_safe", "confirm", "elevated"} & fields.keys():
+        return
+    validate_rerun_safe_shape(
+        validate_rerun_safe(fields["rerun_safe"])
+        if "rerun_safe" in fields
+        else job.rerun_safe,
+        bool(fields["confirm"]) if "confirm" in fields else job.confirm,
+        bool(fields["elevated"]) if "elevated" in fields else job.elevated,
+    )
+
+
 def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
     """In-place edit. Accepts every field named in ``_SIMPLE_UPDATE_FIELDS``
     above (the source of truth for plain single-field edits), plus the
@@ -356,17 +372,7 @@ def update_job(cfg: JobsConfig, job_id: str, **fields: Any) -> Optional[Job]:
                 else job.session_less,
             )
 
-        # rerun_safe is checked against the *effective* post-edit confirm /
-        # elevated, before any mutation, so turning on confirm for a
-        # rerun_safe job is refused just like setting both at once.
-        if "rerun_safe" in fields or "confirm" in fields or "elevated" in fields:
-            validate_rerun_safe_shape(
-                validate_rerun_safe(fields["rerun_safe"])
-                if "rerun_safe" in fields
-                else job.rerun_safe,
-                bool(fields["confirm"]) if "confirm" in fields else job.confirm,
-                bool(fields["elevated"]) if "elevated" in fields else job.elevated,
-            )
+        _check_rerun_safe_edit(job, fields)
 
         for attr, transform, only_if_truthy in _SIMPLE_UPDATE_FIELDS:
             if attr not in fields:
