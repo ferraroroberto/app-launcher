@@ -210,8 +210,8 @@ DEFAULT_PI_TRUST_MODE = "trust"
 # Reasoning tier for `--reasoning-effort` — the exact set the CLI accepts,
 # probed off the binary rather than the docs (`grok --reasoning-effort bogus`
 # answers "use one of: high, medium, low", verified on 0.2.114). No model
-# picker: `grok models` still lists only `grok-4.5`, and the launcher already
-# omits a one-option control for the same reason on Antigravity.
+# picker: a launch runs the account default, which is the one model the
+# Board catalog names; the CLI's `/model` switches it in-session.
 VALID_GROK_EFFORTS = ("low", "medium", "high")
 DEFAULT_GROK_EFFORT = "high"
 

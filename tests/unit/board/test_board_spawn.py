@@ -66,7 +66,7 @@ class TestBoardModelResolution:
         cfg = self._cfg(webapp_client)
         cfg.grok_permission_mode = "auto"
         cfg.grok_effort = "high"
-        agent, flags = board_spawn._agent_and_flags(cfg, "grok:grok-4.5")
+        agent, flags = board_spawn._agent_and_flags(cfg, "grok:grok-4.7")
         assert agent == "grok"
         assert flags == "--permission-mode bypassPermissions --reasoning-effort high"
         assert flags == board_spawn.build_grok_flags(cfg, unattended=True)
@@ -79,7 +79,7 @@ class TestBoardModelResolution:
     def test_grok_not_installed_is_a_distinct_400(self, webapp_client, monkeypatch):
         monkeypatch.setattr(board_spawn.agents, "is_installed", lambda _: False)
         with pytest.raises(HTTPException) as excinfo:
-            board_spawn._agent_and_flags(self._cfg(webapp_client), "grok:grok-4.5")
+            board_spawn._agent_and_flags(self._cfg(webapp_client), "grok:grok-4.7")
         assert excinfo.value.status_code == 400
         assert "Grok Build is not installed" == excinfo.value.detail
 

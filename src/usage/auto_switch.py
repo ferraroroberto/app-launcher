@@ -27,7 +27,7 @@ SWITCH_MARGIN_POINTS = 5
 # The dispatch values that ask for the Sonnet tier; a bare tier is the
 # pre-provider spelling old callers still send.
 SONNET_DISPATCH_MODELS = ("claude:sonnet", "sonnet")
-GROK_FALLBACK_MODEL = "grok:grok-4.5"
+GROK_FALLBACK_MODEL = "grok:grok-4.7"
 # Used when a weekly window carries no length of its own.
 _WEEK_MINUTES = 10080
 

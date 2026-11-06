@@ -423,7 +423,7 @@ def test_grok_is_offered_by_the_board_dispatch_picker_only(
     it installed; the Coding tab and Life OS pickers never carry it."""
     body = _config("sonnet", "claude:sonnet")
     body["board_dispatch_models"] = {
-        "grok": [{"value": "grok-4.5", "label": "4.5", "available": True}] if installed else []
+        "grok": [{"value": "grok-4.7", "label": "4.7", "available": True}] if installed else []
     }
     authed_page.route(
         re.compile(r".*/api/config$"),
@@ -437,7 +437,7 @@ def test_grok_is_offered_by_the_board_dispatch_picker_only(
         authed_page.locator("#codingModelMenu button[data-value='claude:sonnet']")
     ).to_have_count(1, timeout=5_000)
 
-    grok = authed_page.locator("#boardDispatchModel [data-value='grok:grok-4.5']")
+    grok = authed_page.locator("#boardDispatchModel [data-value='grok:grok-4.7']")
     expect(grok).to_have_count(1 if installed else 0)
     if installed:
         expect(grok).to_have_text("Grok · 4.5")

@@ -507,9 +507,9 @@ function renderPiSubsection() {
 function renderGrokSubsection() {
   const g = state.config && state.config.grok;
   if (!g) return;
-  // Reasoning tier — mirrors Codex's Effort control. Grok has one model
-  // (`grok models` lists only grok-4.5), so this is the only quality knob
-  // and there is deliberately no model picker to render.
+  // Reasoning tier — mirrors Codex's Effort control. A Grok launch runs the
+  // account default model, so this is the only quality knob and there is
+  // deliberately no model picker to render.
   renderEffortSelect(
     els.grokEffort,
     g.efforts_available,

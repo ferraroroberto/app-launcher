@@ -157,9 +157,9 @@ self-updates thereafter. Verify with `grok --version`.
 > Board or chief dispatch does not use the saved permission mode: it always
 > sends bypassPermissions, because nobody is there to answer the prompt. A
 > PreToolUse deny hook still refuses a blocked command either way. There is deliberately
-> **no model picker** while `grok models` lists only `grok-4.5` — the same
-> call the launcher makes for Antigravity — so the model stays the account
-> default, switchable in-TUI with `/model`. Resume reopens the folder's
+> **no model picker** — a launch sends no `--model`, so the model is the
+> account default (`grok models` marks it; 4.7 today), switchable in-TUI with
+> `/model`. Resume reopens the folder's
 > **most recent** session (bare `--resume`, Antigravity's shape rather than a
 > Claude-style picker).
 >

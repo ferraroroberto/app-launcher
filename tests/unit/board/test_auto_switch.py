@@ -31,7 +31,7 @@ def _decide(model="claude:sonnet", line=None, **kw):
 def test_pace_threshold(used, outcome):
     decision = _decide(line=_line(used))
     assert decision.outcome == outcome
-    assert decision.model == ("grok:grok-4.5" if outcome == "switched" else "claude:sonnet")
+    assert decision.model == ("grok:grok-4.7" if outcome == "switched" else "claude:sonnet")
     assert decision.pace_pct == 50
 
 

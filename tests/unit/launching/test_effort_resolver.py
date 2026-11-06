@@ -88,7 +88,7 @@ class TestResolver:
 
     def test_unknown_agent_is_refused(self):
         with pytest.raises(ValueError):
-            effective_effort("grok", "grok-4.5", _cfg())
+            effective_effort("grok", "grok-4.7", _cfg())
 
     def test_codex_reads_its_own_per_model_dict(self):
         cfg = _cfg(codex_model_efforts={"gpt-5.6-sol": "high"})
