@@ -515,6 +515,7 @@ function wireChief() {
 // failed run, the Life OS skill refresh by the next resume.
 function wireChiefDoorbell() {
   wireConfigSwitch(els.chiefDoorbellToggle, 'chief_doorbell', { label: 'Chief doorbell' });
+  wireConfigSwitch(els.chiefAutoDrainToggle, 'chief_auto_drain', { label: 'Auto-drain queue' });
   wireConfigSwitch(els.chiefJobFailuresToggle, 'chief_job_failures', { label: 'Chief job failures' });
   wireConfigSwitch(els.grokbotEnabledToggle, 'grokbot_enabled', { label: 'Grok Bot' });
   wireConfigSwitch(els.grokAutoSwitchToggle, 'grok_auto_switch', { label: 'Grok auto-switch' });

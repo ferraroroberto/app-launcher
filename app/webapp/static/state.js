@@ -538,6 +538,7 @@ export const els = {
   lifeOsRefreshSkillToggle: document.getElementById('lifeOsRefreshSkillToggle'),
   chiefAutoCompactToggle: document.getElementById('chiefAutoCompactToggle'),
   chiefDoorbellToggle: document.getElementById('chiefDoorbellToggle'),
+  chiefAutoDrainToggle: document.getElementById('chiefAutoDrainToggle'),
   chiefJobFailuresToggle: document.getElementById('chiefJobFailuresToggle'),
   grokbotEnabledToggle: document.getElementById('grokbotEnabledToggle'),
   grokAutoSwitchToggle: document.getElementById('grokAutoSwitchToggle'),

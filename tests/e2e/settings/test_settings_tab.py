@@ -465,13 +465,21 @@ def test_chief_auto_compact_threshold_saves_reloads_and_turns_off(
     assert posts[-1] == {"chief_auto_compact_threshold": 30}, posts
 
 
-def test_chief_grokbot_switch_is_on_by_default_and_saves(
-    authed_page: Page, base_url: str
+@pytest.mark.parametrize(("toggle", "key", "label", "help_word", "default"), [
+    ("grokbotEnabled", "grokbot_enabled", "Grok Bot", "relay", True),
+    ("chiefAutoDrain", "chief_auto_drain", "Auto-drain queue", "worker slot", True),
+    ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox", False),
+    ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch", False),
+], ids=["grokbot", "auto-drain", "doorbell", "grok-auto-switch"])
+def test_chief_switch_saves_flips_and_reloads(
+    authed_page: Page, base_url: str, toggle: str, key: str, label: str,
+    help_word: str, default: bool,
 ) -> None:
-    """The Grok Bot switch sits on Settings' Chief sheet, on until the owner
-    turns it off. It saves at once through the ordinary /api/config POST and
-    survives a reload; the fleet-config readers see it on the chief settings
-    endpoint."""
+    """A Chief switch sits at its default, saves at once through the ordinary
+    /api/config POST, survives a reload and flips back to the default so the
+    shared webapp is left as found. The doorbell doubles as the phone kill
+    switch; the chief reads Auto-drain queue as ``auto_drain``. The gate's
+    disposable webapp is not canonical, so its doorbell never rings."""
     page = authed_page
     posts: list = []
     page.on("request", lambda req: posts.append(req.post_data_json)
@@ -483,69 +491,26 @@ def test_chief_grokbot_switch_is_on_by_default_and_saves(
         ):
             act()
 
-    _open_chief_sheet(page, base_url)
-    switch = page.locator("#grokbotEnabledToggle")
-    expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#grokbotEnabledHelp")).to_contain_text("relay")
-
-    saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#toast")).to_contain_text("Grok Bot off")
-    assert posts[-1] == {"grokbot_enabled": False}, posts
-
-    _open_chief_sheet(page, base_url)
-    expect(switch).to_have_attribute("aria-checked", "false")
-
-    # Back on at the default, so the shared webapp is left as found.
-    saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#toast")).to_contain_text("Grok Bot on")
-    assert posts[-1] == {"grokbot_enabled": True}, posts
-
-
-@pytest.mark.parametrize(("toggle", "key", "label", "help_word"), [
-    ("chiefDoorbell", "chief_doorbell", "Chief doorbell", "mailbox"),
-    ("grokAutoSwitch", "grok_auto_switch", "Grok auto-switch", "Opus lanes never switch"),
-], ids=["doorbell", "grok-auto-switch"])
-def test_chief_off_by_default_switch_saves_and_reloads(
-    authed_page: Page, base_url: str, toggle: str, key: str, label: str, help_word: str
-) -> None:
-    """fleet-config#1457: Settings' Chief sheet shows the doorbell switch
-    (#1645's ``chief_doorbell``), off by default. It saves at once through
-    the ordinary /api/config POST, survives a reload, and turns back off the
-    same way, which is how it doubles as the phone kill switch. The gate's
-    disposable webapp is not canonical, so its doorbell never rings. The
-    Grok auto-switch for Sonnet lanes is the same kind of off-by-default
-    switch on the same sheet."""
-    page = authed_page
-    posts: list = []
-    page.on("request", lambda req: posts.append(req.post_data_json)
-            if _is_config_post(req) else None)
-
-    def saving(act) -> None:
-        with page.expect_response(
-            lambda r: r.url.endswith("/api/config") and r.request.method == "GET"
-        ):
-            act()
+    def state(on: bool) -> str:
+        return "true" if on else "false"
 
     _open_chief_sheet(page, base_url)
     switch = page.locator(f"#{toggle}Toggle")
-    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(switch).to_have_attribute("aria-checked", state(default))
     expect(page.locator(f"#{toggle}Help")).to_contain_text(help_word)
 
     saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", "true")
-    expect(page.locator("#toast")).to_contain_text(f"{label} on")
-    assert posts[-1] == {key: True}, posts
+    expect(switch).to_have_attribute("aria-checked", state(not default))
+    expect(page.locator("#toast")).to_contain_text(f"{label} {'off' if default else 'on'}")
+    assert posts[-1] == {key: not default}, posts
 
     _open_chief_sheet(page, base_url)
-    expect(switch).to_have_attribute("aria-checked", "true")
+    expect(switch).to_have_attribute("aria-checked", state(not default))
 
-    # Off again, so the shared webapp is left as found.
     saving(switch.click)
-    expect(switch).to_have_attribute("aria-checked", "false")
-    expect(page.locator("#toast")).to_contain_text(f"{label} off")
-    assert posts[-1] == {key: False}, posts
+    expect(switch).to_have_attribute("aria-checked", state(default))
+    expect(page.locator("#toast")).to_contain_text(f"{label} {'on' if default else 'off'}")
+    assert posts[-1] == {key: default}, posts
 
     _open_chief_sheet(page, base_url)
-    expect(switch).to_have_attribute("aria-checked", "false")
+    expect(switch).to_have_attribute("aria-checked", state(default))

@@ -345,6 +345,11 @@
           </div>
           <p id="chiefDoorbellHelp" class="field-help">Wakes the idle chief when its mailbox has worker news, by typing one fixed line into its terminal. Off, nothing is typed and the chief arms its own waiter at its next turn.</p>
           <div class="row">
+            <span>Auto-drain queue</span>
+            <button data-track="chief.auto-drain" type="button" id="chiefAutoDrainToggle" class="toggle" role="switch" aria-checked="true" aria-label="Auto-drain queue" aria-describedby="chiefAutoDrainHelp" title="Let the chief start unattended audit fixes when a worker slot frees"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="chiefAutoDrainHelp" class="field-help">The chief starts unattended audit fixes when a worker slot frees.</p>
+          <div class="row">
             <span>Job failures</span>
             <button data-track="chief.job-failures" type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
