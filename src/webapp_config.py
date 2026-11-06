@@ -282,6 +282,11 @@ class WebappConfig:
     # run. On by default: the event only lands while a chief is live, and
     # the doorbell above decides whether the chief is woken for it.
     chief_job_failures: bool = True
+    # Two switches fleet-config's chief reads over loopback from
+    # GET /api/board/chief/settings; the app starts nothing for either. Off
+    # by default: each lets the chief act on its own, so the owner opts in.
+    chief_job_self_heal: bool = False
+    chief_weekly_proposals: bool = False
     # The Grok Bot feature switch. fleet-config's grokbot readers (the
     # ensure Job, the digest line, the relay) read it over loopback from
     # GET /api/board/chief/settings. On by default: the owner approved the

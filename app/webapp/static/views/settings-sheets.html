@@ -330,15 +330,8 @@
             <button data-track="chief.worker-cap-scope" type="button" id="chiefWorkerCapScopeToggle" class="toggle" role="switch" aria-checked="true" aria-label="Count only chief-dispatched sessions" aria-describedby="chiefWorkerCapScopeHelp" title="Choose which sessions the worker cap counts"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
           <p id="chiefWorkerCapScopeHelp" class="field-help">On, the cap counts only the sessions the chief started, so the ones you open yourself never use up a slot. Off, it counts every live session. The chief itself and Telegram channel sessions never count.</p>
-          <div class="row">
-            <span>Auto-compact</span>
-            <button data-track="chief.auto-compact" type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
-          </div>
-          <label class="row">
-            <span>Compact at context use (%)</span>
-            <input id="chiefAutoCompactThreshold" type="number" class="input-native" inputmode="numeric" min="10" max="90" step="5" aria-describedby="chiefAutoCompactHelp">
-          </label>
-          <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
+          <h3 class="opt-group-title" id="chiefAutomationsTitle">Automations</h3>
+          <p class="opt-hint">Everything the chief does on its own. Each switch saves when you tap it, and no restart is needed.</p>
           <div class="row">
             <span>Doorbell</span>
             <button data-track="chief.doorbell" type="button" id="chiefDoorbellToggle" class="toggle" role="switch" aria-checked="false" aria-label="Chief doorbell" aria-describedby="chiefDoorbellHelp" title="Wake the chief when workers leave it mail"><span class="knob"></span><span class="toggle-label">OFF</span></button>
@@ -350,20 +343,39 @@
           </div>
           <p id="chiefAutoDrainHelp" class="field-help">The chief starts unattended audit fixes when a worker slot frees.</p>
           <div class="row">
-            <span>Job failures</span>
-            <button data-track="chief.job-failures" type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
+            <span>Auto-compact</span>
+            <button data-track="chief.auto-compact" type="button" id="chiefAutoCompactToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief auto-compact" aria-describedby="chiefAutoCompactHelp" title="Let the chief compact itself when its context fills"><span class="knob"></span><span class="toggle-label">ON</span></button>
           </div>
-          <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
-          <div class="row">
-            <span>Grok Bot</span>
-            <button data-track="chief.grokbot-enabled" type="button" id="grokbotEnabledToggle" class="toggle" role="switch" aria-checked="true" aria-label="Grok Bot" aria-describedby="grokbotEnabledHelp" title="Turn the Grok Bot ensure Job and relay on or off"><span class="knob"></span><span class="toggle-label">ON</span></button>
-          </div>
-          <p id="grokbotEnabledHelp" class="field-help">Lets the Grok Bot ensure Job keep it running and lets its relay send. Off, the Job does nothing, the digest says disabled and the relay refuses to send; reads still work.</p>
+          <label class="row">
+            <span>Compact at context use (%)</span>
+            <input id="chiefAutoCompactThreshold" type="number" class="input-native" inputmode="numeric" min="10" max="90" step="5" aria-describedby="chiefAutoCompactHelp">
+          </label>
+          <p id="chiefAutoCompactHelp" class="field-help">The chief compacts its own conversation when its context use reaches this share, from 10 to 90%. Off, it never compacts on its own.</p>
           <div class="row">
             <span>Grok for Sonnet lanes</span>
             <button data-track="chief.grok-auto-switch" type="button" id="grokAutoSwitchToggle" class="toggle" role="switch" aria-checked="false" aria-label="Grok auto-switch" aria-describedby="grokAutoSwitchHelp" title="Launch Sonnet lanes on Grok when Claude's week runs short"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
           <p id="grokAutoSwitchHelp" class="field-help">A Board start asking for Sonnet runs on Grok Build instead when Claude's weekly use is within 5 points of the week's pace or above it. Opus lanes never switch. An unknown Claude reading, Grok not installed, or a repo Grok has not trusted (run <code>grok --trust</code> once in it) keeps the lane on Claude.</p>
+          <div class="row">
+            <span>Job failures</span>
+            <button data-track="chief.job-failures" type="button" id="chiefJobFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief job failures" aria-describedby="chiefJobFailuresHelp" title="Tell the chief when a Job run fails"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
+          <div class="row">
+            <span>Job self-heal</span>
+            <button data-track="chief.job-self-heal" type="button" id="chiefJobSelfHealToggle" class="toggle" role="switch" aria-checked="false" aria-label="Job self-heal" aria-describedby="chiefJobSelfHealHelp" title="Let the chief try to repair a failed Job on its own"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="chiefJobSelfHealHelp" class="field-help">Lets the chief try to repair a Job that failed, instead of only being told. Off, a failed run is reported and nothing is repaired on its own.</p>
+          <div class="row">
+            <span>Weekly proposals</span>
+            <button data-track="chief.weekly-proposals" type="button" id="chiefWeeklyProposalsToggle" class="toggle" role="switch" aria-checked="false" aria-label="Weekly proposals" aria-describedby="chiefWeeklyProposalsHelp" title="Let the chief draft its weekly proposals"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <p id="chiefWeeklyProposalsHelp" class="field-help">Lets the chief draft its weekly proposals without being asked. Off, it proposes nothing until you ask.</p>
+          <div class="row">
+            <span>Grok Bot</span>
+            <button data-track="chief.grokbot-enabled" type="button" id="grokbotEnabledToggle" class="toggle" role="switch" aria-checked="true" aria-label="Grok Bot" aria-describedby="grokbotEnabledHelp" title="Turn the Grok Bot ensure Job and relay on or off"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="grokbotEnabledHelp" class="field-help">Lets the Grok Bot ensure Job keep it running and lets its relay send. Off, the Job does nothing, the digest says disabled and the relay refuses to send; reads still work.</p>
         </div>
         <div class="detail-actions">
           <button data-track="chief.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>

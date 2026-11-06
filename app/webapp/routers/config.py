@@ -115,6 +115,9 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_auto_drain": cfg.chief_auto_drain,
         # Failed Job runs reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
+        # Chief automations fleet-config reads; off by default.
+        "chief_job_self_heal": cfg.chief_job_self_heal,
+        "chief_weekly_proposals": cfg.chief_weekly_proposals,
         # The Grok Bot on/off switch; on by default.
         "grokbot_enabled": cfg.grokbot_enabled,
         "life_os_refresh_skill_instructions": cfg.life_os_refresh_skill_instructions,
@@ -266,6 +269,8 @@ _SWITCH_KEYS = (
     "chief_doorbell",
     "chief_auto_drain",
     "chief_job_failures",
+    "chief_job_self_heal",
+    "chief_weekly_proposals",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
     "grok_auto_switch",
@@ -297,6 +302,8 @@ _PATCH_KEYS = frozenset({
     "chief_doorbell",
     "chief_auto_drain",
     "chief_job_failures",
+    "chief_job_self_heal",
+    "chief_weekly_proposals",
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
     "claude_model",
