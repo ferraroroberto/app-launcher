@@ -56,6 +56,7 @@ def _read_feature_counts(days: int) -> Dict[str, Any]:
     exists = db_path.is_file()
     if not exists:
         # "No data yet" stays distinct from zero use, as in /api/usage/time.
+        # must-use-exempt: an empty in-memory stand-in, no file and no store to share
         conn = sqlite3.connect(":memory:")
         conn.executescript("CREATE TABLE events (ts TEXT, kind TEXT, control_id TEXT, device_class TEXT)")
     else:
