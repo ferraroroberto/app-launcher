@@ -289,7 +289,7 @@ function renderTokensChart(data, sum) {
   legend.replaceChildren();
   series.agents.forEach(function (info) {
     const item = el('span');
-    item.appendChild(agentMark(info, 'progress-legend-mark'));
+    item.appendChild(agentMark(info, 'progress-legend-mark', true));
     item.append(info.name.replace(' Code', ''));
     legend.appendChild(item);
   });
@@ -306,9 +306,15 @@ function renderTokensChart(data, sum) {
   }, 'Tokens');
 }
 
-function agentMark(info, extraClass) {
+// `colourOnly` is the legend's swatch: the brand colour alone, no icon or letter.
+// A row's mark is the icon on a neutral tile, because several brand icons are
+// drawn in their own colour and would vanish on that colour.
+function agentMark(info, extraClass, colourOnly) {
   const mark = el('span', 'progress-agent-mark ' + (extraClass || ''));
-  mark.style.background = 'var(' + info.color + ')';
+  if (colourOnly) {
+    mark.style.background = 'var(' + info.color + ')';
+    return mark;
+  }
   if (info.brand) mark.appendChild(brandIconEl(info.brand));
   else mark.textContent = (info.name[0] || '?').toUpperCase();
   return mark;

@@ -134,4 +134,9 @@ assert.equal(agentInfo('agy').id, 'antigravity');
 assert.equal(agentInfo('claude').name, 'Claude Code');
 assert.equal(agentInfo('mystery').name, 'Mystery');
 
+// Each known agent paints its own brand token; the six are all different.
+const brandColours = ['claude', 'codex', 'copilot', 'antigravity', 'pi', 'grok'].map((id) => agentInfo(id).color);
+brandColours.forEach((c) => assert.match(c, /^--brand-/));
+assert.equal(new Set(brandColours).size, 6);
+
 console.log('OK');

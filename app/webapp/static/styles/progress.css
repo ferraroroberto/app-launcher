@@ -2,8 +2,30 @@
    the tokens it spent. A modal on the vendored detail-dialog shell; this file
    holds only what the sheet adds: the wider measure, the controls row, the
    tiles, the chart canvases, the repo table and the per-agent split. Colours
-   are the app's tokens; an agent's fill is its --tile-* token, shared by its
-   mark, its chart segment and its share bar. */
+   are the app's tokens; an agent's fill is its --brand-* token, shared by its
+   legend mark, its chart segment and its share bar. */
+
+/* Each coding agent's own colour, a light and a dark value (the hue is kept
+   across themes; only legibility on the ground moves).
+   claude       #d97757 Anthropic's orange accent (anthropics/skills, brand-guidelines)
+   codex        #10a37f OpenAI documents no accent (black and white); ChatGPT's green
+   copilot      #8534f3 Copilot Purple, dark Purple 2 #b870ff (brand.github.com/brand-identity/copilot)
+   antigravity  #4285f4 Google blue; Antigravity publishes no palette
+   pi           #111111 / #f6f6f6 the logo's own light / dark fill (pi.dev/favicon.svg)
+   grok         xAI documents no colour; a neutral grey so it reads against Pi's ink */
+:root {
+  --brand-claude: #d97757;
+  --brand-codex: #10a37f;
+  --brand-copilot: #8534f3;
+  --brand-antigravity: #4285f4;
+  --brand-pi: #111111;
+  --brand-grok: #8b949e;
+}
+[data-theme="dark"] {
+  --brand-copilot: #b870ff;
+  --brand-pi: #f6f6f6;
+  --brand-grok: #6e7681;
+}
 
 /* Charts and tables want the room the 440px editor width does not have; the
    sheet takes the app's own 772px measure and never more than the screen. */
@@ -261,7 +283,8 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  color: var(--accent-fg);
+  background: var(--neutral-soft);
+  color: var(--fg);
   font-size: var(--font-caption);
   font-weight: 700;
 }

@@ -32,13 +32,15 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // -------------------------------------------------------------- agents
 
 // The hub names its agents by id; the order is the stack order, bottom up.
+// `color` is the agent's brand token (styles/progress.css), shared by its
+// chart series, its legend mark and its share bar.
 const AGENTS = [
-  { id: 'claude', name: 'Claude Code', brand: 'claude', color: '--tile-orange' },
-  { id: 'codex', name: 'Codex', brand: 'codex', color: '--tile-green' },
-  { id: 'copilot', name: 'Copilot', brand: 'copilot', color: '--tile-purple' },
-  { id: 'antigravity', name: 'Antigravity', brand: 'antigravity', color: '--tile-blue', aliases: ['agy'] },
-  { id: 'pi', name: 'Pi', brand: 'pi', color: '--tile-yellow' },
-  { id: 'grok', name: 'Grok', brand: 'grok', color: '--muted' },
+  { id: 'claude', name: 'Claude Code', brand: 'claude', color: '--brand-claude' },
+  { id: 'codex', name: 'Codex', brand: 'codex', color: '--brand-codex' },
+  { id: 'copilot', name: 'Copilot', brand: 'copilot', color: '--brand-copilot' },
+  { id: 'antigravity', name: 'Antigravity', brand: 'antigravity', color: '--brand-antigravity', aliases: ['agy'] },
+  { id: 'pi', name: 'Pi', brand: 'pi', color: '--brand-pi' },
+  { id: 'grok', name: 'Grok', brand: 'grok', color: '--brand-grok' },
 ];
 
 export function agentInfo(id) {
