@@ -74,7 +74,8 @@
   "documents": [
     {"id": "fleet-guide", "title": "Fleet guide", "repo": "fleet-config", "path": "docs/fleet-guide.md"},
     {"id": "fleet-config-readme", "title": "Fleet config README", "repo": "fleet-config", "path": "README.md"},
-    {"id": "adr-register", "title": "Architecture decisions", "repo": "project-scaffolding", "path": "docs/architecture-decisions.md"}
+    {"id": "adr-register", "title": "Architecture decisions", "repo": "project-scaffolding", "path": "docs/architecture-decisions.md"},
+    {"id": "grok-bot-skill-pack", "title": "Grok Bot directive", "repo": "fleet-config", "path": "docs/grok-bot-skill-pack.md"}
   ],
   "claude_show_local_window": true,
   "desktop_browser": "chrome",

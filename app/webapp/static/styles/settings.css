@@ -360,6 +360,7 @@ button.settings-row:active { background: var(--card-2); }
 }
 .document-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
@@ -377,6 +378,8 @@ button.settings-row:active { background: var(--card-2); }
   font-weight: 600;
 }
 .document-github[hidden] { display: none; }
+/* Copy sits beside Open on GitHub at the row's end, not mid-row. */
+.document-copy { margin-left: auto; }
 .document-github .icon { width: var(--icon-inline); height: var(--icon-inline); }
 /* At phone width the sheet is the whole screen: the card loses its inset and
    its corners, and the header and footer clear the notch and the home bar. */

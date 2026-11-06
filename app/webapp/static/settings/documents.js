@@ -7,12 +7,16 @@
  * uses, then draws its Mermaid blocks. The browser only ever sends an id from
  * the list, never a path.
  *
+ * A "Copy Markdown" button copies the open document's raw file text, and a
+ * row elsewhere in Settings (`data-open-document="<id>"`, e.g. the Chief
+ * sheet's Grok Bot directive) opens the same sheet over its own sheet.
+ *
  * The group is hidden when nothing is configured. A list that could not be
  * read is a muted row with Retry, never an empty group.
  */
 
 import { els } from '../state.js';
-import { apiFailToast, jsonApi } from '../api.js';
+import { apiFailToast, jsonApi, toast } from '../api.js';
 import { terminalJsonApi } from '../webauthn.js';
 import { renderMarkdown } from '../markdown.js';
 import { renderMermaidIn } from '../shared/mermaid-render.js';
@@ -28,6 +32,9 @@ let openId = null;
 // The open document's page on github.com, or null when its repo has no GitHub
 // remote (the button is then hidden). Only https://github.com links are kept.
 let githubUrl = null;
+// The open document's raw text, or null until it has been read; the copy
+// button is hidden while it is null.
+let rawText = null;
 
 function changedText(iso) {
   const ago = agoText(iso);
@@ -70,6 +77,25 @@ function setGithub(url) {
   els.documentGithub.hidden = !githubUrl;
 }
 
+function setRaw(text) {
+  rawText = typeof text === 'string' ? text : null;
+  els.documentCopy.hidden = rawText === null;
+}
+
+// iOS allows a clipboard write only inside the tap: writeText is called
+// synchronously from the click, never after an await.
+function copyRaw() {
+  if (rawText === null) return;
+  try {
+    navigator.clipboard.writeText(rawText).then(
+      function () { toast('Markdown copied', 'good', { icon: 'clipboard' }); },
+      function (exc) { apiFailToast('Couldn’t copy the Markdown', exc); }
+    );
+  } catch (exc) {
+    apiFailToast('Couldn’t copy the Markdown', exc);
+  }
+}
+
 function showState(message, withRetry) {
   els.documentBody.replaceChildren();
   els.documentState.hidden = false;
@@ -84,6 +110,7 @@ async function loadDocument(id) {
   els.documentSheetTitle.textContent = doc ? doc.title : 'Document';
   els.documentUpdated.textContent = '';
   setGithub(null);
+  setRaw(null);
   showState('Loading…', false);
   let body;
   try {
@@ -98,6 +125,7 @@ async function loadDocument(id) {
   els.documentSheetTitle.textContent = body.title || els.documentSheetTitle.textContent;
   els.documentUpdated.textContent = changedText(body.updated) + ' · ' + body.repo;
   setGithub(body.github_url);
+  setRaw(body.content || '');
   els.documentBody.innerHTML = renderMarkdown(body.content || '', { hideComments: true });
   els.documentBody.scrollTop = 0;
   await renderMermaidIn(els.documentBody);
@@ -107,6 +135,7 @@ function closeDocument() {
   openSeq += 1;
   openId = null;
   setGithub(null);
+  setRaw(null);
   els.documentBody.replaceChildren();
 }
 
@@ -118,6 +147,16 @@ export function wireDocuments() {
     showPath(['documentSheet']);
     loadDocument(row.dataset.docId);
   });
+  // A row outside the list (the Chief sheet's) opens a document by its id,
+  // stacked on its own sheet so Back returns there.
+  document.addEventListener('click', function (ev) {
+    const opener = ev.target.closest('[data-open-document]');
+    if (!opener) return;
+    const sheetId = opener.closest('dialog.settings-sheet').id;
+    showPath([sheetId, 'documentSheet']);
+    loadDocument(opener.dataset.openDocument);
+  });
+  els.documentCopy.addEventListener('click', copyRaw);
   els.documentRetry.addEventListener('click', function () {
     if (openId) loadDocument(openId);
   });
