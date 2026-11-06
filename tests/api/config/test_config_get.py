@@ -102,7 +102,7 @@ class TestGetConfig:
         monkeypatch.setattr(config_router, "is_installed", lambda _: True)
         body = client.get("/api/config").json()
         assert body["board_dispatch_models"]["grok"] == [
-            {"value": "grok-4.5", "label": "4.5", "available": True, "efforts": []}
+            {"value": "grok-4.7", "label": "4.7", "available": True, "efforts": []}
         ]
 
         monkeypatch.setattr(config_router, "is_installed", lambda _: False)

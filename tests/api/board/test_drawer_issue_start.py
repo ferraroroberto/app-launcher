@@ -640,7 +640,7 @@ class TestGrokAutoSwitch:
         body = self._start(client)
         assert _spawn["agent"] == "grok"
         assert body["auto_switch"]["outcome"] == "switched"
-        assert body["auto_switch"]["launched"] == "grok:grok-4.5"
+        assert body["auto_switch"]["launched"] == "grok:grok-4.7"
         assert body["auto_switch"]["week_pace_pct"] == 50
         rename.assert_called_once_with(8446, "spawned-1", "Card · Grok fallback")
 

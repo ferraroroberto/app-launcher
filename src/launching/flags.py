@@ -295,9 +295,9 @@ def build_grok_flags(
     - **reasoning tier** — ``--reasoning-effort <low|medium|high>``, the
       exact set the CLI's own rejection message names.
 
-    No ``--model``: ``grok models`` lists only ``grok-4.5`` today, and a
-    one-option picker is dead UI (the same call the launcher already makes
-    for Antigravity). Add it when xAI ships a second model.
+    No ``--model``: a launch runs the account default, which ``grok models``
+    marks as the current model, and the Board catalog names that same model
+    (``GROK_DISPATCH_MODEL_SPECS``). The CLI's ``/model`` switches in-session.
 
     ``effort_override`` (one of ``VALID_GROK_EFFORTS``) replaces the
     persisted tier for one launch. ``unattended`` forces bypassPermissions

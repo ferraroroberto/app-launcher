@@ -142,7 +142,7 @@ def _agent_and_flags(
 
     The Claude tiers force ``--model`` like the Life OS tab's toggle (#102);
     Codex values select an exact model with the Coding tab's remembered
-    compatible effort; ``grok:grok-4.5`` takes the Coding tab's Grok effort.
+    compatible effort; ``grok:grok-4.7`` takes the Coding tab's Grok effort.
     Its permission flag is bypassPermissions even when the saved mode is
     auto: nobody is at the keyboard to answer the prompt auto still opens.
     The ``is_installed`` check is the
