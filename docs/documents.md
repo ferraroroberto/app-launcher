@@ -7,12 +7,14 @@ Settings › **Documents** lists the fleet's sources of truth (the fleet guide, 
 - One row per configured document: its title over the repo it comes from and when the file last changed ("fleet-config · Updated 26 h ago"). A file that cannot be read shows "Unavailable" in place of the time.
 - A tap opens the sheet: back chevron to Settings, ✕, the title, the "Updated … · repo" line with **Open on GitHub**, then the document. At phone width (520 px and under) the sheet is the whole screen, clear of the notch and home bar; on a wider screen it is a 900 px sheet. The header, the "Updated" line and the Done footer stay put while only the document scrolls. Tables scroll sideways inside their own box. A diagram is scaled to the sheet and scrolls sideways inside its box when it is still wider, so the page never does.
 - **Open on GitHub** opens the file's page on github.com in a new tab. It is hidden when the document's repo has no GitHub remote.
+- **Copy Markdown** (beside Open on GitHub, shown once the text has loaded) puts the document's raw file text on the clipboard, byte for byte as the file reads, not the rendered page.
+- Settings › Chief has a **Grok Bot directive** row whose Open button shows the `grok-bot-skill-pack` document in this same sheet, stacked on the Chief sheet so Back returns there. The owner reads the directive's updated time and copies the Markdown into Grok Bot when it is newer than the pasted copy. Any control carrying `data-open-document="<id>"` opens that document the same way; an id missing from the configured list shows "no such document" with Retry.
 - No document configured: the group is hidden. The list cannot be read: one muted row with Retry, never an empty group.
 - A document that cannot be read says why in the sheet ("file not found", the size limit, "Passkey unlock required") with Retry.
 
 ## Configuration
 
-`documents` in `config/webapp_config.json` (gitignored; `config/webapp_config.sample.json` has the two first entries):
+`documents` in `config/webapp_config.json` (gitignored; `config/webapp_config.sample.json` has the first entries, including `grok-bot-skill-pack` for the Chief sheet's Grok Bot directive row; the live file needs that entry added by hand):
 
 ```json
 "documents": [
@@ -52,4 +54,4 @@ Known limits of the shared renderer: no nested lists, images or links between do
 
 ## Usage log
 
-Each row is cloned from a `<template>` that carries the one constant id `settings.document-open`, and Open on GitHub carries the one constant id `document.github`; no per-document ids exist. The reading sheet is a dialog over Settings, so its time counts under the Settings view.
+Each row is cloned from a `<template>` that carries the one constant id `settings.document-open`, and Open on GitHub carries the one constant id `document.github`, Copy Markdown `document.copy` and the Chief row `chief.grokbot-directive`; no per-document ids exist. The reading sheet is a dialog over Settings, so its time counts under the Settings view.

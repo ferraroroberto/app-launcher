@@ -5,9 +5,14 @@ Every name, title and file here is invented.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.webapp.middleware.routes import terminal_guard_level
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture
@@ -113,3 +118,17 @@ def test_over_the_public_tunnel_the_text_is_refused(docs_env):
     client, _, _ = docs_env
     resp = client.get("/api/documents/guide", headers={"CF-Connecting-IP": "203.0.113.9"})
     assert resp.status_code == 403
+
+
+def test_the_sample_config_lists_the_grok_bot_directive(docs_client):
+    client, cfg, fleet = docs_client
+    sample = json.loads((PROJECT_ROOT / "config" / "webapp_config.sample.json").read_text(encoding="utf-8"))
+    (fleet / "fleet-config" / "docs").mkdir(parents=True)
+    raw = "# Directive\r\n\r\nBody \u2014 exact bytes.\r\n"
+    (fleet / "fleet-config" / "docs" / "grok-bot-skill-pack.md").write_bytes(raw.encode("utf-8"))
+    cfg.documents = sample["documents"]
+    ids = [d["id"] for d in client.get("/api/documents").json()["documents"]]
+    assert "grok-bot-skill-pack" in ids
+    resp = client.get("/api/documents/grok-bot-skill-pack")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["content"] == raw

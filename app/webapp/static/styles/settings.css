@@ -360,6 +360,7 @@ button.settings-row:active { background: var(--card-2); }
 }
 .document-meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--gap);
