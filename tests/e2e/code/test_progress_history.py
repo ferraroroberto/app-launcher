@@ -210,6 +210,31 @@ def test_unmeasured_figures_say_so_and_never_read_zero(authed_page: Page, base_u
 
 
 @pytest.mark.iphone
+def test_legend_marks_are_the_agents_brand_colour_alone(authed_page: Page, base_url: str) -> None:
+    page = authed_page
+    progress = _Progress(_payload(added=100), _payload(added=100))
+    progress.released = True
+    _boot(page, base_url, progress)
+    _open_history(page)
+
+    marks = page.locator("#progressTokensLegend .progress-legend-mark")
+    expect(marks).to_have_count(1)
+    # Colour only: no icon, no letter.
+    expect(marks.first).to_have_text("")
+    expect(marks.first.locator("*")).to_have_count(0)
+    # The swatch is the agent's brand token, the one its chart series paints.
+    brand = page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--brand-claude').trim()")
+    assert brand, "--brand-claude must resolve"
+    swatch = marks.first.evaluate("m => getComputedStyle(m).backgroundColor")
+    probe = page.evaluate(
+        "c => { const e = document.createElement('i'); e.style.color = c; document.body.appendChild(e);"
+        " const v = getComputedStyle(e).color; e.remove(); return v; }", brand)
+    assert swatch == probe, (swatch, probe)
+    # The per-agent rows keep their icon.
+    expect(page.locator('#progressAgents .progress-agent-row[data-agent="claude"] .agent-icon')).to_have_count(1)
+
+
+@pytest.mark.iphone
 def test_sheet_fits_a_phone(authed_page: Page, base_url: str) -> None:
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
