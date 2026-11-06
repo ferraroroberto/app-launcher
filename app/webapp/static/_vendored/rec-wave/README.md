@@ -50,7 +50,7 @@ stopWave();
 
 ## States
 
-`data-state` on the wave (mirrored as `data-rec-wave-state` on the host):
+`data-signal` on the wave (mirrored as `data-rec-wave-state` on the host). It is not `data-state`, which design.md reserves for the five async lifecycle states (loading, ready, empty, stale, error):
 
 | State | When | Look |
 | --- | --- | --- |

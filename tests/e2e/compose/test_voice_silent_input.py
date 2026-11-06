@@ -100,7 +100,7 @@ def test_silent_input_shows_banner_and_names_the_mic(
     # The verdict lands 3 s into the take; the expect polls for it.
     expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
     expect(notice.locator(".mic-notice-silent")).to_contain_text("No sound")
-    expect(notice.locator(".rec-wave")).to_have_attribute("data-state", "silent")
+    expect(notice.locator(".rec-wave")).to_have_attribute("data-signal", "silent")
 
     authed_page.locator("#terminalComposeBar .composer-mic").click()
     expect(notice).to_be_hidden()
@@ -117,7 +117,7 @@ def test_real_signal_moves_the_wave_and_never_shows_the_banner(
     notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
     expect(notice).to_contain_text(f"Mic: {_LABEL}")
     wave = notice.locator(".rec-wave")
-    expect(wave).to_have_attribute("data-state", "live")
+    expect(wave).to_have_attribute("data-signal", "live")
     # A tone lifts the bars off their resting sliver.
     authed_page.wait_for_function(
         "[...document.querySelectorAll('.composer-mic-notice .rec-wave-bars > i')]"

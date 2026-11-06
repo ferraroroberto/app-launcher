@@ -226,7 +226,9 @@ export function attachRecWave(host, stream, opts) {
   function setState(next) {
     if (next === state) return;
     state = next;
-    root.dataset.state = next;
+    // `data-signal`, not `data-state`: design.md reserves `data-state` for the
+    // five async lifecycle states, and live/silent/unmeasured are not those.
+    root.dataset.signal = next;
     host.dataset.recWaveState = next;
   }
 
