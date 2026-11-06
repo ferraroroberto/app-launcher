@@ -58,7 +58,7 @@ const validate = { ref: 'demo#9', kind: VALIDATE_AFTER, title: 'New tab' };
 const before = { ref: 'demo#7', kind: BEFORE_START, title: 'Pair it' };
 const draft = (extra) => Object.assign(emptyOwnerDraft(), extra);
 
-const typed = ownerAnswerOf(validate, draft({ problem: 'the tab is blank', files: [shot, log] }));
+const typed = ownerAnswerOf(validate, draft({ other: 'the tab is blank', files: [shot, log] }));
 assert.deepEqual(typed, {
   ref: 'demo#9', kind: VALIDATE_AFTER, answer: 'problem', text: 'the tab is blank', attachments: 2,
 });
@@ -72,10 +72,12 @@ const done = ownerAnswerOf(before, draft({ pick: 'done', files: [shot] }));
 assert.equal(done.attachments, 1);
 assert.equal(ownerMessageLine(before, done, [shot]), '[demo#7] Before-start step done: Pair it\n   Attached: /tmp/demo/shot.png');
 
-// A snooze carries no files, and files with no answer make no answer at all.
-const later = ownerAnswerOf(before, draft({ pick: 'later', files: [shot] }));
-assert.equal('attachments' in later, false);
-assert.equal(ownerMessageLine(before, later, [shot]), null);
+// Every answer carries its files, and files with no answer make no answer at all.
+const pending = ownerAnswerOf(before, draft({ pick: 'pending', files: [shot] }));
+assert.equal(pending.attachments, 1);
+assert.equal(
+  ownerMessageLine(before, pending, [shot]),
+  '[demo#7] Before-start: pending - Pair it\n   Attached: /tmp/demo/shot.png');
 assert.equal(ownerAnswerOf(validate, draft({ files: [shot] })), null);
 
 // --- caps ----------------------------------------------------------------------

@@ -101,6 +101,9 @@ def test_refresh_gate_runs_one_at_a_time_with_a_cooldown(monkeypatch):
     ({"ref": "demo", "kind": "validate-after", "answer": "validated"}, "repo"),
     ({"ref": "demo#9", "kind": "nope", "answer": "validated"}, "kind"),
     ({"ref": "demo#7", "kind": "before-start", "answer": "validated"}, "cannot"),
+    ({"ref": "demo#7", "kind": "before-start", "answer": "later"}, "cannot"),
+    ({"ref": "demo#9", "kind": "validate-after", "answer": "pending"}, "cannot"),
+    ({"ref": "demo#9", "kind": "validate-after", "answer": "close"}, "cannot"),
     ({"ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": "  "}, "description"),
 ])
 def test_malformed_answers_are_refused(raw, message):
@@ -108,10 +111,10 @@ def test_malformed_answers_are_refused(raw, message):
         owner_checks.validate_answer(raw)
 
 
-def test_later_snoozes_without_touching_github(cli):
+def test_pending_snoozes_without_touching_github(cli):
     _, calls = cli
     owner_checks.refresh("fleet")
-    ans = owner_checks.validate_answer({"ref": "demo#7", "kind": "before-start", "answer": "later"})
+    ans = owner_checks.validate_answer({"ref": "demo#7", "kind": "before-start", "answer": "pending"})
     owner_checks.answer("fleet", ans, comment=lambda *a: pytest.fail("no comment"), now=NOW)
     assert calls == [["list", "--json"]]
     item = owner_checks.snapshot(now=NOW)["items"][0]
@@ -119,6 +122,22 @@ def test_later_snoozes_without_touching_github(cli):
     # The snooze ends and the item waits again.
     later = NOW + timedelta(hours=owner_checks.SNOOZE_HOURS + 1)
     assert owner_checks.snapshot(now=later)["items"][0]["mark"] is None
+
+
+@pytest.mark.parametrize("answer, mark", [("pause", "paused"), ("close", "closing")])
+def test_pause_and_close_mark_the_item_without_touching_github(cli, answer, mark):
+    _, calls = cli
+    owner_checks.refresh("fleet")
+    ans = owner_checks.validate_answer({"ref": "demo#7", "kind": "before-start", "answer": answer, "text": "why"})
+    owner_checks.answer("fleet", ans, comment=lambda *a: pytest.fail("no comment"), now=NOW)
+    assert calls == [["list", "--json"]]
+    assert owner_checks.snapshot(now=NOW)["items"][0]["mark"] == mark
+    # No expiry: the label waits for the chief, so the mark outlives a snooze.
+    day_later = NOW + timedelta(hours=owner_checks.SNOOZE_HOURS + 1)
+    assert owner_checks.snapshot(now=day_later)["items"][0]["mark"] == mark
+    # A month without a result drops it.
+    month_later = NOW + timedelta(days=owner_checks.PROBLEM_MARK_DAYS + 1)
+    assert owner_checks.snapshot(now=month_later)["items"][0]["mark"] is None
 
 
 def test_problem_posts_a_comment_and_keeps_the_label(cli):
@@ -183,7 +202,7 @@ def test_answer_route_is_passkey_gated(webapp_client):
     assert _terminal_guard_level("/api/board/owner-checks/answer") == "passkey"
     client, _, _ = webapp_client
     resp = client.post("/api/board/owner-checks/answer",
-                       json={"answers": [{"ref": "demo#7", "kind": "before-start", "answer": "later"}]})
+                       json={"answers": [{"ref": "demo#7", "kind": "before-start", "answer": "pending"}]})
     assert resp.status_code == 403
 
 
@@ -193,21 +212,21 @@ def test_answer_route_reports_each_answer(webapp_client, _bypass_gate, cli, monk
     owner_checks.refresh("fleet")
     client, _, _ = webapp_client
     resp = client.post("/api/board/owner-checks/answer", json={"answers": [
-        {"ref": "demo#7", "kind": "before-start", "answer": "done"},
-        {"ref": "demo#9", "kind": "validate-after", "answer": "later"},
+        {"ref": "demo#9", "kind": "validate-after", "answer": "validated"},
+        {"ref": "demo#7", "kind": "before-start", "answer": "pending"},
     ]})
     assert resp.status_code == 200
     body = resp.json()
-    assert [(r["ref"], r["ok"]) for r in body["results"]] == [("demo#7", False), ("demo#9", True)]
+    assert [(r["ref"], r["ok"]) for r in body["results"]] == [("demo#9", False), ("demo#7", True)]
     marks = {it["ref"]: it["mark"] for it in body["owner_checks"]["items"]}
-    assert marks == {"demo#7": None, "demo#9": "later"}
+    assert marks == {"demo#7": "later", "demo#9": None}
 
 
 def test_answer_route_refuses_a_malformed_batch_before_any_write(webapp_client, _bypass_gate, cli):
     _, calls = cli
     client, _, _ = webapp_client
     resp = client.post("/api/board/owner-checks/answer", json={"answers": [
-        {"ref": "demo#9", "kind": "validate-after", "answer": "later"},
+        {"ref": "demo#7", "kind": "before-start", "answer": "pending"},
         {"ref": "demo#7", "kind": "before-start", "answer": "validated"},
     ]})
     assert resp.status_code == 400
@@ -227,6 +246,7 @@ def test_needs_count_is_unknown_before_a_list_lands_and_skips_marked_items():
     snap = {"available": True, "items": [
         {"ref": "demo#7", "mark": None}, {"ref": "demo#9", "mark": "later"},
         {"ref": "demo#11", "mark": "problem"}, {"ref": "demo#13", "mark": None},
+        {"ref": "demo#15", "mark": "paused"}, {"ref": "demo#17", "mark": "closing"},
     ]}
     assert owner_checks.needs_count(snap) == 2
     assert owner_checks.needs_count({"available": True, "items": []}) == 0
@@ -261,17 +281,17 @@ def test_answer_route_logs_each_request(webapp_client, _bypass_gate, cli, caplog
     client, _, _ = webapp_client
     with caplog.at_level("INFO", logger="app.webapp.routers.board_owner"):
         resp = client.post("/api/board/owner-checks/answer", json={"answers": [
-            {"ref": "demo#9", "kind": "validate-after", "answer": "later"},
+            {"ref": "demo#7", "kind": "before-start", "answer": "pending"},
         ]})
     assert resp.status_code == 200
-    assert "owner-check answers: 1 received (later 1), 1 applied, 0 failed" in caplog.text
+    assert "owner-check answers: 1 received (pending 1), 1 applied, 0 failed" in caplog.text
 
 
 def test_answer_route_refuses_and_logs_a_request_over_its_cap(webapp_client, _bypass_gate, cli, caplog):
     from app.webapp.routers.board_owner import _MAX_ANSWERS
     _, calls = cli
     client, _, _ = webapp_client
-    over = [{"ref": f"demo#{n}", "kind": "validate-after", "answer": "later"} for n in range(_MAX_ANSWERS + 1)]
+    over = [{"ref": f"demo#{n}", "kind": "before-start", "answer": "pending"} for n in range(_MAX_ANSWERS + 1)]
     with caplog.at_level("WARNING", logger="app.webapp.routers.board_owner"):
         resp = client.post("/api/board/owner-checks/answer", json={"answers": over})
     assert resp.status_code == 400
@@ -300,10 +320,11 @@ def test_a_bad_attachment_count_is_refused(bad):
             {"ref": "demo#9", "kind": "validate-after", "answer": "validated", "attachments": bad})
 
 
-def test_the_attachment_count_defaults_to_zero_and_a_snooze_carries_none():
+def test_the_attachment_count_defaults_to_zero_and_every_answer_carries_its_own():
     base = {"ref": "demo#9", "kind": "validate-after"}
     assert owner_checks.validate_answer({**base, "answer": "validated"})["attachments"] == 0
-    assert owner_checks.validate_answer({**base, "answer": "later", "attachments": 3})["attachments"] == 0
+    pending = {"ref": "demo#7", "kind": "before-start", "answer": "pending", "attachments": 3}
+    assert owner_checks.validate_answer(pending)["attachments"] == 3
 
 
 def test_validated_with_files_adds_only_the_fixed_line_to_the_clear(cli):
@@ -334,7 +355,7 @@ def test_the_route_writes_a_fixed_line_even_when_the_body_carries_paths(webapp_c
     assert "tmp" not in posted[0] and "png" not in posted[0]
 
 
-def test_answer_files_node_pin():
+def _run_node_pin(script):
     import shutil
     import subprocess
     from pathlib import Path
@@ -343,24 +364,20 @@ def test_answer_files_node_pin():
         pytest.skip("Node.js is required")
     root = Path(__file__).resolve().parents[3]
     result = subprocess.run(
-        ["node", str(root / "tests" / "js" / "answer_files.test.mjs")],
+        ["node", str(root / "tests" / "js" / script)],
         cwd=root, capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW,
     )
     assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert "OK" in result.stdout
+    return result.stdout
+
+
+def test_answer_files_node_pin():
+    assert "OK" in _run_node_pin("answer_files.test.mjs")
+
+
+def test_owner_answer_lines_node_pin():
+    assert "OK owner answer lines" in _run_node_pin("owner_answer_lines.test.mjs")
 
 
 def test_owner_checks_newest_first_node_pin():
-    import shutil
-    import subprocess
-    from pathlib import Path
-    from src.subprocess_flags import NO_WINDOW
-    if shutil.which("node") is None:
-        pytest.skip("Node.js is required")
-    root = Path(__file__).resolve().parents[3]
-    result = subprocess.run(
-        ["node", str(root / "tests" / "js" / "owner_checks_order.test.mjs")],
-        cwd=root, capture_output=True, text=True, timeout=30, creationflags=NO_WINDOW,
-    )
-    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert "ok" in result.stdout
+    assert "ok" in _run_node_pin("owner_checks_order.test.mjs")

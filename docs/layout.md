@@ -83,7 +83,7 @@ app-launcher/
 │   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
 │   │                           #   the transcript overlay (transcript.py, dispatch_ids.py, transcript_exchange.py)
 │   │                           #   the Done lane's proof reports (proof_reports.py: a read-only view of each repo's `.proof/` store)
-│   │                           #   the owner checks (owner_checks.py: fleet-config's owner_check list, cached, and the Later / Problem marks; owner_try.py: an old check's Try quoted from its issue)
+│   │                           #   the owner checks (owner_checks.py: fleet-config's owner_check list, cached, and the Pending / Pause / Close / Problem marks; owner_try.py: an old check's Try quoted from its issue)
 │   ├── chief/                  # the fleet chief: identity.py (which live session is the chief), the plan card, its pointer,
 │   │                           #   answered questions, dispatch briefs, the job-failed and cap-raised events
 │   ├── session_view/           # a live Coding session's views: typed transcript pages, Changed files, the Chat outbox,

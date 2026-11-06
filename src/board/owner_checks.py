@@ -11,10 +11,12 @@ line with fleet-config's own venv, never re-reading the labels itself:
 * ``clear`` answers Validated and Done: it removes the label and posts the
   cleared block carrying the answer.
 
-The launcher keeps two marks of its own, in ``webapp/owner-check-marks.json``:
-``later`` (a snooze, until :data:`SNOOZE_HOURS` pass) and ``problem`` (the owner
-reported one; the label stays until a fix ships and he validates). A marked item
-stays listed but leaves the "needs you" count.
+The launcher keeps four marks of its own, in ``webapp/owner-check-marks.json``:
+``later`` (a snooze, until :data:`SNOOZE_HOURS` pass; the Pending answer), ``problem``
+(the owner reported one; the label stays until a fix ships and he validates),
+``paused`` and ``closing`` (the owner asked the chief to pause the work or to close
+the issue; the label stays until the chief acts). A marked item stays listed but
+leaves the "needs you" count.
 
 GitHub's label search trails a label change by minutes, so an item cleared here
 is hidden for :data:`CLEARED_HIDE_SECONDS` even if the next list still returns it.
@@ -54,20 +56,28 @@ BEFORE_START = "before-start"
 
 LATER = "later"
 PROBLEM = "problem"
+PAUSED = "paused"
+CLOSING = "closing"
 VALIDATED = "validated"
 DONE = "done"
+PENDING = "pending"
+PAUSE = "pause"
+CLOSE = "close"
 
 # What each kind can be answered with; the sheet offers the same set.
 ANSWERS: Dict[str, Tuple[str, ...]] = {
-    VALIDATE_AFTER: (VALIDATED, PROBLEM, LATER),
-    BEFORE_START: (DONE, LATER),
+    VALIDATE_AFTER: (VALIDATED, PROBLEM),
+    BEFORE_START: (DONE, PENDING, PAUSE, CLOSE),
 }
+# The mark an answer that leaves the label in place writes; Pending is the snooze.
+_MARK_OF = {PAUSE: PAUSED, CLOSE: CLOSING}
 # The text the cleared block's `answer` field carries.
 _CLEAR_TEXT = {VALIDATED: "validated by owner", DONE: "done by owner"}
 
 # Later snoozes an item for a day: back on the next morning's look.
 SNOOZE_HOURS = 20
-# A reported problem waits on a fix; a month without one drops the mark.
+# A reported problem, a pause or a close request waits on someone else; a month
+# without a result drops the mark.
 PROBLEM_MARK_DAYS = 30
 # GitHub's issue-list index can lag a label removal by minutes.
 CLEARED_HIDE_SECONDS = 15 * 60
@@ -348,7 +358,7 @@ def snapshot(*, now: Optional[datetime] = None, marks_path: Optional[Path] = Non
 def needs_count(snap: Optional[Dict[str, Any]] = None) -> Optional[int]:
     """Owner checks waiting on the owner, or ``None`` before a list has landed.
 
-    Items marked Later or Problem are not waiting. The Board tab's badge reads
+    Marked items (snoozed, problem, pause, close) are not waiting. The Board tab's badge reads
     this off the sessions poll; ``None`` is unknown, never zero, and mirrors the
     web client's ``ownerNeedsCount``.
     """
@@ -390,7 +400,7 @@ def read_marks(path: Optional[Path] = None) -> Dict[str, Dict[str, Any]]:
         return {}
     return {
         str(ref): mark for ref, mark in raw.items()
-        if isinstance(mark, dict) and mark.get("mark") in (LATER, PROBLEM)
+        if isinstance(mark, dict) and mark.get("mark") in (LATER, PROBLEM, PAUSED, CLOSING)
     }
 
 
@@ -448,7 +458,7 @@ def validate_answer(raw: Any) -> Dict[str, Any]:
         raise ValueError(f"{ref}: a problem needs its description")
     return {
         "ref": ref, "repo": repo, "number": number, "kind": kind, "answer": answer, "text": text,
-        "attachments": _attachment_count(ref, raw.get("attachments")) if answer != LATER else 0,
+        "attachments": _attachment_count(ref, raw.get("attachments")),
     }
 
 
@@ -488,10 +498,16 @@ def answer(
     """
     moment = now or datetime.now(timezone.utc)
     ref = ans["ref"]
-    if ans["answer"] == LATER:
+    if ans["answer"] == PENDING:
         until = moment + timedelta(hours=SNOOZE_HOURS)
         _write_mark(ref, {"mark": LATER, "at": _now_iso(moment), "until": _now_iso(until)}, marks_path, moment)
-        logger.info("ℹ️ owner check %s snoozed until %s", ref, _now_iso(until))
+        logger.info("ℹ️ owner check %s pending, snoozed until %s", ref, _now_iso(until))
+        return
+    if ans["answer"] in (PAUSE, CLOSE):
+        # The chief acts on these (the message the sheet sends it); the launcher only
+        # takes the item off the owner's count meanwhile.
+        _write_mark(ref, {"mark": _MARK_OF[ans["answer"]], "at": _now_iso(moment)}, marks_path, moment)
+        logger.info("ℹ️ owner check %s: %s asked of the chief", ref, ans["answer"])
         return
     if ans["answer"] == PROBLEM:
         comment(

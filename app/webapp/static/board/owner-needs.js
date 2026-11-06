@@ -2,7 +2,7 @@
  * "needs you" head line and the Board tab's badge.
  *
  * Pure, with no imports, so the nav badge (home-head.js) can use it without
- * pulling in the Board view and its import cycle. An item answered Later or
+ * pulling in the Board view and its import cycle. An item answered Pending, Pause, Close or
  * Problem keeps its row but no longer waits on the owner.
  */
 
