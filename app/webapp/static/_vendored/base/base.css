@@ -19,9 +19,20 @@
  * line-height sets it on its own class, as button-primary does.
  *
  * Element selectors only (specificity 0,0,1), so any component class
- * overrides them without a fight. Load this file before every other
+ * overrides them without a fight; the `color-scheme` block below is keyed to
+ * `:root[data-theme]` on purpose. Load this file before every other
  * stylesheet.
  */
+
+/* Native UI (a <select> list, date and time pickers, scrollbars, form-control
+ * chrome) takes its palette from `color-scheme`. `light dark` follows the OS,
+ * not the theme the user picked, so a dark app theme on a light OS drew native
+ * popups on a light background. The explicit theme wins; `light dark` stays
+ * only as the fallback before `data-theme` is stamped. `:root[...]` (0,2,0)
+ * beats an app's bare `:root { color-scheme }` whatever the load order. */
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 button,
 input,
