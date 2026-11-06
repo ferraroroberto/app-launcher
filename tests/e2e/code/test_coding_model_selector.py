@@ -440,7 +440,7 @@ def test_grok_is_offered_by_the_board_dispatch_picker_only(
     grok = authed_page.locator("#boardDispatchModel [data-value='grok:grok-4.7']")
     expect(grok).to_have_count(1 if installed else 0)
     if installed:
-        expect(grok).to_have_text("Grok · 4.5")
+        expect(grok).to_have_text("Grok · 4.7")
         expect(grok).to_be_enabled()
     expect(authed_page.locator("#codingModelMenu [data-value^='grok:']")).to_have_count(0)
     expect(authed_page.locator("#lifeOsModelCombo [data-value^='grok:']")).to_have_count(0)
