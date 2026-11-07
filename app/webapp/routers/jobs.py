@@ -20,7 +20,8 @@ cooldown+mutex admission/spawn tail live in
 :mod:`app.webapp.routers.jobs_run` (imported by both this module and
 the webhook one, so neither route module depends on the other). Artifact
 downloads, pin updates, and the live-output WebSocket live in
-:mod:`app.webapp.routers.jobs_run_store_routes`.
+:mod:`app.webapp.routers.jobs_run_store_routes`; files a running Job sends
+to the owner live in :mod:`app.webapp.routers.jobs_outbox_routes`.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ from src.jobs.config import (
 
 from app.webapp.routers._helpers import known_run_dir, maybe_json
 from app.webapp.routers.jobs_run import _admit_and_spawn, _dry_run_check, _dry_run_execute
-from app.webapp.routers import jobs_run_store_routes, jobs_webhook_routes
+from app.webapp.routers import jobs_outbox_routes, jobs_run_store_routes, jobs_webhook_routes
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -68,6 +69,7 @@ router = APIRouter()
 # mounted here so callers of ``app/webapp/server.py`` still see one router.
 router.include_router(jobs_webhook_routes.router)
 router.include_router(jobs_run_store_routes.router)
+router.include_router(jobs_outbox_routes.router)
 
 # Job fields that are plain optional passthroughs on both create and edit —
 # ``create_job`` reads each via ``body.get(field)``, ``edit_job`` reads each
@@ -725,4 +727,8 @@ async def get_job_run(job_id: str, run_id: str) -> Dict[str, Any]:
         jobs_mod.read_webhook_payload, run_dir
     )
     record["artifacts"] = await asyncio.to_thread(jobs_mod.list_artifacts, run_dir)
+    # Only the count: the files themselves (names, captions, bytes) are
+    # passkey-gated, so the panel asks the outbox route for them.
+    sent = await asyncio.to_thread(jobs_outbox_routes.run_outbox_listing, run_dir)
+    record["sent_files"] = len(sent["entries"])
     return {"run": record}

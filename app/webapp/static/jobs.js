@@ -43,6 +43,7 @@ import {
   statusIcon,
 } from './jobs/jobs-row.js';
 import { renderRunRow } from './jobs/run-row.js';
+import { renderRunSentFiles } from './jobs/run-sent-files.js';
 import { icon } from './_vendored/icons/icons.js';
 
 let searchTimer = null;
@@ -316,6 +317,12 @@ function buildSheet(job) {
   artifacts.hidden = true;
   body.appendChild(artifacts);
 
+  const sentFiles = document.createElement('section');
+  sentFiles.className = 'jobs-sent-files';
+  sentFiles.dataset.role = 'sent-files';
+  sentFiles.hidden = true;
+  body.appendChild(sentFiles);
+
   // Raw webhook payload — collapsed by default, only shown
   // (and populated) for a run that was actually webhook-triggered.
   const webhookDetails = document.createElement('details');
@@ -440,6 +447,7 @@ function writeOutput(jobId, runId, text, status, extras) {
   }
 
   renderArtifacts(jobId, runId, extras.artifacts || []);
+  renderRunSentFiles(panel.querySelector('[data-role="sent-files"]'), jobId, runId, extras.sent_files || 0);
 
   const webhookDetails = panel.querySelector('[data-role="webhook-payload-details"]');
   const webhookPre = panel.querySelector('[data-role="webhook-payload-body"]');
@@ -590,6 +598,7 @@ async function refreshOutputForRun(jobId, runId) {
     duration_seconds: record.duration_seconds,
     webhook_payload: record.webhook_payload,
     artifacts: record.artifacts || [],
+    sent_files: record.sent_files || 0,
   });
 }
 

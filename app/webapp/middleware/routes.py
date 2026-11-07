@@ -175,6 +175,15 @@ _TERMINAL_GUARD_RULES: Tuple[_TerminalGuardRule, ...] = (
         "only ever admits the phone to read.",
     ),
     (
+        lambda p: p.startswith("/api/jobs/") and "/runs/" in p and (
+            p.endswith("/outbox") or "/outbox/" in p
+        ),
+        "passkey",
+        "Job sent files: a run's outbox list and one file's bytes, the session "
+        "outbox's sensitivity. The POST that fills it is loopback-only in its "
+        "handler, so this row only ever admits the phone to read.",
+    ),
+    (
         lambda p: p.startswith("/api/board/proof/"),
         "passkey",
         "Board Done proof chip: a merged UI PR's walkthrough, real-app screenshots "

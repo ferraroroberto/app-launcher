@@ -264,6 +264,13 @@
   white-space: nowrap;
 }
 .jobs-artifacts span { color: var(--muted); flex-shrink: 0; }
+.jobs-sent-files { margin-top: 10px; }
+.jobs-sent-files h4 {
+  margin: 0 0 8px;
+  font-size: var(--font-label);
+}
+.jobs-sent-files-list { list-style: none; margin: 0; padding: 0; }
+.jobs-sent-files-note { color: var(--muted); font-size: var(--font-label); }
 .jobs-webhook-payload {
   margin-top: 8px;
 }

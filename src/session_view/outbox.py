@@ -50,7 +50,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from src._json_io import atomic_write_json
 from src.audit import AUDIT_DIR_ENV, PROJECT_ROOT
@@ -310,8 +310,14 @@ def read_source(
 # ------------------------------------------------------------------- store
 
 
+def is_safe_id(value: str) -> bool:
+    """Is ``value`` a launcher-made id fit to become a folder or file name
+    here (a session, Job, run or entry id)?"""
+    return bool(_SAFE_ID.match(value or ""))
+
+
 def _session_dir(sid: str) -> Path:
-    if not _SAFE_ID.match(sid or ""):
+    if not is_safe_id(sid):
         raise OutboxRefusal("bad_request", "not a session id")
     return OUTBOX_DIR / sid
 
@@ -372,6 +378,32 @@ def post(
     """Check ``path``, copy it into ``sid``'s outbox and return its entry.
     Raises :class:`OutboxRefusal` (nothing is written) when a guard refuses."""
     folder = _session_dir(sid)
+
+    def _prune(stamp: float) -> None:
+        OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
+        _prune_sessions(stamp)
+
+    entry = store(folder, path, caption, base_dir, roots, now=now, before_write=_prune)
+    logger.info("ℹ️ outbox %s: %s %d bytes (%s)", sid[:8], entry["kind"], entry["size"], entry["id"][:8])
+    return entry
+
+
+def store(
+    folder: Path,
+    path: str,
+    caption: Any,
+    base_dir: Optional[str],
+    roots: List[Path],
+    *,
+    now: Optional[float] = None,
+    before_write: Optional[Callable[[float], None]] = None,
+) -> Dict[str, Any]:
+    """Check ``path`` through :func:`read_source`, copy it into ``folder``
+    (``index.json`` plus one file per entry, newest
+    :data:`MAX_ENTRIES_PER_SESSION` kept) and return its entry. The one store
+    every outbox writes through — a session's and a Job run's — so their
+    file rules and entry shape cannot drift. ``before_write`` runs under the
+    store lock once the file has passed the guards."""
     _resolved, data, kind, media = read_source(path, base_dir, roots)
     stamp = time.time() if now is None else now
     entry_id = uuid.uuid4().hex
@@ -385,8 +417,8 @@ def post(
         "timestamp": datetime.fromtimestamp(stamp, tz=timezone.utc).isoformat().replace("+00:00", "Z"),
     }
     with _LOCK:
-        OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
-        _prune_sessions(stamp)
+        if before_write is not None:
+            before_write(stamp)
         folder.mkdir(parents=True, exist_ok=True)
         (folder / entry_id).write_bytes(data)
         index = _read_index(folder)
@@ -397,10 +429,26 @@ def post(
                 (folder / old_id).unlink(missing_ok=True)
         entries = entries[-MAX_ENTRIES_PER_SESSION:]
         atomic_write_json(folder / "index.json", {"rev": index["rev"] + 1, "entries": entries})
-    logger.info(
-        "ℹ️ outbox %s: %s %d bytes (%s)", sid[:8], kind, len(data), entry_id[:8],
-    )
     return entry
+
+
+def folder_listing(folder: Path) -> Dict[str, Any]:
+    """``{"rev", "entries"}`` stored in ``folder`` — rev 0 and nothing when
+    no file was ever sent there."""
+    if not (folder / "index.json").is_file():
+        return {"rev": 0, "entries": []}
+    return _read_index(folder)
+
+
+def folder_entry_file(folder: Path, entry_id: str) -> Optional[Tuple[Path, Dict[str, Any]]]:
+    """``(stored file, entry)`` for one entry listed in ``folder``, else None."""
+    if not _SAFE_ID.match(entry_id or ""):
+        return None
+    entry = next((e for e in folder_listing(folder)["entries"] if e.get("id") == entry_id), None)
+    stored = folder / entry_id
+    if entry is None or not stored.is_file():
+        return None
+    return stored, entry
 
 
 def listing(sid: str) -> Dict[str, Any]:
@@ -411,21 +459,13 @@ def listing(sid: str) -> Dict[str, Any]:
         folder = _session_dir(sid)
     except OutboxRefusal:
         return {"rev": 0, "entries": []}
-    if not (folder / "index.json").is_file():
-        return {"rev": 0, "entries": []}
-    return _read_index(folder)
+    return folder_listing(folder)
 
 
 def entry_file(sid: str, entry_id: str) -> Optional[Tuple[Path, Dict[str, Any]]]:
     """``(stored file, entry)`` for one listed entry, else None."""
-    if not _SAFE_ID.match(entry_id or ""):
-        return None
     try:
         folder = _session_dir(sid)
     except OutboxRefusal:
         return None
-    entry = next((e for e in listing(sid)["entries"] if e.get("id") == entry_id), None)
-    stored = folder / entry_id
-    if entry is None or not stored.is_file():
-        return None
-    return stored, entry
+    return folder_entry_file(folder, entry_id)

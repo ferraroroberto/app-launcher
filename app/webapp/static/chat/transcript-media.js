@@ -1,6 +1,7 @@
 /* Images and sent files in a transcript: lazy thumbnails, and a card per
  * file the agent sent. The one state the renderer keeps is here: the media
- * cache, owned by whichever session `resetBlobs` last named.
+ * cache, owned by whichever session `resetBlobs` last named, plus the Jobs
+ * tab's selected run (`resetRunBlobs`) for the files a Job sent.
  */
 
 import { api, authHeaders, sessionRoute } from '../api.js';
@@ -23,6 +24,9 @@ let thumbObserver = null;
 // `resetBlobs` changes it, as the Chat pane opens and closes, so a fetch that
 // lands after the pane moved on drops its URL instead of caching it.
 let blobOwner = null;
+// The Jobs tab's selected run, the sent-file cache's second owner: its own
+// slot, so opening a run never revokes an open Chat's files or the reverse.
+let runOwner = null;
 
 function imageUrl(sid, ref) {
   return sessionRoute(sid, '/transcript/image?offset=' + ref.offset + '&n=' + ref.n);
@@ -104,14 +108,31 @@ export function thumbs(refs, session) {
   return wrap;
 }
 
-// Drop every cached object URL and hand the cache to session `sid` (null:
-// none) — the Chat pane's open and close.
+// Drop the Chat's cached object URLs and hand its slot to session `sid`
+// (null: none) — the Chat pane's open and close.
 export function resetBlobs(sid) {
+  const previous = blobOwner;
   blobOwner = sid;
   thumbUrls.forEach(function (objectUrl) { URL.revokeObjectURL(objectUrl); });
   thumbUrls.clear();
-  fileBlobs.forEach(function (got) { URL.revokeObjectURL(got.objectUrl); });
-  fileBlobs.clear();
+  dropFileBlobs(previous);
+}
+
+// Hand the sent-file cache's run slot to `key` (null: none), dropping the
+// previous run's files — the Jobs tab selecting or leaving a run.
+export function resetRunBlobs(key) {
+  if (key === runOwner) return;
+  const previous = runOwner;
+  runOwner = key;
+  dropFileBlobs(previous);
+}
+
+function dropFileBlobs(owner) {
+  fileBlobs.forEach(function (got, url) {
+    if (got.owner !== owner) return;
+    URL.revokeObjectURL(got.objectUrl);
+    fileBlobs.delete(url);
+  });
 }
 
 // --- files the agent sent -------------------------------------------
@@ -169,9 +190,9 @@ async function fetchFileBlob(sid, url, kind) {
   }
   const raw = await res.blob();
   const blob = new Blob([raw], { type: blobType(kind, raw.type) });
-  const entry = { blob: blob, objectUrl: URL.createObjectURL(blob) };
+  const entry = { blob: blob, objectUrl: URL.createObjectURL(blob), owner: sid };
   // A view that closed meanwhile has already dropped its URLs.
-  if (blobOwner !== sid) {
+  if (blobOwner !== sid && runOwner !== sid) {
     URL.revokeObjectURL(entry.objectUrl);
     throw new Error('the chat closed');
   }
@@ -296,15 +317,24 @@ function fileCard(name, kind, size, url, sid) {
 // The turn part for one send: the caption, then a card per file. `session`
 // serves the bytes (null: none).
 export function renderSentFiles(e, session) {
-  const li = document.createElement('li');
-  li.className = 'tr-file-item';
   const sid = session ? session.session_id : null;
   const files = e.kind === 'file'
     ? [{ name: e.file.name, kind: e.file.kind, size: e.file.size, url: sid && outboxFileUrl(sid, e.file.id) }]
     : e.sent_files.map(function (ref) {
       return { name: ref.name, kind: ref.kind, size: null, url: sid && sentFileUrl(sid, ref) };
     });
-  const caption = e.kind === 'file' ? e.file.caption : e.caption;
+  return sentFilesItem(e.kind === 'file' ? e.file.caption : e.caption, files, sid);
+}
+
+// One file a Job run sent, as the same item the Chat draws: `owner` is the
+// run's cache key (resetRunBlobs), `url` the run outbox route serving it.
+export function renderRunFile(file, owner, url) {
+  return sentFilesItem(file.caption, [{ name: file.name, kind: file.kind, size: file.size, url: url }], owner);
+}
+
+function sentFilesItem(caption, files, owner) {
+  const li = document.createElement('li');
+  li.className = 'tr-file-item';
   if (caption) {
     const cap = document.createElement('div');
     cap.className = 'tr-file-caption';
@@ -312,7 +342,7 @@ export function renderSentFiles(e, session) {
     li.appendChild(cap);
   }
   files.forEach(function (f) {
-    li.appendChild(fileCard(f.name || 'file', f.kind || null, f.size, f.url || null, sid));
+    li.appendChild(fileCard(f.name || 'file', f.kind || null, f.size, f.url || null, owner));
   });
   return li;
 }
