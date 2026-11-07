@@ -56,7 +56,7 @@ export function otherRow({ value, placeholder, ariaLabel, files, mic, onInput })
   input.placeholder = placeholder;
   input.setAttribute('aria-label', ariaLabel);
   input.value = value;
-  const count = el('p', 'tr-ask-hint');
+  const count = el('p', 'tr-ask-hint tr-ask-count');
   count.setAttribute('role', 'status');
   const recount = function () {
     count.textContent = answerCountText(input.value.length);
