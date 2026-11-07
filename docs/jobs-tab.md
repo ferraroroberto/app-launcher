@@ -535,11 +535,24 @@ and one extra file for a webhook-triggered run:
 | `run.json` | One run's full metadata (schema below) |
 | `output.log` | Combined stdout+stderr, raw bytes |
 | `artifacts/` | Files the child deliberately preserves through `JOB_ARTIFACT_DIR` |
+| `outbox/` | Files the child sent to the owner through the job outbox (see "Sending files to the owner" below) |
 | `_webhook.json` | The triggering webhook's payload + a safe header subset (webhook-triggered runs only — see "Webhook-target jobs" below) |
 
 `run_id` is a sortable timestamp (`YYYYmmddTHHMMSS`); collisions within the same second append `-2`, `-3`, … The executor exports the absolute artifact-directory path as `JOB_ARTIFACT_DIR`; a script copies or writes any CSV, JSON report, image, or other result it wants preserved there. The run detail API lists immediate files as `{name, size, mtime}`, and the guarded download route resolves the requested filename before serving it. Parent traversal and nested paths return HTTP 400.
 
 Unpinned history is pruned to the most recent **20 runs per job** by the executor at the end of each run. A run with `pinned: true` is excluded from that quota and survives until explicitly unpinned; its artifacts follow the run directory, so there is no separate artifact-retention policy.
+
+### Sending files to the owner — the job outbox
+
+A Job has no hosted session, so it cannot use a session's outbox. Instead the executor gives the child its own run's identity: `APP_LAUNCHER_JOB_ID` and `APP_LAUNCHER_JOB_RUN_ID`, next to `JOB_ARTIFACT_DIR`. It also removes `APP_LAUNCHER_SESSION_ID` and `APP_LAUNCHER_AGENT` from the inherited environment, even when the job's env overlay sets them. Those name a launcher-hosted session, and a Job that inherited them from the webapp would drop its files into an unrelated session's chat.
+
+```bash
+curl -k -X POST "https://127.0.0.1:8445/api/jobs/$APP_LAUNCHER_JOB_ID/runs/$APP_LAUNCHER_JOB_RUN_ID/outbox"   -H 'Content-Type: application/json' -d '{"path": "shot.png", "caption": "Mac screen"}'
+```
+
+The file goes through the session outbox's own guards, caps and refusals (*Files an agent sends to Chat* in [interactive-terminal.md](interactive-terminal.md)), and is copied into the run's `outbox/` folder, so it is pruned with the run. It may come from the run's `JOB_ARTIFACT_DIR` (a relative path is taken against it) or an `outbox_scratch_roots` folder (default `%TEMP%\claude`). The POST is loopback-only, and only a run whose status is still `running` takes a file. Each refusal has its own reason: `loopback_only` 403, `bad_request` 400, `job_not_found` 404, `run_not_found` 404, `run_not_running` 409, then the shared `out_of_root` 403, `not_found` 404, `not_a_file` 422, `too_large` 413, `type_not_allowed` / `content_mismatch` 415.
+
+The owner sees the files on the Jobs tab, with no push: the selected run's panel shows *N sent files* under its output. **Show** loads them as the Chat's file cards (inline image, PDF, text, sandboxed HTML, archive download). The run detail carries only the count (`sent_files`). The list and the bytes are Tailscale + passkey, like a session's sent files, so they load on that tap and never from the panel's poll.
 
 `status` transitions: `pending` (webapp pre-create) → `running` (executor takes over) → `success` | `failed`. The runs list remains on the Jobs tab's lightweight 4 s refresh. Selecting a live run opens `/api/jobs/<id>/runs/<rid>/stream`: the server sends one current-tail snapshot, incremental output chunks, then a final status frame and closes. Finalized output is fetched once over JSON and never streamed.
 
@@ -647,9 +660,11 @@ A job can carry `rerun_safe: true`, the owner's statement that the fleet chief m
 | `POST /api/jobs/<id>/hook` | **provider signature only — never the bearer** | Trigger from an external service; see "Webhook-target jobs" below |
 | `GET /api/jobs/<id>/runs` | bearer-token | Newest-first run history |
 | `GET /api/jobs/runs/search?q=<text>&job=<id?>&status=<s?>&since=<iso?>` | bearer-token | FTS5 cross-run output search, newest first, with a concise snippet |
-| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) + artifact list + `webhook_payload` |
+| `GET /api/jobs/<id>/runs/<run_id>` | bearer-token | One run's metadata + output tail (last 64 KB) + artifact list + `webhook_payload` + `sent_files` count |
 | `PUT /api/jobs/<id>/runs/<run_id>` | bearer-token | Set `{pinned: true|false}` |
 | `GET /api/jobs/<id>/runs/<run_id>/artifacts/<filename>` | bearer-token | Download one strictly path-jailed artifact |
+| `POST /api/jobs/<id>/runs/<run_id>/outbox` | **loopback only** | A running Job sends `{path, caption?}` to the owner; see "Sending files to the owner" |
+| `GET /api/jobs/<id>/runs/<run_id>/outbox[/<entry_id>]` | Tailscale + passkey | A run's sent files, and one file's bytes |
 | `WS /api/jobs/<id>/runs/<run_id>/stream` | bearer-token | Live-only snapshot → delta chunks → final status; token travels in the WS query string |
 | `POST /api/jobs/<id>/runs/<run_id>/kill` | bearer-token | Terminate a stuck run's process tree, finalise `run.json` (`status: failed`, `exit_code: -9`, `killed: true`) |
 

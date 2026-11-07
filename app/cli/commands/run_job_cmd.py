@@ -80,6 +80,15 @@ from .run_job_supervision import (
 
 logger = logging.getLogger(__name__)
 
+# What a launcher-hosted session's process is stamped with
+# (src.session_hosting.child_env.agent_child_env). Only that spawn path may
+# set them; a Job child never carries them.
+_SESSION_IDENTITY_VARS = ("APP_LAUNCHER_SESSION_ID", "APP_LAUNCHER_AGENT")
+# The run a Job child belongs to, so it can address that run's outbox
+# (POST /api/jobs/{job_id}/runs/{run_id}/outbox).
+JOB_ID_ENV = "APP_LAUNCHER_JOB_ID"
+JOB_RUN_ID_ENV = "APP_LAUNCHER_JOB_RUN_ID"
+
 
 def build_invocation(
     job: Job, values: Optional[Dict[str, Any]] = None, run_dir: Optional[Path] = None
@@ -723,7 +732,7 @@ class RunJobCommand(BaseCommand):
 
         dry_run = bool(getattr(args, "dry_run", False))
         _write_running_record(job, args, run_dir, values, dry_run)
-        env = _child_env(job_env, extra_env, run_dir, dry_run)
+        env = _child_env(job.id, job_env, extra_env, run_dir, dry_run)
         spawn_started = time.monotonic()
         exit_code, status, sampler, watchdog = _spawn_and_wait(
             job, argv, cwd, env, run_dir
@@ -785,13 +794,23 @@ def _write_running_record(
     )
 
 
-def _child_env(job_env: Dict[str, str], extra_env: Dict[str, str], run_dir: Path, dry_run: bool) -> Dict[str, str]:
-    """The child's environment: ours, the job overlay, then the invocation's."""
+def _child_env(
+    job_id: str, job_env: Dict[str, str], extra_env: Dict[str, str], run_dir: Path, dry_run: bool,
+) -> Dict[str, str]:
+    """The child's environment: ours, the job overlay, then the invocation's,
+    with a hosted session's identity removed and the run's own stamped."""
     env = os.environ.copy()
     # Job env overlay first, then the invocation's own extra_env (typed
     # params + kind env) so a per-run param can override a static value.
     env.update(job_env)
     env.update(extra_env)
+    # The webapp may itself have been started from inside a hosted session;
+    # a Job addressing that session's outbox would drop its files into an
+    # unrelated chat. A Job sends through its own run's outbox instead.
+    for key in _SESSION_IDENTITY_VARS:
+        env.pop(key, None)
+    env[JOB_ID_ENV] = job_id
+    env[JOB_RUN_ID_ENV] = run_dir.name
     artifact_dir = run_dir / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
