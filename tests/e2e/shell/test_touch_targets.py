@@ -91,7 +91,7 @@ _TABS = ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", _SETTI
 _SHEETS = (
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
-    "passkeysSheet", "terminalSheet",
+    "passkeysSheet", "terminalSheet", "pcLoadSheet",
 )
 _AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 _SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}

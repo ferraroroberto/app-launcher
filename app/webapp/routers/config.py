@@ -104,6 +104,7 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "usage_providers_available": list(VALID_USAGE_PROVIDERS),
         # Sonnet-tier dispatches run on Grok near Claude's weekly pace; off by default.
         "grok_auto_switch": cfg.grok_auto_switch,
+        **_auto_restart_payload(cfg),
         # The chief's auto-compact threshold: percent, 0 = off.
         "chief_auto_compact_threshold": cfg.chief_auto_compact_threshold,
         "chief_auto_compact_threshold_min": MIN_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -148,6 +149,15 @@ async def get_config(request: Request) -> Dict[str, Any]:
         # Remote power guard: live-queried from Task Scheduler and the
         # registry each time, same reason as boot-autostart above.
         "remote_power_guard": remote_power_guard.payload(),
+    }
+
+
+def _auto_restart_payload(cfg: WebappConfig) -> Dict[str, Any]:
+    """Settings > PC load: the night auto-restart switch (off by default) and its window."""
+    return {
+        "process_auto_restart": cfg.process_auto_restart,
+        "process_auto_restart_start": cfg.process_auto_restart_start,
+        "process_auto_restart_end": cfg.process_auto_restart_end,
     }
 
 
@@ -274,6 +284,7 @@ _SWITCH_KEYS = (
     "grokbot_enabled",
     "life_os_refresh_skill_instructions",
     "grok_auto_switch",
+    "process_auto_restart",
 )
 
 
@@ -298,6 +309,9 @@ _PATCH_KEYS = frozenset({
     "large_upload_max_mb",
     "usage_providers",
     "grok_auto_switch",
+    "process_auto_restart",
+    "process_auto_restart_start",
+    "process_auto_restart_end",
     "chief_auto_compact_threshold",
     "chief_doorbell",
     "chief_auto_drain",

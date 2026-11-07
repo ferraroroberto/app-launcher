@@ -158,7 +158,7 @@ class TestLifespanGate:
             # (#1522) start on every instance; they are pinned by the
             # *_runs_on_every_instance tests below. The chief doorbell (#1645)
             # and the relay idle close are canonical-only, pinned in their own
-            # tests. All are named
+            # tests, as is the night auto-restart. All are named
             # tick_forever, so their module tells them apart.
             module = coro.cr_frame.f_globals.get("__name__") if coro.cr_frame else ""
             if coro.__qualname__ == "tick_forever" and module == "src.jobs.snapshot":
@@ -168,7 +168,8 @@ class TestLifespanGate:
             elif coro.__qualname__ == "DemandCache.tick_forever":
                 self.demand_ticks.append(task)
             elif coro.__qualname__ == "tick_forever" and module in (
-                    "app.webapp.chief_doorbell", "app.webapp.relay_idle_close"):
+                    "app.webapp.chief_doorbell", "app.webapp.relay_idle_close",
+                    "src.process_auto_restart"):
                 self.doorbell_ticks.append(task)
             else:
                 created.append(task)

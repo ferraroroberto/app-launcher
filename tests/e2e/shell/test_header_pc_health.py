@@ -224,3 +224,50 @@ def test_no_restart_button_without_a_restart_id(authed_page: Page, base_url: str
     body = _open_sheet(page)
     expect(body.locator("[data-row='owner']")).to_be_visible()
     expect(body.get_by_role("button", name="Restart")).to_have_count(0)
+
+
+_WAVELINK = {
+    "verdict": "watch", "why": None, "reason": "WaveLink.exe at 340 k handles",
+    "fix": "Restart WaveLink.exe", "owner": "Elgato Wave Link", "restart_id": "wavelink",
+}
+
+
+@pytest.mark.parametrize(
+    "relaunch, words, tone",
+    [("launched", "Running again", "good"), ("supervisor", "Running again", "good"),
+     ("not confirmed", "did not come back", "error")],
+)
+def test_a_restart_that_starts_the_app_again_says_whether_it_came_back(
+    authed_page: Page, base_url: str, relaunch: str, words: str, tone: str
+) -> None:
+    page = authed_page
+    page.set_viewport_size({"width": 390, "height": 844})
+    _route_load(page, {"body": _reading("normal", 20.0)}, [])
+    _route_health(page, _WAVELINK)
+    page.route(
+        re.compile(r".*/api/system/restart/wavelink$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"restart_id": "wavelink", "stopped": ["WaveLink.exe"], "errors": [], "relaunch": relaunch}),
+        ),
+    )
+    _boot(page, base_url)
+    body = _open_sheet(page)
+    expect(body.locator("[data-row='owner']")).to_contain_text("Elgato Wave Link")
+    body.get_by_role("button", name="Restart").click()
+    page.locator("#confirmDialogOk").click()
+    toast = page.locator("#cpuSheetToast")
+    expect(toast).to_contain_text("Stopped WaveLink.exe")
+    expect(toast).to_contain_text(words)
+
+
+@pytest.mark.parametrize("outcome, tail", [("launched", ""), ("not confirmed", ", but it did not come back")])
+def test_the_sheet_says_when_the_night_restart_ran(
+    authed_page: Page, base_url: str, outcome: str, tail: str
+) -> None:
+    page = authed_page
+    _route_load(page, {"body": _reading("normal", 20.0)}, [])
+    auto = {"owner": "Elgato Wave Link", "at": "02:14", "outcome": outcome}
+    _route_health(page, {**_verdict("ok"), "auto_restarted": auto})
+    _boot(page, base_url)
+    expect(_open_sheet(page)).to_contain_text("Restarted automatically at 02:14 · Elgato Wave Link" + tail)

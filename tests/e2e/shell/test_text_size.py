@@ -30,7 +30,7 @@ _TABS = ["#tabClaude", "#tabBoard", "#tabLifeOS", "#tabApps", "#tabJobs"]
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "tokensSheet", "foldersSheet",
-    "passkeysSheet", "terminalSheet",
+    "passkeysSheet", "terminalSheet", "pcLoadSheet",
 ]
 
 # Records, on the first data-textsize stamp, how many stylesheets the parser

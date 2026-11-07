@@ -779,6 +779,36 @@
       </div>
     </dialog>
 
+    <dialog id="pcLoadSheet" class="detail-dialog settings-sheet" data-track-view="sheet.pc-load" aria-labelledby="pcLoadSheetTitle">
+      <div class="detail-card">
+        <div class="detail-header settings-sheet-head">
+          <button data-track="pc-load.back" type="button" class="icon-button settings-sheet-back" data-sheet-back aria-label="Back to Settings" title="Back to Settings"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-left"></use></svg></button>
+          <h2 id="pcLoadSheetTitle" tabindex="-1" autofocus>PC load</h2>
+          <button data-track="pc-load.close" type="button" class="icon-button detail-close" data-sheet-close aria-label="Close">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"></use></svg>
+          </button>
+        </div>
+        <div class="settings-sheet-body">
+          <div class="row">
+            <span>Restart at night</span>
+            <button data-track="pc-load.auto-restart" type="button" id="processAutoRestartToggle" class="toggle" role="switch" aria-checked="false" aria-label="Restart a flagged process at night" aria-describedby="processAutoRestartHelp"><span class="knob"></span><span class="toggle-label">OFF</span></button>
+          </div>
+          <label class="stacked">
+            <span>From</span>
+            <input id="processAutoRestartStart" type="time" class="input-native" aria-describedby="processAutoRestartHelp" required>
+          </label>
+          <label class="stacked">
+            <span>Until</span>
+            <input id="processAutoRestartEnd" type="time" class="input-native" aria-describedby="processAutoRestartHelp" required>
+          </label>
+          <p id="processAutoRestartHelp" class="field-help">When PC health flags a process this app can restart (Elgato Wave Link, the Stream Deck HWiNFO plugin), restart it by itself between these times, once per process per night. The window can cross midnight. Outside it, or while the health reading is unknown, nothing restarts; use Restart in the CPU sheet.</p>
+        </div>
+        <div class="detail-actions">
+          <button data-track="pc-load.done" type="button" class="button-primary detail-save-btn" data-sheet-close>Done</button>
+        </div>
+      </div>
+    </dialog>
+
     <dialog id="terminalSheet" class="detail-dialog settings-sheet" data-track-view="sheet.terminal" aria-labelledby="terminalSheetTitle">
       <div class="detail-card">
         <div class="detail-header settings-sheet-head">

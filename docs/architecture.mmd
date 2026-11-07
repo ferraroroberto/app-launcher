@@ -147,6 +147,8 @@ reached through the input session, never logged (#1719)"]
     HUBHEALTH["clients/hub_health.py
 the hub PC health verdict (ok / watch / act / unknown),
 read over loopback and cached behind /api/system/health"]
+    PROCRESTART["process_restart.py\ncode allowlist: stop an app by exact name + folder,\nstart it again when it has no supervisor"]
+    AUTORESTART["process_auto_restart.py\nnight restart of a flagged allowlisted app,\nonce per process per night (restart_window.py)"]
     JOBSNEXTFIRE["jobs/next_fire.py\npure schedule arithmetic — next/upcoming fires,\nno schtasks, no Windows (#1006)"]
     JOBSPREFLIGHT["jobs/preflight.py"]
     JOBSARGV["jobs/argv.py"]
@@ -219,6 +221,10 @@ read over loopback and cached behind /api/system/health"]
   R_JOBS --> JOBSSNAPSHOT
   WSERVER -->|"lifespan load sampler, while polled (#1522)"| SYSLOAD
   R_MISC --> SYSLOAD
+  R_MISC --> PROCRESTART
+  WSERVER -->|"lifespan 60 s tick, canonical only,\nno-op while the night restart switch is off"| AUTORESTART
+  AUTORESTART -->|"flagged + allowlisted + in window"| PROCRESTART
+  AUTORESTART --> HUBHEALTH
   R_MISC --> HUBHEALTH
   R_DESKTOP -->|"capture only inside a connected WS"| DESKCAP
   R_DESKTOP -->|"input only on the gated WS"| DESKIN
