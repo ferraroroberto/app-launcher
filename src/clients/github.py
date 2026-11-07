@@ -180,10 +180,6 @@ def _split_records(
     return actionable, records
 
 
-def search_open_issues(owner: str) -> List[Dict[str, Any]]:
-    return _split_records(_search_open_issue_rows(owner))[0]
-
-
 def search_open_prs(owner: str) -> List[Dict[str, Any]]:
     rows = _search_json([
         "search", "prs",

@@ -170,7 +170,7 @@ def test_github_refresh_and_snapshot(monkeypatch):
     assert fake.calls == []
 
 
-def test_search_open_issues_filters_audit_meta_label(monkeypatch):
+def test_open_issue_search_splits_audit_meta_into_records(monkeypatch):
     """Ledger/metadata issues from ``/codebase-audit`` (label ``audit-meta``)
     are bookkeeping, not dispatchable work — the Board hides them."""
     actionable = {
@@ -192,8 +192,10 @@ def test_search_open_issues_filters_audit_meta_label(monkeypatch):
         )
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
-    issues = github_client.search_open_issues("ferraroroberto")
+    issues, records = github_client._split_records(
+        github_client._search_open_issue_rows("ferraroroberto"))
     assert [i["number"] for i in issues] == [95]
+    assert [i["number"] for i in records] == [37]
 
 
 def test_refresh_caches_audit_meta_issues_as_records(monkeypatch):
