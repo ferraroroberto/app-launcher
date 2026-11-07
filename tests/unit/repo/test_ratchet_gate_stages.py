@@ -76,6 +76,9 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
     if name == "structure":
         for sibling in ("structure_layout.py", "structure_band.py"):
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
+    if name == "instruction":
+        for sibling in ("instruction_frontmatter.py", "instruction_repeats.py"):
+            shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
     if name == "conventions":
         shutil.copy2(REPO_ROOT / "scripts" / "conventions_readers.py", tmp_path / "scripts")
     if name == "runtime_write":
