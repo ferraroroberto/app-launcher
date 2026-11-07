@@ -66,7 +66,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import instance_role, system_load
+from src import instance_role, process_auto_restart, system_load
 from src.compression import StreamSafeGZipMiddleware
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
@@ -465,6 +465,10 @@ async def _lifespan(app: FastAPI):
         # Always started: it re-reads the chief_doorbell toggle every tick and
         # does nothing while it is off, so a Settings save arms it live.
         tasks.append(asyncio.create_task(chief_doorbell.tick_forever(app)))
+        # Always started: it reads the night auto-restart switch every tick and does
+        # nothing while it is off. Canonical instance only, so a disposable gate
+        # webapp never restarts a real process.
+        tasks.append(asyncio.create_task(process_auto_restart.tick_forever(app)))
         # Always started: it reads each bot's idle_close_minutes every tick and
         # touches only what the relay reopened, so a settings save applies live.
         tasks.append(asyncio.create_task(relay_idle_close.tick_forever(app)))

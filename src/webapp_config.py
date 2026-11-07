@@ -42,6 +42,7 @@ from src.launching.model_catalog import (
 )
 
 from src._json_io import atomic_write_json
+from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
     ALWAYS_ON_CLAUDE_FLAGS, CREDENTIAL_KEYS, DEFAULT_CHANNEL_MODEL,
@@ -394,6 +395,10 @@ class WebappConfig:
     # path (🔊 falls back to the on-device Web Speech voice). Plain HTTP — the
     # hub binds loopback only and serves no TLS, unlike the sibling apps above.
     llm_hub_url: str = "http://127.0.0.1:8000"
+    # Night auto-restart of a flagged allowlisted process (src/process_auto_restart.py): off, window HH:MM.
+    process_auto_restart: bool = False
+    process_auto_restart_start: str = DEFAULT_START
+    process_auto_restart_end: str = DEFAULT_END
     # --- Screen time export to task-os ---------------------
     # Where `launcher.py usage-export` and the Screen time sheet's Send to
     # task-os put each completed day's minutes (src/usage/export.py): the
@@ -961,6 +966,7 @@ def _validate(cfg: WebappConfig) -> None:
         raise ValueError(
             f"Codex effort {cfg.codex_effort!r} is not supported by {cfg.codex_model}"
         )
+    validate_window(cfg.process_auto_restart_start, cfg.process_auto_restart_end)
     if cfg.notify_failure_streak < 0:
         raise ValueError(
             f"notify_failure_streak must be >= 0; got {cfg.notify_failure_streak}"

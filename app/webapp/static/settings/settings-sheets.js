@@ -242,6 +242,9 @@ export function renderSettingsValues() {
     .filter(function (v) { return v && String(v).trim(); }).length;
   setValue('folders', folders + ' set');
   renderOutboxRoots(cfg.outbox_scratch_roots || []);
+  setValue('pc-load', cfg.process_auto_restart
+    ? 'Night restart ' + cfg.process_auto_restart_start + '–' + cfg.process_auto_restart_end
+    : 'Manual');
   setValue('terminal', joined([
     cfg.terminal_history_lines ? cfg.terminal_history_lines + ' lines' : '',
     cfg.large_upload_max_mb ? cfg.large_upload_max_mb + ' MB' : '',
@@ -416,6 +419,25 @@ function wireFields() {
     });
   });
   wireOutboxRoots();
+  wireAutoRestart();
+}
+
+// The night auto-restart: a switch and its window. A time input only fires
+// `change` with a complete value, and the server refuses an equal pair.
+const AUTO_RESTART_TIMES = [
+  ['processAutoRestartStart', 'process_auto_restart_start', 'Restart window start'],
+  ['processAutoRestartEnd', 'process_auto_restart_end', 'Restart window end'],
+];
+function wireAutoRestart() {
+  wireConfigSwitch(els.processAutoRestartToggle, 'process_auto_restart', { label: 'Night restart' });
+  AUTO_RESTART_TIMES.forEach(function (f) {
+    const input = els[f[0]];
+    if (!input) return;
+    input.addEventListener('change', function () {
+      if (!input.value) return;
+      saveConfigField(input, { [f[1]]: input.value }, f[2] + ' saved.');
+    });
+  });
 }
 
 // ------------------------------------------------------------------ chief

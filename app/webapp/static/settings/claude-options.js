@@ -238,6 +238,11 @@ export async function fetchConfig(shouldApply) {
   if (els.grokAutoSwitchToggle) {
     setSwitch(els.grokAutoSwitchToggle, body.grok_auto_switch === true);
   }
+  if (els.processAutoRestartToggle) {
+    setSwitch(els.processAutoRestartToggle, body.process_auto_restart === true);
+    setFieldValue(els.processAutoRestartStart, body.process_auto_restart_start || '');
+    setFieldValue(els.processAutoRestartEnd, body.process_auto_restart_end || '');
+  }
   if (els.lifeOsRefreshSkillToggle) {
     setSwitch(els.lifeOsRefreshSkillToggle, body.life_os_refresh_skill_instructions !== false);
   }

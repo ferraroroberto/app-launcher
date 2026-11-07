@@ -29,6 +29,7 @@ Thumbs.db
 # --- Config overrides (keep the committed templates) ---------------------
 config/config.json
 config/webapp_config.json
+config/process_auto_restart.json
 config/apps.json
 config/jobs.json
 config/channel_profiles.json

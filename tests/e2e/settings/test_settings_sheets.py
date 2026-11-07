@@ -38,7 +38,7 @@ _GROUPS = ["Activity", "Appearance", "Agents", "Sessions", "Life OS", "Connectio
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
     "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "tokensSheet", "foldersSheet",
-    "passkeysSheet", "terminalSheet",
+    "passkeysSheet", "terminalSheet", "pcLoadSheet",
 ]
 # The design inventory's name for each sheet (surface() wants lowercase).
 _SURFACE_NAMES = {
@@ -47,7 +47,7 @@ _SURFACE_NAMES = {
     "channelsSheet": "channels", "contextFilterSheet": "context-filter",
     "fleetScopeSheet": "fleet-scope",
     "tokensSheet": "tokens", "foldersSheet": "folders",
-    "passkeysSheet": "passkeys", "terminalSheet": "terminal",
+    "passkeysSheet": "passkeys", "terminalSheet": "terminal", "pcLoadSheet": "pc-load",
 }
 # A sheet's one primary: Done, unless it has a job of its own.
 _PRIMARY = {"screenTimeSheet": "Send to task-os"}
@@ -371,3 +371,31 @@ def test_chat_file_folders_add_remove_and_refuse(
     if len(before) == 1:
         # The last folder cannot be removed: an empty list reads as unset.
         expect(rows.first.locator(".icon-button")).to_be_disabled()
+
+
+@pytest.mark.iphone
+def test_pc_load_sheet_saves_the_night_restart_switch_and_window(
+    authed_page: Page, base_url: str, auth_token: str
+) -> None:
+    """Off by default, 21:00-05:00; the switch and each time save as they change
+    and the Settings row's value follows (the autouse fixture puts the config back)."""
+    authed_page.goto(base_url, wait_until="domcontentloaded")
+    open_settings(authed_page)
+    cfg = _config(base_url, auth_token)
+    assert cfg["process_auto_restart"] is False
+    assert (cfg["process_auto_restart_start"], cfg["process_auto_restart_end"]) == ("21:00", "05:00")
+    expect(_value(authed_page, "pc-load")).to_have_text("Manual")
+    open_settings_sheet(authed_page, "pcLoadSheet")
+    toggle = authed_page.locator("#processAutoRestartToggle")
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    expect(authed_page.locator("#processAutoRestartStart")).to_have_value("21:00")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    authed_page.locator("#processAutoRestartEnd").fill("06:30")
+    authed_page.locator("#processAutoRestartEnd").dispatch_event("change")
+    expect(authed_page.locator("#toast")).to_contain_text("Restart window end saved.")
+    saved = _config(base_url, auth_token)
+    assert saved["process_auto_restart"] is True and saved["process_auto_restart_end"] == "06:30"
+    surface(authed_page, "settings.pc-load-on")
+    close_settings_sheets(authed_page)
+    expect(_value(authed_page, "pc-load")).to_have_text("Night restart 21:00–06:30")

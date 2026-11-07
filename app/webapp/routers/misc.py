@@ -17,7 +17,7 @@ import psutil
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
-from src import instance_role, process_restart, system_load
+from src import instance_role, process_auto_restart, process_restart, system_load
 from src.clients import hub_health, session as session_client
 from src.agents import detect_agents
 from src.build_info import build_identity, resolve_git_sha
@@ -290,7 +290,10 @@ async def system_health_verdict(request: Request) -> Dict[str, Any]:
     cfg: WebappConfig = request.app.state.webapp_config
 
     def _read() -> Dict[str, Any]:
-        return process_restart.annotate(hub_health.read(cfg.llm_hub_url))
+        out = process_restart.annotate(hub_health.read(cfg.llm_hub_url))
+        # The sheet's "Restarted automatically at 02:14" line (the night restart).
+        out["auto_restarted"] = process_auto_restart.last_auto_restart()
+        return out
 
     return await asyncio.to_thread(_read)
 

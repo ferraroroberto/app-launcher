@@ -116,6 +116,7 @@ function appendHealthRows(body) {
   notes.filter(Boolean).forEach(function (text) {
     body.appendChild(el('p', 'cpu-sheet-note', text));
   });
+  if (h.auto_restarted) body.appendChild(autoRestartNote(h.auto_restarted));
   // Only an allowlisted process gets the button; the server decides which.
   if (h.restart_id && h.verdict !== 'unknown') {
     const btn = el('button', 'button-tint cpu-sheet-restart', 'Restart');
@@ -125,17 +126,34 @@ function appendHealthRows(body) {
   }
 }
 
+// "Restarted automatically at 02:14": the night restart's own line. A process
+// that did not come back says so instead of reading as a clean restart.
+function autoRestartNote(a) {
+  const base = 'Restarted automatically at ' + a.at + ' · ' + a.owner;
+  return el('p', 'cpu-sheet-note', a.outcome === 'not confirmed' ? base + ', but it did not come back' : base);
+}
+
+// What a restart reports. `relaunch` is null for a target its host relaunches;
+// for one this app starts again it is its own state, and "not confirmed" is a warning.
+function restartToast(r) {
+  const stopped = 'Stopped ' + r.stopped.join(', ') + '.';
+  if (r.relaunch === 'not confirmed') return [stopped + " It did not come back; start it from the Start menu.", 'error'];
+  if (r.relaunch) return [stopped + ' Running again.', 'good'];
+  return [stopped, 'good'];
+}
+
 async function restartOwner(h) {
   const ok = await confirmDialog({
     title: 'Restart ' + h.owner + '?',
-    message: 'This stops it on the PC; its host relaunches it. The hub re-checks within ten minutes.',
+    message: 'This stops it on the PC and starts it again. The hub re-checks within ten minutes.',
     action: 'Restart',
   });
   if (!ok) return;
   const host = document.getElementById('cpuSheetToast');
   try {
     const r = await jsonApi('/api/system/restart/' + encodeURIComponent(h.restart_id), { method: 'POST' });
-    toast('Stopped ' + r.stopped.join(', ') + '.', 'good', { host });
+    const [text, tone] = restartToast(r);
+    toast(text, tone, { host });
   } catch (exc) {
     apiFailToast('Restart failed', exc, { host });
   }

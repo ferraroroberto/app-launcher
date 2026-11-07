@@ -141,3 +141,105 @@ def test_annotate_with_no_process_named_is_left_plain(monkeypatch):
     _table(monkeypatch)
     got = pr.annotate({"verdict": "watch", "reason": "memory is high", "fix": None})
     assert got["owner"] is None and got["restart_id"] is None
+
+
+# --- Wave Link: no supervisor, so the restart starts it again ---------------------------
+
+WAVELINK = r"C:\Program Files\Elgato\WaveLink\WaveLink.exe"
+
+
+class Table:
+    """A mutable process table: ``_live`` reads it, a launch edits it."""
+
+    def __init__(self, monkeypatch, *procs):
+        self.procs = list(procs)
+        self.launched = []
+        self.starts_as = None  # a launch brings this process into the table
+        monkeypatch.setattr(pr, "_live", lambda name: [p for p in self.procs if p.name().lower() == name.lower()])
+        monkeypatch.setattr(pr, "_wait_for", lambda ready, seconds: ready())
+        monkeypatch.setattr(pr, "_launch", self._launch)
+
+    def _launch(self, exe):
+        self.launched.append(exe)
+        if self.starts_as is not None:
+            self.procs.append(self.starts_as)
+
+
+def _wavelink(pid=10, exe=WAVELINK):
+    return FakeProc(pid, "WaveLink.exe", exe)
+
+
+def test_wavelink_is_stopped_and_started_again_from_its_own_path(monkeypatch):
+    old = _wavelink()
+    table = Table(monkeypatch, old)
+    table.starts_as = _wavelink(pid=11)
+    got = pr.restart("wavelink")
+    assert old.stopped
+    assert table.launched == [WAVELINK]
+    assert got["relaunch"] == "launched"
+    assert got["owner"] == "Elgato Wave Link"
+
+
+def test_wavelink_a_supervisor_that_brings_it_back_is_reported_and_not_raced(monkeypatch):
+    old = _wavelink()
+    table = Table(monkeypatch, old)
+    old.terminate = lambda: table.procs.append(_wavelink(pid=12))
+    got = pr.restart("wavelink")
+    assert got["relaunch"] == "supervisor"
+    assert table.launched == []
+
+
+def test_wavelink_that_never_returns_is_not_confirmed_never_ok(monkeypatch):
+    table = Table(monkeypatch, _wavelink())
+    got = pr.restart("wavelink")
+    assert table.launched == [WAVELINK]
+    assert got["relaunch"] == "not confirmed"
+
+
+def test_wavelink_that_cannot_be_started_is_not_confirmed(monkeypatch):
+    Table(monkeypatch, _wavelink())
+
+    def boom(exe):
+        raise OSError("blocked")
+
+    monkeypatch.setattr(pr, "_launch", boom)
+    assert pr.restart("wavelink")["relaunch"] == "not confirmed"
+
+
+def test_the_relaunch_path_comes_from_the_process_not_the_caller(monkeypatch):
+    other = r"D:\Elgato\WaveLink\WaveLink.exe"
+    table = Table(monkeypatch, _wavelink(exe=other))
+    table.starts_as = _wavelink(pid=11, exe=other)
+    pr.restart("wavelink")
+    assert table.launched == [other]
+
+
+def test_a_wavelink_named_process_from_another_folder_is_not_touched(monkeypatch):
+    impostor = _wavelink(exe=r"C:\Temp\WaveLink.exe")
+    table = Table(monkeypatch, impostor)
+    with pytest.raises(pr.RestartError) as err:
+        pr.restart("wavelink")
+    assert err.value.status == 409 and not impostor.stopped and table.launched == []
+
+
+def test_a_supervised_target_is_never_launched_by_the_restart(monkeypatch):
+    table = Table(monkeypatch, FakeProc(2, "hwinfo-plugin.exe", PLUGIN))
+    got = pr.restart("streamdeck-hwinfo")
+    assert got["relaunch"] is None and table.launched == []
+
+
+def test_launch_is_a_normal_start_with_no_arguments_handed_to_windows(monkeypatch):
+    calls = []
+    monkeypatch.setattr(pr.subprocess, "Popen", lambda *a, **kw: calls.append((a, kw)))
+    pr._launch(WAVELINK)
+    (args, kw), = calls
+    cmd = args[0]
+    assert cmd[0].lower().endswith("cmd.exe") and cmd[1:] == ["/c", "start", "", WAVELINK]
+    assert kw["cwd"] == r"C:\Program Files\Elgato\WaveLink"
+    assert kw["creationflags"] == pr.NO_WINDOW
+
+
+def test_annotate_offers_restart_for_a_wavelink_warning(monkeypatch):
+    _table(monkeypatch, FakeProc(10, "WaveLink.exe", WAVELINK))
+    got = pr.annotate(_health(fix="Restart WaveLink.exe", reason="WaveLink.exe at 340 k handles"))
+    assert got["owner"] == "Elgato Wave Link" and got["restart_id"] == "wavelink"
