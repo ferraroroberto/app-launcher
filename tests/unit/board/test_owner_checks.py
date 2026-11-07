@@ -381,3 +381,34 @@ def test_owner_answer_lines_node_pin():
 
 def test_owner_checks_newest_first_node_pin():
     assert "ok" in _run_node_pin("owner_checks_order.test.mjs")
+
+
+def test_answer_text_node_pin():
+    assert "OK answer text limit" in _run_node_pin("answer_text_limit.test.mjs")
+
+
+def test_a_long_dictated_problem_reaches_github_whole(cli):
+    owner_checks.refresh("fleet")
+    long = " ".join(f"w{i % 10}{i % 10}{i % 10}" for i in range(1100))[:5000].rstrip()
+    posted = []
+    ans = owner_checks.validate_answer(
+        {"ref": "demo#9", "kind": "validate-after", "answer": "problem", "text": long})
+    assert ans["text"] == long
+    owner_checks.answer("fleet", ans, comment=lambda *a: posted.append(a), now=NOW)
+    assert long in posted[0][2]
+
+
+def test_an_answer_over_the_limit_is_refused_not_cut():
+    ref = {"ref": "demo#9", "kind": "validate-after", "answer": "problem"}
+    at_limit = owner_checks.validate_answer({**ref, "text": "x" * owner_checks.ANSWER_TEXT_MAX})
+    assert len(at_limit["text"]) == owner_checks.ANSWER_TEXT_MAX
+    with pytest.raises(ValueError, match="the limit is"):
+        owner_checks.validate_answer({**ref, "text": "x" * (owner_checks.ANSWER_TEXT_MAX + 1)})
+
+
+def test_the_field_limit_and_the_route_limit_are_one_number():
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[3] / "app" / "webapp" / "static" / "board" / "answer-item.js")
+    found = re.search(r"export const ANSWER_TEXT_MAX = (\d+);", src.read_text(encoding="utf-8"))
+    assert found and int(found.group(1)) == owner_checks.ANSWER_TEXT_MAX

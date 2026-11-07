@@ -422,7 +422,6 @@ export function ownerSheetBlock(item, draft, onChange, mic, files) {
   };
   const other = otherRow({
     value: draft.other,
-    maxLength: 2000,
     placeholder: 'Other',
     ariaLabel: 'Other answer for ' + item.ref,
     files: files,
@@ -446,6 +445,7 @@ export function ownerSheetBlock(item, draft, onChange, mic, files) {
     },
   }));
   block.appendChild(other.row);
+  block.appendChild(other.count);
   block.appendChild(files.extra);
   block.appendChild(meaning);
   block.appendChild(error);
