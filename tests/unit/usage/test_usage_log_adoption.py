@@ -163,7 +163,7 @@ class TestMarkup:
         log's direct call: no hidden element is created and clicked."""
         code = re.sub(r"/\*.*?\*/|//[^\n]*", "", (_STATIC / "voice.js").read_text(encoding="utf-8"), flags=re.S)
         ids = re.findall(r"setAttribute\('data-track', '([^']*)'\)", code)
-        assert ids == ["mic.ignored-arming", "mic.cancel-finalizing", "mic.stop", "mic.start"], ids
+        assert ids == ["mic.late-click", "mic.ignored-arming", "mic.cancel-finalizing", "mic.stop", "mic.start"], ids
         assert all(ID_PATTERN.fullmatch(i) for i in ids), ids
         assert "usage.track('mic.no-click');" in code
         assert "createElement('span')" not in code and ".click()" not in code

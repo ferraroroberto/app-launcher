@@ -171,22 +171,55 @@ _WITHHELD_CLICK = """() => {
 }"""
 
 
-def test_a_withheld_click_leaves_a_breadcrumb(
+def _withheld_tap_rig(page: Page, base_url: str, sid: str):
+    if not page.evaluate("'ontouchstart' in window"):
+        pytest.skip("needs a touch-emulating projection (WebKit/iPhone)")
+    fake_clock.install(page)
+    lines = _info_lines(page)
+    usage = _usage_capture(page)
+    _open_composer(page, base_url, sid)
+    return lines, usage, page.locator("#terminalComposeBar .composer-mic")
+
+
+def test_a_withheld_click_still_starts_dictation(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """A touch on the mic that iOS sends no click for is logged, so a two-tap
-    report shows whether the first tap was withheld or missed the button."""
-    if not authed_page.evaluate("'ontouchstart' in window"):
-        pytest.skip("needs a touch-emulating projection (WebKit/iPhone)")
-    fake_clock.install(authed_page)
-    lines = _info_lines(authed_page)
-    usage = _usage_capture(authed_page)
-    _open_composer(authed_page, base_url, launched_pty_session)
-    mic = authed_page.locator("#terminalComposeBar .composer-mic")
-    mic.tap()  # a tap that clicks records no withheld click
-    expect(mic).to_have_class(re.compile(r"\brecording\b"))
-    fake_clock.advance(authed_page, 2000)
+    """The 2026-11-07 occurrence: the first tap on an idle mic logged
+    ``mic.no-click`` (the touch ended on the mic, iOS sent no click) and only
+    the second tap started. One touch must start dictation, click or not."""
+    lines, usage, mic = _withheld_tap_rig(authed_page, base_url, launched_pty_session)
     authed_page.evaluate(_WITHHELD_CLICK)
     fake_clock.advance(authed_page, 2000)
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    assert authed_page.evaluate("window.__gumCalls") == 1
     assert any("no click" in t for t in lines), lines
-    assert _mic_taps(authed_page, usage) == ["mic.start", "mic.no-click"]
+    assert _mic_taps(authed_page, usage) == ["mic.no-click", "mic.start"]
+
+
+def test_a_click_that_follows_the_touch_runs_once(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A tap whose click does arrive is handled by the click alone: no
+    fallback run, no breadcrumb, one start."""
+    _lines, usage, mic = _withheld_tap_rig(authed_page, base_url, launched_pty_session)
+    mic.tap()
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    fake_clock.advance(authed_page, 2000)
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    assert authed_page.evaluate("window.__gumCalls") == 1
+    assert _mic_taps(authed_page, usage) == ["mic.start"]
+
+
+def test_a_late_click_after_the_fallback_is_swallowed(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """A click iOS delivers after the fallback already started the take must
+    not stop it: it is swallowed and logged as such."""
+    lines, usage, mic = _withheld_tap_rig(authed_page, base_url, launched_pty_session)
+    authed_page.evaluate(_WITHHELD_CLICK)
+    fake_clock.advance(authed_page, 600)
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    mic.click()
+    expect(mic).to_have_class(re.compile(r"\brecording\b"))
+    assert any("late click" in t for t in lines), lines
+    assert _mic_taps(authed_page, usage) == ["mic.no-click", "mic.start", "mic.late-click"]
