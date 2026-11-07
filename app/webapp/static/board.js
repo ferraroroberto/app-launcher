@@ -73,6 +73,9 @@ import { agoText, openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan
 import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
+import {
+  bucketChipEls, bucketNodes, countedCards, hasBuckets, notPlannedCount,
+} from './board/backlog-buckets.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
 // GitHub-only, so before the cache is loaded their count is unknown, never
@@ -312,6 +315,7 @@ function renderIssueCard(card) {
   if (claimUnverified) chips.push(chip('in progress (unverified)', 'accent', 'board-claim-chip'));
   else if (isInProgress) chips.push(chip('in progress', 'accent', 'board-claim-chip'));
   else if (claimStale) chips.push(chip('stale claim', 'neutral', 'board-claim-chip'));
+  bucketChipEls(card).forEach(function (el) { chips.push(el); });
 
   // The last-updated date: the tail of the meta text, or, beside a
   // claim chip (where the text ellipsizes), its own item that never shrinks.
@@ -611,7 +615,7 @@ function renderBoardHead(body, ghLoaded, liveRead) {
   if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
   const live = sessions('your_turn') + sessions('claude_turn');
   const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
-  if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
+  if (ghLoaded) totals.push(plural(countedCards(columns.backlog || []).length, 'issue', 'issues'));
   renderFittedHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
 }
 
@@ -675,7 +679,10 @@ function revealDrawerSection(visible, expandedCard) {
 // One lane: its section's count and flags, its rows, its empty state.
 // `extra` is rows drawn outside the lane's list: Your turn's owner checks.
 function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
-  const total = cards.length + (extra || 0);
+  // The Backlog grouped by bucket: folded rows (umbrellas, records) are
+  // listed but never counted.
+  const grouped = col.key === 'backlog' && hasBuckets(cards);
+  const total = (grouped ? countedCards(cards).length : cards.length) + (extra || 0);
   // A live column can still hold external cards (hook state + fresh
   // transcript) with the session-host down; those make a real lower bound,
   // so only an empty one reads as unknown.
@@ -696,11 +703,16 @@ function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
       const failing = cards.filter(jobFailing).length;
       setLaneException(section, failing ? failing + ' failing' : '', 'danger');
     }
+    // The Backlog, folded, says how much is in no plan: the chief keeps it at zero.
+    if (col.key === 'backlog') {
+      const loose = grouped ? notPlannedCount(cards) : 0;
+      setLaneException(section, loose ? loose + ' not planned' : '', 'attention');
+    }
   }
   const list = els.boardColumns.querySelector('.board-list[data-col="' + col.key + '"]');
   const empty = els.boardColumns.querySelector('.board-empty[data-col="' + col.key + '"]');
   if (!list) return;
-  placeChildren(list, cards.map(function (card) {
+  placeChildren(list, grouped ? bucketNodes(cards, body, renderIssueCard) : cards.map(function (card) {
     return renderCard(col.key, card, openItem);
   }));
   if (!empty) return;

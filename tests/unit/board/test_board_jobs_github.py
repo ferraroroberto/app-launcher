@@ -170,7 +170,7 @@ def test_github_refresh_and_snapshot(monkeypatch):
     assert fake.calls == []
 
 
-def test_search_open_issues_filters_audit_meta_label(monkeypatch):
+def test_open_issue_search_splits_audit_meta_into_records(monkeypatch):
     """Ledger/metadata issues from ``/codebase-audit`` (label ``audit-meta``)
     are bookkeeping, not dispatchable work — the Board hides them."""
     actionable = {
@@ -192,8 +192,25 @@ def test_search_open_issues_filters_audit_meta_label(monkeypatch):
         )
 
     monkeypatch.setattr(github_client.subprocess, "run", fake_run)
-    issues = github_client.search_open_issues("ferraroroberto")
+    issues, records = github_client._split_records(
+        github_client._search_open_issue_rows("ferraroroberto"))
     assert [i["number"] for i in issues] == [95]
+    assert [i["number"] for i in records] == [37]
+
+
+def test_refresh_caches_audit_meta_issues_as_records(monkeypatch):
+    """The Board folds the records into one backlog row, so the cache keeps
+    them apart from the actionable issues, from the same single search."""
+    rows = [
+        {"kind": "issue", "repo": "r", "number": 1, "labels": []},
+        {"kind": "issue", "repo": "r", "number": 2, "labels": ["audit-meta"]},
+    ]
+    monkeypatch.setattr(github_client, "_search_open_issue_rows", lambda owner: rows)
+    monkeypatch.setattr(github_client, "search_open_prs", lambda owner: [])
+    monkeypatch.setattr(github_client, "search_done_today", lambda owner: [])
+    snap = github_client.refresh("ferraroroberto")
+    assert [i["number"] for i in snap["issues"]] == [1]
+    assert [i["number"] for i in snap["records"]] == [2]
 
 
 def test_search_open_prs_filters_audit_meta_label(monkeypatch):

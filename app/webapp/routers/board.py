@@ -65,7 +65,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from src import agents, audit, board
-from src.board import active_issue_claims, owner_checks, proof_reports
+from src.board import active_issue_claims, backlog_buckets, owner_checks, proof_reports
 from src.chief import answers as chief_answers
 from src.chief import dispatch_brief
 from src.clients import github as github_client
@@ -73,6 +73,7 @@ from src.jobs import snapshot as jobs_snapshot
 from src.usage import quota as quota_usage
 from src.clients import session as session_client
 from src.board.exchange import resolve_exchange, unavailable
+from src.chief import plan as chief_plan
 from src.chief import plan_prune
 from src.launching.flags import build_claude_flags
 from src.session_view.outbox import HTML_CSP, HTML_MEDIA
@@ -327,6 +328,14 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     columns["done"] = await steps.run(
         "annotate_proof", proof_reports.annotate, columns["done"], cfg.projects_dir)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
+    plan_index, markers_missing = await steps.run(
+        "read_plan_index", _read_bucket_sources, Path(cfg.chief_plan_file), active_issues_file)
+    records = [dict(row) for row in github.get("records") or []]
+    buckets = backlog_buckets.classify(
+        columns["backlog"], records, plan_index,
+        markers_read=active_issues["available"] or markers_missing,
+    )
+    columns["backlog"] = columns["backlog"] + records
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -354,10 +363,22 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         # Age of the jobs runtime snapshot the job cards came from,
         # so a stale one can never pass for current.
         "jobs_snapshot": jobs_snapshot.latest_description(),
+        # Where each backlog issue stands: the sources the buckets could not
+        # read, so the client says "unknown" instead of "Not planned".
+        "backlog_buckets": buckets,
         # Issues waiting on the owner (owner_check labels), from their own
         # cache: ``available: false`` until a list has landed, never "none".
         "owner_checks": owner_checks.snapshot(),
     }
+
+
+def _read_bucket_sources(plan_file: Path, markers_file: Path) -> Tuple[Dict[str, Any], bool]:
+    """The plan index, and whether the marker file is simply absent.
+
+    An absent marker file means no issue is claimed, a known answer; a file
+    that is there but unreadable leaves every claim unknown.
+    """
+    return chief_plan.read_plan_index(plan_file), not markers_file.exists()
 
 
 @router.get("/api/board/chief-plan")
