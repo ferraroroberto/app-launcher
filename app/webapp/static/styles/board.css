@@ -552,6 +552,14 @@ span.chief-answer-ref { color: var(--muted); }
 }
 
 .board-list { list-style: none; margin: 0; padding: 0; }
+/* The Backlog's buckets: each a plain heading over its rows, the
+   chief plan card's heading, inset like the owner checks'. Waiting and
+   Unknown take the attention text; an empty bucket is its heading alone. */
+.board-bucket > .board-bucket-heading,
+.board-bucket-fold > .board-plan-fold-summary { padding-inline: var(--board-card-inset, 14px); }
+.board-bucket:first-child > .board-bucket-heading { margin-top: 4px; }
+.board-bucket.is-waiting > .board-bucket-heading,
+.board-bucket.is-unknown > .board-bucket-heading { color: var(--attention-text); }
 /* Every Board row is the shared action-row; .board-item stays
    the hook the poll and the tests use. A session row wraps, so its drawer
    lands below the row at full width, never beside it.

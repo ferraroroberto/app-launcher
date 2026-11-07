@@ -38,6 +38,9 @@ SUPPORTED_VERSION = 1
 
 _LANE_FIELDS = ("repo", "session", "item", "status", "model")
 _QUEUE_FIELDS = ("repo", "ref", "title", "status", "note", "model")
+# What the backlog buckets read off a queue row: the card above has no use
+# for why a row is parked or what it waits for.
+_INDEX_QUEUE_FIELDS = ("repo", "ref", "status", "kind", "blocked_by", "after")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _WAITING_FIELDS = ("text", "ref", "repo", "detail", "recommendation")
 # Read only when the chief wrote a string: a number here is a wrong type, not
@@ -123,30 +126,42 @@ def _waiting(value: Any, owner: str) -> List[Dict[str, Any]]:
     return items
 
 
+def _load_plan(path: Path) -> Dict[str, Any] | str:
+    """The plan document as a dict, or the state ``"empty"`` / ``"unreadable"``.
+
+    ``empty`` is no file; ``unreadable`` is a file that can't be read, isn't
+    JSON, isn't an object, or names a version other than
+    :data:`SUPPORTED_VERSION`.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return "empty"
+    except (OSError, UnicodeDecodeError) as exc:
+        logger.warning("⚠️ chief plan unreadable: %s", exc.__class__.__name__)
+        return "unreadable"
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        logger.warning("⚠️ chief plan is not valid JSON")
+        return "unreadable"
+    if not isinstance(data, dict) or data.get("version") != SUPPORTED_VERSION:
+        logger.warning("⚠️ chief plan has an unsupported shape or version")
+        return "unreadable"
+    return data
+
+
 def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
     """The plan as ``{"state": "ok", ...}``, or ``{"state": "empty"}`` /
     ``{"state": "unreadable"}``. ``github_owner`` resolves question and
     queue-row refs to links; without it they stay plain text.
 
-    ``empty``: no file, or a queue with no rows. ``unreadable``: the file
-    exists but can't be read, isn't JSON, isn't an object, or names a
-    version other than :data:`SUPPORTED_VERSION`.
+    ``empty``: no file, or a queue with no rows. ``unreadable``: see
+    :func:`_load_plan`.
     """
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        return {"state": "empty"}
-    except (OSError, UnicodeDecodeError) as exc:
-        logger.warning("⚠️ chief plan unreadable: %s", exc.__class__.__name__)
-        return {"state": "unreadable"}
-    try:
-        data = json.loads(raw)
-    except ValueError:
-        logger.warning("⚠️ chief plan is not valid JSON")
-        return {"state": "unreadable"}
-    if not isinstance(data, dict) or data.get("version") != SUPPORTED_VERSION:
-        logger.warning("⚠️ chief plan has an unsupported shape or version")
-        return {"state": "unreadable"}
+    data = _load_plan(path)
+    if isinstance(data, str):
+        return {"state": data}
     queue = _rows(data.get("queue"), _QUEUE_FIELDS)
     if not queue:
         return {"state": "empty"}
@@ -161,4 +176,25 @@ def read_chief_plan(path: Path, github_owner: str = "") -> Dict[str, Any]:
         "lanes": lanes,
         "queue": queue,
         "waiting_on_roberto": _waiting(data.get("waiting_on_roberto"), github_owner),
+    }
+
+
+def read_plan_index(path: Path) -> Dict[str, Any]:
+    """The plan's lanes, queue and question refs for the backlog buckets.
+
+    Unlike :func:`read_chief_plan` an empty queue still returns the lanes,
+    since a lane alone puts an issue in progress. ``state`` is ``ok``
+    (a readable plan, missing file included: no plan is a known answer),
+    or ``unreadable``, which the buckets show as unknown.
+    """
+    data = _load_plan(path)
+    if data == "unreadable":
+        return {"state": "unreadable", "lanes": [], "queue": [], "waiting": []}
+    if isinstance(data, str):
+        return {"state": "ok", "lanes": [], "queue": [], "waiting": []}
+    return {
+        "state": "ok",
+        "lanes": _rows(data.get("lanes"), _LANE_FIELDS),
+        "queue": _rows(data.get("queue"), _INDEX_QUEUE_FIELDS),
+        "waiting": _rows(data.get("waiting_on_roberto"), ("ref", "repo")),
     }

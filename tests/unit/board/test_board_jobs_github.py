@@ -196,6 +196,21 @@ def test_search_open_issues_filters_audit_meta_label(monkeypatch):
     assert [i["number"] for i in issues] == [95]
 
 
+def test_refresh_caches_audit_meta_issues_as_records(monkeypatch):
+    """The Board folds the records into one backlog row, so the cache keeps
+    them apart from the actionable issues, from the same single search."""
+    rows = [
+        {"kind": "issue", "repo": "r", "number": 1, "labels": []},
+        {"kind": "issue", "repo": "r", "number": 2, "labels": ["audit-meta"]},
+    ]
+    monkeypatch.setattr(github_client, "_search_open_issue_rows", lambda owner: rows)
+    monkeypatch.setattr(github_client, "search_open_prs", lambda owner: [])
+    monkeypatch.setattr(github_client, "search_done_today", lambda owner: [])
+    snap = github_client.refresh("ferraroroberto")
+    assert [i["number"] for i in snap["issues"]] == [1]
+    assert [i["number"] for i in snap["records"]] == [2]
+
+
 def test_search_open_prs_filters_audit_meta_label(monkeypatch):
     actionable = {
         "repository": {"nameWithOwner": "ferraroroberto/app-launcher"},

@@ -159,7 +159,7 @@ def _is_actionable(labels: Sequence[str]) -> bool:
     return not any(str(lab).lower() in _NON_ACTIONABLE_LABELS for lab in labels)
 
 
-def search_open_issues(owner: str) -> List[Dict[str, Any]]:
+def _search_open_issue_rows(owner: str) -> List[Dict[str, Any]]:
     rows = _search_json([
         "search", "issues",
         "--owner", owner,
@@ -168,8 +168,20 @@ def search_open_issues(owner: str) -> List[Dict[str, Any]]:
         "--limit", str(_ISSUE_LIMIT),
         "--json", _SEARCH_FIELDS + ",labels",
     ])
-    issues = [_norm_issue(r) for r in rows]
-    return [i for i in issues if _is_actionable(i["labels"])]
+    return [_norm_issue(r) for r in rows]
+
+
+def _split_records(
+    issues: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """``(actionable, records)``: machine records are bookkeeping, not work."""
+    actionable = [i for i in issues if _is_actionable(i["labels"])]
+    records = [i for i in issues if not _is_actionable(i["labels"])]
+    return actionable, records
+
+
+def search_open_issues(owner: str) -> List[Dict[str, Any]]:
+    return _split_records(_search_open_issue_rows(owner))[0]
 
 
 def search_open_prs(owner: str) -> List[Dict[str, Any]]:
@@ -518,6 +530,7 @@ _lock = threading.Lock()
 _cache: Dict[str, Any] = {
     "fetched_at": None,
     "issues": [],
+    "records": [],
     "prs": [],
     "done": [],
     "error": None,
@@ -588,7 +601,9 @@ def refresh(owner: str) -> Dict[str, Any]:
     """
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     try:
-        issues = search_open_issues(owner)
+        # One search: the Board folds the records into the backlog's
+        # "Umbrellas and records" row, outside every count.
+        issues, records = _split_records(_search_open_issue_rows(owner))
         prs = search_open_prs(owner)
         done = search_done_today(owner)
     except GhError as exc:
@@ -599,7 +614,8 @@ def refresh(owner: str) -> Dict[str, Any]:
         return _record_error(f"refresh failed unexpectedly: {type(exc).__name__}: {exc}")
     with _lock:
         _cache.update(
-            fetched_at=fetched_at, issues=issues, prs=prs, done=done, error=None
+            fetched_at=fetched_at, issues=issues, records=records, prs=prs,
+            done=done, error=None,
         )
         logger.info(
             "✅ gh refresh: %d issues, %d PRs, %d done today",
@@ -618,4 +634,4 @@ def _record_error(error: str) -> Dict[str, Any]:
 def reset_cache() -> None:
     """Test helper — restore the pristine empty cache."""
     with _lock:
-        _cache.update(fetched_at=None, issues=[], prs=[], done=[], error=None)
+        _cache.update(fetched_at=None, issues=[], records=[], prs=[], done=[], error=None)
