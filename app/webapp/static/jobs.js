@@ -87,12 +87,16 @@ function appendRow(host, job) {
 }
 
 export function renderJobs() {
-  const host = els.jobsList;
-  host.replaceChildren();
+  // The header fit reads layout. It runs while the list still holds its rows
+  // and the new rows are built off-DOM, then swapped in by one replaceChildren:
+  // an emptied list at a layout read collapses the page and the browser clamps
+  // the scroll offset to the top for good.
   renderHomeHead();
   syncJobsEmpty();
   syncSortControls();
 
+  const host = els.jobsList;
+  const rows = document.createDocumentFragment();
   if (state.jobsSearchQuery) {
     // Jobs whose name matches come first, as ordinary rows (the
     // search used to match run output only, never the job you were looking
@@ -102,11 +106,12 @@ export function renderJobs() {
       return String(job.name || '').toLowerCase().indexOf(query) !== -1 ||
         String(job.id || '').toLowerCase().indexOf(query) !== -1;
     });
-    named.forEach(function (job) { appendRow(host, job); });
-    renderSearchMatches(host, named.length);
+    named.forEach(function (job) { appendRow(rows, job); });
+    renderSearchMatches(rows, named.length);
   } else {
-    sortedJobs().forEach(function (job) { appendRow(host, job); });
+    sortedJobs().forEach(function (job) { appendRow(rows, job); });
   }
+  host.replaceChildren(rows);
   // An open ⋯ menu whose row is gone drops its state (row-menu contract).
   endJobRowRender();
 }
