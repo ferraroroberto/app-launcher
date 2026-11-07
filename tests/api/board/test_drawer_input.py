@@ -276,3 +276,18 @@ class TestSessionInputStaleHost:
         assert resp.status_code == 409
         assert resp.json()["detail"] == "session sid-967 not accepting input (exited)"
         sess.get_session.assert_not_called()
+
+
+class TestLongAnswer:
+
+    def test_a_long_board_answer_is_forwarded_whole(self, webapp_client, _bypass_gate):
+        """The Board's Done sends one message through /input; a dictated
+        answer thousands of characters long must reach the session-host intact."""
+        client, _, overrides = webapp_client
+        message = "Answers from the Board (1 of 1):\n1. Which way? -> Other: " + "word " * 1000
+        resp = client.post(
+            "/api/claude-code/sessions/s1/input", json={"data": message, "submit": True})
+        assert resp.status_code == 200
+        assert resp.json()["bytes"] == len(message)
+        calls = overrides["session"].send_input.call_args_list
+        assert [c.args for c in calls] == [(8446, "s1", message, True)]

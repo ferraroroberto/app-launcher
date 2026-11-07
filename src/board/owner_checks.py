@@ -86,7 +86,10 @@ LIST_TIMEOUT_SECONDS = 240
 CLEAR_TIMEOUT_SECONDS = 90
 # Refreshes no closer than this, however often the Board's GitHub refresh runs.
 REFRESH_COOLDOWN_SECONDS = 60
-PROBLEM_TEXT_MAX = 2000
+# The longest answer text the sheet takes (answer-item.js ANSWER_TEXT_MAX, pinned
+# equal). Over it the answer is refused, never cut: a cut note would land on
+# GitHub looking whole.
+ANSWER_TEXT_MAX = 20000
 # Files one answer may carry (the sheet caps an item at the same). The server
 # sees only this count, never a file name or path: GitHub gets one fixed line
 # built from the number.
@@ -453,7 +456,9 @@ def validate_answer(raw: Any) -> Dict[str, Any]:
         raise ValueError(f"{ref}: unknown kind {kind!r}")
     if answer not in ANSWERS[kind]:
         raise ValueError(f"{ref}: {kind} cannot be answered {answer!r}")
-    text = " ".join(str(raw.get("text") or "").split())[:PROBLEM_TEXT_MAX]
+    text = " ".join(str(raw.get("text") or "").split())
+    if len(text) > ANSWER_TEXT_MAX:
+        raise ValueError(f"{ref}: the note is {len(text)} characters; the limit is {ANSWER_TEXT_MAX}")
     if answer == PROBLEM and not text:
         raise ValueError(f"{ref}: a problem needs its description")
     return {

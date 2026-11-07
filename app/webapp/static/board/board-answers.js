@@ -265,7 +265,6 @@ function renderItem(item, index) {
   // review before Done).
   const other = otherRow({
     value: draft.other,
-    maxLength: 500,
     placeholder: options.length ? 'Other' : 'Your answer',
     ariaLabel: (options.length ? 'Other answer to: ' : 'Answer to: ') + (question || 'the question'),
     files: itemFiles(draft, 'question ' + (index + 1)),
@@ -310,6 +309,7 @@ function renderItem(item, index) {
   }
 
   block.appendChild(other.row);
+  block.appendChild(other.count);
   block.appendChild(other.files.extra);
   paint();
   return block;

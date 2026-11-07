@@ -324,3 +324,14 @@ def test_remote_console_failure_is_a_502_naming_the_error(monkeypatch):
     assert "NOT typed" in detail
     assert "AttachConsole(4321) failed" in detail
     assert "never echoed" not in detail
+
+
+def test_long_board_answer_reaches_submit_input_whole(monkeypatch):
+    session = _session(
+        InputOutcome(reason=INPUT_OK, ingested=True, submitted=True, submit_confirmed=True)
+    )
+    monkeypatch.setattr(server.manager, "get", lambda sid: session)
+    message = "Answers from the Board (1 of 1):\n1. Which way? -> Other: " + "word " * 1000
+    resp = TestClient(server.app).post("/sessions/sid/input", json={"data": message, "submit": True})
+    assert resp.status_code == 200
+    session.submit_input.assert_called_once_with(message, True)
