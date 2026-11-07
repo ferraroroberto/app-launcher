@@ -154,13 +154,15 @@ class Table:
     def __init__(self, monkeypatch, *procs):
         self.procs = list(procs)
         self.launched = []
+        self.launched_args = []
         self.starts_as = None  # a launch brings this process into the table
         monkeypatch.setattr(pr, "_live", lambda name: [p for p in self.procs if p.name().lower() == name.lower()])
         monkeypatch.setattr(pr, "_wait_for", lambda ready, seconds: ready())
         monkeypatch.setattr(pr, "_launch", self._launch)
 
-    def _launch(self, exe):
+    def _launch(self, exe, args=()):
         self.launched.append(exe)
+        self.launched_args.append(args)
         if self.starts_as is not None:
             self.procs.append(self.starts_as)
 
@@ -199,7 +201,7 @@ def test_wavelink_that_never_returns_is_not_confirmed_never_ok(monkeypatch):
 def test_wavelink_that_cannot_be_started_is_not_confirmed(monkeypatch):
     Table(monkeypatch, _wavelink())
 
-    def boom(exe):
+    def boom(exe, args=()):
         raise OSError("blocked")
 
     monkeypatch.setattr(pr, "_launch", boom)
@@ -228,13 +230,31 @@ def test_a_supervised_target_is_never_launched_by_the_restart(monkeypatch):
     assert got["relaunch"] is None and table.launched == []
 
 
-def test_launch_is_a_normal_start_with_no_arguments_handed_to_windows(monkeypatch):
+def test_wavelink_comes_back_in_the_background_with_runinbk(monkeypatch):
+    table = Table(monkeypatch, _wavelink())
+    table.starts_as = _wavelink(pid=11)
+    pr.restart("wavelink")
+    assert table.launched_args == [("-runinbk",)]
+
+
+def test_the_relaunch_flag_is_fixed_in_code_whatever_the_stopped_process_ran_with(monkeypatch):
+    table = Table(monkeypatch, _wavelink())
+    table.procs[0].cmdline = lambda: [WAVELINK, "--evil"]
+    pr.restart("wavelink")
+    assert table.launched_args == [("-runinbk",)]
+
+
+def test_a_supervised_target_has_no_relaunch_flag():
+    assert pr.get_target("streamdeck-hwinfo").relaunch_args == ()
+
+
+def test_launch_hands_the_path_and_its_arguments_to_windows_start(monkeypatch):
     calls = []
     monkeypatch.setattr(pr.subprocess, "Popen", lambda *a, **kw: calls.append((a, kw)))
-    pr._launch(WAVELINK)
+    pr._launch(WAVELINK, ("-runinbk",))
     (args, kw), = calls
     cmd = args[0]
-    assert cmd[0].lower().endswith("cmd.exe") and cmd[1:] == ["/c", "start", "", WAVELINK]
+    assert cmd[0].lower().endswith("cmd.exe") and cmd[1:] == ["/c", "start", "", WAVELINK, "-runinbk"]
     assert kw["cwd"] == r"C:\Program Files\Elgato\WaveLink"
     assert kw["creationflags"] == pr.NO_WINDOW
 
