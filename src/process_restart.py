@@ -10,9 +10,10 @@ name *and* the folder the executable runs from, and the id is resolved to pids
 here, server side. The client never sends a pid or a name.
 
 A target with ``relaunch`` has no supervisor (Wave Link), so the restart starts it
-again from the executable path read off the process it just stopped, and says
-whether it came back as its own state: ``supervisor``, ``launched`` or
-``not confirmed``, never folded into success.
+again from the executable path read off the process it just stopped, with the
+target's own ``relaunch_args`` (Wave Link: ``-runinbk``, so it comes back in the
+background with no window), and says whether it came back as its own state:
+``supervisor``, ``launched`` or ``not confirmed``, never folded into success.
 """
 
 from __future__ import annotations
@@ -60,6 +61,9 @@ class RestartTarget:
     folder: Tuple[str, ...]  # trailing folder names the executable must sit in
     also_stop: Tuple[str, ...] = ()  # parent image names stopped with it (same folder)
     relaunch: bool = False  # no supervisor: start it again after the stop
+    # Fixed in code, never from the client or the stopped process's own command line:
+    # a process started by hand lacks the flag, and reading it back would keep it lost.
+    relaunch_args: Tuple[str, ...] = ()
 
 
 TARGETS: Tuple[RestartTarget, ...] = (
@@ -77,6 +81,7 @@ TARGETS: Tuple[RestartTarget, ...] = (
         process="wavelink.exe",
         folder=("elgato", "wavelink"),
         relaunch=True,
+        relaunch_args=("-runinbk",),  # run in the background, no window (night restarts are unattended)
     ),
 )
 
@@ -193,14 +198,14 @@ def _wait_for(ready: Callable[[], bool], seconds: float) -> bool:
         time.sleep(_POLL_SECONDS)
 
 
-def _launch(exe: str) -> None:
-    """Start *exe* as a normal launch with no arguments, re-parented off the webapp.
+def _launch(exe: str, args: Tuple[str, ...] = ()) -> None:
+    """Start *exe* with *args*, re-parented off the webapp.
 
     ``cmd /c start`` hands the app to Windows and exits, so a later kill of the
     webapp's process tree (a tray restart) cannot take the app with it.
     """
-    subprocess.Popen(  # noqa: S603 — the path was read off the allowlisted process, not the client
-        [os.environ.get("COMSPEC", "cmd.exe"), "/c", "start", "", exe],
+    subprocess.Popen(  # noqa: S603 — path read off the allowlisted process, args fixed in code, none from the client
+        [os.environ.get("COMSPEC", "cmd.exe"), "/c", "start", "", exe, *args],
         cwd=str(PureWindowsPath(exe).parent), creationflags=NO_WINDOW, close_fds=True,
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
@@ -216,7 +221,7 @@ def _relaunch(target: RestartTarget, exe: str, old_pids: set) -> str:
     if _wait_for(back, _SUPERVISOR_GRACE_SECONDS):
         return "supervisor"
     try:
-        _launch(exe)
+        _launch(exe, target.relaunch_args)
     except OSError as exc:
         _log.warning("⚠️ restart %s: could not start %s: %s", target.id, exe, exc)
         return "not confirmed"
