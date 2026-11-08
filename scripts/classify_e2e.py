@@ -575,6 +575,9 @@ def classify(
 # `src/no_window.py`, which would not resolve in a consumer's tree. Deriving
 # the flag locally here is the documented vendor-verbatim exception, not drift.
 _NO_WINDOW = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+# A git call that outlives this is wedged (a stale lock, a hung credential helper); an empty answer
+# escalates the route to `full`, where a hung gate would report nothing.
+_GIT_TIMEOUT_S = 120
 
 
 def _run_git(args: list[str]) -> list[str]:
@@ -586,9 +589,9 @@ def _run_git(args: list[str]) -> list[str]:
         out = subprocess.run(
             ["git", *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
+            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=_GIT_TIMEOUT_S,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return []
     if out.returncode != 0:
         return []
@@ -626,9 +629,9 @@ def _git_text(args: list[str]) -> str | None:
         out = subprocess.run(
             ["git", *args],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
-            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW,
+            stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=_GIT_TIMEOUT_S,
         )
-    except OSError:
+    except (OSError, subprocess.TimeoutExpired):
         return None
     return out.stdout if out.returncode == 0 else None
 
