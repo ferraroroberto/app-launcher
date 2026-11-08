@@ -347,6 +347,7 @@ def check_tree(root: Path, cfg: Config, since: float) -> int:
                 recaptured.append(rel)
                 rewritten.append(rel)  # provisional: a failure below must still restore it
                 reference = Path(tmp) / name
+                # runtime-write-exempt: scratch copy in a temporary directory
                 reference.write_bytes(_git(root, "show", f":{rel}"))
                 if _digest(reference) == _digest(current):
                     rewritten.pop()
@@ -404,10 +405,12 @@ def run_capture(root: Path, cfg: Config, label: str) -> float:
 
 def _snapshot(root: Path, cfg: Config, since: float, into: Path) -> list[str]:
     """Copy every shot written at or after *since* into *into*; return their names."""
+    # runtime-write-exempt: snapshot directory the caller passes in
     into.mkdir(parents=True, exist_ok=True)
     names = []
     for png in sorted((root / cfg.shots_dir).glob("*.png")):
         if png.stat().st_mtime >= since:
+            # runtime-write-exempt: snapshot directory the caller passes in
             shutil.copy2(png, into / png.name)
             names.append(png.name)
     return names

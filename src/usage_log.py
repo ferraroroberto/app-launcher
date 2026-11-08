@@ -287,7 +287,9 @@ class UsageLog:
         self.max_rows = max_rows
 
     def _connect(self) -> sqlite3.Connection:
+        # runtime-write-exempt: db_path comes from runtime_db_path in the caller
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        # runtime-write-exempt: db_path comes from runtime_db_path in the caller
         conn = sqlite3.connect(self.db_path, timeout=1.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
@@ -369,6 +371,7 @@ def open_read_only(db_path: Path) -> sqlite3.Connection:
     """
     if not db_path.is_file():
         raise FileNotFoundError(str(db_path))
+    # runtime-write-exempt: read-only connection, writes nothing
     return sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
 
 

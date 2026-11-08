@@ -59,6 +59,7 @@ TYPES: dict[str, frozenset[str] | None] = {
     "css": frozenset({".css"}),
     "js": frozenset({".js", ".mjs"}),
     "tooling": _CODE | _SHELL | _CONFIG | {".md", ".html", ".txt"},
+    "patch": frozenset({".patch"}),
     "any": None,
 }
 #: A file with this name is allowed in every typed folder: a package's own readme.
@@ -114,13 +115,13 @@ SHAPES = {
         ("app/*.py", "app/cli/", "app/tray/", "app/webapp/*.py", "app/webapp/routers/", "app/webapp/static/", "src/"),
         ("app/webapp",),
         ("tray.bat", "webapp.bat", "launcher.py", "setup.bat", "webapp_tunnel_named.bat", "start.bat", "launch_app.bat",
-         "config.example.json"),
+         "*.example.*", "*.sample.*"),
         (("app", "code"), ("app/webapp", "web")),
     ),
     "streamlit": Shape(
         ("app", "src", "tests"), ("scripts", "data", "brand", "config"), DEFAULT_LAYERS,
         ("app/*.py", "app/views/", "app/styles/", "app/.streamlit/"), (),
-        ("launch_app.bat", "launch_app.sh", "launch_server.bat", "launch_server.sh", "config.json.example",
+        ("launch_app.bat", "launch_app.sh", "launch_server.bat", "launch_server.sh", "*.example.*", "*.json.example",
          "tray.bat.template"),
         (("app", "code"), ("app/styles", "css")),
     ),
@@ -132,7 +133,7 @@ SHAPES = {
         ("skills", "tests"), ("hooks", "scripts", "architecture"), homes=("skills/*/",),
         root_files=("install.ps1",), folder_types=(("skills", "tooling"), ("hooks", "tooling")),
     ),
-    "node": Shape(("src",), ("test", "scripts"), folder_types=(("test", "code"),)),
+    "node": Shape(("src",), ("test", "scripts", "patches"), folder_types=(("test", "code"), ("patches", "patch"))),
     "static-site": Shape(
         (), ("css", "js", "assets", "games", "content", "site", "scripts"),
         root_files=("*.html",), folder_types=(("css", "css"), ("js", "js")),

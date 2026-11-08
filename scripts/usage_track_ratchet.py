@@ -26,7 +26,8 @@ The rules (docs/usage-track-ratchet.md quotes the convention each one holds):
     the id pattern, or a name bound to a module-level `const` string literal;
   * `usage-log-wired` -- repo level and never baselined: `[vendored]` declares
     `usage-log` and `usage_log`, a file in scope calls `initUsageLog(`, and a
-    tracked Python file calls `usage_router(`.
+    tracked Python file calls `usage_router(` (the vendored `usage_log_starlette`
+    adapter counts when `[vendored]` declares it).
 
 A single hit keeps its exception with a `<rule>-exempt: <reason>` comment (`//`
 in JS, `<!-- -->` in HTML) on its own line or in the comment block right above
@@ -107,7 +108,7 @@ RULES = ("untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wired"
 FILE_RULES = ("untracked-control", "untracked-sheet", "dynamic-id")
 WIRED = "usage-log-wired"
 
-_CLIENT_KEY, _SERVER_KEY = "usage-log", "usage_log"
+_CLIENT_KEY, _SERVER_KEY, _ADAPTER_KEY = "usage-log", "usage_log", "usage_log_starlette"
 _ROUTER_CALL = re.compile(r"(?<!def )\busage_router\(")
 
 EXIT_PASS, EXIT_RISE, EXIT_CONFIG, EXIT_NOT_CONFIRMED = 0, 1, 2, 3
@@ -207,15 +208,22 @@ def vendored_dests(toml_text: str) -> tuple[str, ...]:
     return tuple(sorted(found))
 
 
-def load_config(root: Path) -> tuple[Config | None, tuple[str, ...], frozenset[str]]:
-    """(config or None when not enabled, `[vendored]` dests, `[vendored]` manifest keys)."""
+def adapter_dest(toml_text: str) -> str | None:
+    """Where `[vendored]` puts the Starlette adapter, which mounts `usage_router(` for the adopter; None if not declared."""
+    entry = _vendored(toml_text).get(_ADAPTER_KEY)
+    value = entry.get("dest") if isinstance(entry, dict) else None
+    return value.replace("\\", "/").strip("/") if isinstance(value, str) and value.strip("/") else None
+
+
+def load_config(root: Path) -> tuple[Config | None, tuple[str, ...], frozenset[str], str | None]:
+    """(config or None when not enabled, `[vendored]` dests, `[vendored]` manifest keys, adapter dest)."""
     path = root / ".fleet.toml"
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise ConfigError(f"cannot read {path}: {exc}") from exc
     try:
-        return parse_config(text), vendored_dests(text), frozenset(_vendored(text))
+        return parse_config(text), vendored_dests(text), frozenset(_vendored(text)), adapter_dest(text)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from exc
 
@@ -320,8 +328,11 @@ class Tree:
     router: bool
 
 
-def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> Tree:
+def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...], adapter: str | None = None) -> Tree:
     """Every in-scope HTML/JS file, plus the tracked Python files the wiring rule reads for `usage_router(`.
+
+    The vendored Starlette adapter (`adapter`, its `[vendored]` dest) is the one vendored
+    file read for that call: it mounts the router on behalf of an app that has no FastAPI.
 
     Only HTML, JS and Python source is read: a baseline, this stage's or any
     other ratchet's, is JSON and never counts as a hit or as evidence against one.
@@ -342,7 +353,7 @@ def scan_tree(root: Path, cfg: Config, vendored: tuple[str, ...]) -> Tree:
             if hits:
                 tree.found[path] = hits
         elif (WIRED in cfg.rules and path.endswith(".py") and not tree.router and not is_test_path(path)
-              and not any(_under(path, d) for d in vendored)):
+              and (path == adapter or not any(_under(path, d) for d in vendored))):
             text = _read_text(root, path)
             tree.router = text is not None and _ROUTER_CALL.search(text) is not None
     return tree
@@ -480,7 +491,7 @@ def _load_baseline(baseline_path: Path, cfg: Config, init: bool) -> Counts | int
 
 def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
     try:
-        cfg, vendored, vendored_keys = load_config(root)
+        cfg, vendored, vendored_keys, adapter = load_config(root)
     except ConfigError as exc:
         print(f"usage track ratchet: CONFIG ERROR: {exc}")
         return EXIT_CONFIG
@@ -496,7 +507,7 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
         return baseline
 
     try:
-        tree = scan_tree(root, cfg, vendored)
+        tree = scan_tree(root, cfg, vendored, adapter)
     except ConfigError as exc:
         print(f"usage track ratchet: CONFIG ERROR: {exc}")
         return EXIT_CONFIG
@@ -507,6 +518,7 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
     current = current_counts(tree.found)
 
     if init:
+        # runtime-write-exempt: the repo's own baseline file, named by the config, never a code folder
         baseline_path.write_text(render_baseline(current), encoding="utf-8", newline="\n")
         print(f"usage track ratchet: wrote {cfg.baseline} with {_total(current)} hit(s) in {len(current)} file(s)")
         return EXIT_PASS
@@ -517,6 +529,7 @@ def run(root: Path, *, init: bool, update: bool, allow_additions: bool) -> int:
         _report_added(added, tree.found, baseline)
         print("usage track ratchet: nothing written -- fix the code, or raise the baseline with --allow-additions")
         return EXIT_RISE
+    # runtime-write-exempt: the repo's own baseline file, named by the config, never a code folder
     baseline_path.write_text(render_baseline(current), encoding="utf-8", newline="\n")
     print(f"usage track ratchet: {cfg.baseline} now has {_total(current)} hit(s) in {len(current)} file(s) "
           f"({gone} dropped, {_total(added)} added)")

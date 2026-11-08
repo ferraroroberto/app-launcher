@@ -85,6 +85,7 @@ def runtime_data_dir(app: str, *, create: bool = False) -> Path:
     override = _env(app_dir_env_var(app))
     path = Path(override) if override else fleet_data_root() / app
     if create:
+        # runtime-write-exempt: the runtime data root, outside the tree by design
         path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -107,6 +108,7 @@ def runtime_db_path(
         if override:
             path = Path(override)
             if create:
+                # runtime-write-exempt: the runtime data root, outside the tree by design
                 path.parent.mkdir(parents=True, exist_ok=True)
             return path
     return runtime_data_dir(app, create=create) / filename

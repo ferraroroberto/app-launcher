@@ -55,7 +55,7 @@ import re
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
 from playwright.sync_api import Browser, Page
