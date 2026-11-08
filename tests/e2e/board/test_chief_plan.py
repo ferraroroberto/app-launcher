@@ -297,7 +297,7 @@ def test_questions_are_one_line_rows_all_shown_then_one_answer(
 ) -> None:
     """#1502 (decision 2 of #1500): each waiting question is one shared
     action-row, its text on one line with the ref as meta and a chevron, no
-    amber bar. Every question shows (no fold), then the one Answer button. A tap on a row opens the
+    amber bar. Every question shows (the group starts open), then the one Answer button. A tap on a row opens the
     answer sheet on that question."""
     waiting = [
         {"id": f"q-{i}", "ref": f"demo-repo#{i}",
@@ -562,3 +562,44 @@ def test_lanes_queue_and_parked_each_fold_on_their_own(
     lanes.locator("summary").click()
     expect(lanes.locator("li.board-plan-row")).to_be_visible()
     expect(parked.locator("summary")).to_have_text("Parked (1)")
+
+
+@pytest.mark.iphone
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_questions_fold_with_their_answer_button_in_the_shared_heading(
+    authed_page: Page, base_url: str, tmp_path, theme: str
+) -> None:
+    """The Questions group folds like Lanes and Queue, the Answer button folds
+    away with it, and its heading differs from theirs in colour only."""
+    waiting = [
+        {"id": "q-1", "ref": "demo-repo#1", "text": "First question?", "question": "First?"},
+        {"id": "q-2", "ref": "demo-repo#2", "text": "Second question?", "question": "Second?"},
+    ]
+    _mock_board(authed_page, _board_payload(with_chief=True))
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, waiting)})
+    _open_board(authed_page, base_url)
+    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+
+    body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    questions = body.locator("details.board-plan-group-waiting")
+    queue = body.locator("details.board-plan-fold").nth(1)
+    expect(questions).to_have_attribute("open", "")
+    expect(questions.locator("li.board-plan-waiting")).to_have_count(2)
+    expect(questions.locator(".board-plan-answer")).to_be_visible()
+
+    questions.locator("summary").click()
+    expect(questions).not_to_have_attribute("open", "")
+    expect(questions.locator("li.board-plan-waiting").first).to_be_hidden()
+    expect(questions.locator(".board-plan-answer")).to_be_hidden()
+    expect(queue).to_have_attribute("open", "")
+    questions.locator("summary").click()
+    expect(questions.locator(".board-plan-answer")).to_be_visible()
+
+    style_js = ("el => { const s = getComputedStyle(el);"
+                " return [s.fontSize, s.fontWeight, s.textTransform, s.letterSpacing, s.color]; }")
+    q_style = stable_eval(questions.locator("summary"), style_js)
+    f_style = stable_eval(queue.locator("summary"), style_js)
+    assert q_style[:4] == f_style[:4], f"Questions heading differs from Queue's: {q_style} vs {f_style}"
+    assert q_style[4] != f_style[4], "Questions keeps its attention colour"
+    box = stable_read(questions.locator("summary").bounding_box)
+    assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"

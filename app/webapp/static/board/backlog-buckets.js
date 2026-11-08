@@ -2,9 +2,9 @@
  *
  * The server stamps every open issue with exactly one `bucket` and its reason
  * chips (src/board/backlog_buckets.py); names and counting are
- * plan-buckets.js's, shared with the Chief's plan card. In progress, Waiting
- * on you, Queued, Blocked and Not planned draw open; Umbrellas, Records and
- * Dormant draw folded shut but are counted like the rest, and a sum line at
+ * plan-buckets.js's, shared with the Chief's plan card. Every bucket is a fold:
+ * In progress, Waiting on you, Queued, Blocked and Not planned start open;
+ * Umbrellas, Records and Dormant start shut but are counted like the rest, and a sum line at
  * the top adds every bucket up to the lane's total, so nothing is hidden.
  * `unknown` (a source that could place it could not be read) leads, and is
  * never shown as Not planned. A payload with no buckets (an older server, a
@@ -17,12 +17,12 @@ import { BUCKETS, bucketCounts } from './plan-buckets.js';
 
 // The buckets drawn open, top to bottom, with their chip tone.
 const OPEN = [
-  { key: 'unknown', cls: 'is-unknown', hideEmpty: true },
+  { key: 'unknown' },
   { key: 'in_progress', tone: 'accent' },
-  { key: 'waiting', tone: 'attention', cls: 'is-waiting' },
+  { key: 'waiting', tone: 'attention' },
   { key: 'queued', tone: 'neutral' },
-  { key: 'blocked', tone: 'neutral', cls: 'is-blocked' },
-  { key: 'not_planned', cls: 'is-not-planned' },
+  { key: 'blocked', tone: 'neutral' },
+  { key: 'not_planned' },
 ];
 
 const HEADINGS = {};
@@ -47,17 +47,20 @@ export function bucketChipEls(card) {
   return [chip(reasons.join(' · '), TONES[card.bucket] || 'neutral', 'board-bucket-chip')];
 }
 
-function bucketGroup(spec, rows, note) {
+// One open bucket as a fold on the plan card's heading, open until the reader
+// folds it; an empty bucket keeps its heading and count. `opts.track` is the
+// fold's usage-log id (a builder in .fleet.toml).
+function bucketGroup(opts, rows) {
   const li = document.createElement('li');
-  li.className = 'board-bucket ' + (spec.cls || '');
-  li.dataset.bucket = spec.key;
-  const h = document.createElement('h4');
-  h.className = 'board-plan-heading board-bucket-heading';
-  h.textContent = HEADINGS[spec.key] + ' (' + rows.length + ')' + (note ? ' · ' + note : '');
-  const list = document.createElement('ul');
-  list.className = 'card-list board-list';
-  rows.forEach(function (row) { list.appendChild(row); });
-  li.append(h, list);
+  li.className = 'board-bucket ' + (opts.cls || '');
+  li.dataset.bucket = opts.key;
+  li.appendChild(foldGroup({
+    key: 'backlog:' + opts.key,
+    track: opts.track,
+    heading: HEADINGS[opts.key] + ' (' + rows.length + ')' + (opts.note ? ' · ' + opts.note : ''),
+    rows: rows,
+    cls: 'board-bucket-fold',
+  }));
   return li;
 }
 
@@ -122,12 +125,18 @@ export function bucketNodes(cards, body, renderRow) {
   });
   const health = (body && body.backlog_buckets) || {};
   const nodes = [sumItem(cards, body)];
-  OPEN.forEach(function (spec) {
-    const rows = (byBucket[spec.key] || []).map(renderRow);
-    if (spec.hideEmpty && !rows.length) return;
-    nodes.push(bucketGroup(spec, rows, spec.key === 'unknown' ? health.unknown_reason : ''));
-  });
   const rowsOf = function (key) { return (byBucket[key] || []).map(renderRow); };
+  const unknownRows = rowsOf('unknown');
+  [
+    unknownRows.length ? bucketGroup({ key: 'unknown', track: 'board.backlog-unknown-fold',
+      cls: 'is-unknown', note: health.unknown_reason }, unknownRows) : null,
+    bucketGroup({ key: 'in_progress', track: 'board.backlog-progress-fold' }, rowsOf('in_progress')),
+    bucketGroup({ key: 'waiting', track: 'board.backlog-waiting-fold', cls: 'is-waiting' }, rowsOf('waiting')),
+    bucketGroup({ key: 'queued', track: 'board.backlog-queued-fold' }, rowsOf('queued')),
+    bucketGroup({ key: 'blocked', track: 'board.backlog-blocked-fold', cls: 'is-blocked' }, rowsOf('blocked')),
+    bucketGroup({ key: 'not_planned', track: 'board.backlog-not-planned-fold',
+      cls: 'is-not-planned' }, rowsOf('not_planned')),
+  ].forEach(function (node) { if (node) nodes.push(node); });
   [
     foldedBucket({ key: 'umbrella', track: 'board.backlog-umbrella-fold', rows: rowsOf('umbrella') }),
     foldedBucket({ key: 'record', track: 'board.backlog-record-fold', rows: rowsOf('record') }),

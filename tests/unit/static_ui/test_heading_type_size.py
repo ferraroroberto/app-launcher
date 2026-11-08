@@ -3,8 +3,8 @@
 The fleet design rule TYPE-07 reads every visible heading and fails it when its
 computed size is below the next prose sibling. Both sub-headings were drawn at
 the 12px caption size over 14px ``body-sm`` text. They are now body-sized
-(``--font-body``); the parked-section summary shares ``.board-plan-heading`` but
-is a control, not a heading, so it keeps the caption size.
+(``--font-body``); every fold summary (Backlog buckets, plan card, Your turn)
+shares ``.board-plan-heading`` and sets no size of its own, so all read alike.
 """
 
 from __future__ import annotations
@@ -34,5 +34,6 @@ def test_sub_heading_is_body_sized(selector: str) -> None:
     assert _declaration(selector, "font-size") == "var(--font-body)"
 
 
-def test_fold_summary_control_keeps_the_caption_size() -> None:
-    assert _declaration(".board-plan-fold-summary", "font-size") == "var(--font-caption)"
+def test_fold_summary_takes_the_shared_heading_size() -> None:
+    with pytest.raises(AssertionError, match="sets no font-size"):
+        _declaration(".board-plan-fold-summary", "font-size")
