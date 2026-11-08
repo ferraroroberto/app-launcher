@@ -141,7 +141,7 @@ function links(item) {
   return wrap;
 }
 
-// "unblocks life-os#5, home#2": the plan rows parked on this issue.
+// "unblocks <repo>#<n>, ...": the plan rows parked on this issue.
 function unblocksText(item) {
   const refs = item.unblocks || [];
   return refs.length ? 'unblocks ' + refs.join(', ') : '';
