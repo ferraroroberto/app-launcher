@@ -23,7 +23,7 @@ app-launcher/
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
-│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners
+│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners, the phone-speed block on each app row (apps-perf.js)
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the owner checks, the Done lane's earlier days and its Issue / PR / Proof actions
 │           ├── links/         # the session ⋮ menus' Links sheet: every artifact and URL a session mentioned, grouped
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail
@@ -79,6 +79,7 @@ app-launcher/
 │   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
 │   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),
 │   │                           #   the model catalog, Telegram channel profiles, VS Code workspaces
+│   ├── perf_ledger/            # Apps tab: the read-only reader of fleet-config's perf-review ledger (latest result, cold-ready trend, row mapping)
 │   ├── board/                  # Board backend: kanban assembly (__init__.py), session-state join (state.py),
 │   │                           #   live-session enumeration (sessions.py), the drawer's last exchange (exchange.py),
 │   │                           #   the transcript overlay (transcript.py, dispatch_ids.py, transcript_exchange.py)

@@ -94,6 +94,7 @@ from app.webapp.observability import (
 )
 from app.webapp.routers import (
     apps,
+    apps_perf,
     auth,
     board,
     claude_code,
@@ -566,6 +567,7 @@ def create_app() -> FastAPI:
     app.include_router(progress.router)
     app.include_router(documents.router)
     app.include_router(tokens.router)
+    app.include_router(apps_perf.router)
     app.include_router(apps.router)
     app.include_router(jobs.router)
     app.include_router(sessions.router)

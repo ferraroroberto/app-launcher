@@ -387,6 +387,12 @@ def sample_webapp_config() -> dict:
     )
 
 
+@pytest.fixture(autouse=True)
+def _isolate_hooks_state_dir(tmp_path, monkeypatch):
+    """The Apps tab reads the perf ledger under the hooks state dir: never let a test read this machine's real results."""
+    monkeypatch.setenv("CLAUDE_HOOKS_STATE_DIR", str(tmp_path / "hooks-state"))
+
+
 def _isolate_webapp_files(tmp_path: Path, monkeypatch) -> Dict[str, Path]:
     """Point every on-disk file the webapp reads at ``tmp_path``; the paths by role."""
     # The two on-disk configs the app reads on startup. Point both at temp

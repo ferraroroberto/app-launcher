@@ -118,6 +118,48 @@
 }
 .action-row-meta-text:empty { display: none; }
 
+/* An app's phone-speed result (apps/apps-perf.js), under the title: a status
+   (a chip only for an exception, plain success text for within budget), the
+   measured/budget figures and a cold-ready sparkline. It wraps onto further
+   lines on the phone, never a sideways scroll. */
+.app-perf {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.app-perf-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-sm); min-width: 0; }
+.app-perf-head > * { white-space: nowrap; }
+.app-perf-state.is-pass { color: var(--success-text); font-weight: 600; }
+.app-perf-nums { display: inline-flex; flex-wrap: wrap; gap: 0 12px; }
+.app-perf-num { white-space: nowrap; }
+.app-perf-num.is-over { color: var(--danger-text); font-weight: 600; }
+.app-perf-spark { width: 60px; height: 16px; flex: none; color: var(--accent-text); }
+.app-perf[data-state="over"] .app-perf-spark { color: var(--danger-text); }
+/* The reference pill: a link to something openable, on the chip geometry. */
+.app-perf-issues {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  flex: none;
+  min-height: var(--hit-min);
+  margin-right: var(--space-xs);
+  text-decoration: none;
+}
+.app-perf-issues-pill {
+  padding: 2px var(--space-sm);
+  border: 1px solid var(--accent-border-soft);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--font-caption);
+  font-weight: 600;
+  text-decoration: none;
+}
+
 /* actionRow's optional variants (action-rows.js), app-side so the
    vendored action-row.css stays verbatim. One-line: the meta runs after the
    title on the same line at rows.md, the title ellipsizing first; small is

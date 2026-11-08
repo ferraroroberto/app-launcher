@@ -253,6 +253,10 @@ What is stored, and nothing else: event kind (`session_start`, `view`, `tap`, `s
 
 Every page load and every `/api/` request slower than 800 ms on the real device writes one timing row, so a slow moment can be traced to the connection, the server or the page; `/api` responses carry `Server-Timing: app;dur=<ms>` to split server from network. Rows hold route templates and milliseconds only, in `perf.sqlite3` beside the usage log, pruned at 90 days. Read them with `launcher.py perf-summary [--days N] [--json]` or `GET /api/perf/summary?days=N`: [docs/perf-timings.md](docs/perf-timings.md).
 
+## Phone-speed results
+
+The Apps tab shows each app's latest `/perf-review` result against its budget, with a cold-ready sparkline and, when a budget is broken, a link to its open issues. An app the ledger has not measured says "Not measured", and an unreadable ledger says "Unknown": neither is drawn as a pass. Read-only, from the local ledger via `GET /api/apps/perf`: [docs/perf-ledger.md](docs/perf-ledger.md).
+
 ## Screen time to task-os
 
 The Screen time numbers go to task-os's Time tracker as **one duration-only entry per local day**, all devices merged (a minute on the phone and the PC at once counts once), with the device split in the entry's note (`Launcher screen time: PC 2 h 50 m, Phone 1 h 10 m`). Each day is keyed `usage:app-launcher:<YYYY-MM-DD>` through task-os's idempotent `PUT /api/time/entries/by-source/{source_id}`, so a resend replaces the day instead of duplicating it; a day that now rounds to 0 minutes is a `DELETE` of its key. Today goes as a running total under its own key, replaced on every send and finalised by the next run. `screen-time-export.json` keeps each day's last-sent minutes and device split (integers, no usage rows) per task-os target, so a day that has not changed is skipped with no request and every send can say what it changed. The code is `src/usage/export.py`; nothing new is recorded.

@@ -73,6 +73,7 @@ class Isolation:
     audit_dir: Path
     uploads_root: Path
     runtime_data_dir: Path
+    host_state_dir: Path
     shim_dir: Path
     run_started_at: float
 
@@ -192,6 +193,7 @@ def prepare_isolation(tmp_path_factory: pytest.TempPathFactory, auth_token: str)
         audit_dir=audit_dir,
         uploads_root=uploads_root,
         runtime_data_dir=runtime_data_dir,
+        host_state_dir=host_state_dir,
         shim_dir=shim_dir,
         run_started_at=time.time(),
     )
@@ -267,6 +269,9 @@ def boot_webapp(iso: Isolation, servers: Servers, sh_port: int) -> str:
                 GUARD_KEY_ENV: GUARD_FAKE_KEY,
                 AUDIT_DIR_ENV: str(iso.audit_dir),
                 **runtime_data_env(iso.runtime_data_dir),
+                # The Apps tab reads the perf ledger under the hooks state
+                # dir; a gate run must not show this machine's real results.
+                "CLAUDE_HOOKS_STATE_DIR": str(iso.host_state_dir),
                 GH_CMD_ENV: SYNTHETIC_GH_CMD,
                 # The Screen view's input is recorded, never sent: the
                 # gate runs on the owner's desktop (#1521).
