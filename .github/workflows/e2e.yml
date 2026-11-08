@@ -1,4 +1,4 @@
-# Clean-machine half of the pre-ship gate (issue #38, narrowed by #1041).
+# Clean-machine half of the pre-ship gate, narrowed to the non-e2e suite.
 #
 # This job runs `scripts/verify-before-ship.ps1` -- the same gate every lane
 # runs locally before opening a PR -- on a runner that has never seen this
@@ -7,7 +7,7 @@
 # half of the gate a local run structurally cannot do, and it catches the
 # things it is here for: a file a lane forgot to commit, a dependency that
 # only exists on the dev box, a test that passes only because of local state,
-# and drift in an unpinned dependency (which is what #1041 turned out to be --
+# and drift in an unpinned dependency (which is what a red here once turned out to be --
 # `fastapi>=0.110` resolved to 0.136 locally and 0.141 here, and only the
 # newer one broke the terminal-guard route walk).
 #
@@ -62,7 +62,7 @@ jobs:
       - name: Seed config files from committed samples
         # config.json / webapp_config.json / apps.json are gitignored -- only the
         # *.sample.json templates are checked in, and they carry no credential.
-        # Kept after #1041 narrowed this job: the non-e2e suite has not been
+        # Kept now that this job is narrowed: the non-e2e suite has not been
         # proven independent of these files, and establishing that is its own
         # change rather than a second variable in this one.
         run: |
