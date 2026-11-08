@@ -143,7 +143,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """#1332: the Dispatch repo picker narrows the Chief's plan as it does
-    the columns. Waiting on you, Lanes and Queue keep only the picked repo's
+    the columns. Questions, Lanes and Queue keep only the picked repo's
     rows (a repo from `repo`, or the repo half of a `repo#N` ref) plus rows
     with no repo, which are fleet-wide and never hidden; a note counts the
     questions the filter hides; a group the filter empties is gone. "Answer
@@ -174,7 +174,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     expect(waiting.nth(1)).to_contain_text("Pause every lane tonight?")
     expect(button).to_have_text("Answer 2 questions")
     expect(hidden_note).to_have_text("2 more questions in other projects")
-    expect(headings).to_have_text(["Waiting on you", "Lanes (1)", "Queue (1)"])
+    expect(headings).to_have_text(["Questions", "Lanes (1)", "Queue (1)"])
     expect(plan_body.locator(".board-plan-group").nth(1).locator("li")).to_have_count(1)
     expect(plan_body.locator(".board-plan-group").nth(2).locator("li")).to_have_count(1)
     expect(plan_body.locator(".board-plan-group").nth(2)).to_contain_text("answer sheet")
@@ -183,7 +183,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     pick("life-os")
     expect(waiting).to_have_count(2)
     expect(waiting.nth(0)).to_contain_text("Which days?")
-    expect(headings).to_have_text(["Waiting on you"])
+    expect(headings).to_have_text(["Questions"])
     expect(hidden_note).to_have_text("2 more questions in other projects")
 
     # The sheet asks only what shows, each numbered by its place in the plan.
@@ -212,7 +212,7 @@ def test_repo_filter_narrows_the_plan_and_its_questions(
     expect(waiting).to_have_count(4)
     expect(button).to_have_text("Answer 3 questions")
     expect(hidden_note).to_have_count(0)
-    expect(headings).to_have_text(["Waiting on you", "Lanes (2)", "Queue (2)"])
+    expect(headings).to_have_text(["Questions", "Lanes (2)", "Queue (2)"])
     expect(waiting.nth(2)).to_contain_text("answered, waiting for the chief")
     expect(waiting.nth(0)).not_to_contain_text("answered")
 

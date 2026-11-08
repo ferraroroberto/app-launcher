@@ -64,7 +64,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from src import agents, audit, board
+from src import agents, audit, board, fleet_scope
 from src.board import active_issue_claims, backlog_buckets, owner_checks, proof_reports
 from src.chief import answers as chief_answers
 from src.chief import dispatch_brief
@@ -122,6 +122,9 @@ def _github_section(snap: Dict[str, Any]) -> Dict[str, Any]:
         "available": fetched_at is not None,
         "fetched_at": fetched_at,
         "error": snap.get("error"),
+        # The open-issue search filled GitHub's 1000-result ceiling, so the
+        # Backlog may be missing issues: said on the Board, never hidden.
+        "truncated": bool(snap.get("truncated")),
     }
 
 
@@ -328,14 +331,11 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
     columns["done"] = await steps.run(
         "annotate_proof", proof_reports.annotate, columns["done"], cfg.projects_dir)
     _mark_active_backlog(columns, active_issues["rows"], claim_states)
-    plan_index, markers_missing = await steps.run(
-        "read_plan_index", _read_bucket_sources, Path(cfg.chief_plan_file), active_issues_file)
-    records = [dict(row) for row in github.get("records") or []]
-    buckets = backlog_buckets.classify(
-        columns["backlog"], records, plan_index,
-        markers_read=active_issues["available"] or markers_missing,
-    )
-    columns["backlog"] = columns["backlog"] + records
+    bucket_sources = await steps.run(
+        "read_plan_index", _read_bucket_sources,
+        Path(cfg.chief_plan_file), active_issues_file, cfg.fleet_config_dir)
+    buckets, owner_section = _place_backlog(
+        columns, github, bucket_sources, active_issues["available"])
 
     return {
         "generated_at": datetime.now(timezone.utc)
@@ -363,22 +363,64 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         # Age of the jobs runtime snapshot the job cards came from,
         # so a stale one can never pass for current.
         "jobs_snapshot": jobs_snapshot.latest_description(),
-        # Where each backlog issue stands: the sources the buckets could not
-        # read, so the client says "unknown" instead of "Not planned".
+        # Where each backlog issue stands: the per-bucket counts every card
+        # reads, and the sources the buckets could not read, so the client
+        # says "unknown" instead of "Not planned".
         "backlog_buckets": buckets,
         # Issues waiting on the owner (owner_check labels), from their own
         # cache: ``available: false`` until a list has landed, never "none".
-        "owner_checks": owner_checks.snapshot(),
+        # Each item carries its backlog ``bucket`` and whether it is ``counted``.
+        "owner_checks": owner_section,
     }
 
 
-def _read_bucket_sources(plan_file: Path, markers_file: Path) -> Tuple[Dict[str, Any], bool]:
-    """The plan index, and whether the marker file is simply absent.
+def _place_backlog(
+    columns: Dict[str, Any],
+    github: Dict[str, Any],
+    sources: Tuple[Dict[str, Any], bool, Optional[set]],
+    markers_available: bool,
+) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """Put every open issue in one bucket; return that section and the owner checks.
+
+    The records join the Backlog list here. Your turn's owner count reads the
+    same partition: an open owner check counts only while its issue sits in
+    Waiting on you. Before the first GitHub fetch there is no partition, so
+    the owner items keep the plain unmarked rule.
+    """
+    plan_index, markers_missing, dormant_repos = sources
+    records = [dict(row) for row in github.get("records") or []]
+    buckets = backlog_buckets.classify(
+        columns["backlog"], records, plan_index,
+        markers_read=markers_available or markers_missing,
+        dormant_repos=dormant_repos,
+    )
+    columns["backlog"] = columns["backlog"] + records
+    owner_section = owner_checks.snapshot()
+    if github.get("fetched_at") is not None:
+        buckets["your_turn"] = backlog_buckets.owner_counts(
+            columns["backlog"], owner_section["items"])
+        if owner_section["available"]:
+            owner_checks.set_uncounted(
+                item["ref"] for item in owner_section["items"]
+                if not item["counted"] and not item.get("mark"))
+    return buckets, owner_section
+
+
+def _read_bucket_sources(
+    plan_file: Path, markers_file: Path, fleet_config_dir: str,
+) -> Tuple[Dict[str, Any], bool, Optional[set]]:
+    """The plan index, whether the marker file is simply absent, and the dormant repos.
 
     An absent marker file means no issue is claimed, a known answer; a file
-    that is there but unreadable leaves every claim unknown.
+    that is there but unreadable leaves every claim unknown. The dormant
+    repos are ``None`` when the fleet scope could not be read.
     """
-    return chief_plan.read_plan_index(plan_file), not markers_file.exists()
+    scope = fleet_scope.list_repos(fleet_config_dir)
+    dormant = (
+        {str(r["name"]).lower() for r in scope["repos"] if r["status"] == fleet_scope.DORMANT}
+        if scope["available"] else None
+    )
+    return chief_plan.read_plan_index(plan_file), not markers_file.exists(), dormant
 
 
 @router.get("/api/board/chief-plan")

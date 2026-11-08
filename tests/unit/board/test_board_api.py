@@ -53,7 +53,8 @@ def test_api_board_shape_with_everything_absent(webapp_client):
     client, _app, _overrides = webapp_client
     body = client.get("/api/board").json()
     assert set(body["columns"]) == {"backlog", "claude_turn", "your_turn", "other", "done"}
-    assert body["github"] == {"available": False, "fetched_at": None, "error": None}
+    assert body["github"] == {
+        "available": False, "fetched_at": None, "error": None, "truncated": False}
     # A session list read and found empty is a real zero (#915).
     assert body["live_sessions"] == {"available": True, "error": None}
     assert body["sessions_state"]["available"] is False

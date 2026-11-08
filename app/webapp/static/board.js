@@ -74,7 +74,7 @@ import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
 import {
-  bucketChipEls, bucketNodes, countedCards, hasBuckets, notPlannedCount,
+  bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
 
 // `gh` marks where a column's cards come from: 'all' columns are
@@ -615,7 +615,7 @@ function renderBoardHead(body, ghLoaded, liveRead) {
   if (failing) exceptions.push({ text: failing + ' failing', short: failing + ' fail', tone: 'danger' });
   const live = sessions('your_turn') + sessions('claude_turn');
   const totals = [liveRead || live ? plural(live, 'session', 'sessions') : 'sessions unknown'];
-  if (ghLoaded) totals.push(plural(countedCards(columns.backlog || []).length, 'issue', 'issues'));
+  if (ghLoaded) totals.push(plural((columns.backlog || []).length, 'issue', 'issues'));
   renderFittedHeadStatus(els.boardHeadStatus, exceptions, totals.join(' · '));
 }
 
@@ -679,10 +679,10 @@ function revealDrawerSection(visible, expandedCard) {
 // One lane: its section's count and flags, its rows, its empty state.
 // `extra` is rows drawn outside the lane's list: Your turn's owner checks.
 function renderLane(col, cards, openItem, body, ghLoaded, liveRead, extra) {
-  // The Backlog grouped by bucket: folded rows (umbrellas, records) are
-  // listed but never counted.
+  // The Backlog grouped by bucket: every open issue sits in one bucket and
+  // counts, the folded ones (umbrellas, records, dormant) included.
   const grouped = col.key === 'backlog' && hasBuckets(cards);
-  const total = (grouped ? countedCards(cards).length : cards.length) + (extra || 0);
+  const total = cards.length + (extra || 0);
   // A live column can still hold external cards (hook state + fresh
   // transcript) with the session-host down; those make a real lower bound,
   // so only an empty one reads as unknown.

@@ -27,6 +27,7 @@ import { agoText, foldGroup } from './chief-plan.js';
 import { calendarDaysFromToday, newestDateFirst, shortDate } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
 import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
+import { bucketName } from './plan-buckets.js';
 import { attachedLines, emptyFiles } from './answer-files.js';
 import { optionList, otherRow, paintOptions } from './answer-item.js';
 
@@ -88,6 +89,9 @@ function markText(item) {
   if (item.mark === 'problem') return 'problem reported, waiting on a fix';
   if (item.mark === 'paused') return 'pause asked, waiting on the chief';
   if (item.mark === 'closing') return 'close asked, waiting on the chief';
+  // Open, unmarked, yet not counted: its issue sits outside Waiting on you.
+  if (item.counted === false && item.bucket === 'absent') return 'not in the Backlog yet, not counted';
+  if (item.counted === false) return bucketName(item.bucket).toLowerCase() + ', not counted';
   return '';
 }
 
@@ -225,7 +229,7 @@ function group(g, items, onAnswer) {
 
 // The list's freshness and gaps, said every time: its age, a failed
 // refresh, unreadable repos. Never a bare empty list.
-function stateLine(sec) {
+function stateLine(sec, body) {
   if (!sec.available && !sec.error && !sec.refreshing) {
     return 'Owner checks not loaded yet. Refresh reads them.';
   }
@@ -237,6 +241,8 @@ function stateLine(sec) {
   if (sec.error) parts.push('the last refresh failed');
   const unknown = (sec.unknown || []).length;
   if (unknown) parts.push(plural(unknown, 'repo', 'repos') + ' unreadable, so this list may be short');
+  const turn = (body && body.backlog_buckets && body.backlog_buckets.your_turn) || {};
+  if (turn.unlisted) parts.push(turn.unlisted + ' waiting on you not in this list yet');
   return parts.join(' · ');
 }
 
@@ -255,11 +261,12 @@ export function renderOwnerChecks(body, onAnswer) {
   const waitingCount = items.filter(waiting).length;
   const sig = JSON.stringify([sec && sec.available, sec && sec.fetched_at, sec && sec.error,
     sec && sec.refreshing, sec && sec.unknown, items, expandedRef,
+    body && body.backlog_buckets && body.backlog_buckets.your_turn,
     agoText(sec && sec.fetched_at), boardRepoFilter()]);
   if (host.dataset.sig === sig) return waitingCount;
   host.dataset.sig = sig;
   // The state line leads, where the Chief's plan card puts its age line.
-  const line = el('p', 'board-plan-line muted small board-owner-state', stateLine(sec));
+  const line = el('p', 'board-plan-line muted small board-owner-state', stateLine(sec, body));
   if (sec && sec.error) line.title = sec.error;
   const nodes = [line];
   GROUPS.forEach(function (g) {
