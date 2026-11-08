@@ -118,11 +118,23 @@ export function initNavTabs(opts = {}) {
   });
 
   setTab(initialTab());
-  expandStandaloneViewport();
+  expandStandaloneViewport(function () {
+    placePill(nav, pill, true);
+    recompositeGlass(nav);
+  });
   gateTopFade();
   // Rotation, a desktop↔phone width crossing or a text-size change moves the
   // tab cells: re-place the capsule without a slide.
   window.addEventListener('resize', function () { placePill(nav, pill, true); }, { passive: true });
+  // The cells also move with no window resize: an app reveals or hides a tab
+  // once its data arrives (the grid re-divides), or the bar's width settles
+  // after the standalone viewport expands. Watching the bar and every cell
+  // catches those; placePill's no-op guard absorbs the observer's first call.
+  if (typeof ResizeObserver === 'function') {
+    const observer = new ResizeObserver(function () { placePill(nav, pill, true); });
+    observer.observe(nav);
+    nav.querySelectorAll('.tab').forEach(function (cell) { observer.observe(cell); });
+  }
 
   return { setTab: setTab, getTab: function () { return current; }, setBadge: setBadge };
 }
@@ -132,12 +144,27 @@ export function initNavTabs(opts = {}) {
 // the moving edge, so the bar is revealed slowly. A 1px programmatic scroll
 // asks iOS for the full-height viewport at once; the page goes straight back
 // to the top. Once, at startup, and only when the page has not been scrolled.
-function expandStandaloneViewport() {
+// `settled` runs on the frame after the page is back at the top, the first
+// frame laid out at the full-height viewport.
+function expandStandaloneViewport(settled) {
   if (!window.matchMedia('(display-mode: standalone)').matches) return;
   if (window.scrollY !== 0) return;
   window.scrollTo(0, 1);
   requestAnimationFrame(function () {
     if (window.scrollY === 1) window.scrollTo(0, 0);
+    requestAnimationFrame(settled);
+  });
+}
+
+// iOS composites the bar's backdrop-filter layer during the cold-launch
+// viewport expansion and can keep that texture at its pre-expansion bounds,
+// leaving a frosted smear over the top of the page until something repaints.
+// Dropping the filter for one frame makes WebKit rebuild the layer at its
+// settled bounds; the glass is back on the next frame. Once, at startup.
+function recompositeGlass(nav) {
+  nav.classList.add('glass-rebuild');
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { nav.classList.remove('glass-rebuild'); });
   });
 }
 

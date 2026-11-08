@@ -298,6 +298,12 @@
     transform: translateZ(0);
     will-change: transform;
   }
+  /* One-frame filter drop that nav-tabs.js sets once the standalone viewport
+     has settled, so iOS rebuilds the glass layer at its final bounds. */
+  .tabs.glass-rebuild {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
   /* Hit area only, never painted: the rounded corners would otherwise let a
      row scrolled under the bar take taps in the outer tabs' corner slivers. */
   .tabs::before {
