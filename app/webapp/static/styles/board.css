@@ -387,16 +387,15 @@ details:not([open]) > .collapse-summary:has(.board-lane-exception:not([hidden]))
 .board-plan-row .action-row-meta .chip { margin-left: auto; }
 .board-plan-section-note { margin: 0 0 4px; }
 /* A fold: its heading is the <details> summary, with the
-   section's own chevron instead of the browser marker. The summary is a
-   control, not a heading element, so it keeps the caption size the shared
-   `.board-plan-heading` rule no longer gives it. */
+   section's own chevron instead of the browser marker. It takes the size,
+   weight and colour of `.board-plan-heading`, so every Board section heading
+   (the Backlog buckets, the plan card, Your turn's groups) reads the same. */
 .board-plan-fold-summary {
   display: flex;
   align-items: center;
   gap: 6px;
   min-height: var(--row-sm);
   margin: 0;
-  font-size: var(--font-caption);
   cursor: pointer;
   list-style: none;
 }

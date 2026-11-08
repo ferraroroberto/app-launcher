@@ -1,10 +1,9 @@
 /* The Backlog's buckets: a sum line that adds them up to the lane's count,
-   then each bucket a plain heading over its rows, the chief plan card's
-   heading, inset like the owner checks'. Waiting and Unknown take the
-   attention text; an empty bucket is its heading alone. */
-.board-bucket > .board-bucket-heading,
+   then each bucket a fold on the chief plan card's heading, inset like the
+   owner checks'. Waiting and Unknown take the attention text; an empty
+   bucket is its heading alone. */
 .board-bucket-fold > .board-plan-fold-summary,
 .board-bucket-sum > .board-bucket-sum-line { padding-inline: var(--board-card-inset, 14px); }
 .board-bucket-sum > .board-bucket-sum-line { margin: 4px 0 2px; }
-.board-bucket.is-waiting > .board-bucket-heading,
-.board-bucket.is-unknown > .board-bucket-heading { color: var(--attention-text); }
+.board-bucket.is-waiting .board-plan-fold-summary,
+.board-bucket.is-unknown .board-plan-fold-summary { color: var(--attention-text); }

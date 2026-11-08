@@ -311,6 +311,7 @@ rules    = ["untracked-control", "untracked-sheet", "dynamic-id", "usage-log-wir
 builders = [
   "app/webapp/static/apps.js:runningVerb",
   "app/webapp/static/board/answer-item.js:optionList",
+  "app/webapp/static/board/backlog-buckets.js:bucketGroup",
   "app/webapp/static/board/backlog-buckets.js:foldedBucket",
   "app/webapp/static/board/chief-plan.js:foldGroup",
   "app/webapp/static/board/chief-plan.js:planBucketGroup",

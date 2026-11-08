@@ -73,22 +73,6 @@ function planLine(cls, text) {
   return p;
 }
 
-// The "Questions" section: its heading carries the row count and the
-// rows follow. The folding groups are foldGroup's.
-function planGroup(heading, rows, cls) {
-  const wrap = document.createElement('div');
-  wrap.className = 'board-plan-group' + (cls ? ' ' + cls : '');
-  const h = document.createElement('h4');
-  h.className = 'board-plan-heading';
-  h.textContent = heading;
-  wrap.appendChild(h);
-  const list = document.createElement('ul');
-  list.className = 'card-list board-list';
-  rows.forEach(function (row) { list.appendChild(row); });
-  wrap.appendChild(list);
-  return wrap;
-}
-
 // A foldable group: the section as a <details> whose heading is the summary,
 // so a long list does not push the next group off a phone. `defaultOpen` (a
 // boolean or a function of nothing) applies until the reader toggles it, after
@@ -421,9 +405,14 @@ export function renderChiefPlan(body, liveRead) {
         return answered.indexOf(itemKey(waiting[i], i)) === -1;
       });
       const rows = shown.map(function (i) { return questionRow(plan, run, open, i, answered); });
-      const group = planGroup('Questions', rows, 'board-plan-group-waiting');
-      if (open.length) group.appendChild(answerButton(plan, run, open));
-      nodes.push(group);
+      nodes.push(foldGroup({
+        key: 'plan:questions',
+        track: 'board.plan-questions-fold',
+        heading: 'Questions',
+        rows: rows,
+        after: open.length ? [answerButton(plan, run, open)] : [],
+        cls: 'board-plan-group-waiting',
+      }));
     }
     // A pending decision is never invisible: say what the filter hides.
     if (hidden) {
