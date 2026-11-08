@@ -28,6 +28,7 @@ import tomllib
 from pathlib import Path
 from typing import Optional
 
+from src import runtime_files
 from src.registry import RegistryReadError, load_registry
 from src.scanner import KIND_TRAY
 from src.subprocess_flags import NO_WINDOW
@@ -70,11 +71,9 @@ def _log_breadcrumb(msg: str) -> None:
     """
     try:
         path = _log_path()
-        # runtime-write-exempt: an append-only breadcrumb log at a runtime path the caller resolves
-        path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(path.parent)
         stamp = datetime.datetime.now().isoformat(timespec="seconds")
-        # runtime-write-exempt: an append-only breadcrumb log at a runtime path the caller resolves
-        with path.open("a", encoding="utf-8") as fh:
+        with runtime_files.open_for_write(path, "a", encoding="utf-8") as fh:
             fh.write(f"[{stamp}] {msg}\n")
     except OSError:
         pass

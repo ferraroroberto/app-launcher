@@ -38,10 +38,8 @@ export function writeToken(t) { if (t) localStorage.setItem(TOKEN_KEY, t); }
 // ensureTerminalToken() when a fresh passkey ceremony may be needed), since
 // that plumbing lives in webauthn.js and this module never imports it.
 // `contentType`, when given, sets Content-Type (omit for multipart/FormData
-// bodies, where the browser must set its own boundary). Single source for
-// what used to be three differently-cased terminal-token header helpers
-// (X-Terminal-Token / x-terminal-token / terminalHeaders) — always
-// `X-Terminal-Token` now.
+// bodies, where the browser must set its own boundary). The single source of
+// the terminal-token header, always spelled `X-Terminal-Token`.
 export function authHeaders({ terminalToken, contentType } = {}) {
   const h = {};
   const bearer = readToken();

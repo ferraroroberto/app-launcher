@@ -16,6 +16,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+from src import runtime_files
+
 try:  # Windows-only interprocess file lock (this repo runs Windows-only).
     import msvcrt
 except ImportError:  # pragma: no cover - non-Windows fallback
@@ -45,8 +47,7 @@ def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:
     """
     tmp = target.with_suffix(target.suffix + ".tmp")
     try:
-        # runtime-write-exempt: a file beside the target path the caller names, written atomically
-        tmp.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
+        runtime_files.save_text(tmp, json.dumps(payload, indent=indent))
         os.replace(tmp, target)
     finally:
         try:
@@ -77,10 +78,8 @@ def file_lock(lock_path: Path, *, label: str) -> Iterator[None]:
     if msvcrt is None:  # pragma: no cover - non-Windows fallback
         yield
         return
-    # runtime-write-exempt: a file beside the target path the caller names, written atomically
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    # runtime-write-exempt: a file beside the target path the caller names, written atomically
-    handle = open(lock_path, "a+b")
+    runtime_files.make_dirs(lock_path.parent)
+    handle = runtime_files.open_for_write(lock_path, "a+b")
     locked = False
     try:
         for attempt in range(3):

@@ -129,6 +129,8 @@ ready_selector = "#homeHeadStatus"
 [comment_ratchet]
 enabled  = true
 baseline = ".comment-ratchet-baseline.json"
+# docstrings stays off: the rule counts ~965 findings in 166 files, left for a dedicated burn.
+history_phrases = true
 
 # ---------------------------------------------------------------------------
 # [static_ratchet] -- the scaffold's baseline-and-ratchet static analysis
@@ -189,6 +191,10 @@ exclude  = ["app/webapp/static/vendor/mermaid-*.min.js"]
 [instruction_ratchet]
 enabled  = true
 baseline = ".instruction-ratchet-baseline.json"
+ci_expectations     = true
+agents_pointer      = true
+claude_md_max_lines = 120
+repeated_text_words = 12
 
 # ---------------------------------------------------------------------------
 # [doc_refs_ratchet] -- the scaffold's baseline-and-ratchet check that
@@ -251,9 +257,9 @@ allow            = ["tests/_credential_hygiene.py:_RedactedRepr.toterminal"]
 # route enforces the vendored src/login_lockout.py; baseline zero), no-pwsh-stub (pwsh is a
 # 0-byte stub here; text files name the absolute powershell.exe; baseline zero), and
 # must_use (every outbound requests call goes through the pooled session in
-# src/clients/_loopback_http.py; sqlite3.connect through each store's
-# connection helper; os.replace through src/_json_io.py or the chief mailbox's
-# writer; baseline zero). Skipped: secret-compare, since
+# src/clients/_loopback_http.py; sqlite3.connect through
+# src/runtime_files.py; os.replace through src/_json_io.py or src/runtime_files.py;
+# baseline zero). Skipped: secret-compare, since
 # hmac.compare_digest is called from six modules and no single helper owns it.
 # Exit 3 (git unusable, a .py file that does not parse) fails the gate. Procedure
 # and limits: project-scaffolding docs/conventions-ratchet.md.
@@ -269,20 +275,21 @@ helper = ["src/clients/_loopback_http.py"]
 why    = "CLAUDE.md: outbound-connection discipline, one pooled session (src/clients/_loopback_http.py is this repo's pooled session)"
 paths  = ["app/", "src/"]
 
-# Each SQLite store owns one connection helper with its own pragmas: the run
-# index (WAL, foreign keys, row factory) and the perf-timings store (WAL,
-# synchronous=NORMAL, schema). The vendored src/usage_log.py is not scanned.
+# Each SQLite store sets its own pragmas on the connection that
+# src/runtime_files.py opens, because that helper refuses a path under a code
+# folder. The vendored src/usage_log.py is not scanned.
 [[conventions_ratchet.must_use]]
 call   = "sqlite3.connect"
-helper = ["src/jobs/index.py", "src/usage/perf_timings.py"]
-why    = "each store opens through its own connection helper (src/jobs/index.py, src/usage/perf_timings.py)"
+helper = ["src/runtime_files.py"]
+why    = "a database opens through src/runtime_files.py, which refuses a path under a code folder"
 
-# src/chief_session_end.py publish() is the chief mailbox's own atomic writer:
-# a new event staged under a hidden, unique temp name.
+# A swap that must follow a validation step (the channel profile edit, the chief
+# mailbox) calls src/runtime_files.py replace(); a plain atomic JSON write uses
+# src/_json_io.py.
 [[conventions_ratchet.must_use]]
 call   = "os.replace"
-helper = ["src/_json_io.py", "src/chief_session_end.py"]
-why    = "atomic writes go through src/_json_io.py (or the chief mailbox's publish() in src/chief_session_end.py)"
+helper = ["src/_json_io.py", "src/runtime_files.py"]
+why    = "atomic writes go through src/_json_io.py, or src/runtime_files.py replace() when a step sits between the write and the swap"
 
 # [runtime_write_ratchet] -- scripts/runtime_write_ratchet.py fails when a tracked
 # Python file gains a write target (open for writing, Path.write_*, mkdir, a log
@@ -590,6 +597,10 @@ label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"
 path = "src/audit.py"
+label = "session-host/launcher"
+[[e2e.rule]]
+tier = "full"
+path = "src/runtime_files.py"
 label = "session-host/launcher"
 [[e2e.rule]]
 tier = "full"

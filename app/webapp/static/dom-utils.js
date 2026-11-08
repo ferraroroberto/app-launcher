@@ -39,13 +39,13 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-// Brand marks. These used to be <img src="/static/icons/NAME.svg">,
-// which is a separate document: its glyph fill cannot reach page CSS vars,
-// so every mark gets a theme-aware grey chip *behind* it to keep the
-// baked mid-tone legible on both canvases. The marks are inline <symbol>s
-// in index.html's brand sprite now (same in-document <use> mechanism as the
-// Lucide sprite, same iOS Safari reason), so a monochrome mark simply
-// inherits currentColor and the chip is gone. That also means the marks
+// Brand marks. An <img src="/static/icons/NAME.svg"> would be a separate
+// document: its glyph fill cannot reach page CSS vars, so every mark would
+// need a theme-aware grey chip *behind* it to keep the baked mid-tone
+// legible on both canvases. The marks are inline <symbol>s in index.html's
+// brand sprite instead (same in-document <use> mechanism as the Lucide
+// sprite, same iOS Safari reason), so a monochrome mark simply inherits
+// currentColor and needs no chip. That also means the marks
 // share the button's own colour, disabled and :active treatment for free,
 // and the ?v= cache-busting iconUrl() existed for is moot —
 // the sprite ships in the version-stamped page itself.

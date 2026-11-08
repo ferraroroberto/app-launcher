@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from src import runtime_files
+
 logger = logging.getLogger(__name__)
 
 EVENT_VERSION = 2
@@ -138,15 +140,13 @@ def publish(inbox: Path, event: Dict[str, Any], now_ms: Optional[int] = None) ->
     ``datetime`` (e.g. :func:`publish_session_ends`) passes it explicitly so
     every event from one reaper pass shares a timestamp.
     """
-    # runtime-write-exempt: the chief inbox folder, a runtime path from the config
-    inbox.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(inbox)
     published_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
     tmp = inbox / f".event.{secrets.token_hex(8)}.tmp"
     final = inbox / f"{published_ms}-{event['id']}.json"
     try:
-        # runtime-write-exempt: the chief inbox folder, a runtime path from the config
-        tmp.write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, final)
+        runtime_files.save_text(tmp, json.dumps(event, ensure_ascii=False))
+        runtime_files.replace(tmp, final)
     except BaseException:
         try:
             tmp.unlink()

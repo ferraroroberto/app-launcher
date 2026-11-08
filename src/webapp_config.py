@@ -45,6 +45,7 @@ from src.launching.model_catalog import (
     load_hidden_models, migrate_renamed_models, with_visible_defaults,
 )
 from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
+from src import runtime_files
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
     ALWAYS_ON_CLAUDE_FLAGS, CREDENTIAL_KEYS, DEFAULT_CHANNEL_MODEL,
@@ -848,8 +849,7 @@ def load_webapp_config(
 def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     """Atomically write the config back to disk."""
     target = _resolve_config_path(path)
-    # runtime-write-exempt: webapp_config.json, a config path the caller or the default names
-    target.parent.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(target.parent)
 
     # Derived straight from the dataclass — the field list, in
     # declaration order, IS the on-disk schema. asdict() also deep-copies the

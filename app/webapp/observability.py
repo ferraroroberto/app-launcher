@@ -30,6 +30,8 @@ import time
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from src import runtime_files
+
 logger = logging.getLogger(__name__)
 slow_logger = logging.getLogger("launcher.slowreq")
 
@@ -79,9 +81,8 @@ def ensure_file_log_handler(
     ``loggers``, exactly once each. Idempotent per logger — safe to call
     from ``create_app()`` on every boot. Under the tray's ``pythonw`` there
     is no stderr, so a logger with no file handler of its own simply has no
-    evidence trail; this is the one place that attaches one (#1627, folding
-    together the three near-identical copies this used to be: auth.log,
-    slow-requests.log, channel-autostart.log)."""
+    evidence trail; this is the one place that attaches one for auth.log,
+    slow-requests.log and channel-autostart.log."""
     resolved = path.resolve()
     pending = [
         lg
@@ -95,10 +96,8 @@ def ensure_file_log_handler(
     if not pending:
         return
     try:
-        # runtime-write-exempt: the log file path is chosen by the caller, in the runtime log folder
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # runtime-write-exempt: the log file path is chosen by the caller, in the runtime log folder
-        fh = logging.FileHandler(path, encoding="utf-8")
+        runtime_files.make_dirs(path.parent)
+        fh = runtime_files.file_handler(path, mode="a", encoding="utf-8")
     except OSError as exc:
         logger.warning(f"⚠️  Could not open {path}: {exc}")
         return

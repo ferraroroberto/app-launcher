@@ -36,6 +36,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
+from src import runtime_files
+
 #: Mirrors perf-timing.js: an API row below this total is never sent.
 SLOW_API_MS = 800
 #: No leg is longer than two minutes; anything else is a broken clock.
@@ -198,10 +200,8 @@ class PerfTimings:
         self.max_rows = max_rows
 
     def _connect(self) -> sqlite3.Connection:
-        # runtime-write-exempt: the perf timings database, a runtime path the caller names
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        # runtime-write-exempt: the perf timings database, a runtime path the caller names
-        conn = sqlite3.connect(self.db_path, timeout=1.0)
+        runtime_files.make_dirs(self.db_path.parent)
+        conn = runtime_files.connect_sqlite(self.db_path, timeout=1.0)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(_SCHEMA)
@@ -256,8 +256,7 @@ def open_read_only(db_path: Path) -> sqlite3.Connection:
     absent, so "no data yet" stays distinct from "no slow requests"."""
     if not db_path.is_file():
         raise FileNotFoundError(str(db_path))
-    # runtime-write-exempt: a read-only connection (mode=ro); nothing is written
-    return sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True)
+    return runtime_files.connect_sqlite_read_only(db_path)
 
 
 def percentile(values: list[float], fraction: float) -> float:

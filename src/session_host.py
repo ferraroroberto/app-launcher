@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO, Tuple
 
+from src import runtime_files
 from src.agents import (
     DEFAULT_AGENT,
     command_for,
@@ -339,10 +340,10 @@ class PtySession(PendingInputProtocol):
         """Spawn the background thread that pumps PTY output to subscribers."""
         try:
             path = transcript_path(self.session_id)
-            # runtime-write-exempt: the per-session transcript file, a runtime path the caller resolves
-            path.parent.mkdir(parents=True, exist_ok=True)
-            # runtime-write-exempt: the per-session transcript file, a runtime path the caller resolves
-            self._transcript = path.open("a", encoding="utf-8", errors="replace")
+            runtime_files.make_dirs(path.parent)
+            self._transcript = runtime_files.open_for_write(
+                path, "a", encoding="utf-8", errors="replace"
+            )
             self._transcript.write(
                 f"\n=== session {self.session_id} :: {self.name} :: "
                 f"{time.strftime('%Y-%m-%d %H:%M:%S')} ===\n"

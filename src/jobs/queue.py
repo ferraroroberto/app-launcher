@@ -22,6 +22,7 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+from src import runtime_files
 from src._json_io import atomic_write_json, file_lock
 from src.jobs.argv import ArgvRejected
 from src.jobs.config import Job
@@ -91,8 +92,7 @@ def _read_queue_file() -> Dict[str, List[Dict[str, Any]]]:
 
 def _write_queue_file(state: Dict[str, List[Dict[str, Any]]]) -> None:
     """Persist the queue atomically. Drops groups whose list is empty."""
-    # runtime-write-exempt: the job queue file under the runtime jobs runs dir
-    JOBS_QUEUE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(JOBS_QUEUE_PATH.parent)
     pruned = {g: e for g, e in state.items() if e}
     atomic_write_json(JOBS_QUEUE_PATH, pruned)
 

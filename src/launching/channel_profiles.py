@@ -48,7 +48,6 @@ from __future__ import annotations
 import hmac
 import json
 import logging
-import os
 import re
 import secrets
 import shutil
@@ -58,6 +57,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from src import runtime_files
 from src.launching.model_catalog import CLAUDE_MODEL_SPECS, available_values
 from src.runtime_data import runtime_data_dir
 
@@ -344,17 +344,14 @@ def _replace_checked(
     after checking it loads with no problem the current file lacks."""
     temp = target.with_name(f".{target.name}.{secrets.token_hex(4)}.tmp")
     try:
-        # runtime-write-exempt: a file in the channel profile's own folder
-        temp.write_text(
+        runtime_files.save_text(
+            temp,
             json.dumps(data, indent=2, ensure_ascii=False) + ("\n" if trailing_newline else ""),
-            encoding="utf-8",
         )
         added = [p for p in load_channel_profiles(temp)[1] if p not in before_problems]
         if added:
             raise ProfileEditError("; ".join(added))
-        # must-use-exempt: the temp file is validated before the swap, a step
-        # atomic_write_json has no place for
-        os.replace(temp, target)
+        runtime_files.replace(temp, target)
     except OSError as exc:
         raise ProfileEditError(
             f"{target.name} could not be written ({type(exc).__name__})", 500
@@ -488,11 +485,9 @@ def write_channel_settings(
         env["FLEET_CONTEXT_FILTER_MODE"] = "off"
         allow = payload.setdefault("permissions", {}).setdefault("allow", [])
         allow.extend(router_allow_rules(life_os_dir))
-    # runtime-write-exempt: a file in the channel profile's own folder
-    target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    # runtime-write-exempt: a file in the channel profile's own folder
-    _start_record_path(profile.id).write_text(
-        json.dumps(_start_record(profile, model)) + "\n", encoding="utf-8"
+    runtime_files.save_text(target, json.dumps(payload, indent=2) + "\n")
+    runtime_files.save_text(
+        _start_record_path(profile.id), json.dumps(_start_record(profile, model)) + "\n"
     )
     flag_path = target.resolve().as_posix()
     if not _SETTINGS_PATH_RE.match(flag_path):

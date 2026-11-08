@@ -21,6 +21,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional
 
+from src import runtime_files
 from src._json_io import atomic_write_json, file_lock
 from src.jobs.config import exit_outcomes_for
 from src.jobs.outcome import run_outcome
@@ -51,18 +52,15 @@ def new_run_dir(job_id: str, run_id: Optional[str] = None) -> Path:
     other.
     """
     base = runs_dir(job_id)
-    # runtime-write-exempt: a run folder under the runtime jobs runs dir
-    base.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(base)
     rid = run_id or new_run_id()
     target = base / rid
     n = 2
     while target.exists():
         target = base / f"{rid}-{n}"
         n += 1
-    # runtime-write-exempt: a run folder under the runtime jobs runs dir
-    target.mkdir()
-    # runtime-write-exempt: a run folder under the runtime jobs runs dir
-    (target / "artifacts").mkdir()
+    runtime_files.make_dirs(target, parents=False, exist_ok=False)
+    runtime_files.make_dirs(target / "artifacts", parents=False, exist_ok=False)
     return target
 
 

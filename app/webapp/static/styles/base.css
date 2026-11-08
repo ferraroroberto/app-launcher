@@ -395,7 +395,7 @@ html, body {
    adds only the inter-card gutter. */
 .card { margin: 0 0 var(--gap); }
 /* The view's main action is the full-width primary, on its own line, with
-   the secondary ghost beneath it — it used to be the smallest
+   the secondary ghost beneath it, so it is never the smallest
    control on the card. */
 /* `.row.settings-actions`, not `.settings-actions`: `.row`'s own
    `align-items: center` is declared later in this file at equal

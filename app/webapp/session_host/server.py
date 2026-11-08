@@ -52,6 +52,7 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, UploadFile, WebS
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
+from src import runtime_files
 from src.agents import DEFAULT_AGENT, SESSION_HOST_AGENTS, is_fullscreen
 from src.build_info import build_identity
 from src.chief_session_end import publish_session_ends, resolve_paths
@@ -615,11 +616,9 @@ async def _save_image(project_dir: str, file: UploadFile) -> str:
         raise HTTPException(status_code=400, detail="empty upload")
     target_dir = _upload_dir(project_dir)
     try:
-        # runtime-write-exempt: the uploaded image lands in the project folder the request names
-        target_dir.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(target_dir)
         out = target_dir / _upload_name(file.filename or "")
-        # runtime-write-exempt: the uploaded image lands in the project folder the request names
-        out.write_bytes(data)
+        runtime_files.save_bytes(out, data)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not save image: {exc}")
     await asyncio.to_thread(_prune_uploads, project_dir)

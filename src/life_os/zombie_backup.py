@@ -31,6 +31,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.life_os.index import restore_index_entry, resync_search_index
 from src.life_os.links import is_link
@@ -83,8 +84,7 @@ class Stash:
         A retry after a half-finished backup finds the transcript already moved,
         so its own lookup reports no project; the first attempt's value stays.
         """
-        # runtime-write-exempt: the backup folder under the configured Life OS folder
-        self.folder.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(self.folder)
         path = self.manifest_path(capture)
         merged = dict(data)
         try:
@@ -255,10 +255,8 @@ def restore_one(cfg: WebappConfig, root: Path, day: str, skill: str, capture: st
 
     try:
         for source, landing in moves:
-            # runtime-write-exempt: the backup folder under the configured Life OS folder
-            landing.parent.mkdir(parents=True, exist_ok=True)
-            # runtime-write-exempt: the backup folder under the configured Life OS folder
-            shutil.move(str(source), str(landing))
+            runtime_files.make_dirs(landing.parent)
+            runtime_files.move(source, landing)
     except OSError as exc:
         logger.warning("⚠️ Life OS zombie restore: move failed for %s/%s: %s", skill, capture, exc)
         return RestoreOutcome(day, skill, capture, STATUS_FAILED, "a file could not be moved back")

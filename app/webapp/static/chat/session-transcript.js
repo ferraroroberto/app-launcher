@@ -256,9 +256,9 @@ export function toggleAutomatic() {
 // see: it backs off on repeated fetch failures, and it latches off entirely
 // when the session ends. This is the one control that restarts it, and it is
 // also the way back from the rare cosmetic drift a forward cursor can leave
-// (a harness that rewrites its history rather than appending to it). It is
-// no longer the *only* way to see new turns, which is what it used to be —
-// so it earns its slot as the escape hatch, not as the refresh button.
+// (a harness that rewrites its history rather than appending to it). New
+// turns also arrive without it, so it earns its slot as the escape hatch,
+// not as the refresh button.
 export function reloadNewest() {
   if (view) loadNewest();
 }

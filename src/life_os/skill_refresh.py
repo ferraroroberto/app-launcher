@@ -43,6 +43,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.git_utils import run_git
 from src.scanner import skills_dir_for
@@ -218,8 +219,7 @@ def record_refresh(plan: RefreshPlan, path: Optional[Path] = None) -> None:
         current[plan.key] = plan.fingerprint
         kept = dict(list(current.items())[-MAX_RECORDS:])
         try:
-            # runtime-write-exempt: the refresh record file, a runtime path the caller or the default names
-            target.parent.mkdir(parents=True, exist_ok=True)
+            runtime_files.make_dirs(target.parent)
             atomic_write_json(target, kept)
         except OSError as exc:
             logger.warning("⚠️ Life OS skill fingerprint not recorded: %s", exc.__class__.__name__)

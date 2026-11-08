@@ -23,6 +23,7 @@ import subprocess
 from pathlib import Path
 from typing import Tuple
 
+from src import runtime_files
 from src.env_path import effective_path
 from src.jobs.argv import ArgvRejected, reject_cmd_unsafe
 from src.subprocess_flags import NO_WINDOW
@@ -70,11 +71,7 @@ def ensure_workspace_file(projects_dir: Path, name: str) -> Tuple[Path, bool]:
     path = workspace_path_for(projects_dir, name)
     if path.exists():
         return path, False
-    # runtime-write-exempt: the workspace file under the configured projects folder
-    path.write_text(
-        json.dumps({"folders": [{"path": name}]}, indent="\t") + "\n",
-        encoding="utf-8",
-    )
+    runtime_files.save_text(path, json.dumps({"folders": [{"path": name}]}, indent="\t") + "\n")
     logger.info(f"📝 created VS Code workspace: {path}")
     return path, True
 

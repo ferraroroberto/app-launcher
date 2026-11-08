@@ -20,7 +20,7 @@
 #terminalOverlay[data-mode="chat"] #terminalComposeBar { display: none; }
 /* Why the Terminal segment is off (a detached session) — caption under the
    list, above the composer. Padded on the one 12px gutter on every side
-. It used to be `0 12px 8px`, and the only air above it was the
+. With `0 12px 8px` the only air above it would be the
    scroller's own 12px inner padding — which is *inside* the scroll box, so
    it only shows when the transcript is scrolled to its end. At any other
    scroll position a line is clipped flush with the scroller's bottom edge

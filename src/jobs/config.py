@@ -64,6 +64,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple
 
+from src import runtime_files
 from src._json_io import atomic_write_json, file_lock
 from src.jobs.config_chain import (
     _validate_chain_consistency,
@@ -195,8 +196,7 @@ def _warn_malformed_row_once(detail: str) -> None:
 def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     """Persist ``cfg`` to disk via an atomic ``.tmp`` swap."""
     target = Path(path) if path is not None else DEFAULT_JOBS_PATH
-    # runtime-write-exempt: the jobs registry file, a config path the caller or the default names
-    target.parent.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(target.parent)
     atomic_write_json(target, cfg.to_dict())
     return target
 

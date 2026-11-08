@@ -23,7 +23,7 @@ from typing import Any, Dict
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from src.usage import export as usage_export
-from src.usage.feature_counts import feature_counts
+from src.usage.feature_counts import empty_feature_counts, feature_counts
 from src.usage_log import MAX_TIME_DAYS, local_window, open_read_only
 from src.webapp_config import WebappConfig
 
@@ -56,15 +56,13 @@ def _read_feature_counts(days: int) -> Dict[str, Any]:
     exists = db_path.is_file()
     if not exists:
         # "No data yet" stays distinct from zero use, as in /api/usage/time.
-        # must-use-exempt: an empty in-memory stand-in, no file and no store to share
-        conn = sqlite3.connect(":memory:")
-        conn.executescript("CREATE TABLE events (ts TEXT, kind TEXT, control_id TEXT, device_class TEXT)")
+        report = empty_feature_counts(since, until)
     else:
         conn = open_read_only(db_path)
-    try:
-        report = feature_counts(conn, since, until)
-    finally:
-        conn.close()
+        try:
+            report = feature_counts(conn, since, until)
+        finally:
+            conn.close()
     return {**report, "days": days, "log_exists": exists}
 
 

@@ -13,6 +13,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from src import runtime_files
 from src.jobs.config import Job
 from src.jobs_kinds.base import Problem
 
@@ -84,8 +85,7 @@ class InlineShellKind:
             raise ValueError(f"inline-shell job has unsupported ext: {ext!r}")
 
         temp_script = run_dir / f"_inline{ext}"
-        # runtime-write-exempt: a temp script in a folder the caller passes in
-        temp_script.write_text(str(body), encoding="utf-8")
+        runtime_files.save_text(temp_script, str(body))
 
         # A synthetic Job pointed at the temp file so the sibling kind's
         # build_argv (which reads job.script_path) needs no changes at all.

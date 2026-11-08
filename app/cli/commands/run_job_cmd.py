@@ -46,7 +46,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from src import jobs_kinds
+from src import jobs_kinds, runtime_files
 from src.jobs import (
     MAX_RUNS_PER_JOB,
     admit_and_spawn,
@@ -188,8 +188,7 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     remaining, cooldown_seconds, anchor_id = cooldown_state
     skip_run_id = args.run_id or new_run_id()
     skip_dir = runs_dir(job.id) / skip_run_id
-    # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
-    skip_dir.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(skip_dir)
     stamped = datetime.now().isoformat(timespec="seconds")
     write_run_json(
         skip_dir,
@@ -228,8 +227,8 @@ def _finalize_mutex_queue(
     """Queue a **scheduled** fire that collides with a live sibling in the
     same ``mutex_group`` instead of running it concurrently (issue #696).
 
-    ``mutex_group`` used to be enforced only on the webapp admission path,
-    so a schtasks-fired run walked straight past it — which is exactly
+    The webapp admission path enforces ``mutex_group`` too, but a
+    schtasks-fired run never passes through it — and that is exactly
     where cross-job serialisation matters most (the weekly fleet chain).
     This is the executor-side half of that gate; the drain half already
     lived here (:func:`_drain_mutex_queue_for`). The queueing itself is
@@ -391,8 +390,7 @@ def _spawn_and_wait(
     # read run history or config itself.
     max_runtime_seconds, no_output_seconds = resolve_watchdog_limits(job)
     try:
-        # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
-        with output_log.open("wb") as fh:
+        with runtime_files.open_for_write(output_log, "wb") as fh:
             # A ``visible`` job streams the child's combined output to
             # BOTH output.log (remote run-history) and the launcher's
             # own console (the user watching on the PC). Non-visible
@@ -452,8 +450,7 @@ def _spawn_and_wait(
         exit_code = -1
         status = "failed"
         try:
-            # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
-            with output_log.open("ab") as fh:
+            with runtime_files.open_for_write(output_log, "ab") as fh:
                 fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
         except OSError:
             pass
@@ -717,8 +714,7 @@ class RunJobCommand(BaseCommand):
         # run.json / output.log.
         if args.run_id:
             run_dir = runs_dir(job.id) / args.run_id
-            # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
-            run_dir.mkdir(parents=True, exist_ok=True)
+            runtime_files.make_dirs(run_dir)
         else:
             run_dir = new_run_dir(job.id, new_run_id())
 
@@ -816,8 +812,7 @@ def _child_env(
     env[JOB_ID_ENV] = job_id
     env[JOB_RUN_ID_ENV] = run_dir.name
     artifact_dir = run_dir / "artifacts"
-    # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(artifact_dir)
     env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
     if dry_run:
         env["JOB_DRY_RUN"] = "1"

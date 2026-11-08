@@ -1,6 +1,6 @@
 """Save-time pre-flight for Jobs-tab authoring safety (issue #69 PR #1).
 
-Adding a job used to be a leap of faith: the first scheduled fire is when
+Adding a job is a leap of faith without it: the first scheduled fire is when
 you discover the path was wrong, the venv didn't walk up, or the args
 didn't quote cleanly. This module front-loads those checks so the job
 dialog can surface problems *before* the schedule starts ticking.

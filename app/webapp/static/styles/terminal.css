@@ -532,8 +532,8 @@ body.terminal-open {
    when it appeared: 8px + one body-sm line + 8px. The controls above it
    therefore sit clear of the phone's rounded corners, and a message coming
    or going changes only the strip's content, never its box, so nothing
-   above it moves (it used to be a `hidden` flex child that pushed the
-   composer up on every "Connecting…" and dropped it back on connect).
+   above it moves (a `hidden` flex child would push the composer up on
+   every "Connecting…" and drop it back on connect).
 
    env(safe-area-inset-bottom) enters here and nowhere else in the overlay,
    and it OVERLAPS the reserved row instead of stacking under it: the strip
