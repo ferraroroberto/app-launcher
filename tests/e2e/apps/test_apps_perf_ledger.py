@@ -1,11 +1,11 @@
-"""Apps tab: each app's phone-speed result and trend from the perf ledger.
+"""Apps tab: the Performance card, from the perf ledger.
 
 The registry and ``/api/apps/perf`` are route-mocked with a fixture ledger, so
-every state is drawn on demand. What this pins: a measured app shows its
-result against budget, an over-budget one links its issues, and everything
-that is not a measured pass (no record, an unmeasured run, an unreadable
-ledger, a failed read) says so and is never drawn as within budget. Nothing
-about it reaches the Board.
+every state is drawn on demand. What this pins: the card lists only measured
+apps, each with its result against budget; an over-budget one links its
+issues; every app without a result is listed under its reason; none of that
+is drawn as within budget when the ledger is unreadable or a read fails; and
+no app row carries a result of its own. Nothing about it reaches the Board.
 """
 
 from __future__ import annotations
@@ -32,6 +32,8 @@ _APPS = {
          "bat_path": "C:\\stub\\partial-app\\webapp.bat", "added_at": "2026-01-01T00:00:00", "autostart": False},
         {"id": "never-web", "name": "Never Run App", "kind": "webapp",
          "bat_path": "C:\\stub\\never-app\\webapp.bat", "added_at": "2026-01-01T00:00:00", "autostart": False},
+        {"id": "odd-web", "name": "Odd App", "kind": "webapp",
+         "bat_path": "C:\\stub\\odd-app\\webapp.bat", "added_at": "2026-01-01T00:00:00", "autostart": False},
         {"id": "good-tunnel", "name": "Good Tunnel", "kind": "tunnel",
          "bat_path": "C:\\stub\\good-app\\webapp_tunnel.bat", "tunnel_url": "https://t.example.com/",
          "health": "up", "added_at": "2026-01-01T00:00:00", "autostart": False},
@@ -57,7 +59,7 @@ def _perf_ok() -> dict:
     return {
         "ledger": "ok",
         "rows": {"good-tray": "good-app", "slow-web": "slow-app", "seeded-web": "seeded-app",
-                 "partial-web": "partial-app"},
+                 "partial-web": "partial-app", "odd-web": "odd-app"},
         "apps": {
             "good-app": _entry(
                 "pass", cold_ready_ms=_check(1800, 2500), warm_ready_ms=_check(600, 1500),
@@ -70,6 +72,7 @@ def _perf_ok() -> dict:
             ),
             "seeded-app": _entry("pass", seeded=True),
             "partial-app": _entry("unmeasured"),
+            "odd-app": _entry("unknown"),
         },
     }
 
@@ -83,91 +86,106 @@ def _open_apps(page: Page, base_url: str, perf, status: int = 200) -> None:
         status=status, content_type="application/json", body=json.dumps(perf)))
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabApps").click()
-    for card in (".apps-list-card", ".registered-trays-card"):
-        if page.locator(card).get_attribute("open") is None:
-            page.locator(f"{card} summary").click()
+    page.locator(".apps-perf-card summary").click()
 
 
-def _block(page: Page, app_id: str):
-    return page.locator(f'li.action-row[data-id="{app_id}"] .app-perf')
+def _row(page: Page, app_id: str):
+    return page.locator(f'#perfMeasured li.perf-row[data-id="{app_id}"]')
 
 
-def test_measured_apps_show_result_against_budget_and_never_green_otherwise(
+def _reason(page: Page, reason: str):
+    return page.locator(f'#perfUnmeasured .perf-reason[data-reason="{reason}"]')
+
+
+def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     authed_page: Page, base_url: str
 ) -> None:
     _open_apps(authed_page, base_url, _perf_ok())
+    card = authed_page.locator(".apps-perf-card")
+    expect(card.locator(".perf-intro")).to_contain_text("throttled phone-profile page load")
+    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("3 measured · 1 over budget", timeout=5_000)
 
-    good = _block(authed_page, "good-tray")
-    expect(good).to_have_attribute("data-state", "pass", timeout=5_000)
+    # Only measured apps are rows: a pass seeded from an issue log counts, the rest do not.
+    expect(authed_page.locator("#perfMeasured li.perf-row")).to_have_count(3)
+
+    good = _row(authed_page, "good-tray")
+    expect(good).to_have_attribute("data-state", "pass")
     expect(good).to_contain_text("Within budget")
     expect(good).to_contain_text("cold 1.8 s / 2.5 s")
     expect(good).to_contain_text("warm 600 ms / 1.5 s")
     expect(good).to_contain_text("transfer 410 KB / 800 KB")
-    expect(good.locator("svg.app-perf-spark")).to_have_attribute(
+    expect(good.locator("svg.perf-spark")).to_have_attribute(
         "aria-label", "Cold ready, last 3 runs: 2.1 s to 1.8 s")
-    expect(authed_page.locator('li[data-id="good-tray"] .app-perf-issues')).to_have_count(0)
+    expect(good.locator("a.perf-issues")).to_have_count(0)
 
-    slow = _block(authed_page, "slow-web")
+    slow = _row(authed_page, "slow-web")
     expect(slow).to_have_attribute("data-state", "over")
     expect(slow.locator(".chip")).to_have_text("Over budget")
     expect(slow).to_contain_text("cold ready")
-    expect(slow.locator(".app-perf-num.is-over")).to_have_text("cold 3.1 s / 2.5 s")
-    link = authed_page.locator('li[data-id="slow-web"] a.app-perf-issues')
-    expect(link).to_have_attribute("href", "https://github.com/example/slow-app/issues?q=is%3Aissue+is%3Aopen+label%3Aperf-review")
+    expect(slow.locator(".perf-num.is-over")).to_have_text("cold 3.1 s / 2.5 s")
+    link = slow.locator("a.perf-issues")
+    expect(link).to_have_attribute(
+        "href", "https://github.com/example/slow-app/issues?q=is%3Aissue+is%3Aopen+label%3Aperf-review")
     expect(link).to_have_attribute("target", "_blank")
 
     # A pass seeded from an issue log has no numbers and says so.
-    seeded = _block(authed_page, "seeded-web")
+    seeded = _row(authed_page, "seeded-web")
     expect(seeded).to_contain_text("Passed, no timings yet")
-    expect(seeded.locator(".app-perf-nums")).to_have_count(0)
+    expect(seeded.locator(".perf-nums")).to_have_count(0)
 
-    # An unmeasured run, and an app the ledger has never seen, are not a pass.
-    for app_id in ("partial-web", "never-web"):
-        block = _block(authed_page, app_id)
-        expect(block).to_have_attribute("data-state", "none")
-        expect(block.locator(".chip")).to_have_text("Not measured")
-        expect(block).not_to_contain_text("Within budget")
+    # Everything else is listed once, under why it has no result; none reads as a pass.
+    expect(_reason(authed_page, "never")).to_have_text("Never measuredNever Run App")
+    expect(_reason(authed_page, "blank-run")).to_have_text("Last run measured nothingPartial App")
+    expect(_reason(authed_page, "unrecognised")).to_have_text("Result not recognisedOdd App")
+    expect(_reason(authed_page, "tunnel")).to_have_text("A tunnel, not a web app of its ownGood Tunnel")
+    for name in ("Never Run App", "Partial App", "Odd App", "Good Tunnel"):
+        expect(authed_page.locator("#perfMeasured")).not_to_contain_text(name)
 
-    # A tunnel row is not the app's own web row.
-    expect(_block(authed_page, "good-tunnel")).to_have_count(0)
+    # No app row carries a result of its own.
+    expect(authed_page.locator("#appsList .action-row").first).to_be_visible()
+    expect(authed_page.locator("#appsList, #registeredTraysList").locator(
+        '[class*="perf"], a[href*="perf-review"]')).to_have_count(0)
 
 
 @pytest.mark.parametrize(
-    "perf,status",
+    "perf,status,message",
     [
-        ({"ledger": "unreadable", "apps": {}, "rows": {}}, 200),
-        ({"detail": "boom"}, 500),
+        ({"ledger": "unreadable", "apps": {}, "rows": {}}, 200, "The performance ledger cannot be read."),
+        ({"detail": "boom"}, 500, "Could not read the performance results."),
     ],
     ids=["unreadable-ledger", "failed-read"],
 )
 def test_an_unreadable_ledger_or_failed_read_is_unknown_never_green(
-    authed_page: Page, base_url: str, perf, status
+    authed_page: Page, base_url: str, perf, status, message
 ) -> None:
     _open_apps(authed_page, base_url, perf, status)
-    for app_id in ("good-tray", "slow-web", "never-web"):
-        block = _block(authed_page, app_id)
-        expect(block).to_have_attribute("data-state", "unknown", timeout=5_000)
-        expect(block.locator(".chip")).to_have_text("Unknown")
-        expect(block).not_to_contain_text("Within budget")
+    expect(authed_page.locator("#perfState")).to_contain_text(message, timeout=5_000)
+    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("Unknown")
+    expect(authed_page.locator("#perfMeasured li")).to_have_count(0)
+    expect(authed_page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
+    expect(authed_page.locator("#perfUnmeasured")).to_be_hidden()
 
 
-def test_a_missing_ledger_is_not_measured_never_green(authed_page: Page, base_url: str) -> None:
+def test_a_missing_ledger_lists_every_app_as_never_measured(authed_page: Page, base_url: str) -> None:
     _open_apps(authed_page, base_url, {"ledger": "missing", "apps": {}, "rows": {}})
-    block = _block(authed_page, "good-tray")
-    expect(block.locator(".chip")).to_have_text("Not measured", timeout=5_000)
-    expect(block).not_to_contain_text("Within budget")
+    expect(authed_page.locator("#perfNone")).to_be_visible(timeout=5_000)
+    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("None measured")
+    expect(authed_page.locator("#perfMeasured li")).to_have_count(0)
+    expect(_reason(authed_page, "never")).to_contain_text("Good App")
+    expect(authed_page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
 
 
 @pytest.mark.iphone
-def test_perf_block_fits_the_phone_width(authed_page: Page, base_url: str) -> None:
+def test_the_card_fits_the_phone_width(authed_page: Page, base_url: str) -> None:
     _open_apps(authed_page, base_url, _perf_ok())
-    row = authed_page.locator('li.action-row[data-id="slow-web"]')
-    expect(row.locator(".app-perf")).to_be_visible(timeout=5_000)
+    row = _row(authed_page, "slow-web")
+    expect(row).to_be_visible(timeout=5_000)
     fits = stable_eval(
-        row, "el => el.scrollWidth <= el.clientWidth + 1 && "
-             "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+        authed_page.locator(".apps-perf-card"),
+        "el => el.scrollWidth <= el.clientWidth + 1 && "
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth",
     )
     assert fits is True
     # The issues link keeps the 44px touch floor.
-    height = stable_eval(row.locator("a.app-perf-issues"), "el => el.getBoundingClientRect().height")
+    height = stable_eval(row.locator("a.perf-issues"), "el => el.getBoundingClientRect().height")
     assert height is not None and height >= 44

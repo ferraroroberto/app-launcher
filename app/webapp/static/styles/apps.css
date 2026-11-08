@@ -118,38 +118,57 @@
 }
 .action-row-meta-text:empty { display: none; }
 
-/* An app's phone-speed result (apps/apps-perf.js), under the title: a status
-   (a chip only for an exception, plain success text for within budget), the
-   measured/budget figures and a cold-ready sparkline. It wraps onto further
-   lines on the phone, never a sideways scroll. */
-.app-perf {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+/* The Performance card (apps/apps-perf.js): the latest phone-speed result of
+   every measured app, then the apps without one and why. Rows run full-bleed
+   on hairlines like the lists above it; everything wraps on the phone, never
+   a sideways scroll. */
+.card.action-list > .collapse-body > .perf-rows,
+.card.action-list > .collapse-body > .perf-unmeasured { margin-inline: 0; }
+.perf-intro,
+.perf-none {
+  margin-top: 0;
+  margin-bottom: 12px;
   font-size: var(--font-body-sm);
   line-height: 1.45;
   color: var(--muted);
 }
-.app-perf-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-sm); min-width: 0; }
-.app-perf-head > * { white-space: nowrap; }
-.app-perf-state.is-pass { color: var(--success-text); font-weight: 600; }
-.app-perf-nums { display: inline-flex; flex-wrap: wrap; gap: 0 12px; }
-.app-perf-num { white-space: nowrap; }
-.app-perf-num.is-over { color: var(--danger-text); font-weight: 600; }
-.app-perf-spark { width: 60px; height: 16px; flex: none; color: var(--accent-text); }
-.app-perf[data-state="over"] .app-perf-spark { color: var(--danger-text); }
+.perf-summary-meta.is-over { color: var(--danger-text); font-weight: 600; }
+.perf-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 14px;
+  border-top: 1px solid var(--line-muted);
+}
+.perf-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.perf-name { font-size: var(--font-body); font-weight: 600; overflow-wrap: anywhere; }
+.perf-status,
+.perf-nums {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--space-sm);
+  min-width: 0;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.perf-status > *,
+.perf-num { white-space: nowrap; }
+.perf-verdict { color: var(--success-text); font-weight: 600; }
+.perf-nums { gap: 0 12px; }
+.perf-num.is-over { color: var(--danger-text); font-weight: 600; }
+.perf-spark { width: 60px; height: 16px; flex: none; color: var(--accent-text); }
+.perf-row[data-state="over"] .perf-spark { color: var(--danger-text); }
 /* The reference pill: a link to something openable, on the chip geometry. */
-.app-perf-issues {
+.perf-issues {
   display: inline-flex;
   align-items: center;
-  align-self: center;
   flex: none;
   min-height: var(--hit-min);
-  margin-right: var(--space-xs);
   text-decoration: none;
 }
-.app-perf-issues-pill {
+.perf-issues-pill {
   padding: 2px var(--space-sm);
   border: 1px solid var(--accent-border-soft);
   border-radius: var(--radius-pill);
@@ -157,7 +176,19 @@
   color: var(--accent-text);
   font-size: var(--font-caption);
   font-weight: 600;
-  text-decoration: none;
+}
+/* Apps with no result: the reason, then who. */
+.perf-unmeasured { margin: 0; padding: 12px 14px 0; border-top: 1px solid var(--line-muted); }
+.perf-rows:empty + .perf-none + .perf-unmeasured { border-top: 0; padding-top: 0; }
+.perf-reason { margin: 0 0 12px; }
+.perf-reason:last-child { margin-bottom: 0; }
+.perf-reason-label { font-size: var(--font-body-sm); font-weight: 600; }
+.perf-reason-apps {
+  margin: 0;
+  font-size: var(--font-body-sm);
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 /* actionRow's optional variants (action-rows.js), app-side so the

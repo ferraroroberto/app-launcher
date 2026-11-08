@@ -142,4 +142,26 @@
         <p class="group-footer trays-footer">Trays switched on start with app-launcher.</p>
         </div>
       </details>
+
+      <!-- The Performance card: one place for every app's phone-speed result
+           (apps/apps-perf.js), in place of a line on each app's row. Collapsed:
+           its summary already says how many are measured and whether one is over
+           budget. -->
+      <details class="card card--collapsible action-list apps-perf-card">
+        <summary data-track="apps.fold-perf" class="collapse-summary">
+          <span class="collapse-main">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-gauge"></use></svg>
+            <h3 class="collapse-title">Performance</h3>
+            <span id="perfSummaryMeta" class="collapse-count perf-summary-meta" hidden></span>
+          </span>
+          <span class="collapse-chevron" aria-hidden="true">›</span>
+        </summary>
+        <div class="collapse-body">
+        <p class="perf-intro">Each result is the latest performance review of the app: a throttled phone-profile page load, cold and then warm, plus endpoint timing, against the app's budgets.</p>
+        <div id="perfState" class="empty-state" role="status" hidden></div>
+        <ul id="perfMeasured" class="card-list perf-rows" aria-label="Measured apps"></ul>
+        <p id="perfNone" class="perf-none" hidden>No app has a result yet.</p>
+        <dl id="perfUnmeasured" class="perf-unmeasured" aria-label="Apps not measured" hidden></dl>
+        </div>
+      </details>
     </section>

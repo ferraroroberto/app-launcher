@@ -34,7 +34,7 @@ import { confirmDialog } from './confirm-dialog.js';
 import { failedFetchState, setAsyncState } from './async-state.js';
 import { WIDE_LAYOUT_QUERY, isWideLayout } from './layout.js';
 import { icon } from './_vendored/icons/icons.js';
-import { fetchAppsPerf, perfBlock, perfIssuesLink } from './apps/apps-perf.js';
+import { fetchAppsPerf, renderPerfCard } from './apps/apps-perf.js';
 
 // The Apps and Trays rows' kebab menu, on the vendored row-menu.
 const appMenu = createRowMenu({ className: 'project-menu', placement: ACTION_ROW_MENU });
@@ -106,8 +106,13 @@ function renderBatLists() {
   const autostart = trayApps.filter(function (a) { return a.autostart; }).length;
   els.traysSummaryMeta.hidden = trayApps.length === 0;
   els.traysSummaryMeta.textContent = trayApps.length + ' · ' + autostart + ' autostart';
+  renderPerfCard(state.apps, retryPerf);
   renderIdleLine();
   renderHomeHead();
+}
+
+function retryPerf() {
+  fetchAppsPerf(renderBatLists, true).catch(function () {});
 }
 
 // Flip a Registered Trays entry's autostart flag via
@@ -177,13 +182,7 @@ function renderList(host, items, running) {
       onMain: function () { launchApp(a, undefined, true); },
       kebabClass: 'app-menu-anchor',
       kebabLabel: a.name + ' actions',
-      // An over-budget app's link to its perf-review issues, before the kebab.
-      trailing: tunnel ? null : perfIssuesLink(a.id, a.name),
     });
-    // The phone-speed result under the title. A tunnel row is not the app's
-    // own web row, so it carries none.
-    const perf = tunnel ? null : perfBlock(a.id);
-    if (perf) row.title.parentNode.appendChild(perf);
     if (tray) {
       row.li.insertBefore(switchEl(!!a.autostart, {
         label: 'Autostart ' + a.name + ' at boot',
@@ -616,7 +615,7 @@ export function wireApps() {
   els.tabApps.addEventListener('click', function () {
     fetchRunningApps().catch(function () {});
     fetchListeners().catch(function () {});
-    fetchAppsPerf(renderBatLists, true).catch(function () {});
+    retryPerf();
   });
   wireWideApps();
   // Nothing running points at Other ports, the row right under the empty
