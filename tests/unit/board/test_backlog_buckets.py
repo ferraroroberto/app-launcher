@@ -103,6 +103,11 @@ def test_unreadable_markers_are_unknown_but_a_lane_still_places():
     assert _place(_card(7), lane, markers_read=False)[:2] == (bb.IN_PROGRESS, ["lane"])
 
 
+def _owner_item(number, kind, state="OPEN", mark=None):
+    return {"ref": f"app-launcher#{number}", "repo": "app-launcher", "number": number,
+            "kind": kind, "state": state, "mark": mark}
+
+
 def _fixture_board():
     """One issue per bucket shape, a plan that names most of them, owner checks."""
     cards = [
@@ -127,13 +132,13 @@ def _fixture_board():
         _row(4, "building"),  # a repeat row: the first one places the issue
     ])
     owner_items = [
-        {"ref": "app-launcher#2", "repo": "app-launcher", "number": 2, "state": "OPEN", "mark": None},
-        {"ref": "app-launcher#3", "repo": "app-launcher", "number": 3, "state": "OPEN", "mark": None},
-        {"ref": "app-launcher#10", "repo": "app-launcher", "number": 10, "state": "OPEN", "mark": "later"},
-        {"ref": "app-launcher#50", "repo": "app-launcher", "number": 50, "state": "CLOSED", "mark": None},
-        {"ref": "app-launcher#51", "repo": "app-launcher", "number": 51, "state": "CLOSED", "mark": None},
+        _owner_item(2, "before-start"),
+        _owner_item(3, "validate-after"),
+        _owner_item(10, "before-start", mark="later"),
+        _owner_item(50, "validate-after", "CLOSED"),
+        _owner_item(51, "validate-after", "CLOSED"),
         # In progress yet still labelled: listed, not counted.
-        {"ref": "app-launcher#1", "repo": "app-launcher", "number": 1, "state": "OPEN", "mark": None},
+        _owner_item(1, "before-start"),
     ]
     return cards, records, plan, owner_items
 
@@ -164,12 +169,61 @@ def test_board_counts_reconcile_per_issue():
         assert sum(1 for b in planned.values() if b == bucket) == counts[bucket], bucket
     assert sum(1 for b in planned.values() if b == bb.WAITING) <= counts[bb.WAITING]
 
-    # Your turn is Waiting on you plus to-validate, less what the owner set aside.
-    turn = bb.owner_counts(every, owner_items)
-    assert turn == {"waiting": 3, "to_validate": 2, "set_aside": 1, "needs_you": 4, "unlisted": 0}
-    assert turn["needs_you"] == turn["waiting"] + turn["to_validate"] - turn["set_aside"] - turn["unlisted"]
+    # Your turn is its three groups, and Waiting on you is the open two plus what the owner set aside.
+    turn = bb.owner_counts(every, owner_items, plan)
+    assert turn == {"waiting": 3, "before_start": 1, "validate_to_close": 1, "try_shipped": 2,
+                    "set_aside": 1, "waiting_set_aside": 1, "needs_you": 4, "unlisted": 0}
+    assert turn["waiting"] == (turn["before_start"] + turn["validate_to_close"]
+                               + turn["waiting_set_aside"] + turn["unlisted"])
     assert turn["needs_you"] == sum(1 for it in owner_items if it["counted"])
     assert {it["ref"]: it["bucket"] for it in owner_items}["app-launcher#1"] == bb.IN_PROGRESS
+
+
+def test_your_turn_groups_are_disjoint_and_reconcile_with_waiting_on_you():
+    """Nine before-start and three open validate-after issues are Waiting on
+    you; nine closed validate-after issues are only to try, one of them a
+    reported problem. The groups split the owner checks once each, sum to the
+    badge, and Waiting on you is the two open groups."""
+    cards = [_card(n, ["needs-owner"]) for n in range(1, 10)]
+    cards += [_card(n, ["needs-validation"]) for n in range(10, 13)]
+    bb.classify(cards, [], _plan(), markers_read=True, dormant_repos=set())
+    items = [_owner_item(n, "before-start") for n in range(1, 10)]
+    items += [_owner_item(n, "validate-after") for n in range(10, 13)]
+    items += [_owner_item(n, "validate-after", "CLOSED") for n in range(20, 29)]
+    items[-1]["mark"] = "problem"
+
+    turn = bb.owner_counts(cards, items)
+
+    groups = {}
+    for item in items:
+        groups.setdefault(item["group"], []).append(item["ref"])
+    assert {g: len(refs) for g, refs in groups.items()} == {
+        "before_start": 9, "validate_to_close": 3, "try_shipped": 9}
+    assert len({ref for refs in groups.values() for ref in refs}) == len(items)
+    assert turn["before_start"] == 9 and turn["validate_to_close"] == 3
+    # The reported problem stays in its group but is not counted, in the rows or the badge.
+    assert turn["try_shipped"] == 8 and turn["set_aside"] == 1
+    assert turn["needs_you"] == turn["before_start"] + turn["validate_to_close"] + turn["try_shipped"]
+    assert turn["needs_you"] == sum(1 for it in items if it["counted"])
+    assert turn["waiting"] == turn["before_start"] + turn["validate_to_close"] == 12
+
+
+def test_a_validate_to_close_item_names_the_plan_rows_it_unblocks():
+    cards = [_card(2, ["needs-validation"]), _card(3, ["needs-validation"])]
+    bb.classify(cards, [], _plan(), markers_read=True, dormant_repos=set())
+    plan = _plan(queue=[
+        _row(5, "parked", kind="blocked-by", blocked_by="app-launcher#2"),
+        # A bare #2 on a life-os row is life-os#2, another repo's issue.
+        {**_row(6, "parked", kind="blocked-by", blocked_by="#2"), "repo": "life-os"},
+        {**_row(7, "parked", kind="blocked-by", blocked_by="x#9 app-launcher#2"), "repo": "life-os"},
+        _row(8, "queued", blocked_by="app-launcher#2"),  # not a blocked-by row
+    ])
+    items = [_owner_item(2, "validate-after"), _owner_item(3, "validate-after"),
+             _owner_item(40, "validate-after", "CLOSED")]
+
+    bb.owner_counts(cards, items, plan)
+
+    assert [it["unblocks"] for it in items] == [["app-launcher#5", "life-os#7"], [], []]
 
 
 def test_owner_counts_name_waiting_issues_the_owner_list_lacks():

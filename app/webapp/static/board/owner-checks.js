@@ -3,7 +3,11 @@
  * Two kinds, from fleet-config's owner_check labels (GET /api/board's
  * `owner_checks` section): shipped work to validate as a user
  * (`validate-after`) and a step owed before work can start (`before-start`).
- * They sit in Your turn under the live sessions, one fold per kind. A row's
+ * They sit in Your turn under the live sessions in three disjoint groups, one
+ * fold each and one issue in one group: Before you start (an open
+ * `before-start`), Validate to close (an open `validate-after`, naming the plan
+ * rows it unblocks) and Try what shipped (a closed issue, only a check). The
+ * first two are the Backlog's Waiting on you; the three are the badge. A row's
  * tap unfolds its own detail in place: why it needs you, what to try, and the
  * links to the issue and its proof. The detail's Answer, like its group's
  * own button, opens that group's owner-check answer sheet (board-answers.js), where this
@@ -26,7 +30,10 @@ import { boardRepoFilter, matchesRepoFilter } from './board-dispatch.js';
 import { agoText, foldGroup } from './chief-plan.js';
 import { calendarDaysFromToday, newestDateFirst, shortDate } from '../shared/format.js';
 import { plural, renderBoard } from '../board.js';
-import { ownerItemWaiting, ownerNeedsCount, ownerSection } from './owner-needs.js';
+import {
+  BEFORE_START_GROUP, TRY_SHIPPED, VALIDATE_TO_CLOSE, ownerGroup, ownerItemWaiting, ownerNeedsCount,
+  ownerSection,
+} from './owner-needs.js';
 import { bucketName } from './plan-buckets.js';
 import { attachedLines, emptyFiles } from './answer-files.js';
 import { optionList, otherRow, paintOptions } from './answer-item.js';
@@ -34,10 +41,12 @@ import { optionList, otherRow, paintOptions } from './answer-item.js';
 export const VALIDATE_AFTER = 'validate-after';
 export const BEFORE_START = 'before-start';
 
-// Before start blocks work from starting, so it leads.
+// Before start blocks work from starting, so it leads; Try what shipped is
+// only a check, so it trails.
 const GROUPS = [
-  { kind: BEFORE_START, heading: 'Before you start it', label: 'Before start' },
-  { kind: VALIDATE_AFTER, heading: 'To validate', label: 'Validate' },
+  { key: BEFORE_START_GROUP, heading: 'Before you start', label: 'Before start' },
+  { key: VALIDATE_TO_CLOSE, heading: 'Validate to close', label: 'Validate to close' },
+  { key: TRY_SHIPPED, heading: 'Try what shipped', label: 'Try shipped' },
 ];
 
 // The ref whose detail is open, across the 5 s poll's rebuilds.
@@ -59,21 +68,21 @@ function newestFirst(a, b) {
 
 // The items the repo filter shows, the waiting ones first, each half newest
 // first (each group of the card filters this list, so it inherits the order).
-// `kind`, when given, keeps one group's items: the sheet a group opens.
-export function shownOwnerItems(body, kind) {
+// `groupKey`, when given, keeps one group's items: the sheet a group opens.
+export function shownOwnerItems(body, groupKey) {
   const sec = section(body);
   if (!sec) return [];
   const filter = boardRepoFilter();
   const items = (sec.items || []).filter(function (it) {
-    return matchesRepoFilter(it, filter) && (!kind || it.kind === kind);
+    return matchesRepoFilter(it, filter) && (!groupKey || ownerGroup(it) === groupKey);
   });
   return items.filter(waiting).sort(newestFirst)
     .concat(items.filter(function (it) { return !waiting(it); }).sort(newestFirst));
 }
 
-export function kindLabel(kind) {
-  const g = GROUPS.find(function (x) { return x.kind === kind; });
-  return g ? g.label : kind;
+export function groupLabel(key) {
+  const g = GROUPS.find(function (x) { return x.key === key; });
+  return g ? g.label : key;
 }
 
 // "3 Nov · waiting 3 d" from the block's `since` date; '' when there is none.
@@ -132,9 +141,16 @@ function links(item) {
   return wrap;
 }
 
+// "unblocks <repo>#<n>, ...": the plan rows parked on this issue.
+function unblocksText(item) {
+  const refs = item.unblocks || [];
+  return refs.length ? 'unblocks ' + refs.join(', ') : '';
+}
+
 // Why it needs you and what to try; a label with no readable block says so.
 function details(item, cls) {
   const nodes = [];
+  if (item.unblocks && item.unblocks.length) nodes.push(labelled(cls, 'Unblocks', item.unblocks.join(', ')));
   if (!item.block) {
     nodes.push(el('p', cls, 'Details unknown: the issue carries the label but no readable owner-check note. Open the issue to see what it needs.'));
     return nodes;
@@ -172,7 +188,8 @@ function labelled(cls, label, text) {
 function itemRow(item, onAnswer) {
   const expanded = expandedRef === item.ref;
   const title = item.title || item.ref;
-  const meta = [item.ref, markText(item) || sinceText(item.since)].filter(Boolean).join(' · ');
+  const meta = [item.ref, unblocksText(item), markText(item) || sinceText(item.since)]
+    .filter(Boolean).join(' · ');
   const chips = item.block ? [] : [chip('details unknown', 'attention', 'board-owner-unknown')];
   const row = actionRow({
     className: 'board-item board-owner-row' + (waiting(item) ? '' : ' is-answered'),
@@ -196,35 +213,51 @@ function itemRow(item, onAnswer) {
   detail.appendChild(links(item));
   const answer = el('button', 'button-tint board-owner-answer', 'Answer');
   answer.type = 'button';
-  answer.addEventListener('click', function () { onAnswer(item.ref, item.kind); });
+  answer.addEventListener('click', function () { onAnswer(item.ref, ownerGroup(item)); });
   detail.appendChild(answer);
   row.li.appendChild(detail);
   return row.li;
 }
 
-// One kind's fold: its rows, then its own answer button (inside the fold, so
+// One group's fold: its rows, then its own answer button (inside the fold, so
 // a folded group carries nothing but its heading and count). Open by default.
+// The count is what the badge counts; a row that is shown but not counted (set
+// aside, or its issue in progress) is said, never folded into the number.
 function group(g, items, onAnswer) {
   const rows = items.map(function (it) { return itemRow(it, onAnswer); });
   const waitingItems = items.filter(waiting);
+  const aside = items.length - waitingItems.length;
+  const count = waitingItems.length + (aside ? ' · ' + aside + ' not counted' : '');
   const after = [];
   if (waitingItems.length) {
     const btn = el('button', 'button-tint board-plan-answer board-owner-answer-group');
     btn.type = 'button';
     btn.innerHTML = icon('messages-square') + ' ';
     btn.appendChild(document.createTextNode('Answer ' + g.label + ' (' + waitingItems.length + ')'));
-    if (g.kind === BEFORE_START) btn.dataset.track = 'board.owner-answer-before-start';
-    else btn.dataset.track = 'board.owner-answer-validate';
-    btn.addEventListener('click', function () { onAnswer(waitingItems[0].ref, g.kind); });
+    if (g.key === BEFORE_START_GROUP) btn.dataset.track = 'board.owner-answer-before-start';
+    else if (g.key === VALIDATE_TO_CLOSE) btn.dataset.track = 'board.owner-answer-validate';
+    else btn.dataset.track = 'board.owner-answer-try';
+    btn.addEventListener('click', function () { onAnswer(waitingItems[0].ref, g.key); });
     after.push(btn);
   }
-  const fold = { key: 'owner:' + g.kind, heading: g.heading + ' (' + items.length + ')', rows: rows,
+  const fold = { key: 'owner:' + g.key, heading: g.heading + ' (' + count + ')', rows: rows,
     after: after, cls: 'board-owner-group' };
-  const wrap = g.kind === BEFORE_START
-    ? foldGroup({ ...fold, track: 'board.owner-before-start-fold' })
-    : foldGroup({ ...fold, track: 'board.owner-validate-fold' });
-  wrap.dataset.kind = g.kind;
+  let wrap;
+  if (g.key === BEFORE_START_GROUP) wrap = foldGroup({ ...fold, track: 'board.owner-before-start-fold' });
+  else if (g.key === VALIDATE_TO_CLOSE) wrap = foldGroup({ ...fold, track: 'board.owner-validate-fold' });
+  else wrap = foldGroup({ ...fold, track: 'board.owner-try-fold' });
+  wrap.dataset.group = g.key;
   return wrap;
+}
+
+// How the Backlog's Waiting on you adds up to Your turn's groups, in words:
+// "12 waiting on you (9 before you start + 3 validate to close) · 9 to try".
+// What the owner set aside, and what the list lacks, are terms of the sum.
+function reconcileText(turn) {
+  const terms = [turn.before_start + ' before you start', turn.validate_to_close + ' validate to close'];
+  if (turn.waiting_set_aside) terms.push(turn.waiting_set_aside + ' set aside');
+  if (turn.unlisted) terms.push(turn.unlisted + ' not in this list yet');
+  return turn.waiting + ' waiting on you (' + terms.join(' + ') + ') · ' + turn.try_shipped + ' to try';
 }
 
 // The list's freshness and gaps, said every time: its age, a failed
@@ -242,7 +275,7 @@ function stateLine(sec, body) {
   const unknown = (sec.unknown || []).length;
   if (unknown) parts.push(plural(unknown, 'repo', 'repos') + ' unreadable, so this list may be short');
   const turn = (body && body.backlog_buckets && body.backlog_buckets.your_turn) || {};
-  if (turn.unlisted) parts.push(turn.unlisted + ' waiting on you not in this list yet');
+  if (Number.isInteger(turn.waiting)) parts.push(reconcileText(turn));
   return parts.join(' · ');
 }
 
@@ -270,7 +303,7 @@ export function renderOwnerChecks(body, onAnswer) {
   if (sec && sec.error) line.title = sec.error;
   const nodes = [line];
   GROUPS.forEach(function (g) {
-    const mine = items.filter(function (it) { return it.kind === g.kind; });
+    const mine = items.filter(function (it) { return ownerGroup(it) === g.key; });
     if (mine.length) nodes.push(group(g, mine, onAnswer));
   });
   host.replaceChildren.apply(host, nodes);
@@ -396,7 +429,7 @@ export function ownerSheetBlock(item, draft, onChange, mic, files) {
   const block = el('section', 'tr-ask chief-answer owner-answer');
   block.dataset.key = ownerSheetKey(item);
   const head = el('div', 'tr-ask-head chief-answer-head');
-  head.appendChild(el('span', 'tr-ask-header', kindLabel(item.kind)));
+  head.appendChild(el('span', 'tr-ask-header', groupLabel(ownerGroup(item))));
   head.appendChild(el('span', 'tr-ask-header chief-answer-repo', item.repo));
   const ref = el('a', 'chief-answer-ref', item.ref);
   ref.href = item.url;

@@ -32,12 +32,12 @@ _OWNER_ITEMS = [
      "block": True, "reason": "needs a real device", "try": "hold the pair button for 5 s",
      "proof": [], "since": "2026-10-30", "mark": None, "mark_at": None, "mark_until": None},
     {"ref": "demo#9", "repo": "demo", "number": 9, "title": "Read-aloud on the lock screen",
-     "url": "https://github.com/octo/demo/issues/9", "state": "CLOSED", "kind": "validate-after",
+     "url": "https://github.com/octo/demo/issues/9", "state": "OPEN", "kind": "validate-after",
      "block": True, "reason": "a live phone", "try": "lock the phone and tap play",
      "proof": ["https://github.com/octo/demo/pull/12", ARTIFACT], "since": "2026-10-31",
      "mark": None, "mark_at": None, "mark_until": None},
     {"ref": "demo#11", "repo": "demo", "number": 11, "title": "Swipe to archive",
-     "url": "https://github.com/octo/demo/issues/11", "state": "CLOSED", "kind": "validate-after",
+     "url": "https://github.com/octo/demo/issues/11", "state": "OPEN", "kind": "validate-after",
      "block": False, "reason": "", "try": "", "proof": [], "since": "",
      "mark": None, "mark_at": None, "mark_until": None},
 ]
@@ -93,8 +93,8 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("3")
     groups = lane.locator(".board-owner-group")
     expect(groups).to_have_count(2)
-    expect(groups.nth(0).locator(".board-plan-heading")).to_have_text("Before you start it (1)")
-    expect(groups.nth(1).locator(".board-plan-heading")).to_have_text("To validate (2)")
+    expect(groups.nth(0).locator(".board-plan-heading")).to_have_text("Before you start (1)")
+    expect(groups.nth(1).locator(".board-plan-heading")).to_have_text("Validate to close (2)")
     expect(lane.locator(".board-owner-state")).to_contain_text("1 repo unreadable")
     unknown = lane.locator('.board-owner-row[data-ref="demo#11"]')
     expect(unknown.locator(".board-owner-unknown")).to_have_text("details unknown")
@@ -114,7 +114,7 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     dialog = authed_page.locator("#chiefAnswersDialog")
     expect(dialog).to_be_visible()
     # A row's Answer opens its own group's sheet: Validate holds two of the three.
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate to close")
     blocks = dialog.locator(".owner-answer")
     expect(blocks).to_have_count(2)
     expect(blocks.nth(1)).to_contain_text("Details unknown")
@@ -132,7 +132,7 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     ]}], answers
     # The chief hears which group the answers came from.
     assert chief_posts == [{"data": (
-        "Owner checks answered on the Board: Validate\n"
+        "Owner checks answered on the Board: Validate to close\n"
         "[demo#9] Validated: Read-aloud on the lock screen\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts
@@ -195,10 +195,10 @@ def test_chief_and_owner_checks_open_separate_sheets(
     expect(dialog).to_be_hidden()
 
     # Each group's button opens only that group's checks.
-    before_btn = owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group')
-    validate_btn = owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group')
+    before_btn = owner.locator('.board-owner-group[data-group="before_start"] .board-owner-answer-group')
+    validate_btn = owner.locator('.board-owner-group[data-group="validate_to_close"] .board-owner-answer-group')
     expect(before_btn).to_have_text("Answer Before start (1)")
-    expect(validate_btn).to_have_text("Answer Validate (2)")
+    expect(validate_btn).to_have_text("Answer Validate to close (2)")
     before_btn.click()
     expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Before start")
     expect(dialog.locator(".chief-answer")).to_have_count(1)
@@ -206,7 +206,7 @@ def test_chief_and_owner_checks_open_separate_sheets(
     dialog.locator("#chiefAnswersClose").click()
     expect(dialog).to_be_hidden()
     validate_btn.click()
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate to close")
     expect(dialog.locator(".chief-answer")).to_have_count(2)
     expect(dialog.locator(".chief-answer:not(.owner-answer)")).to_have_count(0)
     expect(dialog.locator("#chiefAnswersAlso")).to_be_visible()
@@ -216,13 +216,13 @@ def test_chief_and_owner_checks_open_separate_sheets(
     row = owner.locator('.board-owner-row[data-ref="demo#11"]')
     row.locator(".action-row-main").click()
     row.locator(".board-owner-answer").click()
-    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate")
+    expect(dialog.locator("#chiefAnswersTitleText")).to_have_text("Owner checks: Validate to close")
     expect(dialog.locator('[data-key="owner:demo#11"]')).to_be_in_viewport()
     dialog.locator('[data-key="owner:demo#11"] .tr-ask-input').fill("the swipe does nothing")
     dialog.locator("#chiefAnswersDone").click()
     expect(dialog).to_be_hidden()
     assert chief_posts == [{"data": (
-        "Owner checks answered on the Board: Validate\n"
+        "Owner checks answered on the Board: Validate to close\n"
         "[demo#11] Problem found validating Swipe to archive: the swipe does nothing (please file a fix)"
     ), "submit": True}], chief_posts
 
@@ -240,8 +240,8 @@ def test_owner_check_groups_fold_and_keep_their_choice(
     _open_board(authed_page, base_url)
 
     owner = authed_page.locator("#boardColYours .board-owner")
-    before = owner.locator('.board-owner-group[data-kind="before-start"]')
-    validate = owner.locator('.board-owner-group[data-kind="validate-after"]')
+    before = owner.locator('.board-owner-group[data-group="before_start"]')
+    validate = owner.locator('.board-owner-group[data-group="validate_to_close"]')
     for group in (before, validate):
         expect(group).to_have_attribute("open", "")
         box = stable_read(group.locator("summary").bounding_box)
@@ -251,7 +251,7 @@ def test_owner_check_groups_fold_and_keep_their_choice(
     before.locator("summary").click()
     expect(before.locator("li.board-owner-row")).to_be_hidden()
     expect(before.locator(".board-owner-answer-group")).to_be_hidden()
-    expect(before.locator("summary")).to_have_text("Before you start it (1)")
+    expect(before.locator("summary")).to_have_text("Before you start (1)")
     # The other group is untouched, and a re-render keeps the fold.
     expect(validate.locator("li.board-owner-row").first).to_be_visible()
     validate.locator('.board-owner-row[data-ref="demo#9"] .action-row-main').click()
@@ -302,7 +302,7 @@ def _many_owner_items(n: int) -> list:
         kind = "before-start" if i % 3 == 0 else "validate-after"
         items.append({
             "ref": f"demo#{100 + i}", "repo": "demo", "number": 100 + i, "title": f"Synthetic check {i}",
-            "url": f"https://github.com/octo/demo/issues/{100 + i}", "state": "CLOSED", "kind": kind,
+            "url": f"https://github.com/octo/demo/issues/{100 + i}", "state": "OPEN", "kind": kind,
             "block": True, "reason": "a live phone", "try": "tap it", "proof": [], "since": "2026-10-30",
             "mark": None, "mark_at": None, "mark_until": None,
         })
@@ -328,10 +328,10 @@ def test_a_long_owner_check_group_lists_every_row_with_no_more_row(
     _route_voice(authed_page, False)
     _open_board(authed_page, base_url)
 
-    group = authed_page.locator('#boardColYours .board-owner-group[data-kind="validate-after"]')
+    group = authed_page.locator('#boardColYours .board-owner-group[data-group="validate_to_close"]')
     expect(group.locator("li.board-owner-row")).to_have_count(12)
     expect(group.locator("li")).to_have_count(12)
-    expect(group.locator("summary")).to_have_text("To validate (12)")
+    expect(group.locator("summary")).to_have_text("Validate to close (12)")
     expect(authed_page.locator(".board-owner-more")).to_have_count(0)
 
     last = group.locator("li.board-owner-row").nth(11)
@@ -468,7 +468,7 @@ def test_owner_checks_use_the_chief_answer_form_at_phone_width(
     dialog = authed_page.locator("#chiefAnswersDialog")
     done = dialog.locator("#chiefAnswersDone")
 
-    owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
+    owner.locator('.board-owner-group[data-group="before_start"] .board-owner-answer-group').click()
     step = dialog.locator('[data-key="owner:demo#7"]')
     labels = step.locator(".tr-ask-opt .tr-ask-label")
     expect(labels).to_have_text(["Done", "Pending", "Pause", "Close (won't do)"])
@@ -494,7 +494,7 @@ def test_owner_checks_use_the_chief_answer_form_at_phone_width(
 
     answers.clear()
     chief_posts.clear()
-    owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group').click()
+    owner.locator('.board-owner-group[data-group="validate_to_close"] .board-owner-answer-group').click()
     check = dialog.locator('[data-key="owner:demo#9"]')
     expect(check.locator(".tr-ask-opt .tr-ask-label")).to_have_text(["Validated", "Problem found"])
     expect(check.locator(".tr-ask-other .tr-ask-mic")).to_have_count(1)
@@ -509,7 +509,7 @@ def test_owner_checks_use_the_chief_answer_form_at_phone_width(
     assert answers == [[{"ref": "demo#9", "kind": "validate-after", "answer": "problem",
                          "text": "it stops after a minute"}]]
     assert chief_posts == [{"data": (
-        "Owner checks answered on the Board: Validate\n"
+        "Owner checks answered on the Board: Validate to close\n"
         "[demo#9] Problem found validating Read-aloud on the lock screen: it stops after a minute"
         " (please file a fix)"
     ), "submit": True}], chief_posts

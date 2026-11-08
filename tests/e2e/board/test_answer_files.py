@@ -126,7 +126,7 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     owner = authed_page.locator("#boardColYours .board-owner")
     dialog = authed_page.locator("#chiefAnswersDialog")
     # Each group is its own sheet and its own message to the chief.
-    owner.locator('.board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
+    owner.locator('.board-owner-group[data-group="before_start"] .board-owner-answer-group').click()
     before = dialog.locator('[data-key="owner:demo#7"]')
     # A before-start step has the Other field a chief question has, its paperclip beside it.
     expect(before.locator(".tr-ask-other .tr-ask-input")).to_have_count(1)
@@ -140,7 +140,7 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
     dialog.locator("#chiefAnswersDone").click()
     expect(dialog).to_be_hidden()
 
-    owner.locator('.board-owner-group[data-kind="validate-after"] .board-owner-answer-group').click()
+    owner.locator('.board-owner-group[data-group="validate_to_close"] .board-owner-answer-group').click()
     validate = dialog.locator('[data-key="owner:demo#9"]')
     validate.locator(".tr-ask-input").fill("blank tab")
     _attach(validate, "e2e-stub-b.png")
@@ -162,7 +162,7 @@ def test_owner_check_files_stay_off_github_and_reach_the_chief(
             "   Attached: " + _STORED.format(n=1)
         ), "submit": True},
         {"data": (
-            "Owner checks answered on the Board: Validate\n"
+            "Owner checks answered on the Board: Validate to close\n"
             "[demo#9] Problem found validating Read-aloud on the lock screen: blank tab (please file a fix)\n"
             "   Attached: " + _STORED.format(n=2)
         ), "submit": True},
@@ -179,7 +179,7 @@ def test_the_paperclip_waits_for_a_running_chief_and_says_so(
     with authed_page.expect_response(re.compile(r".*/api/status$")):
         _open_board(authed_page, base_url)
     authed_page.locator(
-        '#boardColYours .board-owner-group[data-kind="before-start"] .board-owner-answer-group').click()
+        '#boardColYours .board-owner-group[data-group="before_start"] .board-owner-answer-group').click()
     block = authed_page.locator('#chiefAnswersDialog [data-key="owner:demo#7"]')
     expect(block.locator(".tr-ask-attach")).to_be_disabled()
     expect(block.locator(".tr-ask-files-note")).to_have_text("Start the chief to attach files.")
