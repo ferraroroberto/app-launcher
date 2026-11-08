@@ -98,6 +98,75 @@ def test_a_queued_message_is_kept_while_a_dialog_sits_over_the_queue(scripted):
     assert [e["state"] for e in _pending(session)] == ["queued"]
 
 
+def _repaint_turn(pty, frames: int = 80) -> None:
+    """Spinner repaints that push the earlier output out of the footer
+    lookback, as a long turn does."""
+    for _ in range(frames):
+        pty.paint(_SPINNER_FRAME + "x" * 60)
+
+
+def test_a_message_the_agent_took_mid_turn_leaves_while_the_turn_runs(scripted, caplog):
+    """The agent takes a queued message at a tool boundary and never goes
+    idle. The spinner is still live and the queue footer is no longer painted:
+    that is the take, so the entry leaves within a read."""
+    session, pty, clock = scripted
+    _queue_short(session, pty)
+    clock.now += 4
+    _repaint_turn(pty)
+
+    with caplog.at_level("INFO", logger=pending_discard.logger.name):
+        assert _pending(session) == []
+    assert "retired mid-turn" in caplog.text
+
+
+def test_a_message_still_waiting_in_the_agents_queue_stays_listed(scripted):
+    """Same long turn, but the queue footer is painted again: still waiting."""
+    session, pty, clock = scripted
+    _queue_short(session, pty)
+    clock.now += 4
+    _repaint_turn(pty)
+    pty.paint(_QUEUED_FRAME)
+    pty.paint(_SPINNER_FRAME)
+
+    assert [e["state"] for e in _pending(session)] == ["queued"]
+
+
+def test_a_footer_missing_straight_after_confirmation_retires_nothing(scripted):
+    """Inside the grace the footer has not had its repaints yet."""
+    session, pty, clock = scripted
+    _queue_short(session, pty)
+    clock.now += 1
+    _repaint_turn(pty)
+
+    assert [e["state"] for e in _pending(session)] == ["queued"]
+
+
+def test_a_dialog_over_the_screen_is_not_a_take(scripted):
+    """A permission prompt covers the footer and stops the spinner: no
+    evidence either way, so the entry stays."""
+    session, pty, clock = scripted
+    _queue_short(session, pty)
+    clock.now += 4
+    _repaint_turn(pty)
+    pty.paint(_DIALOG_FRAME)
+
+    assert [e["state"] for e in _pending(session)] == ["queued"]
+
+
+def test_a_retired_message_cannot_be_discarded(scripted):
+    session, pty, clock = scripted
+    entry = _queue_short(session, pty)
+    clock.now += 4
+    _repaint_turn(pty)
+    assert _pending(session) == []
+    start = len(pty.writes)
+
+    status, body = session.discard_pending_input(entry["id"])
+
+    assert (status, body["reason"]) == (404, "not_pending")
+    assert _writes_after(pty, start) == []
+
+
 def test_a_mid_turn_send_nothing_shows_queued_is_dropped(scripted):
     """No queued marker within the confirm window: the agent took it at
     once, or absorbed it. Either way it is not waiting."""

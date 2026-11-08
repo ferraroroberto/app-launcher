@@ -30,6 +30,9 @@ const FIXED_NOTE = {
   discarding: 'Being cleared, it won’t be sent',
 };
 
+// The rows the open sheet was last built from (see sheetKey).
+let renderedKey = null;
+
 function timeOf(at) {
   const d = new Date(Number(at) * 1000);
   return Number.isNaN(d.getTime())
@@ -67,6 +70,7 @@ export function syncPendingChip() {
 function rowFor(entry) {
   const li = document.createElement('li');
   li.className = 'pending-row';
+  li.dataset.id = entry.id;
   const meta = document.createElement('div');
   meta.className = 'pending-meta';
   const unconfirmed = entry.state === 'queued' && entry.confirmed === false;
@@ -108,19 +112,47 @@ function togetherNote(list) {
     : '';
 }
 
-function renderSheet(list) {
+// What the sheet shows, as one string: a poll that returns the same rows
+// leaves the DOM alone, so a long message keeps its scroll offset and its
+// text selection.
+function sheetKey(list) {
+  return JSON.stringify(list.map(function (e) {
+    return [e.id, e.state, e.confirmed, e.removable, e.truncated, e.text, e.at];
+  }));
+}
+
+// A rebuilt row starts at the top, so the offsets of every element that
+// scrolls inside the sheet (the dialog, its card, each message's own capped
+// text box) are read before the swap and put back after it.
+function renderSheet(list, force) {
+  const key = sheetKey(list);
+  if (!force && key === renderedKey) return;
+  renderedKey = key;
+  const dialog = els.pendingInputDialog;
+  const frames = [dialog, dialog.querySelector('.detail-card')].filter(Boolean);
+  const frameTops = frames.map(function (el) { return el.scrollTop; });
+  const textTops = {};
+  els.pendingInputList.querySelectorAll('.pending-row').forEach(function (li) {
+    const box = li.querySelector('.pending-text');
+    if (box) textTops[li.dataset.id] = box.scrollTop;
+  });
   const items = list.map(rowFor);
   els.pendingInputList.replaceChildren(...items);
   els.pendingInputEmpty.hidden = list.length > 0;
   const note = togetherNote(list);
   els.pendingInputNote.textContent = note;
   els.pendingInputNote.hidden = !note;
+  frames.forEach(function (el, i) { el.scrollTop = frameTops[i]; });
+  items.forEach(function (li) {
+    const box = li.querySelector('.pending-text');
+    if (box && textTops[li.dataset.id]) box.scrollTop = textTops[li.dataset.id];
+  });
 }
 
 function openSheet() {
   const d = els.pendingInputDialog;
   if (!d || !view) return;
-  renderSheet(visiblePending());
+  renderSheet(visiblePending(), true);
   if (!d.open) d.showModal();
 }
 

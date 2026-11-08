@@ -12,7 +12,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.chat._support import _SID, _boot, _open_chat, _tick, _turn
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval
 
 pytestmark = pytest.mark.smoke
 
@@ -78,6 +78,50 @@ def test_the_chip_lists_pending_messages_and_discards_one(authed_page: Page, bas
 
     page.locator("#pendingInputDone").click()
     expect(sheet).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_the_sheet_keeps_its_scroll_across_polls(authed_page: Page, base_url: str) -> None:
+    """A long queued message scrolls inside its own box. A poll that brings
+    nothing new leaves the rows alone, and one that changes the list rebuilds
+    them without sending the box back to the top."""
+    page = authed_page
+    tr = _boot(page, base_url)
+    long_text = "\n".join("line %02d of a long steer" % i for i in range(40))
+    tr.pending_input = [dict(_QUEUED, id="q-long", text=long_text)]
+    _open_chat(page)
+    expect(page.locator("#chatQueuedChip")).to_have_text("1 queued", timeout=OVERLAY_OPEN_MS)
+
+    page.locator("#chatQueuedChip").click()
+    text = page.locator("#pendingInputDialog .pending-text")
+    expect(text).to_have_count(1)
+    max_top = stable_eval(text, "el => el.scrollHeight - el.clientHeight")
+    assert max_top > 100, "the message is too short to scroll, the test proves nothing"
+    text.evaluate("el => { el.scrollTop = 120; }")
+    held = stable_eval(text, "el => el.scrollTop")
+    assert held > 100
+    # Count the rebuilds the polls cause: none, while the list is the same.
+    page.evaluate("""() => {
+        window.__sheetRebuilds = 0;
+        new MutationObserver(function (m) { window.__sheetRebuilds += m.length; })
+            .observe(document.getElementById('pendingInputList'), { childList: true });
+    }""")
+
+    for _ in range(3):
+        _tick(page, tr)
+    assert page.evaluate("() => window.__sheetRebuilds") == 0
+    assert stable_eval(text, "el => el.scrollTop") == held
+
+    # A second message arrives: the list is rebuilt, the offset is kept.
+    tr.pending_input = [
+        dict(_QUEUED, id="q-long", text=long_text),
+        dict(_QUEUED, id="q-two", text="and the bus times"),
+    ]
+    _tick(page, tr)
+    expect(page.locator("#pendingInputDialog .pending-row")).to_have_count(2)
+    assert page.evaluate("() => window.__sheetRebuilds") > 0
+    first = page.locator("#pendingInputDialog .pending-text").first
+    assert stable_eval(first, "el => el.scrollTop") == held
 
 
 def test_sending_text_already_pending_asks_first(authed_page: Page, base_url: str) -> None:
