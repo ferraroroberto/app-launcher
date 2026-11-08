@@ -11,7 +11,10 @@ its terminal (:data:`DOORBELL_LINE`):
   background waiter armed): its turn is over and its composer is free, so a
   typed line starts a new turn. ``tool-pending`` (a permission prompt) and
   ``awaiting-decision`` (a picker) are not idle: a typed line would land in
-  the dialog, not the composer;
+  the dialog, not the composer. A ``working`` label whose terminal has been
+  silent for :data:`STALE_WORKING_SECONDS` is also idle: the label is known to
+  stick (fleet-config#662), and the measured output age is the evidence, never
+  the label alone;
 * its composer is **clean**: the session-host's ``composer_dirty`` (#1643) is
   ``False``. ``None`` (unknown, or a session-host too old to send it) never
   rings;
@@ -34,7 +37,8 @@ The line carries no count, issue number or worker text. Everything the chief
 acts on comes from ``chief_ops.py inbox`` (fleet-config#622).
 
 Breadcrumbs go to ``webapp/chief-doorbell.log``: every ring, and every skip
-reason when it changes (a 3 s tick logging each skip would be ~29k lines a day).
+reason when it changes, repeated every :data:`SKIP_REPEAT_SECONDS` while it
+holds (a 3 s tick logging each skip would be ~29k lines a day).
 """
 
 from __future__ import annotations
@@ -60,6 +64,15 @@ logger = logging.getLogger(__name__)
 TICK_SECONDS = 3.0
 DEBOUNCE_SECONDS = 3.0
 BACKOFF_SECONDS = 60.0
+
+#: A ``working`` chief whose terminal has been silent this long is a stuck
+#: label, not a busy chief: a real turn repaints its spinner many times a
+#: second, so ten quiet minutes is two orders past any honest pause.
+STALE_WORKING_SECONDS = 600.0
+
+#: An unchanged skip reason is logged again this often, so a long hold shows
+#: in ``chief-doorbell.log`` instead of vanishing after its first line.
+SKIP_REPEAT_SECONDS = 600.0
 
 #: A ``.claimed/`` claim older than this counts as pending again
 #: (``chief_ops.CLAIM_STALE_SECONDS``).
@@ -127,18 +140,35 @@ class Observation:
     chief_sid: Optional[str] = None
     status: Optional[str] = None
     dirty: Optional[bool] = None
+    #: Seconds since the chief's terminal last produced output; ``None`` when
+    #: the session-host sent no usable stamp.
+    output_age: Optional[float] = None
     #: Set when a fact could not be established (host unreadable, no chief).
     blocked: Optional[str] = None
 
     @property
     def idle(self) -> Optional[bool]:
-        return None if self.status is None else self.status in IDLE_STATUSES
+        if self.status is None:
+            return None
+        if self.status == "working" and self.output_age is not None:
+            return self.output_age >= STALE_WORKING_SECONDS
+        return self.status in IDLE_STATUSES
 
     def summary(self) -> str:
+        age = "-" if self.output_age is None else f"{self.output_age:.0f}s"
         return (
             f"idle={self.idle} status={self.status} dirty={self.dirty} "
-            f"pending={self.pending} chief={(self.chief_sid or '-')[:8]}"
+            f"output_age={age} pending={self.pending} chief={(self.chief_sid or '-')[:8]}"
         )
+
+
+def _output_age(stamp: Any, now_epoch: float) -> Optional[float]:
+    """Seconds since the host's ``last_output_at`` epoch stamp, or ``None``
+    when it is absent or not a positive number (an older host, ``0`` for
+    "never recorded"). A stamp ahead of the clock reads as age ``0``."""
+    if isinstance(stamp, bool) or not isinstance(stamp, (int, float)) or stamp <= 0:
+        return None
+    return max(0.0, now_epoch - float(stamp))
 
 
 async def observe(cfg: Any) -> Observation:
@@ -175,7 +205,13 @@ async def observe(cfg: Any) -> Observation:
         if str(card.get("session_id") or "") == sid:
             status = str(card.get("status") or "") or None
             break
-    return Observation(pending=pending, chief_sid=sid, status=status, dirty=dirty)
+    return Observation(
+        pending=pending,
+        chief_sid=sid,
+        status=status,
+        dirty=dirty,
+        output_age=_output_age(chief.get("last_output_at"), time.time()),
+    )
 
 
 class Doorbell:
@@ -222,15 +258,18 @@ class Doorbell:
 
 
 class _SkipLog:
-    """Log a skip reason only when it changes."""
+    """Log a skip reason when it changes, and again every
+    :data:`SKIP_REPEAT_SECONDS` while it holds."""
 
     def __init__(self) -> None:
         self._last: Optional[str] = None
+        self._logged_at: float = 0.0
 
-    def note(self, reason: str, obs: Optional[Observation]) -> None:
-        if reason == self._last:
+    def note(self, reason: str, obs: Optional[Observation], now: float) -> None:
+        if reason == self._last and now - self._logged_at < SKIP_REPEAT_SECONDS:
             return
         self._last = reason
+        self._logged_at = now
         detail = f" ({obs.summary()})" if obs is not None else ""
         logger.info("🔕 chief doorbell skip: %s%s", reason, detail)
 
@@ -249,18 +288,19 @@ async def tick_once(
     record_fn: Callable[..., bool] = record_injected,
 ) -> str:
     """One tick. Returns the decision (``"ring"``, a skip reason, or ``"off"``)."""
+    tick_now = now()
     if cfg is None or not doorbell_on(cfg):
-        skips.note("off", None)
+        skips.note("off", None, tick_now)
         return "off"
     try:
         obs = await observe_fn(cfg)
     except Exception as exc:  # noqa: BLE001 — a failed read is a skip, never a crash
         reason = f"observe failed: {exc}"
-        skips.note(reason, None)
+        skips.note(reason, None, tick_now)
         return reason
-    decision = bell.decide(obs, now())
+    decision = bell.decide(obs, tick_now)
     if decision != "ring":
-        skips.note(decision, obs)
+        skips.note(decision, obs, tick_now)
         return decision
     skips.reset()
     # Taken before the send: the transcript line can land before send_input
