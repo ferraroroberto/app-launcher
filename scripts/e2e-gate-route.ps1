@@ -240,3 +240,51 @@ function Get-ProgressHistoryPath {
     if ($LASTEXITCODE -ne 0 -or -not $commonDir) { return "" }
     return Join-Path (Split-Path -Parent ([string]$commonDir)) "webapp\verify-progress-history.log"
 }
+
+# One e2e pytest pass, retried once when every failure is a timeout or socket
+# error (tests/_load_retry.py owns that rule): when other lanes run, the box
+# stalls for 25-30 s and every worker misses its budget in the same second.
+# Only the failed node ids re-run, in one process, with $RetryArgs. A pass on
+# retry comes back as Exit 0 with the ids in Flaky; a second red, or any
+# failure that is not load-shaped, keeps its pytest exit code. The caller
+# supplies Log-Progress and Phase. pytest output goes to Out-Host so it never
+# joins the returned object.
+function Invoke-E2EPass {
+    param(
+        [Parameter(Mandatory = $true)][string]$Python,
+        [Parameter(Mandatory = $true)][string]$FailuresFile,
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][object[]]$PassArgs,
+        [object[]]$RetryArgs = @()
+    )
+
+    New-Item -ItemType File -Force -Path $FailuresFile | Out-Null
+    $env:LAUNCHER_E2E_FAILURES_FILE = $FailuresFile
+    try {
+        & $Python -m pytest -p tests._load_retry @PassArgs | Out-Host
+        $passExit = $LASTEXITCODE
+        if ($passExit -ne 1) { return [pscustomobject]@{ Exit = $passExit; Flaky = @() } }
+        $planOut = @(& $Python -m tests._load_retry plan $FailuresFile)
+        $planExit = $LASTEXITCODE
+        $planOut | ForEach-Object { Write-Host "    $_" }
+        Log-Progress ("e2e {0} load-retry plan: exit {1}; {2}" -f $Label, $planExit, ($planOut -join "; "))
+        if ($planExit -ne 0) { return [pscustomobject]@{ Exit = $passExit; Flaky = @() } }
+        $retryIds = @($planOut | Where-Object { $_ -like "RETRY=*" } | ForEach-Object { $_.Substring(6) })
+        Phase "pytest e2e $Label retry: $($retryIds.Count) timed-out test(s), once, in one process..."
+        New-Item -ItemType File -Force -Path $FailuresFile | Out-Null
+        & $Python -m pytest -p tests._load_retry @retryIds @RetryArgs | Out-Host
+        $retryExit = $LASTEXITCODE
+        if ($retryExit -ne 0) {
+            Log-Progress ("e2e {0} retry: red again (pytest exit {1})" -f $Label, $retryExit)
+            return [pscustomobject]@{ Exit = $retryExit; Flaky = @() }
+        }
+        foreach ($id in $retryIds) {
+            Write-Host "[!] FLAKY (timed out, passed on retry): $id" -ForegroundColor Yellow
+            Log-Progress "FLAKY (timed out, passed on retry): $id"
+        }
+        return [pscustomobject]@{ Exit = 0; Flaky = $retryIds }
+    }
+    finally {
+        Remove-Item Env:\LAUNCHER_E2E_FAILURES_FILE -ErrorAction SilentlyContinue
+    }
+}

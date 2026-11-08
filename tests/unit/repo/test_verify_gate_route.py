@@ -305,3 +305,70 @@ def test_gate_records_a_browser_run_under_the_mutex() -> None:
 
 def test_helper_is_ascii_for_windows_powershell_5_1() -> None:
     ROUTE_PS1.read_bytes().decode("ascii")
+
+
+# Invoke-E2EPass (#2222): a real inner pytest per case, driven through the
+# helper. Each test counts its runs in a file so the cases can tell a retry
+# from none.
+_RETRY_TEST = '''
+import pathlib
+
+RUNS = pathlib.Path(__file__).with_name("runs.txt")
+
+
+def test_case():
+    RUNS.write_text(RUNS.read_text() + "x" if RUNS.exists() else "x")
+    runs = len(RUNS.read_text())
+    if MODE == "stall-once" and runs == 1:
+        raise TimeoutError("timed out")
+    if MODE == "stall-twice":
+        raise TimeoutError("timed out")
+    if MODE == "wrong-value":
+        assert runs == 0
+
+
+def test_bystander():
+    pass
+'''
+
+_RETRY_HARNESS = r"""
+$ErrorActionPreference = 'Stop'
+. $env:E2E_ROUTE_PS1
+function Log-Progress($message) { }
+function Phase($message) { }
+$out = @{}
+foreach ($dir in ($env:RETRY_DIRS | ConvertFrom-Json)) {
+    Push-Location $dir
+    try {
+        $r = Invoke-E2EPass -Python $env:RETRY_PYTHON -FailuresFile (Join-Path $dir 'failures.jsonl') `
+            -Label 'test' -PassArgs @('-q', '-p', 'no:cacheprovider', 'test_retry.py') -RetryArgs @('-q', '-p', 'no:cacheprovider')
+        $out[(Split-Path -Leaf $dir)] = [pscustomobject]@{
+            Exit = $r.Exit; Flaky = (@($r.Flaky) -join '|')
+            Runs = (Get-Content (Join-Path $dir 'runs.txt') -Raw).Trim().Length }
+    } finally { Pop-Location }
+}
+$out | ConvertTo-Json -Compress
+"""
+
+
+def test_a_pass_whose_failures_timed_out_retries_them_once(tmp_path: pathlib.Path) -> None:
+    dirs = []
+    for mode in ("stall-once", "stall-twice", "wrong-value"):
+        d = tmp_path / mode
+        d.mkdir()
+        (d / "test_retry.py").write_text(f"MODE = {mode!r}\n{_RETRY_TEST}", encoding="utf-8")
+        dirs.append(str(d))
+    env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_XDIST_")}
+    out = subprocess.run(
+        [str(POWERSHELL), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+         "-EncodedCommand", base64.b64encode(_RETRY_HARNESS.encode("utf-16-le")).decode("ascii")],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        env=dict(env, E2E_ROUTE_PS1=str(ROUTE_PS1), RETRY_DIRS=json.dumps(dirs), RETRY_PYTHON=sys.executable,
+                 PYTHONPATH=str(REPO_ROOT), PYTEST_DISABLE_PLUGIN_AUTOLOAD="1"),
+        stdin=subprocess.DEVNULL, creationflags=_NO_WINDOW, timeout=180,
+    )
+    assert out.returncode == 0, out.stderr
+    result = json.loads(out.stdout.strip().splitlines()[-1])
+    assert result["stall-once"] == {"Exit": 0, "Flaky": "test_retry.py::test_case", "Runs": 2}
+    assert result["stall-twice"] == {"Exit": 1, "Flaky": "", "Runs": 2}
+    assert result["wrong-value"] == {"Exit": 1, "Flaky": "", "Runs": 1}

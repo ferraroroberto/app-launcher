@@ -65,6 +65,8 @@ trap {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
+# e2e tests that timed out under load and passed on their one retry.
+$e2eFlaky = @()
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
 # Persistent progress log: phase markers land here from this
@@ -320,16 +322,22 @@ try {
             $e2eExit = $null
             $serialExit = $null
             try {
-                & $python -m pytest @e2eArgs
-                $e2eExit = $LASTEXITCODE
+                # A red pass whose failures are all timeouts or socket errors
+                # re-runs those tests once (Invoke-E2EPass, tests/_load_retry.py).
+                $failuresFile = Join-Path $repoRoot "webapp\e2e-failures.jsonl"
+                $retryArgs = @($verbosity) + $browserArgs
+                $pass = Invoke-E2EPass -Python $python -FailuresFile $failuresFile -Label "parallel pass" -PassArgs $e2eArgs -RetryArgs $retryArgs
+                $e2eExit = $pass.Exit
+                $e2eFlaky += @($pass.Flaky)
                 # The load-sensitive `serial` tests, once the workers are gone.
                 # Runs even after a red parallel pass, so one gate
                 # run reports both.
                 if (@($workerPlan.SerialArgs).Count -gt 0) {
                     Phase "pytest e2e serial pass (tests marked serial, after the workers)..."
                     Log-Progress "e2e serial pass: tests marked serial"
-                    & $python -m pytest @($e2eBase + @($workerPlan.SerialArgs) + $browserArgs)
-                    $serialExit = $LASTEXITCODE
+                    $pass = Invoke-E2EPass -Python $python -FailuresFile $failuresFile -Label "serial pass" -PassArgs @($e2eBase + @($workerPlan.SerialArgs) + $browserArgs) -RetryArgs $retryArgs
+                    $serialExit = $pass.Exit
+                    $e2eFlaky += @($pass.Flaky)
                 }
             }
             finally {
@@ -412,6 +420,10 @@ Log-Progress ("OK: all checks passed in {0:n1}s" -f $sw.Elapsed.TotalSeconds)
 Remove-Item Env:\LAUNCHER_VERIFY_PROGRESS_LOG -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host ("[OK] Ready to ship -- all checks passed in {0:n1}s." -f $sw.Elapsed.TotalSeconds) -ForegroundColor Green
+if ($e2eFlaky.Count -gt 0) {
+    Write-Host ("[!] {0} e2e test(s) timed out under load and passed on retry (flaky):" -f $e2eFlaky.Count) -ForegroundColor Yellow
+    $e2eFlaky | ForEach-Object { Write-Host "    $_" -ForegroundColor Yellow }
+}
 
 # A green gate + merge + tray.bat --restart still does not make a
 # session-host-path change live -- that process is deliberately excluded
