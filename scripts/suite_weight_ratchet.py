@@ -187,6 +187,7 @@ def run(root: Path, mode: str) -> int:
         logger.info("ceiling unchanged.")
         return EXIT_PASS
     try:
+        # runtime-write-exempt: the tracked .fleet.toml whose ceiling this tool exists to rewrite
         toml_path.write_text(write_ceiling(toml_text, target), encoding="utf-8")
     except (OSError, ConfigError) as exc:
         logger.error(f"suite weight ratchet: config error: {exc}")

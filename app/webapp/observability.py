@@ -95,7 +95,9 @@ def ensure_file_log_handler(
     if not pending:
         return
     try:
+        # runtime-write-exempt: the log file path is chosen by the caller, in the runtime log folder
         path.parent.mkdir(parents=True, exist_ok=True)
+        # runtime-write-exempt: the log file path is chosen by the caller, in the runtime log folder
         fh = logging.FileHandler(path, encoding="utf-8")
     except OSError as exc:
         logger.warning(f"⚠️  Could not open {path}: {exc}")

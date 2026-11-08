@@ -134,6 +134,7 @@ def _rename_index_md(resolved: Path, new_name: str) -> None:
     if marker not in text:
         return
     try:
+        # runtime-write-exempt: a skill's index file under the configured Life OS folder
         index_md.write_text(text.replace(marker, f'file="{new_name}"', 1), encoding="utf-8")
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
@@ -194,6 +195,7 @@ def _prune_index_md(resolved: Path) -> bool:
         return False
     start, end = found
     try:
+        # runtime-write-exempt: a skill's index file under the configured Life OS folder
         index_md.write_text("\n".join(lines[:start] + lines[end:]), encoding="utf-8")
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
@@ -376,6 +378,7 @@ def _insert_index_md_block(resolved: Path, block: str) -> bool:
     else:
         merged = [*lines[:at], *entry, "", *lines[at:]]
     try:
+        # runtime-write-exempt: a skill's index file under the configured Life OS folder
         index_md.write_text("\n".join(merged), encoding="utf-8")
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)

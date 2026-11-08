@@ -344,6 +344,7 @@ def _replace_checked(
     after checking it loads with no problem the current file lacks."""
     temp = target.with_name(f".{target.name}.{secrets.token_hex(4)}.tmp")
     try:
+        # runtime-write-exempt: a file in the channel profile's own folder
         temp.write_text(
             json.dumps(data, indent=2, ensure_ascii=False) + ("\n" if trailing_newline else ""),
             encoding="utf-8",
@@ -487,7 +488,9 @@ def write_channel_settings(
         env["FLEET_CONTEXT_FILTER_MODE"] = "off"
         allow = payload.setdefault("permissions", {}).setdefault("allow", [])
         allow.extend(router_allow_rules(life_os_dir))
+    # runtime-write-exempt: a file in the channel profile's own folder
     target.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    # runtime-write-exempt: a file in the channel profile's own folder
     _start_record_path(profile.id).write_text(
         json.dumps(_start_record(profile, model)) + "\n", encoding="utf-8"
     )

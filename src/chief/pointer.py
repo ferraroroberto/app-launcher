@@ -121,6 +121,7 @@ def write_chief_pointer(
         "source": str(source),
     }
     try:
+        # runtime-write-exempt: the chief pointer file, a runtime path from the config
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(target, payload)
     except OSError as exc:

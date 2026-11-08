@@ -83,6 +83,7 @@ class Stash:
         A retry after a half-finished backup finds the transcript already moved,
         so its own lookup reports no project; the first attempt's value stays.
         """
+        # runtime-write-exempt: the backup folder under the configured Life OS folder
         self.folder.mkdir(parents=True, exist_ok=True)
         path = self.manifest_path(capture)
         merged = dict(data)
@@ -254,7 +255,9 @@ def restore_one(cfg: WebappConfig, root: Path, day: str, skill: str, capture: st
 
     try:
         for source, landing in moves:
+            # runtime-write-exempt: the backup folder under the configured Life OS folder
             landing.parent.mkdir(parents=True, exist_ok=True)
+            # runtime-write-exempt: the backup folder under the configured Life OS folder
             shutil.move(str(source), str(landing))
     except OSError as exc:
         logger.warning("⚠️ Life OS zombie restore: move failed for %s/%s: %s", skill, capture, exc)

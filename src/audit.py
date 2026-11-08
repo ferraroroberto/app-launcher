@@ -54,12 +54,14 @@ def _ensure_handler() -> None:
     if _handler_ready:
         return
     try:
+        # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
         _AUDIT_DIR.mkdir(parents=True, exist_ok=True)
         if not any(
             isinstance(h, logging.FileHandler)
             and Path(h.baseFilename).resolve() == _AUDIT_LOG.resolve()
             for h in _audit_logger.handlers
         ):
+            # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
             fh = logging.FileHandler(_AUDIT_LOG, encoding="utf-8")
             fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
             _audit_logger.addHandler(fh)
@@ -82,9 +84,11 @@ def audit_event(event: str, **fields: Any) -> None:
 def session_log(session_id: str, event: str, **fields: Any) -> None:
     """Append one line to a session's own log file."""
     try:
+        # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
         _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().isoformat(timespec="seconds")
         line = f"{stamp} [{event}] {_fmt_fields(fields)}".rstrip()
+        # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
         with (_SESSIONS_DIR / f"{session_id}.log").open(
             "a", encoding="utf-8"
         ) as fh:
@@ -98,8 +102,10 @@ def session_input(session_id: str, data: str) -> None:
     if not data:
         return
     try:
+        # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
         _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().isoformat(timespec="seconds")
+        # runtime-write-exempt: the audit dir, which resolves at import from LAUNCHER_AUDIT_DIR and git ignores
         with (_SESSIONS_DIR / f"{session_id}.log").open(
             "a", encoding="utf-8"
         ) as fh:

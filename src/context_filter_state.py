@@ -217,6 +217,7 @@ def write_mode(path: Path, mode: str, *, updated_by: str = DEFAULT_UPDATED_BY) -
     """
     if mode not in VALID_MODES:
         raise ValueError(f"mode must be one of {VALID_MODES}; got {mode!r}")
+    # runtime-write-exempt: the context-filter mode file, a runtime path from the config
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"mode": mode, "updated_at": _iso_z(_now()), "updated_by": updated_by}
     atomic_write_json(path, payload)

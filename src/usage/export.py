@@ -554,6 +554,7 @@ def _record(
     if error is not None:
         status["last_error"] = {"at": _now_iso(), "kind": error.kind, "message": str(error)}
     try:
+        # runtime-write-exempt: the usage status file, a runtime path the caller resolves
         status_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(status_path, status)
     except OSError as exc:

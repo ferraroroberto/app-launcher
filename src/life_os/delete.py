@@ -77,10 +77,12 @@ def live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
 
 
 def _stash_capture(path: Path, stash: Stash) -> None:
+    # runtime-write-exempt: the delete stash folder under the Life OS folder
     stash.folder.mkdir(parents=True, exist_ok=True)
     landing = stash.folder / path.name
     if landing.exists():
         raise FileExistsError(f"backup already holds {path.name}")
+    # runtime-write-exempt: the delete stash folder under the Life OS folder
     shutil.move(str(path), str(landing))
 
 

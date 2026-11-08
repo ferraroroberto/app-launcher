@@ -84,6 +84,7 @@ class InlineShellKind:
             raise ValueError(f"inline-shell job has unsupported ext: {ext!r}")
 
         temp_script = run_dir / f"_inline{ext}"
+        # runtime-write-exempt: a temp script in a folder the caller passes in
         temp_script.write_text(str(body), encoding="utf-8")
 
         # A synthetic Job pointed at the temp file so the sibling kind's

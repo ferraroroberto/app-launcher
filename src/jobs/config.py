@@ -195,6 +195,7 @@ def _warn_malformed_row_once(detail: str) -> None:
 def save_jobs(cfg: JobsConfig, path: Optional[Path] = None) -> Path:
     """Persist ``cfg`` to disk via an atomic ``.tmp`` swap."""
     target = Path(path) if path is not None else DEFAULT_JOBS_PATH
+    # runtime-write-exempt: the jobs registry file, a config path the caller or the default names
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(target, cfg.to_dict())
     return target

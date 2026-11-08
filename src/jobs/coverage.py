@@ -653,6 +653,7 @@ def _read_alert_state() -> Dict[str, Any]:
 def _write_alert_state(state: Dict[str, Any]) -> None:
     path = coverage_alerts_path()
     try:
+        # runtime-write-exempt: the coverage alert state file under the runtime jobs folder
         path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(path, state)
     except OSError as exc:

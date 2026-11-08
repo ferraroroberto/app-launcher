@@ -155,6 +155,7 @@ def load_registry(path: Optional[Path] = None, *, strict: bool = False) -> Regis
 
 def save_registry(reg: Registry, path: Optional[Path] = None) -> Path:
     target = Path(path) if path is not None else DEFAULT_REGISTRY_PATH
+    # runtime-write-exempt: the apps registry file, a config path the caller or the default names
     target.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_json(target, reg.to_dict())
     return target

@@ -880,6 +880,7 @@ def load_webapp_config(
 def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     """Atomically write the config back to disk."""
     target = _resolve_config_path(path)
+    # runtime-write-exempt: webapp_config.json, a config path the caller or the default names
     target.parent.mkdir(parents=True, exist_ok=True)
 
     # Derived straight from the dataclass — the field list, in
