@@ -82,6 +82,27 @@ _APPS = {"scan_root": "C:\\stub", "apps": [
     _app("alpha-dash", "Alpha Dashboard", "streamlit"), _app("beta-web", "Beta Web", "webapp"),
     _app("gamma-tunnel", "Gamma Tunnel", "tunnel", tunnel_url="https://gamma.example.invalid/", health="up"),
     _app("omega-tray", "Omega Tray", "tray", autostart=True)]}
+
+
+def _perf_entry(state: str, cold: float, trend: list, **extra) -> dict:
+    over = state == "over-budget"
+    return {
+        "state": state, "run_id": "20260115T055000Z", "ts": "2026-01-15T05:50:00Z", "build": "0000000",
+        "seeded": False,
+        "cold_ready_ms": {"measured": cold, "budget": 2500, "status": "fail" if over else "pass"},
+        "warm_ready_ms": {"measured": 640, "budget": 1500, "status": "pass"},
+        "warm_bytes_kb": {"measured": 410, "budget": 800, "status": "pass"},
+        "fails": ["cold.ready_ms"] if over else [], "trend": trend, "issues_url": None, **extra,
+    }
+
+
+#: Fictional perf-ledger answer: one app within budget, one over, the rest unmeasured.
+_PERF = {"ledger": "ok", "rows": {"alpha-dash": "alpha", "beta-web": "beta"}, "apps": {
+    "alpha": _perf_entry("pass", 1800, [2100, 1950, 2000, 1880, 1800]),
+    "beta": _perf_entry("over-budget", 3100, [2200, 2400, 2600, 2900, 3100],
+                        issues_url="https://example.invalid/beta/issues"),
+}}
+
 _JOBS = {"jobs": [
     _job("ledger", "Ledger reconciliation", alert_on_failure=True),
     _job("mailbox", "Mailbox sweep", schedule_chip="every 15 min", next_run_epoch=NOW + 300),
@@ -100,6 +121,7 @@ _MOCKS = {
     r"/api/claude-code/git-status": {"projects": []},
     r"/api/apps": _APPS,
     r"/api/apps/running": {"running": []},
+    r"/api/apps/perf": _PERF,
     r"/api/ports/probe": {"listeners": []},
     r"/api/jobs": _JOBS,
     r"/api/jobs/agenda": {"days": 7, "generated_epoch": NOW, "occurrences": [
