@@ -396,7 +396,7 @@ def _place_backlog(
     owner_section = owner_checks.snapshot()
     if github.get("fetched_at") is not None:
         buckets["your_turn"] = backlog_buckets.owner_counts(
-            columns["backlog"], owner_section["items"])
+            columns["backlog"], owner_section["items"], plan_index)
         if owner_section["available"]:
             owner_checks.set_uncounted(
                 item["ref"] for item in owner_section["items"]

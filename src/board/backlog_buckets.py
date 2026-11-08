@@ -39,6 +39,8 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
+from src.board import owner_checks
+
 IN_PROGRESS = "in_progress"
 WAITING = "waiting"
 QUEUED = "queued"
@@ -54,6 +56,11 @@ BUCKETS = (UNKNOWN, IN_PROGRESS, WAITING, QUEUED, BLOCKED, NOT_PLANNED, UMBRELLA
 
 NEEDS_OWNER = "needs-owner"
 NEEDS_VALIDATION = "needs-validation"
+
+# Your turn's owner-check groups: every item sits in exactly one.
+BEFORE_START_GROUP = "before_start"
+VALIDATE_TO_CLOSE = "validate_to_close"
+TRY_SHIPPED = "try_shipped"
 
 # Owner-check items whose issue is closed: shipped work to validate, counted
 # beside the open-issue total, never inside it.
@@ -226,28 +233,75 @@ def _place(
     return NOT_PLANNED, tail
 
 
-def owner_counts(
-    cards: Iterable[Mapping[str, Any]], items: Iterable[Dict[str, Any]],
-) -> Dict[str, int]:
-    """Stamp ``bucket`` and ``counted`` on each owner-check item; return Your turn's counts.
+def _unblocks(plan: Optional[Mapping[str, Any]]) -> Dict[Key, List[str]]:
+    """The plan rows each issue holds up: ``{(repo, N): ["repo#M", ...]}``.
 
-    ``cards`` are the classified backlog cards and ``items`` the owner-check
-    list. An open item takes its issue's bucket (``absent`` when the backlog
-    does not hold it); a closed one is ``closed``. An item is ``counted``
-    when it waits on the owner: unmarked, and in Waiting on you or closed.
-    So Your turn's owner count is Waiting on you plus to-validate, less what
-    the owner set aside, and ``unlisted`` names the Waiting on you issues the
-    owner-check list does not hold yet.
+    Only a parked ``blocked-by`` row waits on the issues its ``blocked_by``
+    names (the same rows :func:`_row_chips` reads); a bare ``#N`` there is the
+    row's own repo. Empty when the plan was not read.
+    """
+    held: Dict[Key, List[str]] = {}
+    if not plan or plan.get("state") != "ok":
+        return held
+    for row in plan.get("queue") or []:
+        if row.get("status") != "parked" or row.get("kind") != "blocked-by":
+            continue
+        repo = str(row.get("repo") or "")
+        ref = str(row.get("ref") or "")
+        label = repo + ref if ref.startswith("#") else ref
+        if _key(ref, repo) is None:
+            continue
+        for token in re.split(r"[\s,]+", str(row.get("blocked_by") or "")):
+            blocker = _key(token, repo)
+            if blocker is not None and label not in held.setdefault(blocker, []):
+                held[blocker].append(label)
+    return held
+
+
+def owner_group(item: Mapping[str, Any]) -> str:
+    """The one Your turn group an owner-check item belongs to.
+
+    An open ``before-start`` item blocks work from starting; an open
+    ``validate-after`` item is validated to close; a closed issue's check
+    only tries what shipped.
+    """
+    if str(item.get("state") or "").upper() == "CLOSED":
+        return TRY_SHIPPED
+    return BEFORE_START_GROUP if item.get("kind") == owner_checks.BEFORE_START else VALIDATE_TO_CLOSE
+
+
+def owner_counts(
+    cards: Iterable[Mapping[str, Any]],
+    items: Iterable[Dict[str, Any]],
+    plan: Optional[Mapping[str, Any]] = None,
+) -> Dict[str, int]:
+    """Stamp each owner-check item; return Your turn's counts.
+
+    ``cards`` are the classified backlog cards, ``items`` the owner-check list
+    and ``plan`` :func:`read_plan_index`'s result. An open item takes its
+    issue's bucket (``absent`` when the backlog does not hold it); a closed
+    one is ``closed``. Each item takes exactly one ``group``
+    (:func:`owner_group`) and, in Validate to close, the plan rows it
+    ``unblocks``. An item is ``counted`` when it waits on the owner: unmarked,
+    and in Waiting on you or closed.
+
+    So the badge's ``needs_you`` is the three group counts added, one issue in
+    one group, and Waiting on you is the two open groups plus what the owner
+    set aside (``waiting_set_aside``) and ``unlisted``, the Waiting on you
+    issues the owner-check list does not hold yet.
     """
     buckets = {k: c.get("bucket") for c in cards if (k := _card_key(c)) is not None}
     waiting = {k for k, b in buckets.items() if b == WAITING}
+    held = _unblocks(plan)
     listed: Set[Key] = set()
-    to_validate = set_aside = needs_you = 0
+    per_group = {BEFORE_START_GROUP: 0, VALIDATE_TO_CLOSE: 0, TRY_SHIPPED: 0}
+    set_aside = waiting_set_aside = 0
     for item in items:
         key = _card_key(item)
-        if str(item.get("state") or "").upper() == "CLOSED":
+        item["group"] = owner_group(item)
+        item["unblocks"] = held.get(key, []) if item["group"] == VALIDATE_TO_CLOSE and key else []
+        if item["group"] == TRY_SHIPPED:
             item["bucket"] = CLOSED
-            to_validate += 1
         else:
             item["bucket"] = buckets.get(key, ABSENT) if key is not None else ABSENT
             if key is not None:
@@ -255,13 +309,17 @@ def owner_counts(
         counted = item["bucket"] in (WAITING, CLOSED)
         if counted and item.get("mark"):
             set_aside += 1
+            waiting_set_aside += item["bucket"] == WAITING
             counted = False
         item["counted"] = counted
-        needs_you += counted
+        per_group[item["group"]] += counted
     return {
         "waiting": len(waiting),
-        "to_validate": to_validate,
+        "before_start": per_group[BEFORE_START_GROUP],
+        "validate_to_close": per_group[VALIDATE_TO_CLOSE],
+        "try_shipped": per_group[TRY_SHIPPED],
         "set_aside": set_aside,
-        "needs_you": needs_you,
+        "waiting_set_aside": waiting_set_aside,
+        "needs_you": sum(per_group.values()),
         "unlisted": len(waiting - listed),
     }

@@ -61,7 +61,7 @@ import {
 import { renderBoard } from '../board.js';
 import { itemKey, markSent } from './chief-keys.js';
 import {
-  emptyOwnerDraft, kindLabel, ownerAnswerOf, ownerMessageLine, ownerNeedsChief, ownerSheetBlock,
+  emptyOwnerDraft, groupLabel, ownerAnswerOf, ownerMessageLine, ownerNeedsChief, ownerSheetBlock,
   ownerSheetKey, postOwnerAnswers, shownOwnerItems,
 } from './owner-checks.js';
 
@@ -451,7 +451,7 @@ function openSheet(mode, plan, run, indices, owner, startKey, ownerKind) {
   });
   els.chiefAnswersList.replaceChildren.apply(els.chiefAnswersList, blocks);
   els.chiefAnswersTitleText.textContent = chief ? 'Answer the chief'
-    : 'Owner checks' + (ownerKind ? ': ' + kindLabel(ownerKind) : '');
+    : 'Owner checks' + (ownerKind ? ': ' + groupLabel(ownerKind) : '');
   syncChiefAnswers(run);
   if (!dialog.open) dialog.showModal();
   const start = startKey == null ? null
@@ -528,7 +528,7 @@ async function submitAnswers() {
     const tell = forChief && chiefRun === 'running';
     if (tell) {
       await sendToChief(composeAnswers(sheet.items, sheet.drafts, alsoText(), sheet.shown, owner.lines,
-        sheet.ownerKind ? kindLabel(sheet.ownerKind) : ''));
+        sheet.ownerKind ? groupLabel(sheet.ownerKind) : ''));
       if (plan) markSent(plan, keys);
       // Sent: the drafts it carried are done with, so the next open starts
       // clean. One typed for an item the filter hid was not sent, and stays.
