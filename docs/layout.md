@@ -22,7 +22,7 @@ app-launcher/
 │       ├── routers/           # split API routers (config, sessions, life_os, board, …)
 │       └── static/            # SPA shell + PWA manifest + icons + vendored xterm.js
 │           ├── views/         # each view's markup (panes, dialogs, overlays), spliced into index.html when served
-│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners, the phone-speed block on each app row (apps-perf.js)
+│           ├── apps/          # Apps tab modules beside apps.js: the Coding list, the app dialogs, the list listeners, the Performance card (apps-perf.js)
 │           ├── board/         # Board tab modules beside board.js: dispatch, the answer sheet, the drawer, the Chief's plan card, its Clear merged control, the owner checks, the Done lane's earlier days and its Issue / PR / Proof actions
 │           ├── links/         # the session ⋮ menus' Links sheet: every artifact and URL a session mentioned, grouped
 │           ├── background-tasks/ # the session ⋮ menus' Background tasks sheet: running and finished tasks, an output tail

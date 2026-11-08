@@ -255,7 +255,7 @@ Every page load and every `/api/` request slower than 800 ms on the real device 
 
 ## Phone-speed results
 
-The Apps tab shows each app's latest `/perf-review` result against its budget, with a cold-ready sparkline and, when a budget is broken, a link to its open issues. An app the ledger has not measured says "Not measured", and an unreadable ledger says "Unknown": neither is drawn as a pass. Read-only, from the local ledger via `GET /api/apps/perf`: [docs/perf-ledger.md](docs/perf-ledger.md).
+The Apps tab's Performance card shows each measured app's latest `/perf-review` result against its budget, with a cold-ready sparkline and, when a budget is broken, a link to its open issues. The apps without a result are listed under why (never measured, a run that measured nothing, a tunnel), and an unreadable ledger says "Unknown": neither is drawn as a pass. Read-only, from the local ledger via `GET /api/apps/perf`: [docs/perf-ledger.md](docs/perf-ledger.md).
 
 ## Screen time to task-os
 

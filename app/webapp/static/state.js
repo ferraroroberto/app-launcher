@@ -475,6 +475,11 @@ export const els = {
   registeredTraysList: document.getElementById('registeredTraysList'),
   registeredTraysEmpty: document.getElementById('registeredTraysEmpty'),
   traysSummaryMeta: document.getElementById('traysSummaryMeta'),
+  perfSummaryMeta: document.getElementById('perfSummaryMeta'),
+  perfState: document.getElementById('perfState'),
+  perfMeasured: document.getElementById('perfMeasured'),
+  perfNone: document.getElementById('perfNone'),
+  perfUnmeasured: document.getElementById('perfUnmeasured'),
   appsScanRow: document.getElementById('appsScanRow'),
 
   tokensList: document.getElementById('tokensList'),

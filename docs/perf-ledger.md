@@ -1,6 +1,6 @@
 # Phone-speed results on the Apps tab
 
-`/perf-review` (fleet-config) measures each app's throttled phone load from this PC and appends one record per run to a local ledger. The Apps tab shows the latest result and a cold-ready trend on each app's row. Nothing about it appears on the Board, and no GitHub issue is read or written: results are measurements, and an issue exists only while a budget is broken.
+`/perf-review` (fleet-config) measures each app's throttled phone load from this PC and appends one record per run to a local ledger. The Apps tab shows the latest result and a cold-ready trend of every measured app in one Performance card, with the apps that have no result listed under their reason. Nothing about it appears on the Board, and no GitHub issue is read or written: results are measurements, and an issue exists only while a budget is broken.
 
 ## Where the data comes from
 
@@ -22,17 +22,22 @@ The ledger is `perf-review/ledger.jsonl` under the hooks state dir (`~/.claude/h
 
 A registry row belongs to the ledger app named by the nearest folder above its bat that the ledger knows (`photo-ocr\tray.bat` → `photo-ocr`). Tunnel rows and Coding rows are never measured. `issues_url` is a search for the repo's open `perf-review` issues, built from a template and set only when the latest run is over budget, so a request makes no GitHub call.
 
-## What a row shows
+## What the card shows
 
-| Situation | Row |
+The card is collapsed by default; its summary says how many apps are measured and how many are over budget. Open, it opens with two sentences on what is measured (the throttled phone-profile load, cold and warm, plus endpoint timing, against the budgets). Then one row per measured app, then the apps without a result.
+
+| Situation | Where it appears |
 |---|---|
-| latest run within budget | plain "Within budget", the age, cold / warm ready and warm transfer against budget, the sparkline |
-| a check over budget | a danger "Over budget" chip, the failing checks named, that figure in the danger colour, an **Issues** link |
-| a pass seeded from an old issue log | "Passed, no timings yet": no figures were recorded |
-| an unmeasured run, no ledger record for the app, or no ledger file | neutral "Not measured" chip |
-| an unreadable ledger, an unrecognised verdict, or a failed read with nothing earlier to show | attention "Unknown" chip |
+| latest run within budget | a row: plain "Within budget", the age, cold / warm ready and warm transfer against budget, the sparkline |
+| a check over budget | a row: a danger "Over budget" chip, the failing checks named, that figure in the danger colour, an **Issues** link |
+| a pass seeded from an old issue log | a row: "Passed, no timings yet", no figures were recorded |
+| no ledger record for the app, or no ledger file | "Never measured" |
+| a run that measured nothing | "Last run measured nothing" |
+| a verdict this page does not recognise | "Result not recognised" |
+| a tunnel row | "A tunnel, not a web app of its own" |
+| an unreadable ledger, or a failed read with nothing earlier to show | no rows: an "Unknown" summary and a Retry line |
 
-Only a record whose own verdict is `pass` reads as within budget; every other state is its own words, never folded into it. A failed read after a good one keeps the last good result and its age. The page asks at most once a minute, and again when the Apps tab opens.
+Several registry rows of one repo (its tray and its web app) share one measured row, named by the first of them. Only a record whose own verdict is `pass` reads as within budget; every other state is its own words, never folded into it. A failed read after a good one keeps the last good result and its age. The page asks at most once a minute, and again when the Apps tab opens. App rows themselves carry nothing about performance.
 
 ## Tests
 

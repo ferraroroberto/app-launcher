@@ -254,6 +254,22 @@ def test_life_archived_shots(browser: Browser, base_url: str) -> None:
             shot(page, SHOTS_DIR / f"life-archived-{variant.slug}.png")
 
 
+def test_apps_perf_card_shots(browser: Browser, base_url: str) -> None:
+    """The Apps tab's Performance card unfolded, the Running and Apps cards folded away above it."""
+    for variant in variants():
+        with variant_page(browser, variant) as page:
+            page.add_init_script(f"localStorage.setItem('app-launcher.theme', '{variant.theme}');")
+            _mock_data(page)
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            page.locator("#tabApps").click()
+            expect(page.locator("#appsList li.action-row").first).to_be_visible()
+            page.locator(".apps-list-card summary").click()
+            page.locator(".running-apps-card summary").click()
+            page.locator(".apps-perf-card summary").click()
+            expect(page.locator("#perfMeasured li.perf-row")).to_have_count(2)
+            shot(page, SHOTS_DIR / f"apps-perf-{variant.slug}.png")
+
+
 _CONFIG = {"projects_dir": "C:/stub/projects", "projects_ignore": [], "apps_scan_root": "C:/stub",
            "life_os_dir": "C:/stub/life", "fleet_config_dir": "C:/stub/fleet", "outbox_scratch_roots": [],
            "coding_hidden_agents": [], "coding_favorite_agent": "claude", "usage_providers": ["claude", "codex"],
