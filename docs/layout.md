@@ -13,7 +13,6 @@ app-launcher/
 │   └── webapp/
 │       ├── server.py          # FastAPI routes + Tailscale gating + WS proxy
 │       ├── manager.py         # adopt-or-spawn webapp lifecycle
-│       ├── middleware/        # auth: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer
 │       ├── serve.py           # the one launch entry: hypercorn, HTTP/2 over TLS, selector loop; uvicorn fallback
 │       ├── shell_html.py      # splices static/views/*.html into index.html where its include markers sit
 │       ├── static_trim.py     # strips comments from the JS modules the static mount serves
@@ -75,6 +74,7 @@ app-launcher/
 │   ├── usage_log.py            # vendored: local view/tap log router + SQLite store
 │   ├── auth/                   # credentials beyond the main token: api_tokens.py (job-scoped tokens), the delegate token,
 │   │                           #   webauthn_gate.py (passkey enrollment / assertion + terminal tokens)
+│   ├── middleware/             # the webapp's auth gate: trust.py (loopback/tailnet), credentials, routes (guard table), terminal_gate, bearer
 │   ├── clients/                # loopback HTTP clients: the shared _loopback_http.py base, the session-host (session.py),
 │   │                           #   local-llm-hub (llm.py, tts.py), photo-ocr, voice-transcriber, and `gh` (github.py)
 │   ├── launching/              # coding-agent launch: per-agent CLI flags (flags.py), spawn helpers (launcher.py),

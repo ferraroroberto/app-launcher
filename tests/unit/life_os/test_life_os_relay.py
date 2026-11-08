@@ -45,9 +45,9 @@ def _add_skill(root: Path, skill: str, file: str, sid: str) -> None:
 def relay(life_os_client, tmp_path, monkeypatch):
     """A relay-enabled ``health`` profile on journal-daily, its settings file
     written as a launch writes it, and the bot's session running."""
-    from app.webapp import middleware
     from app.webapp.routers import life_os_relay, life_os_spawn
     from app.webapp.routers import sessions as sessions_router
+    from src import middleware
     from src.clients import session as session_client
 
     client, app, overrides = life_os_client
@@ -106,7 +106,7 @@ def _steer(relay, sid, **body):
 # ------------------------------------------------------------ identity
 class TestWhoMayCall:
     def test_relay_routes_are_terminal_gated(self):
-        from app.webapp import middleware
+        from src import middleware
         for tail in ("conversations", "resume", "steer", "read"):
             assert middleware._terminal_guard_level(f"{PREFIX}/{tail}") == "passkey"
 
@@ -129,8 +129,8 @@ class TestWhoMayCall:
         assert resp.json()["detail"]["state"] == "relay_off"
 
     def test_off_pc_callers_are_refused(self, relay, monkeypatch):
-        from app.webapp import middleware
         from app.webapp.routers import life_os_relay
+        from src import middleware
         monkeypatch.setattr(life_os_relay, "is_pc_itself", lambda host, headers: False)
         resp = relay.client.get(f"{PREFIX}/conversations", headers=relay.headers)
         assert resp.status_code == 403

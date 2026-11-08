@@ -224,8 +224,8 @@ def answer_client(webapp_client, monkeypatch, tmp_path):
     """The webapp with the gate bypassed, one live Claude session whose
     transcript is ``path``, no key gap, and the PTY socket replaced by a
     recorder — nothing here opens a real socket."""
-    from app.webapp import middleware
     from app.webapp.routers import session_screen as router
+    from src import middleware
 
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))
@@ -251,7 +251,7 @@ def _post(client, body: Dict[str, Any]):
 
 
 def test_answer_route_is_passkey_gated():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/answer") == "passkey"
 
 

@@ -37,7 +37,6 @@ from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake
 
 from app.webapp.hot_poll import BuildSteps, hot_poll
-from app.webapp.middleware import LOOPBACK_HOSTS, ws_terminal_gate
 from app.webapp.routers import life_os_conversations, voice_ocr_tts
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
@@ -53,6 +52,7 @@ from src.board import owner_checks
 from src.chief import answers as chief_answers
 from src.clients import session as session_client
 from src.launching import launcher
+from src.middleware import LOOPBACK_HOSTS, ws_terminal_gate
 from src.session_host_paths import sha_contains_commit
 from src.session_model import attach_models
 from src.webapp_config import WebappConfig

@@ -235,9 +235,8 @@ def picker_client(webapp_client, monkeypatch, tmp_path):
     """The webapp with the gate bypassed, one live Claude PTY whose capture
     is ``capture``, a plans folder, and the PTY socket replaced by a
     recorder — nothing here opens a real socket."""
-    from app.webapp import middleware
     from app.webapp.routers import session_screen as router
-    from src import audit
+    from src import audit, middleware
 
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))
@@ -276,7 +275,7 @@ def _post(client, body: Dict[str, Any]):
 
 
 def test_plan_routes_are_passkey_gated():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     for tail in ("plan-picker", "plan-answer"):
         assert _terminal_guard_level(f"/api/claude-code/sessions/abc/{tail}") == "passkey"
 
@@ -449,7 +448,7 @@ def _get_context(client):
 
 
 def test_the_context_route_is_passkey_gated():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/context") == "passkey"
 
 

@@ -11,7 +11,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.webapp.middleware import terminal_reachability
 from app.webapp.routers._helpers import (
     PROJECT_ROOT,
     cert_present,
@@ -37,6 +36,7 @@ from src.launching.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
+from src.middleware import terminal_reachability
 from src.session_view import outbox as session_outbox
 from src.usage.providers import VALID_USAGE_PROVIDERS, validate_usage_providers
 from src.webapp_config import (

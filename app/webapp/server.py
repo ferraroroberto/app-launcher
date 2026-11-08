@@ -67,7 +67,6 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from app.webapp import chief_doorbell, relay_idle_close
-from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
     ensure_autostart_log_handler,
@@ -108,6 +107,7 @@ from src.clients import session as session_client
 from src.compression import StreamSafeGZipMiddleware
 from src.jobs import snapshot as jobs_snapshot
 from src.launching import launcher
+from src.middleware import BearerTokenMiddleware
 from src.runtime_data import runtime_db_path
 from src.static_versioning import (
     compute_asset_hashes,

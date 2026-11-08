@@ -42,8 +42,7 @@ def _capture(percent: int) -> str:
 
 @pytest.fixture
 def screens(webapp_client, monkeypatch, tmp_path):
-    from app.webapp import middleware
-    from src import audit
+    from src import audit, middleware
 
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))

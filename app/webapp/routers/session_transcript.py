@@ -70,13 +70,13 @@ from typing import Any, Awaitable, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
-from app.webapp.middleware import is_pc_itself
 from app.webapp.routers import session_outbox_routes
 from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 from src import board, instance_role
 from src.board.transcript import _live_title_is_busy, _pty_output_is_fresh
 from src.launching.vscode_workspace import is_vscode_installed, open_file
+from src.middleware import is_pc_itself
 from src.session_view import background_tasks as session_tasks
 from src.session_view import link_titles as session_link_titles
 from src.session_view import links as session_links

@@ -357,6 +357,6 @@ def test_find_passes_the_search_tier_through_only_when_sent(relay, monkeypatch):
 
 
 def test_stop_and_status_are_terminal_gated():
-    from app.webapp import middleware
+    from src import middleware
     for tail in ("stop", "status"):
         assert middleware._terminal_guard_level(f"{PREFIX}/{tail}") == "passkey"

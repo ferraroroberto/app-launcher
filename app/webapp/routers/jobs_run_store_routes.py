@@ -8,13 +8,13 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app.webapp.middleware import (
+from app.webapp.routers._helpers import known_run_dir, maybe_json
+from src import jobs as jobs_mod
+from src.middleware import (
     credential_accepted,
     credential_required,
     is_pc_itself,
 )
-from app.webapp.routers._helpers import known_run_dir, maybe_json
-from src import jobs as jobs_mod
 
 router = APIRouter()
 

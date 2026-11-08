@@ -7,9 +7,9 @@ from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
-from app.webapp.middleware import _terminal_guard_level
 from app.webapp.session_host import server
 from src.clients import session as session_client
+from src.middleware import _terminal_guard_level
 
 _ROUTE = "/api/claude-code/sessions/s1/pending-input/e1"
 

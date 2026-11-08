@@ -2,7 +2,7 @@
 
 Three surfaces re-apply the same gate against the same config:
 
-* ``app.webapp.middleware.BearerTokenMiddleware`` — the HTTP choke point.
+* ``src.middleware.BearerTokenMiddleware`` — the HTTP choke point.
 * ``app.webapp.routers.sessions.proxy_session_ws`` — re-applied inline,
   because Starlette middleware never sees a WebSocket handshake.
 * ``app.webapp.routers.jobs_run_store_routes.stream_job_run`` — the other
@@ -46,7 +46,7 @@ def _force_remote_tailnet(monkeypatch):
     ``is_pc_itself``/``client_in_tailnet`` actually resolve — patching the
     ``sessions`` module's own (now unused) names would silently do nothing.
     """
-    from app.webapp import middleware
+    from src import middleware
 
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS", frozenset({"127.0.0.1", "::1"})
@@ -201,7 +201,7 @@ def test_run_stream_edge_request_is_not_treated_as_the_pc(
     """A request carrying the public edge's own header must not inherit the
     PC's bypass on this socket either, whatever client address reaches it."""
     client, app, _ = webapp_client
-    from app.webapp import middleware as mw
+    from src import middleware as mw
 
     app.state.webapp_config.auth_token = "the-real-token"
     app.state.webapp_config.api_tokens = []
@@ -257,7 +257,7 @@ def test_edge_request_is_not_treated_as_the_pc(webapp_client, monkeypatch):
     """A request carrying the public edge's own header must not inherit the
     PC's bypass, whatever client address reaches the app."""
     client, app, _ = webapp_client
-    from app.webapp import middleware as mw
+    from src import middleware as mw
 
     app.state.webapp_config.auth_token = "the-real-token"
     monkeypatch.setattr(

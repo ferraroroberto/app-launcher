@@ -64,7 +64,7 @@ def _plan_file(tmp_path: Path) -> Path:
 @pytest.fixture
 def prune(webapp_client, tmp_path, monkeypatch):
     """(client, plan file) with the app's fleet-config and plan file pinned to scratch paths."""
-    from app.webapp import middleware
+    from src import middleware
     # The passkey gate is pinned by test_prune_route_is_passkey_gated; here the
     # TestClient host counts as loopback so the route logic runs.
     monkeypatch.setattr(
@@ -112,7 +112,7 @@ class TestLogic:
 
 class TestApi:
     def test_prune_route_is_passkey_gated(self, webapp_client):
-        from app.webapp.middleware import _terminal_guard_level
+        from src.middleware import _terminal_guard_level
         assert _terminal_guard_level("/api/board/chief-plan/prune") == "passkey"
         client, _, _ = webapp_client
         assert client.post("/api/board/chief-plan/prune").status_code == 403

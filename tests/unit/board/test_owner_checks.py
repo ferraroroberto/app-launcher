@@ -190,7 +190,7 @@ def test_no_fleet_config_is_its_own_error():
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -198,7 +198,7 @@ def _bypass_gate(monkeypatch):
 
 
 def test_answer_route_is_passkey_gated(webapp_client):
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/board/owner-checks/answer") == "passkey"
     client, _, _ = webapp_client
     resp = client.post("/api/board/owner-checks/answer",

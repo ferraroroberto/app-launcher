@@ -157,7 +157,7 @@ class TestSettingsFile:
 # ------------------------------------------------------------------ routes
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust,
         "LOOPBACK_HOSTS",
@@ -655,7 +655,7 @@ class TestSetupChecks:
     def test_setup_block_reports_checks_and_leaks_nothing(
         self, life_os_client, tmp_path, monkeypatch
     ):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -691,7 +691,7 @@ class TestSetupChecks:
     def test_setup_without_a_profile_file(
         self, life_os_client, tmp_path, monkeypatch
     ):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust, "LOOPBACK_HOSTS",
             frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),

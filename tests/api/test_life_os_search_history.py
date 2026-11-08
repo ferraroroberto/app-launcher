@@ -24,7 +24,7 @@ class TestConversationSearch:
 
     @pytest.fixture(autouse=True)
     def _bypass_gate(self, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",
@@ -279,8 +279,8 @@ class TestSearchCliResolution:
 
 class TestSourceHistoryRegression:
     def test_unknown_uuid_cannot_resume(self, life_os_client, monkeypatch):
-        from app.webapp import middleware
         from app.webapp.routers import life_os_spawn
+        from src import middleware
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_spawn, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
         client, _, _ = life_os_client
@@ -301,8 +301,8 @@ class TestSourceHistoryRegression:
 class TestSourceHistory:
     @pytest.fixture(autouse=True)
     def _private_access(self, monkeypatch, tmp_path):
-        from app.webapp import middleware
         from app.webapp.routers import life_os_conversations
+        from src import middleware
         from src.life_os import history as life_os_history
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
@@ -539,7 +539,7 @@ class TestSourceHistory:
 
 @pytest.mark.parametrize("action", ["resume", "handoff"])
 def test_history_launch_private_gate(life_os_client, monkeypatch, action):
-    from app.webapp import middleware
+    from src import middleware
     from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     endpoint = "/api/life-os/skills/journal-daily/conversations/launch"
@@ -561,7 +561,7 @@ def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, 
     same passkey requirement as /api/board/issues/start. The unlocked request
     is built to fail *after* the gate (unknown skill / missing life_os_dir), so
     getting past it is proven without spawning anything."""
-    from app.webapp import middleware
+    from src import middleware
     from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     if "recap" in endpoint:

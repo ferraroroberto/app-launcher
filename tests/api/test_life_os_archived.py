@@ -34,7 +34,7 @@ def _archive(root: Path, capture: str, title: str, day: str = DAY) -> None:
 
 @pytest.fixture
 def archive(life_os_client, tmp_path, monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
@@ -133,6 +133,6 @@ def test_a_failed_move_is_its_own_error(archive, monkeypatch):
 
 
 def test_archived_routes_are_passkey_gated():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/life-os/archived") == "passkey"
     assert _terminal_guard_level(f"/api/life-os/archived/{DAY}/{SKILL}/{FERRY}/restore") == "passkey"

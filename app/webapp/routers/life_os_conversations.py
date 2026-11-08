@@ -46,7 +46,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.life_os_files import resolve_within
 from app.webapp.routers.life_os_spawn import (
@@ -81,6 +80,7 @@ from src.life_os.history import (
 )
 from src.life_os.skill_refresh import plan_refresh, record_refresh
 from src.life_os.title import run_title_cli as _run_title_cli
+from src.middleware import is_pc_itself, terminal_http_gate
 from src.scanner import Skill, scan_skills, skills_dir_for
 from src.session_view.conversation_model import recorded_model
 from src.webapp_config import VALID_CODEX_MODELS, WebappConfig

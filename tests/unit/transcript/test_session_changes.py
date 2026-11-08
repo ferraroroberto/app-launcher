@@ -166,7 +166,7 @@ def test_a_transcript_past_the_ceiling_reads_its_newest_part(tmp_path, monkeypat
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -184,7 +184,7 @@ def _serve(overrides, monkeypatch, path: Path, project: Path, agent: str = "clau
 
 def test_changed_files_paths_classified_passkey():
     """Two rows: '/changed-files/diff' does not end with '/changed-files'."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files") == "passkey"
     assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files/diff") == "passkey"
 
@@ -248,7 +248,7 @@ _OPEN = "/api/claude-code/sessions/s1/changed-files/open"
 
 def test_file_routes_classified_passkey():
     """Each a row of its own: neither ends with '/changed-files' or '/diff'."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files/content") == "passkey"
     assert _terminal_guard_level("/api/claude-code/sessions/abc/changed-files/open") == "passkey"
 

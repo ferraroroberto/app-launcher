@@ -18,7 +18,6 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 
 from app.webapp.demand_cache import DemandCache
-from app.webapp.middleware import is_pc_itself, via_cloudflare
 from app.webapp.routers._helpers import PROJECT_ROOT, STATIC_DIR, maybe_json
 from app.webapp.shell_html import assemble_shell, shell_stat_key
 from src import instance_role, process_auto_restart, process_restart, system_load
@@ -36,6 +35,7 @@ from src.diagnostics import (
 )
 from src.git_utils import resolve_deployed_sha
 from src.launching.vscode_workspace import is_vscode_installed
+from src.middleware import is_pc_itself, via_cloudflare
 from src.registry import load_registry
 from src.scanner import pretty_folder_name
 from src.session_host_paths import declared_session_host_paths, paths_touched_between

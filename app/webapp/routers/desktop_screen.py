@@ -56,12 +56,12 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from fastapi import APIRouter, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
-from app.webapp.middleware import ws_terminal_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip_ws
 from src import audit
 from src.desktop import capture as desktop_capture
 from src.desktop import cursor as desktop_cursor
 from src.desktop import input as desktop_input
+from src.middleware import ws_terminal_gate
 
 logger = logging.getLogger(__name__)
 

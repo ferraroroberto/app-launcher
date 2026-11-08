@@ -12,7 +12,7 @@ from app.webapp.routers import board_spawn
 def _bypass_gate(monkeypatch):
     """Treat the TestClient host as loopback so the endpoint logic is
     exercised (the gate itself is covered by TestChiefGate)."""
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust,
         "LOOPBACK_HOSTS",

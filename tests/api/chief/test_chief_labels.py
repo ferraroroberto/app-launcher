@@ -172,7 +172,7 @@ class TestReconcileChiefLabels:
 class TestChiefGate:
 
     def test_chief_routes_classified_passkey(self):
-        from app.webapp.middleware import _terminal_guard_level
+        from src.middleware import _terminal_guard_level
         assert _terminal_guard_level("/api/board/chief/ensure") == "passkey"
         assert _terminal_guard_level("/api/board/chief/settings") == "passkey"
 

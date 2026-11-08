@@ -132,7 +132,7 @@ class TestFreeTextDispatchIsGone:
     """#1382: the Add / Build / Yolo endpoint was removed, not just hidden."""
 
     def test_post_board_dispatch_is_404(self, webapp_client, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
 
         # Loopback, so the answer is the router's own and not the tailnet gate's.
         monkeypatch.setattr(

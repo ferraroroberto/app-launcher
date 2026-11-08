@@ -56,9 +56,9 @@ JOB, RUN = "demo", "20261107T120000"
 @pytest.fixture
 def run_dir(webapp_client, monkeypatch, tmp_path: Path) -> Path:
     """A registered job ``demo`` with one running run; the PC is the caller."""
-    from app.webapp import middleware
     from app.webapp.routers import jobs_outbox_routes
     from src import jobs as jobs_mod
+    from src import middleware
 
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -142,7 +142,7 @@ def test_a_declared_scratch_root_is_also_a_job_send_root(webapp_client, run_dir:
 
 
 def test_a_job_outbox_read_is_passkey_gated_and_unreachable_off_the_tailnet(webapp_client):
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     for path in (f"/api/jobs/{JOB}/runs/{RUN}/outbox", f"/api/jobs/{JOB}/runs/{RUN}/outbox/abc"):
         assert _terminal_guard_level(path) == "passkey", path

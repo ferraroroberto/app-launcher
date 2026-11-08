@@ -12,8 +12,8 @@ from dataclasses import replace
 
 import pytest
 
-from app.webapp import middleware
 from app.webapp.routers import misc
+from src import middleware
 from src.desktop import browser as db
 
 

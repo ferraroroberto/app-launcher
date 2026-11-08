@@ -32,7 +32,7 @@ from tests.unit.transcript._support import (
 
 
 def test_transcript_path_classified_passkey():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript") == "passkey"
 
 
@@ -439,7 +439,7 @@ def test_transcript_entry_path_classified_passkey():
     """#985: a distinct guard-table row — '.../transcript/entry' does not
     end with '/transcript', so the sibling route's rule does not cover it
     for free (the exact omission class #997 found on the send route)."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript/entry") == "passkey"
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript") == "passkey"
 

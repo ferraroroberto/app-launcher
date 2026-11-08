@@ -61,7 +61,6 @@ from typing import Any, Dict, List, NoReturn, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response
 
-from app.webapp.middleware import is_pc_itself
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.board import session_exchange
 from app.webapp.routers.life_os_channels import (
@@ -99,6 +98,7 @@ from src.launching.channel_profiles import (
 from src.launching.flags import build_claude_flags
 from src.life_os import relay_registry
 from src.life_os.bot_titles import bot_conversation_ids, bot_rule
+from src.middleware import is_pc_itself
 from src.scanner import Skill
 from src.webapp_config import WebappConfig
 

@@ -84,7 +84,7 @@ class TestLaunchSkill:
         """Treat the TestClient host as loopback: the launch is passkey-gated
         since #1036, and the gate itself is covered by
         test_launch_routes_are_passkey_gated."""
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",

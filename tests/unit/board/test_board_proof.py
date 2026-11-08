@@ -18,7 +18,7 @@ REPORT = "<!doctype html><html><body><h1>walkthrough</h1></body></html>"
 @pytest.fixture
 def _bypass_gate(monkeypatch):
     """The test client counts as the PC itself, as the outbox route tests do."""
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -228,7 +228,7 @@ def test_off_the_tailnet_the_report_is_not_reachable(webapp_client, store):
 
 
 def test_the_report_route_is_a_passkey_route():
-    from app.webapp import middleware
+    from src import middleware
     assert middleware._terminal_guard_level("/api/board/proof/demo-app/21") == "passkey"
 
 

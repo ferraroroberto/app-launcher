@@ -7,7 +7,7 @@ The browser never sends a path: it names an ``id`` from the ``documents``
 allowlist in the webapp config, and ``src.documents`` turns that into a file
 under one repo's primary checkout. The list carries titles and times only and
 stays token-gated like the Life OS skills list; the text itself is gated like
-the Life OS file reader (see ``app/webapp/middleware/routes.py``).
+the Life OS file reader (see ``src/middleware/routes.py``).
 """
 
 from __future__ import annotations

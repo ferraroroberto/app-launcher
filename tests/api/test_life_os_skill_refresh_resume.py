@@ -17,7 +17,7 @@ CAPTURE = "2026-08-01-0900-ferry-booking.md"
 class TestResumeRefresh:
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         from src.clients import session as session_client
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(session_client, "list_sessions", lambda port: [])

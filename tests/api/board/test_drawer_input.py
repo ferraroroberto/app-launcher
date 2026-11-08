@@ -12,7 +12,7 @@ from src import subprocess_flags
 
 
 def test_new_paths_classified_passkey():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/input") == "passkey"
     assert _terminal_guard_level("/api/board/sessions/abc/exchange") == "passkey"
     assert _terminal_guard_level("/api/board/issues/start") == "passkey"

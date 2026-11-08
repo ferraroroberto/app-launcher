@@ -45,7 +45,7 @@ class TestTranscribe:
 
     @pytest.fixture(autouse=True)
     def _bypass_gate(self, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",
@@ -120,7 +120,7 @@ class TestTranscribeStreaming:
 
     @pytest.fixture(autouse=True)
     def _bypass_gate(self, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",

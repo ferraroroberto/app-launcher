@@ -30,10 +30,10 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from app.webapp.middleware import is_pc_itself
 from app.webapp.routers.session_outbox_routes import file_headers, refusal_error
 from src import jobs as jobs_mod
 from src.jobs.config import get_by_id, load_jobs
+from src.middleware import is_pc_itself
 from src.session_view import outbox as session_outbox
 from src.webapp_config import WebappConfig
 
