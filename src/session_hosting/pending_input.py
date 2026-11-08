@@ -22,7 +22,7 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass, replace
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 PENDING_IN_COMPOSER = "in_composer"
 PENDING_QUEUED = "queued"
@@ -58,6 +58,8 @@ class PendingEntry:
     clean_before: bool = False
     confirm_mark: Optional[int] = None
     confirm_by: Optional[float] = None
+    # When the agent's queued markers confirmed the entry; ``None`` until then.
+    confirmed_at: Optional[float] = None
 
     @property
     def confirmed(self) -> bool:
@@ -179,7 +181,13 @@ class PendingInputs:
         with self._lock:
             self._entries = []
 
-    def prune(self, now: float, idle: bool, markers_since: Callable[[int], bool]) -> None:
+    def prune(
+        self,
+        now: float,
+        idle: bool,
+        markers_since: Callable[[int], bool],
+        taken_midturn: Optional[Callable[[PendingEntry], Optional[str]]] = None,
+    ) -> List[Tuple[PendingEntry, str]]:
         """Settle the ``queued`` entries against what the screen says now.
 
         An agent idle at its prompt has no queue: it submits what it queued
@@ -187,7 +195,14 @@ class PendingInputs:
         confirmation is confirmed once ``markers_since(confirm_mark)``, and
         dropped when ``confirm_by`` passes without that, since then nothing
         showed it was queued rather than taken at once.
+
+        A confirmed entry stays while the agent's turn runs, unless
+        ``taken_midturn(entry)`` names positive evidence that the agent took
+        it at a tool boundary; the call returns each retired entry with that
+        evidence so the caller can log it. Silence is never evidence: the
+        callback answers ``None`` for "cannot tell".
         """
+        retired: List[Tuple[PendingEntry, str]] = []
         with self._lock:
             kept = []
             for e in self._entries:
@@ -196,12 +211,19 @@ class PendingInputs:
                 elif idle:
                     continue
                 elif e.confirmed:
-                    kept.append(e)
+                    evidence = taken_midturn(e) if taken_midturn is not None else None
+                    if evidence is None:
+                        kept.append(e)
+                    else:
+                        retired.append((e, evidence))
                 elif markers_since(e.confirm_mark):
-                    kept.append(replace(e, confirm_mark=None, confirm_by=None))
+                    kept.append(replace(
+                        e, confirm_mark=None, confirm_by=None, confirmed_at=now
+                    ))
                 elif e.confirm_by is not None and now < e.confirm_by:
                     kept.append(e)
             self._entries = kept
+        return retired
 
     def to_api(self, removable: Callable[[PendingEntry], bool]) -> List[Dict[str, Any]]:
         return [

@@ -59,6 +59,10 @@ _CLEAR_KEY_GAP_S = 0.08
 # on, so they are capped at about five seconds' worth. A composer needing
 # more is left reported unknown rather than empty.
 _CLEAR_MAX_PRESSES = 60
+# How long a queued entry must have been confirmed before the queue footer's
+# absence can retire it: past a repaint or two, so a frame that momentarily
+# lacks the footer is not read as the take.
+_TAKEN_GRACE_S = 3.0
 # How much recent output to look through for a dialog: a permission prompt
 # paints once, then sits quiet over the queue.
 _DIALOG_LOOKBACK_CHARS = 4000
@@ -149,6 +153,27 @@ class PendingInputProtocol(DeferredSubmit):
         recent = self._normalized_since(self._output_total - _DIALOG_LOOKBACK_CHARS)
         return any(marker in recent for marker in deferred_submit._QUEUED_MARKERS)
 
+    def _taken_midturn(self, entry: PendingEntry) -> Optional[str]:
+        """Positive evidence that the agent took a confirmed queued message at
+        a tool boundary inside its running turn, else ``None``.
+
+        The agent never goes idle then, so the idle rule cannot retire the
+        entry. The evidence is the queue footer (``_QUEUED_MARKERS``) gone
+        from recent output while the turn is demonstrably live: a main-turn
+        spinner within the last second, no dialog over the screen (a dialog
+        paints over the footer and stops the spinner), and the entry
+        confirmed long enough ago that the footer has had time to repaint.
+        None of these is met by silence: a quiet or dialog-covered screen
+        answers ``None`` and the entry stays listed.
+        """
+        if entry.confirmed_at is None or time.time() - entry.confirmed_at < _TAKEN_GRACE_S:
+            return None
+        if not self._turn_running_now() or self._dialog_recent():
+            return None
+        if self._queue_painted_recently():
+            return None
+        return "queue footer no longer painted while the turn runs"
+
     def _composer_known_empty(self) -> bool:
         return self._composer is not None and self._composer.state()[0] is False
 
@@ -219,7 +244,13 @@ class PendingInputProtocol(DeferredSubmit):
         if not self._pending.entries():
             return []
         now = time.time()
-        self._pending.prune(now, self._idle_at_prompt(now), self._queued_markers_since)
+        retired = self._pending.prune(
+            now, self._idle_at_prompt(now), self._queued_markers_since, self._taken_midturn
+        )
+        for entry, evidence in retired:
+            logger.info(
+                f"ℹ️ PTY {self.session_id[:8]} pending {entry.id} retired mid-turn: {evidence}"
+            )
         return self._pending.to_api(self._entry_removable)
 
     # ----------------------------------------------------------------- discard
