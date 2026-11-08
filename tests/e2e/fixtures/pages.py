@@ -5,12 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
-import urllib3
 import warnings
 from typing import Iterator, Optional
 
 import pytest
 import requests
+import urllib3
 from playwright.sync_api import BrowserContext, Page
 
 from tests.e2e._shot import CHROMIUM_CAPTURE_ARGS

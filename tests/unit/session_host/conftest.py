@@ -8,7 +8,6 @@ import pytest
 
 from src import session_host as session_host_module
 from src.session_hosting import deferred_submit
-
 from tests.unit.session_host._support import _FakeClock
 
 

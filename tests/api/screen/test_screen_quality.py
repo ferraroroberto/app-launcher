@@ -26,7 +26,6 @@ from PIL import Image, ImageDraw
 
 from src.desktop import capture as desktop_capture
 from src.desktop.capture import Monitor, StageStats
-
 from tests.api.screen._support import (
     LOOPBACK,
     _as,

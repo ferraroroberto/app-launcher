@@ -51,10 +51,6 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.launching.flags import build_claude_flags, build_codex_flags, build_resume_flags
-from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import WebappConfig, update_webapp_config
-
 from app.webapp.routers import (
     life_os_archived,
     life_os_channels,
@@ -76,6 +72,13 @@ from app.webapp.routers.life_os_spawn import (
     _resolve_skill,
     _spawn_skill_session,
 )
+from src.launching.flags import (
+    build_claude_flags,
+    build_codex_flags,
+    build_resume_flags,
+)
+from src.scanner import Skill, scan_skills, skills_dir_for
+from src.webapp_config import WebappConfig, update_webapp_config
 
 router = APIRouter()
 router.include_router(life_os_archived.router)

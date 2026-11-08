@@ -24,7 +24,6 @@ import pytest
 
 from src.clients.github import GH_CMD_ENV
 from src.desktop.input import FAKE_INPUT_ENV as _FAKE_INPUT_ENV
-
 from tests._credential_hygiene import count_leaked_credentials, disposable_webapp_config
 from tests.e2e._autoboot_env import runtime_data_env
 from tests.e2e._process_teardown import reap_stub_children
@@ -46,7 +45,11 @@ from tests.e2e.fixtures.env import (
     WEBAPP_CONFIG,
     WEBAPP_CONFIG_PATH_ENV,
 )
-from tests.e2e.fixtures.launch_target import launch_target_dir, pin_launch_target, pin_ui_prefs
+from tests.e2e.fixtures.launch_target import (
+    launch_target_dir,
+    pin_launch_target,
+    pin_ui_prefs,
+)
 from tests.e2e.fixtures.processes import (
     autoboot_log_name,
     boot_on_free_port,

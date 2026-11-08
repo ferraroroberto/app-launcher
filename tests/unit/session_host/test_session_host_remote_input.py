@@ -19,8 +19,6 @@ import time
 
 import pytest
 
-from src.session_hosting import remote
-from src.session_hosting.remote import RemoteInputOutcome, RemoteSession
 from src.session_host_input import (
     DELIVERED_UNCONFIRMED,
     INPUT_CONSOLE_FAILED,
@@ -31,6 +29,8 @@ from src.session_host_input import (
     SUBMIT_NOT_SUBMITTED,
     SUBMIT_UNCONFIRMED,
 )
+from src.session_hosting import remote
+from src.session_hosting.remote import RemoteInputOutcome, RemoteSession
 from src.subprocess_flags import NO_WINDOW
 
 

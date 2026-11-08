@@ -9,10 +9,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
-
 from tests.e2e.chat._support import _SID, _boot, _open_chat, _question, _tick, _turn
-
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 
 pytestmark = pytest.mark.smoke
 

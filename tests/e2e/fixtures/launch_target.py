@@ -14,7 +14,6 @@ import pytest
 
 from src.git_utils import run_git
 from src.scanner import dir_ignored
-
 from tests.e2e.fixtures.env import REPO_ROOT
 
 logger = logging.getLogger(__name__)

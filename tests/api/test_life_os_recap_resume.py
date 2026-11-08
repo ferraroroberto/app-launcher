@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 from tests.api._life_os_support import OTHER_SID, RESUMABLE_SID
+from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 
 
 # ------------------------------------------------------- recap-status endpoint

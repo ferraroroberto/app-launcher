@@ -30,11 +30,10 @@ from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 
-from src.session_view import outbox as session_outbox
-from src.webapp_config import WebappConfig
-
 from app.webapp.middleware import is_pc_itself
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
+from src.session_view import outbox as session_outbox
+from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 

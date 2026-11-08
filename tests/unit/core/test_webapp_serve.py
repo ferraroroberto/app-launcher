@@ -9,11 +9,9 @@ import sys
 import types
 
 import pytest
-
 from hypercorn.protocol.h2 import H2Protocol
 
-from app.webapp import serve
-from app.webapp import event_loop
+from app.webapp import event_loop, serve
 from app.webapp.event_loop import LOOP_FACTORY, selector_loop_factory
 
 

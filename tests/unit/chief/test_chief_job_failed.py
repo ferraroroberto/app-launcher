@@ -16,8 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.webapp.chief_doorbell import count_pending
-from src.chief import job_failed as cjf
 from src import instance_role, notifications
+from src.chief import job_failed as cjf
 from src.clients import session as session_client
 
 

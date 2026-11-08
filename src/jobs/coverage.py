@@ -83,8 +83,8 @@ from pathlib import Path
 from threading import Lock
 from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
-from src.jobs import history as jobs_history
 from src._json_io import atomic_write_json
+from src.jobs import history as jobs_history
 from src.jobs.config import Job, load_jobs
 from src.jobs.next_fire import FREQUENT_SCHEDULE_TYPES, upcoming_fires
 from src.jobs.schtasks import (

@@ -52,7 +52,8 @@ import pytest
 import uvicorn
 from websockets.asyncio.client import connect as ws_connect
 
-from src import audit, session_host as session_host_lib
+from src import audit
+from src import session_host as session_host_lib
 from src.session_host import PtyProcess
 
 _CHILD = Path(__file__).parent.parent.parent / "_pty_paint_child.py"

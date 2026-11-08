@@ -26,11 +26,9 @@ from pathlib import Path
 from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional, Tuple
 
 from src import audit
-from src.session_view import plan_picker
 from src._log_once import log_once
 from src.board.active_issue_claims import CLAIM_DEAD
-from src.board.state import STATE_STALE_AFTER, age_seconds, utc_now, parse_iso
-from src.session_model import session_model_label
+from src.board.state import STATE_STALE_AFTER, age_seconds, parse_iso, utc_now
 from src.board.transcript import (
     _ExchangeTail,
     _external_row_liveness,
@@ -39,6 +37,8 @@ from src.board.transcript import (
     _refine_waiting_status,
     _transcript_overlay,
 )
+from src.session_model import session_model_label
+from src.session_view import plan_picker
 
 logger = logging.getLogger(__name__)
 

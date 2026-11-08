@@ -16,9 +16,10 @@ from fastapi import HTTPException, Request, WebSocket
 
 from src import audit, instance_role
 from src import jobs as jobs_mod
+from src.auth.webauthn_gate import WebAuthnGate
+from src.clients.session import SessionHostError
 from src.jobs.config import get_by_id, load_jobs
 from src.launching.flags import build_claude_flags, default_effort, effective_effort
-from src.clients.session import SessionHostError
 from src.webapp_config import (
     ALWAYS_ON_CLAUDE_FLAGS,
     VALID_CLAUDE_EFFORTS,
@@ -27,7 +28,6 @@ from src.webapp_config import (
     WebappConfig,
     append_auth_token,
 )
-from src.auth.webauthn_gate import WebAuthnGate
 
 logger = logging.getLogger(__name__)
 

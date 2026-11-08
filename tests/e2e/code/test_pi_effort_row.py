@@ -19,7 +19,6 @@ from playwright.sync_api import Page, expect
 from tests.e2e.fixtures.ui import close_settings_sheets, open_agent_sheet
 from tests.e2e.fixtures.waits import stable_eval, wait_until
 
-
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 _MODELS = {"claude-opus-5": "Opus", "claude-sonnet-5": "Sonnet", "gpt-5.6-sol": "Sol"}

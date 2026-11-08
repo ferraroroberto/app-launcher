@@ -112,7 +112,7 @@ def test_a_page_that_resolves_outside_the_proof_folder_is_refused(store, tmp_pat
     try:
         link.symlink_to(outside, target_is_directory=True)
     except OSError:
-        import _winapi   # a junction needs no privilege; this branch only runs on Windows
+        import _winapi  # a junction needs no privilege; this branch only runs on Windows
         _winapi.CreateJunction(str(outside), str(link))
     index = json.loads((root / "index.json").read_text(encoding="utf-8"))
     index["40"] = {}

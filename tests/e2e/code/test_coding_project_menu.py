@@ -37,7 +37,11 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.ui import close_settings_sheets, open_row_menu, open_settings_sheet
+from tests.e2e.fixtures.ui import (
+    close_settings_sheets,
+    open_row_menu,
+    open_settings_sheet,
+)
 
 pytestmark = pytest.mark.smoke
 

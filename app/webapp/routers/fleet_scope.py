@@ -16,10 +16,9 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import maybe_json
 from src import fleet_scope
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import maybe_json
 
 router = APIRouter()
 

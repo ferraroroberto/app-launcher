@@ -8,7 +8,6 @@ from typing import Any, Dict, List
 
 from src.session_view import transcript as st
 
-
 # ------------------------------------------------------------ fixtures
 
 

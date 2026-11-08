@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-
-
 from app.webapp.routers import board_chief as chief_router
 from src.chief import pointer as chief_pointer
-
-from tests.api.chief._support import _chief_row, _chief_state_row, _recent_iso, _transcript
+from tests.api.chief._support import (
+    _chief_row,
+    _chief_state_row,
+    _recent_iso,
+    _transcript,
+)
 
 
 class TestReconcileChiefLabel:

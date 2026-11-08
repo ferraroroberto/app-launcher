@@ -8,19 +8,17 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval, stable_read
-
 from tests.e2e.chat._support import (
-    _Picker,
     _RESUMABLE,
-    _Resume,
     _SID,
     _boot,
     _open_chat,
+    _Picker,
+    _Resume,
     _tick,
     _turn,
 )
-
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval, stable_read
 
 pytestmark = pytest.mark.smoke
 

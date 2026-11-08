@@ -26,11 +26,10 @@ from typing import Any, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import maybe_json
 from src.board import owner_checks
 from src.clients import github as github_client
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import maybe_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

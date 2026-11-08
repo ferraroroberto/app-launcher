@@ -64,23 +64,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from src import agents, audit, board, fleet_scope
-from src.board import active_issue_claims, backlog_buckets, owner_checks, proof_reports
-from src.chief import answers as chief_answers
-from src.chief import dispatch_brief
-from src.clients import github as github_client
-from src.jobs import snapshot as jobs_snapshot
-from src.usage import quota as quota_usage
-from src.clients import session as session_client
-from src.board.exchange import resolve_exchange, unavailable
-from src.chief import plan as chief_plan
-from src.chief import plan_prune
-from src.launching.flags import build_claude_flags
-from src.session_view.outbox import HTML_CSP, HTML_MEDIA
-from src.launching.launcher import open_local_terminal_window, spawn_claude_session
-from src.usage import auto_switch
-from src.webapp_config import WebappConfig
-
 from app.webapp.hot_poll import BuildSteps, hot_poll, session_poll
 from app.webapp.routers import board_chief, board_owner
 from app.webapp.routers._helpers import (
@@ -93,11 +76,26 @@ from app.webapp.routers._helpers import (
 from app.webapp.routers.board_spawn import (
     SESSION_HOST_UNREACHABLE,
     _agent_and_flags,
-    applied_effort,
-    dispatch_effort,
     _read_live_sessions,
     _resolve_repo_entry,
+    applied_effort,
+    dispatch_effort,
 )
+from src import agents, audit, board, fleet_scope
+from src.board import active_issue_claims, backlog_buckets, owner_checks, proof_reports
+from src.board.exchange import resolve_exchange, unavailable
+from src.chief import answers as chief_answers
+from src.chief import dispatch_brief, plan_prune
+from src.chief import plan as chief_plan
+from src.clients import github as github_client
+from src.clients import session as session_client
+from src.jobs import snapshot as jobs_snapshot
+from src.launching.flags import build_claude_flags
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
+from src.session_view.outbox import HTML_CSP, HTML_MEDIA
+from src.usage import auto_switch
+from src.usage import quota as quota_usage
+from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

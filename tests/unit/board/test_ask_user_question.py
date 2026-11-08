@@ -19,9 +19,13 @@ from typing import Any, Dict, List
 
 import pytest
 
+from src.ask_user_question import (
+    answer_keystrokes,
+    answers_from_result,
+    questions_from_input,
+)
 from src.board import transcript as board_transcript
 from src.session_view import transcript as st
-from src.ask_user_question import answer_keystrokes, answers_from_result, questions_from_input
 
 
 def _q(question: str, labels: List[str], multi: bool = False) -> Dict[str, Any]:

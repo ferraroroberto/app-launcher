@@ -36,7 +36,6 @@ from app.webapp.session_host import server
 from src import session_host_input
 from src.clients import session as session_client
 from src.session_host import PtySession
-from src.session_hosting import deferred_submit
 from src.session_host_input import (
     INPUT_DEFER_TIMEOUT,
     INPUT_DEFERRED,
@@ -46,6 +45,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
     InputOutcome,
 )
+from src.session_hosting import deferred_submit
 
 
 def _session(outcome: InputOutcome) -> MagicMock:
@@ -304,8 +304,8 @@ def test_remote_input_answers_200_with_delivered_unconfirmed(monkeypatch):
 
 def test_remote_console_failure_is_a_502_naming_the_error(monkeypatch):
     # Distinct from not_ingested's 502 wording: nothing was typed at all.
-    from src.session_hosting.remote import RemoteInputOutcome
     from src.session_host_input import INPUT_CONSOLE_FAILED
+    from src.session_hosting.remote import RemoteInputOutcome
 
     session = _session(
         RemoteInputOutcome(

@@ -8,14 +8,13 @@ import time
 import pytest
 from starlette.websockets import WebSocketDisconnect
 
-
 from tests.api.screen._support import (
+    _CLICK,
+    _DOWN,
     LAN,
     LOOPBACK,
     TAILNET,
     TOKEN,
-    _CLICK,
-    _DOWN,
     _as,
     _clipboard_frame,
     _close_and_wait,

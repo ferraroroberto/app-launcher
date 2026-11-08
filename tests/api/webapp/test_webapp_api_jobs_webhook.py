@@ -42,6 +42,7 @@ def _stripe_sig(secret: str, body: bytes, t: int) -> str:
 @pytest.fixture
 def mocked_jobs_side_effects(monkeypatch):
     from unittest.mock import MagicMock
+
     from app.webapp.routers import jobs as jobs_router
 
     mocks = {

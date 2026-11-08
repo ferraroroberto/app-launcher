@@ -19,7 +19,12 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
-from tests.e2e.session.test_session_mode_toggle import _mock_git_status, _mock_sessions_list, _row, _session_row
+from tests.e2e.session.test_session_mode_toggle import (
+    _mock_git_status,
+    _mock_sessions_list,
+    _row,
+    _session_row,
+)
 from tests.e2e.session.test_session_transcript import _menu_item
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]

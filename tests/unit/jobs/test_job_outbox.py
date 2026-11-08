@@ -14,7 +14,6 @@ import pytest
 
 from app.cli.commands import run_job_cmd
 
-
 # ---------------------------------------------------------------- child env
 
 
@@ -152,8 +151,8 @@ def test_a_job_outbox_read_is_passkey_gated_and_unreachable_off_the_tailnet(weba
 
 
 def test_the_run_detail_carries_only_the_sent_file_count(webapp_client, run_dir: Path, monkeypatch):
-    from app.webapp.routers import jobs as jobs_router
     from app.webapp.routers import _helpers
+    from app.webapp.routers import jobs as jobs_router
 
     monkeypatch.setattr(jobs_router, "get_by_id", lambda cfg, jid: object() if jid == JOB else None)
     monkeypatch.setattr(_helpers, "get_by_id", lambda cfg, jid: object() if jid == JOB else None)

@@ -15,6 +15,7 @@ from typing import Dict, List, Tuple
 
 from src.jobs.config import Job
 from src.jobs_kinds.base import Problem
+
 # Dotted-path submodule imports (not ``from src.jobs_kinds import batch``) —
 # this module is itself imported *by* ``src/jobs_kinds/__init__.py``, so
 # resolving siblings via an attribute lookup on the partially-initialised

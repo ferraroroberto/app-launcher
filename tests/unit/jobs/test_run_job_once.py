@@ -12,7 +12,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
 from app.cli.commands import run_job_cmd as rjc
 from src.app_config import AppConfig
 from src.jobs.config import (

@@ -8,9 +8,12 @@ import json
 import pytest
 
 from src.life_os.bot_titles import (
-    bot_conversation_ids, bot_rule, bot_title, pending_bot_rows, split_system_rows,
+    bot_conversation_ids,
+    bot_rule,
+    bot_title,
+    pending_bot_rows,
+    split_system_rows,
 )
-
 from tests.api._life_os_support import RESUMABLE_SID
 from tests.api.test_life_os_delete_rename import _stub_title_cli
 

@@ -15,7 +15,6 @@ import pytest
 from src import app_runtime
 from src.diagnostics import listening_port_for_pid_tree
 
-
 # --------------------------------------------------------------- fake psutil
 
 

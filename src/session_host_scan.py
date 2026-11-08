@@ -15,7 +15,6 @@ from __future__ import annotations
 import re
 from typing import List, Optional, Tuple
 
-
 # Cap on the carried unterminated-OSC-title tail: a sequence
 # that never gets a BEL/ST terminator within this many chars isn't a real
 # title still in flight — flush it rather than carrying it forever, so a

@@ -4,18 +4,22 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answers_from_result, questions_from_input
+from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
+from src.ask_user_question import answers_from_result, questions_from_input
 from src.board.transcript_exchange import typed_user_kind
-from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME, plan_from_input, plan_outcome
+from src.plan_review import TOOL_NAME as PLAN_TOOL_NAME
+from src.plan_review import plan_from_input, plan_outcome
 from src.session_view.automatic_turns import ORIGIN_COMPACT_SUMMARY
 from src.session_view.outbox import clean_name, kind_of
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
-    Entry,
-    Line,
+    DIFF_FULL_BYTES,
     NO_CAP,
     SYSTEM_TEXT_CAP,
     THINKING_TEXT_CAP,
+    Entry,
+    Hunk,
+    Line,
     _attach_result,
     _blocks_text,
     _cap,
@@ -30,13 +34,10 @@ from src.transcript_flavors._shared import (
     _tool_summary,
     _with_action,
     _with_placeholders,
-    DIFF_FULL_BYTES,
-    Hunk,
     cap_diff,
     diff_counts,
     recorded_hunks,
 )
-
 
 # Claude Code's own "put this file in front of the owner" tool. Its
 # input is ``{"files": [path, ...], "caption"?: str}``, paths absolute or

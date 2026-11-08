@@ -8,11 +8,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src import board
+from src._fleet_contract import load_fleet_contract
+from src._log_once import log_once
 from src.board import active_issue_claims
 from src.board import sessions as board_sessions
 from src.board import transcript as board_transcript
-from src._fleet_contract import load_fleet_contract
-from src._log_once import log_once
 
 logger = logging.getLogger("tests.log_once")
 

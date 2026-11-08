@@ -9,7 +9,6 @@ from playwright.sync_api import Locator, Page, expect
 
 from tests.e2e.fixtures.ui import open_row_menu
 
-
 _SEARCH_URL = re.compile(r".*/api/life-os/conversations/search.*")
 _ARCHIVED_URL = re.compile(r".*/api/life-os/archived(\?.*)?$")
 

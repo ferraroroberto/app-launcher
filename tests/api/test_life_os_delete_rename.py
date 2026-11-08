@@ -10,7 +10,6 @@ from datetime import datetime
 import pytest
 
 from src.life_os import title as life_os_title
-
 from tests.api._life_os_support import RESUMABLE_SID
 
 

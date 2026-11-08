@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 
 from src import board
 from src.jobs import dismissed as jobs_dismissed
-
 from tests.unit.board._support import _seed_job
 
 

@@ -11,7 +11,6 @@ import pytest
 
 from src import board
 from src.session_view import transcript as st
-
 from tests.unit.transcript._support import (
     _assistant,
     _conversation,
@@ -24,7 +23,6 @@ from tests.unit.transcript._support import (
     _user,
     _write_jsonl,
 )
-
 
 # ------------------------------------------------- transcript_tail (#1050)
 #

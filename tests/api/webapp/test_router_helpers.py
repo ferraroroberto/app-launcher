@@ -30,8 +30,8 @@ from app.webapp.routers._helpers import (
     should_mirror_to_pc,
     tsnet_host_from_cert,
 )
-from src.webapp_config import SESSION_HOST_PORT_ENV
 from src.auth.webauthn_gate import WebAuthnGate
+from src.webapp_config import SESSION_HOST_PORT_ENV
 
 
 @pytest.fixture(autouse=True)

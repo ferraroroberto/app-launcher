@@ -8,7 +8,6 @@ from PIL import Image
 
 from src.desktop import capture as desktop_capture
 from src.desktop.capture import CaptureUnavailable
-
 from tests.api.screen._support import (
     ABOVE,
     LAN,
@@ -23,7 +22,6 @@ from tests.api.screen._support import (
     _ws_close_code,
     _ws_url,
 )
-
 
 # ------------------------------------------------------------- HTTP gate
 

@@ -23,8 +23,11 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from src.launching.model_catalog import DEFAULT_HIDDEN_MODELS
-from tests.e2e.fixtures.ui import close_settings_sheets, open_agent_sheet, open_settings_sheet
-
+from tests.e2e.fixtures.ui import (
+    close_settings_sheets,
+    open_agent_sheet,
+    open_settings_sheet,
+)
 
 pytestmark = pytest.mark.smoke
 

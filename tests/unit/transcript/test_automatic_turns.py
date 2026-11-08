@@ -10,7 +10,6 @@ import pytest
 from src import audit, board
 from src.session_view import automatic_turns as at
 from src.transcript_flavors.claude import claude_entries
-
 from tests.unit.transcript._support import (
     _assistant,
     _lines_of,

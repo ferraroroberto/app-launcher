@@ -37,7 +37,12 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.waits import stable_eval
 from tests.e2e.jobs.test_jobs_log_copy import _CLIPBOARD_MOCK
-from tests.e2e.session.test_session_changed_files import _SID, _menu, _mock, _open_session
+from tests.e2e.session.test_session_changed_files import (
+    _SID,
+    _menu,
+    _mock,
+    _open_session,
+)
 
 pytestmark = pytest.mark.smoke
 

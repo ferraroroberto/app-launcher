@@ -9,15 +9,14 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.webapp.middleware import trust
-from app.webapp.middleware.credentials import presented_credential, credential_required
+from app.webapp.middleware.credentials import credential_required, presented_credential
 from app.webapp.middleware.routes import (
     AUTH_EXEMPT_EXACT,
     AUTH_EXEMPT_PREFIXES,
     is_webhook_hook_path,
 )
 from app.webapp.middleware.terminal_gate import terminal_http_gate
-from src.auth import api_tokens
-from src.auth import delegate_token
+from src.auth import api_tokens, delegate_token
 from src.auth.api_tokens import constant_time_equals
 
 # The logger behind webapp/auth.log, the auth trail that persists on the live

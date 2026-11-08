@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 from scripts import probe_repaints
 
 ESC = b"\x1b"

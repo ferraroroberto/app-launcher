@@ -35,12 +35,6 @@ import webbrowser
 from pathlib import Path
 from typing import Optional
 
-
-from src import AppConfig
-from src._tunnel_config import read_tunnel_hostname
-from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
-from src.webapp_config import append_auth_token, load_webapp_config
-
 from app.tray import registered_trays, tailscale
 from app.tray.self_heal import RestartBudget, SelfHealer, should_heal_webapp
 from app.tray.single_instance import SingleInstance
@@ -53,6 +47,10 @@ from app.webapp.manager import (
     cert_paths,
     load_config,
 )
+from src import AppConfig
+from src._tunnel_config import read_tunnel_hostname
+from src.subprocess_flags import NO_WINDOW, NO_WINDOW_NEW_GROUP
+from src.webapp_config import append_auth_token, load_webapp_config
 
 logger = logging.getLogger(__name__)
 

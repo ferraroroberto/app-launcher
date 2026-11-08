@@ -5,7 +5,6 @@ from __future__ import annotations
 import time as real_time
 from unittest.mock import MagicMock
 
-
 from src.session_host import PtySession
 
 

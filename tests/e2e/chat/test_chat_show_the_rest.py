@@ -29,16 +29,16 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_read
 from tests.e2e.chat._support import (
     _SID,
-    _Transcript,
     _mock_sessions_list,
     _open_chat,
     _plan,
     _tick,
+    _Transcript,
     _turn,
 )
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_read
 
 pytestmark = pytest.mark.smoke
 

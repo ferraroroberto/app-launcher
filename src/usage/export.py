@@ -49,8 +49,8 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
-from src.clients import _loopback_http
 from src._json_io import atomic_write_json
+from src.clients import _loopback_http
 from src.runtime_data import runtime_data_dir, runtime_db_path
 from src.usage_log import foreground_time, open_read_only
 from src.webapp_config import WebappConfig

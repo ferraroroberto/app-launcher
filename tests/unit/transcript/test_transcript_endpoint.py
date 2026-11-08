@@ -11,14 +11,13 @@ import pytest
 
 from src import board
 from src.transcript_flavors import _shared as tf_shared
-
 from tests.unit.transcript._support import (
-    AGY_CAPTURE,
-    COPILOT_CAPTURE,
-    GROK_CAPTURE,
     _BRIDGE,
     _CONV,
     _RESUMED,
+    AGY_CAPTURE,
+    COPILOT_CAPTURE,
+    GROK_CAPTURE,
     _codex,
     _conversation,
     _kinds,
@@ -28,7 +27,6 @@ from tests.unit.transcript._support import (
     _user,
     _write_jsonl,
 )
-
 
 # --------------------------------------------------------------- router
 
@@ -127,9 +125,8 @@ class TestTranscriptEndpoint:
         shared by two live siblings reads the conversation its own bridge id
         names, and each sibling reads its own, not this one's. The link comes
         from the session's PTY capture (#1399), not the session-host's row."""
-        from src.session_view import transcript_locate
-
         from src import audit
+        from src.session_view import transcript_locate
 
         client, _, overrides = webapp_client
         # The session-host's rows carry no link: the router reads it off each

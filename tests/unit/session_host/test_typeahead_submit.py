@@ -23,7 +23,6 @@ import pytest
 
 from src import session_host_input
 from src.session_host import PtySession
-from src.session_hosting import deferred_submit
 from src.session_host_input import (
     INPUT_DEFER_FAILED,
     INPUT_DEFER_UNCLEAR,
@@ -33,6 +32,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
     touches_composer,
 )
+from src.session_hosting import deferred_submit
 from tests.unit.session_host.test_bg_agents_submit import (  # noqa: F401 — fixtures
     _SPINNER_FRAME,
     _TICK_S,

@@ -31,9 +31,6 @@ from playwright.sync_api import Page, expect
 from tests.e2e import _fake_clock
 from tests.e2e._contrast import contrast_ratio
 from tests.e2e._surface import surface
-from tests.e2e.fixtures.ui import open_row_menu
-from tests.e2e.fixtures.waits import flush_requests, stable_eval, stable_read, wait_until
-
 from tests.e2e.board._support import (
     _FAKE_BOARD,
     _board_payload,
@@ -46,7 +43,13 @@ from tests.e2e.board._support import (
     _route_plan_from,
     _unfold,
 )
-
+from tests.e2e.fixtures.ui import open_row_menu
+from tests.e2e.fixtures.waits import (
+    flush_requests,
+    stable_eval,
+    stable_read,
+    wait_until,
+)
 
 pytestmark = pytest.mark.smoke
 

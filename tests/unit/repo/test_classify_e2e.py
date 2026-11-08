@@ -17,7 +17,13 @@ import re
 
 import pytest
 
-from scripts.classify_e2e import Category, E2EConfig, _classify_one, classify, load_config
+from scripts.classify_e2e import (
+    Category,
+    E2EConfig,
+    _classify_one,
+    classify,
+    load_config,
+)
 from src.session_host_paths import declared_session_host_paths
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent.parent

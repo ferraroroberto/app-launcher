@@ -45,7 +45,18 @@ import os
 import sys
 import threading
 from dataclasses import dataclass
-from typing import Any, Dict, List, Mapping, Optional, Protocol, Sequence, Set, Tuple, Union
+from typing import (
+    Any,
+    Dict,
+    List,
+    Mapping,
+    Optional,
+    Protocol,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+)
 
 from src.desktop import capture as desktop_capture
 from src.desktop import clipboard as desktop_clipboard

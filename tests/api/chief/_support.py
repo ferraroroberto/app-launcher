@@ -6,7 +6,6 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
 from src.chief import pointer as chief_pointer
 
 

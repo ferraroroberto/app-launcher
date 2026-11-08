@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.webapp.routers.jobs_run import _admit_and_spawn
 from src import jobs as jobs_mod
 from src.jobs.argv import compose_argv
 from src.jobs.config import get_by_id, load_jobs
@@ -24,8 +25,6 @@ from src.jobs.webhook import (
     resolve_secret,
     verify_webhook,
 )
-
-from app.webapp.routers.jobs_run import _admit_and_spawn
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

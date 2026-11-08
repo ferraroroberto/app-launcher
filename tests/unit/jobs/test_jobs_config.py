@@ -26,7 +26,6 @@ from src.jobs.config import (
     update_job,
 )
 
-
 # =================================================================== schedule
 
 
@@ -383,7 +382,7 @@ class TestPauseResume:
             "id": "x", "name": "X", "script_path": "C:\\x.py",
             "schedule": {"type": "daily", "at": "06:00"},
         }))
-        from src.jobs.config import pause_job, load_jobs
+        from src.jobs.config import load_jobs, pause_job
         pause_job(cfg, "x")
         # Reload from disk.
         cfg2 = load_jobs()

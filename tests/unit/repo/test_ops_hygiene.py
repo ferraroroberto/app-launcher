@@ -26,7 +26,6 @@ from types import SimpleNamespace
 
 import pytest
 
-
 # ------------------------------------------------- port-kill reachability
 
 

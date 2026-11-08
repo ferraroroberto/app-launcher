@@ -54,16 +54,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit, board
-from src.chief import identity as chief_identity
-from src.chief.cap_raised import publish_cap_raised
-from src.chief import pointer as chief_pointer
-from src.clients import session as session_client
-from src.launching.flags import build_resume_flags
-from src.launching.launcher import open_local_terminal_window, spawn_claude_session
-from src.subprocess_flags import NO_WINDOW
-from src.webapp_config import WebappConfig, update_webapp_config
-
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     client_ip,
@@ -79,6 +69,15 @@ from app.webapp.routers.board_spawn import (
     _resolve_repo_entry,
     _type_into_session,
 )
+from src import audit, board
+from src.chief import identity as chief_identity
+from src.chief import pointer as chief_pointer
+from src.chief.cap_raised import publish_cap_raised
+from src.clients import session as session_client
+from src.launching.flags import build_resume_flags
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
+from src.subprocess_flags import NO_WINDOW
+from src.webapp_config import WebappConfig, update_webapp_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

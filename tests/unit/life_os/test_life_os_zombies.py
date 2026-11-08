@@ -21,16 +21,22 @@ import pytest
 
 from app.cli.commands import life_os_zombie_cmd
 from app.cli.commands.life_os_zombie_cmd import LifeOsZombieCommand
+from src.clients import session as session_client
 from src.life_os import delete as life_os_delete
 from src.life_os import history as life_os_history
 from src.life_os import title as life_os_title
 from src.life_os import zombie_backup as life_os_zombie_backup
 from src.life_os import zombies as life_os_zombies
-from src.clients import session as session_client
 from src.life_os.delete import ConversationDeleteError
 from src.life_os.transcript import claude_projects_dir
 from src.life_os.zombies import (
-    MODE_BACKUP, MODE_DELETE, MODE_DRY_RUN, Verdict, classify, run_sweep, summary_text,
+    MODE_BACKUP,
+    MODE_DELETE,
+    MODE_DRY_RUN,
+    Verdict,
+    classify,
+    run_sweep,
+    summary_text,
 )
 from src.notifications import NoopNotifier
 from src.webapp_config import WebappConfig

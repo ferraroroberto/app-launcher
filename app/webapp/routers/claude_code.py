@@ -17,17 +17,21 @@ from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.session_view.git_changes import file_diff, is_git_repo, list_changes, open_folder
-from src.scanner import ProjectDir, git_status, scan_project_dirs
+from app.webapp.hot_poll import start_or_join
+from app.webapp.routers._helpers import maybe_json
 from src.launching.vscode_workspace import (
     ensure_workspace_file,
     is_vscode_installed,
     open_workspace,
 )
+from src.scanner import ProjectDir, git_status, scan_project_dirs
+from src.session_view.git_changes import (
+    file_diff,
+    is_git_repo,
+    list_changes,
+    open_folder,
+)
 from src.webapp_config import WebappConfig, update_webapp_config
-
-from app.webapp.hot_poll import start_or_join
-from app.webapp.routers._helpers import maybe_json
 
 router = APIRouter()
 slow_logger = logging.getLogger("launcher.slowreq")

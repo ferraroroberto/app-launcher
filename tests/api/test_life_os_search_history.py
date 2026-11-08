@@ -6,14 +6,14 @@ import json
 import os
 import subprocess
 import time
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from src.life_os.index import search_cli
-from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 from tests.api._life_os_support import RESUMABLE_SID, _completed
+from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 
 
 class TestConversationSearch:
@@ -261,8 +261,12 @@ class TestSearchCliResolution:
         was never router-shaped work, and one router importing it from
         another was the shape that made a second copy tempting. The pin is
         unchanged in intent: one definition, and it lives in the leaf."""
+        from app.webapp.routers import (
+            life_os_conversations,
+            life_os_files,
+            life_os_search,
+        )
         from src.life_os import index as life_os_index
-        from app.webapp.routers import life_os_conversations, life_os_files, life_os_search
 
         assert life_os_search.search_cli is life_os_index.search_cli
         for module in (life_os_conversations, life_os_files, life_os_search):
@@ -410,6 +414,7 @@ class TestSourceHistory:
 
     def test_oversized_capture_resumes_natively_from_its_header(self, life_os_client, monkeypatch):
         import hashlib
+
         from src.life_os.history import MAX_CAPTURE_BYTES
         client, _, _ = life_os_client
         path, row = self._oversized(life_os_client)
@@ -481,6 +486,7 @@ class TestSourceHistory:
 
     def test_handoff_requires_confirmation_and_cleans_failed_spawn(self, life_os_client, monkeypatch, tmp_path):
         from fastapi import HTTPException
+
         from app.webapp.routers import life_os_conversations
         client, _, _ = life_os_client
         _, row = self._capture(life_os_client)

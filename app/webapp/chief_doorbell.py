@@ -52,12 +52,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Optional
 
-from src import board
-from src.clients import session as session_client
-from src.session_view.automatic_turns import DOORBELL_LINE, ORIGIN_DOORBELL, record_injected
-
 from app.webapp.routers import board_chief
 from app.webapp.routers.board_spawn import _read_live_sessions
+from src import board
+from src.clients import session as session_client
+from src.session_view.automatic_turns import (
+    DOORBELL_LINE,
+    ORIGIN_DOORBELL,
+    record_injected,
+)
 
 logger = logging.getLogger(__name__)
 

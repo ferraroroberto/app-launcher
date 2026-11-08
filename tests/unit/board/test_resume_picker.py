@@ -15,8 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from src.session_view import resume_picker
-from src.session_view import transcript_locate
+from src.session_view import resume_picker, transcript_locate
 
 _RULE_140 = "\u2500" * 140
 _PICKER_140 = [

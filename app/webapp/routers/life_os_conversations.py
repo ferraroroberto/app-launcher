@@ -46,22 +46,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src import audit
-from src.clients import session as session_client
-from src.agents import is_installed
-from src.life_os.history import (
-    MAX_HANDOFF_CHARS, OVERSIZED_HANDOFF_REASON, REFUSAL_NOT_CAPTURE, REFUSAL_OUTSIDE,
-    REFUSAL_PARENT_DIR, REFUSAL_WRONG_FOLDER, read_captures, write_handoff,
-)
-from src.life_os.delete import ConversationDeleteError, delete_conversation as delete_conversation_files, group_by_conversation
-from src.life_os.bot_titles import apply_bot_titles, bot_conversation_ids, split_system_rows
-from src.life_os.title import run_title_cli as _run_title_cli
-from src.life_os.skill_refresh import plan_refresh, record_refresh
-from src.session_view.conversation_model import recorded_model
-from src.launching.flags import build_claude_flags, build_codex_flags, build_resume_flags
-from src.scanner import Skill, scan_skills, skills_dir_for
-from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
-
 from app.webapp.middleware import is_pc_itself, terminal_http_gate
 from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from app.webapp.routers.life_os_files import resolve_within
@@ -70,6 +54,36 @@ from app.webapp.routers.life_os_spawn import (
     _resolve_skill,
     _spawn_skill_session,
 )
+from src import audit
+from src.agents import is_installed
+from src.clients import session as session_client
+from src.launching.flags import (
+    build_claude_flags,
+    build_codex_flags,
+    build_resume_flags,
+)
+from src.life_os.bot_titles import (
+    apply_bot_titles,
+    bot_conversation_ids,
+    split_system_rows,
+)
+from src.life_os.delete import ConversationDeleteError, group_by_conversation
+from src.life_os.delete import delete_conversation as delete_conversation_files
+from src.life_os.history import (
+    MAX_HANDOFF_CHARS,
+    OVERSIZED_HANDOFF_REASON,
+    REFUSAL_NOT_CAPTURE,
+    REFUSAL_OUTSIDE,
+    REFUSAL_PARENT_DIR,
+    REFUSAL_WRONG_FOLDER,
+    read_captures,
+    write_handoff,
+)
+from src.life_os.skill_refresh import plan_refresh, record_refresh
+from src.life_os.title import run_title_cli as _run_title_cli
+from src.scanner import Skill, scan_skills, skills_dir_for
+from src.session_view.conversation_model import recorded_model
+from src.webapp_config import VALID_CODEX_MODELS, WebappConfig
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

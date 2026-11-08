@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 from tests.api.chief._support import _chief_row
 
 

@@ -16,9 +16,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.webapp.chief_doorbell import count_pending
-from src import instance_role
+from src import chief_session_end, instance_role
 from src.chief import cap_raised
-from src import chief_session_end
 
 
 def _cfg(inbox: Path, cap: int = 2, scope: str = "chief") -> SimpleNamespace:

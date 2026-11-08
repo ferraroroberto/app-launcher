@@ -7,12 +7,12 @@ from typing import Any, Dict, List, Optional
 
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
-    Entry,
-    Hunk,
-    Line,
     NO_CAP,
     SYSTEM_TEXT_CAP,
     THINKING_TEXT_CAP,
+    Entry,
+    Hunk,
+    Line,
     _added_hunks,
     _attach_result,
     _blocks_text,

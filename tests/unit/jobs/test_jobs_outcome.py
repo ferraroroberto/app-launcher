@@ -28,7 +28,6 @@ from src.jobs.outcome import (
     run_outcome,
 )
 
-
 # ------------------------------------------------------- the five in the issue
 
 

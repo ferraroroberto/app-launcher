@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 from src.subprocess_flags import NO_WINDOW
 
 pytestmark = pytest.mark.skipif(

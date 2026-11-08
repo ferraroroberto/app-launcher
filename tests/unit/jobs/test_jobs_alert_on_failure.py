@@ -11,9 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from src import jobs as jobs_mod
+from src import notifications as notif
 from src.jobs import config as jc
 from src.jobs import history as jobs_history_mod
-from src import notifications as notif
 from src.jobs.config import Job, JobsConfig, job_from_dict, save_jobs, update_job
 
 

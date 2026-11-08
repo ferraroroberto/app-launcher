@@ -17,7 +17,11 @@ from __future__ import annotations
 import shlex
 from typing import Any, Dict, List, Mapping, Optional
 
-from src.launching.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS
+from src.launching.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    PI_MODEL_SPECS,
+)
 
 
 def _flag_value(flags: str, name: str) -> Optional[str]:

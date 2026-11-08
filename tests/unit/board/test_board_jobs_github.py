@@ -9,7 +9,6 @@ from datetime import datetime, timedelta
 
 from src import board
 from src.clients import github as github_client
-
 from tests.unit.board._support import _FakeGh, _seed_job
 
 

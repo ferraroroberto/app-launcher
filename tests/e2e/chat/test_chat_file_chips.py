@@ -25,8 +25,15 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
+from tests.e2e.chat.test_chat_edited_card import (
+    _POLL_MS,
+    _SID,
+    _boot,
+    _edit,
+    _Stub,
+    _turn,
+)
 from tests.e2e.fixtures.waits import stable_eval
-from tests.e2e.chat.test_chat_edited_card import _POLL_MS, _SID, _Stub, _boot, _edit, _turn
 from tests.e2e.life_os._support import (
     _FAKE_TRANSCRIPT,
     _mock_conversations,

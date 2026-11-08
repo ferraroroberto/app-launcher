@@ -12,7 +12,6 @@ import pytest
 from src import board
 from src.session_view import transcript as st
 from src.transcript_flavors import _shared as tf_shared
-
 from tests.unit.transcript._support import (
     _assistant,
     _codex,
@@ -24,7 +23,6 @@ from tests.unit.transcript._support import (
     _user,
     _write_jsonl,
 )
-
 
 # ------------------------------------------------ plain-words actions (#1266)
 

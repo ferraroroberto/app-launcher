@@ -41,7 +41,8 @@ import pytest
 
 from src.session_host import PtyProcess, PtySession, SessionManager
 from src.vt_snapshot import VtSnapshot
-from tests._pty_frame_text import FRAME_ROW as _FRAME_ROW, rendered as _rendered
+from tests._pty_frame_text import FRAME_ROW as _FRAME_ROW
+from tests._pty_frame_text import rendered as _rendered
 
 pytestmark = pytest.mark.skipif(
     sys.platform != "win32" or PtyProcess is None or shutil.which("claude") is None,

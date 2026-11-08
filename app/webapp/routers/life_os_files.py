@@ -32,16 +32,15 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from src import audit
+from src.clients import session as session_client
 from src.life_os import capture as life_os_capture
 from src.life_os import delete as life_os_delete
 from src.life_os import index as life_os_index
-from src.clients import session as session_client
 from src.life_os.history import read_captures
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

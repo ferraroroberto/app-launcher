@@ -16,12 +16,12 @@ import pytest
 
 from src import console_input
 from src.console_input import (
+    INPUT_RECORD,
     KEY_EVENT,
     SCAN_RETURN,
     SHIFT_PRESSED,
     VK_RETURN,
     ConsoleInputError,
-    INPUT_RECORD,
     enter_records,
     key_records,
     settle_seconds,

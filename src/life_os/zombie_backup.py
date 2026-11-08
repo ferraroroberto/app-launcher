@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src._json_io import atomic_write_json
-from src.life_os.index import resync_search_index, restore_index_entry
+from src.life_os.index import restore_index_entry, resync_search_index
 from src.life_os.links import is_link
 from src.life_os.title import run_title_cli
 from src.life_os.transcript import SESSION_ID_RE, claude_projects_dir

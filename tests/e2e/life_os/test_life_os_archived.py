@@ -17,7 +17,6 @@ from tests.e2e.life_os._support import (
     _open_life,
 )
 
-
 pytestmark = pytest.mark.smoke
 
 _ENTRY = {

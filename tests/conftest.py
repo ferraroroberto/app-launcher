@@ -65,19 +65,17 @@ os.environ.setdefault(
 # is scrubbed of credentials before any reporter writes it. Re-exported so
 # pytest registers the hook from this conftest; imported only after the
 # runtime-data redirect above, since it pulls in `src.webapp_config`.
-from tests._credential_hygiene import pytest_runtest_makereport  # noqa: E402,F401
-
 # Gate progress log (issues #534, #943): per-test START/DONE lines, a bounded
 # traceback excerpt under each FAILED line, and a slowest-tests summary, written
 # to LAUNCHER_VERIFY_PROGRESS_LOG when the pre-ship gate sets it. Re-exported so
 # pytest registers the hooks from this conftest; the summary is written from
 # `pytest_sessionfinish` below.
 from tests import _progress_log  # noqa: E402
+from tests._credential_hygiene import pytest_runtest_makereport  # noqa: E402,F401
 from tests._progress_log import (  # noqa: E402,F401
     pytest_runtest_logreport,
     pytest_runtest_logstart,
 )
-
 
 # --- tests/ source-mutation guard (#822) -------------------------------------
 #
@@ -617,14 +615,12 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     from app.webapp.routers import board as board_router
     from app.webapp.routers import board_chief as board_chief_router
     from app.webapp.routers import board_spawn as board_spawn_router
+    from app.webapp.routers import life_os_channels as life_os_channels_router
     from app.webapp.routers import life_os_conversations as life_os_conversations_router
     from app.webapp.routers import life_os_files as life_os_files_router
-    from app.webapp.routers import life_os_channels as life_os_channels_router
-    from app.webapp.routers import life_os_spawn as life_os_spawn_router
     from app.webapp.routers import life_os_search as life_os_search_router
-    from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
+    from app.webapp.routers import life_os_spawn as life_os_spawn_router
     from app.webapp.routers import misc as misc_router
-    from app.webapp.routers import sessions as sessions_router
 
     # Mock the session-host loopback client. Every route that talks to
     # :8446 goes through this module, so patch each router that holds a
@@ -635,6 +631,8 @@ def webapp_client(tmp_path: Path, monkeypatch) -> Iterator[tuple]:
     # per-test fakes replace.
     # The Chat question card's /answer route types into a session (#1149).
     from app.webapp.routers import session_screen as session_screen_router
+    from app.webapp.routers import sessions as sessions_router
+    from app.webapp.routers import voice_ocr_tts as voice_ocr_tts_router
     session_mock = _mock_session_client(monkeypatch, [
         sessions_router, board_router, board_chief_router, board_spawn_router,
         misc_router, life_os_channels_router, session_screen_router,

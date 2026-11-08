@@ -8,9 +8,14 @@ from typing import Any, Dict, List
 
 from src.session_view import transcript as st
 from src.transcript_flavors import _shared as tf_shared
-
-from tests.unit.transcript._support import _kinds, _lines_of, _parse_whole, _png_b64, _walk, _write_jsonl
-
+from tests.unit.transcript._support import (
+    _kinds,
+    _lines_of,
+    _parse_whole,
+    _png_b64,
+    _walk,
+    _write_jsonl,
+)
 
 # A Pi session captured for #1013 by launching Pi through the launcher's own
 # API and driving it over `/input`, so the correlation below is the real one.

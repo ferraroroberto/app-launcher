@@ -35,8 +35,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-from src.chief import plan as chief_plan
 from src._json_io import atomic_write_json
+from src.chief import plan as chief_plan
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 import pytest
 
 from app.webapp.routers import board_chief as chief_router

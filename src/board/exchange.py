@@ -29,11 +29,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pyte
 
-from src.session_view import plan_picker
-from src.session_view import transcript_locate
 from src.board.transcript import _read_tail_bytes, _tail_lines
 from src.board.transcript_exchange import last_exchange
 from src.session_host_scan import _cook_input_line
+from src.session_view import plan_picker, transcript_locate
 from src.transcript_flavors.codex import codex_entries
 
 logger = logging.getLogger(__name__)

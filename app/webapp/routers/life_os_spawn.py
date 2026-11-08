@@ -19,21 +19,20 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, Request
 
-from src import audit
-from src.launching.model_catalog import (
-    CLAUDE_MODEL_SPECS,
-    CODEX_MODEL_SPECS,
-    available_values,
-)
-from src.launching.launcher import open_local_terminal_window, spawn_claude_session
-from src.scanner import Skill, scan_skills
-from src.webapp_config import WebappConfig
-
 from app.webapp.routers._helpers import (
     audit_session_start_and_maybe_mirror,
     safe_int,
     spawn_launcher_session,
 )
+from src import audit
+from src.launching.launcher import open_local_terminal_window, spawn_claude_session
+from src.launching.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    available_values,
+)
+from src.scanner import Skill, scan_skills
+from src.webapp_config import WebappConfig
 
 # The launch choice comes from the same provider-qualified catalog used by
 # Coding and Board. Legacy unqualified Claude values remain accepted so

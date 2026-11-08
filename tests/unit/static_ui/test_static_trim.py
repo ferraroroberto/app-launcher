@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from app.webapp.static_trim import trim_js
 from app.webapp.routers._helpers import STATIC_DIR
+from app.webapp.static_trim import trim_js
 
 
 @pytest.mark.parametrize(

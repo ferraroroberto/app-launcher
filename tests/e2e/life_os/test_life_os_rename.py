@@ -11,7 +11,6 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import life_launch_switch
 from tests.e2e.fixtures.waits import flush_requests, wait_until
-
 from tests.e2e.life_os._support import (
     _FAKE_CONVERSATIONS,
     _RESUMABLE_SID,
@@ -25,7 +24,6 @@ from tests.e2e.life_os._support import (
     _pick_life_model,
     _skill_menu_item,
 )
-
 
 pytestmark = pytest.mark.smoke
 

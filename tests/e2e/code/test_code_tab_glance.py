@@ -21,8 +21,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import stable_eval
 from tests.e2e.board.test_board_nav_badge import _session
+from tests.e2e.fixtures.waits import stable_eval
 
 pytestmark = pytest.mark.smoke
 

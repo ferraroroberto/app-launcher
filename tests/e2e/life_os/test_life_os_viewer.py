@@ -21,7 +21,6 @@ from tests.e2e.life_os._support import (
     _skill_menu_item,
 )
 
-
 pytestmark = pytest.mark.smoke
 
 

@@ -28,7 +28,6 @@ import pytest
 from src.jobs import history as jobs_history_mod
 from src.jobs import queue as jobs_queue_mod
 from src.jobs.config import Job
-
 from tests.api.jobs._support import _seed_one_job
 
 
@@ -37,6 +36,7 @@ def stubbed_schtasks(monkeypatch):
     """Minimal schtasks stubs so job CRUD works without Task Scheduler
     (the run path itself is stubbed per-test)."""
     from unittest.mock import MagicMock
+
     from app.webapp.routers import jobs as jobs_router
 
     for name in ("sync_schtasks", "delete_schtasks"):

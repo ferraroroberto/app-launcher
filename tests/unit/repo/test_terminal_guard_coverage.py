@@ -31,7 +31,6 @@ from typing import Dict, Set
 
 import pytest
 
-
 # Prefixes whose neighbourhood is terminal-grade: each already contains at
 # least one row in ``_TERMINAL_GUARD_RULES``, so a *new* sibling under one of
 # them is far more likely to need gating than not. Matched as "the prefix

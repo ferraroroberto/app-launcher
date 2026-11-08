@@ -14,9 +14,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.cli.commands import run_job_cmd as rjc
+from src.app_config import AppConfig
 from src.jobs import history as jobs_history_mod
 from src.jobs import queue as jobs_queue_mod
-from src.app_config import AppConfig
 from src.jobs.config import Job, JobsConfig
 
 

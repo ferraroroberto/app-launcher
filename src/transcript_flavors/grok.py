@@ -7,10 +7,10 @@ from typing import Any, Dict, List, Optional
 
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
-    Entry,
-    Line,
     NO_CAP,
     THINKING_TEXT_CAP,
+    Entry,
+    Line,
     _attach_result,
     _cap,
     _entry,

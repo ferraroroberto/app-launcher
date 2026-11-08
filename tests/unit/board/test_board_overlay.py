@@ -12,7 +12,6 @@ import pytest
 from app.webapp.routers import board as board_router
 from src import board
 from src.board import active_issue_claims
-
 from tests.unit.board._support import (
     NOW,
     _claim_contract,

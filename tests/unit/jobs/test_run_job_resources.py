@@ -19,10 +19,9 @@ import pytest
 from app.cli.commands import run_job_cmd as rjc
 from app.cli.commands import run_job_supervision as sup
 from src import jobs as jobs_mod
-from src.jobs import history as jobs_history_mod
 from src import notifications as notif
 from src.diagnostics import is_pid_alive
-
+from src.jobs import history as jobs_history_mod
 
 # ============================================================== sampler
 

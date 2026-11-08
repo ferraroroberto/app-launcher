@@ -27,19 +27,18 @@ import time
 from pathlib import Path
 from typing import Optional
 
-
 logger = logging.getLogger("run_named_tunnel")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src._tunnel_config import read_tunnel_hostname  # noqa: E402
-from src.subprocess_flags import NO_WINDOW_NEW_GROUP  # noqa: E402
 from app.webapp.manager import (  # noqa: E402
     WebappManager,
     WebappManagerConfig,
     check_tailscale_cert,
 )
+from src._tunnel_config import read_tunnel_hostname  # noqa: E402
+from src.subprocess_flags import NO_WINDOW_NEW_GROUP  # noqa: E402
 
 DEFAULT_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.yml"
 SAMPLE_CONFIG = PROJECT_ROOT / "webapp" / "cloudflared.sample.yml"

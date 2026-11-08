@@ -34,7 +34,10 @@ from tests.e2e.session.test_session_mode_toggle import (
     _row,
     _session_row,
 )
-from tests.e2e.session.test_session_transcript import _CLIPBOARD_AND_TOAST_MOCK, _menu_item
+from tests.e2e.session.test_session_transcript import (
+    _CLIPBOARD_AND_TOAST_MOCK,
+    _menu_item,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
