@@ -25,6 +25,8 @@ from app.webapp.chief_doorbell import (
     CLAIM_STALE_MS,
     DEBOUNCE_SECONDS,
     DOORBELL_LINE,
+    SKIP_REPEAT_SECONDS,
+    STALE_WORKING_SECONDS,
     Doorbell,
     Observation,
     _SkipLog,
@@ -213,6 +215,48 @@ class TestDecide:
         assert bell.decide(_obs(), 9.0) == "backing off after ring"
 
 
+class TestStaleWorking:
+    """A ``working`` label over a terminal that has gone quiet is a stuck label,
+    not a busy chief; the measured output age decides, never the label alone."""
+
+    def test_working_with_old_output_rings_after_the_debounce(self):
+        bell = Doorbell()
+        obs = _obs(status="working", output_age=STALE_WORKING_SECONDS)
+        assert bell.decide(obs, 0.0) == "debouncing"
+        assert bell.decide(obs, DEBOUNCE_SECONDS) == "ring"
+
+    def test_working_with_fresh_output_still_skips(self):
+        bell = Doorbell()
+        obs = _obs(status="working", output_age=STALE_WORKING_SECONDS - 1)
+        for t in range(0, 300, 3):
+            assert bell.decide(obs, float(t)) == "chief not idle (working)"
+
+    def test_working_with_unknown_output_age_still_skips(self):
+        bell = Doorbell()
+        for t in range(0, 300, 3):
+            assert bell.decide(_obs(status="working", output_age=None), float(t)) != "ring"
+
+    @pytest.mark.parametrize("status", ["tool-pending", "awaiting-decision", "stalled", "unknown"])
+    def test_only_working_is_overridden(self, status):
+        """A permission prompt or a picker is quiet by nature: typing there
+        lands in the dialog, so old output proves nothing for them."""
+        bell = Doorbell()
+        obs = _obs(status=status, output_age=STALE_WORKING_SECONDS * 10)
+        for t in range(0, 300, 3):
+            assert bell.decide(obs, float(t)) != "ring"
+
+    @pytest.mark.parametrize("dirty, reason", [(True, "composer dirty"), (None, "composer unknown")])
+    def test_a_stale_working_chief_still_needs_a_clean_composer(self, dirty, reason):
+        bell = Doorbell()
+        obs = _obs(status="working", output_age=STALE_WORKING_SECONDS * 2, dirty=dirty)
+        for t in range(0, 300, 3):
+            assert bell.decide(obs, float(t)) == reason
+
+    def test_the_ring_log_shows_the_override(self):
+        summary = _obs(status="working", output_age=900.0).summary()
+        assert "idle=True" in summary and "output_age=900" in summary
+
+
 # --- tick_once: the toggle, the ring, and failures ------------------------
 
 
@@ -288,6 +332,12 @@ class TestTickOnce:
         assert decisions == ["debouncing", "ring"] + ["backing off after ring"] * 3
         assert sends == [(54321, CHIEF_SID, DOORBELL_LINE, True)]
 
+    async def test_a_stuck_working_label_rings_through_tick_once(self):
+        obs = _obs(status="working", output_age=STALE_WORKING_SECONDS + 60)
+        decisions, sends, _ = await _run_ticks(_cfg(), obs, ticks=4)
+        assert decisions == ["debouncing", "ring"] + ["backing off after ring"] * 2
+        assert sends == [(54321, CHIEF_SID, DOORBELL_LINE, True)]
+
     async def test_a_ring_writes_one_ledger_row_stamped_before_the_send(self):
         rows = []
         before = time.time()
@@ -345,6 +395,40 @@ class TestLogging:
         assert sum("skip: backing off after ring" in m for m in lines) == 1
         rang = next(m for m in lines if "rang" in m)
         assert "idle=True" in rang and "dirty=False" in rang and "pending=2" in rang
+
+    async def test_an_unchanged_skip_is_logged_again_every_interval(self, caplog):
+        skips = _SkipLog()
+        obs = _obs(status="working", output_age=5.0)
+        with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
+            for t in (0.0, 3.0, SKIP_REPEAT_SECONDS - 1):
+                skips.note("chief not idle (working)", obs, t)
+            assert len(caplog.records) == 1
+            skips.note("chief not idle (working)", obs, SKIP_REPEAT_SECONDS)
+            assert len(caplog.records) == 2
+            skips.note("chief not idle (working)", obs, SKIP_REPEAT_SECONDS + 3)
+            assert len(caplog.records) == 2
+            skips.note("chief not idle (working)", obs, SKIP_REPEAT_SECONDS * 2)
+            assert len(caplog.records) == 3
+
+    async def test_a_changed_reason_logs_at_once(self, caplog):
+        skips = _SkipLog()
+        with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
+            skips.note("debouncing", None, 0.0)
+            skips.note("backing off after ring", None, 3.0)
+        assert len(caplog.records) == 2
+
+    async def test_a_long_hold_through_tick_once_leaves_a_line_per_interval(self, caplog):
+        clock, skips, bell = _Clock(), _SkipLog(), Doorbell()
+
+        async def fake_observe(c):
+            return _obs(status="working", output_age=5.0)
+
+        with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
+            while clock.t <= SKIP_REPEAT_SECONDS * 3:
+                await tick_once(_cfg(), bell, skips, now=clock, observe_fn=fake_observe)
+                clock.t += 3.0
+        held = [r for r in caplog.records if "chief not idle (working)" in r.getMessage()]
+        assert len(held) == 4
 
     async def test_off_is_logged_once(self, caplog):
         with caplog.at_level(logging.INFO, logger=bell_mod.logger.name):
@@ -436,6 +520,27 @@ class TestObserve:
         })
         obs = await observe(cfg)
         assert obs.idle is False
+
+    async def test_output_age_is_measured_from_the_hosts_last_output(self, tmp_path, monkeypatch):
+        cfg, _ = _setup(tmp_path, monkeypatch, status="working", chief_extra={
+            "last_output_at": time.time() - 1200,
+        })
+        obs = await observe(cfg)
+        assert obs.status == "working"
+        assert 1190 <= obs.output_age <= 1300
+        assert obs.idle is True
+
+    async def test_working_with_fresh_output_is_not_idle(self, tmp_path, monkeypatch):
+        cfg, _ = _setup(tmp_path, monkeypatch, status="working", chief_extra={
+            "last_output_at": time.time() - 5,
+        })
+        assert (await observe(cfg)).idle is False
+
+    @pytest.mark.parametrize("value", [_MISSING, None, 0, "soon", True])
+    async def test_a_missing_or_malformed_stamp_is_unknown_age(self, tmp_path, monkeypatch, value):
+        cfg, _ = _setup(tmp_path, monkeypatch, status="working", chief_extra={"last_output_at": value})
+        obs = await observe(cfg)
+        assert obs.output_age is None and obs.idle is False
 
     async def test_an_old_host_without_composer_state_reads_unknown(self, tmp_path, monkeypatch):
         """The live session-host predates #1643 until its next restart: the
