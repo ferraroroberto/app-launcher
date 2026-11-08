@@ -14,6 +14,7 @@ import { answeredKeys, itemKey } from './chief-keys.js';
 import { boardRepoFilter, isChiefCard, matchesRepoFilter } from './board-dispatch.js';
 import { DESKTOP_BOARD, plural, renderBoard, setLaneException } from '../board.js';
 import { clearMergedButton, mergedCount } from './plan-prune.js';
+import { CLOSED, bucketIndex, bucketName, groupPlanRows } from './plan-buckets.js';
 
 // The fleet chief records its lanes, its queue and what waits on Roberto in a
 // plan file (format v1, fleet-config's `chief_ops.py plan`); the server reads
@@ -72,7 +73,7 @@ function planLine(cls, text) {
   return p;
 }
 
-// The "Waiting on you" section: its heading carries the row count and the
+// The "Questions" section: its heading carries the row count and the
 // rows follow. The folding groups are foldGroup's.
 function planGroup(heading, rows, cls) {
   const wrap = document.createElement('div');
@@ -125,16 +126,86 @@ export function foldGroup(opts) {
   return wrap;
 }
 
-// Parked folds shut on a phone and opens on the desktop board.
-function parkedGroup(rows) {
+// Set-aside groups fold shut on a phone and open on the desktop board.
+function onDesktop() {
+  return !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches);
+}
+
+// One plan group named after its Backlog bucket; nothing when empty.
+// `opts.track` is the fold's usage-log id (a builder in .fleet.toml).
+function planBucketGroup(opts) {
+  if (!opts.rows.length) return null;
   return foldGroup({
-    key: 'plan:parked',
-    track: 'board.plan-parked-fold',
-    heading: 'Parked (' + rows.length + ')',
-    rows: rows,
-    cls: 'board-plan-parked',
-    defaultOpen: function () { return !!(window.matchMedia && window.matchMedia(DESKTOP_BOARD).matches); },
+    key: 'plan:' + opts.bucket,
+    track: opts.track,
+    heading: bucketName(opts.bucket) + ' (' + opts.rows.length + ')',
+    rows: opts.rows.map(queueRow),
+    cls: opts.cls,
+    defaultOpen: opts.setAside ? onDesktop : true,
   });
+}
+
+// The queue's rows under the Backlog's bucket names, one row per issue, so
+// each group's count is that bucket's count among planned issues: Queued,
+// Blocked and Umbrellas equal the Backlog's, and Waiting on you here is the
+// planned part of the Backlog's. Queued shows even when empty, unfiltered.
+function bucketedQueue(planned, index, filter) {
+  const groups = groupPlanRows(planned, index);
+  const rows = function (key) { return groups[key] || []; };
+  const nodes = [];
+  if (rows('queued').length || !filter) {
+    nodes.push(foldGroup({
+      key: 'plan:queue',
+      track: 'board.plan-queue-fold',
+      heading: bucketName('queued') + ' (' + rows('queued').length + ')',
+      rows: rows('queued').map(queueRow),
+      note: 'Only what the chief has scheduled; the Backlog counts every open issue.',
+    }));
+  }
+  const known = ['queued', 'in_progress', 'waiting', 'blocked', 'umbrella', CLOSED];
+  const other = [];
+  Object.keys(groups).forEach(function (key) {
+    if (known.indexOf(key) === -1) other.push.apply(other, groups[key]);
+  });
+  [
+    planBucketGroup({ bucket: 'in_progress', track: 'board.plan-progress-fold', rows: rows('in_progress') }),
+    planBucketGroup({ bucket: 'waiting', track: 'board.plan-waiting-fold', rows: rows('waiting') }),
+    planBucketGroup({ bucket: 'blocked', track: 'board.plan-blocked-fold', rows: rows('blocked'),
+      cls: 'board-plan-parked', setAside: true }),
+    planBucketGroup({ bucket: 'umbrella', track: 'board.plan-umbrella-fold', rows: rows('umbrella'),
+      cls: 'board-plan-parked', setAside: true }),
+    planBucketGroup({ bucket: 'other', track: 'board.plan-other-fold', rows: other, setAside: true }),
+    planBucketGroup({ bucket: CLOSED, track: 'board.plan-closed-fold', rows: rows(CLOSED), setAside: true }),
+  ].forEach(function (node) { if (node) nodes.push(node); });
+  return nodes;
+}
+
+// Before the first GitHub fetch the Backlog has no buckets to read, so the
+// queue splits by the plan's own status, and says so.
+function unbucketedQueue(planned, filter) {
+  const queue = planned.filter(function (q) { return !isParked(q); });
+  const parked = planned.filter(isParked);
+  const nodes = [];
+  if (queue.length || !filter) {
+    nodes.push(foldGroup({
+      key: 'plan:queue',
+      track: 'board.plan-queue-fold',
+      heading: 'Queue (' + queue.length + ')',
+      rows: queue.map(queueRow),
+      note: 'Grouped by plan status until the Backlog loads from GitHub.',
+    }));
+  }
+  if (parked.length) {
+    nodes.push(foldGroup({
+      key: 'plan:parked',
+      track: 'board.plan-parked-fold',
+      heading: 'Parked (' + parked.length + ')',
+      rows: parked.map(queueRow),
+      cls: 'board-plan-parked',
+      defaultOpen: onDesktop,
+    }));
+  }
+  return nodes;
 }
 
 // `shown` is the plan positions the repo filter keeps that no
@@ -313,8 +384,13 @@ export function renderChiefPlan(body, liveRead) {
   setLaneException(els.boardChiefPlan,
     pending ? plural(pending, 'question', 'questions') + ' for you' : '',
     'attention');
+  // Each queue row is grouped by its issue's Backlog bucket; null before the
+  // Backlog has any.
+  const backlog = (body && body.columns && body.columns.backlog) || [];
+  const index = backlog.some(function (c) { return typeof c.bucket === 'string'; })
+    ? bucketIndex(backlog) : null;
   // Rebuilt only when what it shows changes, not on every 5 s poll.
-  const sig = JSON.stringify([plan, run, age, answered, filter]);
+  const sig = JSON.stringify([plan, run, age, answered, filter, index]);
   if (host.dataset.sig === sig) return;
   host.dataset.sig = sig;
   host.dataset.state = plan.state;
@@ -345,7 +421,7 @@ export function renderChiefPlan(body, liveRead) {
         return answered.indexOf(itemKey(waiting[i], i)) === -1;
       });
       const rows = shown.map(function (i) { return questionRow(plan, run, open, i, answered); });
-      const group = planGroup('Waiting on you', rows, 'board-plan-group-waiting');
+      const group = planGroup('Questions', rows, 'board-plan-group-waiting');
       if (open.length) group.appendChild(answerButton(plan, run, open));
       nodes.push(group);
     }
@@ -363,22 +439,10 @@ export function renderChiefPlan(body, liveRead) {
         rows: lanes.map(planLaneRow),
       }));
     }
-    // Unfiltered, the Queue heading shows even when empty, as it always has;
-    // a filter that empties it hides it, as the columns do. Parked items
-    // leave the queue for their own section below it.
+    // Unfiltered, the Queued heading shows even when empty, as it always has;
+    // a filter that empties it hides it, as the columns do.
     const planned = (plan.queue || []).filter(function (q) { return planRowShown(q, filter); });
-    const queue = planned.filter(function (q) { return !isParked(q); });
-    const parked = planned.filter(isParked);
-    if (queue.length || !filter) {
-      nodes.push(foldGroup({
-        key: 'plan:queue',
-        track: 'board.plan-queue-fold',
-        heading: 'Queue (' + queue.length + ')',
-        rows: queue.map(queueRow),
-        note: 'Only what the chief has scheduled; the Backlog counts every open issue.',
-      }));
-    }
-    if (parked.length) nodes.push(parkedGroup(parked.map(queueRow)));
+    nodes.push.apply(nodes, index ? bucketedQueue(planned, index, filter) : unbucketedQueue(planned, filter));
     const merged = mergedCount(plan);
     if (merged) nodes.push(clearMergedButton(merged));
   }

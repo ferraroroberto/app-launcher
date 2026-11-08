@@ -37,7 +37,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from src._json_io import atomic_write_json
 from src.board import owner_try
@@ -108,6 +108,8 @@ _last_refresh_started: Optional[float] = None
 _cleared: Dict[str, float] = {}
 # ref -> (monotonic time read, (section title, quoted lines) or None for "the issue has none").
 _derived: Dict[str, Tuple[float, Optional[Tuple[str, List[str]]]]] = {}
+# Owner checks whose issue sits outside Waiting on you, as of the last Board build.
+_uncounted: frozenset[str] = frozenset()
 # An issue's text is re-read after this, so an edited acceptance list shows up.
 DERIVE_TTL_SECONDS = 6 * 3600
 # Module-level so tests replace the one gh read.
@@ -368,7 +370,21 @@ def needs_count(snap: Optional[Dict[str, Any]] = None) -> Optional[int]:
     snap = snapshot() if snap is None else snap
     if not snap["available"]:
         return None
-    return sum(1 for item in snap["items"] if not item["mark"])
+    with _lock:
+        uncounted = _uncounted
+    return sum(1 for item in snap["items"] if not item["mark"] and item["ref"] not in uncounted)
+
+
+def set_uncounted(refs: Iterable[str]) -> None:
+    """The refs the Board's last build left out of Your turn's count.
+
+    An open owner check counts only while its issue sits in the Backlog's
+    Waiting on you bucket (``backlog_buckets.owner_counts``); the sessions
+    poll has no backlog to place it by, so it reads the Board's last answer.
+    """
+    global _uncounted
+    with _lock:
+        _uncounted = frozenset(refs)
 
 
 def reset_owner_cache() -> None:
@@ -379,6 +395,7 @@ def reset_owner_cache() -> None:
         _last_refresh_started = None
         _cleared.clear()
         _derived.clear()
+    set_uncounted(())
 
 
 def _forget(ref: str) -> None:

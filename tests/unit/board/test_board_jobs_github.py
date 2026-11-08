@@ -211,6 +211,28 @@ def test_refresh_caches_audit_meta_issues_as_records(monkeypatch):
     snap = github_client.refresh("ferraroroberto")
     assert [i["number"] for i in snap["issues"]] == [1]
     assert [i["number"] for i in snap["records"]] == [2]
+    assert snap["truncated"] is False
+
+
+def test_open_issue_search_asks_for_every_issue_and_flags_a_full_page(monkeypatch):
+    """The Board partitions every open issue, so the search asks for GitHub's
+    1000-result ceiling, and a fetch that fills it is flagged, not trusted."""
+    argvs = []
+
+    def fake_run(argv, **kwargs):
+        argvs.append(argv)
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(github_client.subprocess, "run", fake_run)
+    github_client._search_open_issue_rows("ferraroroberto")
+    argv = argvs[0]
+    assert argv[argv.index("--limit") + 1] == "1000"
+
+    full = [{"kind": "issue", "repo": "r", "number": n, "labels": []} for n in range(1000)]
+    monkeypatch.setattr(github_client, "_search_open_issue_rows", lambda owner: full)
+    monkeypatch.setattr(github_client, "search_open_prs", lambda owner: [])
+    monkeypatch.setattr(github_client, "search_done_today", lambda owner: [])
+    assert github_client.refresh("ferraroroberto")["truncated"] is True
 
 
 def test_search_open_prs_filters_audit_meta_label(monkeypatch):

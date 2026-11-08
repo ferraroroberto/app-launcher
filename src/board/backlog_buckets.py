@@ -1,22 +1,34 @@
-"""Group the Board's backlog into where each open issue stands.
+"""Partition the Board's open issues into buckets, one per issue.
 
-Every open issue lands in exactly one bucket, first match wins:
+The base unit is one open issue. Every open issue the GitHub fetch returned
+lands in exactly one bucket, the bucket counts add up to the Backlog total, and
+every other count on the Board (the Chief's plan sections, Your turn's owner
+count) is read from this same assignment, never recomputed from the plan or
+the labels. First match wins:
 
 1. ``in_progress``: a live or unverified active-issue marker holds it, or a
    chief plan lane names it.
-2. ``waiting``: it waits on the owner. That is the ``needs-owner`` or
-   ``needs-validation`` label, an open plan question whose ``ref`` names it,
-   or a queue row in ``waiting-roberto`` or parked with kind ``owner``.
-3. ``queued``: any other plan queue row, except an umbrella.
-4. ``not_planned``: in none of the above. The chief keeps this at zero.
+2. ``record``: a machine record (``audit-meta``), bookkeeping rather than
+   work. No plan or label source changes that, so a record is placed even
+   when the plan is unreadable.
+3. ``waiting`` (Waiting on you): the ``needs-owner`` or ``needs-validation``
+   label, and nothing else. A plan row cannot put an issue here without the
+   label, because the owner checks only list labelled issues.
+4. A plan queue row decides the rest: ``umbrella`` (parked, kind
+   ``umbrella``), ``blocked`` (any other parked row: kind ``blocked-by``, an
+   ``owner`` row that lacks the label, or a parked row with no kind) or
+   ``queued`` (every other status).
+5. ``dormant``: no row places it and its repo is dormant in the fleet scope.
+6. ``not_planned``: in none of the above. The chief keeps this at zero.
 
-Umbrella rows (parked, kind ``umbrella``) and machine records (``audit-meta``
-issues) are ``folded``: listed in one collapsed row, outside every count.
+``umbrella``, ``record`` and ``dormant`` draw folded shut, but they are counted
+in the total like every other bucket. A plan question on an issue, or a
+``waiting-roberto`` row, adds a ``question`` chip wherever the issue lands.
 
 An issue is only placed when every source that could put it in a higher
 bucket was read. With the plan or the marker file unreadable, an issue no
-marker holds is ``unknown``, never "Not planned": the lane or claim that
-would have placed it is exactly what could not be read.
+marker holds is ``unknown``, never "Not planned". An unreadable fleet scope
+places issues as if every repo were active, and says ``scope: unknown``.
 
 The plan's format is fleet-config's ``docs/chief-plan.md``; this module only
 reads it, through :func:`src.chief.plan.read_plan_index`.
@@ -30,12 +42,25 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 IN_PROGRESS = "in_progress"
 WAITING = "waiting"
 QUEUED = "queued"
+BLOCKED = "blocked"
 NOT_PLANNED = "not_planned"
-FOLDED = "folded"
+UMBRELLA = "umbrella"
+RECORD = "record"
+DORMANT = "dormant"
 UNKNOWN = "unknown"
+
+# Every bucket, in the order the payload's ``counts`` lists them.
+BUCKETS = (UNKNOWN, IN_PROGRESS, WAITING, QUEUED, BLOCKED, NOT_PLANNED, UMBRELLA, RECORD, DORMANT)
 
 NEEDS_OWNER = "needs-owner"
 NEEDS_VALIDATION = "needs-validation"
+
+# Owner-check items whose issue is closed: shipped work to validate, counted
+# beside the open-issue total, never inside it.
+CLOSED = "closed"
+# An open owner-check item the backlog does not hold (the two lists were
+# read at different moments).
+ABSENT = "absent"
 
 _REF = re.compile(r"^([A-Za-z0-9._-]*)#(\d+)$")
 _AFTER_ISSUE = re.compile(r"^[A-Za-z0-9._-]+#\d+$")
@@ -71,29 +96,31 @@ def _after_chips(after: str) -> List[str]:
     return chips
 
 
-def _queued_chips(row: Mapping[str, str]) -> List[str]:
-    # "queued" repeats the bucket's heading; any other status is news.
+def _row_chips(row: Mapping[str, str]) -> List[str]:
+    """A queued or blocked row's reasons; the bucket heading says the rest."""
     status = row.get("status") or ""
-    chips = [status] if status and status != "queued" else []
-    if row.get("kind") == "blocked-by" and row.get("blocked_by"):
-        chips.append("blocked by " + row["blocked_by"])
+    kind = row.get("kind") or ""
+    chips: List[str] = []
+    if status not in ("queued", "parked", "waiting-roberto", ""):
+        chips.append(status)
+    if status == "parked":
+        if kind == "blocked-by" and row.get("blocked_by"):
+            chips.append("blocked by " + row["blocked_by"])
+        elif kind == "owner":
+            chips.extend(["owner step", "no label"])
+        elif kind != "blocked-by":
+            chips.append("parked")
     chips.extend(_after_chips(row.get("after") or ""))
     return chips
 
 
-def _waiting_chips(
-    labels: Set[str], asked: bool, row: Optional[Mapping[str, str]],
-) -> List[str]:
-    """Why the issue waits on the owner; empty when it doesn't."""
+def _label_chips(labels: Set[str]) -> List[str]:
+    """Why a labelled issue waits on the owner; empty when it doesn't."""
     chips = []
     if NEEDS_OWNER in labels:
         chips.append("before start")
     if NEEDS_VALIDATION in labels:
         chips.append("validate")
-    if asked or (row is not None and row.get("status") == "waiting-roberto"):
-        chips.append("question")
-    if row is not None and row.get("status") == "parked" and row.get("kind") == "owner":
-        chips.append("owner step")
     return chips
 
 
@@ -122,24 +149,30 @@ def classify(
     plan: Mapping[str, Any],
     *,
     markers_read: bool,
+    dormant_repos: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
-    """Stamp ``bucket`` and ``bucket_chips`` on every card; return the health.
+    """Stamp ``bucket`` and ``bucket_chips`` on every card; return the section.
 
     ``issues`` are the backlog cards, already carrying ``in_progress`` from
-    the active-issue markers; ``records`` are the machine-record issues,
-    always folded. ``plan`` is :func:`read_plan_index`'s result.
-    ``markers_read`` is ``False`` when the marker file exists but could not
-    be read. The return value is the payload's ``backlog_buckets`` section.
+    the active-issue markers; ``records`` are the machine-record issues.
+    ``plan`` is :func:`read_plan_index`'s result. ``markers_read`` is
+    ``False`` when the marker file exists but could not be read.
+    ``dormant_repos`` is the lower-cased dormant repo names, or ``None`` when
+    the fleet scope could not be read. The return value is the payload's
+    ``backlog_buckets`` section: the sources' health, ``counts`` per bucket
+    and their sum, ``total``.
     """
     plan_read = plan.get("state") == "ok"
     lanes, queue, asked = _index(plan) if plan_read else ({}, {}, set())
-    for card in issues:
+    dormant = dormant_repos or set()
+    counts = {bucket: 0 for bucket in BUCKETS}
+    for card, is_record in [(c, False) for c in issues] + [(c, True) for c in records]:
         key = _card_key(card)
-        card["bucket"], card["bucket_chips"] = _place(
-            card, key, lanes, queue, asked, plan_read, markers_read,
+        bucket, chips = _place(
+            card, key, is_record, lanes, queue, asked, dormant, plan_read, markers_read,
         )
-    for card in records:
-        card["bucket"], card["bucket_chips"] = FOLDED, ["record"]
+        card["bucket"], card["bucket_chips"] = bucket, chips
+        counts[bucket] += 1
     unknown_reason = ""
     if not plan_read:
         unknown_reason = "plan unreadable"
@@ -148,16 +181,21 @@ def classify(
     return {
         "plan": "ok" if plan_read else "unreadable",
         "markers": "ok" if markers_read else "unreadable",
+        "scope": "unknown" if dormant_repos is None else "ok",
         "unknown_reason": unknown_reason,
+        "counts": counts,
+        "total": sum(counts.values()),
     }
 
 
 def _place(
     card: Mapping[str, Any],
     key: Optional[Key],
+    is_record: bool,
     lanes: Mapping[Key, str],
     queue: Mapping[Key, Mapping[str, str]],
     asked: Set[Key],
+    dormant: Set[str],
     plan_read: bool,
     markers_read: bool,
 ) -> Tuple[str, List[str]]:
@@ -166,17 +204,64 @@ def _place(
     if card.get("in_progress") is True:
         return IN_PROGRESS, []
     if key is not None and key in lanes:
-        status = lanes[key]
-        return IN_PROGRESS, [status or "lane"]
+        return IN_PROGRESS, [lanes[key] or "lane"]
+    if is_record:
+        return RECORD, []
     if not (plan_read and markers_read):
         return UNKNOWN, []
     labels = {str(lab).lower() for lab in card.get("labels") or []}
     row = queue.get(key) if key is not None else None
-    chips = _waiting_chips(labels, key in asked, row)
+    question = key in asked or (row is not None and row.get("status") == "waiting-roberto")
+    tail = ["question"] if question else []
+    chips = _label_chips(labels)
     if chips:
-        return WAITING, chips
+        return WAITING, chips + tail
     if row is not None:
-        if row.get("status") == "parked" and row.get("kind") == "umbrella":
-            return FOLDED, ["umbrella"]
-        return QUEUED, _queued_chips(row)
-    return NOT_PLANNED, []
+        if row.get("status") == "parked":
+            bucket = UMBRELLA if row.get("kind") == "umbrella" else BLOCKED
+            return bucket, ([] if bucket == UMBRELLA else _row_chips(row)) + tail
+        return QUEUED, _row_chips(row) + tail
+    if key is not None and key[0] in dormant:
+        return DORMANT, tail
+    return NOT_PLANNED, tail
+
+
+def owner_counts(
+    cards: Iterable[Mapping[str, Any]], items: Iterable[Dict[str, Any]],
+) -> Dict[str, int]:
+    """Stamp ``bucket`` and ``counted`` on each owner-check item; return Your turn's counts.
+
+    ``cards`` are the classified backlog cards and ``items`` the owner-check
+    list. An open item takes its issue's bucket (``absent`` when the backlog
+    does not hold it); a closed one is ``closed``. An item is ``counted``
+    when it waits on the owner: unmarked, and in Waiting on you or closed.
+    So Your turn's owner count is Waiting on you plus to-validate, less what
+    the owner set aside, and ``unlisted`` names the Waiting on you issues the
+    owner-check list does not hold yet.
+    """
+    buckets = {k: c.get("bucket") for c in cards if (k := _card_key(c)) is not None}
+    waiting = {k for k, b in buckets.items() if b == WAITING}
+    listed: Set[Key] = set()
+    to_validate = set_aside = needs_you = 0
+    for item in items:
+        key = _card_key(item)
+        if str(item.get("state") or "").upper() == "CLOSED":
+            item["bucket"] = CLOSED
+            to_validate += 1
+        else:
+            item["bucket"] = buckets.get(key, ABSENT) if key is not None else ABSENT
+            if key is not None:
+                listed.add(key)
+        counted = item["bucket"] in (WAITING, CLOSED)
+        if counted and item.get("mark"):
+            set_aside += 1
+            counted = False
+        item["counted"] = counted
+        needs_you += counted
+    return {
+        "waiting": len(waiting),
+        "to_validate": to_validate,
+        "set_aside": set_aside,
+        "needs_you": needs_you,
+        "unlisted": len(waiting - listed),
+    }

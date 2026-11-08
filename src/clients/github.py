@@ -43,6 +43,10 @@ _GH_TIMEOUT_SECONDS = 20.0
 # (``scripts/synthetic_gh.py``). Unset everywhere real.
 GH_CMD_ENV = "LAUNCHER_GH_CMD"
 _ISSUE_LIMIT = 100
+# The open-issue search feeds the Board's per-issue partition, so it must hold
+# every open issue: GitHub's search API serves at most 1000 results, and a
+# fetch that fills it is flagged ``truncated`` rather than read as complete.
+_OPEN_ISSUE_LIMIT = 1000
 _PR_LIMIT = 50
 
 # Fields common to issue and PR search rows.
@@ -165,7 +169,7 @@ def _search_open_issue_rows(owner: str) -> List[Dict[str, Any]]:
         "--owner", owner,
         "--state", "open",
         "--sort", "updated",
-        "--limit", str(_ISSUE_LIMIT),
+        "--limit", str(_OPEN_ISSUE_LIMIT),
         "--json", _SEARCH_FIELDS + ",labels",
     ])
     return [_norm_issue(r) for r in rows]
@@ -527,6 +531,7 @@ _cache: Dict[str, Any] = {
     "fetched_at": None,
     "issues": [],
     "records": [],
+    "truncated": False,
     "prs": [],
     "done": [],
     "error": None,
@@ -597,9 +602,10 @@ def refresh(owner: str) -> Dict[str, Any]:
     """
     fetched_at = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     try:
-        # One search: the Board folds the records into the backlog's
-        # "Umbrellas and records" row, outside every count.
-        issues, records = _split_records(_search_open_issue_rows(owner))
+        # One search: the Board places the records in their own folded
+        # bucket, counted in the Backlog total.
+        rows = _search_open_issue_rows(owner)
+        issues, records = _split_records(rows)
         prs = search_open_prs(owner)
         done = search_done_today(owner)
     except GhError as exc:
@@ -610,12 +616,12 @@ def refresh(owner: str) -> Dict[str, Any]:
         return _record_error(f"refresh failed unexpectedly: {type(exc).__name__}: {exc}")
     with _lock:
         _cache.update(
-            fetched_at=fetched_at, issues=issues, records=records, prs=prs,
-            done=done, error=None,
+            fetched_at=fetched_at, issues=issues, records=records,
+            truncated=len(rows) >= _OPEN_ISSUE_LIMIT, prs=prs, done=done, error=None,
         )
         logger.info(
-            "✅ gh refresh: %d issues, %d PRs, %d done today",
-            len(issues), len(prs), len(done),
+            "✅ gh refresh: %d open issues (%d records), %d PRs, %d done today",
+            len(rows), len(records), len(prs), len(done),
         )
         return dict(_cache)
 
@@ -630,4 +636,6 @@ def _record_error(error: str) -> Dict[str, Any]:
 def reset_cache() -> None:
     """Test helper — restore the pristine empty cache."""
     with _lock:
-        _cache.update(fetched_at=None, issues=[], records=[], prs=[], done=[], error=None)
+        _cache.update(
+            fetched_at=None, issues=[], records=[], truncated=False, prs=[], done=[], error=None,
+        )
