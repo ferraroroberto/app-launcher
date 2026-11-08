@@ -172,8 +172,9 @@ class TestReadStats:
         assert result["today"]["rows"] == 0
 
     def test_day_window_slicing_with_fabricated_ts(self, tmp_path: Path, monkeypatch):
-        import src.context_filter_state as cfs
         from datetime import datetime, timezone
+
+        import src.context_filter_state as cfs
 
         fixed_now = datetime(2026, 8, 2, 12, 0, 0, tzinfo=timezone.utc)
         monkeypatch.setattr(cfs, "_now", lambda: fixed_now)

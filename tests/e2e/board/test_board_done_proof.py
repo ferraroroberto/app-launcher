@@ -8,9 +8,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e.board._support import (
+    _board_payload,
+    _iso_utc,
+    _mock_board,
+    _open_board,
+    _unfold,
+)
 from tests.e2e.fixtures.waits import stable_eval
-
-from tests.e2e.board._support import _board_payload, _iso_utc, _mock_board, _open_board, _unfold
 
 pytestmark = pytest.mark.smoke
 

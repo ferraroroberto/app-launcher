@@ -13,7 +13,6 @@ from datetime import datetime
 from src.jobs import next_fire
 from src.jobs.config import Schedule
 
-
 # A fixed reference: Tuesday 2026-06-16 10:00:00 (weekday()==1).
 NOW = datetime(2026, 6, 16, 10, 0, 0)
 

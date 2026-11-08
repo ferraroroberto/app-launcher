@@ -16,7 +16,12 @@ import pytest
 
 from src.life_os import relay_registry
 from tests.api._life_os_support import RESUMABLE_SID
-from tests.unit.life_os.test_life_os_relay import BOT, PREFIX, _conversation_session, relay  # noqa: F401
+from tests.unit.life_os.test_life_os_relay import (  # noqa: F401
+    BOT,
+    PREFIX,
+    _conversation_session,
+    relay,
+)
 
 SECOND_SID = "9a1d3c55-2e7b-4f08-b6c4-0d5e8f7a1b23"
 
@@ -245,7 +250,13 @@ class TestTurnFinished:
         from app.webapp.routers import life_os_relay
         from src import board
         from tests.unit.board._support import (
-            NOW, _bash_tool_use_line, _live, _msg_line, _state_row, _transcript_file)
+            NOW,
+            _bash_tool_use_line,
+            _live,
+            _msg_line,
+            _state_row,
+            _transcript_file,
+        )
 
         stamp = NOW - timedelta(minutes=10) + timedelta(seconds=5)
         row = _state_row("E:/x/y", status="needs-you", updated_min_ago=10)
@@ -346,6 +357,6 @@ def test_find_passes_the_search_tier_through_only_when_sent(relay, monkeypatch):
 
 
 def test_stop_and_status_are_terminal_gated():
-    from app.webapp import middleware
+    from src import middleware
     for tail in ("stop", "status"):
         assert middleware._terminal_guard_level(f"{PREFIX}/{tail}") == "passkey"

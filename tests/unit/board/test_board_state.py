@@ -7,9 +7,7 @@ from datetime import timedelta
 from pathlib import Path
 
 from src import board
-
 from tests.unit.board._support import NOW, _iso
-
 
 # ------------------------------------------------------ read_sessions_state
 

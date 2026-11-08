@@ -16,13 +16,12 @@ from typing import Any, Callable, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.login_lockout import LockoutAlert, LoginLockout, retry_after_header
-from src.notify import Notifier, NotifierError, TelegramConfig, build_notifier
-from src.webapp_config import WebappConfig
-
-from app.webapp.middleware import trust
 from app.webapp.observability import ensure_file_log_handler
 from app.webapp.routers._helpers import PROJECT_ROOT, maybe_json
+from src.login_lockout import LockoutAlert, LoginLockout, retry_after_header
+from src.middleware import trust
+from src.notify import Notifier, NotifierError, TelegramConfig, build_notifier
+from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 auth_logger = logging.getLogger("launcher.auth")

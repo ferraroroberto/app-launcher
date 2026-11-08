@@ -8,8 +8,14 @@ from typing import Any, Dict, List
 
 from src.session_view import transcript as st
 from src.transcript_flavors import _shared as tf_shared
-
-from tests.unit.transcript._support import COPILOT_CAPTURE, _kinds, _lines_of, _parse_whole, _walk, _write_jsonl
+from tests.unit.transcript._support import (
+    COPILOT_CAPTURE,
+    _kinds,
+    _lines_of,
+    _parse_whole,
+    _walk,
+    _write_jsonl,
+)
 
 
 def _cop(kind: str, data: Dict[str, Any], ts: str = "2026-09-17T21:58:00.000Z",

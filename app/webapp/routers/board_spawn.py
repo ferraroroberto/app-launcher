@@ -39,7 +39,10 @@ from src import agents
 from src.clients import session as session_client
 from src.launching.flags import build_claude_flags, build_codex_flags, build_grok_flags
 from src.launching.model_catalog import (
-    CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, GROK_DISPATCH_MODEL_SPECS, available_values,
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    GROK_DISPATCH_MODEL_SPECS,
+    available_values,
 )
 from src.registry import AppEntry, live_claude_code_entries
 from src.webapp_config import VALID_CODEX_MODELS, VALID_GROK_EFFORTS, WebappConfig

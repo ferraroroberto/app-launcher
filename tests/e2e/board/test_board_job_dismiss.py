@@ -17,7 +17,10 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.board._support import (
-    _board_payload, _mock_board, _open_board, _route_board_from,
+    _board_payload,
+    _mock_board,
+    _open_board,
+    _route_board_from,
 )
 from tests.e2e.fixtures.waits import flush_requests, wait_until
 

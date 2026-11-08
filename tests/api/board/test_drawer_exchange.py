@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from src.board import exchange as board_exchange
-
 from tests.api.board._support import (
     NOW,
     _assistant_line,
@@ -17,7 +16,6 @@ from tests.api.board._support import (
     _user_line,
     _write_jsonl,
 )
-
 
 # -------------------------------------------------------- exchange endpoint
 

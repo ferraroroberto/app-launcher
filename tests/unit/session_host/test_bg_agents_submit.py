@@ -24,13 +24,13 @@ import time as real_time
 import pytest
 
 from src import session_host_input
+from src.session_host import PtySession
 from src.session_host_input import (
     INPUT_DEFER_TIMEOUT,
     INPUT_DEFERRED,
     INPUT_OK,
     INPUT_UNVERIFIED,
 )
-from src.session_host import PtySession
 from src.session_hosting import deferred_submit
 from tests.unit.session_host._support import _make_session
 

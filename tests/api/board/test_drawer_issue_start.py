@@ -8,8 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
-
 # ------------------------------------------------------------- issue start
 
 
@@ -606,6 +604,7 @@ class TestGrokAutoSwitch:
     @pytest.fixture
     def _grok(self, webapp_client, monkeypatch, tmp_path):
         import time
+
         from app.webapp.routers import board as board_router
         client, _, overrides = webapp_client
         project = overrides["tmp_projects_dir"] / "myrepo"

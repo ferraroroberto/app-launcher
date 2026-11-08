@@ -35,8 +35,8 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional
 
-from src.chief import plan as chief_plan
 from src._json_io import atomic_write_json
+from src.chief import plan as chief_plan
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ def record_answered(
     with _lock:
         kept = read_answered(updated_at, target)
         merged = (kept + [k for k in ids if k not in kept])[:MAX_IDS]
+        # runtime-write-exempt: the chief answers file, a runtime path from the config
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(target, {"updated_at": updated_at, "ids": merged})
     logger.info(

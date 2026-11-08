@@ -25,6 +25,7 @@ def mocked_jobs_side_effects(monkeypatch):
     Returns a dict of MagicMocks tests can inspect for call args.
     """
     from unittest.mock import MagicMock
+
     from app.webapp.routers import jobs as jobs_router
 
     mocks = {

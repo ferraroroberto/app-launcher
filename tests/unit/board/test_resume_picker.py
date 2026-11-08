@@ -15,8 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from src.session_view import resume_picker
-from src.session_view import transcript_locate
+from src.session_view import resume_picker, transcript_locate
 
 _RULE_140 = "\u2500" * 140
 _PICKER_140 = [
@@ -367,7 +366,7 @@ def resume_client(picker_client, monkeypatch, tmp_path):
 
 
 def test_resume_routes_are_passkey_gated_and_scoped_to_sessions():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     for tail in ("resume-sessions", "resume"):
         assert _terminal_guard_level(f"/api/claude-code/sessions/abc/{tail}") == "passkey"
     assert _terminal_guard_level("/api/jobs/nightly/resume") != "passkey"

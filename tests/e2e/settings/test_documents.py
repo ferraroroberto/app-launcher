@@ -22,7 +22,11 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import open_settings, open_settings_sheet
-from tests.e2e.session.test_changed_file_view import _as_phone, _mock_file_routes, _open_file
+from tests.e2e.session.test_changed_file_view import (
+    _as_phone,
+    _mock_file_routes,
+    _open_file,
+)
 from tests.e2e.session.test_session_changed_files import _mock
 
 pytestmark = pytest.mark.smoke

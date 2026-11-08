@@ -41,7 +41,7 @@ from src.board.dispatch_ids import (
     _notified_background_ids,
     _notified_bash_dispatch_ids,
 )
-from src.board.state import utc_now, parse_iso
+from src.board.state import parse_iso, utc_now
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,8 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src import instance_role
-from src.chief_session_end import EVENT_VERSION, publish as publish_event
+from src.chief_session_end import EVENT_VERSION
+from src.chief_session_end import publish as publish_event
 
 logger = logging.getLogger(__name__)
 

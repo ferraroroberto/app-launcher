@@ -18,7 +18,6 @@ from src.desktop import capture as desktop_capture
 from src.desktop import cursor as desktop_cursor
 from src.desktop.capture import Monitor
 
-
 LOOPBACK = "127.0.0.1"
 
 

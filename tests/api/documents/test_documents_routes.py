@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from app.webapp.middleware.routes import terminal_guard_level
+from src.middleware.routes import terminal_guard_level
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -40,7 +40,7 @@ def docs_client(docs_env, monkeypatch):
     """The same, with the test client treated as the PC itself so the terminal
     gate steps aside and the endpoint logic is exercised; the gate has its own
     tests below."""
-    from app.webapp import middleware
+    from src import middleware
 
     monkeypatch.setattr(
         middleware.trust,

@@ -69,15 +69,27 @@ from typing import Any, Awaitable, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
+from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
+from app.webapp.routers import session_outbox_routes
+from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
+from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 from src import board, instance_role
 from src.board.transcript import _live_title_is_busy, _pty_output_is_fresh
-from src.session_view.transcript_locate import (
-    find_antigravity_transcript,
-    find_codex_transcript,
-    find_copilot_transcript,
-    find_pi_transcript,
-    resolve_claude_transcript,
+from src.launching.vscode_workspace import is_vscode_installed, open_file
+from src.middleware import is_pc_itself
+from src.session_view import background_tasks as session_tasks
+from src.session_view import link_titles as session_link_titles
+from src.session_view import links as session_links
+from src.session_view import outbox as session_outbox
+from src.session_view.automatic_turns import mark_automatic
+from src.session_view.changes import (
+    FileRefusal,
+    changed_file_path,
+    changed_files,
+    file_steps,
+    read_text_file,
 )
+from src.session_view.git_changes import select_in_explorer
 from src.session_view.transcript import (
     DEFAULT_LIMIT,
     MAX_LIMIT,
@@ -89,27 +101,14 @@ from src.session_view.transcript import (
     transcript_sent_file,
     transcript_tail,
 )
-from src.session_view import background_tasks as session_tasks
-from src.session_view.automatic_turns import mark_automatic
-from src.session_view import link_titles as session_link_titles
-from src.session_view import links as session_links
-from src.session_view import outbox as session_outbox
-from src.session_view.git_changes import select_in_explorer
-from src.session_view.changes import (
-    FileRefusal,
-    changed_file_path,
-    changed_files,
-    file_steps,
-    read_text_file,
+from src.session_view.transcript_locate import (
+    find_antigravity_transcript,
+    find_codex_transcript,
+    find_copilot_transcript,
+    find_pi_transcript,
+    resolve_claude_transcript,
 )
-from src.launching.vscode_workspace import is_vscode_installed, open_file
 from src.webapp_config import WebappConfig
-
-from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
-from app.webapp.middleware import is_pc_itself
-from app.webapp.routers._helpers import attach_provider_web_urls, maybe_json
-from app.webapp.routers import session_outbox_routes
-from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 
 logger = logging.getLogger(__name__)
 

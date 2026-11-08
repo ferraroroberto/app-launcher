@@ -11,8 +11,13 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import (
+    PROJECT_ROOT,
+    cert_present,
+    claude_flags_payload,
+    maybe_json,
+)
 from src import boot_autostart, remote_power_guard
-from src.session_view import outbox as session_outbox
 from src.agents import AGENTS, DEFAULT_AGENT, is_installed
 from src.launching.flags import (
     build_antigravity_flags,
@@ -31,6 +36,8 @@ from src.launching.model_catalog import (
     PI_MODEL_SPECS,
     catalog_payload,
 )
+from src.middleware import terminal_reachability
+from src.session_view import outbox as session_outbox
 from src.usage.providers import VALID_USAGE_PROVIDERS, validate_usage_providers
 from src.webapp_config import (
     MAX_CHIEF_AUTO_COMPACT_THRESHOLD,
@@ -48,14 +55,6 @@ from src.webapp_config import (
     VALID_PI_TRUST_MODES,
     WebappConfig,
     update_webapp_config,
-)
-
-from app.webapp.middleware import terminal_reachability
-from app.webapp.routers._helpers import (
-    PROJECT_ROOT,
-    cert_present,
-    claude_flags_payload,
-    maybe_json,
 )
 
 router = APIRouter()

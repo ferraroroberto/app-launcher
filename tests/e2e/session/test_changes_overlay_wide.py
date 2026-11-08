@@ -23,7 +23,11 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import open_row_menu
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, boot_retrying_static_failure, stable_eval
+from tests.e2e.fixtures.waits import (
+    OVERLAY_OPEN_MS,
+    boot_retrying_static_failure,
+    stable_eval,
+)
 from tests.e2e.session.test_coding_changes_overlay import AGENTS, CHANGES, _app
 from tests.e2e.session.test_session_mode_toggle import (
     _mock_git_status,

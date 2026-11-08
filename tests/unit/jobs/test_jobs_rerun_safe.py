@@ -12,7 +12,14 @@ import json
 import pytest
 
 from src.jobs import config as jc
-from src.jobs.config import Job, JobsConfig, job_from_dict, load_jobs, save_jobs, update_job
+from src.jobs.config import (
+    Job,
+    JobsConfig,
+    job_from_dict,
+    load_jobs,
+    save_jobs,
+    update_job,
+)
 
 _ROW = {"id": "j", "name": "J", "script_path": "C:\\x\\s.py"}
 

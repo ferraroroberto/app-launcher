@@ -30,7 +30,11 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.ui import close_settings_sheets, open_settings, open_settings_sheet
+from tests.e2e.fixtures.ui import (
+    close_settings_sheets,
+    open_settings,
+    open_settings_sheet,
+)
 from tests.e2e.fixtures.waits import BUILD_READOUT_MS, boot_retrying_static_failure
 
 pytestmark = pytest.mark.smoke

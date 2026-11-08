@@ -17,8 +17,7 @@ from src import board
 from src.chief import plan as chief_plan
 from src.clients import github as github_client
 from src.usage import quota as quota_usage
-
-from tests.unit.board._support import _FakeGh, _claim_contract, _iso, _live
+from tests.unit.board._support import _claim_contract, _FakeGh, _iso, _live
 
 
 def test_api_board_distinguishes_unfetched_from_genuinely_empty(

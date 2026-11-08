@@ -10,7 +10,6 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-
 # Pending-background-dispatch detection: the id a completed dispatch
 # is later referenced by, e.g. "<task-id>btvos2agp</task-id>".
 _TASK_ID_RE = re.compile(r"<task-id>([^<]+)</task-id>")

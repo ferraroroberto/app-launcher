@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 
-
 # A canonical session id — the only shape the launch route accepts, because
 # the value reaches claude's command line.
 RESUMABLE_SID = "e70b4cb1-9f3d-4a21-8c55-2b7d19a4f6e0"

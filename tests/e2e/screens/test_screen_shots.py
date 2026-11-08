@@ -19,7 +19,12 @@ import pytest
 from playwright.sync_api import Browser, Page, expect
 
 from tests.e2e._shot import PINNED_NOW, shot, variant_page, variants
-from tests.e2e.fixtures.ui import open_session_row, open_settings, open_settings_sheet, stub_session_mirror
+from tests.e2e.fixtures.ui import (
+    open_session_row,
+    open_settings,
+    open_settings_sheet,
+    stub_session_mirror,
+)
 
 pytestmark = pytest.mark.smoke
 

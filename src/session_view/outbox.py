@@ -380,6 +380,7 @@ def post(
     folder = _session_dir(sid)
 
     def _prune(stamp: float) -> None:
+        # runtime-write-exempt: the outbox folder, a runtime path from the config
         OUTBOX_DIR.mkdir(parents=True, exist_ok=True)
         _prune_sessions(stamp)
 
@@ -419,7 +420,9 @@ def store(
     with _LOCK:
         if before_write is not None:
             before_write(stamp)
+        # runtime-write-exempt: the outbox folder, a runtime path from the config
         folder.mkdir(parents=True, exist_ok=True)
+        # runtime-write-exempt: the outbox folder, a runtime path from the config
         (folder / entry_id).write_bytes(data)
         index = _read_index(folder)
         entries = index["entries"] + [entry]

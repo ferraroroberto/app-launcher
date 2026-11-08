@@ -25,7 +25,12 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_read
-from tests.e2e.session.test_session_mode_toggle import _mock_git_status, _mock_sessions_list, _row, _session_row
+from tests.e2e.session.test_session_mode_toggle import (
+    _mock_git_status,
+    _mock_sessions_list,
+    _row,
+    _session_row,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 

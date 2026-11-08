@@ -12,7 +12,6 @@ from playwright.sync_api import Page, expect
 from tests.e2e.fixtures.ui import open_settings_sheet
 from tests.e2e.life_os._support import _mock_skills
 
-
 pytestmark = pytest.mark.smoke
 
 

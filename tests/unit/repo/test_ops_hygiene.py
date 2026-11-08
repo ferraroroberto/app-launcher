@@ -26,13 +26,12 @@ from types import SimpleNamespace
 
 import pytest
 
-
 # ------------------------------------------------- port-kill reachability
 
 
 def test_port_kill_is_in_the_guard_inventory():
     """The kill route classifies into the gated tier, like its neighbours."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     assert _terminal_guard_level("/api/ports/8446/kill") == "tailnet"
     assert _terminal_guard_level("/api/ports/8445/kill") == "tailnet"
@@ -41,7 +40,7 @@ def test_port_kill_is_in_the_guard_inventory():
 def test_port_probe_stays_token_only():
     """Only the destructive half moves tier — the read-only probe backs the
     Apps-tab listeners panel and must keep working on the token alone."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     assert _terminal_guard_level("/api/ports/probe") is None
 

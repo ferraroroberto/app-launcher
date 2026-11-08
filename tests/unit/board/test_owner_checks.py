@@ -190,7 +190,7 @@ def test_no_fleet_config_is_its_own_error():
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -198,7 +198,7 @@ def _bypass_gate(monkeypatch):
 
 
 def test_answer_route_is_passkey_gated(webapp_client):
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/board/owner-checks/answer") == "passkey"
     client, _, _ = webapp_client
     resp = client.post("/api/board/owner-checks/answer",
@@ -302,6 +302,7 @@ def test_answer_route_refuses_and_logs_a_request_over_its_cap(webapp_client, _by
 def test_the_sheet_sends_fewer_answers_per_request_than_the_route_accepts():
     import re
     from pathlib import Path
+
     from app.webapp.routers.board_owner import _MAX_ANSWERS
     src = (Path(__file__).resolve().parents[3] / "app/webapp/static/board/owner-checks.js").read_text(encoding="utf-8")
     per = int(re.search(r"OWNER_ANSWERS_PER_REQUEST = (\d+);", src).group(1))
@@ -359,6 +360,7 @@ def _run_node_pin(script):
     import shutil
     import subprocess
     from pathlib import Path
+
     from src.subprocess_flags import NO_WINDOW
     if shutil.which("node") is None:
         pytest.skip("Node.js is required")

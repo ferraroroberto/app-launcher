@@ -5,22 +5,20 @@ from __future__ import annotations
 import asyncio
 import time
 
-
 from src.desktop import capture as desktop_capture
 from src.desktop import cursor as desktop_cursor
 from src.desktop.cursor import CursorState
-
 from tests.api.screen._support import (
     ABOVE,
     LOOPBACK,
     TAILNET,
     TOKEN,
-    _ScriptedSocket,
     _as,
     _close_and_wait,
     _next_frame,
     _next_text,
     _run,
+    _ScriptedSocket,
     _ws_url,
 )
 

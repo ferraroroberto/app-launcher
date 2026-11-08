@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
 from src.subprocess_flags import NO_WINDOW
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="Node.js is required")

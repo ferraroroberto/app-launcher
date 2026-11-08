@@ -23,10 +23,15 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.ui import HeldUploads
 from tests.e2e.compose.test_compose_bar import (
-    ATTACH_INPUT, COMPOSER, INPUT, _PNG_1x1, _open_terminal, _show_composer,
+    ATTACH_INPUT,
+    COMPOSER,
+    INPUT,
+    _open_terminal,
+    _PNG_1x1,
+    _show_composer,
 )
+from tests.e2e.fixtures.ui import HeldUploads
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 

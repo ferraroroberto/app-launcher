@@ -15,7 +15,6 @@ from src.chief import plan as chief_plan
 from tests.e2e._audio_mock import RECORDER_BASE_JS
 from tests.e2e.board._support import _open_board  # noqa: F401  (re-exported to the chief tests)
 
-
 _CHIEF_CARD = {
     "session_id": "s-chief", "kind": "pty", "agent": "claude",
     "label": "chief", "project_dir": "E:/automation/fleet-config",

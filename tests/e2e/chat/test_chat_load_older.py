@@ -27,8 +27,8 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 from tests.e2e.chat._support import _pull
+from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
 

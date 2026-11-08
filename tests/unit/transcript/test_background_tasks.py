@@ -251,7 +251,7 @@ _ROUTE = "/api/claude-code/sessions/s1/background-tasks"
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -269,7 +269,7 @@ def _serve(overrides, monkeypatch, path: Path, agent: str = "claude") -> None:
 
 
 def test_route_is_classified_passkey_and_refused_off_tailnet(webapp_client):
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/background-tasks") == "passkey"
     client, _, _ = webapp_client
     assert client.get(_ROUTE).status_code == 403

@@ -41,6 +41,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import HTTPException
 
+from app.webapp.routers import life_os_relay
+from app.webapp.routers.life_os_spawn import _resolve_skill
 from src import audit
 from src.clients import session as session_client
 from src.launching.channel_profiles import (
@@ -49,9 +51,6 @@ from src.launching.channel_profiles import (
     profile_session_label,
 )
 from src.life_os import relay_registry
-
-from app.webapp.routers import life_os_relay
-from app.webapp.routers.life_os_spawn import _resolve_skill
 
 logger = logging.getLogger(__name__)
 

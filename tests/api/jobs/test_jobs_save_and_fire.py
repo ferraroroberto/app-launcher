@@ -6,9 +6,7 @@ import json
 from datetime import datetime, timedelta
 from pathlib import Path
 
-
 from tests.api.jobs._support import _seed_one_job, _stub_path, _stub_path_no_venv
-
 
 # ============================================================ pre-flight (#69)
 

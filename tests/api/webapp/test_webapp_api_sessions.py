@@ -560,7 +560,7 @@ class TestProxySessionWS:
         there — patching the ``sessions`` module's own binding no longer
         reaches ``is_pc_itself``.
         """
-        from app.webapp import middleware
+        from src import middleware
 
         hosts = frozenset({"testclient", "127.0.0.1", "::1", "localhost"})
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", hosts)

@@ -188,6 +188,7 @@ def _finalize_cooldown_skip(job: Job, args: argparse.Namespace) -> Optional[int]
     remaining, cooldown_seconds, anchor_id = cooldown_state
     skip_run_id = args.run_id or new_run_id()
     skip_dir = runs_dir(job.id) / skip_run_id
+    # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
     skip_dir.mkdir(parents=True, exist_ok=True)
     stamped = datetime.now().isoformat(timespec="seconds")
     write_run_json(
@@ -390,6 +391,7 @@ def _spawn_and_wait(
     # read run history or config itself.
     max_runtime_seconds, no_output_seconds = resolve_watchdog_limits(job)
     try:
+        # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
         with output_log.open("wb") as fh:
             # A ``visible`` job streams the child's combined output to
             # BOTH output.log (remote run-history) and the launcher's
@@ -450,6 +452,7 @@ def _spawn_and_wait(
         exit_code = -1
         status = "failed"
         try:
+            # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
             with output_log.open("ab") as fh:
                 fh.write(f"[run-job spawn error] {exc}\n".encode("utf-8"))
         except OSError:
@@ -714,6 +717,7 @@ class RunJobCommand(BaseCommand):
         # run.json / output.log.
         if args.run_id:
             run_dir = runs_dir(job.id) / args.run_id
+            # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
             run_dir.mkdir(parents=True, exist_ok=True)
         else:
             run_dir = new_run_dir(job.id, new_run_id())
@@ -812,6 +816,7 @@ def _child_env(
     env[JOB_ID_ENV] = job_id
     env[JOB_RUN_ID_ENV] = run_dir.name
     artifact_dir = run_dir / "artifacts"
+    # runtime-write-exempt: the job run folder, a runtime path built from the job and run ids under the jobs runs dir
     artifact_dir.mkdir(parents=True, exist_ok=True)
     env["JOB_ARTIFACT_DIR"] = str(artifact_dir.resolve())
     if dry_run:

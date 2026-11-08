@@ -99,6 +99,7 @@ def prune_briefs(now: Optional[float] = None) -> int:
 
 def write_brief(text: str) -> Path:
     """Persist a validated brief under a fresh uuid name and return its path."""
+    # runtime-write-exempt: the dispatch briefs folder, a runtime path from the config
     BRIEFS_DIR.mkdir(parents=True, exist_ok=True)
     prune_briefs()
     path = BRIEFS_DIR / f"{uuid.uuid4().hex}.md"
@@ -106,6 +107,7 @@ def write_brief(text: str) -> Path:
         raise RuntimeError(
             f"brief directory is not command-line safe: {BRIEFS_DIR.as_posix()!r}"
         )
+    # runtime-write-exempt: the dispatch briefs folder, a runtime path from the config
     path.write_text(text, encoding="utf-8")
     return path
 

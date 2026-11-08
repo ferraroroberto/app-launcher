@@ -218,6 +218,7 @@ def record_refresh(plan: RefreshPlan, path: Optional[Path] = None) -> None:
         current[plan.key] = plan.fingerprint
         kept = dict(list(current.items())[-MAX_RECORDS:])
         try:
+            # runtime-write-exempt: the refresh record file, a runtime path the caller or the default names
             target.parent.mkdir(parents=True, exist_ok=True)
             atomic_write_json(target, kept)
         except OSError as exc:

@@ -13,7 +13,12 @@ import pytest
 
 from src.life_os import relay_registry
 from tests.api._life_os_support import RESUMABLE_SID
-from tests.unit.life_os.test_life_os_relay import PREFIX, _conversation_session, _steer, relay  # noqa: F401
+from tests.unit.life_os.test_life_os_relay import (  # noqa: F401
+    PREFIX,
+    _conversation_session,
+    _steer,
+    relay,
+)
 from tests.unit.life_os.test_life_os_relay_stop import _status, _stop, stop_host  # noqa: F401
 
 

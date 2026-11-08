@@ -23,7 +23,6 @@ import pytest
 
 from src.launching import launcher
 
-
 # Window message constant — matches winuser.h. Tests assert the exact
 # value so a refactor that swaps in something else would be caught.
 WM_CLOSE = 0x0010

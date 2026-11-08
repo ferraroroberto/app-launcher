@@ -25,7 +25,14 @@ from __future__ import annotations
 from typing import Dict
 
 from src.jobs.config import Job
-from src.jobs_kinds import batch, http_check, inline_shell, powershell, python, shell_wsl
+from src.jobs_kinds import (
+    batch,
+    http_check,
+    inline_shell,
+    powershell,
+    python,
+    shell_wsl,
+)
 from src.jobs_kinds.base import FILE_KINDS, JobKind, Problem
 
 KINDS: Dict[str, JobKind] = {

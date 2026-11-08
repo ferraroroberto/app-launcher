@@ -10,7 +10,6 @@ import pytest
 
 from app.webapp.routers import board_chief as chief_router
 from src.chief import pointer as chief_pointer
-
 from tests.api.chief._support import (
     _chief,
     _chief_row,
@@ -19,7 +18,6 @@ from tests.api.chief._support import (
     _transcript,
     _write_pointer,
 )
-
 
 # Each case: state rows, an optional durable pointer ``(sid, transcript kind,
 # age)``, the live chief's ``preferred_sid``, and the conversation that must

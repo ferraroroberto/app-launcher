@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Callable, IO, List, Optional, Tuple
+from typing import IO, Callable, List, Optional, Tuple
 
 import psutil
 import pytest

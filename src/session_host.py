@@ -34,17 +34,6 @@ from src.agents import (
 from src.audit import transcript_path
 from src.session_host_composer import ComposerTracker, composer_tracker_for
 from src.session_host_input import touches_composer
-from src.session_hosting.child_env import agent_child_env
-from src.session_hosting.pending_discard import PendingInputProtocol
-from src.session_hosting.pending_input import PendingInputs
-from src.session_hosting.kinds import (
-    STOP_GRACE_SECONDS,
-    KIND_PTY,
-    STOP_INTERRUPT,
-    STOP_KILL,
-    STOP_QUIT,
-)
-from src.session_hosting.remote import RemoteSession, launch_detached
 from src.session_host_scan import (  # noqa: F401 — re-exported for callers/tests
     _PROMPT_TITLE_MAX_CHARS,
     _PROMPT_TITLE_MAX_WORDS,
@@ -54,6 +43,17 @@ from src.session_host_scan import (  # noqa: F401 — re-exported for callers/te
     _scan_bracketed_paste_mode,
     _strip_color_osc,
 )
+from src.session_hosting.child_env import agent_child_env
+from src.session_hosting.kinds import (
+    KIND_PTY,
+    STOP_GRACE_SECONDS,
+    STOP_INTERRUPT,
+    STOP_KILL,
+    STOP_QUIT,
+)
+from src.session_hosting.pending_discard import PendingInputProtocol
+from src.session_hosting.pending_input import PendingInputs
+from src.session_hosting.remote import RemoteSession, launch_detached
 from src.vt_snapshot import VtSnapshot
 
 try:  # Windows-only — ConPTY via pywinpty.
@@ -339,7 +339,9 @@ class PtySession(PendingInputProtocol):
         """Spawn the background thread that pumps PTY output to subscribers."""
         try:
             path = transcript_path(self.session_id)
+            # runtime-write-exempt: the per-session transcript file, a runtime path the caller resolves
             path.parent.mkdir(parents=True, exist_ok=True)
+            # runtime-write-exempt: the per-session transcript file, a runtime path the caller resolves
             self._transcript = path.open("a", encoding="utf-8", errors="replace")
             self._transcript.write(
                 f"\n=== session {self.session_id} :: {self.name} :: "

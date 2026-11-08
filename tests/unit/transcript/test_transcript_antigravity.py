@@ -8,8 +8,13 @@ from typing import Any, Dict, List
 
 from src.session_view import transcript as st
 from src.transcript_flavors import _shared as tf_shared
-
-from tests.unit.transcript._support import AGY_CAPTURE, _kinds, _parse_whole, _walk, _write_jsonl
+from tests.unit.transcript._support import (
+    AGY_CAPTURE,
+    _kinds,
+    _parse_whole,
+    _walk,
+    _write_jsonl,
+)
 
 
 def _agy(step: int, source: str, step_type: str, **extra: Any) -> Dict[str, Any]:

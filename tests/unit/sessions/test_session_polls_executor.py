@@ -89,7 +89,7 @@ _ENDPOINTS: Dict[str, tuple] = {
 
 @pytest.fixture
 def chat_app(webapp_client, monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
 
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS",
                         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}))

@@ -14,7 +14,6 @@ from src.desktop import capture as desktop_capture
 from src.desktop import cursor as desktop_cursor
 from src.desktop.capture import CaptureUnavailable, Monitor
 from src.desktop.cursor import CursorState, CursorUnavailable
-
 from tests.api.screen._support import (
     ABOVE,
     PRIMARY,

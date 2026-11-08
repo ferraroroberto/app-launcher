@@ -13,8 +13,16 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.board._chief_support import (
-    _PNG_1x1, _QUESTIONS, _board_payload, _capture_chief_input, _mock_board, _mock_ensure,
-    _open_board, _plan_with, _route_plan_from, _route_voice,
+    _QUESTIONS,
+    _board_payload,
+    _capture_chief_input,
+    _mock_board,
+    _mock_ensure,
+    _open_board,
+    _plan_with,
+    _PNG_1x1,
+    _route_plan_from,
+    _route_voice,
 )
 from tests.e2e.board.test_owner_checks_board import _payload
 

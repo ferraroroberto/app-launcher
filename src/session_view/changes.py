@@ -40,7 +40,13 @@ from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 from src.session_view.transcript import FLAVORS
-from src.transcript_flavors._shared import DIFF_FULL_BYTES, Hunk, _loads, cap_diff, diff_counts
+from src.transcript_flavors._shared import (
+    DIFF_FULL_BYTES,
+    Hunk,
+    _loads,
+    cap_diff,
+    diff_counts,
+)
 from src.transcript_flavors.claude import recorded_edit
 
 SCAN_CEILING = 256 * 1024 * 1024

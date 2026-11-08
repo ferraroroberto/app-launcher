@@ -66,25 +66,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from src import instance_role, process_auto_restart, system_load
-from src.compression import StreamSafeGZipMiddleware
-from src.jobs import snapshot as jobs_snapshot
-from src.launching import launcher
-from src.clients import session as session_client
-from src.app_config import load_app_config
-from src.runtime_data import runtime_db_path
-from src.static_versioning import (
-    compute_asset_hashes,
-    fleet_hash_of,
-    rewrite_js_imports,
-)
-from src.stylesheet_bundle import BUNDLE_RELPATH, build_bundle
-from src.usage_log import usage_router
-from src.webapp_config import load_webapp_config
-from src.auth.webauthn_gate import WebAuthnGate
-
 from app.webapp import chief_doorbell, relay_idle_close
-from app.webapp.middleware import BearerTokenMiddleware
 from app.webapp.observability import (
     SlowRequestLogMiddleware,
     ensure_autostart_log_handler,
@@ -105,6 +87,7 @@ from app.webapp.routers import (
     fleet_scope,
     jobs,
     life_os,
+    life_os_channels,
     misc,
     perf_timings,
     progress,
@@ -115,9 +98,25 @@ from app.webapp.routers import (
     tokens,
     webauthn,
 )
-from app.webapp.routers import life_os_channels
 from app.webapp.routers._helpers import STATIC_DIR
 from app.webapp.static_trim import trim_js
+from src import instance_role, process_auto_restart, system_load
+from src.app_config import load_app_config
+from src.auth.webauthn_gate import WebAuthnGate
+from src.clients import session as session_client
+from src.compression import StreamSafeGZipMiddleware
+from src.jobs import snapshot as jobs_snapshot
+from src.launching import launcher
+from src.middleware import BearerTokenMiddleware
+from src.runtime_data import runtime_db_path
+from src.static_versioning import (
+    compute_asset_hashes,
+    fleet_hash_of,
+    rewrite_js_imports,
+)
+from src.stylesheet_bundle import BUNDLE_RELPATH, build_bundle
+from src.usage_log import usage_router
+from src.webapp_config import load_webapp_config
 
 _log = logging.getLogger(__name__)
 # The lifespan's Telegram autostart lines: a child so the file handler

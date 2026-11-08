@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-
 import pytest
 
+from src import session_host_input
 from src.session_host_input import (
     _BULK_CAP_MS,
     _BULK_FLOOR_MS,
@@ -21,11 +21,8 @@ from src.session_host_input import (
     INPUT_OK,
     INPUT_UNVERIFIED,
 )
-from src import session_host_input
 from src.session_hosting.deferred_submit import _DEFER_CAP_MS, _DEFER_QUIET_MS
-
-from tests.unit.session_host._support import _FakeClock, _echo, _make_session
-
+from tests.unit.session_host._support import _echo, _FakeClock, _make_session
 
 # --------------------------------------------------------------- framing
 

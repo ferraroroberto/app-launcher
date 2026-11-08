@@ -41,7 +41,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from src._json_io import atomic_write_json
-from src.board.state import iso_z, utc_now, parse_iso
+from src.board.state import iso_z, parse_iso, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +121,7 @@ def write_chief_pointer(
         "source": str(source),
     }
     try:
+        # runtime-write-exempt: the chief pointer file, a runtime path from the config
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(target, payload)
     except OSError as exc:

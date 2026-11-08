@@ -47,8 +47,8 @@ from typing import Any, List, NamedTuple, Optional, Protocol
 
 import requests
 
-from src.clients import llm as llm_client
 from src.chief.job_failed import publish_job_failed
+from src.clients import llm as llm_client
 from src.jobs.history import read_output_tail
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED, run_outcome
 from src.jobs.stats import consecutive_failed_runs

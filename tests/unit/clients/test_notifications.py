@@ -12,10 +12,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-
 from src import notifications as notif
 from src.clients import _loopback_http
-
 
 # ============================================================== Notifiers
 

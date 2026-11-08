@@ -8,11 +8,19 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
-from tests.e2e.fixtures.waits import stable_eval, stable_read
 from tests.e2e.board._chief_support import (
-    _QUESTIONS, _board_payload, _capture_chief_input, _mock_board, _mock_ensure, _open_board,
-    _RECORDER_MOCK, _plan_with, _route_plan_from, _route_voice,
+    _QUESTIONS,
+    _RECORDER_MOCK,
+    _board_payload,
+    _capture_chief_input,
+    _mock_board,
+    _mock_ensure,
+    _open_board,
+    _plan_with,
+    _route_plan_from,
+    _route_voice,
 )
+from tests.e2e.fixtures.waits import stable_eval, stable_read
 
 pytestmark = pytest.mark.smoke
 

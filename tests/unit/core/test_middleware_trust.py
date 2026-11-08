@@ -1,12 +1,12 @@
 """The auth trust boundary: who counts as the PC itself, and who is on the tailnet.
 
 Loopback trust skips every other auth leg, so these pin it directly on
-``app.webapp.middleware.trust`` rather than only through the HTTP stack.
+``src.middleware.trust`` rather than only through the HTTP stack.
 """
 
 import pytest
 
-from app.webapp.middleware import trust
+from src.middleware import trust
 
 
 @pytest.mark.parametrize("host", ["127.0.0.1", "::1", "localhost"])
@@ -46,7 +46,7 @@ def test_client_in_tailnet(host, allowlist, expected):
 
 
 def test_package_reexports_the_trust_names():
-    from app.webapp import middleware
+    from src import middleware
 
     assert middleware.is_pc_itself is trust.is_pc_itself
     assert middleware.client_in_tailnet is trust.client_in_tailnet

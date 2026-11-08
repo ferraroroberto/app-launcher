@@ -49,7 +49,6 @@ from src.webapp_config import (
     valid_claude_efforts_for,
 )
 
-
 # The Claude Code Telegram channel plugin. ``--channels`` makes Claude
 # start that plugin's server and inject the chat's messages into the session.
 CHANNEL_PLUGIN = "plugin:telegram@claude-plugins-official"

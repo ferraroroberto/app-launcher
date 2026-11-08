@@ -49,6 +49,18 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.demand_cache import DemandCache
+from app.webapp.routers._helpers import (
+    audit_off_loop,
+    cert_present,
+    client_ip,
+    maybe_json,
+)
+from app.webapp.routers.life_os_spawn import (
+    _resolve_launch_choice,
+    _resolve_skill,
+    _spawn_skill_session,
+)
 from src import audit
 from src.clients import session as session_client
 from src.launching.channel_profiles import (
@@ -70,19 +82,6 @@ from src.launching.flags import build_claude_flags
 from src.launching.launcher import close_mirror_window
 from src.scanner import Skill, scan_skills
 from src.webapp_config import WebappConfig
-
-from app.webapp.demand_cache import DemandCache
-from app.webapp.routers._helpers import (
-    audit_off_loop,
-    cert_present,
-    client_ip,
-    maybe_json,
-)
-from app.webapp.routers.life_os_spawn import (
-    _resolve_launch_choice,
-    _resolve_skill,
-    _spawn_skill_session,
-)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

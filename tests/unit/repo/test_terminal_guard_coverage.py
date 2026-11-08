@@ -31,7 +31,6 @@ from typing import Dict, Set
 
 import pytest
 
-
 # Prefixes whose neighbourhood is terminal-grade: each already contains at
 # least one row in ``_TERMINAL_GUARD_RULES``, so a *new* sibling under one of
 # them is far more likely to need gating than not. Matched as "the prefix
@@ -256,7 +255,7 @@ def _visible_terminal_routes(app) -> Set[str]:
 def test_every_terminal_prefixed_route_has_an_explicit_guard_level(webapp_client):
     """No route under a gated prefix may resolve to None without saying why."""
     _client, app, _overrides = webapp_client
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     unclassified = sorted(
         path
@@ -285,7 +284,7 @@ def test_token_only_allowlist_has_no_stale_rows(webapp_client):
     been gated claims the opposite of what the guard table now says.
     """
     _client, app, _overrides = webapp_client
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     registered = _visible_terminal_routes(app)
 
@@ -312,7 +311,7 @@ def test_guard_rules_still_classify_their_own_prefixes(webapp_client):
     it walks really do contain gated routes. A prefix that stopped matching
     anything would silently turn this file into a no-op."""
     _client, app, _overrides = webapp_client
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     paths = _visible_terminal_routes(app)
     barren = sorted(

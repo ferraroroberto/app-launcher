@@ -17,7 +17,7 @@ The content endpoints surface private, gitignored knowledge
 (``context/`` ``memory/`` ``examples/`` ``conversations/`` + the shared
 ``identity/``). They are gated like the live terminal — refused over the
 Cloudflare tunnel, Tailscale-only, passkey-required (see
-``app/webapp/middleware/``) — and the file-content endpoint is
+``src/middleware/``) — and the file-content endpoint is
 **path-jailed** to ``life_os_dir`` (the jail is the whole security story
 for an endpoint that reads arbitrary files under a root).
 """
@@ -32,16 +32,15 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 from src import audit
+from src.clients import session as session_client
 from src.life_os import capture as life_os_capture
 from src.life_os import delete as life_os_delete
 from src.life_os import index as life_os_index
-from src.clients import session as session_client
 from src.life_os.history import read_captures
 from src.scanner import skills_dir_for
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import audit_off_loop, client_ip, maybe_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -31,7 +31,11 @@ from typing import Any, Dict, List, Mapping, Optional
 
 from src.clients import session as session_client
 from src.life_os.capture import parse_capture
-from src.life_os.delete import ConversationDeleteError, delete_conversation, live_conversations
+from src.life_os.delete import (
+    ConversationDeleteError,
+    delete_conversation,
+    live_conversations,
+)
 from src.life_os.history import read_captures
 from src.life_os.links import is_link
 from src.life_os.zombie_backup import Stash, backup_root, purge_old_backups

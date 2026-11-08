@@ -10,9 +10,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import life_launch_switch, open_settings_sheet
 from tests.e2e.fixtures.waits import wait_until
-
 from tests.e2e.life_os._support import _mock_recap, _mock_skills, _skill_menu_item
-
 
 pytestmark = pytest.mark.smoke
 

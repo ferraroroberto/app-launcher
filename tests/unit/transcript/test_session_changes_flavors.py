@@ -20,7 +20,11 @@ from src import board
 from src.session_view import changes as session_changes
 from src.session_view.changes import changed_files, file_steps
 from src.session_view.transcript import transcript_page
-from src.transcript_flavors.codex import _js_unescape, _patch_literals, parse_apply_patch
+from src.transcript_flavors.codex import (
+    _js_unescape,
+    _patch_literals,
+    parse_apply_patch,
+)
 
 
 def _write_jsonl(path: Path, lines: List[Dict[str, Any]]) -> Path:
@@ -345,7 +349,7 @@ def test_a_transcript_of_no_edits_is_an_empty_fold(tmp_path):
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),

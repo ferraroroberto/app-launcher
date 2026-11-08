@@ -39,19 +39,18 @@ from fastapi import APIRouter, HTTPException, Request
 from websockets.asyncio.client import connect as ws_connect
 from websockets.exceptions import InvalidHandshake, WebSocketException
 
-from src import audit
-from src.session_view import plan_picker
-from src.session_view import resume_picker
-from src.clients import session as session_client
-from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME, answer_keystrokes
-from src.board.transcript import pending_decision_call
-from src.session_view.statusline_context import context_percent
-from src.webapp_config import WebappConfig
-
 from app.webapp.hot_poll import BuildSteps, run_on_default_executor, session_poll
 from app.webapp.routers._helpers import audit_off_loop, maybe_json
 from app.webapp.routers.board_spawn import SESSION_HOST_UNREACHABLE, _read_live_sessions
 from app.webapp.routers.session_transcript import _resolve_source
+from src import audit
+from src.ask_user_question import TOOL_NAME as ASK_TOOL_NAME
+from src.ask_user_question import answer_keystrokes
+from src.board.transcript import pending_decision_call
+from src.clients import session as session_client
+from src.session_view import plan_picker, resume_picker
+from src.session_view.statusline_context import context_percent
+from src.webapp_config import WebappConfig
 
 logger = logging.getLogger(__name__)
 

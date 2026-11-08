@@ -6,7 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.webapp.routers.life_os_conversations import _conversation_check, _conversation_path, _conversation_rows
+from app.webapp.routers.life_os_conversations import (
+    _conversation_check,
+    _conversation_path,
+    _conversation_rows,
+)
 from src.life_os import history
 
 

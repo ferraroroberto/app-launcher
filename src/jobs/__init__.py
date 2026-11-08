@@ -39,13 +39,18 @@ returns the new ``run_id`` immediately.
 
 from __future__ import annotations
 
+from src.jobs.coverage import (
+    coverage_for_job,
+    invalidate_coverage_cache,
+    scan_coverage,
+)
 from src.jobs.history import (
     JOBS_RUNS_DIR,
     MAX_RUNS_PER_JOB,
     is_running,
     latest_run,
-    list_runs,
     list_artifacts,
+    list_runs,
     new_run_dir,
     new_run_id,
     prune_runs,
@@ -55,6 +60,11 @@ from src.jobs.history import (
     runs_dir,
     write_run_json,
     write_webhook_payload,
+)
+from src.jobs.next_fire import (
+    FREQUENT_SCHEDULE_TYPES,
+    next_fire,
+    upcoming_fires,
 )
 from src.jobs.queue import (
     JOBS_QUEUE_PATH,
@@ -66,11 +76,6 @@ from src.jobs.queue import (
     peek_mutex_queue,
     pop_mutex_entry,
     seed_run_meta,
-)
-from src.jobs.coverage import (
-    coverage_for_job,
-    invalidate_coverage_cache,
-    scan_coverage,
 )
 from src.jobs.reap import reap_stranded_runs
 from src.jobs.schtasks import (
@@ -89,11 +94,6 @@ from src.jobs.schtasks import (
     task_run_command,
 )
 from src.jobs.spawn import resolve_venv_python, spawn_run_job_detached
-from src.jobs.next_fire import (
-    FREQUENT_SCHEDULE_TYPES,
-    next_fire,
-    upcoming_fires,
-)
 from src.jobs.stats import (
     consecutive_failed_runs,
     cooldown_check,

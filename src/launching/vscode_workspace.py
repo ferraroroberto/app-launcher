@@ -70,6 +70,7 @@ def ensure_workspace_file(projects_dir: Path, name: str) -> Tuple[Path, bool]:
     path = workspace_path_for(projects_dir, name)
     if path.exists():
         return path, False
+    # runtime-write-exempt: the workspace file under the configured projects folder
     path.write_text(
         json.dumps({"folders": [{"path": name}]}, indent="\t") + "\n",
         encoding="utf-8",

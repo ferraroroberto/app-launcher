@@ -9,12 +9,8 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._surface import surface
-from tests.e2e.fixtures.ui import HeldUploads
-from tests.e2e.fixtures.waits import stable_eval, stable_read
-
 from tests.e2e.board._chief_support import (
     _CHIEF_UPLOAD,
-    _PNG_1x1,
     _QUESTIONS,
     _RECORDER_MOCK,
     _board_payload,
@@ -25,10 +21,12 @@ from tests.e2e.board._chief_support import (
     _open_board,
     _paste_image,
     _plan_with,
+    _PNG_1x1,
     _route_plan_from,
     _route_voice,
 )
-
+from tests.e2e.fixtures.ui import HeldUploads
+from tests.e2e.fixtures.waits import stable_eval, stable_read
 
 pytestmark = pytest.mark.smoke
 

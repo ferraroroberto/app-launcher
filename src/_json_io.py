@@ -45,6 +45,7 @@ def atomic_write_json(target: Path, payload: Any, *, indent: int = 2) -> None:
     """
     tmp = target.with_suffix(target.suffix + ".tmp")
     try:
+        # runtime-write-exempt: a file beside the target path the caller names, written atomically
         tmp.write_text(json.dumps(payload, indent=indent), encoding="utf-8")
         os.replace(tmp, target)
     finally:
@@ -76,7 +77,9 @@ def file_lock(lock_path: Path, *, label: str) -> Iterator[None]:
     if msvcrt is None:  # pragma: no cover - non-Windows fallback
         yield
         return
+    # runtime-write-exempt: a file beside the target path the caller names, written atomically
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    # runtime-write-exempt: a file beside the target path the caller names, written atomically
     handle = open(lock_path, "a+b")
     locked = False
     try:

@@ -23,10 +23,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from src import board
-from src.jobs import history as jobs_history
 from src import jobs as jobs_mod
-from src.jobs import config as jc
 from src import notifications as notif
+from src.jobs import config as jc
+from src.jobs import history as jobs_history
 from src.jobs.config import Job, JobsConfig, job_from_dict, save_jobs
 from src.jobs.outcome import (
     OUTCOME_DEFERRED,

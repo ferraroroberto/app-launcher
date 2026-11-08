@@ -54,18 +54,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.board import active_issue_claims
-from src.jobs import dismissed as jobs_dismissed
-
-from src.board.state import (  # noqa: F401 — re-exported for board.<name> callers
-    RATE_LIMITS_STALE_AFTER,
-    STATE_STALE_AFTER,
-    age_seconds,
-    utc_now,
-    parse_iso,
-    read_active_issues,
-    read_rate_limits,
-    read_sessions_state,
-)
 from src.board.sessions import (  # noqa: F401 — re-exported for board.<name> callers
     _live_launcher_session_ids,
     active_issue_repos,
@@ -76,10 +64,21 @@ from src.board.sessions import (  # noqa: F401 — re-exported for board.<name> 
     state_row_for_session,
     state_sid_for_session,
 )
+from src.board.state import (  # noqa: F401 — re-exported for board.<name> callers
+    RATE_LIMITS_STALE_AFTER,
+    STATE_STALE_AFTER,
+    age_seconds,
+    parse_iso,
+    read_active_issues,
+    read_rate_limits,
+    read_sessions_state,
+    utc_now,
+)
 from src.board.transcript_exchange import (  # noqa: F401 — re-exported
     has_typed_user_prompt,
     last_exchange,
 )
+from src.jobs import dismissed as jobs_dismissed
 from src.jobs.outcome import OUTCOME_DEFERRED, OUTCOME_UNCONFIRMED
 
 logger = logging.getLogger(__name__)

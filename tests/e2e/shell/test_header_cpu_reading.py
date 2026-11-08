@@ -20,9 +20,13 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.waits import boot_retrying_static_failure, flush_requests, stable_eval
 from tests.e2e.code.test_code_tab_glance import _STALLED, _WAITING
 from tests.e2e.code.test_code_tab_glance import _mock as _mock_sessions
+from tests.e2e.fixtures.waits import (
+    boot_retrying_static_failure,
+    flush_requests,
+    stable_eval,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 

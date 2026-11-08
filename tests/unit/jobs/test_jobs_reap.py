@@ -25,7 +25,6 @@ from src.jobs import queue as jobs_queue_mod
 from src.jobs import reap as jobs_reap_mod
 from src.jobs.config import Job
 
-
 # --------------------------------------------------------------- fixtures
 
 

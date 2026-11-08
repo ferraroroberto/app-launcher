@@ -6,14 +6,14 @@ import json
 import os
 import subprocess
 import time
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from src.life_os.index import search_cli
-from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 from tests.api._life_os_support import RESUMABLE_SID, _completed
+from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 
 
 class TestConversationSearch:
@@ -24,7 +24,7 @@ class TestConversationSearch:
 
     @pytest.fixture(autouse=True)
     def _bypass_gate(self, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",
@@ -261,8 +261,12 @@ class TestSearchCliResolution:
         was never router-shaped work, and one router importing it from
         another was the shape that made a second copy tempting. The pin is
         unchanged in intent: one definition, and it lives in the leaf."""
+        from app.webapp.routers import (
+            life_os_conversations,
+            life_os_files,
+            life_os_search,
+        )
         from src.life_os import index as life_os_index
-        from app.webapp.routers import life_os_conversations, life_os_files, life_os_search
 
         assert life_os_search.search_cli is life_os_index.search_cli
         for module in (life_os_conversations, life_os_files, life_os_search):
@@ -275,8 +279,8 @@ class TestSearchCliResolution:
 
 class TestSourceHistoryRegression:
     def test_unknown_uuid_cannot_resume(self, life_os_client, monkeypatch):
-        from app.webapp import middleware
         from app.webapp.routers import life_os_spawn
+        from src import middleware
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_spawn, "spawn_claude_session", lambda *a, **k: {"session_id": "synthetic"})
         client, _, _ = life_os_client
@@ -297,8 +301,8 @@ class TestSourceHistoryRegression:
 class TestSourceHistory:
     @pytest.fixture(autouse=True)
     def _private_access(self, monkeypatch, tmp_path):
-        from app.webapp import middleware
         from app.webapp.routers import life_os_conversations
+        from src import middleware
         from src.life_os import history as life_os_history
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setattr(life_os_conversations, "is_installed", lambda agent: True)
@@ -410,6 +414,7 @@ class TestSourceHistory:
 
     def test_oversized_capture_resumes_natively_from_its_header(self, life_os_client, monkeypatch):
         import hashlib
+
         from src.life_os.history import MAX_CAPTURE_BYTES
         client, _, _ = life_os_client
         path, row = self._oversized(life_os_client)
@@ -481,6 +486,7 @@ class TestSourceHistory:
 
     def test_handoff_requires_confirmation_and_cleans_failed_spawn(self, life_os_client, monkeypatch, tmp_path):
         from fastapi import HTTPException
+
         from app.webapp.routers import life_os_conversations
         client, _, _ = life_os_client
         _, row = self._capture(life_os_client)
@@ -533,7 +539,7 @@ class TestSourceHistory:
 
 @pytest.mark.parametrize("action", ["resume", "handoff"])
 def test_history_launch_private_gate(life_os_client, monkeypatch, action):
-    from app.webapp import middleware
+    from src import middleware
     from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     endpoint = "/api/life-os/skills/journal-daily/conversations/launch"
@@ -555,7 +561,7 @@ def test_launch_routes_are_passkey_gated(life_os_client, monkeypatch, tmp_path, 
     same passkey requirement as /api/board/issues/start. The unlocked request
     is built to fail *after* the gate (unknown skill / missing life_os_dir), so
     getting past it is proven without spawning anything."""
-    from app.webapp import middleware
+    from src import middleware
     from src.auth.webauthn_gate import WebAuthnGate
     client, app, _ = life_os_client
     if "recap" in endpoint:

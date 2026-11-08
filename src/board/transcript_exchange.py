@@ -11,7 +11,6 @@ from typing import Any, Dict, Optional
 
 from src.board.transcript import _EXCHANGE_TAIL_BYTES, _tail_lines
 
-
 # User lines whose string content is harness plumbing, not a typed prompt:
 # slash-command wrappers, local-command output, background-task events.
 SKIP_USER_PREFIXES = (

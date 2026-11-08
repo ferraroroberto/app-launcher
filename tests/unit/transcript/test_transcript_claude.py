@@ -9,7 +9,6 @@ import pytest
 
 from src.session_view import transcript as st
 from src.transcript_flavors import _shared as tf_shared
-
 from tests.unit.transcript._support import (
     _assistant,
     _codex,
@@ -23,7 +22,6 @@ from tests.unit.transcript._support import (
     _walk,
     _write_jsonl,
 )
-
 
 # -------------------------------------------------------- claude_entries
 

@@ -115,7 +115,7 @@ class TestConstantTimeEquals:
     def test_bearer_gate_rejects_non_ascii_credential(self):
         from types import SimpleNamespace
 
-        from app.webapp.middleware import credential_accepted
+        from src.middleware import credential_accepted
 
         cfg = SimpleNamespace(auth_token="secret", api_tokens=[])
         assert credential_accepted(cfg, "sec\xe9ret", "GET", "/api/x") is False

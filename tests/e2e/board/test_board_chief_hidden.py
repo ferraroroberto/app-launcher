@@ -16,7 +16,10 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.board._chief_support import (
-    _board_payload, _mock_board, _open_board, _show_managed_sessions,
+    _board_payload,
+    _mock_board,
+    _open_board,
+    _show_managed_sessions,
 )
 
 pytestmark = pytest.mark.smoke

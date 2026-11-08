@@ -24,7 +24,7 @@ from src.session_host_input import (
     SUBMIT_UNCONFIRMED,
 )
 from src.session_hosting.child_env import agent_child_env
-from src.session_hosting.kinds import STOP_GRACE_SECONDS, KIND_REMOTE, STOP_KILL
+from src.session_hosting.kinds import KIND_REMOTE, STOP_GRACE_SECONDS, STOP_KILL
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)

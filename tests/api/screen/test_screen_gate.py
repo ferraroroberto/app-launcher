@@ -8,7 +8,6 @@ from PIL import Image
 
 from src.desktop import capture as desktop_capture
 from src.desktop.capture import CaptureUnavailable
-
 from tests.api.screen._support import (
     ABOVE,
     LAN,
@@ -24,12 +23,11 @@ from tests.api.screen._support import (
     _ws_url,
 )
 
-
 # ------------------------------------------------------------- HTTP gate
 
 
 def test_the_guard_table_classifies_every_screen_path_as_passkey():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
 
     assert _terminal_guard_level("/api/screen/monitors") == "passkey"
     assert _terminal_guard_level("/api/screen/ws") == "passkey"

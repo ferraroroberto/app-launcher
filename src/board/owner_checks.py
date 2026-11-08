@@ -448,6 +448,7 @@ def _write_mark(ref: str, mark: Optional[Dict[str, Any]], path: Optional[Path], 
             marks.pop(ref, None)
         else:
             marks[ref] = mark
+        # runtime-write-exempt: the owner-check marks file, a runtime path the caller or the config names
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(target, marks)
 

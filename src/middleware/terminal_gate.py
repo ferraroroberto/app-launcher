@@ -7,10 +7,10 @@ from typing import Any, Dict, Optional, Tuple
 from fastapi import Request, WebSocket
 from fastapi.responses import JSONResponse
 
-from app.webapp.middleware import trust
-from app.webapp.middleware.credentials import credential_accepted, credential_required
-from app.webapp.middleware.routes import terminal_guard_level
 from src.auth.webauthn_gate import WebAuthnGate
+from src.middleware import trust
+from src.middleware.credentials import credential_accepted, credential_required
+from src.middleware.routes import terminal_guard_level
 
 
 def terminal_http_gate(

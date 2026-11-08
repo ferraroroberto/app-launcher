@@ -31,8 +31,9 @@ from typing import Any, Dict, Optional
 
 from src import board, instance_role
 from src.chief import identity as chief_identity
+from src.chief_session_end import EVENT_VERSION
+from src.chief_session_end import publish as publish_event
 from src.clients import session as session_client
-from src.chief_session_end import EVENT_VERSION, publish as publish_event
 from src.jobs.history import read_output_tail, read_run
 
 logger = logging.getLogger(__name__)

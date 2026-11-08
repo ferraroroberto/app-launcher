@@ -70,8 +70,10 @@ def _log_breadcrumb(msg: str) -> None:
     """
     try:
         path = _log_path()
+        # runtime-write-exempt: an append-only breadcrumb log at a runtime path the caller resolves
         path.parent.mkdir(parents=True, exist_ok=True)
         stamp = datetime.datetime.now().isoformat(timespec="seconds")
+        # runtime-write-exempt: an append-only breadcrumb log at a runtime path the caller resolves
         with path.open("a", encoding="utf-8") as fh:
             fh.write(f"[{stamp}] {msg}\n")
     except OSError:

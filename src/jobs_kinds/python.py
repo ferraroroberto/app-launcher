@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from src.jobs.config import Job
-from src.jobs_kinds.base import Problem, require_script
 from src.jobs.spawn import resolve_venv_python
+from src.jobs_kinds.base import Problem, require_script
 
 
 class PythonKind:

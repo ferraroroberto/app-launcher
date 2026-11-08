@@ -25,7 +25,6 @@ from playwright.sync_api import Page, expect
 from tests.e2e._surface import surface
 from tests.e2e.fixtures.ui import life_launch_switch
 from tests.e2e.fixtures.waits import flush_requests, wait_until
-
 from tests.e2e.life_os._support import (
     _convo_rows,
     _mock_conversations,
@@ -34,7 +33,6 @@ from tests.e2e.life_os._support import (
     _open_life,
     _skill_menu_item,
 )
-
 
 pytestmark = pytest.mark.smoke
 

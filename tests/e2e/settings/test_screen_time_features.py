@@ -24,12 +24,22 @@ import pytest
 from playwright.sync_api import Page, Route, expect
 
 from tests.e2e.compose.test_compose_bar import (
-    ATTACH_INPUT, COMPOSER, INPUT, SEND, _PNG_1x1, _open_terminal, _show_composer,
+    ATTACH_INPUT,
+    COMPOSER,
+    INPUT,
+    SEND,
+    _open_terminal,
+    _PNG_1x1,
+    _show_composer,
 )
 from tests.e2e.compose.test_voice_dictation import _MEDIA_MOCK
 from tests.e2e.fixtures.ui import HeldUploads, open_settings_sheet
 from tests.e2e.fixtures.waits import stable_eval, wait_until
-from tests.e2e.settings.test_screen_time import _no_sideways_spill, _route_export, _route_usage
+from tests.e2e.settings.test_screen_time import (
+    _no_sideways_spill,
+    _route_export,
+    _route_usage,
+)
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 

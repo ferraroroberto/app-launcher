@@ -37,13 +37,18 @@ import requests
 
 from tests._credential_hygiene import disposable_token, register_secret
 from tests.e2e._browser_sweep import sweep_browser_helpers
+
 # Tree-aware stop of the disposable servers + the stub-child reap (#1335).
 from tests.e2e._process_teardown import reap_stub_children
+
 # Design-inventory capture (#1698): the vendored surface() hook's collection
 # filter, aliased because this file already defines its own hook below.
-from tests.e2e._surface import pytest_collection_modifyitems as _surface_collection_filter
+from tests.e2e._surface import (
+    pytest_collection_modifyitems as _surface_collection_filter,
+)
 from tests.e2e.fixtures.autoboot import run_autoboot
 from tests.e2e.fixtures.env import BASE_URL, LIVE_ENV, REPO_ROOT, autoboot_enabled
+
 # The fixtures below are defined in tests/e2e/fixtures/ and registered here, where
 # pytest looks for them.
 from tests.e2e.fixtures.pages import (

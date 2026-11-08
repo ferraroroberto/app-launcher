@@ -282,7 +282,7 @@ def test_the_live_tail_trims_too(tmp_path):
 
 @pytest.fixture
 def _bypass_gate(monkeypatch):
-    from app.webapp import middleware
+    from src import middleware
     monkeypatch.setattr(
         middleware.trust, "LOOPBACK_HOSTS",
         frozenset({"testclient", "127.0.0.1", "::1", "localhost"}),
@@ -301,7 +301,7 @@ def _serve(overrides, monkeypatch, path: Path) -> None:
 def test_transcript_diff_path_classified_passkey():
     """Its own guard row: '.../transcript/diff' ends with neither
     '/transcript' nor '/transcript/entry', so no sibling rule covers it."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript/diff") == "passkey"
 
 

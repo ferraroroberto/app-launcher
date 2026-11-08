@@ -615,8 +615,10 @@ async def _save_image(project_dir: str, file: UploadFile) -> str:
         raise HTTPException(status_code=400, detail="empty upload")
     target_dir = _upload_dir(project_dir)
     try:
+        # runtime-write-exempt: the uploaded image lands in the project folder the request names
         target_dir.mkdir(parents=True, exist_ok=True)
         out = target_dir / _upload_name(file.filename or "")
+        # runtime-write-exempt: the uploaded image lands in the project folder the request names
         out.write_bytes(data)
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"could not save image: {exc}")

@@ -138,11 +138,13 @@ def publish(inbox: Path, event: Dict[str, Any], now_ms: Optional[int] = None) ->
     ``datetime`` (e.g. :func:`publish_session_ends`) passes it explicitly so
     every event from one reaper pass shares a timestamp.
     """
+    # runtime-write-exempt: the chief inbox folder, a runtime path from the config
     inbox.mkdir(parents=True, exist_ok=True)
     published_ms = now_ms if now_ms is not None else int(datetime.now(timezone.utc).timestamp() * 1000)
     tmp = inbox / f".event.{secrets.token_hex(8)}.tmp"
     final = inbox / f"{published_ms}-{event['id']}.json"
     try:
+        # runtime-write-exempt: the chief inbox folder, a runtime path from the config
         tmp.write_text(json.dumps(event, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, final)
     except BaseException:

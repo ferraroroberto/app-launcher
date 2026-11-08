@@ -11,14 +11,13 @@ import pytest
 
 from src import board
 from src.transcript_flavors import _shared as tf_shared
-
 from tests.unit.transcript._support import (
-    AGY_CAPTURE,
-    COPILOT_CAPTURE,
-    GROK_CAPTURE,
     _BRIDGE,
     _CONV,
     _RESUMED,
+    AGY_CAPTURE,
+    COPILOT_CAPTURE,
+    GROK_CAPTURE,
     _codex,
     _conversation,
     _kinds,
@@ -29,12 +28,11 @@ from tests.unit.transcript._support import (
     _write_jsonl,
 )
 
-
 # --------------------------------------------------------------- router
 
 
 def test_transcript_path_classified_passkey():
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript") == "passkey"
 
 
@@ -127,9 +125,8 @@ class TestTranscriptEndpoint:
         shared by two live siblings reads the conversation its own bridge id
         names, and each sibling reads its own, not this one's. The link comes
         from the session's PTY capture (#1399), not the session-host's row."""
-        from src.session_view import transcript_locate
-
         from src import audit
+        from src.session_view import transcript_locate
 
         client, _, overrides = webapp_client
         # The session-host's rows carry no link: the router reads it off each
@@ -442,7 +439,7 @@ def test_transcript_entry_path_classified_passkey():
     """#985: a distinct guard-table row — '.../transcript/entry' does not
     end with '/transcript', so the sibling route's rule does not cover it
     for free (the exact omission class #997 found on the send route)."""
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript/entry") == "passkey"
     assert _terminal_guard_level("/api/claude-code/sessions/abc/transcript") == "passkey"
 

@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.board.transcript_exchange import SKIP_USER_PREFIXES
 from src.transcript_flavors import _shared
 from src.transcript_flavors._shared import (
-    Entry,
-    Line,
     NO_CAP,
     SYSTEM_TEXT_CAP,
     THINKING_TEXT_CAP,
+    Entry,
+    Line,
     _attach_result,
     _cap,
     _entry,

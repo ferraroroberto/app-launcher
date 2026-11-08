@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from src.jobs import upcoming_fires
 from src.jobs.config import Schedule
 
-
 # Tuesday 2026-06-16 10:00:00.
 START = datetime(2026, 6, 16, 10, 0, 0)
 WEEK = START + timedelta(days=7)

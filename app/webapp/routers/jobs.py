@@ -34,14 +34,23 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers import (
+    jobs_outbox_routes,
+    jobs_run_store_routes,
+    jobs_webhook_routes,
+)
+from app.webapp.routers._helpers import known_run_dir, maybe_json
+from app.webapp.routers.jobs_run import (
+    _admit_and_spawn,
+    _dry_run_check,
+    _dry_run_execute,
+)
 from src import jobs as jobs_mod
+from src.diagnostics import kill_process_tree
 from src.jobs import dismissed as jobs_dismissed
 from src.jobs import index as jobs_index
 from src.jobs import snapshot as jobs_snapshot
-from src.diagnostics import kill_process_tree
 from src.jobs.argv import compose_argv
-from src.jobs.outcome import OUTCOME_DEFERRED
-from src.jobs.preflight import has_errors, preflight
 from src.jobs.config import (
     Job,
     add_job,
@@ -58,10 +67,8 @@ from src.jobs.config import (
     update_job,
     validate_kind_shape,
 )
-
-from app.webapp.routers._helpers import known_run_dir, maybe_json
-from app.webapp.routers.jobs_run import _admit_and_spawn, _dry_run_check, _dry_run_execute
-from app.webapp.routers import jobs_outbox_routes, jobs_run_store_routes, jobs_webhook_routes
+from src.jobs.outcome import OUTCOME_DEFERRED
+from src.jobs.preflight import has_errors, preflight
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

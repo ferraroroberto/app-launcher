@@ -5,9 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime, timedelta
 
-
 from tests.api.jobs._support import _seed_one_job, _stub_path
-
 
 # =================================================================== /run
 

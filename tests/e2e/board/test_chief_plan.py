@@ -10,12 +10,8 @@ from playwright.sync_api import Page, expect
 
 from src.chief import plan as chief_plan
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.pages import seed_token_init_script
-from tests.e2e.fixtures.waits import stable_eval, stable_read, wait_until
-
 from tests.e2e.board._chief_support import (
     _QUESTIONS,
-    _SharedPlanServer,
     _board_payload,
     _capture_chief_input,
     _mock_board,
@@ -23,8 +19,10 @@ from tests.e2e.board._chief_support import (
     _open_board,
     _plan_with,
     _route_plan_from,
+    _SharedPlanServer,
 )
-
+from tests.e2e.fixtures.pages import seed_token_init_script
+from tests.e2e.fixtures.waits import stable_eval, stable_read, wait_until
 
 pytestmark = pytest.mark.smoke
 

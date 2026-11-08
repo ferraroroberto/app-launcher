@@ -11,7 +11,6 @@ import pytest
 
 from src import board
 from src.board import transcript as board_transcript
-
 from tests.unit.board._support import (
     NOW,
     _bash_tool_use_line,

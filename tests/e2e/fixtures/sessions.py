@@ -13,8 +13,12 @@ import requests
 from playwright.sync_api import Page
 
 from src.scanner import slugify
-
-from tests.e2e.fixtures.env import AUTOBOOT_STATE, REPO_ROOT, SESSIONS_DIR, autoboot_enabled
+from tests.e2e.fixtures.env import (
+    AUTOBOOT_STATE,
+    REPO_ROOT,
+    SESSIONS_DIR,
+    autoboot_enabled,
+)
 from tests.e2e.fixtures.launch_target import require_trusted_launch_target
 from tests.e2e.stub_session import STUB_FLAG as _STUB_FLAG
 

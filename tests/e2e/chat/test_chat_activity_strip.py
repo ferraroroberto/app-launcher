@@ -8,8 +8,6 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
-from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval
-
 from tests.e2e.chat._support import (
     _CONFIRM_WINDOW_MS,
     _POLL_MS,
@@ -22,7 +20,7 @@ from tests.e2e.chat._support import (
     _tick,
     _turn,
 )
-
+from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval
 
 pytestmark = pytest.mark.smoke
 

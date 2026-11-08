@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-
 # ``default_effort`` is the model's own documented default (Anthropic's effort
 # page: "Claude Opus 5.5 and Claude Haiku 5.5 default to medium", every other
 # model to high), so sending it is the same as sending nothing. The ``opus``

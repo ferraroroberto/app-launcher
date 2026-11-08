@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Tuple
 
 from tests.unit.transcript._support import _BRIDGE, _CONV, _RESUMED, _registry_entry
 
-
 # ----------------------------------------- antigravity source correlation
 
 

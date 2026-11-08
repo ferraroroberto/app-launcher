@@ -188,7 +188,7 @@ _serve = bt._serve
 
 
 def test_route_is_passkey_and_refused_off_tailnet(webapp_client):
-    from app.webapp.middleware import _terminal_guard_level
+    from src.middleware import _terminal_guard_level
     assert _terminal_guard_level("/api/claude-code/sessions/abc/links") == "passkey"
     client, _, _ = webapp_client
     assert client.get(_ROUTE).status_code == 403

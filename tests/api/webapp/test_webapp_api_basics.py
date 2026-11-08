@@ -330,8 +330,8 @@ class TestSystemRestart:
     """POST /api/system/restart/{id}: fakes only, nothing real is stopped."""
 
     def test_restart_is_tailnet_gated_and_refused_off_it_without_a_scan(self, webapp_client, monkeypatch):
-        from app.webapp.middleware import _terminal_guard_level
         from src import process_restart
+        from src.middleware import _terminal_guard_level
 
         monkeypatch.setattr(process_restart, "_live", lambda name: pytest.fail("scanned off-tailnet"))
         assert _terminal_guard_level("/api/system/restart/streamdeck-hwinfo") == "tailnet"

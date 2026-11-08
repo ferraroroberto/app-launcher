@@ -24,7 +24,6 @@ from src.jobs import history as jobs_history_mod
 from src.jobs import schtasks as jobs_schtasks_mod
 from src.jobs.config import Job, Schedule
 
-
 NOW = datetime(2026, 8, 1, 12, 0, 0)
 
 

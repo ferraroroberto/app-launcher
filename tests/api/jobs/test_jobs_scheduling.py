@@ -9,7 +9,6 @@ import pytest
 
 from tests.api.jobs._support import _seed_one_job, _stub_path
 
-
 # ============================================ elevated jobs skip schtasks
 
 

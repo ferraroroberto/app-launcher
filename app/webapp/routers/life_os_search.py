@@ -18,13 +18,15 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import audit_off_loop, client_ip
+from app.webapp.routers.life_os_conversations import (
+    _conversation_rows,
+    split_system_chats,
+)
 from src import audit
 from src.life_os.index import search_cli
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import audit_off_loop, client_ip
-from app.webapp.routers.life_os_conversations import _conversation_rows, split_system_chats
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

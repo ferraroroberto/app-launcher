@@ -19,6 +19,8 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.demand_cache import DemandCache
+from app.webapp.routers._helpers import maybe_json
 from src.context_filter_state import (
     HARNESS_SUPPORT,
     VALID_MODES,
@@ -27,9 +29,6 @@ from src.context_filter_state import (
     write_mode,
 )
 from src.webapp_config import WebappConfig
-
-from app.webapp.demand_cache import DemandCache
-from app.webapp.routers._helpers import maybe_json
 
 router = APIRouter()
 

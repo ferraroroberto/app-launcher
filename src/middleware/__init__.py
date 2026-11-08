@@ -12,25 +12,25 @@ because Starlette middleware doesn't see WebSocket handshakes.
 One module per concern: ``trust`` (loopback and tailnet), ``credentials``,
 ``routes`` (exempt paths and the terminal-guard table), ``terminal_gate`` and
 ``bearer`` (the middleware class). This package re-exports their public
-names so importers keep ``from app.webapp.middleware import ...``; a test
+names so importers keep ``from src.middleware import ...``; a test
 that patches a trust name patches it on ``middleware.trust``.
 """
 
-from app.webapp.middleware import trust
-from app.webapp.middleware.bearer import BearerTokenMiddleware
-from app.webapp.middleware.credentials import credential_accepted, credential_required
-from app.webapp.middleware.routes import (
+from src.middleware import trust
+from src.middleware.bearer import BearerTokenMiddleware
+from src.middleware.credentials import credential_accepted, credential_required
+from src.middleware.routes import (
     AUTH_EXEMPT_EXACT,
     AUTH_EXEMPT_PREFIXES,
     is_webhook_hook_path,
     terminal_guard_level,
 )
-from app.webapp.middleware.terminal_gate import (
+from src.middleware.terminal_gate import (
     terminal_http_gate,
     terminal_reachability,
     ws_terminal_gate,
 )
-from app.webapp.middleware.trust import (
+from src.middleware.trust import (
     LOOPBACK_HOSTS,
     client_in_tailnet,
     is_pc_itself,

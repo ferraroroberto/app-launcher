@@ -7,9 +7,6 @@ icon        = "🚀"
 port        = ":8445"
 description = "<b>Where I live</b> — phone-first hub: Coding · Apps · Jobs · Life OS · Board."
 shape       = "webapp-tray"
-# `webapp/` holds the gitignored runtime state the tray writes (briefs, verify logs,
-# certificates); the preset lists `assets/` and `config/` already.
-extra_roots = ["webapp"]
 # Contracts with the rest of the fleet (schema: fleet-config architecture/README.md).
 interfaces = [
   { name = "jobs", kind = "http", doc = "docs/jobs-tab.md" },

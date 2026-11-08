@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
+from app.webapp.routers.jobs_run import _admit_and_spawn
 from src import jobs as jobs_mod
 from src.jobs.argv import compose_argv
 from src.jobs.config import get_by_id, load_jobs
@@ -25,8 +26,6 @@ from src.jobs.webhook import (
     verify_webhook,
 )
 
-from app.webapp.routers.jobs_run import _admit_and_spawn
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -36,7 +35,7 @@ async def run_job_webhook(job_id: str, request: Request) -> Response:
     """Fire a job from an external service (issue #73).
 
     Authenticated by the job's own ``webhook.provider`` signature — never
-    the bearer token (see ``app.webapp.middleware.is_webhook_hook_path``),
+    the bearer token (see ``src.middleware.is_webhook_hook_path``),
     so this URL is safe to hand to a third party in plaintext. Anything
     that fails signature/shape verification writes **no run record** — only
     a verified fire ever touches disk.

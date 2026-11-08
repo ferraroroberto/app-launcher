@@ -10,7 +10,6 @@ from datetime import datetime
 import pytest
 
 from src.life_os import title as life_os_title
-
 from tests.api._life_os_support import RESUMABLE_SID
 
 
@@ -29,7 +28,7 @@ class TestDeleteConversation:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         from src.clients import session as session_client
         from src.life_os.transcript import claude_projects_dir
 
@@ -208,7 +207,7 @@ class TestDeleteConversation:
         assert (self.conversations / self.CAPTURE).exists() and self.CAPTURE in self._index_files()
 
     def test_route_is_passkey_gated(self, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset())
         jsonl = self._transcript()
         resp = self._delete()
@@ -273,8 +272,8 @@ def _stub_title_cli(tmp_path, monkeypatch, calls: list) -> None:
     the conversations router runs into ``calls``."""
     import sys
 
-    from app.webapp import middleware
     from app.webapp.routers import life_os_conversations as router
+    from src import middleware
 
     monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
     script = tmp_path / "conversation_title_stub.py"
@@ -415,7 +414,7 @@ class TestRenameConversation:
         assert self.calls == []
 
     def test_same_auth_as_delete(self):
-        from app.webapp import middleware
+        from src import middleware
         assert middleware._terminal_guard_level(self.ENDPOINT) == "passkey"
         self.monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset())
         resp = self._rename("Ferry")

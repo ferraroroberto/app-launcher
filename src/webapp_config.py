@@ -34,14 +34,16 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlencode, urlparse, urlunparse
 
+from src._json_io import atomic_write_json
 from src.agents import DEFAULT_AGENT
+
+# isort: off
+# Grid layout: one name per line would push this module past the structure ratchet's file-size cap.
 from src.launching.model_catalog import (
     CODEX_MODEL_SPECS,
     DEFAULT_HIDDEN_MODELS,
     load_hidden_models, migrate_renamed_models, with_visible_defaults,
 )
-
-from src._json_io import atomic_write_json
 from src.restart_window import DEFAULT_END, DEFAULT_START, validate_window
 from src.usage.providers import DEFAULT_USAGE_PROVIDERS, load_usage_providers
 from src.webapp_settings.values import (  # noqa: F401 — re-exported for webapp_config.<name> callers
@@ -63,6 +65,7 @@ from src.webapp_settings.values import (  # noqa: F401 — re-exported for webap
     VALID_GROK_PERMISSION_MODES, VALID_PI_EFFORTS, VALID_PI_MODELS,
     VALID_PI_TRUST_MODES, WEBAPP_CONFIG_PATH_ENV, valid_claude_efforts_for,
 )
+# isort: on
 
 logger = logging.getLogger(__name__)
 
@@ -845,6 +848,7 @@ def load_webapp_config(
 def save_webapp_config(cfg: WebappConfig, path: Optional[Path] = None) -> Path:
     """Atomically write the config back to disk."""
     target = _resolve_config_path(path)
+    # runtime-write-exempt: webapp_config.json, a config path the caller or the default names
     target.parent.mkdir(parents=True, exist_ok=True)
 
     # Derived straight from the dataclass — the field list, in

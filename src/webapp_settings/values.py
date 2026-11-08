@@ -10,7 +10,12 @@ from __future__ import annotations
 
 from typing import Tuple
 
-from src.launching.model_catalog import CLAUDE_MODEL_SPECS, CODEX_MODEL_SPECS, PI_MODEL_SPECS, available_values
+from src.launching.model_catalog import (
+    CLAUDE_MODEL_SPECS,
+    CODEX_MODEL_SPECS,
+    PI_MODEL_SPECS,
+    available_values,
+)
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8445

@@ -18,12 +18,10 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, HTTPException, Request
 
-from src.auth import api_tokens
-from src.auth import delegate_token
+from app.webapp.routers._helpers import maybe_json
+from src.auth import api_tokens, delegate_token
 from src.jobs.config import get_by_id, load_jobs
 from src.webapp_config import update_webapp_config
-
-from app.webapp.routers._helpers import maybe_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

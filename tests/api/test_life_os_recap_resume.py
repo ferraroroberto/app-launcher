@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 from tests.api._life_os_support import OTHER_SID, RESUMABLE_SID
+from tests.api.test_life_os_conversations import TestTargetedResume as _TargetedResume
 
 
 # ------------------------------------------------------- recap-status endpoint
@@ -85,7 +85,7 @@ class TestLaunchRecap:
         """Treat the TestClient host as loopback: the launch is passkey-gated
         since #1036, and the gate itself is covered by
         test_launch_routes_are_passkey_gated."""
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(
             middleware.trust,
             "LOOPBACK_HOSTS",
@@ -249,7 +249,7 @@ class TestResumeLatest:
 
     @pytest.fixture(autouse=True)
     def _isolated(self, life_os_client, tmp_path, monkeypatch):
-        from app.webapp import middleware
+        from src import middleware
         from src.clients import session as session_client
         from src.life_os.transcript import claude_projects_dir
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
@@ -279,7 +279,7 @@ class TestResumeLatest:
         return path
 
     def test_is_passkey_gated(self):
-        from app.webapp import middleware
+        from src import middleware
         assert middleware._terminal_guard_level(self.ENDPOINT) == "passkey"
 
     def test_newest_by_mtime_resumes_on_its_own_model(self):
@@ -407,7 +407,7 @@ class TestKeepModel:
 
     def test_absent_model_still_means_sonnet(self, life_os_client, monkeypatch):
         """An old cached client sends no model and no keep_model: unchanged."""
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         client, _, _ = life_os_client
         captured = _TargetedResume()._spawn_capture(monkeypatch)
@@ -420,7 +420,7 @@ class TestKeepModel:
     def test_keep_model_resumes_across_a_provider_mismatch(self, life_os_client, monkeypatch, tmp_path):
         """The conversation row's Resume: a Codex model in the bar no longer blocks
         resuming a Claude conversation, and the bar's model is not applied."""
-        from app.webapp import middleware
+        from src import middleware
         monkeypatch.setattr(middleware.trust, "LOOPBACK_HOSTS", frozenset({"testclient"}))
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))

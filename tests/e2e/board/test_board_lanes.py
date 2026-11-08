@@ -12,9 +12,6 @@ from playwright.sync_api import Page, expect
 
 from scripts import synthetic_gh
 from tests.e2e._contrast import contrast_ratio
-from tests.e2e.fixtures.env import autoboot_enabled
-from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
-
 from tests.e2e.board._support import (
     _FAKE_BOARD,
     _board_payload,
@@ -24,7 +21,8 @@ from tests.e2e.board._support import (
     _plan,
     _unfold,
 )
-
+from tests.e2e.fixtures.env import autoboot_enabled
+from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 

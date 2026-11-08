@@ -6,7 +6,7 @@
 
 Everything is read from the backup (src/life_os/zombie_backup.py), never from
 the live search index, so the capture pipeline keeps not seeing it. Gated like
-the captures it holds (passkey, ``app/webapp/middleware/routes.py``). A URL's three
+the captures it holds (passkey, ``src/middleware/routes.py``). A URL's three
 parts must name an entry ``find_backups`` itself lists before anything is read
 or moved: nothing from the URL is joined onto a path unchecked.
 """
@@ -20,12 +20,11 @@ from typing import Any, Dict, Tuple
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.webapp.routers._helpers import audit_off_loop, client_ip
 from src import audit
 from src.life_os import capture as life_os_capture
 from src.life_os import zombie_backup as life_os_zombie_backup
 from src.webapp_config import WebappConfig
-
-from app.webapp.routers._helpers import audit_off_loop, client_ip
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

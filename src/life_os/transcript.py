@@ -63,10 +63,12 @@ def _discard(target: Path, dest: Optional[Path]) -> None:
         else:
             target.unlink()
         return
+    # runtime-write-exempt: the discard landing folder under the Life OS folder
     dest.mkdir(parents=True, exist_ok=True)
     landing = dest / target.name
     if landing.exists():
         raise FileExistsError(f"backup already holds {target.name}")
+    # runtime-write-exempt: the discard landing folder under the Life OS folder
     shutil.move(str(target), str(landing))
 
 

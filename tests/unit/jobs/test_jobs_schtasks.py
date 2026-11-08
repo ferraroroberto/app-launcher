@@ -7,7 +7,6 @@ import subprocess
 from typing import List
 from unittest.mock import MagicMock
 
-
 from src import jobs as jobs_mod
 from src.jobs import schtasks as jobs_schtasks_mod
 from src.jobs import spawn as jobs_spawn_mod

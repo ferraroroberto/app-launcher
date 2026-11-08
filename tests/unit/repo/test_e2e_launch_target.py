@@ -37,7 +37,6 @@ from src.registry import live_claude_code_entries
 from src.scanner import slugify
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import CREDENTIAL_KEYS
-
 from tests._credential_hygiene import disposable_webapp_config
 from tests.e2e.fixtures import launch_target as e2e_launch_target
 

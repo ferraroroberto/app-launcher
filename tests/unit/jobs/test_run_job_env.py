@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-
 from app.cli.commands import run_job_cmd as rjc
 from src import jobs as jobs_mod
 from src.app_config import AppConfig

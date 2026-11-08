@@ -93,6 +93,7 @@ def dismiss(job_id: str, run_id: str, path: Optional[Path] = None) -> None:
         if run_id in ids:
             return
         current[job_id] = (ids + [run_id])[-MAX_PER_JOB:]
+        # runtime-write-exempt: the dismissed-runs file under the runtime jobs folder
         target.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(target, current)
     logger.info("ℹ️ job alert dismissed: %s run %s", job_id, run_id)

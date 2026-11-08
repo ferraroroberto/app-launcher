@@ -7,7 +7,6 @@ from datetime import timedelta
 from pathlib import Path
 
 from src import board
-
 from tests.unit.board._support import NOW, _iso, _live, _state_row, _transcript_file
 
 

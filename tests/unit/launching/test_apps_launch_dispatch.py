@@ -14,11 +14,11 @@ model-carrying agent added to the table is a silently ignored `--model`.
 
 from __future__ import annotations
 
-from src import agents
 from app.webapp.routers.apps import (
     _LAUNCH_MODEL_CATALOG,
     _NO_MODEL_FLAG_BUILDERS,
 )
+from src import agents
 
 # Resolved directly with `model_override` rather than through the table.
 # Read off the registry, not re-listed here (#1044): a hand-written copy in

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-
 import pytest
 
-from src.session_host import _scan_bracketed_paste_mode, PtySession
+from src import session_host_input
+from src.session_host import PtySession, _scan_bracketed_paste_mode
 from src.session_host_input import (
     _BULK_CAP_MS,
     INPUT_DEFER_TIMEOUT,
@@ -19,10 +19,7 @@ from src.session_host_input import (
     INPUT_UNVERIFIED,
     InputOutcome,
 )
-from src import session_host_input
-
-from tests.unit.session_host._support import _FakeClock, _echo, _make_session
-
+from tests.unit.session_host._support import _echo, _FakeClock, _make_session
 
 # ------------------------------------------------- image attachments (#1212)
 
