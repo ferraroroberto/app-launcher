@@ -14,6 +14,7 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from src import runtime_files
 from src.jobs import history as jobs_history
 from src.jobs.config import exit_outcomes_for
 from src.jobs.outcome import LAUNCHER_TERMINATED_FIELDS, run_outcome
@@ -51,10 +52,8 @@ def index_path() -> Path:
 
 def _connect() -> sqlite3.Connection:
     path = index_path()
-    # runtime-write-exempt: the jobs history index database under the runtime jobs folder
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # runtime-write-exempt: the jobs history index database under the runtime jobs folder
-    conn = sqlite3.connect(path, timeout=10)
+    runtime_files.make_dirs(path.parent)
+    conn = runtime_files.connect_sqlite(path, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

@@ -64,6 +64,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from app.webapp.event_loop import LOOP_FACTORY  # noqa: E402
 from scripts import synthetic_gh  # noqa: E402
+from src import runtime_files
 from src.clients.github import GH_CMD_ENV  # noqa: E402
 from src.git_utils import run_git  # noqa: E402
 from src.subprocess_flags import NO_WINDOW  # noqa: E402
@@ -105,10 +106,8 @@ def _iso(ts: _dt.datetime) -> str:
 
 
 def _write(path: Path, text: str) -> None:
-    # runtime-write-exempt: a disposable fixture tree under the root the caller passes in
-    path.parent.mkdir(parents=True, exist_ok=True)
-    # runtime-write-exempt: a disposable fixture tree under the root the caller passes in
-    path.write_text(text, encoding="utf-8")
+    runtime_files.make_dirs(path.parent)
+    runtime_files.save_text(path, text)
 
 
 def _json(path: Path, value: object) -> None:
@@ -117,8 +116,7 @@ def _json(path: Path, value: object) -> None:
 
 def export_head(dest: Path) -> Path:
     """`git archive HEAD` of this checkout, unpacked into `dest`."""
-    # runtime-write-exempt: a disposable fixture tree under the root the caller passes in
-    dest.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(dest)
     tar = dest.parent / "head.tar"
     if run_git(REPO_ROOT, ["archive", "--format=tar", "-o", str(tar), "HEAD"], timeout=120, warn_on_failure=True) is None:
         raise RuntimeError("git archive HEAD failed")
@@ -162,8 +160,7 @@ def seed(root: Path, app: Path, session_host_port: int, webapp_port: int) -> Pat
               webapp_config=app / "config" / "webapp_config.json", shim_dir=root / "shim", logs=root / "logs")
     now = _dt.datetime.now(_dt.timezone.utc)
     for d in (p.home / ".claude", p.home / "fleet-config", p.shim_dir, p.logs, root / "audit", root / "uploads", root / "startup"):
-        # runtime-write-exempt: a disposable fixture tree under the root the caller passes in
-        d.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(d)
 
     _write(p.project / "README.md", "# Demo project\n\nA placeholder project for the design review.\n")
     _write(p.project / "webapp.bat", "@echo off\r\necho synthetic demo app\r\n")
@@ -250,8 +247,7 @@ def free_port() -> int:
 
 
 def _spawn(argv: List[str], cwd: Path, env: Dict[str, str], log_path: Path) -> subprocess.Popen:
-    # runtime-write-exempt: a disposable fixture tree under the root the caller passes in
-    log = log_path.open("w", encoding="utf-8", errors="replace")
+    log = runtime_files.open_for_write(log_path, "w", encoding="utf-8", errors="replace")
     return subprocess.Popen(argv, cwd=str(cwd), env=env, stdin=subprocess.DEVNULL, stdout=log,
                             stderr=subprocess.STDOUT, creationflags=NO_WINDOW)
 

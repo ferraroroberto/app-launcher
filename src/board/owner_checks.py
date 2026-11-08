@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.board import owner_try
 from src.clients import github as github_client
@@ -448,8 +449,7 @@ def _write_mark(ref: str, mark: Optional[Dict[str, Any]], path: Optional[Path], 
             marks.pop(ref, None)
         else:
             marks[ref] = mark
-        # runtime-write-exempt: the owner-check marks file, a runtime path the caller or the config names
-        target.parent.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(target.parent)
         atomic_write_json(target, marks)
 
 

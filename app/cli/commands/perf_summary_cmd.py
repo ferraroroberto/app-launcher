@@ -13,6 +13,7 @@ import argparse
 import json
 import logging
 import sqlite3
+import sys
 
 from src.runtime_data import runtime_db_path
 from src.usage import perf_timings as perf
@@ -55,7 +56,7 @@ class PerfSummaryCommand(BaseCommand):
             conn.close()
 
         if args.json:
-            print(json.dumps(report, indent=2))  # logging-not-print-exempt: --json is stdout data
+            sys.stdout.write(json.dumps(report, indent=2) + "\n")
             return 0
         logger.info(f"ℹ️ {report['rows']} row(s) since {report['since']}; builds: {', '.join(report['builds']) or '-'}")
         for title, key in (("Page loads", "loads"), ("Slow API requests", "api")):

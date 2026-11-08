@@ -76,9 +76,9 @@ jobs:
 
       - name: Upload gate progress log
         # Runs even when the gate fails: per-test START/DONE lines and the
-        # slowest-test summary make a red diagnosable from the run page. The
-        # e2e autoboot logs that used to be collected here no longer exist --
-        # this job boots no webapp and no session-host.
+        # slowest-test summary make a red diagnosable from the run page. There
+        # are no e2e autoboot logs to collect: this job boots no webapp and no
+        # session-host.
         if: always()
         uses: actions/upload-artifact@v7
         with:

@@ -631,9 +631,8 @@ def _pending_background_dispatch_launched_at(tail: _ExchangeTail) -> Optional[da
     narrower, more robust one for backgrounded ``Bash``/``PowerShell`` calls
     specifically, keyed on the tool call's own ``tool_use`` id
     (:func:`_launched_bash_dispatch_ids` / :func:`_notified_bash_dispatch_ids`),
-    which doesn't depend on the internal result-shape field that a live
-    spot-check found had drifted. Either scheme flagging a dispatch as
-    still-outstanding is enough to keep the status ``working`` — a launched
+    which doesn't depend on the internal result-shape field. Either scheme
+    flagging a dispatch as still-outstanding is enough to keep the status ``working`` — a launched
     id only counts as resolved within its own scheme's id-space, so there's
     no cross-scheme false match. (The sub-agent/``Task`` path is left to the
     original scheme alone — unlike backgrounded Bash, most ``Task`` dispatches

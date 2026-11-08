@@ -17,11 +17,10 @@ Blocking work: callers run it off the event loop.
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src import board
+from src import board, runtime_files
 from src.clients import session as session_client
 from src.life_os.index import read_index_entry, reconcile_delete_sync
 from src.life_os.title import clear_title_after_delete
@@ -77,13 +76,11 @@ def live_conversations(cfg: WebappConfig) -> Dict[str, Dict[str, Any]]:
 
 
 def _stash_capture(path: Path, stash: Stash) -> None:
-    # runtime-write-exempt: the delete stash folder under the Life OS folder
-    stash.folder.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(stash.folder)
     landing = stash.folder / path.name
     if landing.exists():
         raise FileExistsError(f"backup already holds {path.name}")
-    # runtime-write-exempt: the delete stash folder under the Life OS folder
-    shutil.move(str(path), str(landing))
+    runtime_files.move(path, landing)
 
 
 def delete_conversation(

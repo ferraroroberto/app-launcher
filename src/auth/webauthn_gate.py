@@ -43,6 +43,7 @@ from webauthn.helpers.structs import (
     UserVerificationRequirement,
 )
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 
 if TYPE_CHECKING:
@@ -119,8 +120,7 @@ class WebAuthnGate:
         return list(raw.get("devices") or [])
 
     def _save_devices(self, devices: List[Dict[str, Any]]) -> None:
-        # runtime-write-exempt: the device registry path is set at construction, in the config folder
-        self._devices_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(self._devices_path.parent)
         atomic_write_json(self._devices_path, {"devices": devices})
 
     def list_devices(self) -> List[Dict[str, Any]]:

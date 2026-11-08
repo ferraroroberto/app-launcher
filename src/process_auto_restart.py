@@ -29,7 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 
-from src import process_restart, restart_window
+from src import process_restart, restart_window, runtime_files
 from src._json_io import atomic_write_json
 from src.clients import hub_health
 from src.webapp_config import DEFAULT_CONFIG_PATH
@@ -74,8 +74,7 @@ def _record(restart_id: str, night: str, now: datetime, outcome: str) -> None:
         done[restart_id] = {"night": night, "at": now.isoformat(timespec="minutes"), "outcome": outcome}
         path = state_path()
         try:
-            # runtime-write-exempt: the owner-chosen state file beside webapp_config.json, in the config folder
-            path.parent.mkdir(parents=True, exist_ok=True)
+            runtime_files.make_dirs(path.parent)
             atomic_write_json(path, {"done": done})
         except OSError as exc:
             breadcrumbs.warning("⚠️ night auto-restart state not saved (%s); guarding in memory until the webapp restarts", exc)

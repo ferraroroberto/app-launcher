@@ -34,7 +34,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from src import audit
+from src import audit, runtime_files
 
 logger = logging.getLogger(__name__)
 
@@ -89,10 +89,8 @@ def record_injected(
         return False
     row = {"ts": time.time() if now is None else now, "sha256": _digest(text), "origin": origin}
     try:
-        # runtime-write-exempt: the session audit dir, which audit.sessions_dir() resolves (LAUNCHER_AUDIT_DIR) and git ignores
-        path.parent.mkdir(parents=True, exist_ok=True)
-        # runtime-write-exempt: the same session audit dir
-        with path.open("a", encoding="utf-8") as fh:
+        runtime_files.make_dirs(path.parent)
+        with runtime_files.open_for_write(path, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(row) + "\n")
     except OSError as exc:
         logger.warning("⚠️ injected-input ledger write failed for %s: %s", session_id[:8], exc)

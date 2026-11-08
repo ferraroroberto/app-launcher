@@ -49,6 +49,7 @@ from typing import Any, Dict, List, Mapping, Optional
 
 import requests
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.clients import _loopback_http
 from src.runtime_data import runtime_data_dir, runtime_db_path
@@ -554,8 +555,7 @@ def _record(
     if error is not None:
         status["last_error"] = {"at": _now_iso(), "kind": error.kind, "message": str(error)}
     try:
-        # runtime-write-exempt: the usage status file, a runtime path the caller resolves
-        status_path.parent.mkdir(parents=True, exist_ok=True)
+        runtime_files.make_dirs(status_path.parent)
         atomic_write_json(status_path, status)
     except OSError as exc:
         logger.warning("⚠️ screen time export: could not write %s (%s)", status_path, exc)

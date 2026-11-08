@@ -25,6 +25,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src import runtime_files
 from src.life_os.links import is_link
 
 logger = logging.getLogger(__name__)
@@ -63,13 +64,11 @@ def _discard(target: Path, dest: Optional[Path]) -> None:
         else:
             target.unlink()
         return
-    # runtime-write-exempt: the discard landing folder under the Life OS folder
-    dest.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(dest)
     landing = dest / target.name
     if landing.exists():
         raise FileExistsError(f"backup already holds {target.name}")
-    # runtime-write-exempt: the discard landing folder under the Life OS folder
-    shutil.move(str(target), str(landing))
+    runtime_files.move(target, landing)
 
 
 def remove_claude_transcript(

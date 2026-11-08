@@ -10,9 +10,9 @@ owning, dwarfing the three routes they support.
 and ``.search.db`` is built by its ``conversation_search.py``. So every
 operation here is best-effort: a read, parse, write or subprocess failure is
 logged and swallowed rather than failing the delete or rename that triggered
-it (#906/#971). That single contract used to be restated in seven separate
-docstrings; it belongs to the module, which is the clearest argument for the
-module existing.
+it (#906/#971). That single contract belongs to the module rather than to
+each function's docstring, which is the clearest argument for the module
+existing.
 
 The router calls one entry point per mutation - :func:`reconcile_delete_sync`,
 :func:`reconcile_rename` - and no longer has to know that there are three
@@ -30,6 +30,7 @@ import threading
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple
 
+from src import runtime_files
 from src._json_io import atomic_write_json
 from src.subprocess_flags import NO_WINDOW
 from src.webapp_config import WebappConfig
@@ -134,8 +135,7 @@ def _rename_index_md(resolved: Path, new_name: str) -> None:
     if marker not in text:
         return
     try:
-        # runtime-write-exempt: a skill's index file under the configured Life OS folder
-        index_md.write_text(text.replace(marker, f'file="{new_name}"', 1), encoding="utf-8")
+        runtime_files.save_text(index_md, text.replace(marker, f'file="{new_name}"', 1))
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
 
@@ -195,8 +195,7 @@ def _prune_index_md(resolved: Path) -> bool:
         return False
     start, end = found
     try:
-        # runtime-write-exempt: a skill's index file under the configured Life OS folder
-        index_md.write_text("\n".join(lines[:start] + lines[end:]), encoding="utf-8")
+        runtime_files.save_text(index_md, "\n".join(lines[:start] + lines[end:]))
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
         return False
@@ -378,8 +377,7 @@ def _insert_index_md_block(resolved: Path, block: str) -> bool:
     else:
         merged = [*lines[:at], *entry, "", *lines[at:]]
     try:
-        # runtime-write-exempt: a skill's index file under the configured Life OS folder
-        index_md.write_text("\n".join(merged), encoding="utf-8")
+        runtime_files.save_text(index_md, "\n".join(merged))
     except OSError as exc:
         logger.warning("⚠️ could not update conversations index.md: %s", exc)
         return False

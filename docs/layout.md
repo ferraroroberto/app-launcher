@@ -64,6 +64,7 @@ app-launcher/
 │   ├── remote_power_guard.py   # hide Start-menu power options over Remote Desktop
 │   ├── app_runtime.py          # process-level bootstrap shared by the CLI commands
 │   ├── _json_io.py             # shared JSON read/write helpers
+│   ├── runtime_files.py        # runtime writers (dirs, files, log handlers, SQLite, moves) that refuse a path under a code folder
 │   ├── instance_role.py        # primary-checkout vs worktree role detection
 │   ├── context_filter_state.py # Context-filter card's persisted UI state
 │   ├── fleet_scope.py          # Settings › Fleet scope: fleet-config's active/dormant switch, via its own writer

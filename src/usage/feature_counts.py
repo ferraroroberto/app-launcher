@@ -41,6 +41,15 @@ def feature_counts(conn: sqlite3.Connection, since: datetime, until: datetime) -
         " GROUP BY control_id, device_class",
         (*FEATURE_IDS, format_ts(since), format_ts(until)),
     ).fetchall()
+    return _report(since, until, rows)
+
+
+def empty_feature_counts(since: datetime, until: datetime) -> Dict[str, Any]:
+    """The report for a window with no usage log yet: every feature at zero."""
+    return _report(since, until, [])
+
+
+def _report(since: datetime, until: datetime, rows: Any) -> Dict[str, Any]:
     by_device: Dict[str, Dict[str, int]] = {fid: {} for fid in FEATURE_IDS}
     for control_id, device_class, n in rows:
         by_device[str(control_id)][str(device_class)] = int(n)

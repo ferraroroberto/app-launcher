@@ -29,6 +29,7 @@ import uuid
 from pathlib import Path
 from typing import Optional
 
+from src import runtime_files
 from src.audit import AUDIT_DIR_ENV, PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
@@ -99,16 +100,14 @@ def prune_briefs(now: Optional[float] = None) -> int:
 
 def write_brief(text: str) -> Path:
     """Persist a validated brief under a fresh uuid name and return its path."""
-    # runtime-write-exempt: the dispatch briefs folder, a runtime path from the config
-    BRIEFS_DIR.mkdir(parents=True, exist_ok=True)
+    runtime_files.make_dirs(BRIEFS_DIR)
     prune_briefs()
     path = BRIEFS_DIR / f"{uuid.uuid4().hex}.md"
     if not _SAFE_PATH.match(path.as_posix()):
         raise RuntimeError(
             f"brief directory is not command-line safe: {BRIEFS_DIR.as_posix()!r}"
         )
-    # runtime-write-exempt: the dispatch briefs folder, a runtime path from the config
-    path.write_text(text, encoding="utf-8")
+    runtime_files.save_text(path, text)
     return path
 
 

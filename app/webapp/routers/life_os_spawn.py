@@ -121,11 +121,9 @@ async def _spawn_skill_session(
         project_dir=life_os_dir, name=name, flags=flags, agent=agent,
         rows=rows, cols=cols, kind=kind, label=label,
     )
-    # The shared audit+mirror tail. This used to be a second,
-    # parallel copy of _helpers.audit_session_start_and_maybe_mirror,
-    # differing only in the remote-kind event name, the resume_sid field and
-    # the PTY-only mirror guard — all three are parameters now, so one
-    # workflow is maintained in one place.
+    # The shared audit+mirror tail: _helpers.audit_session_start_and_maybe_mirror
+    # takes the remote-kind event name, the resume_sid field and the PTY-only
+    # mirror guard as parameters, so one workflow is maintained in one place.
     await audit_session_start_and_maybe_mirror(
         cfg, request, body,
         sid=sid, agent=agent, name=name, project=str(life_os_dir),
