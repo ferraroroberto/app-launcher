@@ -67,6 +67,8 @@ webapp/life-os-skill-hashes.json
 webapp/e2e-autoboot-webapp-config.json
 # pids of the gate's disposable servers, swept at the end of the browser phase — machine-written state
 webapp/e2e-autoboot-pids.jsonl
+# failed e2e node ids the gate reads to decide its one load retry — machine-written state
+webapp/e2e-failures.jsonl
 
 # --- Interactive-terminal scratch (image uploads land here) --------------
 .launcher-tmp/
