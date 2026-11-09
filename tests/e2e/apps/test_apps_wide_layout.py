@@ -90,6 +90,14 @@ def test_wide_apps_is_two_columns_list_then_pane(
     page = authed_page
     _wide(page, width)
     _mock(page)
+    stops: list = []
+
+    def _stop(route):
+        stops.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"stopped": True}))
+
+    page.route(re.compile(r".*/api/apps/[^/]+/instances/\d+/stop$"), _stop)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabApps").click()
     expect(page.locator("#runningAppsList li.action-row")).to_have_count(1, timeout=10_000)
@@ -145,28 +153,9 @@ def test_wide_apps_is_two_columns_list_then_pane(
     expect(page.locator("#otherPortsRow")).to_be_hidden()
     expect(page.locator("#appsIdleLine")).to_be_hidden()
 
-
-def test_wide_running_actions_stop_through_the_confirm(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    if browser_name != "chromium":
-        pytest.skip("the wide layout needs a fine pointer: desktop Chromium only")
-    page = authed_page
-    _wide(page, 1280)
-    _mock(page)
-    stops: list = []
-
-    def _stop(route):
-        stops.append(route.request.url)
-        route.fulfill(status=200, content_type="application/json",
-                      body=json.dumps({"stopped": True}))
-
-    page.route(re.compile(r".*/api/apps/[^/]+/instances/\d+/stop$"), _stop)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabApps").click()
+    # -- was test_wide_running_actions_stop_through_the_confirm (last: it posts) --
+    # The visible Stop asks first: Escape is a "no", OK stops that instance.
     row = page.locator("#runningAppsList li.action-row")
-    expect(row).to_have_count(1, timeout=10_000)
-
     row.locator(".running-app-stop-inline").click()
     confirm = page.locator("#confirmDialog")
     expect(confirm).to_be_visible()
@@ -204,54 +193,42 @@ def test_wide_idle_column_says_nothing_runs_with_the_app_count(
     assert abs(m["title"] - m["text"]) <= 2, f"the idle line is not on the card's inset: {m}"
 
 
-@pytest.mark.iphone
-def test_phone_keeps_running_first_and_no_visible_actions(
-    authed_page: Page, base_url: str
-) -> None:
-    """Below the wide query nothing moves: Running first, its actions in the
-    kebab, Other ports behind the sheet."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _mock(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabApps").click()
-    row = page.locator("#runningAppsList li.action-row")
-    expect(row).to_have_count(1, timeout=10_000)
-    expect(row.locator(".running-app-actions")).to_be_hidden()
-    expect(page.locator("#paneApps > :not(.page-head)").first).to_have_id("appsNowCol")
-    expect(page.locator("#otherPortsRow")).to_be_visible()
-    expect(page.locator("#otherPortsCard")).to_be_hidden()
-    m = stable_eval(page.locator("#paneApps"), """pane => {
-      const de = document.documentElement;
-      return de.scrollWidth > de.clientWidth; }""")
-    assert m is False, "the phone Apps tab overflows sideways"
-
-
 def test_probe_runs_only_on_a_visible_apps_tab(authed_page: Page, base_url: str) -> None:
     """#1505: nothing reads the listeners outside Apps, so the 5s probe asks
     nothing while another tab is up or the page is hidden, and asks once the
-    moment Apps opens (#1376: driven by the fake clock, counted at the route)."""
+    moment Apps opens. The Running poll pauses off the tab the same way
+    (#1376: driven by the fake clock, counted at the route)."""
     page = authed_page
     probes: list = []
+    running: list = []
     _json(page, r".*/api/apps$", _APPS)
-    _json(page, r".*/api/apps/running$", _RUNNING)
+
+    def _running(route):
+        running.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(_RUNNING))
 
     def _probe(route):
         probes.append(route.request.url)
         route.fulfill(status=200, content_type="application/json", body=json.dumps(_PROBE))
 
+    page.route(re.compile(r".*/api/apps/running$"), _running)
     page.route(_PROBE_RE, _probe)
     _fake_clock.install(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # Both polls are armed once boot's first fetches settle: wait for them, so
+    # the jump below passes polls that exist rather than ones not yet made.
     _fake_clock.wait_for_interval(page, 5000, "fetchListeners")
+    _fake_clock.wait_for_interval(page, 4_000, "fetchRunningApps")  # RUNNING_APPS_POLL_MS
 
-    # Booted on another tab: three probe intervals pass, no probe.
+    # Booted on another tab: three probe intervals pass, no probe, no poll.
     _fake_clock.advance(page, 15_000)
     assert probes == [], f"probed off the Apps tab: {probes!r}"
+    assert running == [], f"polled Running off the Apps tab: {len(running)} call(s)"
 
-    # Opening Apps probes at once, then on the 5s cadence.
+    # Opening Apps probes and polls at once, then probes on the 5s cadence.
     page.locator("#tabApps").click()
     wait_until(page, lambda: len(probes) == 1, "the probe on opening Apps")
+    wait_until(page, lambda: len(running) >= 1, "the Running poll on opening Apps")
     _fake_clock.advance(page, 5_000)
     assert len(probes) == 2, f"the 5s cadence on Apps: {probes!r}"
 
@@ -264,8 +241,11 @@ def test_probe_runs_only_on_a_visible_apps_tab(authed_page: Page, base_url: str)
 
     # Another tab again: quiet.
     page.locator("#tabJobs").click()
+    paused_at = len(running)
     _fake_clock.advance(page, 15_000)
     assert len(probes) == 2, f"probed after leaving Apps: {probes!r}"
+    assert len(running) == paused_at, (
+        f"Running kept polling after leaving Apps: {len(running) - paused_at} extra call(s)")
 
 
 @pytest.mark.parametrize("layout", ["phone", "wide"])

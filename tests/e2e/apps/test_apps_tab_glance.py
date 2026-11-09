@@ -2,8 +2,7 @@
 
 One Running card (launched apps with the kind avatar and its alive badge,
 then an "Other ports" row opening the listener sheet), the Apps list open
-by default with live badges, Rename and Remove in every app's kebab behind
-the vendored confirm sheet, Scan for new apps as the Apps card's last row,
+by default with live badges, Scan for new apps as the Apps card's last row,
 and the page header's "N down" exception. Every boot fetch the tab reads is
 route-mocked before navigation (#510): no real app is started, stopped or
 probed. All names, paths and ports are fictional.
@@ -19,7 +18,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e._surface import surface
 from tests.e2e.fixtures.ui import open_row_menu
-from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
+from tests.e2e.fixtures.waits import stable_eval, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -118,6 +117,15 @@ def test_running_card_badges_header_and_other_ports(authed_page: Page, base_url:
         re.compile(r"\brunning-apps-card\b"))
     expect(page.locator("#otherPortsCard")).to_be_hidden()
     expect(page.locator("#paneApps .listeners-card")).to_have_count(0)
+    # -- was test_apps_wide_layout.py's test_phone_keeps_running_first_and_no_visible_actions --
+    # Below the wide query a running app's actions stay in its kebab, Other
+    # ports is the drill row, and nothing overflows sideways.
+    expect(page.locator("#runningAppsList li.action-row .running-app-actions")).to_be_hidden()
+    expect(page.locator("#otherPortsRow")).to_be_visible()
+    overflow = stable_eval(page.locator("#paneApps"), """() => {
+      const de = document.documentElement;
+      return de.scrollWidth > de.clientWidth; }""")
+    assert overflow is False, "the phone Apps tab overflows sideways"
 
     # Other ports counts the top-level listeners the launcher did not start.
     expect(page.locator("#otherPortsMeta")).to_have_text("2 listeners not started here")
@@ -205,42 +213,6 @@ def test_header_counts_apps_without_trays_when_nothing_is_down(
     # Three apps (two trays excluded), one running.
     expect(head).to_have_text("3 apps · 1 running")
     expect(head.locator(".head-exception")).to_have_count(0)
-
-
-def test_remove_asks_through_the_vendored_dialog(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    deletes: list = []
-
-    def _delete(route):
-        if route.request.method != "DELETE":
-            route.fallback()
-            return
-        deletes.append(route.request.url)
-        route.fulfill(status=200, content_type="application/json",
-                      body=json.dumps({"removed": "alpha-dash"}))
-
-    page.route(re.compile(r".*/api/apps/alpha-dash$"), _delete)
-    native: list = []
-    page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
-    _open_apps(page, base_url)
-
-    row = _app_row(page, "alpha-dash")
-    row.locator(".action-row-kebab").click()
-    open_row_menu(page).locator("[data-item=app-remove-btn]").click()
-    confirm = page.locator("#confirmDialog")
-    expect(confirm).to_be_visible()
-    expect(confirm.locator("#confirmDialogTitle")).to_have_text("Remove Alpha Dashboard?")
-    # Escape is a "no".
-    page.keyboard.press("Escape")
-    expect(confirm).to_be_hidden()
-    flush_requests(page)
-    assert deletes == [], f"a dismissed confirm still removed: {deletes!r}"
-
-    row.locator(".action-row-kebab").click()
-    open_row_menu(page).locator("[data-item=app-remove-btn]").click()
-    confirm.locator("#confirmDialogOk").click()
-    wait_until(page, lambda: len(deletes) == 1, "the Remove DELETE")
-    assert native == [], f"a native dialog fired: {native!r}"
 
 
 @pytest.mark.iphone

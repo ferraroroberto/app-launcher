@@ -77,16 +77,24 @@ def _perf_ok() -> dict:
     }
 
 
-def _open_apps(page: Page, base_url: str, perf, status: int = 200) -> None:
+def _open_apps(page: Page, base_url: str, perf, status: int = 200) -> dict:
+    """Open the Apps tab's Performance card; return the perf answer's knobs.
+
+    The route reads ``answer`` on every request, so a step can change what
+    the next read sees and drive it with Retry or a tab re-open, which both
+    force a re-read past the card's own throttle.
+    """
+    answer = {"perf": perf, "status": status}
     page.route("**/api/apps", lambda r: r.fulfill(
         status=200, content_type="application/json", body=json.dumps(_APPS)))
     page.route("**/api/apps/running", lambda r: r.fulfill(
         status=200, content_type="application/json", body=json.dumps({"running": []})))
     page.route("**/api/apps/perf", lambda r: r.fulfill(
-        status=status, content_type="application/json", body=json.dumps(perf)))
+        status=answer["status"], content_type="application/json", body=json.dumps(answer["perf"])))
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabApps").click()
     page.locator(".apps-perf-card summary").click()
+    return answer
 
 
 def _row(page: Page, app_id: str):
@@ -97,13 +105,48 @@ def _reason(page: Page, reason: str):
     return page.locator(f'#perfUnmeasured .perf-reason[data-reason="{reason}"]')
 
 
+def _assert_unknown(page: Page, message: str) -> None:
+    """Unreadable or unread: Unknown with the reason and Retry, never green."""
+    expect(page.locator("#perfState")).to_contain_text(message, timeout=5_000)
+    expect(page.locator("#perfState .async-retry")).to_have_count(1)
+    expect(page.locator("#perfSummaryMeta")).to_have_text("Unknown")
+    expect(page.locator("#perfMeasured li")).to_have_count(0)
+    expect(page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
+    expect(page.locator("#perfUnmeasured")).to_be_hidden()
+
+
 def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
     authed_page: Page, base_url: str
 ) -> None:
-    _open_apps(authed_page, base_url, _perf_ok())
+    """Every ledger state on one page load: a failed read, an unreadable
+    ledger, a missing one, then a readable one with every kind of row."""
+    answer = _open_apps(authed_page, base_url, {"detail": "boom"}, status=500)
+
+    # A failed read with nothing good to show is unknown, never green.
+    _assert_unknown(authed_page, "Could not read the performance results.")
+
+    # An unreadable ledger says so, and is still unknown.
+    answer.update(perf={"ledger": "unreadable", "apps": {}, "rows": {}}, status=200)
+    authed_page.locator("#perfState .async-retry").click()
+    _assert_unknown(authed_page, "The performance ledger cannot be read.")
+
+    # A missing ledger lists every app as never measured.
+    answer.update(perf={"ledger": "missing", "apps": {}, "rows": {}})
+    authed_page.locator("#perfState .async-retry").click()
+    expect(authed_page.locator("#perfNone")).to_be_visible(timeout=5_000)
+    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("None measured")
+    expect(authed_page.locator("#perfMeasured li")).to_have_count(0)
+    expect(_reason(authed_page, "never")).to_contain_text("Good App")
+    expect(authed_page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
+
+    # A readable ledger: re-opening the tab re-reads it.
+    answer.update(perf=_perf_ok())
+    authed_page.locator("#tabClaude").click()
+    authed_page.locator("#tabApps").click()
     card = authed_page.locator(".apps-perf-card")
     expect(card.locator(".perf-intro")).to_contain_text("throttled phone-profile page load")
     expect(authed_page.locator("#perfSummaryMeta")).to_have_text("3 measured · 1 over budget", timeout=5_000)
+    expect(authed_page.locator("#perfNone")).to_be_hidden()
 
     # Only measured apps are rows: a pass seeded from an issue log counts, the rest do not.
     expect(authed_page.locator("#perfMeasured li.perf-row")).to_have_count(3)
@@ -147,32 +190,6 @@ def test_the_card_lists_measured_apps_against_budget_and_the_rest_with_reasons(
         '[class*="perf"], a[href*="perf-review"]')).to_have_count(0)
 
 
-@pytest.mark.parametrize(
-    "perf,status,message",
-    [
-        ({"ledger": "unreadable", "apps": {}, "rows": {}}, 200, "The performance ledger cannot be read."),
-        ({"detail": "boom"}, 500, "Could not read the performance results."),
-    ],
-    ids=["unreadable-ledger", "failed-read"],
-)
-def test_an_unreadable_ledger_or_failed_read_is_unknown_never_green(
-    authed_page: Page, base_url: str, perf, status, message
-) -> None:
-    _open_apps(authed_page, base_url, perf, status)
-    expect(authed_page.locator("#perfState")).to_contain_text(message, timeout=5_000)
-    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("Unknown")
-    expect(authed_page.locator("#perfMeasured li")).to_have_count(0)
-    expect(authed_page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
-    expect(authed_page.locator("#perfUnmeasured")).to_be_hidden()
-
-
-def test_a_missing_ledger_lists_every_app_as_never_measured(authed_page: Page, base_url: str) -> None:
-    _open_apps(authed_page, base_url, {"ledger": "missing", "apps": {}, "rows": {}})
-    expect(authed_page.locator("#perfNone")).to_be_visible(timeout=5_000)
-    expect(authed_page.locator("#perfSummaryMeta")).to_have_text("None measured")
-    expect(authed_page.locator("#perfMeasured li")).to_have_count(0)
-    expect(_reason(authed_page, "never")).to_contain_text("Good App")
-    expect(authed_page.locator(".apps-perf-card")).not_to_contain_text("Within budget")
 
 
 @pytest.mark.iphone
