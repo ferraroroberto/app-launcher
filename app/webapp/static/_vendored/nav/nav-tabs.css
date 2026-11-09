@@ -298,12 +298,22 @@
     transform: translateZ(0);
     will-change: transform;
   }
-  /* One-frame filter drop that nav-tabs.js sets each time the installed app's
-     viewport settles (launch, return to the foreground), so iOS rebuilds the
-     glass layer at its final bounds. */
+  /* One-frame rebuild that nav-tabs.js sets each time the installed app's
+     viewport settles (launch, return to the foreground). The filter drop makes
+     iOS rebuild the glass layer at its final bounds. The promotion drop (bar,
+     labels, badges) makes WebKit paint those layers' contents again: a
+     promoted layer keeps its bitmap across a filter toggle, so a raster taken
+     while the viewport was still growing would otherwise stay soft. Both
+     return on the next frame, so the modal-repaint reason above still holds. */
   .tabs.glass-rebuild {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
+    transform: none;
+    will-change: auto;
+  }
+  .tabs.glass-rebuild .tab-label,
+  .tabs.glass-rebuild .tab-badge {
+    transform: none;
   }
   /* Hit area only, never painted: the rounded corners would otherwise let a
      row scrolled under the bar take taps in the outer tabs' corner slivers. */
