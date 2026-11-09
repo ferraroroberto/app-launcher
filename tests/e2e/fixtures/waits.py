@@ -44,6 +44,30 @@ def flush_requests(page: Page) -> None:
     page.evaluate("() => fetch('/__flush').then(() => undefined)")
 
 
+# Every finite transition the page started has finished. Two frames first so a
+# transition armed by the last click has started; an infinite animation (a
+# spinner) has no end to wait for and is left out.
+_ANIMATIONS_DONE = """() => {
+  const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
+  return frame().then(frame).then(() => Promise.all(
+    document.getAnimations()
+      .filter((a) => a.effect && a.effect.getComputedTiming().endTime !== Infinity)
+      .map((a) => a.finished.catch(() => undefined)))).then(frame);
+}"""
+
+
+def settled(page: Page) -> None:
+    """Return once the requests the page already made were answered and its
+    transitions have finished.
+
+    The condition a fixed ``wait_for_timeout(200-400)`` before a geometry read
+    stood for: a control measured mid-transition reports a fraction of its box,
+    and a late fetch redraws the row under the read.
+    """
+    flush_requests(page)
+    page.evaluate(_ANIMATIONS_DONE)
+
+
 def watch_static_failures(page: Page) -> List[str]:
     """Record every ``/static/`` load of ``page`` that fails or answers non-2xx (#1609).
 

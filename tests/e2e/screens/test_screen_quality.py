@@ -166,6 +166,9 @@ def test_a_stored_value_that_is_not_a_preset_opens_on_balanced(
 def test_the_readout_is_off_until_switched_on_and_off_again_sends_and_shows_nothing(
     authed_page: Page, base_url: str
 ) -> None:
+    # Context-wide, so the desktop pop-out window shares it: the readout's 500 ms
+    # refresh is then jumped below instead of waited out.
+    authed_page.context.clock.install()
     seen, sockets, page = _open_view(authed_page, base_url)
     readout = page.locator("#screenReadout")
     toggle = page.locator("#screenReadoutToggle")
@@ -202,7 +205,12 @@ def test_the_readout_is_off_until_switched_on_and_off_again_sends_and_shows_noth
     )
     _close_sheet(page)
     sockets[-1].send(json.dumps({"type": "stats", "grab": 1, "digest": 1, "resize": 1, "encode": 1, "frames": 1}))
-    page.wait_for_timeout(700)
+    # A socket delivers in order: the frame's ack means the stats message ahead
+    # of it was handled. Then two readout refreshes fire on the jumped clock.
+    acks = len(seen["acks"])
+    sockets[-1].send(_frame())
+    wait_until(page, lambda: len(seen["acks"]) > acks, "the frame behind the late stats message")
+    page.clock.run_for(1_000)
     expect(readout).to_be_hidden()
 
     # The readout does not outlive the view: closed with it, off on the next open.

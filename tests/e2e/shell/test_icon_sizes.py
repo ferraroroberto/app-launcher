@@ -25,6 +25,7 @@ from tests.e2e.fixtures.ui import (
     open_agent_sheet,
     open_settings_sheet,
 )
+from tests.e2e.fixtures.waits import settled
 from tests.e2e.shell.test_row_name_typography import _mock
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -84,7 +85,7 @@ def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) 
     for tab in ("#tabClaude", "#tabApps", "#tabJobs", "#tabLifeOS", "#tabBoard", _SETTINGS):
         page.locator(tab).click()
         page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-        page.wait_for_timeout(400)
+        settled(page)
         strays += [f"{tab}: {s}" for s in page.evaluate(_OFF_SCALE, list(_STEPS))]
         if tab != _SETTINGS:
             continue
