@@ -9,19 +9,21 @@ This file pins the *client* half of that contract — that the body no longer
 launches, and that each button posts its own mode. The server half (the
 creation flag actually chosen, and the older-client default) is pinned at
 the unit/API layer in tests/unit/launching/test_launcher_spawn_bat.py and
-tests/api/webapp/test_webapp_api_apps.py. Route-mocked in the same style as
-test_registered_trays_panel.py: a real bat spawn is far too heavy for the
-smoke suite.
+tests/api/webapp/test_webapp_api_apps.py. Route-mocked: a real bat spawn is
+far too heavy for the smoke suite. The Trays panel's tray-only rows and its
+autostart switch ride on the same page load.
 """
 
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import open_row_menu
+from tests.e2e.fixtures.waits import flush_requests, wait_until
 
 pytestmark = pytest.mark.smoke
 
@@ -210,6 +212,58 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     expect(toggle).to_have_count(1)
     expect(toggle).to_have_attribute("aria-label", "Autostart Home Automation at boot")
 
+    _assert_trays_panel_and_autostart(authed_page, toggle)
+
+
+def _assert_trays_panel_and_autostart(page: Page, toggle) -> None:
+    """Only tray rows land in Trays, and the autostart switch PATCHes.
+
+    Was test_registered_trays_panel.py's
+    test_autostart_toggle_reflects_state_and_patches; last, since it PATCHes.
+    """
+    tray_rows = page.locator("#registeredTraysList li.action-row")
+    expect(tray_rows).to_have_count(1)
+    expect(tray_rows.first).to_contain_text("Home Automation")
+    expect(page.locator("#appsList")).not_to_contain_text("Home Automation")
+    expect(page.locator("#registeredTraysList")).not_to_contain_text("Photo OCR")
+
+    # The registry answers with the flag the last PATCH set, as the server does.
+    patches: list[dict] = []
+    state = {"autostart": False}
+
+    def _apps_handler(route):
+        payload = _apps_payload()
+        payload["apps"][-1]["autostart"] = state["autostart"]
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(payload))
+
+    def _patch_handler(route):
+        body = json.loads(route.request.post_data or "{}")
+        patches.append(body)
+        state["autostart"] = bool(body.get("autostart"))
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"app": {"id": "home-automation-tray", "autostart": state["autostart"]}}),
+        )
+
+    page.route("**/api/apps", _apps_handler)
+    page.route("**/api/apps/home-automation-tray", _patch_handler)
+
+    # #790 dropped the switch's visible label — the panel is called Trays
+    # and it is the row's only toggle; since #1128 it is the action-row's
+    # one leading toggle.
+    expect(toggle).to_have_class("toggle")
+    expect(toggle.locator(".knob")).to_have_count(1)
+    expect(toggle).to_have_attribute("aria-checked", "false")
+
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "true")
+    assert patches == [{"autostart": True}]
+
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-checked", "false")
+    assert patches == [{"autostart": True}, {"autostart": False}]
+
 
 @pytest.mark.parametrize("edit", [False, True], ids=["edit-off", "edit-on"])
 def test_path_and_rename_remove_live_in_the_menu(
@@ -218,6 +272,19 @@ def test_path_and_rename_remove_live_in_the_menu(
     """#1437 (decision 5 of #1432): Rename and Remove are in every app's
     kebab whatever the Jobs tab's Edit mode says. Since #1505 the menu's
     header names the kind, and the bat path is its Copy path item."""
+    deletes: list = []
+
+    def _delete(route):
+        if route.request.method != "DELETE":
+            route.fallback()
+            return
+        deletes.append(route.request.url)
+        route.fulfill(status=200, content_type="application/json",
+                      body=json.dumps({"removed": "photo-ocr-app"}))
+
+    authed_page.route(re.compile(r".*/api/apps/photo-ocr-app$"), _delete)
+    native: list = []
+    authed_page.on("dialog", lambda d: (native.append(d.message), d.dismiss()))
     _navigate(authed_page, base_url, edit=edit)
     row = authed_page.locator("#appsList li.action-row").first
     expect(row).to_be_visible(timeout=5_000)
@@ -236,3 +303,21 @@ def test_path_and_rename_remove_live_in_the_menu(
     row.locator(".action-row-kebab").click()
     # Remove is the danger item, last.
     expect(menu.locator(":scope > *").last).to_have_attribute("data-item", "app-remove-btn")
+
+    # -- was test_apps_tab_glance.py's test_remove_asks_through_the_vendored_dialog --
+    # Remove asks through the vendored confirm sheet: Escape is a "no", OK
+    # sends the one DELETE, and no native dialog fires.
+    menu.locator("[data-item=app-remove-btn]").click()
+    confirm = authed_page.locator("#confirmDialog")
+    expect(confirm).to_be_visible()
+    expect(confirm.locator("#confirmDialogTitle")).to_have_text("Remove Photo OCR?")
+    authed_page.keyboard.press("Escape")
+    expect(confirm).to_be_hidden()
+    flush_requests(authed_page)
+    assert deletes == [], f"a dismissed confirm still removed: {deletes!r}"
+
+    row.locator(".action-row-kebab").click()
+    open_row_menu(authed_page).locator("[data-item=app-remove-btn]").click()
+    confirm.locator("#confirmDialogOk").click()
+    wait_until(authed_page, lambda: len(deletes) == 1, "the Remove DELETE")
+    assert native == [], f"a native dialog fired: {native!r}"

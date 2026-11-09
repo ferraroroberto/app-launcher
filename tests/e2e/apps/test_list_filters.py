@@ -55,19 +55,6 @@ def _open_all(page: Page) -> None:
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
 
 
-def test_no_summary_holds_a_control(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _mock(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    expect(page.locator("#claudeList .action-row").first).to_be_attached(timeout=5_000)
-    offenders = page.evaluate(
-        """() => Array.from(document.querySelectorAll('summary'))
-            .filter((s) => s.querySelector('button, select, input, textarea, a[href]'))
-            .map((s) => (s.textContent || '').trim().slice(0, 40))"""
-    )
-    assert not offenders, f"<summary> elements still holding a control: {offenders}"
-
-
 def _visible_titles(page: Page, rows: str):
     return page.locator(f"{rows}:visible .action-row-title").all_inner_texts()
 
@@ -85,6 +72,15 @@ def test_projects_and_apps_filters_narrow_restore_and_empty(
     )
     _mock(page)
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    expect(page.locator("#claudeList .action-row").first).to_be_attached(timeout=5_000)
+
+    # -- was test_no_summary_holds_a_control --
+    offenders = page.evaluate(
+        """() => Array.from(document.querySelectorAll('summary'))
+            .filter((s) => s.querySelector('button, select, input, textarea, a[href]'))
+            .map((s) => (s.textContent || '').trim().slice(0, 40))"""
+    )
+    assert not offenders, f"<summary> elements still holding a control: {offenders}"
     _open_all(page)
 
     rows = "#claudeList > li"
@@ -121,30 +117,9 @@ def test_projects_and_apps_filters_narrow_restore_and_empty(
     page.locator("#appsFilterEmpty .empty-state-action").click()
     expect(page.locator(f"{apps}:visible")).to_have_count(len(_APPS))
 
-
-def test_jobs_search_matches_job_names(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _mock(page)
-    page.route(
-        re.compile(r".*/api/jobs/runs/search.*"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=_json.dumps({"matches": []})),
-    )
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabJobs").click()
-    _open_all(page)
-    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(3, timeout=5_000)
-
-    page.locator("#jobsSearchInput").fill("man")
-    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(1, timeout=5_000)
-    expect(page.locator("#jobsList li.job-row[data-id='mango']")).to_be_visible()
-
-    page.locator("#jobsSearchInput").fill("nothing-matches")
-    expect(page.locator("#jobsFilterEmpty")).to_be_visible(timeout=5_000)
-    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(0)
-    page.locator("#jobsFilterEmptyAction").click()
-    expect(page.locator("#jobsSearchInput")).to_have_value("")
-    expect(page.locator("#jobsFilterEmpty")).to_be_hidden()
+    # -- was test_registered_trays_panel.py's test_empty_state_shown_with_no_tray_rows --
+    # This registry holds no tray, so the open Trays card shows its empty state.
+    expect(page.locator("#registeredTraysEmpty")).to_be_visible()
 
 
 @pytest.mark.iphone
@@ -165,7 +140,11 @@ def test_search_fields_show_exactly_one_clear_control(
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.locator("#tabJobs").click()
     _open_all(page)
+    # -- was test_jobs_search_matches_job_names --
+    # The search matches a job's name, not only its run output.
+    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(3, timeout=5_000)
     page.locator("#jobsSearchInput").fill("man")
+    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(1, timeout=5_000)
     expect(page.locator("#jobsList li.job-row[data-id='mango']")).to_be_visible(timeout=5_000)
 
     own_clear = page.locator("label:has(> input[type='search']) button").filter(
@@ -180,3 +159,11 @@ def test_search_fields_show_exactly_one_clear_control(
             .map((el) => el.id)"""
     )
     assert hidden == [], f"native search clear hidden on: {hidden}"
+
+    # No match is the filter's empty state, whose action clears the search.
+    page.locator("#jobsSearchInput").fill("nothing-matches")
+    expect(page.locator("#jobsFilterEmpty")).to_be_visible(timeout=5_000)
+    expect(page.locator("#jobsList li.job-row[data-id]")).to_have_count(0)
+    page.locator("#jobsFilterEmptyAction").click()
+    expect(page.locator("#jobsSearchInput")).to_have_value("")
+    expect(page.locator("#jobsFilterEmpty")).to_be_hidden()
