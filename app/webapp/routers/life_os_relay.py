@@ -199,8 +199,20 @@ def _live_ids(caller: _Caller) -> List[str]:
     return [str(s.get("session_id")) for s in caller.sessions if s.get("alive", True)]
 
 
+async def _card_statuses(caller: _Caller, rows: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Per live session id: the Board card's declared status
+    (:mod:`src.board.card_status`), derived the way the Board derives it from
+    the hook state ``rows``. A session with no card, or one the Board cannot
+    place (``unknown``), is absent: its status is not known, and the bot's
+    ``read`` falls back to the quiet-time check rather than call it settled."""
+    cards = await asyncio.to_thread(board.merge_sessions, caller.sessions, rows)
+    return {str(card.get("session_id")): card["status"] for card in cards
+            if isinstance(card.get("status"), str)
+            and card["status"] != card_status.UNKNOWN}
+
+
 async def _turn_facts(caller: _Caller) -> Dict[str, Dict[str, Any]]:
-    """Per live session id: its Board ``status`` (``None`` when not known)
+    """Per live session id: its card ``status`` (``None`` when not known)
     and ``last_turn_at``, the newest real conversation line in its
     transcript (``None`` when that cannot be read). The PTY's own
     ``last_output_at`` is no measure here: a footer repaint moves it after
@@ -208,28 +220,22 @@ async def _turn_facts(caller: _Caller) -> Dict[str, Dict[str, Any]]:
     state = await asyncio.to_thread(
         board.read_sessions_state, Path(caller.cfg.sessions_state_file))
     turned = await asyncio.to_thread(board.attach_last_turn, caller.sessions, state["rows"])
-    facts = {}
-    for sess in turned:
-        sid = str(sess.get("session_id"))
-        row = board.state_row_for_session(caller.sessions, state["rows"], sid) or {}
-        status = row.get("status")
-        facts[sid] = {"status": status if isinstance(status, str) else None,
-                      "last_turn_at": sess.get("last_turn_at")}
-    return facts
+    statuses = await _card_statuses(caller, state["rows"])
+    return {str(sess.get("session_id")): {
+                "status": statuses.get(str(sess.get("session_id"))),
+                "last_turn_at": sess.get("last_turn_at")}
+            for sess in turned}
 
 
-async def _turn_finished(caller: _Caller, sid: str) -> bool:
-    """Whether the Board reads ``sid``'s ``needs-you`` as a turn that ended
-    clean with nothing pending (its ``idle-finished``): the agent only asked
-    something in text, nothing is running and nothing is blocked on a prompt.
-    A pending tool permission, a decision question, a background dispatch or
-    a transcript that cannot be read is not that, so the caller keeps it
-    ``busy``."""
-    state = await asyncio.to_thread(
-        board.read_sessions_state, Path(caller.cfg.sessions_state_file))
-    cards = await asyncio.to_thread(board.merge_sessions, caller.sessions, state["rows"])
-    card = next((c for c in cards if str(c.get("session_id")) == sid), None)
-    return card is not None and card.get("status") == card_status.IDLE_FINISHED
+def _busy_reason(status: Optional[str]) -> str:
+    """Why a session whose card status is ``status`` is not stopped."""
+    if status == card_status.WORKING:
+        return "it is mid-turn"
+    if status == card_status.WAITING_ON_TASK:
+        return "a background task is still running"
+    if status in card_status.TURN_ENDED:
+        return "it is waiting on an answer"
+    return "whether it is mid-turn is not known"
 
 
 async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:
@@ -514,8 +520,8 @@ async def _await_first_idle(caller: _Caller, sid: str, since: float) -> bool:
     The skill's opening command runs as that first turn, and a message typed
     into the session before it ends is queued behind it. The turn counts only
     when its transcript line is newer than ``since`` and the Board's hook row
-    says the session stopped (``idle`` or ``needs-you``), so a row left by an
-    older session in the same folder never reads as ready. ``False`` is not
+    says the session's turn ended (a ``turn_ended`` card status), so a row left
+    by an older session in the same folder never reads as ready. ``False`` is not
     known: the wait ran out, the session ended, or the host or the Board's
     state could not be read."""
     deadline = time.monotonic() + NEW_READY_WAIT_SECONDS
@@ -532,7 +538,7 @@ async def _await_first_idle(caller: _Caller, sid: str, since: float) -> bool:
         if live is None or not live.get("alive", True):
             return False
         turned = (facts or {}).get("last_turn_at")
-        if (facts or {}).get("status") in ("idle", "needs-you") \
+        if (facts or {}).get("status") in card_status.TURN_ENDED \
                 and isinstance(turned, (int, float)) and turned >= since:
             return True
         if time.monotonic() >= deadline:
@@ -602,8 +608,8 @@ async def relay_steer(profile_id: str, request: Request) -> Dict[str, Any]:
 @router.get(f"{_PREFIX}/read")
 async def relay_read(profile_id: str, request: Request) -> Dict[str, Any]:
     """The target's last assistant reply, its timestamp, and whether it is
-    still working (``status`` from the Board's hook row: ``working``,
-    ``idle``, ``needs-you`` or ``None`` when not known).
+    still working (``status``: the Board card's declared status, ``None``
+    when not known).
 
     ``state``: ``reply``, or ``unavailable`` with the exchange's ``reason``
     (``stale`` when only an old cached answer could be had): never old text
@@ -615,8 +621,7 @@ async def relay_read(profile_id: str, request: Request) -> Dict[str, Any]:
     exchange = await session_exchange(sid, request)
     state = await asyncio.to_thread(
         board.read_sessions_state, Path(caller.cfg.sessions_state_file))
-    row = board.state_row_for_session(caller.sessions, state["rows"], sid) or {}
-    status = row.get("status") if isinstance(row.get("status"), str) else None
+    status = (await _card_statuses(caller, state["rows"])).get(sid)
     await _audit(caller, request, "read", session=sid)
     base = {"session_id": sid, "status": status,
             "last_output_at": sess.get("last_output_at")}
@@ -662,9 +667,8 @@ async def stop_conversation(caller: _Caller, sid: str, reason: str) -> Dict[str,
     entry = await asyncio.to_thread(relay_registry.find, caller.profile.id, sid) or entry
     facts = (await _turn_facts(caller)).get(sid, {})
     status = facts.get("status")
-    if status != "idle" and not (status == "needs-you" and await _turn_finished(caller, sid)):
-        why = {"working": "it is mid-turn", "needs-you": "it is waiting on an answer"}.get(
-            status or "", "whether it is mid-turn is not known")
+    if status not in card_status.QUIT_SAFE:
+        why = _busy_reason(status)
         return {"state": "busy", "message": f"Not stopped: {why}. Nothing was done."}
     conversation = str(entry.get("conversation") or "")
     # A ``new`` session still unbound has no capture to compare: not confirmed,

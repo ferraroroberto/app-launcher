@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from src.board import card_status
 from src.life_os import relay_registry
 from tests.api._life_os_support import RESUMABLE_SID
 from tests.unit.life_os.test_life_os_relay import (  # noqa: F401
@@ -164,44 +165,34 @@ class TestStop:
         assert resp.json()["detail"]["state"] == "busy"
         assert stop_host.stops == []
 
-    def test_a_finished_turn_waiting_on_a_question_is_stopped(self, stop_host, monkeypatch):
-        from app.webapp.routers import life_os_relay
-
-        async def finished(caller, sid):
-            return True
-
-        monkeypatch.setattr(life_os_relay, "_turn_finished", finished)
+    def test_a_finished_turn_waiting_on_a_question_is_stopped(self, stop_host):
         body = _reopen(stop_host)
-        stop_host.facts[body["session_id"]]["status"] = "needs-you"
+        stop_host.facts[body["session_id"]]["status"] = card_status.IDLE_FINISHED
         resp = _stop(stop_host, body["session_id"])
         assert resp.status_code == 200, resp.text
         assert resp.json()["state"] == "stopped"
         assert stop_host.stops == [(body["session_id"], "quit")]
 
-    def test_a_needs_you_that_is_not_a_finished_turn_is_busy(self, stop_host, monkeypatch):
-        from app.webapp.routers import life_os_relay
-
-        async def not_finished(caller, sid):
-            return False
-
-        monkeypatch.setattr(life_os_relay, "_turn_finished", not_finished)
+    @pytest.mark.parametrize("status, why", [
+        (card_status.TOOL_PENDING, "waiting on an answer"),
+        (card_status.WAITING_ON_TASK, "background task"),
+        (card_status.WORKING, "mid-turn"),
+        (None, "not known"),
+    ])
+    def test_a_stop_that_is_not_a_finished_turn_is_busy_and_says_why(
+            self, stop_host, status, why):
         body = _reopen(stop_host)
-        stop_host.facts[body["session_id"]]["status"] = "needs-you"
+        stop_host.facts[body["session_id"]]["status"] = status
         resp = _stop(stop_host, body["session_id"])
         assert resp.status_code == 409
         assert resp.json()["detail"]["state"] == "busy"
+        assert why in resp.json()["detail"]["message"]
         assert stop_host.stops == []
 
-    def test_a_finished_question_still_waits_for_its_capture(self, stop_host, monkeypatch):
-        from app.webapp.routers import life_os_relay
-
-        async def finished(caller, sid):
-            return True
-
-        monkeypatch.setattr(life_os_relay, "_turn_finished", finished)
+    def test_a_finished_question_still_waits_for_its_capture(self, stop_host):
         body = _reopen(stop_host)
         facts = stop_host.facts[body["session_id"]]
-        facts["status"] = "needs-you"
+        facts["status"] = card_status.IDLE_FINISHED
         facts["last_turn_at"] = None
         resp = _stop(stop_host, body["session_id"])
         assert resp.status_code == 409
@@ -234,7 +225,7 @@ class TestStop:
 
 
 class TestTurnFinished:
-    """The real Board split behind ``stop`` on a ``needs-you`` row."""
+    """The real Board split behind the status ``stop`` reads for a ``needs-you`` row."""
 
     @pytest.mark.parametrize("tail,expected", [
         ("text", True),
@@ -276,7 +267,8 @@ class TestTurnFinished:
         caller = SimpleNamespace(
             cfg=SimpleNamespace(sessions_state_file=(tmp_path / "state.json").as_posix()),
             sessions=[_live("aaa", "E:/x/y", 30)])
-        assert asyncio.run(life_os_relay._turn_finished(caller, "aaa")) is expected
+        status = asyncio.run(life_os_relay._turn_facts(caller))["aaa"]["status"]
+        assert (status in card_status.QUIT_SAFE) is expected
 
 
 class TestChats:
