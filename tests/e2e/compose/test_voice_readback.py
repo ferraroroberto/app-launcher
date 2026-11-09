@@ -1,11 +1,11 @@
 """Regression pin for read-aloud (issues #190 + #197 colour-block overhaul).
 
-The feature: a ``🔊`` top-bar button in the Coding tab speaks the agent's last
+The feature: a "Read aloud" row in the Coding tab's ⋮ session menu speaks the agent's last
 reply for eyes-free / driving use. Detection (#197) keys off the bullet the
 agent prints to open each block, classified by its xterm cell foreground
 COLOUR: a default/white ``●`` is an assistant reply, a coloured (green/red/…)
 ``●`` is a tool call. The buffer segments into an ordered list of reply blocks;
-``🔊`` reads the last by default (a future depth-selector slices the list).
+"Read aloud" reads the last by default (a future depth-selector slices the list).
 Speaking goes through the Web Speech API; starting a new dictation cancels any
 in-flight read-aloud.
 
@@ -177,8 +177,8 @@ def test_speech_finish_resets_and_toasts(
     expect(authed_page.locator("#toast")).to_contain_text(
         "Finished reading", timeout=5000
     )
-    expect(authed_page.locator("#terminalSpeak")).to_have_attribute(
-        "aria-pressed", "false"
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute(
+        "data-speaking", "false"
     )
 
 

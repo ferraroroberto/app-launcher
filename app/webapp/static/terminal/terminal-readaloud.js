@@ -1,15 +1,16 @@
 /* Read-aloud UI orchestration for the live terminal (finishes
- * the split terminal-readback.js started): the 🔊 button, its action
- * popover, the summary modal, and the two user-facing actions ("Read
- * aloud" verbatim / "Summarize & read"). terminal-readback.js stays the
+ * the split terminal-readback.js started): the two ⋮ session-menu items,
+ * the summary modal, and the two user-facing actions ("Read aloud"
+ * verbatim / "Summarize & read"). terminal-readback.js stays the
  * low-level engine (buffer extraction, Web Speech, hub streaming); this
  * module is the DOM-facing layer wired onto it.
  *
- * The 🔊 button opens a small dropdown with two actions: "Read aloud" (the
- * verbatim path) and "Summarize & read" — condense the reply
- * via the hub's claude-haiku-4-5 first, for hands-free / driving listening. The
- * menu only appears when the summarize action is available (hub reachable);
- * otherwise the button keeps its original single-tap "read aloud" behaviour.
+ * The ⋮ menu (terminal-bar.js) carries "Read aloud" (the verbatim path) and
+ * "Summarize & read" — condense the reply via the hub's claude-haiku-4-5
+ * first, for hands-free / driving listening. Read aloud turns into "Stop
+ * reading" while speech plays, and the ⋮ button pulses green so the state
+ * shows with the menu closed. Summarize is offered only once the hub is
+ * reachable.
  *
  * Text provider: Terminal mode reads the live xterm scrollback via
  * terminal-readback.js's extractLastReply() — keyed on Claude Code's own
@@ -21,10 +22,7 @@
 
 import { els, state } from '../state.js';
 import { apiFailToast, readToken, showLogin, toast } from '../api.js';
-import { bindOutsideClickToClose } from '../dom-utils.js';
-import { bindLongPressHint } from '../long-press-hint.js';
 import { readTerminalToken } from '../webauthn.js';
-import { icon } from '../_vendored/icons/icons.js';
 import { inChatMode } from '../session-overlay.js';
 import { lastAssistantEntryFullText } from '../chat/chat-outbox.js';
 import {
@@ -52,19 +50,18 @@ export function stopReading() {
   cancelSpeech();
 }
 
-// Reflect speaking state on the 🔊 button: ⏹ + pulse while reading, 🔊 idle.
+// Reflect speaking state on the ⋮ button: green pulse while reading. The menu
+// items re-read isSpeaking() whenever it opens, so they need no repaint here.
 function setSpeakingUI(on) {
   // Auto-close the summary modal the moment reading stops —
   // whether it finished naturally, was stopped, or the tab was left. This is
   // the single sink for every speaking→idle transition, so the modal can't
   // outlive the read.
   if (!on) closeSummaryModal();
-  const btn = els.terminalSpeak;
+  const btn = els.terminalMenu;
   if (!btn) return;
   btn.classList.toggle('speaking', on);
-  btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-  btn.innerHTML = on ? icon('square') : icon('volume-2');
-  btn.title = on ? 'Stop reading' : 'Read the last reply aloud';
+  btn.dataset.speaking = on ? 'true' : 'false';
 }
 
 // ── Summary modal ──────────────────────────────────────────────
@@ -92,34 +89,11 @@ function wireSummaryModal() {
   });
 }
 
-// ── Read-aloud action menu ─────────────────────────────────────
-let _disposeSpeakOutsideClick = null;
-
-export function closeSpeakPopover() {
-  if (!els.terminalSpeakPopover) return;
-  els.terminalSpeakPopover.hidden = true;
-  if (_disposeSpeakOutsideClick) {
-    _disposeSpeakOutsideClick();
-    _disposeSpeakOutsideClick = null;
-  }
-}
-
-function openSpeakPopover() {
-  if (!els.terminalSpeakPopover) return;
-  els.terminalSpeakPopover.hidden = false;
-  if (!_disposeSpeakOutsideClick) {
-    _disposeSpeakOutsideClick = bindOutsideClickToClose(
-      els.terminalSpeakPopover, els.terminalSpeak, closeSpeakPopover
-    );
-  }
-}
-
-// True when the "Summarize & read" action is currently offered (hub reachable).
-function summarizeAvailable() {
-  const a = els.terminalSpeakPopover &&
-    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
-  return !!(a && !a.hidden);
-}
+// ── Availability ───────────────────────────────────────────────
+// Whether the ⋮ menu offers each action for the session now open; set by
+// refreshReadAloudAvailability() and read by the item `hidden` callbacks.
+let _readAloudAvailable = false;
+let _summarizeAvailable = false;
 
 // Speak `text` aloud, preferring the hub's Orpheus voice and falling back to
 // on-device Web Speech. `handle` is an optional pre-armed hub context from
@@ -158,7 +132,7 @@ async function readTextAloud(text, handle, quiet) {
 // session with no PTY, reads the transcript's newest assistant entry instead
 // — the harness-agnostic source, since the xterm extractor is
 // keyed on Claude Code's own bullet colours. Must be called directly from the
-// button-click gesture (speakHub / prepareHub arm audio synchronously) — the
+// menu-tap gesture (speakHub / prepareHub arm audio synchronously) — the
 // transcript path arms hub audio before its own awaited fetch for the same
 // reason the summarize path below does.
 async function readLastReplyAloud() {
@@ -187,7 +161,7 @@ async function readLastReplyAloud() {
 // summary. Arms the hub audio context in the gesture tick (before any awaited
 // fetch — the text-provider fetch in Chat mode, then the summary) so iOS lets
 // the synthesized summary sound. Must be called directly from the
-// button-click gesture.
+// menu-tap gesture.
 async function summarizeAndReadLastReply() {
   const useTranscript = inChatMode();
   let text = null;
@@ -231,58 +205,61 @@ async function summarizeAndReadLastReply() {
   await readTextAloud(summary, handle, true);
 }
 
-function wireSpeakMenu() {
-  bindLongPressHint(els.terminalSpeak);
-  // Idle press: open the action menu when summarize is available, else read
-  // aloud directly (preserve the original single-tap behaviour). Press while
-  // reading: stop. The tap is the user gesture iOS speech needs, so the read
-  // helpers run synchronously off this handler.
-  els.terminalSpeak.addEventListener('click', function () {
-    if (isSpeaking()) { stopReading(); closeSpeakPopover(); return; }
-    if (!summarizeAvailable()) { readLastReplyAloud(); return; }
-    if (els.terminalSpeakPopover.hidden) openSpeakPopover();
-    else closeSpeakPopover();
-  });
-  els.terminalSpeakPopover.addEventListener('click', function (ev) {
-    const btn = ev.target.closest('.speak-action');
-    if (!btn) return;
-    const action = btn.getAttribute('data-action');
-    closeSpeakPopover();
-    if (action === 'summarize') summarizeAndReadLastReply();
+// The ⋮ menu's two read-aloud rows. Row-menu runs onTap synchronously inside
+// the click that chose the item, so the read helpers still arm iOS audio in
+// the user gesture.
+export const READ_ALOUD_ITEM = {
+  dataset: { item: 'overlay-read-aloud-btn', track: 'session.read-aloud' },
+  glyph: function () { return isSpeaking() ? 'square' : 'volume-2'; },
+  label: function () { return isSpeaking() ? 'Stop reading' : 'Read aloud'; },
+  ariaLabel: function () {
+    return isSpeaking() ? 'Stop reading aloud' : 'Read the last reply aloud';
+  },
+  hidden: function () { return !_readAloudAvailable; },
+  onTap: function () {
+    if (isSpeaking()) stopReading();
     else readLastReplyAloud();
-  });
-}
+  },
+};
 
-// Reveal/hide the 🔊 button + "Summarize" menu action for the session just
+export const SUMMARIZE_READ_ITEM = {
+  dataset: { item: 'overlay-summarize-read-btn', track: 'session.summarize-read' },
+  glyph: 'file-text', label: 'Summarize & read',
+  ariaLabel: 'Summarize the last reply and read it aloud',
+  hidden: function () { return !_summarizeAvailable || isSpeaking(); },
+  onTap: summarizeAndReadLastReply,
+};
+
+// Decide which read-aloud rows the ⋮ menu offers for the session just
 // opened — called from attachTerminalPane (Terminal mode) and from
 // session-overlay.js's setSessionMode (Chat mode, including a detached
 // session with no PTY). `state.status.tts` is the cheap config-presence
-// flag; the live /api/tts/health probe then refines which path the click
-// takes — summarize only ever appears once the hub is confirmed reachable.
-export function revealReadAloudButton() {
+// flag; the live /api/tts/health probe then refines it — summarize only ever
+// appears once the hub is confirmed reachable.
+export function refreshReadAloudAvailability() {
   const ttsConfigured = !!(state.status && state.status.tts);
-  els.terminalSpeak.hidden = !(isSpeechSupported() || ttsConfigured);
-  const summarizeAction = els.terminalSpeakPopover &&
-    els.terminalSpeakPopover.querySelector('[data-action="summarize"]');
-  if (summarizeAction) summarizeAction.hidden = true;
+  _readAloudAvailable = isSpeechSupported() || ttsConfigured;
+  _summarizeAvailable = false;
+  // `data-hub` tells a test (and a curious DevTools) the probe has settled.
+  if (els.terminalMenu) delete els.terminalMenu.dataset.hub;
   probeHub({
     token: readToken(),
     terminalToken: readTerminalToken(),
   }).then(function (ok) {
-    // A reachable hub means the button is useful even where Web Speech
+    // A reachable hub means read aloud is useful even where Web Speech
     // isn't supported (e.g. some embedded WebViews), and unlocks summarize.
-    if (ok) els.terminalSpeak.hidden = false;
-    if (summarizeAction) summarizeAction.hidden = !ok;
+    if (ok) _readAloudAvailable = true;
+    _summarizeAvailable = ok;
+    if (els.terminalMenu) els.terminalMenu.dataset.hub = ok ? 'up' : 'down';
   });
 }
 
-// Single wiring entrypoint for terminal.js's wireTerminal(): the 🔊 control
-// its speaking-state sync, and the summary modal.
+// Single wiring entrypoint for terminal.js's wireTerminal(): the speaking-state
+// sync and the summary modal.
 export function wireReadAloud() {
   onSpeakingChange(setSpeakingUI);
-  // When the reply finishes reading on its own, reset the button (done by
+  // When the reply finishes reading on its own, reset the ⋮ pulse (done by
   // setSpeakingUI(false) via onSpeakingChange) and confirm with a toast.
   onSpeechEnd(function () { toast('Finished reading.', 'good', { icon: 'volume-2' }); });
-  wireSpeakMenu();
   wireSummaryModal();
 }

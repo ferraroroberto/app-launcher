@@ -4,10 +4,10 @@ Read-aloud today reads the live xterm scrollback via a Claude-Code-shaped
 colour classifier (terminal-readback.js), so it only ever works in Terminal
 mode for that one agent. In Chat mode — and for a detached session, which can
 only ever show Chat — the reply is already available as structured text from
-the harness's own history file, so 🔊 reads the newest transcript entry
-instead: harness-agnostic, and it finally works for a detached session (the
-🔊 button never revealed for one before this fix, since it was only wired to
-Terminal mode's attach path).
+the harness's own history file, so Read aloud reads the newest transcript entry
+instead: harness-agnostic, and it works for a detached session too (its ⋮
+menu rows are decided from Chat mode as well as from Terminal mode's attach
+path).
 
 A capped entry (`truncated: true`) is upgraded to the full text via the
 uncapped `/transcript/entry?offset=` route before speaking — the same
@@ -26,6 +26,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._audio_mock import AUDIO_MOCK
+from tests.e2e._readaloud_menu import read_aloud_item, wait_for_hub_probe
 from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 
 pytestmark = pytest.mark.smoke
@@ -130,27 +131,20 @@ def _open_chat(page: Page, row) -> None:
 
 
 def _click_speak_and_capture_text(page: Page) -> str:
-    """Tap 🔊 and pick "Read aloud" from the popover (the mocked hub always
-    resolves reachable, so the popover deterministically opens — same wait
-    test_summarize_readback.py uses for the probe to clear `hidden`), then
-    wait for the resulting /api/tts/speak POST and return its ``text`` field."""
-    speak = page.locator("#terminalSpeak")
-    expect(speak).to_be_visible()
-    page.wait_for_selector(
-        '#terminalSpeakPopover [data-action="summarize"]:not([hidden])',
-        state="attached", timeout=10_000,
-    )
+    """Pick "Read aloud" from the ⋮ menu (once the hub probe has settled, so the
+    row is there to tap), then wait for the resulting /api/tts/speak POST and
+    return its ``text`` field."""
+    wait_for_hub_probe(page)
     with page.expect_request(_SPEAK_RE) as req_info:
-        speak.click()
-        page.locator('#terminalSpeakPopover [data-action="read"]').click()
+        read_aloud_item(page).click()
     return (req_info.value.post_data_json or {}).get("text", "")
 
 
 def test_detached_session_reveals_speak_button_and_reads_transcript(
     authed_page: Page, base_url: str
 ) -> None:
-    """The core ask: a detached (no-PTY) session gets a working 🔊 for the
-    first time, and it reads the transcript's newest assistant entry."""
+    """The core ask: a detached (no-PTY) session gets a working Read aloud row
+    in the ⋮ menu, and it reads the transcript's newest assistant entry."""
     _mock_sessions_list(authed_page, kind="remote")
     _mock_transcript(authed_page, {
         "available": True, "source": "native", "reason": None, "session_id": _SID,
@@ -168,8 +162,8 @@ def test_detached_session_reveals_speak_button_and_reads_transcript(
 
     row = _row(authed_page)
     _open_chat(authed_page, row)
-    # No Terminal segment for a detached session — before this fix the 🔊
-    # button never revealed at all, since it only ran off attachTerminalPane.
+    # No Terminal segment for a detached session — its read-aloud rows are
+    # decided from Chat mode too, not only off attachTerminalPane.
     expect(authed_page.locator("#sessionModeTerminal")).to_have_attribute("aria-disabled", "true")
     text = _click_speak_and_capture_text(authed_page)
     assert text == "All green, ship it.", text
@@ -228,17 +222,11 @@ def test_truncated_entry_reads_the_uncapped_text(authed_page: Page, base_url: st
 
     row = _row(authed_page)
     _open_chat(authed_page, row)
-    speak = authed_page.locator("#terminalSpeak")
-    expect(speak).to_be_visible()
-    authed_page.wait_for_selector(
-        '#terminalSpeakPopover [data-action="summarize"]:not([hidden])',
-        state="attached", timeout=10_000,
-    )
-    speak.click()
-    authed_page.locator('#terminalSpeakPopover [data-action="read"]').click()
-    # The button returns to idle once every chunked request has streamed and
+    wait_for_hub_probe(authed_page)
+    read_aloud_item(authed_page).click()
+    # The ⋮ button returns to idle once every chunked request has streamed and
     # finished playing — a bounded proxy for "all requests captured".
-    expect(authed_page.locator("#terminalSpeak")).to_have_attribute("aria-pressed", "false")
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "false")
 
     total = sum(len(t) for t in captured)
     assert len(captured) >= 2, f"expected the long reply to split into multiple requests, got {captured}"

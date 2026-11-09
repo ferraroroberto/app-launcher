@@ -2,7 +2,7 @@
        modes. `data-mode="terminal"` shows the live PTY (#terminalHost + the
        docked composer); `data-mode="chat"` shows the transcript's chat-style
        cards (#chatPane). The bar is shared: ‹ Back · title · context ring ·
-       Terminal⇄Chat · 🔊 · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
+       Terminal⇄Chat · ⋮. Mode routing lives in session-overlay.js; the terminal pane in
        terminal.js, the chat pane in session-transcript.js. -->
   <div id="terminalOverlay" class="terminal-overlay" hidden>
     <div class="terminal-bar">
@@ -26,14 +26,9 @@
           <button data-track="session.mode-terminal" id="sessionModeTerminal" type="button" class="session-mode-btn" data-mode="terminal" title="Show the terminal" aria-label="Terminal" aria-pressed="true"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-terminal"></use></svg></button>
           <button data-track="session.mode-chat" id="sessionModeChat" type="button" class="session-mode-btn" data-mode="chat" title="Show the chat" aria-label="Chat" aria-pressed="false"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-messages-square"></use></svg></button>
         </div>
-        <button data-track="session.speak" id="terminalSpeak" type="button" class="icon-button term-btn" title="Read the last reply aloud" aria-label="Read the last reply aloud" aria-pressed="false" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg></button>
-        <!-- ⋮ session menu (#981): Rename · Copy link · Stop and kill, built by
+        <!-- ⋮ session menu (#981): Rename · Copy link · Read aloud · Stop and kill, built by
              terminal-bar.js on the shared row-menu component. -->
         <button data-track="session.menu" id="terminalMenu" type="button" class="icon-button term-btn" title="Session actions" aria-label="Session actions"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-ellipsis-vertical"></use></svg></button>
-      </div>
-      <div id="terminalSpeakPopover" class="speak-popover" hidden>
-        <button data-track="session.read-aloud" type="button" class="speak-action" data-action="read"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-volume-2"></use></svg> Read aloud</button>
-        <button data-track="session.summarize-read" type="button" class="speak-action" data-action="summarize" hidden><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-file-text"></use></svg> Summarize &amp; read</button>
       </div>
     </div>
     <!-- Chat pane (#953 → #982): the session's whole conversation,

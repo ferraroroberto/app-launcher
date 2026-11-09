@@ -70,19 +70,17 @@ def test_terminal_bar_buttons_stay_within_viewport(
     # measurement targets the actual open terminal, not the other (hidden,
     # zero-size) bar sharing the same class names.
     #
-    # Force 🔊 visible (the worst case), then confirm every button lands
-    # fully inside the viewport with no scrolling — reachable, not clipped
-    # past the screen edge. The context ring (#1223) draws once its stubbed
-    # route has answered, and says what it shows.
+    # Confirm every button lands fully inside the viewport with no scrolling
+    # — reachable, not clipped past the screen edge. The context ring (#1223)
+    # draws once its stubbed route has answered, and says what it shows.
     ring = authed_page.locator("#contextRing")
     expect(ring).to_be_visible()
     expect(ring).to_have_attribute("aria-label", "Context window 42% used")
-    authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
     boxes = authed_page.eval_on_selector_all(
         "#terminalOverlay .terminal-bar-actions .term-btn, #sessionMode",
         "els => els.map(el => el.getBoundingClientRect())",
     )
-    assert len(boxes) == 4, "expected the context ring, 🔊, ⋮ and the mode toggle in the group"
+    assert len(boxes) == 3, "expected the context ring, ⋮ and the mode toggle in the group"
     for box in boxes:
         assert box["left"] >= 0, f"button left edge {box['left']} clipped before the viewport"
         assert box["right"] <= viewport_width, (
@@ -137,25 +135,22 @@ def test_terminal_bar_fits_at_once_on_default_phone(
 
     viewport_width = authed_page.evaluate("window.innerWidth")
 
-    # Worst case is a Claude session where the 🔊 read-aloud button (#190) is
-    # visible — unhide it so the measurement covers every action button —
-    # and the context ring (#1223) is drawn, here at a danger-tier 87%.
+    # The context ring (#1223) is drawn, here at a danger-tier 87%.
     ring = authed_page.locator("#contextRing")
     expect(ring).to_be_visible()
     expect(ring).to_have_attribute("data-tier", "danger")
-    authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
 
     # Equal-size contract: the Back button is the same 44px target as every
     # other bar button (the #496 64px widening is what tipped the row over),
     # the ring included.
     widths = authed_page.evaluate(
-        "() => ['#terminalBack', '#contextRing', '#terminalSpeak', '#terminalMenu']"
+        "() => ['#terminalBack', '#contextRing', '#terminalMenu']"
         ".map(s => document.querySelector(s).getBoundingClientRect().width)"
     )
     assert max(widths) - min(widths) <= 1, f"bar buttons unequal widths: {widths}"
     assert min(widths) >= 44, f"a bar button under the 44px target: {widths}"
     # The toggle and the ring are the same 44px tall as their neighbours
-    # (#982, #1223); the ring leads the group, then the toggle, then 🔊.
+    # (#982, #1223); the ring leads the group, then the toggle.
     toggle = authed_page.eval_on_selector("#sessionMode", "el => el.getBoundingClientRect()")
     assert abs(toggle["height"] - widths[0]) <= 1, f"toggle height {toggle['height']} vs 44px controls"
     ring_box = authed_page.eval_on_selector("#contextRing", "el => el.getBoundingClientRect()")
@@ -166,7 +161,7 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         "#terminalOverlay .terminal-bar-actions > *:not([hidden])",
         "els => els.map(el => el.id)",
     )
-    assert order[:3] == ["contextRing", "sessionMode", "terminalSpeak"], order
+    assert order[:2] == ["contextRing", "sessionMode"], order
 
     # The actions group must not need its scroller on this width…
     group = authed_page.eval_on_selector(
@@ -184,8 +179,8 @@ def test_terminal_bar_fits_at_once_on_default_phone(
         " box: el.getBoundingClientRect()}))",
     )
     visible = [b for b in buttons if not b["hidden"]]
-    assert len(visible) == 4, (
-        f"expected all 4 bar buttons visible, hidden: "
+    assert len(visible) == 3, (
+        f"expected all 3 bar buttons visible, hidden: "
         f"{[b['id'] for b in buttons if b['hidden']]}"
     )
     for b in visible:

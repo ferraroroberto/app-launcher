@@ -10,8 +10,8 @@
  * `translateToString()` throws that colour away, so the live reader pulls each
  * line's leading-cell foreground straight from the xterm cell API and tags the
  * line `assistant` / `tool` / `none`. The buffer then segments cleanly into an
- * ordered list of reply blocks — no bottom-up boundary-walk heuristics. The 🔊
- * button reads the LAST block by default; a future depth-selector ("read last
+ * ordered list of reply blocks — no bottom-up boundary-walk heuristics. The ⋮ menu
+ * "Read aloud" row reads the LAST block by default; a future depth-selector ("read last
  * N") is just a slice of that list.
  *
  * One small residual filter survives the colour signal: the per-turn epilogue

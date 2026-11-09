@@ -73,9 +73,7 @@ def test_model_pill_sits_left_of_the_ring_and_the_header_still_fits(
     expect(pill).to_be_visible()
     expect(pill).to_have_text("Opus")
     expect(ring).to_be_visible()
-    # Every control showing (read-aloud included, the usual case on a phone
-    # with TTS), at a current iPhone's width: the pill reads in full.
-    authed_page.evaluate("document.querySelector('#terminalSpeak').hidden = false")
+    # Every control showing, at a current iPhone's width: the pill reads in full.
     authed_page.set_viewport_size({"width": 390, "height": 740})
     wide = authed_page.evaluate(
         "() => { const p = document.querySelector('#terminalModel');"

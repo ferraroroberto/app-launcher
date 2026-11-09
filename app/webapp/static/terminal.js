@@ -52,7 +52,7 @@ import {
   watchLatestPill,
   wireTerminalMenu,
 } from './terminal/terminal-bar.js';
-import { closeSpeakPopover, revealReadAloudButton, stopReading, wireReadAloud } from './terminal/terminal-readaloud.js';
+import { refreshReadAloudAvailability, stopReading, wireReadAloud } from './terminal/terminal-readaloud.js';
 import {
   beginRepaintBatch,
   clearTerminalReconnect,
@@ -406,10 +406,10 @@ function syncPaneChrome(session, isMirror) {
     ocr: !!(state.status && state.status.screenshot_ocr),
   });
 
-  // The 🔊 read-aloud button reveal/probe lives in
-  // terminal-readaloud.js — it needs both the cheap status flag and a live
-  // hub health probe (see revealReadAloudButton for why).
-  revealReadAloudButton();
+  // Which ⋮ read-aloud rows to offer lives in terminal-readaloud.js — it
+  // needs both the cheap status flag and a live hub health probe (see
+  // refreshReadAloudAvailability for why).
+  refreshReadAloudAvailability();
 
   // Mirror window uses a uniquely identifiable OS title so the launcher
   // can find this Edge --app window via EnumWindows and dismiss it
@@ -820,7 +820,6 @@ export function hideTerminal() {
   // cleared for the same reason.
   stashActiveTerminal();
   terminalComposer.closePopovers();
-  closeSpeakPopover();
   closeTerminalMenu();
   els.terminalOverlay.hidden = true;
   document.body.classList.remove('terminal-open');
@@ -852,8 +851,8 @@ export function wireTerminal() {
   wireTerminalMenu();
   mountTerminalComposer();
   wireTerminalImage();
-  // 🔊 read-aloud control — wiring lives in
-  // terminal-readaloud.js, alongside the button's action menu and the
+  // Read-aloud — wiring lives in
+  // terminal-readaloud.js, alongside its ⋮ menu rows and the
   // summary modal it opens.
   wireReadAloud();
 }

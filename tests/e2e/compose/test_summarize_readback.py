@@ -1,10 +1,9 @@
 """Regression pin for the read-aloud "summarize & read" dropdown (issue #210).
 
-The 🔊 read-aloud button becomes a small action menu: "Read aloud" (verbatim,
-#190/#203/#206) and "Summarize & read" — the reply is condensed by the hub's
-``claude-haiku-4-5`` (``POST /api/tts/summarize``) before it is spoken, for
-hands-free / driving listening. The menu only appears when the hub is reachable;
-otherwise the button keeps its original single-tap behaviour.
+The session bar's ⋮ menu carries "Read aloud" (verbatim, #190/#203/#206) and
+"Summarize & read" — the reply is condensed by the hub's ``claude-haiku-4-5``
+(``POST /api/tts/summarize``) before it is spoken, for hands-free / driving
+listening. The Summarize row only appears when the hub is reachable.
 
 The summary fetch arms the hub AudioContext in the click gesture (``prepareHub``)
 *before* awaiting the LLM, then reads into it (``speakHubInto``) so iOS still
@@ -15,10 +14,18 @@ mirroring ``test_hub_readback.py``.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._audio_mock import AUDIO_MOCK
+from tests.e2e._readaloud_menu import (
+    READ_ITEM,
+    SUMMARIZE_ITEM,
+    open_menu,
+    wait_for_hub_probe,
+)
 from tests.e2e._surface import surface
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 
@@ -121,23 +128,22 @@ def test_summarize_then_play_composes(
 def test_menu_offers_both_actions_when_hub_available(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """When the hub is reachable, tapping 🔊 opens a dropdown with both
-    "Read aloud" and "Summarize & read"."""
+    """When the hub is reachable, the ⋮ menu lists both "Read aloud" and
+    "Summarize & read", above "Stop and kill"; there is no separate speaker
+    button in the bar."""
     _route_hub(authed_page, available=True)
     _open_terminal(authed_page, base_url, launched_pty_session)
-    # The probe clears the summarize action's `hidden` attribute once the hub
-    # answers available (the action lives inside the still-closed popover, so it
-    # isn't *rendered* yet — wait on the attribute, not visibility).
-    authed_page.wait_for_selector(
-        '#terminalSpeakPopover [data-action="summarize"]:not([hidden])',
-        state="attached", timeout=10_000,
+    # The rows are built on every open, so wait for the probe to settle first.
+    wait_for_hub_probe(authed_page, "up")
+    expect(authed_page.locator("#terminalSpeak")).to_have_count(0)
+    open_menu(authed_page)
+    expect(authed_page.locator(READ_ITEM)).to_be_visible()
+    expect(authed_page.locator(SUMMARIZE_ITEM)).to_be_visible()
+    order = authed_page.locator(".terminal-menu [role=menuitem]").evaluate_all(
+        "els => els.map(e => e.dataset.item || e.textContent.trim())"
     )
-    authed_page.locator("#terminalSpeak").click()
-    expect(authed_page.locator("#terminalSpeakPopover")).to_be_visible()
-    expect(authed_page.locator('#terminalSpeakPopover [data-action="read"]')).to_be_visible()
-    expect(
-        authed_page.locator('#terminalSpeakPopover [data-action="summarize"]')
-    ).to_be_visible()
+    stop = order.index("action-stop-close")
+    assert order.index("overlay-read-aloud-btn") < order.index("overlay-summarize-read-btn") < stop, order
 
 
 def test_summary_modal_autocloses_when_reading_ends(
@@ -169,16 +175,31 @@ def test_summary_modal_tap_dismisses(
 def test_menu_suppressed_when_hub_unavailable(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """With the hub down, the summarize action stays hidden and 🔊 keeps its
-    original single-tap behaviour — no dropdown opens."""
+    """With the hub down, the ⋮ menu still offers Read aloud (on-device
+    speech) but never Summarize & read."""
     _route_hub(authed_page, available=False)
     _open_terminal(authed_page, base_url, launched_pty_session)
-    # The summarize action keeps its `hidden` attribute (the probe never cleared
-    # it). Give the probe a beat to resolve, then confirm the attribute remains.
-    authed_page.wait_for_selector(
-        '#terminalSpeakPopover [data-action="summarize"][hidden]',
-        state="attached", timeout=10_000,
-    )
-    authed_page.locator("#terminalSpeak").click()
-    # Single-tap read path — the popover never opens (no reply yet → a toast).
-    expect(authed_page.locator("#terminalSpeakPopover")).to_be_hidden()
+    wait_for_hub_probe(authed_page, "down")
+    open_menu(authed_page)
+    expect(authed_page.locator(READ_ITEM)).to_be_visible()
+    expect(authed_page.locator(SUMMARIZE_ITEM)).to_have_count(0)
+
+
+def test_menu_row_stops_a_read_in_progress(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    """With the speaker button gone, the ⋮ menu is where a read is stopped:
+    while speech plays the ⋮ button pulses, the Read aloud row reads "Stop
+    reading", the Summarize row steps aside, and tapping the row silences it."""
+    authed_page.add_init_script(AUDIO_MOCK)
+    _route_hub(authed_page, available=True)
+    _open_terminal(authed_page, base_url, launched_pty_session)
+    wait_for_hub_probe(authed_page, "up")
+    authed_page.evaluate("() => window.__readback.speakHub('Reading on.', {})")
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "true")
+    expect(authed_page.locator("#terminalMenu")).to_have_class(re.compile(r"\bspeaking\b"))
+    open_menu(authed_page)
+    expect(authed_page.locator(READ_ITEM)).to_have_text("Stop reading")
+    expect(authed_page.locator(SUMMARIZE_ITEM)).to_have_count(0)
+    authed_page.locator(READ_ITEM).click()
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute("data-speaking", "false")

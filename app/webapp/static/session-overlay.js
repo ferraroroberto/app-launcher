@@ -44,7 +44,7 @@ import { pinChatToKeyboard } from './chat/chat-send.js';
 import { applyTermTheme } from './terminal/terminal-theme.js';
 import { closeTerminalMenu, updateLatestPill } from './terminal/terminal-bar.js';
 import { syncContextRing, wireContextRing } from './context-ring.js';
-import { closeSpeakPopover, revealReadAloudButton } from './terminal/terminal-readaloud.js';
+import { refreshReadAloudAvailability } from './terminal/terminal-readaloud.js';
 import { terminalComposer } from './terminal/terminal-compose.js';
 import { isWideLayout } from './layout.js';
 import { setTab } from './tabs.js';
@@ -159,7 +159,6 @@ export function setSessionMode(mode) {
   if (changed) {
     releasePin();
     closeTerminalMenu();
-    closeSpeakPopover();
     terminalComposer.closePopovers();
     closeChatComposerPopovers();
   }
@@ -183,9 +182,9 @@ export function setSessionMode(mode) {
     }
   } else {
     if (chatPaneSession() !== s.session_id) openChatPane(s);
-    // A detached session never runs attachTerminalPane's reveal — the
-    // 🔊 button lives in the shared bar, so Chat mode reveals it here too.
-    revealReadAloudButton();
+    // A detached session never runs attachTerminalPane's refresh — the
+    // ⋮ menu is shared, so Chat mode refreshes the read-aloud rows here too.
+    refreshReadAloudAvailability();
     updateLatestPill();
     pinChatToKeyboard();
   }

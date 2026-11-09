@@ -37,6 +37,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._contrast import contrast_ratio
+from tests.e2e._readaloud_menu import stub_hub_health, wait_for_hub_probe
 from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS, stable_eval, stable_read
 
@@ -390,9 +391,10 @@ def _assert_step_group_folds_and_items(authed_page: Page) -> None:
     expect(group).to_have_count(1)
     expect(group).to_be_visible()
     menu = authed_page.locator(".terminal-menu")
+    wait_for_hub_probe(authed_page)
     eye = _menu_item(authed_page, "Hide steps: tool calls and system entries")
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud", "Summarize & read", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     eye.click()
     expect(menu).to_be_hidden()
@@ -449,6 +451,7 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, {None: _NEWEST, 4096: _OLDER}, calls)
     _mock_transcript_images(authed_page, image_calls)
+    stub_hub_health(authed_page)
     # Tall enough that the list never scrolls: since the turn grew its Edited
     # card (#1477) the list overflowed the default window, so folding the
     # prompt scrolled it to the top, which pulls the older page in by itself
@@ -466,19 +469,20 @@ def test_transcript_shows_turns_folds_tools_and_loads_older(
     # opening a session is not what opens it.
     expect(authed_page.locator(".session-menu")).to_be_hidden()
     # The shared bar: the context ring's slot (#1223), then the Terminal /
-    # Chat segments, 🔊 and ⋮ after them, ⋮ last (#981/#982); no chat-only
+    # Chat segments, ⋮ after them, ⋮ last (#981/#982); no chat-only
     # bar buttons. The ring stays hidden here: this session's context use is
     # unknown (the host has no such session), and unknown is never drawn.
     bar_ids = authed_page.locator("#terminalOverlay .terminal-bar-actions button").evaluate_all(
         "els => els.map(e => e.id)"
     )
     assert bar_ids == [
-        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalSpeak", "terminalMenu",
+        "contextRing", "sessionModeTerminal", "sessionModeChat", "terminalMenu",
     ], bar_ids
-    # 🔊 is a top-bar control, NOT in the composer (which is for editing). The
-    # bar is one shared element in both modes, so this list is also the
-    # terminal-mode bar test_voice_readback.py used to pin separately (#1515).
-    expect(authed_page.locator("#terminalComposeBar #terminalSpeak")).to_have_count(0)
+    # Read aloud lives in the ⋮ menu, not as a bar button (and not in the
+    # composer, which is for editing). The bar is one shared element in both
+    # modes, so this list is also the terminal-mode bar test_voice_readback.py
+    # used to pin separately (#1515).
+    expect(authed_page.locator("#terminalSpeak")).to_have_count(0)
     expect(authed_page.locator("#contextRing")).to_be_hidden()
     expect(authed_page.locator("#sessionModeChat")).to_have_attribute("aria-pressed", "true")
     # A full-control session has no detached note.

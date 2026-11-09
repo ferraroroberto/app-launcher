@@ -26,6 +26,7 @@ import re
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._readaloud_menu import stub_hub_health, wait_for_hub_probe
 from tests.e2e.fixtures.ui import open_session_row, stub_session_mirror
 from tests.e2e.fixtures.waits import stable_read, wait_until
 
@@ -139,7 +140,9 @@ def _open_session_menu(page: Page, sid: str = _SID, mode: str | None = None):
     menu there is (the row's own gear menu is gone; its items live here and,
     for Chat/Terminal, in the bar's segmented toggle)."""
     stub_session_mirror(page)
+    stub_hub_health(page)
     open_session_row(page, _open_row(page, sid), mode=mode)
+    wait_for_hub_probe(page)
     page.locator("#terminalMenu").click()
     menu = page.locator(".terminal-menu")
     expect(menu).to_be_visible()
@@ -174,10 +177,11 @@ def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str,
     expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
     # Chat mode's full set (#982): the chat-only rows sit between Copy
     # link and Stop, and nothing named Send appears for either kind. Changed
-    # files (#1349) follows Copy link in both modes; Compact (#1218) sits
-    # last in the safe group, above the destructive divider.
+    # files (#1349) follows Copy link in both modes; the read-aloud rows
+    # follow Links with the hub up; Compact (#1218) sits last in the safe
+    # group, above the destructive divider.
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud", "Summarize & read", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
     )
     expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
 
@@ -198,14 +202,14 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     menu = _open_session_menu(authed_page, mode="terminal")
 
-    # Terminal mode: Rename · Copy link · Changed files · Background tasks · Links · Compact · Stop and
-    # kill (the chat-only rows are detached from the DOM, not hidden — #982;
+    # Terminal mode: Rename · Copy link · Changed files · Background tasks · Links · Read aloud ·
+    # Summarize & read · Compact · Stop and kill (the chat-only rows are detached from the DOM, not hidden — #982;
     # Changed files and Compact show in both modes for a Claude session —
     # #1349, #1218).
     buttons = menu.locator("button")
-    expect(buttons).to_have_count(7)
+    expect(buttons).to_have_count(9)
     labels = menu.locator(".row-menu-label")
-    expect(labels).to_have_text(["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Compact", "Stop and kill"])
+    expect(labels).to_have_text(["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud", "Summarize & read", "Compact", "Stop and kill"])
     for i in range(6):
         expect(buttons.nth(i).locator("svg.icon")).to_have_count(1)
         expect(labels.nth(i)).to_be_visible()
