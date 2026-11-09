@@ -34,9 +34,8 @@ def _closed(number: int, title: str, closed: datetime, **extra) -> dict:
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_done_rows_show_proof_no_proof_or_nothing(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     now = datetime.now(timezone.utc)
     payload = _board_payload()
@@ -57,7 +56,6 @@ def test_done_rows_show_proof_no_proof_or_nothing(
     authed_page.route(re.compile(r".*/api/board/proof/demo-project/21$"), serve_report)
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _open_board(authed_page, base_url)
-    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     _unfold(authed_page, "boardColDone")
 
     rows = authed_page.locator("#boardColDone li.board-item")

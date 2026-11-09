@@ -303,16 +303,13 @@ _LEGS = [
 ]
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("leg", _LEGS, ids=[name for name, _ in _LEGS])
 def test_the_button_sheet_and_overlay_fit_a_narrow_phone_with_44px_targets(
-    authed_page: Page, base_url: str, leg, theme: str
+    authed_page: Page, base_url: str, leg
 ) -> None:
     _name, viewport = leg
     seen, sockets, page = _open_view(authed_page, base_url)
     page.set_viewport_size(viewport)
-    page.emulate_media(color_scheme=theme)
-    page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     vw, vh = viewport["width"], viewport["height"]
 
     # The widest the tools row gets: Control, with the style switch and the

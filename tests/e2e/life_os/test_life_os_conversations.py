@@ -485,25 +485,22 @@ _BOT_TITLE = "Telegram bot - journal-daily"
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_life_os_bot_chat_is_listed_under_system_apart_from_the_list(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     """The server sends a bot chat apart: the list holds only the owner's own
     conversation, and a collapsed "System (1)" under it opens the bot chat
     read-only (the reader and its Done, no sheet, so no Resume), whole inside
-    the viewport at 390 px in both themes. Set E2E_SHOT_DIR to keep a
-    screenshot of each (local review only; stubbed data)."""
+    the viewport at 390 px (the theme moves no box). Set E2E_SHOT_DIR to keep a
+    screenshot in each theme (local review only; stubbed data)."""
     bot, normal = _FAKE_CONVERSATIONS["conversations"]
     body = {**_FAKE_CONVERSATIONS, "conversations": [normal],
             "system": [{**bot, "title": _BOT_TITLE}]}
     authed_page.set_viewport_size({"width": 390, "height": 844})
-    authed_page.emulate_media(color_scheme=theme)
     _mock_skills(authed_page)
     _mock_conversations(authed_page, body)
     _mock_transcript(authed_page)
     _open_conversations(authed_page, base_url)
-    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     rows = _convo_rows(authed_page)
     expect(rows).to_have_count(1)
     expect(rows.locator(".action-row-title")).to_have_text("an early trial run")
@@ -519,7 +516,9 @@ def test_life_os_bot_chat_is_listed_under_system_apart_from_the_list(
     assert stable_eval(title, "el => el.scrollWidth <= el.clientWidth + 1") is True
     shot_dir = os.environ.get("E2E_SHOT_DIR")
     if shot_dir:
-        authed_page.screenshot(path=os.path.join(shot_dir, f"system-group-{theme}.png"))
+        for theme in ("light", "dark"):
+            authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            authed_page.screenshot(path=os.path.join(shot_dir, f"system-group-{theme}.png"))
     system_rows.first.locator(".action-row-main").click()
     expect(authed_page.locator("#lifeOsConvoViewer")).to_be_visible(timeout=5_000)
     expect(authed_page.locator("#lifeOsViewerList")).to_contain_text("book the ferry for Friday")

@@ -30,22 +30,22 @@ _TITLED_DIALOGS = [
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("dialog_id, title_id", _TITLED_DIALOGS)
-def test_dialog_title_has_no_ring_but_tabbed_control_does(
-    authed_page: Page, base_url: str, dialog_id: str, title_id: str
-) -> None:
+def test_dialog_title_has_no_ring_but_tabbed_control_does(authed_page: Page, base_url: str) -> None:
+    """One page load opens each dialog in turn; each closes before the next
+    opens, so every title takes the open's focus fresh."""
     authed_page.goto(base_url, wait_until="domcontentloaded")
-    authed_page.evaluate(f"document.getElementById('{dialog_id}').showModal()")
+    for dialog_id, title_id in _TITLED_DIALOGS:
+        authed_page.evaluate(f"document.getElementById('{dialog_id}').showModal()")
 
-    title = authed_page.locator(f"#{title_id}")
-    expect(title).to_be_focused()
-    expect(title).to_have_css("outline-style", "none")
+        title = authed_page.locator(f"#{title_id}")
+        expect(title).to_be_focused()
+        expect(title).to_have_css("outline-style", "none")
 
-    # Keyboard focus on a real control inside the sheet keeps its ring.
-    authed_page.keyboard.press("Tab")
-    control = authed_page.locator(f"#{dialog_id} :focus")
-    expect(control).to_have_count(1)
-    expect(control).not_to_have_id(title_id)
-    expect(control).to_have_css("outline-style", "solid")
+        # Keyboard focus on a real control inside the sheet keeps its ring.
+        authed_page.keyboard.press("Tab")
+        control = authed_page.locator(f"#{dialog_id} :focus")
+        expect(control).to_have_count(1)
+        expect(control).not_to_have_id(title_id)
+        expect(control).to_have_css("outline-style", "solid")
 
-    authed_page.evaluate(f"document.getElementById('{dialog_id}').close()")
+        authed_page.evaluate(f"document.getElementById('{dialog_id}').close()")

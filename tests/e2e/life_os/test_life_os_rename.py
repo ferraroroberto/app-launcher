@@ -146,19 +146,16 @@ def test_life_os_sheet_rename_survives_a_reload_and_clears_back_to_the_topic(
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_life_os_rename_sheet_prefill_fits_at_phone_width(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     """#1953: at 390 px the pre-filled topic sits whole inside the input and
-    the input inside the sheet's card, in both themes. Set E2E_SHOT_DIR to
+    the input inside the sheet's card (the theme moves no box). Set E2E_SHOT_DIR to
     keep a screenshot of each (local review only; stubbed data)."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
-    authed_page.emulate_media(color_scheme=theme)
     _mock_skills(authed_page)
     _mock_renamable_conversations(authed_page)
     _open_conversations(authed_page, base_url)
-    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
     field = authed_page.locator("#confirmDialogInput")
     expect(field).to_have_value("booking the ferry")
@@ -175,14 +172,15 @@ def test_life_os_rename_sheet_prefill_fits_at_phone_width(
     assert fit == {"textFits": True, "insideCard": True, "insideViewport": True}, fit
     shot_dir = os.environ.get("E2E_SHOT_DIR")
     if shot_dir:
-        authed_page.screenshot(
-            path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
+        for theme in ("light", "dark"):
+            authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            authed_page.screenshot(
+                path=os.path.join(shot_dir, f"rename-prefill-{theme}.png"))
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     """#1972: a topic over the 120-character title limit pre-fills cut at a
     word, so the field is valid before anything is typed (no "Use no more than
@@ -191,7 +189,6 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
     long_topic = " ".join(["plan the autumn trip around the lakes and book the slow ferry"] * 5)
     first, *rest = _FAKE_CONVERSATIONS["conversations"]
     authed_page.set_viewport_size({"width": 390, "height": 844})
-    authed_page.emulate_media(color_scheme=theme)
     _mock_skills(authed_page)
     _mock_conversations(authed_page, {
         **_FAKE_CONVERSATIONS, "conversations": [{**first, "topic": long_topic}, *rest]})
@@ -201,7 +198,6 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
         lambda route: (patches.append(route.request.url), route.fallback())
         if route.request.method == "PATCH" else route.fallback())
     _open_conversations(authed_page, base_url)
-    authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
     _open_sheet(authed_page, 0).locator(".lifeos-convo-rename").click()
     field = authed_page.locator("#confirmDialogInput")
     expect(field).to_be_focused()
@@ -211,8 +207,10 @@ def test_life_os_rename_prefill_of_a_long_topic_is_cut_to_the_title_limit(
     assert field.evaluate("el => el.validity.valid && el.validationMessage === ''")
     shot_dir = os.environ.get("E2E_SHOT_DIR")
     if shot_dir:
-        authed_page.screenshot(
-            path=os.path.join(shot_dir, f"rename-long-topic-{theme}.png"))
+        for theme in ("light", "dark"):
+            authed_page.evaluate("t => { document.documentElement.dataset.theme = t; }", theme)
+            authed_page.screenshot(
+                path=os.path.join(shot_dir, f"rename-long-topic-{theme}.png"))
     authed_page.locator("#confirmDialogOk").click()
     expect(authed_page.locator("#confirmDialog")).to_be_hidden()
     flush_requests(authed_page)

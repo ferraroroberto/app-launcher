@@ -243,12 +243,10 @@ _LABELS_JS = """() => [...document.querySelectorAll('#screenKeys [data-clip]')]
              clipped: e.scrollWidth > e.clientWidth + 1 }; })"""
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
-def test_the_paste_keys_fit_a_narrow_phone_in_both_themes(
-    authed_page: Page, base_url: str, theme: str
+def test_the_paste_keys_fit_a_narrow_phone(
+    authed_page: Page, base_url: str
 ) -> None:
     _seen, _sockets, page = _open_bar(authed_page, base_url)
-    page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     keys = page.locator("#screenKeys")
     for width, height in ((320, 640), (360, 740), (844, 390)):
         page.set_viewport_size({"width": width, "height": height})
@@ -266,6 +264,6 @@ def test_the_paste_keys_fit_a_narrow_phone_in_both_themes(
                 return len(boxes) == 2
 
             wait_until(page, two, "both paste keys")
-            assert all(b["h"] >= 44 and b["w"] >= 43.5 for b in boxes), (theme, width, target, boxes)
-            assert all(b["l"] >= -0.5 and b["r"] <= width + 0.5 for b in boxes), (theme, width, target, boxes)
-            assert not any(b["clipped"] for b in boxes), (theme, width, target, boxes)
+            assert all(b["h"] >= 44 and b["w"] >= 43.5 for b in boxes), (width, target, boxes)
+            assert all(b["l"] >= -0.5 and b["r"] <= width + 0.5 for b in boxes), (width, target, boxes)
+            assert not any(b["clipped"] for b in boxes), (width, target, boxes)

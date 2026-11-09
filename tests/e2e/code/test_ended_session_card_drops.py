@@ -81,16 +81,14 @@ def _boot(page: Page, base_url: str) -> dict:
     return knobs
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_docked_view_does_not_keep_an_ended_sessions_card(
-    authed_page: Page, base_url: str, browser_name: str, theme: str
+    authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     if browser_name != "chromium":
         pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
     page = authed_page
     page.set_viewport_size({"width": 1440, "height": 900})
     knobs = _boot(page, base_url)
-    page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
 
     # The session whose card must go is the one docked beside the list.
     _row(page, _END).locator(".session-open").click()
