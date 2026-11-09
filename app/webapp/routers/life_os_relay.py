@@ -86,6 +86,7 @@ from app.webapp.routers.life_os_spawn import (
 )
 from app.webapp.routers.sessions import session_input
 from src import audit, board
+from src.board import card_status
 from src.clients import session as session_client
 from src.launching.channel_profiles import (
     LABEL_PREFIX,
@@ -228,7 +229,7 @@ async def _turn_finished(caller: _Caller, sid: str) -> bool:
         board.read_sessions_state, Path(caller.cfg.sessions_state_file))
     cards = await asyncio.to_thread(board.merge_sessions, caller.sessions, state["rows"])
     card = next((c for c in cards if str(c.get("session_id")) == sid), None)
-    return card is not None and card.get("status") == "idle-finished"
+    return card is not None and card.get("status") == card_status.IDLE_FINISHED
 
 
 async def _target(caller: _Caller, sid: str) -> Dict[str, Any]:

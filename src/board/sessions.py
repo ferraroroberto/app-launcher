@@ -23,10 +23,11 @@ import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AbstractSet, Any, Dict, FrozenSet, List, Optional, Tuple
+from typing import AbstractSet, Any, Callable, Dict, FrozenSet, List, Optional, Tuple
 
 from src import audit
 from src._log_once import log_once
+from src.board import card_status
 from src.board.active_issue_claims import CLAIM_DEAD
 from src.board.state import STATE_STALE_AFTER, age_seconds, parse_iso, utc_now
 from src.board.transcript import (
@@ -86,12 +87,6 @@ def active_issue_repos(
                 repos.add(repo.strip().lower())
     return frozenset(repos)
 
-# Statuses the hook writer emits; anything else renders as "unknown". This
-# gates the *raw* row status only — a card's final ``status`` can diverge
-# further downstream (the transcript overlay, and the needs-you split;
-# see :func:`merge_sessions`).
-_KNOWN_STATUSES = frozenset({"working", "needs-you", "idle"})
-
 _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 # One breadcrumb per rejected state id per webapp process. GET /api/board polls
@@ -108,9 +103,9 @@ _SUPPRESSED_LOG_CAP = 512
 # ``awaiting-input``. The hook side is reliable: in both a plan-mode and a
 # skip-permissions session the picker fires a ``permission_prompt``
 # Notification ~6 s after it appears, which stamps ``needs-you``. So only the
-# outcomes of a ``needs-you`` split that found no pending decision get the
-# screen check — the same read Chat's plan card does (``src.session_view.plan_picker``).
-_SCREEN_CHECKED_STATUSES = frozenset({"idle-finished", "awaiting-input", "tool-pending"})
+# outcomes of a ``needs-you`` split that found no pending decision
+# (:data:`src.board.card_status.SCREEN_CHECKED`) get the screen check — the
+# same read Chat's plan card does (``src.session_view.plan_picker``).
 
 # session id -> ((capture size, mtime_ns, rows, cols), picker showing). The
 # render is the cost (~55 ms for the 96 KB tail on the dev box, per card), and
@@ -517,34 +512,72 @@ def merge_sessions(
     return cards
 
 
+def derive_card_status(
+    row: Optional[Dict[str, Any]],
+    anchor: Optional[datetime],
+    *,
+    now: datetime,
+    project: Any,
+    active_repos: AbstractSet[str],
+    process_confirmed: bool = True,
+    live_title: Optional[str] = None,
+    last_output_at: Optional[float] = None,
+    picker_on_screen: Optional[Callable[[], bool]] = None,
+) -> Tuple[str, Optional[datetime]]:
+    """A card's ``(status, age-anchor)`` from its claimed state row, if any.
+
+    The one ordered derivation for live and external cards alike:
+
+    1. a raw stamp outside :data:`src.board.card_status.HOOK_STAMPS` is
+       ``unknown``;
+    2. :func:`src.board.transcript._transcript_overlay` overrides a waiting
+       stamp from the live title and the transcript;
+    3. :func:`src.board.transcript._refine_waiting_status` splits
+       ``needs-you`` into a card value;
+    4. ``picker_on_screen`` (a live launcher PTY only; ``None`` means no
+       screen to read) turns a :data:`~src.board.card_status.SCREEN_CHECKED`
+       value into ``awaiting-decision``;
+    5. ``idle-finished`` in a repo with an open issue workflow reads
+       ``awaiting-input``: a clean stop is only an absence of evidence.
+
+    An external card passes ``process_confirmed=False`` (no process evidence,
+    so no ``stalled``) and no live title or screen.
+    """
+    raw_status = (row or {}).get("status")
+    status = raw_status if raw_status in card_status.HOOK_STAMPS else card_status.UNKNOWN
+    tail = _ExchangeTail((row or {}).get("transcript_path"))
+    status, anchor = _transcript_overlay(
+        row, status, anchor, now=now, live_title=live_title,
+        last_output_at=last_output_at, tail=tail, process_confirmed=process_confirmed,
+    )
+    status = _refine_waiting_status(status, tail)
+    if (
+        picker_on_screen is not None
+        and status in card_status.SCREEN_CHECKED
+        and picker_on_screen()
+    ):
+        status = card_status.AWAITING_DECISION
+    if status == card_status.IDLE_FINISHED and _normalize_repo_name(project) in active_repos:
+        status = card_status.AWAITING_INPUT
+    return status, anchor
+
+
 def _live_card(
     sess: Dict[str, Any], row: Optional[Dict[str, Any]], sid: Optional[str],
     now: datetime, active_repos: AbstractSet[str],
 ) -> Dict[str, Any]:
     """The card for one live session and the state row it claimed, if any."""
     project_dir = sess.get("project_dir")
-
-    raw_status = (row or {}).get("status")
-    status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
+    project = (row or {}).get("project") or Path(str(project_dir or "")).name
     anchor = (parse_iso(row.get("updated_at")) if row else None) or (
         parse_iso(sess.get("started_at"))
     )
-    tail = _ExchangeTail((row or {}).get("transcript_path"))
-    status, anchor = _transcript_overlay(
-        row,
-        status,
-        anchor,
-        now=now,
+    status, anchor = derive_card_status(
+        row, anchor, now=now, project=project, active_repos=active_repos,
         live_title=sess.get("live_title"),
         last_output_at=sess.get("last_output_at"),
-        tail=tail,
+        picker_on_screen=lambda: _plan_picker_on_screen(sess),
     )
-    status = _refine_waiting_status(status, tail)
-    if status in _SCREEN_CHECKED_STATUSES and _plan_picker_on_screen(sess):
-        status = "awaiting-decision"
-    project = (row or {}).get("project") or Path(str(project_dir or "")).name
-    if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
-        status = "awaiting-input"
     return {
         "session_id": sess.get("session_id"),
         "state_sid": sid,
@@ -576,17 +609,12 @@ def _external_card(
     stamp = parse_iso(row.get("updated_at"))
     if stamp is None or now - stamp > STATE_STALE_AFTER:
         return None  # cold leftovers: not worth a card
-    raw_status = row.get("status")
     cwd = row.get("cwd")
     project = row.get("project") or Path(str(cwd or "")).name
-    status = raw_status if raw_status in _KNOWN_STATUSES else "unknown"
-    tail = _ExchangeTail(row.get("transcript_path"))
-    status, anchor = _transcript_overlay(
-        row, status, stamp, now=now, tail=tail, process_confirmed=False,
+    status, anchor = derive_card_status(
+        row, stamp, now=now, project=project, active_repos=active_repos,
+        process_confirmed=False,
     )
-    status = _refine_waiting_status(status, tail)
-    if status == "idle-finished" and _normalize_repo_name(project) in active_repos:
-        status = "awaiting-input"
     externally_live, reason = _external_row_liveness(
         row, now,
         claimed_transcripts=claimed_transcripts,

@@ -55,6 +55,7 @@ from typing import Any, Awaitable, Callable, Dict, Optional
 from app.webapp.routers import board_chief
 from app.webapp.routers.board_spawn import _read_live_sessions
 from src import board
+from src.board import card_status
 from src.clients import session as session_client
 from src.session_view.automatic_turns import (
     DOORBELL_LINE,
@@ -87,7 +88,7 @@ _CLAIM_NAME = re.compile(r"^(\d+)-(.+)\.json$")
 #: ``waiting-on-task`` is included because the chief ends every turn with a
 #: background waiter armed: its turn is over and its composer is free, and a
 #: typed line starts a new turn while the waiter keeps running.
-IDLE_STATUSES = frozenset({"idle-finished", "awaiting-input", "waiting-on-task"})
+IDLE_STATUSES = card_status.DOORBELL_IDLE
 
 
 def doorbell_on(cfg: object) -> bool:
