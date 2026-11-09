@@ -21,49 +21,51 @@ pytestmark = pytest.mark.smoke
 # Registered at document start, so it runs before every listener the app or the
 # tab helper adds. "window" drops the tap before anything sees it (a lost
 # input); "document" lets the window listeners see it and stops it there, short
-# of the nav's own handler (a tap that landed but switched nothing).
+# of the nav's own handler (a tap that landed but switched nothing). The
+# scenario is read from ``window.__e2eDropTaps``, which a later init script
+# sets, so one page runs every scenario: init scripts run in the order added.
 _DROP_TAPS_JS = """(() => {
-  let left = %(count)d;
-  %(where)s.addEventListener('click', (ev) => {
-    if (!ev.isTrusted || left === 0) return;
-    if (!(ev.target.closest && ev.target.closest('#tabBoard'))) return;
-    left -= 1;
-    ev.preventDefault();
-    ev.stopImmediatePropagation();
-  }, true);
+  let left = null;
+  for (const where of [window, document]) {
+    where.addEventListener('click', (ev) => {
+      const cfg = window.__e2eDropTaps;
+      if (!cfg || (cfg.where === 'window') !== (where === window)) return;
+      if (left === null) left = cfg.count;
+      if (!ev.isTrusted || left === 0) return;
+      if (!(ev.target.closest && ev.target.closest('#tabBoard'))) return;
+      left -= 1;
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+    }, true);
+  }
 })();"""
 
 
 def _drop_taps(page: Page, count: int, where: str = "window") -> None:
-    page.add_init_script(_DROP_TAPS_JS % {"count": count, "where": where})
+    page.add_init_script(f"window.__e2eDropTaps = {{count: {count}, where: '{where}'}};")
 
 
 @pytest.mark.iphone
-def test_a_lost_tap_on_the_board_tab_is_sent_again_and_named(
+def test_the_board_tab_helper_resends_a_lost_tap_and_names_each_failure(
     authed_page: Page, base_url: str
 ) -> None:
     _mock_board(authed_page)
-    _drop_taps(authed_page, 1)
-    with pytest.warns(UserWarning, match=r"e2e input lost: tap on #tabBoard never reached it"):
+    authed_page.add_init_script(_DROP_TAPS_JS)
+
+    # The failing scenarios run first: a tap that switches the tab would
+    # make the Board the remembered tab for the next load.
+    # A tap that lands but switches nothing fails as the app's fault.
+    _drop_taps(authed_page, -1, where="document")
+    with pytest.raises(AssertionError, match="a click reached #tabBoard but #paneBoard stayed hidden"):
         _open_board(authed_page, base_url)
-    expect(authed_page.locator("#tabBoard")).to_have_attribute("aria-selected", "true")
 
-
-@pytest.mark.iphone
-def test_a_board_tab_that_no_tap_reaches_fails_naming_the_lost_input(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock_board(authed_page)
+    # A tab that no tap reaches fails naming the lost input.
     _drop_taps(authed_page, -1)
     with pytest.warns(UserWarning), pytest.raises(AssertionError, match="two taps on #tabBoard never reached it"):
         _open_board(authed_page, base_url)
 
-
-@pytest.mark.iphone
-def test_a_tap_that_lands_but_switches_nothing_fails_as_the_app(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock_board(authed_page)
-    _drop_taps(authed_page, -1, where="document")
-    with pytest.raises(AssertionError, match="a click reached #tabBoard but #paneBoard stayed hidden"):
+    # One lost tap is sent again and named.
+    _drop_taps(authed_page, 1)
+    with pytest.warns(UserWarning, match=r"e2e input lost: tap on #tabBoard never reached it"):
         _open_board(authed_page, base_url)
+    expect(authed_page.locator("#tabBoard")).to_have_attribute("aria-selected", "true")

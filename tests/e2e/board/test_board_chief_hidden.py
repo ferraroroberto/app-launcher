@@ -63,9 +63,19 @@ def _hide_managed_sessions(route) -> None:
     route.fulfill(response=resp, json=body)
 
 
-def test_chief_is_out_of_the_lanes_and_the_waiting_count(
+def _external_card(name: str, *, job_run: bool) -> dict:
+    return {"session_id": None, "kind": "external", "agent": "claude",
+            "project_dir": "E:/work/" + name, "name": name, "alive": None,
+            "started_at": None, "live_title": "", "prompt_title": "", "manual_title": "",
+            "project": name, "status": "awaiting-input", "age_seconds": 120,
+            "job_run": job_run}
+
+
+def test_chief_and_job_runs_leave_the_lanes_and_the_setting_brings_the_chief_back(
     authed_page: Page, base_url: str
 ) -> None:
+    """One page, three server answers in turn: the chief hidden, a job run's
+    session hidden beside an ordinary external one, then the setting off."""
     _mock(authed_page, hidden=True)
     _open_board(authed_page, base_url)
 
@@ -82,27 +92,16 @@ def test_chief_is_out_of_the_lanes_and_the_waiting_count(
     expect(row).to_have_count(1)
     expect(row.locator(".session-attention")).to_have_count(0)
 
-
-def _external_card(name: str, *, job_run: bool) -> dict:
-    return {"session_id": None, "kind": "external", "agent": "claude",
-            "project_dir": "E:/work/" + name, "name": name, "alive": None,
-            "started_at": None, "live_title": "", "prompt_title": "", "manual_title": "",
-            "project": name, "status": "awaiting-input", "age_seconds": 120,
-            "job_run": job_run}
-
-
-def test_job_run_session_is_out_of_the_lanes_and_the_waiting_count(
-    authed_page: Page, base_url: str
-) -> None:
+    # A job run's session leaves the lanes and the count like the chief does.
     payload = _board_payload(with_chief=False)
     payload["columns"]["your_turn"] = [
         _external_card("weekly-cleanup", job_run=True),
         _external_card("scratch-repo", job_run=False),
     ]
     _mock_board(authed_page, payload)
+    # _mock_board's side routes serve the setting off again: put it back on.
     authed_page.route(re.compile(r".*/api/config$"), _hide_managed_sessions)
     _open_board(authed_page, base_url)
-
     lanes = authed_page.locator("li.board-item")
     expect(lanes.filter(has_text="scratch-repo")).to_have_count(1)
     expect(lanes.filter(has_text="weekly-cleanup")).to_have_count(0)
@@ -110,12 +109,8 @@ def test_job_run_session_is_out_of_the_lanes_and_the_waiting_count(
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("1 needs you")
     expect(authed_page.locator("#tabBoard .tab-badge")).to_have_text("1")
 
-
-def test_setting_off_puts_the_chief_back_on_the_board(
-    authed_page: Page, base_url: str
-) -> None:
+    # With the setting off the chief is back on the Board.
     _mock(authed_page, hidden=False)
     _open_board(authed_page, base_url)
-
     expect(authed_page.locator("li.board-item-chief")).to_have_count(1)
     expect(authed_page.locator("#boardHeadStatus")).to_contain_text("2 sessions")

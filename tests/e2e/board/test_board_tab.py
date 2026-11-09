@@ -337,26 +337,6 @@ def test_board_renders_columns_counts_and_cards(
     expect(yours_section).not_to_have_attribute("open", "")
 
 
-def test_board_external_card_has_no_alive_badge(authed_page: Page, base_url: str) -> None:
-    """An external card (`alive: null`) is neither Running nor Down: the Board
-    has no process evidence for it, so its avatar wears no badge."""
-    payload = _board_payload()
-    payload["columns"]["claude_turn"].append(
-        {"session_id": None, "kind": "external", "agent": "claude",
-         "project_dir": "E:/automation/reporting", "name": "reporting",
-         "alive": None, "started_at": None, "live_title": "", "prompt_title": "",
-         "project": "reporting", "status": "waiting-on-task", "age_seconds": 120},
-    )
-    _mock_board(authed_page, payload)
-    _open_board(authed_page, base_url)
-
-    live = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="life-os")
-    expect(live.locator(".avatar")).to_have_attribute("data-badge", "alive")
-    external = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="reporting")
-    expect(external.locator(".avatar")).to_have_attribute("data-badge", "none")
-    expect(external.locator(".avatar-badge")).to_have_count(0)
-
-
 @pytest.mark.parametrize("gh_age_seconds, expected_posts", [
     pytest.param(15 * 60, ["POST"], id="stale-refreshes-once"),
     pytest.param(0, [], id="fresh-not-refreshed"),
@@ -430,17 +410,43 @@ def _unfetched_payload() -> dict:
     return payload
 
 
-def test_board_unfetched_github_renders_unknown_not_zero(
+def test_board_poll_heals_an_unfetched_github_that_renders_unknown_not_zero(
     authed_page: Page, base_url: str
 ) -> None:
-    """#910: a never-fetched gh cache must not read as "zero issues". Backlog
-    and Done show an unknown count and a not-loaded message; Other keeps its
-    real job count. Once a refresh genuinely comes back empty, the same
-    columns show a plain 0 — a real zero must not look like a failure."""
+    """#910: a Board left open while the webapp restarts sees the cache go
+    back to never-fetched on its next 5 s poll, and refreshes it by itself
+    instead of waiting for a ↻ tap or a tab switch. A never-fetched gh cache
+    must not read as "zero issues". Backlog and Done show an unknown count and
+    a not-loaded message; Other keeps its real job count. Once a refresh
+    genuinely comes back empty, the same columns show a plain 0 — a real zero
+    must not look like a failure."""
+    payload = _board_payload()  # fresh: opening the tab stays free
+    # An external card (`alive: null`) is neither Running nor Down: the Board
+    # has no process evidence for it, so its avatar wears no badge.
+    payload["columns"]["claude_turn"].append(
+        {"session_id": None, "kind": "external", "agent": "claude",
+         "project_dir": "E:/automation/reporting", "name": "reporting",
+         "alive": None, "started_at": None, "live_title": "", "prompt_title": "",
+         "project": "reporting", "status": "waiting-on-task", "age_seconds": 120},
+    )
     _mock_board(authed_page)
-    current = {"body": _unfetched_payload()}
+    current = {"body": payload}
     _route_board_from(authed_page, current)
+    _fake_clock.install(authed_page)
     _open_board(authed_page, base_url)
+    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
+    live = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="life-os")
+    expect(live.locator(".avatar")).to_have_attribute("data-badge", "alive")
+    external = authed_page.locator("#boardColClaude .board-item-session").filter(has_text="reporting")
+    expect(external.locator(".avatar")).to_have_attribute("data-badge", "none")
+    expect(external.locator(".avatar-badge")).to_have_count(0)
+
+    with authed_page.expect_request(
+        lambda req: req.method == "POST" and req.url.endswith("/api/board/github/refresh"),
+        timeout=15_000,
+    ):
+        current["body"] = _unfetched_payload()
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
 
     for section in ("#boardColBacklog", "#boardColDone"):
         expect(authed_page.locator(f"{section} .board-count")).to_have_text("—")
@@ -470,27 +476,6 @@ def test_board_unfetched_github_renders_unknown_not_zero(
     expect(
         authed_page.locator('.board-empty[data-col="done"] .empty-state-message')
     ).to_have_text("Nothing closed today yet.")
-
-
-def test_board_poll_heals_github_emptied_by_restart(
-    authed_page: Page, base_url: str
-) -> None:
-    """#910: a Board left open while the webapp restarts sees the cache go
-    back to never-fetched on its next 5 s poll, and refreshes it by itself
-    instead of waiting for a ↻ tap or a tab switch."""
-    _mock_board(authed_page)
-    current = {"body": _board_payload()}  # fresh: opening the tab stays free
-    _route_board_from(authed_page, current)
-    _fake_clock.install(authed_page)
-    _open_board(authed_page, base_url)
-    expect(authed_page.locator("#boardColBacklog .board-count")).to_have_text("1")
-
-    with authed_page.expect_request(
-        lambda req: req.method == "POST" and req.url.endswith("/api/board/github/refresh"),
-        timeout=15_000,
-    ):
-        current["body"] = _unfetched_payload()
-        _fake_clock.jump_interval(authed_page, 5_000, "fetchBoard")
 
 
 def _blind_payload() -> dict:
