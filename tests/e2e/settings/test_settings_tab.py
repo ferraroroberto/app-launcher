@@ -35,7 +35,11 @@ from tests.e2e.fixtures.ui import (
     open_settings,
     open_settings_sheet,
 )
-from tests.e2e.fixtures.waits import BUILD_READOUT_MS, boot_retrying_static_failure
+from tests.e2e.fixtures.waits import (
+    BUILD_READOUT_MS,
+    boot_retrying_static_failure,
+    flush_requests,
+)
 
 pytestmark = pytest.mark.smoke
 
@@ -305,10 +309,11 @@ def test_save_settings_does_not_report_success_after_a_failed_patch(
     expect(authed_page.locator("#terminalHistoryLinesError")).to_be_visible()
     expect(field).to_have_attribute("aria-invalid", "true")
 
-    # Give the pre-fix code's unconditional success toast a window to fire
-    # and overwrite the failure toast — it wouldn't, on a fix, since the
-    # handler returns early on a falsy patchConfig() result.
-    authed_page.wait_for_timeout(300)
+    # The pre-fix code's unconditional success toast would fire right after the
+    # failed save settles (a promise chain, no timer) and overwrite the failure
+    # toast; on a fix the handler returns early on a falsy patchConfig(). A
+    # request sent now is answered after that chain has run.
+    flush_requests(authed_page)
     expect(toast).to_contain_text("Save failed")
     expect(toast).not_to_contain_text("saved.")
 

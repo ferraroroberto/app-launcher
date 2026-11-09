@@ -37,6 +37,7 @@ from tests.e2e.fixtures.ui import (
     open_agent_sheet,
     open_settings_sheet,
 )
+from tests.e2e.fixtures.waits import settled
 from tests.e2e.shell.test_row_name_typography import _json_route, _mock
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -181,7 +182,7 @@ def test_every_control_meets_the_44px_floor(
     # opened from the Next up card, not on the tab. It renders only when the
     # next 7 days hold no runs, which the unmocked agenda decided from the checkout's own
     # jobs.json and the clock: a worktree (whose job paths are blanked, so it
-    # has no jobs) raced the 400ms settle below and a primary never showed
+    # has no jobs) raced the settle below and a primary never showed
     # it. Pinned empty, it is measured on every run.
     _json_route(page, re.compile(r".*/api/jobs/agenda(\?.*)?$"), {
         "days": 7, "generated_epoch": 0, "occurrences": [], "frequent": [],
@@ -192,7 +193,7 @@ def test_every_control_meets_the_44px_floor(
     page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
     if tab in _DATA_CONTROL:
         expect(page.locator(_DATA_CONTROL[tab])).to_be_visible()
-    page.wait_for_timeout(400)
+    settled(page)
 
     _assert_floor(page, tab)
 
@@ -203,7 +204,7 @@ def test_every_control_meets_the_44px_floor(
         page.locator("#jobsAgendaOpen").click()
         expect(page.locator("#jobsAgendaSheet")).to_be_visible()
         expect(page.locator("#jobsAgendaBody .empty-state-action")).to_be_visible()
-        page.wait_for_timeout(200)
+        settled(page)
         _assert_floor(page, "Jobs > agenda sheet")
         page.locator("#jobsAgendaSheetClose").click()
         expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
@@ -214,12 +215,12 @@ def test_every_control_meets_the_44px_floor(
             open_settings_sheet(page, sheet_id)
             if sheet_id in _SHEET_DATA_CONTROL:
                 expect(page.locator(_SHEET_DATA_CONTROL[sheet_id])).to_be_visible()
-            page.wait_for_timeout(200)
+            settled(page)
             _assert_floor(page, f"Settings > {sheet_id}")
             close_settings_sheets(page)
         for agent_id in _AGENTS:
             open_agent_sheet(page, agent_id)
-            page.wait_for_timeout(200)
+            settled(page)
             _assert_floor(page, f"Settings > Launch defaults > {agent_id}")
             close_settings_sheets(page)
 
@@ -243,5 +244,5 @@ def test_every_control_meets_the_44px_floor(
         page.set_viewport_size({"width": 320, "height": 844})
         page.reload(wait_until="domcontentloaded")
         page.locator("#tabBoard").click()
-        page.wait_for_timeout(400)
+        settled(page)
         assert_no_overlap(page.locator(".board-toolbar button:visible"))

@@ -877,6 +877,9 @@ def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboa
     do not. A quick three-finger tap toggles the keyboard in Control and does
     nothing in View, and three fingers never click, drag or scroll. The real
     timing is judged on a phone."""
+    # The multi-finger tap window is read off Date.now(): a rest is jumped on
+    # the context clock (shared with the pop-out window) rather than waited out.
+    authed_page.context.clock.install()
     seen, page = _live_view(authed_page, base_url)
     keyboard = page.locator("#screenKeyboard")
     keys = page.locator("#screenKeys")
@@ -908,7 +911,7 @@ def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboa
     count = len(seen["inputs"])
     _pointer(page, "pointerdown", p, 1)
     _pointer(page, "pointerdown", q, 2)
-    page.wait_for_timeout(700)
+    page.clock.run_for(700)
     _pointer(page, "pointerup", p, 1)
     _pointer(page, "pointerup", q, 2)
 
@@ -940,7 +943,7 @@ def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboa
     _pointer(page, "pointerdown", p, 1)
     _pointer(page, "pointerdown", q, 2)
     _pointer(page, "pointerdown", r, 3)
-    page.wait_for_timeout(700)
+    page.clock.run_for(700)
     for pid, pt in ((1, p), (2, q), (3, r)):
         _pointer(page, "pointerup", pt, pid)
     expect(keys).to_be_hidden()

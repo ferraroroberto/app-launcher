@@ -19,7 +19,7 @@ import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e.fixtures.ui import close_settings_sheets, open_settings_sheet
-from tests.e2e.fixtures.waits import stable_eval, stable_read
+from tests.e2e.fixtures.waits import settled, stable_eval, stable_read
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
@@ -191,7 +191,7 @@ def _assert_large_at_320px_never_scrolls_or_clips(page: Page) -> None:
     inspected = 0
     for tab in _TABS:
         page.locator(tab).click()
-        page.wait_for_timeout(300)
+        settled(page)
         spill = stable_read(overflow)
         assert spill <= 0, f"{tab} at Large/320px scrolls sideways by {spill}px"
         inspected += clipped(tab)
