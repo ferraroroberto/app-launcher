@@ -80,7 +80,8 @@ def test_stage_verdict(tmp_path, name: str, files: dict[str, str], code: int, ex
         for sibling in ("instruction_frontmatter.py", "instruction_repeats.py"):
             shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
     if name == "conventions":
-        shutil.copy2(REPO_ROOT / "scripts" / "conventions_readers.py", tmp_path / "scripts")
+        for sibling in ("conventions_readers.py", "conventions_state.py"):
+            shutil.copy2(REPO_ROOT / "scripts" / sibling, tmp_path / "scripts")
     if name == "runtime_write":
         shutil.copy2(REPO_ROOT / "scripts" / "runtime_write_resolve.py", tmp_path / "scripts")
     files = {f".{name.replace('_', '-')}-ratchet-baseline.json": '{"version": 1, "entries": []}\n', **files}
