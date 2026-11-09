@@ -60,8 +60,7 @@ row-menu = { src = "app/webapp/static/_vendored/row-menu", sha = "00311a74ed7a85
 # decision, project-scaffolding#390): the 16 app-launcher-only glyphs were upstreamed
 # in project-scaffolding#391 and the sprite is now the scaffold's copy, byte for byte.
 # src/build_info.py is declared below: it is the scaffold's copy, and the
-# app-side extras live in src/git_utils.py. app/tray/watchdog.py is a deliberate
-# fork, declared in [vendored_forks] after the [vendored] entries.
+# app-side extras live in src/git_utils.py.
 browser_sweep = { src = "tests/e2e/_browser_sweep.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_browser_sweep.py" }
 geometry = { src = "tests/e2e/_geometry.py", sha = "362f4a973746b3fbc4ebfc97c3bb0a0767fb8ada", dest = "tests/e2e/_geometry.py" }
 runtime_data = { src = "src/runtime_data.py", sha = "4a06ca84fc9c5005d4be7fa505c9d0e7c0472dba", dest = "src/runtime_data.py" }
@@ -100,13 +99,7 @@ login_lockout = { src = "src/login_lockout.py", sha = "ea4e1e80f83c4f5a1a6b33e8a
 webapp_serve = { src = "app/webapp/serve.py", sha = "41ca8abd5a2755a06bd8a620a72967211161d58e", dest = "app/webapp/serve.py" }
 instruction_frontmatter = { src = "scripts/instruction_frontmatter.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_frontmatter.py" }
 instruction_repeats = { src = "scripts/instruction_repeats.py", sha = "c5535ac326c398df8f44486f386ff0e0b6d4c61c", dest = "scripts/instruction_repeats.py" }
-
-# A catalogued component this repo deliberately keeps different from the scaffold tip. It stays
-# out of [vendored] so no wave overwrites it (a byte-for-byte copy would drop what the tray
-# calls); the generic change is offered upstream and the entry is removed once the scaffold
-# ships it.
-[vendored_forks]
-tray_watchdog = { src = "app/tray/watchdog.py", reason = "HealthWatchdog takes an optional on_failing(count) that fires on every failed probe once alerted; app/tray/tray.py wires it to the webapp and session-host self-heal, and the scaffold copy has no such hook", upstream = "ferraroroberto/project-scaffolding#684" }
+tray_watchdog = { src = "app/tray/watchdog.py", sha = "ad2fe4cdd355e1fe7b9f1ec54ffcfec337310f8d", dest = "app/tray/watchdog.py" }
 
 # ---------------------------------------------------------------------------
 # [verify] -- the launch recipe the generated verify-app-launcher skill reads
