@@ -53,7 +53,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from src.board import active_issue_claims
+from src.board import active_issue_claims, card_status
 from src.board.sessions import (  # noqa: F401 — re-exported for board.<name> callers
     _live_launcher_session_ids,
     active_issue_repos,
@@ -205,13 +205,9 @@ def _job_attention_card(job: Any, runtime: Any, now_local: datetime, dismissed: 
     return None
 
 
-# The family of statuses that still mean "a human needs to look at
-# this" after src.board.transcript's needs-you split. ``idle-finished`` and
-# ``tool-pending`` and ``waiting-on-task`` are deliberately excluded — a
-# clean-stopped session with nothing pending, one still mid-turn on an ordinary
-# tool call, and one waiting on its own background task aren't alerts; all are
-# Claude quietly holding a workspace, same as ``idle``.
-_NEEDS_YOU_STATUSES = frozenset({"stalled", "awaiting-decision", "awaiting-input"})
+# The statuses that still mean "a human needs to look at this" after the
+# needs-you split; why the rest are excluded is declared with the property.
+_NEEDS_YOU_STATUSES = card_status.NEEDS_HUMAN
 
 
 def _is_chief_card(card: Dict[str, Any]) -> bool:

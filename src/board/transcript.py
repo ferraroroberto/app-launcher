@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import AbstractSet, Any, Dict, List, Optional, Tuple
 
 from src._log_once import log_once
+from src.board import card_status as cs
 from src.board.dispatch_ids import (
     _launched_background_ids,
     _launched_bash_dispatch_ids,
@@ -245,11 +246,6 @@ _STALLED_DISPATCH_AFTER = timedelta(minutes=30)
 # staleness.
 _UNKNOWN_LAUNCH_STAMP = datetime.min.replace(tzinfo=timezone.utc)
 
-# A session whose turn ended while its own background Bash, sub-agent or
-# ``Monitor`` is still running. Claude's turn, never Your turn: a harness
-# notification wakes it when the task finishes, so no human is being waited on.
-WAITING_ON_TASK = "waiting-on-task"
-
 
 def _read_tail_bytes(path: Any, n_bytes: int) -> bytes:
     """Read the last ``n_bytes`` of ``path`` as raw bytes.
@@ -446,7 +442,7 @@ def _transcript_overlay(
 
     ``stalled`` asserts a live process that has gone quiet, so it needs
     ``process_confirmed``: an external row has no process evidence, and its
-    long-outstanding dispatch reads :data:`WAITING_ON_TASK` instead.
+    long-outstanding dispatch reads :data:`~src.board.card_status.WAITING_ON_TASK` instead.
 
     Checked first (#631/#627): a busy ``live_title`` (see
     :func:`_live_title_is_busy`) short-circuits straight to ``working``,
@@ -480,7 +476,7 @@ def _transcript_overlay(
     transcript past the stamp until the background work's own completion
     notice lands. #608 refines this further: a dispatch outstanding past
     :data:`_STALLED_DISPATCH_AFTER` is no longer healthy waiting but a real
-    anomaly, so it renders ``stalled`` instead of :data:`WAITING_ON_TASK` — but only when
+    anomaly, so it renders ``stalled`` instead of :data:`~src.board.card_status.WAITING_ON_TASK` — but only when
     the launch line's own timestamp actually resolved
     (:data:`_UNKNOWN_LAUNCH_STAMP` means "genuinely outstanding, age
     unknown", not "very old"; guessing stalled from that sentinel would be
@@ -496,13 +492,13 @@ def _transcript_overlay(
     Any failure keeps the hook status. Returns the (possibly overridden)
     ``(status, age-anchor)``.
     """
-    if row is None or status not in ("needs-you", "idle"):
+    if row is None or status not in (cs.NEEDS_YOU_STAMP, cs.IDLE):
         return status, anchor
     now = now or utc_now()
     if _live_title_is_busy(live_title) and _pty_output_is_fresh(last_output_at, now):
         # Re-anchor to "now", not the stale hook stamp `anchor` carries in —
         # this override only proves busy as of this instant, not since when.
-        return "working", now
+        return cs.WORKING, now
     updated = parse_iso(row.get("updated_at"))
     transcript = row.get("transcript_path")
     if updated is None or not transcript:
@@ -513,19 +509,19 @@ def _transcript_overlay(
     if mtime - updated > _RESUME_EPSILON:
         activity = _last_activity(transcript)
         if activity is not None and activity - updated > _RESUME_EPSILON:
-            return "working", activity
+            return cs.WORKING, activity
     pending_since = _pending_background_dispatch_launched_at(
         tail if tail is not None else _ExchangeTail(transcript)
     )
     if pending_since is not None:
         if (
             process_confirmed
-            and status == "needs-you"
+            and status == cs.NEEDS_YOU_STAMP
             and pending_since != _UNKNOWN_LAUNCH_STAMP
             and now - pending_since > _STALLED_DISPATCH_AFTER
         ):
-            return "stalled", anchor
-        return WAITING_ON_TASK, anchor
+            return cs.STALLED, anchor
+        return cs.WAITING_ON_TASK, anchor
     return status, anchor
 
 
@@ -841,16 +837,16 @@ def _refine_waiting_status(status: str, tail: _ExchangeTail) -> str:
     ``needs-you`` (``working``, ``idle``, ``unknown``) passes through
     unchanged — the split is scoped to ``needs-you`` alone.
     """
-    if status != "needs-you":
+    if status != cs.NEEDS_YOU_STAMP:
         return status
     pending_names = _pending_tool_use_names(tail)
     if pending_names is None:
-        return "awaiting-input"
+        return cs.AWAITING_INPUT
     if pending_names & _PENDING_DECISION_TOOL_NAMES:
-        return "awaiting-decision"
+        return cs.AWAITING_DECISION
     if pending_names:
-        return "tool-pending"
-    return "idle-finished"
+        return cs.TOOL_PENDING
+    return cs.IDLE_FINISHED
 
 
 def _external_row_liveness(

@@ -73,7 +73,9 @@ Join mechanics (`_claim_walk` / `_match_state_row`):
 
   Hook status is semantic evidence, not process-liveness evidence: a missing cloud/bridge transcript or a quiet `working`/`needs-you`/`idle` row is suppressed rather than trusted for the state file's 24 h retention window. The first suppression per state id leaves an info-level breadcrumb with the distinct reason (reaped session, claimed transcript, missing path, unavailable file, or quiet transcript) without repeating on every poll.
 
-**Raw hook states** (`_KNOWN_STATUSES`): `working`, `needs-you`, `idle`. Anything else — including a missing row — renders `unknown`. A card's final `status` field can diverge further downstream: the transcript overlay below, and the needs-you split (own section below) — the raw `needs-you` string never reaches a card.
+**Raw hook states** (`HOOK_STAMPS` in `src/board/card_status.py`): `working`, `needs-you`, `idle`. Anything else — including a missing row — renders `unknown`. A card's final `status` field can diverge further downstream: the transcript overlay below, and the needs-you split (own section below) — the raw `needs-you` string never reaches a card.
+
+**The card status set is declared once.** `src/board/card_status.py` lists the nine card values with the properties every consumer groups them by: `needs_human` (the Your-turn lane), `chief_resting` (the chief's "standing by" label), `doorbell_idle` (the chief doorbell may type) and `screen_checked` (the plan-picker read below). `build_board`, the doorbell and the derivation import those groupings; `sessions.py::derive_card_status()` is the one ordered derivation (raw-stamp gate, transcript overlay, needs-you split, screen check, open-issue downgrade) both live and external cards run, with the external card's missing process evidence and screen passed as inputs. `glance.js` keeps its own label table and chief set, and `tests/unit/board/test_card_status_contract.py` fails when either drifts from the declaration.
 
 Agent capability matrix:
 
