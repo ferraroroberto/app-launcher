@@ -123,6 +123,32 @@ def _navigate(page: Page, base_url: str, edit: bool = False) -> list[dict]:
     return launches
 
 
+def _assert_tunnel_url_lives_in_the_menu(page: Page):
+    """The tunnel URL is in the row menu, never body text; return the menu."""
+    # -- was test_tunnel_url_lives_in_the_row_menu_not_as_text --
+    # #790: a cloudflared URL with a `?token=…` wrapped to three lines on
+    # the phone and was only ever tapped. Since #1128 it is Open link and Copy
+    # URL in the row's ⋯ menu, and never rendered as body text.
+    tunnel = page.locator('#appsList li.action-row[data-id="vt-tunnel"]')
+    expect(tunnel).to_be_visible(timeout=5_000)
+    assert "whisper.example.com" not in (tunnel.inner_text() or "")
+
+    tunnel.locator(".action-row-kebab").click()
+    menu = open_row_menu(page)
+    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_enabled()
+    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_enabled()
+    page.keyboard.press("Escape")
+
+    # A tunnel that isn't up offers the same rows, disabled; its context
+    # line says it is down.
+    dead = page.locator('#appsList li.action-row[data-id="dead-tunnel"]')
+    dead.locator(".action-row-kebab").click()
+    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_disabled()
+    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_disabled()
+    page.keyboard.press("Escape")
+    return menu
+
+
 def test_rows_hide_path_and_url_and_launch_both_modes(
     authed_page: Page, base_url: str
 ) -> None:
@@ -143,27 +169,7 @@ def test_rows_hide_path_and_url_and_launch_both_modes(
     expect(row.locator(".action-row-title")).to_have_text("Photo OCR")
     expect(row.locator(".action-row-meta")).to_have_count(0)
 
-    # -- was test_tunnel_url_lives_in_the_row_menu_not_as_text --
-    # #790: a cloudflared URL with a `?token=…` wrapped to three lines on
-    # the phone and was only ever tapped. Since #1128 it is Open link and Copy
-    # URL in the row's ⋯ menu, and never rendered as body text.
-    tunnel = authed_page.locator('#appsList li.action-row[data-id="vt-tunnel"]')
-    expect(tunnel).to_be_visible(timeout=5_000)
-    assert "whisper.example.com" not in (tunnel.inner_text() or "")
-
-    tunnel.locator(".action-row-kebab").click()
-    menu = open_row_menu(authed_page)
-    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_enabled()
-    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_enabled()
-    authed_page.keyboard.press("Escape")
-
-    # A tunnel that isn't up offers the same rows, disabled; its context
-    # line says it is down.
-    dead = authed_page.locator('#appsList li.action-row[data-id="dead-tunnel"]')
-    dead.locator(".action-row-kebab").click()
-    expect(menu.locator("[data-item=app-tunnel-link]")).to_be_disabled()
-    expect(menu.locator("[data-item=app-copy-url-btn]")).to_be_disabled()
-    authed_page.keyboard.press("Escape")
+    menu = _assert_tunnel_url_lives_in_the_menu(authed_page)
 
     # -- was test_row_launches_visible_and_menu_launches_hidden --
     # #1269: tapping the row launches hidden, the windowless spawn (#790's
