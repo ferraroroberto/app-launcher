@@ -4,7 +4,7 @@ Every branch of the card derivation (raw-stamp gate, transcript overlay,
 needs-you split, plan-picker screen check, open-issue downgrade) is driven
 through :func:`src.board.merge_sessions` for both a live and an external card,
 with each piece of evidence stubbed at the function that reads it. The
-expected table, ``golden_card_status.json``, was recorded from the derivation
+expected table, ``tests/fixtures/golden_card_status.json``, was recorded from the derivation
 before it was declared in one place; any change to a card's status or age for
 any combination fails here. Regenerate only for a deliberate semantic change:
 ``python -m tests.unit.board.test_card_status_golden``.
@@ -23,7 +23,7 @@ from src.board import sessions as board_sessions
 from src.board import transcript as board_transcript
 from tests.unit.board._support import NOW, _iso
 
-_GOLDEN = Path(__file__).with_name("golden_card_status.json")
+_GOLDEN = Path(__file__).resolve().parents[2] / "fixtures" / "golden_card_status.json"
 
 _UPDATED = NOW - timedelta(minutes=5)
 _TRANSCRIPT = "golden-transcript.jsonl"
