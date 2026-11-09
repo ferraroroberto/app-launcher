@@ -34,10 +34,25 @@ def test_chief_standing_by_is_the_chief_resting_property():
     assert members == card_status.CHIEF_RESTING
 
 
+def test_a_raw_idle_stamp_is_resting_for_the_chief_and_idle_for_the_doorbell():
+    """A raw ``idle`` stamp passes through the derivation as the ``idle`` card
+    value; both chief groupings must hold it, or the chief reads as busy."""
+    from app.webapp import chief_doorbell
+
+    assert card_status.IDLE in card_status.HOOK_STAMPS
+    assert card_status.IDLE in card_status.CHIEF_RESTING
+    assert card_status.IDLE in card_status.DOORBELL_IDLE
+    assert chief_doorbell.Observation(pending=1, status=card_status.IDLE).idle is True
+
+
 def test_declared_groupings_are_the_ones_consumers_routed_by():
     assert card_status.NEEDS_HUMAN == {"stalled", "awaiting-decision", "awaiting-input"}
-    assert card_status.CHIEF_RESTING == {"idle-finished", "awaiting-input", "awaiting-decision"}
-    assert card_status.DOORBELL_IDLE == {"idle-finished", "awaiting-input", "waiting-on-task"}
+    assert card_status.CHIEF_RESTING == {
+        "idle", "idle-finished", "awaiting-input", "awaiting-decision",
+    }
+    assert card_status.DOORBELL_IDLE == {
+        "idle", "idle-finished", "awaiting-input", "waiting-on-task",
+    }
     assert card_status.SCREEN_CHECKED == {"idle-finished", "awaiting-input", "tool-pending"}
     assert card_status.HOOK_STAMPS == {"working", "needs-you", "idle"}
     assert card_status.NEEDS_YOU_STAMP not in card_status.CARD_STATUSES
