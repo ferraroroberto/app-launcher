@@ -28,7 +28,7 @@ from tests.e2e.fixtures.waits import (
     stable_eval,
 )
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _POLL_MS = 10_000
 
@@ -96,6 +96,7 @@ def _set_hidden(page: Page, hidden: bool) -> None:
     )
 
 
+@pytest.mark.iphone
 def test_every_header_shows_the_reading_and_its_four_states(
     authed_page: Page, base_url: str
 ) -> None:
@@ -162,6 +163,7 @@ def test_every_header_shows_the_reading_and_its_four_states(
     expect(reading).to_have_attribute("data-level", "normal")
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("width", [390, 1280])
 def test_the_reading_never_hides_and_the_status_shortens_instead(
     authed_page: Page, base_url: str, width: int
@@ -194,6 +196,7 @@ def test_the_reading_never_hides_and_the_status_shortens_instead(
     expect(reading).to_be_visible()
 
 
+@pytest.mark.iphone
 def test_a_short_toned_status_keeps_its_words_beside_the_reading_on_the_phone(
     authed_page: Page, base_url: str
 ) -> None:
@@ -325,6 +328,7 @@ def test_the_poll_stops_while_the_page_is_hidden(
     assert len(calls) == seen + 1
 
 
+@pytest.mark.iphone
 def test_a_failed_script_load_gets_one_fresh_boot(authed_page: Page, base_url: str) -> None:
     """#1610: the first load of ``system-load.js`` is cut. The page then boots
     without ``main.js`` and the header keeps its markup default; the second

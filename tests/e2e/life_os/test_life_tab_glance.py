@@ -709,7 +709,6 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
 
 
-@pytest.mark.iphone
 @pytest.mark.parametrize("detached", [True, False])
 def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
     authed_page: Page, life, detached: bool
@@ -736,7 +735,6 @@ def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
         + (" (detached)" if detached else ""))
 
 
-@pytest.mark.iphone
 def test_the_kebab_lists_pick_a_session_after_start_new(authed_page: Page, life) -> None:
     """The item sits right after Start new conversation, and Start new still
     posts resume: false (the existing #1503 contract is untouched)."""

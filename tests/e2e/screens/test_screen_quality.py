@@ -39,7 +39,7 @@ from tests.e2e.screens.test_screen_view import (
     _stub_screen,
 )
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 # performance.now() reads window.__t once the test sets it, and the real clock
 # before: the readout's windows are then exact, whatever the box is doing.
@@ -218,6 +218,7 @@ def test_the_readout_is_off_until_switched_on_and_off_again_sends_and_shows_noth
     assert _readout_messages(seen) == []
 
 
+@pytest.mark.iphone
 def test_the_readout_numbers_are_the_bytes_and_frames_the_page_received(
     authed_page: Page, base_url: str
 ) -> None:
@@ -303,6 +304,7 @@ _LEGS = [
 ]
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("leg", _LEGS, ids=[name for name, _ in _LEGS])
 def test_the_button_sheet_and_overlay_fit_a_narrow_phone_with_44px_targets(
     authed_page: Page, base_url: str, leg

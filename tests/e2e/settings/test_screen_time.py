@@ -35,7 +35,7 @@ from playwright.sync_api import Page, Route, expect
 from tests.e2e.fixtures.ui import open_settings, open_settings_sheet
 from tests.e2e.fixtures.waits import stable_eval, wait_until
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _USAGE_RE = re.compile(r".*/api/usage/time\?.*")
 _EXPORT_RE = re.compile(r".*/api/screen-time/export$")
@@ -129,6 +129,7 @@ def _no_sideways_spill(page: Page) -> None:
     assert spill["spill"] <= 1 and not spill["past"], spill
 
 
+@pytest.mark.iphone
 def test_row_and_sheet_draw_each_period(authed_page: Page, base_url: str) -> None:
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
@@ -229,6 +230,7 @@ def test_no_data_and_a_failed_read_are_their_own_states(authed_page: Page, base_
     expect(page.locator("#screenTimeChart .screen-time-bar")).to_have_count(7)
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("theme", ["light", "dark"])
 def test_fills_and_text_hold_in_both_themes(authed_page: Page, base_url: str, theme: str) -> None:
     page = authed_page
@@ -258,6 +260,7 @@ def test_fills_and_text_hold_in_both_themes(authed_page: Page, base_url: str, th
     _no_sideways_spill(page)
 
 
+@pytest.mark.iphone
 def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) -> None:
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
@@ -313,6 +316,7 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(toast).to_have_text("Send failed: set task_os_person in webapp_config.json")
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("width", [390, 430])
 def test_send_toast_stays_inside_the_sheet_above_send(
     authed_page: Page, base_url: str, width: int,

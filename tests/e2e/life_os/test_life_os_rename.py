@@ -240,7 +240,6 @@ def test_life_os_rename_refusal_keeps_the_row_and_says_why(
     expect(first.locator(".action-row-title")).to_have_text("booking the ferry")
 
 
-@pytest.mark.iphone
 def test_life_os_conversation_resume_posts_the_session_id(
     authed_page: Page, base_url: str
 ) -> None:

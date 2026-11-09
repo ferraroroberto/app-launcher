@@ -373,7 +373,6 @@ def test_chat_file_folders_add_remove_and_refuse(
         expect(rows.first.locator(".icon-button")).to_be_disabled()
 
 
-@pytest.mark.iphone
 def test_pc_load_sheet_saves_the_night_restart_switch_and_window(
     authed_page: Page, base_url: str, auth_token: str
 ) -> None:
