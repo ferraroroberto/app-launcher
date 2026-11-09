@@ -435,7 +435,7 @@ if ($e2eFlaky.Count -gt 0) {
 if ($routeReason -match "session-host") {
     Write-Host ""
     Write-Host "[!] SESSION-HOST PATHS TOUCHED -- this is NOT live after tray.bat --restart." -ForegroundColor Yellow
-    Write-Host "    Check GET /api/version's session_host.stale_relevant field before reporting" -ForegroundColor Yellow
+    Write-Host "    Check GET /api/version's session_host.freshness field before reporting" -ForegroundColor Yellow
     Write-Host "    this change as shipped -- if true, report it as merged but not yet live." -ForegroundColor Yellow
     Write-Host "    (Raw session_host.stale is true after ANY merge, not just a session-host" -ForegroundColor Yellow
     Write-Host "    one -- #635; null in either field means unknown, never a confident false.)" -ForegroundColor Yellow

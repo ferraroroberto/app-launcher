@@ -36,7 +36,7 @@ running session-host keeps executing days-old code, silently.
 
 **Before reporting a session-host-path change as shipped**, read
 `GET /api/version`'s `session_host` block —
-`{"reachable", "git_sha", "started_at", "stale", "stale_relevant"}`:
+`{"reachable", "git_sha", "started_at", "stale", "stale_relevant", "freshness"}`:
 
 - `git_sha` is the *loaded* SHA (captured once at that process's own start, not
   live git state).
@@ -48,10 +48,17 @@ running session-host keeps executing days-old code, silently.
   actually touched between the loaded SHA and that resolved ref.
 - Both read `null` (never a confident false) when either SHA, or the diff
   itself, can't be resolved.
+- `freshness` folds the three into one declared state: `unreachable`
+  (no answer from `:8446`), `unknown` (a SHA couldn't be resolved), `fresh`
+  (loaded SHA equals the resolved ref), `stale-irrelevant` (differs, but no
+  declared path was touched), `stale-relevant` (differs and a declared path
+  was touched) and `stale-unknown` (differs, but the scoped diff couldn't run).
+  The unknown states are never folded into `fresh`.
 
-**Gate on `stale_relevant`, not raw `stale`** — `true` means **report the
-change as merged but not yet live**, never as shipped; `false` with
-`stale: true` means nothing to restart for.
+**Gate on `freshness`, not raw `stale`** — `stale-relevant` means **report the
+change as merged but not yet live**, never as shipped; `stale-irrelevant`
+means nothing to restart for; `unknown` and `stale-unknown` mean it could not
+be confirmed either way.
 
 **Do not restart `:8446` to "fix" this** as a side effect of finishing an
 issue: it kills every live PTY on the machine, including any standing fleet

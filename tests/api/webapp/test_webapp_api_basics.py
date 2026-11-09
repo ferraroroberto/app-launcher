@@ -137,6 +137,7 @@ class TestVersion:
         assert body["session_host"] == {
             "reachable": False, "git_sha": None, "started_at": None,
             "stale": None, "stale_relevant": None,
+            "freshness": "unreachable",
         }
 
     def test_session_host_stale_relevant_true_when_declared_path_touched(
@@ -159,6 +160,7 @@ class TestVersion:
         assert body["session_host"]["started_at"] == "2026-07-24T05:51:34"
         assert body["session_host"]["stale"] is True
         assert body["session_host"]["stale_relevant"] is True
+        assert body["session_host"]["freshness"] == "stale-relevant"
 
     def test_session_host_stale_relevant_false_when_only_unrelated_paths_touched(
         self, webapp_client, monkeypatch
@@ -177,6 +179,7 @@ class TestVersion:
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is True
         assert body["session_host"]["stale_relevant"] is False
+        assert body["session_host"]["freshness"] == "stale-irrelevant"
 
     def test_session_host_stale_relevant_unknown_when_scope_check_cannot_run(
         self, webapp_client, monkeypatch
@@ -196,6 +199,7 @@ class TestVersion:
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is True
         assert body["session_host"]["stale_relevant"] is None
+        assert body["session_host"]["freshness"] == "stale-unknown"
 
     def test_session_host_not_stale_when_sha_matches_deployed(self, webapp_client, monkeypatch):
         client, app, overrides = webapp_client
@@ -209,6 +213,7 @@ class TestVersion:
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is False
         assert body["session_host"]["stale_relevant"] is False
+        assert body["session_host"]["freshness"] == "fresh"
 
     def test_stale_relevant_compares_against_deployed_ref_not_checkout_branch(
         self, webapp_client, monkeypatch
@@ -245,6 +250,25 @@ class TestVersion:
         body = client.get("/api/version").json()
         assert body["session_host"]["stale"] is None
         assert body["session_host"]["stale_relevant"] is None
+        assert body["session_host"]["freshness"] == "unknown"
+
+    def test_freshness_is_one_of_the_six_declared_states(self):
+        """Every (reachable, stale, stale_relevant) combination the builder
+        can produce maps to one declared state, and all six are reachable."""
+        from app.webapp.routers import misc as misc_router
+
+        mapping = {
+            (False, None, None): "unreachable",
+            (True, None, None): "unknown",
+            (True, False, False): "fresh",
+            (True, True, False): "stale-irrelevant",
+            (True, True, True): "stale-relevant",
+            (True, True, None): "stale-unknown",
+        }
+        for triple, state in mapping.items():
+            assert misc_router._freshness_state(*triple) == state
+        assert set(mapping.values()) == set(misc_router.SESSION_HOST_FRESHNESS_STATES)
+        assert len(misc_router.SESSION_HOST_FRESHNESS_STATES) == 6
 
 
 class TestStatus:

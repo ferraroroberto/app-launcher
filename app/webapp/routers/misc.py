@@ -134,7 +134,10 @@ async def version(request: Request) -> Dict[str, Any]:
     can't be reached at all; both ``stale`` and ``stale_relevant`` stay
     ``None`` (never a confident answer) whenever either sha, or the scoped
     diff itself, can't be resolved — e.g. a non-repo test env, an unknown
-    host sha, or no resolvable ``origin`` remote.
+    host sha, or no resolvable ``origin`` remote. ``session_host.freshness``
+    is the same verdict as one declared state (see
+    :data:`SESSION_HOST_FRESHNESS_STATES`); prefer it to re-deriving from the
+    three fields above, which stay as they are.
 
     The live part (``head_sha`` and ``session_host``) costs git spawns and a
     session-host round trip, so it is read from a snapshot that the lifespan
@@ -180,10 +183,38 @@ def version_cache(app: Any) -> DemandCache[Dict[str, Any]]:
     return cache
 
 
+# The one declared value set of ``session_host.freshness``; every state the
+# (reachable, stale, stale_relevant) triple can encode maps to exactly one.
+SESSION_HOST_FRESHNESS_STATES = (
+    "unreachable", "unknown", "fresh", "stale-irrelevant", "stale-relevant", "stale-unknown",
+)
+
+
+def _freshness_state(
+    reachable: bool, stale: Optional[bool], stale_relevant: Optional[bool]
+) -> str:
+    """Collapse the triple into one of :data:`SESSION_HOST_FRESHNESS_STATES`.
+
+    ``unknown`` (a sha could not be resolved) and ``stale-unknown`` (the shas
+    differ but the scoped diff could not run) are their own states, never
+    folded into ``fresh``.
+    """
+    if not reachable:
+        return "unreachable"
+    if stale is None:
+        return "unknown"
+    if not stale:
+        return "fresh"
+    if stale_relevant is None:
+        return "stale-unknown"
+    return "stale-relevant" if stale_relevant else "stale-irrelevant"
+
+
 def _session_host_freshness(
     identity: Optional[Dict[str, Any]], deployed_sha: str
 ) -> Dict[str, Any]:
-    """``{"reachable", "git_sha", "started_at", "stale", "stale_relevant"}``
+    """``{"reachable", "git_sha", "started_at", "stale", "stale_relevant",
+    "freshness"}``
     (#615, scoped by #635, ref fixed by #641) from the session-host's own
     ``/healthz`` body and the repo's resolved ``deployed_sha`` (its default
     remote branch tip, e.g. ``origin/main`` — not the live checkout's current
@@ -197,11 +228,15 @@ def _session_host_freshness(
     and ``None`` when ``stale`` itself is unknown, or the scoped diff can't be
     resolved (e.g. the host sha isn't in local git history) — never a
     confident "unaffected" when the comparison couldn't actually run.
+
+    ``freshness`` folds the three verdict fields into one declared state
+    (:func:`_freshness_state`) so a reader does not re-derive it from the triple.
     """
     if identity is None:
         return {
             "reachable": False, "git_sha": None, "started_at": None,
             "stale": None, "stale_relevant": None,
+            "freshness": _freshness_state(False, None, None),
         }
     host_sha = identity.get("git_sha")
     stale: Optional[bool] = None
@@ -217,6 +252,7 @@ def _session_host_freshness(
         "started_at": identity.get("started_at"),
         "stale": stale,
         "stale_relevant": stale_relevant,
+        "freshness": _freshness_state(True, stale, stale_relevant),
     }
 
 
