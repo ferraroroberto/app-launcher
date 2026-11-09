@@ -11,10 +11,9 @@ in-flight read-aloud.
 
 ``speechSynthesis`` isn't meaningfully available in headless WebKit, so it is
 stubbed via an init script that records spoken/cancelled calls. The pure
-segmenter ``extractReplyBlocksFromRows`` is driven through the
-``window.__readback`` seam with synthetic ``{text, marker}`` rows; a separate
-test writes real ANSI into an xterm ``Terminal`` to exercise the live
-cell-colour classifier (``extractReplyBlocks``/``extractLastReply``).
+segmenter ``extractReplyBlocksFromRows`` is pinned under plain Node in
+``tests/js/readback_extraction.test.mjs``; a test here writes real ANSI into an
+xterm ``Terminal`` to exercise the live cell-colour classifier (``extractReplyBlocks``/``extractLastReply``).
 """
 
 from __future__ import annotations
@@ -62,158 +61,6 @@ _SPEECH_MOCK = """
 })()
 """
 
-# The extraction core (#197) is the pure segmenter `extractReplyBlocksFromRows`,
-# which takes `{text, marker}` rows — `marker` is what the live cell-colour
-# reader derives per line: 'assistant' (default/white ● bullet), 'tool'
-# (coloured ● bullet) or 'none'. `_rows` builds them tersely from (marker, text)
-# tuples; 'a'/'t'/'n' abbreviate the three markers.
-_M = {"a": "assistant", "t": "tool", "n": "none"}
-
-
-def _rows(*pairs):
-    return [{"text": text, "marker": _M[m]} for (m, text) in pairs]
-
-
-# A faithful idle Claude Code rendering (real captured output at the phone's
-# 51-col width): the assistant reply (one ● block), the "Worked for" timing
-# line, a recap block, the composer box, then the status footer. Read-aloud
-# must return ONLY the reply — de-wrapped to one paragraph, with the leading ●
-# stripped and the recap, "Worked for", box and footer all dropped.
-_IDLE_LINES = _rows(
-    ("n", "                    > ship it"),
-    ("n", ""),
-    ("a", "● Done — issue #190 is built, verified, and"),
-    ("n", "  live on your phone. The pre-ship gate is"),
-    ("n", "  green and the webapp is live on :8445."),
-    ("n", ""),
-    ("n", "  Worked for 21m 17s"),
-    ("n", ""),
-    ("n", "  recap: Goal: add an eyes-free read-aloud"),
-    ("n", "  button to the Coding tab (issue #190)."),
-    ("n", "  (disable recaps in /config)"),
-    ("n", ""),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "          ──────── voice drive from mobile ──"),
-    ("n", "          > "),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "  app-launcher (feat/190-read-last-reply-aloud) …"),
-    ("n", "  ⏵⏵ bypass permissions on (shift+tab to cycle)"),
-    ("n", "                              187754 tokens"),
-)
-
-_EXPECTED = (
-    "Done — issue #190 is built, verified, and live on your phone. "
-    "The pre-ship gate is green and the webapp is live on :8445."
-)
-
-# The exact shape that regressed in the field (20:00 screenshot): a *titled*
-# composer border on one line (the title text dilutes the whole-line rule
-# ratio), a draft prompt with typed text inside the box, a spinner-prefixed
-# "✻ Worked for" line, and the context%/auto-mode/tokens footer. The titled
-# border must still be recognised so the box + draft `>` are cut, and the
-# timing line truncates the block — otherwise the draft prompt or "Crunched"
-# leaks into the read.
-_TITLED_BOX_LINES = _rows(
-    ("n", "                    > read the last reply"),
-    ("a", "● The toast was rendering behind the terminal."),
-    ("n", "  Reload and tap the speaker again."),
-    ("n", ""),
-    ("n", "✻ Crunched for 5s · 1 shell still running"),
-    ("n", "─────────────── voice drive from mobile ───────"),
-    ("n", "> see the Reading toast now"),
-    ("n", "─────────────────────────────────────────────"),
-    ("n", "28% | app-launcher (feat/190-read-last-reply-a…"),
-    ("n", "▶▶ auto mode                          agents"),
-    ("n", "                              30251 tokens"),
-)
-_TITLED_BOX_EXPECTED = (
-    "The toast was rendering behind the terminal. "
-    "Reload and tap the speaker again."
-)
-
-# Mid-work with NO prior reply: a spinner + pending tool, no ● assistant block
-# anywhere. Nothing should be read (better an honest "nothing yet").
-_RUNNING_LINES = _rows(
-    ("n", "                    > do the thing"),
-    ("n", ""),
-    ("n", "  ⎿  Waiting…"),
-    ("n", ""),
-    ("n", "  Ruminating… (2m 3s · ↓ 7.2k tokens)"),
-    ("n", ""),
-    ("n", "          ────────────────────────"),
-    ("n", "          > "),
-    ("n", "          ────────────────────────"),
-    ("n", "  app-launcher (main) …"),
-    ("n", "  Ruminating…  ✶  187754 tokens"),
-)
-
-# Issue #193 (20:46 screenshot): the live thinking spinner "✻ Cogitating…
-# (4m 39s · thinking)" sits below a green ● Read tool, with the *previous*
-# turn's real ● reply above. The spinner carries no bullet, so it never opens a
-# block and is never read. Under the colour-block model the last assistant block
-# IS that prior reply — so read-aloud now speaks the last completed reply rather
-# than going silent mid-work (the #193 guarantee — never the spinner — holds).
-_THINKING_SPINNER_LINES = _rows(
-    ("a", "● Key finding: there's a maintained chatterbox-"),
-    ("n", "  tts PyPI package with the exact API I need."),
-    ("n", ""),
-    ("t", "● Read(E:\\automation\\local-llm-hub\\src\\whisper_"),
-    ("n", "  translate_proxy.py)"),
-    ("n", "  ⎿  Read 386 lines"),
-    ("n", ""),
-    ("n", "✻ Cogitating… (4m 39s · thinking)"),
-    ("n", ""),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "          > "),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "  12% | local-llm-hub (feat/98-tts-backend-audio…"),
-    ("n", "  ▶▶ auto mode on (shift+tab to cycle)"),
-    ("n", "                              127496 tokens"),
-)
-# The column wrap split "chatterbox-tts" as "chatterbox-" / "tts"; de-wrapping
-# joins lines with a space (a raw TUI can't tell a soft wrap-hyphen from a real
-# one), so the spoken text carries the seam — an accepted de-wrap limitation.
-_THINKING_SPINNER_EXPECTED = (
-    "Key finding: there's a maintained chatterbox- tts PyPI package with the "
-    "exact API I need."
-)
-
-
-# Issue #195 (21:12 screenshot): the agent is mid-work and the live spinner
-# "· Processing… (15m 11s · ↓ 64.6k tokens)" renders a randomised help line as a
-# tool-result child — "⎿  Tip: Running multiple Claude sessions? Use /color and
-# /rename …". The tip carries no bullet, so it is part of the last ● block's
-# trailing continuation; the block must truncate at the spinner so the REAL
-# reply ("● Everything's wired. … update the README.") is read, not the tip —
-# with its leading "●" turn-marker stripped.
-_TIP_SPINNER_LINES = _rows(
-    ("n", "  ⎿  Allowed by auto mode classifier"),
-    ("n", ""),
-    ("a", "● Everything's wired. Now docs — the README is"),
-    ("n", "  explicitly part of what you asked for (\"put into"),
-    ("n", "  the readme how to connect and consume from other"),
-    ("n", "  apps\"). Let me write docs/add-tts.md and update"),
-    ("n", "  the README."),
-    ("n", ""),
-    ("n", "· Processing… (15m 11s · ↓ 64.6k tokens)"),
-    ("n", "  ⎿  Tip: Running multiple Claude sessions? Use"),
-    ("n", "     /color and /rename to tell them apart at a"),
-    ("n", "     glance."),
-    ("n", ""),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "          > "),
-    ("n", "          ─────────────────────────────────"),
-    ("n", "  23% | local-llm-hub (feat/98-tts-backend-audio…"),
-    ("n", "  ▶▶ auto mode on (shift+tab to cycle)"),
-    ("n", "                              225377 tokens"),
-)
-_TIP_SPINNER_EXPECTED = (
-    "Everything's wired. Now docs — the README is explicitly part of what you "
-    "asked for (\"put into the readme how to connect and consume from other "
-    "apps\"). Let me write docs/add-tts.md and update the README."
-)
-
-
 def _open_terminal(page: Page, base_url: str, sid: str) -> None:
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
@@ -260,64 +107,6 @@ def _load_readback(page: Page, base_url: str) -> None:
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     page.wait_for_function("() => window.__readback")
     page.evaluate(_LOAD_XTERM)
-
-
-def _last_reply(page: Page, rows) -> str:
-    """Last reply block from the pure segmenter (== extractLastReply's value)."""
-    return page.evaluate(
-        "(rows) => { const b = window.__readback.extractReplyBlocksFromRows(rows);"
-        " return b.length ? b[b.length - 1] : ''; }",
-        rows,
-    )
-
-
-def test_extraction_reads_reply_not_footer_or_recap(
-    authed_page: Page, base_url: str
-) -> None:
-    """The segmenter returns the de-wrapped last ● block, dropping the composer
-    box, the status footer (folder/permission/tokens), the recap, "Worked for",
-    the live spinner and its "Tip:" hint."""
-    _load_readback(authed_page, base_url)
-    assert _last_reply(authed_page, _IDLE_LINES) == _EXPECTED
-    # No ● assistant block anywhere (only a spinner / pending tool) → nothing.
-    assert _last_reply(authed_page, _RUNNING_LINES) == ""
-    # The live "· thinking" spinner (#193) carries no bullet — it is never a
-    # block; the last completed reply above it is read instead.
-    assert _last_reply(authed_page, _THINKING_SPINNER_LINES) == (
-        _THINKING_SPINNER_EXPECTED
-    )
-    # The live spinner's "⎿ Tip:" hint (#195) is trailing continuation of the
-    # last ● block — the block truncates at the spinner so the real reply is
-    # read, with the leading "●" turn-marker stripped.
-    assert _last_reply(authed_page, _TIP_SPINNER_LINES) == _TIP_SPINNER_EXPECTED
-    # Titled composer border + a draft prompt inside the box (the 20:00 field
-    # regression): the box must be cut and the "Crunched for" timing line must
-    # truncate the block.
-    assert _last_reply(authed_page, _TITLED_BOX_LINES) == _TITLED_BOX_EXPECTED
-
-
-def test_extraction_returns_ordered_block_list(
-    authed_page: Page, base_url: str
-) -> None:
-    """The segmenter exposes every ● reply in order (the seam the future
-    "read last N" depth-selector slices, #197) — tool blocks excluded."""
-    _load_readback(authed_page, base_url)
-    rows = _rows(
-        ("a", "● First reply."),
-        ("t", "● Bash(ls)"),
-        ("n", "  ⎿  ok"),
-        ("a", "● Second reply, wrapped"),
-        ("n", "  onto two lines."),
-        ("a", "● Third reply."),
-    )
-    blocks = authed_page.evaluate(
-        "(rows) => window.__readback.extractReplyBlocksFromRows(rows)", rows
-    )
-    assert blocks == [
-        "First reply.",
-        "Second reply, wrapped onto two lines.",
-        "Third reply.",
-    ]
 
 
 def test_color_path_classifies_bullets_from_real_buffer(
