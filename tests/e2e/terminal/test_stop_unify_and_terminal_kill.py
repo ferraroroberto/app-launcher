@@ -29,6 +29,7 @@ import os
 import pytest
 from playwright.sync_api import Page, expect
 
+from tests.e2e._readaloud_menu import stub_hub_health, wait_for_hub_probe
 from tests.e2e.fixtures.ui import open_session_row
 from tests.e2e.fixtures.waits import BUILD_READOUT_MS
 
@@ -82,6 +83,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     expect(pty_row.locator(".action-stop:not([data-item=action-stop-close])")).to_have_count(0)
     expect(pty_row.locator(".row-actions > [data-item=action-stop-close]")).to_have_count(0)
 
+    stub_hub_health(authed_page)
     open_session_row(authed_page, pty_row, "terminal")
 
     # One tap stops — stopSession() no longer guards with a confirm() dialog
@@ -95,13 +97,15 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
     expect(authed_page.locator("#terminalKill")).to_have_count(0)
     expect(authed_page.locator("#terminalJumpEnd")).to_have_count(0)
 
-    # ⋮ opens Rename · Copy link · Changed files (#1349) · Background tasks · Compact (#1218) —
-    # both for a Claude session — · Stop and kill, in that order.
+    # ⋮ opens Rename · Copy link · Changed files (#1349) · Background tasks · Links ·
+    # Read aloud · Summarize & read (hub up) · Compact (#1218) — all for a
+    # Claude session — · Stop and kill, in that order.
+    wait_for_hub_probe(authed_page)
     authed_page.locator("#terminalMenu").click()
     menu = authed_page.locator(".terminal-menu")
     expect(menu).to_be_visible()
     expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Compact", "Stop and kill"]
+        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud", "Summarize & read", "Compact", "Stop and kill"]
     )
     # The overlay's own copy of the unified stop (#253) — the same path the
     # row menu's Stop calls, reached from inside the session view.

@@ -1,4 +1,4 @@
-/* Read-aloud voices for the Coding tab's 🔊,
+/* Read-aloud voices for the Coding tab's ⋮ read-aloud rows,
  * split off `terminal-readback.js`, which re-exports this module's
  * API and keeps the buffer → reply-block extraction that feeds it.
  *
@@ -16,7 +16,7 @@
  *    hub is unconfigured / down / blocks the POST: zero infra, already on iOS
  *    Safari, and the button press supplies the user gesture iOS requires.
  *
- * The 🔊 button tap is the user gesture both paths need (iOS blocks both
+ * The menu-item tap is the user gesture both paths need (iOS blocks both
  * synthesized speech and `<audio>.play()` outside one) — so `speakHub` unlocks
  * its audio element synchronously, inside the click tick, before its first
  * `await`.

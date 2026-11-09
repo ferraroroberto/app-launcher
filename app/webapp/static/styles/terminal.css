@@ -46,10 +46,10 @@ body.terminal-open {
   display: flex;
   align-items: center;
   /* 6px, matching .terminal-bar-actions' own gap, so every button
-     sits at one uniform distance. The session overlay's row is six 44px
+     sits at one uniform distance. The session overlay's row is five 44px
      controls at most (‹ Back · title · context ring · mode
-     toggle · 🔊 · ⋮), which still leaves the title ~74px of a 390px phone
-     and only a few px of a 320px one with 🔊 showing. */
+     toggle · ⋮), which leaves the title room on a 390px phone and a
+     few px more on a 320px one. */
   gap: 6px;
   padding: 8px 10px;
   background: var(--card);
@@ -93,8 +93,7 @@ body.terminal-open {
 .terminal-bar-actions::-webkit-scrollbar { display: none; }
 /* The session overlay's bar no longer needs that scroller: with ✕ and
    ↓ gone its group holds the context ring, the Terminal⇄Chat toggle
-, 🔊 and ⋮, which always fit beside a shrinking title (≈316px of a
-   320px phone with all four showing, title keeps the rest). Only the Life OS
+and ⋮, which always fit beside a shrinking title. Only the Life OS
    bars still scroll. */
 #terminalOverlay .terminal-bar-actions { overflow-x: visible; }
 .term-btn:not(.icon-button) {
@@ -110,8 +109,8 @@ body.terminal-open {
   min-width: 44px;
   cursor: pointer;
 }
-/* Reading the last reply aloud — success-green pulse so the ⏹
-   stop state is unmistakable while speech is playing (on-state). */
+/* Reading the last reply aloud — success-green pulse on the ⋮ button so the
+   state shows with the menu closed (on-state). */
 .term-btn.speaking {
   color: var(--success-text);
   animation: compose-record-pulse 1.2s ease-in-out infinite;
@@ -128,36 +127,6 @@ body.terminal-open {
    target every other bar button uses, at the bar's uniform 6px gap,
    so the whole row fits on-screen at once. */
 #terminalBack { text-align: center; }
-/* Read-aloud action menu: a small dropdown anchored below the
-   terminal bar under the 🔊 button — "Read aloud" (verbatim) and
-   "Summarize & read" (hub-condensed for hands-free / driving). */
-.speak-popover {
-  position: absolute;
-  top: 48px;
-  right: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  background: var(--card-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  z-index: 30;
-  box-shadow: var(--shadow);
-}
-.speak-action {
-  min-height: 44px;
-  padding: 10px 14px;
-  font-size: var(--font-label);
-  text-align: left;
-  white-space: nowrap;
-  background: var(--card);
-  color: var(--fg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-.speak-action:active { background: var(--card-2); }
 /* Read-aloud summary modal: the hub summary shown on screen while
    it's read aloud (and readable on its own), auto-closing when the read ends or
    on a tap. Sits above the terminal overlay (300), below the toast (400). */

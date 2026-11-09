@@ -1,6 +1,6 @@
 """Regression pin for hub read-aloud (issues #203, #206).
 
-The 🔊 button gains a second voice: when the local-llm-hub is reachable, the
+Read aloud (the ⋮ menu) gains a second voice: when the local-llm-hub is reachable, the
 reply is synthesized through the hub's Orpheus voice instead of the on-device
 Web Speech voice. For low time-to-first-audio (#206) ``speakHub()`` POSTs the
 reply to ``/api/tts/speak``, which streams **headerless PCM16** as the hub
@@ -105,8 +105,8 @@ def test_speak_hub_finishes_on_last_buffer_end(
     pressed = authed_page.evaluate(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
         " window.__lastNode.onended();"   # the final buffer drains
-        " return document.getElementById('terminalSpeak')"
-        "          .getAttribute('aria-pressed'); }"
+        " return document.getElementById('terminalMenu')"
+        "          .dataset.speaking; }"
     )
     assert pressed == "false"
 
@@ -138,8 +138,8 @@ def test_cancel_hub_stops_audio(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
         " window.__readback.cancelHub();"
         " return { closed: window.__audioLog.closed,"
-        "          pressed: document.getElementById('terminalSpeak')"
-        "                     .getAttribute('aria-pressed') }; }"
+        "          pressed: document.getElementById('terminalMenu')"
+        "                     .dataset.speaking }; }"
     )
     assert got["closed"] >= 1
     assert got["pressed"] == "false"
@@ -172,8 +172,8 @@ def test_screen_lock_reschedules_pending_buffers(
         "  return {"
         "    before, after,"
         "    reanchored,"
-        "    pressed: document.getElementById('terminalSpeak')"
-        "               .getAttribute('aria-pressed'),"
+        "    pressed: document.getElementById('terminalMenu')"
+        "               .dataset.speaking,"
         "  };"
         "}"
     )

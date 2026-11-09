@@ -23,7 +23,7 @@ The Board tab's drill-down drawer offers the same four actions as one row of equ
 
 ## The shared bar and menu
 
-The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle, 🔊 read-aloud, and the **⋮** menu:
+The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle, and the **⋮** menu:
 
 - **Rename · Copy link · Stop and kill** — always.
 - **Hide steps** (or **Show steps** once hidden), **Hide automatic** (or **Show automatic**), **Load new** and **Reload** — while Chat is showing.
@@ -32,6 +32,7 @@ The bar carries *‹* back, the title, an icon-only **Terminal ⇄ Chat** toggle
 - **Background tasks** — for a Claude session, in either mode and in the Coding tab's row menu. See [Background tasks](#background-tasks).
 
 - **Links** — for any agent with a transcript reader, in either mode and in the Coding tab's row menu. See [Links](#links).
+- **Read aloud** and **Summarize & read** — in either mode, above **Stop and kill**. Read aloud turns into **Stop reading** while speech plays, and the ⋮ button pulses green so a read in progress shows with the menu closed. Summarize & read appears once the hub answers its health probe. See [Read aloud](interactive-terminal.md).
 
 The phone's floating tab bar hides while the session view is open.
 

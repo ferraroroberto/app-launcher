@@ -1,12 +1,12 @@
 /* Terminal bar ⋮ session menu + the floating "Latest" pill.
  *
  * The bar carries only ‹ Back · title · context ring (context-ring.js) ·
- * Terminal⇄Chat toggle (* session-overlay.js) · 🔊 · ⋮ — no permanent
+ * Terminal⇄Chat toggle (* session-overlay.js) · ⋮ — no permanent
  * ✕ Kill or ↓ Jump control, so the bar fits a 390px phone without
  * scrolling.
  *
  *   ⋮ menu — Rename · Copy link · Changed files · [Background tasks, Claude
- *   sessions only] · [Hide/Show steps · Reload, Chat mode
+ *   sessions only] · Read aloud · [Summarize & read, hub up] · [Hide/Show steps · Reload, Chat mode
  *   only] · [Compact, Claude sessions only] · Stop and kill. Copy link prefers the session's provider-native
  *   URL and falls back to this launcher's tailnet-only ?session= link, the
  *   same resolution the Rename / link dialog uses (see
@@ -40,6 +40,7 @@ import {
 } from '../chat/session-transcript.js';
 import { inChatMode } from '../session-overlay.js';
 import { isHiddenChannel } from '../channel-sessions.js';
+import { READ_ALOUD_ITEM, SUMMARIZE_READ_ITEM } from './terminal-readaloud.js';
 
 // Drops below the overlay bar, right edges 8px in. The offset is measured
 // from the bar's border box, so 1 here puts the menu 2px under its padding
@@ -176,6 +177,9 @@ export function wireTerminalMenu() {
     },
     BACKGROUND_TASKS_ITEM,
     LINKS_ITEM,
+    // Read aloud / Summarize & read (terminal-readaloud.js), in both modes.
+    READ_ALOUD_ITEM,
+    SUMMARIZE_READ_ITEM,
     // Chat-only: the transcript bar's 👁 and 🔄 moved here when the
     // transcript became a pane of this overlay. Absent from the DOM in
     // Terminal mode (function-valued `hidden`, the row menu). The step lines

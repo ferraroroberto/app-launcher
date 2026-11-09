@@ -614,8 +614,6 @@ export const els = {
   terminalActivity: document.getElementById('terminalActivity'),
   terminalLatest: document.getElementById('terminalLatest'),
   terminalComposeBar: document.getElementById('terminalComposeBar'),
-  terminalSpeak: document.getElementById('terminalSpeak'),
-  terminalSpeakPopover: document.getElementById('terminalSpeakPopover'),
   terminalMenu: document.getElementById('terminalMenu'),
   summaryModal: document.getElementById('summaryModal'),
   summaryModalText: document.getElementById('summaryModalText'),
