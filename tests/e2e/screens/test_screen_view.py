@@ -375,6 +375,27 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     wait_until(page, lambda: seen["inputs"][-1].get("key") == "esc", "Esc")
     assert seen["inputs"][-1] == {"type": "key", "key": "esc", "mods": []}
 
+    # A modifier with punctuation goes out as a key combo.
+    ctrl.click()
+    page.keyboard.type("/")
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "/", "Ctrl+/")
+    assert seen["inputs"][-1] == {"type": "key", "key": "/", "mods": ["ctrl"]}
+
+    # A character that needs Shift on the PC's layout is sent as the
+    # character: the server decides where the Shift goes.
+    keys.locator('[data-mod="alt"]').click()
+    page.keyboard.type("?")
+    wait_until(page, lambda: seen["inputs"][-1].get("key") == "?", "Alt+?")
+    assert seen["inputs"][-1] == {"type": "key", "key": "?", "mods": ["alt"]}
+
+    # Without a modifier, punctuation is still text; so is an accent with one.
+    page.keyboard.type(";")
+    wait_until(page, lambda: seen["inputs"][-1].get("text") == ";", "plain ;")
+    ctrl.click()
+    page.keyboard.type("ñ")
+    wait_until(page, lambda: seen["inputs"][-1].get("text") == "ñ", "Ctrl + ñ stays text")
+    assert seen["inputs"][-1]["type"] == "text"
+
     # The toggle takes the bar away again.
     toggle.click()
     expect(keys).to_be_hidden()
@@ -467,33 +488,6 @@ def test_the_second_page_sends_f_keys_navigation_keys_and_task_manager(
     page.locator("#screenKeyboard").click()
     expect(main).not_to_be_hidden()
     expect(fn).to_be_hidden()
-
-
-def test_a_modifier_and_punctuation_goes_out_as_a_key_combo(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, page = _open_keys(authed_page, base_url)
-    keys = page.locator("#screenKeys")
-
-    keys.locator('[data-mod="ctrl"]').click()
-    page.keyboard.type("/")
-    wait_until(page, lambda: seen["inputs"] and _last(seen).get("key") == "/", "Ctrl+/")
-    assert _last(seen) == {"type": "key", "key": "/", "mods": ["ctrl"]}
-
-    # A character that needs Shift on the PC's layout is sent as the
-    # character: the server decides where the Shift goes.
-    keys.locator('[data-mod="alt"]').click()
-    page.keyboard.type("?")
-    wait_until(page, lambda: _last(seen).get("key") == "?", "Alt+?")
-    assert _last(seen) == {"type": "key", "key": "?", "mods": ["alt"]}
-
-    # Without a modifier, punctuation is still text; so is an accent with one.
-    page.keyboard.type(";")
-    wait_until(page, lambda: _last(seen).get("text") == ";", "plain ;")
-    keys.locator('[data-mod="ctrl"]').click()
-    page.keyboard.type("ñ")
-    wait_until(page, lambda: _last(seen).get("text") == "ñ", "Ctrl + ñ stays text")
-    assert _last(seen)["type"] == "text"
 
 
 def test_both_pages_fit_a_narrow_phone_in_portrait_and_landscape(
