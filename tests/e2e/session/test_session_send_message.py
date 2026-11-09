@@ -330,29 +330,31 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     expect(authed_page.locator("#transcriptList .tr-user")).to_have_count(1)
 
 
-@pytest.mark.parametrize(
-    "status, verdict, wording, is_error",
-    [
-        (200, _pty_verdict("ok", "confirmed", delivered=True), r"^\W*Sent$", False),
-        # #1744: said as plain "Sent"; the look for the agent taking it follows
-        # (tests/e2e/chat/test_chat_live_refresh.py), and only its failure warns.
-        (200, _pty_verdict("unverified", "unconfirmed", delivered=True), r"^\W*Sent$", False),
-        (202, _pty_verdict("deferred", "pending", delivered=False, deferred=True), r"Queued", False),
-        (200, _pty_verdict("noop", "not_submitted", delivered=False), r"Not submitted", True),
-    ],
-    ids=["confirmed", "unconfirmed", "pending-202", "not-submitted"],
-)
+# The four verdicts a full-control send can come back with, in an order where
+# each toast reads differently from the one before it, so every wording check
+# waits on its own send rather than passing on the previous toast.
+_FULL_CONTROL_SENDS = [
+    (200, _pty_verdict("ok", "confirmed", delivered=True), r"^\W*Sent$", False),
+    (202, _pty_verdict("deferred", "pending", delivered=False, deferred=True), r"Queued", False),
+    # #1744: said as plain "Sent"; the look for the agent taking it follows
+    # (tests/e2e/chat/test_chat_live_refresh.py), and only its failure warns.
+    (200, _pty_verdict("unverified", "unconfirmed", delivered=True), r"^\W*Sent$", False),
+    (200, _pty_verdict("noop", "not_submitted", delivered=False), r"Not submitted", True),
+]
+
+
 def test_chat_composer_sends_to_full_control_session_with_honest_wording(
-    authed_page: Page, base_url: str, status: int, verdict: dict, wording: str, is_error: bool
+    authed_page: Page, base_url: str
 ) -> None:
     # #983: a full-control session sends from Chat through /input too, so the
     # verdict — the only feedback Chat has — reaches the toast verbatim in
-    # meaning: a submit that was not sent never reads as a success.
+    # meaning: a submit that was not sent never reads as a success. One page
+    # load sends once per verdict; only the stubbed reply differs.
     captured: dict = {}
     calls: list = []
     _mock_sessions_list(authed_page, kind="pty")
     _mock_transcript(authed_page, calls)
-    _mock_input(authed_page, captured, [(status, verdict)])
+    _mock_input(authed_page, captured, [(status, verdict) for status, verdict, _w, _e in _FULL_CONTROL_SENDS])
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_chat(authed_page)
@@ -360,26 +362,29 @@ def test_chat_composer_sends_to_full_control_session_with_honest_wording(
     expect(field).to_have_attribute("placeholder", "Message")
     expect(authed_page.locator("#chatNote")).to_be_hidden()
     expect(authed_page.locator(KEYS)).to_be_enabled()
-
-    field.fill("run the gate")
-    authed_page.locator(SEND).click()
-    expect(field).to_have_value("")
-    assert captured["body"] == {"data": "run the gate", "submit": True}
     toast = authed_page.locator("#toast")
-    expect(toast).to_have_text(re.compile(wording))
-    if is_error:
-        expect(toast).to_have_class(re.compile(r"\berror\b"))
-    else:
-        expect(toast).not_to_have_class(re.compile(r"\berror\b"))
+
+    for n, (_status, _verdict, wording, is_error) in enumerate(_FULL_CONTROL_SENDS, start=1):
+        text = f"run the gate {n}"
+        field.fill(text)
+        authed_page.locator(SEND).click()
+        expect(field).to_have_value("")
+        wait_until(authed_page, lambda n=n: captured.get("calls") == n, f"send {n}")
+        assert captured["body"] == {"data": text, "submit": True}
+        expect(toast).to_have_text(re.compile(wording))
+        if is_error:
+            expect(toast).to_have_class(re.compile(r"\berror\b"))
+        else:
+            expect(toast).not_to_have_class(re.compile(r"\berror\b"))
     _wait_for_calls(authed_page, calls, 2)
-    # #1050: the sent turn arrives through live refresh — a forward-cursor
-    # tick — rather than the full page reload this used to do, so the pane
+    # #1050: the sent turns arrive through live refresh — forward-cursor
+    # ticks — rather than the full page reload this used to do, so the pane
     # keeps its scroll position and open cards. Pinned as "exactly one page
     # load, and at least one tick after it" rather than a call count, which
     # a live view no longer has a fixed one of.
     pages = [u for u in calls if "after=" not in u]
-    assert len(pages) == 1, f"the send reloaded the whole transcript: {calls}"
-    assert any("after=" in u for u in calls), f"no live tick after the send: {calls}"
+    assert len(pages) == 1, f"a send reloaded the whole transcript: {calls}"
+    assert any("after=" in u for u in calls), f"no live tick after the sends: {calls}"
 
 
 def _open_chat_with_send_refused(page: Page, base_url: str) -> list:
@@ -411,52 +416,32 @@ def _open_chat_with_send_refused(page: Page, base_url: str) -> list:
     return posts
 
 
-@pytest.mark.parametrize("registry", ["refused", "unknown"])
-def test_chat_send_gate_follows_the_console_input_flag(
-    authed_page: Page, base_url: str, registry: str
+def test_chat_send_gate_stays_open_when_the_registry_is_unknown(
+    authed_page: Page, base_url: str
 ) -> None:
-    # The registry's console_input flag gates ➤ Send alone (disabled with its
-    # reason), never the whole composer. Only an explicit false refuses: when
+    # The registry's console_input flag gates ➤ Send alone, never the whole
+    # composer, and only an explicit false refuses (that case is
+    # test_a_refused_send_answers_a_tap_instead_of_going_dead): when
     # /api/agents never lands the boot fallback carries no flag, and unknown
     # must not grey Send out — the session-host still refuses an unprobed
     # agent with its own 502.
-    def _agents(route):
-        if registry == "unknown":
-            route.abort()
-            return
-        resp = route.fetch()
-        data = resp.json()
-        for a in data.get("agents", []):
-            if a.get("id") == "claude":
-                a["console_input"] = False
-        route.fulfill(response=resp, json=data)
-
-    authed_page.route(re.compile(r".*/api/agents$"), _agents)
-    calls: list = []
+    authed_page.route(re.compile(r".*/api/agents$"), lambda route: route.abort())
     _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    if registry == "unknown":
-        authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    else:
-        # Open only once the registry answered, so the gate reads the flag.
-        with authed_page.expect_response(re.compile(r".*/api/agents$")):
-            authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _mock_transcript(authed_page, [])
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_chat(authed_page)
 
-    send = authed_page.locator(SEND)
     field = authed_page.locator(INPUT)
-    if registry == "refused":
-        # aria-disabled, never the `disabled` attribute (#1069): the tap has
-        # to keep landing so the reason can be toasted — pinned by
-        # test_a_refused_send_answers_a_tap_instead_of_going_dead below.
-        expect(send).to_have_attribute("aria-disabled", "true")
-        expect(send).not_to_have_attribute("disabled", re.compile(r".*"))
-        expect(send).to_have_attribute("title", re.compile(r"No console input"))
-    else:
-        expect(send).to_be_enabled()
+    expect(authed_page.locator(SEND)).to_be_enabled()
     expect(field).to_be_editable()
     field.fill("draft survives")
     expect(field).to_have_value("draft survives")
+
+
+def _clear_toast(page: Page) -> None:
+    """Empty the toast, so the next gesture's wording is read from its own
+    toast and not from one still up from the gesture before."""
+    page.locator("#toast").evaluate("el => { el.textContent = ''; }")
 
 
 def test_a_refused_send_answers_a_tap_instead_of_going_dead(
@@ -474,6 +459,12 @@ def test_a_refused_send_answers_a_tap_instead_of_going_dead(
 
     send = authed_page.locator(SEND)
     field = authed_page.locator(INPUT)
+    # The registry's explicit false gates ➤ Send alone, with its reason; the
+    # composer stays editable.
+    expect(send).to_have_attribute("aria-disabled", "true")
+    expect(send).not_to_have_attribute("disabled", re.compile(r".*"))
+    expect(send).to_have_attribute("title", re.compile(r"No console input"))
+    expect(field).to_be_editable()
     field.fill("why will you not send this")
     # force=True: Playwright's own actionability treats aria-disabled as not
     # enabled, but a finger has no actionability check — the same pattern
@@ -496,6 +487,17 @@ def test_a_refused_send_answers_a_tap_instead_of_going_dead(
             "el => getComputedStyle(el).backgroundColor"
         )),
     )
+
+    # #1072: Ctrl+Enter routes through submit(), so the same gate holds it
+    # exactly as it holds a tap: the reason is toasted, the draft survives,
+    # and nothing reaches /input. A shortcut wired straight to the send would
+    # have sailed past all three.
+    _clear_toast(authed_page)
+    field.fill("the shortcut must not sneak this through")
+    field.press("Control+Enter")
+    expect(authed_page.locator("#toast")).to_have_text(re.compile(r"No console input"))
+    expect(field).to_have_value("the shortcut must not sneak this through")
+    assert posts == [], f"the shortcut bypassed the send gate: {posts}"
 
 
 def test_detached_chat_attach_uploads_inline_and_sends_the_path(
@@ -577,17 +579,17 @@ def _paste_or_drop(page: Page, kind: str, *, with_text: bool = False) -> bool:
 # reach `submit()` rather than a second send path that could skip its gates.
 
 
-@pytest.mark.parametrize("modifier", ["Control", "Meta"], ids=["ctrl", "cmd"])
 def test_mod_enter_sends_from_the_chat_composer(
-    authed_page: Page, base_url: str, modifier: str
+    authed_page: Page, base_url: str
 ) -> None:
-    # Same modifier gesture, two keyboards: Ctrl on a PC, Cmd on a Mac.
+    # Same modifier gesture, two keyboards: Ctrl on a PC, Cmd on a Mac, both
+    # sent from one page load.
     captured: dict = {}
     calls: list = []
     posts: list = []
     _mock_sessions_list(authed_page)
     _mock_transcript(authed_page, calls)
-    _mock_input(authed_page, captured, [(200, _UNCONFIRMED_DETACHED)])
+    _mock_input(authed_page, captured, [(200, _UNCONFIRMED_DETACHED), (200, _UNCONFIRMED_DETACHED)])
     authed_page.on(
         "request",
         lambda req: posts.append(req.url)
@@ -599,54 +601,36 @@ def test_mod_enter_sends_from_the_chat_composer(
     _open_chat(authed_page)
     field = authed_page.locator(INPUT)
 
-    if modifier == "Control":
-        # The tooltip discrepancy #1072 found: 'Send (with Enter)' described
-        # behaviour no code had, on every surface. Chat opts into the shortcut,
-        # so its title names it. The other half — a non-opted surface must not
-        # claim a shortcut it doesn't have — is pinned on the terminal composer
-        # in test_compose_bar.py, which already has that mount's harness.
-        expect(authed_page.locator(SEND)).to_have_attribute(
-            "title", "Send (Ctrl/Cmd+Enter)"
-        )
+    # The tooltip discrepancy #1072 found: 'Send (with Enter)' described
+    # behaviour no code had, on every surface. Chat opts into the shortcut,
+    # so its title names it. The other half — a non-opted surface must not
+    # claim a shortcut it doesn't have — is pinned on the terminal composer
+    # in test_compose_bar.py, which already has that mount's harness.
+    expect(authed_page.locator(SEND)).to_have_attribute(
+        "title", "Send (Ctrl/Cmd+Enter)"
+    )
 
-        # The half of #1072 that must NOT change. Multi-line prompts are the
-        # normal case here, so the return key stays a newline — and on the
-        # WebKit/iPhone projection this is the proof that the phone's on-screen
-        # keyboard is untouched: the binding needs a Ctrl/Cmd the soft keyboard
-        # has no key for, so its return key can never match the guard. That is
-        # why the implementation is a plain modifier check and not a
-        # touch-device sniff. (Folded in by #1515: it shared this test's boot
-        # and row open, and the plain-Enter and title checks are
-        # modifier-independent, so they ride the first leg only.)
-        field.fill("first line")
-        field.press("Enter")
-        field.type("second line")
-        expect(field).to_have_value("first line\nsecond line")
-        assert posts == [], f"a bare Enter sent the draft: {posts}"
+    # The half of #1072 that must NOT change. Multi-line prompts are the
+    # normal case here, so the return key stays a newline — and on the
+    # WebKit/iPhone projection this is the proof that the phone's on-screen
+    # keyboard is untouched: the binding needs a Ctrl/Cmd the soft keyboard
+    # has no key for, so its return key can never match the guard. That is
+    # why the implementation is a plain modifier check and not a
+    # touch-device sniff.
+    field.fill("first line")
+    field.press("Enter")
+    field.type("second line")
+    expect(field).to_have_value("first line\nsecond line")
+    assert posts == [], f"a bare Enter sent the draft: {posts}"
 
-    field.fill("sent from the keyboard")
-    field.press(f"{modifier}+Enter")
+    for n, modifier in enumerate(("Control", "Meta"), start=1):
+        _clear_toast(authed_page)
+        text = f"sent from the keyboard with {modifier}"
+        field.fill(text)
+        field.press(f"{modifier}+Enter")
 
-    # Delivered through the same /input route as a tap, and the draft clears.
-    expect(field).to_have_value("")
-    assert captured["body"] == {"data": "sent from the keyboard", "submit": True}
-    expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
-
-
-def test_mod_enter_does_not_bypass_a_refused_send(
-    authed_page: Page, base_url: str
-) -> None:
-    # The shortcut routes through submit(), so the console-input gate (#1069)
-    # holds it exactly as it holds a tap: the reason is toasted, the draft
-    # survives, and nothing reaches /input. A shortcut wired straight to the
-    # send would have sailed past all three.
-    posts = _open_chat_with_send_refused(authed_page, base_url)
-
-    field = authed_page.locator(INPUT)
-    expect(authed_page.locator(SEND)).to_have_attribute("aria-disabled", "true")
-    field.fill("the shortcut must not sneak this through")
-    field.press("Control+Enter")
-
-    expect(authed_page.locator("#toast")).to_have_text(re.compile(r"No console input"))
-    expect(field).to_have_value("the shortcut must not sneak this through")
-    assert posts == [], f"the shortcut bypassed the send gate: {posts}"
+        # Delivered through the same /input route as a tap, and the draft clears.
+        expect(field).to_have_value("")
+        wait_until(authed_page, lambda n=n: captured.get("calls") == n, f"{modifier}+Enter send")
+        assert captured["body"] == {"data": text, "submit": True}
+        expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")

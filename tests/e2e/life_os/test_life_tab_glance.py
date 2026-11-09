@@ -372,62 +372,74 @@ def test_the_skills_filter_narrows_and_persists(life) -> None:
     expect(page.locator("#lifeOsList li.lifeos-item:not([hidden])")).to_have_count(3)
 
 
-@pytest.mark.parametrize(
-    "recap, header, tone, meta, chips",
-    [
-        ({"staleness": "overdue", "age_days": 16.0, "proposal_pending": True},
-         "recap overdue", "attention", "last run 16 days ago",
-         [("overdue", "attention"), ("draft ready", "accent")]),
-        ({"staleness": "due", "age_days": 1.0}, "recap due", "attention",
-         "last run 1 day ago", [("due", "attention")]),
-        ({"staleness": "fresh", "age_days": 0.2}, "3 skills", None,
-         "last run today", []),
-        ({"staleness": "never", "age_days": None}, "3 skills", None, "never run", []),
-        ({"available": False, "staleness": "overdue"}, "3 skills", None, None, []),
-    ],
-)
+# Each recap state, in an order where every state draws something the one
+# before it did not (a header, a meta, or the card hidden), so each step waits
+# on its own render.
+_RECAP_STATES = [
+    ({"staleness": "overdue", "age_days": 16.0, "proposal_pending": True},
+     "recap overdue", "attention", "last run 16 days ago",
+     [("overdue", "attention"), ("draft ready", "accent")]),
+    ({"staleness": "fresh", "age_days": 0.2}, "3 skills", None,
+     "last run today", []),
+    ({"staleness": "due", "age_days": 1.0}, "recap due", "attention",
+     "last run 1 day ago", [("due", "attention")]),
+    ({"staleness": "never", "age_days": None}, "3 skills", None, "never run", []),
+    ({"available": False, "staleness": "overdue"}, "3 skills", None, None, []),
+]
+
+
 def test_the_recap_is_one_glance_row_and_its_exception_heads_the_tab(
-    authed_page: Page, life, recap, header, tone, meta, chips
+    authed_page: Page, life
 ) -> None:
-    _recap(authed_page, **recap)
-    page = life()
-    status = page.locator("#lifeHeadStatus")
-    expect(status).to_have_text(header)
-    if tone:
-        expect(status.locator(".head-exception")).to_have_attribute("data-tone", tone)
-    card = page.locator("#lifeOsRecap")
-    if meta is None:
-        expect(card).to_be_hidden()
-        return
-    # The recap rises above Skills only as the exception (#1503).
-    cards = page.locator("#paneLifeOS > .card:not(.home-head)")
-    if chips:
-        expect(cards.first).to_have_id("lifeOsRecap")
-        expect(cards.nth(1)).to_have_class(re.compile(r"\blifeos-list-card\b"))
-    else:
-        expect(cards.first).to_have_class(re.compile(r"\blifeos-list-card\b"))
-        expect(cards.nth(1)).to_have_id("lifeOsRecap")
-    row = card.locator("li.lifeos-recap-item")
-    expect(row.locator(".action-row-title")).to_have_text("Weekly recap")
-    expect(row.locator(".avatar")).to_have_count(1)
-    # #167's coloured-dot badge is gone since #1439: only the chips remain.
-    expect(page.locator(".lifeos-recap-badge")).to_have_count(0)
-    # The meta's text is its own span only when chips follow it.
-    text = row.locator(".action-row-meta-text" if chips else ".action-row-meta")
-    expect(text).to_have_text(meta)
-    found = row.locator(".chip")
-    expect(found).to_have_count(len(chips))
-    for i, (text, chip_tone) in enumerate(chips):
-        expect(found.nth(i)).to_have_text(text)
-        expect(found.nth(i)).to_have_attribute("data-tone", chip_tone)
-    verb = row.locator("#lifeOsRecapLaunch")
-    expect(verb).to_have_class(re.compile(r"\baction-row-verb\b"))
-    # The vendored plain verb (fleet-config#1420), still named, unpainted at
-    # rest in light and dark.
-    expect(verb).to_have_class(re.compile(r"\bicon-button\b"))
-    assert_unpainted_at_rest(page, verb)
-    expect(verb).to_have_attribute("aria-label", "Run weekly recap review")
-    expect(row.locator(".action-row-kebab")).to_have_count(0)
+    """Every recap state on one page load: the recap is read again on each
+    Life tab open, so the stub changes and the tab is opened again."""
+    page = None
+    for recap, header, tone, meta, chips in _RECAP_STATES:
+        _recap(authed_page, **recap)
+        if page is None:
+            page = life()
+        else:
+            page.locator("#tabClaude").click()
+            page.locator("#tabLifeOS").click()
+        status = page.locator("#lifeHeadStatus")
+        card = page.locator("#lifeOsRecap")
+        row = card.locator("li.lifeos-recap-item")
+        # The state's own render first, so the checks below read it.
+        if meta is None:
+            expect(card).to_be_hidden()
+        else:
+            text = row.locator(".action-row-meta-text" if chips else ".action-row-meta")
+            expect(text).to_have_text(meta)
+        expect(status).to_have_text(header)
+        if tone:
+            expect(status.locator(".head-exception")).to_have_attribute("data-tone", tone)
+        if meta is None:
+            continue
+        # The recap rises above Skills only as the exception (#1503).
+        cards = page.locator("#paneLifeOS > .card:not(.home-head)")
+        if chips:
+            expect(cards.first).to_have_id("lifeOsRecap")
+            expect(cards.nth(1)).to_have_class(re.compile(r"\blifeos-list-card\b"))
+        else:
+            expect(cards.first).to_have_class(re.compile(r"\blifeos-list-card\b"))
+            expect(cards.nth(1)).to_have_id("lifeOsRecap")
+        expect(row.locator(".action-row-title")).to_have_text("Weekly recap")
+        expect(row.locator(".avatar")).to_have_count(1)
+        # #167's coloured-dot badge is gone since #1439: only the chips remain.
+        expect(page.locator(".lifeos-recap-badge")).to_have_count(0)
+        found = row.locator(".chip")
+        expect(found).to_have_count(len(chips))
+        for i, (chip_text, chip_tone) in enumerate(chips):
+            expect(found.nth(i)).to_have_text(chip_text)
+            expect(found.nth(i)).to_have_attribute("data-tone", chip_tone)
+        verb = row.locator("#lifeOsRecapLaunch")
+        expect(verb).to_have_class(re.compile(r"\baction-row-verb\b"))
+        # The vendored plain verb (fleet-config#1420), still named, unpainted at
+        # rest in light and dark.
+        expect(verb).to_have_class(re.compile(r"\bicon-button\b"))
+        assert_unpainted_at_rest(page, verb)
+        expect(verb).to_have_attribute("aria-label", "Run weekly recap review")
+        expect(row.locator(".action-row-kebab")).to_have_count(0)
 
 
 def test_the_recap_verb_launches_with_the_toolbar(life) -> None:
@@ -625,23 +637,21 @@ def test_with_nothing_in_use_every_skill_shows(life) -> None:
     assert _visible_order(page) == ["garden-notes", "reading-list", "trip-planner"]
 
 
-@pytest.mark.parametrize("skill_id, meta", [
-    ("garden-notes", "used today · Telegram"), ("trip-planner", "used yesterday"),
-    ("pottery", "used 3 days ago"), ("bird-count", "used 3 months ago"),
-    ("yoga-log", "no conversations yet"),
-])
-def test_the_meta_says_when_it_was_last_used(authed_page: Page, life, skill_id, meta) -> None:
+def test_each_row_says_when_it_was_last_used_and_wears_its_glyph(
+    authed_page: Page, life
+) -> None:
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
-    expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
+    for skill_id, meta in (
+        ("garden-notes", "used today · Telegram"), ("trip-planner", "used yesterday"),
+        ("pottery", "used 3 days ago"), ("bird-count", "used 3 months ago"),
+        ("yoga-log", "no conversations yet"),
+    ):
+        expect(_row(page, skill_id).locator(".action-row-meta")).to_have_text(meta)
 
-
-def test_the_avatar_is_the_skill_glyph_or_a_monogram(authed_page: Page, life) -> None:
-    _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
-    page = life()
-    glyph = _row(page, "garden-notes").locator(".avatar use")
-    expect(glyph).to_have_attribute("href", "#i-sprout")
-    # A glyph the page's sprite lacks falls back to the monogram, as does none.
+    # The avatar is the skill's glyph; a glyph the page's sprite lacks falls
+    # back to the monogram, as does none.
+    expect(_row(page, "garden-notes").locator(".avatar use")).to_have_attribute("href", "#i-sprout")
     expect(_row(page, "pottery").locator(".avatar .lifeos-monogram")).to_have_text("P")
     expect(_row(page, "trip-planner").locator(".avatar .lifeos-monogram")).to_have_text("T")
 
@@ -709,30 +719,33 @@ def test_start_new_ignores_the_resume_switch(authed_page: Page, life) -> None:
     assert posted[0] == {"mode": "remote", "model": "claude:sonnet", "resume": False}, posted
 
 
-@pytest.mark.parametrize("detached", [True, False])
 def test_pick_a_session_opens_claudes_picker_whatever_the_resume_switch_says(
-    authed_page: Page, life, detached: bool
+    authed_page: Page, life
 ) -> None:
     """#1695: the kebab's "Pick a session…" posts resume: true with the Resume
-    switch OFF, honours Detached either way, and its toast names the picker."""
+    switch OFF, honours Detached either way, and its toast names the picker.
+    Detached first, then full control, on one page load."""
     _json_route(authed_page, r".*/api/life-os/skills(\?.*)?$", _used())
     page = life()
     posted = _launch_route(page)
-    if detached:
+    toast = page.locator("#toast")
+    for n, detached in enumerate((True, False), start=1):
+        # The Detached switch is off at boot: on for the first pick, off again
+        # for the second.
         life_launch_switch(page, "#lifeOsDetached")
-    garden = _row(page, "garden-notes")
-    garden.locator(".action-row-kebab").click()
-    item = open_row_menu(page).locator("[data-item=lifeos-pick-session-btn]")
-    expect(item).to_have_text("Pick a session…")
-    expect(item).to_have_attribute("aria-label", "Open Claude’s session picker for garden-notes")
-    item.click()
-    wait_until(page, lambda: len(posted) == 1, "the launch POST")
-    assert posted[0]["resume"] is True, posted
-    assert posted[0]["mode"] == ("remote" if detached else "pty"), posted
-    assert posted[0]["model"] == "claude:sonnet", posted
-    expect(page.locator("#toast")).to_contain_text(
-        "Opening Claude’s session picker for garden-notes"
-        + (" (detached)" if detached else ""))
+        garden = _row(page, "garden-notes")
+        garden.locator(".action-row-kebab").click()
+        item = open_row_menu(page).locator("[data-item=lifeos-pick-session-btn]")
+        expect(item).to_have_text("Pick a session…")
+        expect(item).to_have_attribute("aria-label", "Open Claude’s session picker for garden-notes")
+        item.click()
+        wait_until(page, lambda n=n: len(posted) == n, f"launch POST {n}")
+        assert posted[-1]["resume"] is True, posted
+        assert posted[-1]["mode"] == ("remote" if detached else "pty"), posted
+        assert posted[-1]["model"] == "claude:sonnet", posted
+        expect(toast).to_have_text(re.compile(
+            "Opening Claude’s session picker for garden-notes"
+            + (r" \(detached\)" if detached else "") + "$"))
 
 
 def test_the_kebab_lists_pick_a_session_after_start_new(authed_page: Page, life) -> None:

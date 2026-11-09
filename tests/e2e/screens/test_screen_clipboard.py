@@ -106,6 +106,36 @@ def test_paste_to_pc_sends_the_phone_text_once_and_never_presses_a_key(
     page.wait_for_timeout(300)
     assert [m for m in seen["inputs"] if m.get("type") == "key"] == []
 
+    # An empty clipboard and one over the cap send nothing.
+    seen["inputs"].clear()
+    page.evaluate("window.__clip.text = ''")
+    key.click()
+    expect(notice).to_have_text("The phone's clipboard has no text")
+
+    page.evaluate("window.__clip.text = 'a'.repeat(64 * 1024 + 1)")
+    key.click()
+    expect(notice).to_have_text("That text is too long to send (64 KB at most).")
+    expect(notice).to_have_class("screen-notice error")
+    page.wait_for_timeout(300)
+    assert _clipboard_sets(seen) == []
+
+    # Exactly at the cap goes.
+    page.evaluate("window.__clip.text = 'a'.repeat(64 * 1024)")
+    key.click()
+    wait_until(page, lambda: _clipboard_sets(seen), "the at-cap clipboard_set")
+    assert len(_clipboard_sets(seen)[0]["text"]) == 64 * 1024
+
+    # The second page carries the same key.
+    seen["inputs"].clear()
+    page.evaluate("window.__clip.text = %s" % json.dumps(_TEXT))
+    keys = page.locator("#screenKeys")
+    keys.locator('[data-page-to="fn"]').click()
+    fn_key = keys.locator('[data-keys-page="fn"] [data-clip="set"]')
+    expect(fn_key).to_be_visible()
+    fn_key.click()
+    wait_until(page, lambda: _clipboard_sets(seen), "the clipboard_set from the second page")
+    assert _clipboard_sets(seen)[0]["text"] == _TEXT
+
 
 def test_paste_and_ctrl_v_presses_ctrl_v_only_after_the_copy_landed(
     authed_page: Page, base_url: str
@@ -137,17 +167,6 @@ def test_paste_and_ctrl_v_presses_ctrl_v_only_after_the_copy_landed(
     assert [m for m in seen["inputs"] if m.get("type") == "key"] == []
 
 
-def test_both_pages_carry_the_paste_keys(authed_page: Page, base_url: str) -> None:
-    seen, sockets, page = _open_bar(authed_page, base_url)
-    keys = page.locator("#screenKeys")
-    keys.locator('[data-page-to="fn"]').click()
-    key = keys.locator('[data-keys-page="fn"] [data-clip="set"]')
-    expect(key).to_be_visible()
-    key.click()
-    wait_until(page, lambda: _clipboard_sets(seen), "the clipboard_set from the second page")
-    assert _clipboard_sets(seen)[0]["text"] == _TEXT
-
-
 def test_nothing_is_read_or_sent_while_the_picture_is_not_live(
     authed_page: Page, base_url: str
 ) -> None:
@@ -163,31 +182,6 @@ def test_nothing_is_read_or_sent_while_the_picture_is_not_live(
     assert _reads(page) == 0, "the phone's clipboard was read for a refused transfer"
 
 
-def test_an_empty_clipboard_and_one_over_the_cap_send_nothing(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, sockets, page = _open_bar(authed_page, base_url)
-    key = page.locator('#screenKeys [data-keys-page="main"] [data-clip="set"]')
-    notice = page.locator("#screenNotice")
-
-    page.evaluate("window.__clip.text = ''")
-    key.click()
-    expect(notice).to_have_text("The phone's clipboard has no text")
-
-    page.evaluate("window.__clip.text = 'a'.repeat(64 * 1024 + 1)")
-    key.click()
-    expect(notice).to_have_text("That text is too long to send (64 KB at most).")
-    expect(notice).to_have_class("screen-notice error")
-    page.wait_for_timeout(300)
-    assert _clipboard_sets(seen) == []
-
-    # Exactly at the cap goes.
-    page.evaluate("window.__clip.text = 'a'.repeat(64 * 1024)")
-    key.click()
-    wait_until(page, lambda: _clipboard_sets(seen), "the at-cap clipboard_set")
-    assert len(_clipboard_sets(seen)[0]["text"]) == 64 * 1024
-
-
 def test_a_refused_read_opens_a_sheet_that_sends_the_text_by_hand(
     authed_page: Page, base_url: str
 ) -> None:
@@ -195,6 +189,14 @@ def test_a_refused_read_opens_a_sheet_that_sends_the_text_by_hand(
     page.evaluate("window.__clip.refuse = true")
     sheet = page.locator("#screenPasteSheet")
     expect(sheet).to_be_hidden()
+
+    # From the Paste-to-PC key, an empty sheet's Send sends nothing.
+    page.locator('#screenKeys [data-keys-page="main"] [data-clip="set"]').click()
+    expect(sheet).to_be_visible()
+    sheet.locator(".detail-actions button").click()
+    expect(sheet).to_be_hidden()
+    page.wait_for_timeout(300)
+    assert _clipboard_sets(seen) == []
 
     page.locator('#screenKeys [data-keys-page="main"] [data-clip="paste"]').click()
     expect(sheet).to_be_visible()
@@ -222,18 +224,6 @@ def test_a_refused_read_opens_a_sheet_that_sends_the_text_by_hand(
     _reply(sockets, _OK)
     wait_until(page, lambda: seen["inputs"][-1].get("type") == "key", "Ctrl+V after the sheet")
     assert seen["inputs"][-1] == {"type": "key", "key": "v", "mods": ["ctrl"]}
-
-
-def test_an_empty_sheet_sends_nothing(authed_page: Page, base_url: str) -> None:
-    seen, _sockets, page = _open_bar(authed_page, base_url)
-    page.evaluate("window.__clip.refuse = true")
-    page.locator('#screenKeys [data-keys-page="main"] [data-clip="set"]').click()
-    sheet = page.locator("#screenPasteSheet")
-    expect(sheet).to_be_visible()
-    sheet.locator(".detail-actions button").click()
-    expect(sheet).to_be_hidden()
-    page.wait_for_timeout(300)
-    assert _clipboard_sets(seen) == []
 
 
 _LABELS_JS = """() => [...document.querySelectorAll('#screenKeys [data-clip]')]
