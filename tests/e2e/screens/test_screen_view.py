@@ -877,9 +877,7 @@ def test_a_two_finger_tap_right_clicks_and_a_three_finger_tap_toggles_the_keyboa
     do not. A quick three-finger tap toggles the keyboard in Control and does
     nothing in View, and three fingers never click, drag or scroll. The real
     timing is judged on a phone."""
-    # The multi-finger tap window is read off Date.now(): a rest is jumped on
-    # the context clock (shared with the pop-out window) rather than waited out.
-    authed_page.context.clock.install()
+    authed_page.context.clock.install()  # rests jump the Date.now() tap window, pop-out included
     seen, page = _live_view(authed_page, base_url)
     keyboard = page.locator("#screenKeyboard")
     keys = page.locator("#screenKeys")
