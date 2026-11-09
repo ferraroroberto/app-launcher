@@ -51,6 +51,37 @@ def _serve_days(page: Page, calls: list) -> None:
     page.route(re.compile(r".*/api/board/done\?.*$"), handle)
 
 
+def _assert_more_lines_up_with_the_cards(page: Page) -> None:
+    """The Show earlier button's sides line up with the cards' sides."""
+    # On the desktop grid the lane body has no sides, so the button takes the
+    # card inset itself; the phone's body already supplies it. A late boot
+    # fetch re-renders the lane (cards and button are rebuilt), so measure
+    # until the geometry is the settled one. The grid layout is what drops the
+    # body's sides; the iPhone projection keeps the phone layout whatever its
+    # viewport width.
+    def measure() -> dict:
+        return page.evaluate(
+            """() => {
+                const b = document.querySelector('#boardColDone .board-done-more');
+                const r = document.querySelector('#boardColDone li.board-item');
+                const body = document.querySelector('#boardColDone > .collapse-body');
+                if (!b || !r || !body || !r.getClientRects().length) return null;
+                const bb = b.getBoundingClientRect(), rr = r.getBoundingClientRect();
+                return {left: bb.left - rr.left, right: rr.right - bb.right,
+                        grid: getComputedStyle(body).paddingLeft === '0px'};
+            }""")
+
+    def lined_up() -> bool:
+        m = measure()
+        inset = 14 if m and m["grid"] else 0
+        return bool(m) and abs(m["left"] - inset) <= 1 and abs(m["right"] - inset) <= 1
+
+    try:
+        wait_until(page, lined_up, "the Show earlier button lined up with the cards")
+    except AssertionError as err:
+        raise AssertionError(f"{err}: {measure()}") from None
+
+
 @pytest.mark.iphone
 def test_show_earlier_adds_one_day_per_tap_without_overflowing(
     authed_page: Page, base_url: str
@@ -69,6 +100,8 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
     rows = done.locator("li.board-item")
     more = done.locator(".board-done-more")
     heads = done.locator(".board-day-head:visible")
+    expect(more).to_be_visible()
+    _assert_more_lines_up_with_the_cards(authed_page)
     # Today alone: no header to tell it from, nothing read yet, one tap away.
     expect(rows).to_have_count(1)
     expect(heads).to_have_count(0)
@@ -107,46 +140,6 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
         "() => { const el = document.getElementById('boardColDone');"
         " return el.scrollWidth <= el.clientWidth; }")
 
-
-@pytest.mark.iphone
-@pytest.mark.parametrize("width", [390, 1600])
-def test_show_earlier_button_lines_up_with_the_cards(
-    authed_page: Page, base_url: str, width: int
-) -> None:
-    payload = _board_payload()
-    payload["columns"]["done"] = [_closed(7, "closed today", datetime.now(timezone.utc))]
-    _mock_board(authed_page, payload)
-    _serve_days(authed_page, [])
-    authed_page.set_viewport_size({"width": width, "height": 900})
-    _open_board(authed_page, base_url)
-    _unfold(authed_page, "boardColDone")
-
-    done = authed_page.locator("#boardColDone")
-    more = done.locator(".board-done-more")
-    expect(more).to_be_visible()
-    # On the desktop grid the lane body has no sides, so the button takes the
-    # card inset itself; the phone's body already supplies it. A late boot fetch re-renders the lane (cards and button are rebuilt), so
-    # measure until the geometry is the settled one. The grid layout is what
-    # drops the body's sides; the iPhone projection keeps the phone layout
-    # whatever its viewport width.
-    def measure() -> dict:
-        return authed_page.evaluate(
-            """() => {
-                const b = document.querySelector('#boardColDone .board-done-more');
-                const r = document.querySelector('#boardColDone li.board-item');
-                const body = document.querySelector('#boardColDone > .collapse-body');
-                if (!b || !r || !body || !r.getClientRects().length) return null;
-                const bb = b.getBoundingClientRect(), rr = r.getBoundingClientRect();
-                return {left: bb.left - rr.left, right: rr.right - bb.right,
-                        grid: getComputedStyle(body).paddingLeft === '0px'};
-            }""")
-
-    def lined_up() -> bool:
-        m = measure()
-        inset = 14 if m and m["grid"] else 0
-        return bool(m) and abs(m["left"] - inset) <= 1 and abs(m["right"] - inset) <= 1
-
-    try:
-        wait_until(authed_page, lined_up, "the Show earlier button lined up with the cards")
-    except AssertionError as err:
-        raise AssertionError(f"{err}: {measure()}") from None
+    # Wide, the button still lines up with the cards (the grid's own inset).
+    authed_page.set_viewport_size({"width": 1600, "height": 900})
+    _assert_more_lines_up_with_the_cards(authed_page)

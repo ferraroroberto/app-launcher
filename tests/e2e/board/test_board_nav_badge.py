@@ -26,7 +26,7 @@ from playwright.sync_api import Page, expect
 
 from tests.e2e import _fake_clock
 from tests.e2e.board._chief_support import _plan_with
-from tests.e2e.board._support import _FAKE_BOARD, _board_payload, _mock_board
+from tests.e2e.board._support import _board_payload, _mock_board
 
 pytestmark = pytest.mark.smoke
 
@@ -112,19 +112,6 @@ def test_board_badge_counts_your_turn_from_every_tab(
     expect(tab).to_have_accessible_name("Board")
 
 
-def test_board_badge_caps_at_nine_plus_and_keeps_the_real_count_spoken(
-    authed_page: Page, base_url: str
-) -> None:
-    _mock_board(authed_page, copy.deepcopy(_FAKE_BOARD))
-    many = [_session(f"s-{i}", "your_turn", "awaiting-input") for i in range(12)]
-    _mock_sessions(authed_page, many)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    tab = authed_page.locator("#tabBoard")
-    expect(tab.locator(".tab-badge")).to_have_text("9+")
-    expect(tab).to_have_accessible_name("Board, 12 waiting")
-
-
 @pytest.mark.iphone
 def test_board_badge_and_header_count_the_chiefs_open_questions(
     authed_page: Page, base_url: str, tmp_path
@@ -171,27 +158,6 @@ def test_board_badge_and_header_count_the_chiefs_open_questions(
     assert not clipped, "the Board header clips its two parts"
 
 
-def test_an_unreadable_plan_adds_no_question_count(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1502: a plan that can't be read is unknown, never zero and never a
-    guess: the header shows no question part and the badge counts sessions
-    only, on the Board and off it."""
-    _mock_board(authed_page, _board_payload(), plan={"state": "unreadable"})
-    _mock_sessions(authed_page, _SESSIONS, chief_questions=None)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    tab = authed_page.locator("#tabBoard")
-    badge = tab.locator(".tab-badge")
-    expect(authed_page.locator("#paneClaude")).to_be_visible()
-    expect(badge).to_have_text("2")
-
-    tab.click()
-    expect(authed_page.locator("#boardChiefPlan .board-plan-note")).to_have_text("Plan unreadable.")
-    expect(badge).to_have_text("1")
-    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 1 needs you")
-
-
 def _owner_section(marks: list) -> dict:
     """An available owner-check list whose items carry ``marks`` (None = waiting)."""
     return {
@@ -217,11 +183,12 @@ def test_board_badge_counts_owner_checks_off_the_board_and_icon_stays_24px(
     read adds nothing. The Board icon keeps its 24px box with the badge on it:
     the badge overhangs the icon's box by design, it does not resize it."""
     _mock_board(authed_page)
-    current = {"owner_checks": 4}
+    current = {"owner_checks": 4, "sessions": _SESSIONS}
 
     def serve(route) -> None:
         route.fulfill(status=200, content_type="application/json", body=_json.dumps(
-            {"sessions": _SESSIONS, "chief_questions": 1, "owner_checks": current["owner_checks"]}))
+            {"sessions": current["sessions"], "chief_questions": 1,
+             "owner_checks": current["owner_checks"]}))
 
     authed_page.route(re.compile(r".*/api/claude-code/sessions$"), serve)
     _fake_clock.install(authed_page)
@@ -243,23 +210,34 @@ def test_board_badge_counts_owner_checks_off_the_board_and_icon_stays_24px(
     expect(badge).to_have_text("3")
     expect(tab).to_have_accessible_name("Board, 3 waiting")
 
+    # Past nine the badge caps at "9+" and the accessible name keeps the real count.
+    current["sessions"] = [_session(f"s-{i}", "your_turn", "awaiting-input") for i in range(12)]
+    with authed_page.expect_response(lambda r: r.url.endswith("/api/claude-code/sessions")):
+        _fake_clock.jump_interval(authed_page, 5_000, "fetchSessions")
+    expect(badge).to_have_text("9+")
+    expect(tab).to_have_accessible_name("Board, 13 waiting")
+
 
 def test_board_badge_on_the_board_adds_owner_checks_that_still_wait(
     authed_page: Page, base_url: str
 ) -> None:
     """#2059: on the Board its own payload is every part, the same sum as the
     head line's "needs you": Your turn plus the unmarked owner checks, an item
-    answered Later or Problem left out."""
+    answered Later or Problem left out. #1502: a plan that can't be read is
+    unknown, never zero and never a guess: the header shows no question part
+    and the badge counts no question, on the Board and off it."""
     payload = _board_payload()
     payload["owner_checks"] = _owner_section([None, None, "later", "problem"])
-    _mock_board(authed_page, payload)
+    _mock_board(authed_page, payload, plan={"state": "unreadable"})
     _mock_sessions(authed_page, _SESSIONS, chief_questions=None, owner_checks=None)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     tab = authed_page.locator("#tabBoard")
     badge = tab.locator(".tab-badge")
+    expect(authed_page.locator("#paneClaude")).to_be_visible()
     expect(badge).to_have_text("2")
     tab.click()
-    expect(authed_page.locator("#boardHeadStatus")).to_contain_text("3 needs you")
+    expect(authed_page.locator("#boardChiefPlan .board-plan-note")).to_have_text("Plan unreadable.")
+    expect(authed_page.locator("#boardHeadStatus")).to_have_text("1 failing · 3 needs you")
     expect(badge).to_have_text("3")
     expect(tab).to_have_accessible_name("Board, 3 waiting")

@@ -14,7 +14,13 @@ from playwright.sync_api import Page, expect
 
 from src.board import backlog_buckets
 from src.chief import plan as chief_plan
-from tests.e2e.board._support import _board_payload, _mock_board, _open_board, _unfold
+from tests.e2e.board._support import (
+    _board_payload,
+    _mock_board,
+    _open_board,
+    _route_board_from,
+    _unfold,
+)
 from tests.e2e.fixtures.waits import stable_eval
 
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
@@ -74,10 +80,29 @@ def _headings(page: Page):
     return page.locator(f"{LANE} .board-bucket:not(.is-folded) > .board-bucket-fold > summary")
 
 
-def test_backlog_counts_every_issue_in_one_bucket(authed_page: Page, base_url: str, tmp_path) -> None:
-    payload, _ = _payload(tmp_path)
-    _mock_board(authed_page, payload)
+_STYLE_JS = ("el => { const s = getComputedStyle(el);"
+             " return [s.fontSize, s.fontWeight, s.textTransform, s.letterSpacing].join('|'); }")
+
+
+def test_backlog_buckets_count_fold_and_name_the_plan_groups(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """One page: every issue counts in one bucket, the plan card names the same
+    buckets, every bucket folds on its own and every Board section heading is
+    drawn at one size and style; then an unreadable plan is unknown, never
+    "not planned"."""
+    payload, plan = _payload(tmp_path)
+    current = {"body": payload}
+    _mock_board(authed_page, payload, plan=plan)
+    _route_board_from(authed_page, current)
     _open_board(authed_page, base_url)
+
+    # Same words and counts as the Backlog's Queued, Blocked and Umbrellas.
+    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
+    expect(plan_body).to_have_attribute("data-state", "ok")
+    expect(plan_body.locator(".board-plan-heading")).to_have_text(
+        ["Lanes (1)", "Queued (1)", "Blocked (2)", "Umbrellas (1)"])
+
     # Folded, the lane says how much is in no plan instead of its count.
     expect(authed_page.locator(f"{LANE} .board-lane-exception")).to_have_text("2 not planned")
     _unfold(authed_page, "boardColBacklog")
@@ -101,43 +126,6 @@ def test_backlog_counts_every_issue_in_one_bucket(authed_page: Page, base_url: s
     expect(chips("queued")).to_have_text(["after fleet-config#9"])
     expect(chips("blocked")).to_have_text(["blocked by app-launcher#13", "owner step · no label"])
 
-
-def test_plan_groups_name_and_count_the_backlog_buckets(authed_page: Page, base_url: str, tmp_path) -> None:
-    payload, plan = _payload(tmp_path)
-    _mock_board(authed_page, payload, plan=plan)
-    _open_board(authed_page, base_url)
-    plan_body = authed_page.locator("#boardChiefPlan .board-plan-body")
-    expect(plan_body).to_have_attribute("data-state", "ok")
-    # Same words and counts as the Backlog's Queued, Blocked and Umbrellas.
-    expect(plan_body.locator(".board-plan-heading")).to_have_text(
-        ["Lanes (1)", "Queued (1)", "Blocked (2)", "Umbrellas (1)"])
-
-
-def test_unreadable_plan_shows_unknown_never_not_planned(authed_page: Page, base_url: str, tmp_path) -> None:
-    payload, _ = _payload(tmp_path, plan_state="unreadable")
-    _mock_board(authed_page, payload)
-    _open_board(authed_page, base_url)
-    _unfold(authed_page, "boardColBacklog")
-    expect(_headings(authed_page)).to_have_text([
-        "Unknown (9) · plan unreadable", "In progress (0)", "Waiting on you (0)",
-        "Queued (0)", "Blocked (0)", "Not planned (0)"])
-    expect(authed_page.locator(f"{LANE} .board-lane-exception")).to_be_hidden()
-
-
-_STYLE_JS = ("el => { const s = getComputedStyle(el);"
-             " return [s.fontSize, s.fontWeight, s.textTransform, s.letterSpacing].join('|'); }")
-
-
-def test_backlog_buckets_fold_and_share_the_plan_heading(
-    authed_page: Page, base_url: str, tmp_path
-) -> None:
-    """Every Backlog bucket folds on its own, and every Board section heading
-    (the buckets and the plan card's folds) is drawn at one size and style."""
-    payload, plan = _payload(tmp_path)
-    _mock_board(authed_page, payload, plan=plan)
-    _open_board(authed_page, base_url)
-    _unfold(authed_page, "boardColBacklog")
-
     queued = authed_page.locator(f"{LANE} .board-bucket[data-bucket='queued'] details")
     blocked = authed_page.locator(f"{LANE} .board-bucket[data-bucket='blocked'] details")
     expect(queued).to_have_attribute("open", "")
@@ -157,3 +145,12 @@ def test_backlog_buckets_fold_and_share_the_plan_heading(
     styles = {stable_eval(summary, _STYLE_JS) for summary in summaries.all()}
     assert len(styles) == 1, f"section headings differ in size or style: {styles}"
     assert styles.pop().startswith("16px|"), "section headings are the body size"
+
+    # The plan turns unreadable: every issue is unknown, none "not planned".
+    current["body"], _ = _payload(tmp_path, plan_state="unreadable")
+    expect(authed_page.locator("#boardRefresh")).to_be_enabled()
+    authed_page.locator("#boardRefresh").click()
+    expect(_headings(authed_page)).to_have_text([
+        "Unknown (9) · plan unreadable", "In progress (0)", "Waiting on you (0)",
+        "Queued (0)", "Blocked (0)", "Not planned (0)"])
+    expect(authed_page.locator(f"{LANE} .board-lane-exception")).to_be_hidden()
