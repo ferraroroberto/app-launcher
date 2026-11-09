@@ -154,6 +154,32 @@ def test_owner_checks_show_in_your_turn_and_answer_through_the_sheet(
     ), "submit": True}], chief_posts
 
 
+def _assert_groups_fold_and_keep_their_choice(owner) -> None:
+    """Both owner-check groups fold on their own and keep the fold across rebuilds."""
+    # Both groups fold on the plan card's summary row, open by default; a
+    # folded group keeps its heading and count and hides its rows and answer
+    # button, and the choice survives the Board's rebuilds.
+    before = owner.locator('.board-owner-group[data-group="before_start"]')
+    validate = owner.locator('.board-owner-group[data-group="validate_to_close"]')
+    for group in (before, validate):
+        expect(group).to_have_attribute("open", "")
+        box = stable_read(group.locator("summary").bounding_box)
+        assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"
+    expect(before.locator("li.board-owner-row")).to_have_count(1)
+
+    before.locator("summary").click()
+    expect(before.locator("li.board-owner-row")).to_be_hidden()
+    expect(before.locator(".board-owner-answer-group")).to_be_hidden()
+    expect(before.locator("summary")).to_have_text("Before you start (1)")
+    # The other group is untouched, and a re-render keeps the fold.
+    expect(validate.locator("li.board-owner-row").first).to_be_visible()
+    validate.locator('.board-owner-row[data-ref="demo#9"] .action-row-main').click()
+    expect(validate.locator(".board-owner-detail")).to_be_visible()
+    expect(before.locator("li.board-owner-row")).to_be_hidden()
+    before.locator("summary").click()
+    expect(before.locator("li.board-owner-row")).to_be_visible()
+
+
 @pytest.mark.iphone
 def test_chief_and_owner_checks_open_separate_sheets(
     authed_page: Page, base_url: str, tmp_path
@@ -182,28 +208,7 @@ def test_chief_and_owner_checks_open_separate_sheets(
     owner = authed_page.locator("#boardColYours .board-owner")
     expect(owner.locator(":scope > *").first).to_have_class(re.compile(r"\bboard-owner-state\b"))
 
-    # Both groups fold on the plan card's summary row, open by default; a
-    # folded group keeps its heading and count and hides its rows and answer
-    # button, and the choice survives the Board's rebuilds.
-    before = owner.locator('.board-owner-group[data-group="before_start"]')
-    validate = owner.locator('.board-owner-group[data-group="validate_to_close"]')
-    for group in (before, validate):
-        expect(group).to_have_attribute("open", "")
-        box = stable_read(group.locator("summary").bounding_box)
-        assert box and box["height"] >= 44, f"fold row is below a 44px target: {box}"
-    expect(before.locator("li.board-owner-row")).to_have_count(1)
-
-    before.locator("summary").click()
-    expect(before.locator("li.board-owner-row")).to_be_hidden()
-    expect(before.locator(".board-owner-answer-group")).to_be_hidden()
-    expect(before.locator("summary")).to_have_text("Before you start (1)")
-    # The other group is untouched, and a re-render keeps the fold.
-    expect(validate.locator("li.board-owner-row").first).to_be_visible()
-    validate.locator('.board-owner-row[data-ref="demo#9"] .action-row-main').click()
-    expect(validate.locator(".board-owner-detail")).to_be_visible()
-    expect(before.locator("li.board-owner-row")).to_be_hidden()
-    before.locator("summary").click()
-    expect(before.locator("li.board-owner-row")).to_be_visible()
+    _assert_groups_fold_and_keep_their_choice(owner)
 
     dialog = authed_page.locator("#chiefAnswersDialog")
     authed_page.locator("#boardChiefPlan .board-plan-answer").click()
