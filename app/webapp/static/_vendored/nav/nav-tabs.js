@@ -118,10 +118,8 @@ export function initNavTabs(opts = {}) {
   });
 
   setTab(initialTab());
-  expandStandaloneViewport(function () {
-    placePill(nav, pill, true);
-    recompositeGlass(nav);
-  });
+  expandStandaloneViewport(function () { placePill(nav, pill, true); });
+  watchGlassSettle(nav);
   gateTopFade();
   // Rotation, a desktop↔phone width crossing or a text-size change moves the
   // tab cells: re-place the capsule without a slide.
@@ -156,11 +154,41 @@ function expandStandaloneViewport(settled) {
   });
 }
 
-// iOS composites the bar's backdrop-filter layer during the cold-launch
-// viewport expansion and can keep that texture at its pre-expansion bounds,
+// How long the installed app's viewport may keep changing after a launch or a
+// return to the foreground: iOS grows a cold launch's viewport for ~3s.
+const GLASS_WATCH_MS = 4000;
+// No viewport resize for this long means the size has settled.
+const GLASS_QUIET_MS = 250;
+
+// iOS composites the bar's backdrop-filter layer while the installed app's
+// viewport is still changing and can keep that texture at stale bounds,
 // leaving a frosted smear over the top of the page until something repaints.
-// Dropping the filter for one frame makes WebKit rebuild the layer at its
-// settled bounds; the glass is back on the next frame. Once, at startup.
+// The glass is rebuilt once the viewport has stopped resizing, not at a fixed
+// frame, and again on every return to the foreground: iOS resumes a kept-alive
+// home-screen app without reloading the page, so init does not run again.
+// Resizes outside the watch window (a keyboard later on) rebuild nothing.
+function watchGlassSettle(nav) {
+  if (!window.matchMedia('(display-mode: standalone)').matches) return;
+  let timer = null;
+  let until = 0;
+  function arm() {
+    clearTimeout(timer);
+    timer = setTimeout(function () { recompositeGlass(nav); }, GLASS_QUIET_MS);
+  }
+  function onResize() { if (performance.now() < until) arm(); }
+  function open() { until = performance.now() + GLASS_WATCH_MS; arm(); }
+  window.addEventListener('resize', onResize, { passive: true });
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize, { passive: true });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') open();
+  });
+  window.addEventListener('pageshow', function (event) { if (event.persisted) open(); });
+  open();
+}
+
+// Dropping the filter for one frame makes WebKit discard the bar's backdrop
+// layer and build a new one at its current bounds; the glass is back on the
+// next frame.
 function recompositeGlass(nav) {
   nav.classList.add('glass-rebuild');
   requestAnimationFrame(function () {

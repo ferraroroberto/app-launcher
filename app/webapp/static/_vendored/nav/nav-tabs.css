@@ -298,8 +298,9 @@
     transform: translateZ(0);
     will-change: transform;
   }
-  /* One-frame filter drop that nav-tabs.js sets once the standalone viewport
-     has settled, so iOS rebuilds the glass layer at its final bounds. */
+  /* One-frame filter drop that nav-tabs.js sets each time the installed app's
+     viewport settles (launch, return to the foreground), so iOS rebuilds the
+     glass layer at its final bounds. */
   .tabs.glass-rebuild {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
