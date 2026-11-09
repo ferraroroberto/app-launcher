@@ -21,7 +21,6 @@ from typing import Callable, Dict
 from src import board
 from src.board import sessions as board_sessions
 from src.board import transcript as board_transcript
-
 from tests.unit.board._support import NOW, _iso
 
 _GOLDEN = Path(__file__).with_name("golden_card_status.json")
