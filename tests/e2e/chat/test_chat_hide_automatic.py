@@ -27,7 +27,7 @@ from tests.e2e.session.test_session_mode_toggle import (
 )
 from tests.e2e.session.test_session_transcript import _menu_item
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _SID = "sid-hide-automatic"
 _BELL = "⟳ chief-inbox: pending — run chief_ops.py inbox"
@@ -150,6 +150,7 @@ def test_the_choice_is_remembered_for_the_session(authed_page: Page, base_url: s
     expect(_prompts(page)).to_have_count(6)
 
 
+@pytest.mark.iphone
 def test_the_divider_is_a_full_width_touch_target(authed_page: Page, base_url: str) -> None:
     page = authed_page
     _open(page, base_url, chief=True)

@@ -698,7 +698,6 @@ def test_blockquote_renders_as_a_quote_and_copies_clean_text(
     expect(turn).to_have_js_property("open", True)
 
 
-@pytest.mark.iphone
 def test_fenced_block_header_names_the_language_and_copies_the_listing(
     authed_page: Page, base_url: str
 ) -> None:

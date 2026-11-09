@@ -19,7 +19,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.fixtures.ui import close_settings_sheets, open_agent_sheet
 from tests.e2e.fixtures.waits import stable_eval, wait_until
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _MODELS = {"claude-opus-5": "Opus", "claude-sonnet-5": "Sonnet", "gpt-5.6-sol": "Sol"}
 _EFFORTS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"]
@@ -122,6 +122,7 @@ def test_pi_effort_row_follows_the_model_and_edits_its_override(
     close_settings_sheets(authed_page)
 
 
+@pytest.mark.iphone
 def test_pi_effort_row_fits_the_phone_width(authed_page: Page, base_url: str) -> None:
     """The longer "Model default (...)" text must not push the select out of
     its sheet."""

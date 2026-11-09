@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from playwright.sync_api import Page
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _ROWS = """async () => {
   const { actionRow } = await import('/static/action-rows.js');
@@ -79,6 +79,7 @@ _HEIGHTS = """async () => {
 }"""
 
 
+@pytest.mark.iphone
 def test_one_line_and_small_rows_hold_their_heights(
     authed_page: Page, base_url: str
 ) -> None:

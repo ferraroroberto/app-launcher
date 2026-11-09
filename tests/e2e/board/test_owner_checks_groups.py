@@ -16,7 +16,7 @@ from playwright.sync_api import Page, expect
 from src.board import backlog_buckets
 from tests.e2e.board._support import _board_payload, _mock_board, _open_board, _unfold
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _REPO = "app-launcher"
 

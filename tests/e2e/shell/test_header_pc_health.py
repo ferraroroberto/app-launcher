@@ -20,7 +20,7 @@ from playwright.sync_api import Page, expect
 from tests.e2e.fixtures.waits import stable_eval
 from tests.e2e.shell.test_header_cpu_reading import _boot, _reading, _route_load
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _LONG_LABEL = "python (run_acceptance_suite_for_the_launcher) ×2 · app-launcher-wt"
 _CHIP = "#paneClaude > .home-head .cpu-reading"
@@ -56,6 +56,7 @@ def test_ok_draws_no_dot_and_the_sheet_says_ok(authed_page: Page, base_url: str)
     expect(_open_sheet(page).locator("[data-row='health']")).to_contain_text("OK")
 
 
+@pytest.mark.iphone
 def test_watch_and_act_draw_a_toned_dot_with_the_reason_and_fix(
     authed_page: Page, base_url: str
 ) -> None:
@@ -118,6 +119,7 @@ def test_a_verdict_the_launcher_cannot_read_is_not_confirmed_never_ok(
     expect(sheet_body).to_contain_text(words)
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize("width", [320, 390])
 def test_a_long_process_label_wraps_and_the_figure_keeps_its_line(
     authed_page: Page, base_url: str, width: int
@@ -171,6 +173,7 @@ _OWNED = {
 }
 
 
+@pytest.mark.iphone
 def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
     authed_page: Page, base_url: str
 ) -> None:
@@ -232,6 +235,7 @@ _WAVELINK = {
 }
 
 
+@pytest.mark.iphone
 @pytest.mark.parametrize(
     "relaunch, words, tone",
     [("launched", "Running again", "good"), ("supervisor", "Running again", "good"),

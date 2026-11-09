@@ -70,7 +70,6 @@ def _session_row(page: Page, base_url: str, sid: str):
     return row
 
 
-@pytest.mark.iphone
 def test_settings_switches_show_the_defaults_and_save_as_they_change(
     authed_page: Page, base_url: str
 ) -> None:

@@ -26,7 +26,7 @@ from tests.e2e.board._chief_support import (
 )
 from tests.e2e.board.test_owner_checks_board import _payload
 
-pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
+pytestmark = pytest.mark.smoke
 
 _STORED = "E:/automation/fleet-config/.launcher-tmp/e2e-stub-stored-{n}.png"
 
@@ -51,6 +51,7 @@ def _attach(block, *names: str) -> None:
     block.locator('input[type="file"]').set_input_files(files=[_stub(n) for n in names])
 
 
+@pytest.mark.iphone
 def test_chief_answer_carries_each_files_path_under_its_line(
     authed_page: Page, base_url: str, tmp_path
 ) -> None:

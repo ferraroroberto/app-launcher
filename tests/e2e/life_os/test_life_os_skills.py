@@ -192,7 +192,6 @@ def test_life_os_pty_launch_carries_terminal_size(
         assert payload.get("rows", 0) >= 10 and payload.get("cols", 0) >= 20
 
 
-@pytest.mark.iphone
 def test_life_os_row_tap_opens_conversations_and_starts_nothing(
     authed_page: Page, base_url: str
 ) -> None:
@@ -225,7 +224,6 @@ def test_life_os_row_tap_opens_conversations_and_starts_nothing(
     ), launches
 
 
-@pytest.mark.iphone
 def test_life_os_row_tap_on_a_skill_with_no_conversations_offers_start_new(
     authed_page: Page, base_url: str
 ) -> None:
@@ -469,7 +467,6 @@ def test_life_os_delete_conversation_log_from_the_document_sheet(
     ).to_have_count(0)
 
 
-@pytest.mark.iphone
 def test_life_os_browser_folds_sub_folders_below_the_top_level_files(
     authed_page: Page, base_url: str
 ) -> None:
