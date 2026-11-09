@@ -88,12 +88,12 @@ const STATUS_META = {
 // The chief's Stop-hook status sits in the needs-you family for nearly all
 // of its life between dispatches and the server already routes it out
 // of Your turn (build_board's _is_chief_card carve-out). "Resting state" means:
-// idle-finished/awaiting-input/awaiting-decision are
+// idle/idle-finished/awaiting-input/awaiting-decision are
 // all ordinary waiting for a long-lived chat session, so they get the same
 // "standing by" label. stalled is deliberately excluded: a chief dispatch
 // outstanding this long is a real anomaly, not something to hide behind a
 // benign label.
-const CHIEF_STANDING_BY_STATUSES = new Set(['idle-finished', 'awaiting-input', 'awaiting-decision']);
+const CHIEF_STANDING_BY_STATUSES = new Set(['idle', 'idle-finished', 'awaiting-input', 'awaiting-decision']);
 const CHIEF_STANDING_BY_META = { text: 'standing by', cls: 'is-idle' };
 
 // { text, cls } for a Board status; `chief` applies the standing-by label.

@@ -81,7 +81,7 @@ CARD_STATUSES: Dict[str, CardStatus] = {
     for s in (
         CardStatus(WORKING),
         CardStatus(UNKNOWN),
-        CardStatus(IDLE),
+        CardStatus(IDLE, chief_resting=True, doorbell_idle=True),
         CardStatus(WAITING_ON_TASK, doorbell_idle=True),
         CardStatus(STALLED, needs_human=True),
         CardStatus(AWAITING_DECISION, needs_human=True, chief_resting=True),
