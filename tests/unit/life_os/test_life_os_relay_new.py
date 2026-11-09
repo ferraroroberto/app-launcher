@@ -119,7 +119,7 @@ class TestReadyWait:
     def test_returns_only_after_the_session_reports_idle(self, new_host, monkeypatch):
         from app.webapp.routers import life_os_relay
         monkeypatch.setattr(life_os_relay, "NEW_READY_WAIT_SECONDS", 5.0)
-        turned = {"new-1": {"status": "needs-you", "last_turn_at": time.time() + 30}}
+        turned = {"new-1": {"status": "idle-finished", "last_turn_at": time.time() + 30}}
         calls = self._scripted(monkeypatch, [{}, {"new-1": {"status": "working", "last_turn_at": None}},
                                              turned])
         _live(new_host, "new-1")

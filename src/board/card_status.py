@@ -62,6 +62,15 @@ class CardStatus:
     ``screen_checked``: the needs-you split found no pending decision, but
     Claude can keep a pending ``ExitPlanMode`` call off disk while its picker
     is up, so a live launcher PTY's screen is read for the picker.
+
+    ``turn_ended``: the agent's turn is over, whatever it now waits on. Only
+    ``working`` (a turn in flight) and ``unknown`` (no evidence either way)
+    lack it.
+
+    ``quit_safe``: a graceful quit loses nothing, because the turn ended clean
+    with nothing running and nothing pending on screen. ``awaiting-input`` is
+    left out: it is a clean stop that a repo with an open issue workflow
+    downgrades because the work may not be finished.
     """
 
     value: str
@@ -69,6 +78,8 @@ class CardStatus:
     chief_resting: bool = False
     doorbell_idle: bool = False
     screen_checked: bool = False
+    turn_ended: bool = False
+    quit_safe: bool = False
 
     @property
     def lane(self) -> str:
@@ -81,15 +92,18 @@ CARD_STATUSES: Dict[str, CardStatus] = {
     for s in (
         CardStatus(WORKING),
         CardStatus(UNKNOWN),
-        CardStatus(IDLE, chief_resting=True, doorbell_idle=True),
-        CardStatus(WAITING_ON_TASK, doorbell_idle=True),
-        CardStatus(STALLED, needs_human=True),
-        CardStatus(AWAITING_DECISION, needs_human=True, chief_resting=True),
-        CardStatus(TOOL_PENDING, screen_checked=True),
-        CardStatus(IDLE_FINISHED, chief_resting=True, doorbell_idle=True, screen_checked=True),
+        CardStatus(IDLE, chief_resting=True, doorbell_idle=True, turn_ended=True, quit_safe=True),
+        CardStatus(WAITING_ON_TASK, doorbell_idle=True, turn_ended=True),
+        CardStatus(STALLED, needs_human=True, turn_ended=True),
+        CardStatus(AWAITING_DECISION, needs_human=True, chief_resting=True, turn_ended=True),
+        CardStatus(TOOL_PENDING, screen_checked=True, turn_ended=True),
+        CardStatus(
+            IDLE_FINISHED, chief_resting=True, doorbell_idle=True, screen_checked=True,
+            turn_ended=True, quit_safe=True,
+        ),
         CardStatus(
             AWAITING_INPUT, needs_human=True, chief_resting=True,
-            doorbell_idle=True, screen_checked=True,
+            doorbell_idle=True, screen_checked=True, turn_ended=True,
         ),
     )
 }
@@ -107,3 +121,7 @@ CHIEF_RESTING: FrozenSet[str] = _where("chief_resting")
 DOORBELL_IDLE: FrozenSet[str] = _where("doorbell_idle")
 #: Card values a live launcher PTY's plan picker can turn into ``awaiting-decision``.
 SCREEN_CHECKED: FrozenSet[str] = _where("screen_checked")
+#: Card values whose agent turn is over.
+TURN_ENDED: FrozenSet[str] = _where("turn_ended")
+#: Card values a graceful quit can close without losing anything.
+QUIT_SAFE: FrozenSet[str] = _where("quit_safe")
