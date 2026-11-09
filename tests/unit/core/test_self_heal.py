@@ -203,3 +203,49 @@ def test_webapp_warning_lands_in_the_rotating_log(tmp_path, monkeypatch):
                 root.removeHandler(h)
                 h.close()
 
+
+
+class _DownManager(_FakeManager):
+    """A webapp that never answers and has nothing listening."""
+
+    def __init__(self) -> None:
+        super().__init__([HEALTH_DOWN])
+
+    def is_reachable(self) -> bool:
+        return False
+
+
+def test_tray_watchdogs_hand_every_failed_probe_to_their_recovery_policy(monkeypatch):
+    """The two real watchdogs the tray builds fire ``on_failing`` from the alert
+    on, which is what drives the self-heal; a vendored watchdog that dropped the
+    hook would leave both services dead until someone restarted the tray."""
+    manager = _DownManager()
+    monkeypatch.setattr(tray, "WebappManager", lambda _cfg: manager)
+    monkeypatch.setattr(tray, "load_config", lambda _cfg: manager.config)
+    monkeypatch.setattr(tray, "read_tunnel_hostname", lambda _path: None)
+    monkeypatch.setattr(tray, "_notify", lambda *_a, **_kw: None)
+    monkeypatch.setattr(tray, "_wd_log", lambda _msg: None)
+    monkeypatch.setattr(tray, "_session_host_port", lambda: 18446)
+    monkeypatch.setattr(tray.registered_trays, "port_listening", lambda _p: False)
+
+    app = tray.TrayApp(SimpleNamespace(webapp=None), instance=None)
+    webapp_attempts: List[str] = []
+    session_host_attempts: List[str] = []
+    monkeypatch.setattr(app.webapp_healer, "attempt", webapp_attempts.append)
+    monkeypatch.setattr(app.session_host_healer, "attempt", session_host_attempts.append)
+
+    for _ in range(tray.DEFAULT_FAILURES_TO_ALERT + 1):
+        app.watchdog.tick()
+    for _ in range(tray.SESSION_HOST_FAILURES_TO_ALERT + 1):
+        app.session_host_watchdog.tick()
+
+    n = tray.DEFAULT_FAILURES_TO_ALERT
+    assert webapp_attempts == [
+        f"{n} failed probes, health=down, spawned webapp process exited with code 1",
+        f"{n + 1} failed probes, health=down, spawned webapp process exited with code 1",
+    ]
+    m = tray.SESSION_HOST_FAILURES_TO_ALERT
+    assert session_host_attempts == [
+        f"{m} probes found nothing listening",
+        f"{m + 1} probes found nothing listening",
+    ]
