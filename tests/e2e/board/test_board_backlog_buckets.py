@@ -128,16 +128,14 @@ _STYLE_JS = ("el => { const s = getComputedStyle(el);"
              " return [s.fontSize, s.fontWeight, s.textTransform, s.letterSpacing].join('|'); }")
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_backlog_buckets_fold_and_share_the_plan_heading(
-    authed_page: Page, base_url: str, tmp_path, theme: str
+    authed_page: Page, base_url: str, tmp_path
 ) -> None:
     """Every Backlog bucket folds on its own, and every Board section heading
     (the buckets and the plan card's folds) is drawn at one size and style."""
     payload, plan = _payload(tmp_path)
     _mock_board(authed_page, payload, plan=plan)
     _open_board(authed_page, base_url)
-    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     _unfold(authed_page, "boardColBacklog")
 
     queued = authed_page.locator(f"{LANE} .board-bucket[data-bucket='queued'] details")

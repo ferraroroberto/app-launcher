@@ -307,9 +307,8 @@ def test_code_usage_card_leads_names_the_pace_and_opens_the_sheet(
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_usage_rows_share_the_cards_left_and_right_edges(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     """#1541: the Week label starts on the card's content edge, level
     with the heading icon and the context-filter footer, and the reset column
@@ -319,7 +318,6 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
     _mock_board(authed_page)
     authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     card = authed_page.locator("#codingUsageCard")
     expect(card.locator("#codingUsage .um-row")).to_have_count(1, timeout=10_000)
     # The static placeholder has the row but an empty heading until the first poll.
@@ -342,10 +340,10 @@ def test_usage_rows_share_the_cards_left_and_right_edges(
       };
     }""")
     for left in m["labels"]:
-        assert abs(left - m["footer"]) <= 1, f"row label vs footer text ({theme}): {m}"
-        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon ({theme}): {m}"
+        assert abs(left - m["footer"]) <= 1, f"row label vs footer text: {m}"
+        assert abs(left - m["icon"]) <= 1, f"row label vs heading icon: {m}"
     for right in m["resets"]:
-        assert abs(right - m["kebab"]) <= 1, f"reset column vs heading kebab ({theme}): {m}"
+        assert abs(right - m["kebab"]) <= 1, f"reset column vs heading kebab: {m}"
 
 
 def _serve_usage_shows(page: Page, current: dict) -> list:

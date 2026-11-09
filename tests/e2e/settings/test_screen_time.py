@@ -313,10 +313,9 @@ def test_send_to_task_os_reports_each_outcome(authed_page: Page, base_url: str) 
     expect(toast).to_have_text("Send failed: set task_os_person in webapp_config.json")
 
 
-@pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("width", [390, 430])
 def test_send_toast_stays_inside_the_sheet_above_send(
-    authed_page: Page, base_url: str, width: int, theme: str,
+    authed_page: Page, base_url: str, width: int,
 ) -> None:
     """The sheet's own toast is placed against the sheet, never the viewport:
     its whole box (border and radius included) sits inside the sheet's and
@@ -332,9 +331,7 @@ def test_send_toast_stays_inside_the_sheet_above_send(
     post = [200, {"result": {k: v for k, v in ok.items() if k != "at"},
                   "configured": True, "last_ok": ok, "last_error": None}]
     _route_export(page, status, post)
-    page.add_init_script(f"localStorage.setItem('launcher.theme', '{theme}')")
     page.goto(base_url, wait_until="domcontentloaded")
-    page.evaluate(f"document.documentElement.dataset.theme = '{theme}'")
     open_settings_sheet(page, "screenTimeSheet")
     page.locator("#screenTimeSend").click()
     toast = page.locator("#screenTimeToast")

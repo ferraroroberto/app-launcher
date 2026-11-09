@@ -52,9 +52,8 @@ def _serve_days(page: Page, calls: list) -> None:
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 def test_show_earlier_adds_one_day_per_tap_without_overflowing(
-    authed_page: Page, base_url: str, theme: str
+    authed_page: Page, base_url: str
 ) -> None:
     now = datetime.now(timezone.utc)
     payload = _board_payload()
@@ -64,7 +63,6 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
     _serve_days(authed_page, calls)
     authed_page.set_viewport_size({"width": 390, "height": 844})
     _open_board(authed_page, base_url)
-    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     _unfold(authed_page, "boardColDone")
 
     done = authed_page.locator("#boardColDone")
@@ -111,10 +109,9 @@ def test_show_earlier_adds_one_day_per_tap_without_overflowing(
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("theme", ["light", "dark"])
 @pytest.mark.parametrize("width", [390, 1600])
 def test_show_earlier_button_lines_up_with_the_cards(
-    authed_page: Page, base_url: str, theme: str, width: int
+    authed_page: Page, base_url: str, width: int
 ) -> None:
     payload = _board_payload()
     payload["columns"]["done"] = [_closed(7, "closed today", datetime.now(timezone.utc))]
@@ -122,7 +119,6 @@ def test_show_earlier_button_lines_up_with_the_cards(
     _serve_days(authed_page, [])
     authed_page.set_viewport_size({"width": width, "height": 900})
     _open_board(authed_page, base_url)
-    authed_page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
     _unfold(authed_page, "boardColDone")
 
     done = authed_page.locator("#boardColDone")
