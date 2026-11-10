@@ -49,7 +49,7 @@ _TRIGGER_CHAIN_PREFIX = "chain:"
 _TRIGGER_SCHEDULED = "scheduled"
 
 
-def chief_live(cfg: Any) -> Optional[bool]:
+def chief_live(cfg: Any, kind: str = KIND) -> Optional[bool]:
     """Whether the session-host lists a live chief; ``None`` when unreadable.
 
     The identity rules are the Board's (:mod:`src.chief.identity`): the
@@ -58,7 +58,7 @@ def chief_live(cfg: Any) -> Optional[bool]:
     try:
         live = session_client.list_sessions(cfg.session_host_port)
     except session_client.SessionHostError as exc:
-        logger.info(f"ℹ️ job-failed event skipped: session list unreadable ({exc})")
+        logger.info(f"ℹ️ {kind} event skipped: session list unreadable ({exc})")
         return None
     state = board.read_sessions_state(Path(cfg.sessions_state_file))
     return bool(chief_identity.find_chief(

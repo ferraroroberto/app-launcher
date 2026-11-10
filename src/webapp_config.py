@@ -283,10 +283,10 @@ class WebappConfig:
     # Settings > Chief turns it off; readers take auto_drain from the
     # chief settings payload.
     chief_auto_drain: bool = True
-    # Publish one job-failed event into the chief mailbox per failed Job run
-    # run. On by default: the event only lands while a chief is live, and
-    # the doorbell above decides whether the chief is woken for it.
+    # One chief-mailbox event per failed Job run / newly red main-branch CI
+    # run; on by default, written only while a chief is live.
     chief_job_failures: bool = True
+    chief_ci_failures: bool = True
     # Two switches fleet-config's chief reads over loopback from
     # GET /api/board/chief/settings; the app starts nothing for either. Off
     # by default: each lets the chief act on its own, so the owner opts in.

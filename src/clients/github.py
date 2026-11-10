@@ -30,6 +30,7 @@ import os
 import re
 import subprocess
 import threading
+import urllib.parse
 from datetime import date, datetime, time, timedelta, timezone, tzinfo
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -580,6 +581,32 @@ def comment_issue(owner: str, repo: str, number: int, body: str) -> None:
         ["issue", "comment", str(number), "--repo", f"{owner}/{repo}", "--body-file", "-"],
         stdin_text=body,
     )
+
+
+#: Enough runs on one branch to see each workflow's latest result and the
+#: start of its red streak, in one call.
+_RUNS_PER_PAGE = 50
+
+
+def workflow_runs(owner: str, repo: str, branch: str) -> List[Dict[str, Any]]:
+    """The latest Actions runs on ``branch``, newest first, in one ``gh api`` call.
+
+    Pull-request runs are excluded: they never describe the branch itself.
+    """
+    if not (_SAFE_NAME.match(repo) and _SAFE_NAME.match(owner)):
+        raise GhError(f"unsafe repo name {owner}/{repo}")
+    query = urllib.parse.urlencode(
+        {"branch": branch, "per_page": _RUNS_PER_PAGE, "exclude_pull_requests": "true"}
+    )
+    out = _run_gh(["api", f"repos/{owner}/{repo}/actions/runs?{query}"])
+    try:
+        data = json.loads(out or "{}")
+    except ValueError as exc:
+        raise GhError(f"gh api runs for {repo}: unparseable JSON: {exc}") from exc
+    runs = data.get("workflow_runs") if isinstance(data, dict) else None
+    if not isinstance(runs, list):
+        raise GhError(f"gh api runs for {repo}: no workflow_runs list")
+    return [r for r in runs if isinstance(r, dict)]
 
 
 def snapshot() -> Dict[str, Any]:

@@ -73,6 +73,7 @@ import { agoText, openOwnerAnswersAt, renderChiefPlan } from './board/chief-plan
 import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
+import { ciFailing, renderCiCard } from './board/ci-card.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
@@ -396,10 +397,11 @@ const JOB_CHIPS = {
   unreadable: ['unreadable', 'attention'],
 };
 
-// A job in PRs and jobs that counts as failing: the header's
+// A job or CI row in PRs and jobs that counts as failing: the header's
 // "N failing" and the folded lane's meta.
 function jobFailing(card) {
-  return card.kind === 'job' && (card.state === 'failed' || card.state === 'stuck');
+  return ciFailing(card) ||
+    (card.kind === 'job' && (card.state === 'failed' || card.state === 'stuck'));
 }
 
 // A failed or unconfirmed run is a past event, so it can be dismissed once
@@ -479,6 +481,7 @@ function renderCard(colKey, card, openItem) {
   if (colKey === 'done') return renderDoneCard(card);
   if (card.kind === 'pr') return renderPrCard(card);
   if (card.kind === 'job') return renderJobCard(card);
+  if (card.kind === 'ci') return renderCiCard(card);
   return renderSessionCard(card, openItem);
 }
 

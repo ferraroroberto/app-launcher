@@ -362,6 +362,11 @@
           </div>
           <p id="chiefJobFailuresHelp" class="field-help">Leaves the chief a mailbox event when a Job run fails, while a chief is running. Off, a failed run only notifies you.</p>
           <div class="row">
+            <span>CI failures</span>
+            <button data-track="chief.ci-failures" type="button" id="chiefCiFailuresToggle" class="toggle" role="switch" aria-checked="true" aria-label="Chief CI failures" aria-describedby="chiefCiFailuresHelp" title="Tell the chief when GitHub CI fails on a main branch"><span class="knob"></span><span class="toggle-label">ON</span></button>
+          </div>
+          <p id="chiefCiFailuresHelp" class="field-help">Leaves the chief a mailbox event when a GitHub CI run fails on a repo's main branch, while a chief is running. Off, CI shows only on the Board.</p>
+          <div class="row">
             <span>Job self-heal</span>
             <button data-track="chief.job-self-heal" type="button" id="chiefJobSelfHealToggle" class="toggle" role="switch" aria-checked="false" aria-label="Job self-heal" aria-describedby="chiefJobSelfHealHelp" title="Let the chief try to repair a failed Job on its own"><span class="knob"></span><span class="toggle-label">OFF</span></button>
           </div>
