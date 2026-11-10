@@ -32,8 +32,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
-from src.clients import session as session_client
 from src.app_runtime import find_child_process
+from src.clients import session as session_client
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
