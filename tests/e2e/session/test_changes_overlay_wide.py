@@ -30,7 +30,6 @@ from tests.e2e.fixtures.waits import (
 )
 from tests.e2e.session.test_coding_changes_overlay import AGENTS, CHANGES, _app
 from tests.e2e.session.test_session_mode_toggle import (
-    _mock_git_status,
     _mock_sessions_list,
     _row,
     _session_row,
@@ -84,27 +83,9 @@ def _boot(page: Page, base_url: str) -> None:
     )
 
 
-def _open_session_changes(page: Page, base_url: str) -> None:
-    _mock_git_status(page)
-    _mock_sessions_list(page, [_session_row(_SID, kind="remote", agent="claude", title="Wide changes")])
-    page.route(
-        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/transcript(\?.*)?$"),
-        lambda route: route.fulfill(status=200, content_type="application/json",
-                                    body=_json.dumps(_TRANSCRIPT)),
-    )
-    page.route(
-        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files$"),
-        lambda route: route.fulfill(status=200, content_type="application/json",
-                                    body=_json.dumps(_SESSION_FILES)),
-    )
-    _boot(page, base_url)
-    _row(page, _SID).locator(".session-open").click()
-    expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
-    page.locator("#terminalMenu").click()
-    page.locator(".terminal-menu").get_by_role("menuitem", name="Changed files").click()
-
-
-def _open_project_changes(page: Page, base_url: str) -> None:
+def _mock_both_ways_in(page: Page) -> None:
+    """One Coding tab holding a detached session with an edit and a dirty
+    project, so both ways into the panel are on the same page."""
     page.route(
         "**/api/apps",
         lambda route: route.fulfill(
@@ -129,13 +110,32 @@ def _open_project_changes(page: Page, base_url: str) -> None:
             ]}),
         ),
     )
-    _mock_sessions_list(page, [])
+    _mock_sessions_list(page, [_session_row(_SID, kind="remote", agent="claude", title="Wide changes")])
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/transcript(\?.*)?$"),
+        lambda route: route.fulfill(status=200, content_type="application/json",
+                                    body=_json.dumps(_TRANSCRIPT)),
+    )
+    page.route(
+        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files$"),
+        lambda route: route.fulfill(status=200, content_type="application/json",
+                                    body=_json.dumps(_SESSION_FILES)),
+    )
     page.route(
         re.compile(r".*/api/claude-code/changes/[^/]+$"),
         lambda route: route.fulfill(status=200, content_type="application/json",
                                     body=_json.dumps(CHANGES)),
     )
-    _boot(page, base_url)
+
+
+def _open_session_changes(page: Page) -> None:
+    _row(page, _SID).locator(".session-open").click()
+    expect(page.locator("#terminalOverlay")).to_be_visible(timeout=OVERLAY_OPEN_MS)
+    page.locator("#terminalMenu").click()
+    page.locator(".terminal-menu").get_by_role("menuitem", name="Changed files").click()
+
+
+def _open_project_changes(page: Page) -> None:
     page.locator("details.projects-card").evaluate("el => { el.open = true; }")
     anchor = page.locator('.coding-item[data-id="alpha"] .project-menu-anchor')
     expect(anchor).to_be_enabled(timeout=5_000)
@@ -143,22 +143,32 @@ def _open_project_changes(page: Page, base_url: str) -> None:
     open_row_menu(page).locator("[data-item=project-changes-btn]").click()
 
 
-@pytest.mark.parametrize("opener", [_open_session_changes, _open_project_changes],
-                         ids=["session-menu", "show-changes"])
+def _assert_on_top(page: Page, way_in: str) -> None:
+    overlay = page.locator("#changesOverlay")
+    expect(overlay).to_be_visible()
+    expect(page.locator("#changesList .chg-file").first).to_be_visible()
+    probes = stable_eval(overlay, _TOPMOST)
+    assert probes, f"{way_in}: the panel has no layout box"
+    covered = [p for p in probes if not p["onTop"]]
+    assert not covered, f"{way_in}: Coding-tab layers paint over the Changed files panel: {covered}"
+
+
 def test_changes_panel_covers_the_coding_tab_on_a_wide_window(
-    authed_page: Page, base_url: str, browser_name: str, opener
+    authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     if browser_name != "chromium":
         pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
     page = authed_page
     page.set_viewport_size({"width": 1900, "height": 900})
-    opener(page, base_url)
+    _mock_both_ways_in(page)
+    _boot(page, base_url)
 
-    overlay = page.locator("#changesOverlay")
-    expect(overlay).to_be_visible()
-    expect(page.locator("#changesList .chg-file").first).to_be_visible()
+    _open_session_changes(page)
+    _assert_on_top(page, "session menu")
+    page.locator("#changesClose").click()
+    expect(page.locator("#changesOverlay")).to_be_hidden()
+    page.locator("#terminalBack").click()
+    expect(page.locator("#terminalOverlay")).to_be_hidden()
 
-    probes = stable_eval(overlay, _TOPMOST)
-    assert probes, "the panel has no layout box"
-    covered = [p for p in probes if not p["onTop"]]
-    assert not covered, f"Coding-tab layers paint over the Changed files panel: {covered}"
+    _open_project_changes(page)
+    _assert_on_top(page, "show changes")

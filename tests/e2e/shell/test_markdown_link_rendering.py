@@ -10,9 +10,8 @@ quote character that survives the escape pass terminates the ``href`` value
 early, and an HTML parser reads whatever follows as further attributes on the
 same element instead of as part of the link target.
 
-Pinned as a pure-function probe via dynamic ``import()`` in the page (the same
-pattern as ``test_session_title_naming.py``), so it costs no session and no
-network beyond the page load.
+Pinned as a pure-function probe via dynamic ``import()`` in the page, so it
+costs no session and no network beyond the page load.
 """
 
 from __future__ import annotations

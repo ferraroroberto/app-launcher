@@ -831,7 +831,7 @@ label      = "repo-meta"
 # (board/chief-plan.js) and its Clear merged control (board/plan-prune.js),
 # and their routers. test_coding_chief drives the
 # chief from the Coding tab through board-dispatch.js; test_session_rename and
-# test_shared_session_title render board cards.
+# test_session_row_glance render board cards.
 [[e2e.surface]]
 name     = "board"
 paths    = [
@@ -862,7 +862,6 @@ pytest_targets = [
     "tests/e2e/code/test_coding_chief.py",
     "tests/e2e/code/test_channel_sessions_hidden.py",
     "tests/e2e/session/test_session_rename.py",
-    "tests/e2e/session/test_shared_session_title.py",
     "tests/e2e/code/test_coding_model_selector.py",
     "tests/e2e/terminal/test_terminal_bar_overflow.py",
     "tests/e2e/shell/test_primary_nav.py",
