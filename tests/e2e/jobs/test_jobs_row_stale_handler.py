@@ -125,11 +125,14 @@ def _open_kebab(row) -> None:
     expect(open_row_menu(row.page).locator("[data-item=job-run-item]")).to_be_visible()
 
 
-def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
+def test_run_and_edit_handlers_act_on_the_polled_job(
     authed_page: Page, base_url: str
 ) -> None:
+    """Both consequences of the stale closure (#1007) on one page (#1215):
+    first the confirm flag, then the args, each changed server-side while the
+    kebab was already open and delivered by a real poll."""
     runs: list = []
-    state = {"confirm": False, "args": "", "polls": 0}
+    state = {"confirm": False, "args": "--old", "polls": 0}
     _wire(authed_page, runs, state)
 
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
@@ -165,24 +168,11 @@ def test_run_handler_sees_a_confirm_flag_set_after_the_row_was_built(
         f"run request {runs[0]!r} omitted ?confirmed=1 — the stale job "
         "decided the client-side gate, so the server gate was not exercised"
     )
+    expect(confirm).to_be_hidden()
 
-
-def test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render(
-    authed_page: Page, base_url: str
-) -> None:
-    """The second consequence of the same stale closure (#1007): Edit
-    reopened with the schedule/params captured when the row was built, so
-    saving silently clobbered whatever had changed server-side meanwhile."""
-    runs: list = []
-    state = {"confirm": False, "args": "--old", "polls": 0}
-    _wire(authed_page, runs, state)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.wait_for_selector("#sessionsList", state="attached", timeout=5_000)
-    authed_page.locator("#tabJobs").click()
-
-    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
-    expect(row).to_be_visible()
+    # -- was test_edit_handler_opens_the_polled_job_not_the_one_captured_at_render --
+    # Edit reopened with the schedule/params captured when the row was built,
+    # so saving silently clobbered whatever had changed server-side meanwhile.
     # Edit lives in the row's ⋯ menu; open it before the change arrives.
     _open_kebab(row)
 

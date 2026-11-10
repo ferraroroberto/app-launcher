@@ -178,18 +178,6 @@ def test_header_next_up_and_the_agenda_sheet(authed_page: Page, base_url: str) -
     surface(page, "jobs.job-sheet")
 
 
-def test_avatar_glyph_names_the_job_kind(authed_page: Page, base_url: str) -> None:
-    """#1505: each job kind has its own avatar glyph; a kind the map does not
-    know keeps the generic one, and the running badge is unchanged."""
-    page = authed_page
-    _open_jobs(page, base_url)
-    for job_id, glyph in (("ledger", "#i-code-xml"), ("mailbox", "#i-globe"),
-                          ("planner", "#i-activity")):
-        expect(_row(page, job_id).locator(".job-avatar .avatar-glyph use")).to_have_attribute(
-            "href", glyph)
-    expect(_row(page, "archive").locator(".job-avatar")).to_have_attribute("data-badge", "alive")
-
-
 def test_header_falls_back_to_the_count(authed_page: Page, base_url: str) -> None:
     _open_jobs(authed_page, base_url, jobs=[_job("ledger", "Ledger reconciliation"),
                                             _job("planner", "Planner sync")])
@@ -198,9 +186,20 @@ def test_header_falls_back_to_the_count(authed_page: Page, base_url: str) -> Non
     expect(head.locator(".head-exception")).to_have_count(0)
 
 
-def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: str) -> None:
+def test_avatars_and_the_kebab_runs_and_removes_with_no_edit_mode(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
     seen = _open_jobs(page, base_url)
+
+    # -- was test_avatar_glyph_names_the_job_kind --
+    # #1505: each job kind has its own avatar glyph; a kind the map does not
+    # know keeps the generic one, and the running badge is unchanged.
+    for job_id, glyph in (("ledger", "#i-code-xml"), ("mailbox", "#i-globe"),
+                          ("planner", "#i-activity")):
+        expect(_row(page, job_id).locator(".job-avatar .avatar-glyph use")).to_have_attribute(
+            "href", glyph)
+    expect(_row(page, "archive").locator(".job-avatar")).to_have_attribute("data-badge", "alive")
 
     # No Edit mode anywhere, and Add is always there.
     expect(page.locator("#jobsEditBtn")).to_have_count(0)
@@ -249,7 +248,9 @@ def test_kebab_runs_and_removes_with_no_edit_mode(authed_page: Page, base_url: s
     assert seen["deleted"][0].endswith("/api/jobs/planner")
 
 
-def test_sheet_runs_now_and_streams_the_new_run(authed_page: Page, base_url: str) -> None:
+def test_sheet_runs_now_streams_the_new_run_and_a_search_hit_opens_its_run(
+    authed_page: Page, base_url: str
+) -> None:
     page = authed_page
 
     def stream(ws: WebSocketRoute) -> None:
@@ -257,6 +258,10 @@ def test_sheet_runs_now_and_streams_the_new_run(authed_page: Page, base_url: str
                             "output": "streamed line"}))
 
     page.route_web_socket(re.compile(r".*/api/jobs/ledger/runs/r3/stream.*"), stream)
+    page.route(re.compile(r".*/api/jobs/runs/search.*"), _fulfill({"matches": [
+        {"job_id": "ledger", "run_id": "r1", "status": "failed", "outcome": "failed",
+         "snippet": "Traceback: boom"},
+    ]}))
     seen = _open_jobs(page, base_url)
 
     _row(page, "ledger").locator(".action-row-main").click()
@@ -284,40 +289,14 @@ def test_sheet_runs_now_and_streams_the_new_run(authed_page: Page, base_url: str
     expect(sheet).to_be_hidden()
     expect(_row(page, "ledger")).not_to_have_attribute("aria-current", "true")
 
-
-def test_search_hit_opens_the_sheet_on_its_run(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    page.route(re.compile(r".*/api/jobs/runs/search.*"), _fulfill({"matches": [
-        {"job_id": "ledger", "run_id": "r1", "status": "failed", "outcome": "failed",
-         "snippet": "Traceback: boom"},
-    ]}))
-    _open_jobs(page, base_url)
+    # -- was test_search_hit_opens_the_sheet_on_its_run --
     page.locator("#jobsSearchInput").fill("boom")
     hit = page.locator("#jobsList li.job-search-hit")
     expect(hit).to_have_count(1)
     hit.locator(".action-row-main").click()
-    expect(page.locator("#jobSheet")).to_be_visible()
-    expect(page.locator("#jobSheetBody .jobs-run-btn.selected")).to_contain_text("failed")
-    expect(page.locator("#jobSheetBody [data-role='output-tail']")).to_have_text("output of r1")
-
-
-@pytest.mark.iphone
-def test_a_24_character_name_is_not_cut_at_phone_width(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    if browser_name != "webkit":
-        pytest.skip("desktop Chromium draws a 15px scrollbar a phone does not have")
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _open_jobs(page, base_url)
-    row = _row(page, "archive")
-    m = stable_eval(row, """li => {
-      const t = li.querySelector('.action-row-title');
-      return { cut: t.scrollWidth > t.clientWidth,
-               h: Math.round(li.getBoundingClientRect().height) };
-    }""")
-    assert not m["cut"], "'Photo library backup run' is ellipsized at 390px"
-    assert m["h"] == 60, m
+    expect(sheet).to_be_visible()
+    expect(body.locator(".jobs-run-btn.selected")).to_contain_text("failed")
+    expect(body.locator("[data-role='output-tail']")).to_have_text("output of r1")
 
 
 def test_wide_layout_docks_the_sheet_beside_the_list(
@@ -361,15 +340,20 @@ def test_wide_layout_docks_the_sheet_beside_the_list(
 
 
 @pytest.mark.iphone
-def test_toolbar_icons_are_centred_on_the_search_field(
-    authed_page: Page, base_url: str
+def test_phone_width_fits_names_toolbar_and_placeholder(
+    authed_page: Page, base_url: str, browser_name: str
 ) -> None:
-    """#1541: the sort sheet's trigger (inside the field since #1538) and the
-    Add icon sit on the search field's vertical centre, not below it. Measured in one stable_eval so a poll's re-render
-    cannot split the reads."""
+    """The 390px layout checks on one page load (#1215): the toolbar icons on
+    the search field's centre (#1541), the whole placeholder (#1505), and on
+    WebKit a 24-character name read whole. Each is measured in one stable_eval
+    so a poll's re-render cannot split the reads."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
     _open_jobs(page, base_url)
+
+    # -- was test_toolbar_icons_are_centred_on_the_search_field --
+    # The sort sheet's trigger (inside the field since #1538) and the Add icon
+    # sit on the search field's vertical centre, not below it.
     m = stable_eval(page.locator(".jobs-toolbar"), """bar => {
       if (!bar.isConnected) return null;
       const mid = (sel) => {
@@ -383,13 +367,7 @@ def test_toolbar_icons_are_centred_on_the_search_field(
     assert abs(m["sort"] - m["field"]) <= 1, f"sort button is off the field's centre: {m}"
     assert abs(m["add"] - m["field"]) <= 1, f"add icon is off the field's centre: {m}"
 
-
-@pytest.mark.iphone
-def test_search_placeholder_fits_at_phone_width(authed_page: Page, base_url: str) -> None:
-    """#1505: the Jobs search's placeholder is read whole at 390px, not cut."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _open_jobs(page, base_url)
+    # -- was test_search_placeholder_fits_at_phone_width --
     m = stable_eval(page.locator("#jobsSearchInput"), """el => {
       const s = getComputedStyle(el);
       const ctx = document.createElement('canvas').getContext('2d');
@@ -399,3 +377,15 @@ def test_search_placeholder_fits_at_phone_width(authed_page: Page, base_url: str
                placeholder: el.placeholder };
     }""")
     assert m["text"] <= m["room"], f"the placeholder is cut at 390px: {m}"
+
+    # -- was test_a_24_character_name_is_not_cut_at_phone_width --
+    # Desktop Chromium draws a 15px scrollbar a phone does not have, so the
+    # name's room is only a phone's on WebKit.
+    if browser_name == "webkit":
+        m = stable_eval(_row(page, "archive"), """li => {
+          const t = li.querySelector('.action-row-title');
+          return { cut: t.scrollWidth > t.clientWidth,
+                   h: Math.round(li.getBoundingClientRect().height) };
+        }""")
+        assert not m["cut"], "'Photo library backup run' is ellipsized at 390px"
+        assert m["h"] == 60, m

@@ -84,18 +84,22 @@ def _job(job_id, name):
     }
 
 
-def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> list:
-    """Mock the endpoints; returns the list that records each agenda fetch."""
+def _wire(page: Page, served: dict) -> list:
+    """Mock the endpoints; returns the list that records each agenda fetch.
+
+    ``served["agenda"]`` is read per request, so a later visit to the tab is
+    answered with another schedule on the same page.
+    """
     # Freeze the page's `new Date()` at the same anchor the fixture epochs are
     # built from (#918). `set_fixed_time` pins Date only — timers keep running,
     # so boot and the panel's fetch are unaffected.
-    page.clock.set_fixed_time(now)
+    page.clock.set_fixed_time(_ANCHOR)
     agenda_calls: list = []
 
     def _agenda_route(route):
         agenda_calls.append(route.request.url)
         route.fulfill(status=200, content_type="application/json",
-                      body=_json.dumps(agenda))
+                      body=_json.dumps(served["agenda"]))
 
     page.route(re.compile(r".*/api/jobs/agenda(\?.*)?$"), _agenda_route)
     page.route(
@@ -113,13 +117,10 @@ def _wire(page: Page, agenda=_AGENDA, now: _dt.datetime = _ANCHOR) -> list:
     return agenda_calls
 
 
-def _open_agenda(page: Page, base_url: str) -> None:
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+def _revisit_jobs(page: Page) -> None:
+    """Leave the Jobs tab and come back: the new visit fetches the agenda again."""
+    page.locator("#tabApps").click()
     page.locator("#tabJobs").click()
-    expect(page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "ready")
-    page.locator("#jobsAgendaOpen").click()
-    expect(page.locator("#jobsAgendaSheet")).to_be_visible()
-    page.wait_for_selector("#jobsAgendaBody .jobs-fire-row", state="attached", timeout=5_000)
 
 
 def _day_headers(page: Page):
@@ -128,8 +129,13 @@ def _day_headers(page: Page):
 
 
 @pytest.mark.iphone
-def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None:
-    agenda_calls = _wire(authed_page)
+def test_agenda_groups_by_day_holds_across_midnight_and_says_when_empty(
+    authed_page: Page, base_url: str
+) -> None:
+    """One page for the day grouping, the midnight boundary and the empty
+    state; each later schedule arrives on a fresh visit to the tab (#1215)."""
+    served = {"agenda": _AGENDA}
+    agenda_calls = _wire(authed_page, served)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.locator("#tabJobs").click()
 
@@ -197,20 +203,23 @@ def test_agenda_groups_by_day_in_order(authed_page: Page, base_url: str) -> None
     expect(authed_page.locator("#jobSheet")).to_be_visible()
     expect(authed_page.locator("#jobSheetTitle")).to_have_text("Zeta")
     expect(authed_page.locator("#jobSheetBody")).to_have_attribute("data-job-id", "zeta")
+    authed_page.locator("#jobSheetClose").click()
+    expect(authed_page.locator("#jobSheet")).to_be_hidden()
+
+    _midnight_labels_hold(authed_page, served)
+    _empty_week_offers_add_job(authed_page, served)
 
 
-def test_agenda_day_labels_hold_across_local_midnight(
-    authed_page: Page, base_url: str
-) -> None:
-    """#918: the boundary, faked rather than waited for.
-
-    Thirty seconds before local midnight, with one row either side of it. The
-    labels must still read Today/Tomorrow — under the old wall-clock anchoring
-    the page's "now" could land on the far side of 00:00 from the fixture and
-    the first header rendered as a bare date.
-    """
-    late = _MIDNIGHT + _dt.timedelta(hours=23, minutes=59, seconds=30)
-    agenda = {
+def _midnight_labels_hold(page: Page, served: dict) -> None:
+    """Was test_agenda_day_labels_hold_across_local_midnight."""
+    # #918: the boundary, faked rather than waited for. Thirty seconds before
+    # local midnight, with one row either side of it. The labels must still
+    # read Today/Tomorrow — under the old wall-clock anchoring the page's
+    # "now" could land on the far side of 00:00 from the fixture and the first
+    # header rendered as a bare date.
+    page.clock.set_fixed_time(
+        _MIDNIGHT + _dt.timedelta(hours=23, minutes=59, seconds=30))
+    served["agenda"] = {
         "days": 7,
         "generated_epoch": _epoch(0),
         "occurrences": [
@@ -221,40 +230,39 @@ def test_agenda_day_labels_hold_across_local_midnight(
         ],
         "frequent": [],
     }
-    _wire(authed_page, agenda=agenda, now=late)
-    _open_agenda(authed_page, base_url)
-
-    expect(authed_page.locator("#jobsAgendaBody .jobs-agenda-day")).to_have_text(
-        ["Today", "Tomorrow"])
-
-    rows = authed_page.locator("#jobsAgendaBody .jobs-fire-row")
-    expect(rows).to_have_count(2)
-    ids = rows.evaluate_all("els => els.map(e => e.dataset.jobId)")
-    assert ids == ["alpha", "zeta"]
+    _revisit_jobs(page)
     # Next up draws its day from the same clock (the meta line's first word).
-    expect(authed_page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
+    expect(page.locator("#jobsNextUpList .action-row-meta")).to_have_text(
         ["today · Daily 23:45", "tomorrow · Daily 00:15"])
+    page.locator("#jobsAgendaOpen").click()
+    expect(page.locator("#jobsAgendaSheet")).to_be_visible()
+    expect(page.locator("#jobsAgendaBody .jobs-agenda-day")).to_have_text(
+        ["Today", "Tomorrow"])
+    rows = page.locator("#jobsAgendaBody .jobs-fire-row")
+    expect(rows).to_have_count(2)
+    assert rows.evaluate_all("els => els.map(e => e.dataset.jobId)") == ["alpha", "zeta"]
+    page.locator("#jobsAgendaSheetClose").click()
+    expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
 
 
-def test_agenda_empty_state(authed_page: Page, base_url: str) -> None:
-    _wire(authed_page, agenda={"days": 7, "generated_epoch": _epoch(0),
-                               "occurrences": [], "frequent": []})
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    authed_page.locator("#tabJobs").click()
+def _empty_week_offers_add_job(page: Page, served: dict) -> None:
+    """Was test_agenda_empty_state (last: it opens the Add job dialog)."""
+    served["agenda"] = {"days": 7, "generated_epoch": _epoch(0),
+                        "occurrences": [], "frequent": []}
+    _revisit_jobs(page)
     # Next up says why it is empty (design.md "Async data & feedback").
-    expect(authed_page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "empty")
-    expect(authed_page.locator("#jobsNextUpState")).to_contain_text(
+    expect(page.locator("#jobsNextUpCard")).to_have_attribute("data-state", "empty")
+    expect(page.locator("#jobsNextUpState")).to_contain_text(
         "Nothing scheduled in the next 7 days")
-    authed_page.locator("#jobsAgendaOpen").click()
-    expect(authed_page.locator("#jobsAgendaBody")).to_contain_text(
+    page.locator("#jobsAgendaOpen").click()
+    expect(page.locator("#jobsAgendaBody")).to_contain_text(
         "No scheduled runs in the next 7 days")
-    # Its own next step (#1201): an Add job button that opens the same
-    # dialog as the Jobs card's +. (Edit mode is gone: that + is always shown,
-    # #1438.)
-    expect(authed_page.locator("#jobsAddBtn")).to_be_visible()
-    add = authed_page.locator("#jobsAgendaBody .empty-state-action")
+    # Its own next step (#1201): an Add job button that opens the same dialog
+    # as the Jobs card's +. (Edit mode is gone: that + is always shown, #1438.)
+    expect(page.locator("#jobsAddBtn")).to_be_visible()
+    add = page.locator("#jobsAgendaBody .empty-state-action")
     expect(add).to_have_text("Add job")
     add.click()
-    expect(authed_page.locator("#jobsAgendaSheet")).to_be_hidden()
-    expect(authed_page.locator("#jobDialog")).to_be_visible()
-    expect(authed_page.locator("#jobDialogTitle")).to_have_text("Add job")
+    expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
+    expect(page.locator("#jobDialog")).to_be_visible()
+    expect(page.locator("#jobDialogTitle")).to_have_text("Add job")
