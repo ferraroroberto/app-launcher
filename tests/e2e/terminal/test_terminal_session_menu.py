@@ -21,6 +21,11 @@ These pin:
 The overlay is opened with ``?session=`` rather than ``?terminal=``: the
 latter marks a PC mirror window, and neither the menu nor the pill depends on
 which, so ``?session=`` runs the same in-page overlay on both projections.
+
+One test opens the overlay once and runs the pill leg (the former
+``test_latest_pill_shows_only_when_scrolled_up``, kept as a named helper),
+then the menu checks. The pill goes first because the menu checks end by
+emptying the page's own session state.
 """
 
 from __future__ import annotations
@@ -58,7 +63,7 @@ _CLIPBOARD_MOCK = """
 # The SPA loads its modules cache-busted (`state.js?v=<asset_hash>`); a bare
 # import would evaluate a second, empty module instance. Resolve the page's
 # real module URL so the import shares the live state (same pattern as
-# test_warm_terminal_reopen.py / test_terminal_reconnect.py).
+# test_terminal_reconnect.py).
 _LIVE_STATE_SETUP = """
 async () => {
   const hit = performance.getEntriesByType('resource')
@@ -147,13 +152,52 @@ def _open_overlay(page: Page, base_url: str, sid: str) -> None:
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
 
+def _leg_latest_pill_shows_only_when_scrolled_up(authed_page: Page) -> None:
+    authed_page.evaluate(_LIVE_STATE_SETUP)
+    authed_page.wait_for_function("() => !!window.__term()", timeout=OVERLAY_OPEN_MS)
+    # Only write scrollback once the connect's clear + replay frame is in.
+    authed_page.wait_for_function("() => window.__wsFrames > 0", timeout=OVERLAY_OPEN_MS)
+    authed_page.evaluate(_TWO_FRAMES)
+    pill = authed_page.locator("#terminalLatest")
+
+    # Several screens of local scrollback (written into xterm, not the PTY).
+    authed_page.evaluate(
+        "() => new Promise((r) => window.__term().write("
+        "Array.from({length: 400}, (_, i) => 'latest-pill line ' + i).join('\\r\\n')"
+        " + '\\r\\n', r))"
+    )
+    authed_page.evaluate("() => window.__term().scrollToBottom()")
+    authed_page.evaluate(_TWO_FRAMES)
+    expect(pill).to_be_hidden()
+
+    # A couple of lines up is still "at the latest output": no pill.
+    authed_page.evaluate("() => window.__term().scrollLines(-2)")
+    authed_page.evaluate(_TWO_FRAMES)
+    assert authed_page.evaluate("() => document.getElementById('terminalLatest').hidden"), (
+        "pill appeared less than a screen above the tail"
+    )
+
+    authed_page.evaluate("() => window.__term().scrollToTop()")
+    expect(pill).to_be_visible()
+
+    pill.click()
+    expect(pill).to_be_hidden()
+    at_tail = authed_page.evaluate(
+        "() => { const b = window.__term().buffer.active; return b.viewportY === b.baseY; }"
+    )
+    assert at_tail, "tapping Latest did not return the terminal to its tail"
+
+
 def test_menu_copy_link_and_rename_update_the_bar(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     sid = launched_pty_session
     authed_page.add_init_script(_CLIPBOARD_MOCK)
+    authed_page.add_init_script(_WS_FRAME_PROBE)
     _inject_web_url(authed_page, sid, _CLAUDE_WEB_URL)
     _open_overlay(authed_page, base_url, sid)
+
+    _leg_latest_pill_shows_only_when_scrolled_up(authed_page)
     surface(authed_page, "terminal.overlay")
 
     # A Claude full-control session with its card captured: the provider link
@@ -217,43 +261,3 @@ def test_menu_copy_link_and_rename_update_the_bar(
     expect(authed_page.locator("#toast")).to_have_text(
         re.compile(r"Launcher link copied \(tailnet only\)")
     )
-
-
-def test_latest_pill_shows_only_when_scrolled_up(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    authed_page.add_init_script(_WS_FRAME_PROBE)
-    _open_overlay(authed_page, base_url, launched_pty_session)
-    authed_page.evaluate(_LIVE_STATE_SETUP)
-    authed_page.wait_for_function("() => !!window.__term()", timeout=OVERLAY_OPEN_MS)
-    # Only write scrollback once the connect's clear + replay frame is in.
-    authed_page.wait_for_function("() => window.__wsFrames > 0", timeout=OVERLAY_OPEN_MS)
-    authed_page.evaluate(_TWO_FRAMES)
-    pill = authed_page.locator("#terminalLatest")
-
-    # Several screens of local scrollback (written into xterm, not the PTY).
-    authed_page.evaluate(
-        "() => new Promise((r) => window.__term().write("
-        "Array.from({length: 400}, (_, i) => 'latest-pill line ' + i).join('\\r\\n')"
-        " + '\\r\\n', r))"
-    )
-    authed_page.evaluate("() => window.__term().scrollToBottom()")
-    authed_page.evaluate(_TWO_FRAMES)
-    expect(pill).to_be_hidden()
-
-    # A couple of lines up is still "at the latest output": no pill.
-    authed_page.evaluate("() => window.__term().scrollLines(-2)")
-    authed_page.evaluate(_TWO_FRAMES)
-    assert authed_page.evaluate("() => document.getElementById('terminalLatest').hidden"), (
-        "pill appeared less than a screen above the tail"
-    )
-
-    authed_page.evaluate("() => window.__term().scrollToTop()")
-    expect(pill).to_be_visible()
-
-    pill.click()
-    expect(pill).to_be_hidden()
-    at_tail = authed_page.evaluate(
-        "() => { const b = window.__term().buffer.active; return b.viewportY === b.baseY; }"
-    )
-    assert at_tail, "tapping Latest did not return the terminal to its tail"

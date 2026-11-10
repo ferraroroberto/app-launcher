@@ -34,7 +34,7 @@ from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 # The SPA loads its modules cache-busted (`terminal.js?v=<asset_hash>`); see
-# test_warm_terminal_reopen.py for why a plain import() would test a second,
+# test_terminal_reconnect.py for why a plain import() would test a second,
 # empty module instance instead of the live one driving the open overlay.
 _LIVE_MODULE = """
 (name) => {
@@ -57,7 +57,7 @@ def test_orientationchange_releases_stale_overlay_pin(
     # overlay-chrome pinning (and the orientationchange listener this test
     # pins) never runs there. Open the same way a real phone tap does:
     # normal page load, then openTerminal() directly, matching
-    # test_warm_terminal_reopen.py's re-open step.
+    # test_terminal_reconnect.py's warm re-open leg.
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     authed_page.evaluate(
         """async (sid) => {

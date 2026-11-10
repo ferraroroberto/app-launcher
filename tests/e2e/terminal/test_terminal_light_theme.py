@@ -14,7 +14,9 @@ Contract under test:
 The first bullet (the tokens flip, and no #359 opt-in switch remaining) needs
 only a loaded page and runs in
 ``test_terminal_module_probes.py::test_terminal_module_contracts`` since
-#1215; the tests here are the ones that need a live PTY.
+#1215; the legs here are the ones that need a live PTY. They share one test,
+page and PTY: the live restyle first, then a second load with the user theme
+file served, each leg a former test kept as a named helper.
 """
 
 from __future__ import annotations
@@ -30,8 +32,8 @@ from tests.e2e.fixtures.waits import OVERLAY_OPEN_MS
 pytestmark = [pytest.mark.smoke, pytest.mark.iphone]
 
 
-def test_open_terminal_restyles_live_on_theme_flip(
-    authed_page: Page, base_url: str, launched_pty_session: str
+def _leg_open_terminal_restyles_live_on_theme_flip(
+    authed_page: Page, base_url: str, sid: str
 ) -> None:
     """Toggling theme while a terminal is open must recolor xterm live —
     no reopen. xterm mirrors options.theme.background onto its viewport
@@ -39,7 +41,6 @@ def test_open_terminal_restyles_live_on_theme_flip(
 
     Also pins the JS half of the mirror-window close (issue #20): the
     ``app-launcher-mirror-<sid>`` marker trailing ``document.title``."""
-    sid = launched_pty_session
     authed_page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     authed_page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
@@ -73,15 +74,14 @@ def test_open_terminal_restyles_live_on_theme_flip(
     )
 
 
-def test_user_theme_file_overrides_builtins(
-    authed_page: Page, base_url: str, launched_pty_session: str
+def _leg_user_theme_file_overrides_builtins(
+    authed_page: Page, base_url: str, sid: str
 ) -> None:
     """Issue #381: /api/terminal-themes (the machine-local
     terminal-themes.json) deep-merges over the built-in palette for the
     active mode — background here — and the overlay chrome follows."""
-    sid = launched_pty_session
-
-    # Serve a user theme before the SPA boots (wireTerminal fetches once).
+    # Serve a user theme before the SPA boots (wireTerminal fetches once), so
+    # this leg reloads the page.
     authed_page.route(
         re.compile(r".*/api/terminal-themes$"),
         lambda route: route.fulfill(
@@ -116,3 +116,10 @@ def test_user_theme_file_overrides_builtins(
         ".backgroundColor === 'rgb(10, 10, 10)'",
         timeout=5_000,
     )
+
+
+def test_open_terminal_restyles_live_on_theme_flip(
+    authed_page: Page, base_url: str, launched_pty_session: str
+) -> None:
+    _leg_open_terminal_restyles_live_on_theme_flip(authed_page, base_url, launched_pty_session)
+    _leg_user_theme_file_overrides_builtins(authed_page, base_url, launched_pty_session)

@@ -36,7 +36,7 @@ def stub_session_mirror(page: Page) -> None:
     one row-tap test run on both projections rather than skipping Chromium.
 
     A test whose subject *is* the mirror must not use this — see
-    ``test_desktop_session_mirror.py``.
+    ``test_edge_mirror_close.py``.
     """
     page.route(
         re.compile(r".*/api/claude-code/sessions/[^/]+/mirror$"),

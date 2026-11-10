@@ -1,7 +1,7 @@
 """Real-Claude Esc regression for issue #987.
 
-The keys popover's Esc sends a bare ``\\x1b`` (pinned in the browser by
-``tests/e2e/terminal/test_keys_popover.py::test_esc_key_sends_bare_escape_and_closes``).
+The keys popover's Esc sends a bare ``\\x1b`` (pinned in the browser by the
+Esc leg of ``tests/e2e/terminal/test_keys_popover.py::test_keys_popover_sends_escape_sequences``).
 This is the other half: that byte, written through the session-host's PTY
 path into a real Claude Code ConPTY, is one Claude acts on as Esc. ConPTY
 runs in win32-input-mode (``?9001h``), where a legacy VT byte could in

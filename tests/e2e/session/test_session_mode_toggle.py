@@ -28,7 +28,7 @@ Boot fetches that could rebuild the row under a click are stubbed before
 ``goto()`` (#510); state assertions use auto-retrying ``expect()`` (#680).
 Row taps of a full-control row run under the iPhone projection only — the
 Chromium desktop projection mirrors them to a PC window (#282), which
-``test_desktop_session_mirror.py`` pins; the reader-less case opens through
+``test_edge_mirror_close.py`` pins; the reader-less case opens through
 the ``?session=`` deep link instead, so it runs on both projections. (A test
 that needs a full-control row tap on *both* projections stubs the mirror
 route instead — ``conftest.stub_session_mirror``.)
@@ -72,7 +72,7 @@ _WS_PROBE = """
 # The SPA loads its modules cache-busted (`state.js?v=<asset_hash>`); a bare
 # import would evaluate a second, empty module instance. Resolve the page's
 # real module URL so the import shares the live state (same pattern as
-# test_warm_terminal_reopen.py / test_terminal_session_menu.py).
+# test_terminal_reconnect.py / test_terminal_session_menu.py).
 _LIVE_STATE_SETUP = """
 async () => {
   const hit = performance.getEntriesByType('resource')

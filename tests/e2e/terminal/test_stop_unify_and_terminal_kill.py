@@ -19,7 +19,11 @@ terminal only on a touch (phone) client now — a desktop browser opens a
 dedicated PC Edge mirror window instead (issue #282). So it runs on the
 iPhone (WebKit) projection, where the in-page terminal view it exercises is
 the real behaviour; the desktop row-tap is covered by
-``test_desktop_session_mirror.py``.
+``test_edge_mirror_close.py``.
+
+The same in-page open carries the #241 pin, formerly
+``test_inpage_terminal_not_mirror.py``: a terminal opened in the page over
+loopback is not the PC mirror (see ``_assert_inpage_open_is_not_the_mirror``).
 """
 
 from __future__ import annotations
@@ -57,11 +61,50 @@ def _skip_unless_phone(browser_name: str) -> None:
         )
 
 
+def _assert_inpage_open_is_not_the_mirror(page: Page, sid: str) -> None:
+    """Regression pin for #241 — an in-page loopback terminal is NOT the mirror.
+
+    The bug: ``terminal.js`` decided "this is the launcher-spawned PC mirror
+    window" purely from the connection origin (``state.status.terminal.reason
+    === 'loopback'``). But a human's own desktop Chrome opened at
+    ``https://127.0.0.1:8445`` is *also* loopback, so it was mis-classified as
+    the mirror — and on Stop & Close the cooperative ``{"type":"shutdown"}``
+    frame routed to ``close-mirror`` and ``window.close()``'d the user's actual
+    Chrome window.
+
+    The fix: a page is the mirror only when it was opened via the
+    ``?terminal=<sid>`` deep-link (``state.isMirrorWindow``) *and* is loopback.
+    The test opens the session in-app, by its row, with no deep-link, after
+    ``/api/status`` resolved (so the loopback reason is in), and checks the
+    page is a normal terminal: the docked composer is shown (it is hidden only
+    in the PC mirror window) and the unique mirror ``document.title`` is never
+    set. It is the mirror image of
+    ``test_compose_bar.py::test_compose_button_hidden_in_mirror`` and
+    complements ``tests/js/terminal_module_helpers.test.mjs``'s routeFrame
+    probe (``routeFrame(_, isMirror=false)`` → ``swallow``, never
+    ``close-mirror``).
+    """
+    expect(page.locator("#terminalComposeBar")).to_be_visible()
+    assert page.title() != f"app-launcher-mirror-{sid}", (
+        "an in-page loopback terminal must not take the mirror window title — "
+        "it was mis-classified as the PC mirror (issue #241)"
+    )
+
+
 def test_kill_from_terminal_view_stops_and_returns_to_list(
     authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
 ) -> None:
     _skip_unless_phone(browser_name)
-    authed_page.goto(base_url, wait_until="domcontentloaded")
+    # No ?terminal deep-link, exactly how a browser sits on the launcher. The
+    # terminal must open *after* /api/status resolved: its loopback reason is
+    # the signal the #241 bug keyed off, and with a null status both old and
+    # new code compute isMirror=false, making that pin pass vacuously. boot()
+    # fetches its panels concurrently (#1258), so wait on /api/status itself.
+    with authed_page.expect_response(
+        lambda r: r.url.endswith("/api/status"), timeout=10_000
+    ) as status:
+        authed_page.goto(base_url, wait_until="domcontentloaded")
+    status.value.finished()
     expect(authed_page.locator("#buildReadout")).to_contain_text(
         "Build:", timeout=BUILD_READOUT_MS
     )
@@ -85,6 +128,7 @@ def test_kill_from_terminal_view_stops_and_returns_to_list(
 
     stub_hub_health(authed_page)
     open_session_row(authed_page, pty_row, "terminal")
+    _assert_inpage_open_is_not_the_mirror(authed_page, launched_pty_session)
 
     # One tap stops — stopSession() no longer guards with a confirm() dialog
     # (issue #253 follow-up); a stray dialog would mean the guard came back.

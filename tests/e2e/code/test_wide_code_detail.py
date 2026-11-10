@@ -9,7 +9,7 @@ the pane says so. Leaving the Code tab closes the view. Below 1100px the view
 still covers the whole window.
 
 Detached rows are used because a desktop tap on a full-control row opens its
-own PC window instead (#282, test_desktop_session_mirror.py); a detached
+own PC window instead (#282, test_edge_mirror_close.py); a detached
 row's Chat is the in-page view on every device. Data is synthetic and every
 fetch the rows depend on is mocked (#510).
 """
