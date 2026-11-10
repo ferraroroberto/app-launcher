@@ -504,3 +504,26 @@ def test_owner_checks_use_the_chief_answer_form_at_phone_width(
         "[demo#9] Problem found validating Read-aloud on the lock screen: it stops after a minute"
         " (please file a fix)"
     ), "submit": True}], chief_posts
+
+
+@pytest.mark.iphone
+def test_an_item_answer_button_shares_the_group_buttons_edges(
+    authed_page: Page, base_url: str, tmp_path
+) -> None:
+    """Every full-width button in the Your turn card spans the card's one content
+    inset, so an expanded item's Answer and the plan's Answer line up with the
+    owner-check group's."""
+    authed_page.set_viewport_size({"width": 390, "height": 844})
+    _open_owner_board(authed_page, base_url)
+    _route_plan_from(authed_page, {"plan": _plan_with(tmp_path, _QUESTIONS)})
+    authed_page.reload()
+    group = authed_page.locator('#boardColYours .board-owner-group[data-group="before_start"]')
+    group.locator(".board-owner-row .action-row-main").first.click()
+    item_btn = group.locator(".board-owner-answer")
+    group_btn = group.locator(".board-owner-answer-group")
+    expect(item_btn).to_be_visible()
+    edges = "el => { const r = el.getBoundingClientRect(); return [r.left, r.right]; }"
+    assert stable_eval(item_btn, edges) == stable_eval(group_btn, edges)
+    plan_btn = authed_page.locator("#boardChiefPlan .board-plan-answer")
+    expect(plan_btn).to_be_visible()
+    assert stable_eval(plan_btn, edges) == stable_eval(group_btn, edges)
