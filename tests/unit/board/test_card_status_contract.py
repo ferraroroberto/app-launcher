@@ -51,9 +51,11 @@ def test_declared_groupings_are_the_ones_consumers_routed_by():
         "idle", "idle-finished", "awaiting-input", "awaiting-decision",
     }
     assert card_status.DOORBELL_IDLE == {
-        "idle", "idle-finished", "awaiting-input", "waiting-on-task",
+        "idle", "idle-finished", "awaiting-input", "waiting-on-task", "stalled",
     }
-    assert card_status.SCREEN_CHECKED == {"idle-finished", "awaiting-input", "tool-pending"}
+    assert card_status.SCREEN_CHECKED == {
+        "idle-finished", "awaiting-input", "tool-pending", "stalled",
+    }
     assert card_status.HOOK_STAMPS == {"working", "needs-you", "idle"}
     assert card_status.NEEDS_YOU_STAMP not in card_status.CARD_STATUSES
     assert {s.lane for s in card_status.CARD_STATUSES.values()} == {

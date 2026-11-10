@@ -433,6 +433,22 @@ def test_plan_picker_on_screen_is_awaiting_decision_without_the_call_on_disk(
     assert [c["session_id"] for c in columns["your_turn"]] == ["aaa"]
 
 
+def test_plan_picker_on_screen_beats_stalled(tmp_path: Path, picker_screen):
+    """A stalled card is doorbell-ringable, so the screen must be read for a
+    picker first: a ring would answer it. The card then leaves ``stalled``
+    for ``awaiting-decision``, which still routes to Your turn."""
+    show, _renders = picker_screen
+    show("aaa")
+    stamp_time = NOW - timedelta(minutes=40)
+    row = _state_row("E:/x/y", status="needs-you", updated_min_ago=40)
+    row["transcript_path"] = _transcript_file(
+        tmp_path, stamp_time, _bash_tool_use_line(stamp_time, "toolu_gate") + "\n"
+    )
+    live = _live("aaa", "E:/x/y", 90, rows=40, cols=60)
+    cards = board.merge_sessions([live], {"t": row}, now=NOW)
+    assert cards[0]["status"] == "awaiting-decision"
+
+
 @pytest.mark.parametrize("case", ["no-picker", "no-capture", "detached", "dead", "working"])
 def test_plan_picker_check_never_forces_a_status(tmp_path: Path, picker_screen, case):
     """Guard: without a readable picker on a live launcher PTY the card keeps
