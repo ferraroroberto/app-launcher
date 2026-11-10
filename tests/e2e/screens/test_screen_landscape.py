@@ -135,10 +135,20 @@ def test_landscape_hides_the_bars_behind_a_handle_that_brings_them_back(
     expect(handle).to_have_attribute("aria-expanded", "false")
 
 
-def test_a_tap_on_the_picture_puts_the_bars_away_and_is_only_that(
+def test_a_tap_puts_the_bars_away_the_keyboard_rises_through_the_handle_and_upright_restores_them(
     authed_page: Page, base_url: str
 ) -> None:
+    """One live view on its side, in turn: a tap on the picture only puts the
+    bars away, the keyboard toggle through the handle raises the keys bar, and
+    turning the phone upright (and back) restores the bars."""
     seen, page = _live_view(authed_page, base_url)
+    _tap_puts_the_bars_away_leg(page, seen)
+    _keyboard_through_the_handle_leg(page)
+    _upright_restores_the_bars_leg(page)
+
+
+def _tap_puts_the_bars_away_leg(page: Page, seen) -> None:
+    """With the bars up, the first tap only closes them; ends in View."""
     handle = page.locator("#screenHandle")
     bar = page.locator(".screen-view-bar")
 
@@ -165,10 +175,8 @@ def test_a_tap_on_the_picture_puts_the_bars_away_and_is_only_that(
     expect(page.locator("#screenImage")).to_have_css("transform", "none")
 
 
-def test_the_keyboard_toggle_through_the_handle_raises_the_keys_bar(
-    authed_page: Page, base_url: str
-) -> None:
-    _, page = _live_view(authed_page, base_url)
+def _keyboard_through_the_handle_leg(page: Page) -> None:
+    """The keyboard toggle through the handle raises the keys bar, and lowers it."""
     handle = page.locator("#screenHandle")
     keys = page.locator("#screenKeys")
     toggle = page.locator("#screenKeyboard")
@@ -198,10 +206,8 @@ def test_the_keyboard_toggle_through_the_handle_raises_the_keys_bar(
     expect(toggle).to_have_attribute("aria-pressed", "false")
 
 
-def test_turning_the_phone_upright_restores_the_bars(
-    authed_page: Page, base_url: str
-) -> None:
-    _, page = _live_view(authed_page, base_url)
+def _upright_restores_the_bars_leg(page: Page) -> None:
+    """Upright the bars are in the flow; back on its side they are away again."""
     handle = page.locator("#screenHandle")
     bar = page.locator(".screen-view-bar")
     tools = page.locator(".screen-view-tools")

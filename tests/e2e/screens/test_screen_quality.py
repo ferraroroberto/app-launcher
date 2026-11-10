@@ -107,7 +107,7 @@ def _pick(page: Page, preset: str) -> None:
     expect(btn).to_have_attribute("aria-pressed", "true")
 
 
-def test_a_preset_rides_the_connect_query_is_remembered_and_survives_a_reconnect(
+def test_a_preset_rides_the_connect_query_is_remembered_survives_a_reconnect_and_a_bad_one_is_balanced(
     authed_page: Page, base_url: str
 ) -> None:
     seen, sockets, page = _open_view(authed_page, base_url)
@@ -151,16 +151,27 @@ def test_a_preset_rides_the_connect_query_is_remembered_and_survives_a_reconnect
     _pick(page2, "sharp")
     wait_until(page2, lambda: len(seen["urls"]) == 2, "the pick back to sharp")
     assert _preset_of(seen["urls"][1]) == "sharp"
+    _close_sheet(page2)
 
-
-def test_a_stored_value_that_is_not_a_preset_opens_on_balanced(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.context.add_init_script("localStorage.setItem('launcher.screenPreset', 'ludicrous')")
-    seen, _sockets, page = _open_view(authed_page, base_url)
+    # A stored value that is not a preset opens on Balanced.
+    page2.evaluate("localStorage.setItem('launcher.screenPreset', 'ludicrous')")
+    _close_view(authed_page, page2)
+    seen["urls"].clear()
+    page3 = _open_from_sheet(authed_page, base_url)
+    wait_until(page3, lambda: len(seen["urls"]) >= 1, "the open after the bad value")
     assert _preset_of(seen["urls"][0]) == "balanced"
-    _open_sheet(page)
-    expect(page.locator('#screenPreset [data-preset="balanced"]')).to_have_attribute("aria-pressed", "true")
+    _open_sheet(page3)
+    expect(page3.locator('#screenPreset [data-preset="balanced"]')).to_have_attribute("aria-pressed", "true")
+
+
+def _close_view(authed_page: Page, page: Page) -> None:
+    """Close the view; the desktop pop-out closes its own window."""
+    if page is not authed_page:
+        with page.expect_event("close"):
+            page.locator("#screenViewClose").click()
+    else:
+        page.locator("#screenViewClose").click()
+        expect(page.locator("#screenView")).to_be_hidden()
 
 
 def test_the_readout_is_off_until_switched_on_and_off_again_sends_and_shows_nothing(
@@ -306,22 +317,29 @@ def _hit_extent(page: Page, selector: str, nth: int = 0) -> Dict[str, float]:
     return page.locator(selector).nth(nth).evaluate(_HIT_EXTENT_JS)
 
 
+# Each leg's stats carry their own encode time, so the overlay is re-read at
+# that size rather than passing on the last leg's text.
 _LEGS = [
-    ("portrait", {"width": 360, "height": 640}),
-    ("landscape", {"width": 844, "height": 390}),
+    ("portrait", {"width": 360, "height": 640}, 78.9),
+    ("landscape", {"width": 844, "height": 390}, 87.9),
 ]
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize("leg", _LEGS, ids=[name for name, _ in _LEGS])
 def test_the_button_sheet_and_overlay_fit_a_narrow_phone_with_44px_targets(
-    authed_page: Page, base_url: str, leg
+    authed_page: Page, base_url: str
 ) -> None:
-    _name, viewport = leg
-    seen, sockets, page = _open_view(authed_page, base_url)
+    """One live view, turned from portrait to landscape: each leg checks the
+    button, the sheet and the readout overlay at that size."""
+    _seen, sockets, page = _open_view(authed_page, base_url)
+    for _name, viewport, encode in _LEGS:
+        _fit_leg(page, sockets, viewport, encode)
+
+
+def _fit_leg(page: Page, sockets: List[WebSocketRoute], viewport: Dict[str, int], encode: float) -> None:
+    """The Quality button, its sheet and the readout fit ``viewport`` with 44px targets."""
     page.set_viewport_size(viewport)
     vw, vh = viewport["width"], viewport["height"]
-
     # The widest the tools row gets: Control, with the style switch and the
     # keyboard button beside the new one.
     _reveal_tools(page)
@@ -362,13 +380,15 @@ def test_the_button_sheet_and_overlay_fit_a_narrow_phone_with_44px_targets(
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     # Every preset name is whole on its button.
     assert page.locator("#screenPreset").evaluate("el => el.scrollWidth <= el.clientWidth")
-    page.locator("#screenReadoutToggle").click()
+    if page.locator("#screenReadoutToggle").get_attribute("aria-checked") == "false":
+        page.locator("#screenReadoutToggle").click()
+    expect(page.locator("#screenReadoutToggle")).to_have_attribute("aria-checked", "true")
     _close_sheet(page)
 
     # The overlay: inside the picture's stage, whole, and not wider than it.
     readout = page.locator("#screenReadout")
-    sockets[-1].send(json.dumps({"type": "stats", "grab": 123.4, "digest": 12.3, "resize": 45.6, "encode": 78.9, "frames": 7}))
-    expect(readout).to_contain_text("encode 78.9")
+    sockets[-1].send(json.dumps({"type": "stats", "grab": 123.4, "digest": 12.3, "resize": 45.6, "encode": encode, "frames": 7}))
+    expect(readout).to_contain_text(f"encode {encode}")
     box = _box(page, "#screenReadout")
     stage = _box(page, "#screenStage")
     assert stage["x"] <= box["x"] and box["x"] + box["width"] <= stage["x"] + stage["width"], (box, stage)

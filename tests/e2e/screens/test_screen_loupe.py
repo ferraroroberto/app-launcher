@@ -4,8 +4,8 @@ One finger down in Touch control shows a round loupe above it, 150 ms later,
 with the frame under the finger at 2.5x; it follows the finger while it drags
 and is gone on lift. It is purely visual: ``pointer-events: none``, and the
 click, drag and long-press points the PC gets are the ones it got without it
-(``test_control_mode_taps_send_where_tapped_and_view_mode_sends_nothing`` still
-pins those unchanged). It is hidden in View, in Trackpad, with two fingers down
+(``test_control_taps_and_both_key_pages_reach_the_pc_and_the_keys_fit_a_narrow_phone``
+still pins those unchanged). It is hidden in View, in Trackpad, with two fingers down
 and while the picture is not live. The geometry (flip under the finger near the
 top, clamp at the sides) is pinned in plain Node by
 ``tests/js/screen_gestures.test.mjs``; here the same edges are read off the
@@ -95,10 +95,18 @@ def _live_touch_view(authed_page: Page, base_url: str, paused: bool):
     return seen, sockets, page, context
 
 
-def test_the_loupe_appears_after_150ms_hides_on_lift_and_the_click_is_unchanged(
+def test_the_loupe_appears_after_150ms_leaves_the_click_alone_and_hides_where_it_must(
     authed_page: Page, base_url: str
 ) -> None:
-    seen, _sockets, page, context = _live_touch_view(authed_page, base_url, paused=True)
+    """One live view on a paused clock, in turn: the loupe's timing, place and
+    zoom with the click and long-press unchanged, then every case it hides in."""
+    seen, sockets, page, context = _live_touch_view(authed_page, base_url, paused=True)
+    _appears_and_the_click_is_unchanged_leg(seen, page, context)
+    _hidden_in_view_trackpad_two_fingers_and_stale_leg(seen, sockets, page, context)
+
+
+def _appears_and_the_click_is_unchanged_leg(seen, page: Page, context) -> None:
+    """Up after 150 ms, gone on lift; the click and the long-press are unchanged."""
     loupe = page.locator("#screenLoupe")
     expect(loupe).to_have_js_property("hidden", True)
     expect(loupe).to_have_attribute("aria-hidden", "true")
@@ -147,10 +155,8 @@ def test_the_loupe_appears_after_150ms_hides_on_lift_and_the_click_is_unchanged(
     assert len(seen["inputs"]) == 2, seen["inputs"]
 
 
-def test_the_loupe_is_hidden_in_view_trackpad_with_two_fingers_and_a_stale_picture(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, sockets, page, context = _live_touch_view(authed_page, base_url, paused=True)
+def _hidden_in_view_trackpad_two_fingers_and_stale_leg(seen, sockets, page: Page, context) -> None:
+    """Hidden in View, in Trackpad, with two fingers down and over a stale picture."""
     finger = _point(page, 0.5, 0.5)
 
     def held_down() -> Dict:

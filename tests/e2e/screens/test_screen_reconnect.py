@@ -149,12 +149,22 @@ def _attempt(stub: _Stub, page: Page, delay_ms: int) -> None:
     _wait_for_socket(stub, page, before + 1, f"the attempt after {delay_ms} ms")
 
 
-def test_a_drop_reconnects_by_itself_and_the_picture_resumes(
+def test_a_drop_reconnects_two_connects_leave_one_socket_and_a_hidden_or_closed_view_never_retries(
     authed_page: Page, base_url: str
 ) -> None:
+    """One view under the fake clock, in turn: a drop reconnects by itself,
+    two connects in one tick leave one socket, then a hidden page and a closed
+    view never retry."""
     page = authed_page
     stub = _Stub(page.context)
     _open_view(page, base_url, stub)
+    _drop_reconnects_leg(page, stub)
+    _two_connects_leave_one_socket_leg(page, stub)
+    _hidden_page_and_closed_view_never_retry_leg(page, stub)
+
+
+def _drop_reconnects_leg(page: Page, stub: _Stub) -> None:
+    """A drop reconnects by itself and the picture resumes."""
     state = page.locator("#screenState")
     image = page.locator("#screenImage")
     expect(state).to_be_hidden()
@@ -178,6 +188,64 @@ def test_a_drop_reconnects_by_itself_and_the_picture_resumes(
     expect(state).to_have_text("Reconnecting…")
     _attempt(stub, page, 1000)
     expect(state).to_be_hidden()
+    assert _max_open_sockets(page) == 1, "two sockets were open at once"
+
+
+def _two_connects_leave_one_socket_leg(page: Page, stub: _Stub) -> None:
+    """Two connects in one tick leave one socket."""
+    base, acks = len(stub.urls), stub.acks
+
+    # Two picks before the first connect has finished awaiting its token: the
+    # older one is stale and must open nothing.
+    page.evaluate("""() => {
+      const [main, above] = document.querySelectorAll('#screenPicker .segmented-item');
+      above.click();
+      main.click();
+    }""")
+    wait_until(page, lambda: len(stub.urls) >= base + 1, "the second pick's connection")
+    _fake_clock.advance(page, 1000)
+    assert _connections(stub, page) == base + 1, stub.urls
+    assert "monitor=0" in stub.urls[base], stub.urls[base]
+    assert _max_open_sockets(page) == 1, "two sockets were open at once"
+    wait_until(page, lambda: stub.acks > acks, "the pick's first frame")
+
+
+def _hidden_page_and_closed_view_never_retry_leg(page: Page, stub: _Stub) -> None:
+    """A hidden page and a closed view never retry."""
+    base = len(stub.urls)
+    set_hidden = """(hidden) => {
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+      document.dispatchEvent(new Event('visibilitychange'));
+    }"""
+
+    # A retry is pending when the page goes to the background: it never fires,
+    # and coming back connects once, at once, with no second socket after it.
+    stub.drop()
+    expect(page.locator("#screenState")).to_have_text("Reconnecting…")
+    page.evaluate(set_hidden, True)
+    _fake_clock.advance(page, 120_000)
+    assert _connections(stub, page) == base, "retried while the page was hidden"
+    page.evaluate(set_hidden, False)
+    _wait_for_socket(stub, page, base + 1, "the connect on return")
+    _fake_clock.advance(page, 120_000)
+    assert _connections(stub, page) == base + 1, "a second connect after the return"
+
+    # A drop that lands while hidden waits for the return, with no timer.
+    page.evaluate("""() => Object.defineProperty(document, 'hidden',
+      { configurable: true, get: () => true })""")
+    stub.drop()
+    expect(page.locator("#screenState")).to_have_text("Reconnecting…")
+    _fake_clock.advance(page, 120_000)
+    assert _connections(stub, page) == base + 1, "retried while the page was hidden"
+    page.evaluate(set_hidden, False)
+    _wait_for_socket(stub, page, base + 2, "the connect on return")
+
+    # A drop, then the view is closed: nothing reconnects for nobody.
+    stub.drop()
+    page.locator("#screenViewClose").click()
+    expect(page.locator("#screenView")).to_be_hidden()
+    _fake_clock.advance(page, 120_000)
+    assert _connections(stub, page) == base + 2, "retried after the view was closed"
     assert _max_open_sockets(page) == 1, "two sockets were open at once"
 
 
@@ -214,69 +282,35 @@ def test_the_waits_grow_are_capped_and_end_in_the_retry_card(
     assert _max_open_sockets(page) == 1, "two sockets were open at once"
 
 
-@pytest.mark.parametrize(
-    "code,reason,text",
-    [
-        (4403, "screen is Tailscale-only", "Tailscale-only"),
-        (4401, "missing or invalid bearer token", "Sign in again"),
-        (4404, "no such monitor", "display is gone"),
-    ],
-)
+# Each refusal the gate can give, and the line the card says for it.
+_REFUSALS = [
+    (4403, "screen is Tailscale-only", "Tailscale-only"),
+    (4401, "missing or invalid bearer token", "Sign in again"),
+    (4404, "no such monitor", "display is gone"),
+]
+
+
 def test_a_refusal_never_retries(
-    authed_page: Page, base_url: str, code: int, reason: str, text: str
-) -> None:
-    page = authed_page
-    stub = _Stub(page.context)
-    _open_view(page, base_url, stub)
-
-    stub.drop(code, reason)
-    state = page.locator("#screenState")
-    expect(state).to_contain_text(text)
-    expect(state.locator(".async-retry")).to_be_visible()
-    _fake_clock.advance(page, 120_000)
-    assert _connections(stub, page) == 1, f"retried after a {code}"
-
-
-def test_a_hidden_page_and_a_closed_view_never_retry(
     authed_page: Page, base_url: str
 ) -> None:
+    """One view, each refusal in turn: the card says why and nothing retries;
+    its Retry button is the only way back to the next one."""
     page = authed_page
     stub = _Stub(page.context)
     _open_view(page, base_url, stub)
-    set_hidden = """(hidden) => {
-      Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
-      document.dispatchEvent(new Event('visibilitychange'));
-    }"""
+    state = page.locator("#screenState")
 
-    # A retry is pending when the page goes to the background: it never fires,
-    # and coming back connects once, at once, with no second socket after it.
-    stub.drop()
-    expect(page.locator("#screenState")).to_have_text("Reconnecting…")
-    page.evaluate(set_hidden, True)
-    _fake_clock.advance(page, 120_000)
-    assert _connections(stub, page) == 1, "retried while the page was hidden"
-    page.evaluate(set_hidden, False)
-    _wait_for_socket(stub, page, 2, "the connect on return")
-    _fake_clock.advance(page, 120_000)
-    assert _connections(stub, page) == 2, "a second connect after the return"
-
-    # A drop that lands while hidden waits for the return, with no timer.
-    page.evaluate("""() => Object.defineProperty(document, 'hidden',
-      { configurable: true, get: () => true })""")
-    stub.drop()
-    expect(page.locator("#screenState")).to_have_text("Reconnecting…")
-    _fake_clock.advance(page, 120_000)
-    assert _connections(stub, page) == 2, "retried while the page was hidden"
-    page.evaluate(set_hidden, False)
-    _wait_for_socket(stub, page, 3, "the connect on return")
-
-    # A drop, then the view is closed: nothing reconnects for nobody.
-    stub.drop()
-    page.locator("#screenViewClose").click()
-    expect(page.locator("#screenView")).to_be_hidden()
-    _fake_clock.advance(page, 120_000)
-    assert _connections(stub, page) == 3, "retried after the view was closed"
-    assert _max_open_sockets(page) == 1, "two sockets were open at once"
+    for code, reason, text in _REFUSALS:
+        count = len(stub.urls)
+        stub.drop(code, reason)
+        expect(state).to_contain_text(text)
+        retry = state.locator(".async-retry")
+        expect(retry).to_be_visible()
+        _fake_clock.advance(page, 120_000)
+        assert _connections(stub, page) == count, f"retried after a {code}"
+        retry.click()
+        _wait_for_socket(stub, page, count + 1, f"the manual retry after a {code}")
+        expect(state).to_be_hidden()
 
 
 @pytest.mark.iphone
@@ -331,7 +365,7 @@ def test_a_drag_in_flight_at_the_drop_sends_no_release_after_it(
     assert [m["type"] for m in stub.inputs[sent:]] == ["click"], stub.inputs[sent:]
 
 
-def test_the_view_reopens_on_the_last_monitor_viewed(
+def test_the_view_reopens_on_the_last_monitor_viewed_and_forgets_one_that_is_gone(
     authed_page: Page, base_url: str
 ) -> None:
     page = authed_page
@@ -374,18 +408,15 @@ def test_the_view_reopens_on_the_last_monitor_viewed(
     expect(page.locator("#screenImage")).to_be_visible()
     expect(page.locator("#screenState")).to_be_hidden()
 
-
-def test_a_display_that_is_gone_is_forgotten(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    stub = _Stub(page.context)
+    # A display that is gone (the server says so) is forgotten. From a clean
+    # slate, so the pick below is a change and reconnects.
+    stub.monitors = _MONITORS
+    page.evaluate(f"localStorage.removeItem('{_MONITOR_KEY}')")
     page.goto(f"{base_url}/?screen=1", wait_until="domcontentloaded")
-    expect(page.locator("#screenImage")).to_be_visible()
+    wait_until(page, lambda: len(stub.urls) == 6, "the two-monitor connection")
     page.locator("#screenPicker .segmented-item").nth(1).click()
-    wait_until(page, lambda: len(stub.urls) == 2, "the pick's connection")
+    wait_until(page, lambda: len(stub.urls) == 7, "the pick's connection")
     assert page.evaluate(f"localStorage.getItem('{_MONITOR_KEY}')") is not None
-
     stub.drop(4404, "no such monitor")
     expect(page.locator("#screenState")).to_contain_text("display is gone")
     wait_until(
@@ -393,24 +424,3 @@ def test_a_display_that_is_gone_is_forgotten(
         lambda: page.evaluate(f"localStorage.getItem('{_MONITOR_KEY}')") is None,
         "the remembered monitor to be cleared",
     )
-
-
-def test_two_connects_in_one_tick_leave_one_socket(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    stub = _Stub(page.context)
-    _open_view(page, base_url, stub)
-
-    # Two picks before the first connect has finished awaiting its token: the
-    # older one is stale and must open nothing.
-    page.evaluate("""() => {
-      const [main, above] = document.querySelectorAll('#screenPicker .segmented-item');
-      above.click();
-      main.click();
-    }""")
-    wait_until(page, lambda: len(stub.urls) >= 2, "the second pick's connection")
-    _fake_clock.advance(page, 1000)
-    assert _connections(stub, page) == 2, stub.urls
-    assert "monitor=0" in stub.urls[1], stub.urls[1]
-    assert _max_open_sockets(page) == 1, "two sockets were open at once"

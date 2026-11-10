@@ -258,11 +258,20 @@ def _near(a: float, b: float) -> bool:
     return abs(a - b) < 0.01
 
 
-def test_control_mode_taps_send_where_tapped_and_view_mode_sends_nothing(
+def test_control_taps_and_both_key_pages_reach_the_pc_and_the_keys_fit_a_narrow_phone(
     authed_page: Page, base_url: str
 ) -> None:
+    """One live view, in turn: Control taps (View sends nothing), the keyboard's
+    text and sticky combos, the second key page, then both pages' fit."""
     seen, page = _live_view(authed_page, base_url)
+    _control_taps_leg(page, seen)
+    _keyboard_leg(page, seen)
+    _second_page_leg(page, seen)
+    _both_pages_fit_leg(page)
 
+
+def _control_taps_leg(page: Page, seen: Dict[str, List]) -> None:
+    """Control taps send where tapped; View sends nothing. Ends in Control."""
     # View is the default: a tap only touches the local view, the keyboard
     # toggle is not offered, and nothing goes to the PC.
     expect(page.locator('#screenMode .segmented-item[data-mode="view"]')).to_have_attribute(
@@ -323,11 +332,8 @@ def test_control_mode_taps_send_where_tapped_and_view_mode_sends_nothing(
     assert len(seen["inputs"]) == count + 1, seen["inputs"][count:]
 
 
-def test_the_keyboard_types_text_and_sticky_modifier_combos(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, page = _live_view(authed_page, base_url)
-    _set_mode(page, "control")
+def _keyboard_leg(page: Page, seen: Dict[str, List]) -> None:
+    """The keyboard types text and sticky-modifier combos, then closes."""
     toggle = page.locator("#screenKeyboard")
     toggle.click()
     expect(toggle).to_have_attribute("aria-pressed", "true")
@@ -344,13 +350,14 @@ def test_the_keyboard_types_text_and_sticky_modifier_combos(
     assert all(w >= 40 and h >= 44 for w, h in sizes), sizes
 
     # Typed text goes out verbatim, Unicode included.
+    start = len(seen["inputs"])
     page.keyboard.type("ñ€ hola")
     wait_until(
         page,
-        lambda: "".join(m.get("text", "") for m in seen["inputs"]) == "ñ€ hola",
+        lambda: "".join(m.get("text", "") for m in seen["inputs"][start:]) == "ñ€ hola",
         "the typed text",
     )
-    assert {m["type"] for m in seen["inputs"]} == {"text"}
+    assert {m["type"] for m in seen["inputs"][start:]} == {"text"}
 
     # Backspace from the phone keyboard is the Backspace key.
     page.keyboard.press("Backspace")
@@ -411,14 +418,6 @@ _KEY_BOXES_JS = """els => els.map(e => {
 })"""
 
 
-def _open_keys(authed_page: Page, base_url: str):
-    seen, page = _live_view(authed_page, base_url)
-    _set_mode(page, "control")
-    page.locator("#screenKeyboard").click()
-    expect(page.locator("#screenKeys")).to_be_visible()
-    return seen, page
-
-
 def _last(seen) -> dict:
     return seen["inputs"][-1]
 
@@ -427,10 +426,10 @@ def _visible_boxes(page: Page) -> list:
     return page.locator("#screenKeys .key-btn:visible").evaluate_all(_KEY_BOXES_JS)
 
 
-def test_the_second_page_sends_f_keys_navigation_keys_and_task_manager(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, page = _open_keys(authed_page, base_url)
+def _second_page_leg(page: Page, seen: Dict[str, List]) -> None:
+    """F-keys, navigation keys and Task Mgr; leaves the keys bar up."""
+    page.locator("#screenKeyboard").click()
+    expect(page.locator("#screenKeys")).to_be_visible()
     keys = page.locator("#screenKeys")
     main = keys.locator('[data-keys-page="main"]')
     fn = keys.locator('[data-keys-page="fn"]')
@@ -490,10 +489,8 @@ def test_the_second_page_sends_f_keys_navigation_keys_and_task_manager(
     expect(fn).to_be_hidden()
 
 
-def test_both_pages_fit_a_narrow_phone_in_portrait_and_landscape(
-    authed_page: Page, base_url: str
-) -> None:
-    _seen, page = _open_keys(authed_page, base_url)
+def _both_pages_fit_leg(page: Page) -> None:
+    """Both key pages fit a narrow phone in portrait and landscape."""
     keys = page.locator("#screenKeys")
 
     # Four rows upright since the paste keys (#1719) took a row of their own;
@@ -576,7 +573,7 @@ def _cursor_on(page: Page, fx: float, fy: float, what: str) -> Dict:
     return state
 
 
-def test_the_pc_cursor_follows_its_messages_and_never_takes_a_touch(
+def test_the_pc_cursor_follows_its_messages_never_takes_a_touch_and_a_tap_on_it_clicks(
     authed_page: Page, base_url: str
 ) -> None:
     sockets: List[WebSocketRoute] = []
@@ -631,22 +628,9 @@ def test_the_pc_cursor_follows_its_messages_and_never_takes_a_touch(
     _send_cursor(sockets[-1], visible=False)
     expect(cursor).to_have_js_property("hidden", True)
 
-
-def test_a_control_tap_on_the_cursor_still_clicks_the_pc(
-    authed_page: Page, base_url: str
-) -> None:
-    """The overlay sits on the tapped spot after a click; a real tap there
-    must still reach the stage and click."""
-    sockets: List[WebSocketRoute] = []
-
-    def on_connect(ws: WebSocketRoute) -> None:
-        sockets.append(ws)
-        ws.send(_frame())
-
-    seen = _stub_screen(authed_page.context, on_connect)
-    page = _open_from_sheet(authed_page, base_url)
-    expect(page.locator("#screenImage")).to_be_visible()
-    wait_until(page, lambda: len(seen["acks"]) >= 1, "the frame's ack")
+    # The overlay sits on the tapped spot after a click; a real tap there in
+    # Control must still reach the stage and click (still zoomed, centred).
+    assert seen["inputs"] == [], "View mode sent input"
     _set_mode(page, "control")
     _send_cursor(sockets[-1], x=0.5, y=0.5, shape="arrow", visible=True)
     at = _cursor_on(page, 0.5, 0.5, "the cursor in the middle")

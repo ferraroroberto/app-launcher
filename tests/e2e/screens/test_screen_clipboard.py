@@ -137,10 +137,23 @@ def test_paste_to_pc_sends_the_phone_text_once_and_never_presses_a_key(
     assert _clipboard_sets(seen)[0]["text"] == _TEXT
 
 
-def test_paste_and_ctrl_v_presses_ctrl_v_only_after_the_copy_landed(
+def test_paste_and_ctrl_v_waits_for_the_copy_a_refused_read_takes_text_by_hand_and_the_keys_fit(
     authed_page: Page, base_url: str
 ) -> None:
+    """One keys bar, in turn: Paste + Ctrl+V waits for the copy, a refused
+    read opens the by-hand sheet, both paste keys fit a narrow phone, and
+    nothing is read or sent once the picture is not live."""
     seen, sockets, page = _open_bar(authed_page, base_url)
+    _paste_and_ctrl_v_leg(seen, sockets, page)
+    seen["inputs"].clear()
+    _refused_read_leg(seen, sockets, page)
+    _paste_keys_fit_leg(page)
+    seen["inputs"].clear()
+    _not_live_leg(seen, sockets, page)
+
+
+def _paste_and_ctrl_v_leg(seen: Dict[str, List], sockets: List[WebSocketRoute], page: Page) -> None:
+    """Paste + Ctrl+V presses Ctrl+V only after the copy landed."""
     key = page.locator('#screenKeys [data-keys-page="main"] [data-clip="paste"]')
     notice = page.locator("#screenNotice")
 
@@ -167,25 +180,8 @@ def test_paste_and_ctrl_v_presses_ctrl_v_only_after_the_copy_landed(
     assert [m for m in seen["inputs"] if m.get("type") == "key"] == []
 
 
-def test_nothing_is_read_or_sent_while_the_picture_is_not_live(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, sockets, page = _open_bar(authed_page, base_url)
-    _reply(sockets, {"type": "status", "state": "unavailable"})
-    keys = page.locator('#screenKeys [data-keys-page="main"] [data-clip]')
-    expect(keys.first).to_be_disabled()
-    expect(keys.last).to_be_disabled()
-    keys.first.click(force=True)
-    keys.last.click(force=True)
-    page.wait_for_timeout(300)
-    assert _clipboard_sets(seen) == []
-    assert _reads(page) == 0, "the phone's clipboard was read for a refused transfer"
-
-
-def test_a_refused_read_opens_a_sheet_that_sends_the_text_by_hand(
-    authed_page: Page, base_url: str
-) -> None:
-    seen, sockets, page = _open_bar(authed_page, base_url)
+def _refused_read_leg(seen: Dict[str, List], sockets: List[WebSocketRoute], page: Page) -> None:
+    """A refused read opens a sheet that sends the text by hand."""
     page.evaluate("window.__clip.refuse = true")
     sheet = page.locator("#screenPasteSheet")
     expect(sheet).to_be_hidden()
@@ -224,6 +220,7 @@ def test_a_refused_read_opens_a_sheet_that_sends_the_text_by_hand(
     _reply(sockets, _OK)
     wait_until(page, lambda: seen["inputs"][-1].get("type") == "key", "Ctrl+V after the sheet")
     assert seen["inputs"][-1] == {"type": "key", "key": "v", "mods": ["ctrl"]}
+    page.evaluate("window.__clip.refuse = false")
 
 
 _LABELS_JS = """() => [...document.querySelectorAll('#screenKeys [data-clip]')]
@@ -233,10 +230,8 @@ _LABELS_JS = """() => [...document.querySelectorAll('#screenKeys [data-clip]')]
              clipped: e.scrollWidth > e.clientWidth + 1 }; })"""
 
 
-def test_the_paste_keys_fit_a_narrow_phone(
-    authed_page: Page, base_url: str
-) -> None:
-    _seen, _sockets, page = _open_bar(authed_page, base_url)
+def _paste_keys_fit_leg(page: Page) -> None:
+    """Both paste keys fit a narrow phone on either key page; ends on the first page."""
     keys = page.locator("#screenKeys")
     for width, height in ((320, 640), (360, 740), (844, 390)):
         page.set_viewport_size({"width": width, "height": height})
@@ -257,3 +252,19 @@ def test_the_paste_keys_fit_a_narrow_phone(
             assert all(b["h"] >= 44 and b["w"] >= 43.5 for b in boxes), (width, target, boxes)
             assert all(b["l"] >= -0.5 and b["r"] <= width + 0.5 for b in boxes), (width, target, boxes)
             assert not any(b["clipped"] for b in boxes), (width, target, boxes)
+    keys.locator('[data-page-to="main"]:visible').click()
+    expect(keys.locator('[data-keys-page="main"]')).not_to_be_hidden()
+
+
+def _not_live_leg(seen: Dict[str, List], sockets: List[WebSocketRoute], page: Page) -> None:
+    """Nothing is read or sent while the picture is not live."""
+    reads = _reads(page)
+    _reply(sockets, {"type": "status", "state": "unavailable"})
+    keys = page.locator('#screenKeys [data-keys-page="main"] [data-clip]')
+    expect(keys.first).to_be_disabled()
+    expect(keys.last).to_be_disabled()
+    keys.first.click(force=True)
+    keys.last.click(force=True)
+    page.wait_for_timeout(300)
+    assert _clipboard_sets(seen) == []
+    assert _reads(page) == reads, "the phone's clipboard was read for a refused transfer"
