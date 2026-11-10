@@ -27,11 +27,13 @@ agent's sheet - and sweeps the controls it shows.
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import Page, expect
 
 from tests.e2e._geometry import assert_min_target, assert_no_overlap
+from tests.e2e._layout_lint import lint_layout
 from tests.e2e.fixtures.ui import (
     close_settings_sheets,
     open_agent_sheet,
@@ -101,6 +103,23 @@ _SHEETS = (
 _AGENTS = ("claude", "codex", "antigravity", "copilot", "pi", "grok")
 _SHEET_DATA_CONTROL = {"passkeysSheet": "#webauthnDevices .icon-button"}
 
+# Every settings sheet the markup declares, for the header-fit leg.
+_SHEETS_HTML = Path(__file__).resolve().parents[3] / "app/webapp/static/views/settings-sheets.html"
+_SHEET_IDS = re.findall(
+    r'<dialog id="(\w+)" class="detail-dialog settings-sheet"',
+    _SHEETS_HTML.read_text(encoding="utf-8"),
+)
+
+# (dialog, title): one settings sheet plus every titled dialog that sits
+# outside ``.settings-sheet-head`` (#1537).
+_TITLED_DIALOGS = [
+    ("launchDefaultsSheet", "launchDefaultsSheetTitle"),
+    ("lifeOsConvoSheet", "lifeOsConvoSheetTitle"),
+    ("jobSheet", "jobSheetTitle"),
+    ("jobsAgendaSheet", "jobsAgendaSheetTitle"),
+    ("confirmDialog", "confirmDialogTitle"),
+]
+
 # A control a tab renders only once its data arrives, which the sweep waits
 # for rather than racing the boot fetch. (The Jobs agenda's Add job action
 # is no longer on the tab: since #1438 it sits in the agenda sheet, swept
@@ -157,11 +176,55 @@ def _assert_floor(page: Page, where: str) -> None:
     )
 
 
-@pytest.mark.parametrize("tab", _TABS)
-def test_every_control_meets_the_44px_floor(
-    authed_page: Page, base_url: str, tab: str
-) -> None:
-    page = authed_page
+def _assert_every_settings_sheet_header_fits_its_box(page: Page) -> None:
+    """Formerly ``test_settings_sheet_header_fits.py::test_every_settings_sheet_header_fits_its_box``.
+
+    The ✕ button's invisible 44px hit area (34px box plus a 5px inset each
+    side) reaches past the header's right edge, so the layout lint read the
+    header as spilling 5px. The header reserves that inset itself, so the back
+    button and the ✕ stay where they were. Every sheet the markup declares is
+    opened in turn."""
+    assert len(_SHEET_IDS) >= 10, _SHEET_IDS
+    spill: dict = {}
+    for sheet_id in _SHEET_IDS:
+        page.evaluate(f"document.getElementById('{sheet_id}').showModal()")
+        lines = [
+            f.line()
+            for f in lint_layout(page)
+            if f.kind == "overflow" and "settings-sheet-head" in f.element
+        ]
+        if lines:
+            spill[sheet_id] = lines
+        page.evaluate(f"document.getElementById('{sheet_id}').close()")
+    assert spill == {}
+
+
+def _assert_dialog_title_has_no_ring_but_tabbed_control_does(page: Page) -> None:
+    """Formerly ``test_dialog_title_focus.py::test_dialog_title_has_no_ring_but_tabbed_control_does``.
+
+    ``showModal()`` moves focus to the title (``<h2 tabindex="-1" autofocus>``)
+    so the keyboard stays down and the sheet is announced. iOS matches
+    ``:focus-visible`` on that script focus, so the app-wide ring drew a blue
+    rectangle round the title, read as a stray selection. On open the title is
+    the focused element with no outline, for the titles outside
+    ``.settings-sheet-head`` too; a control reached by Tab still wears the
+    ring. Each dialog closes before the next opens, so every title takes the
+    open's focus fresh."""
+    for dialog_id, title_id in _TITLED_DIALOGS:
+        page.evaluate(f"document.getElementById('{dialog_id}').showModal()")
+        title = page.locator(f"#{title_id}")
+        expect(title).to_be_focused()
+        expect(title).to_have_css("outline-style", "none")
+        page.keyboard.press("Tab")
+        control = page.locator(f"#{dialog_id} :focus")
+        expect(control).to_have_count(1)
+        expect(control).not_to_have_id(title_id)
+        expect(control).to_have_css("outline-style", "solid")
+        page.evaluate(f"document.getElementById('{dialog_id}').close()")
+
+
+def _mock_data_controls(page: Page) -> None:
+    """The shared mock, plus the data that makes every control render."""
     _mock(page)
     # Controls that render only with data: the Life OS recap tile's launch
     # and a Settings passkey row's remove. Both sat at 30px tall, unseen by
@@ -187,62 +250,75 @@ def test_every_control_meets_the_44px_floor(
     _json_route(page, re.compile(r".*/api/jobs/agenda(\?.*)?$"), {
         "days": 7, "generated_epoch": 0, "occurrences": [], "frequent": [],
     })
+
+
+def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) -> None:
+    """Every tab and every Settings sheet on one page load: a tab's controls
+    measure the same whichever load reached them, so a load per tab bought
+    nothing. The Board's 320px Large-text reload runs last."""
+    page = authed_page
+    _mock_data_controls(page)
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator(tab).click()
-    page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
-    if tab in _DATA_CONTROL:
-        expect(page.locator(_DATA_CONTROL[tab])).to_be_visible()
+
+    for tab in _TABS:
+        page.locator(tab).click()
+        page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
+        if tab in _DATA_CONTROL:
+            expect(page.locator(_DATA_CONTROL[tab])).to_be_visible()
+        settled(page)
+
+        _assert_floor(page, tab)
+
+        if tab == "#tabJobs":
+            # The agenda sheet is a closed dialog until opened (#1438), so open
+            # it and sweep what it shows, its empty-state Add job primary
+            # included (#1216).
+            page.locator("#jobsAgendaOpen").click()
+            expect(page.locator("#jobsAgendaSheet")).to_be_visible()
+            expect(page.locator("#jobsAgendaBody .empty-state-action")).to_be_visible()
+            settled(page)
+            _assert_floor(page, "Jobs > agenda sheet")
+            page.locator("#jobsAgendaSheetClose").click()
+            expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
+
+        if tab == _SETTINGS:
+            # The sheets are closed dialogs above, so open each and sweep it.
+            for sheet_id in _SHEETS:
+                open_settings_sheet(page, sheet_id)
+                if sheet_id in _SHEET_DATA_CONTROL:
+                    expect(page.locator(_SHEET_DATA_CONTROL[sheet_id])).to_be_visible()
+                settled(page)
+                _assert_floor(page, f"Settings > {sheet_id}")
+                close_settings_sheets(page)
+            for agent_id in _AGENTS:
+                open_agent_sheet(page, agent_id)
+                settled(page)
+                _assert_floor(page, f"Settings > Launch defaults > {agent_id}")
+                close_settings_sheets(page)
+            _assert_every_settings_sheet_header_fits_its_box(page)
+            _assert_dialog_title_has_no_ring_but_tabbed_control_does(page)
+
+        # The card toolbars' toggles carry visible labels (#1176) and wrap: no
+        # two expanded targets there may share pixels, on a line or across one.
+        toolbar = page.locator(".pane:not([hidden]) .card-toolbar button:visible")
+        if toolbar.count() >= 2:
+            assert_no_overlap(toolbar)
+
+        if tab == "#tabApps":
+            _assert_helper_is_wired_to_a_real_locator(page)
+            _assert_cluster_does_not_overlap(page, "#appsList .action-row")
+        elif tab == "#tabBoard":
+            # The lane toolbar's filter and ↻ (#1436): no two expanded targets
+            # may share pixels (#1174).
+            _assert_cluster_does_not_overlap(page, ".board-toolbar")
+
+    # Last, because it reloads the page at another size and text step: Large
+    # text on a 320px phone is where the Board's toolbar runs out of room
+    # first (#1182).
+    page.evaluate("localStorage.setItem('app-launcher.textsize', 'large')")
+    page.set_viewport_size({"width": 320, "height": 844})
+    page.reload(wait_until="domcontentloaded")
+    page.locator("#tabBoard").click()
     settled(page)
-
-    _assert_floor(page, tab)
-
-    if tab == "#tabJobs":
-        # The agenda sheet is a closed dialog until opened (#1438), so open
-        # it and sweep what it shows, its empty-state Add job primary
-        # included (#1216).
-        page.locator("#jobsAgendaOpen").click()
-        expect(page.locator("#jobsAgendaSheet")).to_be_visible()
-        expect(page.locator("#jobsAgendaBody .empty-state-action")).to_be_visible()
-        settled(page)
-        _assert_floor(page, "Jobs > agenda sheet")
-        page.locator("#jobsAgendaSheetClose").click()
-        expect(page.locator("#jobsAgendaSheet")).to_be_hidden()
-
-    if tab == _SETTINGS:
-        # The sheets are closed dialogs above, so open each and sweep it.
-        for sheet_id in _SHEETS:
-            open_settings_sheet(page, sheet_id)
-            if sheet_id in _SHEET_DATA_CONTROL:
-                expect(page.locator(_SHEET_DATA_CONTROL[sheet_id])).to_be_visible()
-            settled(page)
-            _assert_floor(page, f"Settings > {sheet_id}")
-            close_settings_sheets(page)
-        for agent_id in _AGENTS:
-            open_agent_sheet(page, agent_id)
-            settled(page)
-            _assert_floor(page, f"Settings > Launch defaults > {agent_id}")
-            close_settings_sheets(page)
-
-    # The card toolbars' toggles carry visible labels (#1176) and wrap: no
-    # two expanded targets there may share pixels, on a line or across one.
-    toolbar = page.locator(".pane:not([hidden]) .card-toolbar button:visible")
-    if toolbar.count() >= 2:
-        assert_no_overlap(toolbar)
-
-    if tab == "#tabApps":
-        _assert_helper_is_wired_to_a_real_locator(page)
-        _assert_cluster_does_not_overlap(page, "#appsList .action-row")
-    elif tab == "#tabBoard":
-        # The lane toolbar's filter and ↻ (#1436): no two expanded targets
-        # may share pixels (#1174).
-        _assert_cluster_does_not_overlap(page, ".board-toolbar")
-        # Last, because it reloads the page at another size and text step:
-        # Large text on a 320px phone is where a row runs out of room first
-        # (#1182).
-        page.evaluate("localStorage.setItem('app-launcher.textsize', 'large')")
-        page.set_viewport_size({"width": 320, "height": 844})
-        page.reload(wait_until="domcontentloaded")
-        page.locator("#tabBoard").click()
-        settled(page)
-        assert_no_overlap(page.locator(".board-toolbar button:visible"))
+    assert_no_overlap(page.locator(".board-toolbar button:visible"))

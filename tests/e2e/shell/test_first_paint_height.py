@@ -185,26 +185,25 @@ def _assert_stable(page: Page, selector: str, held: List[_Held], settled: callab
     )
 
 
-@pytest.mark.iphone
-@pytest.mark.parametrize(
-    ("shows", "quota"),
-    [(["claude"], _QUOTA_CODEX_UNSUPPORTED), (["claude", "codex"], _QUOTA),
-     (["claude", "codex", "grok"], _QUOTA_WITH_GROK), (["codex"], _QUOTA)],
-    ids=["claude-only-live-shape", "both-agents", "with-grok", "codex-only"],
+def _fresh_page(page: Page) -> Page:
+    """A new page in the test's context: its auth and quiet-load routes ride
+    along, while its own routes and init scripts start empty, so each case
+    measures a true first paint without a context of its own."""
+    fresh = page.context.new_page()
+    fresh.set_viewport_size({"width": 390, "height": 844})
+    return fresh
+
+
+# "Usage shows" choices, each with the quota shape it is measured against.
+_USAGE_CASES = (
+    (["claude"], _QUOTA_CODEX_UNSUPPORTED),  # the live shape
+    (["claude", "codex"], _QUOTA),
+    (["claude", "codex", "grok"], _QUOTA_WITH_GROK),
+    (["codex"], _QUOTA),
 )
-def test_usage_card_keeps_its_height_when_the_quota_arrives(
-    authed_page: Page, base_url: str, shows: list, quota: dict
-) -> None:
-    """The card holds its final rows from the first paint, whichever providers
-    "Usage shows" names (#1657). Three moments are measured: the markup alone
-    (the page script held back), the script running with the setting unread,
-    the setting landed with the quota unread, and the settled card. The placeholder is static markup
-    shaped by the choice this device last saw, so neither the late script, the
-    late setting nor the late quota moves it. The live card was 88px empty,
-    then 210px for the default "both" layout, then 159px once the saved
-    "Claude" setting landed."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
+
+
+def _assert_usage_card_holds_its_height(page: Page, base_url: str, shows: list, quota: dict) -> None:
     page.add_init_script(
         f"try {{ localStorage.setItem('app-launcher.usageshows', '{' '.join(shows)}'); }} catch (e) {{}}")
     _answer(page, r".*/api/claude-code/git-status$", {"projects": []})
@@ -243,46 +242,66 @@ def test_usage_card_keeps_its_height_when_the_quota_arrives(
     settled = _height(page, card)
     for moment, height in heights.items():
         assert abs(settled - height) <= MAX_GROWTH_PX, (
-            f"{card} is {height:.0f}px with {moment} and {settled:.0f}px settled; "
-            f"LAYOUT-10 allows {MAX_GROWTH_PX}px"
+            f"{card} ({' '.join(shows)}) is {height:.0f}px with {moment} and "
+            f"{settled:.0f}px settled; LAYOUT-10 allows {MAX_GROWTH_PX}px"
         )
 
 
 @pytest.mark.iphone
-def test_next_up_card_keeps_its_height_when_the_schedule_arrives(
+def test_usage_card_keeps_its_height_when_the_quota_arrives(
     authed_page: Page, base_url: str
 ) -> None:
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _answer(page, r".*/api/jobs(\?.*)?$", _JOBS)
-    held = [_Held(page, r".*/api/jobs/agenda(\?.*)?$", _AGENDA)]
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabJobs").click()
-
-    def settled() -> None:
-        expect(page.locator("#jobsNextUpList li")).to_have_count(3, timeout=10_000)
-
-    _assert_stable(page, "#jobsNextUpCard", held, settled)
+    """The card holds its final rows from the first paint, whichever providers
+    "Usage shows" names (#1657); each choice boots its own fresh page. Three
+    moments are measured: the markup alone (the page script held back), the
+    script running with the setting unread, the setting landed with the quota
+    unread, and the settled card. The placeholder is static markup shaped by
+    the choice this device last saw, so neither the late script, the late
+    setting nor the late quota moves it. The live card was 88px empty, then
+    210px for the default "both" layout, then 159px once the saved "Claude"
+    setting landed."""
+    for shows, quota in _USAGE_CASES:
+        page = _fresh_page(authed_page)
+        try:
+            _assert_usage_card_holds_its_height(page, base_url, shows, quota)
+        finally:
+            page.close()
 
 
 @pytest.mark.iphone
-@pytest.mark.parametrize(
-    "running", [_RUNNING, {"running": []}], ids=["one-running", "nothing-running"])
-def test_running_card_keeps_its_height_when_the_apps_arrive(
-    authed_page: Page, base_url: str, running: dict
+def test_next_up_and_running_cards_keep_their_height_when_their_data_arrives(
+    authed_page: Page, base_url: str
 ) -> None:
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _answer(page, r".*/api/apps$", _APPS)
-    held = [_Held(page, r".*/api/apps/running$", running),
-            _Held(page, r".*/api/ports/probe$", _PROBE)]
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabApps").click()
-    rows = len(running["running"])
+    """The Jobs tab's Next up card, then the Apps tab's Running card with one
+    app running and with none, each on its own fresh page."""
+    page = _fresh_page(authed_page)
+    try:
+        _answer(page, r".*/api/jobs(\?.*)?$", _JOBS)
+        held = [_Held(page, r".*/api/jobs/agenda(\?.*)?$", _AGENDA)]
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        page.locator("#tabJobs").click()
+        _assert_stable(
+            page, "#jobsNextUpCard", held,
+            lambda: expect(page.locator("#jobsNextUpList li")).to_have_count(3, timeout=10_000),
+        )
+    finally:
+        page.close()
 
-    def settled() -> None:
-        expect(page.locator("#runningAppsList li.action-row")).to_have_count(rows, timeout=10_000)
-        expect(page.locator("#otherPortsMeta")).to_have_text("1 listener not started here",
-                                                              timeout=10_000)
+    for running in (_RUNNING, {"running": []}):
+        page = _fresh_page(authed_page)
+        try:
+            _answer(page, r".*/api/apps$", _APPS)
+            held = [_Held(page, r".*/api/apps/running$", running),
+                    _Held(page, r".*/api/ports/probe$", _PROBE)]
+            page.goto(f"{base_url}/", wait_until="domcontentloaded")
+            page.locator("#tabApps").click()
+            rows = len(running["running"])
 
-    _assert_stable(page, ".running-apps-card", held, settled)
+            def settled(page: Page = page, rows: int = rows) -> None:
+                expect(page.locator("#runningAppsList li.action-row")).to_have_count(rows, timeout=10_000)
+                expect(page.locator("#otherPortsMeta")).to_have_text("1 listener not started here",
+                                                                      timeout=10_000)
+
+            _assert_stable(page, ".running-apps-card", held, settled)
+        finally:
+            page.close()

@@ -42,14 +42,6 @@ _GOLDEN = [
 ]
 
 
-def test_the_board_variants_render_their_pinned_markup(
-    authed_page: Page, base_url: str
-) -> None:
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    got = authed_page.evaluate(_ROWS)
-    assert got == _GOLDEN
-
-
 _HEIGHTS = """async () => {
   const { actionRow } = await import('/static/action-rows.js');
   const ul = document.createElement('ul');
@@ -85,6 +77,9 @@ def test_one_line_and_small_rows_hold_their_heights(
 ) -> None:
     authed_page.set_viewport_size({"width": 390, "height": 844})
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # The variants' markup, byte for byte (formerly
+    # test_the_board_variants_render_their_pinned_markup).
+    assert authed_page.evaluate(_ROWS) == _GOLDEN
     m = authed_page.evaluate(_HEIGHTS)
     assert m["one"] == 52, m
     assert m["small"] == 44, m

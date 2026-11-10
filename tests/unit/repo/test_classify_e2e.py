@@ -277,7 +277,6 @@ _LIFEOS_TARGETS = (
     "tests/e2e/shell/test_header_cpu_reading.py "
     "tests/e2e/shell/test_text_size.py "
     "tests/e2e/shell/test_action_row_lists.py "
-    "tests/e2e/shell/test_markdown_link_rendering.py "
     "tests/e2e/shell/test_markdown_tables.py "
     "tests/e2e/shell/test_collapsible_other_tabs.py tests/e2e/code/test_coding_model_selector.py "
     "tests/e2e/terminal/test_terminal_bar_overflow.py tests/e2e/shell/test_primary_nav.py "
@@ -286,7 +285,6 @@ _LIFEOS_TARGETS = (
     "tests/e2e/shell/test_vendored_empty_and_select.py tests/e2e/shell/test_touch_targets.py"
     " tests/e2e/settings/test_settings_sheets.py tests/e2e/settings/test_telegram_bots.py"
     " tests/e2e/shell/test_async_list_states.py tests/e2e/screens/test_screen_shots.py"
-    " tests/e2e/shell/test_dialog_title_focus.py"
 )
 
 # What an e2e test says when it exercises a surface's modules: the module file,

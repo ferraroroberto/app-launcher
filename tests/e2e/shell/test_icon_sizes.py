@@ -73,6 +73,18 @@ _CARET = """
 """
 
 
+def _assert_dropdown_caret_is_the_lucide_chevron(page: Page) -> None:
+    """Formerly ``test_dropdown_carets_are_the_lucide_chevron``: the Board's
+    repo dropdown caret is the masked Lucide chevron, not a text glyph."""
+    caret = page.evaluate(_CARET, ".board-repo-combo")
+    assert caret is not None, "Board repo combo not rendered"
+    assert caret["content"] in ('""', "none", "''"), (
+        f"the repo dropdown caret is a text glyph ({caret['content']}), not the icon"
+    )
+    assert "svg" in (caret["mask"] or ""), f"caret has no chevron mask: {caret}"
+    assert caret["width"] == "16px", caret
+
+
 def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) -> None:
     page = authed_page
     # Edit mode renders every row action, so more icons are measured.
@@ -87,6 +99,8 @@ def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) 
         page.evaluate("document.querySelectorAll('details').forEach((d) => { d.open = true; })")
         settled(page)
         strays += [f"{tab}: {s}" for s in page.evaluate(_OFF_SCALE, list(_STEPS))]
+        if tab == "#tabBoard":
+            _assert_dropdown_caret_is_the_lucide_chevron(page)
         if tab != _SETTINGS:
             continue
         # The sheets are closed dialogs above: open each and measure it.
@@ -101,17 +115,3 @@ def test_rendered_icons_sit_on_the_size_steps(authed_page: Page, base_url: str) 
     assert not strays, (
         "icons rendered off the 16/18/20/24px steps (#1127):\n  " + "\n  ".join(strays)
     )
-
-
-def test_dropdown_carets_are_the_lucide_chevron(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _mock(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabBoard").click()
-    caret = page.evaluate(_CARET, ".board-repo-combo")
-    assert caret is not None, "Board repo combo not rendered"
-    assert caret["content"] in ('""', "none", "''"), (
-        f"the repo dropdown caret is a text glyph ({caret['content']}), not the icon"
-    )
-    assert "svg" in (caret["mask"] or ""), f"caret has no chevron mask: {caret}"
-    assert caret["width"] == "16px", caret

@@ -4,6 +4,7 @@
 
 import assert from 'node:assert/strict';
 import { renderMarkdown } from '../../app/webapp/static/markdown.js';
+import { escapeHtml } from '../../app/webapp/static/dom-utils.js';
 
 const md = (lines) => renderMarkdown(lines.join('\n'));
 
@@ -198,3 +199,18 @@ console.log('markdown hideComments: OK');
   assert.equal(renderMarkdown(src.join('\r')), renderMarkdown(src.join('\n')));
 }
 console.log('markdown CRLF: OK');
+
+// A quote in a link target stays inside the href: the escape pass runs before
+// the link rule interpolates the target into an attribute, so the quote is
+// &quot; and nothing after it can become another attribute on the <a>.
+{
+  const html = renderMarkdown('[label](https://example.com/a"data-extra="1)');
+  assert.equal(
+    html,
+    '<p><a href="https://example.com/a&quot;data-extra=&quot;1" target="_blank" rel="noopener">label</a></p>',
+  );
+  assert.equal(escapeHtml('say "hi"'), 'say &quot;hi&quot;');
+  assert.equal(escapeHtml("it's"), 'it&#39;s');
+  assert.equal(escapeHtml('<b>&</b>'), '&lt;b&gt;&amp;&lt;/b&gt;');
+}
+console.log('markdown link attribute: OK');

@@ -234,15 +234,39 @@ def _assert_large_at_320px_never_scrolls_or_clips(page: Page) -> None:
     assert inspected > 0, "no clipping boxes found on any tab: the scan checked nothing"
 
 
+def _assert_channels_setup_hint_wraps(page: Page) -> None:
+    """Formerly ``test_channels_setup_hint_wraps_at_large_320px``, read at the
+    Large/320px the step above left. A missing profiles file shows its fix-it
+    hint, whose file path is one unbreakable word: it must wrap inside its
+    column, not push the card sideways."""
+    open_settings_sheet(page, "channelsSheet")
+    hint = page.locator("#channelChecks .channel-check-meta .muted").first
+    expect(hint).to_contain_text("channel_profiles.sample.json")
+    got = stable_eval(hint, "el => ({sw: el.scrollWidth, cw: el.clientWidth})")
+    assert got["sw"] <= got["cw"], got
+
+
 def test_large_sets_18px_body_and_survives_reload(
     authed_page: Page, base_url: str
 ) -> None:
     """The whole #1134 control on one page load (merged by #1215): the
     default step, Small and Default, Large surviving a reload with a no-flash
-    first stamp, and Large at 320px never scrolling sideways or clipping a
-    row."""
+    first stamp, Large at 320px never scrolling sideways or clipping a row,
+    and the Telegram setup hint wrapping there."""
     page = authed_page
     page.add_init_script(_RECORD_FIRST_STAMP)
+    # The channels payload is stubbed so the setup hint shows on any host.
+    page.route(
+        "**/api/life-os/channels",
+        lambda route: route.fulfill(
+            content_type="application/json",
+            body=json.dumps({
+                "profiles": [], "problems": [],
+                "setup": {"file_present": False, "life_os_found": True,
+                          "bun": True, "plugin": True, "skills": []},
+            }),
+        ) if route.request.method == "GET" else route.fallback(),
+    )
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
     _open_settings(page)
 
@@ -271,8 +295,9 @@ def test_large_sets_18px_body_and_survives_reload(
     )
     expect(page.locator("body")).to_have_css("font-size", "18px")
 
-    # Last: resizes and reloads the page.
+    # Resizes and reloads the page.
     _assert_large_at_320px_never_scrolls_or_clips(page)
+    _assert_channels_setup_hint_wraps(page)
 
 
 # Rendered lightness of the selected segment and of the track as the eye sees
@@ -301,9 +326,8 @@ _SEGMENT_LIGHTNESS = """
 """
 
 
-@pytest.mark.parametrize("scheme", ["dark", "light"])
 def test_selected_segment_is_raised_above_the_track(
-    authed_page: Page, base_url: str, scheme: str
+    authed_page: Page, base_url: str
 ) -> None:
     """#1575: the selected text-size segment reads raised, not pressed in.
 
@@ -313,45 +337,19 @@ def test_selected_segment_is_raised_above_the_track(
     it stays the card surface, which is lighter too.
     """
     page = authed_page
-    page.emulate_media(color_scheme=scheme)
     page.add_init_script("try { localStorage.removeItem('app-launcher.theme'); } catch (e) {}")
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_settings(page)
+    for scheme in ("dark", "light"):
+        # One load per scheme: the boot reads the scheme once, as a relaunch does.
+        page.emulate_media(color_scheme=scheme)
+        page.goto(f"{base_url}/", wait_until="domcontentloaded")
+        _open_settings(page)
 
-    expect(page.locator("html")).to_have_attribute("data-theme", scheme)
-    control = page.locator("#textSizeControl")
-    expect(control.locator("[data-textsize='default']")).to_have_attribute(
-        "aria-pressed", "true"
-    )
-    got = stable_eval(control, _SEGMENT_LIGHTNESS)
-    assert got["selected"] > got["track"], got
-    if scheme == "light":
-        assert got["selected"] == got["card"], got
-
-
-def test_channels_setup_hint_wraps_at_large_320px(
-    authed_page: Page, base_url: str
-) -> None:
-    """A missing profiles file shows its fix-it hint, whose file path is one
-    unbreakable word: it must wrap inside its column, not push the card
-    sideways. The channels payload is stubbed so the hint shows on any host."""
-    page = authed_page
-    page.add_init_script("localStorage.setItem('app-launcher.textsize', 'large')")
-    page.route(
-        "**/api/life-os/channels",
-        lambda route: route.fulfill(
-            content_type="application/json",
-            body=json.dumps({
-                "profiles": [], "problems": [],
-                "setup": {"file_present": False, "life_os_found": True,
-                          "bun": True, "plugin": True, "skills": []},
-            }),
-        ) if route.request.method == "GET" else route.fallback(),
-    )
-    page.set_viewport_size({"width": 320, "height": 700})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    open_settings_sheet(page, "channelsSheet")
-    hint = page.locator("#channelChecks .channel-check-meta .muted").first
-    expect(hint).to_contain_text("channel_profiles.sample.json")
-    got = stable_eval(hint, "el => ({sw: el.scrollWidth, cw: el.clientWidth})")
-    assert got["sw"] <= got["cw"], got
+        expect(page.locator("html")).to_have_attribute("data-theme", scheme)
+        control = page.locator("#textSizeControl")
+        expect(control.locator("[data-textsize='default']")).to_have_attribute(
+            "aria-pressed", "true"
+        )
+        got = stable_eval(control, _SEGMENT_LIGHTNESS)
+        assert got["selected"] > got["track"], (scheme, got)
+        if scheme == "light":
+            assert got["selected"] == got["card"], got

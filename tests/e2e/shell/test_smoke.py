@@ -9,6 +9,7 @@ net for every feature.
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -31,9 +32,97 @@ def _navigate_collecting_errors(page: Page, base_url: str) -> list[str]:
     return errors
 
 
+_HIDE = """() => {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+  document.dispatchEvent(new Event('visibilitychange'));
+}"""
+
+
+def _assert_sessions_panel_renders(page: Page) -> None:
+    """Formerly ``test_sessions_panel_renders``.
+
+    The panel is valid when it has rows OR the empty-state paragraph (with
+    its copy) is showing. Both halves are evaluated atomically in one retried
+    wait_for_function, so the 5 s fetchSessions poll re-rendering between a
+    row count and the empty-state read can never split the check (#39)."""
+    expect(page.locator("#sessionsList")).to_be_attached()
+    page.wait_for_function(
+        """() => {
+          const list = document.getElementById('sessionsList');
+          const empty = document.getElementById('sessionsEmpty');
+          if (!list || !empty) return false;
+          if (list.querySelectorAll('li.session-item').length > 0) return true;
+          const msg = empty.querySelector('.empty-state-message');
+          return !empty.hidden && !!msg &&
+            msg.textContent.trim() === 'No sessions launched from here yet.';
+        }""",
+        timeout=10_000,
+    )
+
+
+def _assert_tabs_switch(page: Page) -> None:
+    """Formerly ``test_tabs_switch``: each tab shows its own pane and hides
+    the others, and the active tab carries ``active``."""
+    pane_claude = page.locator("#paneClaude")
+    pane_apps = page.locator("#paneApps")
+    pane_jobs = page.locator("#paneJobs")
+
+    expect(pane_claude).to_be_visible()
+    expect(pane_apps).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
+
+    page.locator("#tabApps").click()
+    expect(pane_apps).to_be_visible()
+    expect(pane_claude).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
+    # Substring match on className so future class reorders don't false-fail.
+    expect(page.locator("#tabApps")).to_have_class(re.compile(r"\bactive\b"))
+
+    page.locator("#tabJobs").click()
+    expect(pane_jobs).to_be_visible()
+    expect(pane_claude).to_be_hidden()
+    expect(pane_apps).to_be_hidden()
+    expect(page.locator("#tabJobs")).to_have_class(re.compile(r"\bactive\b"))
+
+    page.locator("#tabClaude").click()
+    expect(pane_claude).to_be_visible()
+    expect(pane_apps).to_be_hidden()
+    expect(pane_jobs).to_be_hidden()
+
+
+def _assert_load_posts_a_row_naming_the_last_boot_request(page: Page) -> None:
+    """Formerly ``test_perf_timing.py::test_load_posts_a_row_naming_the_last_boot_request``.
+
+    ``static/perf-timing.js`` records the load once boot's fetches have
+    settled and sends it when the page hides. The row carries the document
+    legs and names the boot request that landed last, which is the leg a slow
+    relaunch is read by (``docs/perf-timings.md``). Last, because it hides
+    the page."""
+    # Boot's fan-out has settled once the network is idle; the load row is
+    # queued synchronously right after it.
+    page.wait_for_load_state("networkidle")
+    with page.expect_request(re.compile(r".*/api/perf/timings$")) as sent:
+        page.evaluate(_HIDE)
+    batch = json.loads(sent.value.post_data or "{}")
+    rows = [row for row in batch.get("rows", []) if row.get("kind") == "load"]
+    assert len(rows) == 1, f"expected one load row, got {batch!r}"
+    row = rows[0]
+    assert row["last_path"].startswith("/api/"), row
+    assert "?" not in row["last_path"], row
+    assert row["boot"] is not None and row["boot"] > 0, row
+    assert row["ttfb"] is not None, row
+    assert batch["device_class"] in {"phone", "tablet", "desktop"}
+
+
 def test_page_loads_without_console_errors(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
+    """Boot with no JS error, the sessions panel, the tab switch and (on
+    Chromium, where it always ran) the load's timing row, on one page load."""
+    authed_page.route(
+        re.compile(r".*/api/perf/timings$"),
+        lambda route: route.fulfill(status=200, content_type="application/json", body='{"accepted": 1}'),
+    )
     errors = _navigate_collecting_errors(authed_page, base_url)
     # Give the boot script a beat to settle: fetchConfig, sessions poll,
     # listeners poll. Anything thrown during that fans out as pageerror.
@@ -46,6 +135,11 @@ def test_page_loads_without_console_errors(
             "performance.getEntriesByType('navigation')[0].nextHopProtocol"
         )
         assert protocol == "h2", f"page served over {protocol!r}, not HTTP/2"
+
+    _assert_sessions_panel_renders(authed_page)
+    _assert_tabs_switch(authed_page)
+    if browser_name == "chromium":
+        _assert_load_posts_a_row_naming_the_last_boot_request(authed_page)
 
 
 def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
@@ -84,62 +178,6 @@ def test_coding_options_populated(authed_page: Page, base_url: str) -> None:
     assert effort_count >= 1, f"#claudeEffort rendered no options (got {effort_count})"
     assert perm_count == 2, f"#claudePermission expected 2 segmented items (got {perm_count})"
     assert len(config_calls) >= 2, f"boot never retried /api/config: {config_calls}"
-
-
-def test_sessions_panel_renders(authed_page: Page, base_url: str) -> None:
-    _navigate_collecting_errors(authed_page, base_url)
-    expect(authed_page.locator("#sessionsList")).to_be_attached()
-    # The panel is valid when it has rows OR the empty-state paragraph
-    # (with its copy) is showing. The old test snapshotted the row count
-    # and *then* asserted on #sessionsEmpty — between the two, the 5 s
-    # fetchSessions poll could re-render, flip #sessionsEmpty to hidden,
-    # and add a row, so the assertion saw the now-hidden paragraph (#39).
-    # Evaluate both halves atomically in one retried wait_for_function so
-    # a mid-test re-render can never split the check.
-    authed_page.wait_for_function(
-        """() => {
-          const list = document.getElementById('sessionsList');
-          const empty = document.getElementById('sessionsEmpty');
-          if (!list || !empty) return false;
-          if (list.querySelectorAll('li.session-item').length > 0) return true;
-          const msg = empty.querySelector('.empty-state-message');
-          return !empty.hidden && !!msg &&
-            msg.textContent.trim() === 'No sessions launched from here yet.';
-        }""",
-        timeout=10_000,
-    )
-
-
-def test_tabs_switch(authed_page: Page, base_url: str) -> None:
-    _navigate_collecting_errors(authed_page, base_url)
-    pane_claude = authed_page.locator("#paneClaude")
-    pane_apps = authed_page.locator("#paneApps")
-    pane_jobs = authed_page.locator("#paneJobs")
-
-    expect(pane_claude).to_be_visible()
-    expect(pane_apps).to_be_hidden()
-    expect(pane_jobs).to_be_hidden()
-
-    authed_page.locator("#tabApps").click()
-    expect(pane_apps).to_be_visible()
-    expect(pane_claude).to_be_hidden()
-    expect(pane_jobs).to_be_hidden()
-    # Substring match on className so future class reorders don't false-fail.
-    expect(authed_page.locator("#tabApps")).to_have_class(re.compile(r"\bactive\b"))
-
-    # Issue #47 — third tab. Switching to Jobs must hide both other panes
-    # and surface the Jobs pane; the empty-state message renders when no
-    # jobs are registered (which is the case in CI / a fresh install).
-    authed_page.locator("#tabJobs").click()
-    expect(pane_jobs).to_be_visible()
-    expect(pane_claude).to_be_hidden()
-    expect(pane_apps).to_be_hidden()
-    expect(authed_page.locator("#tabJobs")).to_have_class(re.compile(r"\bactive\b"))
-
-    authed_page.locator("#tabClaude").click()
-    expect(pane_claude).to_be_visible()
-    expect(pane_apps).to_be_hidden()
-    expect(pane_jobs).to_be_hidden()
 
 
 def test_pty_session_renders_with_both_stop_buttons(
@@ -229,61 +267,42 @@ def test_pty_session_renders_with_both_stop_buttons(
     authed_page.keyboard.press("Escape")
 
 
-def test_jobs_row_renders_sparkline_and_duration_chip(
-    authed_page: Page, base_url: str
-) -> None:
-    """Issue #66 — the Jobs row must render the sparkline when stats are
-    present, the percentiles in the detail block, and the stuck marker when
-    ``job.stuck``.
+# A stuck job with five recent runs, served beside the parameterised one.
+_STUCK_JOB = {
+    "id": "demo",
+    "name": "Demo",
+    "target_kind": "py",
+    "schedule_chip": "daily 06:00",
+    "next_run": None,
+    "running": False,
+    "stuck": True,
+    "last_run": {
+        "run_id": "20260524T080000", "status": "running",
+        "started_at": "2026-05-24T08:00:00", "duration_seconds": None,
+    },
+    "stats": {
+        "p50": 4.2, "p95": 11.7,
+        "success_rate_30d": 0.75, "completed_count": 6,
+        "last7": [
+            {"status": "success", "run_id": "a"},
+            {"status": "failed",  "run_id": "b"},
+            {"status": "success", "run_id": "c"},
+            {"status": "success", "run_id": "d"},
+            {"status": "running", "run_id": "e"},
+        ],
+    },
+}
 
-    Since #1438 the row is ``li.job-row`` (sparkline + a "stuck" exception
-    chip on its meta line; the status dot and duration chip are gone) and the
-    percentiles/last-run sentence are in the job sheet (``dialog#jobSheet``)
-    opened by tapping the row.
 
-    We route-mock ``/api/jobs`` to return one synthetic stuck job so the
-    live polling renders it through the production code path — the
-    dynamic-import alternative would land on a different ES-module URL
-    than the rewriter-hashed one main.js loaded, so its render would
-    fight the OG polling and lose.
-    """
-    fake_job = {
-        "id": "demo",
-        "name": "Demo",
-        "target_kind": "py",
-        "schedule_chip": "daily 06:00",
-        "next_run": None,
-        "running": False,
-        "stuck": True,
-        "last_run": {
-            "run_id": "20260524T080000", "status": "running",
-            "started_at": "2026-05-24T08:00:00", "duration_seconds": None,
-        },
-        "stats": {
-            "p50": 4.2, "p95": 11.7,
-            "success_rate_30d": 0.75, "completed_count": 6,
-            "last7": [
-                {"status": "success", "run_id": "a"},
-                {"status": "failed",  "run_id": "b"},
-                {"status": "success", "run_id": "c"},
-                {"status": "success", "run_id": "d"},
-                {"status": "running", "run_id": "e"},
-            ],
-        },
-    }
-    import json as _json
-    body = _json.dumps({"jobs": [fake_job]})
-    authed_page.route(
-        re.compile(r".*/api/jobs(\?.*)?$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json", body=body,
-        ),
-    )
+def _assert_jobs_row_renders_sparkline_and_stuck_chip(page: Page) -> None:
+    """Formerly ``test_jobs_row_renders_sparkline_and_duration_chip`` (#66).
 
-    _navigate_collecting_errors(authed_page, base_url)
-    authed_page.locator("#tabJobs").click()
-
-    row = authed_page.locator("#jobsList li.job-row[data-id='demo']")
+    The row (``li.job-row`` since #1438) carries the sparkline and a "stuck"
+    exception chip on its meta line; the percentiles and the last-run
+    sentence are in the job sheet opened by tapping the row. The jobs list is
+    route-mocked, so the live polling renders it through the production code
+    path."""
+    row = page.locator("#jobsList li.job-row[data-id='demo']")
     expect(row).to_be_visible()
     # Sparkline: 5 dots, the failed one carries .down, running carries .live.
     spark = row.locator("[data-role='sparkline']")
@@ -292,13 +311,9 @@ def test_jobs_row_renders_sparkline_and_duration_chip(
     assert dot_count == 5, f"expected 5 sparkline dots, got {dot_count}"
     assert spark.locator(".job-spark-dot.down").count() == 1
     assert spark.locator(".job-spark-dot.live").count() == 1
-    # The stuck exception chip sits on the row's meta line (#1438; it was a
-    # stuck-tinted status dot).
     expect(row.locator(".job-stuck-chip")).to_have_text("stuck")
-    # Percentiles and the last-run sentence are in the job sheet's detail
-    # block (#1130, #1438), opened by tapping the row.
     row.locator("button.action-row-main").click()
-    details = authed_page.locator("#jobSheetBody [data-role='job-details']")
+    details = page.locator("#jobSheetBody [data-role='job-details']")
     expect(details).to_be_visible()
     expect(details).to_contain_text("p50")
     expect(details).to_contain_text("p95")
@@ -311,7 +326,8 @@ def test_parameterised_job_run_dialog_posts_values(
 ) -> None:
     """Issue #67 — running a job with declared params must open the
     run-parameters dialog (not fire immediately); submitting it must POST
-    ``{params: {...}}`` to ``/api/jobs/<id>/run``.
+    ``{params: {...}}`` to ``/api/jobs/<id>/run``. A stuck job served beside
+    it then pins the row's sparkline and the job sheet's detail block.
 
     Since #1438 the run is started from the row's kebab ``Run now`` item
     (``[data-item=job-run-item]``; there is no per-row ▶ button).
@@ -320,8 +336,6 @@ def test_parameterised_job_run_dialog_posts_values(
     parameterised job, intercept the run endpoint, and assert the
     captured request body.
     """
-    import json as _json
-
     fake_job = {
         "id": "scrape",
         "name": "Scrape",
@@ -348,7 +362,7 @@ def test_parameterised_job_run_dialog_posts_values(
         re.compile(r".*/api/jobs(\?.*)?$"),
         lambda route: route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({"jobs": [fake_job]}),
+            body=json.dumps({"jobs": [fake_job, _STUCK_JOB]}),
         ),
     )
 
@@ -359,7 +373,7 @@ def test_parameterised_job_run_dialog_posts_values(
         captured["body"] = req.post_data or ""
         route.fulfill(
             status=200, content_type="application/json",
-            body=_json.dumps({"run_id": "20260601T120000", "job_id": "scrape"}),
+            body=json.dumps({"run_id": "20260601T120000", "job_id": "scrape"}),
         )
 
     authed_page.route(
@@ -399,8 +413,10 @@ def test_parameterised_job_run_dialog_posts_values(
         timeout=3_000,
     )
     assert "body" in captured, "POST /api/jobs/scrape/run was never intercepted"
-    payload = _json.loads(captured["body"])
+    payload = json.loads(captured["body"])
     assert payload == {"params": {"since": "2026-06-01", "tier": "b"}}, payload
+
+    _assert_jobs_row_renders_sparkline_and_stuck_chip(authed_page)
 
 
 def test_sign_in_sheet_opens_on_401(authed_page: Page, base_url: str) -> None:

@@ -84,24 +84,12 @@ def test_watch_and_act_draw_a_toned_dot_with_the_reason_and_fix(
     assert chip.evaluate("el => getComputedStyle(el, '::after').backgroundColor") != danger
 
 
-@pytest.mark.iphone
-def test_a_long_process_label_wraps_and_the_figure_keeps_its_line(
-    authed_page: Page, base_url: str
-) -> None:
-    """The sheet's value column never shrinks: a 60-character label takes the
+def _assert_a_long_process_label_wraps_and_the_figure_keeps_its_line(page: Page, body) -> None:
+    """Formerly ``test_a_long_process_label_wraps_and_the_figure_keeps_its_line``.
+
+    The sheet's value column never shrinks: a 60-character label takes the
     rest of the row and wraps, and ``0.7 cores`` stays on one line. Read at
-    two phone widths on one page load; the sheet reflows on the resize."""
-    page = authed_page
-    page.set_viewport_size({"width": 320, "height": 844})
-    reading = _reading("normal", 60.0)
-    reading["top"] = [
-        {"name": _LONG_LABEL, "cores": 0.7},
-        {"name": "node (server)", "cores": 1.8},
-    ]
-    _route_load(page, {"body": reading}, [])
-    _route_health(page, _verdict("ok"))
-    _boot(page, base_url)
-    body = _open_sheet(page)
+    two phone widths on the open sheet, which reflows on the resize."""
     row = body.locator("[data-row='top-0']")
     expect(row).to_contain_text("0.7 cores")
 
@@ -126,10 +114,10 @@ def test_a_long_process_label_wraps_and_the_figure_keeps_its_line(
                        valueRight: value.right };
             }""",
         )
-        assert geometry["valueH"] <= geometry["oneLineH"] + 1, "the figure wrapped"
-        assert geometry["valueW"] >= geometry["oneLineW"] - 1, "the figure was squeezed"
-        assert geometry["labelH"] > geometry["valueH"], "the long label did not wrap"
-        assert geometry["spill"] <= 0, f"the row spills by {geometry['spill']}px"
+        assert geometry["valueH"] <= geometry["oneLineH"] + 1, f"the figure wrapped at {width}px"
+        assert geometry["valueW"] >= geometry["oneLineW"] - 1, f"the figure was squeezed at {width}px"
+        assert geometry["labelH"] > geometry["valueH"], f"the long label did not wrap at {width}px"
+        assert geometry["spill"] <= 0, f"the row spills by {geometry['spill']}px at {width}px"
         assert geometry["valueRight"] <= geometry["rowRight"] + 0.5
 
 
@@ -139,14 +127,59 @@ _OWNED = {
     "restart_id": "streamdeck-hwinfo",
 }
 
+_WAVELINK = {
+    "verdict": "watch", "why": None, "reason": "WaveLink.exe at 340 k handles",
+    "fix": "Restart WaveLink.exe", "owner": "Elgato Wave Link", "restart_id": "wavelink",
+}
+
+
+def _assert_a_restart_that_starts_the_app_again_says_whether_it_came_back(
+    page: Page, body, state: dict
+) -> None:
+    """Formerly ``test_a_restart_that_starts_the_app_again_says_whether_it_came_back``.
+
+    Three restarts from one sheet, one per relaunch outcome, in an order
+    where each toast reads differently from the one before it. Its route is
+    registered last, so it answers the Wave Link restart ahead of the
+    catch-all restart route."""
+    relaunches = ["launched", "not confirmed", "supervisor"]
+    page.route(
+        re.compile(r".*/api/system/restart/wavelink$"),
+        lambda route: route.fulfill(
+            status=200, content_type="application/json",
+            body=json.dumps({"restart_id": "wavelink", "stopped": ["WaveLink.exe"], "errors": [],
+                             "relaunch": relaunches.pop(0)}),
+        ),
+    )
+    state["body"] = _WAVELINK
+    _refetch_health(page)
+    expect(body.locator("[data-row='owner']")).to_contain_text("Elgato Wave Link")
+    toast = page.locator("#cpuSheetToast")
+    for words, tone in (("Running again", "good"), ("did not come back", "error"),
+                        ("Running again", "good")):
+        body.get_by_role("button", name="Restart").click()
+        page.locator("#confirmDialogOk").click()
+        expect(toast).to_contain_text("Stopped WaveLink.exe")
+        expect(toast).to_contain_text(words)
+        expect(toast).to_have_class(re.compile(r"\b" + tone + r"\b"))
+    assert relaunches == [], f"not every restart was posted: {relaunches}"
+
 
 @pytest.mark.iphone
 def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
     authed_page: Page, base_url: str
 ) -> None:
+    """The sheet's owner row and its confirm-gated restart, on one open sheet
+    with the long-label row read first and the Wave Link relaunch outcomes
+    after it."""
     page = authed_page
     page.set_viewport_size({"width": 390, "height": 844})
-    _route_load(page, {"body": _reading("normal", 20.0)}, [])
+    reading = _reading("normal", 60.0)
+    reading["top"] = [
+        {"name": _LONG_LABEL, "cores": 0.7},
+        {"name": "node (server)", "cores": 1.8},
+    ]
+    _route_load(page, {"body": reading}, [])
     posts: list[str] = []
     state = {"body": _OWNED}
 
@@ -165,6 +198,8 @@ def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
     page.route(re.compile(r".*/api/system/restart/.*"), restart)
     _boot(page, base_url)
     body = _open_sheet(page)
+    _assert_a_long_process_label_wraps_and_the_figure_keeps_its_line(page, body)
+
     expect(body.locator("[data-row='owner']")).to_contain_text("Stream Deck · HWiNFO plugin")
     restart_btn = body.get_by_role("button", name="Restart")
     expect(restart_btn).to_be_visible()
@@ -185,44 +220,8 @@ def test_the_sheet_names_the_owner_and_restarts_only_after_a_confirm(
     expect(restart_btn).to_have_count(0)
     assert len(posts) == 1 and posts[0].endswith("/api/system/restart/streamdeck-hwinfo")
 
-
-_WAVELINK = {
-    "verdict": "watch", "why": None, "reason": "WaveLink.exe at 340 k handles",
-    "fix": "Restart WaveLink.exe", "owner": "Elgato Wave Link", "restart_id": "wavelink",
-}
-
-
-@pytest.mark.iphone
-def test_a_restart_that_starts_the_app_again_says_whether_it_came_back(
-    authed_page: Page, base_url: str
-) -> None:
-    """Three restarts from one sheet, one per relaunch outcome, in an order
-    where each toast reads differently from the one before it."""
-    page = authed_page
-    page.set_viewport_size({"width": 390, "height": 844})
-    _route_load(page, {"body": _reading("normal", 20.0)}, [])
-    _route_health(page, _WAVELINK)
-    relaunches = ["launched", "not confirmed", "supervisor"]
-    page.route(
-        re.compile(r".*/api/system/restart/wavelink$"),
-        lambda route: route.fulfill(
-            status=200, content_type="application/json",
-            body=json.dumps({"restart_id": "wavelink", "stopped": ["WaveLink.exe"], "errors": [],
-                             "relaunch": relaunches.pop(0)}),
-        ),
-    )
-    _boot(page, base_url)
-    body = _open_sheet(page)
-    expect(body.locator("[data-row='owner']")).to_contain_text("Elgato Wave Link")
-    toast = page.locator("#cpuSheetToast")
-    for words, tone in (("Running again", "good"), ("did not come back", "error"),
-                        ("Running again", "good")):
-        body.get_by_role("button", name="Restart").click()
-        page.locator("#confirmDialogOk").click()
-        expect(toast).to_contain_text("Stopped WaveLink.exe")
-        expect(toast).to_contain_text(words)
-        expect(toast).to_have_class(re.compile(r"\b" + tone + r"\b"))
-    assert relaunches == [], f"not every restart was posted: {relaunches}"
+    _assert_a_restart_that_starts_the_app_again_says_whether_it_came_back(page, body, state)
+    assert len(posts) == 1, f"a Wave Link restart reached the hwinfo route: {posts}"
 
 
 def _refetch_health(page: Page) -> None:

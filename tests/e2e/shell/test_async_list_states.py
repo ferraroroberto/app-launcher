@@ -47,17 +47,17 @@ def _flaky(page: Page, pattern: str, body: dict, current: dict, key: str) -> Non
     page.route(re.compile(pattern), _handle)
 
 
-def test_apps_first_failure_shows_retry_and_a_later_one_keeps_the_list(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    current = {"apps": False}
-    _flaky(page, r".*/api/apps$", _APPS, current, "apps")
-    # The git-status refresh re-renders the Apps list (renderApps) on its own.
-    git = _recorded(page, r".*/api/claude-code/git-status$", {"projects": []})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    page.locator("#tabApps").click()
+_BOARD = {
+    "columns": {"backlog": [], "claude_turn": [], "your_turn": [], "other": [], "done": []},
+    "github": {"fetched_at": None, "error": None},
+    "live_sessions": {"available": True, "error": None},
+}
 
+
+def _assert_apps_first_failure_shows_retry_and_a_later_one_keeps_the_list(
+    page: Page, current: dict, git: list
+) -> None:
+    page.locator("#tabApps").click()
     state = page.locator("#appsState")
     expect(state).to_have_attribute("data-state", "error")
     expect(state.locator(".empty-state-message")).to_have_text("Could not load the apps.")
@@ -81,16 +81,11 @@ def test_apps_first_failure_shows_retry_and_a_later_one_keeps_the_list(
     expect(page.locator("#appsList li[data-id='demo-app']")).to_be_visible()
 
 
-def test_life_skills_first_failure_shows_retry_and_a_later_one_keeps_the_list(
-    authed_page: Page, base_url: str
+def _assert_life_skills_first_failure_shows_retry_and_a_later_one_keeps_the_list(
+    page: Page, current: dict, channels: list
 ) -> None:
-    page = authed_page
-    current = {"skills": False}
-    _flaky(page, r".*/api/life-os/skills$", _SKILLS, current, "skills")
-    channels = _recorded(page, r".*/api/life-os/channels$", {"profiles": [], "problems": []})
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    """Formerly ``test_life_skills_first_failure_shows_retry_and_a_later_one_keeps_the_list``."""
     page.locator("#tabLifeOS").click()
-
     state = page.locator("#lifeOsState")
     expect(state).to_have_attribute("data-state", "error")
     expect(state.locator(".empty-state-message")).to_have_text("Could not load the skills.")
@@ -111,24 +106,11 @@ def test_life_skills_first_failure_shows_retry_and_a_later_one_keeps_the_list(
     expect(page.locator("#lifeOsList li[data-id='demo-skill']")).to_be_visible()
 
 
-def test_board_first_failure_replaces_the_lanes_and_a_later_one_keeps_them(
-    authed_page: Page, base_url: str
+def _assert_board_first_failure_replaces_the_lanes_and_a_later_one_keeps_them(
+    page: Page, current: dict
 ) -> None:
-    page = authed_page
-    current = {"board": False}
-    board = {
-        "columns": {"backlog": [], "claude_turn": [], "your_turn": [], "other": [], "done": []},
-        "github": {"fetched_at": None, "error": None},
-        "live_sessions": {"available": True, "error": None},
-    }
-    _flaky(page, r".*/api/board(?:\?.*)?$", board, current, "board")
-    page.route(re.compile(r".*/api/board/chief-plan$"), lambda route: route.fulfill(
-        status=200, content_type="application/json", body='{"state": "empty"}'))
-    page.route(re.compile(r".*/api/board/github/refresh$"), lambda route: route.fulfill(
-        status=200, content_type="application/json", body='{}'))
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    """Formerly ``test_board_first_failure_replaces_the_lanes_and_a_later_one_keeps_them``."""
     page.locator("#tabBoard").click()
-
     state = page.locator("#boardFetchState")
     expect(state).to_have_attribute("data-state", "error")
     expect(state.locator(".empty-state-message")).to_have_text("Could not load the Board.")
@@ -143,3 +125,29 @@ def test_board_first_failure_replaces_the_lanes_and_a_later_one_keeps_them(
     current["board"] = False
     expect(state).to_have_attribute("data-state", "stale", timeout=15_000)
     expect(page.locator("#boardColumns")).to_be_visible()
+
+
+def test_apps_life_and_board_first_failure_shows_retry_and_a_later_one_keeps_the_list(
+    authed_page: Page, base_url: str
+) -> None:
+    """Each source on its own failing route, all three registered before one
+    load; each starts failing, so whichever tab is opened first still sees
+    its first read fail."""
+    page = authed_page
+    current = {"apps": False, "skills": False, "board": False}
+    _flaky(page, r".*/api/apps$", _APPS, current, "apps")
+    # The git-status refresh re-renders the Apps list (renderApps) on its own.
+    git = _recorded(page, r".*/api/claude-code/git-status$", {"projects": []})
+    _flaky(page, r".*/api/life-os/skills$", _SKILLS, current, "skills")
+    channels = _recorded(page, r".*/api/life-os/channels$", {"profiles": [], "problems": []})
+    _flaky(page, r".*/api/board(?:\?.*)?$", _BOARD, current, "board")
+    page.route(re.compile(r".*/api/board/chief-plan$"), lambda route: route.fulfill(
+        status=200, content_type="application/json", body='{"state": "empty"}'))
+    page.route(re.compile(r".*/api/board/github/refresh$"), lambda route: route.fulfill(
+        status=200, content_type="application/json", body='{}'))
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    _assert_apps_first_failure_shows_retry_and_a_later_one_keeps_the_list(page, current, git)
+    _assert_life_skills_first_failure_shows_retry_and_a_later_one_keeps_the_list(
+        page, current, channels)
+    _assert_board_first_failure_replaces_the_lanes_and_a_later_one_keeps_them(page, current)
