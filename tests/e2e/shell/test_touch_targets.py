@@ -223,11 +223,8 @@ def _assert_dialog_title_has_no_ring_but_tabbed_control_does(page: Page) -> None
         page.evaluate(f"document.getElementById('{dialog_id}').close()")
 
 
-def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) -> None:
-    """Every tab and every Settings sheet on one page load: a tab's controls
-    measure the same whichever load reached them, so a load per tab bought
-    nothing. The Board's 320px Large-text reload runs last."""
-    page = authed_page
+def _mock_data_controls(page: Page) -> None:
+    """The shared mock, plus the data that makes every control render."""
     _mock(page)
     # Controls that render only with data: the Life OS recap tile's launch
     # and a Settings passkey row's remove. Both sat at 30px tall, unseen by
@@ -253,6 +250,14 @@ def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) ->
     _json_route(page, re.compile(r".*/api/jobs/agenda(\?.*)?$"), {
         "days": 7, "generated_epoch": 0, "occurrences": [], "frequent": [],
     })
+
+
+def test_every_control_meets_the_44px_floor(authed_page: Page, base_url: str) -> None:
+    """Every tab and every Settings sheet on one page load: a tab's controls
+    measure the same whichever load reached them, so a load per tab bought
+    nothing. The Board's 320px Large-text reload runs last."""
+    page = authed_page
+    _mock_data_controls(page)
     page.set_viewport_size({"width": 390, "height": 844})
     page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
