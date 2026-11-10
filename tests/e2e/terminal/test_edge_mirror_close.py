@@ -107,11 +107,12 @@ def _leg_mirror_marker_applies_on_tailnet_origin(
     page.goto(f"{base_url}/?terminal={sid}", wait_until="domcontentloaded")
     page.wait_for_selector("#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS)
 
+    # The bare marker alone proves nothing: boot() stamps it from the
+    # ?terminal= link before /api/status is read, and nothing drops it on a
+    # reachable origin. Only announceMirrorWindow, which runs only when the
+    # tailnet reason counts as a mirror origin, leads it with the human title.
     marker = f"app-launcher-mirror-{sid}"
-    page.wait_for_function(
-        f"() => document.title.endsWith({marker!r})",
-        timeout=5_000,
-    )
+    expect(page).to_have_title(re.compile(rf".+ — {re.escape(marker)}$"))
 
 
 def _leg_signed_out_mirror_still_carries_close_marker(
