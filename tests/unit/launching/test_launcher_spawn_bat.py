@@ -1,26 +1,25 @@
-"""``spawn_bat`` picks its console flag per launch (issue #790).
+"""``spawn_bat``'s command shape and the PID it hands back.
 
-The Apps/Trays rows offer two explicit launch modes — ⚡ opens a real CMD
-window (unchanged behaviour), 🚫👁 runs the identical command line with no
-window on screen. This pins the three things that are easy to break and
-invisible when broken:
+A launched app must outlive a launcher restart, which tree-kills the tray's
+whole subtree (``taskkill /T``). So the app's ``cmd /k`` is re-parented through
+``cmd /c start`` and the PID returned is that detached ``cmd``'s, found again
+by its parent link. This pins what is easy to break and invisible when broken:
 
-- the flags are the *right* ones, and are never OR'd together (they are
-  mutually exclusive — ``CREATE_NEW_CONSOLE | CREATE_NO_WINDOW`` is not a
-  hidden console, it is undefined behaviour);
-- the command line and cwd stay identical between modes, so a stealth
-  launch is the same spawn, not a second code path that can drift;
-- ``cmd /k`` and the direct-child shape survive. ``app_runtime`` pairs the
-  returned PID with ``listening_port_for_pid_tree``, which walks the
-  *descendant* tree — that only works while ``cmd.exe`` stays a live child.
-  Swapping in ``start`` or ``/c`` here would break port discovery for
-  Running apps without failing any other test.
+- both modes go through ``start`` (only re-parenting escapes ``/T``); stealth
+  adds ``/b`` so no window opens, visible lets ``start`` open the console;
+- the transient hop is hidden and never ``DETACHED_PROCESS`` (which does not
+  escape ``/T`` and would only mislead);
+- the PID is the detached ``cmd.exe``, not the exited hop, so Running apps can
+  still walk its descendant tree to find the app's port; ``None`` when it
+  cannot be found.
+
+The real-process proof that the app survives a tree-kill of its launcher is
+``test_spawn_bat_survives_tree_kill.py``.
 """
 
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -31,6 +30,9 @@ from src.subprocess_flags import NO_WINDOW
 
 class _FakeProc:
     pid = 4242
+
+    def wait(self, timeout=None):
+        return 0
 
 
 @pytest.fixture
@@ -52,44 +54,61 @@ def spawns(monkeypatch) -> list[dict]:
     return captured
 
 
+@pytest.fixture
+def lookups(monkeypatch) -> list[tuple]:
+    """Answer the detached-child lookup with pid 777, recording the query."""
+    calls: list[tuple] = []
+
+    def _find(parent_pid, name, created_after):
+        calls.append((parent_pid, name, created_after))
+        return 777
+
+    monkeypatch.setattr(launcher, "find_child_process", _find)
+    return calls
+
+
 def test_missing_bat_raises_before_spawning(tmp_path: Path, spawns) -> None:
     with pytest.raises(OSError):
         launcher.spawn_bat(tmp_path / "nope.bat")
     assert spawns == []
 
 
-def test_visible_is_the_default(bat: Path, spawns) -> None:
-    assert launcher.spawn_bat(bat) == 4242
-    assert spawns[0]["creationflags"] == (
-        subprocess.CREATE_NEW_CONSOLE if sys.platform == "win32" else 0
-    )
+def test_visible_reparents_through_start(bat: Path, spawns, lookups) -> None:
+    launcher.spawn_bat(bat)
+    assert spawns[0]["cmd"] == ["cmd", "/c", "start", "", "cmd", "/k", str(bat)]
 
 
-@pytest.mark.skipif(sys.platform != "win32", reason="Windows console flags")
-def test_stealth_swaps_in_no_window_and_never_ors(bat: Path, spawns) -> None:
+def test_stealth_adds_b_so_no_window_opens(bat: Path, spawns, lookups) -> None:
     launcher.spawn_bat(bat, stealth=True)
-    flags = spawns[0]["creationflags"]
-    assert flags == NO_WINDOW
-    assert not flags & subprocess.CREATE_NEW_CONSOLE, (
-        "CREATE_NEW_CONSOLE and CREATE_NO_WINDOW are mutually exclusive"
-    )
+    assert spawns[0]["cmd"] == ["cmd", "/c", "start", "", "/b", "cmd", "/k", str(bat)]
 
 
-def test_both_modes_spawn_the_same_command_line(bat: Path, spawns) -> None:
+def test_both_modes_hide_the_hop_and_share_cwd(bat: Path, spawns, lookups) -> None:
     launcher.spawn_bat(bat)
     launcher.spawn_bat(bat, stealth=True)
-    visible, stealth = spawns
-    assert visible["cmd"] == stealth["cmd"] == ["cmd", "/k", str(bat)]
-    assert visible["cwd"] == stealth["cwd"] == str(bat.parent)
-    assert visible["shell"] is False and stealth["shell"] is False
-
-
-def test_stealth_keeps_cmd_a_direct_child(bat: Path, spawns) -> None:
-    """`start` / DETACHED_PROCESS would orphan the tree and break the
-    port-discovery walk Running apps depends on."""
-    launcher.spawn_bat(bat, stealth=True)
-    spawn = spawns[0]
-    assert "start" not in spawn["cmd"]
     detached = getattr(subprocess, "DETACHED_PROCESS", 0)
-    if detached:
-        assert not spawn["creationflags"] & detached
+    for spawn in spawns:
+        assert spawn["creationflags"] == NO_WINDOW
+        assert not (detached and spawn["creationflags"] & detached)
+        assert spawn["cwd"] == str(bat.parent)
+        assert spawn["shell"] is False
+
+
+def test_returns_the_detached_cmd_not_the_hop(bat: Path, spawns, lookups) -> None:
+    assert launcher.spawn_bat(bat) == 777
+    parent_pid, name, _ = lookups[0]
+    assert (parent_pid, name) == (_FakeProc.pid, "cmd.exe")
+
+
+def test_none_when_the_detached_cmd_is_not_found(bat: Path, spawns, monkeypatch) -> None:
+    monkeypatch.setattr(launcher, "find_child_process", lambda *a: None)
+    assert launcher.spawn_bat(bat) is None
+
+
+def test_a_wedged_hop_still_looks_for_the_child(bat: Path, monkeypatch, lookups) -> None:
+    class _SlowProc(_FakeProc):
+        def wait(self, timeout=None):
+            raise subprocess.TimeoutExpired("cmd", timeout)
+
+    monkeypatch.setattr(launcher.subprocess, "Popen", lambda cmd, **kw: _SlowProc())
+    assert launcher.spawn_bat(bat) == 777

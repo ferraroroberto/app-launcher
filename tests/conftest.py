@@ -241,6 +241,21 @@ def fake_clipboard(monkeypatch):
     return recorder
 
 
+@pytest.fixture(autouse=True)
+def _isolated_spawned_apps(tmp_path, monkeypatch):
+    """Give each test its own launched-app records file and an empty tracker.
+
+    ``src.app_runtime`` re-adopts whatever the file names on first use; a
+    record left by another test (or another run) whose fake pid happens to be
+    a live process would otherwise show up as a phantom running app.
+    """
+    from src import app_runtime
+
+    monkeypatch.setattr(app_runtime, "STATE_FILE", tmp_path / "spawned-apps.json")
+    monkeypatch.setattr(app_runtime, "_instances", {})
+    monkeypatch.setattr(app_runtime, "_loaded", False)
+
+
 @pytest.fixture
 def isolated_jobs(tmp_path, monkeypatch):
     """Run history, the run queue and ``jobs.json`` all under ``tmp_path``.

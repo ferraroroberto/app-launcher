@@ -100,7 +100,7 @@ from app.webapp.routers import (
 )
 from app.webapp.routers._helpers import STATIC_DIR
 from app.webapp.static_trim import trim_js
-from src import instance_role, process_auto_restart, system_load
+from src import app_runtime, instance_role, process_auto_restart, system_load
 from src.app_config import load_app_config
 from src.auth.webauthn_gate import WebAuthnGate
 from src.clients import session as session_client
@@ -442,6 +442,9 @@ async def _channel_autostart(app: FastAPI) -> None:
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     await _reconcile_orphan_mirror_windows(app)
+    # Launched apps outlive a launcher restart; take the previous launcher's
+    # records back now so the line naming any that died lands at boot.
+    await asyncio.to_thread(app_runtime.adopt_previous)
     # The jobs runtime snapshot behind /api/jobs and /api/board. It
     # only walks while those polls are asking, so every instance runs it:
     # the reads it serves happen on every instance too.
