@@ -259,7 +259,9 @@ async def launch_app(app_id: str, request: Request) -> Dict[str, Any]:
     # and a Stop button that can't reach the real process either — so a
     # tray launch isn't tracked at all; Port listeners already resolves it
     # correctly once it's actually up.
-    if entry.kind != KIND_TRAY:
+    # A `None` pid launched but could not be identified (spawn_bat logged it);
+    # there is no process to track.
+    if entry.kind != KIND_TRAY and pid is not None:
         app_runtime.record_spawn(entry.id, entry.name, entry.kind, pid)
     return {
         "launched": entry.id,
@@ -431,8 +433,8 @@ def _coding_flags(cfg: WebappConfig, agent: str, resume: bool, model_value: str)
 async def get_running_apps(request: Request) -> Dict[str, Any]:
     """List apps spawned from the launcher, each bound to its port + URL.
 
-    State is in-process only (see :mod:`src.app_runtime`) — a webapp
-    restart returns an empty list. ``port`` is null until a descendant
+    Records survive a webapp restart (see :mod:`src.app_runtime`), and the
+    apps they name keep running through it. ``port`` is null until a descendant
     of the spawned bat binds a socket; ``url`` is null when ``port`` is
     null or ``tailnet_host`` is unset.
     """

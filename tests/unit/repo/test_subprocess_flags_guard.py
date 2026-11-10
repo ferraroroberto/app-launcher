@@ -32,13 +32,7 @@ _SPAWN_ATTRS = {"run", "Popen", "call", "check_output", "check_call"}
 #: meant to be visible to the user (rare — e.g. a deliberately-opened
 #: interactive terminal)". Keyed by ``path::function`` rather than line so it
 #: survives edits above it; adding an entry is a deliberate, reviewable act.
-_VISIBLE_CONSOLE_EXEMPT = {
-    "src/launching/launcher.py::spawn_bat": (
-        "Chooses its own flag per launch (#790): NO_WINDOW for the Apps "
-        "tab's stealth button, CREATE_NEW_CONSOLE on purpose for its ⚡ "
-        "one — a visible CMD window the user watches and closes."
-    ),
-}
+_VISIBLE_CONSOLE_EXEMPT: Dict[str, str] = {}
 
 #: Files copied byte-verbatim from project-scaffolding, which cannot import this
 #: repo's ``src.subprocess_flags``. They derive the same flag locally instead,

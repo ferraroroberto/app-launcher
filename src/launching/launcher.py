@@ -26,17 +26,21 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import sys
 import threading
 import time
 import webbrowser
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
+from src.app_runtime import find_child_process
 from src.clients import session as session_client
 from src.subprocess_flags import NO_WINDOW
 
 logger = logging.getLogger(__name__)
+
+# `cmd /c start` returns as soon as it has created the app's console; this
+# bounds the wait for that hop so a wedged cmd never hangs the launch route.
+_START_HOP_TIMEOUT_SECONDS = 10.0
 
 # WM_CLOSE from winuser.h. Inlined so callers don't need to import
 # win32con just to dismiss a window.
@@ -62,7 +66,7 @@ _HWND_POLL_INTERVAL_SECONDS = 0.1
 _mirror_hwnds: Dict[str, int] = {}
 
 
-def spawn_bat(bat_path: Path, stealth: bool = False) -> int:
+def spawn_bat(bat_path: Path, stealth: bool = False) -> Optional[int]:
     """Run the bat in a new console — visible by default, hidden on ``stealth``.
 
     ``stealth=False`` (the default, and what the Apps tab's ⚡ button asks
@@ -72,40 +76,54 @@ def spawn_bat(bat_path: Path, stealth: bool = False) -> int:
     screen — the phone-first case, where a console popping up on an
     unattended PC is pure noise.
 
-    Returns the PID of the spawned ``cmd`` process. The actual app server
-    runs as a descendant of it — the caller pairs this PID with
-    :func:`src.diagnostics.listening_port_for_pid_tree` to learn which
-    port the app eventually bound.
+    The app's ``cmd /k`` is re-parented off this process through
+    ``cmd /c start``: a launcher restart tree-kills the tray's whole
+    subtree (``taskkill /T``), and a launched app — with whatever run it is
+    in the middle of — must outlive that. ``DETACHED_PROCESS`` and
+    ``CREATE_NEW_PROCESS_GROUP`` do not escape ``/T``; only re-parenting
+    does.
+
+    Returns the PID of the detached ``cmd /k`` process, or ``None`` when it
+    could not be identified (the app still launched; it just can't be
+    tracked). The actual app server runs as a descendant of it — the caller
+    pairs this PID with :func:`src.diagnostics.listening_port_for_pid_tree`
+    to learn which port the app eventually bound.
     """
     if not bat_path.is_file():
         raise OSError(f"BAT file not found: {bat_path}")
-    # `cmd /k` runs the bat and keeps the window open. Spawned directly
-    # (not via `start`) so the new console's cmd.exe stays a *child* of
-    # this process — `start` would detach it and orphan the descendant
-    # tree, breaking the port-discovery walk in app_runtime.
-    cmd = ["cmd", "/k", str(bat_path)]
-    creationflags = 0
-    if sys.platform == "win32":
-        # CREATE_NO_WINDOW still gives the child its own console — it just
-        # never paints a window — so `cmd /k` stays alive holding the
-        # descendant tree exactly as it does visibly, and the
-        # port-discovery walk is unaffected. The two flags are mutually
-        # exclusive: pick one, never OR them.
-        creationflags = (
-            NO_WINDOW
-            if stealth
-            else subprocess.CREATE_NEW_CONSOLE  # type: ignore[attr-defined]
-        )
+    # `start` opens the new console (visible) or reuses the hidden transient
+    # one (`/b`, stealth), then the outer cmd exits — orphaning `cmd /k` out
+    # of this process's tree. CREATE_NO_WINDOW hides the transient cmd.
+    window = ["/b"] if stealth else []
+    cmd = ["cmd", "/c", "start", "", *window, "cmd", "/k", str(bat_path)]
+    spawned_after = time.time()
     proc = subprocess.Popen(
         cmd,
         cwd=str(bat_path.parent),
         shell=False,
-        creationflags=creationflags,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=NO_WINDOW,
         close_fds=True,
     )
+    try:
+        proc.wait(timeout=_START_HOP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            f"⚠️ `cmd /c start` for {bat_path} still running after "
+            f"{_START_HOP_TIMEOUT_SECONDS:.0f}s; looking for its child anyway"
+        )
+    pid = find_child_process(proc.pid, "cmd.exe", spawned_after)
     how = "stealth" if stealth else "visible"
-    logger.info(f"🚀 spawned bat ({how}): {bat_path} (pid {proc.pid})")
-    return proc.pid
+    if pid is None:
+        logger.warning(
+            f"⚠️ spawned bat ({how}): {bat_path}, but its detached cmd "
+            f"(child of start hop {proc.pid}) was not found; not tracked"
+        )
+        return None
+    logger.info(f"🚀 spawned bat ({how}, detached): {bat_path} (pid {pid})")
+    return pid
 
 
 def spawn_claude_session(

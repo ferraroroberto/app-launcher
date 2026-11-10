@@ -7,6 +7,7 @@ In-process FastAPI ``TestClient``, same pattern as
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Iterator, List, Optional
 
@@ -291,3 +292,58 @@ class TestListeningPortForPidTree:
 
     def test_none_when_root_missing(self, fake_psutil):
         assert listening_port_for_pid_tree(404) is None
+
+
+# --------------------------------------------- re-adoption across a restart
+
+
+def _fresh_launcher(monkeypatch) -> None:
+    """What a launcher restart does to the tracker: memory gone, file kept."""
+    monkeypatch.setattr(app_runtime, "_instances", {})
+    monkeypatch.setattr(app_runtime, "_loaded", False)
+
+
+class TestReadoptAfterRestart:
+    def test_still_running_app_is_readopted(self, fake_psutil, monkeypatch):
+        inst = app_runtime.record_spawn("cm", "Content Manager", "webapp", 100)
+        _alive_proc(fake_psutil, inst)
+        _fresh_launcher(monkeypatch)
+
+        app_runtime.adopt_previous()
+
+        assert [(i.app_id, i.pid) for i in app_runtime.list_running()] == [("cm", 100)]
+        assert app_runtime.is_tracked("cm", 100)
+
+    def test_gone_app_is_named_in_a_warning_and_dropped(
+        self, fake_psutil, monkeypatch, caplog
+    ):
+        alive = app_runtime.record_spawn("cm", "Content Manager", "webapp", 100)
+        app_runtime.record_spawn("arch", "Archive Run", "streamlit", 200)
+        _alive_proc(fake_psutil, alive)  # pid 200 is never registered: it died
+        _fresh_launcher(monkeypatch)
+
+        with caplog.at_level("WARNING", logger="src.app_runtime"):
+            app_runtime.adopt_previous()
+
+        warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert len(warnings) == 1 and "'Archive Run'" in warnings[0] and "pid=200" in warnings[0]
+        assert [i.pid for i in app_runtime.list_running()] == [100]
+        saved = json.loads(app_runtime.STATE_FILE.read_text(encoding="utf-8"))
+        assert [row["pid"] for row in saved] == [100]
+
+    def test_stop_forgets_the_record_on_disk(self, webapp_client, fake_psutil):
+        client, _, _ = webapp_client
+        inst = app_runtime.record_spawn("cm", "Content Manager", "webapp", 100)
+        _alive_proc(fake_psutil, inst)
+
+        assert client.post("/api/apps/cm/instances/100/stop").status_code == 200
+
+        assert json.loads(app_runtime.STATE_FILE.read_text(encoding="utf-8")) == []
+
+    def test_unreadable_file_starts_empty(self, fake_psutil, monkeypatch):
+        app_runtime.STATE_FILE.write_text("{not json", encoding="utf-8")
+        _fresh_launcher(monkeypatch)
+
+        app_runtime.adopt_previous()
+
+        assert app_runtime.list_running() == []

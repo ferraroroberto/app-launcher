@@ -3,11 +3,11 @@
 Before #790 the whole row was one launch button and every launch opened a
 visible CMD window. Now the row body is inert and each row carries an
 explicit pair: ⚡ launches as before, 🚫👁 posts ``stealth: true`` so
-``spawn_bat`` swaps ``CREATE_NEW_CONSOLE`` for ``CREATE_NO_WINDOW``.
+``spawn_bat`` starts the app with ``start /b`` (no window).
 
 This file pins the *client* half of that contract — that the body no longer
 launches, and that each button posts its own mode. The server half (the
-creation flag actually chosen, and the older-client default) is pinned at
+command line actually chosen, and the older-client default) is pinned at
 the unit/API layer in tests/unit/launching/test_launcher_spawn_bat.py and
 tests/api/webapp/test_webapp_api_apps.py. Route-mocked: a real bat spawn is
 far too heavy for the smoke suite. The Trays panel's tray-only rows and its

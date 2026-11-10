@@ -875,6 +875,25 @@ class TestLaunchAppTracksSpawn:
         assert resp.status_code == 200
         assert recorded == []
 
+    def test_launch_untracked_when_detached_pid_unknown(self, webapp_client, monkeypatch):
+        """The bat launched but its detached cmd could not be identified:
+        the launch still succeeds, with nothing tracked against a wrong pid."""
+        client, _, overrides = webapp_client
+        from app.webapp.routers import apps as apps_router
+
+        _seed_registry(
+            overrides["tmp_registry_path"],
+            [AppEntry(id="alpha", name="Alpha", kind="streamlit",
+                      bat_path="C:\\stub\\alpha.bat", added_at=datetime.now().isoformat())],
+        )
+        monkeypatch.setattr(apps_router, "spawn_bat", lambda _path, stealth=False: None)
+        recorded: list[tuple] = []
+        monkeypatch.setattr(apps_router.app_runtime, "record_spawn", lambda *a: recorded.append(a))
+
+        resp = client.post("/api/apps/alpha/launch")
+        assert resp.status_code == 200
+        assert recorded == []
+
 
 class TestLaunchBatStealthMode:
     """The Apps/Trays ⚡ vs 🚫👁 pair (issue #790).
