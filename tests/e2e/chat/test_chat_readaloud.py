@@ -203,7 +203,7 @@ def test_detached_session_reads_the_newest_entry_and_a_capped_one_uncapped(
         f"total spoken chars ({total}) never exceeded the capped entry's length "
         f"({len(capped_reply)}) — looks like the capped text was read, not the uncapped entry"
     )
-    # Matches the tolerance test_chunk_for_hub_bounds_long_text uses: a little
+    # Matches the tolerance the hub chunking test in compose/test_hub_readback.py uses: a little
     # inter-segment trimming at boundaries is expected, wholesale truncation isn't.
     assert total >= int(0.95 * len(full_reply)), (captured and total, len(full_reply))
 

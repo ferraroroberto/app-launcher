@@ -59,11 +59,14 @@ def _route_hub(page: Page, *, available: bool = True, speak_status: int = 200,
     )
 
 
-def test_probe_caches_hub_availability(
+def test_probe_caches_availability_a_failed_speak_rejects_and_chunks_stay_bounded(
     authed_page: Page, base_url: str
 ) -> None:
-    """probeHub() reflects the /api/tts/health verdict; isHubAvailable() caches it."""
-    _route_hub(authed_page, available=True)
+    """probeHub() reflects the /api/tts/health verdict and isHubAvailable()
+    caches it; a failed /api/tts/speak POST makes speakHub() reject, so the
+    click handler can fall back to Web Speech."""
+    authed_page.add_init_script(AUDIO_MOCK)
+    _route_hub(authed_page, available=True, speak_status=502)
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => { const ok = await window.__readback.probeHub({});"
@@ -71,12 +74,58 @@ def test_probe_caches_hub_availability(
     )
     assert got == {"ok": True, "cached": True}
 
+    rejected = authed_page.evaluate(
+        "async () => { try { await window.__readback.speakHub('hi', {}); return false; }"
+        " catch (_) { return true; } }"
+    )
+    assert rejected is True
 
-def test_speak_hub_plays_pcm_via_web_audio(
+    _assert_chunk_for_hub_bounds_long_text(authed_page)
+
+
+def _assert_chunk_for_hub_bounds_long_text(page: Page) -> None:
+    """chunkForHub() keeps every segment under the per-request budget and loses
+    no text (#254). A short reply stays a single segment (one request, unchanged);
+    a long reply splits into several bounded segments whose concatenation still
+    covers the whole input."""
+    got = page.evaluate(
+        "() => {"
+        "  const short = 'Build is green.';"
+        "  const long = Array.from({length: 22}, (_, i) =>"
+        "    `Segment number ${i} explains a distinct part of the deployment plan in some detail.`"
+        "  ).join(' ');"
+        "  const c = window.__readback;"
+        "  return {"
+        "    shortSegs: c.chunkForHub(short),"
+        "    long: long,"
+        "    segs: c.chunkForHub(long),"
+        "  };"
+        "}"
+    )
+    # A short reply is a single segment — one POST, identical to before.
+    assert got["shortSegs"] == ["Build is green."]
+    # The long reply is over the hub's ~900-char single-request cap and splits.
+    assert len(got["long"]) > 1500
+    segs = got["segs"]
+    assert len(segs) >= 2
+    # Every segment is bounded (JS budget HUB_SEGMENT_CHARS = 700; allow slack).
+    assert all(0 < len(s) <= 760 for s in segs)
+    # Nothing dropped: the concatenated segments cover essentially the whole reply
+    # (only inter-segment join spaces are trimmed at boundaries).
+    assert sum(len(s) for s in segs) >= int(0.95 * len(got["long"]))
+
+
+def test_speak_hub_plays_pcm_finishes_on_the_last_buffer_and_cancel_stops_audio(
     authed_page: Page, base_url: str
 ) -> None:
     """speakHub() creates + resumes an AudioContext, POSTs to /api/tts/speak,
-    then decodes the PCM stream and schedules it on the Web Audio timeline."""
+    then decodes the PCM stream and schedules it on the Web Audio timeline.
+
+    Playback finalizes on the LAST scheduled buffer's onended (the real end),
+    not a timer computed from a possibly-drifted playHead — so a slower-than-
+    realtime stream isn't cut off early (#206 follow-up). A second read is then
+    stopped by cancelHub(), which closes the AudioContext (silencing scheduled
+    audio) and resets the button to idle."""
     authed_page.add_init_script(AUDIO_MOCK)
     _route_hub(authed_page, available=True)
     _load_readback(authed_page, base_url)
@@ -91,57 +140,24 @@ def test_speak_hub_plays_pcm_via_web_audio(
     assert got["buffers"] >= 1           # PCM decoded into ≥1 AudioBuffer
     assert got["started"] >= 1           # scheduled on the timeline
 
-
-def test_speak_hub_finishes_on_last_buffer_end(
-    authed_page: Page, base_url: str
-) -> None:
-    """Playback finalizes on the LAST scheduled buffer's onended (the real end),
-    not a timer computed from a possibly-drifted playHead — so a slower-than-
-    realtime stream isn't cut off early (#206 follow-up). Firing the last node's
-    onended resets the button to idle."""
-    authed_page.add_init_script(AUDIO_MOCK)
-    _route_hub(authed_page, available=True)
-    _load_readback(authed_page, base_url)
     pressed = authed_page.evaluate(
-        "async () => { await window.__readback.speakHub('Reading on.', {});"
-        " window.__lastNode.onended();"   # the final buffer drains
+        "() => { window.__lastNode.onended();"   # the final buffer drains
         " return document.getElementById('terminalMenu')"
         "          .dataset.speaking; }"
     )
     assert pressed == "false"
 
-
-def test_speak_hub_failure_rejects_for_fallback(
-    authed_page: Page, base_url: str
-) -> None:
-    """A failed POST makes speakHub() reject, so the click handler can fall
-    back to Web Speech."""
-    authed_page.add_init_script(AUDIO_MOCK)
-    _route_hub(authed_page, available=True, speak_status=502)
-    _load_readback(authed_page, base_url)
-    rejected = authed_page.evaluate(
-        "async () => { try { await window.__readback.speakHub('hi', {}); return false; }"
-        " catch (_) { return true; } }"
-    )
-    assert rejected is True
-
-
-def test_cancel_hub_stops_audio(
-    authed_page: Page, base_url: str
-) -> None:
-    """cancelHub() closes the AudioContext (silencing scheduled audio) and
-    resets the button to idle."""
-    authed_page.add_init_script(AUDIO_MOCK)
-    _route_hub(authed_page, available=True)
-    _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         "async () => { await window.__readback.speakHub('Reading on.', {});"
+        " const before = window.__audioLog.closed;"
+        " const speaking = document.getElementById('terminalMenu').dataset.speaking;"
         " window.__readback.cancelHub();"
-        " return { closed: window.__audioLog.closed,"
+        " return { before, speaking, closed: window.__audioLog.closed,"
         "          pressed: document.getElementById('terminalMenu')"
         "                     .dataset.speaking }; }"
     )
-    assert got["closed"] >= 1
+    assert got["speaking"] == "true"
+    assert got["closed"] > got["before"]
     assert got["pressed"] == "false"
 
 
@@ -186,41 +202,6 @@ def test_screen_lock_reschedules_pending_buffers(
     assert all(t >= 100 for t in got["reanchored"])
     # Playback is still in progress — the tail was preserved, not finished early.
     assert got["pressed"] == "true"
-
-
-def test_chunk_for_hub_bounds_long_text(
-    authed_page: Page, base_url: str
-) -> None:
-    """chunkForHub() keeps every segment under the per-request budget and loses
-    no text (#254). A short reply stays a single segment (one request, unchanged);
-    a long reply splits into several bounded segments whose concatenation still
-    covers the whole input."""
-    _load_readback(authed_page, base_url)
-    got = authed_page.evaluate(
-        "() => {"
-        "  const short = 'Build is green.';"
-        "  const long = Array.from({length: 22}, (_, i) =>"
-        "    `Segment number ${i} explains a distinct part of the deployment plan in some detail.`"
-        "  ).join(' ');"
-        "  const c = window.__readback;"
-        "  return {"
-        "    shortSegs: c.chunkForHub(short),"
-        "    long: long,"
-        "    segs: c.chunkForHub(long),"
-        "  };"
-        "}"
-    )
-    # A short reply is a single segment — one POST, identical to before.
-    assert got["shortSegs"] == ["Build is green."]
-    # The long reply is over the hub's ~900-char single-request cap and splits.
-    assert len(got["long"]) > 1500
-    segs = got["segs"]
-    assert len(segs) >= 2
-    # Every segment is bounded (JS budget HUB_SEGMENT_CHARS = 700; allow slack).
-    assert all(0 < len(s) <= 760 for s in segs)
-    # Nothing dropped: the concatenated segments cover essentially the whole reply
-    # (only inter-segment join spaces are trimmed at boundaries).
-    assert sum(len(s) for s in segs) >= int(0.95 * len(got["long"]))
 
 
 def test_long_reply_issues_multiple_bounded_requests(

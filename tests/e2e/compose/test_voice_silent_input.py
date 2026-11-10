@@ -15,6 +15,8 @@ voice-transcriber is needed.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from playwright.sync_api import Page, expect
 
@@ -83,54 +85,6 @@ def _start_take(
     _open_terminal(page, base_url, sid)
     _open_compose_with_record(page)
     page.locator("#terminalComposeBar .composer-mic").click()
-
-
-def test_silent_input_shows_banner_and_names_the_mic(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """A silent input raises the no-sound banner within seconds, with the
-    input's name above it; stopping the take clears both."""
-    _start_take(authed_page, base_url, launched_pty_session, tone=False)
-
-    notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
-    expect(notice).to_contain_text(f"Mic: {_LABEL}")
-    expect(notice.locator(".mic-notice-silent")).to_be_hidden()
-    # The level strip is up for the whole take, flat until the verdict.
-    expect(notice.locator(".rec-wave")).to_be_visible()
-    # The verdict lands 3 s into the take; the expect polls for it.
-    expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
-    expect(notice.locator(".mic-notice-silent")).to_contain_text("No sound")
-    expect(notice.locator(".rec-wave")).to_have_attribute("data-signal", "silent")
-
-    authed_page.locator("#terminalComposeBar .composer-mic").click()
-    expect(notice).to_be_hidden()
-    expect(notice.locator(".rec-wave")).to_have_count(0)
-
-
-def test_real_signal_moves_the_wave_and_never_shows_the_banner(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """A tone is heard at once: the strip goes live and no banner ever shows.
-    Stopping the take removes the strip and closes the one listening context."""
-    _start_take(authed_page, base_url, launched_pty_session, tone=True)
-
-    notice = authed_page.locator("#terminalComposeBar .composer-mic-notice")
-    expect(notice).to_contain_text(f"Mic: {_LABEL}")
-    wave = notice.locator(".rec-wave")
-    expect(wave).to_have_attribute("data-signal", "live")
-    # A tone lifts the bars off their resting sliver.
-    authed_page.wait_for_function(
-        "[...document.querySelectorAll('.composer-mic-notice .rec-wave-bars > i')]"
-        ".some(i => i.style.transform !== 'scaleY(0.08)')",
-        timeout=6_000,
-    )
-    expect(notice.locator(".mic-notice-silent")).to_be_hidden()
-    expect(notice).not_to_have_class("is-silent")
-
-    authed_page.locator("#terminalComposeBar .composer-mic").click()
-    expect(wave).to_have_count(0)
-    # The page closes the context it opened for the strip when the take ends.
-    authed_page.wait_for_function("window.__watchClosed >= 1", timeout=6_000)
 
 
 def test_silent_remote_audio_input_names_the_remote_desktop_setting(
@@ -203,13 +157,19 @@ def _assert_group_centred(rects: dict) -> None:
     assert wave["left"] - name["right"] < 16, (name, wave)
 
 
-def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
+def test_a_silent_take_warns_in_one_row_that_moves_nothing_and_a_real_signal_never_warns(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
-    """The notice is one row under the compose box (name, level strip and
-    timer side by side), inside the screen, and the box and its buttons keep
-    their place while it shows and after it hides. The silent-mic warning then
-    takes a line of its own under that row."""
+    """A silent input raises the no-sound banner within seconds, with the
+    input's name beside the level strip; stopping the take clears both. The
+    notice is one row under the compose box (name, level strip and timer side
+    by side), inside the screen, and the box and its buttons keep their place
+    while it shows and after it hides. The silent-mic warning then takes a line
+    of its own under that row.
+
+    A second take on the same page hears a tone at once: the strip goes live
+    and no banner ever shows. Stopping it removes the strip and closes the one
+    listening context the page opened for it."""
     page = authed_page
     page.add_init_script("window.__tone = false;")
     page.add_init_script(_INPUT_MOCK)
@@ -223,6 +183,8 @@ def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
     page.locator("#terminalComposeBar .composer-mic").click()
     notice = page.locator("#terminalComposeBar .composer-mic-notice")
     expect(notice).to_contain_text(f"Mic: {_LABEL}")
+    expect(notice.locator(".mic-notice-silent")).to_be_hidden()
+    # The level strip is up for the whole take, flat until the verdict.
     expect(notice.locator(".rec-wave")).to_be_visible()
     live = page.evaluate(_RECTS_JS)
 
@@ -240,16 +202,54 @@ def test_notice_is_one_line_below_the_compose_box_and_moves_nothing(
                - (wave["top"] + wave["bottom"]) / 2) < 6
     _assert_group_centred(live)
 
-    # The warning takes its own line under that row.
+    # The verdict lands 3 s into the take; the expect polls for it. The
+    # warning takes its own line under that row.
     expect(notice.locator(".mic-notice-silent")).to_be_visible(timeout=6_000)
+    expect(notice.locator(".mic-notice-silent")).to_contain_text("No sound")
+    expect(notice.locator(".rec-wave")).to_have_attribute("data-signal", "silent")
     warned = page.evaluate(_RECTS_JS)
     assert warned["warning"]["top"] >= warned["wave"]["bottom"] - 0.5
     assert warned["notice"]["bottom"] <= warned["viewportBottom"] + 0.5
 
     page.locator("#terminalComposeBar .composer-mic").click()
     expect(notice).to_be_hidden()
+    expect(notice.locator(".rec-wave")).to_have_count(0)
     after = page.evaluate(_RECTS_JS)
     assert _same(before["bar"], after["bar"]), (before["bar"], after["bar"])
+
+    _assert_a_real_signal_moves_the_wave_and_never_warns(page)
+
+
+def _assert_a_real_signal_moves_the_wave_and_never_warns(page: Page) -> None:
+    """A tone on the next take: the strip goes live, the bars lift off their
+    resting sliver, no banner shows, and stopping closes the listening context."""
+    mic = page.locator("#terminalComposeBar .composer-mic")
+    expect(mic).not_to_have_class(re.compile(r"\b(recording|arming|working)\b"))
+    # The silent take before this one closed its own listening context first.
+    page.wait_for_function("window.__watchClosed >= 1", timeout=6_000)
+    closed_before = page.evaluate("window.__watchClosed")
+    page.evaluate("window.__tone = true;")
+    mic.click()
+
+    notice = page.locator("#terminalComposeBar .composer-mic-notice")
+    expect(notice).to_contain_text(f"Mic: {_LABEL}")
+    wave = notice.locator(".rec-wave")
+    expect(wave).to_have_attribute("data-signal", "live")
+    # A tone lifts the bars off their resting sliver.
+    page.wait_for_function(
+        "[...document.querySelectorAll('.composer-mic-notice .rec-wave-bars > i')]"
+        ".some(i => i.style.transform !== 'scaleY(0.08)')",
+        timeout=6_000,
+    )
+    expect(notice.locator(".mic-notice-silent")).to_be_hidden()
+    expect(notice).not_to_have_class("is-silent")
+
+    mic.click()
+    expect(wave).to_have_count(0)
+    # The page closes the context it opened for the strip when the take ends.
+    page.wait_for_function(
+        "(n) => window.__watchClosed > n", arg=closed_before, timeout=6_000
+    )
 
 
 # WebKit cannot build the fake input above, so the phone engine checks the

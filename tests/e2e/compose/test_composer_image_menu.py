@@ -84,7 +84,7 @@ def _pick(page: Page, option: str):
     return fc.value
 
 
-def test_attach_button_menu_reaches_all_four_options(
+def test_attach_button_menu_reaches_all_four_options_and_a_large_file_round_trips(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
     authed_page.route(re.compile(r".*/api/status$"), _status_with_ocr(True))
@@ -125,6 +125,8 @@ def test_attach_button_menu_reaches_all_four_options(
     assert not chooser.element.get_attribute("accept")
     assert "composer-large-input" in chooser.element.get_attribute("class")
 
+    _assert_large_file_round_trip_appends_a_not_read_line(authed_page)
+
 
 def test_attach_menu_without_ocr_keeps_three_options(
     authed_page: Page, base_url: str, launched_pty_session: str
@@ -146,9 +148,7 @@ def test_attach_menu_without_ocr_keeps_three_options(
     expect(authed_page.locator(OCR_OPTION)).to_have_count(0)
 
 
-def test_large_file_round_trip_appends_a_not_read_line(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
+def _assert_large_file_round_trip_appends_a_not_read_line(page: Page) -> None:
     """#1430, end to end: the large-file input uploads the raw file through the
     webapp to the disposable session-host, which stores it under its large leaf,
     and the composer appends a line telling the agent not to read it, with the
@@ -157,14 +157,12 @@ def test_large_file_round_trip_appends_a_not_read_line(
     Not mocked: WebKit does not expose a File request body to Playwright's
     route interception (it reads as 0 bytes), so the stored file on disk is
     the proof of what was sent."""
-    _open_composer(authed_page, base_url, launched_pty_session)
-
     payload = b"z" * (3 * 1024 * 1024)
-    authed_page.locator(f"{COMPOSER} .composer-large-input").set_input_files(
+    page.locator(f"{COMPOSER} .composer-large-input").set_input_files(
         files=[{"name": "e2e-stub-scans.zip", "mimeType": "application/zip", "buffer": payload}]
     )
 
-    value = authed_page.locator(f"{COMPOSER} .composer-input")
+    value = page.locator(f"{COMPOSER} .composer-input")
     expect(value).to_have_value(re.compile(r"^Large file \(3 MB\)"))
     text = value.input_value()
     assert "Do not read it into context" in text

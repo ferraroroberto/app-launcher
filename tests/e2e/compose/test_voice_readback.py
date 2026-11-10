@@ -109,12 +109,19 @@ def _load_readback(page: Page, base_url: str) -> None:
     page.evaluate(_LOAD_XTERM)
 
 
-def test_color_path_classifies_bullets_from_real_buffer(
+def test_color_path_classifies_bullets_and_speech_finishes_speaks_and_cancels(
     authed_page: Page, base_url: str
 ) -> None:
     """The live cell-colour reader, end-to-end: a default/white ● opens an
     assistant block; a green ● opens a tool block. Drives a real xterm Terminal
-    so bufferToRows + the colour classifier run, not just the pure segmenter."""
+    so bufferToRows + the colour classifier run, not just the pure segmenter.
+
+    Then the Web Speech path: when a reply finishes reading on its own, the
+    button resets to idle and a 'Finished reading' toast confirms it (the iOS
+    onend-unreliability fix: the watchdog/onend must finalize, not leave the
+    button stuck). speak() queues per-sentence utterances; cancelSpeech()
+    stops them."""
+    authed_page.add_init_script(_SPEECH_MOCK)
     _load_readback(authed_page, base_url)
     got = authed_page.evaluate(
         r"""() => {
@@ -140,21 +147,24 @@ def test_color_path_classifies_bullets_from_real_buffer(
     assert got["blocks"] == ["First reply here.", "Second reply here."]
     assert got["last"] == "Second reply here."
 
+    authed_page.evaluate("() => window.__readback.speak('All done now.')")
+    expect(authed_page.locator("#toast")).to_contain_text(
+        "Finished reading", timeout=5000
+    )
+    expect(authed_page.locator("#terminalMenu")).to_have_attribute(
+        "data-speaking", "false"
+    )
 
-def test_speak_synthesizes_then_cancels(
-    authed_page: Page, base_url: str
-) -> None:
-    """speak() queues per-sentence utterances; cancelSpeech() stops them."""
-    authed_page.add_init_script(_SPEECH_MOCK)
-    _load_readback(authed_page, base_url)
+    # Idle again: start the speech stub's record afresh for the next read.
     result = authed_page.evaluate(
-        "() => { window.__readback.speak('Build is green. Merge now.');"
-        " return { spoken: window.speechSynthesis._spoken,"
-        "          resumes: window.speechSynthesis._resumes }; }"
+        "() => { const s = window.speechSynthesis;"
+        " s._spoken = []; s._cancels = 0; s._resumes = 0;"
+        " window.__readback.speak('Build is green. Merge now.');"
+        " return { spoken: s._spoken, resumes: s._resumes }; }"
     )
     # One utterance per sentence.
     assert result["spoken"] == ["Build is green.", "Merge now."]
-    # iOS can start the queue paused — speak() must kick it with resume().
+    # iOS can start the queue paused, so speak() must kick it with resume().
     assert result["resumes"] >= 1
     # speak() must NOT pre-cancel when idle (the iOS cancel→speak silence bug);
     # only the explicit cancelSpeech() cancels.
@@ -163,23 +173,6 @@ def test_speak_synthesizes_then_cancels(
         " return window.speechSynthesis._cancels; }"
     )
     assert cancels == 1
-
-
-def test_speech_finish_resets_and_toasts(
-    authed_page: Page, base_url: str
-) -> None:
-    """When the reply finishes reading on its own, the button resets to idle
-    and a 'Finished reading' toast confirms it (the iOS onend-unreliability
-    fix — the watchdog/onend must finalize, not leave the button stuck)."""
-    authed_page.add_init_script(_SPEECH_MOCK)
-    _load_readback(authed_page, base_url)
-    authed_page.evaluate("() => window.__readback.speak('All done now.')")
-    expect(authed_page.locator("#toast")).to_contain_text(
-        "Finished reading", timeout=5000
-    )
-    expect(authed_page.locator("#terminalMenu")).to_have_attribute(
-        "data-speaking", "false"
-    )
 
 
 def test_new_dictation_cancels_speech(

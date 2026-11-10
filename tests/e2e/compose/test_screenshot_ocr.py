@@ -55,9 +55,13 @@ def _stage(page: Page, name: str) -> None:
     )
 
 
-def test_screenshot_staging_accumulates_and_removes(
+def test_screenshot_staging_accumulates_removes_and_clears_on_leaving_the_terminal(
     authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
+    """Staged screenshots accumulate across taps and drop one at a time;
+    leaving the terminal drops the rest (no leak across sessions). Before #980
+    this was the compose bar's own close toggle; the composer is always docked
+    now, so the leave-terminal reset is the only teardown."""
     page = authed_page
     _open_compose(page, base_url, launched_pty_session)
 
@@ -84,20 +88,8 @@ def test_screenshot_staging_accumulates_and_removes(
     expect(thumbs).to_have_count(1)
     expect(extract).to_have_text("Extract text (1)")
 
-
-def test_screenshot_staging_cleared_when_leaving_terminal(
-    authed_page: Page, base_url: str, launched_pty_session: str
-) -> None:
-    """Leaving the terminal drops staged images (no leak across sessions).
-    Before #980 this was the compose bar's own close toggle; the composer is
-    always docked now, so the leave-terminal reset is the only teardown."""
-    page = authed_page
-    _open_compose(page, base_url, launched_pty_session)
-
-    _stage(page, "a.png")
-    expect(page.locator(TRAY)).to_be_visible()
-
+    # Leave the terminal with one still staged → the tray empties.
     page.locator("#terminalBack").click()
     expect(page.locator("#terminalOverlay")).to_be_hidden(timeout=10_000)
-    expect(page.locator(TRAY)).to_be_hidden()
-    expect(page.locator(THUMBS)).to_have_count(0)
+    expect(tray).to_be_hidden()
+    expect(thumbs).to_have_count(0)
