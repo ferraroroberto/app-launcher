@@ -43,3 +43,22 @@ def test_every_tab_lives_inside_the_one_app_container() -> None:
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     assert len(re.findall(r'^\s*<main class="app">', index, flags=re.M)) == 1
     assert index.index('<nav class="tabs"') < index.index("\n  <main class=\"app\">")
+
+
+def test_session_overlay_takes_the_same_offset_after_its_own_padding() -> None:
+    """The overlay is fixed outside ``.app``, so it needs the offset itself.
+
+    Its base rule sets the safe-area padding in ``terminal.css``; the standalone
+    rule must be in the same sheet, after it, or the equal-specificity base rule
+    wins. Plain padding on the one overlay that holds the chat and the terminal.
+    """
+    css = stylesheet_text()
+    overlay_base = css.index(".terminal-overlay {")
+    matches = list(re.finditer(_STANDALONE_PHONE, css, flags=re.S))
+    blocks = [m for m in matches if ".terminal-overlay {" in m.group(1)]
+    assert len(blocks) == 1, "the overlay needs exactly one standalone-phone rule"
+    assert blocks[0].start() > overlay_base
+    body = blocks[0].group(1)
+    assert "padding-top: calc(env(safe-area-inset-top, 0px) + var(--standalone-head-offset));" in body
+    for prop in ("transform", "will-change", "filter", "position"):
+        assert prop not in body, prop
