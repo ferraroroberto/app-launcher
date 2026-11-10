@@ -74,6 +74,7 @@ import { ownerNeedsCount, renderOwnerChecks } from './board/owner-checks.js';
 import { doneEarlierLoaded, renderDoneEarlier } from './board/done-earlier.js';
 import { doneActions, proofGapChips } from './board/proof-chip.js';
 import { ciFailing, renderCiCard } from './board/ci-card.js';
+import { pollIdeas, renderIdeas, wireIdeas } from './board/ideas-card.js';
 import {
   bucketChipEls, bucketNodes, hasBuckets, notPlannedCount,
 } from './board/backlog-buckets.js';
@@ -770,6 +771,7 @@ export function renderBoard() {
   renderBacklogFoot(body, ghLoaded);
   renderDoneEarlier(ghLoaded);
   renderChiefPlan(body, liveRead);
+  renderIdeas(body, liveRead);
   renderStatusLine(body);
   renderBoardHead(body, ghLoaded, liveRead);
   renderBoardBadge();
@@ -812,6 +814,7 @@ export async function fetchBoard() {
   state.boardFetchedAt = Date.now();
   state.chiefPlan = plan;
   renderBoard();
+  pollIdeas();
   // A never-fetched cache (the webapp restarted since the last refresh) heals
   // on the poll too, not only on tab activation — a Board left open across a
   // restart would otherwise sit on "not loaded" until ↻. Still never
@@ -939,6 +942,7 @@ export function wireBoard() {
   });
   wireDispatch();
   wireChiefAnswers();
+  wireIdeas();
   openDesktopColumns();
   els.boardRefresh.addEventListener('click', function () {
     refreshGithub().catch(function (exc) {

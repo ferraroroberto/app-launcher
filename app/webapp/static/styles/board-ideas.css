@@ -1,0 +1,93 @@
+/* The Board's Ideas card and an idea's sheet (board/ideas-card.js,
+   board/idea-sheet.js). The card's rows are the shared action-row, as every
+   Board row; the segment is the vendored segmented control. The sheet is the
+   shared modal, full-screen on the phone like the answer sheet (board.css). */
+
+.board-ideas { margin-top: var(--gap); }
+.board-ideas[hidden] { display: none; }
+.board-ideas-seg { margin: 4px 0 8px; }
+.board-ideas-seg[hidden] { display: none; }
+.board-ideas-list { list-style: none; margin: 0; padding: 0; }
+.board-ideas-empty { padding: 10px 0; margin: 0; }
+.board-ideas-more-row { padding: 4px 0; }
+.board-ideas-more { width: 100%; }
+.board-ideas-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.board-ideas-line[hidden] { display: none; }
+
+/* The sheet reads top to bottom: the idea, where it came from, the decision. */
+.idea-sheet-body { display: flex; flex-direction: column; gap: 6px; }
+.idea-sheet-title {
+  margin: 0;
+  font-size: var(--font-heading-md);
+  line-height: 1.25;
+  text-wrap: balance;
+}
+.idea-sheet-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.idea-sheet-quote {
+  margin: 6px 0;
+  padding: 2px 0 2px 10px;
+  border-left: 3px solid var(--line);
+  font-size: var(--font-body-sm);
+  overflow-wrap: anywhere;
+}
+.idea-sheet-attr {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 6px 0;
+  font-size: var(--font-body-sm);
+}
+.idea-sheet-attr dt { color: var(--muted); }
+.idea-sheet-attr dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.idea-sheet-link { color: var(--accent-text); }
+.idea-sheet-section {
+  margin: 10px 0 0;
+  font-size: var(--font-caption);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.idea-sheet-text { margin: 0; font-size: var(--font-body-sm); }
+.idea-sheet-repo { width: 100%; }
+/* The prompt is long text to edit, so it takes its own height. */
+.idea-sheet-prompt {
+  width: 100%;
+  height: auto;
+  min-height: 12rem;
+  padding: 8px 10px;
+  font: var(--font-code) / 1.5 var(--font-mono);
+  resize: vertical;
+}
+.idea-sheet-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.idea-sheet-tools > span { flex: 1; min-width: 0; }
+.idea-sheet-outcome {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+.idea-sheet-actions[hidden] { display: none; }
+.idea-sheet-note { margin: 0; text-align: center; }
+.idea-sheet-more { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* The filed issue is a link: the reference-pill colours on the chip. */
+a.idea-sheet-issue {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: inset 0 0 0 1px var(--accent-border-soft);
+  text-decoration: none;
+}

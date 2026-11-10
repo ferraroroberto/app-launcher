@@ -55,7 +55,7 @@ function planAge(updatedAt) {
 
 // Running / not running / unknown are three answers: an unreadable
 // session-host can't prove the chief is gone.
-function chiefRunState(body, liveRead) {
+export function chiefRunState(body, liveRead) {
   const columns = (body && body.columns) || {};
   const running = Object.keys(columns).some(function (key) {
     return (columns[key] || []).some(function (c) {
@@ -304,7 +304,7 @@ function planRow(o) {
 
 // A row's trailing chevron (design.md action-row: a row that opens a sheet
 // carries one). It sits outside the main button, so it takes the same tap.
-function chevron(glyph, onTap) {
+export function chevron(glyph, onTap) {
   const el = document.createElement('span');
   el.className = 'board-plan-chevron';
   el.setAttribute('aria-hidden', 'true');

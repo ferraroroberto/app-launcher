@@ -89,6 +89,12 @@ def _load(fleet_config_dir: str) -> Tuple[Optional[ModuleType], str]:
     return module, ""
 
 
+def state_root_for(fleet_config_dir: str) -> Tuple[Optional[Path], str]:
+    """The scan's machine-local state root, or ``(None, reason)`` when the skill cannot serve."""
+    module, reason = _load(fleet_config_dir)
+    return (None, reason) if module is None else (Path(module.state_root()), "")
+
+
 def _revision(raw: Optional[bytes]) -> str:
     return "" if raw is None else hashlib.sha256(raw).hexdigest()[:16]
 
@@ -97,7 +103,7 @@ def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _digest_status(root: Path) -> Dict[str, Any]:
+def digest_status(root: Path) -> Dict[str, Any]:
     """What the newest digest says: date, ideas kept, and one chip per source type."""
     digests = root / "digests"
     try:
@@ -179,7 +185,7 @@ def read_state(fleet_config_dir: str) -> Dict[str, Any]:
     raw, data, problem = _read_document(path)
     state: Dict[str, Any] = {
         "available": True, "reason": "", "exists": raw is not None, "revision": _revision(raw),
-        "editable": False, "problem": problem, "digest": _digest_status(module.state_root()),
+        "editable": False, "problem": problem, "digest": digest_status(module.state_root()),
         "likes": "", "newsletter": [], "youtube": [], "x": [],
     }
     if data is None:

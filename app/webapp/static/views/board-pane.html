@@ -116,6 +116,27 @@
               <div class="board-empty" data-col="claude_turn" hidden></div>
             </div>
           </details>
+          <!-- Ideas (board/ideas-card.js): the inspiration scan's kept ideas and
+               what became of each. Hidden until the scan has written any. -->
+          <details id="boardIdeas" class="card card--collapsible board-ideas" open hidden>
+            <summary data-track="board.fold-ideas" class="collapse-summary">
+              <span class="collapse-main">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-sparkle"></use></svg>
+                <h3 class="collapse-title">Ideas</h3>
+                <span class="collapse-count board-ideas-count"></span>
+              </span>
+              <span class="collapse-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="collapse-body">
+              <div class="segmented board-ideas-seg" role="group" aria-label="Ideas to show">
+                <button data-track="board.ideas-new" type="button" class="segmented-item" aria-pressed="true" data-value="new">New</button>
+                <button data-track="board.ideas-applied" type="button" class="segmented-item" aria-pressed="false" data-value="applied">Applied</button>
+                <button data-track="board.ideas-filtered" type="button" class="segmented-item" aria-pressed="false" data-value="filtered">Filtered</button>
+              </div>
+              <ul class="card-list board-ideas-list"></ul>
+              <p class="board-ideas-line muted small" hidden></p>
+            </div>
+          </details>
         </div>
         <details id="boardColYours" class="card card--collapsible board-col" data-col="your_turn" open>
           <summary data-track="board.fold-your-turn" class="collapse-summary">
