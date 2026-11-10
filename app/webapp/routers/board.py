@@ -350,8 +350,7 @@ async def _build_board_payload(cfg: WebappConfig, steps: BuildSteps) -> Dict[str
         .replace("+00:00", "Z"),
         "columns": columns,
         "github": _github_section(github),
-        # Red default-branch CI per fleet repo, from its own cache: the CI
-        # cards in ``other`` are unknown, not absent, while this is false.
+        # Red CI per fleet repo; ``available: false`` means CI is unknown, not green.
         "ci": ci_runs.section(ci_snap),
         # ``available: false`` means the session-host could not be read, so
         # Claude's turn and Your turn are unknown, not empty — the

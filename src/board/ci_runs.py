@@ -35,6 +35,10 @@ STATE_UNKNOWN = "unknown"
 
 #: The conclusions the mailbox contract calls a failure.
 RED_CONCLUSIONS = frozenset({"failure", "timed_out", "startup_failure"})
+#: GitHub's run status once a run has finished.
+_GH_COMPLETED = "completed"
+#: The Board card's state for a red workflow, as a failed Job card says it.
+CARD_FAILED = "failed"
 #: A run that ends neither way (cancelled, skipped, neutral) says nothing
 #: about the branch, so the streak looks past it.
 _GREEN_CONCLUSIONS = frozenset({"success"})
@@ -89,7 +93,7 @@ def summarize(runs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     by_workflow: Dict[Any, List[Dict[str, Any]]] = {}
     for run in runs:
-        if run.get("status") != "completed":
+        if run.get("status") != _GH_COMPLETED:
             continue
         conclusion = run.get("conclusion")
         if conclusion not in RED_CONCLUSIONS and conclusion not in _GREEN_CONCLUSIONS:
@@ -221,7 +225,7 @@ def board_cards(snap: Dict[str, Any], *, now: Optional[datetime] = None) -> List
         for red in result.get("red") or []:
             since = parse_iso(red.get("red_since"))
             cards.append({
-                "kind": "ci", "repo": name, "state": "failed",
+                "kind": "ci", "repo": name, "state": CARD_FAILED,
                 "workflow": red["workflow"], "run_id": red["run_id"],
                 "run_url": red.get("run_url"), "conclusion": red.get("conclusion"),
                 "age_seconds": age_seconds(since, moment) if since else None,

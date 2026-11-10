@@ -113,9 +113,8 @@ async def get_config(request: Request) -> Dict[str, Any]:
         "chief_doorbell": cfg.chief_doorbell,
         # Queue drain, on by default; Settings > Chief's Auto-drain switch.
         "chief_auto_drain": cfg.chief_auto_drain,
-        # Failed Job runs reach the chief mailbox; on by default.
+        # Failed Job runs and red main-branch CI reach the chief mailbox; on by default.
         "chief_job_failures": cfg.chief_job_failures,
-        # Red default-branch GitHub CI reaches the chief mailbox; on by default.
         "chief_ci_failures": cfg.chief_ci_failures,
         # Chief automations fleet-config reads; off by default.
         "chief_job_self_heal": cfg.chief_job_self_heal,
