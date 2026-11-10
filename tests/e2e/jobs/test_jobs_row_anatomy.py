@@ -117,6 +117,29 @@ _LAYOUT = """
 """
 
 
+def _kebab_holds_five_actions_remove_last(page: Page, row) -> None:
+    """Was test_the_kebab_holds_run_pause_dry_run_edit_and_remove."""
+    row.locator(".action-row-kebab").click()
+    labels = [
+        "Run Nightly reconciliation now",
+        "Pause schedule for Nightly reconciliation",
+        "Dry-run check",
+        "Edit Nightly reconciliation",
+        "Remove Nightly reconciliation",
+    ]
+    menu = open_row_menu(page)
+    for label in labels:
+        expect(menu.get_by_role("menuitem", name=label, exact=True)).to_be_visible()
+    # Remove is last, the danger item; Edit no longer waits for an Edit mode.
+    # An item whose caption is its whole name carries no aria-label.
+    assert menu.locator(".row-menu-item").evaluate_all(
+        "els => els.map((e) => e.getAttribute('aria-label') || e.textContent.trim())"
+    ) == labels
+    expect(menu.locator("[data-item=job-remove-item]")).to_have_class(re.compile(r"\brow-menu-danger\b"))
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()
+
+
 def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     authed_page: Page, base_url: str
 ) -> None:
@@ -168,26 +191,7 @@ def test_row_is_avatar_name_one_meta_line_history_and_a_kebab_of_five_actions(
     ]
     assert colours[0] != colours[1], f"live dot drawn in the unconfirmed amber: {colours}"
 
-    # -- was test_the_kebab_holds_run_pause_dry_run_edit_and_remove --
-    row.locator(".action-row-kebab").click()
-    labels = [
-        "Run Nightly reconciliation now",
-        "Pause schedule for Nightly reconciliation",
-        "Dry-run check",
-        "Edit Nightly reconciliation",
-        "Remove Nightly reconciliation",
-    ]
-    menu = open_row_menu(authed_page)
-    for label in labels:
-        expect(menu.get_by_role("menuitem", name=label, exact=True)).to_be_visible()
-    # Remove is last, the danger item; Edit no longer waits for an Edit mode.
-    # An item whose caption is its whole name carries no aria-label.
-    assert menu.locator(".row-menu-item").evaluate_all(
-        "els => els.map((e) => e.getAttribute('aria-label') || e.textContent.trim())"
-    ) == labels
-    expect(menu.locator("[data-item=job-remove-item]")).to_have_class(re.compile(r"\brow-menu-danger\b"))
-    authed_page.keyboard.press("Escape")
-    expect(menu).to_be_hidden()
+    _kebab_holds_five_actions_remove_last(authed_page, row)
 
     # -- was test_everything_demoted_is_in_the_detail_block (merged in #1215;
     # last: opening the sheet re-renders the list). Since #1438 the detail
