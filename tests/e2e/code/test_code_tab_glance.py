@@ -36,6 +36,8 @@ _UNKNOWN = _session("s-unknown", None, None)
 
 
 def _mock(page: Page, sessions: list[dict]) -> None:
+    """Route-mock the list; the sessions route reads ``sessions`` per request,
+    so a test swaps its contents and reloads to show another list."""
     def json_route(pattern: str, body: dict) -> None:
         page.route(re.compile(pattern), lambda route: route.fulfill(
             status=200, content_type="application/json", body=_json.dumps(body)))
@@ -48,10 +50,11 @@ def _row(page: Page, sid: str):
     return page.locator(f'#sessionsList li[data-session-id="{sid}"]')
 
 
-def test_rows_carry_the_boards_needs_you_and_stalled_chips(
+def test_rows_carry_the_boards_chips_and_the_header_falls_back_to_the_plain_count(
     authed_page: Page, base_url: str
 ) -> None:
-    _mock(authed_page, [_CHIEF, _WAITING, _STALLED, _WORKING, _UNKNOWN])
+    sessions = [_CHIEF, _WAITING, _STALLED, _WORKING, _UNKNOWN]
+    _mock(authed_page, sessions)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     waiting = _row(authed_page, "s-wait").locator(".session-attention")
@@ -73,16 +76,10 @@ def test_rows_carry_the_boards_needs_you_and_stalled_chips(
     expect(parts.nth(0)).to_have_attribute("data-tone", "danger")
     expect(parts.nth(1)).to_have_attribute("data-tone", "attention")
 
-
-def test_header_falls_back_to_the_plain_count(
-    authed_page: Page, base_url: str
-) -> None:
-    """Nothing waits on the user (one row's placement unknown): the plain
-    count, with no running-apps or git part (#1434)."""
-    _mock(authed_page, [_CHIEF, _WORKING, _UNKNOWN])
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    head = authed_page.locator("#homeHeadStatus")
+    # Nothing waits on the user (one row's placement unknown): the plain
+    # count, with no running-apps or git part (#1434).
+    sessions[:] = [_CHIEF, _WORKING, _UNKNOWN]
+    authed_page.reload(wait_until="domcontentloaded")
     expect(head).to_have_text("3 sessions")
     expect(head.locator(".head-exception")).to_have_count(0)
     expect(head).not_to_contain_text("running")
@@ -90,11 +87,16 @@ def test_header_falls_back_to_the_plain_count(
 
 
 @pytest.mark.iphone
-def test_header_exceptions_fit_at_390px(authed_page: Page, base_url: str) -> None:
+def test_header_exceptions_and_a_stopped_chief_row_fit_at_390px(
+    authed_page: Page, base_url: str
+) -> None:
     """The header rule's two parts fit the phone's header line uncut, in their
-    compact form beside the CPU reading, which never hides."""
+    compact form beside the CPU reading, which never hides. With no chief
+    running, its row's title and meta stay uncut beside the Start and Resume
+    verbs (#1434)."""
     authed_page.set_viewport_size({"width": 390, "height": 844})
-    _mock(authed_page, [_CHIEF, _WAITING, _STALLED])
+    sessions = [_CHIEF, _WAITING, _STALLED]
+    _mock(authed_page, sessions)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     head = authed_page.locator("#homeHeadStatus")
     expect(head).to_have_text("1 stalled · 1 you")
@@ -103,14 +105,8 @@ def test_header_exceptions_fit_at_390px(authed_page: Page, base_url: str) -> Non
     )
     assert widths[1] <= widths[0], f"the header line is cut at 390px: {widths}"
 
-
-@pytest.mark.iphone
-def test_stopped_chief_row_fits_at_390px(authed_page: Page, base_url: str) -> None:
-    """With no chief running, its row's title and meta stay uncut beside the
-    Start and Resume verbs on a phone (#1434)."""
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    _mock(authed_page, [_WORKING])
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    sessions[:] = [_WORKING]
+    authed_page.reload(wait_until="domcontentloaded")
     row = authed_page.locator("#sessionsList .chief-stopped-row")
     expect(row.locator(".srow-title")).to_have_text("Chief")
     expect(row.locator(".srow-meta-text")).to_have_text("stopped")

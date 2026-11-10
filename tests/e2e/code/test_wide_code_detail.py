@@ -89,7 +89,7 @@ def _skip_unless_desktop(browser_name: str) -> None:
         pytest.skip("fine-pointer layout; the WebKit projection is an iPhone")
 
 
-def test_session_opens_beside_the_list_and_switching_keeps_it_open(
+def test_session_opens_beside_the_list_switching_keeps_it_open_and_below_1100px_it_covers(
     authed_page: Page, base_url: str, browser_name: str
 ) -> None:
     _skip_unless_desktop(browser_name)
@@ -136,18 +136,12 @@ def test_session_opens_beside_the_list_and_switching_keeps_it_open(
     expect(empty).to_be_visible()
     expect(_row(page, _B)).not_to_have_attribute("aria-current", "true")
 
-
-def test_below_1100px_the_view_still_covers_the_window(
-    authed_page: Page, base_url: str, browser_name: str
-) -> None:
-    _skip_unless_desktop(browser_name)
-    page = authed_page
+    # Below the wide breakpoint the view still covers the whole window.
     page.set_viewport_size({"width": 1099, "height": 800})
-    _mock(page)
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    expect(page.locator("#sessionDetailEmpty")).to_be_hidden()
+    page.reload(wait_until="domcontentloaded")
+    expect(empty).to_be_hidden()
     _row(page, _A).locator(".session-open").click()
-    expect(page.locator("#terminalOverlay")).to_be_visible()
+    expect(overlay).to_be_visible()
     view = _box(page, "#terminalOverlay")
     width = _fixed_width(page)
     assert view["x"] == 0 and view["width"] == width, f"view no longer covers: {view}"

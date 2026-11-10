@@ -83,12 +83,23 @@ def _pick_model(page: Page, model: str) -> None:
     expect(page.locator("#piModel")).to_have_attribute("data-value", model, timeout=5_000)
 
 
-def test_pi_effort_row_follows_the_model_and_edits_its_override(
+@pytest.mark.iphone
+def test_pi_effort_row_fits_the_phone_width_follows_the_model_and_edits_its_override(
     authed_page: Page, base_url: str
 ) -> None:
     state = _mock_config(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     open_agent_sheet(authed_page, "pi")
+    # The longer "Model default (...)" text must not push the select out of
+    # its sheet.
+    box = stable_eval(
+        authed_page.locator("#piEffort"),
+        "el => { const r = el.getBoundingClientRect(); const s = el.closest('dialog').getBoundingClientRect();"
+        " return [r.left, r.right, s.left, s.right, el.scrollWidth, el.clientWidth]; }",
+    )
+    left, right, sheet_left, sheet_right, scroll_width, client_width = box
+    assert sheet_left <= left and right <= sheet_right, box
+    assert scroll_width <= client_width, box
     effort = authed_page.locator("#piEffort")
     chosen = effort.locator("option:checked")
 
@@ -120,20 +131,3 @@ def test_pi_effort_row_follows_the_model_and_edits_its_override(
     expect(effort).to_have_value("")
     assert state["overrides"] == {}
     close_settings_sheets(authed_page)
-
-
-@pytest.mark.iphone
-def test_pi_effort_row_fits_the_phone_width(authed_page: Page, base_url: str) -> None:
-    """The longer "Model default (...)" text must not push the select out of
-    its sheet."""
-    _mock_config(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    open_agent_sheet(authed_page, "pi")
-    box = stable_eval(
-        authed_page.locator("#piEffort"),
-        "el => { const r = el.getBoundingClientRect(); const s = el.closest('dialog').getBoundingClientRect();"
-        " return [r.left, r.right, s.left, s.right, el.scrollWidth, el.clientWidth]; }",
-    )
-    left, right, sheet_left, sheet_right, scroll_width, client_width = box
-    assert sheet_left <= left and right <= sheet_right, box
-    assert scroll_width <= client_width, box

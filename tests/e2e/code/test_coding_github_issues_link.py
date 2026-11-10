@@ -34,13 +34,15 @@ def _row(slug: str, repo_url: str | None) -> dict:
     }
 
 
-def _install_routes(page: Page, repo_url: str | None) -> None:
+def _install_routes(page: Page, repo: dict) -> None:
+    """Mock /api/apps with one row whose ``repo_url`` is read per request,
+    so a test can drop the remote and reload."""
     def _apps(route):
         route.fulfill(
             status=200,
             content_type="application/json",
             body=json.dumps(
-                {"scan_root": "E:/automation", "apps": [_row("alpha", repo_url)]}
+                {"scan_root": "E:/automation", "apps": [_row("alpha", repo["url"])]}
             ),
         )
 
@@ -63,11 +65,12 @@ def _github_item(page: Page):
     return menu.locator("[data-item=project-github-btn]")
 
 
-def test_github_icon_opens_open_issues_sorted_by_updated(
+def test_github_icon_opens_open_issues_sorted_by_updated_and_is_disabled_without_a_remote(
     authed_page: Page, base_url: str
 ) -> None:
     repo_url = "https://github.com/ferraroroberto/app-launcher"
-    _install_routes(authed_page, repo_url)
+    repo = {"url": repo_url}
+    _install_routes(authed_page, repo)
     # Capture window.open before the SPA loads — don't actually navigate.
     authed_page.add_init_script(
         "window.__opened = [];"
@@ -88,11 +91,9 @@ def test_github_icon_opens_open_issues_sorted_by_updated(
     )
     assert opened == [expected], f"window.open called with {opened!r}, expected [{expected!r}]"
 
-
-def test_github_icon_disabled_without_repo_url(authed_page: Page, base_url: str) -> None:
-    _install_routes(authed_page, None)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    # No remote: the row stays, its GitHub item greyed.
+    repo["url"] = None
+    authed_page.reload(wait_until="domcontentloaded")
     _open_projects(authed_page)
-
     expect(authed_page.locator("#claudeList .coding-item")).to_have_count(1)
     expect(_github_item(authed_page)).to_be_disabled()

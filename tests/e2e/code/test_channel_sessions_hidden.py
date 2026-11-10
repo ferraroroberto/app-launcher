@@ -33,12 +33,11 @@ from tests.e2e.fixtures.ui import (
     close_settings_sheets,
     open_row_menu,
     open_settings_sheet,
-    open_tab,
 )
 from tests.e2e.fixtures.waits import flush_requests, stable_eval, wait_until
 
 # Only the two tests that measure geometry or computed style carry ``iphone``
-# (#1220, #1515); the other nine read DOM state and run on Chromium alone.
+# (#1220, #1515); the other four read DOM state and run on Chromium alone.
 pytestmark = pytest.mark.smoke
 
 
@@ -152,15 +151,22 @@ def _open_coding(page: Page, base_url: str) -> None:
     expect(page.locator("#sessionsList")).to_be_attached()
 
 
-def _open_board(page: Page, base_url: str) -> None:
-    open_tab(page, base_url, "#tabBoard", "#paneBoard")
-
-
 @pytest.mark.iphone
-def test_coding_list_swaps_channel_rows_for_a_summary_line(
+def test_coding_list_swaps_channel_rows_for_a_summary_line_the_board_drops_them_and_none_can_be_killed(
     authed_page: Page, base_url: str
 ) -> None:
+    """The Coding list shows one Telegram summary row in place of the channel
+    sessions. The Board leaves them out of its lanes and carries no Telegram
+    row of its own (#1436, decision 4 of #1432). Whatever UI reaches
+    ``stopSession`` (the Board drawer passes a stripped ``{session_id, name}``),
+    a hidden Telegram session is not stopped."""
     _mock(authed_page)
+    stops: list = []
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/[^/]+/stop$"),
+        lambda route: (stops.append(route.request.url),
+                       route.fulfill(status=200, content_type="application/json", body="{}")),
+    )
     _open_coding(authed_page, base_url)
 
     rows = authed_page.locator("#sessionsList li.session-item")
@@ -176,16 +182,18 @@ def test_coding_list_swaps_channel_rows_for_a_summary_line(
     box = summary.bounding_box()
     assert box and box["height"] >= 44, f"summary line is not a 44px target: {box}"
 
+    authed_page.evaluate(
+        """async () => {
+          const { stopSession } = await import('/static/sessions.js');
+          await stopSession({ session_id: 's-tg-health', name: 'life-os' });
+        }"""
+    )
+    flush_requests(authed_page)
+    assert stops == [], f"a hidden Telegram session was stopped: {stops}"
+    expect(authed_page.locator("#toast")).to_contain_text("Telegram sessions are protected")
 
-def test_board_drops_channel_cards_and_has_no_telegram_row(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1436 (decision 4 of #1432): the Board leaves Telegram sessions out of
-    its lanes and carries no Telegram row of its own; the Coding tab's row
-    still says how many run."""
-    _mock(authed_page)
-    _open_board(authed_page, base_url)
-
+    authed_page.locator("#tabBoard").click()
+    expect(authed_page.locator("#paneBoard")).to_be_visible()
     cards = authed_page.locator("#boardColumns li.board-item")
     expect(cards).to_have_count(1)
     expect(authed_page.locator("#boardColumns .session-channel-tag")).to_have_count(0)
@@ -282,14 +290,28 @@ def test_a_hidden_channel_session_opens_for_a_look_but_cannot_be_stopped(
     expect(menu.locator("button", has_text="Stop")).to_have_count(0)
 
 
-def test_switching_the_setting_off_restores_rows_cards_and_stop(
+def test_autostart_saves_at_once_and_switching_hiding_off_restores_rows_cards_and_stop(
     authed_page: Page, base_url: str
 ) -> None:
+    """Settings › Telegram's autostart switch reads the server's value (off
+    here) and saves on the tap, like the hide switch below it (#1542).
+    Switching hiding off brings back today's behaviour: every row, tags, no
+    summary, Stop in the menu, every Board card."""
     knobs = _mock(authed_page)
     _open_coding(authed_page, base_url)
     expect(authed_page.locator("#sessionsList li.session-item")).to_have_count(1)
 
     open_settings_sheet(authed_page, "channelsSheet")
+    autostart = authed_page.locator("#autostartChannelSessionsToggle")
+    expect(autostart).to_have_attribute("aria-checked", "false")
+    autostart.click()
+    wait_until(
+        authed_page,
+        lambda: {"autostart_channel_sessions": True} in knobs["posts"],
+        "the autostart setting's POST",
+    )
+    expect(autostart).to_have_attribute("aria-checked", "true")
+
     toggle = authed_page.locator("#hideChannelSessionsToggle")
     expect(toggle).to_have_attribute("aria-checked", "true")
     toggle.click()
@@ -313,52 +335,6 @@ def test_switching_the_setting_off_restores_rows_cards_and_stop(
     expect(authed_page.locator("#boardColumns li.board-item")).to_have_count(3)
 
 
-def test_the_one_kill_path_refuses_a_hidden_channel_session(
-    authed_page: Page, base_url: str
-) -> None:
-    """Whatever UI reaches ``stopSession`` -- the Board drawer passes a stripped
-    ``{session_id, name}`` -- a hidden Telegram session is not stopped."""
-    _mock(authed_page)
-    stops: list = []
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/[^/]+/stop$"),
-        lambda route: (stops.append(route.request.url),
-                       route.fulfill(status=200, content_type="application/json", body="{}")),
-    )
-    _open_coding(authed_page, base_url)
-    expect(authed_page.locator("#sessionsChannelSummary")).to_be_visible()
-
-    authed_page.evaluate(
-        """async () => {
-          const { stopSession } = await import('/static/sessions.js');
-          await stopSession({ session_id: 's-tg-health', name: 'life-os' });
-        }"""
-    )
-    flush_requests(authed_page)
-    assert stops == [], f"a hidden Telegram session was stopped: {stops}"
-    expect(authed_page.locator("#toast")).to_contain_text("Telegram sessions are protected")
-
-
-def test_autostart_switch_is_off_by_default_and_saves_at_once(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1542: Settings › Telegram's autostart switch reads the server's value
-    (off here) and saves on the tap, like the hide switch above it."""
-    knobs = _mock(authed_page)
-    _open_coding(authed_page, base_url)
-
-    open_settings_sheet(authed_page, "channelsSheet")
-    toggle = authed_page.locator("#autostartChannelSessionsToggle")
-    expect(toggle).to_have_attribute("aria-checked", "false")
-    toggle.click()
-    wait_until(
-        authed_page,
-        lambda: {"autostart_channel_sessions": True} in knobs["posts"],
-        "the autostart setting's POST",
-    )
-    expect(toggle).to_have_attribute("aria-checked", "true")
-
-
 # ------------------------------------------------------------------ #1402
 
 
@@ -367,43 +343,37 @@ def _context_chip(page: Page):
     return page.locator("#sessionsChannelSummary .channel-context-chip")
 
 
-def test_summary_does_not_alert_one_point_under_fifty_percent(
+def test_the_context_chip_shows_from_fifty_percent_and_follows_the_context(
     authed_page: Page, base_url: str
 ) -> None:
+    """No chip one point under 50 %; at 50 % an attention chip names the
+    highest figure (#1434); it follows each slow read with no reload, and
+    goes once the session compacts."""
+    _fake_clock.install(authed_page)
     knobs = _mock(authed_page)
     knobs["pct"] = {"s-tg-health": 49, "s-tg-family": 20}
     _open_coding(authed_page, base_url)
+    _fake_clock.wait_for_interval(authed_page, 5000)
     expect(authed_page.locator("#sessionsChannelSummary")).to_be_visible()
     wait_until(authed_page, lambda: len(knobs["context_hits"]) >= 2,
                "the summary line's context reads")
     flush_requests(authed_page)
     expect(_context_chip(authed_page)).to_have_count(0)
 
-
-def test_summary_shows_the_context_chip_at_fifty_percent(
-    authed_page: Page, base_url: str
-) -> None:
-    knobs = _mock(authed_page)
     knobs["pct"] = {"s-tg-health": 42, "s-tg-family": 50}
-    _open_coding(authed_page, base_url)
-    # Code: an attention chip naming the highest figure (#1434).
+    _fake_clock.advance(authed_page, 60_000)
+    flush_requests(authed_page)
     chip = _context_chip(authed_page)
     expect(chip).to_have_text("context 50%")
     expect(chip).to_have_attribute("data-tone", "attention")
 
-
-def test_alert_follows_the_context_as_it_changes(
-    authed_page: Page, base_url: str
-) -> None:
-    _fake_clock.install(authed_page)
-    knobs = _mock(authed_page)
     knobs["pct"] = {"s-tg-health": 55}
-    _open_coding(authed_page, base_url)
-    _fake_clock.wait_for_interval(authed_page, 5000)
-    expect(_context_chip(authed_page)).to_have_text("context 55%")
+    _fake_clock.advance(authed_page, 60_000)
+    flush_requests(authed_page)
+    expect(chip).to_have_text("context 55%")
 
     # The session compacts: its next slow read is under the threshold and the
-    # icon goes away without a reload.
+    # chip goes away without a reload.
     knobs["pct"] = {"s-tg-health": 8}
     _fake_clock.advance(authed_page, 60_000)
     flush_requests(authed_page)
@@ -468,5 +438,3 @@ def test_popup_compact_sends_slash_compact_through_the_verified_route(
     # Compact acts; it does not open the read-only look underneath.
     expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
     expect(dialog).to_be_visible()
-
-

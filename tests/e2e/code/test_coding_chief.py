@@ -73,22 +73,76 @@ def _mock_ensure(page: Page, captured: dict, *, spawned: bool = True) -> None:
     page.route(re.compile(r".*/api/board/chief/ensure$"), _capture)
 
 
-def test_chief_row_shows_crown_worker_row_does_not(
+def _restart_chief(page: Page, captured: dict, toast: str) -> None:
+    """Restart from the running chief's kebab: the themed confirm, then one
+    ensure POST with fresh:true AND resume:true, and the toast names the
+    outcome (#617 / #649, moved from the Board's chief card in #1436)."""
+    captured.clear()
+    row = page.locator('#sessionsList li[data-session-id="s-chief"]')
+    row.locator(".session-kebab").click()
+    restart = open_row_menu(page).locator("[data-item=chief-restart-btn]")
+    expect(restart).to_be_visible()
+    restart.click()
+    # Restart asks in the themed confirm (#1501), same words as before.
+    expect(page.locator("#confirmDialogTitle")).to_have_text("Restart the chief?")
+    expect(page.locator("#confirmDialogMessage")).to_contain_text(
+        "stop the current one gracefully")
+    page.locator("#confirmDialogOk").click()
+    wait_until(page, lambda: captured.get("method") == "POST", "Restart's ensure POST")
+    assert captured["body"].get("fresh") is True, captured["body"]
+    assert captured["body"].get("resume") is True, captured["body"]
+    expect(page.locator("#toast")).to_contain_text(toast)
+
+
+def test_a_running_chief_is_crowned_its_kebab_restarts_it_and_a_worker_has_neither(
     authed_page: Page, base_url: str
 ) -> None:
+    """A running chief's row is crowned and carries no Start / Resume; Restart
+    and Chief settings sit in its kebab, before Stop, which stays last (#1434).
+    Restart is a graceful stop-then-resume of the same conversation, never the
+    session-host restart; with nothing resumable it degrades to a fresh spawn
+    and the toast says so. The worker's row has no crown and neither item."""
     _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
+    captured: dict = {}
+    outcome = {"resumed": True, "resume_fallback_reason": ""}
+
+    def _ensure(route):
+        captured["method"] = route.request.method
+        captured["body"] = route.request.post_data_json
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
+            "session_id": "s-chief", "spawned": True, **outcome,
+        }))
+
+    authed_page.route(re.compile(r".*/api/board/chief/ensure$"), _ensure)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
-    chief_row = authed_page.locator(
-        '#sessionsList li[data-session-id="s-chief"]'
-    )
-    worker_row = authed_page.locator(
-        '#sessionsList li[data-session-id="s-work"]'
-    )
+    chief_row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
+    worker_row = authed_page.locator('#sessionsList li[data-session-id="s-work"]')
     expect(chief_row).to_have_class(re.compile(r"session-item-chief"))
     expect(chief_row.locator(".board-chief-crown")).to_have_count(1)
     expect(worker_row).not_to_have_class(re.compile(r"session-item-chief"))
     expect(worker_row.locator(".board-chief-crown")).to_have_count(0)
+    expect(authed_page.locator("#codingChiefStart")).to_have_count(0)
+    expect(authed_page.locator("#codingChiefResume")).to_have_count(0)
+
+    chief_row.locator(".session-kebab").click()
+    items = open_row_menu(authed_page).locator(".row-menu-item")
+    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_be_visible()
+    expect(items.last).to_have_attribute("data-item", "action-stop-close")
+
+    # The worker's menu has neither.
+    authed_page.keyboard.press("Escape")
+    worker_row.locator(".session-kebab").click()
+    expect(open_row_menu(authed_page).locator("[data-item=action-stop-close]")).to_be_visible()
+    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_have_count(0)
+    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_have_count(0)
+    authed_page.keyboard.press("Escape")
+
+    _restart_chief(authed_page, captured, "Chief resumed")
+    outcome.update(resumed=False,
+                   resume_fallback_reason="no resumable chief conversation found in the last 24h")
+    _restart_chief(authed_page, captured, "No resumable conversation")
 
 
 @pytest.mark.iphone
@@ -205,15 +259,33 @@ def test_chief_row_is_pinned_first(authed_page: Page, base_url: str) -> None:
     expect(rows.first).to_have_attribute("data-session-id", "s-chief")
 
 
-def test_coding_tab_offers_manual_start_when_chief_down(
+def test_a_stopped_chief_row_offers_start_resume_and_its_settings(
     authed_page: Page, base_url: str
 ) -> None:
     """#1434 (was #547's separate status line): with no chief running, the
-    chief's own row leads the list, crowned, with Start and Resume on it."""
+    chief's own row leads the list, crowned, with Start and Resume on it.
+    Chief settings in its kebab opens Settings with the Chief sheet open and
+    filled from GET /api/config (#1435; it opened the Board's own dialog
+    before). That read is patched for a deterministic worker cap; every other
+    /api/config call passes through to the disposable server."""
     _mock_sessions(authed_page, [_WORKER_SESSION])
     captured: dict = {}
     _mock_ensure(authed_page, captured, spawned=True)
 
+    def _config(route):
+        if route.request.method != "GET":
+            route.continue_()
+            return
+        body = route.fetch().json()
+        body.update(
+            chief_model="fable", chief_worker_cap=2,
+            chief_worker_cap_min=1, chief_worker_cap_max=10,
+        )
+        route.fulfill(
+            status=200, content_type="application/json", body=_json.dumps(body),
+        )
+
+    authed_page.route(re.compile(r".*/api/config$"), _config)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
 
     first = authed_page.locator("#sessionsList > li").first
@@ -250,59 +322,6 @@ def test_coding_tab_offers_manual_start_when_chief_down(
     assert captured["body"].get("resume") is True, captured["body"]
     assert captured["body"].get("restart") is True, captured["body"]
 
-
-def test_coding_tab_hides_start_when_chief_alive(
-    authed_page: Page, base_url: str
-) -> None:
-    """A running chief's row carries no Start / Resume; Restart and Chief
-    settings sit in its kebab, before Stop, which stays last (#1434)."""
-    _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    chief_row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
-    expect(chief_row).to_be_visible()
-    expect(authed_page.locator("#codingChiefStart")).to_have_count(0)
-    expect(authed_page.locator("#codingChiefResume")).to_have_count(0)
-
-    chief_row.locator(".session-kebab").click()
-    items = open_row_menu(authed_page).locator(".row-menu-item")
-    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_be_visible()
-    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_be_visible()
-    expect(items.last).to_have_attribute("data-item", "action-stop-close")
-
-    # The worker's menu has neither.
-    worker_row = authed_page.locator('#sessionsList li[data-session-id="s-work"]')
-    authed_page.keyboard.press("Escape")
-    worker_row.locator(".session-kebab").click()
-    expect(open_row_menu(authed_page).locator("[data-item=action-stop-close]")).to_be_visible()
-    expect(open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")).to_have_count(0)
-    expect(open_row_menu(authed_page).locator("[data-item=chief-settings-btn]")).to_have_count(0)
-
-
-def test_chief_kebab_opens_chief_settings(authed_page: Page, base_url: str) -> None:
-    """Chief settings in the chief row's kebab opens Settings with the Chief
-    sheet open and filled from GET /api/config (#1435; it opened the Board's
-    own dialog before). That read is patched for a deterministic worker cap;
-    every other /api/config call passes through to the disposable server."""
-    _mock_sessions(authed_page, [_WORKER_SESSION])
-
-    def _config(route):
-        if route.request.method != "GET":
-            route.continue_()
-            return
-        body = route.fetch().json()
-        body.update(
-            chief_model="fable", chief_worker_cap=2,
-            chief_worker_cap_min=1, chief_worker_cap_max=10,
-        )
-        route.fulfill(
-            status=200, content_type="application/json", body=_json.dumps(body),
-        )
-
-    authed_page.route(re.compile(r".*/api/config$"), _config)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    first = authed_page.locator("#sessionsList > li").first
     first.locator(".session-kebab").click()
     menu = open_row_menu(authed_page)
     expect(menu.locator("[data-item=chief-settings-btn]")).to_be_visible()
@@ -370,48 +389,3 @@ def test_chief_row_opens_chat_whose_composer_reaches_the_chief(
     wait_until(authed_page, lambda: captured.get("body") is not None, "the chief's input POST")
     assert captured["body"] == {"data": "ok start 229", "submit": True}
     expect(field).to_have_value("")
-
-
-@pytest.mark.parametrize("resumed, fallback_reason, toast", [
-    pytest.param(True, "", "Chief resumed", id="resumable"),
-    pytest.param(
-        False, "no resumable chief conversation found in the last 24h",
-        "No resumable conversation", id="nothing-resumable",
-    ),
-])
-def test_chief_row_restart_confirms_then_resumes_the_conversation(
-    authed_page: Page, base_url: str, resumed: bool, fallback_reason: str, toast: str,
-) -> None:
-    """#617 / #649, moved from the Board's chief card (#1436): Restart in the
-    running chief's kebab confirms, then POSTs ensure with fresh:true AND
-    resume:true — a graceful stop-then-resume of the same conversation, never
-    the session-host restart. With nothing resumable it degrades to a fresh
-    spawn and the toast says so."""
-    _mock_sessions(authed_page, [_CHIEF_SESSION, _WORKER_SESSION])
-    captured: dict = {}
-
-    def _ensure(route):
-        captured["method"] = route.request.method
-        captured["body"] = route.request.post_data_json
-        route.fulfill(status=200, content_type="application/json", body=_json.dumps({
-            "session_id": "s-chief", "spawned": True, "resumed": resumed,
-            "resume_fallback_reason": fallback_reason,
-        }))
-
-    authed_page.route(re.compile(r".*/api/board/chief/ensure$"), _ensure)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-
-    row = authed_page.locator('#sessionsList li[data-session-id="s-chief"]')
-    row.locator(".session-kebab").click()
-    restart = open_row_menu(authed_page).locator("[data-item=chief-restart-btn]")
-    expect(restart).to_be_visible()
-    restart.click()
-    # Restart asks in the themed confirm (#1501), same words as before.
-    expect(authed_page.locator("#confirmDialogTitle")).to_have_text("Restart the chief?")
-    expect(authed_page.locator("#confirmDialogMessage")).to_contain_text(
-        "stop the current one gracefully")
-    authed_page.locator("#confirmDialogOk").click()
-    wait_until(authed_page, lambda: captured.get("method") == "POST", "Restart's ensure POST")
-    assert captured["body"].get("fresh") is True, captured["body"]
-    assert captured["body"].get("resume") is True, captured["body"]
-    expect(authed_page.locator("#toast")).to_contain_text(toast)
