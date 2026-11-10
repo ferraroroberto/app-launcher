@@ -212,21 +212,28 @@ def test_row_carries_a_centred_kebab_and_no_chevron(
     assert open_box["height"] >= 44, open_box["height"]
 
 
-def test_row_menu_holds_the_full_option_set_in_order(
+def test_row_tap_opens_the_session_and_kebab_tap_does_not(
     authed_page: Page, base_url: str
 ) -> None:
-    """#1025 — the kebab's menu carries exactly the options the gear did.
+    """#1025 — the kebab lives outside the row button, so it opens the menu
+    and never the session; the row itself still opens the session.
 
-    The regression this pins is the menu silently emptying: the first attempt
+    The kebab's menu carries exactly the options the gear did. The
+    regression this pins is the menu silently emptying: the first attempt
     deleted every one of these and nothing failed, because no test asserted
     the row's own menu contents. Order and accessible names are both part of
     the contract."""
     _mock_sessions_list(authed_page)
+    stub_session_mirror(authed_page)
     authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
     row = _row(authed_page)
+    overlay = authed_page.locator("#terminalOverlay")
+
+    # Kebab: menu opens, overlay stays shut.
     row.locator(".session-kebab").click()
     menu = authed_page.locator(".session-menu")
     expect(menu).to_be_visible()
+    expect(overlay).to_be_hidden()
 
     # A full-control Claude row offers all eight, top to bottom (this test runs on
     # the desktop projection, the only one that shows Open in a new window).
@@ -249,23 +256,6 @@ def test_row_menu_holds_the_full_option_set_in_order(
     # Stop keeps the hook that tints it danger-red on press.
     expect(menu.locator("[data-item=action-stop-close]")).to_have_count(1)
 
-
-def test_row_tap_opens_the_session_and_kebab_tap_does_not(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1025 — the kebab lives outside the row button, so it opens the menu
-    and never the session; the row itself still opens the session."""
-    _mock_sessions_list(authed_page)
-    stub_session_mirror(authed_page)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    row = _row(authed_page)
-    overlay = authed_page.locator("#terminalOverlay")
-
-    # Kebab: menu opens, overlay stays shut.
-    row.locator(".session-kebab").click()
-    expect(authed_page.locator(".session-menu")).to_be_visible()
-    expect(overlay).to_be_hidden()
-
     # Close the menu (tap the anchor again), then tap the row itself.
     row.locator(".session-kebab").click()
     expect(authed_page.locator(".session-menu")).to_be_hidden()
@@ -273,22 +263,6 @@ def test_row_tap_opens_the_session_and_kebab_tap_does_not(
     authed_page.wait_for_selector(
         "#terminalOverlay:not([hidden])", timeout=OVERLAY_OPEN_MS
     )
-
-
-def test_detached_claude_row_opens_chat(authed_page: Page, base_url: str) -> None:
-    # #966: a detached Claude row reads the same native history a PTY row does.
-    calls: list = []
-    _mock_sessions_list(authed_page, kind="remote")
-    _mock_transcript(authed_page, {None: _OLDER}, calls)
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    row = _row(authed_page)
-    # A detached row has no terminal, so its tap lands straight in Chat — no
-    # mirror stub needed, and since #1025 no gear to go through.
-    open_session_row(authed_page, row)
-    overlay = authed_page.locator("#terminalOverlay")
-    expect(overlay).to_have_attribute("data-mode", "chat")
-    expect(authed_page.locator("#sessionModeTerminal")).to_have_attribute("aria-disabled", "true")
-    expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("older prompt")
 
 
 def test_detached_reader_less_row_still_reaches_rename_and_stop(
@@ -539,6 +513,21 @@ def test_unavailable_reasons_are_distinct_sentences(authed_page: Page, base_url:
     _menu_item(authed_page, "Reload transcript").click()
     expect(state).to_have_text("Couldn’t read the transcript")
 
+    # The third outcome state exists only where it is true: a harness that
+    # reports every failure leaves an unmarked call to mean "it worked", with
+    # no caveat line cluttering every card.
+    unavailable.clear()
+    unavailable.update(_outcome_page(tool_errors="reported", failed=False))
+    _menu_item(authed_page, "Reload transcript").click()
+    group = authed_page.locator("#transcriptList .tr-step")
+    expect(group).to_be_visible()
+    group.locator("summary.tr-step-line").click()
+    item = group.locator(".tr-item").first
+    item.locator("summary").click()
+    expect(item).to_have_js_property("open", True)
+    expect(item.locator(".tr-out")).not_to_have_count(0)
+    expect(item.locator(".tr-outcome-unknown")).to_have_count(0)
+
 
 # Capture writeText payloads on window.__copied, same mock as
 # test_jobs_log_copy.py (#97): headless WebKit clipboard permissions are not
@@ -572,116 +561,36 @@ _CLIPBOARD_AND_TOAST_MOCK = """
 """
 
 
-def test_copy_button_copies_turn_text_and_upgrades_a_truncated_reply(
-    authed_page: Page, base_url: str
-) -> None:
-    """#985: the copy glyph on a user card copies its text outright; on an
-    assistant card whose entry came back ``truncated: true`` it writes the
-    capped text immediately (the iOS-safe synchronous write), then fetches
-    ``/transcript/entry`` and *visibly* upgrades the clipboard — a second
-    toast, never a silent rewrite."""
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    full_reply = "R" * 20_000
-    capped_reply = full_reply[:12_000]
-    page_body = {
+_FULL_REPLY = "R" * 20_000
+_CAPPED_REPLY = _FULL_REPLY[:12_000]
+
+
+def _reply_page(*entries: dict) -> dict:
+    return {
         "available": True, "source": "native", "reason": None, "session_id": _SID,
-        "next_cursor": None,
-        "entries": [
-            {"kind": "user", "timestamp": "2026-09-14T10:01:00Z", "offset": 0,
-             "text": "short prompt", "truncated": False, "sidechain": False},
-            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 4096,
-             "text": capped_reply, "truncated": True, "sidechain": False},
-        ],
+        "next_cursor": None, "entries": list(entries),
     }
-    _mock_transcript(authed_page, {None: page_body}, calls)
 
-    def _entry_handler(route):
-        route.fulfill(
-            status=200, content_type="application/json",
-            body=_json.dumps({
-                "available": True, "reason": None, "session_id": _SID,
-                "text": full_reply, "truncated": False,
-            }),
-        )
 
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript/entry(\?.*)?$"),
-        _entry_handler,
+def _assistant(text: str, *, offset: int = 0, truncated: bool = False) -> dict:
+    return {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": offset,
+            "text": text, "truncated": truncated, "sidechain": False}
+
+
+def _wait_copied(page: Page, n: int) -> None:
+    page.wait_for_function(
+        "n => Array.isArray(window.__copied) && window.__copied.length >= n", arg=n, timeout=3_000,
     )
-    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    row = _row(authed_page)
-    _open_chat(authed_page, row)
-
-    # The user card: a plain, un-truncated copy — one write, one toast, and
-    # the card stays open (the tap must not also toggle the <details>).
-    user_turn = authed_page.locator("#transcriptList .tr-user").first
-    expect(user_turn).to_have_js_property("open", True)
-    user_turn.locator(".tr-turn-copy").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
-    )
-    assert authed_page.evaluate("() => window.__copied[0]") == "short prompt"
-    expect(authed_page.locator(".toast")).to_contain_text("Prompt copied")
-    expect(user_turn).to_have_js_property("open", True)
-
-    # The assistant card: truncated, so the capped text lands first, then the
-    # full entry fetch upgrades it — both writes, and both toasts along the
-    # way, read back from the recorded history rather than the live DOM.
-    assistant_turn = authed_page.locator("#transcriptList .tr-assistant").first
-    assistant_turn.locator(".tr-turn-copy").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 2", timeout=3_000,
-    )
-    assert authed_page.evaluate("() => window.__copied[1]") == capped_reply
-    assert authed_page.evaluate("() => window.__copied[2]") == full_reply
-    toasts = authed_page.evaluate("() => window.__toasts")
-    assert any("loading the full text" in t for t in toasts), toasts
-    assert any("Full reply copied" in t for t in toasts), toasts
-    assert toasts.index(next(t for t in toasts if "loading the full text" in t)) < \
-        toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
 
 
-def _open_chat_on_reply(page: Page, base_url: str, reply: str) -> None:
-    """Open the chat on a transcript holding the one assistant ``reply``, with
-    the clipboard and toast mocked."""
-    _mock_sessions_list(page)
-    page_body = {
-        "available": True, "source": "native", "reason": None, "session_id": _SID,
-        "next_cursor": None,
-        "entries": [
-            {"kind": "assistant", "timestamp": "2026-09-14T10:01:05Z", "offset": 0,
-             "text": reply, "truncated": False, "sidechain": False},
-        ],
-    }
-    _mock_transcript(page, {None: page_body}, [])
-    page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
-
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(page, _row(page))
-
-
-@pytest.mark.iphone
-def test_blockquote_renders_as_a_quote_and_copies_clean_text(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_blockquote_copies_clean_text(page: Page) -> None:
     """#1326: a `>` blockquote in a reply rendered as one run-on paragraph
     with every marker left in, so a draft meant for pasting was unreadable
     and copied with its `>`s. It now renders as an indented quote with a
     left rule, keeps its line breaks, and its own copy button puts the plain
     text on the clipboard without opening or closing the card. The parser's
     edge cases are pinned in ``tests/js/markdown.test.mjs``."""
-    reply = "\n".join([
-        "Here is a draft:", "",
-        "> Hello,", ">", "> The installation was finished in August.", ">",
-        "> Best regards,", "> Name", "",
-        "Send it when ready.",
-    ])
-    _open_chat_on_reply(authed_page, base_url, reply)
-
-    turn = authed_page.locator("#transcriptList .tr-assistant").first
+    turn = page.locator("#transcriptList .tr-assistant").first
     quote = turn.locator("blockquote.md-quote")
     expect(quote).to_be_visible()
     expect(quote.locator(".md-quote-body p")).to_have_count(3)
@@ -692,41 +601,114 @@ def test_blockquote_renders_as_a_quote_and_copies_clean_text(
     expect(turn.locator(".tr-md > p")).to_have_count(2)
 
     quote.locator(".md-quote-copy").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
-    )
-    assert authed_page.evaluate("() => window.__copied[0]") == (
+    _wait_copied(page, 1)
+    assert page.evaluate("() => window.__copied[0]") == (
         "Hello,\n\nThe installation was finished in August.\n\nBest regards,\nName"
     )
-    expect(authed_page.locator(".toast")).to_contain_text("Quote copied")
+    expect(page.locator(".toast")).to_contain_text("Quote copied")
     expect(turn).to_have_js_property("open", True)
 
 
-def test_fenced_block_header_names_the_language_and_copies_the_listing(
-    authed_page: Page, base_url: str
-) -> None:
+def _assert_fence_copies_the_listing(page: Page) -> None:
     """#1474: a fence is a card-surface block with a header carrying the
     language and a copy button that puts the listing, exactly as fenced, on
     the clipboard. Reuses the blockquote copy path (``quote-copy.js``)."""
-    reply = "\n".join([
-        "Run this:", "", "```bash", "git status", "echo \"<done>\"", "```", "",
-        "Then check.",
-    ])
-    _open_chat_on_reply(authed_page, base_url, reply)
-
-    turn = authed_page.locator("#transcriptList .tr-assistant").first
+    turn = page.locator("#transcriptList .tr-assistant").first
     block = turn.locator(".md-block")
     expect(block).to_be_visible()
     expect(block.locator(".md-block-lang")).to_have_text("bash")
     expect(block.locator("pre code")).to_have_text('git status\necho "<done>"')
 
     block.locator(".md-block-copy").click()
-    authed_page.wait_for_function(
-        "() => Array.isArray(window.__copied) && window.__copied.length > 0", timeout=3_000,
-    )
-    assert authed_page.evaluate("() => window.__copied[0]") == 'git status\necho "<done>"'
-    expect(authed_page.locator(".toast")).to_contain_text("Code copied")
+    _wait_copied(page, 2)
+    assert page.evaluate("() => window.__copied[1]") == 'git status\necho "<done>"'
+    expect(page.locator(".toast")).to_contain_text("Code copied")
     expect(turn).to_have_js_property("open", True)
+
+
+def _assert_turn_copies_and_a_truncated_reply_upgrades(page: Page) -> None:
+    """#985: the copy glyph on a user card copies its text outright; on an
+    assistant card whose entry came back ``truncated: true`` it writes the
+    capped text immediately (the iOS-safe synchronous write), then fetches
+    ``/transcript/entry`` and *visibly* upgrades the clipboard — a second
+    toast, never a silent rewrite."""
+    # The user card: a plain, un-truncated copy — one write, one toast, and
+    # the card stays open (the tap must not also toggle the <details>).
+    user_turn = page.locator("#transcriptList .tr-user").first
+    expect(user_turn).to_contain_text("short prompt")
+    expect(user_turn).to_have_js_property("open", True)
+    user_turn.locator(".tr-turn-copy").click()
+    _wait_copied(page, 3)
+    assert page.evaluate("() => window.__copied[2]") == "short prompt"
+    expect(page.locator(".toast")).to_contain_text("Prompt copied")
+    expect(user_turn).to_have_js_property("open", True)
+
+    # The assistant card: truncated, so the capped text lands first, then the
+    # full entry fetch upgrades it — both writes, and both toasts along the
+    # way, read back from the recorded history rather than the live DOM.
+    assistant_turn = page.locator("#transcriptList .tr-assistant").first
+    assistant_turn.locator(".tr-turn-copy").click()
+    _wait_copied(page, 5)
+    assert page.evaluate("() => window.__copied[3]") == _CAPPED_REPLY
+    assert page.evaluate("() => window.__copied[4]") == _FULL_REPLY
+    toasts = page.evaluate("() => window.__toasts")
+    assert any("loading the full text" in t for t in toasts), toasts
+    assert any("Full reply copied" in t for t in toasts), toasts
+    assert toasts.index(next(t for t in toasts if "loading the full text" in t)) < \
+        toasts.index(next(t for t in toasts if "Full reply copied" in t)), toasts
+
+
+@pytest.mark.iphone
+def test_quote_fence_and_turn_copies_put_clean_text_on_the_clipboard(
+    authed_page: Page, base_url: str
+) -> None:
+    """Every copy button in a reply, on one page: the transcript is swapped
+    through ⋮ → Reload between the blockquote, the fence and the turn cards,
+    and the clipboard mock records every write in order."""
+    quote_reply = "\n".join([
+        "Here is a draft:", "",
+        "> Hello,", ">", "> The installation was finished in August.", ">",
+        "> Best regards,", "> Name", "",
+        "Send it when ready.",
+    ])
+    fence_reply = "\n".join([
+        "Run this:", "", "```bash", "git status", "echo \"<done>\"", "```", "",
+        "Then check.",
+    ])
+    pages = {None: _reply_page(_assistant(quote_reply))}
+    _mock_sessions_list(authed_page)
+    _mock_transcript(authed_page, pages, [])
+
+    def _entry_handler(route):
+        route.fulfill(
+            status=200, content_type="application/json",
+            body=_json.dumps({
+                "available": True, "reason": None, "session_id": _SID,
+                "text": _FULL_REPLY, "truncated": False,
+            }),
+        )
+
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions/" + _SID + r"/transcript/entry(\?.*)?$"),
+        _entry_handler,
+    )
+    authed_page.add_init_script(_CLIPBOARD_AND_TOAST_MOCK)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    _open_chat(authed_page, _row(authed_page))
+
+    _assert_blockquote_copies_clean_text(authed_page)
+
+    pages[None] = _reply_page(_assistant(fence_reply))
+    _menu_item(authed_page, "Reload transcript").click()
+    _assert_fence_copies_the_listing(authed_page)
+
+    pages[None] = _reply_page(
+        {"kind": "user", "timestamp": "2026-09-14T10:01:00Z", "offset": 0,
+         "text": "short prompt", "truncated": False, "sidechain": False},
+        _assistant(_CAPPED_REPLY, offset=4096, truncated=True),
+    )
+    _menu_item(authed_page, "Reload transcript").click()
+    _assert_turn_copies_and_a_truncated_reply_upgrades(authed_page)
 
 
 # ------------------------------------------------------- #1020 tool errors
@@ -913,36 +895,28 @@ def test_failed_tool_call_is_marked_in_both_themes(
     # Folded calls stay folded: marking one never opens it.
     expect(bad).to_have_js_property("open", False)
 
+    _assert_unreported_outcome_says_so(authed_page, pages)
     _assert_long_run_and_thumbnail_fit(authed_page, pages)
 
 
-@pytest.mark.iphone
-def test_unreported_outcome_says_so_instead_of_reading_as_success(
-    authed_page: Page, base_url: str
-) -> None:
-    """#1020's harder half — Codex records no outcome at all.
+def _assert_unreported_outcome_says_so(page: Page, pages: dict) -> None:
+    """#1020's harder half — a harness (Codex) that records no outcome at all,
+    which the transcript says with ``tool_errors: "none"``.
 
     Nothing may be marked (there is nothing to mark), but the silence must
     not pass for success either: the expanded card says the outcome was
     never recorded. The note is in the *body*, so a folded group stays as
     quiet as it was before.
     """
-    calls: list = []
-    _mock_sessions_list(authed_page, agent="codex")
-    _mock_transcript(
-        authed_page,
-        {None: _outcome_page(tool_errors="none", failed=False)},
-        calls,
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    group = _open_tool_group(authed_page)
-
-    # Nothing claimed, nothing decorated, nothing counted.
-    expect(group.locator(".tr-fail-count")).to_have_count(0)
-    expect(group.locator(".tr-item-failed")).to_have_count(0)
+    pages[None] = _outcome_page(tool_errors="none", failed=False)
+    _menu_item(page, "Reload transcript").click()
+    group = page.locator("#transcriptList .tr-step")
     # …and the closed header is unchanged from a `reported` flavour: the
     # one step in plain words (#1532).
     expect(group.locator(".tr-step-label")).to_have_text("Read docs/board.md")
+    # Nothing claimed, nothing decorated, nothing counted.
+    expect(group.locator(".tr-fail-count")).to_have_count(0)
+    expect(group.locator(".tr-item-failed")).to_have_count(0)
 
     group.locator("summary.tr-step-line").click()
     item = group.locator(".tr-item").first
@@ -950,7 +924,7 @@ def test_unreported_outcome_says_so_instead_of_reading_as_success(
     expect(item).to_have_js_property("open", True)
     note = item.locator(".tr-outcome-unknown")
     expect(note).to_be_visible()
-    expect(note).to_contain_text("doesn\u2019t record whether a tool call failed")
+    expect(note).to_contain_text("doesn’t record whether a tool call failed")
     # Muted, not a status colour — "nobody can tell" is not a failure, and
     # dressing it as one would be the same lie in reverse. Compared against
     # the row hint, the other --muted text on the same card, so this needs
@@ -959,26 +933,3 @@ def test_unreported_outcome_says_so_instead_of_reading_as_success(
         "el => getComputedStyle(el).color"
     )
     expect(note).to_have_css("color", hint_color)
-
-
-def test_reported_harness_adds_no_note_to_a_clean_call(
-    authed_page: Page, base_url: str
-) -> None:
-    """The third state exists only where it is true: a harness that reports
-    every failure leaves an unmarked call to mean "it worked", with no
-    caveat line cluttering every card."""
-    calls: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(
-        authed_page,
-        {None: _outcome_page(tool_errors="reported", failed=False)},
-        calls,
-    )
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    group = _open_tool_group(authed_page)
-    group.locator("summary.tr-step-line").click()
-    item = group.locator(".tr-item").first
-    item.locator("summary").click()
-    expect(item).to_have_js_property("open", True)
-    expect(item.locator(".tr-out")).not_to_have_count(0)
-    expect(item.locator(".tr-outcome-unknown")).to_have_count(0)

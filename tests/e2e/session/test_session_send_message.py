@@ -162,50 +162,25 @@ def _wait_for_calls(page: Page, calls: list, n: int) -> None:
                timeout_ms=10_000)
 
 
-@pytest.mark.parametrize("kind", ["pty", "remote"])
-def test_session_menu_has_no_send_message_item(authed_page: Page, base_url: str, kind: str) -> None:
-    # #983: the chat composer covers both kinds, so no menu offers Send. Since
-    # #1025 the row has no menu at all, so the surface to check is the
-    # overlay's ⋮ — the only per-session menu left.
-    _mock_sessions_list(authed_page, kind=kind)
-    captured: dict = {}
-    _mock_input(authed_page, captured, [(200, {
-        "ok": True, "delivered": True, "submit_state": "confirmed",
-    })])
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    menu = _open_session_menu(authed_page, mode="chat")
-    expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
-    # Chat mode's full set (#982): the chat-only rows sit between Copy
-    # link and Stop, and nothing named Send appears for either kind. Changed
-    # files (#1349) follows Copy link in both modes; the read-aloud rows
-    # follow Links with the hub up; Compact (#1218) sits last in the safe
-    # group, above the destructive divider.
-    expect(menu.locator(".row-menu-label")).to_have_text(
-        ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud", "Summarize & read", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact", "Stop and kill"]
-    )
-    expect(authed_page.locator("#sessionSendDialog")).to_have_count(0)
+_DETACHED_SID = "s-send-967-detached"
 
-    # ⋮ Compact sends /compact through the same /input route Chat's Send
-    # uses, for either kind, and the toast names the verdict (#1218).
-    menu.locator('button[aria-label="Compact conversation"]').click()
-    expect(authed_page.locator("#toast")).to_contain_text("Compact: Sent")
-    assert captured["body"] == {"data": "/compact", "submit": True}
-    assert captured["calls"] == 1
+# Chat mode's full set (#982): the chat-only rows sit between Copy link and
+# Stop, and nothing named Send appears for either kind. Changed files (#1349)
+# follows Copy link in both modes; the read-aloud rows follow Links with the
+# hub up; Compact (#1218) sits last in the safe group, above the destructive
+# divider.
+_CHAT_MENU = ["Rename", "Copy link", "Changed files", "Background tasks", "Links", "Read aloud",
+              "Summarize & read", "Hide steps", "Hide automatic", "Load new", "Reload", "Compact",
+              "Stop and kill"]
 
 
-def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_url: str) -> None:
-    # #967's shape contract for the shared row-menu component. Pinned on the
-    # overlay's ⋮ menu since #1025 retired the row gear that first grew it —
-    # the same component (the vendored row-menu since #1565), so the contract
-    # is unchanged.
-    _mock_sessions_list(authed_page, kind="pty")
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    menu = _open_session_menu(authed_page, mode="terminal")
-
-    # Terminal mode: Rename · Copy link · Changed files · Background tasks · Links · Read aloud ·
-    # Summarize & read · Compact · Stop and kill (the chat-only rows are detached from the DOM, not hidden — #982;
-    # Changed files and Compact show in both modes for a Claude session —
-    # #1349, #1218).
+def _assert_menu_is_a_vertical_icon_and_label_list(menu) -> None:
+    """#967's shape contract for the shared row-menu component, on the
+    overlay's ⋮ menu in Terminal mode: Rename · Copy link · Changed files ·
+    Background tasks · Links · Read aloud · Summarize & read · Compact · Stop
+    and kill (the chat-only rows are detached from the DOM, not hidden — #982;
+    Changed files and Compact show in both modes for a Claude session —
+    #1349, #1218)."""
     buttons = menu.locator("button")
     expect(buttons).to_have_count(9)
     labels = menu.locator(".row-menu-label")
@@ -232,6 +207,66 @@ def test_session_menu_is_a_vertical_icon_and_label_list(authed_page: Page, base_
     expect(menu.locator('button[aria-label="Stop and kill session"]')).to_have_attribute(
         "data-item", "action-stop-close"
     )
+
+
+def _assert_chat_menu_has_no_send_and_compacts(page: Page, menu, captured: dict) -> None:
+    """#983: the chat composer covers both kinds, so no menu offers Send. ⋮
+    Compact sends /compact through the same /input route Chat's Send uses,
+    and the toast names the verdict (#1218)."""
+    expect(menu.locator('button[aria-label="Send message"]')).to_have_count(0)
+    expect(menu.locator(".row-menu-label")).to_have_text(_CHAT_MENU)
+    expect(page.locator("#sessionSendDialog")).to_have_count(0)
+    _clear_toast(page)
+    menu.locator('button[aria-label="Compact conversation"]').click()
+    expect(page.locator("#toast")).to_contain_text("Compact: Sent")
+    assert captured["body"] == {"data": "/compact", "submit": True}
+    assert captured["calls"] == 1
+
+
+def test_session_menu_is_a_vertical_list_with_no_send_item_for_either_kind(
+    authed_page: Page, base_url: str
+) -> None:
+    # Since #1025 the row has no menu at all, so the surface to check is the
+    # overlay's ⋮ — the only per-session menu left (the vendored row-menu
+    # since #1565, so the shape contract is unchanged). One page holds a
+    # full-control and a detached row: the full-control one is read in
+    # Terminal then Chat mode, the detached one in Chat.
+    def _row_body(sid: str, kind: str) -> dict:
+        return {"session_id": sid, "kind": kind, "agent": "claude",
+                "project_dir": "E:/automation/sendproj", "name": "sendproj", "alive": True,
+                "started_at": "2026-09-14T12:00:00Z", "live_title": "", "prompt_title": "",
+                "manual_title": "Send demo", "web_url": ""}
+
+    _mock_sessions_list(authed_page)
+    authed_page.route(
+        re.compile(r".*/api/claude-code/sessions$"),
+        lambda route: route.fulfill(status=200, content_type="application/json", body=_json.dumps(
+            {"sessions": [_row_body(_SID, "pty"), _row_body(_DETACHED_SID, "remote")]})),
+    )
+    verdict = {"ok": True, "delivered": True, "submit_state": "confirmed"}
+    full_control: dict = {}
+    detached: dict = {}
+    _mock_input(authed_page, full_control, [(200, verdict)])
+    _mock_input(authed_page, detached, [(200, verdict)], sid=_DETACHED_SID)
+    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
+
+    menu = _open_session_menu(authed_page, mode="terminal")
+    _assert_menu_is_a_vertical_icon_and_label_list(menu)
+    authed_page.locator("#terminalMenu").click()
+    expect(menu).to_be_hidden()
+    authed_page.locator("#sessionModeChat").click()
+    expect(authed_page.locator("#terminalOverlay")).to_have_attribute("data-mode", "chat")
+    authed_page.locator("#terminalMenu").click()
+    expect(menu).to_be_visible()
+    _assert_chat_menu_has_no_send_and_compacts(authed_page, menu, full_control)
+
+    authed_page.locator("#terminalBack").click()
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
+    open_session_row(authed_page, _open_row(authed_page, _DETACHED_SID), mode="chat")
+    authed_page.locator("#terminalMenu").click()
+    expect(menu).to_be_visible()
+    _assert_chat_menu_has_no_send_and_compacts(authed_page, menu, detached)
+    assert full_control["calls"] == 1, "the detached Compact went to the full-control session"
 
 
 # Every /input held in the page until the test releases it: a send that "takes
@@ -270,6 +305,8 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     _mock_transcript(authed_page, calls)
     _mock_input(authed_page, captured, [
         (502, {"detail": "console input failed — NOT typed, no submit was sent"}),
+        (200, _UNCONFIRMED_DETACHED),
+        (200, _UNCONFIRMED_DETACHED),
         (200, _UNCONFIRMED_DETACHED),
     ])
 
@@ -332,6 +369,8 @@ def test_chat_composer_sends_to_detached_session_and_refreshes(
     assert len(pages) == 1, f"the send reloaded the whole transcript: {calls}"
     assert any("after=" in u for u in calls), f"no live tick after the send: {calls}"
     expect(authed_page.locator("#transcriptList .tr-user")).to_have_count(1)
+
+    _assert_mod_enter_sends(authed_page, captured)
 
 
 # The four verdicts a full-control send can come back with, in an order where
@@ -583,36 +622,17 @@ def _paste_or_drop(page: Page, kind: str, *, with_text: bool = False) -> bool:
 # reach `submit()` rather than a second send path that could skip its gates.
 
 
-def test_mod_enter_sends_from_the_chat_composer(
-    authed_page: Page, base_url: str
-) -> None:
-    # Same modifier gesture, two keyboards: Ctrl on a PC, Cmd on a Mac, both
-    # sent from one page load.
-    captured: dict = {}
-    calls: list = []
-    posts: list = []
-    _mock_sessions_list(authed_page)
-    _mock_transcript(authed_page, calls)
-    _mock_input(authed_page, captured, [(200, _UNCONFIRMED_DETACHED), (200, _UNCONFIRMED_DETACHED)])
-    authed_page.on(
-        "request",
-        lambda req: posts.append(req.url)
-        if req.method == "POST" and "/input" in req.url
-        else None,
-    )
-
-    authed_page.goto(f"{base_url}/", wait_until="domcontentloaded")
-    _open_chat(authed_page)
-    field = authed_page.locator(INPUT)
+def _assert_mod_enter_sends(page: Page, captured: dict) -> None:
+    """Same modifier gesture, two keyboards: Ctrl on a PC, Cmd on a Mac, both
+    sent from the page the tap sends already used (two sends in)."""
+    field = page.locator(INPUT)
 
     # The tooltip discrepancy #1072 found: 'Send (with Enter)' described
     # behaviour no code had, on every surface. Chat opts into the shortcut,
     # so its title names it. The other half — a non-opted surface must not
     # claim a shortcut it doesn't have — is pinned on the terminal composer
     # in test_compose_bar.py, which already has that mount's harness.
-    expect(authed_page.locator(SEND)).to_have_attribute(
-        "title", "Send (Ctrl/Cmd+Enter)"
-    )
+    expect(page.locator(SEND)).to_have_attribute("title", "Send (Ctrl/Cmd+Enter)")
 
     # The half of #1072 that must NOT change. Multi-line prompts are the
     # normal case here, so the return key stays a newline — and on the
@@ -620,21 +640,24 @@ def test_mod_enter_sends_from_the_chat_composer(
     # keyboard is untouched: the binding needs a Ctrl/Cmd the soft keyboard
     # has no key for, so its return key can never match the guard. That is
     # why the implementation is a plain modifier check and not a
-    # touch-device sniff.
+    # touch-device sniff. Every /input is held in the page here, so a send
+    # shows up as a held request before it can reach the route.
     field.fill("first line")
     field.press("Enter")
     field.type("second line")
     expect(field).to_have_value("first line\nsecond line")
-    assert posts == [], f"a bare Enter sent the draft: {posts}"
+    assert page.evaluate("() => window.__heldInput.length") == 0, "a bare Enter sent the draft"
+    assert captured["calls"] == 2, f"a bare Enter sent the draft: {captured}"
 
-    for n, modifier in enumerate(("Control", "Meta"), start=1):
-        _clear_toast(authed_page)
+    for n, modifier in enumerate(("Control", "Meta"), start=3):
+        _clear_toast(page)
         text = f"sent from the keyboard with {modifier}"
         field.fill(text)
         field.press(f"{modifier}+Enter")
+        _release_input(page)
 
         # Delivered through the same /input route as a tap, and the draft clears.
         expect(field).to_have_value("")
-        wait_until(authed_page, lambda n=n: captured.get("calls") == n, f"{modifier}+Enter send")
+        wait_until(page, lambda n=n: captured.get("calls") == n, f"{modifier}+Enter send")
         assert captured["body"] == {"data": text, "submit": True}
-        expect(authed_page.locator("#toast")).to_contain_text("Sent, not confirmed")
+        expect(page.locator("#toast")).to_contain_text("Sent, not confirmed")

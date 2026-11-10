@@ -109,7 +109,9 @@ _FIT = """
 """
 
 
-def test_links_groups_open_folded_and_unfold_into_titled_rows(authed_page: Page, base_url: str) -> None:
+def test_links_groups_unfold_into_titled_rows_an_empty_session_says_so_and_read_more_merges(
+    authed_page: Page, base_url: str
+) -> None:
     _mock(authed_page, _LINKS)
     _open_links(authed_page, base_url)
 
@@ -154,17 +156,32 @@ def test_links_groups_open_folded_and_unfold_into_titled_rows(authed_page: Page,
     expect(sheet).to_be_hidden()
     expect(authed_page.locator("#terminalOverlay")).to_be_visible()
 
-
-def test_links_empty_session_says_so(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, _EMPTY)
-    _open_links(authed_page, base_url)
-    expect(authed_page.locator("#linksState")).to_contain_text("No links in this session")
-    expect(authed_page.locator("#linksSheet .link-open")).to_have_count(0)
+    _assert_an_empty_session_says_so(authed_page)
+    _assert_a_partial_read_names_its_cut_off_and_read_more_merges(authed_page)
 
 
-def test_links_partial_read_names_its_cut_off_and_read_more_merges_the_older_window(
-    authed_page: Page, base_url: str,
-) -> None:
+_LINKS_ROUTE = re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/links(\?.*)?$")
+
+
+def _reopen_links(page: Page, answer) -> None:
+    """Serve the links route through ``answer`` and open the sheet again from
+    the session view's ⋮ menu; each open re-reads the route."""
+    page.unroute(_LINKS_ROUTE)
+    page.route(_LINKS_ROUTE, answer)
+    page.locator("#terminalMenu").click()
+    page.locator(".terminal-menu").get_by_role("menuitem", name="Links").click()
+
+
+def _assert_an_empty_session_says_so(page: Page) -> None:
+    _reopen_links(page, lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(_EMPTY)))
+    expect(page.locator("#linksState")).to_contain_text("No links in this session")
+    expect(page.locator("#linksSheet .link-open")).to_have_count(0)
+    page.locator("#linksDone").click()
+    expect(page.locator("#linksSheet")).to_be_hidden()
+
+
+def _assert_a_partial_read_names_its_cut_off_and_read_more_merges(page: Page) -> None:
     newest = {**_LINKS, "total": 1, "partial": True, "offset": 4096, "read_from": "2026-10-31T12:28:00Z",
               "groups": [{"key": "artifacts", "title": "Artifacts", "total": 1, "links": [
                   _link("https://claude.ai/artifact/AbCdEfGh123456", "Artifact AbCdEfGh")]}]}
@@ -180,11 +197,8 @@ def test_links_partial_read_names_its_cut_off_and_read_more_merges_the_older_win
         body = older if "before=4096" in route.request.url else newest
         route.fulfill(status=200, content_type="application/json", body=_json.dumps(body))
 
-    _mock(authed_page, newest)
-    authed_page.route(re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/links(\?.*)?$"), answer)
-    _open_links(authed_page, base_url)
-
-    sheet = authed_page.locator("#linksSheet")
+    _reopen_links(page, answer)
+    sheet = page.locator("#linksSheet")
     note = sheet.locator(".links-read .links-note")
     expect(note).to_contain_text(re.compile(r"^Read back to .*\d"))
     more = sheet.get_by_role("button", name="Read more")

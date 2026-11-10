@@ -70,11 +70,15 @@ def _session_row(page: Page, base_url: str, sid: str):
     return row
 
 
-def test_settings_switches_show_the_defaults_and_save_as_they_change(
-    authed_page: Page, base_url: str
+def test_settings_switches_save_as_they_change_and_a_window_tap_then_mirrors(
+    authed_page: Page, base_url: str, launched_pty_session: str
 ) -> None:
+    # Desktop only, as every unmarked test is: the switches' POSTs re-read
+    # /api/config, so the next row tap follows the saved values.
+    sid = launched_pty_session
     knobs = _mock_config(authed_page, window=False, chat=True)
-    authed_page.goto(base_url, wait_until="domcontentloaded")
+    mirror_posts = _track_mirror_posts(authed_page, sid)
+    row = _session_row(authed_page, base_url, sid)
     open_settings(authed_page)
 
     window = authed_page.locator("#openSessionsInWindowToggle")
@@ -90,6 +94,18 @@ def test_settings_switches_show_the_defaults_and_save_as_they_change(
     wait_until(authed_page, lambda: {"open_sessions_in_chat": False} in knobs["posts"],
                "the Chat switch's POST")
     expect(chat).to_have_attribute("aria-checked", "false")
+
+    # Window on, Chat off: the first tap of a never-opened row resolves to
+    # Terminal, which the switch sends to the window.
+    authed_page.locator("#tabClaude").click()
+    expect(row).to_be_visible()
+    with authed_page.expect_response(
+        lambda r: r.request.method == "POST"
+        and f"/api/claude-code/sessions/{sid}/mirror" in r.url
+    ):
+        row.locator(".session-open").click()
+    assert len(mirror_posts) == 1
+    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
 
 
 def test_desktop_defaults_keep_the_terminal_in_the_page_and_the_menu_opens_the_window(
@@ -131,26 +147,6 @@ def test_desktop_defaults_keep_the_terminal_in_the_page_and_the_menu_opens_the_w
     assert resp_info.value.ok
     assert resp_info.value.json().get("mirrored") is True
     expect(overlay).to_be_hidden()
-
-
-def test_desktop_window_switch_on_mirrors_a_terminal_tap(
-    authed_page: Page, base_url: str, launched_pty_session: str, browser_name: str
-) -> None:
-    if browser_name != "chromium":
-        pytest.skip("desktop (pointer: fine) behaviour")
-    sid = launched_pty_session
-    _mock_config(authed_page, window=True, chat=False)
-    mirror_posts = _track_mirror_posts(authed_page, sid)
-    row = _session_row(authed_page, base_url, sid)
-
-    # Chat off: the first tap resolves to Terminal, which the switch sends to the window.
-    with authed_page.expect_response(
-        lambda r: r.request.method == "POST"
-        and f"/api/claude-code/sessions/{sid}/mirror" in r.url
-    ):
-        row.locator(".session-open").click()
-    assert len(mirror_posts) == 1
-    expect(authed_page.locator("#terminalOverlay")).to_be_hidden()
 
 
 @pytest.mark.iphone

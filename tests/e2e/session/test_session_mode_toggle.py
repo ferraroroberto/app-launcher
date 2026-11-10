@@ -339,6 +339,8 @@ def test_detached_session_opens_in_chat_with_terminal_off(
     expect(overlay).to_have_attribute("data-mode", "chat")
     expect(authed_page.locator("#chatNote")).to_be_visible()
     expect(authed_page.locator("#chatNote")).to_contain_text("Detached session — no terminal")
+    # It reads the same native history a PTY row does.
+    expect(authed_page.locator("#transcriptList .tr-user").first).to_contain_text("toggle test prompt")
     term_seg = authed_page.locator("#sessionModeTerminal")
     expect(term_seg).to_have_attribute("aria-disabled", "true")
     expect(authed_page.locator("#sessionModeChat")).not_to_have_attribute("aria-disabled", "true")

@@ -297,48 +297,7 @@ def test_file_view_download_and_menu_on_the_phone(authed_page: Page, base_url: s
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
 
 
-@pytest.mark.iphone
-def test_preview_renders_html_in_the_sandboxed_frame_and_only_for_html_and_markdown(
-    authed_page: Page, base_url: str,
-) -> None:
-    page = authed_page
-    files = {**_TINT_FILES, "files": [
-        {"path": "page.html", "key": "E:/work/proj/page.html", "status": "M",
-         "additions": 1, "deletions": 0, "steps": 1},
-        _TINT_FILES["files"][0],
-    ]}
-    _mock(page, files=files)
-    _mock_file_routes(page)
-    _as_phone(page)
-    row = _open_file(page, base_url, 0)
-
-    # An HTML file reads as source in File; Preview opens the page in the empty
-    # sandbox the sent-file viewer uses, so its script cannot reach the app.
-    row.locator(".chg-view .segmented-item").nth(1).click()
-    expect(row.locator(".chg-pane-file .fv-listing")).to_contain_text("<h1>Hi page</h1>")
-    _open_kebab(page, row).locator("[data-item='chg-preview']").click()
-    frame = page.locator("#htmlViewer iframe.html-viewer-frame")
-    expect(frame).to_have_count(1)
-    assert frame.get_attribute("sandbox") == ""
-    expect(page.frame_locator("#htmlViewer iframe").locator("h1")).to_have_text("Hi page")
-    assert page.evaluate("() => window.__ran === undefined")
-    for theme in ("light", "dark"):
-        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
-        width = page.evaluate(
-            "() => document.querySelector('#htmlViewer .html-viewer-body').getBoundingClientRect().width")
-        assert width <= 390, f"viewer wider than the phone ({theme}): {width}"
-    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
-    page.locator("#htmlViewerClose").click()
-    expect(page.locator("#htmlViewer")).to_be_hidden()
-
-    # A Python file has no Preview.
-    row2 = page.locator("#changesList .chg-file").nth(1)
-    row2.locator("summary").click()
-    menu = _open_kebab(page, row2)
-    assert "Preview" not in _items(menu), _items(menu)
-
-
-def test_download_saves_the_file_and_refuses_what_the_file_view_refuses(
+def test_download_open_on_pc_code_gutter_and_a_file_gone_from_disk(
     authed_page: Page, base_url: str
 ) -> None:
     page = authed_page
@@ -346,6 +305,7 @@ def test_download_saves_the_file_and_refuses_what_the_file_view_refuses(
     seen = _mock_file_routes(page)
     row = _open_file(page, base_url, 1)
 
+    # Download saves the file under its own name with its text.
     with page.expect_download() as got:
         row.locator(".chg-download").click()
     download = got.value
@@ -354,23 +314,6 @@ def test_download_saves_the_file_and_refuses_what_the_file_view_refuses(
         assert fh.read() == _CODE
     assert seen["content"] == ["E:/work/proj/src/pkg/long.py"], seen
 
-    # The File view shows the file already read: no second request.
-    row.locator(".chg-view .segmented-item").nth(1).click()
-    expect(row.locator(".chg-pane-file .fv-line")).to_have_count(5)
-    assert len(seen["content"]) == 1, f"the File pane refetched a downloaded file: {seen}"
-
-    gone = page.locator("#changesList .chg-file").nth(2)
-    gone.locator("summary").click()
-    gone.locator(".chg-download").click()
-    expect(page.locator("#toast")).to_have_text("This file is no longer on disk")
-
-
-def test_open_on_pc_code_gutter_and_a_deleted_file_on_the_pc(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    _mock(page)
-    seen = _mock_file_routes(page)
-    row = _open_file(page, base_url, 1)
-
     # This page talks to the webapp over loopback: it is the PC itself.
     menu = _open_kebab(page, row)
     assert "Open on PC" in _items(menu), _items(menu)
@@ -378,26 +321,23 @@ def test_open_on_pc_code_gutter_and_a_deleted_file_on_the_pc(authed_page: Page, 
     expect(page.locator("#toast")).to_contain_text("Opened in VS Code")
     assert seen["open"] == [{"path": "E:/work/proj/src/pkg/long.py"}], seen
 
+    # The File view shows the file already read (no second request), with a
+    # line-number gutter, and code is not tinted as JSON.
     row.locator(".chg-view .segmented-item").nth(1).click()
     lines = row.locator(".chg-pane-file .fv-line")
     expect(lines).to_have_count(5)
     expect(lines.nth(1)).to_have_text("    return 1")
-    expect(row.locator(".chg-pane-file .fv-key")).to_have_count(0)   # code is not tinted
+    expect(row.locator(".chg-pane-file .fv-key")).to_have_count(0)
+    assert len(seen["content"]) == 1, f"the File pane refetched a downloaded file: {seen}"
 
+    # A file gone from disk: Download is refused with the File view's
+    # sentence, and the File view says so instead of an empty view.
     gone = page.locator("#changesList .chg-file").nth(2)
     gone.locator("summary").click()
+    gone.locator(".chg-download").click()
+    expect(page.locator("#toast")).to_have_text("This file is no longer on disk")
     gone.locator(".chg-view .segmented-item").nth(1).click()
     expect(gone.locator(".chg-pane-file")).to_have_text("This file is no longer on disk")
-
-
-def _tinted_file_view(page: Page, base_url: str, nth: int):
-    """Open the nth file of the tint fixture on its File view."""
-    _mock(page, files=_TINT_FILES)
-    _mock_file_routes(page)
-    row = _open_file(page, base_url, nth)
-    row.locator(".chg-view .segmented-item").nth(1).click()
-    expect(row.locator(".chg-pane-file .fv-line").first).to_be_visible()
-    return row
 
 
 # What each class resolves to, per theme: the fleet's existing text tokens
@@ -406,44 +346,6 @@ _TINT_COLOURS = {
     "light": {"fv-kw": "rgb(5, 80, 174)", "fv-str": "rgb(17, 99, 41)", "fv-num": "rgb(125, 78, 0)"},
     "dark": {"fv-kw": "rgb(88, 166, 255)", "fv-str": "rgb(86, 211, 100)", "fv-num": "rgb(227, 179, 65)"},
 }
-
-
-@pytest.mark.iphone
-def test_code_file_takes_token_colours_in_both_themes(authed_page: Page, base_url: str) -> None:
-    page = authed_page
-    row = _tinted_file_view(page, base_url, 0)
-    pane = row.locator(".chg-pane-file")
-
-    expect(pane.locator(".fv-line")).to_have_count(3)
-    expect(pane.locator(".fv-cmt").first).to_have_text("# say hi")
-    expect(pane.locator(".fv-kw").first).to_have_text("def")
-    expect(pane.locator(".fv-name").first).to_have_text("greet")
-    expect(pane.locator(".fv-str")).to_have_text('"hi"')
-    expect(pane.locator(".fv-cmt").nth(1)).to_have_text("# tail")
-    # Only the colour classes carry markup: the listing's text is the source.
-    expect(pane.locator(".fv-listing")).to_have_text("# say hi" + "def greet(name):" + '    return "hi" + name  # tail')
-
-    for theme, colours in _TINT_COLOURS.items():
-        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
-        expect(pane.locator(".fv-kw").first).to_have_css("color", colours["fv-kw"])
-        expect(pane.locator(".fv-str").first).to_have_css("color", colours["fv-str"])
-        expect(pane.locator(".fv-cmt").first).to_have_css("font-style", "italic")
-        expect(pane.locator(".fv-name").first).to_have_css("font-weight", "600")
-        # A name has no hue of its own: it is the listing's own text colour.
-        expect(pane.locator(".fv-name").first).to_have_css(
-            "color", page.evaluate("() => getComputedStyle(document.querySelector('.fv-listing')).color"))
-    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
-
-    # JSON keeps its tint; its number and literal take the attention colour.
-    row2 = page.locator("#changesList .chg-file").nth(1)
-    row2.locator("summary").click()
-    row2.locator(".chg-view .segmented-item").nth(1).click()
-    expect(row2.locator(".chg-pane-file .fv-num").first).to_have_text("1")
-    for theme, colours in _TINT_COLOURS.items():
-        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
-        expect(row2.locator(".chg-pane-file .fv-num").first).to_have_css("color", colours["fv-num"])
-    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
-
 
 _ROWS = """
 (pane) => {
@@ -463,25 +365,6 @@ _ROWS = """
   };
 }
 """
-
-
-@pytest.mark.iphone
-def test_file_view_lines_keep_one_row_per_line_with_a_hanging_gutter(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    _tinted_file_view(page, base_url, 1)
-    pane = page.locator("#changesList .chg-file").nth(1).locator(".chg-pane-file")
-    # data.json pretty-printed is five short lines: each is one text row, a key
-    # and its value on the same row (the gutter was a two-column grid, so every
-    # token span became a grid item and wrapped onto its own row).
-    got = stable_eval(pane, _ROWS)
-    assert got["n"] == 5, got
-    assert got["sameRow"], f"a key and its value are on different rows: {got}"
-    assert got["tallest"] <= got["one"] * 1.1, f"a short line wrapped to several rows: {got}"
-    assert got["padLeft"] > 40, f"the number has no room in the gutter: {got}"
-    assert got["sweep"] <= 0, f"sideways scroll at 390px: {got}"
-
 
 _PY_DIFF = [
     " def greet(name):",
@@ -509,17 +392,10 @@ _DIFF_COLOURS = {
 }
 
 
-@pytest.mark.iphone
-def test_diff_takes_token_colours_and_copy_diff_stays_the_patch(
-    authed_page: Page, base_url: str
-) -> None:
-    page = authed_page
-    _mock(page, files=_TINT_FILES, steps=_steps_for(_PY_DIFF))
-    _as_phone(page)
-    page.add_init_script(_CLIPBOARD_MOCK)
-    row = _open_file(page, base_url, 0)
+def _assert_diff_tint_and_copy_diff(page: Page, row) -> None:
+    """The diff takes the token colours on each line's own side of the hunk,
+    and Copy diff still puts exactly the patch text on the clipboard."""
     diff = row.locator(".chg-pane-diff .chg-diff")
-
     # Each line kind reads its own side of the hunk; the added docstring spans two lines.
     expect(diff.locator(".d-ctx .d-txt .fv-kw")).to_have_text("def")
     expect(diff.locator(".d-del .d-txt .fv-str")).to_have_text('"hi"')
@@ -546,24 +422,135 @@ def test_diff_takes_token_colours_and_copy_diff_stays_the_patch(
             expect(cmt).not_to_have_css("color", c["code"])
     page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
 
-    # Copy diff puts exactly the patch text on the clipboard.
     menu = _open_kebab(page, row)
     menu.locator("[data-item='chg-copy-diff']").click()
     expect(page.locator("#toast")).to_contain_text("Diff copied")
     assert page.evaluate("() => window.__copied") == ["\n".join(patch)]
 
 
-@pytest.mark.parametrize("nth, lines, note", [
-    (0, ["+x = %d" % i for i in range(2100)], True),   # a .py diff over the cut-off
-    (1, ['+{"a": 1}'], False),                          # a .json file has no language
-])
+def _assert_code_file_token_colours(page: Page, row) -> None:
+    """The File view's token colours (#1749): a Python file's keyword,
+    string, number, comment and name take the fleet's text tokens in light
+    and dark."""
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    pane = row.locator(".chg-pane-file")
+    expect(pane.locator(".fv-line")).to_have_count(3)
+    expect(pane.locator(".fv-cmt").first).to_have_text("# say hi")
+    expect(pane.locator(".fv-kw").first).to_have_text("def")
+    expect(pane.locator(".fv-name").first).to_have_text("greet")
+    expect(pane.locator(".fv-str")).to_have_text('"hi"')
+    expect(pane.locator(".fv-cmt").nth(1)).to_have_text("# tail")
+    # Only the colour classes carry markup: the listing's text is the source.
+    expect(pane.locator(".fv-listing")).to_have_text("# say hi" + "def greet(name):" + '    return "hi" + name  # tail')
+
+    for theme, colours in _TINT_COLOURS.items():
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        expect(pane.locator(".fv-kw").first).to_have_css("color", colours["fv-kw"])
+        expect(pane.locator(".fv-str").first).to_have_css("color", colours["fv-str"])
+        expect(pane.locator(".fv-cmt").first).to_have_css("font-style", "italic")
+        expect(pane.locator(".fv-name").first).to_have_css("font-weight", "600")
+        # A name has no hue of its own: it is the listing's own text colour.
+        expect(pane.locator(".fv-name").first).to_have_css(
+            "color", page.evaluate("() => getComputedStyle(document.querySelector('.fv-listing')).color"))
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+
+def _assert_json_tint_and_one_row_per_line(page: Page, row) -> None:
+    """JSON keeps its tint (its number and literal take the attention
+    colour), and data.json pretty-printed is five short lines: each is one
+    text row, a key and its value on the same row (the gutter was a
+    two-column grid, so every token span became a grid item and wrapped onto
+    its own row)."""
+    row.locator("summary").click()
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    pane = row.locator(".chg-pane-file")
+    expect(pane.locator(".fv-num").first).to_have_text("1")
+    for theme, colours in _TINT_COLOURS.items():
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        expect(pane.locator(".fv-num").first).to_have_css("color", colours["fv-num"])
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+
+    got = stable_eval(pane, _ROWS)
+    assert got["n"] == 5, got
+    assert got["sameRow"], f"a key and its value are on different rows: {got}"
+    assert got["tallest"] <= got["one"] * 1.1, f"a short line wrapped to several rows: {got}"
+    assert got["padLeft"] > 40, f"the number has no room in the gutter: {got}"
+    assert got["sweep"] <= 0, f"sideways scroll at 390px: {got}"
+
+
+def _assert_html_previews_in_the_sandbox(page: Page, row) -> None:
+    """An HTML file reads as source in File; Preview opens the page in the
+    empty sandbox the sent-file viewer uses, so its script cannot reach the
+    app."""
+    row.locator("summary").click()
+    row.locator(".chg-view .segmented-item").nth(1).click()
+    expect(row.locator(".chg-pane-file .fv-listing")).to_contain_text("<h1>Hi page</h1>")
+    _open_kebab(page, row).locator("[data-item='chg-preview']").click()
+    frame = page.locator("#htmlViewer iframe.html-viewer-frame")
+    expect(frame).to_have_count(1)
+    assert frame.get_attribute("sandbox") == ""
+    expect(page.frame_locator("#htmlViewer iframe").locator("h1")).to_have_text("Hi page")
+    assert page.evaluate("() => window.__ran === undefined")
+    for theme in ("light", "dark"):
+        page.evaluate("t => document.documentElement.setAttribute('data-theme', t)", theme)
+        width = page.evaluate(
+            "() => document.querySelector('#htmlViewer .html-viewer-body').getBoundingClientRect().width")
+        assert width <= 390, f"viewer wider than the phone ({theme}): {width}"
+    page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    page.locator("#htmlViewerClose").click()
+    expect(page.locator("#htmlViewer")).to_be_hidden()
+
+
+@pytest.mark.iphone
+def test_diff_and_file_views_take_token_colours_and_only_html_and_markdown_preview(
+    authed_page: Page, base_url: str
+) -> None:
+    """One phone page over tool.py, data.json and page.html: the Python diff's
+    tint and Copy diff, the Python File view's tint, the JSON File view's
+    tint and row geometry, the HTML Preview's sandbox, and no Preview for a
+    Python file."""
+    page = authed_page
+    files = {**_TINT_FILES, "files": [
+        *_TINT_FILES["files"],
+        {"path": "page.html", "key": "E:/work/proj/page.html", "status": "M",
+         "additions": 1, "deletions": 0, "steps": 1},
+    ]}
+    _mock(page, files=files, steps=_steps_for(_PY_DIFF))
+    _mock_file_routes(page)
+    _as_phone(page)
+    page.add_init_script(_CLIPBOARD_MOCK)
+    row = _open_file(page, base_url, 0)
+    rows = page.locator("#changesList .chg-file")
+
+    _assert_diff_tint_and_copy_diff(page, row)
+    _assert_code_file_token_colours(page, row)
+    _assert_json_tint_and_one_row_per_line(page, rows.nth(1))
+    _assert_html_previews_in_the_sandbox(page, rows.nth(2))
+
+    # A Python file has no Preview.
+    menu = _open_kebab(page, row)
+    assert "Preview" not in _items(menu), _items(menu)
+
+
 def test_diff_stays_plain_over_the_size_cut_off_and_for_an_unknown_language(
-    authed_page: Page, base_url: str, nth: int, lines: list, note: bool
+    authed_page: Page, base_url: str
 ) -> None:
     page = authed_page
-    _mock(page, files=_TINT_FILES, steps=_steps_for(lines))
+    big = ["+x = %d" % i for i in range(2100)]   # a .py diff over the cut-off
+    json_lines = ['+{"a": 1}']                    # a .json file has no language
+    _mock(page, files=_TINT_FILES)
+
+    def _diff(route):
+        lines = json_lines if "data.json" in route.request.url else big
+        route.fulfill(status=200, content_type="application/json", body=_json.dumps(_steps_for(lines)))
+
+    page.route(re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files/diff\?.*"), _diff)
     _as_phone(page)
-    pane = _open_file(page, base_url, nth).locator(".chg-pane-diff")
-    expect(pane.locator(".d-add")).to_have_count(len(lines))
-    expect(pane.locator(".d-tint, [class^='fv-']:not(.fv-note)")).to_have_count(0)
-    expect(pane.locator(".fv-note")).to_have_count(int(note))
+    rows = page.locator("#changesList .chg-file")
+    _open_file(page, base_url, 0)
+    rows.nth(1).locator("summary").click()
+    for nth, lines, note in ((0, big, True), (1, json_lines, False)):
+        pane = rows.nth(nth).locator(".chg-pane-diff")
+        expect(pane.locator(".d-add")).to_have_count(len(lines))
+        expect(pane.locator(".d-tint, [class^='fv-']:not(.fv-note)")).to_have_count(0)
+        expect(pane.locator(".fv-note")).to_have_count(int(note))

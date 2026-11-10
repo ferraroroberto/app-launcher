@@ -261,7 +261,7 @@ _BOARD_TARGETS = (
     "tests/e2e/code/test_wide_code_detail.py "
     "tests/e2e/code/test_coding_chief.py "
     "tests/e2e/code/test_channel_sessions_hidden.py "
-    "tests/e2e/session/test_session_rename.py tests/e2e/session/test_shared_session_title.py "
+    "tests/e2e/session/test_session_rename.py "
     "tests/e2e/code/test_coding_model_selector.py tests/e2e/terminal/test_terminal_bar_overflow.py "
     "tests/e2e/shell/test_primary_nav.py tests/e2e/shell/test_smoke.py "
     "tests/e2e/shell/test_row_name_typography.py tests/e2e/shell/test_icon_sizes.py "

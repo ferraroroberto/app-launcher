@@ -5,7 +5,8 @@ anatomy: an avatar holding the agent's mark with a green alive badge (a
 crown for the chief), a one-line title and a one-line meta line, chips only
 for exceptions. "full control" is gone, "detached" is a neutral chip, a
 stalled Board session carries a danger "stalled" chip, and nothing draws a
-left-edge status border or dims an idle card.
+left-edge status border or dims an idle card. A session carrying the shared
+cross-tab title shows that same title on both tabs.
 
 Hermetic: the session list and the Board payload are route-mocked before
 ``goto()`` (#510), with fictional sessions.
@@ -25,6 +26,8 @@ from tests.e2e.fixtures.waits import stable_eval
 pytestmark = pytest.mark.smoke
 
 _NOW = int(time.time())
+_SHARED_SID = "s-shared"
+_SHARED_NAME = "Fixing the chunk merge bug"
 
 _SESSIONS = [
     {"session_id": "s-chief", "kind": "pty", "agent": "claude", "label": "chief",
@@ -42,6 +45,13 @@ _SESSIONS = [
      "name": "remote", "flags": "", "started_at": _NOW - 60, "alive": True,
      "live_title": "", "prompt_title": "detached worker", "manual_title": "",
      "output_chars": 0},
+    # One live session carrying the shared cross-tab title (fleet-config#302),
+    # on both tabs under the same id.
+    {"session_id": _SHARED_SID, "kind": "pty", "agent": "claude", "label": "",
+     "project_dir": "E:/work/photo-lab", "name": "photo-lab", "flags": "",
+     "started_at": _NOW - 300, "alive": True, "rows": 40, "cols": 120,
+     "live_title": "", "prompt_title": "", "manual_title": "", "output_chars": 10,
+     "shared_name": _SHARED_NAME, "shared_name_source": None},
 ]
 
 
@@ -61,6 +71,9 @@ _BOARD = {
         "claude_turn": [
             _card("b-chief", "working", label="chief", name="chief", manual_title="chief"),
             _card("b-idle", "idle"),
+            _card(_SHARED_SID, "working", project_dir="E:/work/photo-lab", name="photo-lab",
+                  project="photo-lab", prompt_title="", shared_name=_SHARED_NAME,
+                  shared_name_source=None),
         ],
         "your_turn": [_card("b-stalled", "stalled"), _card("b-wait", "awaiting-input")],
         "other": [], "done": [],
@@ -159,6 +172,9 @@ def test_code_rows_and_board_cards_share_the_session_row(
         re.compile(r"^demo-garden · up \d+m"))
     for sid in ("s-chief", "s-pty", "s-remote"):
         _assert_two_line_row(stable_eval(row(sid), _ROW_GEOMETRY), sid)
+    # Both tabs call the same sessionTitle(), so the shared title is the one
+    # name the Code row and the Board card show for that session.
+    expect(row(_SHARED_SID).locator(".name")).to_have_text(_SHARED_NAME)
 
     # -- Board --
     authed_page.locator("#tabBoard").click()
@@ -180,6 +196,10 @@ def test_code_rows_and_board_cards_share_the_session_row(
     expect(card("b-chief").locator('.avatar-badge[data-badge="crown"]')).to_have_count(1)
     for sid in ("b-chief", "b-idle", "b-stalled", "b-wait"):
         _assert_two_line_row(stable_eval(card(sid), _ROW_GEOMETRY), sid)
+    expect(card(_SHARED_SID).locator(".board-card-title")).to_have_text(_SHARED_NAME)
+    # The brand mark is a sprite <svg>, so its accessible name is aria-label.
+    expect(card(_SHARED_SID).locator(".board-agent-icon")).to_have_attribute(
+        "aria-label", "Claude Code")
 
     # Tap behaviour is unchanged: the card still toggles its drawer.
     card("b-wait").locator("button.board-card").click()

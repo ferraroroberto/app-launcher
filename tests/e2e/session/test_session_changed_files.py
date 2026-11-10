@@ -167,34 +167,34 @@ def test_changed_files_lists_the_sessions_edits_and_opens_one(
     expect(diffs_shown.nth(0).locator(".d-add").first).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
     assert len(diffs) == 1 and "path=E%3A%2Fwork%2Fproj%2Fdocs%2Fnotes.md" in diffs[0], diffs
 
+    _assert_empty_and_unreadable_say_so(authed_page)
+
     # Closing lands back on the session view it came from.
     authed_page.locator("#changesClose").click()
     expect(overlay).to_be_hidden()
     expect(authed_page.locator("#terminalOverlay")).to_be_visible()
 
 
-def test_changed_files_empty_and_unreadable_states_and_other_agents(
-    authed_page: Page, base_url: str
-) -> None:
-    files = {**_FILES, "files": [], "counts": {"additions": 0, "deletions": 0}}
-    _mock(authed_page, files=files)
-    _open_session(authed_page, base_url)
-    _menu(authed_page).get_by_role("menuitem", name="Changed files").click()
-    state = authed_page.locator("#changesState")
-    expect(state).to_have_text("No files changed in this session")
-    expect(authed_page.locator("#changesList .chg-file")).to_have_count(0)
+def _serve_files(page: Page, body: dict) -> None:
+    pattern = re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files$")
+    page.unroute(pattern)
+    page.route(pattern, lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(body)))
 
-    # An unreadable transcript is its own sentence, and Refresh re-reads.
-    authed_page.unroute(re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files$"))
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/changed-files$"),
-        lambda route: route.fulfill(status=200, content_type="application/json", body=_json.dumps({
-            "available": False, "reason": "no_transcript", "session_id": _SID,
-            "entries": [], "next_cursor": None, "source": None})),
-    )
-    authed_page.locator("#changesRefresh").click()
+
+def _assert_empty_and_unreadable_say_so(page: Page) -> None:
+    """No edits, and a transcript that can't be read, each get their own
+    sentence after Refresh re-reads — never a blank panel."""
+    _serve_files(page, {**_FILES, "files": [], "counts": {"additions": 0, "deletions": 0}})
+    page.locator("#changesRefresh").click()
+    state = page.locator("#changesState")
+    expect(state).to_have_text("No files changed in this session")
+    expect(page.locator("#changesList .chg-file")).to_have_count(0)
+
+    _serve_files(page, {"available": False, "reason": "no_transcript", "session_id": _SID,
+                        "entries": [], "next_cursor": None, "source": None})
+    page.locator("#changesRefresh").click()
     expect(state).to_have_text("No transcript for this session")
-    authed_page.locator("#changesClose").click()
 
 
 def test_changed_files_opens_for_a_codex_session_with_unnumbered_diffs(

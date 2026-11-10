@@ -121,7 +121,7 @@ _FIT = """
 """
 
 
-def test_background_tasks_lists_running_then_finished_and_opens_an_output(
+def test_background_tasks_list_open_an_output_name_empty_states_and_open_from_the_row(
     authed_page: Page, base_url: str
 ) -> None:
     urls = _mock(authed_page)
@@ -168,38 +168,52 @@ def test_background_tasks_lists_running_then_finished_and_opens_an_output(
     expect(sheet).to_be_hidden()
     expect(authed_page.locator("#terminalOverlay")).to_be_visible()
 
+    _assert_empty_and_unreadable_say_so(authed_page)
+    _assert_the_row_menu_opens_it_too(authed_page)
 
-def test_background_tasks_empty_and_unreadable_states(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page, tasks=_EMPTY)
-    _open_session(authed_page, base_url)
-    authed_page.locator("#terminalMenu").click()
-    authed_page.locator(".terminal-menu").get_by_role("menuitem", name="Background tasks").click()
-    state = authed_page.locator("#bgTasksState")
+
+_TASKS_ROUTE = re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/background-tasks(\?.*)?$")
+
+
+def _serve_tasks(page: Page, body: dict) -> None:
+    page.unroute(_TASKS_ROUTE)
+    page.route(_TASKS_ROUTE, lambda route: route.fulfill(
+        status=200, content_type="application/json", body=_json.dumps(body)))
+
+
+def _open_from_session_menu(page: Page) -> None:
+    page.locator("#terminalMenu").click()
+    page.locator(".terminal-menu").get_by_role("menuitem", name="Background tasks").click()
+
+
+def _assert_empty_and_unreadable_say_so(page: Page) -> None:
+    """A session with no tasks says so, and an unreadable transcript has its
+    own sentence — never a blank sheet. Each open re-reads the route."""
+    _serve_tasks(page, _EMPTY)
+    _open_from_session_menu(page)
+    state = page.locator("#bgTasksState")
     expect(state).to_have_text("No background tasks")
-    expect(authed_page.locator("#bgTasksBody .bg-task")).to_have_count(0)
-    authed_page.locator("#bgTasksClose").click()
-    expect(authed_page.locator("#bgTasksSheet")).to_be_hidden()
+    expect(page.locator("#bgTasksBody .bg-task")).to_have_count(0)
+    page.locator("#bgTasksClose").click()
+    expect(page.locator("#bgTasksSheet")).to_be_hidden()
 
-    authed_page.unroute(re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/background-tasks(\?.*)?$"))
-    authed_page.route(
-        re.compile(r".*/api/claude-code/sessions/" + re.escape(_SID) + r"/background-tasks(\?.*)?$"),
-        lambda route: route.fulfill(status=200, content_type="application/json",
-                                    body=_json.dumps(_UNREADABLE)),
-    )
-    authed_page.locator("#terminalMenu").click()
-    authed_page.locator(".terminal-menu").get_by_role("menuitem", name="Background tasks").click()
+    _serve_tasks(page, _UNREADABLE)
+    _open_from_session_menu(page)
     expect(state).to_have_text("This session has no transcript to read yet")
+    page.locator("#bgTasksClose").click()
+    expect(page.locator("#bgTasksSheet")).to_be_hidden()
 
 
-def test_the_item_is_in_the_row_menu_for_claude_only(authed_page: Page, base_url: str) -> None:
-    _mock(authed_page)
-    authed_page.set_viewport_size({"width": 390, "height": 844})
-    authed_page.goto(base_url, wait_until="domcontentloaded")
-    _row(authed_page, _SID).locator(".session-kebab").click()
-    open_row_menu(authed_page).locator("[data-item=session-tasks-btn]").click()
-    expect(authed_page.locator("#bgTasksSheet")).to_be_visible()
-    expect(authed_page.locator("#bgTasksBody .bg-task")).to_have_count(4)
-    authed_page.locator("#bgTasksDone").click()
+def _assert_the_row_menu_opens_it_too(page: Page) -> None:
+    """The item is in the Coding row's own ⋮ menu for a Claude session too."""
+    _serve_tasks(page, _TASKS)
+    page.locator("#terminalBack").click()
+    expect(page.locator("#terminalOverlay")).to_be_hidden()
+    _row(page, _SID).locator(".session-kebab").click()
+    open_row_menu(page).locator("[data-item=session-tasks-btn]").click()
+    expect(page.locator("#bgTasksSheet")).to_be_visible()
+    expect(page.locator("#bgTasksBody .bg-task")).to_have_count(4)
+    page.locator("#bgTasksDone").click()
 
 
 def test_another_agent_has_no_item_in_either_menu(authed_page: Page, base_url: str) -> None:

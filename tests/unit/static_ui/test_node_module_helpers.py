@@ -24,6 +24,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _SCRIPTS = [
     "terminal_module_helpers.test.mjs",
     "readback_extraction.test.mjs",
+    "session_title.test.mjs",
 ]
 
 
