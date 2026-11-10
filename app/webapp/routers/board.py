@@ -83,11 +83,16 @@ from app.webapp.routers.board_spawn import (
     dispatch_effort,
 )
 from src import agents, audit, board, fleet_scope
-from src.board import active_issue_claims, backlog_buckets, ci_runs, owner_checks, proof_reports
+from src.board import (
+    active_issue_claims,
+    backlog_buckets,
+    ci_runs,
+    owner_checks,
+    proof_reports,
+)
 from src.board.exchange import resolve_exchange, unavailable
 from src.chief import answers as chief_answers
-from src.chief import ci_failed
-from src.chief import dispatch_brief, plan_prune
+from src.chief import ci_failed, dispatch_brief, plan_prune
 from src.chief import plan as chief_plan
 from src.clients import github as github_client
 from src.clients import session as session_client
