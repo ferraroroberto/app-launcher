@@ -37,7 +37,7 @@ pytestmark = pytest.mark.smoke
 _GROUPS = ["Activity", "Appearance", "Agents", "Sessions", "Life OS", "Connections", "This PC"]
 _SHEETS = [
     "screenTimeSheet", "usageShowsSheet", "launchDefaultsSheet", "chiefSheet",
-    "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "tokensSheet", "foldersSheet",
+    "channelsSheet", "contextFilterSheet", "fleetScopeSheet", "inspirationSheet", "tokensSheet", "foldersSheet",
     "passkeysSheet", "terminalSheet", "pcLoadSheet",
 ]
 # The design inventory's name for each sheet (surface() wants lowercase).
@@ -45,7 +45,7 @@ _SURFACE_NAMES = {
     "screenTimeSheet": "screen-time", "usageShowsSheet": "usage-shows",
     "launchDefaultsSheet": "launch-defaults", "chiefSheet": "chief",
     "channelsSheet": "channels", "contextFilterSheet": "context-filter",
-    "fleetScopeSheet": "fleet-scope",
+    "fleetScopeSheet": "fleet-scope", "inspirationSheet": "inspiration",
     "tokensSheet": "tokens", "foldersSheet": "folders",
     "passkeysSheet": "passkeys", "terminalSheet": "terminal", "pcLoadSheet": "pc-load",
 }
