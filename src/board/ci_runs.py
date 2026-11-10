@@ -234,7 +234,7 @@ def board_cards(snap: Dict[str, Any], *, now: Optional[datetime] = None) -> List
     return cards
 
 
-def reset_cache() -> None:
+def reset_ci_cache() -> None:
     """Test helper — restore the pristine empty cache."""
     global _last_refresh_started
     with _lock:

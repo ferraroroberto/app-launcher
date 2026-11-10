@@ -190,7 +190,7 @@ def test_unknown_repo_is_not_seeded(tmp_path, fleet, chief):
 def test_cooldown_blocks_a_second_start(fleet, monkeypatch):
     started = []
     monkeypatch.setattr(ci_runs.threading, "Thread", lambda **kw: SimpleNamespace(start=lambda: started.append(kw)))
-    ci_runs.reset_cache()
+    ci_runs.reset_ci_cache()
     assert ci_runs.start_refresh(OWNER, "x", fleet.projects, now=1000.0) is True
     assert ci_runs.start_refresh(OWNER, "x", fleet.projects, now=1001.0) is False  # in flight
     ci_runs._cache["refreshing"] = False

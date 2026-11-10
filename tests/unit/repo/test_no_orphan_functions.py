@@ -19,6 +19,7 @@ ALLOWED_ORPHANS = {  # ``path:name`` -> why production not naming it is fine
     "src/clients/github.py:reset_cache": "test seam: empties the module-level cache between tests",
     "src/session_view/link_titles.py:reset_title_cache": "test seam: empties the link-title cache between tests",
     "src/board/owner_checks.py:reset_owner_cache": "test seam: empties the owner-check cache between tests",
+    "src/board/ci_runs.py:reset_ci_cache": "test seam: empties the CI sweep cache between tests",
 }
 
 
